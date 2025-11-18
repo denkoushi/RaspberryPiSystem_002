@@ -7,7 +7,6 @@ RUN corepack enable && pnpm install --frozen-lockfile
 COPY apps/api ./apps/api
 ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return"
 RUN cd apps/api && pnpm prisma generate
-COPY node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma ./apps/api/node_modules/.prisma
 RUN cd apps/api && pnpm run build
 
 FROM node:20-alpine
@@ -18,5 +17,5 @@ COPY --from=base /app/apps/api/package.json ./package.json
 COPY pnpm-lock.yaml ./pnpm-lock.yaml
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 RUN corepack enable && pnpm install --prod --no-frozen-lockfile
-COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
+RUN pnpm prisma generate
 CMD ["node", "dist/main.js"]
