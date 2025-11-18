@@ -2,13 +2,11 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
-COPY apps/api/package.json apps/api/
-COPY apps/api/prisma ./apps/api/prisma
-RUN corepack enable && pnpm install --no-frozen-lockfile
+RUN corepack enable && pnpm install --filter @raspi-system/api --filter @raspi-system/api... --no-frozen-lockfile
 COPY apps/api ./apps/api
 ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return"
-RUN cd apps/api && pnpm prisma generate
-RUN cd apps/api && pnpm run build
+RUN pnpm --filter @raspi-system/api prisma generate
+RUN pnpm --filter @raspi-system/api build
 
 FROM node:20-alpine
 WORKDIR /app
@@ -18,5 +16,5 @@ COPY --from=base /app/apps/api/package.json ./package.json
 COPY pnpm-lock.yaml ./pnpm-lock.yaml
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 RUN corepack enable && pnpm install --prod --no-frozen-lockfile
-RUN pnpm prisma generate
+COPY --from=base /app/apps/api/node_modules/.prisma ./node_modules/.prisma
 CMD ["node", "dist/main.js"]
