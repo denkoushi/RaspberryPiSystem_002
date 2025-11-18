@@ -10,7 +10,7 @@ import logging
 try:
     from smartcard.CardMonitoring import CardMonitor, CardObserver
     from smartcard.System import readers
-    from smartcard.Exceptions import CardConnectionException, NoReadersAvailable
+    from smartcard.Exceptions import CardConnectionException
     from smartcard.util import toHexString
 except ImportError as exc:  # pragma: no cover - handled at runtime
     CardMonitor = None  # type: ignore
@@ -24,13 +24,21 @@ except ImportError as exc:  # pragma: no cover - handled at runtime
 
     IMPORT_ERROR_MESSAGE = str(exc)
 else:
-    IMPORT_ERROR_MESSAGE = None
+    try:
+        from smartcard.Exceptions import NoReadersAvailable  # type: ignore
+        IMPORT_ERROR_MESSAGE = None
+    except ImportError as exc:  # pragma: no cover
+        NoReadersAvailable = Exception  # type: ignore
+        IMPORT_ERROR_MESSAGE = f"NoReadersAvailable missing ({exc})"
 
 
 LOGGER = logging.getLogger("nfc_agent.reader")
 
 if IMPORT_ERROR_MESSAGE:
-    LOGGER.error("Failed to import pyscard modules: %s", IMPORT_ERROR_MESSAGE)
+    if IMPORT_ERROR_MESSAGE.startswith("NoReadersAvailable missing"):
+        LOGGER.warning("Optional pyscard exception not available: %s", IMPORT_ERROR_MESSAGE)
+    else:
+        LOGGER.error("Failed to import pyscard modules: %s", IMPORT_ERROR_MESSAGE)
 
 
 @dataclass
