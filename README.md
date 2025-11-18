@@ -98,23 +98,70 @@
 - ランタイムステージでも `pnpm install --prod` と `pnpm prisma generate` を実行し、ワークスペース依存を正しく解決する
 - ベースイメージ変更後は常に `--no-cache` ビルド → `curl http://localhost:8080/health` で確認
 
-## クライアント (Raspberry Pi 4) セットアップ概要
+## クライアント (Raspberry Pi 4) セットアップ
 
-1. `sudo apt install docker.io docker-compose-plugin pcscd python3-pyscard chromium-browser`
-2. NFC エージェント  
+### 想定環境
+- Debian GNU/Linux 13 (trixie) / Raspberry Pi OS 64bit
+- ユーザー例: `tools03`
+- NFC リーダー: Sony RC-S380 / RC-S300（`lsusb` で `054c:0dc8`）
+
+### 手順
+1. システム更新  
    ```bash
-   cd /path/to/RaspberryPiSystem_002
-   sudo scripts/client/setup-nfc-agent.sh
-   cp clients/nfc-agent/.env.example clients/nfc-agent/.env
-   # API_BASE_URL / CLIENT_ID / AGENT_MODE を編集
+   sudo apt update && sudo apt upgrade -y
    ```
-3. キオスクブラウザ  
+2. 必要パッケージ  
    ```bash
-   sudo scripts/client/setup-kiosk.sh https://<server-ip>:4173
+   sudo apt install -y git curl pcscd libpcsclite-dev python3-pyscard pcsc-tools chromium
+   sudo systemctl enable --now pcscd
    ```
-4. 確認コマンド  
-   - `curl http://localhost:7071/api/agent/status`
-   - `journalctl -u kiosk-browser -f`
+3. リーダー確認  
+   ```bash
+   lsusb | grep -i sony
+   pcsc_scan  # 認識したら Ctrl+C
+   ```
+4. Docker インストール  
+   ```bash
+   curl -fsSL https://get.docker.com | sudo sh
+   sudo usermod -aG docker $USER
+   newgrp docker
+   docker --version && docker compose version
+   ```
+5. Poetry  
+   ```bash
+   curl -sSL https://install.python-poetry.org | python3 -
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+   source ~/.bashrc
+   poetry --version
+   ```
+6. リポジトリ配置  
+   ```bash
+   sudo mkdir -p /opt/RaspberryPiSystem_002
+   sudo chown $USER:$USER /opt/RaspberryPiSystem_002
+   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git /opt/RaspberryPiSystem_002
+   ```
+7. NFC エージェント依存  
+   ```bash
+   cd /opt/RaspberryPiSystem_002/clients/nfc-agent
+   poetry install
+   cp .env.example .env
+   mkdir -p ~/.local/share/nfc-agent
+   ```
+   `.env` 例:  
+   ```
+   API_BASE_URL=http://192.168.10.230:8080
+   CLIENT_ID=pi4-tools03
+   AGENT_MODE=production
+   QUEUE_DB_PATH=/home/<user>/.local/share/nfc-agent/queue.db
+   ```
+8. 起動 & 確認  
+   ```bash
+   poetry run python -m nfc_agent
+   curl http://localhost:7071/api/agent/status
+   ```
+   `readerConnected: true` で `message: "監視中"` なら成功。カードをかざすと `lastEvent` に UID が追加される。
+
+※ Chromium は Debian 13 以降 `chromium-browser` パッケージが無いため `chromium` を使用。
 
 ## 今後の拡張
 
