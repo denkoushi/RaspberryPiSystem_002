@@ -1,19 +1,16 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS base
+FROM node:20-bookworm-slim AS base
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps ./apps
-RUN apk add --no-cache openssl1.1-compat \
-  && corepack enable \
-  && pnpm install
+RUN corepack enable && pnpm install
 ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return"
 RUN cd apps/api && pnpm prisma generate
 RUN cd apps/api && pnpm run build
 
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache openssl1.1-compat
 COPY --from=base /app/apps/api/dist ./dist
 COPY --from=base /app/apps/api/package.json ./package.json
 COPY --from=base /app/apps/api/prisma ./prisma
