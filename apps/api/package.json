@@ -12,8 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "prisma:seed": "tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -23,6 +22,7 @@
     "@fastify/websocket": "^10.0.1",
     "@fastify/multipart": "^8.3.0",
     "@prisma/client": "^5.14.0",
+    "prisma": "^5.14.0",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2",
     "fastify-plugin": "^4.5.1",
@@ -42,7 +42,6 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-unused-imports": "^3.2.0",
-    "prisma": "^5.14.0",
     "ts-node": "^10.9.2",
     "tslib": "^2.6.2",
     "tsconfig-paths": "^4.2.0",
