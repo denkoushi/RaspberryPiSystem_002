@@ -61,7 +61,7 @@ function parseCsvRows(buffer: Buffer): Record<string, string>[] {
   }) as Record<string, string>[];
 }
 
-function normalizeEmployeeStatus(value?: string): EmployeeStatus {
+function normalizeEmployeeStatus(value?: string) {
   if (!value) return EmployeeStatus.ACTIVE;
   const upper = value.trim().toUpperCase();
   if (upper in EmployeeStatus) {
@@ -70,7 +70,7 @@ function normalizeEmployeeStatus(value?: string): EmployeeStatus {
   throw new ApiError(400, `無効な従業員ステータス: ${value}`);
 }
 
-function normalizeItemStatus(value?: string): ItemStatus {
+function normalizeItemStatus(value?: string) {
   if (!value) return ItemStatus.AVAILABLE;
   const upper = value.trim().toUpperCase();
   if (upper in ItemStatus) {
