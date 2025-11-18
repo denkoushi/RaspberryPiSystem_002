@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { ApiError } from '../lib/errors.js';
 
 export function registerErrorHandler(app: FastifyInstance): void {
@@ -15,7 +15,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return;
     }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error instanceof PrismaClientKnownRequestError) {
       reply.status(400).send({ message: `データベースエラー: ${error.code}` });
       return;
     }
