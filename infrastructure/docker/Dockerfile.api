@@ -19,5 +19,4 @@ COPY pnpm-lock.yaml ./pnpm-lock.yaml
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 RUN corepack enable && pnpm install --prod --no-frozen-lockfile
 COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=base /app/node_modules/@prisma ./node_modules/@prisma
 CMD ["node", "dist/main.js"]
