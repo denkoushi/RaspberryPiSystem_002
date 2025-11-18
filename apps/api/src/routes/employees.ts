@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { EmployeeStatus, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import pkg from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
+
+const { EmployeeStatus } = pkg;
 
 const employeeBodySchema = z.object({
   employeeCode: z.string().min(1),

@@ -2,10 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
-import { EmployeeStatus, ImportStatus, ItemStatus, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import pkg from '@prisma/client';
 import { authorizeRoles } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
+
+const { EmployeeStatus, ImportStatus, ItemStatus } = pkg;
 
 const fieldSchema = z.object({
   replaceExisting: z.coerce.boolean().optional().default(false)

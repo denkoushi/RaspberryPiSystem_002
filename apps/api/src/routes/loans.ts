@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ItemStatus, TransactionAction } from '@prisma/client';
+import pkg from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { authorizeRoles } from '../lib/auth.js';
+
+const { ItemStatus, TransactionAction } = pkg;
 
 const borrowSchema = z.object({
   itemTagUid: z.string().min(4),

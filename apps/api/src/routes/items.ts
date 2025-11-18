@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ItemStatus, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import pkg from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
+
+const { ItemStatus } = pkg;
 
 const baseItemSchema = z.object({
   itemCode: z.string().min(1),
