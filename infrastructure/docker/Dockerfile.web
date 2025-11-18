@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/web/package.json apps/web/
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY apps/web ./apps/web
+RUN cd apps/web && pnpm run build
+
+FROM caddy:2-alpine
+WORKDIR /srv
+COPY --from=build /app/apps/web/dist ./site
+COPY infrastructure/docker/Caddyfile ./Caddyfile
+CMD ["caddy", "file-server", "--root", "/srv/site"]

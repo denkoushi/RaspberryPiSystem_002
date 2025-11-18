@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  nfc-agent:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+    network_mode: host
+    privileged: true
+    devices:
+      - "/dev/bus/usb:/dev/bus/usb"
+    env_file:
+      - ../../clients/nfc-agent/.env.example
+    volumes:
+      - nfc-agent-data:/data
+    restart: unless-stopped
+
+volumes:
+  nfc-agent-data:

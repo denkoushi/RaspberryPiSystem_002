@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "nfc-agent"
+version = "0.1.0"
+description = "Local NFC ブリッジサービス (RC-S300/S1 用)"
+authors = ["Factory Systems <factory@example.com>"]
+readme = "README.md"
+packages = [{ include = "nfc_agent" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pyscard = "^2.0.7"
+websockets = "^12.0"
+fastapi = "^0.111.0"
+uvicorn = { version = "^0.29.0", extras = ["standard"] }
+python-dotenv = "^1.0.1"
+httpx = "^0.27.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-asyncio = "^0.23.6"
+ruff = "^0.4.2"
+
+[build-system]
+requires = ["poetry-core>=1.6.1"]
+build-backend = "poetry.core.masonry.api"

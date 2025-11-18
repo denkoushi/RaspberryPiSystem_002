@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: borrow_return
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    depends_on:
+      - db
+    env_file:
+      - ../../apps/api/.env.example
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.web
+    depends_on:
+      - api
+    ports:
+      - "4173:8080"
+
+volumes:
+  db-data:

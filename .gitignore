@@ -1,0 +1,40 @@
+# Node
+node_modules/
+dist/
+build/
+.pnp.cjs
+.pnp.loader.mjs
+.pnpm-store/
+*.tsbuildinfo
+
+# Env
+.env
+*.env.local
+apps/api/.env
+clients/nfc-agent/.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+clients/nfc-agent/.venv/
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Docker
+*.pid
+.docker/
+
+# Misc
+coverage/
+playwright-report/

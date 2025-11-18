@@ -10,7 +10,7 @@
 ## Progress
 
 - [x] (2024-05-27 15:40Z) アーキテクチャ／データモデル／作業手順を含む初回のExecPlanを作成。
-- [ ] リポジトリの足場（モノレポ構成、Dockerファイル、envサンプル）を定義。
+- [x] (2024-05-27 16:30Z) Milestone 1: モノレポ足場、pnpm/Poetry 設定、Docker 雛形、`.env.example`、スクリプト、雛形アプリ（Fastify/React/NFC エージェント）を作成し `pnpm install` 済み。
 - [ ] サーバー側サービス（API、DBマイグレーション、認証）を実装。
 - [ ] クライアントWeb UIフローとNFCイベント連携を実装。
 - [ ] Pi4用NFCエージェントサービスとパッケージングを実装。
@@ -18,7 +18,11 @@
 
 ## Surprises & Discoveries
 
-- 未発見。実装中に想定外の挙動を見つけたら追加する。
+- 観測: `fastify-swagger@^8` が存在せず `@fastify/swagger` に名称変更されていた。  
+  エビデンス: `pnpm install` で `ERR_PNPM_NO_MATCHING_VERSION fastify-swagger@^8.13.0`。  
+  対応: 依存を `@fastify/swagger` に切り替え済み。
+- 観測: 現在の開発環境 Node.js が v18.20.8 のため `engines.node >=20` で警告。  
+  対応: 一旦 `>=18.18.0` まで許容し、Pi5 では Node20 を推奨する方針。Milestone 2 で README/ExecPlan に補足予定。
 
 ## Decision Log
 
@@ -33,6 +37,9 @@
   日付/担当: 2024-05-27 / Codex
 - 決定: Node系パッケージは pnpm ワークスペース、Python NFCエージェントは Poetry で管理する。  
   理由: pnpm は node_modules を重複管理せずメモリを節約でき、Poetry は `pyscard` 依存を隔離できるため。  
+  日付/担当: 2024-05-27 / Codex
+- 決定: `engines.node` を `>=18.18.0` に緩和し、開発中は Node18 を許容する。Pi5 本番には Node20 を導入予定であることを README/ExecPlan で周知する。  
+  理由: 現在の実行環境（v18.20.8）と整合させて初期 `pnpm install` を成功させる必要があったため。  
   日付/担当: 2024-05-27 / Codex
 
 ## Outcomes & Retrospective
@@ -83,7 +90,7 @@
 
 ## Concrete Steps
 
-以下は足場完成後に想定する具体コマンド。作業時は実際のログを本文に反映させること。
+以下のコマンドを随時実行し、結果を記録する。Milestone 1 では `pnpm install` を Node v18.20.8 + pnpm 9.1.1 の環境で実行し、`pnpm-lock.yaml` を生成済み。
 
 1. 依存インストール（Pi5 もしくは開発機）  
     作業ディレクトリ: リポジトリルート  

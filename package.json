@@ -1,0 +1,24 @@
+{
+  "name": "raspberry-pi-system",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "prepare": "husky install || true",
+    "dev": "echo '各アプリの dev コマンドを使用してください'",
+    "build": "echo 'ワークスペース個別に build を実行してください'",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=18.18.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.1",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

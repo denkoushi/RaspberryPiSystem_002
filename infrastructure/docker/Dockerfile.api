@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+FROM node:20-alpine AS base
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY apps/api ./apps/api
+RUN cd apps/api && pnpm run build
+
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=base /app/apps/api/dist ./dist
+COPY --from=base /app/apps/api/package.json ./package.json
+RUN corepack enable && pnpm install --prod --frozen-lockfile
+CMD ["node", "dist/main.js"]
