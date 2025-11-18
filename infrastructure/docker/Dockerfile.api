@@ -5,6 +5,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.js
 COPY apps/api/package.json apps/api/
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY apps/api ./apps/api
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return"
+RUN cd apps/api && pnpm prisma generate
 RUN cd apps/api && pnpm run build
 
 FROM node:20-alpine
