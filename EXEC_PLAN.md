@@ -18,7 +18,7 @@
 - [x] サーバー側サービス（API、DBマイグレーション、認証）を実装。
 - [x] クライアントWeb UIフローとNFCイベント連携を実装。
 - [x] Pi4用NFCエージェントサービスとパッケージングを実装。
-- [ ] 展開スクリプトを整備し、実機での検証手順を確立。
+- [x] (2025-11-18 07:20Z) Pi5/Pi4 実機でのデプロイ検証を完了し、README にサーバー・クライアント手順とトラブルシューティングを反映。
 
 ## Surprises & Discoveries
 
@@ -35,6 +35,8 @@
   対応: `createBorrowMachine` を純粋な状態遷移マシンにし、API呼び出しは React 側で制御（`SUCCESS`/`FAIL` イベントを送る）するよう変更。
 - 観測: 一部の Pi4 では `pyscard` が RC-S300/S1 を認識せず、PC/SC デーモンの再起動や libpcsclite の再インストールが必要だった。  
   対応: NFC エージェントのステータス API に詳細メッセージを表示し `AGENT_MODE=mock` で代替動作へ切り替えられるようにした上で、README に `pcsc_scan` を使った診断手順を追記。
+- 観測: pyscard 2.3.1 (Python 3.13) では `smartcard.Exceptions.NoReadersAvailable` が提供されず ImportError となる個体があった。  
+  対応: 該当例外の import を任意化し、reader.py で警告ログを出しつつ `Exception` へフォールバックして実行を継続するよう変更。
 
 ## Decision Log
 
@@ -58,6 +60,9 @@
   日付/担当: 2025-11-18 / Codex
 - 決定: フロントエンドの持出フローは XState で状態遷移のみ管理し、実際の API 呼び出しは React 側の `useEffect` でトリガーして成功/失敗イベントをマシンに通知する。  
   理由: ブラウザ・テスト双方で外部依存を注入しやすくなり、`pyscard` の挙動差異や非同期処理をマシン本体に閉じ込めなくて済むため。  
+  日付/担当: 2025-11-18 / Codex
+- 決定: Pi4 で NFC エージェントを素の Poetry 実行で使う場合、キュー DB (`QUEUE_DB_PATH`) は `$HOME/.local/share/nfc-agent` に配置し `/data` は Docker 専用とする。  
+  理由: 通常ユーザーが `/data` を作成すると権限エラーになりやすく、XDG Base Directory に従う方が再現性が高いため。  
   日付/担当: 2025-11-18 / Codex
 - 決定: `engines.node` を `>=18.18.0` に緩和し、開発中は Node18 を許容する。Pi5 本番には Node20 を導入予定であることを README/ExecPlan で周知する。  
   理由: 現在の実行環境（v18.20.8）と整合させて初期 `pnpm install` を成功させる必要があったため。  
