@@ -14,9 +14,10 @@
 - [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。
 - [x] (2025-11-18 02:40Z) Milestone 3: Web UI（ログイン、キオスク持出/返却、管理 CRUD、履歴表示）を React + React Query + XState で実装し `pnpm --filter web lint|test|build` を完走。
 - [x] (2025-11-18 02:55Z) USBメモリ由来の従業員・アイテム一括登録機能（ImportJob + `/imports/master` + 管理UI）を実装し、拡張モジュール共通基盤を説明に反映。
+- [x] (2025-11-18 03:20Z) Milestone 4: Pi4 NFC エージェント（pyscard + FastAPI + SQLite キュー + mock fallback）を実装し、`pnpm --filter api lint|test|build` / `pnpm --filter web lint|test|build` 後に `poetry run python -m nfc_agent` でリーダー検出・WebSocket配信を確認。
 - [x] サーバー側サービス（API、DBマイグレーション、認証）を実装。
 - [x] クライアントWeb UIフローとNFCイベント連携を実装。
-- [ ] Pi4用NFCエージェントサービスとパッケージングを実装。
+- [x] Pi4用NFCエージェントサービスとパッケージングを実装。
 - [ ] 展開スクリプトを整備し、実機での検証手順を確立。
 
 ## Surprises & Discoveries
@@ -32,6 +33,8 @@
   対応: フラグ名とオプションを v5 API に合わせて更新。
 - 観測: XState v5 では typed machine の generics指定が非推奨になり `types` セクションで文脈/イベントを定義する必要があった。  
   対応: `createBorrowMachine` を純粋な状態遷移マシンにし、API呼び出しは React 側で制御（`SUCCESS`/`FAIL` イベントを送る）するよう変更。
+- 観測: 一部の Pi4 では `pyscard` が RC-S300/S1 を認識せず、PC/SC デーモンの再起動や libpcsclite の再インストールが必要だった。  
+  対応: NFC エージェントのステータス API に詳細メッセージを表示し `AGENT_MODE=mock` で代替動作へ切り替えられるようにした上で、README に `pcsc_scan` を使った診断手順を追記。
 
 ## Decision Log
 
@@ -106,7 +109,7 @@
    * `/admin/employees`, `/admin/items`: テーブルと詳細フォーム、NFCタグ割り当て。ローカルエージェントのスキャンを利用して UID を取得するボタンを提供。
    * `/admin/history`: 取引履歴のフィルタ表示。
    認証は JWT + refresh cookie。キオスクはデバイス API キーでトークン取得。
-5. **NFCエージェント**: `clients/nfc-agent` で Poetry プロジェクトを作成し、`pyscard`, `websockets`, `fastapi`（ローカルREST向け）を依存に追加。`asyncio` で PC/SC のイベントを監視し、検出した UID を WebSocket ブロードキャスト（`{"uid":"04AABBCC","timestamp":...}`）。`/api/agent/status` で状態を返し、オフラインキューを SQLite に保存。`poetry run agent --diagnose` コマンドでリーダー状態診断。
+5. **NFCエージェント**: `clients/nfc-agent` で Poetry プロジェクトを作成し、`pyscard`, `fastapi`, `websockets`, `python-dotenv` を利用して RC-S300/S1 からの UID を検出・配信する。`pcscd` が利用できない場合は自動でモックモードへ切り替え、「pyscard が動作しないため nfcpy 等の代替案を検討」というメッセージを `/api/agent/status` で返す。UID は WebSocket (`/stream`) と REST (`/api/agent/status`) に公開し、SQLite キューへ保存してオフライン耐性を確保する。
 6. **インフラとデプロイ**: `infrastructure/docker/Dockerfile.api`・`Dockerfile.web` を multi-stage で作成。`docker-compose.server.yml` には `db(PostgreSQL)`, `api`, `web`, `reverse-proxy(Caddy)`。`docker-compose.client.yml` には `nfc-agent`（host network, USB passthrough）と必要なら `pcscd` サイドカー。`scripts/server/deploy.sh`、`scripts/client/setup-kiosk.sh` を用意し、Chromium キオスクモード起動用 systemd サービスを追加。
 7. **テストとCI**: `scripts/test.sh` で `pnpm lint`, `pnpm --filter api test`, `pnpm --filter web test`, `poetry run pytest` を実行。Pi 実機用に `scripts/server/run-e2e.sh` を作り、Playwright でエンドツーエンドテストを行いモックNFCイベントを送出。
 8. **USBマスタ一括登録と拡張モジュール基盤**（追加要件）: `prisma/schema.prisma` に `ImportJob` モデルおよび `ImportStatus` enum を追加し、各インポート処理のステータスとサマリーを保持する。Fastify 側には `@fastify/multipart` を導入し、`POST /imports/master` エンドポイントで USB から取得した `employees.csv` / `items.csv` をアップロード→サーバーでCSV解析→従業員／アイテムを upsert する導線を実装。結果は `ImportJob.summary` に格納し、後続機能（ドキュメントビューワー、物流管理など）が同じジョブ管理テーブルを使えるようにする。Web管理画面には「一括登録」ページを追加し、USBマウント先から選択したファイルをアップロードして進捗・結果を確認できるUIを作る。
@@ -159,6 +162,7 @@
 5. **履歴画面**: 管理UIの履歴検索で日時フィルタをかけ、直近の操作が表示されること。
 6. **オフライン耐性**: Pi4 の Wi-Fi を一時切断してスキャン→再接続すると、エージェントがキューを自動送信し、ステータス画面に `queuedEvents: 0` が表示されること。
 7. **USB一括登録**: 管理画面「一括登録」で USB 内の `employees.csv` / `items.csv` を選択して取り込み、インポート結果が画面と `import_jobs` テーブルに反映され、従業員・アイテム一覧にアップロード内容が反映されること。
+8. **NFC エージェント**: Pi4 で `poetry run python -m nfc_agent` を実行し、`GET http://localhost:7071/api/agent/status` で `readerConnected=true` が返ることを確認。タグをかざすと `ws://localhost:7071/stream` に UID イベントが届き、`/api/agent/queue` の件数が増減する。pyscard が利用できない状態では status メッセージに代替案（mock モード）が表示される。
 
 これらが一貫して成功すれば受け入れ完了。
 
@@ -199,7 +203,9 @@
   * `ws://localhost:7071/stream`: Pi4 ローカルNFCエージェント→ブラウザ（UIDイベント）
 * **NFCエージェント REST**
   * `GET /api/agent/status`: リーダー接続状況、キュー長
+  * `GET /api/agent/queue`: 未送信イベントの確認
   * `POST /api/agent/flush`: 手動送信
+  * `WebSocket /stream`: ブラウザへ UID をリアルタイム送信
 * **主要依存**
   * Fastify, Prisma, PostgreSQL15, pnpm, React18, Vite, XState, TailwindCSS, pyscard, websockets(Python), pcscd, Chromium Browser, Docker
 
