@@ -19,6 +19,7 @@
 - [x] クライアントWeb UIフローとNFCイベント連携を実装。
 - [x] Pi4用NFCエージェントサービスとパッケージングを実装。
 - [x] (2025-11-18 07:20Z) Pi5/Pi4 の OS / Docker / Poetry / NFC リーダー環境構築を完了し、README に手順とトラブルシューティングを反映（コンテナ起動およびエージェント起動は確認済みだが、Validation and Acceptance の8項目は未検証）。
+- [x] (2025-11-19 00:30Z) Validation 1: Pi5 で Docker コンテナを再起動し、`curl http://localhost:8080/health` が 200/`{"status":"ok"}` を返すことを確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -38,6 +39,9 @@
   対応: NFC エージェントのステータス API に詳細メッセージを表示し `AGENT_MODE=mock` で代替動作へ切り替えられるようにした上で、README に `pcsc_scan` を使った診断手順を追記。
 - 観測: pyscard 2.3.1 (Python 3.13) では `smartcard.Exceptions.NoReadersAvailable` が提供されず ImportError となる個体があった。  
   対応: 該当例外の import を任意化し、reader.py で警告ログを出しつつ `Exception` へフォールバックして実行を継続するよう変更。
+- 観測: Pi5 をシャットダウンすると Docker コンテナ（api/web）が Exited のまま復帰しない。  
+  エビデンス: Validation 1 前に `docker-api-1` (Exited 137) / `docker-web-1` (Exited 0) が `docker compose ps` で確認された。  
+  対応: `docker compose up -d` で手動再起動。`restart: always` ポリシーを追加し、Pi5 再起動時に自動復帰させる。
 
 ## Decision Log
 
@@ -71,6 +75,10 @@
 - 決定: 将来のPDF/Excelビューワーや物流モジュールでも共通的に使えるよう、インポート処理を `ImportJob` テーブル + Fastify エンドポイント `/imports/*` として実装する。  
   理由: ファイル投入系の機能を横展開できるジョブ基盤を先に整備しておくと、USBインポート・ドキュメントビューワー・物流連携を同一パターンで構築できるため。  
   日付/担当: 2025-11-18 / Codex
+- 決定: Pi5 の無人運用を安定させるため、`infrastructure/docker/docker-compose.server.yml` の各サービスへ `restart: always` を追加する方針。  
+  理由: Pi5 電源再投入後にコンテナが自動起動しないことが発覚したため。  
+  日付/担当: 2025-11-19 / 実機検証チーム  
+  備考: Validation 2〜8 完了後に反映予定。
 
 ## Outcomes & Retrospective
 
@@ -162,13 +170,89 @@
 最終的に以下の挙動を実機で確認する。2025-11-18 時点では環境構築まで完了しており、これら 8 項目はまだ未実施であるため Milestone 5（実機検証フェーズ）で順次消化する。
 
 1. **サーバーヘルス**: Pi5 で `curl http://<server>:8080/health` を実行し、HTTP 200 / ボディ `OK` を確認。
-2. **従業員・アイテム管理**: Chromium から `https://<server>/admin/employees` にアクセスし、管理者でログイン。新規従業員を作成し、Pi4 の「スキャン」ボタンでNFC UIDを割り当てる。画面および `SELECT * FROM employees;` で登録済みを確認。
-3. **持出フロー**: Pi4 キオスクで `https://<server>/kiosk` を開き、アイテムタグ→社員証の順でかざす。「検出 -> 確認 -> 完了」状態遷移と `POST /api/borrow` 201 応答を確認し、`SELECT * FROM loans WHERE returned_at IS NULL;` にレコードが存在すること。
-4. **返却フロー**: 対象レコードの「返却」ボタンを押し、`POST /api/return` 200 応答と一覧からの消失を確認。`transactions` に借用・返却の両方が記録されること。
-5. **履歴画面**: 管理UIの履歴検索で日時フィルタをかけ、直近の操作が表示されること。
-6. **オフライン耐性**: Pi4 の Wi-Fi を一時切断してスキャン→再接続すると、エージェントがキューを自動送信し、ステータス画面に `queuedEvents: 0` が表示されること。
-7. **USB一括登録**: 管理画面「一括登録」で USB 内の `employees.csv` / `items.csv` を選択して取り込み、インポート結果が画面と `import_jobs` テーブルに反映され、従業員・アイテム一覧にアップロード内容が反映されること。
-8. **NFC エージェント**: Pi4 で `poetry run python -m nfc_agent` を実行し、`GET http://localhost:7071/api/agent/status` で `readerConnected=true` が返ることを確認。タグをかざすと `ws://localhost:7071/stream` に UID イベントが届き、`/api/agent/queue` の件数が増減する。pyscard が利用できない状態では status メッセージに代替案（mock モード）が表示される。
+2. **従業員・アイテム管理**  
+    実行場所: Pi5 (管理UI) + Pi4 (キオスク)  
+    1. 管理 UI で従業員登録  
+            chromium https://<server>/admin/employees  
+       新規従業員を作成し、画面右上の「保存」完了メッセージを確認する。  
+    2. Pi4 で NFC UID を割り当て  
+            # Pi4 でブラウザが起動済みの場合
+            # 「スキャン」ボタンを押し、社員証をかざす
+       期待: API ログに `PUT /employees/:id/bind` が記録され、画面に UID が表示される。  
+    3. DB で確認  
+            docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+              psql -U postgres -d borrow_return \
+              -c "SELECT employee_code, nfc_tag_uid FROM employees WHERE employee_code='<code>';"  
+       期待: 画面と DB の UID が一致。失敗時は Fastify ログ (`docker compose logs api`) とフォーム入力内容を確認。
+
+3. **持出フロー**  
+    実行場所: Pi4 (キオスク) + Pi5 (ログ/DB)  
+    1. Pi4 でキオスク表示  
+            chromium --app=https://<server>/kiosk  
+    2. アイテムタグ→社員証を順にスキャン。  
+       期待: 画面で「検出 → 確認 → 完了」の状態遷移が表示され、Pi5 ログに `POST /api/borrow 201`。  
+    3. DB で未返却レコードを確認  
+            docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+              psql -U postgres -d borrow_return \
+              -c "SELECT id, item_id, employee_id FROM loans WHERE returned_at IS NULL;"  
+       成功: 対象レコードが存在。失敗: ジャーナル (`journalctl -u kiosk-browser -f`) と API ログでエラー詳細を確認。
+
+4. **返却フロー**  
+    実行場所: Pi4 + Pi5  
+    1. Pi4 の借用一覧で対象アイテムの「返却」を押す。  
+    2. API ログに `POST /api/return 200` が記録される。  
+    3. DB で `loans.returned_at` が更新されているか確認  
+            docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+              psql -U postgres -d borrow_return \
+              -c "SELECT id, returned_at FROM loans WHERE id='<loan_id>';"  
+       成功: `returned_at` に時刻が入り、画面一覧から消える。失敗: API レスポンスのエラーメッセージと `transactions` を照合。
+
+5. **履歴画面**  
+    実行場所: Pi5 もしくは PC ブラウザ  
+    1. 管理 UI で履歴ページへアクセス  
+            chromium https://<server>/admin/history  
+    2. 日付フィルタを指定して検索。  
+    3. 期待: 直近の持出/返却が表示され、CSV エクスポートが成功する。  
+       DB でクロスチェック  
+            docker compose exec db \
+              psql -U postgres -d borrow_return \
+              -c "SELECT id, action, created_at FROM transactions ORDER BY created_at DESC LIMIT 5;"  
+       成功: 画面の表示と一致。失敗: `GET /transactions` のレスポンス (Chrome DevTools Network) を確認。
+
+6. **オフライン耐性**  
+    実行場所: Pi4  
+    1. Wi-Fi を切断  
+            nmcli radio wifi off  
+    2. NFC カードをかざす。  
+    3. ステータス確認  
+            curl http://localhost:7071/api/agent/status | jq  
+       期待: `queueSize` が 1 以上でイベントが保持される。  
+    4. Wi-Fi を再接続  
+            nmcli radio wifi on  
+       期待: `queueSize` が 0 に戻り、Pi5 の API ログにまとめて送信された記録が出る。失敗時は `clients/nfc-agent/queue_store.py` の SQLite ファイル権限と API エラーログを調査。
+
+7. **USB 一括登録**  
+    実行場所: Pi5 管理 UI + DB  
+    1. USB に `employees.csv`, `items.csv` を配置し Pi5 にマウント。  
+    2. 管理 UI の「一括登録」で各 CSV を選択してアップロード。  
+    3. 成功ダイアログの件数を記録。  
+    4. `import_jobs` テーブル確認  
+            docker compose exec db \
+              psql -U postgres -d borrow_return \
+              -c "SELECT id, file_name, status FROM import_jobs ORDER BY created_at DESC LIMIT 1;"  
+       成功: ジョブが `COMPLETED` で、従業員/アイテム一覧に反映。失敗: Caddy (`docker compose logs web`) および Fastify (`logs api`) のエラーを調べる。
+
+8. **NFC エージェント単体**  
+    実行場所: Pi4  
+    1. エージェント起動  
+            cd /opt/RaspberryPiSystem_002/clients/nfc-agent
+            poetry run python -m nfc_agent
+    2. ステータス確認（別ターミナル）  
+            curl http://localhost:7071/api/agent/status | jq  
+       期待: `readerConnected:true`, `message:"監視中"`, `lastError:null`。  
+    3. WebSocket テスト  
+            websocat ws://localhost:7071/stream  
+       NFC カードをかざし、UID JSON が受信できること。失敗時は `journalctl -u pcscd -f`、`poetry run python -c "from smartcard.System import readers; print(readers())"` でドライバ状況を診断し、必要に応じて `.env` の `AGENT_MODE=mock` で切り分ける。
 
 これらが一貫して成功すれば受け入れ完了。
 
@@ -191,6 +275,17 @@
         -H "Content-Type: application/json" \
         -d '{"itemTagUid":"04AABBCC","employeeTagUid":"04776655","clientId":"pi4-01"}'
     {"loanId":"f4c1...","status":"checked_out"}
+    # 2025-11-19 Server health validation (Pi5)
+    $ cd /opt/RaspberryPiSystem_002
+    $ docker compose -f infrastructure/docker/docker-compose.server.yml ps
+    NAME           STATUS         PORTS
+    docker-api-1   Up 9s          0.0.0.0:8080->8080/tcp
+    docker-db-1    Up 15h         0.0.0.0:5432->5432/tcp
+    docker-web-1   Up 8s          0.0.0.0:4173->8080/tcp, 80/tcp, 443/tcp
+
+    $ curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:8080/health
+    {"status":"ok"}
+    HTTP Status: 200
 
 ## Interfaces and Dependencies
 
@@ -221,4 +316,5 @@
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
+変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
 ```
