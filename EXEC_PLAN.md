@@ -110,7 +110,7 @@
    * `/admin/history`: 取引履歴のフィルタ表示。
    認証は JWT + refresh cookie。キオスクはデバイス API キーでトークン取得。
 5. **NFCエージェント**: `clients/nfc-agent` で Poetry プロジェクトを作成し、`pyscard`, `fastapi`, `websockets`, `python-dotenv` を利用して RC-S300/S1 からの UID を検出・配信する。`pcscd` が利用できない場合は自動でモックモードへ切り替え、「pyscard が動作しないため nfcpy 等の代替案を検討」というメッセージを `/api/agent/status` で返す。UID は WebSocket (`/stream`) と REST (`/api/agent/status`) に公開し、SQLite キューへ保存してオフライン耐性を確保する。
-6. **インフラとデプロイ**: `infrastructure/docker/Dockerfile.api`・`Dockerfile.web` を multi-stage で作成。`docker-compose.server.yml` には `db(PostgreSQL)`, `api`, `web`, `reverse-proxy(Caddy)`。`docker-compose.client.yml` には `nfc-agent`（host network, USB passthrough）と必要なら `pcscd` サイドカー。`scripts/server/deploy.sh`、`scripts/client/setup-kiosk.sh` を用意し、Chromium キオスクモード起動用 systemd サービスを追加。
+6. **インフラとデプロイ**: `infrastructure/docker/Dockerfile.api`・`Dockerfile.web` を multi-stage で作成。`docker-compose.server.yml` には `db(PostgreSQL)`, `api`, `web`, `reverse-proxy(Caddy)` を束ね、`scripts/server/deploy.sh` で Pi5 へ一括デプロイできるようにする。Pi4 クライアントでは `docker-compose.client.yml` を `scripts/client/setup-nfc-agent.sh` から呼び出して NFC エージェントを Docker で常駐化し、`scripts/client/setup-kiosk.sh` で Chromium キオスクの systemd サービスを構成する。
 7. **テストとCI**: `scripts/test.sh` で `pnpm lint`, `pnpm --filter api test`, `pnpm --filter web test`, `poetry run pytest` を実行。Pi 実機用に `scripts/server/run-e2e.sh` を作り、Playwright でエンドツーエンドテストを行いモックNFCイベントを送出。
 8. **USBマスタ一括登録と拡張モジュール基盤**（追加要件）: `prisma/schema.prisma` に `ImportJob` モデルおよび `ImportStatus` enum を追加し、各インポート処理のステータスとサマリーを保持する。Fastify 側には `@fastify/multipart` を導入し、`POST /imports/master` エンドポイントで USB から取得した `employees.csv` / `items.csv` をアップロード→サーバーでCSV解析→従業員／アイテムを upsert する導線を実装。結果は `ImportJob.summary` に格納し、後続機能（ドキュメントビューワー、物流管理など）が同じジョブ管理テーブルを使えるようにする。Web管理画面には「一括登録」ページを追加し、USBマウント先から選択したファイルをアップロードして進捗・結果を確認できるUIを作る。
 
@@ -141,8 +141,8 @@
 
 5. クライアント側 NFC エージェントとキオスク起動（Pi4）  
     作業ディレクトリ: リポジトリルート  
-        docker compose -f infrastructure/docker/docker-compose.client.yml up --build
-        ./scripts/client/setup-kiosk.sh https://<server-hostname>/kiosk
+        sudo scripts/client/setup-nfc-agent.sh
+        sudo scripts/client/setup-kiosk.sh https://<server-hostname>/kiosk
 
 6. 自動テスト  
     作業ディレクトリ: リポジトリルート  

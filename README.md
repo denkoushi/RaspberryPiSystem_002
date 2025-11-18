@@ -32,6 +32,38 @@
 - キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
 - USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（CSVはUTF-8、ヘッダー行必須）
 
+## デプロイ手順
+
+### サーバー (Raspberry Pi 5)
+
+1. Docker + Docker Compose Plugin をインストールし、リポジトリを配置
+2. `apps/api/.env` を `.env.example` からコピーし、`DATABASE_URL` や JWT シークレットを適宜上書き
+3. サーバースタック起動  
+   ```bash
+   cd /path/to/RaspberryPiSystem_002
+   scripts/server/deploy.sh
+   ```
+4. `docker compose -f infrastructure/docker/docker-compose.server.yml ps` で `db/api/web` が起動していることを確認
+
+### クライアント (Raspberry Pi 4)
+
+1. Docker と `pcscd` / `python3-pyscard` / `chromium-browser` をインストール
+2. NFC エージェント（Docker Compose）をセットアップ  
+   ```bash
+   cd /path/to/RaspberryPiSystem_002
+   sudo scripts/client/setup-nfc-agent.sh
+   ```
+   - `/clients/nfc-agent/.env` を編集し、`API_BASE_URL` や `CLIENT_ID` をステーション名に合わせて設定
+   - `AGENT_MODE=mock` にすると実機がない状態でもテスト可能
+3. キオスクブラウザを systemd サービス化  
+   ```bash
+   sudo scripts/client/setup-kiosk.sh https://<server-hostname>/kiosk
+   ```
+   これにより `/usr/local/bin/kiosk-launch.sh` と `kiosk-browser.service` が作成され、起動時に全画面ブラウザが立ち上がる
+4. 状態確認  
+   - `curl http://localhost:7071/api/agent/status` でリーダーが `readerConnected: true` になるか確認
+   - `journalctl -u kiosk-browser -f` でブラウザログを監視
+
 ## 今後の拡張
 
 - `ImportJob` テーブルと `/api/imports/*` エンドポイントを共通ジョブ管理基盤として用意しており、PDF/Excel ビューワーや将来の物流管理モジュールが同じ仕組みでジョブ履歴やファイル投入を扱える
