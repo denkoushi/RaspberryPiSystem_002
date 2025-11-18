@@ -5,9 +5,11 @@ import {
   createItem,
   getActiveLoans,
   getEmployees,
+  getImportJobs,
   getItems,
   getKioskConfig,
   getTransactions,
+  importMaster,
   returnLoan,
   updateEmployee,
   updateItem
@@ -86,5 +88,23 @@ export function useKioskConfig() {
   return useQuery({
     queryKey: ['kiosk-config'],
     queryFn: getKioskConfig
+  });
+}
+
+export function useImportJobs() {
+  return useQuery({
+    queryKey: ['import-jobs'],
+    queryFn: getImportJobs,
+    refetchInterval: 30_000
+  });
+}
+
+export function useImportMaster() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: importMaster,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['import-jobs'] });
+    }
   });
 }

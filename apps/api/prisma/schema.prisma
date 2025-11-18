@@ -37,6 +37,13 @@ enum UserStatus {
   DISABLED
 }
 
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model Employee {
   id           String         @id @default(uuid())
   employeeCode String         @unique
@@ -129,4 +136,13 @@ model Transaction {
   @@index([actorEmployeeId])
   @@index([performedByUserId])
   @@index([clientId])
+}
+
+model ImportJob {
+  id          String        @id @default(uuid())
+  type        String
+  status      ImportStatus  @default(PENDING)
+  summary     Json?
+  createdAt   DateTime      @default(now())
+  completedAt DateTime?
 }

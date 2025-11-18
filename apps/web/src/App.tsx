@@ -9,6 +9,7 @@ import { DashboardPage } from './pages/admin/DashboardPage';
 import { EmployeesPage } from './pages/admin/EmployeesPage';
 import { ItemsPage } from './pages/admin/ItemsPage';
 import { HistoryPage } from './pages/admin/HistoryPage';
+import { MasterImportPage } from './pages/admin/MasterImportPage';
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="items" element={<ItemsPage />} />
         <Route path="history" element={<HistoryPage />} />
+        <Route path="import" element={<MasterImportPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
     </Routes>

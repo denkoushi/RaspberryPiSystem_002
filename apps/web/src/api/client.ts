@@ -3,6 +3,8 @@ import type {
   AuthResponse,
   BorrowPayload,
   Employee,
+  ImportJob,
+  ImportSummary,
   Item,
   Loan,
   ReturnPayload,
@@ -97,4 +99,31 @@ export async function getTransactions(page = 1) {
 export async function getKioskConfig() {
   const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number }>('/kiosk/config');
   return data;
+}
+
+interface ImportMasterPayload {
+  employeesFile?: File | null;
+  itemsFile?: File | null;
+  replaceExisting?: boolean;
+}
+
+export async function importMaster(payload: ImportMasterPayload) {
+  const formData = new FormData();
+  if (payload.employeesFile) {
+    formData.append('employees', payload.employeesFile);
+  }
+  if (payload.itemsFile) {
+    formData.append('items', payload.itemsFile);
+  }
+  formData.append('replaceExisting', String(payload.replaceExisting ?? false));
+
+  const { data } = await api.post<{ jobId: string; summary: ImportSummary }>('/imports/master', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data;
+}
+
+export async function getImportJobs() {
+  const { data } = await api.get<{ jobs: ImportJob[] }>('/imports/jobs');
+  return data.jobs;
 }

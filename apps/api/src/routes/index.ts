@@ -7,6 +7,7 @@ import { registerLoanRoutes } from './loans.js';
 import { registerTransactionRoutes } from './transactions.js';
 import { registerClientRoutes } from './clients.js';
 import { registerKioskRoutes } from './kiosk.js';
+import { registerImportRoutes } from './imports.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await registerSystemRoutes(app);
@@ -17,4 +18,5 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await registerTransactionRoutes(app);
   await registerClientRoutes(app);
   await registerKioskRoutes(app);
+  await registerImportRoutes(app);
 }

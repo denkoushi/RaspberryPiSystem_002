@@ -13,8 +13,9 @@
 - [x] (2024-05-27 16:30Z) Milestone 1: モノレポ足場、pnpm/Poetry 設定、Docker 雛形、`.env.example`、スクリプト、雛形アプリ（Fastify/React/NFC エージェント）を作成し `pnpm install` 済み。
 - [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。
 - [x] (2025-11-18 02:40Z) Milestone 3: Web UI（ログイン、キオスク持出/返却、管理 CRUD、履歴表示）を React + React Query + XState で実装し `pnpm --filter web lint|test|build` を完走。
-- [ ] サーバー側サービス（API、DBマイグレーション、認証）を実装。
-- [ ] クライアントWeb UIフローとNFCイベント連携を実装。
+- [x] (2025-11-18 02:55Z) USBメモリ由来の従業員・アイテム一括登録機能（ImportJob + `/imports/master` + 管理UI）を実装し、拡張モジュール共通基盤を説明に反映。
+- [x] サーバー側サービス（API、DBマイグレーション、認証）を実装。
+- [x] クライアントWeb UIフローとNFCイベント連携を実装。
 - [ ] Pi4用NFCエージェントサービスとパッケージングを実装。
 - [ ] 展開スクリプトを整備し、実機での検証手順を確立。
 
@@ -58,6 +59,9 @@
 - 決定: `engines.node` を `>=18.18.0` に緩和し、開発中は Node18 を許容する。Pi5 本番には Node20 を導入予定であることを README/ExecPlan で周知する。  
   理由: 現在の実行環境（v18.20.8）と整合させて初期 `pnpm install` を成功させる必要があったため。  
   日付/担当: 2024-05-27 / Codex
+- 決定: 将来のPDF/Excelビューワーや物流モジュールでも共通的に使えるよう、インポート処理を `ImportJob` テーブル + Fastify エンドポイント `/imports/*` として実装する。  
+  理由: ファイル投入系の機能を横展開できるジョブ基盤を先に整備しておくと、USBインポート・ドキュメントビューワー・物流連携を同一パターンで構築できるため。  
+  日付/担当: 2025-11-18 / Codex
 
 ## Outcomes & Retrospective
 
@@ -72,6 +76,7 @@
 * `clients/nfc-agent`: Python 3.11 サービス。`pyscard` で RC-S300 を監視し、WebSocket でUIDイベントを配信。オフライン時は SQLite にキューイングし、API への再送を行う。
 * `infrastructure/docker`: API/Web/DB 用 Dockerfile と Compose ファイル（サーバー用、クライアント用）。  
 * `scripts`: サーバー・クライアントセットアップ、デプロイ、データ投入などのシェルスクリプト。
+* `apps/api/src/routes/imports.ts` と `apps/web/src/pages/admin/MasterImportPage.tsx`: USB一括登録および将来のPDF/物流モジュール共通の Import Job 管理を担う。
 
 すべて Raspberry Pi OS 64bit 上で動作させる。Docker イメージは Pi 上でビルドするため `linux/arm64` ベースを使用する（PostgreSQL15-alpine、Node20-alpine など）。Pi4の NFC エージェントは `--network host` で動かし、USB デバイスをコンテナへマウントする。
 
@@ -104,6 +109,7 @@
 5. **NFCエージェント**: `clients/nfc-agent` で Poetry プロジェクトを作成し、`pyscard`, `websockets`, `fastapi`（ローカルREST向け）を依存に追加。`asyncio` で PC/SC のイベントを監視し、検出した UID を WebSocket ブロードキャスト（`{"uid":"04AABBCC","timestamp":...}`）。`/api/agent/status` で状態を返し、オフラインキューを SQLite に保存。`poetry run agent --diagnose` コマンドでリーダー状態診断。
 6. **インフラとデプロイ**: `infrastructure/docker/Dockerfile.api`・`Dockerfile.web` を multi-stage で作成。`docker-compose.server.yml` には `db(PostgreSQL)`, `api`, `web`, `reverse-proxy(Caddy)`。`docker-compose.client.yml` には `nfc-agent`（host network, USB passthrough）と必要なら `pcscd` サイドカー。`scripts/server/deploy.sh`、`scripts/client/setup-kiosk.sh` を用意し、Chromium キオスクモード起動用 systemd サービスを追加。
 7. **テストとCI**: `scripts/test.sh` で `pnpm lint`, `pnpm --filter api test`, `pnpm --filter web test`, `poetry run pytest` を実行。Pi 実機用に `scripts/server/run-e2e.sh` を作り、Playwright でエンドツーエンドテストを行いモックNFCイベントを送出。
+8. **USBマスタ一括登録と拡張モジュール基盤**（追加要件）: `prisma/schema.prisma` に `ImportJob` モデルおよび `ImportStatus` enum を追加し、各インポート処理のステータスとサマリーを保持する。Fastify 側には `@fastify/multipart` を導入し、`POST /imports/master` エンドポイントで USB から取得した `employees.csv` / `items.csv` をアップロード→サーバーでCSV解析→従業員／アイテムを upsert する導線を実装。結果は `ImportJob.summary` に格納し、後続機能（ドキュメントビューワー、物流管理など）が同じジョブ管理テーブルを使えるようにする。Web管理画面には「一括登録」ページを追加し、USBマウント先から選択したファイルをアップロードして進捗・結果を確認できるUIを作る。
 
 ## Concrete Steps
 
@@ -152,6 +158,7 @@
 4. **返却フロー**: 対象レコードの「返却」ボタンを押し、`POST /api/return` 200 応答と一覧からの消失を確認。`transactions` に借用・返却の両方が記録されること。
 5. **履歴画面**: 管理UIの履歴検索で日時フィルタをかけ、直近の操作が表示されること。
 6. **オフライン耐性**: Pi4 の Wi-Fi を一時切断してスキャン→再接続すると、エージェントがキューを自動送信し、ステータス画面に `queuedEvents: 0` が表示されること。
+7. **USB一括登録**: 管理画面「一括登録」で USB 内の `employees.csv` / `items.csv` を選択して取り込み、インポート結果が画面と `import_jobs` テーブルに反映され、従業員・アイテム一覧にアップロード内容が反映されること。
 
 これらが一貫して成功すれば受け入れ完了。
 
@@ -185,6 +192,8 @@
   * `GET /loans/active`, `GET /transactions`
   * `POST /clients/heartbeat`: Pi4 からシリアルと状態を送信
   * `GET /kiosk/config`: キオスク固有設定
+  * `POST /imports/master`: USB由来の `employees.csv` / `items.csv` をアップロードして従業員・アイテムを一括登録
+  * `GET /imports/jobs`: 最新のインポートジョブ履歴を取得（将来のドキュメント/物流ジョブでも共通利用）
 * **WebSocket**
   * `/ws/notifications`: サーバー→クライアントのリアルタイム通知
   * `ws://localhost:7071/stream`: Pi4 ローカルNFCエージェント→ブラウザ（UIDイベント）
