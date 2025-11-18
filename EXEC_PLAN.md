@@ -11,6 +11,7 @@
 
 - [x] (2024-05-27 15:40Z) アーキテクチャ／データモデル／作業手順を含む初回のExecPlanを作成。
 - [x] (2024-05-27 16:30Z) Milestone 1: モノレポ足場、pnpm/Poetry 設定、Docker 雛形、`.env.example`、スクリプト、雛形アプリ（Fastify/React/NFC エージェント）を作成し `pnpm install` 済み。
+- [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。
 - [ ] サーバー側サービス（API、DBマイグレーション、認証）を実装。
 - [ ] クライアントWeb UIフローとNFCイベント連携を実装。
 - [ ] Pi4用NFCエージェントサービスとパッケージングを実装。
@@ -23,6 +24,8 @@
   対応: 依存を `@fastify/swagger` に切り替え済み。
 - 観測: 現在の開発環境 Node.js が v18.20.8 のため `engines.node >=20` で警告。  
   対応: 一旦 `>=18.18.0` まで許容し、Pi5 では Node20 を推奨する方針。Milestone 2 で README/ExecPlan に補足予定。
+- 観測: `jsonwebtoken` の型定義が厳格で、`expiresIn` を文字列で渡す場合に `SignOptions` キャストが必要だった。  
+  対応: `SignOptions['expiresIn']` へキャストしたオプションを用意し型エラーを解消。
 
 ## Decision Log
 
@@ -38,6 +41,12 @@
 - 決定: Node系パッケージは pnpm ワークスペース、Python NFCエージェントは Poetry で管理する。  
   理由: pnpm は node_modules を重複管理せずメモリを節約でき、Poetry は `pyscard` 依存を隔離できるため。  
   日付/担当: 2024-05-27 / Codex
+- 決定: JWT シークレットや DATABASE_URL には開発用のデフォルト値を `env.ts` で与え、CI/テストで環境変数が未設定でも Fastify を起動できるようにする。本番では `.env` で上書きする。  
+  理由: `vitest` や lint 実行時に `.env` がなくても型初期化エラーを防ぐため。  
+  日付/担当: 2025-11-18 / Codex
+- 決定: キオスク端末の持出・返却 API は当面 JWT を必須にせず、`x-client-key` ヘッダーもしくは `clientId` で `ClientDevice` を特定する方式で受け付ける。  
+  理由: ブラウザキオスクでの UX を優先しつつ、今後デバイス単位の API キー差し替えで段階的に強化できるため。  
+  日付/担当: 2025-11-18 / Codex
 - 決定: `engines.node` を `>=18.18.0` に緩和し、開発中は Node18 を許容する。Pi5 本番には Node20 を導入予定であることを README/ExecPlan で周知する。  
   理由: 現在の実行環境（v18.20.8）と整合させて初期 `pnpm install` を成功させる必要があったため。  
   日付/担当: 2024-05-27 / Codex

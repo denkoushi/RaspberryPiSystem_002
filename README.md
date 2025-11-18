@@ -18,4 +18,11 @@
 4. `poetry install -C clients/nfc-agent` で NFC エージェント依存をセットアップ
 5. 必要な `.env` ファイルを `.env.example` からコピー
 
+## API 開発メモ
+
+- Prisma マイグレーション: `cd apps/api && DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return" pnpm prisma migrate dev`
+- シードデータ投入: `cd apps/api && DATABASE_URL="..." pnpm prisma db seed`
+- サーバー起動: `cd apps/api && pnpm dev`
+- テスト: `cd apps/api && pnpm test`
+
 各マイルストーンの詳細な実行手順と検証方法は ExecPlan を確認してください。
