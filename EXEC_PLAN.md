@@ -14,11 +14,12 @@
 - [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。
 - [x] (2025-11-18 02:40Z) Milestone 3: Web UI（ログイン、キオスク持出/返却、管理 CRUD、履歴表示）を React + React Query + XState で実装し `pnpm --filter web lint|test|build` を完走。
 - [x] (2025-11-18 02:55Z) USBメモリ由来の従業員・アイテム一括登録機能（ImportJob + `/imports/master` + 管理UI）を実装し、拡張モジュール共通基盤を説明に反映。
-- [x] (2025-11-18 03:20Z) Milestone 4: Pi4 NFC エージェント（pyscard + FastAPI + SQLite キュー + mock fallback）を実装し、`pnpm --filter api lint|test|build` / `pnpm --filter web lint|test|build` 後に `poetry run python -m nfc_agent` でリーダー検出・WebSocket配信を確認。
+- [x] (2025-11-18 03:20Z) Milestone 4: Pi4 NFC エージェント（pyscard + FastAPI + SQLite キュー + mock fallback）を実装し、`pnpm --filter api lint|test|build` / `pnpm --filter web lint|test|build` 後に `poetry run python -m nfc_agent` でリーダー検出・WebSocket配信を確認（ソフトウェア実装段階まで完了、実機統合は次フェーズで実施）。
 - [x] サーバー側サービス（API、DBマイグレーション、認証）を実装。
 - [x] クライアントWeb UIフローとNFCイベント連携を実装。
 - [x] Pi4用NFCエージェントサービスとパッケージングを実装。
-- [x] (2025-11-18 07:20Z) Pi5/Pi4 実機でのデプロイ検証を完了し、README にサーバー・クライアント手順とトラブルシューティングを反映。
+- [x] (2025-11-18 07:20Z) Pi5/Pi4 の OS / Docker / Poetry / NFC リーダー環境構築を完了し、README に手順とトラブルシューティングを反映（コンテナ起動およびエージェント起動は確認済みだが、Validation and Acceptance の8項目は未検証）。
+- [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
 
@@ -158,7 +159,7 @@
 
 ## Validation and Acceptance
 
-最終的に以下の挙動を実機で確認する。
+最終的に以下の挙動を実機で確認する。2025-11-18 時点では環境構築まで完了しており、これら 8 項目はまだ未実施であるため Milestone 5（実機検証フェーズ）で順次消化する。
 
 1. **サーバーヘルス**: Pi5 で `curl http://<server>:8080/health` を実行し、HTTP 200 / ボディ `OK` を確認。
 2. **従業員・アイテム管理**: Chromium から `https://<server>/admin/employees` にアクセスし、管理者でログイン。新規従業員を作成し、Pi4 の「スキャン」ボタンでNFC UIDを割り当てる。画面および `SELECT * FROM employees;` で登録済みを確認。
@@ -219,4 +220,5 @@
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
+変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
 ```
