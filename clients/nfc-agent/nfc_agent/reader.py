@@ -5,13 +5,14 @@ from dataclasses import dataclass, field
 import contextlib
 from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
+import logging
 
 try:
     from smartcard.CardMonitoring import CardMonitor, CardObserver
     from smartcard.System import readers
     from smartcard.Exceptions import CardConnectionException, NoReadersAvailable
     from smartcard.util import toHexString
-except ImportError:  # pragma: no cover - handled at runtime
+except ImportError as exc:  # pragma: no cover - handled at runtime
     CardMonitor = None  # type: ignore
     CardObserver = object  # type: ignore
     readers = lambda: []  # type: ignore
@@ -20,6 +21,16 @@ except ImportError:  # pragma: no cover - handled at runtime
 
     def toHexString(data):  # type: ignore
         return ""
+
+    IMPORT_ERROR_MESSAGE = str(exc)
+else:
+    IMPORT_ERROR_MESSAGE = None
+
+
+LOGGER = logging.getLogger("nfc_agent.reader")
+
+if IMPORT_ERROR_MESSAGE:
+    LOGGER.error("Failed to import pyscard modules: %s", IMPORT_ERROR_MESSAGE)
 
 
 @dataclass
@@ -80,8 +91,10 @@ class ReaderService:
         if CardMonitor is None:
             self.status = ReaderStatus(
                 connected=False,
-                message="pyscard がインストールされていません。`sudo apt install python3-pyscard` を実行後、pcscd を再起動してください。",
-                last_error="import-error",
+                message=(
+                    "pyscard がインストールされていません。`sudo apt install python3-pyscard` を実行後、pcscd を再起動してください。"
+                ),
+                last_error=f"import-error: {IMPORT_ERROR_MESSAGE}" if IMPORT_ERROR_MESSAGE else "import-error",
             )
             return
 
