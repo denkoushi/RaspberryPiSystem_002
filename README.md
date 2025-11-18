@@ -25,4 +25,10 @@
 - サーバー起動: `cd apps/api && pnpm dev`
 - テスト: `cd apps/api && pnpm test`
 
+## Web アプリ開発メモ
+
+- 開発サーバー: `cd apps/web && pnpm dev` (デフォルト: http://localhost:4173)
+- Lint/Test/Build: `cd apps/web && pnpm lint && pnpm test && pnpm build`
+- キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
+
 各マイルストーンの詳細な実行手順と検証方法は ExecPlan を確認してください。

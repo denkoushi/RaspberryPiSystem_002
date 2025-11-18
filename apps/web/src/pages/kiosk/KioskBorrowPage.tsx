@@ -1,0 +1,116 @@
+import { useEffect, useMemo } from 'react';
+import { useMachine } from '@xstate/react';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useBorrowMutation, useKioskConfig } from '../../api/hooks';
+import { useNfcStream } from '../../hooks/useNfcStream';
+import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+
+export function KioskBorrowPage() {
+  const { data: config } = useKioskConfig();
+  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', '');
+  const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const borrowMutation = useBorrowMutation(clientKey || undefined);
+  const machine = useMemo(() => createBorrowMachine(), []);
+  const [state, send] = useMachine(machine);
+  const nfcEvent = useNfcStream();
+
+  useEffect(() => {
+    if (!state.matches('submitting') || borrowMutation.isPending) {
+      return;
+    }
+    borrowMutation
+      .mutateAsync({
+        itemTagUid: state.context.itemTagUid ?? '',
+        employeeTagUid: state.context.employeeTagUid ?? '',
+        clientId: clientId || undefined
+      })
+      .then((loan) => send({ type: 'SUCCESS', loan }))
+      .catch((error: Error) => send({ type: 'FAIL', message: error.message }));
+  }, [borrowMutation, clientId, send, state]);
+
+  const currentState = state.value;
+
+  useEffect(() => {
+    if (!nfcEvent) return;
+    if (currentState === 'waitItem') {
+      send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
+    } else if (currentState === 'waitEmployee') {
+      send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
+    }
+  }, [currentState, nfcEvent, send]);
+
+  return (
+    <div className="space-y-6">
+      <Card title="ステーション設定">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm text-white/70">
+            クライアント API キー
+            <Input value={clientKey} onChange={(e) => setClientKey(e.target.value)} placeholder="client-demo-key" />
+          </label>
+          <label className="block text-sm text-white/70">
+            クライアントID（任意）
+            <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="UUID (任意)" />
+          </label>
+        </div>
+      </Card>
+
+      <Card title="持出ステップ">
+        <div className="space-y-4 text-center">
+          <p className="text-3xl font-semibold">{config?.greeting ?? 'アイテム → 社員証の順にタップ'}</p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <StepCard title="① アイテム" active={state.matches('waitItem')} value={state.context.itemTagUid} />
+            <StepCard title="② 社員" active={state.matches('waitEmployee')} value={state.context.employeeTagUid} />
+            <StepCard title="③ 確認" active={state.matches('confirm')} value={state.context.loan?.item.name} />
+          </div>
+        <div className="flex justify-center gap-4">
+          <Button onClick={() => send({ type: 'RESET' })}>リセット</Button>
+          <Button
+            onClick={() => send({ type: 'SUBMIT' })}
+            disabled={!state.matches('confirm') || borrowMutation.isPending}
+          >
+            {borrowMutation.isPending ? '登録中…' : '記録'}
+          </Button>
+        </div>
+          {state.context.error ? <p className="text-red-400">{state.context.error}</p> : null}
+          {state.context.loan ? (
+            <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
+              <p className="text-lg font-semibold text-emerald-300">登録完了</p>
+              <p>
+                {state.context.loan.item.name} を {state.context.loan.employee.displayName} さんが持出済み
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </Card>
+
+      <Card title="最新スキャン">
+        <div className="text-center text-lg">
+          {nfcEvent ? (
+            <>
+              <p className="font-mono text-3xl">{nfcEvent.uid}</p>
+              <p className="text-sm text-white/60">{nfcEvent.timestamp}</p>
+            </>
+          ) : (
+            <p>待機中...</p>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function StepCard({ title, value, active }: { title: string; value?: string; active: boolean }) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        active ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 text-white/70'
+      }`}
+    >
+      <p className="text-sm">{title}</p>
+      <p className="mt-2 text-xl font-bold">{value ?? '---'}</p>
+    </div>
+  );
+}

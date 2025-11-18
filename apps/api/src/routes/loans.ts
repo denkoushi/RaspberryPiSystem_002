@@ -155,13 +155,35 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
     return { loan: updatedLoan };
   });
 
-  app.get('/loans/active', { preHandler: canView }, async (request) => {
+  app.get('/loans/active', async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
+    let resolvedClientId = query.clientId;
+    let allowWithoutAuth = false;
+    try {
+      await canView(request, reply);
+    } catch (error) {
+      const headerKey = request.headers['x-client-key'];
+      if (!headerKey && !resolvedClientId) {
+        throw error;
+      }
+      resolvedClientId = await resolveClientId(resolvedClientId, headerKey);
+      allowWithoutAuth = true;
+    }
+
+    const where = {
+      returnedAt: null,
+      ...(resolvedClientId ? { clientId: resolvedClientId } : {})
+    };
+
     const loans = await prisma.loan.findMany({
-      where: { returnedAt: null, ...(query.clientId ? { clientId: query.clientId } : {}) },
+      where,
       include: { item: true, employee: true, client: true },
       orderBy: { borrowedAt: 'desc' }
     });
+
+    if (allowWithoutAuth) {
+      return { loans: loans.filter((loan) => loan.clientId === resolvedClientId) };
+    }
     return { loans };
   });
 }

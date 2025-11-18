@@ -1,0 +1,52 @@
+import { FormEvent, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+
+export function LoginPage() {
+  const { login, loading } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    try {
+      await login(username, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError((err as Error).message ?? 'ログインに失敗しました');
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md space-y-4 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl"
+      >
+        <div>
+          <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
+          <h1 className="text-2xl font-bold">管理者ログイン</h1>
+        </div>
+        <label className="block">
+          <span className="text-sm text-white/70">ユーザー名</span>
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required />
+        </label>
+        <label className="block">
+          <span className="text-sm text-white/70">パスワード</span>
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </label>
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? '送信中...' : 'ログイン'}
+        </Button>
+      </form>
+    </div>
+  );
+}
