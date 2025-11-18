@@ -32,37 +32,89 @@
 - キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
 - USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（CSVはUTF-8、ヘッダー行必須）
 
-## デプロイ手順
+## Raspberry Pi 5 サーバーセットアップ
 
-### サーバー (Raspberry Pi 5)
+### 必要なソフトウェア
 
-1. Docker + Docker Compose Plugin をインストールし、リポジトリを配置
-2. `apps/api/.env` を `.env.example` からコピーし、`DATABASE_URL` や JWT シークレットを適宜上書き
-3. サーバースタック起動  
+- Raspberry Pi OS (64bit) or Debian Bookworm 相当
+- `git`, `curl`, `build-essential`
+- Docker Engine + Docker Compose v2  
+  ```bash
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker $USER
+  ```
+- Node.js 20 系（`nvm` もしくは `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
+- pnpm (`corepack enable`)
+- Python 3.11 + Poetry（クライアント開発や手元検証用）
+
+### インストール手順
+
+1. 上記ソフトウェアをインストールし、Pi を再起動後に `docker run hello-world` で動作確認
+2. リポジトリをクローン  
    ```bash
-   cd /path/to/RaspberryPiSystem_002
+   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git /opt/RaspberryPiSystem_002
+   cd /opt/RaspberryPiSystem_002
+   ```
+3. 環境変数を設定  
+   - `apps/api/.env.example` を `apps/api/.env` にコピーし、`DATABASE_URL`（例: `postgresql://postgres:postgres@db:5432/borrow_return`）と JWT シークレット、初期管理者情報を入力
+   - 必要に応じて `apps/web/.env` や `clients/nfc-agent/.env` も `.env.example` から作成
+4. デプロイ  
+   ```bash
    scripts/server/deploy.sh
    ```
-4. `docker compose -f infrastructure/docker/docker-compose.server.yml ps` で `db/api/web` が起動していることを確認
+   - 内部で `docker compose -f infrastructure/docker/docker-compose.server.yml build --pull` → `up -d` を実行
+5. 動作確認  
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml ps
+   curl http://localhost:8080/health
+   ```
+   `{"status":"ok"}` が返れば API・DB・Web すべてが稼働中
 
-### クライアント (Raspberry Pi 4)
+## トラブルシューティング
 
-1. Docker と `pcscd` / `python3-pyscard` / `chromium-browser` をインストール
-2. NFC エージェント（Docker Compose）をセットアップ  
+### Prisma が `libssl.so.1.1` を要求して落ちる
+
+- **症状**: `PrismaClientInitializationError: libssl.so.1.1: cannot open shared object file`
+- **原因**: Alpine ベースの `node:20-alpine` でビルドした際に OpenSSL 1.1 ライブラリが存在しない
+- **解決策**:
+  1. `infrastructure/docker/Dockerfile.api` のベースを `node:20-bookworm-slim`（Debian/glibc）に固定
+  2. build / runtime 両方のステージで `apt-get install -y openssl` を実行
+  3. Prisma の `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` を維持し、`pnpm prisma generate` を忘れない
+  4. 変更後は `docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api` を実行し、古いレイヤーを使い回さない
+
+### Docker ビルドキャッシュ破損
+
+- **症状**: `parent snapshot ... does not exist` など export 段階で失敗
+- **対処**:
+  ```bash
+  docker builder prune --all --force
+  docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api
+  ```
+  必要であれば `docker system prune --volumes` も併用
+
+### 重要な注意点
+
+- サーバー用 Dockerfile では Alpine を使用しない（OpenSSL の互換パッケージが公式から消えたため）
+- ランタイムステージでも `pnpm install --prod` と `pnpm prisma generate` を実行し、ワークスペース依存を正しく解決する
+- ベースイメージ変更後は常に `--no-cache` ビルド → `curl http://localhost:8080/health` で確認
+
+## クライアント (Raspberry Pi 4) セットアップ概要
+
+1. `sudo apt install docker.io docker-compose-plugin pcscd python3-pyscard chromium-browser`
+2. NFC エージェント  
    ```bash
    cd /path/to/RaspberryPiSystem_002
    sudo scripts/client/setup-nfc-agent.sh
+   cp clients/nfc-agent/.env.example clients/nfc-agent/.env
+   # API_BASE_URL / CLIENT_ID / AGENT_MODE を編集
    ```
-   - `/clients/nfc-agent/.env` を編集し、`API_BASE_URL` や `CLIENT_ID` をステーション名に合わせて設定
-   - `AGENT_MODE=mock` にすると実機がない状態でもテスト可能
-3. キオスクブラウザを systemd サービス化  
+3. キオスクブラウザ  
    ```bash
-   sudo scripts/client/setup-kiosk.sh https://<server-hostname>/kiosk
+   sudo scripts/client/setup-kiosk.sh https://<server-ip>:4173
    ```
-   これにより `/usr/local/bin/kiosk-launch.sh` と `kiosk-browser.service` が作成され、起動時に全画面ブラウザが立ち上がる
-4. 状態確認  
-   - `curl http://localhost:7071/api/agent/status` でリーダーが `readerConnected: true` になるか確認
-   - `journalctl -u kiosk-browser -f` でブラウザログを監視
+4. 確認コマンド  
+   - `curl http://localhost:7071/api/agent/status`
+   - `journalctl -u kiosk-browser -f`
 
 ## 今後の拡張
 
