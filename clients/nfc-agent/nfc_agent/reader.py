@@ -60,12 +60,16 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
         self.status = status
 
     def update(self, observable, actions: Tuple[list[Any], list[Any]]):  # type: ignore[override]
-        added_cards, _ = actions
+        added_cards, removed_cards = actions
+        LOGGER.debug("Card observer update: added=%s removed=%s", added_cards, removed_cards)
         for card in added_cards:
             try:
+                LOGGER.debug("Creating connection for card: %s", card)
                 connection = card.createConnection()
                 connection.connect()
+                LOGGER.debug("Connection established for card: %s", card)
                 data, sw1, sw2 = connection.transmit([0xFF, 0xCA, 0x00, 0x00, 0x00])
+                LOGGER.debug("Transmit result: data=%s sw1=%s sw2=%s", data, sw1, sw2)
                 if sw1 == 0x90:
                     uid = _format_uid(data)
                     event = {
@@ -79,6 +83,10 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
                     self.status.last_error = f"Unexpected status word: {sw1:02X}{sw2:02X}"
             except CardConnectionException as exc:  # pragma: no cover
                 self.status.last_error = f"Card connection error: {exc}"
+                LOGGER.exception("Card connection error for card %s", card, exc_info=exc)
+            except Exception as exc:  # pragma: no cover
+                self.status.last_error = f"Card observer error: {exc}"
+                LOGGER.exception("Unhandled error while processing card %s", card, exc_info=exc)
 
 
 class ReaderService:
