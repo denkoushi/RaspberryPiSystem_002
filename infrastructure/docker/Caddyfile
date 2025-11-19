@@ -3,14 +3,16 @@
 }
 :80 {
   root * /srv/site
-
+  
   @api {
     path /api/*
     path /ws/*
   }
   reverse_proxy @api api:8080
-
+  
   @spa {
+    not path /api/*
+    not path /ws/*
     not file
   }
   rewrite @spa /index.html
