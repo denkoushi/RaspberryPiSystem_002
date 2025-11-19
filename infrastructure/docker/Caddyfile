@@ -3,13 +3,15 @@
 }
 :80 {
   root * /srv/site
-  
-  @api {
-    path /api/*
-    path /ws/*
+
+  handle_path /api/* {
+    reverse_proxy api:8080
   }
-  reverse_proxy @api api:8080
-  
+
+  handle_path /ws/* {
+    reverse_proxy api:8080
+  }
+
   @spa {
     not path /api/*
     not path /ws/*
