@@ -54,6 +54,15 @@ export function createBorrowMachine() {
               }
               return {};
             })
+          },
+          RESET: {
+            target: 'waitItem',
+            actions: assign(() => ({
+              itemTagUid: undefined,
+              employeeTagUid: undefined,
+              error: undefined,
+              loan: undefined
+            }))
           }
         }
       },
@@ -68,13 +77,29 @@ export function createBorrowMachine() {
               return {};
             })
           },
-          RESET: { target: 'waitItem', actions: assign(() => ({})) }
+          RESET: {
+            target: 'waitItem',
+            actions: assign(() => ({
+              itemTagUid: undefined,
+              employeeTagUid: undefined,
+              error: undefined,
+              loan: undefined
+            }))
+          }
         }
       },
       confirm: {
         on: {
           SUBMIT: { target: 'submitting' },
-          RESET: { target: 'waitItem', actions: assign(() => ({})) }
+          RESET: {
+            target: 'waitItem',
+            actions: assign(() => ({
+              itemTagUid: undefined,
+              employeeTagUid: undefined,
+              error: undefined,
+              loan: undefined
+            }))
+          }
         }
       },
       submitting: {
@@ -105,7 +130,15 @@ export function createBorrowMachine() {
       success: {
         entry: assign({ itemTagUid: () => undefined, employeeTagUid: () => undefined }),
         on: {
-          RESET: { target: 'waitItem', actions: assign({ loan: () => undefined, error: () => undefined }) }
+          RESET: {
+            target: 'waitItem',
+            actions: assign(() => ({
+              itemTagUid: undefined,
+              employeeTagUid: undefined,
+              error: undefined,
+              loan: undefined
+            }))
+          }
         },
         after: {
           4000: { target: 'waitItem', actions: assign({ loan: () => undefined }) }
