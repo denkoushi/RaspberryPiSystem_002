@@ -41,6 +41,10 @@ export function KioskBorrowPage() {
     } else if (state.matches('waitEmployee')) {
       console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
+    } else if (state.matches('confirm') || state.matches('success')) {
+      console.log('Resetting flow for new scan:', nfcEvent.uid);
+      send({ type: 'RESET' });
+      send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
     }
   }, [nfcEvent, send, state]);
 
