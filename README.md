@@ -114,9 +114,19 @@
        - "4173:80"
      ```
   4. 再ビルド:
-     ```bash
-     docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web
-     ```
+  ```bash
+  docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web
+  ```
+
+### Web UI ビルドで XState assign が原因の TypeScript エラー
+
+- **症状**: `pnpm run build` / `docker compose ... build web` で `event is possibly 'undefined'` や `property 'type' does not exist on type 'never'` が発生し、`apps/web/src/features/kiosk/borrowMachine.ts` の `assign` 行で停止
+- **原因**: XState v5 の `assign` を従来の `(ctx, event)` 2 引数シグネチャのまま使っており、型推論が `event` を `never` と推定してしまう
+- **解決策**:
+  1. `assign(({ event }) => ({ ... }))` の形で context・event をオブジェクト引数から取り出す
+  2. `event?.type === 'ITEM_SCANNED'` のように `event` の存在をチェックしてから UID を参照
+  3. 余計な型注釈（`BorrowContext`, `BorrowEvent` の明示）を外して XState に推論させる
+  4. 修正後に `cd apps/web && pnpm lint && pnpm build`、続けて `docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web`
 
 ### 重要な注意点
 

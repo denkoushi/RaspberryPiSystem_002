@@ -46,6 +46,9 @@
 - 観測: Web サーバーの設定が三点（ポート公開、Caddy リッスン/SPA フォールバック、Dockerfile の CMD）で不整合を起こし、`/admin/*` や `/login` に直接アクセスすると常に 404 になっていた。  
   エビデンス: `http://<pi5>:4173/admin/employees` が Caddy の 404 を返し、Caddyfile が `:8080` + `file_server` のみ、Dockerfile.web が `caddy file-server` を起動していた。  
   対応: `docker-compose.server.yml` を `4173:80` に修正、Caddyfile を `:80` + SPA rewrite 付きに更新、Dockerfile.web の CMD を `caddy run --config /srv/Caddyfile` に変更。
+- 観測: キオスクの状態機械 `borrowMachine.ts` で XState v5 の `assign` を誤用し、`pnpm run build` が TypeScript エラー（`event is possibly undefined` / `property 'type' does not exist on type never`）で停止した。  
+  エビデンス: `docker compose ... build web` が `src/features/kiosk/borrowMachine.ts` に対する TS18048/TS2339 を出力。GitHub commit `17dbf9d` から assign の書き方を変更した直後に再現。  
+  対応: `assign(({ event }) => ({ ... }))` 形式で context 差分を返すよう修正し、イベント存在を `event?.type` で確認したうえで UID を設定。README のトラブルシューティングに同様の注意を追記。
 - 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
   エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
   対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
@@ -98,6 +101,9 @@
 - 決定: API ルートは Fastify で `/api` プレフィックスを付与し、Caddy の SPA フォールバックから `/api/*` と `/ws/*` を除外する。  
   理由: Web UI が `/api` 経由でアクセスする前提で実装されており、プレフィックス不一致と SPA rewrite の干渉で 404/405 になるため。  
   日付/担当: 2025-11-19 / Validation 2 実施チーム
+- 決定: XState v5 の `assign` は context/event を直接書き換えずに差分オブジェクトを返す形 (`assign(({ event }) => ({ ... }))`) に統一する。  
+  理由: 従来のジェネリック指定 + 2引数シグネチャを使うと `pnpm build` で `event` が `never` 扱いになり、Pi5 の Web イメージがビルドできなかったため。  
+  日付/担当: 2025-11-20 / 現地検証チーム
 
 ## Outcomes & Retrospective
 
