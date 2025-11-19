@@ -42,7 +42,12 @@ export function createBorrowMachine() {
     },
     id: 'borrow',
     initial: 'waitItem',
-    context: {},
+    context: {
+      itemTagUid: undefined,
+      employeeTagUid: undefined,
+      error: undefined,
+      loan: undefined
+    },
     states: {
       waitItem: {
         on: {
