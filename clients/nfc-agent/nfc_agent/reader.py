@@ -65,6 +65,10 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
     def update(self, observable, actions: Tuple[list[Any], list[Any]]):  # type: ignore[override]
         added_cards, removed_cards = actions
         LOGGER.debug("Card observer update: added=%s removed=%s", added_cards, removed_cards)
+        now = time.time()
+        if self.last_uid and self.last_timestamp and now - self.last_timestamp < 2.0:
+            LOGGER.debug("Debounce window active for UID %s, ignoring batch", self.last_uid)
+            return
         for card in added_cards:
             try:
                 LOGGER.debug("Creating connection for card: %s", card)
@@ -75,10 +79,6 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
                 LOGGER.debug("Transmit result: data=%s sw1=%s sw2=%s", data, sw1, sw2)
                 if sw1 == 0x90:
                     uid = _format_uid(data)
-                    now = time.time()
-                    if self.last_uid == uid and self.last_timestamp and now - self.last_timestamp < 2.0:
-                        LOGGER.debug("Ignoring duplicate UID within debounce window: %s", uid)
-                        continue
                     self.last_uid = uid
                     self.last_timestamp = now
                     event = {
