@@ -33,7 +33,7 @@ export function KioskBorrowPage() {
 
   useEffect(() => {
     console.log('NFC Event received:', nfcEvent);
-    console.log('Current state:', state.value, 'Context:', state.context);
+    console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
     if (!nfcEvent) return;
     if (state.matches('waitItem')) {
       console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
