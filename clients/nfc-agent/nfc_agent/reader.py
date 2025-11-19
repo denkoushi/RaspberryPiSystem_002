@@ -6,6 +6,7 @@ import contextlib
 from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
 import logging
+import time
 
 try:
     from smartcard.CardMonitoring import CardMonitor, CardObserver
