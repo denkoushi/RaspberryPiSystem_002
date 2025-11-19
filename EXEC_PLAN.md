@@ -20,7 +20,7 @@
 - [x] Pi4用NFCエージェントサービスとパッケージングを実装。
 - [x] (2025-11-18 07:20Z) Pi5/Pi4 の OS / Docker / Poetry / NFC リーダー環境構築を完了し、README に手順とトラブルシューティングを反映（コンテナ起動およびエージェント起動は確認済みだが、Validation and Acceptance の8項目は未検証）。
 - [x] (2025-11-19 00:30Z) Validation 1: Pi5 で Docker コンテナを再起動し、`curl http://localhost:8080/health` が 200/`{"status":"ok"}` を返すことを確認。
-- [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認。
+- [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認（ダッシュボード: 従業員2 / アイテム2 / 貸出0 を表示）。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -46,6 +46,15 @@
 - 観測: Web サーバーの設定が三点（ポート公開、Caddy リッスン/SPA フォールバック、Dockerfile の CMD）で不整合を起こし、`/admin/*` や `/login` に直接アクセスすると常に 404 になっていた。  
   エビデンス: `http://<pi5>:4173/admin/employees` が Caddy の 404 を返し、Caddyfile が `:8080` + `file_server` のみ、Dockerfile.web が `caddy file-server` を起動していた。  
   対応: `docker-compose.server.yml` を `4173:80` に修正、Caddyfile を `:80` + SPA rewrite 付きに更新、Dockerfile.web の CMD を `caddy run --config /srv/Caddyfile` に変更。
+- 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
+  エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
+  対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
+- 観測: API ルートが `/auth/login` に直下で公開されており、Web UI から呼び出す `/api/auth/login` が 404 になる。  
+  エビデンス: Browser DevTools で `/api/auth/login` が 404、`/auth/login` は 200。  
+  対応: `apps/api/src/routes/index.ts` を `{ prefix: '/api' }` 付きでサブルータ登録するよう修正。
+- 観測: Caddy の `@spa` マッチャーが `/api/*` や `/ws/*` にも適用され、`POST /api/auth/login` が `Allow: GET, HEAD` の 405 になる。  
+  エビデンス: `curl -X POST http://localhost:8080/api/auth/login` が 405 を返し、Caddyfile に API 除外が無かった。  
+  対応: `@spa` へ `not path /api/*` と `not path /ws/*` を追加し、API/WS パスを SPA フォールバック対象から除外。
 
 ## Decision Log
 
@@ -86,6 +95,9 @@
 - 決定: Web 配信は Caddy を 80/tcp で公開し、SPA の任意パスを `/index.html` にフォールバックさせる。Dockerfile.web は常に `caddy run --config /srv/Caddyfile` で起動し、docker-compose の公開ポートは `4173:80` に固定する。  
   理由: Validation 2 で直接 URL へアクセスすると 404 になる問題が判明したため。  
   日付/担当: 2025-11-19 / 現地検証チーム
+- 決定: API ルートは Fastify で `/api` プレフィックスを付与し、Caddy の SPA フォールバックから `/api/*` と `/ws/*` を除外する。  
+  理由: Web UI が `/api` 経由でアクセスする前提で実装されており、プレフィックス不一致と SPA rewrite の干渉で 404/405 になるため。  
+  日付/担当: 2025-11-19 / Validation 2 実施チーム
 
 ## Outcomes & Retrospective
 
@@ -324,6 +336,22 @@
     COPY --from=build /app/apps/web/dist ./site
     COPY infrastructure/docker/Caddyfile ./Caddyfile
     CMD ["caddy", "run", "--config", "/srv/Caddyfile"]
+
+    # Prisma migrate & seed (Pi5)
+    $ cd /opt/RaspberryPiSystem_002/apps/api
+    $ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return" pnpm prisma migrate deploy
+    $ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return" pnpm prisma db seed
+    Seed data inserted. 管理者: admin / admin1234
+
+    # API login (after prefix fix)
+    $ curl -X POST http://localhost:8080/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"admin1234"}'
+    {"accessToken":"...","refreshToken":"...","user":{...}}
+
+    # Admin UI access
+    ブラウザ: http://localhost:4173/login → admin/admin1234 でログイン
+    ダッシュボード: 従業員 2 / アイテム 2 / 貸出中 0 を表示
 
 ## Interfaces and Dependencies
 
