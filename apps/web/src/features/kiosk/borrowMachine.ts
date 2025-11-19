@@ -49,10 +49,7 @@ export function createBorrowMachine() {
           ITEM_SCANNED: {
             target: 'waitEmployee',
             actions: assign({
-              itemTagUid: (_ctx, event) => {
-                const typed = event as BorrowEvent | undefined;
-                return isItemEvent(typed) ? typed.uid : undefined;
-              },
+              itemTagUid: (_ctx, event) => (event.type === 'ITEM_SCANNED' ? event.uid : undefined),
               error: () => undefined
             })
           }
@@ -63,10 +60,7 @@ export function createBorrowMachine() {
           EMPLOYEE_SCANNED: {
             target: 'confirm',
             actions: assign({
-              employeeTagUid: (_ctx, event) => {
-                const typed = event as BorrowEvent | undefined;
-                return isEmployeeEvent(typed) ? typed.uid : undefined;
-              },
+              employeeTagUid: (_ctx, event) => (event.type === 'EMPLOYEE_SCANNED' ? event.uid : undefined),
               error: () => undefined
             })
           },
