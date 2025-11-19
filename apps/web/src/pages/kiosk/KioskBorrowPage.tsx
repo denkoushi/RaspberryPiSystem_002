@@ -31,16 +31,18 @@ export function KioskBorrowPage() {
       .catch((error: Error) => send({ type: 'FAIL', message: error.message }));
   }, [borrowMutation, clientId, send, state]);
 
-  const currentState = state.value;
-
   useEffect(() => {
+    console.log('NFC Event received:', nfcEvent);
+    console.log('Current state:', state.value);
     if (!nfcEvent) return;
-    if (currentState === 'waitItem') {
+    if (state.matches('waitItem')) {
+      console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
       send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
-    } else if (currentState === 'waitEmployee') {
+    } else if (state.matches('waitEmployee')) {
+      console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
     }
-  }, [currentState, nfcEvent, send]);
+  }, [nfcEvent, send, state]);
 
   return (
     <div className="space-y-6">
