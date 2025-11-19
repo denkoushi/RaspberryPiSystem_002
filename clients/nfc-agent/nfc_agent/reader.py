@@ -58,6 +58,8 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
         self.loop = loop
         self.queue = queue
         self.status = status
+        self.last_uid: Optional[str] = None
+        self.last_timestamp: Optional[float] = None
 
     def update(self, observable, actions: Tuple[list[Any], list[Any]]):  # type: ignore[override]
         added_cards, removed_cards = actions
@@ -72,6 +74,12 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
                 LOGGER.debug("Transmit result: data=%s sw1=%s sw2=%s", data, sw1, sw2)
                 if sw1 == 0x90:
                     uid = _format_uid(data)
+                    now = time.time()
+                    if self.last_uid == uid and self.last_timestamp and now - self.last_timestamp < 1.0:
+                        LOGGER.debug("Ignoring duplicate UID within debounce window: %s", uid)
+                        continue
+                    self.last_uid = uid
+                    self.last_timestamp = now
                     event = {
                         "uid": uid,
                         "reader": getattr(card, "reader", "unknown"),
