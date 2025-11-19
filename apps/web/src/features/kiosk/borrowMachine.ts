@@ -50,7 +50,7 @@ export function createBorrowMachine() {
             target: 'waitEmployee',
             actions: assign(({ event }) => {
               if (event?.type === 'ITEM_SCANNED') {
-                return { itemTagUid: event.uid, error: undefined };
+                return { itemTagUid: event.uid, employeeTagUid: undefined, error: undefined, loan: undefined };
               }
               return {};
             })
