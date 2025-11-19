@@ -10,13 +10,18 @@ import { registerKioskRoutes } from './kiosk.js';
 import { registerImportRoutes } from './imports.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  await registerSystemRoutes(app);
-  await registerAuthRoutes(app);
-  await registerEmployeeRoutes(app);
-  await registerItemRoutes(app);
-  await registerLoanRoutes(app);
-  await registerTransactionRoutes(app);
-  await registerClientRoutes(app);
-  await registerKioskRoutes(app);
-  await registerImportRoutes(app);
+  await app.register(
+    async (subApp) => {
+      await registerSystemRoutes(subApp);
+      await registerAuthRoutes(subApp);
+      await registerEmployeeRoutes(subApp);
+      await registerItemRoutes(subApp);
+      await registerLoanRoutes(subApp);
+      await registerTransactionRoutes(subApp);
+      await registerClientRoutes(subApp);
+      await registerKioskRoutes(subApp);
+      await registerImportRoutes(subApp);
+    },
+    { prefix: '/api' },
+  );
 }
