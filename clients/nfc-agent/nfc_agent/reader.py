@@ -76,7 +76,7 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
                 if sw1 == 0x90:
                     uid = _format_uid(data)
                     now = time.time()
-                    if self.last_uid == uid and self.last_timestamp and now - self.last_timestamp < 1.0:
+                    if self.last_uid == uid and self.last_timestamp and now - self.last_timestamp < 2.0:
                         LOGGER.debug("Ignoring duplicate UID within debounce window: %s", uid)
                         continue
                     self.last_uid = uid
