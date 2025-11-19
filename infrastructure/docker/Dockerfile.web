@@ -11,4 +11,4 @@ FROM caddy:2-alpine
 WORKDIR /srv
 COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
-CMD ["caddy", "file-server", "--root", "/srv/site"]
+CMD ["caddy", "run", "--config", "/srv/Caddyfile"]

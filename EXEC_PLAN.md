@@ -20,6 +20,7 @@
 - [x] Pi4用NFCエージェントサービスとパッケージングを実装。
 - [x] (2025-11-18 07:20Z) Pi5/Pi4 の OS / Docker / Poetry / NFC リーダー環境構築を完了し、README に手順とトラブルシューティングを反映（コンテナ起動およびエージェント起動は確認済みだが、Validation and Acceptance の8項目は未検証）。
 - [x] (2025-11-19 00:30Z) Validation 1: Pi5 で Docker コンテナを再起動し、`curl http://localhost:8080/health` が 200/`{"status":"ok"}` を返すことを確認。
+- [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -42,6 +43,9 @@
 - 観測: Pi5 をシャットダウンすると Docker コンテナ（api/web）が Exited のまま復帰しない。  
   エビデンス: Validation 1 前に `docker-api-1` (Exited 137) / `docker-web-1` (Exited 0) が `docker compose ps` で確認された。  
   対応: `docker compose up -d` で手動再起動。`restart: always` ポリシーを追加し、Pi5 再起動時に自動復帰させる。
+- 観測: Web サーバーの設定が三点（ポート公開、Caddy リッスン/SPA フォールバック、Dockerfile の CMD）で不整合を起こし、`/admin/*` や `/login` に直接アクセスすると常に 404 になっていた。  
+  エビデンス: `http://<pi5>:4173/admin/employees` が Caddy の 404 を返し、Caddyfile が `:8080` + `file_server` のみ、Dockerfile.web が `caddy file-server` を起動していた。  
+  対応: `docker-compose.server.yml` を `4173:80` に修正、Caddyfile を `:80` + SPA rewrite 付きに更新、Dockerfile.web の CMD を `caddy run --config /srv/Caddyfile` に変更。
 
 ## Decision Log
 
@@ -79,6 +83,9 @@
   理由: Pi5 電源再投入後にコンテナが自動起動しないことが発覚したため。  
   日付/担当: 2025-11-19 / 実機検証チーム  
   備考: Validation 2〜8 完了後に反映予定。
+- 決定: Web 配信は Caddy を 80/tcp で公開し、SPA の任意パスを `/index.html` にフォールバックさせる。Dockerfile.web は常に `caddy run --config /srv/Caddyfile` で起動し、docker-compose の公開ポートは `4173:80` に固定する。  
+  理由: Validation 2 で直接 URL へアクセスすると 404 になる問題が判明したため。  
+  日付/担当: 2025-11-19 / 現地検証チーム
 
 ## Outcomes & Retrospective
 
@@ -287,6 +294,37 @@
     {"status":"ok"}
     HTTP Status: 200
 
+    # 2025-11-19 Admin UI validation (Pi5)
+    # docker-compose server ports updated
+    $ grep -n "4173" -n infrastructure/docker/docker-compose.server.yml
+        - "4173:80"
+
+    # Caddyfile with SPA fallback
+    $ cat infrastructure/docker/Caddyfile
+    {
+      auto_https off
+    }
+
+    :80 {
+      root * /srv/site
+      @api {
+        path /api/*
+        path /ws/*
+      }
+      reverse_proxy @api api:8080
+      @spa {
+        not file
+      }
+      rewrite @spa /index.html
+      file_server
+    }
+
+    # Dockerfile.web uses caddy run with config
+    $ tail -n 5 infrastructure/docker/Dockerfile.web
+    COPY --from=build /app/apps/web/dist ./site
+    COPY infrastructure/docker/Caddyfile ./Caddyfile
+    CMD ["caddy", "run", "--config", "/srv/Caddyfile"]
+
 ## Interfaces and Dependencies
 
 * **APIエンドポイント** (`/api` プレフィックス)
@@ -317,4 +355,5 @@
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
 変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
+変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
 ```

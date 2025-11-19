@@ -92,11 +92,38 @@
   ```
   必要であれば `docker system prune --volumes` も併用
 
+### Web UI の直接URLアクセスで404エラー
+
+- **症状**: `/admin/employees` などに直接アクセスすると HTTP 404
+- **原因**: SPAのクライアントサイドルーティングがサーバー側で処理されていない
+- **解決策**:
+  1. `infrastructure/docker/Caddyfile` に SPA フォールバック設定を追加:
+     ```caddyfile
+     @spa {
+       not file
+     }
+     rewrite @spa /index.html
+     ```
+  2. `infrastructure/docker/Dockerfile.web` の CMD を修正:
+     ```dockerfile
+     CMD ["caddy", "run", "--config", "/srv/Caddyfile"]
+     ```
+  3. `docker-compose.server.yml` のポート設定を確認（Caddy は内部で 80 番ポートを使用）:
+     ```yaml
+     ports:
+       - "4173:80"
+     ```
+  4. 再ビルド:
+     ```bash
+     docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web
+     ```
+
 ### 重要な注意点
 
 - サーバー用 Dockerfile では Alpine を使用しない（OpenSSL の互換パッケージが公式から消えたため）
 - ランタイムステージでも `pnpm install --prod` と `pnpm prisma generate` を実行し、ワークスペース依存を正しく解決する
 - ベースイメージ変更後は常に `--no-cache` ビルド → `curl http://localhost:8080/health` で確認
+- Pi5 を電源オフすると Docker コンテナが停止したままになるため、再起動後は `docker compose -f infrastructure/docker/docker-compose.server.yml up -d` を実行するか、`docker-compose.server.yml` に `restart: always` を設定して自動復帰させる
 
 ## クライアント (Raspberry Pi 4) セットアップ
 

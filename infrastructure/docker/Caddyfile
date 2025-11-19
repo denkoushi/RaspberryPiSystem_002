@@ -1,13 +1,18 @@
 {
   auto_https off
 }
-
-:8080 {
+:80 {
   root * /srv/site
-  file_server
+
   @api {
     path /api/*
     path /ws/*
   }
   reverse_proxy @api api:8080
+
+  @spa {
+    not file
+  }
+  rewrite @spa /index.html
+  file_server
 }
