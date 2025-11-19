@@ -64,31 +64,31 @@ class AsyncCardObserver(CardObserver):  # type: ignore[misc]
 
     def update(self, observable, actions: Tuple[list[Any], list[Any]]):  # type: ignore[override]
         added_cards, removed_cards = actions
-        LOGGER.debug("=== update() called ===")
-        LOGGER.debug("Card observer update: added=%s removed=%s", added_cards, removed_cards)
+        LOGGER.info("=== update() called ===")
+        LOGGER.info("Card observer update: added=%s removed=%s", added_cards, removed_cards)
         for card in added_cards:
             try:
-                LOGGER.debug("Creating connection for card: %s", card)
+                LOGGER.info("Creating connection for card: %s", card)
                 connection = card.createConnection()
                 connection.connect()
-                LOGGER.debug("Connection established for card: %s", card)
+                LOGGER.info("Connection established for card: %s", card)
                 data, sw1, sw2 = connection.transmit([0xFF, 0xCA, 0x00, 0x00, 0x00])
-                LOGGER.debug("Transmit result: data=%s sw1=%s sw2=%s", data, sw1, sw2)
+                LOGGER.info("Transmit result: data=%s sw1=%s sw2=%s", data, sw1, sw2)
                 if sw1 == 0x90:
                     uid = _format_uid(data)
                     now = time.time()
-                    LOGGER.debug("Processing card UID='%s' repr=%s", uid, repr(uid))
-                    LOGGER.debug("Current time: %s", now)
-                    LOGGER.debug("Last UID='%s' repr=%s", self.last_uid, repr(self.last_uid))
-                    LOGGER.debug("Last timestamp: %s", self.last_timestamp)
+                    LOGGER.info("Processing card UID='%s' repr=%s", uid, repr(uid))
+                    LOGGER.info("Current time: %s", now)
+                    LOGGER.info("Last UID='%s' repr=%s", self.last_uid, repr(self.last_uid))
+                    LOGGER.info("Last timestamp: %s", self.last_timestamp)
                     if self.last_uid and self.last_timestamp:
                         time_diff = now - self.last_timestamp
-                        LOGGER.debug("Time difference: %.3f seconds", time_diff)
-                        LOGGER.debug("UIDs match: %s", uid == self.last_uid)
+                        LOGGER.info("Time difference: %.3f seconds", time_diff)
+                        LOGGER.info("UIDs match: %s", uid == self.last_uid)
                     if self.last_uid == uid and self.last_timestamp and now - self.last_timestamp < 2.0:
-                        LOGGER.debug("Debounce: SKIPPING UID %s", uid)
+                        LOGGER.info("Debounce: SKIPPING UID %s", uid)
                         continue
-                    LOGGER.debug("Debounce: PROCESSING UID %s", uid)
+                    LOGGER.info("Debounce: PROCESSING UID %s", uid)
                     self.last_uid = uid
                     self.last_timestamp = now
                     event = {
