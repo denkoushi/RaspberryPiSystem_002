@@ -49,7 +49,7 @@ export function createBorrowMachine() {
           ITEM_SCANNED: {
             target: 'waitEmployee',
             actions: assign((ctx, event) => {
-              if (event.type === 'ITEM_SCANNED') {
+              if (event && event.type === 'ITEM_SCANNED') {
                 return { itemTagUid: event.uid, error: undefined };
               }
               return {};
@@ -62,7 +62,7 @@ export function createBorrowMachine() {
           EMPLOYEE_SCANNED: {
             target: 'confirm',
             actions: assign((ctx, event) => {
-              if (event.type === 'EMPLOYEE_SCANNED') {
+              if (event && event.type === 'EMPLOYEE_SCANNED') {
                 return { employeeTagUid: event.uid, error: undefined };
               }
               return {};
