@@ -48,10 +48,10 @@ export function createBorrowMachine() {
         on: {
           ITEM_SCANNED: {
             target: 'waitEmployee',
-            actions: assign<BorrowContext, BorrowEvent>({
-              itemTagUid: (ctx, event) => (event.type === 'ITEM_SCANNED' ? event.uid : ctx.itemTagUid),
-              error: () => undefined
-            })
+            actions: assign((ctx: BorrowContext, event: BorrowEvent) => ({
+              itemTagUid: event.type === 'ITEM_SCANNED' ? event.uid : ctx.itemTagUid,
+              error: undefined
+            }))
           }
         }
       },
@@ -59,10 +59,10 @@ export function createBorrowMachine() {
         on: {
           EMPLOYEE_SCANNED: {
             target: 'confirm',
-            actions: assign<BorrowContext, BorrowEvent>({
-              employeeTagUid: (ctx, event) => (event.type === 'EMPLOYEE_SCANNED' ? event.uid : ctx.employeeTagUid),
-              error: () => undefined
-            })
+            actions: assign((ctx: BorrowContext, event: BorrowEvent) => ({
+              employeeTagUid: event.type === 'EMPLOYEE_SCANNED' ? event.uid : ctx.employeeTagUid,
+              error: undefined
+            }))
           },
           RESET: { target: 'waitItem', actions: assign(() => ({})) }
         }
