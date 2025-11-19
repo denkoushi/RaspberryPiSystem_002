@@ -36,9 +36,9 @@ function isFailEvent(event: BorrowEvent | undefined): event is Extract<BorrowEve
 
 export function createBorrowMachine() {
   return createMachine({
-    types: {} as {
-      context: BorrowContext;
-      events: BorrowEvent;
+    types: {
+      context: {} as BorrowContext,
+      events: {} as BorrowEvent
     },
     id: 'borrow',
     initial: 'waitItem',
