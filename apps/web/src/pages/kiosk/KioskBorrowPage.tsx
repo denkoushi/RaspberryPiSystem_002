@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMachine } from '@xstate/react';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useBorrowMutation, useKioskConfig } from '../../api/hooks';
@@ -16,6 +16,7 @@ export function KioskBorrowPage() {
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
   const nfcEvent = useNfcStream();
+  const lastEventKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!state.matches('submitting') || borrowMutation.isPending) {
@@ -35,14 +36,26 @@ export function KioskBorrowPage() {
     console.log('NFC Event received:', nfcEvent);
     console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
     if (!nfcEvent) return;
+    const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastEventKeyRef.current === eventKey) {
+      console.log('Skipping duplicate NFC event:', eventKey);
+      return;
+    }
     if (state.matches('waitItem')) {
       console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
       send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
+      lastEventKeyRef.current = eventKey;
     } else if (state.matches('waitEmployee')) {
       console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
+      lastEventKeyRef.current = eventKey;
     }
-  }, [nfcEvent, send, state]);
+  }, [nfcEvent, send, state.value]);
+
+  const handleReset = () => {
+    lastEventKeyRef.current = null;
+    send({ type: 'RESET' });
+  };
 
   return (
     <div className="space-y-6">
@@ -68,7 +81,7 @@ export function KioskBorrowPage() {
             <StepCard title="③ 確認" active={state.matches('confirm')} value={state.context.loan?.item.name} />
           </div>
         <div className="flex justify-center gap-4">
-          <Button onClick={() => send({ type: 'RESET' })}>リセット</Button>
+          <Button onClick={handleReset}>リセット</Button>
           <Button
             onClick={() => send({ type: 'SUBMIT' })}
             disabled={!state.matches('confirm') || borrowMutation.isPending}
