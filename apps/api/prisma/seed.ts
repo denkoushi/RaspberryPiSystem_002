@@ -20,7 +20,7 @@ async function main() {
     {
       employeeCode: 'EMP-001',
       displayName: '山田 太郎',
-      nfcTagUid: '04A1B2C3D4',
+      nfcTagUid: '04C362E1330289',
       department: '製造1課'
     },
     {
@@ -46,7 +46,7 @@ async function main() {
     {
       itemCode: 'ITEM-001',
       name: 'トルクレンチ #1',
-      nfcTagUid: '04FFEEDDCC',
+      nfcTagUid: '04DE8366BC2A81',
       category: '工具',
       storageLocation: 'A-01'
     },
