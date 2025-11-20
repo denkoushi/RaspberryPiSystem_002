@@ -26,8 +26,9 @@ export function HistoryPage() {
     const rows = transactions.map((tx) => [
       new Date(tx.createdAt).toLocaleString(),
       tx.action,
-      tx.loan?.item.name ?? '-',
-      tx.actorEmployee?.displayName ?? '-',
+      // スナップショットを優先し、無ければマスタ
+      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-',
+      (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-',
       tx.client?.name ?? '-'
     ]);
     const csv = [header, ...rows]
@@ -89,15 +90,19 @@ export function HistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((tx: Transaction) => (
+                {transactions.map((tx: Transaction) => {
+                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-';
+                  const employeeName = (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
+                  return (
                   <tr key={tx.id} className="border-t border-white/5">
                     <td className="px-2 py-1">{new Date(tx.createdAt).toLocaleString()}</td>
                     <td className="px-2 py-1">{tx.action}</td>
-                    <td className="px-2 py-1">{tx.loan?.item.name ?? '-'}</td>
-                    <td className="px-2 py-1">{tx.actorEmployee?.displayName ?? '-'}</td>
+                    <td className="px-2 py-1">{itemName}</td>
+                    <td className="px-2 py-1">{employeeName}</td>
                     <td className="px-2 py-1">{tx.client?.name ?? '-'}</td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>

@@ -75,6 +75,19 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
       throw new ApiError(400, 'このアイテムはすでに貸出中です');
     }
 
+    const itemSnapshot = {
+      id: item.id,
+      code: item.itemCode,
+      name: item.name,
+      nfcTagUid: item.nfcTagUid ?? null
+    };
+    const employeeSnapshot = {
+      id: employee.id,
+      code: employee.employeeCode,
+      name: employee.displayName,
+      nfcTagUid: employee.nfcTagUid ?? null
+    };
+
     const loan = await prisma.$transaction(async (tx) => {
       const createdLoan = await tx.loan.create({
         data: {
@@ -96,7 +109,9 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
           actorEmployeeId: employee.id,
           clientId: resolvedClientId,
           details: {
-            note: body.note ?? null
+            note: body.note ?? null,
+            itemSnapshot,
+            employeeSnapshot
           }
         }
       });
@@ -124,6 +139,18 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const performedByUserId = request.user?.id ?? body.performedByUserId;
+    const itemSnapshot = {
+      id: loan.item.id,
+      code: loan.item.itemCode,
+      name: loan.item.name,
+      nfcTagUid: loan.item.nfcTagUid ?? null
+    };
+    const employeeSnapshot = {
+      id: loan.employee.id,
+      code: loan.employee.employeeCode,
+      name: loan.employee.displayName,
+      nfcTagUid: loan.employee.nfcTagUid ?? null
+    };
 
     const updatedLoan = await prisma.$transaction(async (tx) => {
       const loanResult = await tx.loan.update({
@@ -146,7 +173,9 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
           performedByUserId,
           clientId: resolvedClientId ?? loan.clientId,
           details: {
-            note: body.note ?? null
+            note: body.note ?? null,
+            itemSnapshot,
+            employeeSnapshot
           }
         }
       });
