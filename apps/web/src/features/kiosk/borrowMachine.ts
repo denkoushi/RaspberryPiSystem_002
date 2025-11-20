@@ -12,7 +12,6 @@ type BorrowEvent =
   | { type: 'ITEM_SCANNED'; uid: string }
   | { type: 'EMPLOYEE_SCANNED'; uid: string }
   | { type: 'RESET' }
-  | { type: 'SUBMIT' }
   | { type: 'SUCCESS'; loan: Loan }
   | { type: 'FAIL'; message: string };
 
@@ -40,14 +39,14 @@ export function createBorrowMachine() {
       context: {} as BorrowContext,
       events: {} as BorrowEvent
     },
-  id: 'borrow',
-  initial: 'waitItem',
-  context: {
-    itemTagUid: undefined,
-    employeeTagUid: undefined,
-    error: undefined,
-    loan: undefined
-  },
+    id: 'borrow',
+    initial: 'waitItem',
+    context: {
+      itemTagUid: undefined,
+      employeeTagUid: undefined,
+      error: undefined,
+      loan: undefined
+    },
     states: {
       waitItem: {
         on: {
@@ -74,7 +73,7 @@ export function createBorrowMachine() {
       waitEmployee: {
         on: {
           EMPLOYEE_SCANNED: {
-            target: 'confirm',
+            target: 'submitting',
             actions: assign(({ event }) => {
               if (event?.type === 'EMPLOYEE_SCANNED') {
                 return { employeeTagUid: event.uid, error: undefined };
@@ -82,20 +81,6 @@ export function createBorrowMachine() {
               return {};
             })
           },
-          RESET: {
-            target: 'waitItem',
-            actions: assign(() => ({
-              itemTagUid: undefined,
-              employeeTagUid: undefined,
-              error: undefined,
-              loan: undefined
-            }))
-          }
-        }
-      },
-      confirm: {
-        on: {
-          SUBMIT: { target: 'submitting' },
           RESET: {
             target: 'waitItem',
             actions: assign(() => ({

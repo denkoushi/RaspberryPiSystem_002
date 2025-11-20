@@ -7,6 +7,7 @@ import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { KioskReturnPage } from './KioskReturnPage';
 
 export function KioskBorrowPage() {
   const { data: config } = useKioskConfig();
@@ -90,7 +91,7 @@ export function KioskBorrowPage() {
   return (
     <div className="space-y-6">
       <Card title="ステーション設定">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:w-1/2">
           <label className="block text-sm text-white/70">
             クライアント API キー
             <Input value={clientKey} onChange={(e) => setClientKey(e.target.value)} placeholder="client-demo-key" />
@@ -102,47 +103,31 @@ export function KioskBorrowPage() {
         </div>
       </Card>
 
-      <Card title="持出ステップ">
-        <div className="space-y-4 text-center">
-          <p className="text-3xl font-semibold">{config?.greeting ?? 'アイテム → 社員証の順にタップ'}</p>
-          <div className="grid gap-4 md:grid-cols-3">
-            <StepCard title="① アイテム" active={state.matches('waitItem')} value={state.context.itemTagUid} />
-            <StepCard title="② 社員" active={state.matches('waitEmployee')} value={state.context.employeeTagUid} />
-            <StepCard title="③ 確認" active={state.matches('confirm')} value={state.context.loan?.item.name} />
-          </div>
-        <div className="flex justify-center gap-4">
-          <Button onClick={handleReset}>リセット</Button>
-          <Button
-            onClick={() => send({ type: 'SUBMIT' })}
-            disabled={!state.matches('confirm') || borrowMutation.isPending}
-          >
-            {borrowMutation.isPending ? '登録中…' : '記録'}
-          </Button>
-        </div>
-          {state.context.error ? <p className="text-red-400">{state.context.error}</p> : null}
-          {state.context.loan ? (
-            <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
-              <p className="text-lg font-semibold text-emerald-300">登録完了</p>
-              <p>
-                {state.context.loan.item.name} を {state.context.loan.employee.displayName} さんが持出済み
-              </p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="持出フロー">
+          <div className="space-y-4 text-center">
+            <p className="text-3xl font-semibold">{config?.greeting ?? 'アイテム → 社員証の順にタップ'}</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <StepCard title="① アイテム" active={state.matches('waitItem')} value={state.context.itemTagUid} />
+              <StepCard title="② 社員" active={state.matches('waitEmployee')} value={state.context.employeeTagUid} />
             </div>
-          ) : null}
-        </div>
-      </Card>
+            <div className="flex justify-center gap-4">
+              <Button onClick={handleReset}>リセット</Button>
+            </div>
+            {state.context.error ? <p className="text-red-400">{state.context.error}</p> : null}
+            {state.context.loan ? (
+              <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
+                <p className="text-lg font-semibold text-emerald-300">登録完了</p>
+                <p>
+                  {state.context.loan.item.name} を {state.context.loan.employee.displayName} さんが持出済み
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </Card>
 
-      <Card title="最新スキャン">
-        <div className="text-center text-lg">
-          {nfcEvent ? (
-            <>
-              <p className="font-mono text-3xl">{nfcEvent.uid}</p>
-              <p className="text-sm text-white/60">{nfcEvent.timestamp}</p>
-            </>
-          ) : (
-            <p>待機中...</p>
-          )}
-        </div>
-      </Card>
+        <KioskReturnPage />
+      </div>
     </div>
   );
 }
