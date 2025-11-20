@@ -22,6 +22,7 @@
 - [x] (2025-11-19 00:30Z) Validation 1: Pi5 で Docker コンテナを再起動し、`curl http://localhost:8080/health` が 200/`{"status":"ok"}` を返すことを確認。
 - [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認（ダッシュボード: 従業員2 / アイテム2 / 貸出0 を表示）。
 - [x] (2025-11-20 00:20Z) Validation 3: 持出フロー。実機 UID をシードに揃え、client-key を統一。キオスクでタグ2枚を順序問わずスキャン→記録が成功し、返却ペインに表示・返却できることを確認。
+- [x] (2025-11-20 00:17Z) Validation 4: 返却フロー。`/api/borrow` で作成された Loan をキオスク返却ペインから返却し、`/loans/active` が空・DB の `returnedAt` が更新され、`Transaction` に BORROW/RETURN の両方が記録されることを確認。タグの組み合わせを順不同で試し、いずれも返却ペインで消えることを確認済み。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -60,6 +61,8 @@
   対応: Caddyfile を `@api /api/* /ws/*` → `reverse_proxy @api api:8080` に固定し、パスを保持して転送。
 - 観測: 同じアイテムが未返却のまま再借用すると API が 400 で「貸出中」と返す。  
   対応: これは仕様とし、返却してから再借用する運用を明示。必要に応じて DB の `returned_at` をクリアする手順を提示。
+- 観測: 返却一覧に表示されないのは `x-client-key` 未設定が原因で 401 となるケースがあった。  
+  対応: Kiosk UI のデフォルト clientKey を `client-demo-key` に設定し、Borrow/Return と ActiveLoans の呼び出しに必ずヘッダーを付与するよう修正。
 - 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
   エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
   対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
@@ -325,6 +328,16 @@
         -d '{"itemTagUid":"04DE8366BC2A81","employeeTagUid":"04C362E1330289"}'
     HTTP/1.1 200 ...
     {"loanId":"...","item":{"nfcTagUid":"04DE8366BC2A81"},"employee":{"nfcTagUid":"04C362E1330289"}}
+
+    # 返却確認 (Pi5)
+    $ docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+        psql -U postgres -d borrow_return \
+        -c "SELECT id, \"returnedAt\" FROM \"Loan\" WHERE id='1107a9fb-d9b7-460d-baf7-edd5ae3b4660';"
+      returnedAt が更新されている。
+    $ docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+        psql -U postgres -d borrow_return \
+        -c "SELECT action, \"createdAt\" FROM \"Transaction\" WHERE \"loanId\"='1107a9fb-d9b7-460d-baf7-edd5ae3b4660' ORDER BY \"createdAt\";"
+      BORROW / RETURN の両方が記録されている。
     # 2025-11-19 Server health validation (Pi5)
     $ cd /opt/RaspberryPiSystem_002
     $ docker compose -f infrastructure/docker/docker-compose.server.yml ps
