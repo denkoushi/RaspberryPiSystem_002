@@ -3,6 +3,8 @@ import {
   borrowItem,
   createEmployee,
   createItem,
+  deleteEmployee,
+  deleteItem,
   getActiveLoans,
   getEmployees,
   getImportJobs,

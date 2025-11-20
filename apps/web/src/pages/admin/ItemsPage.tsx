@@ -136,8 +136,8 @@ export function ItemsPage() {
                   <td className="px-2 py-1">{item.storageLocation ?? '-'}</td>
                   <td className="px-2 py-1 font-mono text-xs">{item.nfcTagUid ?? '-'}</td>
                   <td className="px-2 py-1 flex gap-2">
-                    <Button size="xs" onClick={() => startEdit(item)}>編集</Button>
-                    <Button size="xs" variant="ghost" onClick={() => handleDelete(item.id)}>
+                    <Button className="px-2 py-1 text-xs" onClick={() => startEdit(item)}>編集</Button>
+                    <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(item.id)}>
                       削除
                     </Button>
                   </td>

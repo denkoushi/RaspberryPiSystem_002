@@ -126,8 +126,8 @@ export function EmployeesPage() {
                   <td className="px-2 py-1">{employee.department ?? '-'}</td>
                   <td className="px-2 py-1 font-mono text-xs">{employee.nfcTagUid ?? '-'}</td>
                   <td className="px-2 py-1 flex gap-2">
-                    <Button size="xs" onClick={() => startEdit(employee)}>編集</Button>
-                    <Button size="xs" variant="ghost" onClick={() => handleDelete(employee.id)}>
+                    <Button className="px-2 py-1 text-xs" onClick={() => startEdit(employee)}>編集</Button>
+                    <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(employee.id)}>
                       削除
                     </Button>
                   </td>
