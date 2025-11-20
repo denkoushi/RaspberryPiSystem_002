@@ -23,16 +23,41 @@ export function KioskBorrowPage() {
     if (!state.matches('submitting') || borrowMutation.isPending) {
       return;
     }
-    borrowMutation
-      .mutateAsync({
-        itemTagUid: state.context.itemTagUid ?? '',
-        employeeTagUid: state.context.employeeTagUid ?? '',
-        clientId: clientId || undefined
-      })
+    const payload = {
+      itemTagUid: state.context.itemTagUid ?? '',
+      employeeTagUid: state.context.employeeTagUid ?? '',
+      clientId: clientId || undefined
+    };
+
+    const attemptBorrow = async (swapOrder = false) => {
+      const p = swapOrder
+        ? { ...payload, itemTagUid: payload.employeeTagUid, employeeTagUid: payload.itemTagUid }
+        : payload;
+      return borrowMutation.mutateAsync(p);
+    };
+
+    attemptBorrow()
       .then((loan) => send({ type: 'SUCCESS', loan }))
-      .catch((error: any) => {
-        const apiMessage = error?.response?.data?.message;
+      .catch(async (error: any) => {
+        const apiMessage: string | undefined = error?.response?.data?.message;
         const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
+
+        // アイテム/従業員の取り違えと思われる場合は一度だけ順序を入れ替えて再試行
+        const notFoundItem = apiMessage?.includes('アイテムが登録されていません');
+        const notFoundEmployee = apiMessage?.includes('従業員が登録されていません');
+        if ((notFoundItem || notFoundEmployee) && payload.itemTagUid && payload.employeeTagUid) {
+          try {
+            const loan = await attemptBorrow(true);
+            send({ type: 'SUCCESS', loan });
+            return;
+          } catch (retryError: any) {
+            const retryMsg =
+              retryError?.response?.data?.message || retryError?.message || 'エラーが発生しました (再試行失敗)';
+            send({ type: 'FAIL', message: retryMsg });
+            return;
+          }
+        }
+
         send({ type: 'FAIL', message: message ?? 'エラーが発生しました' });
       });
   }, [borrowMutation, clientId, send, state]);
