@@ -129,7 +129,7 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
 
     const loan = await prisma.loan.findUnique({
       where: { id: body.loanId },
-      include: { item: true }
+      include: { item: true, employee: true }
     });
     if (!loan) {
       throw new ApiError(404, '貸出レコードが見つかりません');
