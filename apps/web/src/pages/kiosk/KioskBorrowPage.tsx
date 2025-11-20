@@ -20,6 +20,13 @@ export function KioskBorrowPage() {
   const nfcEvent = useNfcStream();
   const lastEventKeyRef = useRef<string | null>(null);
 
+  // client-key が空になってもデフォルトを自動で復元する
+  useEffect(() => {
+    if (!clientKey) {
+      setClientKey('client-demo-key');
+    }
+  }, [clientKey, setClientKey]);
+
   useEffect(() => {
     if (!state.matches('submitting') || borrowMutation.isPending) {
       return;
