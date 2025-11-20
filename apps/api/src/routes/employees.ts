@@ -84,4 +84,10 @@ export async function registerEmployeeRoutes(app: FastifyInstance): Promise<void
     });
     return { employee };
   });
+
+  app.delete('/employees/:id', { preHandler: canEdit }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const employee = await prisma.employee.delete({ where: { id: params.id } });
+    return { employee };
+  });
 }

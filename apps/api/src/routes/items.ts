@@ -82,4 +82,10 @@ export async function registerItemRoutes(app: FastifyInstance): Promise<void> {
     const item = await prisma.item.update({ where: { id: params.id }, data: body });
     return { item };
   });
+
+  app.delete('/items/:id', { preHandler: canEdit }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const item = await prisma.item.delete({ where: { id: params.id } });
+    return { item };
+  });
 }

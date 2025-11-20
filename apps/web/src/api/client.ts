@@ -51,6 +51,11 @@ export async function updateEmployee(id: string, input: Partial<Employee>) {
   return data.employee;
 }
 
+export async function deleteEmployee(id: string) {
+  const { data } = await api.delete<{ employee: Employee }>(`/employees/${id}`);
+  return data.employee;
+}
+
 export async function getItems() {
   const { data } = await api.get<{ items: Item[] }>('/items');
   return data.items;
@@ -63,6 +68,11 @@ export async function createItem(input: Partial<Item>) {
 
 export async function updateItem(id: string, input: Partial<Item>) {
   const { data } = await api.put<{ item: Item }>(`/items/${id}`, input);
+  return data.item;
+}
+
+export async function deleteItem(id: string) {
+  const { data } = await api.delete<{ item: Item }>(`/items/${id}`);
   return data.item;
 }
 

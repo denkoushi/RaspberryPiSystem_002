@@ -33,7 +33,11 @@ export function useEmployeeMutations() {
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Employee> }) => updateEmployee(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
   });
-  return { create, update };
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteEmployee(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+  });
+  return { create, update, remove };
 }
 
 export function useItems() {
@@ -53,7 +57,11 @@ export function useItemMutations() {
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Item> }) => updateItem(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
   });
-  return { create, update };
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+  });
+  return { create, update, remove };
 }
 
 export function useActiveLoans(clientId?: string, clientKey?: string) {
