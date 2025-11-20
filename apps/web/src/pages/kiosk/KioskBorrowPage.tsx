@@ -30,7 +30,11 @@ export function KioskBorrowPage() {
         clientId: clientId || undefined
       })
       .then((loan) => send({ type: 'SUCCESS', loan }))
-      .catch((error: Error) => send({ type: 'FAIL', message: error.message }));
+      .catch((error: any) => {
+        const apiMessage = error?.response?.data?.message;
+        const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
+        send({ type: 'FAIL', message: message ?? 'エラーが発生しました' });
+      });
   }, [borrowMutation, clientId, send, state]);
 
   useEffect(() => {
