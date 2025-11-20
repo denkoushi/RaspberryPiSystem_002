@@ -21,6 +21,7 @@
 - [x] (2025-11-18 07:20Z) Pi5/Pi4 の OS / Docker / Poetry / NFC リーダー環境構築を完了し、README に手順とトラブルシューティングを反映（コンテナ起動およびエージェント起動は確認済みだが、Validation and Acceptance の8項目は未検証）。
 - [x] (2025-11-19 00:30Z) Validation 1: Pi5 で Docker コンテナを再起動し、`curl http://localhost:8080/health` が 200/`{"status":"ok"}` を返すことを確認。
 - [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認（ダッシュボード: 従業員2 / アイテム2 / 貸出0 を表示）。
+- [x] (2025-11-20 00:20Z) Validation 3: 持出フロー。実機 UID をシードに揃え、client-key を統一。キオスクでタグ2枚を順序問わずスキャン→記録が成功し、返却ペインに表示・返却できることを確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -49,6 +50,16 @@
 - 観測: キオスクの状態機械 `borrowMachine.ts` で XState v5 の `assign` を誤用し、`pnpm run build` が TypeScript エラー（`event is possibly undefined` / `property 'type' does not exist on type never`）で停止した。  
   エビデンス: `docker compose ... build web` が `src/features/kiosk/borrowMachine.ts` に対する TS18048/TS2339 を出力。GitHub commit `17dbf9d` から assign の書き方を変更した直後に再現。  
   対応: `assign(({ event }) => ({ ... }))` 形式で context 差分を返すよう修正し、イベント存在を `event?.type` で確認したうえで UID を設定。README のトラブルシューティングに同様の注意を追記。
+- 観測: 実機 UID と seed データが不一致で `/borrow` が 404/400（従業員/アイテム未登録）になる。  
+  エビデンス: `curl /api/borrow` が「対象従業員/アイテムが登録されていません」を返した。  
+  対応: `apps/api/prisma/seed.ts` を実機タグ（アイテム: 04DE8366BC2A81、社員: 04C362E1330289）に合わせ、再シード。
+- 観測: client-key が未設定のキオスクから `/loans/active` を呼ぶと 401。  
+  エビデンス: 返却一覧で 401、リクエストヘッダーに `x-client-key` が無い。  
+  対応: KioskBorrow/Return のデフォルト `client-demo-key` を設定し、`useActiveLoans`/借用・返却の Mutation に確実にキーを渡す。
+- 観測: `/borrow` が 404 の場合は Caddy 側で `/api/*` が素の `/borrow` になっていた。  
+  対応: Caddyfile を `@api /api/* /ws/*` → `reverse_proxy @api api:8080` に固定し、パスを保持して転送。
+- 観測: 同じアイテムが未返却のまま再借用すると API が 400 で「貸出中」と返す。  
+  対応: これは仕様とし、返却してから再借用する運用を明示。必要に応じて DB の `returned_at` をクリアする手順を提示。
 - 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
   エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
   対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
@@ -103,6 +114,12 @@
   日付/担当: 2025-11-19 / Validation 2 実施チーム
 - 決定: XState v5 の `assign` は context/event を直接書き換えずに差分オブジェクトを返す形 (`assign(({ event }) => ({ ... }))`) に統一する。  
   理由: 従来のジェネリック指定 + 2引数シグネチャを使うと `pnpm build` で `event` が `never` 扱いになり、Pi5 の Web イメージがビルドできなかったため。  
+  日付/担当: 2025-11-20 / 現地検証チーム
+- 決定: 実機タグの UID は seed と同期し、`client-demo-key` をデフォルト clientKey としてキオスク UI に設定する。  
+  理由: seed 不一致や clientKey 未入力で `/borrow` や `/loans/active` が 404/401 になるため。  
+  日付/担当: 2025-11-20 / 現地検証チーム
+- 決定: `/borrow` は未返却の同一アイテムがある場合 400 を返す仕様とし、再借用する際は返却してから実行する運用とする。  
+  理由: 状態整合性を保ち、重複貸出を防ぐため。  
   日付/担当: 2025-11-20 / 現地検証チーム
 
 ## Outcomes & Retrospective
@@ -300,6 +317,14 @@
         -H "Content-Type: application/json" \
         -d '{"itemTagUid":"04AABBCC","employeeTagUid":"04776655","clientId":"pi4-01"}'
     {"loanId":"f4c1...","status":"checked_out"}
+
+    # 実機 UID での borrow 確認 (Pi5)
+    $ curl -i -X POST http://localhost:8080/api/borrow \
+        -H "Content-Type: application/json" \
+        -H "x-client-key: client-demo-key" \
+        -d '{"itemTagUid":"04DE8366BC2A81","employeeTagUid":"04C362E1330289"}'
+    HTTP/1.1 200 ...
+    {"loanId":"...","item":{"nfcTagUid":"04DE8366BC2A81"},"employee":{"nfcTagUid":"04C362E1330289"}}
     # 2025-11-19 Server health validation (Pi5)
     $ cd /opt/RaspberryPiSystem_002
     $ docker compose -f infrastructure/docker/docker-compose.server.yml ps
