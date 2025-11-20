@@ -23,6 +23,7 @@
 - [x] (2025-11-19 03:00Z) Validation 2: 管理画面にアクセス。Web ポート、Caddy 設定、Dockerfile.web の不備を修正し、`http://<pi5>:4173/login` からログイン画面へ到達できることを確認（ダッシュボード: 従業員2 / アイテム2 / 貸出0 を表示）。
 - [x] (2025-11-20 00:20Z) Validation 3: 持出フロー。実機 UID をシードに揃え、client-key を統一。キオスクでタグ2枚を順序問わずスキャン→記録が成功し、返却ペインに表示・返却できることを確認。
 - [x] (2025-11-20 00:17Z) Validation 4: 返却フロー。`/api/borrow` で作成された Loan をキオスク返却ペインから返却し、`/loans/active` が空・DB の `returnedAt` が更新され、`Transaction` に BORROW/RETURN の両方が記録されることを確認。タグの組み合わせを順不同で試し、いずれも返却ペインで消えることを確認済み。
+- [x] (2025-11-20 01:00Z) Validation 5: 履歴画面に日時フィルタと CSV エクスポートを実装し、管理コンソールから絞り込みとダウンロードが正常動作することを確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 
 ## Surprises & Discoveries
@@ -63,6 +64,8 @@
   対応: これは仕様とし、返却してから再借用する運用を明示。必要に応じて DB の `returned_at` をクリアする手順を提示。
 - 観測: 返却一覧に表示されないのは `x-client-key` 未設定が原因で 401 となるケースがあった。  
   対応: Kiosk UI のデフォルト clientKey を `client-demo-key` に設定し、Borrow/Return と ActiveLoans の呼び出しに必ずヘッダーを付与するよう修正。
+- 観測: 管理 UI の履歴画面に日付フィルタ/CSV エクスポートがなく、確認が手作業になっていた。  
+  対応: HistoryPage に日時フィルタと CSV ダウンロードを追加し、API `/transactions` に日付フィルタを実装。
 - 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
   エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
   対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
