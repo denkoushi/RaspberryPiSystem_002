@@ -9,7 +9,9 @@ const transactionQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   employeeId: z.string().uuid().optional(),
   itemId: z.string().uuid().optional(),
-  clientId: z.string().uuid().optional()
+  clientId: z.string().uuid().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional()
 });
 
 export async function registerTransactionRoutes(app: FastifyInstance): Promise<void> {
@@ -24,6 +26,14 @@ export async function registerTransactionRoutes(app: FastifyInstance): Promise<v
         ? {
             loan: {
               itemId: query.itemId
+            }
+          }
+        : {}),
+      ...(query.startDate || query.endDate
+        ? {
+            createdAt: {
+              ...(query.startDate ? { gte: query.startDate } : {}),
+              ...(query.endDate ? { lte: query.endDate } : {})
             }
           }
         : {})

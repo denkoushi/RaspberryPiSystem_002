@@ -76,10 +76,13 @@ export function useReturnMutation(clientKey?: string) {
   });
 }
 
-export function useTransactions(page: number) {
+export function useTransactions(
+  page: number,
+  filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
+) {
   return useQuery({
-    queryKey: ['transactions', page],
-    queryFn: () => getTransactions(page),
+    queryKey: ['transactions', page, filters],
+    queryFn: () => getTransactions(page, filters),
     placeholderData: (previousData) => previousData
   });
 }

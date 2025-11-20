@@ -88,10 +88,22 @@ export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
   return data.loan;
 }
 
-export async function getTransactions(page = 1) {
+export async function getTransactions(
+  page = 1,
+  filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
+) {
   const { data } = await api.get<{ transactions: Transaction[]; page: number; total: number; pageSize: number }>(
     '/transactions',
-    { params: { page } }
+    {
+      params: {
+        page,
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+        employeeId: filters?.employeeId,
+        itemId: filters?.itemId,
+        clientId: filters?.clientId
+      }
+    }
   );
   return data;
 }
