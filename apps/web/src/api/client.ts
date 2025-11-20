@@ -18,6 +18,13 @@ export const api = axios.create({
   baseURL: apiBase
 });
 
+// 各リクエストで確実に client-key を付与するためのヘルパー
+const resolveClientKey = () => {
+  if (typeof window === 'undefined') return 'client-demo-key';
+  const savedKey = window.localStorage.getItem('kiosk-client-key');
+  return savedKey && savedKey.length > 0 ? savedKey : 'client-demo-key';
+};
+
 export function setAuthToken(token?: string) {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -35,6 +42,16 @@ if (typeof window !== 'undefined') {
   const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
   setClientKeyHeader(savedKey);
 }
+
+// すべてのリクエストで client-key を付与
+api.interceptors.request.use((config) => {
+  const key = resolveClientKey();
+  config.headers = config.headers ?? {};
+  if (!config.headers['x-client-key']) {
+    config.headers['x-client-key'] = key;
+  }
+  return config;
+});
 
 export function getWebSocketUrl(path: string) {
   if (path.startsWith('ws')) return path;
