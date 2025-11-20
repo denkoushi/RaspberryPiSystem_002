@@ -70,7 +70,7 @@ export function useActiveLoans(clientId?: string, clientKey?: string) {
   return useQuery({
     queryKey: ['loans', clientId, clientKey],
     queryFn: () => getActiveLoans(clientId, clientKey),
-    refetchInterval: 10_000
+    refetchInterval: 2_000
   });
 }
 
