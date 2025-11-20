@@ -76,10 +76,10 @@ export async function deleteItem(id: string) {
   return data.item;
 }
 
-export async function getActiveLoans(clientId?: string, clientKey?: string) {
+export async function getActiveLoans(clientId?: string, clientKey: string = 'client-demo-key') {
   const { data } = await api.get<{ loans: Loan[] }>('/loans/active', {
     params: { clientId },
-    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    headers: { 'x-client-key': clientKey }
   });
   return data.loans;
 }
