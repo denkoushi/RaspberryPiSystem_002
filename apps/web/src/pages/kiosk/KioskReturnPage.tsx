@@ -5,11 +5,12 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 
 export function KioskReturnPage() {
-  const [clientKey] = useLocalStorage('kiosk-client-key', '');
+  const [clientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
   const [clientId] = useLocalStorage('kiosk-client-id', '');
   const [note, setNote] = useState('');
-  const loansQuery = useActiveLoans(clientId || undefined, clientKey || undefined);
-  const returnMutation = useReturnMutation(clientKey || undefined);
+  const resolvedClientKey = clientKey || 'client-demo-key';
+  const loansQuery = useActiveLoans(clientId || undefined, resolvedClientKey);
+  const returnMutation = useReturnMutation(resolvedClientKey);
 
   const handleReturn = async (loanId: string) => {
     await returnMutation.mutateAsync({ loanId, clientId: clientId || undefined, note: note || undefined });

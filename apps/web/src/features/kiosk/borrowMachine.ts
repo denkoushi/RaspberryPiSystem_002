@@ -40,14 +40,14 @@ export function createBorrowMachine() {
       context: {} as BorrowContext,
       events: {} as BorrowEvent
     },
-    id: 'borrow',
-    initial: 'waitItem',
-    context: {
-      itemTagUid: undefined,
-      employeeTagUid: undefined,
-      error: undefined,
-      loan: undefined
-    },
+  id: 'borrow',
+  initial: 'waitItem',
+  context: {
+    itemTagUid: undefined,
+    employeeTagUid: undefined,
+    error: undefined,
+    loan: undefined
+  },
     states: {
       waitItem: {
         on: {

@@ -10,9 +10,10 @@ import { Input } from '../../components/ui/Input';
 
 export function KioskBorrowPage() {
   const { data: config } = useKioskConfig();
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', '');
+  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
-  const borrowMutation = useBorrowMutation(clientKey || undefined);
+  const resolvedClientKey = clientKey || 'client-demo-key';
+  const borrowMutation = useBorrowMutation(resolvedClientKey);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
   const nfcEvent = useNfcStream();
