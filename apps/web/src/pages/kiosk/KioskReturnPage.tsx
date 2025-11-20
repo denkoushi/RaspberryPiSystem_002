@@ -20,7 +20,9 @@ export function KioskReturnPage() {
 
   return (
     <Card title="返却一覧">
-      {loansQuery.isLoading ? (
+      {loansQuery.isError ? (
+        <p className="text-red-400">返却一覧の取得に失敗しました</p>
+      ) : loansQuery.isLoading ? (
         <p>読み込み中...</p>
       ) : loansQuery.data && loansQuery.data.length > 0 ? (
         <div className="space-y-4">
@@ -54,6 +56,7 @@ export function KioskReturnPage() {
               </li>
             ))}
           </ul>
+          {loansQuery.isFetching ? <p className="text-xs text-white/60">更新中...</p> : null}
         </div>
       ) : (
         <p>現在貸出中のアイテムはありません。</p>
