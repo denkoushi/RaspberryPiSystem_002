@@ -42,8 +42,7 @@ describe('borrow state machine', () => {
     service.send({ type: 'ITEM_SCANNED', uid: 'item-uid' });
     expect(service.getSnapshot().value).toBe('waitEmployee');
     service.send({ type: 'EMPLOYEE_SCANNED', uid: 'emp-uid' });
-    expect(service.getSnapshot().value).toBe('confirm');
-    service.send({ type: 'SUBMIT' });
+    expect(service.getSnapshot().value).toBe('submitting');
     service.send({ type: 'SUCCESS', loan });
     expect(service.getSnapshot().value).toBe('success');
     service.stop();
