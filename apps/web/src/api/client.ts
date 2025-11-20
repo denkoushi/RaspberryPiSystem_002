@@ -26,6 +26,16 @@ export function setAuthToken(token?: string) {
   }
 }
 
+export function setClientKeyHeader(key?: string) {
+  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : 'client-demo-key';
+}
+
+// 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
+if (typeof window !== 'undefined') {
+  const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
+  setClientKeyHeader(savedKey);
+}
+
 export function getWebSocketUrl(path: string) {
   if (path.startsWith('ws')) return path;
   return `${wsBase}${path}`;

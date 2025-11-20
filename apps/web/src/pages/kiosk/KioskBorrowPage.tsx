@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { KioskReturnPage } from './KioskReturnPage';
+import { setClientKeyHeader } from '../../api/client';
 
 export function KioskBorrowPage() {
   const { data: config } = useKioskConfig();
@@ -24,6 +25,9 @@ export function KioskBorrowPage() {
   useEffect(() => {
     if (!clientKey) {
       setClientKey('client-demo-key');
+      setClientKeyHeader('client-demo-key');
+    } else {
+      setClientKeyHeader(clientKey);
     }
   }, [clientKey, setClientKey]);
 
