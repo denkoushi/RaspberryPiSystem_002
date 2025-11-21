@@ -190,15 +190,21 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
     const query = activeLoanQuerySchema.parse(request.query);
     let resolvedClientId = query.clientId;
     let allowWithoutAuth = false;
-    try {
-      await canView(request, reply);
-    } catch (error) {
-      const headerKey = request.headers['x-client-key'];
-      if (!headerKey && !resolvedClientId) {
-        throw error;
-      }
+
+    // クライアントキーがあれば優先的にデバイス認証とみなす
+    const headerKey = request.headers['x-client-key'];
+    if (headerKey) {
       resolvedClientId = await resolveClientId(resolvedClientId, headerKey);
       allowWithoutAuth = true;
+    } else {
+      try {
+        await canView(request, reply);
+      } catch (error) {
+        // JWT が無効でも clientId が明示されていれば許可する
+        if (!resolvedClientId) {
+          throw error;
+        }
+      }
     }
 
     const where = {
