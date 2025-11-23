@@ -26,6 +26,7 @@
 - [x] (2025-11-20 01:00Z) Validation 5: 履歴画面に日時フィルタと CSV エクスポートを実装し、管理コンソールから絞り込みとダウンロードが正常動作することを確認。
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
+- [x] (2025-01-XX) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。ビルド成功を確認済み。Phase 2（サービス層導入）とPhase 4（フロントエンドモジュール化）は未実施。
 
 ## Surprises & Discoveries
 
@@ -78,6 +79,9 @@
   対応: `@spa` へ `not path /api/*` と `not path /ws/*` を追加し、API/WS パスを SPA フォールバック対象から除外。
 - 観測: マスタの名称変更が履歴表示に反映され、過去の記録が「最新名」に書き換わってしまう。  
   対応: BORROW/RETURN 登録時にアイテム/従業員のスナップショット（id/code/name/uid）を Transaction.details に保存し、履歴表示・CSV はスナップショットを優先するように更新。既存データは順次新規記録から適用。
+- 観測: モジュール化の観点から現プロジェクト構造を評価した結果、基本的な分離はできているが、モジュール境界が不明確で、共通パッケージの活用が不足している。  
+  エビデンス: 単一の `schema.prisma` に全テーブルが定義され、APIルートがフラット構造（`/api/employees` など）で名前空間がない。`packages/*` が定義されているが未使用。ルートハンドラーに直接Prismaクエリが記述されており、ビジネスロジックが分散している。  
+  対応: Phase 1でAPIルートを `routes/tools/` にモジュール化し、`/api/tools/*` パスを追加（既存パスは後方互換性のため維持）。Phase 3で共通パッケージ `packages/shared-types` を作成し、API/Web間で型定義を共有化。Phase 2でサービス層を導入し、ビジネスロジックをルートから分離予定。Phase 4でフロントエンドをモジュール化予定。
 
 ## Decision Log
 
@@ -133,6 +137,12 @@
 - 決定: 履歴の正確性を担保するため、トランザクション登録時にアイテム/従業員のスナップショットを details に保存し、履歴表示ではスナップショットを優先する。  
   理由: マスタ編集や論理削除後でも過去の表示を固定し、監査性を維持するため。スキーマ変更は行わず details に冗長保存する方式とした。  
   日付/担当: 2025-11-20 / 現地検証チーム
+- 決定: モジュール化リファクタリングを段階的に実施し、各Phase完了後に動作確認を行う。Phase 1（APIルートのモジュール化）とPhase 3（共通パッケージ作成）を優先実施し、Phase 2（サービス層導入）とPhase 4（フロントエンドモジュール化）は後続で実施する。  
+  理由: 将来の機能拡張（工具管理以外のモジュール追加）に備えて、モジュール境界を明確化し、拡張性・保守性を向上させるため。既存の動作を維持しつつ段階的に改善する方針。  
+  日付/担当: 2025-01-XX / リファクタリング計画
+- 決定: APIルートを `/api/tools/*` パスにモジュール化し、既存の `/api/employees` などのパスは後方互換性のため維持する。共通パッケージ `packages/shared-types` を作成し、API/Web間で型定義を共有する。  
+  理由: 新モジュール追加時のルート名衝突を防止し、型安全性を向上させるため。既存システムへの影響を最小限に抑えるため、後方互換性を維持。  
+  日付/担当: 2025-01-XX / Phase 1 & 3 実装
 
 ## Outcomes & Retrospective
 
@@ -158,6 +168,11 @@
 3. **Webアプリ**: React Router と状態機械でキオスクフローを構築し、履歴・管理画面を実装。受入: `pnpm --filter web build` が成功し、モックAPIで確認可能。
 4. **NFCエージェント**: Python サービスで RC-S300 から UID を取得し、WebSocket配信とオフラインキューを実装。受入: `pytest` が通り、実機で UID を検出。
 5. **統合とデプロイ**: Web UI と API、ローカルエージェントを接続し、Docker Compose 本番構成と手順書を完成。受入: Pi4 クライアントで実際に持出→返却が完結する。
+6. **モジュール化リファクタリング**: 将来の機能拡張に備えてモジュール化を進める。ブランチ `refactor/module-architecture` で実施し、各Phase完了後に動作確認を実施。問題があれば `git checkout main` で即座にロールバック可能。
+   * **Phase 1: APIルートのモジュール化**（完了）: `apps/api/src/routes/tools/` ディレクトリを作成し、`employees.ts`, `items.ts`, `loans.ts`, `transactions.ts` を移動。`routes/index.ts` を更新して `/api/tools/*` パスで登録。既存の `/api/employees` などのパスは後方互換性のため維持。検証: 既存のAPIエンドポイントが正常に動作することを確認。リスク: 低。
+   * **Phase 2: サービス層の導入**（未実施）: `apps/api/src/services/tools/` ディレクトリを作成し、`employee.service.ts`, `item.service.ts`, `loan.service.ts` を作成。ルートハンドラーからPrismaクエリをサービス層に移動。ルートハンドラーはサービス層を呼び出すだけにする。検証: 既存のAPI動作が変わらないことを確認、テストが正常に動作することを確認。リスク: 中（ロジックの移動によりバグが発生する可能性）。
+   * **Phase 3: 共通パッケージの作成**（完了）: `packages/shared-types/` を作成し、API/Webで共通利用する型定義を移動。`apps/api` と `apps/web` から `@raspi-system/shared-types` を参照。検証: 型定義が正しく共有される、ビルドが正常に完了する、型エラーが発生しない。リスク: 低。
+   * **Phase 4: フロントエンドのモジュール化**（未実施）: `apps/web/src/pages/tools/` ディレクトリを作成し、`admin/employees`, `admin/items`, `admin/history` を `tools/` に移動。ルーティングを更新（`/admin/tools/employees` など）。検証: 既存のページが正常に表示される、ルーティングが正常に動作する。リスク: 低。
 
 ## Plan of Work
 
@@ -181,6 +196,13 @@
 6. **インフラとデプロイ**: `infrastructure/docker/Dockerfile.api`・`Dockerfile.web` を multi-stage で作成。`docker-compose.server.yml` には `db(PostgreSQL)`, `api`, `web`, `reverse-proxy(Caddy)` を束ね、`scripts/server/deploy.sh` で Pi5 へ一括デプロイできるようにする。Pi4 クライアントでは `docker-compose.client.yml` を `scripts/client/setup-nfc-agent.sh` から呼び出して NFC エージェントを Docker で常駐化し、`scripts/client/setup-kiosk.sh` で Chromium キオスクの systemd サービスを構成する。
 7. **テストとCI**: `scripts/test.sh` で `pnpm lint`, `pnpm --filter api test`, `pnpm --filter web test`, `poetry run pytest` を実行。Pi 実機用に `scripts/server/run-e2e.sh` を作り、Playwright でエンドツーエンドテストを行いモックNFCイベントを送出。
 8. **USBマスタ一括登録と拡張モジュール基盤**（追加要件）: `prisma/schema.prisma` に `ImportJob` モデルおよび `ImportStatus` enum を追加し、各インポート処理のステータスとサマリーを保持する。Fastify 側には `@fastify/multipart` を導入し、`POST /imports/master` エンドポイントで USB から取得した `employees.csv` / `items.csv` をアップロード→サーバーでCSV解析→従業員／アイテムを upsert する導線を実装。結果は `ImportJob.summary` に格納し、後続機能（ドキュメントビューワー、物流管理など）が同じジョブ管理テーブルを使えるようにする。Web管理画面には「一括登録」ページを追加し、USBマウント先から選択したファイルをアップロードして進捗・結果を確認できるUIを作る。
+9. **モジュール化リファクタリングの詳細作業**（Milestone 6）:
+   * **Phase 1 作業手順**: `apps/api/src/routes/tools/` ディレクトリを作成。`employees.ts`, `items.ts`, `loans.ts`, `transactions.ts` を `tools/` に移動し、インポートパスを `../lib/` から `../../lib/` に修正。`routes/tools/index.ts` を作成して `registerToolsRoutes` 関数を実装。`routes/index.ts` を更新して `/api/tools/*` パスで登録し、既存パスも後方互換性のため維持。検証: 既存のAPIエンドポイント（`/api/employees` など）が正常に動作することを確認。新しいモジュールパス（`/api/tools/employees` など）が同じデータを返すことを確認。フロントエンドからのリクエストが正常に処理されることを確認。ラズパイ上で動作確認。
+   * **Phase 2 作業手順**: `apps/api/src/services/tools/` ディレクトリを作成。`employee.service.ts`, `item.service.ts`, `loan.service.ts` を作成し、各ルートハンドラーからPrismaクエリを移動。ルートハンドラーはサービス層を呼び出すだけにする。検証: 既存のAPI動作が変わらないことを確認。テストが正常に動作することを確認。ラズパイ上で動作確認。
+   * **Phase 3 作業手順**: `packages/shared-types/` を作成し、`package.json`, `tsconfig.json` を設定。`src/tools/index.ts`, `src/auth/index.ts`, `src/common/index.ts` を作成し、型定義を整理。`apps/api` と `apps/web` の `package.json` に `@raspi-system/shared-types` を追加。`apps/web/src/api/types.ts` を共通パッケージから再エクスポートするように変更。検証: 型定義が正しく共有される。ビルドが正常に完了する。型エラーが発生しない。
+   * **Phase 4 作業手順**: `apps/web/src/pages/tools/` ディレクトリを作成。`admin/employees`, `admin/items`, `admin/history` を `tools/` に移動。ルーティングを更新（`/admin/tools/employees` など）。検証: 既存のページが正常に表示される。ルーティングが正常に動作する。ラズパイ上で動作確認。
+   * **動作確認チェックリスト**（各Phase完了後）: APIサーバーが正常に起動する。データベース接続が正常。認証・認可が正常に動作。主要なAPIエンドポイントが正常に応答。Web UIが正常に表示される。キオスク機能が正常に動作。NFCエージェントとの連携が正常。ラズパイ上での動作確認。
+   * **ロールバック計画**: 各Phase完了後、問題が発生した場合、`git checkout main` で元の状態に戻る。部分的なロールバックが必要な場合は、問題のあるPhaseのみを元に戻す。ブランチ上で修正を続行する。
 
 ## Concrete Steps
 
@@ -218,6 +240,29 @@
         pnpm --filter api test
         pnpm --filter web test
         poetry run -C clients/nfc-agent pytest
+
+7. モジュール化リファクタリング（Milestone 6）  
+    作業ディレクトリ: リポジトリルート  
+    Phase 1 & 3 完了後の動作確認（ラズパイ5）:
+        cd /opt/RaspberryPiSystem_002
+        git fetch origin
+        git checkout refactor/module-architecture
+        git pull origin refactor/module-architecture
+        pnpm install
+        cd packages/shared-types && pnpm build && cd ../..
+        cd apps/api && pnpm build && cd ../..
+        docker compose -f infrastructure/docker/docker-compose.server.yml down
+        docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build
+        curl http://localhost:8080/health
+        curl http://localhost:8080/api/employees
+        curl http://localhost:8080/api/tools/employees
+    Phase 1 & 3 完了後の動作確認（ラズパイ4）:
+        cd /opt/RaspberryPiSystem_002
+        git fetch origin
+        git checkout refactor/module-architecture
+        git pull origin refactor/module-architecture
+        pnpm install
+        cd apps/web && pnpm build && cd ../..
 
 ## Validation and Acceptance
 
@@ -309,6 +354,48 @@
        NFC カードをかざし、UID JSON が受信できること。失敗時は `journalctl -u pcscd -f`、`poetry run python -c "from smartcard.System import readers; print(readers())"` でドライバ状況を診断し、必要に応じて `.env` の `AGENT_MODE=mock` で切り分ける。
 
 これらが一貫して成功すれば受け入れ完了。
+
+### Milestone 6: モジュール化リファクタリングの評価指標
+
+リファクタリング完了後、以下の観点からモジュール化の達成度を評価する。
+
+**評価基準（目標スコア: 9/10以上）**
+
+1. **モジュール境界の明確性**
+   - [ ] APIルートがモジュール単位（`/api/tools/*`）に整理されている
+   - [ ] フロントエンドのページ構造がモジュール単位に整理されている
+   - [ ] データベーススキーマがモジュール別に分割されている（または将来分割可能な構造）
+   - [ ] 新モジュール追加時にルート名の衝突がない
+
+2. **共通パッケージの活用**
+   - [ ] `packages/shared-types` が作成され、API/Web間で型定義を共有している
+   - [ ] 型定義の重複がなく、単一の情報源（Single Source of Truth）になっている
+   - [ ] ビルドが正常に完了し、型エラーが発生しない
+
+3. **ビジネスロジックの分離**
+   - [ ] サービス層が導入され、ルートハンドラーからビジネスロジックが分離されている
+   - [ ] サービス層のテストが容易に書ける構造になっている
+   - [ ] ロジックの再利用性が向上している
+
+4. **拡張性**
+   - [ ] 新モジュール追加時の作業手順が明確である
+   - [ ] 既存モジュールへの影響なく新モジュールを追加できる
+   - [ ] モジュール間の依存関係が明確である
+
+5. **後方互換性**
+   - [ ] 既存のAPIパス（`/api/employees` など）が正常に動作する
+   - [ ] 既存のフロントエンドコードが変更なしで動作する
+   - [ ] 既存のテストが正常に動作する
+
+**標準的なアーキテクチャパターンとの比較**
+
+- **Domain-Driven Design (DDD)**: ドメイン層の分離ができているか
+- **Feature-Based Structure**: 機能単位のグループ化ができているか
+- **Module-Based Monorepo**: モジュール単位のパッケージ分離ができているか
+
+**評価方法**
+
+各Phase完了後、上記の評価基準をチェックし、達成度を記録する。全Phase完了後、総合評価を「Outcomes & Retrospective」セクションに記載する。
 
 ## Idempotence and Recovery
 
