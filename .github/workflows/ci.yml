@@ -36,7 +36,11 @@ jobs:
       - name: Build API
         run: |
           cd apps/api
-          pnpm build
+          echo "Building API..."
+          pnpm build || {
+            echo "Build failed!"
+            exit 1
+          }
 
       - name: Start PostgreSQL
         run: |
@@ -70,14 +74,23 @@ jobs:
       - name: Run Prisma migrations
         run: |
           cd apps/api
-          pnpm prisma migrate deploy
+          echo "Running Prisma migrations..."
+          pnpm prisma migrate deploy || {
+            echo "Migration failed, checking database connection..."
+            docker exec postgres-test psql -U postgres -c "SELECT version();"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Run API tests
         run: |
           cd apps/api
-          pnpm test
+          echo "Running API tests..."
+          pnpm test || {
+            echo "Tests failed, showing test output..."
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
