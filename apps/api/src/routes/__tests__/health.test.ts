@@ -5,7 +5,7 @@ process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borr
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
-describe('GET /health', () => {
+describe('GET /api/health', () => {
   let closeServer: (() => Promise<void>) | null = null;
 
   afterAll(async () => {
@@ -19,7 +19,7 @@ describe('GET /health', () => {
     closeServer = async () => {
       await app.close();
     };
-    const response = await app.inject({ method: 'GET', url: '/health' });
+    const response = await app.inject({ method: 'GET', url: '/api/health' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ status: 'ok' });
   });
