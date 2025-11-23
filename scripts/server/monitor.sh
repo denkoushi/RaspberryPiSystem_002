@@ -31,7 +31,7 @@ log() {
 }
 
 check_api_health() {
-  local response=$(curl -s -w "\n%{http_code}" "${API_URL}/system/health" || echo "000")
+  local response=$(curl -s -w "\n%{http_code}" "${API_URL}/system/health" 2>/dev/null || echo -e "\n000")
   local body=$(echo "${response}" | head -n -1)
   local status_code=$(echo "${response}" | tail -n 1)
 
@@ -40,9 +40,17 @@ check_api_health() {
     return 1
   fi
 
-  local status=$(echo "${body}" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+  # JSONからstatusフィールドを抽出（jqが使えない場合の代替方法）
+  local status=$(echo "${body}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+  if [ -z "${status}" ]; then
+    # jqが使える場合はjqを使用
+    if command -v jq >/dev/null 2>&1; then
+      status=$(echo "${body}" | jq -r '.status' 2>/dev/null || echo "")
+    fi
+  fi
+
   if [ "${status}" != "ok" ]; then
-    log "WARNING: API health check returned degraded status: ${status}"
+    log "WARNING: API health check returned degraded status: ${status:-unknown}"
     return 1
   fi
 
@@ -51,10 +59,17 @@ check_api_health() {
 }
 
 check_docker_containers() {
-  local containers=$(docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" ps --format json | jq -r '.[] | select(.State != "running") | .Name')
+  # jqが使える場合はJSON形式で、使えない場合はテキスト形式でチェック
+  local stopped_containers=""
+  if command -v jq >/dev/null 2>&1; then
+    stopped_containers=$(docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" ps --format json 2>/dev/null | jq -r '.[] | select(.State != "running") | .Name' 2>/dev/null || echo "")
+  else
+    # jqが使えない場合は、docker compose psの出力から停止しているコンテナを検出
+    stopped_containers=$(docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" ps 2>/dev/null | grep -v "Up" | grep -v "NAME" | awk '{print $1}' | grep -v "^$" || echo "")
+  fi
 
-  if [ -n "${containers}" ]; then
-    log "ERROR: Some containers are not running: ${containers}"
+  if [ -n "${stopped_containers}" ]; then
+    log "ERROR: Some containers are not running: ${stopped_containers}"
     return 1
   fi
 
