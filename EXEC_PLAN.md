@@ -157,6 +157,17 @@
 
 - 実装完了時に記載する。
 
+## Documentation Structure
+
+詳細なドキュメントは `docs/` ディレクトリに整理されています：
+
+- **`docs/architecture/`**: システムアーキテクチャの詳細
+- **`docs/modules/`**: 機能別の詳細仕様（tools, documents, logistics）
+- **`docs/guides/`**: 開発・デプロイ・トラブルシューティングガイド
+- **`docs/decisions/`**: アーキテクチャ決定記録（ADR）
+
+各モジュールの詳細仕様は `docs/modules/{module-name}/README.md` を参照してください。
+
 ## Context and Orientation
 
 現状リポジトリには `AGENTS.md` と `.agent/PLANS.md` しかない。本計画に従い以下のディレクトリを作成する。

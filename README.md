@@ -1,6 +1,19 @@
 # Raspberry Pi NFC 工場持出返却システム
 
-本リポジトリは Raspberry Pi 5 サーバー + Raspberry Pi 4 クライアントで構成される持出返却システムのモノレポです。全体の背景、マイルストーン、詳細手順は `EXEC_PLAN.md` を参照してください。.agent/PLANS.md の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
+本リポジトリは Raspberry Pi 5 サーバー + Raspberry Pi 4 クライアントで構成される持出返却システムのモノレポです。
+
+## ドキュメント
+
+- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
+- **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
+- **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
+- **[モジュールドキュメント](./docs/modules/)**: 機能別の詳細仕様
+  - [工具管理モジュール](./docs/modules/tools/README.md)
+  - [ドキュメントビューワー](./docs/modules/documents/)（将来実装予定）
+  - [物流管理モジュール](./docs/modules/logistics/)（将来実装予定）
+- **[アーキテクチャ決定記録](./docs/decisions/)**: 重要な設計決定の記録
+
+詳細な実装手順は `EXEC_PLAN.md` を参照してください。.agent/PLANS.md の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
 
 ## ディレクトリ概要
 
