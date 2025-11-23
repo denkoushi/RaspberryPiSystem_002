@@ -29,6 +29,7 @@
 - [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
 - [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanServiceを実装。ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
+- [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items）と新パス（/api/tools/employees、/api/tools/items）の両方で同じデータが返ることを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。
 
 ## Surprises & Discoveries
 
