@@ -27,7 +27,7 @@
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
 - [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
-- [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanServiceを実装。ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
+- [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanService、TransactionServiceを実装。全ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items）と新パス（/api/tools/employees、/api/tools/items）の両方で同じデータが返ることを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。
 
@@ -177,7 +177,7 @@
 3. **Webアプリ**: React Router と状態機械でキオスクフローを構築し、履歴・管理画面を実装。受入: `pnpm --filter web build` が成功し、モックAPIで確認可能。
 4. **NFCエージェント**: Python サービスで RC-S300 から UID を取得し、WebSocket配信とオフラインキューを実装。受入: `pytest` が通り、実機で UID を検出。
 5. **統合とデプロイ**: Web UI と API、ローカルエージェントを接続し、Docker Compose 本番構成と手順書を完成。受入: Pi4 クライアントで実際に持出→返却が完結する。
-6. **モジュール化リファクタリング**: 将来の機能拡張に備えてモジュール化を進める。ブランチ `refactor/module-architecture` で実施し、各Phase完了後に動作確認を実施。Phase 1（APIルートのモジュール化）とPhase 3（共通パッケージ作成）を完了。Phase 2（サービス層導入）とPhase 4（フロントエンドモジュール化）は未実施。受入: ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
+6. **モジュール化リファクタリング**: 将来の機能拡張に備えてモジュール化を進める。ブランチ `refactor/module-architecture` で実施し、各Phase完了後に動作確認を実施。全Phase（Phase 1: APIルートのモジュール化、Phase 2: サービス層の導入、Phase 3: 共通パッケージ作成、Phase 4: フロントエンドモジュール化）を完了。受入: ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。全ルートハンドラーがサービス層を使用する構造に変更済み。
 
 ## Plan of Work
 

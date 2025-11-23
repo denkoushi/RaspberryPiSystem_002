@@ -4,6 +4,7 @@
 export { EmployeeService } from './employee.service.js';
 export { ItemService } from './item.service.js';
 export { LoanService } from './loan.service.js';
+export { TransactionService } from './transaction.service.js';
 
 export type {
   EmployeeCreateInput,
@@ -22,4 +23,9 @@ export type {
   ReturnInput,
   ActiveLoanQuery
 } from './loan.service.js';
+
+export type {
+  TransactionQuery,
+  TransactionListResult
+} from './transaction.service.js';
 

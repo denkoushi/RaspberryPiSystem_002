@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma.js';
 import { authorizeRoles } from '../../lib/auth.js';
+import { TransactionService } from '../../services/tools/transaction.service.js';
 
 const transactionQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -16,47 +15,11 @@ const transactionQuerySchema = z.object({
 
 export async function registerTransactionRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
+  const transactionService = new TransactionService();
 
   app.get('/transactions', { preHandler: canView }, async (request) => {
     const query = transactionQuerySchema.parse(request.query);
-    const where: Prisma.TransactionWhereInput = {
-      ...(query.employeeId ? { actorEmployeeId: query.employeeId } : {}),
-      ...(query.clientId ? { clientId: query.clientId } : {}),
-      ...(query.itemId
-        ? {
-            loan: {
-              itemId: query.itemId
-            }
-          }
-        : {}),
-      ...(query.startDate || query.endDate
-        ? {
-            createdAt: {
-              ...(query.startDate ? { gte: query.startDate } : {}),
-              ...(query.endDate ? { lte: query.endDate } : {})
-            }
-          }
-        : {})
-    };
-
-    const [total, transactions] = await prisma.$transaction([
-      prisma.transaction.count({ where }),
-      prisma.transaction.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
-        include: {
-          loan: {
-            include: { item: true, employee: true, client: true }
-          },
-          actorEmployee: true,
-          performedByUser: true,
-          client: true
-        }
-      })
-    ]);
-
-    return { transactions, total, page: query.page, pageSize: query.pageSize };
+    const result = await transactionService.findAll(query);
+    return result;
   });
 }
