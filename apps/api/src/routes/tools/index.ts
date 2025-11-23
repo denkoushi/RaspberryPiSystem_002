@@ -20,3 +20,4 @@ export async function registerToolsRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
+
