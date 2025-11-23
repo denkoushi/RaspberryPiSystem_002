@@ -1,10 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
-import { prisma } from '../../lib/prisma.js';
 import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
+import { ItemService } from '../../services/tools/item.service.js';
 
 const { ItemStatus } = pkg;
 
@@ -32,60 +30,36 @@ const itemQuerySchema = z.object({
 export async function registerItemRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
+  const itemService = new ItemService();
 
   app.get('/items', { preHandler: canView }, async (request) => {
     const query = itemQuerySchema.parse(request.query);
-    const where: Prisma.ItemWhereInput = {
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { itemCode: { contains: query.search, mode: 'insensitive' } }
-            ]
-          }
-        : {})
-    };
-    const items = await prisma.item.findMany({ where, orderBy: { name: 'asc' } });
+    const items = await itemService.findAll(query);
     return { items };
   });
 
   app.get('/items/:id', { preHandler: canView }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    const item = await prisma.item.findUnique({ where: { id: params.id } });
-    if (!item) {
-      throw new ApiError(404, 'アイテムが見つかりません');
-    }
+    const item = await itemService.findById(params.id);
     return { item };
   });
 
   app.post('/items', { preHandler: canEdit }, async (request) => {
     const body = itemCreateSchema.parse(request.body);
-    const item = await prisma.item.create({
-      data: {
-        itemCode: body.itemCode,
-        name: body.name,
-        description: body.description ?? undefined,
-        nfcTagUid: body.nfcTagUid ?? undefined,
-        category: body.category ?? undefined,
-        storageLocation: body.storageLocation ?? undefined,
-        status: body.status ?? ItemStatus.AVAILABLE,
-        notes: body.notes ?? undefined
-      }
-    });
+    const item = await itemService.create(body);
     return { item };
   });
 
   app.put('/items/:id', { preHandler: canEdit }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = itemUpdateSchema.parse(request.body);
-    const item = await prisma.item.update({ where: { id: params.id }, data: body });
+    const item = await itemService.update(params.id, body);
     return { item };
   });
 
   app.delete('/items/:id', { preHandler: canEdit }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    const item = await prisma.item.delete({ where: { id: params.id } });
+    const item = await itemService.delete(params.id);
     return { item };
   });
 }

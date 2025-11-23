@@ -26,7 +26,8 @@
 - [x] (2025-11-20 01:00Z) Validation 5: 履歴画面に日時フィルタと CSV エクスポートを実装し、管理コンソールから絞り込みとダウンロードが正常動作することを確認。
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
-- [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。Phase 2（サービス層導入）とPhase 4（フロントエンドモジュール化）は未実施。
+- [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
+- [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanServiceを実装。ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。Phase 4（フロントエンドモジュール化）は未実施。
 
 ## Surprises & Discoveries
 
@@ -82,6 +83,9 @@
 - 観測: Dockerfile.apiとDockerfile.webで`packages/shared-types`をコピーしていなかったため、ビルド時に`ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`エラーが発生した。  
   エビデンス: `pnpm install`実行時に`@raspi-system/shared-types@workspace:*`が見つからないエラー。ランタイムステージでも`pnpm install --prod`実行時に同様のエラー。  
   対応: Dockerfile.apiとDockerfile.webのビルドステージで`COPY packages ./packages`を追加し、`packages/shared-types`を先にビルドするように修正。ランタイムステージでは`apps/api`と`packages/shared-types`を丸ごとコピーし、`pnpm install --prod --recursive --frozen-lockfile`でワークスペース依存を解決するように変更。
+- 観測: Phase 2でサービス層を導入する際、`loan.service.ts`で`ItemStatus`と`TransactionAction`を`import type`でインポートしていたが、値として使用していたためTypeScriptエラーが発生した。  
+  エビデンス: `pnpm build`実行時に`'ItemStatus' cannot be used as a value because it was imported using 'import type'`エラー。  
+  対応: `ItemStatus`と`TransactionAction`を通常のインポート（`import { ItemStatus, TransactionAction }`）に変更し、型のみのインポート（`import type { Loan }`）と分離。
 
 ## Decision Log
 

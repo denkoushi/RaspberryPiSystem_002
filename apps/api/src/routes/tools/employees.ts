@@ -1,10 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
-import { prisma } from '../../lib/prisma.js';
 import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
+import { EmployeeService } from '../../services/tools/employee.service.js';
 
 const { EmployeeStatus } = pkg;
 
@@ -29,65 +27,36 @@ const employeeQuerySchema = z.object({
 export async function registerEmployeeRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
+  const employeeService = new EmployeeService();
 
   app.get('/employees', { preHandler: canView }, async (request) => {
     const query = employeeQuerySchema.parse(request.query);
-    const where: Prisma.EmployeeWhereInput = {
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { displayName: { contains: query.search, mode: 'insensitive' } },
-              { employeeCode: { contains: query.search, mode: 'insensitive' } }
-            ]
-          }
-        : {})
-    };
-
-    const employees = await prisma.employee.findMany({
-      where,
-      orderBy: { displayName: 'asc' }
-    });
+    const employees = await employeeService.findAll(query);
     return { employees };
   });
 
   app.get('/employees/:id', { preHandler: canView }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    const employee = await prisma.employee.findUnique({ where: { id: params.id } });
-    if (!employee) {
-      throw new ApiError(404, '従業員が見つかりません');
-    }
+    const employee = await employeeService.findById(params.id);
     return { employee };
   });
 
   app.post('/employees', { preHandler: canEdit }, async (request) => {
     const body = employeeBodySchema.parse(request.body);
-    const employee = await prisma.employee.create({
-      data: {
-        employeeCode: body.employeeCode,
-        displayName: body.displayName,
-        nfcTagUid: body.nfcTagUid ?? undefined,
-        department: body.department ?? undefined,
-        contact: body.contact ?? undefined,
-        status: body.status ?? EmployeeStatus.ACTIVE
-      }
-    });
+    const employee = await employeeService.create(body);
     return { employee };
   });
 
   app.put('/employees/:id', { preHandler: canEdit }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = employeeUpdateSchema.parse(request.body);
-    const employee = await prisma.employee.update({
-      where: { id: params.id },
-      data: body
-    });
+    const employee = await employeeService.update(params.id, body);
     return { employee };
   });
 
   app.delete('/employees/:id', { preHandler: canEdit }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    const employee = await prisma.employee.delete({ where: { id: params.id } });
+    const employee = await employeeService.delete(params.id);
     return { employee };
   });
 }
