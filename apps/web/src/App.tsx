@@ -6,10 +6,10 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
 import { RequireAuth } from './components/RequireAuth';
 import { DashboardPage } from './pages/admin/DashboardPage';
-import { EmployeesPage } from './pages/admin/EmployeesPage';
-import { ItemsPage } from './pages/admin/ItemsPage';
-import { HistoryPage } from './pages/admin/HistoryPage';
 import { MasterImportPage } from './pages/admin/MasterImportPage';
+import { EmployeesPage } from './pages/tools/EmployeesPage';
+import { ItemsPage } from './pages/tools/ItemsPage';
+import { HistoryPage } from './pages/tools/HistoryPage';
 
 function App() {
   return (
@@ -29,10 +29,16 @@ function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="tools">
+          <Route path="employees" element={<EmployeesPage />} />
+          <Route path="items" element={<ItemsPage />} />
+          <Route path="history" element={<HistoryPage />} />
+        </Route>
+        <Route path="import" element={<MasterImportPage />} />
+        {/* 後方互換性のため、既存パスも維持 */}
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="items" element={<ItemsPage />} />
         <Route path="history" element={<HistoryPage />} />
-        <Route path="import" element={<MasterImportPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
     </Routes>

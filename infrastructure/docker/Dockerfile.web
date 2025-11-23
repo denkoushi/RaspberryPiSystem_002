@@ -3,7 +3,11 @@ FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
+COPY packages ./packages
 RUN corepack enable && pnpm install --frozen-lockfile
+WORKDIR /app/packages/shared-types
+RUN pnpm build
+WORKDIR /app
 COPY apps/web ./apps/web
 RUN cd apps/web && pnpm run build
 

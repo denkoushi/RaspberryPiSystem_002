@@ -22,6 +22,7 @@
     "@fastify/websocket": "^10.0.1",
     "@fastify/multipart": "^8.3.0",
     "@prisma/client": "^5.14.0",
+    "@raspi-system/shared-types": "workspace:*",
     "prisma": "^5.14.0",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2",

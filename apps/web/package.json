@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@raspi-system/shared-types": "workspace:*",
     "@tanstack/react-query": "^5.35.2",
     "@xstate/react": "^6.0.0",
     "axios": "^1.6.8",

@@ -26,6 +26,12 @@
 - [x] (2025-11-20 01:00Z) Validation 5: 履歴画面に日時フィルタと CSV エクスポートを実装し、管理コンソールから絞り込みとダウンロードが正常動作することを確認。
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
+- [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
+- [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanService、TransactionServiceを実装。全ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
+- [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
+- [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items、/api/transactions）と新パス（/api/tools/employees、/api/tools/items、/api/tools/transactions）の両方で同じデータが返ることを確認。TransactionServiceが正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。全Phase完了。
+- [x] (2025-01-XX) ファイル構造とドキュメントのリファクタリング完了。toolsモジュールを機能ごとのサブディレクトリ構造に分割（employees/, items/, loans/, transactions/）。バリデーションスキーマを各サブディレクトリのschemas.tsに分離。新規モジュール（documents）用のテンプレート構造を作成。ドキュメント構造をdocs/ディレクトリに整理（architecture/, modules/, guides/, decisions/）。ビルド成功を確認。
+- [x] (2025-01-XX) ファイル構造リファクタリングの動作確認完了。ラズパイ5でAPIの既存パス（/api/employees, /api/items, /api/transactions）と新パス（/api/tools/employees, /api/tools/items, /api/tools/transactions）の両方で同じデータが返ることを確認。持出・返却API（/api/tools/borrow, /api/tools/loans/active）が正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。ファイル分割後の構造でも後方互換性が保たれていることを実機で検証済み。
 
 ## Surprises & Discoveries
 
@@ -78,6 +84,12 @@
   対応: `@spa` へ `not path /api/*` と `not path /ws/*` を追加し、API/WS パスを SPA フォールバック対象から除外。
 - 観測: マスタの名称変更が履歴表示に反映され、過去の記録が「最新名」に書き換わってしまう。  
   対応: BORROW/RETURN 登録時にアイテム/従業員のスナップショット（id/code/name/uid）を Transaction.details に保存し、履歴表示・CSV はスナップショットを優先するように更新。既存データは順次新規記録から適用。
+- 観測: Dockerfile.apiとDockerfile.webで`packages/shared-types`をコピーしていなかったため、ビルド時に`ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`エラーが発生した。  
+  エビデンス: `pnpm install`実行時に`@raspi-system/shared-types@workspace:*`が見つからないエラー。ランタイムステージでも`pnpm install --prod`実行時に同様のエラー。  
+  対応: Dockerfile.apiとDockerfile.webのビルドステージで`COPY packages ./packages`を追加し、`packages/shared-types`を先にビルドするように修正。ランタイムステージでは`apps/api`と`packages/shared-types`を丸ごとコピーし、`pnpm install --prod --recursive --frozen-lockfile`でワークスペース依存を解決するように変更。
+- 観測: Phase 2でサービス層を導入する際、`loan.service.ts`で`ItemStatus`と`TransactionAction`を`import type`でインポートしていたが、値として使用していたためTypeScriptエラーが発生した。  
+  エビデンス: `pnpm build`実行時に`'ItemStatus' cannot be used as a value because it was imported using 'import type'`エラー。  
+  対応: `ItemStatus`と`TransactionAction`を通常のインポート（`import { ItemStatus, TransactionAction }`）に変更し、型のみのインポート（`import type { Loan }`）と分離。
 
 ## Decision Log
 
@@ -133,10 +145,30 @@
 - 決定: 履歴の正確性を担保するため、トランザクション登録時にアイテム/従業員のスナップショットを details に保存し、履歴表示ではスナップショットを優先する。  
   理由: マスタ編集や論理削除後でも過去の表示を固定し、監査性を維持するため。スキーマ変更は行わず details に冗長保存する方式とした。  
   日付/担当: 2025-11-20 / 現地検証チーム
+- 決定: モジュール化リファクタリングを段階的に実施し、各Phase完了後に動作確認を行う。Phase 1（APIルートのモジュール化）とPhase 3（共通パッケージ作成）を優先実施し、Phase 2（サービス層導入）とPhase 4（フロントエンドモジュール化）は後続で実施する。  
+  理由: 将来の機能拡張（工具管理以外のモジュール追加）に備えて、モジュール境界を明確化し、拡張性・保守性を向上させるため。既存の動作を維持しつつ段階的に改善する方針。  
+  日付/担当: 2025-11-23 / リファクタリング計画
+- 決定: APIルートを `/api/tools/*` パスにモジュール化し、既存の `/api/employees` などのパスは後方互換性のため維持する。共通パッケージ `packages/shared-types` を作成し、API/Web間で型定義を共有する。  
+  理由: 新モジュール追加時のルート名衝突を防止し、型安全性を向上させるため。既存システムへの影響を最小限に抑えるため、後方互換性を維持。  
+  日付/担当: 2025-11-23 / Phase 1 & 3 実装
+- 決定: Dockerfileのランタイムステージでは、`apps/api`と`packages/shared-types`を丸ごとコピーし、`pnpm install --prod --recursive --frozen-lockfile`でワークスペース依存を解決する方式を採用する。  
+  理由: ワークスペース依存を正しく解決するためには、ワークスペース全体の構造が必要。個別ファイルをコピーする方式では依存関係の解決が困難だったため。  
+  日付/担当: 2025-11-23 / Dockerfile修正
 
 ## Outcomes & Retrospective
 
 - 実装完了時に記載する。
+
+## Documentation Structure
+
+詳細なドキュメントは `docs/` ディレクトリに整理されています：
+
+- **`docs/architecture/`**: システムアーキテクチャの詳細
+- **`docs/modules/`**: 機能別の詳細仕様（tools, documents, logistics）
+- **`docs/guides/`**: 開発・デプロイ・トラブルシューティングガイド
+- **`docs/decisions/`**: アーキテクチャ決定記録（ADR）
+
+各モジュールの詳細仕様は `docs/modules/{module-name}/README.md` を参照してください。
 
 ## Context and Orientation
 
@@ -158,6 +190,7 @@
 3. **Webアプリ**: React Router と状態機械でキオスクフローを構築し、履歴・管理画面を実装。受入: `pnpm --filter web build` が成功し、モックAPIで確認可能。
 4. **NFCエージェント**: Python サービスで RC-S300 から UID を取得し、WebSocket配信とオフラインキューを実装。受入: `pytest` が通り、実機で UID を検出。
 5. **統合とデプロイ**: Web UI と API、ローカルエージェントを接続し、Docker Compose 本番構成と手順書を完成。受入: Pi4 クライアントで実際に持出→返却が完結する。
+6. **モジュール化リファクタリング**: 将来の機能拡張に備えてモジュール化を進める。ブランチ `refactor/module-architecture` で実施し、各Phase完了後に動作確認を実施。全Phase（Phase 1: APIルートのモジュール化、Phase 2: サービス層の導入、Phase 3: 共通パッケージ作成、Phase 4: フロントエンドモジュール化）を完了。受入: ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。全ルートハンドラーがサービス層を使用する構造に変更済み。
 
 ## Plan of Work
 
@@ -218,6 +251,41 @@
         pnpm --filter api test
         pnpm --filter web test
         poetry run -C clients/nfc-agent pytest
+
+7. モジュール化リファクタリング（Milestone 6）  
+    作業ディレクトリ: リポジトリルート  
+    **Phase 1**: APIルートのモジュール化（routes/tools/ ディレクトリ作成、employees.ts, items.ts, loans.ts, transactions.ts を移動）
+    **Phase 2**: サービス層の導入（services/tools/ ディレクトリ作成、EmployeeService, ItemService, LoanService, TransactionService を実装）
+    **Phase 3**: 共通パッケージ作成（packages/shared-types を作成し、API/Web間で型定義を共有）
+    **Phase 4**: フロントエンドモジュール化（pages/tools/ ディレクトリ作成、EmployeesPage, ItemsPage, HistoryPage を移動）
+    
+    全Phase完了後の動作確認（ラズパイ5）:
+        cd /opt/RaspberryPiSystem_002
+        git fetch origin
+        git checkout refactor/module-architecture
+        git pull origin refactor/module-architecture
+        pnpm install
+        cd packages/shared-types && pnpm build && cd ../..
+        cd apps/api && pnpm build && cd ../..
+        docker compose -f infrastructure/docker/docker-compose.server.yml down
+        docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build
+        curl http://localhost:8080/api/health
+        # 認証トークン取得後
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/employees
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/tools/employees
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/transactions
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/tools/transactions
+    全Phase完了後の動作確認（ラズパイ4）:
+        cd /opt/RaspberryPiSystem_002
+        git fetch origin
+        git checkout refactor/module-architecture
+        git pull origin refactor/module-architecture
+        # ブラウザでWeb UIにアクセスして動作確認
+        # http://<pi5>:4173/kiosk
+        # http://<pi5>:4173/login
+        # http://<pi5>:4173/admin/tools/employees（新パス）
+        # http://<pi5>:4173/admin/employees（既存パス、後方互換性）
+    **完了**: 2025-01-XX、全Phase完了。ラズパイ5でAPI動作確認済み（既存パスと新パスの両方で動作）、ラズパイ4でWeb UI動作確認済み（既存パスと新パスの両方で動作）。全ルートハンドラーがサービス層を使用する構造に変更済み。
 
 ## Validation and Acceptance
 
@@ -437,4 +505,5 @@
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
 変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
 変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
+変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
 ```

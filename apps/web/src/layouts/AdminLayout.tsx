@@ -26,19 +26,19 @@ export function AdminLayout() {
           <NavLink to="/admin" end className={linkClass}>
             ダッシュボード
           </NavLink>
-          <NavLink to="/admin/employees" className={linkClass}>
+          <NavLink to="/admin/tools/employees" className={linkClass}>
             従業員
           </NavLink>
-          <NavLink to="/admin/items" className={linkClass}>
+          <NavLink to="/admin/tools/items" className={linkClass}>
             アイテム
-        </NavLink>
-        <NavLink to="/admin/history" className={linkClass}>
-          履歴
-        </NavLink>
-        <NavLink to="/admin/import" className={linkClass}>
-          一括登録
-        </NavLink>
-      </nav>
+          </NavLink>
+          <NavLink to="/admin/tools/history" className={linkClass}>
+            履歴
+          </NavLink>
+          <NavLink to="/admin/import" className={linkClass}>
+            一括登録
+          </NavLink>
+        </nav>
       </header>
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
         <Outlet />
