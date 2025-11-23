@@ -38,6 +38,29 @@ jobs:
           cd apps/api
           pnpm build
 
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name postgres-test \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            -p 5432:5432 \
+            postgres:15-alpine
+
+      - name: Wait for PostgreSQL
+        run: |
+          until docker exec postgres-test pg_isready -U postgres; do
+            echo "Waiting for PostgreSQL..."
+            sleep 1
+          done
+
+      - name: Run Prisma migrations
+        run: |
+          cd apps/api
+          pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
       - name: Run API tests
         run: |
           cd apps/api
@@ -46,6 +69,10 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker stop postgres-test && docker rm postgres-test
 
       - name: Build Web
         run: |
