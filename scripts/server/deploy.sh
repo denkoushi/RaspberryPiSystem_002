@@ -56,7 +56,7 @@ docker compose -f "${COMPOSE_FILE}" exec -T api pnpm prisma migrate deploy || {
 log "ヘルスチェックを実行中..."
 sleep 10  # APIが起動するまで待機
 for i in {1..30}; do
-  if curl -f -s http://localhost:8080/api/health > /dev/null 2>&1; then
+  if curl -f -s http://localhost:8080/api/system/health > /dev/null 2>&1; then
     log "ヘルスチェック成功"
     break
   fi
