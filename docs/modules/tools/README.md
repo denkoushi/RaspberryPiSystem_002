@@ -106,11 +106,33 @@
 ```
 apps/api/src/
 ├── routes/tools/
-│   ├── employees.ts      # 従業員管理ルート
-│   ├── items.ts          # アイテム管理ルート
-│   ├── loans.ts          # 貸出・返却ルート
-│   ├── transactions.ts   # トランザクション履歴ルート
-│   └── index.ts          # ルート登録
+│   ├── employees/
+│   │   ├── index.ts      # ルート登録
+│   │   ├── list.ts       # GET /employees
+│   │   ├── get.ts        # GET /employees/:id
+│   │   ├── create.ts     # POST /employees
+│   │   ├── update.ts     # PUT /employees/:id
+│   │   ├── delete.ts     # DELETE /employees/:id
+│   │   └── schemas.ts    # バリデーションスキーマ
+│   ├── items/
+│   │   ├── index.ts      # ルート登録
+│   │   ├── list.ts       # GET /items
+│   │   ├── get.ts        # GET /items/:id
+│   │   ├── create.ts     # POST /items
+│   │   ├── update.ts     # PUT /items/:id
+│   │   ├── delete.ts     # DELETE /items/:id
+│   │   └── schemas.ts    # バリデーションスキーマ
+│   ├── loans/
+│   │   ├── index.ts      # ルート登録
+│   │   ├── borrow.ts     # POST /borrow
+│   │   ├── return.ts     # POST /return
+│   │   ├── active.ts     # GET /loans/active
+│   │   └── schemas.ts    # バリデーションスキーマ
+│   ├── transactions/
+│   │   ├── index.ts      # ルート登録
+│   │   ├── list.ts       # GET /transactions
+│   │   └── schemas.ts    # バリデーションスキーマ
+│   └── index.ts          # モジュールルート登録
 └── services/tools/
     ├── employee.service.ts
     ├── item.service.ts
@@ -118,6 +140,12 @@ apps/api/src/
     ├── transaction.service.ts
     └── index.ts
 ```
+
+### 設計方針
+
+- **機能ごとのサブディレクトリ**: 各リソース（employees, items, loans, transactions）を独立したディレクトリに分割
+- **バリデーションスキーマの分離**: 各サブディレクトリに`schemas.ts`を配置し、バリデーションロジックを集約
+- **ファイルサイズの抑制**: 1ファイルあたり50-100行程度に収まり、可読性を向上
 
 ## 使用例
 
