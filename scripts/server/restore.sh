@@ -29,9 +29,10 @@ fi
 
 # データベースをリストア
 echo "データベースをリストア中..."
+# --cleanオプションで既存のオブジェクトを削除してからリストア
 gunzip -c "${BACKUP_FILE}" | \
   docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-  psql -U postgres -d borrow_return
+  psql -U postgres -d borrow_return --set ON_ERROR_STOP=off
 
 echo "リストア完了"
 
