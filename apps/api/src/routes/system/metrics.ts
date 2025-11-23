@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
+import { ItemStatus, EmployeeStatus } from '@prisma/client';
 
 /**
  * システムメトリクスエンドポイント
@@ -29,15 +30,19 @@ export function registerMetricsRoute(app: FastifyInstance): void {
 
       // 従業員数
       const employeeCount = await prisma.employee.count({
-        where: { status: 'ACTIVE' },
+        where: { status: EmployeeStatus.ACTIVE },
       });
       metrics.push(`# HELP employees_active_total Active employees`);
       metrics.push(`# TYPE employees_active_total gauge`);
       metrics.push(`employees_active_total ${employeeCount}`);
 
-      // アイテム数
+      // アイテム数（AVAILABLEとIN_USEをカウント）
       const itemCount = await prisma.item.count({
-        where: { status: { equals: 'ACTIVE' } },
+        where: {
+          status: {
+            in: [ItemStatus.AVAILABLE, ItemStatus.IN_USE],
+          },
+        },
       });
       metrics.push(`# HELP items_active_total Active items`);
       metrics.push(`# TYPE items_active_total gauge`);
