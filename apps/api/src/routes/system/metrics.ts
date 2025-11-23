@@ -37,7 +37,7 @@ export function registerMetricsRoute(app: FastifyInstance): void {
 
       // アイテム数
       const itemCount = await prisma.item.count({
-        where: { status: 'ACTIVE' },
+        where: { status: { equals: 'ACTIVE' } },
       });
       metrics.push(`# HELP items_active_total Active items`);
       metrics.push(`# TYPE items_active_total gauge`);
