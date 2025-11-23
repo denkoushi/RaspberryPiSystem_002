@@ -18,6 +18,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^8.3.0",
     "@fastify/rate-limit": "^9",
     "@fastify/swagger": "^8.14.0",
