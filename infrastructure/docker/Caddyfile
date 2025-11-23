@@ -1,3 +1,6 @@
+# 開発環境用Caddyfile（HTTPのみ）
+# 本番環境では Caddyfile.production を使用
+
 {
   auto_https off
 }

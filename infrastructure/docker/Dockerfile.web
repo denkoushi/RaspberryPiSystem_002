@@ -15,4 +15,6 @@ FROM caddy:2-alpine
 WORKDIR /srv
 COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
-CMD ["caddy", "run", "--config", "/srv/Caddyfile"]
+COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production
+# DOMAIN環境変数が設定されている場合は本番用Caddyfileを使用
+CMD ["sh", "-c", "if [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
