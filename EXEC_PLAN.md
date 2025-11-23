@@ -30,6 +30,7 @@
 - [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanService、TransactionServiceを実装。全ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items、/api/transactions）と新パス（/api/tools/employees、/api/tools/items、/api/tools/transactions）の両方で同じデータが返ることを確認。TransactionServiceが正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。全Phase完了。
+- [x] (2025-01-XX) ファイル構造とドキュメントのリファクタリング完了。toolsモジュールを機能ごとのサブディレクトリ構造に分割（employees/, items/, loans/, transactions/）。バリデーションスキーマを各サブディレクトリのschemas.tsに分離。新規モジュール（documents）用のテンプレート構造を作成。ドキュメント構造をdocs/ディレクトリに整理（architecture/, modules/, guides/, decisions/）。ビルド成功を確認。
 
 ## Surprises & Discoveries
 
