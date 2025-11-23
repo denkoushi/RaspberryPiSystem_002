@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import pkg from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { ApiError } from '../lib/errors.js';
-import { authorizeRoles } from '../lib/auth.js';
+import { prisma } from '../../lib/prisma.js';
+import { ApiError } from '../../lib/errors.js';
+import { authorizeRoles } from '../../lib/auth.js';
 
 const { ItemStatus, TransactionAction } = pkg;
 

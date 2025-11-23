@@ -2,9 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { authorizeRoles } from '../lib/auth.js';
-import { ApiError } from '../lib/errors.js';
+import { prisma } from '../../lib/prisma.js';
+import { authorizeRoles } from '../../lib/auth.js';
+import { ApiError } from '../../lib/errors.js';
 
 const { ItemStatus } = pkg;
 
