@@ -9,8 +9,15 @@ API_URL="http://localhost:8080/api"
 LOG_FILE="/var/log/system-monitor.log"
 ALERT_EMAIL=""  # アラート送信先メールアドレス（設定されている場合）
 
-# ログディレクトリを作成
-mkdir -p "$(dirname "${LOG_FILE}")"
+# ログディレクトリを作成（権限がある場合のみ）
+if [ -w "$(dirname "${LOG_FILE}")" ] || sudo mkdir -p "$(dirname "${LOG_FILE}")" 2>/dev/null; then
+  # ログファイルが存在しない場合は作成
+  [ ! -f "${LOG_FILE}" ] && touch "${LOG_FILE}" 2>/dev/null || sudo touch "${LOG_FILE}" 2>/dev/null || true
+else
+  # /var/logに書き込み権限がない場合は、ホームディレクトリにログを保存
+  LOG_FILE="${HOME}/system-monitor.log"
+  mkdir -p "$(dirname "${LOG_FILE}")"
+fi
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "${LOG_FILE}"
