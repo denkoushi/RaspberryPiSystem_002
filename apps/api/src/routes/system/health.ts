@@ -29,15 +29,20 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
       external: Math.round(memUsage.external / 1024 / 1024),
     };
 
-    // ヒープ使用率が90%を超えている場合は警告
+    // ヒープ使用率が95%を超えている場合は警告（ラズパイ環境ではヒープが小さいため余裕を持たせる）
     const heapUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
-    if (heapUsagePercent > 90) {
+    if (heapUsagePercent > 95) {
       checks.memory = {
         status: 'error',
         message: `High memory usage: ${heapUsagePercent.toFixed(1)}%`,
       };
     } else {
-      checks.memory = { status: 'ok' };
+      checks.memory = {
+        status: 'ok',
+        ...(heapUsagePercent > 85
+          ? { message: `Memory usage warning: ${heapUsagePercent.toFixed(1)}%` }
+          : {}),
+      };
     }
 
     // 全体的なステータスを決定
