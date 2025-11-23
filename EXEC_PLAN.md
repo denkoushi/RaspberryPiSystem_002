@@ -37,6 +37,7 @@
 - [x] (2025-01-XX) ファイル構造とドキュメントのリファクタリング完了。toolsモジュールを機能ごとのサブディレクトリ構造に分割（employees/, items/, loans/, transactions/）。バリデーションスキーマを各サブディレクトリのschemas.tsに分離。新規モジュール（documents）用のテンプレート構造を作成。ドキュメント構造をdocs/ディレクトリに整理（architecture/, modules/, guides/, decisions/）。ビルド成功を確認。
 - [x] (2025-01-XX) ファイル構造リファクタリングの動作確認完了。ラズパイ5でAPIの既存パス（/api/employees, /api/items, /api/transactions）と新パス（/api/tools/employees, /api/tools/items, /api/tools/transactions）の両方で同じデータが返ることを確認。持出・返却API（/api/tools/borrow, /api/tools/loans/active）が正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。ファイル分割後の構造でも後方互換性が保たれていることを実機で検証済み。
 - [x] (2025-01-XX) ロギングとエラーハンドリングの改善完了。console.log/errorをpinoロガーに統一、エラーハンドラーに詳細情報（requestId, method, url, userId等）を追加、サービス層（LoanService）に重要な操作のログを追加。共通ロガー（lib/logger.ts）を作成。ビルド成功を確認。ラズパイ5でAPI起動ログが新しい形式で出力されることを確認。持出API実行時に「Borrow request started」「Item not found for borrow」「API error」などのログが正しく記録されることを実機で検証済み。
+- [x] (2025-11-24) 運用・保守性の向上機能を追加完了。バックアップ・リストアスクリプト（scripts/server/backup.sh, restore.sh）を作成し、ラズパイ5で検証完了。監視・アラート機能（システムヘルスチェックエンドポイント /api/system/health、メトリクスエンドポイント /api/system/metrics、監視スクリプト scripts/server/monitor.sh）を実装し、ラズパイ5で検証完了。GitHub Actions CIパイプライン（.github/workflows/ci.yml）を作成し、テストとビルドの自動化を実装。デプロイスクリプト（scripts/server/deploy.sh）を更新し、ラズパイ5で検証完了。API概要ドキュメント、認証APIドキュメント、開発者向けガイドを作成。すべての機能がラズパイ5で正常に動作することを実機で検証済み。
 
 ## Surprises & Discoveries
 
