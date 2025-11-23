@@ -32,10 +32,10 @@ services:
       dockerfile: infrastructure/docker/Dockerfile.web
     depends_on:
       - api
-    environment:
-      # 本番環境では以下を設定してHTTPSを有効化
-      # DOMAIN: your-domain.com
-      # CADDY_ADMIN_EMAIL: admin@your-domain.com
+    # 本番環境では以下を設定してHTTPSを有効化
+    # environment:
+    #   DOMAIN: your-domain.com
+    #   CADDY_ADMIN_EMAIL: admin@your-domain.com
     ports:
       - "4173:80"
       # 本番環境では以下も追加
