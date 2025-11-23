@@ -7,8 +7,13 @@ import { registerActiveLoansRoute } from './active.js';
 export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
   const loanService = new LoanService();
 
-  registerBorrowRoute(app, loanService);
-  registerReturnRoute(app, loanService);
-  registerActiveLoansRoute(app, loanService);
+  await app.register(
+    async (subApp) => {
+      registerBorrowRoute(subApp, loanService);
+      registerReturnRoute(subApp, loanService);
+      registerActiveLoansRoute(subApp, loanService);
+    },
+    { prefix: '/loans' },
+  );
 }
 
