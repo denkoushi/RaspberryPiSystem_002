@@ -143,14 +143,29 @@
 **理由**: 長期的な運用を考慮すると重要。
 
 **タスク**:
-- [ ] バックアップ・リストア手順の文書化
-- [ ] 監視・アラートの実装（ログ監視、メトリクス収集）
-- [ ] 自動デプロイメントの実装（CI/CD）
-- [ ] ドキュメントの充実化
+- [x] バックアップ・リストア手順の文書化
+  - [x] バックアップスクリプト（scripts/server/backup.sh）を作成
+  - [x] リストアスクリプト（scripts/server/restore.sh）を作成
+  - [x] バックアップ・リストアガイド（docs/guides/backup-and-restore.md）を作成
+- [x] 監視・アラートの実装（ログ監視、メトリクス収集）
+  - [x] システムヘルスチェックエンドポイント（/api/system/health）を追加
+  - [x] Prometheus形式のメトリクスエンドポイント（/api/system/metrics）を追加
+  - [x] 監視スクリプト（scripts/server/monitor.sh）を作成
+  - [x] 監視・アラートガイド（docs/guides/monitoring.md）を作成
+- [x] 自動デプロイメントの実装（CI/CD）
+  - [x] GitHub Actions CIパイプライン（.github/workflows/ci.yml）を作成
+  - [x] デプロイスクリプト（scripts/server/deploy.sh）を更新
+  - [x] デプロイメントガイド（docs/guides/deployment.md）を作成
+- [x] ドキュメントの充実化
+  - [x] API概要ドキュメント（docs/api/overview.md）を作成
+  - [x] 認証APIドキュメント（docs/api/auth.md）を作成
+  - [x] 開発者向けガイド（docs/development/getting-started.md）を作成
 
-**推定工数**: 5-7日
+**推定工数**: 5-7日（実装完了、ラズパイ検証待ち）
 
-**次のアクション**: バックアップ・リストア手順の文書化から開始。
+**完了**: 2025-01-XX、バックアップ・リストア手順の文書化とスクリプト作成完了。監視・アラート機能を実装完了。CI/CDパイプラインとデプロイスクリプトを実装完了。ドキュメントの充実化完了。
+
+**検証**: ラズパイでの検証が必要です。検証チェックリストは `docs/guides/verification-checklist.md` を参照してください。
 
 ---
 
