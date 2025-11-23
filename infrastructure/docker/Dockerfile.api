@@ -9,8 +9,12 @@ RUN apt-get update \
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps ./apps
+COPY packages ./packages
 
 RUN corepack enable && pnpm install
+
+WORKDIR /app/packages/shared-types
+RUN pnpm build
 
 WORKDIR /app/apps/api
 RUN pnpm prisma generate
