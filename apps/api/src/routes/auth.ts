@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { signAccessToken, signRefreshToken } from '../lib/auth.js';
+import { authRateLimitConfig } from '../plugins/rate-limit.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -11,6 +13,9 @@ const loginSchema = z.object({
 });
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
+  // 認証エンドポイントに厳しいレート制限を適用（ブルートフォース攻撃対策）
+  await app.register(rateLimit, authRateLimitConfig);
+
   app.post('/auth/login', async (request) => {
     const body = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { username: body.username } });
