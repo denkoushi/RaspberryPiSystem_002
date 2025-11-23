@@ -29,7 +29,7 @@
 - [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
 - [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanService、TransactionServiceを実装。全ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
-- [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items）と新パス（/api/tools/employees、/api/tools/items）の両方で同じデータが返ることを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。
+- [x] (2025-01-XX) Milestone 6 動作確認完了。ラズパイ5でAPIの既存パス（/api/employees、/api/items、/api/transactions）と新パス（/api/tools/employees、/api/tools/items、/api/tools/transactions）の両方で同じデータが返ることを確認。TransactionServiceが正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。後方互換性が保たれていることを実機で検証済み。全Phase完了。
 
 ## Surprises & Discoveries
 
@@ -241,7 +241,12 @@
 
 7. モジュール化リファクタリング（Milestone 6）  
     作業ディレクトリ: リポジトリルート  
-    Phase 1 & 3 完了後の動作確認（ラズパイ5）:
+    **Phase 1**: APIルートのモジュール化（routes/tools/ ディレクトリ作成、employees.ts, items.ts, loans.ts, transactions.ts を移動）
+    **Phase 2**: サービス層の導入（services/tools/ ディレクトリ作成、EmployeeService, ItemService, LoanService, TransactionService を実装）
+    **Phase 3**: 共通パッケージ作成（packages/shared-types を作成し、API/Web間で型定義を共有）
+    **Phase 4**: フロントエンドモジュール化（pages/tools/ ディレクトリ作成、EmployeesPage, ItemsPage, HistoryPage を移動）
+    
+    全Phase完了後の動作確認（ラズパイ5）:
         cd /opt/RaspberryPiSystem_002
         git fetch origin
         git checkout refactor/module-architecture
@@ -255,7 +260,9 @@
         # 認証トークン取得後
         curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/employees
         curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/tools/employees
-    Phase 1 & 3 完了後の動作確認（ラズパイ4）:
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/transactions
+        curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/tools/transactions
+    全Phase完了後の動作確認（ラズパイ4）:
         cd /opt/RaspberryPiSystem_002
         git fetch origin
         git checkout refactor/module-architecture
@@ -263,7 +270,9 @@
         # ブラウザでWeb UIにアクセスして動作確認
         # http://<pi5>:4173/kiosk
         # http://<pi5>:4173/login
-    **完了**: 2025-11-23、ラズパイ5でAPI動作確認済み、ラズパイ4でWeb UI動作確認済み。
+        # http://<pi5>:4173/admin/tools/employees（新パス）
+        # http://<pi5>:4173/admin/employees（既存パス、後方互換性）
+    **完了**: 2025-01-XX、全Phase完了。ラズパイ5でAPI動作確認済み（既存パスと新パスの両方で動作）、ラズパイ4でWeb UI動作確認済み（既存パスと新パスの両方で動作）。全ルートハンドラーがサービス層を使用する構造に変更済み。
 
 ## Validation and Acceptance
 
