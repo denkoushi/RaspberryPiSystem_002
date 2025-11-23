@@ -9,18 +9,25 @@ API_URL="http://localhost:8080/api"
 LOG_FILE="/var/log/system-monitor.log"
 ALERT_EMAIL=""  # アラート送信先メールアドレス（設定されている場合）
 
-# ログディレクトリを作成（権限がある場合のみ）
-if [ -w "$(dirname "${LOG_FILE}")" ] || sudo mkdir -p "$(dirname "${LOG_FILE}")" 2>/dev/null; then
-  # ログファイルが存在しない場合は作成
-  [ ! -f "${LOG_FILE}" ] && touch "${LOG_FILE}" 2>/dev/null || sudo touch "${LOG_FILE}" 2>/dev/null || true
-else
-  # /var/logに書き込み権限がない場合は、ホームディレクトリにログを保存
+# ログファイルのパスを決定（書き込み可能な場所を選択）
+if [ -w "$(dirname "${LOG_FILE}")" ] 2>/dev/null; then
+  # /var/logに書き込み権限がある場合
+  LOG_FILE="/var/log/system-monitor.log"
+elif [ -w "${HOME}" ] 2>/dev/null; then
+  # ホームディレクトリに書き込み権限がある場合
   LOG_FILE="${HOME}/system-monitor.log"
-  mkdir -p "$(dirname "${LOG_FILE}")"
+else
+  # どちらも書き込み不可の場合は一時ディレクトリを使用
+  LOG_FILE="/tmp/system-monitor.log"
 fi
 
+# ログディレクトリを作成
+mkdir -p "$(dirname "${LOG_FILE}")" 2>/dev/null || true
+
 log() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "${LOG_FILE}"
+  local log_msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+  echo "${log_msg}"
+  echo "${log_msg}" >> "${LOG_FILE}" 2>/dev/null || true
 }
 
 check_api_health() {
