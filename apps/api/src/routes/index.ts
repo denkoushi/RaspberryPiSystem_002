@@ -7,10 +7,10 @@ import { registerKioskRoutes } from './kiosk.js';
 import { registerImportRoutes } from './imports.js';
 
 // 後方互換性のため、既存のルートも登録（リダイレクト用）
-import { registerEmployeeRoutes } from './tools/employees.js';
-import { registerItemRoutes } from './tools/items.js';
-import { registerLoanRoutes } from './tools/loans.js';
-import { registerTransactionRoutes } from './tools/transactions.js';
+import { registerEmployeeRoutes } from './tools/employees/index.js';
+import { registerItemRoutes } from './tools/items/index.js';
+import { registerLoanRoutes } from './tools/loans/index.js';
+import { registerTransactionRoutes } from './tools/transactions/index.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(

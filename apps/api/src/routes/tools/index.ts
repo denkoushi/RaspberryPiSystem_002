@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { registerEmployeeRoutes } from './employees.js';
-import { registerItemRoutes } from './items.js';
-import { registerLoanRoutes } from './loans.js';
-import { registerTransactionRoutes } from './transactions.js';
+import { registerEmployeeRoutes } from './employees/index.js';
+import { registerItemRoutes } from './items/index.js';
+import { registerLoanRoutes } from './loans/index.js';
+import { registerTransactionRoutes } from './transactions/index.js';
 
 /**
  * ツール管理モジュールのルートを登録
