@@ -1,0 +1,41 @@
+# 本番環境用Caddyfile（HTTPS強制）
+# 環境変数 DOMAIN が設定されている場合に使用
+
+{
+  # Let's Encryptを使用して自動証明書を取得
+  email {$CADDY_ADMIN_EMAIL:admin@example.com}
+}
+
+# HTTPからHTTPSへのリダイレクト
+:80 {
+  redir https://{$DOMAIN}{uri} permanent
+}
+
+# HTTPS設定
+{$DOMAIN} {
+  root * /srv/site
+
+  @api {
+    path /api/*
+    path /ws/*
+  }
+  reverse_proxy @api api:8080
+
+  @spa {
+    not path /api/*
+    not path /ws/*
+    not file
+  }
+  rewrite @spa /index.html
+  file_server
+
+  # セキュリティヘッダー
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    X-XSS-Protection "1; mode=block"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+}
+
