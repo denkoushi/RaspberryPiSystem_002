@@ -2,6 +2,7 @@ import type { Loan } from '@prisma/client';
 import { ItemStatus, TransactionAction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
 import { ItemService } from './item.service.js';
 import { EmployeeService } from './employee.service.js';
 
@@ -67,16 +68,28 @@ export class LoanService {
    * 持出処理
    */
   async borrow(input: BorrowInput, resolvedClientId?: string): Promise<LoanWithRelations> {
+    logger.info(
+      {
+        itemTagUid: input.itemTagUid,
+        employeeTagUid: input.employeeTagUid,
+        clientId: resolvedClientId,
+      },
+      'Borrow request started',
+    );
+
     const item = await this.itemService.findByNfcTagUid(input.itemTagUid);
     if (!item) {
+      logger.warn({ itemTagUid: input.itemTagUid }, 'Item not found for borrow');
       throw new ApiError(404, '対象アイテムが登録されていません');
     }
     if (item.status === ItemStatus.RETIRED) {
+      logger.warn({ itemId: item.id, status: item.status }, 'Retired item borrow attempt');
       throw new ApiError(400, '廃棄済みアイテムは持出できません');
     }
 
     const employee = await this.employeeService.findByNfcTagUid(input.employeeTagUid);
     if (!employee) {
+      logger.warn({ employeeTagUid: input.employeeTagUid }, 'Employee not found for borrow');
       throw new ApiError(404, '対象従業員が登録されていません');
     }
 
@@ -84,6 +97,13 @@ export class LoanService {
       where: { itemId: item.id, returnedAt: null }
     });
     if (existingLoan) {
+      logger.warn(
+        {
+          itemId: item.id,
+          existingLoanId: existingLoan.id,
+        },
+        'Item already on loan',
+      );
       throw new ApiError(400, 'このアイテムはすでに貸出中です');
     }
 
@@ -131,6 +151,18 @@ export class LoanService {
       return createdLoan;
     });
 
+    logger.info(
+      {
+        loanId: loan.id,
+        itemId: item.id,
+        itemCode: item.itemCode,
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        clientId: resolvedClientId,
+      },
+      'Borrow completed successfully',
+    );
+
     return loan as LoanWithRelations;
   }
 
@@ -142,14 +174,25 @@ export class LoanService {
     resolvedClientId?: string,
     performedByUserId?: string
   ): Promise<LoanWithRelations> {
+    logger.info(
+      {
+        loanId: input.loanId,
+        clientId: resolvedClientId,
+        performedByUserId: performedByUserId ?? input.performedByUserId,
+      },
+      'Return request started',
+    );
+
     const loan = await prisma.loan.findUnique({
       where: { id: input.loanId },
       include: { item: true, employee: true }
     });
     if (!loan) {
+      logger.warn({ loanId: input.loanId }, 'Loan not found for return');
       throw new ApiError(404, '貸出レコードが見つかりません');
     }
     if (loan.returnedAt) {
+      logger.warn({ loanId: loan.id, returnedAt: loan.returnedAt }, 'Loan already returned');
       throw new ApiError(400, 'すでに返却済みです');
     }
 
@@ -197,6 +240,17 @@ export class LoanService {
 
       return loanResult;
     });
+
+    logger.info(
+      {
+        loanId: updatedLoan.id,
+        itemId: updatedLoan.itemId,
+        employeeId: updatedLoan.employeeId,
+        clientId: resolvedClientId ?? loan.clientId,
+        returnedAt: updatedLoan.returnedAt,
+      },
+      'Return completed successfully',
+    );
 
     return updatedLoan as LoanWithRelations;
   }

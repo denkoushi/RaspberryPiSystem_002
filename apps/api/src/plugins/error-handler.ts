@@ -5,22 +5,72 @@ import { ApiError } from '../lib/errors.js';
 
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
+    const requestId = request.id;
+    const method = request.method;
+    const url = request.url;
+    const userAgent = request.headers['user-agent'];
+    const userId = request.user?.id;
+
     if (error instanceof ApiError) {
+      request.log.warn(
+        {
+          requestId,
+          method,
+          url,
+          statusCode: error.statusCode,
+          message: error.message,
+          details: error.details,
+          userId,
+        },
+        'API error',
+      );
       reply.status(error.statusCode).send({ message: error.message, details: error.details });
       return;
     }
 
     if (error instanceof ZodError) {
+      request.log.warn(
+        {
+          requestId,
+          method,
+          url,
+          issues: error.issues,
+          userId,
+        },
+        'Validation error',
+      );
       reply.status(400).send({ message: 'リクエスト形式が不正です', issues: error.issues });
       return;
     }
 
     if (error instanceof PrismaClientKnownRequestError) {
+      request.log.error(
+        {
+          requestId,
+          method,
+          url,
+          prismaCode: error.code,
+          meta: error.meta,
+          userId,
+        },
+        'Database error',
+      );
       reply.status(400).send({ message: `データベースエラー: ${error.code}` });
       return;
     }
 
-    request.log.error({ err: error }, '未処理のエラー');
+    request.log.error(
+      {
+        requestId,
+        method,
+        url,
+        userAgent,
+        userId,
+        err: error,
+        stack: error.stack,
+      },
+      'Unhandled error',
+    );
     reply.status(error.statusCode ?? 500).send({ message: error.message ?? 'サーバーエラー' });
   });
 }
