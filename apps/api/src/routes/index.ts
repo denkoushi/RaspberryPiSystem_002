@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { registerSystemRoutes } from './system.js';
+import { registerSystemRoutes } from './system/index.js';
 import { registerAuthRoutes } from './auth.js';
 import { registerToolsRoutes } from './tools/index.js';
 import { registerClientRoutes } from './clients.js';
