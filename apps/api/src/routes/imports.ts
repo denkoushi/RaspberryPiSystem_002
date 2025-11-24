@@ -99,6 +99,9 @@ async function importEmployees(
   replaceExisting: boolean,
   logger?: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
 ): Promise<ImportResult> {
+  // エラーレベルでログを出して、確実に実行されていることを確認
+  logger?.error({ replaceExisting, rowsCount: rows.length, __filename: import.meta.url }, '[importEmployees] ENTER');
+  
   if (rows.length === 0) {
     return { processed: 0, created: 0, updated: 0 };
   }
@@ -110,7 +113,7 @@ async function importEmployees(
   };
 
   // デバッグログ: replaceExistingの値を確認
-  logger?.info({ replaceExisting, rowsCount: rows.length }, '[importEmployees] Starting import');
+  logger?.error({ replaceExisting, rowsCount: rows.length }, '[importEmployees] Starting import');
 
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
@@ -145,10 +148,11 @@ async function importEmployees(
       throw error;
     }
   } else {
-    logger?.info({}, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
+    logger?.error({ replaceExisting }, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
   for (const row of rows) {
-    const payload = {
+    // idは絶対に更新しない（外部キー制約違反を防ぐため）
+    const payload: Omit<Prisma.EmployeeUncheckedCreateInput, 'id' | 'createdAt' | 'updatedAt'> = {
       displayName: row.displayName,
       department: row.department || null,
       contact: row.contact || null,
@@ -159,9 +163,11 @@ async function importEmployees(
       const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
       if (existing) {
         logger?.info({ employeeCode: row.employeeCode }, '[importEmployees] Updating employee');
+        // update時はidを明示的に除外（念のため二重で防御）
+        const { id, createdAt, updatedAt, ...updateData } = payload as any;
         await tx.employee.update({
           where: { employeeCode: row.employeeCode },
-          data: payload
+          data: updateData
         });
         result.updated += 1;
       } else {
@@ -221,7 +227,8 @@ async function importItems(
     }
   }
   for (const row of rows) {
-    const payload = {
+    // idは絶対に更新しない（外部キー制約違反を防ぐため）
+    const payload: Omit<Prisma.ItemUncheckedCreateInput, 'id' | 'createdAt' | 'updatedAt'> = {
       name: row.name,
       description: row.notes || null,
       category: row.category || null,
@@ -232,9 +239,11 @@ async function importItems(
     };
     const existing = await tx.item.findUnique({ where: { itemCode: row.itemCode } });
     if (existing) {
+      // update時はidを明示的に除外（念のため二重で防御）
+      const { id, createdAt, updatedAt, ...updateData } = payload as any;
       await tx.item.update({
         where: { itemCode: row.itemCode },
-        data: payload
+        data: updateData
       });
       result.updated += 1;
     } else {
@@ -300,9 +309,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, 'リクエストの処理に失敗しました');
     }
 
-    // replaceExistingの値を確実に取得
+    // replaceExistingの値を確実に取得（文字列も含めて明示的に判定）
     const parsedFields = fieldSchema.parse(fieldValues);
-    const replaceExisting = parsedFields.replaceExisting ?? false;
+    const rawReplaceExisting = parsedFields.replaceExisting;
+    const replaceExisting = rawReplaceExisting === true || rawReplaceExisting === 'true' || rawReplaceExisting === 1 || rawReplaceExisting === '1';
     
     // デバッグログ: フォームから取得した値を確認
     request.log.info({ 
