@@ -97,11 +97,11 @@ async function importEmployees(
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
-    const employeesWithLoans = await tx.loan.findMany({
+    const loans = await tx.loan.findMany({
       select: { employeeId: true },
-      distinct: ['employeeId']
+      where: { employeeId: { not: null } }
     });
-    const employeeIdsWithLoans = new Set(employeesWithLoans.map(l => l.employeeId));
+    const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
     
     if (employeeIdsWithLoans.size > 0) {
       // Loanレコードが存在する従業員は削除しない
@@ -164,11 +164,10 @@ async function importItems(
   if (replaceExisting) {
     // Loanレコードが存在するアイテムは削除できないため、Loanレコードが存在しないアイテムのみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在するアイテムは削除しない
-    const itemsWithLoans = await tx.loan.findMany({
-      select: { itemId: true },
-      distinct: ['itemId']
+    const loans = await tx.loan.findMany({
+      select: { itemId: true }
     });
-    const itemIdsWithLoans = new Set(itemsWithLoans.map(l => l.itemId));
+    const itemIdsWithLoans = new Set(loans.map(l => l.itemId));
     
     if (itemIdsWithLoans.size > 0) {
       // Loanレコードが存在するアイテムは削除しない

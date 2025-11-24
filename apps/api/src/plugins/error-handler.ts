@@ -52,10 +52,28 @@ export function registerErrorHandler(app: FastifyInstance): void {
           prismaCode: error.code,
           meta: error.meta,
           userId,
+          errorMessage: error.message,
         },
         'Database error',
       );
-      reply.status(400).send({ message: `データベースエラー: ${error.code}` });
+      
+      // P2003: 外部キー制約違反の場合、より詳細なメッセージを返す
+      if (error.code === 'P2003') {
+        const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
+        const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        reply.status(400).send({ 
+          message: `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。`,
+          code: error.code,
+          details: error.meta
+        });
+        return;
+      }
+      
+      reply.status(400).send({ 
+        message: `データベースエラー: ${error.code}`,
+        code: error.code,
+        details: error.meta
+      });
       return;
     }
 
