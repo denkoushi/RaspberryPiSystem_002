@@ -162,7 +162,27 @@ async function importItems(
   };
 
   if (replaceExisting) {
-    await tx.item.deleteMany();
+    // Loanレコードが存在するアイテムは削除できないため、Loanレコードが存在しないアイテムのみを削除
+    // 外部キー制約違反を避けるため、Loanレコードが存在するアイテムは削除しない
+    const itemsWithLoans = await tx.loan.findMany({
+      select: { itemId: true },
+      distinct: ['itemId']
+    });
+    const itemIdsWithLoans = new Set(itemsWithLoans.map(l => l.itemId));
+    
+    if (itemIdsWithLoans.size > 0) {
+      // Loanレコードが存在するアイテムは削除しない
+      await tx.item.deleteMany({
+        where: {
+          id: {
+            notIn: Array.from(itemIdsWithLoans)
+          }
+        }
+      });
+    } else {
+      // Loanレコードが存在しない場合は全て削除可能
+      await tx.item.deleteMany();
+    }
   }
   for (const row of rows) {
     const payload = {
