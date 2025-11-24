@@ -206,68 +206,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Start API server
-        run: |
-          cd apps/api
-          nohup pnpm dev > /tmp/api-server.log 2>&1 &
-          echo $! > api.pid
-          sleep 3
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          PORT: 8080
-
-      - name: Start Web server
-        run: |
-          cd apps/web
-          nohup pnpm dev > /tmp/web-server.log 2>&1 &
-          echo $! > web.pid
-          sleep 3
-
-      - name: Wait for servers
-        run: |
-          timeout=90
-          elapsed=0
-          echo "Waiting for API server..."
-          until curl -f http://localhost:8080/api/system/health 2>/dev/null; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "API server failed to start within $timeout seconds"
-              echo "API server logs:"
-              tail -50 /tmp/api-server.log || true
-              exit 1
-            fi
-            echo "Waiting for API server... ($elapsed/$timeout seconds)"
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "API server is ready!"
-          
-          elapsed=0
-          echo "Waiting for Web server..."
-          until curl -f http://localhost:4173 2>/dev/null; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "Web server failed to start within $timeout seconds"
-              echo "Web server logs:"
-              tail -50 /tmp/web-server.log || true
-              exit 1
-            fi
-            echo "Waiting for Web server... ($elapsed/$timeout seconds)"
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "Web server is ready!"
-          echo "Both servers are ready!"
-
       - name: Run E2E tests
         run: |
           echo "Running E2E tests..."
           pnpm test:e2e || {
             echo "E2E tests failed!"
-            echo "API server logs:"
-            tail -50 /tmp/api-server.log || true
-            echo "Web server logs:"
-            tail -50 /tmp/web-server.log || true
             exit 1
           }
         env:
@@ -284,16 +227,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          if [ -f apps/api/api.pid ]; then
-            kill $(cat apps/api/api.pid) || true
-            rm apps/api/api.pid || true
-          fi
-          if [ -f apps/web/web.pid ]; then
-            kill $(cat apps/web/web.pid) || true
-            rm apps/web/web.pid || true
-          fi
-          # プロセスを確実に終了
-          pkill -f "pnpm dev" || true
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
 
