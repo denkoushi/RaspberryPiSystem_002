@@ -317,7 +317,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       });
     } catch (error) {
       // トランザクション内で発生したエラーをキャッチ
-      request.log.error({ err: error }, 'インポート処理エラー');
+      request.log.error({ 
+        err: error,
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorCode: (error as any)?.code,
+        errorMeta: (error as any)?.meta
+      }, 'インポート処理エラー');
       
       if (error instanceof PrismaClientKnownRequestError) {
         // PrismaエラーをApiErrorとしてラップ
@@ -327,6 +333,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
         }
         throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`);
+      }
+      
+      // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
+      if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
+        const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
+        const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+        throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
       }
       
       if (error instanceof ApiError) {
