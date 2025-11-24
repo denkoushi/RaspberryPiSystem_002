@@ -98,24 +98,29 @@ async function importEmployees(
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
-    const loans = await tx.loan.findMany({
-      select: { employeeId: true },
-      where: { employeeId: { not: null } }
-    });
-    const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
-    
-    if (employeeIdsWithLoans.size > 0) {
-      // Loanレコードが存在する従業員は削除しない
-      await tx.employee.deleteMany({
-        where: {
-          id: {
-            notIn: Array.from(employeeIdsWithLoans)
-          }
-        }
+    try {
+      const loans = await tx.loan.findMany({
+        select: { employeeId: true },
+        where: { employeeId: { not: null } }
       });
-    } else {
-      // Loanレコードが存在しない場合は全て削除可能
-      await tx.employee.deleteMany();
+      const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
+      
+      if (employeeIdsWithLoans.size > 0) {
+        // Loanレコードが存在する従業員は削除しない
+        await tx.employee.deleteMany({
+          where: {
+            id: {
+              notIn: Array.from(employeeIdsWithLoans)
+            }
+          }
+        });
+      } else {
+        // Loanレコードが存在しない場合は全て削除可能
+        await tx.employee.deleteMany();
+      }
+    } catch (error) {
+      // 削除処理でエラーが発生した場合は、エラーを再スロー
+      throw error;
     }
   }
   for (const row of rows) {
@@ -314,6 +319,9 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         if (itemRows.length > 0) {
           summary.items = await importItems(tx, itemRows, replaceExisting);
         }
+      }, {
+        timeout: 30000, // 30秒のタイムアウト
+        isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
       });
     } catch (error) {
       // トランザクション内で発生したエラーをキャッチ
