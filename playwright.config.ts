@@ -38,26 +38,25 @@ export default defineConfig({
       command: 'pnpm --filter @raspi-system/api dev',
       port: 8080,
       reuseExistingServer: false,
-      timeout: 120000,
+      timeout: 180000, // 3分に延長（APIサーバーの起動に時間がかかる場合があるため）
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
         DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return',
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'test-access-secret-1234567890',
         JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-1234567890',
-        NODE_ENV: 'test',
+        // NODE_ENVを'test'に設定すると、main.tsでサーバーが起動しないため削除
+        // 代わりに、E2Eテスト用の環境変数を使用
       },
     },
     {
       command: 'pnpm --filter @raspi-system/web dev',
       port: 4173,
       reuseExistingServer: false,
-      timeout: 120000,
+      timeout: 180000, // 3分に延長
       stdout: 'pipe',
       stderr: 'pipe',
-      env: {
-        NODE_ENV: 'test',
-      },
+      // NODE_ENVを設定しない（デフォルトの動作を使用）
     },
   ] : undefined,
 });
