@@ -101,18 +101,17 @@ describe('POST /api/auth/refresh', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let refreshToken: string;
-  let refreshTestUsername: string;
-  let refreshTestPassword: string;
 
   beforeAll(async () => {
     app = await buildServer();
     closeServer = async () => {
       await app.close();
     };
+  });
+
+  beforeEach(async () => {
     await cleanupTestData();
     const testUser = await createTestUser('ADMIN', 'test-password-123');
-    refreshTestUsername = testUser.user.username;
-    refreshTestPassword = testUser.password;
 
     // Login to get refresh token
     const loginResponse = await app.inject({
@@ -120,8 +119,8 @@ describe('POST /api/auth/refresh', () => {
       url: '/api/auth/login',
       headers: { 'Content-Type': 'application/json' },
       payload: {
-        username: refreshTestUsername,
-        password: refreshTestPassword,
+        username: testUser.user.username,
+        password: testUser.password,
       },
     });
     const loginBody = loginResponse.json();
