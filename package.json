@@ -11,7 +11,10 @@
     "dev": "echo '各アプリの dev コマンドを使用してください'",
     "build": "echo 'ワークスペース個別に build を実行してください'",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:api": "bash scripts/test/run-tests.sh",
+    "test:postgres:start": "bash scripts/test/start-postgres.sh",
+    "test:postgres:stop": "bash scripts/test/stop-postgres.sh"
   },
   "engines": {
     "node": ">=18.18.0",
