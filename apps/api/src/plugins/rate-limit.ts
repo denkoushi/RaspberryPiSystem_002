@@ -23,7 +23,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         : request.headers['x-forwarded-for']) || 'unknown';
     },
     // レート制限をスキップする条件（URLパスで判定）: allowList を使う
-    allowList: [(request: FastifyRequest) => {
+    allowList: [(request: FastifyRequest): boolean => {
       const url = request.url;
       // キオスクエンドポイントとインポートエンドポイントをスキップ
       const skipPaths = [
