@@ -188,7 +188,6 @@ describe('GET /api/tools/loans/active', () => {
       url: '/api/tools/loans/active',
       headers: {
         'x-client-key': clientApiKey,
-        'x-client-key': clientApiKey,
       },
     });
 
