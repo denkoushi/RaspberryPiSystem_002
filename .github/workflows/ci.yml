@@ -33,6 +33,17 @@ jobs:
           cd packages/shared-types
           pnpm build
 
+      - name: Generate Prisma Client
+        run: |
+          cd apps/api
+          echo "Generating Prisma Client..."
+          pnpm prisma generate || {
+            echo "Prisma generate failed!"
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
       - name: Build API
         run: |
           cd apps/api
