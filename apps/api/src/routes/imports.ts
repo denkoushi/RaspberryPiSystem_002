@@ -305,14 +305,36 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // 同期処理: トランザクション内でインポートを実行し、結果を直接返す
     const summary: Record<string, ImportResult> = {};
 
-    await prisma.$transaction(async (tx) => {
-      if (employeeRows.length > 0) {
-        summary.employees = await importEmployees(tx, employeeRows, replaceExisting);
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (employeeRows.length > 0) {
+          summary.employees = await importEmployees(tx, employeeRows, replaceExisting);
+        }
+        if (itemRows.length > 0) {
+          summary.items = await importItems(tx, itemRows, replaceExisting);
+        }
+      });
+    } catch (error) {
+      // トランザクション内で発生したエラーをキャッチ
+      request.log.error({ err: error }, 'インポート処理エラー');
+      
+      if (error instanceof PrismaClientKnownRequestError) {
+        // PrismaエラーをApiErrorとしてラップ
+        if (error.code === 'P2003') {
+          const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
+          const modelName = (error.meta as any)?.model_name || '不明なモデル';
+          throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
+        }
+        throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`);
       }
-      if (itemRows.length > 0) {
-        summary.items = await importItems(tx, itemRows, replaceExisting);
+      
+      if (error instanceof ApiError) {
+        throw error;
       }
-    });
+      
+      // その他のエラー
+      throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
+    }
 
     return { summary };
   });
