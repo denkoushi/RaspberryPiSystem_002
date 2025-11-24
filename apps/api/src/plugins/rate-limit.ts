@@ -3,10 +3,48 @@ import rateLimit from '@fastify/rate-limit';
 import type { RateLimitPluginOptions } from '@fastify/rate-limit';
 
 /**
+ * キオスクエンドポイントかどうかを判定
+ */
+function isKioskEndpoint(request: FastifyRequest): boolean {
+  const fullUrl = request.url;
+  const url = fullUrl.split('?')[0]; // クエリパラメータを除去
+  const hasClientKey = !!request.headers['x-client-key'];
+  
+  // キオスク画面用のエンドポイント
+  const kioskEndpoints = [
+    '/api/tools/loans/active',
+    '/api/tools/loans/borrow',
+    '/api/tools/loans/return',
+  ];
+  
+  const isKioskLoanEndpoint = kioskEndpoints.some(endpoint => url === endpoint || url.startsWith(endpoint + '/'));
+  const isKioskConfig = url === '/api/kiosk/config' || url.startsWith('/api/kiosk/config/');
+  
+  // キオスクエンドポイントで、かつx-client-keyヘッダーがある場合、または/kiosk/configの場合
+  return (isKioskLoanEndpoint && hasClientKey) || isKioskConfig;
+}
+
+/**
  * レート制限プラグインを登録
  * 一般APIエンドポイント用のデフォルトレート制限を適用
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
+  // キオスクエンドポイントをレート制限から除外するためのonRequestフック
+  app.addHook('onRequest', async (request, reply) => {
+    if (isKioskEndpoint(request)) {
+      // キオスクエンドポイントの場合は、レート制限をスキップするために
+      // リクエストにフラグを設定
+      (request as any).skipRateLimit = true;
+      
+      request.log.info({
+        url: request.url,
+        path: request.url.split('?')[0],
+        hasClientKey: !!request.headers['x-client-key'],
+        method: request.method,
+      }, 'Kiosk endpoint - skipping rate limit');
+    }
+  });
+
   // 一般APIエンドポイント用のレート制限（デフォルト）
   const rateLimitOptions: RateLimitPluginOptions & {
     skip?: (request: FastifyRequest) => boolean;
@@ -25,43 +63,18 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // キオスク画面用のエンドポイントはレート制限を緩和（2秒ごとのポーリングに対応）
+    // キオスク画面用のエンドポイントはレート制限をスキップ（2秒ごとのポーリングに対応）
     skip: (request: FastifyRequest) => {
-      // キオスク画面からのリクエスト（x-client-keyヘッダーがある場合）はレート制限をスキップ
-      // request.urlはクエリパラメータを含む可能性があるため、パス部分のみを抽出
-      const fullUrl = request.url;
-      const url = fullUrl.split('?')[0]; // クエリパラメータを除去
-      const hasClientKey = !!request.headers['x-client-key'];
-      const clientKeyValue = request.headers['x-client-key'];
-      const allHeaders = Object.keys(request.headers).reduce((acc, key) => {
-        acc[key] = request.headers[key];
-        return acc;
-      }, {} as Record<string, string | string[] | undefined>);
+      const shouldSkip = !!(request as any).skipRateLimit || isKioskEndpoint(request);
       
-      // キオスク画面用のエンドポイント
-      const kioskEndpoints = [
-        '/api/tools/loans/active',
-        '/api/tools/loans/borrow',
-        '/api/tools/loans/return',
-      ];
-      
-      const isKioskEndpoint = kioskEndpoints.some(endpoint => url === endpoint || url.startsWith(endpoint + '/'));
-      const isKioskConfig = url === '/api/kiosk/config' || url.startsWith('/api/kiosk/config/');
-      
-      const shouldSkip = (isKioskEndpoint && hasClientKey) || isKioskConfig;
-      
-      // デバッグログ（常に出力して問題を特定）
-      request.log.info({
-        fullUrl,
-        path: url,
-        hasClientKey,
-        clientKeyValue,
-        method: request.method,
-        shouldSkip,
-        isKioskEndpoint,
-        isKioskConfig,
-        headers: allHeaders,
-      }, 'Rate limit skip check');
+      if (shouldSkip) {
+        request.log.info({
+          url: request.url,
+          path: request.url.split('?')[0],
+          hasClientKey: !!request.headers['x-client-key'],
+          method: request.method,
+        }, 'Rate limit skipped for kiosk endpoint');
+      }
       
       return shouldSkip;
     },
