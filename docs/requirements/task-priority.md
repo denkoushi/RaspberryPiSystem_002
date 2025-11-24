@@ -33,7 +33,7 @@
 
 **推定工数**: 2-3日
 
-**次のアクション**: Validation 6（オフライン耐性）とValidation 7（USB一括登録）の実機検証を実施。オフライン耐性機能の実装は完了（詳細は`docs/progress/offline-resilience-implementation.md`を参照）。
+**次のアクション**: Validation 6（オフライン耐性）の実機検証完了。Validation 7（USB一括登録）の実機検証を実施。詳細は`docs/progress/validation-6-offline-resilience.md`を参照。
 
 ---
 
