@@ -151,6 +151,9 @@ async function importEmployees(
     logger?.error({ replaceExisting }, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
   for (const row of rows) {
+    // rowからidを明示的に除外（CSVにidカラムが含まれている場合に備える）
+    const { id: _ignoredId, ...rowWithoutId } = row as any;
+    
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
     const payload: Omit<Prisma.EmployeeUncheckedCreateInput, 'id' | 'createdAt' | 'updatedAt'> = {
       displayName: row.displayName,
@@ -162,16 +165,24 @@ async function importEmployees(
     try {
       const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
       if (existing) {
-        logger?.info({ employeeCode: row.employeeCode }, '[importEmployees] Updating employee');
+        logger?.error({ 
+          employeeCode: row.employeeCode,
+          existingId: existing.id,
+          payloadKeys: Object.keys(payload)
+        }, '[importEmployees] Updating employee');
         // update時はidを明示的に除外（念のため二重で防御）
         const { id, createdAt, updatedAt, ...updateData } = payload as any;
+        logger?.error({ 
+          updateDataKeys: Object.keys(updateData),
+          hasId: 'id' in updateData
+        }, '[importEmployees] updateData確認');
         await tx.employee.update({
           where: { employeeCode: row.employeeCode },
           data: updateData
         });
         result.updated += 1;
       } else {
-        logger?.info({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
+        logger?.error({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
         await tx.employee.create({
           data: {
             employeeCode: row.employeeCode,
@@ -181,7 +192,12 @@ async function importEmployees(
         result.created += 1;
       }
     } catch (error) {
-      logger?.error({ err: error, employeeCode: row.employeeCode }, '[importEmployees] Error processing row');
+      logger?.error({ 
+        err: error,
+        employeeCode: row.employeeCode,
+        errorCode: (error as any)?.code,
+        errorMeta: (error as any)?.meta
+      }, '[importEmployees] Error processing row');
       throw error;
     }
   }
