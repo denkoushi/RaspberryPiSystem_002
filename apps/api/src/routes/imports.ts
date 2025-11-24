@@ -95,15 +95,21 @@ async function importEmployees(
     updated: 0
   };
 
+  // デバッグログ: replaceExistingの値を確認
+  console.log('[importEmployees] replaceExisting:', replaceExisting, 'rows.length:', rows.length);
+
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
     try {
+      console.log('[importEmployees] Starting deleteMany with replaceExisting=true');
       const loans = await tx.loan.findMany({
         select: { employeeId: true },
         where: { employeeId: { not: null } }
       });
       const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
+      
+      console.log('[importEmployees] Found', employeeIdsWithLoans.size, 'employees with loans');
       
       if (employeeIdsWithLoans.size > 0) {
         // Loanレコードが存在する従業員は削除しない
@@ -118,10 +124,14 @@ async function importEmployees(
         // Loanレコードが存在しない場合は全て削除可能
         await tx.employee.deleteMany();
       }
+      console.log('[importEmployees] deleteMany completed successfully');
     } catch (error) {
       // 削除処理でエラーが発生した場合は、エラーを再スロー
+      console.error('[importEmployees] Error in deleteMany:', error);
       throw error;
     }
+  } else {
+    console.log('[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
   for (const row of rows) {
     const payload = {
@@ -131,21 +141,28 @@ async function importEmployees(
       nfcTagUid: row.nfcTagUid || null,
       status: normalizeEmployeeStatus(row.status)
     };
-    const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
-    if (existing) {
-      await tx.employee.update({
-        where: { employeeCode: row.employeeCode },
-        data: payload
-      });
-      result.updated += 1;
-    } else {
-      await tx.employee.create({
-        data: {
-          employeeCode: row.employeeCode,
-          ...payload
-        }
-      });
-      result.created += 1;
+    try {
+      const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
+      if (existing) {
+        console.log('[importEmployees] Updating employee:', row.employeeCode);
+        await tx.employee.update({
+          where: { employeeCode: row.employeeCode },
+          data: payload
+        });
+        result.updated += 1;
+      } else {
+        console.log('[importEmployees] Creating employee:', row.employeeCode);
+        await tx.employee.create({
+          data: {
+            employeeCode: row.employeeCode,
+            ...payload
+          }
+        });
+        result.created += 1;
+      }
+    } catch (error) {
+      console.error('[importEmployees] Error processing row:', row.employeeCode, error);
+      throw error;
     }
   }
 
