@@ -291,7 +291,18 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
-  app.get('/imports/jobs', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async () => {
+  app.get(
+    '/imports/jobs',
+    {
+      preHandler: mustBeAdmin,
+      config: {
+        rateLimit: {
+          max: 60, // 1分間に60リクエストまで許可（30秒ポーリングなら問題ない）
+          timeWindow: '1 minute'
+        }
+      }
+    },
+    async () => {
     const jobs = await prisma.importJob.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20
