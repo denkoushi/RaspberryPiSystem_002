@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import AgentConfig
 from .queue_store import QueueStore
 from .reader import ReaderService, ReaderStatus
+from .resend_worker import ResendWorker
 
 
 LOGGER = logging.getLogger("nfc_agent")
@@ -86,6 +87,22 @@ def create_app(
     async def websocket_stream(websocket: WebSocket) -> None:
         await event_manager.connect(websocket)
         try:
+            # WebSocket接続が確立されたら、キューに保存されたイベントを即座に再送する
+            # （resend_workerが定期的にチェックするが、接続直後に再送することで遅延を最小化）
+            if queue_store.count() > 0:
+                events = queue_store.list_events(limit=100)
+                successful_ids: list[int] = []
+                for event_id, payload in events:
+                    try:
+                        await websocket.send_json(payload)
+                        successful_ids.append(event_id)
+                        await asyncio.sleep(0.05)  # 少し間隔を空ける
+                    except Exception:
+                        break  # エラーが発生した場合は停止
+                if successful_ids:
+                    queue_store.delete(successful_ids)
+                    LOGGER.info("Resent %d queued events to new WebSocket connection", len(successful_ids))
+            
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
@@ -136,10 +153,16 @@ async def main() -> None:
         await server.serve()
 
     worker_task = asyncio.create_task(event_worker(event_queue, queue_store, event_manager, last_event_holder))
+    
+    # オフライン耐性: キューに保存されたイベントを再送するワーカー
+    resend_worker = ResendWorker(queue_store, event_manager, config)
+    resend_worker.start()
 
     try:
         await serve_uvicorn()
     finally:
+        resend_worker.stop()
+        await resend_worker.wait_stopped()
         worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await worker_task

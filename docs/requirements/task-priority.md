@@ -27,13 +27,13 @@
 - [ ] Validation 3: 持出フロー（✅ 一部完了）
 - [ ] Validation 4: 返却フロー（✅ 一部完了）
 - [ ] Validation 5: 履歴画面（✅ 一部完了）
-- [ ] Validation 6: オフライン耐性（未実施）
-- [ ] Validation 7: USB一括登録（未実施）
+- [ ] Validation 6: オフライン耐性（🔄 実装完了、実機検証待ち）
+- [ ] Validation 7: USB一括登録（✅ 実装完了、実機検証待ち）
 - [ ] Validation 8: NFCエージェント単体（✅ 一部完了）
 
 **推定工数**: 2-3日
 
-**次のアクション**: Validation 6（オフライン耐性）とValidation 7（USB一括登録）を実施。
+**次のアクション**: Validation 6（オフライン耐性）とValidation 7（USB一括登録）の実機検証を実施。オフライン耐性機能の実装は完了（詳細は`docs/progress/offline-resilience-implementation.md`を参照）。
 
 ---
 

@@ -45,6 +45,7 @@
 - [x] (2025-11-24) E2Eテストの追加完了。Playwrightを使用したE2Eテストを実装。認証フロー、キオスク画面、管理画面のテストを追加。CIパイプラインにE2Eテストジョブを追加。READMEと開発ガイドにE2Eテストの実行方法を追加。
 - [x] (2025-11-24) APIレート制限による429エラーの解決完了。キオスクエンドポイント（/api/tools/loans/active, /api/tools/loans/borrow, /api/tools/loans/return, /api/kiosk/config）に対して、ルート単位で`config: { rateLimit: false }`を設定してレート制限を無効化。正常動作時点のコードと比較して根本原因を特定し、Fastify標準の機能を使用することで解決。トラブルシューティングガイド（docs/guides/troubleshooting.md）を作成し、問題の経緯、要因、要因分析方法、対策を詳細に記録。
 - [x] (2025-11-24) E2Eテストの改善とCI環境での最適化完了。ログイン後のリダイレクト問題を修正（LoginPageのuseEffect、RequireAuthのloading状態追加）。CI環境では物理デバイスが必要なNFCスキャンテストを削除し、有効な範囲のみをテストする方針に変更。状態マシンのロジックは既にborrowMachine.test.tsでユニットテストされ、APIの統合テストはloans.integration.test.tsで実施されているため、CI環境では画面表示・ナビゲーションのテストのみに限定。詳細は`docs/progress/e2e-testing-improvements.md`を参照。
+- [x] (2025-11-24) オフライン耐性機能の実装完了。NFCエージェントにキュー再送ワーカー（ResendWorker）を実装し、オフライン時に保存されたイベントをオンライン復帰後にWebSocket経由で再配信する機能を追加。WebSocket接続確立時に即座にキューに保存されたイベントを再送する機能も実装。詳細は`docs/progress/offline-resilience-implementation.md`を参照。実機検証は次フェーズで実施。
 
 ## Surprises & Discoveries
 
