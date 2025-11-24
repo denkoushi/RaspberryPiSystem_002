@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import axios from 'axios';
 
 export function LoginPage() {
   const { login, loading } = useAuth();
@@ -19,13 +20,15 @@ export function LoginPage() {
     try {
       await login(username, password);
       navigate(from, { replace: true });
-    } catch (err: any) {
+    } catch (err) {
       // axiosエラーの場合、response.data.messageを優先的に使用
-      const apiMessage = err?.response?.data?.message;
-      const message = typeof apiMessage === 'string' && apiMessage.length > 0 
-        ? apiMessage 
-        : err?.message ?? 'ログインに失敗しました';
-      setError(message);
+      let errorMessage = 'ログインに失敗しました';
+      if (axios.isAxiosError(err) && err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
     }
   };
 
