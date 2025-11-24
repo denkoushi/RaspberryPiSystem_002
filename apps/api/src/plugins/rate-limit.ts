@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import type { RateLimitPluginOptions } from '@fastify/rate-limit';
 
 /**
  * レート制限プラグインを登録
  * 一般APIエンドポイント用のデフォルトレート制限を適用
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
-  const rateLimitOptions: RateLimitPluginOptions = {
+  // 一般APIエンドポイント用のレート制限（デフォルト）
+  await app.register(rateLimit, {
     max: 100, // 100リクエスト
     timeWindow: '1 minute', // 1分間
     skipOnError: false,
@@ -16,14 +16,13 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
       'x-ratelimit-remaining': true,
       'x-ratelimit-reset': true,
     },
+    // IPアドレスベースのレート制限
     keyGenerator: (request) => {
       return request.ip || (Array.isArray(request.headers['x-forwarded-for'])
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-  };
-
-  await app.register(rateLimit, rateLimitOptions);
+  });
 }
 
 /**
