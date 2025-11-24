@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
+import type { RateLimitPluginOptions } from '@fastify/rate-limit';
 
 /**
  * レート制限プラグインを登録
@@ -7,7 +8,9 @@ import rateLimit from '@fastify/rate-limit';
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
   // 一般APIエンドポイント用のレート制限（デフォルト）
-  await app.register(rateLimit, {
+  const rateLimitOptions: RateLimitPluginOptions & {
+    skip?: (request: FastifyRequest) => boolean;
+  } = {
     max: 100, // 100リクエスト
     timeWindow: '1 minute', // 1分間
     skipOnError: false,
@@ -40,7 +43,9 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         url.startsWith('/api/kiosk/config')
       );
     },
-  });
+  };
+
+  await app.register(rateLimit, rateLimitOptions);
 }
 
 /**
