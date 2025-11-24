@@ -372,30 +372,30 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     }, 'インポート処理開始前');
 
     try {
-      request.log.info({ replaceExisting }, 'トランザクション開始');
+      request.log.error({ replaceExisting, replaceExistingType: typeof replaceExisting }, '[imports] handler start - トランザクション開始前');
+      // awaitを確実につける
       await prisma.$transaction(async (tx) => {
         // トランザクション内でもreplaceExistingの値を確認
-        request.log.info({ 
+        request.log.error({ 
           replaceExisting,
           replaceExistingType: typeof replaceExisting,
           employeeRowsCount: employeeRows.length
-        }, 'トランザクション内: importEmployees呼び出し前');
+        }, '[imports] トランザクション内: importEmployees呼び出し前');
         if (employeeRows.length > 0) {
-          // replaceExistingの値を確実に渡す
-          const actualReplaceExisting = Boolean(replaceExisting);
-          request.log.info({ actualReplaceExisting }, 'importEmployeesに渡すreplaceExisting値');
-          summary.employees = await importEmployees(tx, employeeRows, actualReplaceExisting, request.log);
+          // replaceExistingの値を確実に渡す（Boolean()は使わない）
+          request.log.error({ replaceExisting }, '[imports] importEmployeesに渡すreplaceExisting値');
+          summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
         }
-        request.log.info({ replaceExisting }, 'トランザクション内: importItems呼び出し前');
+        request.log.error({ replaceExisting }, '[imports] トランザクション内: importItems呼び出し前');
         if (itemRows.length > 0) {
           summary.items = await importItems(tx, itemRows, replaceExisting);
         }
-        request.log.info({}, 'トランザクション内: すべての処理完了');
+        request.log.error({}, '[imports] トランザクション内: すべての処理完了');
       }, {
         timeout: 30000, // 30秒のタイムアウト
         isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
       });
-      request.log.info({}, 'トランザクション完了');
+      request.log.error({}, '[imports] トランザクション完了');
     } catch (error) {
       // トランザクション内で発生したエラーをキャッチ
       request.log.error({ 
