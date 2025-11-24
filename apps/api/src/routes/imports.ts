@@ -120,9 +120,9 @@ async function importEmployees(
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
     try {
       logger?.info({}, '[importEmployees] Starting deleteMany with replaceExisting=true');
+      // employeeIdは必須フィールドなので、nullになることはないが、念のためフィルタリング
       const loans = await tx.loan.findMany({
-        select: { employeeId: true },
-        where: { employeeId: { isNot: null } }
+        select: { employeeId: true }
       });
       const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
       
