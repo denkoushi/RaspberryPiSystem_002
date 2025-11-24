@@ -95,7 +95,27 @@ async function importEmployees(
   };
 
   if (replaceExisting) {
-    await tx.employee.deleteMany();
+    // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
+    // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
+    const employeesWithLoans = await tx.loan.findMany({
+      select: { employeeId: true },
+      distinct: ['employeeId']
+    });
+    const employeeIdsWithLoans = new Set(employeesWithLoans.map(l => l.employeeId));
+    
+    if (employeeIdsWithLoans.size > 0) {
+      // Loanレコードが存在する従業員は削除しない
+      await tx.employee.deleteMany({
+        where: {
+          id: {
+            notIn: Array.from(employeeIdsWithLoans)
+          }
+        }
+      });
+    } else {
+      // Loanレコードが存在しない場合は全て削除可能
+      await tx.employee.deleteMany();
+    }
   }
   for (const row of rows) {
     const payload = {
