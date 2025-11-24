@@ -22,6 +22,15 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
+    // キオスク画面用のエンドポイントはレート制限を緩和（2秒ごとのポーリングに対応）
+    skip: (request) => {
+      // /api/tools/loans/active エンドポイントで x-client-key ヘッダーがある場合はレート制限をスキップ
+      // キオスク画面からのリクエストは頻繁なポーリングが必要なため
+      return (
+        request.url.startsWith('/api/tools/loans/active') &&
+        !!request.headers['x-client-key']
+      );
+    },
   });
 }
 
