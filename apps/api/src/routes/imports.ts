@@ -4,6 +4,7 @@ import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
