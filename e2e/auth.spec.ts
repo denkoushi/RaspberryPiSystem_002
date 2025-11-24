@@ -59,8 +59,9 @@ test.describe('認証フロー', () => {
     await page.getByLabel(/パスワード/i).fill('admin1234');
 
     // ログインボタンをクリックして、ナビゲーションを待つ
+    // SPAのクライアントサイドナビゲーションでは、'commit'を使用してURLの変化を検出
     await Promise.all([
-      page.waitForURL(/\/admin/, { timeout: 30000 }),
+      page.waitForURL(/\/admin/, { timeout: 30000, waitUntil: 'commit' }),
       page.getByRole('button', { name: /ログイン/i }).click(),
     ]);
 
