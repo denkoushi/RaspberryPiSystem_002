@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { cleanupTestData, createTestUser } from './helpers.js';
 
@@ -17,6 +17,9 @@ describe('POST /api/auth/login', () => {
     closeServer = async () => {
       await app.close();
     };
+  });
+
+  beforeEach(async () => {
     await cleanupTestData();
     const testUser = await createTestUser('ADMIN', 'test-password-123');
     testUsername = testUser.user.username;

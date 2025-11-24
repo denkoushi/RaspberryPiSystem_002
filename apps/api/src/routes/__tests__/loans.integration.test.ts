@@ -65,7 +65,6 @@ describe('POST /api/tools/loans/borrow', () => {
       payload: {
         itemTagUid,
         employeeTagUid,
-        clientId,
         note: 'Test borrow',
       },
     });
@@ -88,7 +87,6 @@ describe('POST /api/tools/loans/borrow', () => {
       payload: {
         itemTagUid: 'NON_EXISTENT_TAG',
         employeeTagUid,
-        clientId,
       },
     });
 
@@ -106,7 +104,6 @@ describe('POST /api/tools/loans/borrow', () => {
       payload: {
         itemTagUid,
         employeeTagUid: 'NON_EXISTENT_TAG',
-        clientId,
       },
     });
 
@@ -114,8 +111,15 @@ describe('POST /api/tools/loans/borrow', () => {
   });
 
   it('should return 400 for already borrowed item', async () => {
+    // Create item with ITEM_TAG_002 first
+    const item2 = await createTestItem({
+      itemCode: 'ITEM002',
+      name: 'Test Item 2',
+      nfcTagUid: 'ITEM_TAG_002',
+    });
+
     // First borrow
-    await app.inject({
+    const firstBorrowResponse = await app.inject({
       method: 'POST',
       url: '/api/tools/loans/borrow',
       headers: {
@@ -125,18 +129,12 @@ describe('POST /api/tools/loans/borrow', () => {
       payload: {
         itemTagUid: 'ITEM_TAG_002',
         employeeTagUid,
-        clientId,
       },
     });
 
-    // Create item with ITEM_TAG_002
-    await createTestItem({
-      itemCode: 'ITEM002',
-      name: 'Test Item 2',
-      nfcTagUid: 'ITEM_TAG_002',
-    });
+    expect(firstBorrowResponse.statusCode).toBe(200);
 
-    // Try to borrow again
+    // Try to borrow again (should fail)
     const response = await app.inject({
       method: 'POST',
       url: '/api/tools/loans/borrow',
@@ -147,13 +145,13 @@ describe('POST /api/tools/loans/borrow', () => {
       payload: {
         itemTagUid: 'ITEM_TAG_002',
         employeeTagUid,
-        clientId,
       },
     });
 
     // Should fail if item is already borrowed
-    // Note: This depends on the actual implementation
-    expect([400, 404]).toContain(response.statusCode);
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('貸出中');
   });
 });
 
@@ -199,7 +197,6 @@ describe('GET /api/tools/loans/active', () => {
       payload: {
         itemTagUid,
         employeeTagUid,
-        clientId,
       },
     });
   });
