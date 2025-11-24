@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import axios from 'axios';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useImportMaster } from '../../api/hooks';
@@ -11,11 +12,16 @@ export function MasterImportPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    await importMutation.mutateAsync({
-      employeesFile: employeesFile ?? undefined,
-      itemsFile: itemsFile ?? undefined,
-      replaceExisting
-    });
+    try {
+      await importMutation.mutateAsync({
+        employeesFile: employeesFile ?? undefined,
+        itemsFile: itemsFile ?? undefined,
+        replaceExisting
+      });
+    } catch (error) {
+      // エラーはReact Queryが自動的に処理するが、より詳細なメッセージを表示するためにここでログ出力
+      console.error('Import error:', error);
+    }
   };
 
   return (
@@ -59,7 +65,19 @@ export function MasterImportPage() {
           {importMutation.error ? (
             <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
               <p className="font-semibold">エラー</p>
-              <p className="mt-1">{(importMutation.error as Error).message}</p>
+              <p className="mt-1">
+                {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data?.message
+                  ? importMutation.error.response.data.message
+                  : (importMutation.error as Error).message || '取り込みに失敗しました'}
+              </p>
+              {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data && (
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-red-300">詳細情報</summary>
+                  <pre className="mt-1 overflow-auto rounded bg-red-900/20 p-2">
+                    {JSON.stringify(importMutation.error.response.data, null, 2)}
+                  </pre>
+                </details>
+              )}
             </div>
           ) : null}
           {importMutation.data ? (
