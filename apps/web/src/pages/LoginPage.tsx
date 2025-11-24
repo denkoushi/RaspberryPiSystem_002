@@ -10,24 +10,27 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
 
   // ログイン成功後、userが更新されたら自動的にナビゲート
-  // loadingがfalseでuserが設定されている場合のみナビゲート（ログイン成功を意味する）
   useEffect(() => {
-    if (!loading && user) {
+    if (loginSuccess && !loading && user) {
+      setLoginSuccess(false); // リセットして無限ループを防ぐ
       navigate(from, { replace: true });
     }
-  }, [user, loading, navigate, from]);
+  }, [loginSuccess, user, loading, navigate, from]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    setLoginSuccess(false);
     try {
       await login(username, password);
-      // navigateはuseEffectでuserが更新されたら自動的に実行される
+      // ログイン成功をマーク（userの状態更新を待つ）
+      setLoginSuccess(true);
     } catch (err) {
       // axiosエラーの場合、response.data.messageを優先的に使用
       let errorMessage = 'ログインに失敗しました';
