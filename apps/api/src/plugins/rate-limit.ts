@@ -28,8 +28,10 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
     // キオスク画面用のエンドポイントはレート制限を緩和（2秒ごとのポーリングに対応）
     skip: (request: FastifyRequest) => {
       // キオスク画面からのリクエスト（x-client-keyヘッダーがある場合）はレート制限をスキップ
-      const url = request.url;
+      // request.urlはクエリパラメータを含む可能性があるため、パス部分のみを抽出
+      const url = request.url.split('?')[0]; // クエリパラメータを除去
       const hasClientKey = !!request.headers['x-client-key'];
+      const clientKeyValue = request.headers['x-client-key'];
       
       // キオスク画面用のエンドポイント
       const kioskEndpoints = [
@@ -38,10 +40,26 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         '/api/tools/loans/return',
       ];
       
-      return (
-        (kioskEndpoints.some(endpoint => url.startsWith(endpoint)) && hasClientKey) ||
-        url.startsWith('/api/kiosk/config')
-      );
+      const isKioskEndpoint = kioskEndpoints.some(endpoint => url === endpoint || url.startsWith(endpoint + '/'));
+      const isKioskConfig = url === '/api/kiosk/config' || url.startsWith('/api/kiosk/config/');
+      
+      const shouldSkip = (isKioskEndpoint && hasClientKey) || isKioskConfig;
+      
+      // デバッグログ（問題解決後は削除可能）
+      if (isKioskEndpoint || isKioskConfig) {
+        request.log.info({
+          url: request.url,
+          path: url,
+          hasClientKey,
+          clientKeyValue,
+          method: request.method,
+          shouldSkip,
+          isKioskEndpoint,
+          isKioskConfig,
+        }, 'Rate limit check for kiosk endpoint');
+      }
+      
+      return shouldSkip;
     },
   };
 
