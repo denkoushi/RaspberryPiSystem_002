@@ -48,9 +48,9 @@ test.describe('認証フロー', () => {
     // ログインボタンをクリック
     await page.getByRole('button', { name: /ログイン/i }).click();
 
-    // ログイン成功を確認：管理画面の要素が表示されることを確認
-    // （エラーメッセージが表示されず、ダッシュボードが表示されればログイン成功）
-    await expect(page.getByText(/ダッシュボード/i)).toBeVisible({ timeout: 10000 });
+    // ログイン成功を確認：管理画面のヘッダーに「管理コンソール」が表示されることを確認
+    // （エラーメッセージが表示されず、管理画面が表示されればログイン成功）
+    await expect(page.getByText(/管理コンソール/i)).toBeVisible({ timeout: 10000 });
   });
 
   test('未認証ユーザーが管理画面にアクセスするとログイン画面にリダイレクトされる', async ({ page }) => {
