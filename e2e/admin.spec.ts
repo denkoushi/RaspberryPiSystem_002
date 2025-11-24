@@ -45,19 +45,28 @@ test.describe('管理画面', () => {
   test('従業員管理画面にアクセスできる', async ({ page }) => {
     await page.getByRole('link', { name: /従業員/i }).click();
     await expect(page).toHaveURL(/\/admin\/tools\/employees/);
-    await expect(page.getByText(/従業員管理/i)).toBeVisible();
+    // ページが読み込まれるまで待機
+    await page.waitForLoadState('networkidle');
+    // Cardコンポーネントの見出しを確認（「従業員登録 / 編集」または「従業員一覧」）
+    await expect(page.getByRole('heading', { name: /従業員/i })).toBeVisible();
   });
 
   test('アイテム管理画面にアクセスできる', async ({ page }) => {
     await page.getByRole('link', { name: /アイテム/i }).click();
     await expect(page).toHaveURL(/\/admin\/tools\/items/);
-    await expect(page.getByText(/アイテム管理/i)).toBeVisible();
+    // ページが読み込まれるまで待機
+    await page.waitForLoadState('networkidle');
+    // Cardコンポーネントの見出しを確認（「アイテム登録 / 編集」または「アイテム一覧」）
+    await expect(page.getByRole('heading', { name: /アイテム/i })).toBeVisible();
   });
 
   test('履歴画面にアクセスできる', async ({ page }) => {
     await page.getByRole('link', { name: /履歴/i }).click();
     await expect(page).toHaveURL(/\/admin\/tools\/history/);
-    await expect(page.getByText(/履歴/i)).toBeVisible();
+    // ページが読み込まれるまで待機
+    await page.waitForLoadState('networkidle');
+    // Cardコンポーネントの見出しを確認
+    await expect(page.getByRole('heading', { name: /履歴/i })).toBeVisible();
   });
 });
 

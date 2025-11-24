@@ -19,8 +19,13 @@ export function LoginPage() {
     try {
       await login(username, password);
       navigate(from, { replace: true });
-    } catch (err) {
-      setError((err as Error).message ?? 'ログインに失敗しました');
+    } catch (err: any) {
+      // axiosエラーの場合、response.data.messageを優先的に使用
+      const apiMessage = err?.response?.data?.message;
+      const message = typeof apiMessage === 'string' && apiMessage.length > 0 
+        ? apiMessage 
+        : err?.message ?? 'ログインに失敗しました';
+      setError(message);
     }
   };
 
