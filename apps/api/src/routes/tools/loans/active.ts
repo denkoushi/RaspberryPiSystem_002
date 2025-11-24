@@ -6,7 +6,7 @@ import { activeLoanQuerySchema } from './schemas.js';
 export function registerActiveLoansRoute(app: FastifyInstance, loanService: LoanService): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/active', async (request, reply) => {
+  app.get('/active', { config: { rateLimit: false } }, async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
     let resolvedClientId = query.clientId;
     let allowWithoutAuth = false;
