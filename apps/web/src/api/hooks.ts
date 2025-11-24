@@ -122,7 +122,8 @@ export function useImportJobs() {
   return useQuery({
     queryKey: ['import-jobs'],
     queryFn: getImportJobs,
-    refetchInterval: 30_000
+    refetchInterval: false, // ポーリングを無効化（手動リフレッシュまたはmutation成功時に更新）
+    staleTime: 5 * 60 * 1000 // 5分間はキャッシュを有効にする
   });
 }
 
