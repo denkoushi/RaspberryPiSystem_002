@@ -112,7 +112,9 @@ export function useTransactions(
 export function useKioskConfig() {
   return useQuery({
     queryKey: ['kiosk-config'],
-    queryFn: getKioskConfig
+    queryFn: getKioskConfig,
+    staleTime: 5 * 60 * 1000, // 5分間はキャッシュを有効にする（設定は頻繁に変わらないため）
+    refetchInterval: false // ポーリングを無効化（設定は頻繁に変わらないため）
   });
 }
 
