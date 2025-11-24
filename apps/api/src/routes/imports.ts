@@ -185,16 +185,22 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     try {
       const parts = request.parts();
       for await (const part of parts) {
-      if (part.type === 'file') {
-        const buffer = await readFile(part);
-        if (part.fieldname === 'employees') {
-          files.employees = buffer;
-        } else if (part.fieldname === 'items') {
-          files.items = buffer;
+        if (part.type === 'file') {
+          const buffer = await readFile(part);
+          if (part.fieldname === 'employees') {
+            files.employees = buffer;
+          } else if (part.fieldname === 'items') {
+            files.items = buffer;
+          }
+        } else {
+          fieldValues[part.fieldname] = String(part.value);
         }
-      } else {
-        fieldValues[part.fieldname] = String(part.value);
       }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Multipart')) {
+        throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
+      }
+      throw error;
     }
 
     const { replaceExisting } = fieldSchema.parse(fieldValues);
