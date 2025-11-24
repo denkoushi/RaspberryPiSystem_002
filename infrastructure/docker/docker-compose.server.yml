@@ -30,6 +30,10 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
+      args:
+        # ラズパイ4のNFCエージェントのWebSocket URLを設定
+        # ラズパイ4のIPアドレスが192.168.10.223の場合
+        VITE_AGENT_WS_URL: ws://192.168.10.223:7071/stream
     depends_on:
       - api
     # 本番環境では以下を設定してHTTPSを有効化

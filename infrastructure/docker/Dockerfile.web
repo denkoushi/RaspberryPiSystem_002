@@ -9,6 +9,9 @@ WORKDIR /app/packages/shared-types
 RUN pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
+# NFCエージェントのWebSocket URLをビルド時に設定可能にする
+ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
+ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
 RUN cd apps/web && pnpm run build
 
 FROM caddy:2-alpine
