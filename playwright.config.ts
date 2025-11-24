@@ -28,17 +28,16 @@ export default defineConfig({
     },
   ],
 
-  webServer: [
-    {
-      command: 'pnpm test:postgres:start',
-      port: 5432,
-      reuseExistingServer: true,
-      timeout: 120000,
-    },
+  // webServerはCI環境では使用せず、手動でサーバーを起動する
+  // ローカル環境では、以下のコマンドでサーバーを起動してからテストを実行してください：
+  // 1. pnpm test:postgres:start
+  // 2. cd apps/api && pnpm dev
+  // 3. cd apps/web && pnpm dev
+  webServer: process.env.CI ? [
     {
       command: 'cd apps/api && pnpm dev',
       port: 8080,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120000,
       env: {
         DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/borrow_return',
@@ -49,9 +48,9 @@ export default defineConfig({
     {
       command: 'cd apps/web && pnpm dev',
       port: 4173,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120000,
     },
-  ],
+  ] : undefined,
 });
 

@@ -8,6 +8,14 @@ test.describe('管理画面', () => {
     // adminユーザーでログインを試みる
     try {
       authToken = await login(request, 'admin', 'admin1234');
+      // ユーザー情報も取得
+      const loginResponse = await request.post('http://localhost:8080/api/auth/login', {
+        data: { username: 'admin', password: 'admin1234' },
+      });
+      if (loginResponse.ok()) {
+        const body = await loginResponse.json();
+        authToken = body.accessToken;
+      }
     } catch {
       // adminユーザーが存在しない場合はスキップ
       test.skip();
@@ -20,12 +28,17 @@ test.describe('管理画面', () => {
     }
     
     // トークンを設定して管理画面にアクセス
-    await setAuthToken(page, authToken!);
+    await setAuthToken(page, authToken!, { id: 'test-id', username: 'admin', role: 'ADMIN' });
     await page.goto('/admin');
+    // ページが読み込まれるまで待機
+    await page.waitForLoadState('networkidle');
   });
 
   test('ダッシュボードが表示される', async ({ page }) => {
-    await expect(page.getByText(/ダッシュボード/i)).toBeVisible();
+    // ダッシュボードのナビゲーションリンクまたはカードが表示されることを確認
+    await expect(page.getByRole('link', { name: /ダッシュボード/i })).toBeVisible();
+    // カードが表示されることを確認（従業員、アイテム、貸出中）
+    await expect(page.getByText(/従業員/i)).toBeVisible({ timeout: 10000 });
   });
 
   test('従業員管理画面にアクセスできる', async ({ page }) => {

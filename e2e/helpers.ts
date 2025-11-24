@@ -32,10 +32,19 @@ export async function login(
 /**
  * ページにログイン状態を設定
  */
-export async function setAuthToken(page: Page, token: string): Promise<void> {
-  await page.addInitScript((t) => {
-    localStorage.setItem('auth_token', t);
-  }, token);
+export async function setAuthToken(page: Page, token: string, user?: { id: string; username: string; role: string }): Promise<void> {
+  await page.addInitScript(
+    ({ token, user }) => {
+      const STORAGE_KEY = 'factory-auth';
+      const authData = {
+        token,
+        user: user || { id: 'test-id', username: 'admin', role: 'ADMIN' },
+        refresh: token, // テスト用なので同じトークンを使用
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
+    },
+    { token, user }
+  );
 }
 
 /**

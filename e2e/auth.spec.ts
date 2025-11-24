@@ -3,16 +3,17 @@ import { test, expect } from '@playwright/test';
 test.describe('認証フロー', () => {
   test('ログイン画面が表示される', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByRole('heading', { name: /ログイン/i })).toBeVisible();
-    await expect(page.getByPlaceholder(/ユーザー名/i)).toBeVisible();
-    await expect(page.getByPlaceholder(/パスワード/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /管理者ログイン/i })).toBeVisible();
+    await expect(page.getByText(/ユーザー名/i)).toBeVisible();
+    await expect(page.getByText(/パスワード/i)).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /ユーザー名/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /ログイン/i })).toBeVisible();
   });
 
   test('無効な認証情報でログインに失敗する', async ({ page }) => {
     await page.goto('/login');
-    await page.getByPlaceholder(/ユーザー名/i).fill('invalid-user');
-    await page.getByPlaceholder(/パスワード/i).fill('invalid-password');
+    await page.getByRole('textbox', { name: /ユーザー名/i }).fill('invalid-user');
+    await page.getByLabel(/パスワード/i).fill('invalid-password');
     await page.getByRole('button', { name: /ログイン/i }).click();
 
     // エラーメッセージが表示される
@@ -35,8 +36,8 @@ test.describe('認証フロー', () => {
 
     // 既存のadminユーザーでログイン
     await page.goto('/login');
-    await page.getByPlaceholder(/ユーザー名/i).fill('admin');
-    await page.getByPlaceholder(/パスワード/i).fill('admin1234');
+    await page.getByRole('textbox', { name: /ユーザー名/i }).fill('admin');
+    await page.getByLabel(/パスワード/i).fill('admin1234');
     await page.getByRole('button', { name: /ログイン/i }).click();
 
     // 管理画面にリダイレクトされる
