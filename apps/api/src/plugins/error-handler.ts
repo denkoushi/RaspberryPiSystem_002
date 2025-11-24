@@ -61,6 +61,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           meta: error.meta,
           userId,
           errorMessage: error.message,
+          errorStack: error.stack,
         },
         'Database error',
       );
@@ -69,8 +70,17 @@ export function registerErrorHandler(app: FastifyInstance): void {
       if (error.code === 'P2003') {
         const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
         const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`;
+        request.log.error({ 
+          requestId,
+          method,
+          url,
+          prismaCode: error.code,
+          meta: error.meta,
+          detailedMessage
+        }, 'P2003エラー詳細');
         reply.status(400).send({ 
-          message: `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。`,
+          message: detailedMessage,
           code: error.code,
           details: error.meta
         });
@@ -78,9 +88,30 @@ export function registerErrorHandler(app: FastifyInstance): void {
       }
       
       reply.status(400).send({ 
-        message: `データベースエラー: ${error.code}`,
+        message: `データベースエラー: ${error.code} - ${error.message}`,
         code: error.code,
         details: error.meta
+      });
+      return;
+    }
+    
+    // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
+    if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
+      const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
+      const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+      const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`;
+      request.log.error({ 
+        requestId,
+        method,
+        url,
+        errorCode: (error as any).code,
+        errorMeta: (error as any).meta,
+        detailedMessage
+      }, 'P2003エラー（フォールバック）');
+      reply.status(400).send({ 
+        message: detailedMessage,
+        code: (error as any).code,
+        details: (error as any).meta
       });
       return;
     }
