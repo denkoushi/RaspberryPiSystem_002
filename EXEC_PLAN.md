@@ -27,7 +27,7 @@
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
 - [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
   - [x] Validation 1-5: サーバーヘルス、従業員・アイテム管理、持出・返却フロー、履歴画面（一部完了）
-  - [ ] Validation 6: オフライン耐性（未実施）
+  - [x] Validation 6: オフライン耐性（✅ 2025-11-24 実機検証完了）
   - [ ] Validation 7: USB一括登録（未実施）
   - [x] Validation 8: NFCエージェント単体（一部完了）
 - [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
@@ -45,7 +45,8 @@
 - [x] (2025-11-24) E2Eテストの追加完了。Playwrightを使用したE2Eテストを実装。認証フロー、キオスク画面、管理画面のテストを追加。CIパイプラインにE2Eテストジョブを追加。READMEと開発ガイドにE2Eテストの実行方法を追加。
 - [x] (2025-11-24) APIレート制限による429エラーの解決完了。キオスクエンドポイント（/api/tools/loans/active, /api/tools/loans/borrow, /api/tools/loans/return, /api/kiosk/config）に対して、ルート単位で`config: { rateLimit: false }`を設定してレート制限を無効化。正常動作時点のコードと比較して根本原因を特定し、Fastify標準の機能を使用することで解決。トラブルシューティングガイド（docs/guides/troubleshooting.md）を作成し、問題の経緯、要因、要因分析方法、対策を詳細に記録。
 - [x] (2025-11-24) E2Eテストの改善とCI環境での最適化完了。ログイン後のリダイレクト問題を修正（LoginPageのuseEffect、RequireAuthのloading状態追加）。CI環境では物理デバイスが必要なNFCスキャンテストを削除し、有効な範囲のみをテストする方針に変更。状態マシンのロジックは既にborrowMachine.test.tsでユニットテストされ、APIの統合テストはloans.integration.test.tsで実施されているため、CI環境では画面表示・ナビゲーションのテストのみに限定。詳細は`docs/progress/e2e-testing-improvements.md`を参照。
-- [x] (2025-11-24) オフライン耐性機能の実装完了。NFCエージェントにキュー再送ワーカー（ResendWorker）を実装し、オフライン時に保存されたイベントをオンライン復帰後にWebSocket経由で再配信する機能を追加。WebSocket接続確立時に即座にキューに保存されたイベントを再送する機能も実装。詳細は`docs/progress/offline-resilience-implementation.md`を参照。実機検証は次フェーズで実施。
+- [x] (2025-11-24) オフライン耐性機能の実装完了。NFCエージェントにキュー再送ワーカー（ResendWorker）を実装し、オフライン時に保存されたイベントをオンライン復帰後にWebSocket経由で再配信する機能を追加。WebSocket接続確立時に即座にキューに保存されたイベントを再送する機能も実装。詳細は`docs/progress/offline-resilience-implementation.md`を参照。
+- [x] (2025-11-24) Validation 6: オフライン耐性の実機検証完了。ラズパイ4でNFCエージェントを更新し、オフライン時にキューにイベントが保存されることを確認。オンライン復帰後にイベントが自動的に再送され、キオスク画面で処理されることを確認。持出・返却が正常に動作することを確認。検証結果は`docs/progress/validation-6-offline-resilience.md`を参照。
 
 ## Surprises & Discoveries
 
