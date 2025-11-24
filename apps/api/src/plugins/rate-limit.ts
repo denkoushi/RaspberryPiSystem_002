@@ -21,15 +21,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
       return request.ip || (Array.isArray(request.headers['x-forwarded-for'])
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
-    },
-    // レート制限をスキップするパス（前方一致を正規表現で指定）
-    allowList: [
-      /^\/api\/tools\/loans\/active/,
-      /^\/api\/tools\/loans\/borrow/,
-      /^\/api\/tools\/loans\/return/,
-      /^\/api\/kiosk\/config/,
-      /^\/api\/imports\/master/
-    ] as (string | RegExp)[] // 型を明示して TS のオーバーロードを満たす
+    }
   });
 }
 
