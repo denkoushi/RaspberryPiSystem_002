@@ -43,6 +43,7 @@
 - [x] (2025-11-24) 統合テストの安定化完了。テストデータの分離を改善し、cleanupTestData()を削除して各テストで一意なデータを生成するように変更。createTestClientDeviceがAPIキーも返すように修正。GitHub Actions CIパイプラインで全66テストが成功することを確認。
 - [x] (2025-11-24) ローカルテスト環境の整備完了。Docker Desktopを使用したローカルテスト実行スクリプト（scripts/test/start-postgres.sh, stop-postgres.sh, run-tests.sh）を作成。package.jsonにtest:api, test:postgres:start, test:postgres:stopスクリプトを追加。Macローカル環境で全66テストが成功することを確認。
 - [x] (2025-11-24) E2Eテストの追加完了。Playwrightを使用したE2Eテストを実装。認証フロー、キオスク画面、管理画面のテストを追加。CIパイプラインにE2Eテストジョブを追加。READMEと開発ガイドにE2Eテストの実行方法を追加。
+- [x] (2025-11-24) APIレート制限による429エラーの解決完了。キオスクエンドポイント（/api/tools/loans/active, /api/tools/loans/borrow, /api/tools/loans/return, /api/kiosk/config）に対して、ルート単位で`config: { rateLimit: false }`を設定してレート制限を無効化。正常動作時点のコードと比較して根本原因を特定し、Fastify標準の機能を使用することで解決。トラブルシューティングガイド（docs/guides/troubleshooting.md）を作成し、問題の経緯、要因、要因分析方法、対策を詳細に記録。
 
 ## Surprises & Discoveries
 
@@ -87,6 +88,10 @@
 - 観測: Prisma マイグレーションが未適用でテーブルが存在せず、`P2021` エラー（table does not exist）が発生した。  
   エビデンス: Pi5 で `pnpm prisma migrate status` を実行すると `20240527_init` と `20240527_import_jobs` が未適用。  
   対応: `pnpm prisma migrate deploy` と `pnpm prisma db seed` を実行し、テーブル作成と管理者アカウント（admin/admin1234）を投入。
+- 観測: キオスク画面で2秒ごとのポーリングが行われている際、APIレート制限（100リクエスト/分）に引っかかり、429 "Too Many Requests"エラーが発生した。  
+  エビデンス: ブラウザコンソールに429エラーが大量に表示され、`/api/tools/loans/active`へのリクエストが429で失敗。APIログを確認すると、`skip`関数が呼び出されていないことが判明。  
+  要因分析: 正常動作時点（`ef2bd7c`）のコードと比較したところ、正常時点では`skip`関数は存在せず、フロントエンド側で重複リクエストを防いでいたためレート制限に引っかからなかった。その後、`skip`関数を追加しようとしたが、`@fastify/rate-limit`の`skip`関数が期待通りに動作しなかった。  
+  対応: キオスクエンドポイントに対して、Fastify標準の`config: { rateLimit: false }`オプションを使用してルート単位でレート制限を無効化。これにより、確実にレート制限をスキップできるようになった。詳細は`docs/guides/troubleshooting.md`を参照。
 - 観測: API ルートが `/auth/login` に直下で公開されており、Web UI から呼び出す `/api/auth/login` が 404 になる。  
   エビデンス: Browser DevTools で `/api/auth/login` が 404、`/auth/login` は 200。  
   対応: `apps/api/src/routes/index.ts` を `{ prefix: '/api' }` 付きでサブルータ登録するよう修正。

@@ -7,6 +7,7 @@
 - **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
+- **[トラブルシューティングガイド](./docs/guides/troubleshooting.md)**: 問題の解決方法とナレッジベース
 - **[モジュールドキュメント](./docs/modules/)**: 機能別の詳細仕様
   - [工具管理モジュール](./docs/modules/tools/README.md)
   - [ドキュメントビューワー](./docs/modules/documents/)（将来実装予定）
@@ -147,6 +148,10 @@ pnpm test:e2e:headed
    `{"status":"ok"}` が返れば API・DB・Web すべてが稼働中
 
 ## トラブルシューティング
+
+詳細なトラブルシューティングガイドは [トラブルシューティングガイド](./docs/guides/troubleshooting.md) を参照してください。
+
+主な問題と解決方法：
 
 ### Prisma が `libssl.so.1.1` を要求して落ちる
 
