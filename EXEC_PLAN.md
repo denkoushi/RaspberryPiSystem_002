@@ -39,6 +39,7 @@
 - [x] (2025-01-XX) ロギングとエラーハンドリングの改善完了。console.log/errorをpinoロガーに統一、エラーハンドラーに詳細情報（requestId, method, url, userId等）を追加、サービス層（LoanService）に重要な操作のログを追加。共通ロガー（lib/logger.ts）を作成。ビルド成功を確認。ラズパイ5でAPI起動ログが新しい形式で出力されることを確認。持出API実行時に「Borrow request started」「Item not found for borrow」「API error」などのログが正しく記録されることを実機で検証済み。
 - [x] (2025-11-24) 運用・保守性の向上機能を追加完了。バックアップ・リストアスクリプト（scripts/server/backup.sh, restore.sh）を作成し、ラズパイ5で検証完了。監視・アラート機能（システムヘルスチェックエンドポイント /api/system/health、メトリクスエンドポイント /api/system/metrics、監視スクリプト scripts/server/monitor.sh）を実装し、ラズパイ5で検証完了。GitHub Actions CIパイプライン（.github/workflows/ci.yml）を作成し、テストとビルドの自動化を実装。デプロイスクリプト（scripts/server/deploy.sh）を更新し、ラズパイ5で検証完了。API概要ドキュメント、認証APIドキュメント、開発者向けガイドを作成。すべての機能がラズパイ5で正常に動作することを実機で検証済み。
 - [x] (2025-11-24) GitHub Actions CIパイプラインの修正完了。pnpmバージョンの不一致（8→9）を修正、Prisma Client生成ステップを追加、health.test.tsを/api/system/healthエンドポイントに更新。すべてのテストが通過し、CIパイプラインが正常に動作することを確認。
+- [x] (2025-11-24) ルートハンドラーの統合テスト追加完了。テストヘルパー関数（helpers.ts）を作成し、従業員・アイテム・貸出・認証エンドポイントの統合テストを追加。合計20以上のテストケースを追加し、APIエンドポイントの動作を保証。ビルド成功を確認。
 
 ## Surprises & Discoveries
 
