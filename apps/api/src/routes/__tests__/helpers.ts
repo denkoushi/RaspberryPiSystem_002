@@ -1,7 +1,6 @@
-import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
-import type { User } from '@prisma/client';
+import type { ClientDevice, Employee, Item, User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -34,7 +33,7 @@ export function createAuthHeader(token: string): Record<string, string> {
 /**
  * テスト用のクライアントデバイスを作成
  */
-export async function createTestClientDevice(apiKey?: string): Promise<{ id: string; apiKey: string }> {
+export async function createTestClientDevice(apiKey?: string): Promise<ClientDevice> {
   const generatedKey = apiKey ?? `test-client-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const client = await prisma.clientDevice.create({
     data: {
@@ -42,7 +41,7 @@ export async function createTestClientDevice(apiKey?: string): Promise<{ id: str
       apiKey: generatedKey,
     },
   });
-  return { id: client.id, apiKey: client.apiKey };
+  return client;
 }
 
 /**
@@ -53,17 +52,16 @@ export async function createTestEmployee(data?: {
   displayName?: string;
   nfcTagUid?: string;
   department?: string;
-}): Promise<{ id: string }> {
-  const employee = await prisma.employee.create({
+}): Promise<Employee> {
+  return prisma.employee.create({
     data: {
-      employeeCode: data?.employeeCode ?? `EMP${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      employeeCode: data?.employeeCode ?? `EMP${Date.now()}-${Math.random().toString(36).slice(2)}`,
       displayName: data?.displayName ?? 'Test Employee',
-      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      nfcTagUid: data?.nfcTagUid ?? `TAG_EMP_${Date.now()}-${Math.random().toString(36).slice(2)}`,
       department: data?.department ?? 'Test Department',
       status: 'ACTIVE',
     },
   });
-  return { id: employee.id };
 }
 
 /**
@@ -74,28 +72,16 @@ export async function createTestItem(data?: {
   name?: string;
   nfcTagUid?: string;
   category?: string;
-}): Promise<{ id: string }> {
-  const item = await prisma.item.create({
+  status?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
+}): Promise<Item> {
+  return prisma.item.create({
     data: {
-      itemCode: data?.itemCode ?? `ITEM${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      itemCode: data?.itemCode ?? `ITEM${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: data?.name ?? 'Test Item',
-      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      nfcTagUid: data?.nfcTagUid ?? `TAG_ITEM_${Date.now()}-${Math.random().toString(36).slice(2)}`,
       category: data?.category ?? 'Test Category',
-      status: 'AVAILABLE',
+      status: data?.status ?? 'AVAILABLE',
     },
   });
-  return { id: item.id };
-}
-
-/**
- * テストデータベースをクリーンアップ
- */
-export async function cleanupTestData(): Promise<void> {
-  await prisma.transaction.deleteMany({});
-  await prisma.loan.deleteMany({});
-  await prisma.item.deleteMany({});
-  await prisma.employee.deleteMany({});
-  await prisma.clientDevice.deleteMany({});
-  await prisma.user.deleteMany({ where: { username: { startsWith: 'test-' } } });
 }
 

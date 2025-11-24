@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { cleanupTestData, createAuthHeader, createTestEmployee, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestEmployee, createTestUser } from './helpers.js';
+import { randomUUID } from 'node:crypto';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -20,7 +21,6 @@ describe('GET /api/tools/employees', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
     const viewer = await createTestUser('VIEWER');
@@ -28,7 +28,6 @@ describe('GET /api/tools/employees', () => {
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
@@ -40,8 +39,8 @@ describe('GET /api/tools/employees', () => {
   });
 
   it('should return employees list with authentication', async () => {
-    await createTestEmployee({ employeeCode: 'EMP001', displayName: 'Test Employee 1' });
-    await createTestEmployee({ employeeCode: 'EMP002', displayName: 'Test Employee 2' });
+    await createTestEmployee();
+    await createTestEmployee();
 
     const response = await app.inject({
       method: 'GET',
@@ -94,27 +93,26 @@ describe('POST /api/tools/employees', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
   });
 
   it('should create a new employee', async () => {
+    const employeeCode = `EMP-${randomUUID()}`;
     const response = await app.inject({
       method: 'POST',
       url: '/api/tools/employees',
       headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
       payload: {
-        employeeCode: 'EMP999',
+        employeeCode,
         displayName: 'New Employee',
-        nfcTagUid: 'TAG999',
+        nfcTagUid: `TAG-${randomUUID()}`,
         department: 'Test Department',
       },
     });
@@ -122,7 +120,7 @@ describe('POST /api/tools/employees', () => {
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body).toHaveProperty('employee');
-    expect(body.employee.employeeCode).toBe('EMP999');
+    expect(body.employee.employeeCode).toBe(employeeCode);
     expect(body.employee.displayName).toBe('New Employee');
   });
 

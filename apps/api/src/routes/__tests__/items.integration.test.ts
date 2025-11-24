@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { cleanupTestData, createAuthHeader, createTestItem, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestItem, createTestUser } from './helpers.js';
+import { randomUUID } from 'node:crypto';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -19,13 +20,11 @@ describe('GET /api/tools/items', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
@@ -37,8 +36,8 @@ describe('GET /api/tools/items', () => {
   });
 
   it('should return items list with authentication', async () => {
-    await createTestItem({ itemCode: 'ITEM001', name: 'Test Item 1' });
-    await createTestItem({ itemCode: 'ITEM002', name: 'Test Item 2' });
+    await createTestItem();
+    await createTestItem();
 
     const response = await app.inject({
       method: 'GET',
@@ -79,27 +78,26 @@ describe('POST /api/tools/items', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
   });
 
   it('should create a new item', async () => {
+    const itemCode = `ITEM-${randomUUID()}`;
     const response = await app.inject({
       method: 'POST',
       url: '/api/tools/items',
       headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
       payload: {
-        itemCode: 'ITEM999',
+        itemCode,
         name: 'New Item',
-        nfcTagUid: 'TAG999',
+        nfcTagUid: `TAG-${randomUUID()}`,
         category: 'Test Category',
       },
     });
@@ -107,7 +105,7 @@ describe('POST /api/tools/items', () => {
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body).toHaveProperty('item');
-    expect(body.item.itemCode).toBe('ITEM999');
+    expect(body.item.itemCode).toBe(itemCode);
     expect(body.item.name).toBe('New Item');
   });
 

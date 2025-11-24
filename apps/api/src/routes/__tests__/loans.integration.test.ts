@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import {
-  cleanupTestData,
-  createTestClientDevice,
-  createTestEmployee,
-  createTestItem,
-} from './helpers.js';
+import { createTestClientDevice, createTestEmployee, createTestItem } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -29,28 +24,18 @@ describe('POST /api/tools/loans/borrow', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const client = await createTestClientDevice();
     clientId = client.id;
     clientApiKey = client.apiKey;
-    const employee = await createTestEmployee({
-      employeeCode: 'EMP001',
-      displayName: 'Test Employee',
-      nfcTagUid: 'EMPLOYEE_TAG_001',
-    });
+    const employee = await createTestEmployee();
     employeeId = employee.id;
-    employeeTagUid = 'EMPLOYEE_TAG_001';
-    const item = await createTestItem({
-      itemCode: 'ITEM001',
-      name: 'Test Item',
-      nfcTagUid: 'ITEM_TAG_001',
-    });
+    employeeTagUid = employee.nfcTagUid ?? '';
+    const item = await createTestItem();
     itemId = item.id;
-    itemTagUid = 'ITEM_TAG_001';
+    itemTagUid = item.nfcTagUid ?? '';
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
@@ -113,12 +98,7 @@ describe('POST /api/tools/loans/borrow', () => {
   });
 
   it('should return 400 for already borrowed item', async () => {
-    // Create item with ITEM_TAG_002 first
-    await createTestItem({
-      itemCode: 'ITEM002',
-      name: 'Test Item 2',
-      nfcTagUid: 'ITEM_TAG_002',
-    });
+    const item2 = await createTestItem();
 
     // First borrow
     const firstBorrowResponse = await app.inject({
@@ -129,7 +109,7 @@ describe('POST /api/tools/loans/borrow', () => {
         'x-client-key': clientApiKey,
       },
       payload: {
-        itemTagUid: 'ITEM_TAG_002',
+        itemTagUid: item2.nfcTagUid ?? '',
         employeeTagUid,
       },
     });
@@ -145,7 +125,7 @@ describe('POST /api/tools/loans/borrow', () => {
         'x-client-key': clientApiKey,
       },
       payload: {
-        itemTagUid: 'ITEM_TAG_002',
+        itemTagUid: item2.nfcTagUid ?? '',
         employeeTagUid,
       },
     });
@@ -173,22 +153,13 @@ describe('GET /api/tools/loans/active', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const client = await createTestClientDevice();
     clientId = client.id;
     clientApiKey = client.apiKey;
-    const employee = await createTestEmployee({
-      employeeCode: 'EMP001',
-      displayName: 'Test Employee',
-      nfcTagUid: 'EMPLOYEE_TAG_001',
-    });
-    employeeTagUid = 'EMPLOYEE_TAG_001';
-    const item = await createTestItem({
-      itemCode: 'ITEM001',
-      name: 'Test Item',
-      nfcTagUid: 'ITEM_TAG_001',
-    });
-    itemTagUid = 'ITEM_TAG_001';
+    const employee = await createTestEmployee();
+    employeeTagUid = employee.nfcTagUid ?? '';
+    const item = await createTestItem();
+    itemTagUid = item.nfcTagUid ?? '';
 
     // Create an active loan
     await app.inject({
@@ -206,7 +177,6 @@ describe('GET /api/tools/loans/active', () => {
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
@@ -217,7 +187,8 @@ describe('GET /api/tools/loans/active', () => {
       method: 'GET',
       url: '/api/tools/loans/active',
       headers: {
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
+        'x-client-key': clientApiKey,
       },
     });
 

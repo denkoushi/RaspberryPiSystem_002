@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { cleanupTestData, createTestUser } from './helpers.js';
+import { createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -20,14 +20,12 @@ describe('POST /api/auth/login', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const testUser = await createTestUser('ADMIN', 'test-password-123');
     testUsername = testUser.user.username;
     testPassword = testUser.password;
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
@@ -110,7 +108,6 @@ describe('POST /api/auth/refresh', () => {
   });
 
   beforeEach(async () => {
-    await cleanupTestData();
     const testUser = await createTestUser('ADMIN', 'test-password-123');
 
     // Login to get refresh token
@@ -128,7 +125,6 @@ describe('POST /api/auth/refresh', () => {
   });
 
   afterAll(async () => {
-    await cleanupTestData();
     if (closeServer) {
       await closeServer();
     }
