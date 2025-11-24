@@ -22,19 +22,6 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // レート制限をスキップする条件
-    skip: (request) => {
-      // ルートのconfigでrateLimitがfalseに設定されている場合はスキップ
-      const routeConfig = request.routeConfig as { rateLimit?: boolean | { max?: number; timeWindow?: string } } | undefined;
-      if (routeConfig?.rateLimit === false) {
-        return true;
-      }
-      // ルートのconfigでrateLimitがオブジェクトで設定されている場合は、その設定を使用（スキップしない）
-      if (routeConfig?.rateLimit && typeof routeConfig.rateLimit === 'object') {
-        return false;
-      }
-      return false;
-    },
   });
 }
 
