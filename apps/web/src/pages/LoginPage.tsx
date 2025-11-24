@@ -15,11 +15,12 @@ export function LoginPage() {
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
 
   // ログイン成功後、userが更新されたら自動的にナビゲート
+  // loadingがfalseでuserが設定されている場合のみナビゲート（ログイン成功を意味する）
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       navigate(from, { replace: true });
     }
-  }, [user, navigate, from]);
+  }, [user, loading, navigate, from]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
