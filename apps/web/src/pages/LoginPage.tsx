@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -6,7 +6,7 @@ import { Input } from '../components/ui/Input';
 import axios from 'axios';
 
 export function LoginPage() {
-  const { login, loading } = useAuth();
+  const { login, loading, user } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -14,12 +14,19 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
 
+  // ログイン成功後、userが更新されたら自動的にナビゲート
+  useEffect(() => {
+    if (user) {
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, from]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     try {
       await login(username, password);
-      navigate(from, { replace: true });
+      // navigateはuseEffectでuserが更新されたら自動的に実行される
     } catch (err) {
       // axiosエラーの場合、response.data.messageを優先的に使用
       let errorMessage = 'ログインに失敗しました';
