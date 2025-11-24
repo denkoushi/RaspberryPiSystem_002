@@ -13,6 +13,9 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:api": "bash scripts/test/run-tests.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
     "test:postgres:start": "bash scripts/test/start-postgres.sh",
     "test:postgres:stop": "bash scripts/test/stop-postgres.sh"
   },
@@ -22,6 +25,8 @@
   },
   "packageManager": "pnpm@9.1.1",
   "devDependencies": {
-    "husky": "^9.1.7"
+    "@playwright/test": "^1.56.1",
+    "husky": "^9.1.7",
+    "playwright": "^1.56.1"
   }
 }

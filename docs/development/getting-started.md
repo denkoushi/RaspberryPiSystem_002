@@ -108,6 +108,16 @@ pnpm test
 
 # すべてのテスト
 pnpm -r test
+
+# E2Eテスト（Playwright）
+# 前提: PostgreSQL、APIサーバー、Webサーバーが起動している必要があります
+pnpm test:e2e
+
+# E2Eテスト（UIモード）
+pnpm test:e2e:ui
+
+# E2Eテスト（ヘッドモード）
+pnpm test:e2e:headed
 ```
 
 ### ビルド

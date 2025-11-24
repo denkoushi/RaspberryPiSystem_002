@@ -79,6 +79,35 @@
 - キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
 - USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（CSVはUTF-8、ヘッダー行必須）
 
+## E2Eテスト
+
+### 前提条件
+
+E2Eテストを実行する前に、以下を起動する必要があります：
+
+1. PostgreSQLコンテナ: `pnpm test:postgres:start`
+2. APIサーバー: `cd apps/api && pnpm dev`
+3. Webサーバー: `cd apps/web && pnpm dev`
+
+### 実行方法
+
+```bash
+# E2Eテストを実行
+pnpm test:e2e
+
+# UIモードで実行（推奨）
+pnpm test:e2e:ui
+
+# ヘッドモードで実行（ブラウザを表示）
+pnpm test:e2e:headed
+```
+
+### テスト内容
+
+- 認証フロー（ログイン、ログアウト）
+- キオスク画面の表示
+- 管理画面のナビゲーション
+
 ## Raspberry Pi 5 サーバーセットアップ
 
 ### 必要なソフトウェア

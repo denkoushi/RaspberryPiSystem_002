@@ -38,3 +38,5 @@ clients/nfc-agent/.venv/
 # Misc
 coverage/
 playwright-report/
+test-results/
+playwright/.cache/

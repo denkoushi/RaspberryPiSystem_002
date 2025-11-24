@@ -116,6 +116,152 @@ jobs:
           cd apps/web
           pnpm build
 
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build shared-types
+        run: |
+          cd packages/shared-types
+          pnpm build
+
+      - name: Generate Prisma Client
+        run: |
+          cd apps/api
+          pnpm prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Build API
+        run: |
+          cd apps/api
+          pnpm build
+
+      - name: Build Web
+        run: |
+          cd apps/web
+          pnpm build
+
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name postgres-e2e \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            -p 5432:5432 \
+            --health-cmd="pg_isready -U postgres" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=5 \
+            postgres:15-alpine
+
+      - name: Wait for PostgreSQL
+        run: |
+          timeout=60
+          elapsed=0
+          until docker exec postgres-e2e pg_isready -U postgres 2>/dev/null; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "PostgreSQL failed to start within $timeout seconds"
+              docker logs postgres-e2e
+              exit 1
+            fi
+            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "PostgreSQL is ready!"
+
+      - name: Run Prisma migrations
+        run: |
+          cd apps/api
+          pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Seed database
+        run: |
+          cd apps/api
+          pnpm prisma db seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Start API server
+        run: |
+          cd apps/api
+          pnpm dev &
+          echo $! > api.pid
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          PORT: 8080
+
+      - name: Start Web server
+        run: |
+          cd apps/web
+          pnpm dev &
+          echo $! > web.pid
+
+      - name: Wait for servers
+        run: |
+          timeout=60
+          elapsed=0
+          until curl -f http://localhost:8080/api/system/health 2>/dev/null && curl -f http://localhost:4173 2>/dev/null; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "Servers failed to start within $timeout seconds"
+              exit 1
+            fi
+            echo "Waiting for servers... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "Servers are ready!"
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f apps/api/api.pid ]; then
+            kill $(cat apps/api/api.pid) || true
+          fi
+          if [ -f apps/web/web.pid ]; then
+            kill $(cat apps/web/web.pid) || true
+          fi
+          docker stop postgres-e2e && docker rm postgres-e2e || true
+
   docker-build:
     runs-on: ubuntu-latest
     needs: lint-and-test
