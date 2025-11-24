@@ -38,7 +38,8 @@ test.describe('管理画面', () => {
     // ダッシュボードのナビゲーションリンクまたはカードが表示されることを確認
     await expect(page.getByRole('link', { name: /ダッシュボード/i })).toBeVisible();
     // カードが表示されることを確認（従業員、アイテム、貸出中）
-    await expect(page.getByText(/従業員/i)).toBeVisible({ timeout: 10000 });
+    // ダッシュボードのカード内の見出しを確認
+    await expect(page.getByRole('heading', { name: /従業員/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('従業員管理画面にアクセスできる', async ({ page }) => {

@@ -16,8 +16,10 @@ test.describe('認証フロー', () => {
     await page.getByLabel(/パスワード/i).fill('invalid-password');
     await page.getByRole('button', { name: /ログイン/i }).click();
 
-    // エラーメッセージが表示される
-    await expect(page.getByText(/ログインに失敗/i)).toBeVisible({ timeout: 5000 });
+    // エラーメッセージが表示される（ログイン画面に留まることを確認）
+    await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
+    // エラーメッセージが表示される（複数の可能性があるため、first()を使用）
+    await expect(page.getByText(/ログインに失敗/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('有効な認証情報でログインに成功し、管理画面にリダイレクトされる', async ({ page, request }) => {
