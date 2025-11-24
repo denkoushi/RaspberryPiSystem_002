@@ -47,7 +47,7 @@ test.describe('認証フロー', () => {
     
     // ログインボタンをクリックして、ナビゲーションを待つ
     await Promise.all([
-      page.waitForURL(/\/admin/, { timeout: 10000 }),
+      page.waitForURL(/\/admin/, { timeout: 10000, waitUntil: 'domcontentloaded' }),
       page.getByRole('button', { name: /ログイン/i }).click(),
     ]);
 
