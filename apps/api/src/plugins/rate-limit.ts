@@ -49,16 +49,20 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
     },
     // キオスク画面用のエンドポイントはレート制限をスキップ（2秒ごとのポーリングに対応）
     skip: (request: FastifyRequest) => {
+      const url = request.url.split('?')[0];
+      const hasClientKey = !!request.headers['x-client-key'];
       const shouldSkip = isKioskEndpoint(request);
       
-      if (shouldSkip) {
-        request.log.info({
-          url: request.url,
-          path: request.url.split('?')[0],
-          hasClientKey: !!request.headers['x-client-key'],
-          method: request.method,
-        }, 'Rate limit skipped for kiosk endpoint');
-      }
+      // デバッグログ（すべてのリクエストで出力）
+      request.log.info({
+        url: request.url,
+        path: url,
+        hasClientKey,
+        method: request.method,
+        shouldSkip,
+        isKioskLoanEndpoint: ['/api/tools/loans/active', '/api/tools/loans/borrow', '/api/tools/loans/return'].some(endpoint => url === endpoint || url.startsWith(endpoint + '/')),
+        isKioskConfig: url === '/api/kiosk/config' || url.startsWith('/api/kiosk/config/'),
+      }, 'Rate limit skip function called');
       
       return shouldSkip;
     },
