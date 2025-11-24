@@ -18,7 +18,13 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   const [localClientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = providedClientKey || localClientKey || 'client-demo-key';
   const resolvedClientId = providedClientId !== undefined ? providedClientId : (localClientId || undefined);
-  const ownLoansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
+  
+  // propsで提供されている場合はuseActiveLoansを呼び出さない（重複リクエストを防ぐ）
+  // React Queryのenabledオプションを使用して、propsがない場合のみクエリを実行
+  const ownLoansQuery = useActiveLoans(resolvedClientId, resolvedClientKey, {
+    enabled: !providedLoansQuery // propsが提供されていない場合のみ有効化
+  });
+  
   // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
   const loansQuery = providedLoansQuery || ownLoansQuery;
   const [note, setNote] = useState('');

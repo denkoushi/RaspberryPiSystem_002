@@ -66,12 +66,13 @@ export function useItemMutations() {
   return { create, update, remove };
 }
 
-export function useActiveLoans(clientId?: string, clientKey?: string) {
+export function useActiveLoans(clientId?: string, clientKey?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['loans', clientId, clientKey],
     queryFn: () => getActiveLoans(clientId, clientKey),
     refetchInterval: 2_000, // 2秒ごとに更新（キオスク画面の要件）
-    placeholderData: (previousData) => previousData
+    placeholderData: (previousData) => previousData,
+    enabled: options?.enabled !== false // デフォルトはtrue、明示的にfalseが指定された場合のみ無効化
   });
 }
 
