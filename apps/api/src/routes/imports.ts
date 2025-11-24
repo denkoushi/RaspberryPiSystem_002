@@ -8,7 +8,7 @@ import { authorizeRoles } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 
-const { EmployeeStatus, ImportStatus, ItemStatus } = pkg;
+const { EmployeeStatus, ItemStatus } = pkg;
 
 const fieldSchema = z.object({
   replaceExisting: z.coerce.boolean().optional().default(false)
@@ -178,6 +178,7 @@ async function importItems(
 export async function registerImportRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
+  // シンプルな同期処理: ジョブテーブルを使わず、結果を直接返す
   app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request, reply) => {
     const files: { employees?: Buffer; items?: Buffer } = {};
     const fieldValues: Record<string, string> = {};
@@ -242,61 +243,18 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
     }
 
-    const job = await prisma.importJob.create({
-      data: {
-        type: 'MASTER',
-        status: ImportStatus.PROCESSING,
-        summary: {
-          replaceExisting
-        }
+    // 同期処理: トランザクション内でインポートを実行し、結果を直接返す
+    const summary: Record<string, ImportResult> = {};
+
+    await prisma.$transaction(async (tx) => {
+      if (employeeRows.length > 0) {
+        summary.employees = await importEmployees(tx, employeeRows, replaceExisting);
+      }
+      if (itemRows.length > 0) {
+        summary.items = await importItems(tx, itemRows, replaceExisting);
       }
     });
 
-    try {
-      const summary: Prisma.JsonObject = {};
-
-      await prisma.$transaction(async (tx) => {
-        if (employeeRows.length > 0) {
-          const employeeSummary = await importEmployees(tx, employeeRows, replaceExisting);
-          summary.employees = employeeSummary as unknown as Prisma.JsonValue;
-        }
-        if (itemRows.length > 0) {
-          const itemSummary = await importItems(tx, itemRows, replaceExisting);
-          summary.items = itemSummary as unknown as Prisma.JsonValue;
-        }
-      });
-
-      await prisma.importJob.update({
-        where: { id: job.id },
-        data: {
-          status: ImportStatus.COMPLETED,
-          summary,
-          completedAt: new Date()
-        }
-      });
-
-      return { jobId: job.id, summary };
-    } catch (error) {
-      await prisma.importJob.update({
-        where: { id: job.id },
-        data: {
-          status: ImportStatus.FAILED,
-          summary: {
-            error: error instanceof Error ? error.message : 'Unknown error'
-          },
-          completedAt: new Date()
-        }
-      });
-      throw error;
-    }
-  });
-
-  app.get('/imports/jobs', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async () => {
-    const jobs = await prisma.importJob.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 20
-    });
-
-    return { jobs };
+    return { summary };
   });
 }

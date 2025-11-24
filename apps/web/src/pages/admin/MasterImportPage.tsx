@@ -1,13 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { useImportJobs, useImportMaster } from '../../api/hooks';
+import { useImportMaster } from '../../api/hooks';
 
 export function MasterImportPage() {
   const [employeesFile, setEmployeesFile] = useState<File | null>(null);
   const [itemsFile, setItemsFile] = useState<File | null>(null);
   const [replaceExisting, setReplaceExisting] = useState(false);
-  const importJobs = useImportJobs();
   const importMutation = useImportMaster();
 
   const handleSubmit = async (event: FormEvent) => {
@@ -55,51 +54,23 @@ export function MasterImportPage() {
             既存データをクリアしてから取り込み（選択したCSVの種類のみ）
           </label>
           <Button type="submit" disabled={importMutation.isPending}>
-            {importMutation.isPending ? 'アップロード中…' : '取り込み開始'}
+            {importMutation.isPending ? '取り込み中…' : '取り込み開始'}
           </Button>
           {importMutation.error ? (
-            <p className="text-sm text-red-400">{(importMutation.error as Error).message}</p>
+            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+              <p className="font-semibold">エラー</p>
+              <p className="mt-1">{(importMutation.error as Error).message}</p>
+            </div>
           ) : null}
           {importMutation.data ? (
             <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 p-4 text-left text-sm text-emerald-200">
-              <p className="font-semibold">最新ジョブ ID: {importMutation.data.jobId}</p>
+              <p className="font-semibold">取り込み完了</p>
               <pre className="mt-2 whitespace-pre-wrap text-xs">
                 {JSON.stringify(importMutation.data.summary, null, 2)}
               </pre>
             </div>
           ) : null}
         </form>
-      </Card>
-
-      <Card title="取込履歴">
-        {importJobs.isLoading ? (
-          <p>読み込み中...</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
-                <tr>
-                  <th className="px-2 py-1">作成日時</th>
-                  <th className="px-2 py-1">種別</th>
-                  <th className="px-2 py-1">ステータス</th>
-                  <th className="px-2 py-1">サマリ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importJobs.data?.map((job) => (
-                  <tr key={job.id} className="border-t border-white/5">
-                    <td className="px-2 py-1">{new Date(job.createdAt).toLocaleString()}</td>
-                    <td className="px-2 py-1">{job.type}</td>
-                    <td className="px-2 py-1">{job.status}</td>
-                    <td className="px-2 py-1 text-xs font-mono">
-                      {job.summary ? JSON.stringify(job.summary) : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </Card>
     </div>
   );

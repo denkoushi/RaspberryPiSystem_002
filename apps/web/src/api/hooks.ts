@@ -7,7 +7,6 @@ import {
   deleteItem,
   getActiveLoans,
   getEmployees,
-  getImportJobs,
   getItems,
   getKioskConfig,
   getTransactions,
@@ -118,21 +117,14 @@ export function useKioskConfig() {
   });
 }
 
-export function useImportJobs() {
-  return useQuery({
-    queryKey: ['import-jobs'],
-    queryFn: getImportJobs,
-    refetchInterval: false, // ポーリングを無効化（mutation成功時に手動でリフレッシュ）
-    staleTime: 5 * 60 * 1000 // 5分間はキャッシュを有効にする
-  });
-}
-
 export function useImportMaster() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: importMaster,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['import-jobs'] });
+      // インポート成功後、employeesとitemsのクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['items'] });
     }
   });
 }

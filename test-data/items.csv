@@ -1,5 +1,0 @@
-itemCode,name,nfcTagUid,category,storageLocation,status,notes
-ITEM001,ドライバーセット,04DE8366BC2A81,工具,工具庫A,ACTIVE,常用工具
-ITEM002,メジャー,04C393C1330289,測定器具,工具庫B,ACTIVE,
-ITEM003,ハンマー,,工具,工具庫A,ACTIVE,大型工具
-

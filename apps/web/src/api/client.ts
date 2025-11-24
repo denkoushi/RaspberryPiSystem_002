@@ -166,13 +166,8 @@ export async function importMaster(payload: ImportMasterPayload) {
   }
   formData.append('replaceExisting', String(payload.replaceExisting ?? false));
 
-  const { data } = await api.post<{ jobId: string; summary: ImportSummary }>('/imports/master', formData, {
+  const { data } = await api.post<{ summary: ImportSummary }>('/imports/master', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
   return data;
-}
-
-export async function getImportJobs() {
-  const { data } = await api.get<{ jobs: ImportJob[] }>('/imports/jobs');
-  return data.jobs;
 }
