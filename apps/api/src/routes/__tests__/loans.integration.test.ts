@@ -15,6 +15,7 @@ describe('POST /api/tools/loans/borrow', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let clientId: string;
+  let clientApiKey: string;
   let employeeId: string;
   let itemId: string;
   let employeeTagUid: string;
@@ -29,8 +30,9 @@ describe('POST /api/tools/loans/borrow', () => {
 
   beforeEach(async () => {
     await cleanupTestData();
-    const client = await createTestClientDevice('test-client-key');
+    const client = await createTestClientDevice();
     clientId = client.id;
+    clientApiKey = client.apiKey;
     const employee = await createTestEmployee({
       employeeCode: 'EMP001',
       displayName: 'Test Employee',
@@ -60,7 +62,7 @@ describe('POST /api/tools/loans/borrow', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid,
@@ -82,7 +84,7 @@ describe('POST /api/tools/loans/borrow', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid: 'NON_EXISTENT_TAG',
@@ -99,7 +101,7 @@ describe('POST /api/tools/loans/borrow', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid,
@@ -112,7 +114,7 @@ describe('POST /api/tools/loans/borrow', () => {
 
   it('should return 400 for already borrowed item', async () => {
     // Create item with ITEM_TAG_002 first
-    const item2 = await createTestItem({
+    await createTestItem({
       itemCode: 'ITEM002',
       name: 'Test Item 2',
       nfcTagUid: 'ITEM_TAG_002',
@@ -124,7 +126,7 @@ describe('POST /api/tools/loans/borrow', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid: 'ITEM_TAG_002',
@@ -140,7 +142,7 @@ describe('POST /api/tools/loans/borrow', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid: 'ITEM_TAG_002',
@@ -159,6 +161,7 @@ describe('GET /api/tools/loans/active', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let clientId: string;
+  let clientApiKey: string;
   let employeeTagUid: string;
   let itemTagUid: string;
 
@@ -171,8 +174,9 @@ describe('GET /api/tools/loans/active', () => {
 
   beforeEach(async () => {
     await cleanupTestData();
-    const client = await createTestClientDevice('test-client-key');
+    const client = await createTestClientDevice();
     clientId = client.id;
+    clientApiKey = client.apiKey;
     const employee = await createTestEmployee({
       employeeCode: 'EMP001',
       displayName: 'Test Employee',
@@ -192,7 +196,7 @@ describe('GET /api/tools/loans/active', () => {
       url: '/api/tools/loans/borrow',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-key': 'test-client-key',
+        'x-client-key': clientApiKey,
       },
       payload: {
         itemTagUid,

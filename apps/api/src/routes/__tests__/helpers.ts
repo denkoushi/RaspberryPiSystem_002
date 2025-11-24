@@ -34,14 +34,15 @@ export function createAuthHeader(token: string): Record<string, string> {
 /**
  * テスト用のクライアントデバイスを作成
  */
-export async function createTestClientDevice(apiKey: string = 'test-api-key'): Promise<{ id: string }> {
+export async function createTestClientDevice(apiKey?: string): Promise<{ id: string; apiKey: string }> {
+  const generatedKey = apiKey ?? `test-client-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const client = await prisma.clientDevice.create({
     data: {
-      name: 'Test Client',
-      apiKey,
+      name: `Test Client ${new Date().toISOString()}`,
+      apiKey: generatedKey,
     },
   });
-  return { id: client.id };
+  return { id: client.id, apiKey: client.apiKey };
 }
 
 /**
