@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
 /**
@@ -22,8 +22,8 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // レート制限をスキップする条件（URLパスで判定）
-    skip: (request) => {
+    // レート制限をスキップする条件（URLパスで判定）: allowList を使う
+    allowList: [(request: FastifyRequest) => {
       const url = request.url;
       // キオスクエンドポイントとインポートエンドポイントをスキップ
       const skipPaths = [
@@ -34,7 +34,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         '/api/imports/master'
       ];
       return skipPaths.some(path => url.startsWith(path));
-    },
+    }],
   });
 }
 
@@ -51,10 +51,9 @@ export const authRateLimitConfig = {
     'x-ratelimit-remaining': true,
     'x-ratelimit-reset': true,
   },
-  keyGenerator: (request: any) => {
+  keyGenerator: (request: FastifyRequest) => {
     return request.ip || (Array.isArray(request.headers['x-forwarded-for'])
       ? request.headers['x-forwarded-for'][0]
       : request.headers['x-forwarded-for']) || 'unknown';
   },
 };
-
