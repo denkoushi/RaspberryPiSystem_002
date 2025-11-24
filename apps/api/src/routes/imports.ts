@@ -202,10 +202,38 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
     }
 
-    const employeeRows = files.employees
-      ? parseCsvRows(files.employees).map((row) => employeeCsvSchema.parse(row))
-      : [];
-    const itemRows = files.items ? parseCsvRows(files.items).map((row) => itemCsvSchema.parse(row)) : [];
+    let employeeRows: EmployeeCsvRow[] = [];
+    let itemRows: ItemCsvRow[] = [];
+
+    if (files.employees) {
+      try {
+        const parsedRows = parseCsvRows(files.employees);
+        employeeRows = parsedRows.map((row, index) => {
+          try {
+            return employeeCsvSchema.parse(row);
+          } catch (error) {
+            throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        });
+      } catch (error) {
+        throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (files.items) {
+      try {
+        const parsedRows = parseCsvRows(files.items);
+        itemRows = parsedRows.map((row, index) => {
+          try {
+            return itemCsvSchema.parse(row);
+          } catch (error) {
+            throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        });
+      } catch (error) {
+        throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
 
     const job = await prisma.importJob.create({
       data: {
