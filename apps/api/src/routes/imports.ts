@@ -300,7 +300,17 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, 'リクエストの処理に失敗しました');
     }
 
-    const { replaceExisting } = fieldSchema.parse(fieldValues);
+    // replaceExistingの値を確実に取得
+    const parsedFields = fieldSchema.parse(fieldValues);
+    const replaceExisting = parsedFields.replaceExisting ?? false;
+    
+    // デバッグログ: フォームから取得した値を確認
+    request.log.info({ 
+      fieldValues,
+      parsedFields,
+      replaceExisting,
+      replaceExistingType: typeof replaceExisting
+    }, 'replaceExisting値の確認');
 
     if (!files.employees && !files.items) {
       throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
@@ -354,9 +364,17 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     try {
       request.log.info({ replaceExisting }, 'トランザクション開始');
       await prisma.$transaction(async (tx) => {
-        request.log.info({ replaceExisting }, 'トランザクション内: importEmployees呼び出し前');
+        // トランザクション内でもreplaceExistingの値を確認
+        request.log.info({ 
+          replaceExisting,
+          replaceExistingType: typeof replaceExisting,
+          employeeRowsCount: employeeRows.length
+        }, 'トランザクション内: importEmployees呼び出し前');
         if (employeeRows.length > 0) {
-          summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
+          // replaceExistingの値を確実に渡す
+          const actualReplaceExisting = Boolean(replaceExisting);
+          request.log.info({ actualReplaceExisting }, 'importEmployeesに渡すreplaceExisting値');
+          summary.employees = await importEmployees(tx, employeeRows, actualReplaceExisting, request.log);
         }
         request.log.info({ replaceExisting }, 'トランザクション内: importItems呼び出し前');
         if (itemRows.length > 0) {
