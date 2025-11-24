@@ -1,15 +1,27 @@
 import { useState } from 'react';
 import { useActiveLoans, useReturnMutation } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import type { UseQueryResult } from '@tanstack/react-query';
+import type { Loan } from '../../api/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 
-export function KioskReturnPage() {
-  const [clientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
+interface KioskReturnPageProps {
+  loansQuery?: UseQueryResult<Loan[], Error>;
+  clientId?: string;
+  clientKey?: string;
+}
+
+export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: providedClientId, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
+  // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
+  const [localClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [localClientId] = useLocalStorage('kiosk-client-id', '');
+  const resolvedClientKey = providedClientKey || localClientKey || 'client-demo-key';
+  const resolvedClientId = providedClientId !== undefined ? providedClientId : (localClientId || undefined);
+  const ownLoansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
+  // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
+  const loansQuery = providedLoansQuery || ownLoansQuery;
   const [note, setNote] = useState('');
-  const resolvedClientKey = clientKey || 'client-demo-key';
-  const loansQuery = useActiveLoans(clientId || undefined, resolvedClientKey);
   const returnMutation = useReturnMutation(resolvedClientKey);
 
   const handleReturn = async (loanId: string) => {

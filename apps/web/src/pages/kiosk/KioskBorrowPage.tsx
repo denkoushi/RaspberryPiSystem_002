@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useMachine } from '@xstate/react';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
-import { useBorrowMutation, useKioskConfig } from '../../api/hooks';
+import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import { Button } from '../../components/ui/Button';
@@ -15,6 +15,9 @@ export function KioskBorrowPage() {
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || 'client-demo-key';
+  const resolvedClientId = clientId || undefined;
+  // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
+  const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
   const borrowMutation = useBorrowMutation(resolvedClientKey);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
@@ -137,7 +140,7 @@ export function KioskBorrowPage() {
           </div>
         </Card>
 
-        <KioskReturnPage />
+        <KioskReturnPage loansQuery={loansQuery} clientId={resolvedClientId} clientKey={resolvedClientKey} />
       </div>
     </div>
   );
