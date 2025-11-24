@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
 /**
@@ -22,18 +22,14 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // レート制限をスキップする条件（URLパスで判定）: 関数で allowList を指定
-    allowList: (request: FastifyRequest, _reply: FastifyReply): boolean => {
-      const url = request.url;
-      const skipPaths = [
-        '/api/tools/loans/active',
-        '/api/tools/loans/borrow',
-        '/api/tools/loans/return',
-        '/api/kiosk/config',
-        '/api/imports/master'
-      ];
-      return skipPaths.some((path) => url.startsWith(path));
-    }
+    // レート制限をスキップするパス（前方一致を正規表現で指定）
+    allowList: [
+      /^\/api\/tools\/loans\/active/,
+      /^\/api\/tools\/loans\/borrow/,
+      /^\/api\/tools\/loans\/return/,
+      /^\/api\/kiosk\/config/,
+      /^\/api\/imports\/master/
+    ]
   });
 }
 
