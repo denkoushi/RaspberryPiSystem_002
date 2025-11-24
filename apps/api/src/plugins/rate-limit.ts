@@ -29,6 +29,23 @@ function isKioskEndpoint(request: FastifyRequest): boolean {
  * 一般APIエンドポイント用のデフォルトレート制限を適用
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
+  // キオスクエンドポイントをレート制限から除外するためのonRequestフック
+  // このフックは、レート制限プラグインが登録される前に実行される必要がある
+  app.addHook('onRequest', async (request, reply) => {
+    if (isKioskEndpoint(request)) {
+      // キオスクエンドポイントの場合は、レート制限をスキップするために
+      // リクエストにフラグを設定
+      (request as any).skipRateLimit = true;
+      
+      request.log.info({
+        url: request.url,
+        path: request.url.split('?')[0],
+        hasClientKey: !!request.headers['x-client-key'],
+        method: request.method,
+      }, 'Kiosk endpoint detected - will skip rate limit');
+    }
+  });
+
   // 一般APIエンドポイント用のレート制限（デフォルト）
   const rateLimitOptions: RateLimitPluginOptions & {
     skip?: (request: FastifyRequest) => boolean;
@@ -49,20 +66,22 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
     },
     // キオスク画面用のエンドポイントはレート制限をスキップ（2秒ごとのポーリングに対応）
     skip: (request: FastifyRequest) => {
-      const url = request.url.split('?')[0];
-      const hasClientKey = !!request.headers['x-client-key'];
-      const shouldSkip = isKioskEndpoint(request);
+      // onRequestフックで設定されたフラグをチェック
+      const skipFromHook = !!(request as any).skipRateLimit;
+      // 念のため、isKioskEndpointもチェック
+      const skipFromCheck = isKioskEndpoint(request);
+      const shouldSkip = skipFromHook || skipFromCheck;
       
-      // デバッグログ（すべてのリクエストで出力）
-      request.log.info({
-        url: request.url,
-        path: url,
-        hasClientKey,
-        method: request.method,
-        shouldSkip,
-        isKioskLoanEndpoint: ['/api/tools/loans/active', '/api/tools/loans/borrow', '/api/tools/loans/return'].some(endpoint => url === endpoint || url.startsWith(endpoint + '/')),
-        isKioskConfig: url === '/api/kiosk/config' || url.startsWith('/api/kiosk/config/'),
-      }, 'Rate limit skip function called');
+      if (shouldSkip) {
+        request.log.info({
+          url: request.url,
+          path: request.url.split('?')[0],
+          hasClientKey: !!request.headers['x-client-key'],
+          method: request.method,
+          skipFromHook,
+          skipFromCheck,
+        }, 'Rate limit skipped for kiosk endpoint');
+      }
       
       return shouldSkip;
     },
