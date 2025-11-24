@@ -83,7 +83,8 @@ function normalizeItemStatus(value?: string) {
 async function importEmployees(
   tx: Prisma.TransactionClient,
   rows: EmployeeCsvRow[],
-  replaceExisting: boolean
+  replaceExisting: boolean,
+  logger?: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
 ): Promise<ImportResult> {
   if (rows.length === 0) {
     return { processed: 0, created: 0, updated: 0 };
@@ -96,20 +97,20 @@ async function importEmployees(
   };
 
   // デバッグログ: replaceExistingの値を確認
-  console.log('[importEmployees] replaceExisting:', replaceExisting, 'rows.length:', rows.length);
+  logger?.info({ replaceExisting, rowsCount: rows.length }, '[importEmployees] Starting import');
 
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
     try {
-      console.log('[importEmployees] Starting deleteMany with replaceExisting=true');
+      logger?.info({}, '[importEmployees] Starting deleteMany with replaceExisting=true');
       const loans = await tx.loan.findMany({
         select: { employeeId: true },
         where: { employeeId: { not: null } }
       });
       const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
       
-      console.log('[importEmployees] Found', employeeIdsWithLoans.size, 'employees with loans');
+      logger?.info({ employeesWithLoans: employeeIdsWithLoans.size }, '[importEmployees] Found employees with loans');
       
       if (employeeIdsWithLoans.size > 0) {
         // Loanレコードが存在する従業員は削除しない
@@ -124,14 +125,14 @@ async function importEmployees(
         // Loanレコードが存在しない場合は全て削除可能
         await tx.employee.deleteMany();
       }
-      console.log('[importEmployees] deleteMany completed successfully');
+      logger?.info({}, '[importEmployees] deleteMany completed successfully');
     } catch (error) {
       // 削除処理でエラーが発生した場合は、エラーを再スロー
-      console.error('[importEmployees] Error in deleteMany:', error);
+      logger?.error({ err: error }, '[importEmployees] Error in deleteMany');
       throw error;
     }
   } else {
-    console.log('[importEmployees] Skipping deleteMany (replaceExisting=false)');
+    logger?.info({}, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
   for (const row of rows) {
     const payload = {
@@ -144,14 +145,14 @@ async function importEmployees(
     try {
       const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
       if (existing) {
-        console.log('[importEmployees] Updating employee:', row.employeeCode);
+        logger?.info({ employeeCode: row.employeeCode }, '[importEmployees] Updating employee');
         await tx.employee.update({
           where: { employeeCode: row.employeeCode },
           data: payload
         });
         result.updated += 1;
       } else {
-        console.log('[importEmployees] Creating employee:', row.employeeCode);
+        logger?.info({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
         await tx.employee.create({
           data: {
             employeeCode: row.employeeCode,
@@ -161,7 +162,7 @@ async function importEmployees(
         result.created += 1;
       }
     } catch (error) {
-      console.error('[importEmployees] Error processing row:', row.employeeCode, error);
+      logger?.error({ err: error, employeeCode: row.employeeCode }, '[importEmployees] Error processing row');
       throw error;
     }
   }
@@ -331,7 +332,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     try {
       await prisma.$transaction(async (tx) => {
         if (employeeRows.length > 0) {
-          summary.employees = await importEmployees(tx, employeeRows, replaceExisting);
+          summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
         }
         if (itemRows.length > 0) {
           summary.items = await importItems(tx, itemRows, replaceExisting);
