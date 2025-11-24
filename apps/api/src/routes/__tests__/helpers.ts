@@ -2,21 +2,26 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
 import type { User } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 /**
  * テスト用の認証トークンを生成
  */
-export async function createTestUser(role: User['role'] = 'ADMIN'): Promise<{ user: User; token: string }> {
+export async function createTestUser(
+  role: User['role'] = 'ADMIN',
+  password: string = 'test-password-123',
+): Promise<{ user: User; token: string; password: string }> {
+  const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
     data: {
-      username: `test-${Date.now()}`,
-      passwordHash: '$2a$10$dummy', // bcrypt hash for 'password'
+      username: `test-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      passwordHash,
       role,
       status: 'ACTIVE',
     },
   });
   const token = signAccessToken(user);
-  return { user, token };
+  return { user, token, password };
 }
 
 /**
@@ -50,9 +55,9 @@ export async function createTestEmployee(data?: {
 }): Promise<{ id: string }> {
   const employee = await prisma.employee.create({
     data: {
-      employeeCode: data?.employeeCode ?? `EMP${Date.now()}`,
+      employeeCode: data?.employeeCode ?? `EMP${Date.now()}-${Math.random().toString(36).substring(7)}`,
       displayName: data?.displayName ?? 'Test Employee',
-      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}`,
+      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}-${Math.random().toString(36).substring(7)}`,
       department: data?.department ?? 'Test Department',
       status: 'ACTIVE',
     },
@@ -71,9 +76,9 @@ export async function createTestItem(data?: {
 }): Promise<{ id: string }> {
   const item = await prisma.item.create({
     data: {
-      itemCode: data?.itemCode ?? `ITEM${Date.now()}`,
+      itemCode: data?.itemCode ?? `ITEM${Date.now()}-${Math.random().toString(36).substring(7)}`,
       name: data?.name ?? 'Test Item',
-      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}`,
+      nfcTagUid: data?.nfcTagUid ?? `TAG${Date.now()}-${Math.random().toString(36).substring(7)}`,
       category: data?.category ?? 'Test Category',
       status: 'AVAILABLE',
     },

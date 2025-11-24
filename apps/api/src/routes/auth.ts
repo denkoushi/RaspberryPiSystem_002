@@ -62,8 +62,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         throw new ApiError(403, 'アカウントが無効化されています');
       }
       const accessToken = signAccessToken(user);
+      const refreshToken = signRefreshToken(user);
       return {
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           username: user.username,

@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { prisma } from '../../lib/prisma.js';
-import bcrypt from 'bcryptjs';
-import { cleanupTestData } from './helpers.js';
+import { cleanupTestData, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -20,17 +18,9 @@ describe('POST /api/auth/login', () => {
       await app.close();
     };
     await cleanupTestData();
-    testUsername = `test-user-${Date.now()}`;
-    testPassword = 'test-password-123';
-    const passwordHash = await bcrypt.hash(testPassword, 10);
-    await prisma.user.create({
-      data: {
-        username: testUsername,
-        passwordHash,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-      },
-    });
+    const testUser = await createTestUser('ADMIN', 'test-password-123');
+    testUsername = testUser.user.username;
+    testPassword = testUser.password;
   });
 
   afterAll(async () => {
@@ -117,17 +107,9 @@ describe('POST /api/auth/refresh', () => {
       await app.close();
     };
     await cleanupTestData();
-    refreshTestUsername = `test-user-refresh-${Date.now()}`;
-    refreshTestPassword = 'test-password-123';
-    const passwordHash = await bcrypt.hash(refreshTestPassword, 10);
-    await prisma.user.create({
-      data: {
-        username: refreshTestUsername,
-        passwordHash,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-      },
-    });
+    const testUser = await createTestUser('ADMIN', 'test-password-123');
+    refreshTestUsername = testUser.user.username;
+    refreshTestPassword = testUser.password;
 
     // Login to get refresh token
     const loginResponse = await app.inject({

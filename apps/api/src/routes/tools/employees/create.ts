@@ -6,10 +6,10 @@ import { employeeBodySchema } from './schemas.js';
 export function registerEmployeeCreateRoute(app: FastifyInstance, employeeService: EmployeeService): void {
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
 
-  app.post('/employees', { preHandler: canEdit }, async (request) => {
+  app.post('/employees', { preHandler: canEdit }, async (request, reply) => {
     const body = employeeBodySchema.parse(request.body);
     const employee = await employeeService.create(body);
-    return { employee };
+    return reply.code(201).send({ employee });
   });
 }
 

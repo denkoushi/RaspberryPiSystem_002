@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import {
   cleanupTestData,
@@ -25,6 +25,9 @@ describe('POST /api/tools/loans/borrow', () => {
     closeServer = async () => {
       await app.close();
     };
+  });
+
+  beforeEach(async () => {
     await cleanupTestData();
     const client = await createTestClientDevice('test-client-key');
     clientId = client.id;
@@ -166,6 +169,9 @@ describe('GET /api/tools/loans/active', () => {
     closeServer = async () => {
       await app.close();
     };
+  });
+
+  beforeEach(async () => {
     await cleanupTestData();
     const client = await createTestClientDevice('test-client-key');
     clientId = client.id;
