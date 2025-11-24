@@ -28,28 +28,36 @@ export default defineConfig({
     },
   ],
 
-  // webServerはCI環境では使用せず、手動でサーバーを起動する
+  // CI環境ではwebServerを使用して自動的にサーバーを起動
   // ローカル環境では、以下のコマンドでサーバーを起動してからテストを実行してください：
   // 1. pnpm test:postgres:start
   // 2. cd apps/api && pnpm dev
   // 3. cd apps/web && pnpm dev
   webServer: process.env.CI ? [
     {
-      command: 'cd apps/api && pnpm dev',
+      command: 'pnpm --filter @raspi-system/api dev',
       port: 8080,
       reuseExistingServer: false,
       timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
       env: {
-        DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/borrow_return',
-        JWT_ACCESS_SECRET: 'test-access-secret-1234567890',
-        JWT_REFRESH_SECRET: 'test-refresh-secret-1234567890',
+        DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return',
+        JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'test-access-secret-1234567890',
+        JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-1234567890',
+        NODE_ENV: 'test',
       },
     },
     {
-      command: 'cd apps/web && pnpm dev',
+      command: 'pnpm --filter @raspi-system/web dev',
       port: 4173,
       reuseExistingServer: false,
       timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: {
+        NODE_ENV: 'test',
+      },
     },
   ] : undefined,
 });
