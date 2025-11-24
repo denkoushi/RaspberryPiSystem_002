@@ -104,7 +104,7 @@ export async function deleteItem(id: string) {
 }
 
 export async function getActiveLoans(clientId?: string, clientKey: string = 'client-demo-key') {
-  const { data } = await api.get<{ loans: Loan[] }>('/loans/active', {
+  const { data } = await api.get<{ loans: Loan[] }>('/tools/loans/active', {
     params: { clientId },
     headers: { 'x-client-key': clientKey }
   });
@@ -112,14 +112,14 @@ export async function getActiveLoans(clientId?: string, clientKey: string = 'cli
 }
 
 export async function borrowItem(payload: BorrowPayload, clientKey?: string) {
-  const { data } = await api.post<{ loan: Loan }>('/borrow', payload, {
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/borrow', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
   return data.loan;
 }
 
 export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
-  const { data } = await api.post<{ loan: Loan }>('/return', payload, {
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/return', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
   return data.loan;
