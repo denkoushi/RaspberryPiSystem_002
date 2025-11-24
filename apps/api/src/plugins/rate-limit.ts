@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
 /**
@@ -17,15 +17,14 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
       'x-ratelimit-reset': true,
     },
     // IPアドレスベースのレート制限
-    keyGenerator: (request) => {
+    keyGenerator: (request: FastifyRequest) => {
       return request.ip || (Array.isArray(request.headers['x-forwarded-for'])
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // レート制限をスキップする条件（URLパスで判定）: allowList を使う
-    allowList: [(request: FastifyRequest): boolean => {
+    // レート制限をスキップする条件（URLパスで判定）: 関数で allowList を指定
+    allowList: (request: FastifyRequest, _reply: FastifyReply): boolean => {
       const url = request.url;
-      // キオスクエンドポイントとインポートエンドポイントをスキップ
       const skipPaths = [
         '/api/tools/loans/active',
         '/api/tools/loans/borrow',
@@ -33,8 +32,8 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         '/api/kiosk/config',
         '/api/imports/master'
       ];
-      return skipPaths.some(path => url.startsWith(path));
-    }],
+      return skipPaths.some((path) => url.startsWith(path));
+    }
   });
 }
 
