@@ -56,6 +56,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
         JSON.stringify({ token: response.accessToken, user: response.user, refresh: response.refreshToken })
       );
       setAuthToken(response.accessToken);
+    } catch (error) {
+      // エラーを再throwして、LoginPageでエラーメッセージを表示できるようにする
+      throw error;
     } finally {
       setLoading(false);
     }

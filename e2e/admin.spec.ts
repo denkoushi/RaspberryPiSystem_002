@@ -48,7 +48,8 @@ test.describe('管理画面', () => {
     // ページが読み込まれるまで待機
     await page.waitForLoadState('networkidle');
     // Cardコンポーネントの見出しを確認（「従業員登録 / 編集」または「従業員一覧」）
-    await expect(page.getByRole('heading', { name: /従業員/i })).toBeVisible();
+    // 複数の見出しがあるため、.first()を使用
+    await expect(page.getByRole('heading', { name: /従業員/i }).first()).toBeVisible();
   });
 
   test('アイテム管理画面にアクセスできる', async ({ page }) => {
@@ -57,7 +58,8 @@ test.describe('管理画面', () => {
     // ページが読み込まれるまで待機
     await page.waitForLoadState('networkidle');
     // Cardコンポーネントの見出しを確認（「アイテム登録 / 編集」または「アイテム一覧」）
-    await expect(page.getByRole('heading', { name: /アイテム/i })).toBeVisible();
+    // 複数の見出しがあるため、.first()を使用
+    await expect(page.getByRole('heading', { name: /アイテム/i }).first()).toBeVisible();
   });
 
   test('履歴画面にアクセスできる', async ({ page }) => {
