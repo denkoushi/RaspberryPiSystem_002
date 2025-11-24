@@ -25,7 +25,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   const returnMutation = useReturnMutation(resolvedClientKey);
 
   const handleReturn = async (loanId: string) => {
-    await returnMutation.mutateAsync({ loanId, clientId: clientId || undefined, note: note || undefined });
+    await returnMutation.mutateAsync({ loanId, clientId: resolvedClientId || undefined, note: note || undefined });
     await loansQuery.refetch();
     setNote('');
   };
