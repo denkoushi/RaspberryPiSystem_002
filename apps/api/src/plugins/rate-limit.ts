@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
 /**
@@ -23,7 +23,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         : request.headers['x-forwarded-for']) || 'unknown';
     },
     // キオスク画面用のエンドポイントはレート制限を緩和（2秒ごとのポーリングに対応）
-    skip: (request) => {
+    skip: (request: FastifyRequest) => {
       // キオスク画面からのリクエスト（x-client-keyヘッダーがある場合）はレート制限をスキップ
       const url = request.url;
       const hasClientKey = !!request.headers['x-client-key'];
