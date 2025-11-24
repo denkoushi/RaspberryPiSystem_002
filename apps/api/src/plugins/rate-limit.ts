@@ -29,8 +29,27 @@ function isKioskEndpoint(request: FastifyRequest): boolean {
  * 一般APIエンドポイント用のデフォルトレート制限を適用
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
+  // キオスクエンドポイントをレート制限から除外するためのonRequestフック
+  // このフックは、レート制限プラグインが登録される前に実行される必要がある
+  app.addHook('onRequest', async (request, reply) => {
+    if (isKioskEndpoint(request)) {
+      // キオスクエンドポイントの場合は、レート制限をスキップするために
+      // リクエストにフラグを設定し、replyオブジェクトに直接スキップを指示
+      (request as any).skipRateLimit = true;
+      
+      request.log.info({
+        url: request.url,
+        path: request.url.split('?')[0],
+        hasClientKey: !!request.headers['x-client-key'],
+        method: request.method,
+      }, 'Kiosk endpoint detected - will skip rate limit');
+    }
+  });
+
   // 一般APIエンドポイント用のレート制限（デフォルト）
-  const rateLimitOptions: RateLimitPluginOptions = {
+  const rateLimitOptions: RateLimitPluginOptions & {
+    skip?: (request: FastifyRequest) => boolean;
+  } = {
     max: 100, // 100リクエスト
     timeWindow: '1 minute', // 1分間
     skipOnError: false,
@@ -46,20 +65,23 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         : request.headers['x-forwarded-for']) || 'unknown';
     },
     // キオスク画面用のエンドポイントはレート制限をスキップ（2秒ごとのポーリングに対応）
-    // allowListを使用して、キオスクエンドポイントをレート制限から除外
-    allowList: (request) => {
-      const shouldAllow = isKioskEndpoint(request);
+    skip: (request: FastifyRequest) => {
+      const skipFromHook = !!(request as any).skipRateLimit;
+      const skipFromCheck = isKioskEndpoint(request);
+      const shouldSkip = skipFromHook || skipFromCheck;
       
-      if (shouldAllow) {
+      if (shouldSkip) {
         request.log.info({
           url: request.url,
           path: request.url.split('?')[0],
           hasClientKey: !!request.headers['x-client-key'],
           method: request.method,
-        }, 'Kiosk endpoint allowed - skipping rate limit');
+          skipFromHook,
+          skipFromCheck,
+        }, 'Rate limit skipped for kiosk endpoint');
       }
       
-      return shouldAllow;
+      return shouldSkip;
     },
   };
 
