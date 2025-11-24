@@ -24,12 +24,19 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
     },
     // キオスク画面用のエンドポイントはレート制限を緩和（2秒ごとのポーリングに対応）
     skip: (request) => {
-      // /api/tools/loans/active エンドポイントで x-client-key ヘッダーがある場合はレート制限をスキップ
-      // /api/kiosk/config エンドポイントもレート制限をスキップ（設定は頻繁に変わらないため）
+      // キオスク画面からのリクエスト（x-client-keyヘッダーがある場合）はレート制限をスキップ
       const url = request.url;
       const hasClientKey = !!request.headers['x-client-key'];
+      
+      // キオスク画面用のエンドポイント
+      const kioskEndpoints = [
+        '/api/tools/loans/active',
+        '/api/tools/loans/borrow',
+        '/api/tools/loans/return',
+      ];
+      
       return (
-        (url.startsWith('/api/tools/loans/active') && hasClientKey) ||
+        (kioskEndpoints.some(endpoint => url.startsWith(endpoint)) && hasClientKey) ||
         url.startsWith('/api/kiosk/config')
       );
     },
