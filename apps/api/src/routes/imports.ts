@@ -12,7 +12,20 @@ import { ApiError } from '../lib/errors.js';
 const { EmployeeStatus, ItemStatus } = pkg;
 
 const fieldSchema = z.object({
-  replaceExisting: z.coerce.boolean().optional().default(false)
+  replaceExisting: z.preprocess(
+    (val) => {
+      // デバッグ: 値を確認
+      console.log('[fieldSchema] replaceExisting raw value:', val, 'type:', typeof val);
+      if (val === 'true' || val === true || val === '1' || val === 1) {
+        return true;
+      }
+      if (val === 'false' || val === false || val === '0' || val === 0 || val === '' || val === null || val === undefined) {
+        return false;
+      }
+      return val;
+    },
+    z.coerce.boolean().optional().default(false)
+  )
 });
 
 const employeeCsvSchema = z.object({
@@ -329,18 +342,32 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // 同期処理: トランザクション内でインポートを実行し、結果を直接返す
     const summary: Record<string, ImportResult> = {};
 
+    // デバッグログ: replaceExistingの値を確認
+    request.log.info({ 
+      replaceExisting,
+      replaceExistingType: typeof replaceExisting,
+      employeeRowsCount: employeeRows.length,
+      itemRowsCount: itemRows.length,
+      fieldValues
+    }, 'インポート処理開始前');
+
     try {
+      request.log.info({ replaceExisting }, 'トランザクション開始');
       await prisma.$transaction(async (tx) => {
+        request.log.info({ replaceExisting }, 'トランザクション内: importEmployees呼び出し前');
         if (employeeRows.length > 0) {
           summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
         }
+        request.log.info({ replaceExisting }, 'トランザクション内: importItems呼び出し前');
         if (itemRows.length > 0) {
           summary.items = await importItems(tx, itemRows, replaceExisting);
         }
+        request.log.info({}, 'トランザクション内: すべての処理完了');
       }, {
         timeout: 30000, // 30秒のタイムアウト
         isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
       });
+      request.log.info({}, 'トランザクション完了');
     } catch (error) {
       // トランザクション内で発生したエラーをキャッチ
       request.log.error({ 
