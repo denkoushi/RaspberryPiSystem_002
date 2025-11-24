@@ -22,14 +22,19 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         ? request.headers['x-forwarded-for'][0]
         : request.headers['x-forwarded-for']) || 'unknown';
     },
-    // レート制限をスキップする条件（ルートのconfigでrateLimit: falseが設定されている場合）
+    // レート制限をスキップする条件（URLパスで判定）
     skip: (request) => {
-      // request.routeConfigは存在しない可能性があるため、request.routeOptionsを確認
-      const routeOptions = (request as any).routeOptions;
-      if (routeOptions?.config?.rateLimit === false) {
-        return true;
-      }
-      return false;
+      const url = request.url;
+      // キオスクエンドポイントとインポートエンドポイントをスキップ
+      const skipPaths = [
+        '/api/tools/loans/active',
+        '/api/tools/loans/borrow',
+        '/api/tools/loans/return',
+        '/api/kiosk/config',
+        '/api/imports/master',
+        '/api/imports/jobs'
+      ];
+      return skipPaths.some(path => url.startsWith(path));
     },
   });
 }
