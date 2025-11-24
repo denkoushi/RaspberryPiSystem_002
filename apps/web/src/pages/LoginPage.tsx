@@ -50,7 +50,11 @@ export function LoginPage() {
           <span className="text-sm text-white/70">パスワード</span>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-red-400" role="alert">
+            {error}
+          </p>
+        ) : null}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? '送信中...' : 'ログイン'}
         </Button>
