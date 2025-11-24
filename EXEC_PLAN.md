@@ -38,6 +38,7 @@
 - [x] (2025-01-XX) ファイル構造リファクタリングの動作確認完了。ラズパイ5でAPIの既存パス（/api/employees, /api/items, /api/transactions）と新パス（/api/tools/employees, /api/tools/items, /api/tools/transactions）の両方で同じデータが返ることを確認。持出・返却API（/api/tools/borrow, /api/tools/loans/active）が正常に動作することを確認。ラズパイ4でWeb UIの全アドレス（/admin/tools/* と /admin/*）が正常に表示されることを確認。ファイル分割後の構造でも後方互換性が保たれていることを実機で検証済み。
 - [x] (2025-01-XX) ロギングとエラーハンドリングの改善完了。console.log/errorをpinoロガーに統一、エラーハンドラーに詳細情報（requestId, method, url, userId等）を追加、サービス層（LoanService）に重要な操作のログを追加。共通ロガー（lib/logger.ts）を作成。ビルド成功を確認。ラズパイ5でAPI起動ログが新しい形式で出力されることを確認。持出API実行時に「Borrow request started」「Item not found for borrow」「API error」などのログが正しく記録されることを実機で検証済み。
 - [x] (2025-11-24) 運用・保守性の向上機能を追加完了。バックアップ・リストアスクリプト（scripts/server/backup.sh, restore.sh）を作成し、ラズパイ5で検証完了。監視・アラート機能（システムヘルスチェックエンドポイント /api/system/health、メトリクスエンドポイント /api/system/metrics、監視スクリプト scripts/server/monitor.sh）を実装し、ラズパイ5で検証完了。GitHub Actions CIパイプライン（.github/workflows/ci.yml）を作成し、テストとビルドの自動化を実装。デプロイスクリプト（scripts/server/deploy.sh）を更新し、ラズパイ5で検証完了。API概要ドキュメント、認証APIドキュメント、開発者向けガイドを作成。すべての機能がラズパイ5で正常に動作することを実機で検証済み。
+- [x] (2025-11-24) GitHub Actions CIパイプラインの修正完了。pnpmバージョンの不一致（8→9）を修正、Prisma Client生成ステップを追加、health.test.tsを/api/system/healthエンドポイントに更新。すべてのテストが通過し、CIパイプラインが正常に動作することを確認。
 
 ## Surprises & Discoveries
 
@@ -96,6 +97,15 @@
 - 観測: Phase 2でサービス層を導入する際、`loan.service.ts`で`ItemStatus`と`TransactionAction`を`import type`でインポートしていたが、値として使用していたためTypeScriptエラーが発生した。  
   エビデンス: `pnpm build`実行時に`'ItemStatus' cannot be used as a value because it was imported using 'import type'`エラー。  
   対応: `ItemStatus`と`TransactionAction`を通常のインポート（`import { ItemStatus, TransactionAction }`）に変更し、型のみのインポート（`import type { Loan }`）と分離。
+- 観測: GitHub Actions CIパイプラインでpnpmバージョンの不一致エラーが発生した。  
+  エビデンス: `ERR_PNPM_UNSUPPORTED_ENGINE`エラー。`package.json`で`engines.pnpm >=9.0.0`が指定されているが、CIワークフローで`version: 8`を指定していた。  
+  対応: CIワークフローで`pnpm`のバージョンを9に変更。Raspberry Pi上では`corepack`により自動的に正しいバージョン（9.1.1）が使用されるため問題なし。
+- 観測: GitHub Actions CIパイプラインでPrisma Clientが生成されていないため、TypeScriptビルドが失敗した。  
+  エビデンス: `error TS2305: Module '"@prisma/client"' has no exported member 'User'`などのエラー。  
+  対応: CIワークフローに`Generate Prisma Client`ステップを追加し、APIビルド前にPrisma Clientを生成するように修正。
+- 観測: `health.test.ts`が古いエンドポイント（`/api/health`）を参照しており、CIテストが失敗した。  
+  エビデンス: `Route GET:/api/health not found`エラー。実際のエンドポイントは`/api/system/health`に変更されていた。  
+  対応: `health.test.ts`を`/api/system/health`エンドポイントに更新し、新しいレスポンス構造（`status`, `checks`, `memory`, `uptime`）に対応。
 
 ## Decision Log
 
