@@ -31,8 +31,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
         '/api/tools/loans/borrow',
         '/api/tools/loans/return',
         '/api/kiosk/config',
-        '/api/imports/master',
-        '/api/imports/jobs'
+        '/api/imports/master'
       ];
       return skipPaths.some(path => url.startsWith(path));
     },
