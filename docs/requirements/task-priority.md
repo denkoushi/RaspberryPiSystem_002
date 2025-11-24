@@ -28,7 +28,7 @@
 - [ ] Validation 4: 返却フロー（✅ 一部完了）
 - [ ] Validation 5: 履歴画面（✅ 一部完了）
 - [x] Validation 6: オフライン耐性（✅ 2025-11-24 実機検証完了）
-- [ ] Validation 7: USB一括登録（✅ 実装完了、実機検証待ち）
+- [ ] Validation 7: USB一括登録（🔄 要件定義明確化、実装改善必要）
 - [ ] Validation 8: NFCエージェント単体（✅ 一部完了）
 
 **推定工数**: 2-3日
