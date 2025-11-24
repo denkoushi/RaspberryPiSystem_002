@@ -19,7 +19,10 @@ export function LoginPage() {
   useEffect(() => {
     if (loginSuccess && !loading && user) {
       setLoginSuccess(false); // リセットして無限ループを防ぐ
-      navigate(from, { replace: true });
+      // 次のイベントループでナビゲートして、userの状態更新が確実に反映されるようにする
+      setTimeout(() => {
+        navigate(from, { replace: true });
+      }, 0);
     }
   }, [loginSuccess, user, loading, navigate, from]);
 
@@ -30,7 +33,10 @@ export function LoginPage() {
     try {
       await login(username, password);
       // ログイン成功をマーク（userの状態更新を待つ）
-      setLoginSuccess(true);
+      // Reactの状態更新は非同期なので、次のイベントループでsetLoginSuccessを実行
+      setTimeout(() => {
+        setLoginSuccess(true);
+      }, 0);
     } catch (err) {
       // axiosエラーの場合、response.data.messageを優先的に使用
       let errorMessage = 'ログインに失敗しました';

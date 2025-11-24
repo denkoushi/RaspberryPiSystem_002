@@ -56,11 +56,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         JSON.stringify({ token: response.accessToken, user: response.user, refresh: response.refreshToken })
       );
       setAuthToken(response.accessToken);
+      // setUserの状態更新が確実に反映されるように、次のイベントループでsetLoading(false)を実行
+      setTimeout(() => {
+        setLoading(false);
+      }, 0);
     } catch (error) {
+      setLoading(false);
       // エラーを再throwして、LoginPageでエラーメッセージを表示できるようにする
       throw error;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
