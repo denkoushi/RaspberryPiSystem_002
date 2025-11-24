@@ -122,7 +122,7 @@ async function importEmployees(
       logger?.info({}, '[importEmployees] Starting deleteMany with replaceExisting=true');
       const loans = await tx.loan.findMany({
         select: { employeeId: true },
-        where: { employeeId: { not: null } }
+        where: { employeeId: { isNot: null } }
       });
       const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
       
@@ -155,12 +155,16 @@ async function importEmployees(
     const { id: _ignoredId, ...rowWithoutId } = row as any;
     
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
-    const payload: Omit<Prisma.EmployeeUncheckedCreateInput, 'id' | 'createdAt' | 'updatedAt'> = {
+    const updateData = {
       displayName: row.displayName,
       department: row.department || null,
       contact: row.contact || null,
       nfcTagUid: row.nfcTagUid || null,
       status: normalizeEmployeeStatus(row.status)
+    };
+    const createData = {
+      employeeCode: row.employeeCode,
+      ...updateData
     };
     try {
       const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
@@ -168,26 +172,23 @@ async function importEmployees(
         logger?.error({ 
           employeeCode: row.employeeCode,
           existingId: existing.id,
-          payloadKeys: Object.keys(payload)
+          updateDataKeys: Object.keys(updateData)
         }, '[importEmployees] Updating employee');
         // update時はidを明示的に除外（念のため二重で防御）
-        const { id, createdAt, updatedAt, ...updateData } = payload as any;
+        const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, employeeCode: _ignoredEmployeeCode, ...finalUpdateData } = updateData as any;
         logger?.error({ 
-          updateDataKeys: Object.keys(updateData),
-          hasId: 'id' in updateData
-        }, '[importEmployees] updateData確認');
+          finalUpdateDataKeys: Object.keys(finalUpdateData),
+          hasId: 'id' in finalUpdateData
+        }, '[importEmployees] finalUpdateData確認');
         await tx.employee.update({
           where: { employeeCode: row.employeeCode },
-          data: updateData
+          data: finalUpdateData
         });
         result.updated += 1;
       } else {
         logger?.error({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
         await tx.employee.create({
-          data: {
-            employeeCode: row.employeeCode,
-            ...payload
-          }
+          data: createData
         });
         result.created += 1;
       }
@@ -244,7 +245,7 @@ async function importItems(
   }
   for (const row of rows) {
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
-    const payload: Omit<Prisma.ItemUncheckedCreateInput, 'id' | 'createdAt' | 'updatedAt'> = {
+    const updateData = {
       name: row.name,
       description: row.notes || null,
       category: row.category || null,
@@ -253,21 +254,22 @@ async function importItems(
       status: normalizeItemStatus(row.status),
       notes: row.notes || null
     };
+    const createData = {
+      itemCode: row.itemCode,
+      ...updateData
+    };
     const existing = await tx.item.findUnique({ where: { itemCode: row.itemCode } });
     if (existing) {
       // update時はidを明示的に除外（念のため二重で防御）
-      const { id, createdAt, updatedAt, ...updateData } = payload as any;
+      const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, itemCode: _ignoredItemCode, ...finalUpdateData } = updateData as any;
       await tx.item.update({
         where: { itemCode: row.itemCode },
-        data: updateData
+        data: finalUpdateData
       });
       result.updated += 1;
     } else {
       await tx.item.create({
-        data: {
-          itemCode: row.itemCode,
-          ...payload
-        }
+        data: createData
       });
       result.created += 1;
     }
@@ -328,7 +330,12 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // replaceExistingの値を確実に取得（文字列も含めて明示的に判定）
     const parsedFields = fieldSchema.parse(fieldValues);
     const rawReplaceExisting = parsedFields.replaceExisting;
-    const replaceExisting = rawReplaceExisting === true || rawReplaceExisting === 'true' || rawReplaceExisting === 1 || rawReplaceExisting === '1';
+    // Boolean()は使わない（'false'文字列がtrueになるため）
+    const replaceExisting = rawReplaceExisting === true || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === 'true') || 
+                           (typeof rawReplaceExisting === 'number' && rawReplaceExisting === 1) || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
+                           false;
     
     // デバッグログ: フォームから取得した値を確認
     request.log.info({ 
