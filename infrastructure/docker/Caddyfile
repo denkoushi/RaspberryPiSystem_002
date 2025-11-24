@@ -19,5 +19,13 @@
     not file
   }
   rewrite @spa /index.html
+  
+  # JavaScript/CSSファイルのキャッシュ制御（開発環境ではキャッシュを無効化）
+  @static {
+    path *.js
+    path *.css
+  }
+  header @static Cache-Control "no-cache, no-store, must-revalidate"
+  
   file_server
 }
