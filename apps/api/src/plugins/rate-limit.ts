@@ -29,7 +29,7 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
       /^\/api\/tools\/loans\/return/,
       /^\/api\/kiosk\/config/,
       /^\/api\/imports\/master/
-    ]
+    ] as (string | RegExp)[] // 型を明示して TS のオーバーロードを満たす
   });
 }
 
