@@ -42,6 +42,7 @@
 - [x] (2025-11-24) ルートハンドラーの統合テスト追加完了。テストヘルパー関数（helpers.ts）を作成し、従業員・アイテム・貸出・認証エンドポイントの統合テストを追加。合計20以上のテストケースを追加し、APIエンドポイントの動作を保証。ビルド成功を確認。
 - [x] (2025-11-24) 統合テストの安定化完了。テストデータの分離を改善し、cleanupTestData()を削除して各テストで一意なデータを生成するように変更。createTestClientDeviceがAPIキーも返すように修正。GitHub Actions CIパイプラインで全66テストが成功することを確認。
 - [x] (2025-11-24) ローカルテスト環境の整備完了。Docker Desktopを使用したローカルテスト実行スクリプト（scripts/test/start-postgres.sh, stop-postgres.sh, run-tests.sh）を作成。package.jsonにtest:api, test:postgres:start, test:postgres:stopスクリプトを追加。Macローカル環境で全66テストが成功することを確認。
+- [x] (2025-11-24) E2Eテストの追加完了。Playwrightを使用したE2Eテストを実装。認証フロー、キオスク画面、管理画面のテストを追加。CIパイプラインにE2Eテストジョブを追加。READMEと開発ガイドにE2Eテストの実行方法を追加。
 
 ## Surprises & Discoveries
 
