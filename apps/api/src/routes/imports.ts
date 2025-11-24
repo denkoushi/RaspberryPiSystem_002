@@ -178,7 +178,7 @@ async function importItems(
 export async function registerImportRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
-  app.post('/imports/master', { preHandler: mustBeAdmin }, async (request) => {
+  app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
     const files: { employees?: Buffer; items?: Buffer } = {};
     const fieldValues: Record<string, string> = {};
 
