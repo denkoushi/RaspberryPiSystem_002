@@ -1,0 +1,5 @@
+employeeCode,displayName,nfcTagUid,department,contact,status
+EMP001,山田太郎,04C362E1330289,製造部,090-1234-5678,ACTIVE
+EMP002,佐藤花子,04B34411340289,品質管理部,090-2345-6789,ACTIVE
+EMP003,鈴木一郎,04C393C1330289,製造部,090-3456-7890,ACTIVE
+
