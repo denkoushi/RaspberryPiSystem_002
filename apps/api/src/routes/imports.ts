@@ -178,12 +178,13 @@ async function importItems(
 export async function registerImportRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
-  app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+  app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request, reply) => {
     const files: { employees?: Buffer; items?: Buffer } = {};
     const fieldValues: Record<string, string> = {};
 
-    const parts = request.parts();
-    for await (const part of parts) {
+    try {
+      const parts = request.parts();
+      for await (const part of parts) {
       if (part.type === 'file') {
         const buffer = await readFile(part);
         if (part.fieldname === 'employees') {
@@ -284,7 +285,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
-  app.get('/imports/jobs', { preHandler: mustBeAdmin }, async () => {
+  app.get('/imports/jobs', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async () => {
     const jobs = await prisma.importJob.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20
