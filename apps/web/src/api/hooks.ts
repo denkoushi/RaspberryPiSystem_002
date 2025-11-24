@@ -77,14 +77,24 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
 }
 
 export function useBorrowMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: BorrowPayload) => borrowItem(payload, clientKey)
+    mutationFn: (payload: BorrowPayload) => borrowItem(payload, clientKey),
+    onSuccess: () => {
+      // 貸出成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
   });
 }
 
 export function useReturnMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: ReturnPayload) => returnLoan(payload, clientKey)
+    mutationFn: (payload: ReturnPayload) => returnLoan(payload, clientKey),
+    onSuccess: () => {
+      // 返却成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
   });
 }
 
