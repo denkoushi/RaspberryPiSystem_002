@@ -68,9 +68,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
         userId,
         err: error,
         stack: error.stack,
+        errorName: error.name,
+        errorMessage: error.message,
       },
       'Unhandled error',
     );
-    reply.status(error.statusCode ?? 500).send({ message: error.message ?? 'サーバーエラー' });
+    
+    // エラーメッセージが存在しない場合のフォールバック
+    const statusCode = error.statusCode ?? 500;
+    const message = error.message || 'サーバーエラー';
+    
+    reply.status(statusCode).send({ message });
   });
 }

@@ -184,6 +184,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const fieldValues: Record<string, string> = {};
 
     try {
+      // マルチパートリクエストの処理
+      if (!request.isMultipart()) {
+        throw new ApiError(400, 'マルチパートフォームデータが必要です。Content-Type: multipart/form-dataを指定してください。');
+      }
+
       const parts = request.parts();
       for await (const part of parts) {
         if (part.type === 'file') {
@@ -198,10 +203,25 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Multipart')) {
-        throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
+      // エラーログを記録
+      request.log.error({ err: error }, 'マルチパート処理エラー');
+      
+      if (error instanceof ApiError) {
+        throw error;
       }
-      throw error;
+      
+      if (error instanceof Error) {
+        // マルチパート関連のエラーかどうかを判定
+        const errorMessage = error.message.toLowerCase();
+        if (errorMessage.includes('multipart') || errorMessage.includes('content-type')) {
+          throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
+        }
+        // その他のエラーもApiErrorとしてラップ
+        throw new ApiError(400, `リクエスト処理エラー: ${error.message}`);
+      }
+      
+      // 未知のエラー
+      throw new ApiError(400, 'リクエストの処理に失敗しました');
     }
 
     const { replaceExisting } = fieldSchema.parse(fieldValues);
