@@ -24,7 +24,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
         },
         'API error',
       );
-      reply.status(error.statusCode).send({ message: error.message, details: error.details });
+      // ApiErrorのメッセージを確実に返す
+      const response: { message: string; details?: unknown; code?: string } = { message: error.message };
+      if (error.details) {
+        response.details = error.details;
+      }
+      if ((error.details as any)?.code) {
+        response.code = (error.details as any).code;
+      }
+      reply.status(error.statusCode).send(response);
       return;
     }
 

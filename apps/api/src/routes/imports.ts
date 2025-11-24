@@ -355,9 +355,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         if (error.code === 'P2003') {
           const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
           const modelName = (error.meta as any)?.model_name || '不明なモデル';
-          throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
+          throw new ApiError(
+            400,
+            `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
+            { code: error.code, ...error.meta }
+          );
         }
-        throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`);
+        throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
       }
       
       // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
