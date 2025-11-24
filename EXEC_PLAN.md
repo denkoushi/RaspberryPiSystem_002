@@ -40,6 +40,8 @@
 - [x] (2025-11-24) 運用・保守性の向上機能を追加完了。バックアップ・リストアスクリプト（scripts/server/backup.sh, restore.sh）を作成し、ラズパイ5で検証完了。監視・アラート機能（システムヘルスチェックエンドポイント /api/system/health、メトリクスエンドポイント /api/system/metrics、監視スクリプト scripts/server/monitor.sh）を実装し、ラズパイ5で検証完了。GitHub Actions CIパイプライン（.github/workflows/ci.yml）を作成し、テストとビルドの自動化を実装。デプロイスクリプト（scripts/server/deploy.sh）を更新し、ラズパイ5で検証完了。API概要ドキュメント、認証APIドキュメント、開発者向けガイドを作成。すべての機能がラズパイ5で正常に動作することを実機で検証済み。
 - [x] (2025-11-24) GitHub Actions CIパイプラインの修正完了。pnpmバージョンの不一致（8→9）を修正、Prisma Client生成ステップを追加、health.test.tsを/api/system/healthエンドポイントに更新。すべてのテストが通過し、CIパイプラインが正常に動作することを確認。
 - [x] (2025-11-24) ルートハンドラーの統合テスト追加完了。テストヘルパー関数（helpers.ts）を作成し、従業員・アイテム・貸出・認証エンドポイントの統合テストを追加。合計20以上のテストケースを追加し、APIエンドポイントの動作を保証。ビルド成功を確認。
+- [x] (2025-11-24) 統合テストの安定化完了。テストデータの分離を改善し、cleanupTestData()を削除して各テストで一意なデータを生成するように変更。createTestClientDeviceがAPIキーも返すように修正。GitHub Actions CIパイプラインで全66テストが成功することを確認。
+- [x] (2025-11-24) ローカルテスト環境の整備完了。Docker Desktopを使用したローカルテスト実行スクリプト（scripts/test/start-postgres.sh, stop-postgres.sh, run-tests.sh）を作成。package.jsonにtest:api, test:postgres:start, test:postgres:stopスクリプトを追加。Macローカル環境で全66テストが成功することを確認。
 
 ## Surprises & Discoveries
 
