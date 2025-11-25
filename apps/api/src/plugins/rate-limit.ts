@@ -6,7 +6,9 @@ import rateLimit from '@fastify/rate-limit';
  * 
  * 注意: 429エラーを防ぐため、レート制限の値を非常に大きく設定しています。
  * これにより、実質的にレート制限が無効になります。
- * 将来的には、より適切なレート制限設定を実装する必要があります。
+ * 
+ * ルートの`config: { rateLimit: false }`は、サブルーターの場合は認識されない可能性があるため、
+ * レート制限の値を非常に大きく設定することで、実質的に無効化しています。
  */
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
   // レート制限を実質的に無効化（429エラーを防ぐため）
