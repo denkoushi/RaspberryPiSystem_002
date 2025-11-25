@@ -546,6 +546,24 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // 同期処理: トランザクション内でインポートを実行し、結果を直接返す
     const summary: Record<string, ImportResult> = {};
 
+    // 従業員とアイテム間でnfcTagUidの重複をチェック
+    const employeeNfcTagUids = new Set(
+      employeeRows
+        .map(row => row.nfcTagUid?.trim())
+        .filter((uid): uid is string => Boolean(uid))
+    );
+    const itemNfcTagUids = new Set(
+      itemRows
+        .map(row => row.nfcTagUid?.trim())
+        .filter((uid): uid is string => Boolean(uid))
+    );
+    const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
+    if (crossDuplicateNfcTagUids.length > 0) {
+      const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
+      request.log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
+      throw new ApiError(400, errorMessage);
+    }
+
     // デバッグログ: replaceExistingの値を確認
     request.log.info({ 
       replaceExisting,
