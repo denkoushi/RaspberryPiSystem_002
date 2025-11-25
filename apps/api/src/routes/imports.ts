@@ -150,6 +150,27 @@ async function importEmployees(
   } else {
     logger?.error({ replaceExisting }, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
+  // CSV内でnfcTagUidの重複をチェック
+  const nfcTagUidMap = new Map<string, string[]>(); // nfcTagUid -> employeeCode[]
+  for (const row of rows) {
+    if (row.nfcTagUid && row.nfcTagUid.trim()) {
+      const uid = row.nfcTagUid.trim();
+      if (!nfcTagUidMap.has(uid)) {
+        nfcTagUidMap.set(uid, []);
+      }
+      nfcTagUidMap.get(uid)!.push(row.employeeCode);
+    }
+  }
+  // CSV内で重複しているnfcTagUidを検出
+  const duplicateNfcTagUids = Array.from(nfcTagUidMap.entries())
+    .filter(([_, codes]) => codes.length > 1)
+    .map(([uid, codes]) => ({ uid, employeeCodes: codes }));
+  if (duplicateNfcTagUids.length > 0) {
+    const errorMessage = `CSV内でnfcTagUidが重複しています: ${duplicateNfcTagUids.map(({ uid, employeeCodes }) => `nfcTagUid="${uid}" (employeeCode: ${employeeCodes.join(', ')})`).join('; ')}`;
+    logger?.error({ duplicateNfcTagUids }, '[importEmployees] CSV内でnfcTagUidが重複');
+    throw new ApiError(400, errorMessage);
+  }
+
   for (const row of rows) {
     // rowからidを明示的に除外（CSVにidカラムが含まれている場合に備える）
     const { id: _ignoredId, ...rowWithoutId } = row as any;
@@ -174,6 +195,26 @@ async function importEmployees(
           existingId: existing.id,
           updateDataKeys: Object.keys(updateData)
         }, '[importEmployees] Updating employee');
+        
+        // nfcTagUidが設定されている場合、他の従業員が同じnfcTagUidを持っていないかチェック
+        if (row.nfcTagUid && row.nfcTagUid.trim()) {
+          const otherEmployee = await tx.employee.findFirst({
+            where: {
+              nfcTagUid: row.nfcTagUid.trim(),
+              employeeCode: { not: row.employeeCode }
+            }
+          });
+          if (otherEmployee) {
+            const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にemployeeCode="${otherEmployee.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
+            logger?.error({ 
+              nfcTagUid: row.nfcTagUid,
+              currentEmployeeCode: row.employeeCode,
+              existingEmployeeCode: otherEmployee.employeeCode
+            }, '[importEmployees] nfcTagUidの重複エラー');
+            throw new ApiError(400, errorMessage);
+          }
+        }
+        
         // update時はidを明示的に除外（念のため二重で防御）
         const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, employeeCode: _ignoredEmployeeCode, ...finalUpdateData } = updateData as any;
         logger?.error({ 
@@ -186,6 +227,24 @@ async function importEmployees(
         });
         result.updated += 1;
       } else {
+        // 新規作成時も、同じnfcTagUidを持つ既存の従業員が存在するかチェック
+        if (row.nfcTagUid && row.nfcTagUid.trim()) {
+          const existingWithSameNfcTag = await tx.employee.findFirst({
+            where: {
+              nfcTagUid: row.nfcTagUid.trim()
+            }
+          });
+          if (existingWithSameNfcTag) {
+            const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にemployeeCode="${existingWithSameNfcTag.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
+            logger?.error({ 
+              nfcTagUid: row.nfcTagUid,
+              newEmployeeCode: row.employeeCode,
+              existingEmployeeCode: existingWithSameNfcTag.employeeCode
+            }, '[importEmployees] nfcTagUidの重複エラー（新規作成時）');
+            throw new ApiError(400, errorMessage);
+          }
+        }
+        
         logger?.error({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
         await tx.employee.create({
           data: createData
@@ -243,6 +302,26 @@ async function importItems(
       await tx.item.deleteMany();
     }
   }
+  // CSV内でnfcTagUidの重複をチェック
+  const itemNfcTagUidMap = new Map<string, string[]>(); // nfcTagUid -> itemCode[]
+  for (const row of rows) {
+    if (row.nfcTagUid && row.nfcTagUid.trim()) {
+      const uid = row.nfcTagUid.trim();
+      if (!itemNfcTagUidMap.has(uid)) {
+        itemNfcTagUidMap.set(uid, []);
+      }
+      itemNfcTagUidMap.get(uid)!.push(row.itemCode);
+    }
+  }
+  // CSV内で重複しているnfcTagUidを検出
+  const duplicateItemNfcTagUids = Array.from(itemNfcTagUidMap.entries())
+    .filter(([_, codes]) => codes.length > 1)
+    .map(([uid, codes]) => ({ uid, itemCodes: codes }));
+  if (duplicateItemNfcTagUids.length > 0) {
+    const errorMessage = `CSV内でnfcTagUidが重複しています: ${duplicateItemNfcTagUids.map(({ uid, itemCodes }) => `nfcTagUid="${uid}" (itemCode: ${itemCodes.join(', ')})`).join('; ')}`;
+    throw new ApiError(400, errorMessage);
+  }
+
   for (const row of rows) {
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
     const updateData = {
@@ -260,6 +339,20 @@ async function importItems(
     };
     const existing = await tx.item.findUnique({ where: { itemCode: row.itemCode } });
     if (existing) {
+      // nfcTagUidが設定されている場合、他のアイテムが同じnfcTagUidを持っていないかチェック
+      if (row.nfcTagUid && row.nfcTagUid.trim()) {
+        const otherItem = await tx.item.findFirst({
+          where: {
+            nfcTagUid: row.nfcTagUid.trim(),
+            itemCode: { not: row.itemCode }
+          }
+        });
+        if (otherItem) {
+          const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にitemCode="${otherItem.itemCode}"で使用されています。itemCode="${row.itemCode}"では使用できません。`;
+          throw new ApiError(400, errorMessage);
+        }
+      }
+      
       // update時はidを明示的に除外（念のため二重で防御）
       const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, itemCode: _ignoredItemCode, ...finalUpdateData } = updateData as any;
       await tx.item.update({
@@ -268,6 +361,19 @@ async function importItems(
       });
       result.updated += 1;
     } else {
+      // 新規作成時も、同じnfcTagUidを持つ既存のアイテムが存在するかチェック
+      if (row.nfcTagUid && row.nfcTagUid.trim()) {
+        const existingWithSameNfcTag = await tx.item.findFirst({
+          where: {
+            nfcTagUid: row.nfcTagUid.trim()
+          }
+        });
+        if (existingWithSameNfcTag) {
+          const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にitemCode="${existingWithSameNfcTag.itemCode}"で使用されています。itemCode="${row.itemCode}"では使用できません。`;
+          throw new ApiError(400, errorMessage);
+        }
+      }
+      
       await tx.item.create({
         data: createData
       });
