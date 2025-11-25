@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createAuthHeader, createTestItem, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestItem, createTestLoan, createTestUser } from './helpers.js';
 import { randomUUID } from 'node:crypto';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -219,6 +219,56 @@ describe('DELETE /api/tools/items/:id', () => {
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('should return 400 when item has active loans', async () => {
+    const item = await createTestItem();
+    const employee = await createTestEmployee();
+    const client = await createTestClientDevice();
+    
+    // 未返却の貸出記録を作成
+    await createTestLoan({
+      employeeId: employee.id,
+      itemId: item.id,
+      clientId: client.id,
+      returnedAt: null,
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('未返却の貸出記録');
+  });
+
+  it('should delete item with returned loans', async () => {
+    const item = await createTestItem();
+    const employee = await createTestEmployee();
+    const client = await createTestClientDevice();
+    
+    // 返却済みの貸出記録を作成
+    await createTestLoan({
+      employeeId: employee.id,
+      itemId: item.id,
+      clientId: client.id,
+      returnedAt: new Date(),
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    // 返却済みの貸出記録があっても削除可能
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('item');
+    expect(body.item.id).toBe(item.id);
   });
 });
 
