@@ -341,7 +341,12 @@ async function importItems(
     const loans = await tx.loan.findMany({
       select: { itemId: true }
     });
-    const itemIdsWithLoans = new Set(loans.map(l => l.itemId));
+    // itemIdがnullの場合は除外（nullableになったため）
+    const itemIdsWithLoans = new Set(
+      loans
+        .map(l => l.itemId)
+        .filter((id): id is string => id !== null)
+    );
     
     if (itemIdsWithLoans.size > 0) {
       // Loanレコードが存在するアイテムは削除しない
