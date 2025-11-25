@@ -70,7 +70,8 @@ export function registerErrorHandler(app: FastifyInstance): void {
       if (error.code === 'P2003') {
         const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
         const modelName = (error.meta as any)?.model_name || '不明なモデル';
-        const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`;
+        // 外部キー制約違反の一般的なメッセージ（削除エンドポイントでは事前チェックで防いでいるため、通常は発生しない）
+        const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、操作できません。`;
         request.log.error({ 
           requestId,
           method,
@@ -79,6 +80,28 @@ export function registerErrorHandler(app: FastifyInstance): void {
           meta: error.meta,
           detailedMessage
         }, 'P2003エラー詳細');
+        reply.status(400).send({ 
+          message: detailedMessage,
+          code: error.code,
+          details: error.meta
+        });
+        return;
+      }
+      
+      // P2002: ユニーク制約違反の場合、より詳細なメッセージを返す
+      if (error.code === 'P2002') {
+        const target = (error.meta as any)?.target || [];
+        const targetFields = Array.isArray(target) ? target.join(', ') : String(target);
+        const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        const detailedMessage = `ユニーク制約違反: ${modelName}の${targetFields}が既に存在します。`;
+        request.log.error({ 
+          requestId,
+          method,
+          url,
+          prismaCode: error.code,
+          meta: error.meta,
+          detailedMessage
+        }, 'P2002エラー詳細');
         reply.status(400).send({ 
           message: detailedMessage,
           code: error.code,
@@ -96,24 +119,49 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
     
     // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
-    if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
-      const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
-      const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
-      const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`;
-      request.log.error({ 
-        requestId,
-        method,
-        url,
-        errorCode: (error as any).code,
-        errorMeta: (error as any).meta,
-        detailedMessage
-      }, 'P2003エラー（フォールバック）');
-      reply.status(400).send({ 
-        message: detailedMessage,
-        code: (error as any).code,
-        details: (error as any).meta
-      });
-      return;
+    if (error && typeof error === 'object' && 'code' in error) {
+      const errorCode = (error as any).code;
+      
+      if (errorCode === 'P2003') {
+        const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
+        const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+        const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、操作できません。`;
+        request.log.error({ 
+          requestId,
+          method,
+          url,
+          errorCode,
+          errorMeta: (error as any).meta,
+          detailedMessage
+        }, 'P2003エラー（フォールバック）');
+        reply.status(400).send({ 
+          message: detailedMessage,
+          code: errorCode,
+          details: (error as any).meta
+        });
+        return;
+      }
+      
+      if (errorCode === 'P2002') {
+        const target = ((error as any).meta as any)?.target || [];
+        const targetFields = Array.isArray(target) ? target.join(', ') : String(target);
+        const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+        const detailedMessage = `ユニーク制約違反: ${modelName}の${targetFields}が既に存在します。`;
+        request.log.error({ 
+          requestId,
+          method,
+          url,
+          errorCode,
+          errorMeta: (error as any).meta,
+          detailedMessage
+        }, 'P2002エラー（フォールバック）');
+        reply.status(400).send({ 
+          message: detailedMessage,
+          code: errorCode,
+          details: (error as any).meta
+        });
+        return;
+      }
     }
 
     request.log.error(

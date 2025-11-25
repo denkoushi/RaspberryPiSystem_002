@@ -6,7 +6,7 @@ import { employeeQuerySchema } from './schemas.js';
 export function registerEmployeeListRoute(app: FastifyInstance, employeeService: EmployeeService): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/employees', { preHandler: canView }, async (request) => {
+  app.get('/employees', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
     const query = employeeQuerySchema.parse(request.query);
     const employees = await employeeService.findAll(query);
     return { employees };

@@ -33,9 +33,15 @@ export function registerItemDeleteRoute(app: FastifyInstance, itemService: ItemS
         throw new ApiError(404, 'アイテムが見つかりません');
       }
       // P2003エラー（外部キー制約違反）をより分かりやすいメッセージに変換
-      // このエラーは通常発生しない（事前チェックで防いでいる）が、念のため処理
+      // このエラーは通常発生しない（データベースの外部キー制約がON DELETE SET NULLに設定されているため）
+      // ただし、データベースの設定が正しく適用されていない場合に発生する可能性がある
       if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
-        throw new ApiError(400, 'このアイテムには貸出記録が存在するため、削除できません。貸出記録は履歴として保持されるため、アイテムの削除はできません。');
+        request.log.error({
+          itemId: params.id,
+          errorCode: error.code,
+          errorMeta: error.meta,
+        }, 'P2003エラー: データベースの外部キー制約設定を確認してください');
+        throw new ApiError(400, 'データベースの制約により削除できませんでした。管理者に連絡してください。');
       }
       // ApiErrorの場合はそのまま再スロー
       if (error instanceof ApiError) {
