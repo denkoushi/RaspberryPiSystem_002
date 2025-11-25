@@ -47,7 +47,10 @@
 - [x] (2025-11-24) E2Eテストの改善とCI環境での最適化完了。ログイン後のリダイレクト問題を修正（LoginPageのuseEffect、RequireAuthのloading状態追加）。CI環境では物理デバイスが必要なNFCスキャンテストを削除し、有効な範囲のみをテストする方針に変更。状態マシンのロジックは既にborrowMachine.test.tsでユニットテストされ、APIの統合テストはloans.integration.test.tsで実施されているため、CI環境では画面表示・ナビゲーションのテストのみに限定。詳細は`docs/progress/e2e-testing-improvements.md`を参照。
 - [x] (2025-11-24) オフライン耐性機能の実装完了。NFCエージェントにキュー再送ワーカー（ResendWorker）を実装し、オフライン時に保存されたイベントをオンライン復帰後にWebSocket経由で再配信する機能を追加。WebSocket接続確立時に即座にキューに保存されたイベントを再送する機能も実装。詳細は`docs/progress/offline-resilience-implementation.md`を参照。実機検証は次フェーズで実施。
 - [x] (2025-11-25) APIリファクタリング Phase 1-4: レート制限設定の統一管理システム実装、エラーハンドリング改善、削除機能の完全実装、ルーティング修正（/api/transactions → /api/tools/transactions）。レート制限は実質的に無効化（max=100000）により429エラーを回避。データベースマイグレーション確認テスト追加。詳細は`REFACTORING_PLAN.md`を参照。
-- [ ] (2025-11-25) 実環境（ラズパイ5/4）での動作確認とGitHub Actions CIテスト失敗の原因特定・修正が必要。
+- [ ] (2025-11-25) **課題**: 実環境（ラズパイ5/4）で機能改善が確認できていない。429エラー、404エラー、削除機能、インポート機能の問題が解決されていない可能性がある。
+- [ ] (2025-11-25) **課題**: GitHub Actions CIテストが直近50件くらい全て失敗している。ローカルでは84テストが成功するが、CI環境では失敗している。
+- [ ] (2025-11-25) **次のタスク**: 実環境（ラズパイ5/4）での動作確認を実施し、実際にどの機能が動作していないかを特定する。
+- [ ] (2025-11-25) **次のタスク**: GitHub Actions CIテストの失敗原因を特定し、修正する。
 
 ## Surprises & Discoveries
 
@@ -96,6 +99,12 @@
   エビデンス: ブラウザコンソールに429エラーが大量に表示され、`/api/tools/loans/active`へのリクエストが429で失敗。APIログを確認すると、`skip`関数が呼び出されていないことが判明。  
   要因分析: 正常動作時点（`ef2bd7c`）のコードと比較したところ、正常時点では`skip`関数は存在せず、フロントエンド側で重複リクエストを防いでいたためレート制限に引っかからなかった。その後、`skip`関数を追加しようとしたが、`@fastify/rate-limit`の`skip`関数が期待通りに動作しなかった。  
   対応: キオスクエンドポイントに対して、Fastify標準の`config: { rateLimit: false }`オプションを使用してルート単位でレート制限を無効化。これにより、確実にレート制限をスキップできるようになった。詳細は`docs/guides/troubleshooting.md`を参照。
+- 観測: `@fastify/rate-limit`の`skip`関数が型エラーで実装できない。`config: { rateLimit: false }`も機能しない。  
+  エビデンス: `skip`関数を実装しようとしたが、`Object literal may only specify known properties, and 'skip' does not exist in type 'FastifyRegisterOptions<RateLimitPluginOptions>'`というエラーが発生。複数回試行したが失敗。  
+  対応: レート制限のmax値を100000に設定して実質的に無効化。これは暫定的な対応であり、将来的にはより適切なレート制限設定を実装する必要がある。
+- 観測: ローカルでは84テストが成功するが、実環境では機能改善が確認できていない。GitHub Actions CIテストも直近50件くらい全て失敗している。  
+  エビデンス: ユーザーからの報告。ローカル環境と実環境の差異が原因の可能性がある。  
+  対応: 実環境での動作確認とCIテスト失敗原因の特定が必要。
 - 観測: API ルートが `/auth/login` に直下で公開されており、Web UI から呼び出す `/api/auth/login` が 404 になる。  
   エビデンス: Browser DevTools で `/api/auth/login` が 404、`/auth/login` は 200。  
   対応: `apps/api/src/routes/index.ts` を `{ prefix: '/api' }` 付きでサブルータ登録するよう修正。
