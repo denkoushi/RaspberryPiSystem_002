@@ -1,16 +1,14 @@
 # デプロイメントガイド
 
-最終更新: 2025-01-XX
+最終更新: 2025-11-25
 
 ## 概要
 
 本ドキュメントでは、Raspberry Pi 5上で動作するシステムのデプロイメント手順を説明します。
 
-## デプロイ方法
+## ラズパイ5（サーバー）の更新
 
-### 1. 手動デプロイ
-
-デプロイスクリプトを使用して手動でデプロイします。
+### 方法1: デプロイスクリプトを使用（推奨）
 
 ```bash
 # ラズパイ5で実行
@@ -22,6 +20,53 @@ cd /opt/RaspberryPiSystem_002
 # 特定のブランチをデプロイ
 ./scripts/server/deploy.sh feature/new-feature
 ```
+
+### 方法2: 手動で更新
+
+```bash
+# 1. リポジトリを更新
+cd /opt/RaspberryPiSystem_002
+git pull origin main
+
+# 2. Docker Composeで再ビルド・再起動（重要: --force-recreateでコンテナを再作成）
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api
+
+# または、個別に実行する場合：
+# docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api
+# docker compose -f infrastructure/docker/docker-compose.server.yml stop api
+# docker compose -f infrastructure/docker/docker-compose.server.yml rm -f api
+# docker compose -f infrastructure/docker/docker-compose.server.yml up -d api
+
+# 3. 動作確認
+curl http://localhost:8080/api/system/health
+```
+
+**重要**: `docker compose restart`では新しいイメージが使われません。コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
+
+## ラズパイ4（クライアント/NFCエージェント）の更新
+
+```bash
+# 1. リポジトリを更新
+cd /opt/RaspberryPiSystem_002
+git pull origin main
+
+# 2. NFCエージェントの依存関係を更新（必要に応じて）
+cd clients/nfc-agent
+poetry install
+
+# 3. 既存のNFCエージェントプロセスを停止
+# （実行中の場合は Ctrl+C で停止、または別のターミナルで）
+pkill -f "python -m nfc_agent"
+
+# 4. NFCエージェントを再起動
+poetry run python -m nfc_agent
+
+# 5. 動作確認
+curl http://localhost:7071/api/agent/status
+# "queueSize": 0 が表示されればOK
+```
+
+## デプロイ方法（詳細）
 
 ### 2. デプロイスクリプトの動作
 

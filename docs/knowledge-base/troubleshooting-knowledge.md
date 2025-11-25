@@ -132,20 +132,54 @@
 - CSVインポート時にP2002エラーが発生
 - nfcTagUidの重複チェックが正しく動作していない
 - エラーメッセージは改善されたが、根本原因は解決していない
+- P2003エラー（外部キー制約違反）が発生する場合もある
+- 「トークンが無効です」エラー（401）が発生する場合もある
+- 400エラー（Bad Request）が発生する場合もある
 
 **要因**: 
 - CSV内の重複チェックと既存データとの重複チェックのロジックに問題がある可能性
 - クロスエンティティ（従業員とアイテム間）の重複チェックが正しく動作していない可能性
+- APIサーバーが最新のコードに更新されていない
+- Loanレコードが存在する従業員/アイテムを削除しようとしている（P2003エラーの場合）
+- 認証トークンの有効期限が切れている（401エラーの場合）
+- CSVファイルの形式が正しくない（400エラーの場合）
 
 **試行した対策**: 
 - [試行1] CSV内の重複チェックを追加 → **部分的成功**（エラーメッセージは改善されたが、根本原因は解決していない）
+- [試行2] ラズパイ5で最新のコードを取得してAPIサーバーを再起動 → **暫定対応**
+- [試行3] ブラウザをハードリロード（`Ctrl+Shift+R` または `Cmd+Shift+R`） → **暫定対応**
+- [試行4] `replaceExisting: false`（チェックボックスを外す）で再度試す → **推奨**
 
 **有効だった対策**: 
 - 未解決（継続中）
+- `replaceExisting: false`（チェックボックスを外す）で通常のインポートを実行することを推奨
+
+**推奨される使用方法**:
+- **通常のインポート（推奨）**: チェックボックスを外す（`replaceExisting: false`）
+  - 既存データは削除されない
+  - 新しいデータが追加される
+  - 既存データは更新される（employeeCode/itemCodeが一致する場合）
+- **全削除してからインポート（注意が必要）**: チェックボックスを入れる（`replaceExisting: true`）
+  - Loanレコードが存在しない従業員/アイテムのみ削除される
+  - Loanレコードが存在する従業員/アイテムは削除されない（外部キー制約のため）
+
+**確認手順**:
+1. APIサーバーが最新のコードに更新されているか確認：
+   ```bash
+   cd /opt/RaspberryPiSystem_002
+   git log --oneline -5
+   ```
+2. APIサーバーのログを確認：
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   ```
+3. ブラウザのコンソールを確認（F12で開発者ツールを開く）
 
 **学んだこと**: 
 - PrismaのP2002エラーは、ユニーク制約違反を示す
 - エラーメッセージを改善しても、根本原因が解決されない場合は、ロジックを見直す必要がある
+- CSVファイルはUTF-8エンコーディングで保存する必要がある
+- ヘッダー行が必須で、列名が正しい必要がある
 
 **関連ファイル**: 
 - `apps/api/src/routes/imports.ts`
@@ -656,8 +690,59 @@
 
 各Phaseの進捗は、EXEC_PLAN.mdの「Progress」セクションで管理し、ナレッジベースの課題IDを参照してください。
 
+## ログ取得方法
+
+### デバッグエンドポイントを使用（管理者権限が必要）
+
+429エラーや404エラーの原因を特定するために、デバッグエンドポイントを使用してログを取得できます。
+
+#### 1. 管理者トークンを取得
+
+```bash
+# ログインしてトークンを取得
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin1234"}' \
+  | jq -r '.accessToken')
+```
+
+#### 2. デバッグログを取得
+
+```bash
+# 429エラーのログを取得
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/system/debug/logs?level=warn&limit=20" | jq
+
+# 404エラーのリクエストログを取得
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/system/debug/requests?statusCode=404&limit=20" | jq
+
+# 429エラーのリクエストログを取得
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/system/debug/requests?statusCode=429&limit=20" | jq
+```
+
+**注意**: デバッグエンドポイントが404を返す場合、実環境で最新のコードがビルドされていない可能性があります。
+
+### APIログを直接確認
+
+デバッグエンドポイントが動作しない場合、APIログを直接確認します：
+
+```bash
+# 429エラーと404エラーを検索
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -E "429|404|HTTP.*error" | tail -30
+```
+
+スクリプトを使用する場合：
+
+```bash
+# check_api_logs.shを実行
+./check_api_logs.sh
+```
+
 ## 更新履歴
 
 - 2025-11-25: 初版作成（KB-001, KB-002, KB-003, KB-004を追加）
 - 2025-11-25: EXEC_PLAN.mdのSurprises & Discoveriesから解決済み課題を追加（KB-005〜KB-021）
 - 2025-11-25: EXEC_PLAN.mdとの連携を追加
+- 2025-11-25: ログ取得方法セクションを追加（debug-logs.mdから統合）

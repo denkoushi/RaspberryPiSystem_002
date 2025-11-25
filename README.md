@@ -7,7 +7,7 @@
 - **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
-- **[トラブルシューティングガイド](./docs/guides/troubleshooting.md)**: 問題の解決方法とナレッジベース
+- **[トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md)**: 問題の解決方法とナレッジベース
 - **[モジュールドキュメント](./docs/modules/)**: 機能別の詳細仕様
   - [工具管理モジュール](./docs/modules/tools/README.md)
   - [ドキュメントビューワー](./docs/modules/documents/)（将来実装予定）
