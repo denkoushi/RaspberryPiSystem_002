@@ -68,7 +68,7 @@
   - **手順8**: ✅ 詳細ログ機能とデバッグエンドポイントを追加。429エラー・404エラーの原因特定のため、リクエスト/レスポンスの詳細ログを記録し、`/api/system/debug/logs`と`/api/system/debug/requests`エンドポイントを追加。→ **問題**: デバッグエンドポイントが404を返している（実環境でルートが登録されていない可能性）
   - **手順9**: ✅ APIログを直接確認するスクリプト（`check_api_logs.sh`）を作成。デバッグエンドポイントが動作しない場合の代替手段として実装。
   - **手順10**: ✅ **重要発見**: ログから`@fastify/rate-limit`プラグインが実環境で動作していることが判明。コード上は削除されているが、実環境で古いコードが実行されている可能性が高い。`rate-limit.ts`と`auth.ts`から不要なインポートを削除。
-  - **手順11**: ✅ Dockerビルドとコード更新の仕組みを説明するドキュメント（`docs/guides/docker-build-explanation.md`）を作成。`git pull`だけではコンテナ内のコードが更新されない理由を明確化。
+  - **手順11**: ✅ Dockerビルドとコード更新の仕組みを既存の`docs/guides/raspberry-pi-update-commands.md`に統合。`git pull`だけではコンテナ内のコードが更新されない理由と、`docker compose restart`では新しいイメージが使われない理由を明確化。
   - **ナレッジベース**: ✅ `docs/knowledge-base/troubleshooting-knowledge.md`に試行内容を記録（KB-001, KB-002）。
   - **検証**: ⏳ **重要**: 実環境で最新のコードをビルド・デプロイする必要がある。`git pull` → `docker compose build --no-cache api` → `docker compose stop api` → `docker compose rm -f api` → `docker compose up -d api`（または`docker compose up -d --force-recreate --build api`）を実行してから、キオスク操作後にAPIログを確認して429エラー・404エラーの原因を特定。**注意**: `docker compose restart`では新しいイメージが使われない可能性があるため、コンテナを再作成する必要がある。
 - [ ] (2025-11-25) **Phase 2: 削除機能の修正**（Phase 1完了後に実施・データベース制約の問題）**ナレッジベース**: [KB-004](#kb-004-削除機能が動作しない)

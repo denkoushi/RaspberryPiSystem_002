@@ -1,6 +1,6 @@
 # ラズパイ更新コマンド（オフライン耐性機能）
 
-最終更新: 2025-11-24
+最終更新: 2025-11-25
 
 ## ラズパイ5（サーバー）の更新
 
@@ -12,14 +12,23 @@ git pull origin main
 # 2. 変更内容を確認（オプション）
 git log --oneline -5
 
-# 3. Docker Composeで再ビルド・再起動（必要に応じて）
-docker compose -f infrastructure/docker/docker-compose.server.yml down
-docker compose -f infrastructure/docker/docker-compose.server.yml build
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+# 3. Docker Composeで再ビルド・再起動（重要: --force-recreateでコンテナを再作成）
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api
+
+# または、個別に実行する場合：
+# docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api
+# docker compose -f infrastructure/docker/docker-compose.server.yml stop api
+# docker compose -f infrastructure/docker/docker-compose.server.yml rm -f api
+# docker compose -f infrastructure/docker/docker-compose.server.yml up -d api
 
 # 4. 動作確認
 curl http://localhost:8080/api/system/health
 ```
+
+### 注意: `docker compose restart`では新しいイメージが使われない
+
+`docker compose restart`は既存のコンテナを再起動するだけなので、新しいイメージがビルドされても古いイメージを使い続ける可能性があります。
+コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 
