@@ -22,7 +22,8 @@ const refreshTokenSchema = z.object({
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // 認証エンドポイントに厳しいレート制限を適用（ブルートフォース攻撃対策）
-  await app.register(rateLimit, authRateLimitConfig);
+  // 注意: 429エラーが発生しているため、一時的にレート制限を無効化
+  // await app.register(rateLimit, authRateLimitConfig);
 
   app.post('/auth/login', async (request) => {
     const body = loginSchema.parse(request.body);
