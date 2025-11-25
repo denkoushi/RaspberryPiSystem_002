@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createAuthHeader, createTestEmployee, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestItem, createTestLoan, createTestUser } from './helpers.js';
 import { randomUUID } from 'node:crypto';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -234,6 +234,54 @@ describe('DELETE /api/tools/employees/:id', () => {
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('should return 400 when employee has active loans', async () => {
+    const employee = await createTestEmployee();
+    const item = await createTestItem();
+    const client = await createTestClientDevice();
+    
+    // 未返却の貸出記録を作成
+    await createTestLoan({
+      employeeId: employee.id,
+      itemId: item.id,
+      clientId: client.id,
+      returnedAt: null,
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('未返却の貸出記録');
+  });
+
+  it('should return 400 when employee has returned loans', async () => {
+    const employee = await createTestEmployee();
+    const item = await createTestItem();
+    const client = await createTestClientDevice();
+    
+    // 返却済みの貸出記録を作成
+    await createTestLoan({
+      employeeId: employee.id,
+      itemId: item.id,
+      clientId: client.id,
+      returnedAt: new Date(),
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('過去の貸出記録');
   });
 });
 

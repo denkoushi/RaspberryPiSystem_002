@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import type { Item } from '../../api/types';
+import axios from 'axios';
 
 const initialItem = {
   itemCode: '',
@@ -66,10 +67,17 @@ export function ItemsPage() {
 
   const handleDelete = async (id: string) => {
     if (window.confirm('このアイテムを削除しますか？')) {
-      await remove.mutateAsync(id);
-      if (editingId === id) {
-        setEditingId(null);
-        setForm(initialItem);
+      try {
+        await remove.mutateAsync(id);
+        if (editingId === id) {
+          setEditingId(null);
+          setForm(initialItem);
+        }
+      } catch (error) {
+        const errorMessage = axios.isAxiosError(error) && error.response?.data?.message
+          ? error.response.data.message
+          : (error instanceof Error ? error.message : '削除に失敗しました');
+        alert(errorMessage);
       }
     }
   };

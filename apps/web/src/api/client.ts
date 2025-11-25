@@ -64,42 +64,42 @@ export async function loginRequest(body: { username: string; password: string })
 }
 
 export async function getEmployees() {
-  const { data } = await api.get<{ employees: Employee[] }>('/employees');
+  const { data } = await api.get<{ employees: Employee[] }>('/tools/employees');
   return data.employees;
 }
 
 export async function createEmployee(input: Partial<Employee>) {
-  const { data } = await api.post<{ employee: Employee }>('/employees', input);
+  const { data } = await api.post<{ employee: Employee }>('/tools/employees', input);
   return data.employee;
 }
 
 export async function updateEmployee(id: string, input: Partial<Employee>) {
-  const { data } = await api.put<{ employee: Employee }>(`/employees/${id}`, input);
+  const { data } = await api.put<{ employee: Employee }>(`/tools/employees/${id}`, input);
   return data.employee;
 }
 
 export async function deleteEmployee(id: string) {
-  const { data } = await api.delete<{ employee: Employee }>(`/employees/${id}`);
+  const { data } = await api.delete<{ employee: Employee }>(`/tools/employees/${id}`);
   return data.employee;
 }
 
 export async function getItems() {
-  const { data } = await api.get<{ items: Item[] }>('/items');
+  const { data } = await api.get<{ items: Item[] }>('/tools/items');
   return data.items;
 }
 
 export async function createItem(input: Partial<Item>) {
-  const { data } = await api.post<{ item: Item }>('/items', input);
+  const { data } = await api.post<{ item: Item }>('/tools/items', input);
   return data.item;
 }
 
 export async function updateItem(id: string, input: Partial<Item>) {
-  const { data } = await api.put<{ item: Item }>(`/items/${id}`, input);
+  const { data } = await api.put<{ item: Item }>(`/tools/items/${id}`, input);
   return data.item;
 }
 
 export async function deleteItem(id: string) {
-  const { data } = await api.delete<{ item: Item }>(`/items/${id}`);
+  const { data } = await api.delete<{ item: Item }>(`/tools/items/${id}`);
   return data.item;
 }
 

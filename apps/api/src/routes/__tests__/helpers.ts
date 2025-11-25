@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
-import type { ClientDevice, Employee, Item, User } from '@prisma/client';
+import type { ClientDevice, Employee, Item, Loan, User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -81,6 +81,25 @@ export async function createTestItem(data?: {
       nfcTagUid: data?.nfcTagUid ?? `TAG_ITEM_${Date.now()}-${Math.random().toString(36).slice(2)}`,
       category: data?.category ?? 'Test Category',
       status: data?.status ?? 'AVAILABLE',
+    },
+  });
+}
+
+/**
+ * テスト用の貸出記録を作成
+ */
+export async function createTestLoan(data: {
+  employeeId: string;
+  itemId: string;
+  clientId?: string | null;
+  returnedAt?: Date | null;
+}): Promise<Loan> {
+  return prisma.loan.create({
+    data: {
+      employeeId: data.employeeId,
+      itemId: data.itemId,
+      clientId: data.clientId ?? null,
+      returnedAt: data.returnedAt ?? null,
     },
   });
 }

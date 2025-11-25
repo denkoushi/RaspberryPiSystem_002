@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import type { Employee } from '../../api/types';
+import axios from 'axios';
 
 const initialForm = {
   employeeCode: '',
@@ -62,10 +63,17 @@ export function EmployeesPage() {
 
   const handleDelete = async (id: string) => {
     if (window.confirm('この従業員を削除しますか？')) {
-      await remove.mutateAsync(id);
-      if (editingId === id) {
-        setEditingId(null);
-        setForm(initialForm);
+      try {
+        await remove.mutateAsync(id);
+        if (editingId === id) {
+          setEditingId(null);
+          setForm(initialForm);
+        }
+      } catch (error) {
+        const errorMessage = axios.isAxiosError(error) && error.response?.data?.message
+          ? error.response.data.message
+          : (error instanceof Error ? error.message : '削除に失敗しました');
+        alert(errorMessage);
       }
     }
   };
