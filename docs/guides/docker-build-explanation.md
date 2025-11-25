@@ -33,9 +33,23 @@ git pull origin main
 # 2. 新しいイメージをビルド（キャッシュを使わない）
 docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api
 
-# 3. 新しいイメージでコンテナを再起動
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+# 3. コンテナを停止して削除（重要！）
+docker compose -f infrastructure/docker/docker-compose.server.yml stop api
+docker compose -f infrastructure/docker/docker-compose.server.yml rm -f api
+
+# 4. 新しいイメージでコンテナを再作成・起動
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d api
+
+# または、一括で実行する場合：
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api
 ```
+
+### なぜ`restart`では不十分なのか？
+
+`docker compose restart`は**既存のコンテナを再起動するだけ**です。
+新しいイメージがビルドされても、**既存のコンテナは古いイメージを使い続けます**。
+
+新しいイメージを使うには、**コンテナを再作成する必要があります**。
 
 ### なぜ`--no-cache`が必要なのか？
 
