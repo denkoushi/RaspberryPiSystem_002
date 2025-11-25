@@ -12,6 +12,7 @@ build/
 *.env.local
 apps/api/.env
 clients/nfc-agent/.env
+infrastructure/docker/.env
 
 # Logs
 npm-debug.log*
