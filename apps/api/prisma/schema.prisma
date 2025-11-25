@@ -99,8 +99,8 @@ model User {
 
 model Loan {
   id           String        @id @default(uuid())
-  itemId       String
-  employeeId   String
+  itemId       String?
+  employeeId   String?
   clientId     String?
   borrowedAt   DateTime      @default(now())
   dueAt        DateTime?
@@ -108,8 +108,8 @@ model Loan {
   notes        String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  item         Item          @relation(fields: [itemId], references: [id])
-  employee     Employee      @relation(fields: [employeeId], references: [id])
+  item         Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  employee     Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   client       ClientDevice? @relation(fields: [clientId], references: [id])
   transactions Transaction[]
 

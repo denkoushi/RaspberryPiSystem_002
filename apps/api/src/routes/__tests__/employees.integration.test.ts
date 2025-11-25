@@ -260,7 +260,7 @@ describe('DELETE /api/tools/employees/:id', () => {
     expect(body.message).toContain('未返却の貸出記録');
   });
 
-  it('should return 400 when employee has returned loans', async () => {
+  it('should delete employee with returned loans', async () => {
     const employee = await createTestEmployee();
     const item = await createTestItem();
     const client = await createTestClientDevice();
@@ -279,9 +279,11 @@ describe('DELETE /api/tools/employees/:id', () => {
       headers: createAuthHeader(adminToken),
     });
 
-    expect(response.statusCode).toBe(400);
+    // 返却済みの貸出記録があっても削除可能
+    expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.message).toContain('過去の貸出記録');
+    expect(body).toHaveProperty('employee');
+    expect(body.employee.id).toBe(employee.id);
   });
 });
 

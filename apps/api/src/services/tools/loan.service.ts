@@ -26,8 +26,8 @@ export interface ActiveLoanQuery {
 }
 
 interface LoanWithRelations extends Loan {
-  item: { id: string; itemCode: string; name: string; nfcTagUid: string | null };
-  employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string | null };
+  item: { id: string; itemCode: string; name: string; nfcTagUid: string | null } | null;
+  employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string | null } | null;
   client?: { id: string; name: string; location: string | null } | null;
 }
 
@@ -196,6 +196,13 @@ export class LoanService {
       throw new ApiError(400, 'すでに返却済みです');
     }
 
+    if (!loan.item) {
+      throw new ApiError(400, 'この貸出記録に関連するアイテムが見つかりません');
+    }
+    if (!loan.employee) {
+      throw new ApiError(400, 'この貸出記録に関連する従業員が見つかりません');
+    }
+
     const finalPerformedByUserId = performedByUserId ?? input.performedByUserId;
     const itemSnapshot = {
       id: loan.item.id,
@@ -221,7 +228,9 @@ export class LoanService {
         include: { item: true, employee: true, client: true }
       });
 
-      await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
+      if (loan.itemId) {
+        await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
+      }
 
       await tx.transaction.create({
         data: {
