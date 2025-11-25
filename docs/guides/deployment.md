@@ -142,6 +142,45 @@ cd apps/api && pnpm test && cd ../..
 cd apps/web && pnpm build && cd ../..
 ```
 
+## ラズパイ5のIPアドレス確認と設定
+
+再起動後はIPアドレスが変わる可能性があるため、以下の手順で確認・更新してください。
+
+### 1. ラズパイ5のIPアドレスを確認
+
+```bash
+# ラズパイ5で実行
+hostname -I
+# 例: 192.168.10.230
+```
+
+### 2. docker-compose.server.ymlのIPアドレスを更新
+
+```bash
+# ラズパイ5で実行
+cd /opt/RaspberryPiSystem_002
+nano infrastructure/docker/docker-compose.server.yml
+```
+
+`web`サービスの`args`セクションで、`VITE_API_BASE_URL`のIPアドレスを更新：
+
+```yaml
+web:
+  build:
+    args:
+      VITE_AGENT_WS_URL: ws://192.168.10.223:7071/stream  # ラズパイ4のIP
+      VITE_API_BASE_URL: http://192.168.10.230:8080/api   # ラズパイ5のIP（更新）
+```
+
+### 3. Webコンテナを再ビルド・再起動
+
+```bash
+# ラズパイ5で実行
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web
+```
+
+**注意**: IPアドレスが変わった場合は、必ずWebコンテナを再ビルドする必要があります。ビルド時に`VITE_API_BASE_URL`が設定されるため、再起動だけでは不十分です。
+
 ## デプロイ前の確認事項
 
 1. **バックアップの取得**: デプロイ前にデータベースのバックアップを取得

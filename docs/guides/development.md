@@ -1,100 +1,226 @@
 # 開発ガイド
 
-## 開発環境セットアップ
+最終更新: 2025-01-XX
 
-### 必要な環境
+## 概要
 
-- Node.js 18.18以上（推奨: 20.x）
-- pnpm 9.x
+本ドキュメントでは、Raspberry Pi System 002の開発環境のセットアップと開発手順を説明します。
+
+## 前提条件
+
+- Node.js 20以上
+- pnpm 9以上
 - Python 3.11+
 - Poetry
 - Docker & Docker Compose
+- Git
 
-### セットアップ手順
+## セットアップ手順
+
+### 1. リポジトリのクローン
 
 ```bash
-# 1. リポジトリのクローン
-git clone <repository-url>
+git clone https://github.com/denkoushi/RaspberryPiSystem_002.git
 cd RaspberryPiSystem_002
+```
 
-# 2. 依存関係のインストール
+### 2. 依存関係のインストール
+
+```bash
 corepack enable
 pnpm install
 poetry install -C clients/nfc-agent
-
-# 3. 環境変数の設定
-cp apps/api/.env.example apps/api/.env
-cp clients/nfc-agent/.env.example clients/nfc-agent/.env
-
-# 4. データベースのセットアップ
-cd apps/api
-pnpm prisma migrate deploy
-pnpm prisma db seed
 ```
+
+### 3. 環境変数の設定
+
+```bash
+# API環境変数
+cp apps/api/.env.example apps/api/.env
+# apps/api/.envを編集して、実際の値を設定
+
+# NFCエージェント環境変数
+cp clients/nfc-agent/.env.example clients/nfc-agent/.env
+```
+
+### 4. データベースのセットアップ
+
+```bash
+# Docker Composeでデータベースを起動
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d db
+
+# マイグレーションを実行
+cd apps/api
+pnpm prisma migrate dev
+
+# シードデータを投入（オプション）
+pnpm prisma:seed
+```
+
+### 5. 開発サーバーの起動
+
+#### APIサーバー
+
+```bash
+cd apps/api
+pnpm dev
+```
+
+APIサーバーは`http://localhost:8080`で起動します。
+
+#### Webアプリケーション
+
+```bash
+cd apps/web
+pnpm dev
+```
+
+Webアプリケーションは`http://localhost:5173`で起動します。
 
 ## 開発ワークフロー
 
-### 1. ブランチ作成
+### ブランチ戦略
 
-```bash
-git checkout -b feature/your-feature-name
+- `main`: 本番環境用ブランチ
+- `develop`: 開発用ブランチ
+- `feature/*`: 機能追加用ブランチ
+- `refactor/*`: リファクタリング用ブランチ
+- `fix/*`: バグ修正用ブランチ
+
+### コミットメッセージ
+
+コミットメッセージは以下の形式に従ってください：
+
+```
+<type>: <subject>
+
+<body>
 ```
 
-### 2. コード編集
+**Type**:
+- `feat`: 新機能
+- `fix`: バグ修正
+- `docs`: ドキュメント
+- `style`: コードスタイル
+- `refactor`: リファクタリング
+- `test`: テスト
+- `chore`: その他
 
-- API: `apps/api/src/`
-- Web UI: `apps/web/src/`
-- 共通型: `packages/shared-types/src/`
+### 開発フロー
 
-### 3. ビルド確認
+1. **ブランチ作成**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **コード編集**
+   - API: `apps/api/src/`
+   - Web UI: `apps/web/src/`
+   - 共通型: `packages/shared-types/src/`
+
+3. **ビルド確認**
+   ```bash
+   # API
+   cd apps/api
+   pnpm build
+
+   # Web UI
+   cd apps/web
+   pnpm build
+
+   # 共通型
+   cd packages/shared-types
+   pnpm build
+   ```
+
+4. **テスト実行**
+   ```bash
+   # APIテスト
+   cd apps/api
+   pnpm test
+
+   # Web UIテスト
+   cd apps/web
+   pnpm test
+
+   # すべてのテスト
+   pnpm -r test
+   ```
+
+5. **コミット・プッシュ**
+   ```bash
+   git add .
+   git commit -m "feat: your feature description"
+   git push origin feature/your-feature-name
+   ```
+
+## テストの実行
+
+### ユニットテスト
 
 ```bash
-# API
+# APIのテスト
 cd apps/api
-pnpm build
+pnpm test
 
-# Web UI
+# Web UIのテスト
 cd apps/web
-pnpm build
+pnpm test
 
-# 共通型
+# すべてのテスト
+pnpm -r test
+```
+
+### E2Eテスト（Playwright）
+
+前提: PostgreSQL、APIサーバー、Webサーバーが起動している必要があります。
+
+```bash
+# E2Eテスト実行
+pnpm test:e2e
+
+# E2Eテスト（UIモード）
+pnpm test:e2e:ui
+
+# E2Eテスト（ヘッドモード）
+pnpm test:e2e:headed
+```
+
+## ビルド
+
+```bash
+# 共有型パッケージのビルド
 cd packages/shared-types
 pnpm build
-```
 
-### 4. テスト実行
-
-```bash
-# APIテスト
+# APIのビルド
 cd apps/api
-pnpm test
+pnpm build
 
-# Web UIテスト
+# Webのビルド
 cd apps/web
-pnpm test
+pnpm build
 ```
 
-### 5. コミット・プッシュ
-
-```bash
-git add .
-git commit -m "feat: your feature description"
-git push origin feature/your-feature-name
-```
-
-## コーディング規約
+## コードスタイル
 
 ### TypeScript
 
-- 型定義を明示的に記述
+- ESLintとPrettierを使用
+- 型安全性を重視
+- 明示的な型注釈を推奨
 - `any`の使用を避ける
 - エラーハンドリングを適切に実装
 
-### ファイル命名
+### 命名規則
 
-- ルート: `kebab-case.ts`（例: `employee-routes.ts`）
-- サービス: `camelCase.service.ts`（例: `employeeService.ts`）
-- コンポーネント: `PascalCase.tsx`（例: `EmployeePage.tsx`）
+- **変数・関数**: camelCase
+- **クラス**: PascalCase
+- **定数**: UPPER_SNAKE_CASE
+- **ファイル**: 
+  - ルート: `kebab-case.ts`（例: `employee-routes.ts`）
+  - サービス: `camelCase.service.ts`（例: `employeeService.ts`）
+  - コンポーネント: `PascalCase.tsx`（例: `EmployeePage.tsx`）
 
 ### ディレクトリ構造
 
@@ -108,6 +234,38 @@ routes/{module}/
   │   ├── list.ts
   │   └── schemas.ts
 ```
+
+## アーキテクチャ
+
+### モノレポ構造
+
+```
+RaspberryPiSystem_002/
+├── apps/
+│   ├── api/          # Fastify APIサーバー
+│   └── web/          # React Webアプリケーション
+├── packages/
+│   └── shared-types/ # 共有型定義
+├── clients/
+│   └── nfc-agent/   # NFCエージェント（Python）
+└── infrastructure/
+    └── docker/       # Docker設定
+```
+
+### API構造
+
+- **Routes**: エンドポイントの定義
+- **Services**: ビジネスロジック
+- **Lib**: 共通ライブラリ（Prisma、認証など）
+- **Plugins**: Fastifyプラグイン
+
+### フロントエンド構造
+
+- **Components**: Reactコンポーネント
+- **Pages**: ページコンポーネント
+- **Hooks**: カスタムフック
+- **State**: XStateステートマシン
+- **Services**: API呼び出し
 
 ## モジュール追加手順
 
@@ -163,31 +321,68 @@ touch apps/web/src/pages/{module}/{Resource}Page.tsx
 
 ## デバッグ
 
-### APIデバッグ
+### APIサーバー
 
 ```bash
-# ログ確認
+# ログレベルを変更
+LOG_LEVEL=debug pnpm dev
+
+# データベースクエリのログを有効化
+DATABASE_LOG=true pnpm dev
+
+# Dockerコンテナのログ確認
 docker compose -f infrastructure/docker/docker-compose.server.yml logs api
 
 # コンテナ内でシェル実行
 docker compose -f infrastructure/docker/docker-compose.server.yml exec api sh
 ```
 
-### Web UIデバッグ
+### Webアプリケーション
 
 ```bash
-# 開発サーバー起動
+# 開発モードで起動（ホットリロード有効）
 cd apps/web
 pnpm dev
+
+# ブラウザの開発者ツールを使用
 ```
 
 ## トラブルシューティング
 
-詳細は [トラブルシューティングガイド](./troubleshooting.md) を参照してください。
+### 依存関係のエラー
 
-## 関連ドキュメント
+```bash
+# 依存関係を再インストール
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
+```
 
-- [デプロイガイド](./deployment.md)
+### データベース接続エラー
+
+```bash
+# Dockerコンテナの状態を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml ps
+
+# データベースログを確認
+docker compose -f infrastructure/docker/docker-compose.server.yml logs db
+```
+
+### Prismaエラー
+
+```bash
+# Prismaクライアントを再生成
+cd apps/api
+pnpm prisma generate
+
+# マイグレーションをリセット（開発環境のみ）
+pnpm prisma migrate reset
+```
+
+詳細は [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md) を参照してください。
+
+## 参考資料
+
+- [API概要](../api/overview.md)
 - [アーキテクチャ概要](../architecture/overview.md)
+- [デプロイメントガイド](./deployment.md)
 - [EXEC_PLAN.md](../../EXEC_PLAN.md)
-

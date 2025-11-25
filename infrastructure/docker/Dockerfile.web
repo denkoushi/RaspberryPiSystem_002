@@ -12,6 +12,9 @@ COPY apps/web ./apps/web
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
+# ラズパイ5のAPIサーバーのURLをビルド時に設定可能にする
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN cd apps/web && pnpm run build
 
 FROM caddy:2-alpine

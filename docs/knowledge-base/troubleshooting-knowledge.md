@@ -673,6 +673,39 @@
 
 ---
 
+### [KB-022] ラズパイ4のキオスクがラズパイ5に接続できない
+
+**EXEC_PLAN.md参照**: Phase 1 検証フェーズ
+
+**事象**: 
+- ラズパイ4のキオスクがラズパイ5のAPIサーバーに接続できない
+- 両ラズパイを再起動した後に発生
+- キオスク画面でAPIリクエストが失敗する
+
+**要因**: 
+- `Dockerfile.web`に`VITE_API_BASE_URL`が設定されていないため、デフォルトの`'/api'`（相対パス）が使用されている
+- 相対パスでは、ラズパイ4のキオスクが自分自身（ラズパイ4）のAPIに接続しようとする
+- 再起動でラズパイ5のIPアドレスが変わった可能性もある
+
+**試行した対策**: 
+- [試行1] `Dockerfile.web`に`VITE_API_BASE_URL`のARGとENVを追加 → **実施中**
+- [試行2] `docker-compose.server.yml`の`web`サービスの`args`に`VITE_API_BASE_URL`を追加（ラズパイ5のIPアドレスを指定） → **実施中**
+
+**有効だった対策**: 
+- [試行1, 試行2] `VITE_API_BASE_URL`をビルド時に設定可能にする
+
+**学んだこと**: 
+- ラズパイ4のキオスクWebアプリは、ビルド時に`VITE_API_BASE_URL`を設定する必要がある
+- 再起動でIPアドレスが変わる可能性があるため、`docker-compose.server.yml`でIPアドレスを確認・更新する必要がある
+- 環境変数でIPアドレスを設定できるようにすることで、再起動後の対応が容易になる
+
+**関連ファイル**: 
+- `infrastructure/docker/Dockerfile.web`
+- `infrastructure/docker/docker-compose.server.yml`
+- `apps/web/src/api/client.ts`
+
+---
+
 ## ナレッジベースの使い方
 
 1. **新しい課題が発生したら**: このドキュメントに追加する
@@ -683,7 +716,7 @@
 
 ## EXEC_PLAN.mdとの連携
 
-- **Phase 1**: KB-001, KB-002
+- **Phase 1**: KB-001, KB-002, KB-022
 - **Phase 2**: KB-004
 - **Phase 3**: KB-003
 - **Phase 4**: KB-005
@@ -746,3 +779,4 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tai
 - 2025-11-25: EXEC_PLAN.mdのSurprises & Discoveriesから解決済み課題を追加（KB-005〜KB-021）
 - 2025-11-25: EXEC_PLAN.mdとの連携を追加
 - 2025-11-25: ログ取得方法セクションを追加（debug-logs.mdから統合）
+- 2025-11-25: KB-022（ラズパイ4のキオスクがラズパイ5に接続できない問題）を追加
