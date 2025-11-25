@@ -74,10 +74,8 @@ export function ItemsPage() {
           setForm(initialItem);
         }
       } catch (error) {
-        const errorMessage = axios.isAxiosError(error) && error.response?.data?.message
-          ? error.response.data.message
-          : (error instanceof Error ? error.message : '削除に失敗しました');
-        alert(errorMessage);
+        // エラーはReact Queryが自動的に処理する（remove.errorに設定される）
+        console.error('Delete error:', error);
       }
     }
   };
@@ -120,6 +118,16 @@ export function ItemsPage() {
       </Card>
 
       <Card title="アイテム一覧">
+        {remove.error ? (
+          <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+            <p className="font-semibold">エラー</p>
+            <p className="mt-1">
+              {axios.isAxiosError(remove.error) && remove.error.response?.data?.message
+                ? remove.error.response.data.message
+                : (remove.error as Error).message || '削除に失敗しました'}
+            </p>
+          </div>
+        ) : null}
         {isLoading ? (
           <p>読み込み中...</p>
         ) : (
@@ -145,8 +153,8 @@ export function ItemsPage() {
                   <td className="px-2 py-1 font-mono text-xs">{item.nfcTagUid ?? '-'}</td>
                   <td className="px-2 py-1 flex gap-2">
                     <Button className="px-2 py-1 text-xs" onClick={() => startEdit(item)}>編集</Button>
-                    <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(item.id)}>
-                      削除
+                    <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(item.id)} disabled={remove.isPending}>
+                      {remove.isPending ? '削除中...' : '削除'}
                     </Button>
                   </td>
                 </tr>
