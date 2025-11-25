@@ -61,10 +61,11 @@
 - [試行3] `skip`関数を実装しようとした → **失敗**（型エラー: `'skip' does not exist in type 'FastifyRegisterOptions<RateLimitPluginOptions>'`）
 - [試行4] サブルーター内でレート制限プラグインを登録 → **失敗**（429エラーが継続）
 - [試行5] レート制限プラグインを3箇所で登録（`app.ts`, `routes/index.ts`, `routes/tools/index.ts`） → **失敗**（重複登録により429エラーが継続）
-- [試行6] レート制限プラグインの重複登録を解消（`app.ts`と`routes/tools/index.ts`から削除、`routes/index.ts`のみで登録） → **検証中**
+- [試行6] レート制限プラグインの重複登録を解消（`app.ts`と`routes/tools/index.ts`から削除、`routes/index.ts`のみで登録） → **失敗**（429エラーが継続）
+- [試行7] `allowList`関数を使って、特定のパスをレート制限から除外 → **実装中**
 
 **有効だった対策**: 
-- [試行6] レート制限プラグインの重複登録を解消（`app.ts`と`routes/tools/index.ts`から削除、`routes/index.ts`のみで登録） → **検証中**
+- 未解決（継続中）
 
 **学んだこと**: 
 - Fastifyのプラグインは、ルート登録前に登録する必要がある

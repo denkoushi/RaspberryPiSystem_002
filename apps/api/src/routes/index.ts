@@ -19,9 +19,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(
     async (subApp) => {
       // サブルーター内でレート制限プラグインを登録（ルートのconfigを認識させるため）
-      // max: 100000で実質的に無効化（429エラーを防ぐため）
+      // allowList関数で、ダッシュボード・履歴ページ・キオスクエンドポイントを除外
       await subApp.register(rateLimit, {
-        max: 100000, // 非常に大きな値（実質的に無制限）
+        max: 100, // デフォルト: 100リクエスト/分
         timeWindow: '1 minute',
         skipOnError: false,
         addHeaders: {
@@ -33,6 +33,35 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           return request.ip || (Array.isArray(request.headers['x-forwarded-for'])
             ? request.headers['x-forwarded-for'][0]
             : request.headers['x-forwarded-for']) || 'unknown';
+        },
+        // allowList関数で、特定のパスをレート制限から除外
+        allowList: (request, key) => {
+          const path = request.url.split('?')[0]; // クエリパラメータを除去
+          // ダッシュボード・履歴ページ・キオスクエンドポイントを除外
+          const skipPaths = [
+            '/api/tools/employees',
+            '/api/tools/items',
+            '/api/tools/transactions',
+            '/api/tools/loans/active',
+            '/api/tools/loans/borrow',
+            '/api/tools/loans/return',
+            '/api/kiosk/config',
+            '/api/imports',
+          ];
+          
+          // 完全一致またはプレフィックスマッチ
+          for (const skipPath of skipPaths) {
+            if (path === skipPath || path.startsWith(skipPath + '/')) {
+              return true; // レート制限をスキップ
+            }
+          }
+          
+          // 削除エンドポイント（パラメータ付き）
+          if (path.match(/^\/api\/tools\/(employees|items)\/[^/]+$/)) {
+            return true; // レート制限をスキップ
+          }
+          
+          return false; // レート制限を適用
         },
       });
 
