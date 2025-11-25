@@ -124,3 +124,101 @@ describe('POST /api/tools/items', () => {
   });
 });
 
+describe('DELETE /api/tools/items/:id', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let managerToken: string;
+  let viewerToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+    const manager = await createTestUser('MANAGER');
+    managerToken = manager.token;
+    const viewer = await createTestUser('VIEWER');
+    viewerToken = viewer.token;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return 401 without authentication', async () => {
+    const item = await createTestItem();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('should return 403 for VIEWER role', async () => {
+    const item = await createTestItem();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(viewerToken),
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('should delete item with ADMIN role', async () => {
+    const item = await createTestItem();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('item');
+    expect(body.item.id).toBe(item.id);
+
+    // 削除されたことを確認
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+    expect(getResponse.statusCode).toBe(404);
+  });
+
+  it('should delete item with MANAGER role', async () => {
+    const item = await createTestItem();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${item.id}`,
+      headers: createAuthHeader(managerToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('item');
+    expect(body.item.id).toBe(item.id);
+  });
+
+  it('should return 404 for non-existent item', async () => {
+    const nonExistentId = randomUUID();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/items/${nonExistentId}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+});
+

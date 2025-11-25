@@ -139,3 +139,101 @@ describe('POST /api/tools/employees', () => {
   });
 });
 
+describe('DELETE /api/tools/employees/:id', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let managerToken: string;
+  let viewerToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+    const manager = await createTestUser('MANAGER');
+    managerToken = manager.token;
+    const viewer = await createTestUser('VIEWER');
+    viewerToken = viewer.token;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return 401 without authentication', async () => {
+    const employee = await createTestEmployee();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('should return 403 for VIEWER role', async () => {
+    const employee = await createTestEmployee();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(viewerToken),
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('should delete employee with ADMIN role', async () => {
+    const employee = await createTestEmployee();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('employee');
+    expect(body.employee.id).toBe(employee.id);
+
+    // 削除されたことを確認
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(adminToken),
+    });
+    expect(getResponse.statusCode).toBe(404);
+  });
+
+  it('should delete employee with MANAGER role', async () => {
+    const employee = await createTestEmployee();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${employee.id}`,
+      headers: createAuthHeader(managerToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('employee');
+    expect(body.employee.id).toBe(employee.id);
+  });
+
+  it('should return 404 for non-existent employee', async () => {
+    const nonExistentId = randomUUID();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/tools/employees/${nonExistentId}`,
+      headers: createAuthHeader(adminToken),
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+});
+
