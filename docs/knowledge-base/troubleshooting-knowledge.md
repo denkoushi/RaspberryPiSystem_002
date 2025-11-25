@@ -42,8 +42,12 @@
 - `config: { rateLimit: false }`が機能していない
 
 **要因**: 
-- Fastifyの`@fastify/rate-limit`プラグインは、サブルーターの`config: { rateLimit: false }`を認識しない
-- プラグインがルート登録後に登録されているため、サブルーターの設定が反映されない
+- **根本原因**: レート制限プラグインが3箇所で重複登録されていた
+  1. `apps/api/src/app.ts` (22行目)
+  2. `apps/api/src/routes/index.ts` (20行目) - `/api`サブルーター
+  3. `apps/api/src/routes/tools/index.ts` (19行目) - `/tools`サブルーター
+- この重複登録により、レート制限の設定が競合し、429エラーが発生していた
+- Fastifyの`@fastify/rate-limit`プラグインは、サブルーターの`config: { rateLimit: false }`を認識しない可能性がある
 - `skip`関数を使おうとしたが、型エラーで実装できなかった
 
 **試行した対策**: 
