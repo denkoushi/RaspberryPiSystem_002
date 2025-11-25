@@ -1,11 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import rateLimit from '@fastify/rate-limit';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { signAccessToken, signRefreshToken } from '../lib/auth.js';
-import { authRateLimitConfig } from '../plugins/rate-limit.js';
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
@@ -21,9 +19,7 @@ const refreshTokenSchema = z.object({
 });
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
-  // 認証エンドポイントに厳しいレート制限を適用（ブルートフォース攻撃対策）
-  // 注意: 429エラーが発生しているため、一時的にレート制限を無効化
-  // await app.register(rateLimit, authRateLimitConfig);
+  // 注意: レート制限プラグインは完全に削除されました（429エラー対策のため）
 
   app.post('/auth/login', async (request) => {
     const body = loginSchema.parse(request.body);
