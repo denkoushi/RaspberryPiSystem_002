@@ -12,11 +12,14 @@ import { registerImportRoutes } from './imports.js';
  * 
  * サブルーター内でレート制限プラグインを登録することで、
  * ルートの`config: { rateLimit: false }`が正しく認識されるようにします。
+ * 
+ * 注意: レート制限プラグインはここで1箇所のみ登録し、重複登録を避けます。
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(
     async (subApp) => {
       // サブルーター内でレート制限プラグインを登録（ルートのconfigを認識させるため）
+      // max: 100000で実質的に無効化（429エラーを防ぐため）
       await subApp.register(rateLimit, {
         max: 100000, // 非常に大きな値（実質的に無制限）
         timeWindow: '1 minute',

@@ -3,7 +3,6 @@ import multipart from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
 import { env } from './config/env.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
-import { registerRateLimit } from './plugins/rate-limit.js';
 import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -17,8 +16,9 @@ export async function buildServer(): Promise<FastifyInstance> {
       files: 2
     }
   });
-  // ルートを登録した後にレート制限プラグインを登録（ルートのconfigを正しく認識させるため）
+  // ルートを登録
   await registerRoutes(app);
-  await registerRateLimit(app);
+  // 注意: レート制限プラグインは`routes/index.ts`と`routes/tools/index.ts`でサブルーター内に登録されているため、
+  // ここでは登録しない（重複登録を避けるため）
   return app;
 }
