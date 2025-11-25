@@ -8,6 +8,27 @@
 
 ## ラズパイ5（サーバー）の更新
 
+### 初回セットアップ: 環境変数ファイルの作成
+
+再起動後もIPアドレスが変わっても自動的に対応できるように、環境変数ファイルを作成します：
+
+```bash
+# ラズパイ5で実行
+cd /opt/RaspberryPiSystem_002
+
+# 環境変数ファイルのサンプルをコピー
+cp infrastructure/docker/.env.example infrastructure/docker/.env
+
+# IPアドレスを確認して設定
+# ラズパイ4のIPアドレスを確認
+ping -c 1 192.168.10.223  # または実際のIPアドレス
+
+# .envファイルを編集（必要に応じて）
+nano infrastructure/docker/.env
+```
+
+**重要**: `.env`ファイルはGitにコミットされません（`.gitignore`に含まれています）。各ラズパイで個別に設定してください。
+
 ### 方法1: デプロイスクリプトを使用（推奨）
 
 ```bash
@@ -28,7 +49,18 @@ cd /opt/RaspberryPiSystem_002
 cd /opt/RaspberryPiSystem_002
 git pull origin main
 
-# 2. Docker Composeで再ビルド・再起動（重要: --force-recreateでコンテナを再作成）
+# 2. IPアドレスが変わった場合は.envファイルを更新
+# （初回のみ）環境変数ファイルを作成
+if [ ! -f infrastructure/docker/.env ]; then
+  cp infrastructure/docker/.env.example infrastructure/docker/.env
+  echo "⚠️  infrastructure/docker/.env ファイルを作成しました。IPアドレスを確認して編集してください。"
+fi
+
+# 3. Docker Composeで再ビルド・再起動（重要: --force-recreateでコンテナを再作成）
+# Webコンテナを再ビルドする場合（IPアドレスが変わった場合など）
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web
+
+# APIコンテナのみを再ビルドする場合
 docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api
 
 # または、個別に実行する場合：
@@ -37,11 +69,14 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 # docker compose -f infrastructure/docker/docker-compose.server.yml rm -f api
 # docker compose -f infrastructure/docker/docker-compose.server.yml up -d api
 
-# 3. 動作確認
+# 4. 動作確認
 curl http://localhost:8080/api/system/health
 ```
 
-**重要**: `docker compose restart`では新しいイメージが使われません。コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
+**重要**: 
+- `docker compose restart`では新しいイメージが使われません。コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
+- `VITE_API_BASE_URL`は相対パス（`/api`）に設定されているため、再起動後もIPアドレスが変わっても問題ありません。
+- `VITE_AGENT_WS_URL`は環境変数ファイル（`.env`）で管理できるため、IPアドレスが変わった場合は`.env`ファイルを更新してからWebコンテナを再ビルドしてください。
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 

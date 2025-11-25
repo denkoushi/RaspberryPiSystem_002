@@ -31,12 +31,12 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
       args:
-        # ラズパイ4のNFCエージェントのWebSocket URLを設定
-        # ラズパイ4のIPアドレスが192.168.10.223の場合
-        VITE_AGENT_WS_URL: ws://192.168.10.223:7071/stream
-        # ラズパイ5のAPIサーバーのURLを設定
+        # 環境変数ファイル（.env）から読み込む
+        # デフォルト値は.env.exampleを参照
+        VITE_AGENT_WS_URL: ${VITE_AGENT_WS_URL:-ws://192.168.10.223:7071/stream}
         # 相対パスを使用することで、Caddyのリバースプロキシ経由でAPIサーバーに接続
-        VITE_API_BASE_URL: /api
+        # 再起動後もIPアドレスが変わっても問題ない
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     depends_on:
       - api
     # 本番環境では以下を設定してHTTPSを有効化
