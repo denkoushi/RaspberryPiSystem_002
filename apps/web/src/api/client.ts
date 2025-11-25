@@ -130,7 +130,7 @@ export async function getTransactions(
   filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
 ) {
   const { data } = await api.get<{ transactions: Transaction[]; page: number; total: number; pageSize: number }>(
-    '/transactions',
+    '/tools/transactions',
     {
       params: {
         page,
