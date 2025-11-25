@@ -688,16 +688,18 @@
 - 再起動でラズパイ5のIPアドレスが変わった可能性もある
 
 **試行した対策**: 
-- [試行1] `Dockerfile.web`に`VITE_API_BASE_URL`のARGとENVを追加 → **実施中**
-- [試行2] `docker-compose.server.yml`の`web`サービスの`args`に`VITE_API_BASE_URL`を追加（ラズパイ5のIPアドレスを指定） → **実施中**
+- [試行1] `Dockerfile.web`に`VITE_API_BASE_URL`のARGとENVを追加 → **成功**
+- [試行2] `docker-compose.server.yml`の`web`サービスの`args`に`VITE_API_BASE_URL`を追加（絶対URLでラズパイ5のIPアドレスを指定） → **失敗**（CORSエラーが発生）
+- [試行3] `VITE_API_BASE_URL`を相対パス（`/api`）に変更 → **成功**
 
 **有効だった対策**: 
-- [試行1, 試行2] `VITE_API_BASE_URL`をビルド時に設定可能にする
+- [試行1, 試行3] `VITE_API_BASE_URL`を相対パス（`/api`）に設定することで、Caddyのリバースプロキシ経由でAPIサーバーに接続
 
 **学んだこと**: 
 - ラズパイ4のキオスクWebアプリは、ビルド時に`VITE_API_BASE_URL`を設定する必要がある
-- 再起動でIPアドレスが変わる可能性があるため、`docker-compose.server.yml`でIPアドレスを確認・更新する必要がある
-- 環境変数でIPアドレスを設定できるようにすることで、再起動後の対応が容易になる
+- 絶対URL（`http://192.168.10.230:8080/api`）を使用すると、ブラウザが直接APIサーバーに接続しようとし、Caddyのリバースプロキシをバイパスしてしまう
+- 相対パス（`/api`）を使用することで、Caddyのリバースプロキシ経由でAPIサーバーに接続でき、CORSの問題を回避できる
+- Caddyがリバースプロキシとして動作している場合、相対パスを使用することが推奨される
 
 **関連ファイル**: 
 - `infrastructure/docker/Dockerfile.web`

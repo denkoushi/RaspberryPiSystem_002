@@ -35,8 +35,8 @@ services:
         # ラズパイ4のIPアドレスが192.168.10.223の場合
         VITE_AGENT_WS_URL: ws://192.168.10.223:7071/stream
         # ラズパイ5のAPIサーバーのURLを設定
-        # ラズパイ5のIPアドレスが192.168.10.230の場合（再起動でIPが変わった場合は更新が必要）
-        VITE_API_BASE_URL: http://192.168.10.230:8080/api
+        # 相対パスを使用することで、Caddyのリバースプロキシ経由でAPIサーバーに接続
+        VITE_API_BASE_URL: /api
     depends_on:
       - api
     # 本番環境では以下を設定してHTTPSを有効化
