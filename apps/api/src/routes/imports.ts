@@ -197,17 +197,18 @@ async function importEmployees(
         }, '[importEmployees] Updating employee');
         
         // nfcTagUidが設定されている場合、他の従業員が同じnfcTagUidを持っていないかチェック
-        if (row.nfcTagUid && row.nfcTagUid.trim()) {
+        const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
+        if (nfcTagUidToCheck) {
           const otherEmployee = await tx.employee.findFirst({
             where: {
-              nfcTagUid: row.nfcTagUid.trim(),
+              nfcTagUid: nfcTagUidToCheck,
               employeeCode: { not: row.employeeCode }
             }
           });
           if (otherEmployee) {
-            const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にemployeeCode="${otherEmployee.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
+            const errorMessage = `nfcTagUid="${nfcTagUidToCheck}"は既にemployeeCode="${otherEmployee.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
             logger?.error({ 
-              nfcTagUid: row.nfcTagUid,
+              nfcTagUid: nfcTagUidToCheck,
               currentEmployeeCode: row.employeeCode,
               existingEmployeeCode: otherEmployee.employeeCode
             }, '[importEmployees] nfcTagUidの重複エラー');
@@ -228,16 +229,17 @@ async function importEmployees(
         result.updated += 1;
       } else {
         // 新規作成時も、同じnfcTagUidを持つ既存の従業員が存在するかチェック
-        if (row.nfcTagUid && row.nfcTagUid.trim()) {
+        const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
+        if (nfcTagUidToCheck) {
           const existingWithSameNfcTag = await tx.employee.findFirst({
             where: {
-              nfcTagUid: row.nfcTagUid.trim()
+              nfcTagUid: nfcTagUidToCheck
             }
           });
           if (existingWithSameNfcTag) {
-            const errorMessage = `nfcTagUid="${row.nfcTagUid}"は既にemployeeCode="${existingWithSameNfcTag.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
+            const errorMessage = `nfcTagUid="${nfcTagUidToCheck}"は既にemployeeCode="${existingWithSameNfcTag.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
             logger?.error({ 
-              nfcTagUid: row.nfcTagUid,
+              nfcTagUid: nfcTagUidToCheck,
               newEmployeeCode: row.employeeCode,
               existingEmployeeCode: existingWithSameNfcTag.employeeCode
             }, '[importEmployees] nfcTagUidの重複エラー（新規作成時）');
@@ -245,11 +247,32 @@ async function importEmployees(
           }
         }
         
-        logger?.error({ employeeCode: row.employeeCode }, '[importEmployees] Creating employee');
-        await tx.employee.create({
-          data: createData
-        });
-        result.created += 1;
+        logger?.error({ 
+          employeeCode: row.employeeCode,
+          nfcTagUid: nfcTagUidToCheck
+        }, '[importEmployees] Creating employee');
+        try {
+          await tx.employee.create({
+            data: createData
+          });
+          result.created += 1;
+        } catch (createError) {
+          // P2002エラー（ユニーク制約違反）の場合、より詳細なエラーメッセージを返す
+          if (createError instanceof PrismaClientKnownRequestError && createError.code === 'P2002') {
+            const target = (createError.meta as any)?.target || [];
+            if (target.includes('nfcTagUid')) {
+              const errorMessage = `nfcTagUid="${nfcTagUidToCheck || '(空)'}"は既に使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
+              logger?.error({ 
+                nfcTagUid: nfcTagUidToCheck,
+                employeeCode: row.employeeCode,
+                errorCode: createError.code,
+                errorMeta: createError.meta
+              }, '[importEmployees] P2002エラー: nfcTagUidの重複');
+              throw new ApiError(400, errorMessage);
+            }
+          }
+          throw createError;
+        }
       }
     } catch (error) {
       logger?.error({ 
