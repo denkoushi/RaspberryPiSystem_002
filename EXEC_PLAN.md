@@ -71,7 +71,8 @@
   - **手順11**: ✅ Dockerビルドとコード更新の仕組みを`docs/guides/deployment.md`に統合。`git pull`だけではコンテナ内のコードが更新されない理由と、`docker compose restart`では新しいイメージが使われない理由を明確化。
   - **手順12**: ✅ ドキュメント整理を実施。細分化された14個のファイルを7個に統合（50%削減）。`raspberry-pi-update-commands.md` → `deployment.md`、トラブルシューティング関連 → `troubleshooting-knowledge.md`、検証・テスト関連 → `verification-checklist.md`に統合。
   - **ナレッジベース**: ✅ `docs/knowledge-base/troubleshooting-knowledge.md`に試行内容を記録（KB-001, KB-002）。
-  - **検証**: ⏳ **重要**: 実環境で最新のコードをビルド・デプロイする必要がある。`git pull` → `docker compose build --no-cache api` → `docker compose stop api` → `docker compose rm -f api` → `docker compose up -d api`（または`docker compose up -d --force-recreate --build api`）を実行してから、キオスク操作後にAPIログを確認して429エラー・404エラーの原因を特定。**注意**: `docker compose restart`では新しいイメージが使われない可能性があるため、コンテナを再作成する必要がある。
+  - **手順13**: ✅ コード側の確認完了。レート制限プラグインは完全に削除されており、ルーティングも正しく登録されている。Caddyにはレート制限の設定がない。**結論**: コード側では問題がない。実環境で古いコードが実行されている可能性が高い。
+  - **検証**: ⏳ **重要**: 実環境で最新のコードをビルド・デプロイする必要がある。`git pull` → `docker compose build --no-cache api` → `docker compose stop api` → `docker compose rm -f api` → `docker compose up -d api`（または`docker compose up -d --force-recreate --build api`）を実行してから、キオスク操作後にAPIログを確認して429エラー・404エラーが発生しないことを確認。**注意**: `docker compose restart`では新しいイメージが使われない可能性があるため、コンテナを再作成する必要がある。
 - [ ] (2025-11-25) **Phase 2: 削除機能の修正**（Phase 1完了後に実施・データベース制約の問題）**ナレッジベース**: [KB-004](#kb-004-削除機能が動作しない)
   - **目的**: 削除機能を動作させること
   - **前提条件**: Phase 1（429エラー・404エラー）が解決されていること
