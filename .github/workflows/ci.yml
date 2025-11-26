@@ -122,10 +122,16 @@ jobs:
         run: |
           cd apps/api
           # バックグラウンドでAPIサーバーを起動
-          pnpm start > /tmp/api-server.log 2>&1 &
+          # NODE_ENVをproductionに設定してAPIサーバーを起動（testだとmain.tsで起動しない）
+          NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
           echo "API server started with PID: $API_PID"
+          
+          # 少し待ってからログを確認
+          sleep 2
+          echo "API server log (first 50 lines):"
+          head -50 /tmp/api-server.log || echo "No log file yet"
           
           # APIサーバーが起動するまで待機
           timeout=30
@@ -133,8 +139,12 @@ jobs:
           until curl -s http://localhost:8080/api/system/health > /dev/null 2>&1; do
             if [ $elapsed -ge $timeout ]; then
               echo "API server failed to start within $timeout seconds"
-              echo "API server log:"
+              echo "API server log (full):"
               cat /tmp/api-server.log || true
+              echo "Checking if process is still running:"
+              ps aux | grep -E "node|pnpm" | grep -v grep || true
+              echo "Checking port 8080:"
+              netstat -tuln | grep 8080 || ss -tuln | grep 8080 || true
               exit 1
             fi
             echo "Waiting for API server... ($elapsed/$timeout seconds)"
@@ -148,7 +158,6 @@ jobs:
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           PORT: 8080
           HOST: 0.0.0.0
-          NODE_ENV: test
 
       - name: Test backup/restore scripts
         run: |
