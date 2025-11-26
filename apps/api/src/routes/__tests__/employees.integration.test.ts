@@ -118,6 +118,9 @@ describe('POST /api/tools/employees', () => {
       },
     });
 
+    if (response.statusCode !== 201) {
+      console.error('Error response:', response.statusCode, response.body);
+    }
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body).toHaveProperty('employee');

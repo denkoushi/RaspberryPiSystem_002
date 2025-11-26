@@ -103,6 +103,9 @@ describe('POST /api/tools/items', () => {
       },
     });
 
+    if (response.statusCode !== 201) {
+      console.error('Error response:', response.statusCode, response.body);
+    }
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body).toHaveProperty('item');
