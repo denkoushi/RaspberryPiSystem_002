@@ -81,6 +81,11 @@ jobs:
             elapsed=$((elapsed + 2))
           done
           echo "PostgreSQL is ready!"
+          # データベース接続の最終確認
+          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT version();" || {
+            echo "PostgreSQL connection test failed!"
+            exit 1
+          }
 
       - name: Run Prisma migrations
         run: |
