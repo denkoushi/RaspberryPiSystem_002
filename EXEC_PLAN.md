@@ -159,11 +159,18 @@
     - NFR-004（保守性）の一部: バックアップ・リストア、監視・アラート機能は実装済みだが実機検証未実施
   - **作業内容**:
     - **【CI検証】タスク1-1**: ✅ バックアップ・リストアスクリプトのCIテスト（Phase 5で再設計完了、CI #215〜#218で4回連続成功を確認）
-    - **【CI検証】タスク2-1**: 🔄 監視・アラート機能のCIテスト（`scripts/test/monitor.test.sh`を作成、CIパイプラインに追加済み。**CI実行結果待ち**）
-    - **【CI検証】タスク3-1**: 🔄 パフォーマンステストのCI追加（`apps/api/src/routes/__tests__/performance.test.ts`を作成、CIパイプラインに追加済み。**CI実行結果待ち**）
-    - **【実機検証】タスク1-2**: バックアップ・リストアスクリプトの実機検証（ラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認）
-    - **【実機検証】タスク2-2**: 監視・アラート機能の実機検証（ラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認）
-    - **【実機検証】タスク3-2**: パフォーマンスの実機検証（ラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定）
+    - **【CI検証】タスク2-1**: ✅ 監視・アラート機能のCIテスト（完了・CI #215〜#218で成功）
+      - `scripts/test/monitor.test.sh`がCIワークフローで`pnpm test:monitor`として実行されている
+      - APIヘルスチェック、メトリクスエンドポイント、監視スクリプトの関数テストが実行されている
+    - **【CI検証】タスク3-1**: ✅ パフォーマンステストのCI追加（完了・CI #215〜#218で成功）
+      - `apps/api/src/routes/__tests__/performance.test.ts`が`pnpm test`で統合テストの一部として実行されている
+      - `/api/system/health`, `/api/tools/employees`, `/api/tools/items`, `/api/system/metrics`のレスポンス時間が1秒以内であることを検証
+    - **【実機検証】タスク1-2**: ⏳ バックアップ・リストアスクリプトの実機検証（**明日実施予定**）
+      - ラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認
+    - **【実機検証】タスク2-2**: ⏳ 監視・アラート機能の実機検証（**明日実施予定**）
+      - ラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認
+    - **【実機検証】タスク3-2**: ⏳ パフォーマンスの実機検証（**明日実施予定**）
+      - ラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定
     - **【ドキュメント整備】タスク4**: 運用マニュアルの作成（日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順の整理）
     - **【ドキュメント整備】タスク5**: 共通基盤ドキュメントの作成（`docs/architecture/infrastructure-base.md`を作成、スケール性の観点を説明）
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
