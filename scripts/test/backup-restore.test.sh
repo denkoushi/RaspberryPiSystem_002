@@ -3,6 +3,11 @@
 # 
 # 目的: 実際の運用環境と同じ方法でバックアップ・リストア機能が正しく動作することを検証する
 # 
+# 関連ドキュメント:
+# - docs/knowledge-base/troubleshooting-knowledge.md#kb-024
+# - docs/architecture/test-architecture.md
+# - docs/knowledge-base/ci-stability-verification.md
+# 
 # テストシナリオ（災害復旧を想定）:
 #   1. テスト用DBを作成し、Prisma Migrateでスキーマを適用
 #   2. テストデータ（Employee 2件）を挿入
