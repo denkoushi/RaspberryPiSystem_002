@@ -13,24 +13,51 @@
 
 ## Step 1: ブランチのデプロイ（ラズパイ5）
 
-### 1.1 ブランチをデプロイ
+### 1.1 ブランチをチェックアウトして更新
 
 ```bash
 # ラズパイ5で実行
 cd /opt/RaspberryPiSystem_002
-./scripts/server/deploy.sh fix/ci-test-architecture
+
+# ブランチをチェックアウト（初回のみ、またはブランチが存在しない場合）
+git fetch origin
+git checkout fix/ci-test-architecture
+
+# 最新のコードを取得（従来の手順と同じ）
+git pull origin fix/ci-test-architecture
 ```
 
-このコマンドで以下が実行されます：
-1. Gitリポジトリの更新（ブランチ`fix/ci-test-architecture`をチェックアウト）
-2. 依存関係のインストール
-3. 共有型パッケージのビルド
-4. APIのビルド
-5. Dockerコンテナの再ビルド・再起動
-6. データベースマイグレーションの実行
-7. ヘルスチェック
+### 1.2 依存関係のインストールとビルド
 
-### 1.2 デプロイ後の動作確認
+```bash
+# ラズパイ5で実行
+# 依存関係をインストール
+pnpm install
+
+# 共有型パッケージをビルド
+cd packages/shared-types
+pnpm build
+cd /opt/RaspberryPiSystem_002
+
+# APIをビルド
+cd apps/api
+pnpm build
+cd /opt/RaspberryPiSystem_002
+```
+
+### 1.3 Dockerコンテナの再ビルド・再起動
+
+```bash
+# ラズパイ5で実行
+# Dockerコンテナを再ビルド・再起動（従来の手順と同じ）
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build
+
+# データベースマイグレーションを実行
+sleep 5  # データベースが起動するまで待機
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+```
+
+### 1.4 デプロイ後の動作確認
 
 ```bash
 # ラズパイ5で実行
