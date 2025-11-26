@@ -898,8 +898,12 @@
 
 **今後の注意点**:
 - CIの1回の成功だけでは不十分。複数回実行して安定性を確認する必要がある。
+  - 確認方法: `scripts/ci/get-logs.sh`を使用してCIの実行履歴を確認
+  - 目標: 連続5回以上の成功で安定性を確認
 - E2Eテストの安定化（ステップ4）は未完了。CI環境で確実に動作する範囲に限定する必要がある。
 - テストアーキテクチャのドキュメント化を継続的にメンテナンスする必要がある。
+  - `docs/architecture/test-architecture.md`に詳細な設計方針を記録
+  - KB-024から参照を追加し、ナレッジとして活用可能に
 
 **解決状況**: ✅ **解決済み**（2025-11-26）
 - Phase 5の計画を策定完了
@@ -915,9 +919,15 @@
 
 **関連ファイル**: 
 - `scripts/test/backup-restore.test.sh`
+- `scripts/server/backup.sh`
+- `scripts/server/restore.sh`
 - `.github/workflows/ci.yml`
 - `apps/api/prisma/schema.prisma`
 - `apps/api/prisma/seed.ts`
+
+**関連ドキュメント**: 
+- [テストアーキテクチャ設計](docs/architecture/test-architecture.md): CI/テスト環境の設計方針、バックアップ/リストアテストの詳細、CIワークフローの構成を説明
+- [CIログ取得スクリプト](scripts/ci/README.md): GitHub Actionsのログを取得する方法
 
 ---
 
