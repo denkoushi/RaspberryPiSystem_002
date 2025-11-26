@@ -1,5 +1,6 @@
 #!/bin/bash
 # バックアップ・リストアスクリプトのテスト
+# 目的: 実際の運用環境と同じ方法でバックアップ・リストア機能が正しく動作することを検証する
 # CI環境で実行可能なテスト
 
 set -e
@@ -10,6 +11,7 @@ TEST_DB_NAME="test_borrow_return"
 
 echo "=========================================="
 echo "バックアップ・リストアスクリプトのテスト"
+echo "目的: 実際の運用環境と同じ方法でバックアップ・リストア機能を検証"
 echo "=========================================="
 
 # テスト用のバックアップディレクトリを作成
@@ -38,6 +40,21 @@ else
   exit 1
 fi
 
+# テスト用のデータベースを作成（既存のborrow_returnデータベースに影響を与えないため）
+echo ""
+echo "0. テスト用データベースの準備"
+echo "-----------------------------------"
+echo "テスト用データベース ${TEST_DB_NAME} を作成中..."
+${DB_COMMAND} psql -U postgres <<EOF
+DROP DATABASE IF EXISTS ${TEST_DB_NAME};
+CREATE DATABASE ${TEST_DB_NAME};
+EOF
+
+# テスト用データベースにスキーマをコピー（既存のborrow_returnから）
+echo "既存のデータベースからスキーマをコピー中..."
+${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only | \
+  ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} > /dev/null 2>&1 || true
+
 echo ""
 echo "1. バックアップスクリプトのテスト"
 echo "-----------------------------------"
@@ -45,16 +62,16 @@ echo "-----------------------------------"
 # テスト用のデータを作成
 echo "テストデータを作成中..."
 ${DB_COMMAND} \
-  psql -U postgres -d borrow_return <<EOF
+  psql -U postgres -d ${TEST_DB_NAME} <<EOF
 INSERT INTO "Employee" (id, "employeeCode", "displayName", status, "createdAt", "updatedAt")
 VALUES 
   ('00000000-0000-0000-0000-000000000001', '9999', 'テスト従業員1', 'ACTIVE', NOW(), NOW()),
-  ('00000000-0000-0000-0000-000000000002', '9998', 'テスト従業員2', 'ACTIVE', NOW(), NOW())
-ON CONFLICT DO NOTHING;
+  ('00000000-0000-0000-0000-000000000002', '9998', 'テスト従業員2', 'ACTIVE', NOW(), NOW());
 EOF
 
-# バックアップスクリプトを実行（テスト用のディレクトリを使用）
+# バックアップスクリプトを実行（実際の運用環境と同じ方法でバックアップを作成）
 echo "バックアップを実行中..."
+echo "注意: 実際の運用環境と同じ方法（pg_dump、スキーマ定義も含む）でバックアップを作成します"
 BACKUP_DIR="${TEST_BACKUP_DIR}" \
 PROJECT_DIR="${PROJECT_DIR}" \
 bash -c '
@@ -62,14 +79,13 @@ bash -c '
   BACKUP_DIR="${BACKUP_DIR:-/tmp/test-backups}"
   mkdir -p "${BACKUP_DIR}"
   
-  # データベースバックアップ（データのみ、スキーマは除外）
-  # CI環境とローカル環境の両方に対応
-  # --data-onlyオプションでデータのみをバックアップ（スキーマ定義を除外）
+  # データベースバックアップ（実際の運用環境と同じ方法）
+  # scripts/server/backup.shと同じ方法でバックアップを作成（スキーマ定義も含む）
   if docker ps | grep -q "postgres-test"; then
-    docker exec postgres-test pg_dump -U postgres --data-only --inserts borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+    docker exec postgres-test pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   else
     docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-      pg_dump -U postgres --data-only --inserts borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+      pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   fi
   
   # バックアップファイルの存在確認
@@ -99,23 +115,24 @@ echo ""
 echo "2. リストアスクリプトのテスト"
 echo "-----------------------------------"
 
-# テストデータを削除
-echo "テストデータを削除中..."
-${DB_COMMAND} \
-  psql -U postgres -d borrow_return <<EOF
-DELETE FROM "Employee" WHERE "employeeCode" IN ('9999', '9998');
+# テストデータベースをクリーンアップしてからリストア（実際の運用環境と同じ方法）
+echo "テストデータベースをクリーンアップ中..."
+${DB_COMMAND} psql -U postgres <<EOF
+DROP DATABASE IF EXISTS ${TEST_DB_NAME};
+CREATE DATABASE ${TEST_DB_NAME};
 EOF
 
-# リストアを実行
+# リストアを実行（実際の運用環境と同じ方法）
 echo "リストアを実行中..."
+echo "注意: 実際の運用環境と同じ方法（gunzip + psql）でリストアします"
 gunzip -c "${BACKUP_FILE}" | \
   ${DB_COMMAND_INPUT} \
-  psql -U postgres -d borrow_return --set ON_ERROR_STOP=off
+  psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off
 
 # リストア後のデータ確認
 echo "リストア後のデータを確認中..."
 RESTORED_COUNT=$(${DB_COMMAND} \
-  psql -U postgres -d borrow_return -t -c \
+  psql -U postgres -d ${TEST_DB_NAME} -t -c \
   "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999', '9998');" | tr -d ' ')
 
 if [ "${RESTORED_COUNT}" != "2" ]; then
@@ -130,10 +147,10 @@ echo ""
 echo "3. クリーンアップ"
 echo "-----------------------------------"
 rm -rf "${TEST_BACKUP_DIR}"
-${DB_COMMAND} \
-  psql -U postgres -d borrow_return <<EOF
-DELETE FROM "Employee" WHERE "employeeCode" IN ('9999', '9998');
+${DB_COMMAND} psql -U postgres <<EOF
+DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 EOF
 
 echo "✅ テスト完了"
+echo "✅ バックアップ・リストア機能が実際の運用環境と同じ方法で正しく動作することを確認しました"
 
