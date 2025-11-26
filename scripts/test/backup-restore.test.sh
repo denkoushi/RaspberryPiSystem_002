@@ -62,13 +62,14 @@ bash -c '
   BACKUP_DIR="${BACKUP_DIR:-/tmp/test-backups}"
   mkdir -p "${BACKUP_DIR}"
   
-  # データベースバックアップ
+  # データベースバックアップ（データのみ、スキーマは除外）
   # CI環境とローカル環境の両方に対応
+  # --data-onlyオプションでデータのみをバックアップ（スキーマ定義を除外）
   if docker ps | grep -q "postgres-test"; then
-    docker exec postgres-test pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+    docker exec postgres-test pg_dump -U postgres --data-only --inserts borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   else
     docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-      pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+      pg_dump -U postgres --data-only --inserts borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   fi
   
   # バックアップファイルの存在確認
