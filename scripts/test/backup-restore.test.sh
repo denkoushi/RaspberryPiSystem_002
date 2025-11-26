@@ -98,16 +98,22 @@ echo "────────────────────────�
 echo "Step 3: テストデータの挿入"
 echo "─────────────────────────────────────────"
 
-${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
+${DB_COMMAND} psql -v ON_ERROR_STOP=1 -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
 INSERT INTO "Employee" (id, "employeeCode", "displayName", status, "createdAt", "updatedAt")
 VALUES 
   ('00000000-0000-0000-0000-000000000001', '9999', 'テスト従業員1', 'ACTIVE', NOW(), NOW()),
   ('00000000-0000-0000-0000-000000000002', '9998', 'テスト従業員2', 'ACTIVE', NOW(), NOW());
 EOSQL
 
-# データ確認
+# データ確認（2件入っていることを前提に検証）
 DATA_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
-  "SELECT COUNT(*) FROM \"Employee\";" | tr -d ' ')
+  "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999','9998');" | tr -d ' ')
+if [ "${DATA_COUNT}" != "2" ]; then
+  echo "✗ エラー: テストデータの挿入に失敗しました（期待: 2件, 実際: ${DATA_COUNT}件）"
+  echo "現在のEmployeeテーブル内容:"
+  ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c 'TABLE "Employee";' || true
+  exit 1
+fi
 echo "✓ テストデータを挿入しました（${DATA_COUNT}件）"
 
 echo ""
