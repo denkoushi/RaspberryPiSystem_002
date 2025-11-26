@@ -40,10 +40,11 @@ mkdir -p "${TEST_BACKUP_DIR}"
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
 
 # 環境検出とDB接続コマンドの設定
+# 注意: -i フラグは標準入力（ヒアドキュメント）を受け取るために必要
 if docker ps | grep -q "postgres-test"; then
   DB_CONTAINER="postgres-test"
-  ADMIN_PSQL() { docker exec ${DB_CONTAINER} psql -U postgres "$@"; }
-  TEST_PSQL() { docker exec ${DB_CONTAINER} psql -U postgres -d ${TEST_DB_NAME} "$@"; }
+  ADMIN_PSQL() { docker exec -i ${DB_CONTAINER} psql -U postgres "$@"; }
+  TEST_PSQL() { docker exec -i ${DB_CONTAINER} psql -U postgres -d ${TEST_DB_NAME} "$@"; }
   echo "✓ CI環境を検出: postgres-testコンテナを使用"
 elif docker compose -f "${COMPOSE_FILE}" ps db 2>/dev/null | grep -q "Up"; then
   DB_CONTAINER="db"
