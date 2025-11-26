@@ -98,11 +98,11 @@ EOSQL
 
 echo "✓ スキーマを適用しました（テスト用の簡易スキーマ）"
 
-# テーブル確認
-TABLE_EXISTS=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
-  "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Employee');" | tr -d ' ')
-if [ "${TABLE_EXISTS}" != "t" ]; then
-  echo "✗ エラー: Employeeテーブルが作成されていません"
+# テーブル確認（直接SELECTして存在を確認）
+if ! ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c 'SELECT COUNT(*) FROM "Employee";' > /dev/null 2>&1; then
+  echo "✗ エラー: Employeeテーブルが作成されていません（SELECTに失敗）"
+  echo "現在のpublicスキーマのテーブル一覧:"
+  ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';" || true
   exit 1
 fi
 
@@ -181,11 +181,11 @@ echo "────────────────────────�
 echo "Step 7: データの検証"
 echo "─────────────────────────────────────────"
 
-# テーブルが復元されたか確認
-TABLE_EXISTS=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
-  "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Employee');" | tr -d ' ')
-if [ "${TABLE_EXISTS}" != "t" ]; then
-  echo "✗ エラー: Employeeテーブルが復元されていません"
+# テーブルが復元されたか確認（直接SELECTして存在を確認）
+if ! ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c 'SELECT COUNT(*) FROM "Employee";' > /dev/null 2>&1; then
+  echo "✗ エラー: Employeeテーブルが復元されていません（SELECTに失敗）"
+  echo "現在のpublicスキーマのテーブル一覧:"
+  ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';" || true
   exit 1
 fi
 echo "✓ スキーマが復元されました"
