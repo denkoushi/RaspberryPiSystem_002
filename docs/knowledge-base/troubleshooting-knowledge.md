@@ -357,6 +357,47 @@
 
 ---
 
+### [KB-009] E2Eテストのログイン成功後のリダイレクトがCI環境で失敗する
+
+**EXEC_PLAN.md参照**: Progress (行47), CI_TESTING_BEST_PRACTICES.md
+
+**事象**: 
+- E2Eテストのログイン成功後のリダイレクトがCI環境で失敗する
+- ローカル環境では成功するが、CI環境では「管理コンソール」のテキストが見つからない
+- ログイン後に`/admin`に遷移しても、`RequireAuth`がログイン画面にリダイレクトしてしまう
+
+**要因**: 
+- **根本原因（2025-11-24に修正済み）**: `login`関数で`setUser(response.user)`を呼んでも、Reactの状態更新は非同期。`LoginPage`の`handleSubmit`で`await login(...)`直後に`navigate(from)`を実行すると、`/admin`に遷移しても`RequireAuth`のレンダリング時点で`user`がまだ`null`のため、`RequireAuth`が`if (!user)`で`<Navigate to="/login" />`を返す。
+- **CI環境特有の問題**: CI環境ではタイミングがより厳しく、Reactの状態更新の完了を待つ必要がある。
+
+**試行した対策**: 
+- [試行1] `LoginPage`で`useEffect`を使って`user`の更新を監視し、`user`が設定されたら自動的にナビゲートするように修正（2025-11-24） → **部分的成功**（ローカルでは成功、CI環境ではまだ失敗する場合がある）
+- [試行2] `RequireAuth`に`loading`状態を追加（2025-11-24） → **部分的成功**
+- [試行3] E2EテストでURL遷移を確認してからテキストを確認するように改善（2025-11-25） → **実装完了・検証待ち**
+
+**有効だった対策**: 
+- [試行1] `LoginPage`で`useEffect`を使って`user`の更新を監視
+- [試行2] `RequireAuth`に`loading`状態を追加
+- [試行3] E2EテストでURL遷移を確認してからテキストを確認
+
+**学んだこと**: 
+- Reactの状態更新は非同期であるため、`await login(...)`直後に`navigate()`を実行しても、`user`がまだ`null`の可能性がある
+- CI環境ではタイミングがより厳しく、適切な待機処理が必要
+- E2Eテストでは、URL遷移を確認してから要素の存在を確認することで、より確実にテストできる
+- `useEffect`を使って状態更新を監視することで、確実にナビゲートできる
+
+**関連ファイル**: 
+- `apps/web/src/pages/LoginPage.tsx`
+- `apps/web/src/components/RequireAuth.tsx`
+- `e2e/auth.spec.ts`
+- `CI_TESTING_BEST_PRACTICES.md`
+
+**解決状況**: ⚠️ **部分的解決**（2025-11-25）
+- ローカル環境では成功するが、CI環境ではまだ失敗する場合がある
+- E2Eテストの改善を実装したが、検証待ち
+
+---
+
 ### [KB-008] Dockerコンテナが再起動時に復帰しない
 
 **EXEC_PLAN.md参照**: Surprises & Discoveries (行100-102)
@@ -771,7 +812,7 @@
 - **Phase 1**: KB-001, KB-002, KB-022
 - **Phase 2**: KB-004
 - **Phase 3**: KB-003
-- **Phase 4**: KB-005
+- **Phase 4**: KB-005, KB-009
 
 各Phaseの進捗は、EXEC_PLAN.mdの「Progress」セクションで管理し、ナレッジベースの課題IDを参照してください。
 
