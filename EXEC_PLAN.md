@@ -167,10 +167,19 @@
       - `/api/system/health`, `/api/tools/employees`, `/api/tools/items`, `/api/system/metrics`のレスポンス時間が1秒以内であることを検証して成功
     - **【実機検証】タスク1-2**: ⏳ バックアップ・リストアスクリプトの実機検証（**明日実施予定**）
       - ラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認
+      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
+        - 問題があれば修正してからマージできる
+        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
     - **【実機検証】タスク2-2**: ⏳ 監視・アラート機能の実機検証（**明日実施予定**）
       - ラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認
+      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
+        - 問題があれば修正してからマージできる
+        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
     - **【実機検証】タスク3-2**: ⏳ パフォーマンスの実機検証（**明日実施予定**）
       - ラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定
+      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
+        - 問題があれば修正してからマージできる
+        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
     - **【ドキュメント整備】タスク4**: 運用マニュアルの作成（日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順の整理）
     - **【ドキュメント整備】タスク5**: 共通基盤ドキュメントの作成（`docs/architecture/infrastructure-base.md`を作成、スケール性の観点を説明）
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
