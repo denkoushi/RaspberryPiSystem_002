@@ -29,8 +29,8 @@ const fieldSchema = z.object({
 });
 
 const employeeCsvSchema = z.object({
-  employeeCode: z.string().min(1),
-  displayName: z.string().min(1),
+  employeeCode: z.string().regex(/^\d{4}$/, '社員コードは数字4桁である必要があります（例: 0001）'),
+  displayName: z.string().min(1, '氏名は必須です'),
   nfcTagUid: z.string().optional(),
   department: z.string().optional(),
   contact: z.string().optional(),
@@ -38,8 +38,8 @@ const employeeCsvSchema = z.object({
 });
 
 const itemCsvSchema = z.object({
-  itemCode: z.string().min(1),
-  name: z.string().min(1),
+  itemCode: z.string().regex(/^TO\d{4}$/, '管理番号はTO + 数字4桁である必要があります（例: TO0001）'),
+  name: z.string().min(1, '工具名は必須です'),
   nfcTagUid: z.string().optional(),
   category: z.string().optional(),
   storageLocation: z.string().optional(),

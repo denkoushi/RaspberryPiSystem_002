@@ -4,8 +4,8 @@ import pkg from '@prisma/client';
 const { ItemStatus } = pkg;
 
 export const baseItemSchema = z.object({
-  itemCode: z.string().min(1),
-  name: z.string().min(1),
+  itemCode: z.string().regex(/^TO\d{4}$/, '管理番号はTO + 数字4桁である必要があります（例: TO0001）'),
+  name: z.string().min(1, '工具名は必須です'),
   description: z.string().optional().nullable(),
   nfcTagUid: z.string().min(4).optional().or(z.literal('').transform(() => undefined)).nullable(),
   category: z.string().optional().nullable(),

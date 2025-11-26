@@ -4,8 +4,8 @@ import pkg from '@prisma/client';
 const { EmployeeStatus } = pkg;
 
 export const employeeBodySchema = z.object({
-  employeeCode: z.string().min(1),
-  displayName: z.string().min(1),
+  employeeCode: z.string().regex(/^\d{4}$/, '社員コードは数字4桁である必要があります（例: 0001）'),
+  displayName: z.string().min(1, '氏名は必須です'),
   nfcTagUid: z.string().min(4).optional().or(z.literal('').transform(() => undefined)).nullable(),
   department: z.string().optional().nullable(),
   contact: z.string().optional().nullable(),

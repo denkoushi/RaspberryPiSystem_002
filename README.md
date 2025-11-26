@@ -78,7 +78,7 @@
 - 開発サーバー: `cd apps/web && pnpm dev` (デフォルト: http://localhost:4173)
 - Lint/Test/Build: `cd apps/web && pnpm lint && pnpm test && pnpm build`
 - キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
-- USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（CSVはUTF-8、ヘッダー行必須）
+- USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（詳細は [CSVインポート・エクスポート仕様](./docs/guides/csv-import-export.md) を参照）
 
 ## E2Eテスト
 

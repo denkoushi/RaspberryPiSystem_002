@@ -30,8 +30,12 @@ export function MasterImportPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm text-white/70">
             USBメモリ上の `employees.csv` と `items.csv` をPCにコピーした後、以下から選択してアップロードしてください。
-            CSVはUTF-8、1行1レコード、ヘッダー必須（列名: employeeCode,displayName,nfcTagUid,department,contact,status /
-            itemCode,name,nfcTagUid,category,storageLocation,status,notes）。
+            <br />
+            CSVはUTF-8、1行1レコード、ヘッダー必須です。
+            <br />
+            <strong>従業員CSV</strong>: employeeCode（必須・数字4桁、例: 0001）, displayName（必須・氏名）, nfcTagUid（任意）, department（任意）, contact（任意）, status（任意）
+            <br />
+            <strong>工具CSV</strong>: itemCode（必須・TO + 数字4桁、例: TO0001）, name（必須・工具名）, nfcTagUid（任意）, category（任意）, storageLocation（任意）, status（任意）, notes（任意）
           </p>
           <label className="block">
             <span className="text-sm text-white/70">従業員CSV（任意）</span>
