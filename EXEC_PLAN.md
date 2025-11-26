@@ -165,21 +165,20 @@
     - **【CI検証】タスク3-1**: ✅ パフォーマンステストのCI追加（完了・CI #221, #222で成功）
       - `apps/api/src/routes/__tests__/performance.test.ts`が`pnpm test`で統合テストの一部として実行されている
       - `/api/system/health`, `/api/tools/employees`, `/api/tools/items`, `/api/system/metrics`のレスポンス時間が1秒以内であることを検証して成功
-    - **【実機検証】タスク1-2**: ⏳ バックアップ・リストアスクリプトの実機検証（**明日実施予定**）
+    - **【実機検証】タスク1-2**: ✅ バックアップ・リストアスクリプトの実機検証（完了・2025-11-27）
       - ラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認
-      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
-        - 問題があれば修正してからマージできる
-        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
-    - **【実機検証】タスク2-2**: ⏳ 監視・アラート機能の実機検証（**明日実施予定**）
+      - **検証結果**: バックアップ作成成功、テスト用DBへのリストア成功、データ復元確認（Employee 2件）
+      - **検証方法**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
+    - **【実機検証】タスク2-2**: ✅ 監視・アラート機能の実機検証（完了・2025-11-27）
       - ラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認
-      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
-        - 問題があれば修正してからマージできる
-        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
-    - **【実機検証】タスク3-2**: ⏳ パフォーマンスの実機検証（**明日実施予定**）
+      - **検証結果**: 監視スクリプト実行成功、APIヘルスチェック成功、メトリクスエンドポイント成功
+      - **検証方法**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
+    - **【実機検証】タスク3-2**: ✅ パフォーマンスの実機検証（完了・2025-11-27）
       - ラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定
-      - **推奨**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
-        - 問題があれば修正してからマージできる
-        - デプロイ方法: `./scripts/server/deploy.sh fix/ci-test-architecture`
+      - **検証結果**: 
+        - APIレスポンス時間: `/api/system/health` 24ms, `/api/system/metrics` 28ms, `/api/tools/employees` 17ms（すべて1秒以内）
+        - ページ読み込み時間: キオスク画面 603ms, 管理画面 474ms（すべて3秒以内）
+      - **検証方法**: マージ前（ブランチ`fix/ci-test-architecture`で検証）
     - **【ドキュメント整備】タスク4**: 運用マニュアルの作成（日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順の整理）
     - **【ドキュメント整備】タスク5**: 共通基盤ドキュメントの作成（`docs/architecture/infrastructure-base.md`を作成、スケール性の観点を説明）
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
