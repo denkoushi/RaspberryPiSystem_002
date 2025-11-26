@@ -50,10 +50,21 @@ DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 CREATE DATABASE ${TEST_DB_NAME};
 EOF
 
-# テスト用データベースにスキーマをコピー（既存のborrow_returnから）
-echo "既存のデータベースからスキーマをコピー中..."
-${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only | \
-  ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} > /dev/null 2>&1 || true
+# テスト用データベースにスキーマをコピー（既存のborrow_returnから、スキーマのみ）
+echo "既存のデータベースからスキーマのみをコピー中..."
+# --schema-onlyでスキーマ定義のみを取得し、データは含めない
+# --no-owner --no-privilegesでオーナー情報や権限情報も除外（エラーを避けるため）
+${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only --no-owner --no-privileges 2>/dev/null | \
+  ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off > /dev/null 2>&1
+
+# スキーマが正しく作成されたか確認
+TABLE_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
+if [ "${TABLE_COUNT}" = "0" ]; then
+  echo "警告: スキーマのコピーに失敗した可能性があります。マイグレーションを実行します..."
+  # マイグレーションを実行してスキーマを作成
+  cd "${PROJECT_DIR}/apps/api"
+  DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy > /dev/null 2>&1 || true
+fi
 
 echo ""
 echo "1. バックアップスクリプトのテスト"
@@ -117,10 +128,20 @@ echo "-----------------------------------"
 
 # テストデータベースをクリーンアップしてからリストア（実際の運用環境と同じ方法）
 echo "テストデータベースをクリーンアップ中..."
+# データベースを削除して再作成（完全にクリーンな状態にする）
 ${DB_COMMAND} psql -U postgres <<EOF
 DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 CREATE DATABASE ${TEST_DB_NAME};
 EOF
+
+# スキーマを再作成（マイグレーションを実行）
+echo "スキーマを再作成中..."
+cd "${PROJECT_DIR}/apps/api"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy > /dev/null 2>&1 || {
+  echo "警告: マイグレーションに失敗しました。スキーマを手動でコピーします..."
+  ${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only --no-owner --no-privileges 2>/dev/null | \
+    ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off > /dev/null 2>&1
+}
 
 # リストアを実行（実際の運用環境と同じ方法）
 echo "リストアを実行中..."
