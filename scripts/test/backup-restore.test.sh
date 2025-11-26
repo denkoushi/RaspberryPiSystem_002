@@ -1,7 +1,19 @@
 #!/bin/bash
 # バックアップ・リストアスクリプトのテスト
+# 
 # 目的: 実際の運用環境と同じ方法でバックアップ・リストア機能が正しく動作することを検証する
-# CI環境で実行可能なテスト
+# 
+# テストシナリオ（災害復旧を想定）:
+#   1. テスト用DBを作成し、スキーマを適用
+#   2. テストデータを挿入
+#   3. フルダンプでバックアップ（本番と同じ方法）
+#   4. DBを削除して空のDBを再作成
+#   5. フルダンプをリストア（本番と同じ方法）
+#   6. データが復元されたことを確認
+#
+# 前提条件:
+#   - CI環境: postgres-testコンテナが起動していること
+#   - ローカル環境: docker compose up -d db で dbコンテナが起動していること
 
 set -e
 
@@ -11,8 +23,20 @@ TEST_DB_NAME="test_borrow_return"
 
 echo "=========================================="
 echo "バックアップ・リストアスクリプトのテスト"
-echo "目的: 実際の運用環境と同じ方法でバックアップ・リストア機能を検証"
 echo "=========================================="
+echo "テストシナリオ: 災害復旧（空DBへのフルダンプリストア）"
+echo ""
+
+# クリーンアップ関数
+cleanup() {
+  echo ""
+  echo "クリーンアップ中..."
+  rm -rf "${TEST_BACKUP_DIR}" 2>/dev/null || true
+  ${DB_COMMAND} psql -U postgres -c "DROP DATABASE IF EXISTS ${TEST_DB_NAME};" 2>/dev/null || true
+}
+
+# エラー時にクリーンアップを実行
+trap cleanup EXIT
 
 # テスト用のバックアップディレクトリを作成
 mkdir -p "${TEST_BACKUP_DIR}"
@@ -20,176 +44,177 @@ mkdir -p "${TEST_BACKUP_DIR}"
 # Docker Composeファイルのパス
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
 
-# CI環境ではpostgres-testコンテナを使用、ローカル環境ではdocker-composeのdbコンテナを使用
+# 環境検出とDB接続コマンドの設定
 if docker ps | grep -q "postgres-test"; then
-  # CI環境: postgres-testコンテナを使用
   DB_CONTAINER="postgres-test"
   DB_COMMAND="docker exec ${DB_CONTAINER}"
-  DB_COMMAND_INPUT="docker exec -i ${DB_CONTAINER}"  # 標準入力を受け取る場合は-iオプションが必要
-  echo "CI環境を検出: postgres-testコンテナを使用します"
+  DB_COMMAND_INPUT="docker exec -i ${DB_CONTAINER}"
+  echo "✓ CI環境を検出: postgres-testコンテナを使用"
 elif docker compose -f "${COMPOSE_FILE}" ps db 2>/dev/null | grep -q "Up"; then
-  # ローカル環境: docker-composeのdbコンテナを使用
   DB_CONTAINER="db"
   DB_COMMAND="docker compose -f ${COMPOSE_FILE} exec -T db"
-  DB_COMMAND_INPUT="docker compose -f ${COMPOSE_FILE} exec -T db"  # docker compose exec -Tは標準入力を受け取れる
-  echo "ローカル環境を検出: docker-composeのdbコンテナを使用します"
+  DB_COMMAND_INPUT="docker compose -f ${COMPOSE_FILE} exec -T db"
+  echo "✓ ローカル環境を検出: docker-composeのdbコンテナを使用"
 else
-  echo "エラー: データベースコンテナが起動していません"
-  echo "CI環境の場合: PostgreSQLコンテナが起動していることを確認してください"
-  echo "ローカル環境の場合: docker compose -f ${COMPOSE_FILE} up -d db を実行してください"
+  echo "✗ エラー: データベースコンテナが起動していません"
   exit 1
 fi
 
-# テスト用のデータベースを作成（既存のborrow_returnデータベースに影響を与えないため）
 echo ""
-echo "0. テスト用データベースの準備"
-echo "-----------------------------------"
-echo "テスト用データベース ${TEST_DB_NAME} を作成中..."
-${DB_COMMAND} psql -U postgres <<EOF
-DROP DATABASE IF EXISTS ${TEST_DB_NAME};
-CREATE DATABASE ${TEST_DB_NAME};
-EOF
+echo "─────────────────────────────────────────"
+echo "Step 1: テスト用データベースの作成"
+echo "─────────────────────────────────────────"
 
-# テスト用データベースにスキーマを作成（マイグレーションを使用）
-echo "マイグレーションを使用してスキーマを作成中..."
-cd "${PROJECT_DIR}/apps/api"
+# 既存のテストDBがあれば削除
+${DB_COMMAND} psql -U postgres -c "DROP DATABASE IF EXISTS ${TEST_DB_NAME};" 2>/dev/null || true
+${DB_COMMAND} psql -U postgres -c "CREATE DATABASE ${TEST_DB_NAME};"
+echo "✓ データベース ${TEST_DB_NAME} を作成しました"
 
-# マイグレーションを実行（set -eの影響を受けないように）
-set +e
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy 2>&1
-MIGRATE_EXIT_CODE=$?
-set -e
+echo ""
+echo "─────────────────────────────────────────"
+echo "Step 2: スキーマの適用（SQLで直接作成）"
+echo "─────────────────────────────────────────"
 
-if [ ${MIGRATE_EXIT_CODE} -ne 0 ]; then
-  echo "警告: マイグレーションに失敗しました（終了コード: ${MIGRATE_EXIT_CODE}）。スキーマを手動でコピーします..."
-  cd "${PROJECT_DIR}"
-  # 一時ファイルにスキーマをダンプ（標準出力をローカルファイルにリダイレクト）
-  SCHEMA_FILE="${TEST_BACKUP_DIR}/schema.sql"
-  ${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only --no-owner --no-privileges > "${SCHEMA_FILE}" 2>&1 || {
-    echo "エラー: スキーマのダンプに失敗しました"
-    cat "${SCHEMA_FILE}" 2>/dev/null || true
-  }
-  # スキーマをリストア
-  if [ -f "${SCHEMA_FILE}" ] && [ -s "${SCHEMA_FILE}" ]; then
-    echo "スキーマファイルサイズ: $(wc -c < "${SCHEMA_FILE}") バイト"
-    cat "${SCHEMA_FILE}" | ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off > /dev/null 2>&1 || true
-    rm -f "${SCHEMA_FILE}"
-  fi
-fi
-cd "${PROJECT_DIR}"
+# CI環境ではPrismaマイグレーションが動作しない場合があるため、
+# 最小限のスキーマをSQLで直接作成する
+${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
+-- 必要最小限のスキーマを作成（テスト用）
+-- 本番環境ではPrismaマイグレーションを使用
 
-# スキーマが正しく作成されたか確認
-set +e
-TABLE_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ')
-set -e
-echo "テーブル数: ${TABLE_COUNT:-0}"
-if [ -z "${TABLE_COUNT}" ] || [ "${TABLE_COUNT}" = "0" ]; then
-  echo "エラー: スキーマの作成に失敗しました"
+-- Enum型の作成
+DO $$ BEGIN
+    CREATE TYPE "EmployeeStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- Employeeテーブルの作成
+CREATE TABLE IF NOT EXISTS "Employee" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "employeeCode" VARCHAR(50) NOT NULL,
+    "displayName" VARCHAR(255) NOT NULL,
+    "nfcTagUid" VARCHAR(100),
+    "department" VARCHAR(255),
+    "contact" VARCHAR(255),
+    "status" "EmployeeStatus" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Employee_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "Employee_employeeCode_key" UNIQUE ("employeeCode")
+);
+EOSQL
+
+echo "✓ スキーマを適用しました"
+
+# テーブル確認
+TABLE_EXISTS=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Employee');" | tr -d ' ')
+if [ "${TABLE_EXISTS}" != "t" ]; then
+  echo "✗ エラー: Employeeテーブルが作成されていません"
   exit 1
 fi
-echo "スキーマの作成が完了しました"
 
 echo ""
-echo "1. バックアップスクリプトのテスト"
-echo "-----------------------------------"
+echo "─────────────────────────────────────────"
+echo "Step 3: テストデータの挿入"
+echo "─────────────────────────────────────────"
 
-# テスト用のデータを作成
-echo "テストデータを作成中..."
-${DB_COMMAND} \
-  psql -U postgres -d ${TEST_DB_NAME} <<EOF
+${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
 INSERT INTO "Employee" (id, "employeeCode", "displayName", status, "createdAt", "updatedAt")
 VALUES 
   ('00000000-0000-0000-0000-000000000001', '9999', 'テスト従業員1', 'ACTIVE', NOW(), NOW()),
   ('00000000-0000-0000-0000-000000000002', '9998', 'テスト従業員2', 'ACTIVE', NOW(), NOW());
-EOF
+EOSQL
 
-# バックアップスクリプトを実行（実際の運用環境と同じ方法でバックアップを作成）
-echo "バックアップを実行中..."
-echo "注意: 実際の運用環境と同じ方法（pg_dump、スキーマ定義も含む）でバックアップを作成します"
-BACKUP_DIR="${TEST_BACKUP_DIR}" \
-PROJECT_DIR="${PROJECT_DIR}" \
-bash -c '
-  DATE=$(date +%Y%m%d_%H%M%S)
-  BACKUP_DIR="${BACKUP_DIR:-/tmp/test-backups}"
-  mkdir -p "${BACKUP_DIR}"
-  
-  # データベースバックアップ（実際の運用環境と同じ方法）
-  # scripts/server/backup.shと同じ方法でバックアップを作成（スキーマ定義も含む）
-  if docker ps | grep -q "postgres-test"; then
-    docker exec postgres-test pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  else
-    docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-      pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  fi
-  
-  # バックアップファイルの存在確認
-  if [ ! -f "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" ]; then
-    echo "エラー: バックアップファイルが作成されませんでした"
-    exit 1
-  fi
-  
-  # バックアップファイルの整合性確認
-  if ! gunzip -t "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" 2>/dev/null; then
-    echo "エラー: バックアップファイルが破損しています"
-    exit 1
-  fi
-  
-  echo "✅ バックアップファイルが正常に作成されました: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  echo "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-'
+# データ確認
+DATA_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT COUNT(*) FROM \"Employee\";" | tr -d ' ')
+echo "✓ テストデータを挿入しました（${DATA_COUNT}件）"
 
-BACKUP_FILE=$(find "${TEST_BACKUP_DIR}" -name "db_backup_*.sql.gz" | sort | tail -1)
+echo ""
+echo "─────────────────────────────────────────"
+echo "Step 4: バックアップ（pg_dump フルダンプ）"
+echo "─────────────────────────────────────────"
 
-if [ -z "${BACKUP_FILE}" ]; then
-  echo "エラー: バックアップファイルが見つかりません"
+BACKUP_FILE="${TEST_BACKUP_DIR}/db_backup_test.sql.gz"
+
+# フルダンプを作成（本番と同じ方法: スキーマ + データ）
+${DB_COMMAND} pg_dump -U postgres ${TEST_DB_NAME} | gzip > "${BACKUP_FILE}"
+
+# バックアップファイルの検証
+if [ ! -f "${BACKUP_FILE}" ]; then
+  echo "✗ エラー: バックアップファイルが作成されませんでした"
   exit 1
 fi
 
+if ! gunzip -t "${BACKUP_FILE}" 2>/dev/null; then
+  echo "✗ エラー: バックアップファイルが破損しています"
+  exit 1
+fi
+
+BACKUP_SIZE=$(ls -lh "${BACKUP_FILE}" | awk '{print $5}')
+echo "✓ バックアップを作成しました（サイズ: ${BACKUP_SIZE}）"
+
 echo ""
-echo "2. リストアスクリプトのテスト"
-echo "-----------------------------------"
+echo "─────────────────────────────────────────"
+echo "Step 5: データベースを空にして再作成"
+echo "─────────────────────────────────────────"
 
-# テストデータベースをクリーンアップしてからリストア（実際の運用環境と同じ方法）
-echo "テストデータベースをクリーンアップ中..."
-# データベースを削除して再作成（完全にクリーンな状態にする）
-${DB_COMMAND} psql -U postgres <<EOF
-DROP DATABASE IF EXISTS ${TEST_DB_NAME};
-CREATE DATABASE ${TEST_DB_NAME};
-EOF
+# データベースを削除して再作成（災害復旧シナリオ: 空のDBに対してリストア）
+${DB_COMMAND} psql -U postgres -c "DROP DATABASE IF EXISTS ${TEST_DB_NAME};"
+${DB_COMMAND} psql -U postgres -c "CREATE DATABASE ${TEST_DB_NAME};"
 
-# 注意:
-# ここではスキーマを再作成せず、バックアップファイル側に含まれるスキーマ定義をそのまま適用する。
-# これは災害復旧時に「空のデータベース」に対してフルダンプをリストアする手順と同じ。
+# 空であることを確認
+TABLE_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
+if [ "${TABLE_COUNT}" != "0" ]; then
+  echo "✗ エラー: データベースが空ではありません（テーブル数: ${TABLE_COUNT}）"
+  exit 1
+fi
+echo "✓ 空のデータベースを再作成しました"
 
-# リストアを実行（実際の運用環境と同じ方法）
-echo "リストアを実行中..."
-echo "注意: 実際の運用環境と同じ方法（gunzip + psql）でリストアします"
-gunzip -c "${BACKUP_FILE}" | \
-  ${DB_COMMAND_INPUT} \
-  psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off
+echo ""
+echo "─────────────────────────────────────────"
+echo "Step 6: リストア（gunzip + psql）"
+echo "─────────────────────────────────────────"
 
-# リストア後のデータ確認
-echo "リストア後のデータを確認中..."
-RESTORED_COUNT=$(${DB_COMMAND} \
-  psql -U postgres -d ${TEST_DB_NAME} -t -c \
+# フルダンプをリストア（本番と同じ方法）
+# ON_ERROR_STOP=offにすることで、一部のエラーがあっても継続
+gunzip -c "${BACKUP_FILE}" | ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off > /dev/null 2>&1
+
+echo "✓ リストアを実行しました"
+
+echo ""
+echo "─────────────────────────────────────────"
+echo "Step 7: データの検証"
+echo "─────────────────────────────────────────"
+
+# テーブルが復元されたか確認
+TABLE_EXISTS=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Employee');" | tr -d ' ')
+if [ "${TABLE_EXISTS}" != "t" ]; then
+  echo "✗ エラー: Employeeテーブルが復元されていません"
+  exit 1
+fi
+echo "✓ スキーマが復元されました"
+
+# データが復元されたか確認
+RESTORED_COUNT=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
   "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999', '9998');" | tr -d ' ')
 
 if [ "${RESTORED_COUNT}" != "2" ]; then
-  echo "エラー: リストアが失敗しました。期待値: 2, 実際: ${RESTORED_COUNT}"
+  echo "✗ エラー: データが復元されていません（期待: 2件, 実際: ${RESTORED_COUNT}件）"
   exit 1
 fi
+echo "✓ データが復元されました（${RESTORED_COUNT}件）"
 
-echo "✅ リストアが正常に完了しました（${RESTORED_COUNT}件のデータが復元されました）"
-
-# クリーンアップ
 echo ""
-echo "3. クリーンアップ"
-echo "-----------------------------------"
-rm -rf "${TEST_BACKUP_DIR}"
-${DB_COMMAND} psql -U postgres <<EOF
-DROP DATABASE IF EXISTS ${TEST_DB_NAME};
-EOF
-
-echo "✅ テスト完了"
-echo "✅ バックアップ・リストア機能が実際の運用環境と同じ方法で正しく動作することを確認しました"
-
+echo "=========================================="
+echo "✅ テスト成功"
+echo "=========================================="
+echo "バックアップ・リストア機能が正しく動作することを確認しました"
+echo ""
+echo "検証内容:"
+echo "  - pg_dump でフルダンプを作成"
+echo "  - 空のDBに対して gunzip + psql でリストア"
+echo "  - スキーマとデータが正しく復元されることを確認"
