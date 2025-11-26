@@ -75,28 +75,20 @@ echo "────────────────────────�
 echo "Step 2: スキーマの適用（SQLで直接作成）"
 echo "─────────────────────────────────────────"
 
-# CI環境ではPrismaマイグレーションが動作しない場合があるため、
-# 最小限のスキーマをSQLで直接作成する
+# CI環境では拡張機能やENUM型に依存すると失敗要因が増えるため、
+# ここでは「最小限のテスト用スキーマ」をシンプルな型だけで作成する。
 ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
 -- 必要最小限のスキーマを作成（テスト用）
--- 本番環境ではPrismaマイグレーションを使用
+-- 本番環境では Prisma マイグレーションと ENUM 型を使用する。
 
--- Enum型の作成
-DO $$ BEGIN
-    CREATE TYPE "EmployeeStatus" AS ENUM ('ACTIVE', 'INACTIVE');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
--- Employeeテーブルの作成
 CREATE TABLE IF NOT EXISTS "Employee" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "employeeCode" VARCHAR(50) NOT NULL,
     "displayName" VARCHAR(255) NOT NULL,
     "nfcTagUid" VARCHAR(100),
     "department" VARCHAR(255),
     "contact" VARCHAR(255),
-    "status" "EmployeeStatus" NOT NULL DEFAULT 'ACTIVE',
+    "status" VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Employee_pkey" PRIMARY KEY ("id"),
@@ -104,7 +96,7 @@ CREATE TABLE IF NOT EXISTS "Employee" (
 );
 EOSQL
 
-echo "✓ スキーマを適用しました"
+echo "✓ スキーマを適用しました（テスト用の簡易スキーマ）"
 
 # テーブル確認
 TABLE_EXISTS=$(${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -t -c \
