@@ -106,13 +106,17 @@
   - **完了日**: 2025-11-25（Phase 3の検証時に実施）
   - **関連ドキュメント**: [要件定義](docs/requirements/system-requirements.md), [CSVインポート・エクスポート仕様](docs/guides/csv-import-export.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 - [x] (2025-11-25) ドキュメント整理: 要件定義・タスク一覧・進捗管理・検証結果をEXEC_PLAN.mdに一元化。docs/requirements/task-priority.md、docs/progress/の完了済みファイルを統合して削除。
-- [ ] (2025-11-25) **次のタスク: 運用ドキュメントの実機検証と整備**（優先度: 高）
-  - **目的**: 既存の運用ドキュメントが実機環境で正しく動作することを確認し、不足している情報を補完する
-  - **現状**: バックアップ・リストア、監視・アラート、デプロイメントの各ガイドが存在するが、実機検証が未実施
-  - **タスク1**: バックアップ・リストアスクリプトの実機検証
-  - **タスク2**: 監視・アラート機能の実機検証
-  - **タスク3**: 運用マニュアルの作成
-  - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md)
+- [ ] (2025-11-25) **次のタスク: 非機能要件の実機検証と運用マニュアル作成**（優先度: 高）
+  - **目的**: 要件定義で定義されている非機能要件（NFR-001, NFR-004の一部）が実機環境で満たされていることを確認し、運用マニュアルを作成する
+  - **現状**: 
+    - NFR-001（パフォーマンス）: 実装済みだが実機検証未実施
+    - NFR-004（保守性）の一部: バックアップ・リストア、監視・アラート機能は実装済みだが実機検証未実施
+  - **作業内容**:
+    - **【検証】タスク1**: バックアップ・リストアスクリプトの実機検証（`scripts/server/backup.sh`, `restore.sh`の動作確認）
+    - **【検証】タスク2**: 監視・アラート機能の実機検証（`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認）
+    - **【検証】タスク3**: パフォーマンスの実機検証（APIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定）
+    - **【ドキュメント整備】タスク4**: 運用マニュアルの作成（日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順の整理）
+  - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 
 ## Surprises & Discoveries
 
