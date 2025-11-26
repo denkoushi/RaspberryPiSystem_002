@@ -1,0 +1,6 @@
+employeeCode,displayName,nfcTagUid,department,contact,status
+0001,山田太郎,04C362E1330289,製造部,内線1234,ACTIVE
+0002,佐藤花子,04B34411340289,品質管理部,内線5678,ACTIVE
+0003,鈴木一郎,04DE8366BC2A81,製造部,内線9012,ACTIVE
+0004,田中次郎,,総務部,内線3456,INACTIVE
+

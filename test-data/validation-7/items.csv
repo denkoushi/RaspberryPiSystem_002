@@ -1,0 +1,6 @@
+itemCode,name,nfcTagUid,category,storageLocation,status,notes
+TO0001,ドライバーセット,04C362E1330289,工具,工具庫A,AVAILABLE,常用工具
+TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
+TO0003,ハンマー,04DE8366BC2A81,工具,工具庫A,AVAILABLE,大型工具
+TO0004,ペンチ,,工具,工具庫C,AVAILABLE,
+

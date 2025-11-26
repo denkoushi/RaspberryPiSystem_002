@@ -67,15 +67,15 @@
 従業員CSV (`employees.csv`):
 ```csv
 employeeCode,displayName,nfcTagUid,department,contact,status
-EMP001,山田太郎,04C362E1330289,製造部,090-1234-5678,ACTIVE
-EMP002,佐藤花子,04B34411340289,品質管理部,090-2345-6789,ACTIVE
+0001,山田太郎,04C362E1330289,製造部,090-1234-5678,ACTIVE
+0002,佐藤花子,04B34411340289,品質管理部,090-2345-6789,ACTIVE
 ```
 
 アイテムCSV (`items.csv`):
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-ITEM001,ドライバーセット,04DE8366BC2A81,工具,工具庫A,ACTIVE,常用工具
-ITEM002,メジャー,04C393C1330289,測定器具,工具庫B,ACTIVE,
+TO0001,ドライバーセット,04DE8366BC2A81,工具,工具庫A,AVAILABLE,常用工具
+TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
 ```
 
 **検証手順**:
