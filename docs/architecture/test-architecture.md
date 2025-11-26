@@ -89,26 +89,30 @@
 ```mermaid
 sequenceDiagram
     participant Test as テストスクリプト
+    participant Backup as backup.sh
+    participant Restore as restore.sh
     participant DB as PostgreSQL
     participant File as ファイルシステム
     
     Note over Test,File: Step 1-3: 準備
-    Test->>DB: テスト用DB作成（CREATE DATABASE）
-    Test->>DB: スキーマ適用（Prisma Migrate）
-    Test->>DB: テストデータ挿入
+    Test->>DB: テスト用DB作成（CREATE DATABASE、ADMIN_DB_URL経由）
+    Test->>DB: スキーマ適用（Prisma Migrate、TEST_DB_URL経由）
+    Test->>DB: テストデータ挿入（TEST_DB_URL経由）
     
-    Note over Test,File: Step 4: バックアップ
-    Test->>DB: pg_dump（フルダンプ）
+    Note over Test,File: Step 4: バックアップ（本番スクリプトを呼び出し）
+    Test->>Backup: 環境変数でDB名・ファイルパスを指定して実行
+    Backup->>DB: pg_dump（フルダンプ）
     DB-->>File: backup.sql.gz
     
     Note over Test,File: Step 5: 災害発生をシミュレート
-    Test->>DB: DB削除
-    Test->>DB: 空のDB作成
+    Test->>DB: DB削除（ADMIN_DB_URL経由）
+    Test->>DB: 空のDB作成（ADMIN_DB_URL経由）
     
-    Note over Test,File: Step 6-7: リストア＆検証
-    File-->>Test: backup.sql.gz
-    Test->>DB: psql（リストア）
-    Test->>DB: データ確認
+    Note over Test,File: Step 6-7: リストア＆検証（本番スクリプトを呼び出し）
+    Test->>Restore: 環境変数でDB名・ファイルパスを指定して実行
+    File-->>Restore: backup.sql.gz
+    Restore->>DB: psql（リストア）
+    Test->>DB: データ確認（TEST_DB_URL経由）
 ```
 
 ### ポイント
@@ -117,6 +121,23 @@ sequenceDiagram
 2. **スキーマはPrismaマイグレーションで適用**: 本番と同じマイグレーションを `test_borrow_return` に適用して検証する
 3. **フルダンプ**: 本番と同じ方法（スキーマ + データ）
 4. **空DBへリストア**: 災害復旧シナリオを再現
+5. **本番スクリプトを直接呼び出す**: `backup.sh`/`restore.sh`を環境変数で切り替え可能にし、テストからも本番からも同じスクリプトを使う
+6. **ADMIN_DB_URL/TEST_DB_URLの分離**: CREATE/DROPは`postgres`DB、migrate/INSERT/SELECTは`test_borrow_return`DBに接続
+
+### 実装詳細（2025-11-26完了）
+
+**外部レビュー結果**: 「空DB作成 → Prisma Migrate 適用 → テストデータ投入 → pg_dump フルバックアップ → 空DBにリストア → データ検証」の流れは、PostgreSQLの論理バックアップ（pg_dump）を使った災害復旧テストとして**標準的・妥当**と評価された（Level 2〜3 相当のテストレベル）。
+
+**実装方針（外部レビュー提案の「標準モデル」）**:
+- テストスクリプトの責務を「前提状態を作る」「本番スクリプトを呼ぶ」「結果を1〜2箇所だけ検証する」に絞る
+- `backup.sh`/`restore.sh`を環境変数でDB名・ファイルパス・コンテナ名を切り替え可能に
+- ADMIN_DB_URL（CREATE/DROP用）とTEST_DB_URL（migrate/INSERT/SELECT用）を明確に分離
+- `docker exec -i`フラグを追加してヒアドキュメントを受け取れるように修正（CI環境）
+
+**実装ファイル**:
+- `scripts/server/backup.sh`: 環境変数対応（`DB_NAME`, `BACKUP_FILE`, `DB_CONTAINER`, `COMPOSE_FILE`）
+- `scripts/server/restore.sh`: 環境変数対応（`DB_NAME`, `BACKUP_FILE`, `DB_CONTAINER`, `COMPOSE_FILE`, `SKIP_CONFIRM`）
+- `scripts/test/backup-restore.test.sh`: 本番スクリプトを直接呼び出す形に変更
 
 ## CI環境での考慮事項
 
@@ -191,17 +212,102 @@ scripts/
     └── analyze-failure.sh     # 失敗分析
 ```
 
+## CIワークフローの構成
+
+`.github/workflows/ci.yml`は以下の3つのジョブで構成されています:
+
+1. **lint-and-test**: リント、ビルド、APIテスト、バックアップ/リストアテスト、監視テスト
+2. **e2e-tests**: E2Eテスト（Playwright）
+3. **docker-build**: Dockerイメージのビルド
+
+### lint-and-test ジョブの主要ステップ
+
+#### 1. 環境セットアップ
+- pnpm 9のインストール
+- Node.js 20のセットアップ
+- 依存関係のインストール（`pnpm install --frozen-lockfile`）
+
+#### 2. ビルド
+- `packages/shared-types`のビルド
+- Prisma Clientの生成
+- APIのビルド
+
+#### 3. PostgreSQLセットアップ
+- `postgres-test`コンテナの起動（`postgres:15-alpine`）
+- ヘルスチェックによる起動確認（最大60秒待機）
+- Prismaマイグレーションの適用（`pnpm prisma migrate deploy`）
+
+#### 4. APIテスト
+- Vitestによる統合テストの実行（`pnpm test --reporter=verbose`）
+- 環境変数: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+
+#### 5. バックアップ/リストアテスト
+```yaml
+- name: Test backup/restore scripts
+  run: |
+    bash scripts/test/backup-restore.test.sh || {
+      echo "Backup/restore tests failed!"
+      exit 1
+    }
+```
+
+**前提条件**:
+- PostgreSQLコンテナ（`postgres-test`）が起動していること
+- Prismaマイグレーションが適用可能な状態であること
+
+**実行環境**:
+- CI環境: `postgres-test`コンテナを使用（`docker exec -i`）
+- ローカル環境: `docker compose`の`db`コンテナを使用（`docker compose exec -T`）
+
+#### 6. 監視テスト
+```yaml
+- name: Test monitoring scripts
+  run: |
+    API_URL=http://localhost:8080/api pnpm test:monitor || {
+      echo "Monitoring tests failed!"
+      exit 1
+    }
+```
+
+**前提条件**:
+- APIサーバーが起動していること（`NODE_ENV=production`で起動）
+- `/api/system/health`エンドポイントが利用可能であること
+
+**APIサーバーの起動**:
+- `NODE_ENV=production pnpm start`でバックグラウンド起動
+- `/api/system/health`エンドポイントが応答するまで最大30秒待機
+- テスト完了後、`if: always()`で確実に停止
+
+#### 7. Webビルド
+- `apps/web`のビルド（最後に実行）
+
+### e2e-tests ジョブ
+
+- `lint-and-test`ジョブの成功後に実行
+- 別のPostgreSQLコンテナ（`postgres-e2e`）を使用
+- PlaywrightによるE2Eテストを実行
+- テスト結果をArtifactとして保存
+
+### docker-build ジョブ
+
+- `lint-and-test`ジョブの成功後に実行
+- Docker Buildxを使用してAPI/Webイメージをビルド
+- GitHub Actions Cacheを活用してビルド時間を短縮
+
 ## 今後の改善計画
 
 ### Phase 5 完了後
 
-1. [ ] テストカバレッジの可視化
-2. [ ] パフォーマンステストの自動化
-3. [ ] E2Eテストの安定化（CI環境で動作する範囲に限定）
+1. [x] バックアップ/リストアテストの再設計（2025-11-26完了）
+2. [ ] E2Eテストの安定化（CI環境で動作する範囲に限定）
+3. [ ] CIの継続的な成功確認（複数回実行して安定性を検証）
+4. [ ] テストカバレッジの可視化
+5. [ ] パフォーマンステストの自動化
 
 ### 長期的な改善
 
 1. [ ] テストデータファクトリの整備
 2. [ ] テスト並列実行の最適化
 3. [ ] CIキャッシュの活用
+4. [ ] CIワークフローのドキュメント化（各ステップの説明）
 
