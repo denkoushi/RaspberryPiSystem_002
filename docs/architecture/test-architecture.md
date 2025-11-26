@@ -93,8 +93,8 @@ sequenceDiagram
     participant File as ファイルシステム
     
     Note over Test,File: Step 1-3: 準備
-    Test->>DB: テスト用DB作成
-    Test->>DB: スキーマ適用（SQL）
+    Test->>DB: テスト用DB作成（CREATE DATABASE）
+    Test->>DB: スキーマ適用（Prisma Migrate）
     Test->>DB: テストデータ挿入
     
     Note over Test,File: Step 4: バックアップ
@@ -114,7 +114,7 @@ sequenceDiagram
 ### ポイント
 
 1. **テスト用DBを使用**: 本番DB（`borrow_return`）に影響を与えない
-2. **SQLで直接スキーマ作成**: Prismaマイグレーションに依存しない
+2. **スキーマはPrismaマイグレーションで適用**: 本番と同じマイグレーションを `test_borrow_return` に適用して検証する
 3. **フルダンプ**: 本番と同じ方法（スキーマ + データ）
 4. **空DBへリストア**: 災害復旧シナリオを再現
 
