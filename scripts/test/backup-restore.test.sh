@@ -62,49 +62,30 @@ fi
 
 echo ""
 echo "─────────────────────────────────────────"
-echo "Step 1: テスト用データベースの作成"
+echo "Step 1: テスト用データベースの作成（本番DBをテンプレートにコピー）"
 echo "─────────────────────────────────────────"
 
 # 既存のテストDBがあれば削除
 ${DB_COMMAND} psql -U postgres -c "DROP DATABASE IF EXISTS ${TEST_DB_NAME};" 2>/dev/null || true
-${DB_COMMAND} psql -U postgres -c "CREATE DATABASE ${TEST_DB_NAME};"
-echo "✓ データベース ${TEST_DB_NAME} を作成しました"
+
+# 本番用DB（borrow_return）をテンプレートとしてテスト用DBを作成
+# これにより、Prismaマイグレーション済みの実スキーマをそのまま利用できる
+${DB_COMMAND} createdb -U postgres -T borrow_return ${TEST_DB_NAME}
+echo "✓ データベース ${TEST_DB_NAME} を borrow_return からコピーして作成しました"
 
 echo ""
 echo "─────────────────────────────────────────"
-echo "Step 2: スキーマの適用（SQLで直接作成）"
+echo "Step 2: スキーマの確認（テンプレートコピー後の状態）"
 echo "─────────────────────────────────────────"
 
-# CI環境では拡張機能やENUM型に依存すると失敗要因が増えるため、
-# ここでは「最小限のテスト用スキーマ」をシンプルな型だけで作成する。
-${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} <<'EOSQL'
--- 必要最小限のスキーマを作成（テスト用）
--- 本番環境では Prisma マイグレーションと ENUM 型を使用する。
-
-CREATE TABLE IF NOT EXISTS "Employee" (
-    "id" UUID NOT NULL,
-    "employeeCode" VARCHAR(50) NOT NULL,
-    "displayName" VARCHAR(255) NOT NULL,
-    "nfcTagUid" VARCHAR(100),
-    "department" VARCHAR(255),
-    "contact" VARCHAR(255),
-    "status" VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Employee_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "Employee_employeeCode_key" UNIQUE ("employeeCode")
-);
-EOSQL
-
-echo "✓ スキーマを適用しました（テスト用の簡易スキーマ）"
-
-# テーブル確認（直接SELECTして存在を確認）
+# テーブル確認（Prismaマイグレーション済みスキーマがコピーされていることを前提）
 if ! ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c 'SELECT COUNT(*) FROM "Employee";' > /dev/null 2>&1; then
-  echo "✗ エラー: Employeeテーブルが作成されていません（SELECTに失敗）"
+  echo "✗ エラー: Employeeテーブルが存在しません（テンプレートDB borrow_return にスキーマがない可能性）"
   echo "現在のpublicスキーマのテーブル一覧:"
   ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';" || true
   exit 1
 fi
+echo "✓ スキーマを確認しました（borrow_return 由来のスキーマ）"
 
 echo ""
 echo "─────────────────────────────────────────"
