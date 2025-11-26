@@ -812,7 +812,7 @@
 - **Phase 1**: KB-001, KB-002, KB-022
 - **Phase 2**: KB-004
 - **Phase 3**: KB-003
-- **Phase 4**: KB-005, KB-009
+- **Phase 4**: KB-005, KB-010
 
 各Phaseの進捗は、EXEC_PLAN.mdの「Progress」セクションで管理し、ナレッジベースの課題IDを参照してください。
 
