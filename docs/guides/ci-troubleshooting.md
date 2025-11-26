@@ -1,0 +1,177 @@
+# CIテスト失敗のトラブルシューティングガイド
+
+## 概要
+
+GitHub ActionsのCIテストが失敗した場合、このガイドに従って問題を特定し、必要な情報をAIアシスタントに共有してください。
+
+## ベストプラクティス
+
+### 1. 失敗ログの取得方法
+
+#### 方法A: GitHub ActionsのWeb UIから取得（推奨）
+
+1. GitHubリポジトリの「Actions」タブを開く
+2. 失敗したワークフローをクリック
+3. 失敗したジョブ（例: `lint-and-test`）をクリック
+4. ログをコピー（右上の「Copy log」ボタン、または手動でコピー）
+
+#### 方法B: GitHub CLIを使用
+
+```bash
+# 最新の失敗したワークフローのログを取得
+gh run list --limit 1 --json databaseId --jq '.[0].databaseId' | xargs gh run view --log
+```
+
+### 2. ログの分析スクリプトを使用
+
+分析スクリプトを使用して、重要な情報だけを抽出します：
+
+```bash
+# ログファイルを保存
+# （GitHub ActionsのWeb UIからコピーしたログを ci-log.txt に保存）
+
+# 分析スクリプトを実行
+bash scripts/ci/analyze-failure.sh ci-log.txt
+```
+
+このスクリプトは以下を抽出します：
+- 重要なエラーメッセージ
+- テスト失敗の詳細
+- PostgreSQL関連のエラー
+- ビルドエラー
+- 環境変数と設定
+- テスト実行のサマリー
+- タイムアウトエラー
+
+### 3. AIアシスタントに共有する情報
+
+以下の情報を含めてください：
+
+#### 必須情報
+
+1. **エラーメッセージの要約**
+   - 主なエラーメッセージ（最初の3-5行）
+   - エラーの種類（ビルドエラー、テストエラー、タイムアウトなど）
+
+2. **失敗したステップ**
+   - どのステップで失敗したか（例: "Run API tests"）
+   - ステップの開始から失敗までのログ（20-30行程度）
+
+3. **テスト実行のサマリー**
+   - 実行されたテスト数
+   - 失敗したテスト数
+   - 失敗したテストの名前
+
+#### 推奨情報
+
+4. **環境情報**
+   - Node.jsバージョン
+   - pnpmバージョン
+   - PostgreSQLの接続状態
+
+5. **関連するコード変更**
+   - 最近変更したファイル
+   - コミットメッセージ
+
+### 4. ログの共有形式
+
+#### 良い例
+
+```
+CIテストが失敗しました。
+
+失敗したステップ: Run API tests
+エラーメッセージ:
+  Error: Timeout of 30000ms exceeded
+  at tests/integration.test.ts:45
+
+テストサマリー:
+  Test Files: 10 passed, 1 failed
+  Tests: 84 passed, 2 failed
+
+失敗したテスト:
+  - POST /api/tools/loans/borrow - should borrow an item successfully
+```
+
+#### 悪い例
+
+```
+CIが失敗しました。ログ全体を添付します。
+（数千行のログが含まれる）
+```
+
+## よくある問題と対処法
+
+### 1. PostgreSQL接続エラー
+
+**症状**: `connection refused` や `database does not exist` エラー
+
+**確認事項**:
+- PostgreSQLコンテナが起動しているか
+- データベース名が正しいか（`borrow_return`）
+- 接続文字列が正しいか
+
+**対処法**:
+- CIワークフローの`Wait for PostgreSQL`ステップを確認
+- 接続確認のログを確認
+
+### 2. タイムアウトエラー
+
+**症状**: `Timeout of 30000ms exceeded`
+
+**確認事項**:
+- テストの実行時間が長すぎないか
+- データベースクエリが遅いか
+
+**対処法**:
+- `vitest.config.ts`のタイムアウト設定を確認
+- テストの実行時間を確認
+
+### 3. Prisma Client生成エラー
+
+**症状**: `Prisma Client is not generated` エラー
+
+**確認事項**:
+- `Generate Prisma Client`ステップが実行されているか
+- `DATABASE_URL`が設定されているか
+
+**対処法**:
+- CIワークフローの`Generate Prisma Client`ステップを確認
+- 環境変数の設定を確認
+
+### 4. ビルドエラー
+
+**症状**: TypeScriptのコンパイルエラー
+
+**確認事項**:
+- 型エラーがないか
+- インポートパスが正しいか
+
+**対処法**:
+- ローカルで`pnpm build`を実行して確認
+- 型エラーを修正
+
+## ログの見方
+
+### 重要な行を探す
+
+1. **エラーメッセージ**: `Error:`, `✖`, `FAIL` を含む行
+2. **スタックトレース**: エラーメッセージの直後の行
+3. **テストサマリー**: `Test Files:`, `Tests:` を含む行
+4. **環境情報**: `DATABASE_URL`, `NODE_ENV` を含む行
+
+### ログの構造
+
+```
+Step: <ステップ名>
+  → 実行中のコマンド
+  → 出力
+  → エラー（あれば）
+```
+
+## 関連ドキュメント
+
+- [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-005-ciテストが失敗する)
+- [開発ガイド](./development.md)
+- [デプロイメントガイド](./deployment.md)
+
