@@ -112,7 +112,7 @@
   - **完了日**: 2025-11-25（Phase 3の検証時に実施）
   - **関連ドキュメント**: [要件定義](docs/requirements/system-requirements.md), [CSVインポート・エクスポート仕様](docs/guides/csv-import-export.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 - [x] (2025-11-25) ドキュメント整理: 要件定義・タスク一覧・進捗管理・検証結果をEXEC_PLAN.mdに一元化。docs/requirements/task-priority.md、docs/progress/の完了済みファイルを統合して削除。
-- [ ] (2025-11-26) **Phase 5: CI/テストアーキテクチャ整備**（優先度: 最高）**ナレッジベース**: [KB-024](docs/knowledge-base/troubleshooting-knowledge.md#kb-024-ciテストアーキテクチャの設計不足)
+- [x] (2025-11-26) **Phase 5: CI/テストアーキテクチャ整備**（優先度: 最高・完了）**ナレッジベース**: [KB-024](docs/knowledge-base/troubleshooting-knowledge.md#kb-024-ciテストアーキテクチャの設計不足)
   - **目的**: CI/テスト/運用レイヤーのアーキテクチャを整備し、CIテストの成功率を向上させる
   - **背景分析（2025-11-26）**:
     - **業務アプリとしてのベースアーキテクチャはOK**: API/Web/NFCエージェント/DBスキーマ/ラズパイ構成は要件定義・実機検証の範囲で十分に成立
