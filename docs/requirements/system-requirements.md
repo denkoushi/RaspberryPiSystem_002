@@ -82,6 +82,9 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
   - APIレスポンス時間: 1秒以内（通常時）
   - ページ読み込み時間: 3秒以内
 - **実装状況**: ✅ 実装済み（実機検証未実施）
+- **関連ドキュメント**:
+  - [監視・アラートガイド](../guides/monitoring.md): メトリクスエンドポイントの詳細
+  - [検証チェックリスト](../guides/verification-checklist.md): パフォーマンス検証手順
 
 ### NFR-002: 可用性
 - **説明**: システムが継続的に動作すること
@@ -89,6 +92,9 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
   - Dockerコンテナの自動再起動（`restart: always`）✅ 実装・検証済み
   - オフライン時のイベントキューイング ✅ 実装・検証済み（Validation 6）
 - **実装状況**: ✅ 実装・検証済み
+- **関連ドキュメント**:
+  - [デプロイメントガイド](../guides/deployment.md): Dockerコンテナの設定
+  - [検証チェックリスト](../guides/verification-checklist.md): オフライン耐性の検証手順（Validation 6）
 
 ### NFR-003: セキュリティ
 - **説明**: 適切なセキュリティ対策が施されていること
@@ -97,6 +103,9 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
   - ロールベースのアクセス制御 ✅ 実装・検証済み
   - APIキーによるクライアント認証 ✅ 実装・検証済み
 - **実装状況**: ✅ 実装・検証済み
+- **関連ドキュメント**:
+  - [認証APIドキュメント](../api/auth.md): JWT認証の詳細仕様
+  - [検証チェックリスト](../guides/verification-checklist.md): 認証機能の検証手順（Validation 2）
 
 ### NFR-004: 保守性
 - **説明**: コードとドキュメントが適切に管理されていること
@@ -107,6 +116,12 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
   - バックアップ・リストア機能 ✅ 実装済み（実機検証未実施）
   - 監視・アラート機能 ✅ 実装済み（実機検証未実施）
 - **実装状況**: ✅ 実装済み（一部実機検証未実施）
+- **関連ドキュメント**:
+  - [バックアップ・リストア手順](../guides/backup-and-restore.md): バックアップ・リストアの詳細手順
+  - [監視・アラートガイド](../guides/monitoring.md): 監視・アラート機能の詳細
+  - [CI/CDトラブルシューティング](../guides/ci-troubleshooting.md): CI/CDパイプラインのトラブルシューティング
+  - [検証チェックリスト](../guides/verification-checklist.md): バックアップ・リストア、監視・アラートの検証手順
+  - [EXEC_PLAN.md](../../EXEC_PLAN.md): Milestone 6、Phase 4の詳細
 
 ### NFR-005: 拡張性
 - **説明**: 将来の機能追加に対応できること
@@ -115,41 +130,54 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
   - 共通パッケージ（shared-types）の活用 ✅ 実装済み（Milestone 6）
   - プラグイン可能な設計 ✅ 実装済み（Milestone 6）
 - **実装状況**: ✅ 実装済み
+- **関連ドキュメント**:
+  - [アーキテクチャ概要](../architecture/overview.md): システム全体のアーキテクチャ
+  - [モジュールドキュメント](../modules/): 各モジュールの詳細仕様
+  - [アーキテクチャ決定記録](../decisions/): 設計決定の記録
+  - [EXEC_PLAN.md](../../EXEC_PLAN.md): Milestone 6の詳細
 
 ## 検証項目
 
 ### Validation 1: サーバーヘルスチェック
 - **状態**: ✅ 完了
 - **内容**: Dockerコンテナの起動とヘルスチェックエンドポイントの動作確認
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md)
 
 ### Validation 2: 管理画面アクセス
 - **状態**: ✅ 完了
 - **内容**: ログイン画面へのアクセス、認証、ダッシュボード表示
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md), [認証APIドキュメント](../api/auth.md)
 
 ### Validation 3: 持出フロー
 - **状態**: ✅ 完了
 - **内容**: NFCタグスキャンによる持出記録の作成
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md), [EXEC_PLAN.md](../../EXEC_PLAN.md) (Validation 3)
 
 ### Validation 4: 返却フロー
 - **状態**: ✅ 完了
 - **内容**: 返却画面からの返却記録の作成
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md), [EXEC_PLAN.md](../../EXEC_PLAN.md) (Validation 4)
 
 ### Validation 5: 履歴画面
 - **状態**: ✅ 完了
 - **内容**: 履歴一覧表示、フィルタ、CSVエクスポート
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md), [EXEC_PLAN.md](../../EXEC_PLAN.md) (Validation 5)
 
 ### Validation 6: オフライン耐性
 - **状態**: ✅ 完了
 - **内容**: オフライン時のイベントキューイングとオンライン復帰時の自動再送
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md) (オフライン耐性機能の検証), [EXEC_PLAN.md](../../EXEC_PLAN.md) (Validation 6)
 
 ### Validation 7: USB一括登録
 - **状態**: ✅ **完了**（2025-11-25）
 - **内容**: CSVファイルのアップロードと一括登録の動作確認
 - **検証結果**: Phase 3の検証で実機環境でのCSVインポートを実施。従業員2件、工具3件のインポートに成功。バリデーションも正しく動作することを確認。
+- **関連ドキュメント**: [Validation 7検証ガイド](../guides/validation-7-usb-import.md), [CSVインポート・エクスポート仕様](../guides/csv-import-export.md), [検証チェックリスト](../guides/verification-checklist.md)
 
 ### Validation 8: NFCエージェント単体
 - **状態**: ✅ 一部完了
 - **内容**: NFCエージェントの起動、ステータス確認、WebSocket配信
+- **関連ドキュメント**: [検証チェックリスト](../guides/verification-checklist.md), [EXEC_PLAN.md](../../EXEC_PLAN.md) (Validation 8)
 
 ## 次のタスク（非機能要件の実機検証）
 
@@ -167,15 +195,21 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
 1. **NFR-001（パフォーマンス）の実機検証**
    - APIレスポンス時間の測定（1秒以内の要件を満たしているか）
    - ページ読み込み時間の測定（3秒以内の要件を満たしているか）
+   - **関連ドキュメント**: [監視・アラートガイド](../guides/monitoring.md), [検証チェックリスト](../guides/verification-checklist.md)
 
 2. **NFR-004（保守性）の実機検証**
    - バックアップ・リストアスクリプトの動作確認（実装済みだが実機検証未実施）
+     - **スクリプト**: [`scripts/server/backup.sh`](../../scripts/server/backup.sh), [`scripts/server/restore.sh`](../../scripts/server/restore.sh)
+     - **関連ドキュメント**: [バックアップ・リストア手順](../guides/backup-and-restore.md), [検証チェックリスト](../guides/verification-checklist.md) (バックアップ・リストア機能の検証)
    - 監視・アラート機能の動作確認（実装済みだが実機検証未実施）
+     - **スクリプト**: [`scripts/server/monitor.sh`](../../scripts/server/monitor.sh)
+     - **関連ドキュメント**: [監視・アラートガイド](../guides/monitoring.md), [検証チェックリスト](../guides/verification-checklist.md) (監視・アラート機能の検証)
 
 3. **運用マニュアルの作成**
    - 日常的な運用手順の整理
    - トラブル時の対応手順の整理
    - 定期メンテナンス手順の整理
+   - **関連ドキュメント**: [デプロイメントガイド](../guides/deployment.md), [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md)
 
 **注意**: これらのタスクは「要件定義にないタスク」ではなく、「要件定義で定義されている非機能要件の実機検証」です。
 

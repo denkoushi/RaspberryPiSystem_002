@@ -29,23 +29,33 @@ Milestone 5（実機検証フェーズ）が完了したため、次のタスク
 **タスク**:
 1. **バックアップ・リストアの実機検証**
    - バックアップスクリプトの動作確認
+     - **スクリプト**: [`scripts/server/backup.sh`](../../scripts/server/backup.sh)
    - リストアスクリプトの動作確認
+     - **スクリプト**: [`scripts/server/restore.sh`](../../scripts/server/restore.sh)
    - バックアップファイルの整合性確認
+   - **関連ドキュメント**: 
+     - [バックアップ・リストア手順](../guides/backup-and-restore.md): 詳細な手順とコマンド
+     - [検証チェックリスト](../guides/verification-checklist.md): バックアップ・リストア機能の検証手順
 
 2. **監視・アラートの実機検証**
    - ヘルスチェックエンドポイントの動作確認
+     - **エンドポイント**: `/api/system/health`
    - メトリクスエンドポイントの動作確認
+     - **エンドポイント**: `/api/system/metrics`
    - 監視スクリプトの動作確認
+     - **スクリプト**: [`scripts/server/monitor.sh`](../../scripts/server/monitor.sh)
+   - **関連ドキュメント**: 
+     - [監視・アラートガイド](../guides/monitoring.md): 監視機能の詳細仕様
+     - [検証チェックリスト](../guides/verification-checklist.md): 監視・アラート機能の検証手順
 
 3. **運用マニュアルの作成**
    - 日常的な運用手順の整理
    - トラブル時の対応手順の整理
    - 定期メンテナンス手順の整理
-
-**関連ドキュメント**:
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
-- [監視・アラートガイド](../guides/monitoring.md)
-- [デプロイメントガイド](../guides/deployment.md)
+   - **関連ドキュメント**: 
+     - [デプロイメントガイド](../guides/deployment.md): デプロイ手順
+     - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md): 過去のトラブルと解決方法
+     - [検証チェックリスト](../guides/verification-checklist.md): 各種検証手順
 
 ### 優先度: 中
 
