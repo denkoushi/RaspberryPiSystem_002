@@ -157,15 +157,9 @@ DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 CREATE DATABASE ${TEST_DB_NAME};
 EOF
 
-# スキーマを再作成（マイグレーションを実行）
-echo "スキーマを再作成中..."
-cd "${PROJECT_DIR}/apps/api"
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy 2>&1 || {
-  echo "警告: マイグレーションに失敗しました。スキーマを手動でコピーします..."
-  cd "${PROJECT_DIR}"
-  ${DB_COMMAND} pg_dump -U postgres -d borrow_return --schema-only --no-owner --no-privileges 2>/dev/null | \
-    ${DB_COMMAND_INPUT} psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off > /dev/null 2>&1 || true
-}
+# 注意:
+# ここではスキーマを再作成せず、バックアップファイル側に含まれるスキーマ定義をそのまま適用する。
+# これは災害復旧時に「空のデータベース」に対してフルダンプをリストアする手順と同じ。
 
 # リストアを実行（実際の運用環境と同じ方法）
 echo "リストアを実行中..."
