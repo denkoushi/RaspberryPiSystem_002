@@ -127,13 +127,14 @@
     - **ステップ2**: CI用テストデータベース管理の設計
       - CI環境用のクリーンなDB初期化手順を設計（`CREATE DATABASE test_borrow_return` → `DATABASE_URL=... pnpm prisma migrate deploy`）
       - テスト用データベース（`test_borrow_return`）の管理方針を明確化（ADMIN_DB_URL/TEST_DB_URLの分離）
-    - **ステップ3**: 🔄 バックアップ/リストアテストの再設計（外部レビュー提案の標準モデルに基づいて実装中）
+    - **ステップ3**: ✅ バックアップ/リストアテストの再設計（完了・CI成功）
       - **本番手順**: `scripts/server/backup.sh`（pg_dump フルダンプ）/ `scripts/server/restore.sh`（gunzip + psql）
       - **実装完了**: `backup.sh`/`restore.sh`を環境変数でDB名・ファイルパス・コンテナ名を切り替え可能に修正
       - **実装完了**: `backup-restore.test.sh`を本番スクリプトを直接呼び出す形に変更
       - **実装完了**: ADMIN_DB_URL/TEST_DB_URLを明確に分離、テストスクリプトの責務を「前提状態を作る」「本番スクリプトを呼ぶ」「結果を1〜2箇所だけ検証する」に絞る
+      - **修正完了**: `docker exec`に`-i`フラグを追加してヒアドキュメントを受け取れるように修正
       - **CIテスト手順**: `scripts/test/backup-restore.test.sh` で「空DB作成 → Prisma Migrate → Employee 2件挿入 → 本番backup.shでフルダンプ → 空DBにリストア（本番restore.sh） → Employee 2件が復元されることを検証」という最小シナリオを自動化
-      - **CI実行結果待ち**: 外部レビュー提案の標準モデルに基づいた実装がCIで成功するか検証中
+      - **CI検証完了**: 外部レビュー提案の標準モデルに基づいた実装がCIで成功することを確認（2025-11-26）
     - **ステップ4**: E2Eテストの安定化
       - CI環境で確実に動作する範囲に限定
       - 不安定なテストは統合テストでカバー
