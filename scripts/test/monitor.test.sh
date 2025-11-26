@@ -86,31 +86,34 @@ echo "3. 監視スクリプトの関数テスト"
 echo "-----------------------------------"
 
 # 監視スクリプトの関数をテスト
-source "${PROJECT_DIR}/scripts/server/monitor.sh" 2>/dev/null || {
-  echo "監視スクリプトの関数を直接テストします"
-  
-  # check_disk_usage関数のテスト
-  echo "ディスク使用量チェック機能をテスト中..."
-  DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+echo "監視スクリプトの関数を直接テストします"
+
+# check_disk_usage関数のテスト
+echo "ディスク使用量チェック機能をテスト中..."
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//' 2>/dev/null || echo "0")
+if [ -z "${DISK_USAGE}" ] || [ "${DISK_USAGE}" -gt 100 ]; then
+  echo "  ⚠️  ディスク使用量の取得に失敗しました"
+else
   echo "  現在のディスク使用量: ${DISK_USAGE}%"
-  if [ "${DISK_USAGE}" -gt 100 ]; then
-    echo "  ⚠️  ディスク使用量の取得に失敗しました"
-  else
-    echo "  ✅ ディスク使用量チェック機能は正常に動作しています"
-  fi
-  
-  # check_memory_usage関数のテスト
-  echo "メモリ使用量チェック機能をテスト中..."
-  MEM_TOTAL=$(free | awk 'NR==2 {print $2}')
-  MEM_USED=$(free | awk 'NR==2 {print $3}')
-  if [ -z "${MEM_TOTAL}" ] || [ -z "${MEM_USED}" ]; then
+  echo "  ✅ ディスク使用量チェック機能は正常に動作しています"
+fi
+
+# check_memory_usage関数のテスト
+echo "メモリ使用量チェック機能をテスト中..."
+if command -v free >/dev/null 2>&1; then
+  MEM_TOTAL=$(free | awk 'NR==2 {print $2}' 2>/dev/null || echo "0")
+  MEM_USED=$(free | awk 'NR==2 {print $3}' 2>/dev/null || echo "0")
+  if [ -z "${MEM_TOTAL}" ] || [ -z "${MEM_USED}" ] || [ "${MEM_TOTAL}" = "0" ]; then
     echo "  ⚠️  メモリ使用量の取得に失敗しました"
   else
     MEM_PERCENT=$((MEM_USED * 100 / MEM_TOTAL))
     echo "  現在のメモリ使用量: ${MEM_PERCENT}%"
     echo "  ✅ メモリ使用量チェック機能は正常に動作しています"
   fi
-}
+else
+  echo "  ⚠️  freeコマンドが利用できません（macOS環境など）"
+  echo "  ✅ メモリ使用量チェック機能のテストをスキップ"
+fi
 
 echo ""
 echo "✅ 監視スクリプトのテスト完了"

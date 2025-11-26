@@ -18,10 +18,21 @@ mkdir -p "${TEST_BACKUP_DIR}"
 # Docker Composeファイルのパス
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
 
-# テスト用のデータベースコンテナが起動しているか確認
-if ! docker compose -f "${COMPOSE_FILE}" ps db | grep -q "Up"; then
+# CI環境ではpostgres-testコンテナを使用、ローカル環境ではdocker-composeのdbコンテナを使用
+if docker ps | grep -q "postgres-test"; then
+  # CI環境: postgres-testコンテナを使用
+  DB_CONTAINER="postgres-test"
+  DB_COMMAND="docker exec ${DB_CONTAINER}"
+  echo "CI環境を検出: postgres-testコンテナを使用します"
+elif docker compose -f "${COMPOSE_FILE}" ps db 2>/dev/null | grep -q "Up"; then
+  # ローカル環境: docker-composeのdbコンテナを使用
+  DB_CONTAINER="db"
+  DB_COMMAND="docker compose -f ${COMPOSE_FILE} exec -T db"
+  echo "ローカル環境を検出: docker-composeのdbコンテナを使用します"
+else
   echo "エラー: データベースコンテナが起動していません"
-  echo "docker compose -f ${COMPOSE_FILE} up -d db を実行してください"
+  echo "CI環境の場合: PostgreSQLコンテナが起動していることを確認してください"
+  echo "ローカル環境の場合: docker compose -f ${COMPOSE_FILE} up -d db を実行してください"
   exit 1
 fi
 
@@ -31,7 +42,7 @@ echo "-----------------------------------"
 
 # テスト用のデータを作成
 echo "テストデータを作成中..."
-docker compose -f "${COMPOSE_FILE}" exec -T db \
+${DB_COMMAND} \
   psql -U postgres -d borrow_return <<EOF
 INSERT INTO "Employee" (id, "employeeCode", "displayName", status, "createdAt", "updatedAt")
 VALUES 
@@ -50,8 +61,13 @@ bash -c '
   mkdir -p "${BACKUP_DIR}"
   
   # データベースバックアップ
-  docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-    pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+  # CI環境とローカル環境の両方に対応
+  if docker ps | grep -q "postgres-test"; then
+    docker exec postgres-test pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+  else
+    docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
+      pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+  fi
   
   # バックアップファイルの存在確認
   if [ ! -f "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" ]; then
@@ -82,7 +98,7 @@ echo "-----------------------------------"
 
 # テストデータを削除
 echo "テストデータを削除中..."
-docker compose -f "${COMPOSE_FILE}" exec -T db \
+${DB_COMMAND} \
   psql -U postgres -d borrow_return <<EOF
 DELETE FROM "Employee" WHERE "employeeCode" IN ('9999', '9998');
 EOF
@@ -90,12 +106,12 @@ EOF
 # リストアを実行
 echo "リストアを実行中..."
 gunzip -c "${BACKUP_FILE}" | \
-  docker compose -f "${COMPOSE_FILE}" exec -T db \
+  ${DB_COMMAND} \
   psql -U postgres -d borrow_return --set ON_ERROR_STOP=off
 
 # リストア後のデータ確認
 echo "リストア後のデータを確認中..."
-RESTORED_COUNT=$(docker compose -f "${COMPOSE_FILE}" exec -T db \
+RESTORED_COUNT=$(${DB_COMMAND} \
   psql -U postgres -d borrow_return -t -c \
   "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999', '9998');" | tr -d ' ')
 
@@ -111,7 +127,7 @@ echo ""
 echo "3. クリーンアップ"
 echo "-----------------------------------"
 rm -rf "${TEST_BACKUP_DIR}"
-docker compose -f "${COMPOSE_FILE}" exec -T db \
+${DB_COMMAND} \
   psql -U postgres -d borrow_return <<EOF
 DELETE FROM "Employee" WHERE "employeeCode" IN ('9999', '9998');
 EOF

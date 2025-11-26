@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { build } from '../../app.js';
+import { buildServer } from '../../app.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('Performance Tests (NFR-001)', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = await build();
+    app = await buildServer();
     await app.ready();
   });
 

@@ -121,15 +121,20 @@ jobs:
       - name: Start API server for monitoring tests
         run: |
           cd apps/api
-          pnpm start &
+          # バックグラウンドでAPIサーバーを起動
+          pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
+          echo "API server started with PID: $API_PID"
+          
           # APIサーバーが起動するまで待機
           timeout=30
           elapsed=0
           until curl -s http://localhost:8080/api/system/health > /dev/null 2>&1; do
             if [ $elapsed -ge $timeout ]; then
               echo "API server failed to start within $timeout seconds"
+              echo "API server log:"
+              cat /tmp/api-server.log || true
               exit 1
             fi
             echo "Waiting for API server... ($elapsed/$timeout seconds)"
@@ -142,11 +147,21 @@ jobs:
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           PORT: 8080
+          HOST: 0.0.0.0
+          NODE_ENV: test
 
       - name: Test backup/restore scripts
         run: |
           echo "Testing backup/restore scripts..."
-          pnpm test:backup || {
+          # CI環境ではpostgres-testコンテナを使用
+          export COMPOSE_FILE="infrastructure/docker/docker-compose.server.yml"
+          # postgres-testコンテナが起動していることを確認
+          docker ps | grep postgres-test || {
+            echo "PostgreSQL test container is not running"
+            exit 1
+          }
+          # バックアップテストを実行（postgres-testコンテナを直接使用）
+          bash scripts/test/backup-restore.test.sh || {
             echo "Backup/restore tests failed!"
             exit 1
           }
@@ -156,6 +171,8 @@ jobs:
           echo "Testing monitoring scripts..."
           API_URL=http://localhost:8080/api pnpm test:monitor || {
             echo "Monitoring tests failed!"
+            echo "API server log:"
+            cat /tmp/api-server.log || true
             exit 1
           }
 
@@ -163,8 +180,12 @@ jobs:
         if: always()
         run: |
           if [ -n "$API_PID" ]; then
+            echo "Stopping API server (PID: $API_PID)"
             kill $API_PID || true
+            sleep 2
+            kill -9 $API_PID 2>/dev/null || true
           fi
+          pkill -f "node dist/main.js" || true
           pkill -f "pnpm start" || true
 
       - name: Cleanup PostgreSQL
