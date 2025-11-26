@@ -112,7 +112,7 @@
   - **タスク1**: バックアップ・リストアスクリプトの実機検証
   - **タスク2**: 監視・アラート機能の実機検証
   - **タスク3**: 運用マニュアルの作成
-  - **関連ドキュメント**: [次のタスク](docs/requirements/next-tasks.md), [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md)
+  - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md)
 
 ## Surprises & Discoveries
 
