@@ -4,9 +4,8 @@
 # 目的: 実際の運用環境と同じ方法でバックアップ・リストア機能が正しく動作することを検証する
 # 
 # 関連ドキュメント:
-# - docs/knowledge-base/troubleshooting-knowledge.md#kb-024
+# - docs/knowledge-base/troubleshooting-knowledge.md#kb-024（CIの継続的な成功確認、E2Eテストの安定化を含む）
 # - docs/architecture/test-architecture.md
-# - docs/knowledge-base/ci-stability-verification.md
 # 
 # テストシナリオ（災害復旧を想定）:
 #   1. テスト用DBを作成し、Prisma Migrateでスキーマを適用
