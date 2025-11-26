@@ -62,30 +62,36 @@ fi
 
 echo ""
 echo "─────────────────────────────────────────"
-echo "Step 1: テスト用データベースの作成（本番DBをテンプレートにコピー）"
+echo "Step 1: テスト用データベースの作成"
 echo "─────────────────────────────────────────"
 
-# 既存のテストDBがあれば削除
+# 既存のテストDBがあれば削除し、新規に作成
 ${DB_COMMAND} psql -U postgres -c "DROP DATABASE IF EXISTS ${TEST_DB_NAME};" 2>/dev/null || true
-
-# 本番用DB（borrow_return）をテンプレートとしてテスト用DBを作成
-# これにより、Prismaマイグレーション済みの実スキーマをそのまま利用できる
-${DB_COMMAND} createdb -U postgres -T borrow_return ${TEST_DB_NAME}
-echo "✓ データベース ${TEST_DB_NAME} を borrow_return からコピーして作成しました"
+${DB_COMMAND} psql -U postgres -c "CREATE DATABASE ${TEST_DB_NAME};"
+echo "✓ データベース ${TEST_DB_NAME} を作成しました"
 
 echo ""
 echo "─────────────────────────────────────────"
-echo "Step 2: スキーマの確認（テンプレートコピー後の状態）"
+echo "Step 2: スキーマの適用（Prismaマイグレーション）"
 echo "─────────────────────────────────────────"
 
-# テーブル確認（Prismaマイグレーション済みスキーマがコピーされていることを前提）
+# Prismaマイグレーションを使って、test_borrow_return に本番と同じスキーマを作成
+echo "Prismaマイグレーションを実行中..."
+cd "${PROJECT_DIR}/apps/api"
+if ! DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy; then
+  echo "✗ エラー: Prismaマイグレーションに失敗しました"
+  exit 1
+fi
+cd "${PROJECT_DIR}"
+
+# テーブル確認（マイグレーションでEmployeeテーブルが作成されていることを前提）
 if ! ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c 'SELECT COUNT(*) FROM "Employee";' > /dev/null 2>&1; then
-  echo "✗ エラー: Employeeテーブルが存在しません（テンプレートDB borrow_return にスキーマがない可能性）"
+  echo "✗ エラー: Employeeテーブルが存在しません（マイグレーション結果を要確認）"
   echo "現在のpublicスキーマのテーブル一覧:"
   ${DB_COMMAND} psql -U postgres -d ${TEST_DB_NAME} -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';" || true
   exit 1
 fi
-echo "✓ スキーマを確認しました（borrow_return 由来のスキーマ）"
+echo "✓ スキーマを適用しました（Prismaマイグレーション）"
 
 echo ""
 echo "─────────────────────────────────────────"
