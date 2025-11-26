@@ -112,10 +112,14 @@
     - NFR-001（パフォーマンス）: 実装済みだが実機検証未実施
     - NFR-004（保守性）の一部: バックアップ・リストア、監視・アラート機能は実装済みだが実機検証未実施
   - **作業内容**:
-    - **【検証】タスク1**: バックアップ・リストアスクリプトの実機検証（`scripts/server/backup.sh`, `restore.sh`の動作確認）
-    - **【検証】タスク2**: 監視・アラート機能の実機検証（`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認）
-    - **【検証】タスク3**: パフォーマンスの実機検証（APIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定）
+    - **【CI検証】タスク1-1**: バックアップ・リストアスクリプトのCIテスト（`scripts/test/backup-restore.test.sh`を作成、CIパイプラインに追加）
+    - **【CI検証】タスク2-1**: 監視・アラート機能のCIテスト（`scripts/test/monitor.test.sh`を作成、CIパイプラインに追加）
+    - **【CI検証】タスク3-1**: パフォーマンステストのCI追加（`apps/api/src/routes/__tests__/performance.test.ts`を作成、CIパイプラインに追加）
+    - **【実機検証】タスク1-2**: バックアップ・リストアスクリプトの実機検証（ラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認）
+    - **【実機検証】タスク2-2**: 監視・アラート機能の実機検証（ラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認）
+    - **【実機検証】タスク3-2**: パフォーマンスの実機検証（ラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしているか測定）
     - **【ドキュメント整備】タスク4**: 運用マニュアルの作成（日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順の整理）
+    - **【ドキュメント整備】タスク5**: 共通基盤ドキュメントの作成（`docs/architecture/infrastructure-base.md`を作成、スケール性の観点を説明）
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 
 ## Surprises & Discoveries

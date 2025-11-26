@@ -118,6 +118,55 @@ jobs:
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
 
+      - name: Start API server for monitoring tests
+        run: |
+          cd apps/api
+          pnpm start &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> $GITHUB_ENV
+          # APIサーバーが起動するまで待機
+          timeout=30
+          elapsed=0
+          until curl -s http://localhost:8080/api/system/health > /dev/null 2>&1; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "API server failed to start within $timeout seconds"
+              exit 1
+            fi
+            echo "Waiting for API server... ($elapsed/$timeout seconds)"
+            sleep 1
+            elapsed=$((elapsed + 1))
+          done
+          echo "API server is ready!"
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          PORT: 8080
+
+      - name: Test backup/restore scripts
+        run: |
+          echo "Testing backup/restore scripts..."
+          pnpm test:backup || {
+            echo "Backup/restore tests failed!"
+            exit 1
+          }
+
+      - name: Test monitoring scripts
+        run: |
+          echo "Testing monitoring scripts..."
+          API_URL=http://localhost:8080/api pnpm test:monitor || {
+            echo "Monitoring tests failed!"
+            exit 1
+          }
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -n "$API_PID" ]; then
+            kill $API_PID || true
+          fi
+          pkill -f "pnpm start" || true
+
       - name: Cleanup PostgreSQL
         if: always()
         run: docker stop postgres-test && docker rm postgres-test

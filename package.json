@@ -13,6 +13,8 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:api": "bash scripts/test/run-tests.sh",
+    "test:backup": "bash scripts/test/backup-restore.test.sh",
+    "test:monitor": "bash scripts/test/monitor.test.sh",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
