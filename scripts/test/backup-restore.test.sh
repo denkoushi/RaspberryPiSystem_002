@@ -23,11 +23,13 @@ if docker ps | grep -q "postgres-test"; then
   # CI環境: postgres-testコンテナを使用
   DB_CONTAINER="postgres-test"
   DB_COMMAND="docker exec ${DB_CONTAINER}"
+  DB_COMMAND_INPUT="docker exec -i ${DB_CONTAINER}"  # 標準入力を受け取る場合は-iオプションが必要
   echo "CI環境を検出: postgres-testコンテナを使用します"
 elif docker compose -f "${COMPOSE_FILE}" ps db 2>/dev/null | grep -q "Up"; then
   # ローカル環境: docker-composeのdbコンテナを使用
   DB_CONTAINER="db"
   DB_COMMAND="docker compose -f ${COMPOSE_FILE} exec -T db"
+  DB_COMMAND_INPUT="docker compose -f ${COMPOSE_FILE} exec -T db"  # docker compose exec -Tは標準入力を受け取れる
   echo "ローカル環境を検出: docker-composeのdbコンテナを使用します"
 else
   echo "エラー: データベースコンテナが起動していません"
@@ -106,7 +108,7 @@ EOF
 # リストアを実行
 echo "リストアを実行中..."
 gunzip -c "${BACKUP_FILE}" | \
-  ${DB_COMMAND} \
+  ${DB_COMMAND_INPUT} \
   psql -U postgres -d borrow_return --set ON_ERROR_STOP=off
 
 # リストア後のデータ確認
