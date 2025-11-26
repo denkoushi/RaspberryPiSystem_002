@@ -89,7 +89,8 @@ describe('POST /api/tools/items', () => {
   });
 
   it('should create a new item', async () => {
-    const itemCode = `ITEM-${randomUUID()}`;
+    // TO + 数字4桁の形式に変更（新しいバリデーション仕様に対応）
+    const itemCode = `TO${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`; // TO1000-TO9999の範囲
     const response = await app.inject({
       method: 'POST',
       url: '/api/tools/items',

@@ -104,7 +104,8 @@ describe('POST /api/tools/employees', () => {
   });
 
   it('should create a new employee', async () => {
-    const employeeCode = `EMP-${randomUUID()}`;
+    // 数字4桁の形式に変更（新しいバリデーション仕様に対応）
+    const employeeCode = String(Math.floor(1000 + Math.random() * 9000)); // 1000-9999の範囲
     const response = await app.inject({
       method: 'POST',
       url: '/api/tools/employees',
