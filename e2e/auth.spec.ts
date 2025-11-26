@@ -48,8 +48,10 @@ test.describe('認証フロー', () => {
     // ログインボタンをクリック
     await page.getByRole('button', { name: /ログイン/i }).click();
 
-    // ログイン成功を確認：管理画面のヘッダーに「管理コンソール」が表示されることを確認
-    // （エラーメッセージが表示されず、管理画面が表示されればログイン成功）
+    // ログイン成功を確認：URLが管理画面に遷移することを確認
+    await expect(page).toHaveURL(/\/admin/, { timeout: 10000 });
+
+    // 管理画面のヘッダーに「管理コンソール」が表示されることを確認
     await expect(page.getByText(/管理コンソール/i)).toBeVisible({ timeout: 10000 });
   });
 
