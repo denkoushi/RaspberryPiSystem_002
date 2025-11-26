@@ -9,6 +9,7 @@
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
 - **[トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md)**: 問題の解決方法とナレッジベース
 - **[システム要件定義](./docs/requirements/system-requirements.md)**: 機能要件・非機能要件・検証項目
+- **[次のタスク](./docs/requirements/next-tasks.md)**: 今後の開発タスク一覧
 - **[Validation 7検証ガイド](./docs/guides/validation-7-usb-import.md)**: USB一括登録の実機検証手順
 - **[モジュールドキュメント](./docs/modules/)**: 機能別の詳細仕様
   - [工具管理モジュール](./docs/modules/tools/README.md)

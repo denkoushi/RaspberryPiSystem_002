@@ -25,11 +25,11 @@
 - [x] (2025-11-20 00:17Z) Validation 4: 返却フロー。`/api/borrow` で作成された Loan をキオスク返却ペインから返却し、`/loans/active` が空・DB の `returnedAt` が更新され、`Transaction` に BORROW/RETURN の両方が記録されることを確認。タグの組み合わせを順不同で試し、いずれも返却ペインで消えることを確認済み。
 - [x] (2025-11-20 01:00Z) Validation 5: 履歴画面に日時フィルタと CSV エクスポートを実装し、管理コンソールから絞り込みとダウンロードが正常動作することを確認。
 - [x] (2025-11-20 14:30Z) 履歴の精度向上: BORROW/RETURN 登録時にアイテム/従業員のスナップショットを Transaction.details に保存し、履歴表示・CSV でスナップショットを優先するように変更。マスタ編集後も過去履歴の値が変わらないことを実機で確認。
-- [ ] (Upcoming) Milestone 5: 実機検証フェーズ。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
-  - [x] Validation 1-5: サーバーヘルス、従業員・アイテム管理、持出・返却フロー、履歴画面（一部完了）
+- [x] (2025-11-25) Milestone 5: 実機検証フェーズ完了。Pi5 上の API/Web/DB と Pi4 キオスク・NFC エージェントを接続し、Validation and Acceptance セクションの 8 シナリオを順次実施してログと証跡を残す。
+  - [x] Validation 1-5: サーバーヘルス、従業員・アイテム管理、持出・返却フロー、履歴画面（完了）
   - [x] Validation 6: オフライン耐性（2025-11-24 実機検証完了。オフライン時にNFCイベントがキューに保存され、オンライン復帰後に自動再送されることを確認）
   - [x] Validation 7: USB一括登録（2025-11-25 実機検証完了。Phase 3の検証で従業員2件、工具3件のインポートに成功。バリデーションも正しく動作することを確認）
-  - [x] Validation 8: NFCエージェント単体（一部完了）
+  - [x] Validation 8: NFCエージェント単体（完了）
 - [x] (2025-11-23) Milestone 6: モジュール化リファクタリング Phase 1 & 3 完了。共通パッケージ（packages/shared-types）を作成し、API/Web間で型定義を共有化。APIルートを routes/tools/ にモジュール化し、/api/tools/* パスを追加（既存パスは後方互換性のため維持）。Dockerfile.apiとDockerfile.webを修正し、packages/shared-typesのビルドとコピーを追加。ラズパイ5でAPIが正常に動作し、既存パスと新しいモジュールパスの両方で同じデータが返ることを確認。ラズパイ4でWeb UIが正常に表示されることを確認。
 - [x] (2025-01-XX) Milestone 6 Phase 2: サービス層の導入完了。services/tools/ ディレクトリを作成し、EmployeeService、ItemService、LoanService、TransactionServiceを実装。全ルートハンドラーからPrismaクエリとビジネスロジックをサービス層に移動し、ルートハンドラーはサービス層を呼び出すだけの構造に変更。ビルド成功を確認。
 - [x] (2025-01-XX) Milestone 6 Phase 4: フロントエンドのモジュール化完了。pages/tools/ ディレクトリを作成し、EmployeesPage、ItemsPage、HistoryPageを移動。ルーティングを /admin/tools/* に変更し、既存パス（/admin/employees など）も後方互換性のため維持。AdminLayoutのナビゲーションリンクを更新。ビルド成功を確認。
@@ -106,6 +106,13 @@
   - **完了日**: 2025-11-25（Phase 3の検証時に実施）
   - **関連ドキュメント**: [要件定義](docs/requirements/system-requirements.md), [CSVインポート・エクスポート仕様](docs/guides/csv-import-export.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 - [x] (2025-11-25) ドキュメント整理: 要件定義・タスク一覧・進捗管理・検証結果をEXEC_PLAN.mdに一元化。docs/requirements/task-priority.md、docs/progress/の完了済みファイルを統合して削除。
+- [ ] (2025-11-25) **次のタスク: 運用ドキュメントの実機検証と整備**（優先度: 高）
+  - **目的**: 既存の運用ドキュメントが実機環境で正しく動作することを確認し、不足している情報を補完する
+  - **現状**: バックアップ・リストア、監視・アラート、デプロイメントの各ガイドが存在するが、実機検証が未実施
+  - **タスク1**: バックアップ・リストアスクリプトの実機検証
+  - **タスク2**: 監視・アラート機能の実機検証
+  - **タスク3**: 運用マニュアルの作成
+  - **関連ドキュメント**: [次のタスク](docs/requirements/next-tasks.md), [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md)
 
 ## Surprises & Discoveries
 
