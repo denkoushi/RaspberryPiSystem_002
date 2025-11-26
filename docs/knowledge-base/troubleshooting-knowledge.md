@@ -272,6 +272,7 @@
 - [試行5] vitestのタイムアウトを30秒に設定（2025-11-25） → **実装完了・検証待ち**
 - [試行6] CI環境で詳細なログ出力を有効化（2025-11-25） → **実装完了・検証待ち**
 - [試行7] テスト実行前にデータベース接続を確認（2025-11-25） → **実装完了・検証待ち**
+- [試行8] CIテスト失敗のトラブルシューティングガイドと分析スクリプトを作成（2025-11-25） → **実装完了**
 
 **有効だった対策**: 
 - [試行1] CIワークフローで`pnpm`のバージョンを9に変更
@@ -290,6 +291,9 @@
 **関連ファイル**: 
 - `.github/workflows/ci.yml`
 - `apps/api/src/routes/__tests__/health.test.ts`
+- `apps/api/vitest.config.ts`
+- `scripts/ci/analyze-failure.sh`
+- `docs/guides/ci-troubleshooting.md`
 
 ---
 
