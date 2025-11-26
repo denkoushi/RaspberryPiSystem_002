@@ -85,12 +85,13 @@ function normalizeEmployeeStatus(value?: string) {
 }
 
 function normalizeItemStatus(value?: string) {
-  if (!value) return ItemStatus.AVAILABLE;
+  if (!value || !value.trim()) return ItemStatus.AVAILABLE;
   const upper = value.trim().toUpperCase();
   if (upper in ItemStatus) {
     return ItemStatus[upper as keyof typeof ItemStatus];
   }
-  throw new ApiError(400, `無効なアイテムステータス: ${value}`);
+  // 無効な値の場合はデフォルト値（AVAILABLE）を使用（エラーにしない）
+  return ItemStatus.AVAILABLE;
 }
 
 async function importEmployees(
