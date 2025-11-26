@@ -98,7 +98,13 @@ jobs:
         run: |
           cd apps/api
           echo "Running API tests..."
-          pnpm test || {
+          echo "DATABASE_URL: $DATABASE_URL"
+          echo "PostgreSQL connection test..."
+          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;" || {
+            echo "PostgreSQL connection failed!"
+            exit 1
+          }
+          pnpm test --reporter=verbose || {
             echo "Tests failed, showing test output..."
             exit 1
           }

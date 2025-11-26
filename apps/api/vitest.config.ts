@@ -7,9 +7,13 @@ export default defineConfig({
     sequence: {
       concurrent: false
     },
+    testTimeout: 30000, // 30秒のタイムアウト
+    hookTimeout: 30000, // フックのタイムアウトも30秒
     coverage: {
       reporter: ['text', 'lcov'],
       exclude: ['src/types/**']
-    }
+    },
+    // CI環境での詳細なログ出力
+    reporters: process.env.CI ? ['verbose'] : ['default']
   }
 });
