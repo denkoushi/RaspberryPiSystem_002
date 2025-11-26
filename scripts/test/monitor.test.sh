@@ -27,8 +27,9 @@ echo "-----------------------------------"
 
 check_api_health() {
   local response=$(curl -s -w "\n%{http_code}" "${API_URL}/system/health" 2>/dev/null || echo -e "\n000")
-  local body=$(echo "${response}" | head -n -1)
+  # macOSのheadコマンドは-n -1をサポートしていないため、tail -n 1で最後の行を取得してから除外
   local status_code=$(echo "${response}" | tail -n 1)
+  local body=$(echo "${response}" | sed '$d')
 
   if [ "${status_code}" != "200" ]; then
     echo "⚠️  API health check failed (HTTP ${status_code})"
@@ -64,6 +65,7 @@ echo "-----------------------------------"
 
 check_metrics() {
   local response=$(curl -s -w "\n%{http_code}" "${API_URL}/system/metrics" 2>/dev/null || echo -e "\n000")
+  # macOSのheadコマンドは-n -1をサポートしていないため、tail -n 1で最後の行を取得
   local status_code=$(echo "${response}" | tail -n 1)
 
   if [ "${status_code}" != "200" ]; then
