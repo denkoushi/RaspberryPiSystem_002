@@ -40,6 +40,36 @@ update-frequency: medium
 
 ---
 
+### [KB-025] Caddyfileのサムネイル配信パスが正しく設定されていない
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（2025-11-27）
+
+**事象**: 
+- `/storage/thumbnails/*`のパスでサムネイルファイルが配信されない
+- curlでアクセスすると0バイトのファイルが返される
+- 接続がリセットされるエラーが発生する
+
+**要因**: 
+- Caddyfileの`handle /storage/thumbnails/*`ブロック内で、`root * /srv/storage`と設定していたため、実際のファイルパスが`/srv/storage/storage/thumbnails/...`になってしまっていた
+- `uri strip_prefix`ディレクティブが期待通りに動作しなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-27）: `handle /storage/thumbnails/*`ブロック内で`rewrite * /storage/thumbnails{path} {path}`を使用してパスプレフィックスを削除し、`root * /srv/storage/thumbnails`を設定
+- これにより、`/storage/thumbnails/2025/11/file.jpg`というURLが`/srv/storage/thumbnails/2025/11/file.jpg`のファイルを正しく参照できるようになった
+
+**学んだこと**: 
+- Caddyfileで`handle`ブロック内でパスを書き換えるには、`rewrite`ディレクティブを使用する
+- `rewrite * /storage/thumbnails{path} {path}`の形式で、パスプレフィックスを削除できる
+- `root`ディレクティブは、書き換え後のパスに対して適用される
+
+**解決状況**: ✅ **解決済み**（2025-11-27）
+
+**関連ファイル**: 
+- `infrastructure/docker/Caddyfile`
+- `infrastructure/docker/Caddyfile.production`
+
+---
+
 ### [KB-015] Docker Composeのポート設定が不適切
 
 **EXEC_PLAN.md参照**: Surprises & Discoveries (行147)
