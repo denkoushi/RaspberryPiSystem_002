@@ -7,16 +7,22 @@ import { useKioskConfig } from '../api/hooks';
  */
 export function KioskRedirect() {
   const navigate = useNavigate();
-  const { data: config } = useKioskConfig();
+  const { data: config, isLoading } = useKioskConfig();
 
   useEffect(() => {
-    if (config?.defaultMode === 'PHOTO') {
+    // ローディング中はリダイレクトしない
+    if (isLoading || !config) {
+      return;
+    }
+
+    if (config.defaultMode === 'PHOTO') {
       navigate('/kiosk/photo', { replace: true });
     } else {
       navigate('/kiosk/tag', { replace: true });
     }
-  }, [config?.defaultMode, navigate]);
+  }, [config, isLoading, navigate]);
 
+  // ローディング中は何も表示しない
   return null;
 }
 

@@ -165,7 +165,10 @@ export async function getTransactions(
 }
 
 export async function getKioskConfig() {
-  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number; defaultMode?: 'PHOTO' | 'TAG' }>('/kiosk/config');
+  const key = resolveClientKey();
+  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number; defaultMode?: 'PHOTO' | 'TAG' }>('/kiosk/config', {
+    headers: { 'x-client-key': key }
+  });
   return data;
 }
 
