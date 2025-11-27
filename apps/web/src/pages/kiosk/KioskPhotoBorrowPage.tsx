@@ -111,40 +111,42 @@ export function KioskPhotoBorrowPage() {
     setError(null);
     setSuccessLoan(null);
 
-    // カメラで撮影（3回までリトライ）
-    let photoData: string;
-    let retryCount = 0;
-    const maxRetries = 3;
+    // カメラで撮影してからAPIを呼び出す（async関数として定義）
+    (async () => {
+      // カメラで撮影（3回までリトライ）
+      let photoData: string;
+      let retryCount = 0;
+      const maxRetries = 3;
 
-    while (retryCount < maxRetries) {
-      try {
-        photoData = await captureAndCompressPhoto();
-        break; // 成功したらループを抜ける
-      } catch (error) {
-        retryCount++;
-        const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
-        if (enableDebugLogs) {
-          console.warn(`[KioskPhotoBorrowPage] Photo capture failed (attempt ${retryCount}/${maxRetries}):`, error);
+      while (retryCount < maxRetries) {
+        try {
+          photoData = await captureAndCompressPhoto();
+          break; // 成功したらループを抜ける
+        } catch (error) {
+          retryCount++;
+          const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+          if (enableDebugLogs) {
+            console.warn(`[KioskPhotoBorrowPage] Photo capture failed (attempt ${retryCount}/${maxRetries}):`, error);
+          }
+          if (retryCount >= maxRetries) {
+            setIsCapturing(false);
+            const err = error instanceof Error ? error : new Error(String(error));
+            setError(`写真の撮影に失敗しました: ${err.message}`);
+            processingRef.current = false;
+            return; // エラー時は処理を中断
+          }
+          // リトライ前に少し待機
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
-        if (retryCount >= maxRetries) {
-          setIsCapturing(false);
-          const err = error instanceof Error ? error : new Error(String(error));
-          setError(`写真の撮影に失敗しました: ${err.message}`);
-          processingRef.current = false;
-          return; // エラー時は処理を中断
-        }
-        // リトライ前に少し待機
-        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-    }
 
-    // APIを呼び出して持出処理
-    photoBorrowMutation.mutate(
-      {
-        employeeTagUid: currentUid,
-        photoData: photoData!,
-        clientId: resolvedClientId || undefined,
-      },
+      // APIを呼び出して持出処理
+      photoBorrowMutation.mutate(
+        {
+          employeeTagUid: currentUid,
+          photoData: photoData!,
+          clientId: resolvedClientId || undefined,
+        },
       {
         onSuccess: (loan) => {
           setIsCapturing(false);
@@ -176,7 +178,8 @@ export function KioskPhotoBorrowPage() {
           }, 3000);
         },
       }
-    );
+      );
+    })();
   }, [nfcEvent?.uid, nfcEvent?.timestamp, isCapturing, photoBorrowMutation, resolvedClientId]);
 
   // ページアンマウント時に状態をリセット
