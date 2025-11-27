@@ -15,7 +15,7 @@ mkdir -p "${BACKUP_DIR}"
 # データベースバックアップ
 echo "データベースバックアップを開始..."
 docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-  pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+  pg_dump -U postgres --clean --if-exists borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
 
 # 環境変数ファイルのバックアップ
 if [ -f "${PROJECT_DIR}/apps/api/.env" ]; then
