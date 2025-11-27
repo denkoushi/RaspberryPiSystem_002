@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { cameraConfig } from '../../config/camera.config.js';
 import type { CameraDriver } from './drivers/camera-driver.interface.js';
-import { MockCameraDriver } from './drivers/index.js';
+import { MockCameraDriver, USBCameraDriver } from './drivers/index.js';
 
 export interface CaptureOptions {
   retryCount?: number; // リトライ回数（デフォルト: 3）
@@ -40,8 +40,7 @@ export class CameraService {
         // TODO: Raspberry Pi Camera Module ドライバーを実装
         throw new Error('Raspberry Pi Camera Module driver is not yet implemented');
       case 'usb-camera':
-        // TODO: USBカメラドライバーを実装
-        throw new Error('USB Camera driver is not yet implemented');
+        return new USBCameraDriver(cameraConfig.device);
       case 'mock':
       default:
         return new MockCameraDriver();
