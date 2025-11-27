@@ -78,20 +78,32 @@ export function KioskBorrowPage() {
   }, [borrowMutation, clientId, send, state]);
 
   useEffect(() => {
-    console.log('NFC Event received:', nfcEvent);
-    console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
+    // 本番環境ではログを出力しない（365日24時間動作のため）
+    if (import.meta.env.MODE !== 'production') {
+      console.log('NFC Event received:', nfcEvent);
+      console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
+    }
     if (!nfcEvent) return;
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastEventKeyRef.current === eventKey) {
-      console.log('Skipping duplicate NFC event:', eventKey);
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('Skipping duplicate NFC event:', eventKey);
+      }
       return;
     }
     if (state.matches('waitItem')) {
-      console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
+      }
       send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     } else if (state.matches('waitEmployee')) {
-      console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
+      }
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     }
