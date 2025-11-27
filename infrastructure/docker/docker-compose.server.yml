@@ -24,6 +24,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
+      CAMERA_TYPE: mock
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
