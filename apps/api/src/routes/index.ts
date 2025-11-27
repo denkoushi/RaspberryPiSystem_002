@@ -5,6 +5,7 @@ import { registerToolsRoutes } from './tools/index.js';
 import { registerClientRoutes } from './clients.js';
 import { registerKioskRoutes } from './kiosk.js';
 import { registerImportRoutes } from './imports.js';
+import { registerStorageRoutes } from './storage/index.js';
 
 /**
  * すべてのルートを登録
@@ -26,6 +27,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerClientRoutes(subApp);
       await registerKioskRoutes(subApp);
       await registerImportRoutes(subApp);
+      await registerStorageRoutes(subApp);
     },
     { prefix: '/api' },
   );
