@@ -189,7 +189,7 @@ export function KioskPhotoBorrowPage() {
         <Card title="写真撮影持出">
           <div className="space-y-4 text-center">
             <p className="text-3xl font-semibold">
-              {config?.greeting ?? 'Itemをカメラの前に置いて、従業員タグをスキャンしてください'}
+              Itemをカメラの前に置いて、従業員タグをスキャンしてください
             </p>
             
             {/* 撮影中の表示 */}
