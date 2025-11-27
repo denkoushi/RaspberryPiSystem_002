@@ -1,3 +1,13 @@
+---
+title: システム要件定義
+tags: [要件定義, 機能要件, 非機能要件, 検証項目]
+audience: [開発者, アーキテクト, 新規参加者]
+last-verified: 2025-11-27
+related: [../EXEC_PLAN.md, ../modules/tools/README.md, ../guides/verification-checklist.md]
+category: requirements
+update-frequency: medium
+---
+
 # システム要件定義
 
 ## 概要
