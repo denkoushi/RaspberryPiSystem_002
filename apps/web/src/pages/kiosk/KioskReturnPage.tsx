@@ -54,25 +54,52 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
             />
           </label>
           <ul className="space-y-3">
-            {loansQuery.data.map((loan) => (
-              <li
-                key={loan.id}
-                className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <p className="text-lg font-semibold">{loan.item?.name ?? 'アイテム情報なし'}</p>
-                  <p className="text-sm text-white/70">{loan.employee.displayName}</p>
-                  <p className="text-xs text-white/50">借用: {new Date(loan.borrowedAt).toLocaleString()}</p>
-                </div>
-                <Button
-                  onClick={() => handleReturn(loan.id)}
-                  disabled={returnMutation.isPending}
-                  className="md:min-w-[140px]"
+            {loansQuery.data.map((loan) => {
+              // 写真サムネイルのURLを生成
+              const thumbnailUrl = loan.photoUrl
+                ? loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
+                : null;
+
+              return (
+                <li
+                  key={loan.id}
+                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4 md:flex-row md:items-center md:justify-between"
                 >
-                  {returnMutation.isPending ? '送信中…' : '返却する'}
-                </Button>
-              </li>
-            ))}
+                  <div className="flex flex-1 gap-4">
+                    {/* 写真サムネイル */}
+                    {thumbnailUrl && (
+                      <div className="flex-shrink-0">
+                        <img
+                          src={thumbnailUrl}
+                          alt="撮影した写真"
+                          className="h-20 w-20 rounded-lg object-cover border border-white/10"
+                          onError={(e) => {
+                            // サムネイルが読み込めない場合は非表示
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    {/* 貸出情報 */}
+                    <div className="flex-1">
+                      <p className="text-lg font-semibold">{loan.item?.name ?? 'アイテム情報なし'}</p>
+                      <p className="text-sm text-white/70">{loan.employee.displayName}</p>
+                      <p className="text-xs text-white/50">借用: {new Date(loan.borrowedAt).toLocaleString()}</p>
+                      {loan.photoTakenAt && (
+                        <p className="text-xs text-white/50">撮影: {new Date(loan.photoTakenAt).toLocaleString()}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => handleReturn(loan.id)}
+                    disabled={returnMutation.isPending}
+                    className="md:min-w-[140px]"
+                  >
+                    {returnMutation.isPending ? '送信中…' : '返却する'}
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
           {loansQuery.isFetching ? <p className="text-xs text-white/60">更新中...</p> : null}
         </div>
