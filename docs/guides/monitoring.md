@@ -1,6 +1,16 @@
+---
+title: 監視・アラートガイド
+tags: [運用, 監視, アラート, ヘルスチェック]
+audience: [運用者, 開発者]
+last-verified: 2025-11-27
+related: [backup-and-restore.md, deployment.md]
+category: guides
+update-frequency: medium
+---
+
 # 監視・アラートガイド
 
-最終更新: 2025-01-XX
+最終更新: 2025-11-27
 
 ## 概要
 

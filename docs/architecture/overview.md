@@ -1,3 +1,13 @@
+---
+title: システムアーキテクチャ概要
+tags: [アーキテクチャ, 設計, システム構成]
+audience: [アーキテクト, 開発者, 新規参加者]
+last-verified: 2025-11-27
+related: [infrastructure-base.md, ../decisions/001-module-structure.md]
+category: architecture
+update-frequency: low
+---
+
 # システムアーキテクチャ概要
 
 ## 全体構成
