@@ -119,6 +119,7 @@
 |---------|------|
 | [001-module-structure.md](./decisions/001-module-structure.md) | モジュール構造の設計決定 |
 | [002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
+| [003-camera-module.md](./decisions/003-camera-module.md) | **カメラ機能のモジュール化**（写真撮影持出機能） |
 
 ### モジュール仕様（modules/）
 
@@ -129,6 +130,7 @@
 | [tools/README.md](./modules/tools/README.md) | 工具管理モジュール概要 |
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
+| [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
 | [logistics/README.md](./modules/logistics/README.md) | 物流モジュール（将来実装予定） |
 
@@ -239,14 +241,14 @@ APIの概要と詳細。
 | カテゴリ | ファイル数 |
 |---------|-----------|
 | アーキテクチャ | 2 |
-| 設計決定 | 2 |
-| モジュール仕様 | 5 |
+| 設計決定 | 3 |
+| モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
 | 実践ガイド | 9 |
 | トラブルシューティング | 8 |
 | セキュリティ | 1 |
-| **合計** | **30** |
+| **合計** | **32** |
 
 ---
 
