@@ -119,6 +119,7 @@ jobs:
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock
           PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          NODE_ENV: test
 
       - name: Start API server for monitoring tests
         run: |
