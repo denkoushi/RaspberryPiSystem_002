@@ -462,6 +462,8 @@
 - ヒアドキュメントを使用する場合は、`DB_COMMAND_INPUT`を使用する必要がある（CI環境では`docker exec`に`-i`オプションが必要）
 - `pg_dump`に`--clean --if-exists`オプションを追加することで、空のデータベースに対してリストアする際のエラーを回避できる
 - CIテストの目的は「CIを通す」ことではなく「機能を検証する」こと
+- Caddyfileで`handle`ブロック内でパスを書き換えるには、`rewrite`ディレクティブを使用する（`rewrite * /storage/thumbnails{path} {path}`の形式でパスプレフィックスを削除できる）
+- Dockerボリュームのマウント前に、ホスト側のディレクトリを作成する必要がある（`mkdir -p storage/photos storage/thumbnails`）
 
 ### ドキュメントリファクタリング 完了（2025-11-27）
 
