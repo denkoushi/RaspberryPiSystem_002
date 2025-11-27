@@ -4,6 +4,7 @@
 
 ## ドキュメント
 
+- **[docs/INDEX.md](./docs/INDEX.md)**: 📋 **全ドキュメントの索引**（目的別・対象者別・カテゴリ別）
 - **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
