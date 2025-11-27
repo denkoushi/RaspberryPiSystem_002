@@ -23,7 +23,7 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 8件 | APIエラー、レート制限、認証、履歴 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 3件 | キオスク接続、XState、UI |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 5件 | キオスク接続、XState、UI |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 7件 | Docker、Caddy、オフライン耐性、バックアップ |
 
 ---
@@ -67,6 +67,8 @@ update-frequency: high
 | [KB-006](./frontend.md#kb-006-キオスクの接続が不安定) | キオスクの接続が不安定 | ✅ 解決済み |
 | [KB-016](./frontend.md#kb-016-xstate-v5のassignの誤用) | XState v5のassignの誤用 | ✅ 解決済み |
 | [KB-022](./frontend.md#kb-022-キオスクがラズパイ5に接続できない) | キオスクがラズパイ5に接続できない | ✅ 解決済み |
+| [KB-026](./frontend.md#kb-026-キオスク画面のリダイレクトが設定変更時に反映されない) | キオスク画面のリダイレクトが設定変更時に反映されない | ✅ 解決済み |
+| [KB-027](./frontend.md#kb-027-nfcイベントが重複発火して持出一覧に自動追加が止まらない) | NFCイベントが重複発火して持出一覧に自動追加が止まらない | 🔄 調査中 |
 
 ### インフラ関連
 
