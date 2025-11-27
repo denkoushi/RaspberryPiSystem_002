@@ -86,7 +86,8 @@
 | [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
-| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | インフラ基盤 |
+| [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
+| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 
 ### アーキテクト
 
@@ -108,7 +109,7 @@
 | ファイル | 説明 |
 |---------|------|
 | [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ |
-| [infrastructure-base.md](./architecture/infrastructure-base.md) | インフラ基盤 |
+| [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 
 ### 設計決定（decisions/）
 
@@ -163,6 +164,7 @@ APIの概要と詳細。
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
+| [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
