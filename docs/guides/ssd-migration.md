@@ -286,6 +286,17 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs
 docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build
 ```
 
+## 再起動後の手順
+
+開発中は手動でコンテナを起動することを推奨します（問題発生時の原因特定が容易なため）。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+```
+
+本番環境では、systemdサービスとして自動起動を設定することを推奨します。
+
 ## 移行後の確認事項
 
 - [ ] データベースのレコード数が移行前と同じであること
@@ -294,6 +305,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build
 - [ ] Web UIが正常に動作していること
 - [ ] キオスク画面が正常に動作していること
 - [ ] バックアップスクリプトが正常に動作すること
+- [ ] 再起動後も正常に動作すること
 
 ## 参考資料
 
