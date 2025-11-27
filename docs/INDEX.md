@@ -165,11 +165,16 @@ APIの概要と詳細。
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
 
-問題解決のナレッジベース。
+問題解決のナレッジベース。**カテゴリ別に分割されています。**
 
 | ファイル | 説明 |
 |---------|------|
-| [knowledge-base/troubleshooting-knowledge.md](./knowledge-base/troubleshooting-knowledge.md) | トラブルシューティングナレッジ（KB-001〜KB-024） |
+| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全24件の一覧） |
+| [knowledge-base/api.md](./knowledge-base/api.md) | API関連（8件） |
+| [knowledge-base/database.md](./knowledge-base/database.md) | データベース関連（3件） |
+| [knowledge-base/ci-cd.md](./knowledge-base/ci-cd.md) | CI/CD関連（4件） |
+| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（3件） |
+| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（6件） |
 | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) | NFCリーダー固有の問題 |
 
 ### セキュリティ（security/）
@@ -235,9 +240,9 @@ APIの概要と詳細。
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
 | 実践ガイド | 9 |
-| トラブルシューティング | 2 |
+| トラブルシューティング | 8 |
 | セキュリティ | 1 |
-| **合計** | **24** |
+| **合計** | **30** |
 
 ---
 
