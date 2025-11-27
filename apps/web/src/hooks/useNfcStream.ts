@@ -12,6 +12,7 @@ const AGENT_WS_URL = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/s
 export function useNfcStream() {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -26,6 +27,13 @@ export function useNfcStream() {
           if (!isMounted) return;
           try {
             const payload = JSON.parse(message.data) as NfcEvent;
+            // 同じイベント（uid + timestamp）を複数回発火しないようにする
+            const eventKey = `${payload.uid}:${payload.timestamp}`;
+            if (lastEventKeyRef.current === eventKey) {
+              // 同じイベントは無視
+              return;
+            }
+            lastEventKeyRef.current = eventKey;
             setEvent(payload);
           } catch {
             // ignore malformed payload
@@ -56,6 +64,8 @@ export function useNfcStream() {
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
       }
+      // クリーンアップ時にイベントキーをリセット（再接続時に新しいイベントを受け付けるため）
+      lastEventKeyRef.current = null;
     };
   }, []);
 

@@ -51,6 +51,12 @@ export function KioskRedirect() {
     const isOnKioskRoot = normalizedPath === '/kiosk';
     const isOnPhotoPage = normalizedPath === '/kiosk/photo';
     const isOnTagPage = normalizedPath === '/kiosk/tag';
+    const isOnReturnPage = normalizedPath === '/kiosk/return';
+    
+    // 返却ページにいる場合はリダイレクトしない
+    if (isOnReturnPage) {
+      return;
+    }
     
     // defaultModeが変更された場合、または初回ロード時、または/kioskにいる場合にリダイレクト
     if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined || isOnKioskRoot) {
