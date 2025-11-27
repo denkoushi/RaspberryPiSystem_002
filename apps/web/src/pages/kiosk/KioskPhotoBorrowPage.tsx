@@ -24,6 +24,7 @@ export function KioskPhotoBorrowPage() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successLoan, setSuccessLoan] = useState<Loan | null>(null);
+  const pageMountedRef = useRef(false);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -35,9 +36,20 @@ export function KioskPhotoBorrowPage() {
     }
   }, [clientKey, setClientKey]);
 
+  // ページマウント後にマウントフラグを設定（古いNFCイベントを無視するため）
+  useEffect(() => {
+    // ページマウント後、500ms待ってからNFCイベントを受け付ける
+    const timer = setTimeout(() => {
+      pageMountedRef.current = true;
+      lastEventKeyRef.current = null; // マウント前のイベントをクリア
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // NFCイベントの処理
   useEffect(() => {
-    if (!nfcEvent || isCapturing) return;
+    // ページマウント前、または処理中、またはNFCイベントがない場合はスキップ
+    if (!pageMountedRef.current || !nfcEvent || isCapturing) return;
     
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastEventKeyRef.current === eventKey) {
@@ -78,6 +90,14 @@ export function KioskPhotoBorrowPage() {
       }
     );
   }, [nfcEvent, isCapturing, photoBorrowMutation, resolvedClientId]);
+
+  // ページアンマウント時に状態をリセット
+  useEffect(() => {
+    return () => {
+      pageMountedRef.current = false;
+      lastEventKeyRef.current = null;
+    };
+  }, []);
 
   const handleReset = () => {
     setEmployeeTagUid(null);
