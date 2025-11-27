@@ -15,6 +15,7 @@
 | プロジェクトの概要を理解したい | [README.md](../README.md) |
 | システムアーキテクチャを理解したい | [architecture/overview.md](./architecture/overview.md) |
 | 開発環境をセットアップしたい | [guides/development.md](./guides/development.md) |
+| **AIアシスタントとして引き継ぐ** | **[guides/ai-handoff.md](./guides/ai-handoff.md)** |
 
 ### 開発する
 
@@ -162,6 +163,7 @@ APIの概要と詳細。
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
+| [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
 
