@@ -370,6 +370,35 @@
 
 **目的**: 時間経過とともにドキュメントやリポジトリのエントロピー増加を防ぎ、秩序を保つための明確な判断基準を確立する。
 
+**重要: ドキュメントリファクタリングと既存ドキュメント体系の整合性**
+
+**既存ドキュメント体系との連携状況**:
+- **AGENTS.md**: ExecPlanを使用するよう指示（PLANS.mdへの参照あり）
+- **PLANS.md**: ExecPlanの書き方ルールを定義（自己完結性、living document、novice向け）
+- **README.md**: EXEC_PLAN.mdへの参照あり、PLANS.mdの運用ルールに従うと記載
+- **EXEC_PLAN.md**: PLANS.mdに従って維持すると記載、Progress/Surprises & Discoveries/Decision Log/Outcomes & Retrospectiveを維持
+
+**整合性の問題点**:
+1. **AGENTS.mdとEXEC_PLAN.mdの直接的な連携が弱い**: AGENTS.mdはPLANS.mdへの参照のみで、EXEC_PLAN.mdへの直接参照がない
+2. **ドキュメントリファクタリングの取り組みがPLANS.mdのルールと整合しているか不明**: PLANS.mdは「自己完結性」「novice向け」を要求するが、ドキュメントリファクタリングではINDEX.mdによる相互参照を前提としている
+3. **ユーザー指示時のAI行動順序が一貫していない可能性**: ドキュメントリファクタリングでは、EXEC_PLAN.mdを確認→実装→更新の順序が明確でない
+
+**推奨される行動順序（ユーザー指示時）**:
+1. **EXEC_PLAN.mdを確認**: 現在の進捗、関連する決定、課題を把握
+2. **PLANS.mdのルールを確認**: ExecPlanの要件（自己完結性、living document等）を確認
+3. **実装**: コード/ドキュメントの変更を実施
+4. **EXEC_PLAN.mdを更新**: Progress, Surprises & Discoveries, Decision Logを更新
+5. **関連ドキュメントを更新**: README.md、モジュールドキュメント等を必要に応じて更新
+
+**コードの保存場所の構造の妥当性判定**:
+- **現在の構造**: モジュール化済み（`apps/api/src/routes/tools/`, `apps/web/src/pages/tools/`）
+- **妥当性**: ✅ **良好** - ADR（Architecture Decision Records）で設計決定を記録、型定義の共有（`packages/shared-types/`）、ドキュメントとの対応が明確
+- **理由**: 
+  - モジュール境界が明確（tools, documents, logistics）
+  - サービス層とルート層の分離が実現されている
+  - 共通型定義の共有により、API/Web間の型安全性が保たれている
+  - ドキュメント構造（`docs/modules/tools/`）とコード構造（`apps/api/src/routes/tools/`）が一致している
+
 #### 現状の課題
 
 | 指標 | 現状 | 将来リスク |
@@ -513,6 +542,26 @@ docs/
 #### 構造設計の詳細
 
 **1. INDEX.md（必須）**
+
+**機能の詳細説明**:
+- **目的別インデックス**: 「何をしたいか」から逆引きできる。例: 「初期セットアップしたい」→ deployment.md, production-setup.md に直接リンク
+- **対象者別インデックス**: 「誰が参照するか」で分類。例: 新規参加者、開発者、運用者、アーキテクトごとに必要なドキュメントを提示
+- **カテゴリ別インデックス**: ドキュメントの種類ごとに一覧表示。例: アーキテクチャ、モジュール仕様、APIリファレンスなど
+- **コードとの連携**: 各モジュールのドキュメントから、対応するコードの場所（`apps/api/src/routes/tools/`, `apps/web/src/pages/tools/`など）への参照リンクを含める
+
+**コードの保存場所との連携**:
+- **モジュールドキュメント**: `docs/modules/tools/README.md` → `apps/api/src/routes/tools/`, `apps/web/src/pages/tools/` への参照
+- **APIリファレンス**: `docs/api/overview.md` → `apps/api/src/routes/` の実際のコードへの参照
+- **アーキテクチャ決定**: `docs/architecture/decisions/001-module-structure.md` → 実装コード（`apps/api/src/routes/tools/employees/`など）への参照
+- **実践ガイド**: `docs/guides/development.md` → 実際のスクリプト（`scripts/`）や設定ファイル（`infrastructure/docker/`）への参照
+
+**コードの保存場所の状態構造**:
+- **現在の構造**: モジュール化済み（`apps/api/src/routes/tools/`, `apps/web/src/pages/tools/`）
+- **秩序管理**: ADR（Architecture Decision Records）で設計決定を記録（`docs/architecture/decisions/001-module-structure.md`）
+- **型定義の共有**: `packages/shared-types/` でAPI/Web間の型を共有
+- **ドキュメントとの対応**: コードの構造とドキュメントの構造が一致（例: `docs/modules/tools/` ↔ `apps/api/src/routes/tools/`）
+
+**INDEX.mdの構成例**:
 ```markdown
 # ドキュメント索引
 
@@ -535,6 +584,18 @@ docs/
 - [APIリファレンス](./api/)
 - [実践ガイド](./guides/)
 - [トラブルシューティング](./knowledge-base/)
+
+## コードとの対応関係
+- **工具管理モジュール**: 
+  - ドキュメント: [modules/tools/README.md](./modules/tools/README.md)
+  - APIコード: `apps/api/src/routes/tools/`
+  - Webコード: `apps/web/src/pages/tools/`
+  - サービス層: `apps/api/src/services/tools/`
+  - 共通型: `packages/shared-types/src/tools/`
+- **インフラ設定**:
+  - ドキュメント: [architecture/infrastructure-base.md](./architecture/infrastructure-base.md)
+  - Docker設定: `infrastructure/docker/`
+  - デプロイスクリプト: `scripts/server/deploy.sh`
 ```
 
 **2. ナレッジベースの分割**
