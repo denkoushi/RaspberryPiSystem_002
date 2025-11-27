@@ -164,6 +164,7 @@ APIの概要と詳細。
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
+| [photo-loan-test-plan.md](./guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
