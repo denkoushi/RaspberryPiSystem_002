@@ -2,9 +2,34 @@
 
 本リポジトリは Raspberry Pi 5 サーバー + Raspberry Pi 4 クライアントで構成される持出返却システムのモノレポです。
 
+## ドキュメント体系の基本思想
+
+本リポジトリのドキュメントは、以下の階層構造で管理されています：
+
+```
+AGENTS.md (最上位・ベース)
+  ↓ 参照
+PLANS.md (具体的な思想・行動方針)
+  ↓ 参照・指示
+EXEC_PLAN.md (プロジェクト管理)
+  ↓ 参照
+各種ドキュメント (docs/, README.md等)
+```
+
+**各ドキュメントの役割**:
+- **AGENTS.md**: 起点となる最もベースとなる考え方・行動指針を提示。PLANS.mdを唯一として参照するよう明記。
+- **PLANS.md**: AGENTS.mdから参照される具体的な思想・行動方針。EXEC_PLAN.mdを作成・管理するよう指示。
+- **EXEC_PLAN.md**: PLANS.mdに従って作成・管理されるプロジェクト管理ドキュメント。実際のプロジェクトの進捗・決定・課題を記録。
+- **各種ドキュメント**: EXEC_PLAN.mdやコードから参照される実装詳細・ガイド・ナレッジベース。
+
+**重要な原則**:
+- AGENTS.mdはすべてのドキュメントと直接連携する構造ではない。階層的に参照される。
+- PLANS.mdはAGENTS.mdから唯一参照される。具体的な思想・行動方針の唯一の源泉。
+- EXEC_PLAN.mdはPLANS.mdに従って維持される。プロジェクトの進捗・決定を記録する生きたドキュメント。
+
 ## ドキュメント
 
-- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
+- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡（PLANS.mdに従って維持）
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
 - **[トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md)**: 問題の解決方法とナレッジベース
@@ -16,7 +41,7 @@
   - [物流管理モジュール](./docs/modules/logistics/)（将来実装予定）
 - **[アーキテクチャ決定記録](./docs/decisions/)**: 重要な設計決定の記録
 
-詳細な実装手順は `EXEC_PLAN.md` を参照してください。.agent/PLANS.md の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
+詳細な実装手順は `EXEC_PLAN.md` を参照してください。`.agent/PLANS.md` の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
 
 ## ディレクトリ概要
 
