@@ -129,7 +129,8 @@ export function useKioskConfig() {
     queryKey: ['kiosk-config'],
     queryFn: getKioskConfig,
     staleTime: 0, // キャッシュを無効化して常に最新データを取得（設定変更時に即座に反映されるように）
-    refetchInterval: false // ポーリングを無効化（設定は頻繁に変わらないため）
+    refetchInterval: false, // ポーリングを無効化（設定は頻繁に変わらないため）
+    refetchOnWindowFocus: true // ウィンドウフォーカス時にリフェッチ（設定変更時に即座に反映されるように）
   });
 }
 

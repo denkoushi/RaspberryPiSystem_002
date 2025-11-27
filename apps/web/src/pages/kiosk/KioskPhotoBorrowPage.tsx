@@ -25,6 +25,7 @@ export function KioskPhotoBorrowPage() {
   const [error, setError] = useState<string | null>(null);
   const [successLoan, setSuccessLoan] = useState<Loan | null>(null);
   const pageMountedRef = useRef(false);
+  const processingRef = useRef(false); // 処理中フラグ（重複処理を防ぐ）
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -49,19 +50,22 @@ export function KioskPhotoBorrowPage() {
   // NFCイベントの処理
   useEffect(() => {
     // ページマウント前、または処理中、またはNFCイベントがない場合はスキップ
-    if (!pageMountedRef.current || !nfcEvent || isCapturing) return;
+    if (!pageMountedRef.current || !nfcEvent || isCapturing || processingRef.current) return;
     
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastEventKeyRef.current === eventKey) {
       return; // 重複イベントを無視
     }
 
+    // 処理中フラグを立てる（重複処理を防ぐ）
+    processingRef.current = true;
+    lastEventKeyRef.current = eventKey;
+
     // 従業員タグをスキャンしたら、すぐに撮影＋持出処理を開始
     setEmployeeTagUid(nfcEvent.uid);
     setIsCapturing(true);
     setError(null);
     setSuccessLoan(null);
-    lastEventKeyRef.current = eventKey;
 
     // APIを呼び出して撮影＋持出
     photoBorrowMutation.mutate(
@@ -73,19 +77,23 @@ export function KioskPhotoBorrowPage() {
         onSuccess: (loan) => {
           setIsCapturing(false);
           setSuccessLoan(loan);
-          // 3秒後にリセット
+          // 5秒後にリセット（処理中フラグもリセット）
           setTimeout(() => {
             setEmployeeTagUid(null);
             setSuccessLoan(null);
             lastEventKeyRef.current = null;
-          }, 3000);
+            processingRef.current = false;
+          }, 5000);
         },
         onError: (error: any) => {
           setIsCapturing(false);
           const apiMessage: string | undefined = error?.response?.data?.message;
           const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
           setError(message ?? '写真の撮影に失敗しました');
-          // エラー時はすぐにリセット可能にする
+          // エラー時は3秒後にリセット可能にする（処理中フラグもリセット）
+          setTimeout(() => {
+            processingRef.current = false;
+          }, 3000);
         },
       }
     );
@@ -96,6 +104,7 @@ export function KioskPhotoBorrowPage() {
     return () => {
       pageMountedRef.current = false;
       lastEventKeyRef.current = null;
+      processingRef.current = false;
     };
   }, []);
 
@@ -105,6 +114,7 @@ export function KioskPhotoBorrowPage() {
     setError(null);
     setSuccessLoan(null);
     lastEventKeyRef.current = null;
+    processingRef.current = false; // 処理中フラグもリセット
   };
 
   return (

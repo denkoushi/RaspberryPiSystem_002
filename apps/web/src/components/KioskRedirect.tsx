@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useKioskConfig } from '../api/hooks';
 
 /**
@@ -7,7 +7,19 @@ import { useKioskConfig } from '../api/hooks';
  */
 export function KioskRedirect() {
   const navigate = useNavigate();
-  const { data: config, isLoading, error } = useKioskConfig();
+  const location = useLocation();
+  const { data: config, isLoading, error, refetch } = useKioskConfig();
+  const lastDefaultModeRef = useRef<string | undefined>(undefined);
+
+  // 設定変更を監視してリフェッチ（設定変更時に即座に反映されるように）
+  useEffect(() => {
+    // ウィンドウフォーカス時にリフェッチ
+    const handleFocus = () => {
+      refetch();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refetch]);
 
   useEffect(() => {
     // ローディング中はリダイレクトしない
@@ -29,16 +41,30 @@ export function KioskRedirect() {
       return;
     }
 
-    console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', config.defaultMode);
+    const currentDefaultMode = config.defaultMode;
+    const lastDefaultMode = lastDefaultModeRef.current;
     
-    if (config.defaultMode === 'PHOTO') {
-      console.log('[KioskRedirect] Redirecting to /kiosk/photo');
-      navigate('/kiosk/photo', { replace: true });
-    } else {
-      console.log('[KioskRedirect] Redirecting to /kiosk/tag');
-      navigate('/kiosk/tag', { replace: true });
+    console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode);
+    
+    // defaultModeが変更された場合、または初回ロード時のみリダイレクト
+    if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined) {
+      lastDefaultModeRef.current = currentDefaultMode;
+      
+      // 現在のパスとdefaultModeが一致しない場合のみリダイレクト
+      const shouldRedirectToPhoto = currentDefaultMode === 'PHOTO';
+      const shouldRedirectToTag = currentDefaultMode !== 'PHOTO';
+      const isOnPhotoPage = location.pathname === '/kiosk/photo';
+      const isOnTagPage = location.pathname === '/kiosk/tag';
+      
+      if (shouldRedirectToPhoto && !isOnPhotoPage) {
+        console.log('[KioskRedirect] Redirecting to /kiosk/photo');
+        navigate('/kiosk/photo', { replace: true });
+      } else if (shouldRedirectToTag && !isOnTagPage && location.pathname === '/kiosk') {
+        console.log('[KioskRedirect] Redirecting to /kiosk/tag');
+        navigate('/kiosk/tag', { replace: true });
+      }
     }
-  }, [config, isLoading, error, navigate]);
+  }, [config, isLoading, error, navigate, location.pathname]);
 
   // ローディング中は何も表示しない
   return null;
