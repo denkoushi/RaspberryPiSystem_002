@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
+import { ApiError } from '../lib/errors.js';
 
 const heartbeatSchema = z.object({
   apiKey: z.string().min(8),
@@ -46,13 +48,21 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     const { id } = request.params as { id: string };
     const body = updateClientSchema.parse(request.body);
 
-    const client = await prisma.clientDevice.update({
-      where: { id },
-      data: {
-        defaultMode: body.defaultMode ?? undefined
-      }
-    });
+    try {
+      const client = await prisma.clientDevice.update({
+        where: { id },
+        data: {
+          defaultMode: body.defaultMode ?? undefined
+        }
+      });
 
-    return { client };
+      return { client };
+    } catch (error) {
+      // PrismaのP2025エラー（レコードが見つからない）を404に変換
+      if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new ApiError(404, 'クライアントデバイスが見つかりません');
+      }
+      throw error;
+    }
   });
 }
