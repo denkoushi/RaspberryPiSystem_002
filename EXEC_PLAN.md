@@ -166,6 +166,11 @@
     - ✅ 写真自動削除機能（cleanup-photos.sh）
     - ✅ バックアップスクリプトに写真ディレクトリ追加
     - ✅ Caddyfileにサムネイルの静的ファイル配信設定追加
+  - **テスト実装**: ✅ 完了（2025-11-27）
+    - ✅ 写真撮影持出APIの統合テスト（photo-borrow.integration.test.ts）
+    - ✅ 写真配信APIの統合テスト（photo-storage.integration.test.ts）
+    - ✅ クライアント端末設定更新APIの統合テスト（clients.integration.test.ts）
+    - ✅ テスト計画ドキュメント作成（photo-loan-test-plan.md）
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
