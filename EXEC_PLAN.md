@@ -148,6 +148,11 @@
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
 - [ ] (2025-11-27) **新機能追加: 写真撮影持出機能（FR-009）**（優先度: 高、ブランチ: `feature/photo-loan-camera`）
   - **目的**: 従業員タグのみスキャンで撮影＋持出を記録できる機能を追加（既存の2タグスキャン機能は維持）
+  - **ドキュメント整備**: ✅ 完了（2025-11-27）
+    - ✅ システム要件定義にFR-009を追加
+    - ✅ ADR 003（カメラ機能のモジュール化）を作成
+    - ✅ 写真撮影持出機能のモジュール仕様書を作成
+    - ✅ INDEX.mdを更新
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
