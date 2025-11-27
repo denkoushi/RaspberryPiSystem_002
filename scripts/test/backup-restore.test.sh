@@ -115,11 +115,13 @@ bash -c '
   
   # データベースバックアップ（実際の運用環境と同じ方法）
   # scripts/server/backup.shと同じ方法でバックアップを作成（スキーマ定義も含む）
+  # 注意: --cleanオプションを追加して、リストア時に既存のオブジェクトを削除するDROP文を含める
+  # これにより、空のデータベースに対してリストアする際にエラーが発生しない
   if docker ps | grep -q "postgres-test"; then
-    docker exec postgres-test pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+    docker exec postgres-test pg_dump -U postgres --clean --if-exists test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   else
     docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
-      pg_dump -U postgres test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+      pg_dump -U postgres --clean --if-exists test_borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   fi
   
   # バックアップファイルの存在確認

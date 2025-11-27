@@ -171,9 +171,11 @@
     - ✅ 写真配信APIの統合テスト（photo-storage.integration.test.ts）
     - ✅ クライアント端末設定更新APIの統合テスト（clients.integration.test.ts）
     - ✅ テスト計画ドキュメント作成（photo-loan-test-plan.md）
-  - **CIテスト実行**: ⏳ 実行中（2025-11-27）
+  - **CIテスト実行**: 🔄 修正中（2025-11-27）
     - ✅ ブランチをプッシュしてCIを実行
-    - ⏳ CIテスト結果待ち
+    - ✅ CI設定を修正（フィーチャーブランチでもCIを実行）
+    - ✅ クライアントAPIの404エラー修正
+    - 🔄 バックアップ・リストアテストの修正中（pg_dumpに--clean --if-existsオプション追加）
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
