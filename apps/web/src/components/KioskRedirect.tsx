@@ -13,7 +13,7 @@ export function KioskRedirect() {
     if (config?.defaultMode === 'PHOTO') {
       navigate('/kiosk/photo', { replace: true });
     } else {
-      navigate('/kiosk', { replace: true });
+      navigate('/kiosk/tag', { replace: true });
     }
   }, [config?.defaultMode, navigate]);
 

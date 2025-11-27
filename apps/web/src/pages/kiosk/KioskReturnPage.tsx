@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useActiveLoans, useReturnMutation } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { Loan } from '../../api/types';
+import type { Loan, ReturnPayload } from '../../api/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 
@@ -31,7 +31,15 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   const returnMutation = useReturnMutation(resolvedClientKey);
 
   const handleReturn = async (loanId: string) => {
-    await returnMutation.mutateAsync({ loanId, clientId: resolvedClientId || undefined, note: note || undefined });
+    // clientIdが空文字列の場合は送信しない
+    const payload: ReturnPayload = {
+      loanId,
+      note: note || undefined
+    };
+    if (resolvedClientId && resolvedClientId.length > 0) {
+      payload.clientId = resolvedClientId;
+    }
+    await returnMutation.mutateAsync(payload);
     await loansQuery.refetch();
     setNote('');
   };
@@ -83,7 +91,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                     {/* 貸出情報 */}
                     <div className="flex-1">
                       <p className="text-lg font-semibold">{loan.item?.name ?? 'アイテム情報なし'}</p>
-                      <p className="text-sm text-white/70">{loan.employee.displayName}</p>
+                      <p className="text-sm text-white/70">{loan.employee?.displayName ?? '従業員情報なし'}</p>
                       <p className="text-xs text-white/50">借用: {new Date(loan.borrowedAt).toLocaleString()}</p>
                       {loan.photoTakenAt && (
                         <p className="text-xs text-white/50">撮影: {new Date(loan.photoTakenAt).toLocaleString()}</p>

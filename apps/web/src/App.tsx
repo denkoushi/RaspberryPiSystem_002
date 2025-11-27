@@ -20,7 +20,8 @@ function App() {
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<KioskLayout />}>
-        <Route path="/kiosk" element={<KioskBorrowPage />} />
+        <Route path="/kiosk" element={<KioskRedirect />} />
+        <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
         <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
         <Route path="/kiosk/return" element={<KioskReturnPage />} />
       </Route>
