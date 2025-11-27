@@ -206,7 +206,8 @@ export class LoanService {
       throw new ApiError(400, 'すでに返却済みです');
     }
 
-    if (!loan.item) {
+    // 写真撮影持出（itemIdがnull）の場合は、アイテムチェックをスキップ
+    if (loan.itemId && !loan.item) {
       throw new ApiError(400, 'この貸出記録に関連するアイテムが見つかりません');
     }
     if (!loan.employee) {
@@ -214,12 +215,14 @@ export class LoanService {
     }
 
     const finalPerformedByUserId = performedByUserId ?? input.performedByUserId;
-    const itemSnapshot = {
-      id: loan.item.id,
-      code: loan.item.itemCode,
-      name: loan.item.name,
-      nfcTagUid: loan.item.nfcTagUid ?? null
-    };
+    const itemSnapshot = loan.item
+      ? {
+          id: loan.item.id,
+          code: loan.item.itemCode,
+          name: loan.item.name,
+          nfcTagUid: loan.item.nfcTagUid ?? null
+        }
+      : null;
     const employeeSnapshot = {
       id: loan.employee.id,
       code: loan.employee.employeeCode,
@@ -238,6 +241,7 @@ export class LoanService {
         include: { item: true, employee: true, client: true }
       });
 
+      // アイテムが関連付けられている場合のみ、ステータスを更新
       if (loan.itemId) {
         await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
       }

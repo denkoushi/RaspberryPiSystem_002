@@ -76,7 +76,8 @@ async function main() {
     create: {
       name: 'Pi4 Station 01',
       location: '出入口',
-      apiKey: 'client-demo-key'
+      apiKey: 'client-demo-key',
+      defaultMode: 'TAG' // デフォルトはTAGモード（管理画面でPHOTOに変更可能）
     }
   });
 
