@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { KioskReturnPage } from './KioskReturnPage';
 import { setClientKeyHeader } from '../../api/client';
 import type { Loan } from '../../api/types';
+import { captureAndCompressPhoto } from '../../utils/camera';
 
 export function KioskPhotoBorrowPage() {
   const { data: config } = useKioskConfig();
@@ -103,17 +104,45 @@ export function KioskPhotoBorrowPage() {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
     }
 
-    // 従業員タグをスキャンしたら、すぐに撮影＋持出処理を開始
+    // 従業員タグをスキャンしたら、カメラで撮影してから持出処理を開始
     const currentUid = nfcEvent.uid; // クロージャで値を保持
     setEmployeeTagUid(currentUid);
     setIsCapturing(true);
     setError(null);
     setSuccessLoan(null);
 
-    // APIを呼び出して撮影＋持出
+    // カメラで撮影（3回までリトライ）
+    let photoData: string;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        photoData = await captureAndCompressPhoto();
+        break; // 成功したらループを抜ける
+      } catch (error) {
+        retryCount++;
+        const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+        if (enableDebugLogs) {
+          console.warn(`[KioskPhotoBorrowPage] Photo capture failed (attempt ${retryCount}/${maxRetries}):`, error);
+        }
+        if (retryCount >= maxRetries) {
+          setIsCapturing(false);
+          const err = error instanceof Error ? error : new Error(String(error));
+          setError(`写真の撮影に失敗しました: ${err.message}`);
+          processingRef.current = false;
+          return; // エラー時は処理を中断
+        }
+        // リトライ前に少し待機
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    // APIを呼び出して持出処理
     photoBorrowMutation.mutate(
       {
         employeeTagUid: currentUid,
+        photoData: photoData!,
         clientId: resolvedClientId || undefined,
       },
       {

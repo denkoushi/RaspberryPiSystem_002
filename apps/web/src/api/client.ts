@@ -133,6 +133,7 @@ export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
 
 export interface PhotoBorrowPayload {
   employeeTagUid: string;
+  photoData: string; // Base64エンコードされたJPEG画像データ
   clientId?: string;
   note?: string | null;
 }

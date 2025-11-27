@@ -4,6 +4,7 @@ import { LoanService } from '../../../services/tools/loan.service.js';
 
 const photoBorrowSchema = z.object({
   employeeTagUid: z.string().min(1, '従業員タグUIDは必須です'),
+  photoData: z.string().min(1, '写真データは必須です'), // Base64エンコードされたJPEG画像データ
   clientId: z.string().optional(),
   note: z.string().nullable().optional(),
 });

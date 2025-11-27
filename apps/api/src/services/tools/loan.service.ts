@@ -7,6 +7,8 @@ import { ItemService } from './item.service.js';
 import { EmployeeService } from './employee.service.js';
 import { CameraService } from '../camera/index.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
+import sharp from 'sharp';
+import { cameraConfig } from '../../config/camera.config.js';
 
 export interface BorrowInput {
   itemTagUid: string;
@@ -18,6 +20,7 @@ export interface BorrowInput {
 
 export interface PhotoBorrowInput {
   employeeTagUid: string;
+  photoData: string; // Base64エンコードされたJPEG画像データ
   clientId?: string;
   note?: string | null;
 }
@@ -300,16 +303,47 @@ export class LoanService {
       throw new ApiError(404, '対象従業員が登録されていません');
     }
 
-    // カメラで撮影（3回までリトライ）
+    // 画像データを処理（Base64エンコードされたJPEG画像データを受け取る）
     let photoPathInfo;
     try {
-      const captureResult = await this.cameraService.captureAndProcess({ retryCount: 3 });
+      // Base64エンコードされた画像データをBufferに変換
+      const imageBuffer = Buffer.from(input.photoData, 'base64');
+      
+      // 画像をリサイズ・圧縮（800x600px、JPEG品質80%、100KB程度に圧縮）
+      let originalImage = await sharp(imageBuffer)
+        .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: cameraConfig.quality })
+        .toBuffer();
+
+      // 100KB程度になるまで品質を下げる（最大5回試行）
+      let quality = cameraConfig.quality;
+      for (let i = 0; i < 5 && originalImage.length > 100 * 1024; i++) {
+        quality = Math.max(50, quality - 10); // 最低50%まで
+        originalImage = await sharp(imageBuffer)
+          .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality })
+          .toBuffer();
+      }
+
+      // サムネイルを生成（150x150px、JPEG品質70%）
+      const thumbnailImage = await sharp(originalImage)
+        .resize(cameraConfig.thumbnail.width, cameraConfig.thumbnail.height, {
+          fit: 'cover',
+        })
+        .jpeg({ quality: cameraConfig.thumbnail.quality })
+        .toBuffer();
       
       // 写真を保存
       photoPathInfo = await PhotoStorage.savePhoto(
         employee.id,
-        captureResult.original,
-        captureResult.thumbnail
+        originalImage,
+        thumbnailImage
       );
 
       logger.info(
@@ -317,13 +351,15 @@ export class LoanService {
           employeeId: employee.id,
           photoUrl: photoPathInfo.relativePath,
           thumbnailUrl: photoPathInfo.thumbnailRelativePath,
+          photoSize: originalImage.length,
+          thumbnailSize: thumbnailImage.length,
         },
-        'Photo captured and saved successfully',
+        'Photo processed and saved successfully',
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error({ err, employeeTagUid: input.employeeTagUid }, 'Photo capture failed');
-      throw new ApiError(500, `写真の撮影に失敗しました: ${err.message}`);
+      logger.error({ err, employeeTagUid: input.employeeTagUid }, 'Photo processing failed');
+      throw new ApiError(500, `写真の処理に失敗しました: ${err.message}`);
     }
 
     const employeeSnapshot = {
