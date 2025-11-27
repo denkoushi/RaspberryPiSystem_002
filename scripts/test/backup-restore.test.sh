@@ -45,7 +45,8 @@ echo ""
 echo "0. テスト用データベースの準備"
 echo "-----------------------------------"
 echo "テスト用データベース ${TEST_DB_NAME} を作成中..."
-${DB_COMMAND} psql -U postgres <<EOF
+# 注意: ヒアドキュメント（<<EOF）を使用する場合は、標準入力を受け取る必要があるため、DB_COMMAND_INPUTを使用する
+${DB_COMMAND_INPUT} psql -U postgres <<EOF
 DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 CREATE DATABASE ${TEST_DB_NAME};
 EOF
@@ -95,7 +96,8 @@ echo "-----------------------------------"
 
 # テスト用のデータを作成
 echo "テストデータを作成中..."
-${DB_COMMAND} \
+# 注意: ヒアドキュメント（<<EOF）を使用する場合は、標準入力を受け取る必要があるため、DB_COMMAND_INPUTを使用する
+${DB_COMMAND_INPUT} \
   psql -U postgres -d ${TEST_DB_NAME} <<EOF
 INSERT INTO "Employee" (id, "employeeCode", "displayName", status, "createdAt", "updatedAt")
 VALUES 
@@ -169,7 +171,8 @@ echo "-----------------------------------"
 # テストデータベースをクリーンアップしてからリストア（実際の運用環境と同じ方法）
 echo "テストデータベースをクリーンアップ中..."
 # データベースを削除して再作成（完全にクリーンな状態にする）
-${DB_COMMAND} psql -U postgres <<EOF
+# 注意: ヒアドキュメント（<<EOF）を使用する場合は、標準入力を受け取る必要があるため、DB_COMMAND_INPUTを使用する
+${DB_COMMAND_INPUT} psql -U postgres <<EOF
 DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 CREATE DATABASE ${TEST_DB_NAME};
 EOF
@@ -226,7 +229,8 @@ echo ""
 echo "3. クリーンアップ"
 echo "-----------------------------------"
 rm -rf "${TEST_BACKUP_DIR}"
-${DB_COMMAND} psql -U postgres <<EOF
+# 注意: ヒアドキュメント（<<EOF）を使用する場合は、標準入力を受け取る必要があるため、DB_COMMAND_INPUTを使用する
+${DB_COMMAND_INPUT} psql -U postgres <<EOF
 DROP DATABASE IF EXISTS ${TEST_DB_NAME};
 EOF
 
