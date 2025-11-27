@@ -79,6 +79,7 @@ model ClientDevice {
   name         String
   location     String?
   apiKey       String        @unique
+  defaultMode  String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   lastSeenAt   DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -106,6 +107,8 @@ model Loan {
   dueAt        DateTime?
   returnedAt   DateTime?
   notes        String?
+  photoUrl     String?        // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt DateTime?      // 撮影日時
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   item         Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -117,6 +120,7 @@ model Loan {
   @@index([employeeId])
   @@index([clientId])
   @@index([returnedAt])
+  @@index([photoTakenAt])
 }
 
 model Transaction {

@@ -32,6 +32,7 @@ export interface ClientDevice {
   id: string;
   name: string;
   location?: string | null;
+  defaultMode?: 'PHOTO' | 'TAG' | null; // デフォルト: 'TAG'
 }
 
 export interface Loan {
@@ -40,8 +41,10 @@ export interface Loan {
   dueAt?: string | null;
   returnedAt?: string | null;
   notes?: string | null;
+  photoUrl?: string | null; // 写真のURL（写真撮影持出機能で使用）
+  photoTakenAt?: string | null; // 撮影日時（写真撮影持出機能で使用）
   employee: Employee;
-  item: Item;
+  item: Item | null; // 写真撮影持出機能ではnullになる可能性がある
   client?: ClientDevice | null;
 }
 
