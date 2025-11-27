@@ -27,7 +27,7 @@ export function HistoryPage() {
       new Date(tx.createdAt).toLocaleString(),
       tx.action,
       // スナップショットを優先し、無ければマスタ
-      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-',
+      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-',
       (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-',
       tx.client?.name ?? '-'
     ]);
@@ -91,7 +91,7 @@ export function HistoryPage() {
               </thead>
               <tbody>
                 {transactions.map((tx: Transaction) => {
-                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-';
+                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-';
                   const employeeName = (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
                   return (
                   <tr key={tx.id} className="border-t border-white/5">

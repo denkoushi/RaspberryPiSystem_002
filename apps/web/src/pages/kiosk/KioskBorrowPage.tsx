@@ -133,7 +133,7 @@ export function KioskBorrowPage() {
               <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
                 <p className="text-lg font-semibold text-emerald-300">登録完了</p>
                 <p>
-                  {state.context.loan.item.name} を {state.context.loan.employee.displayName} さんが持出済み
+                  {state.context.loan.item?.name ?? 'アイテム情報なし'} を {state.context.loan.employee.displayName} さんが持出済み
                 </p>
               </div>
             ) : null}

@@ -11,6 +11,12 @@ import type {
   Transaction
 } from './types';
 
+export interface PhotoBorrowPayload {
+  employeeTagUid: string;
+  clientId?: string;
+  note?: string | null;
+}
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
 
@@ -120,6 +126,19 @@ export async function borrowItem(payload: BorrowPayload, clientKey?: string) {
 
 export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
   const { data } = await api.post<{ loan: Loan }>('/tools/loans/return', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.loan;
+}
+
+export interface PhotoBorrowPayload {
+  employeeTagUid: string;
+  clientId?: string;
+  note?: string | null;
+}
+
+export async function photoBorrow(payload: PhotoBorrowPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/photo-borrow', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
   return data.loan;

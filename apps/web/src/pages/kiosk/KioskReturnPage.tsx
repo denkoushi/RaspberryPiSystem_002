@@ -60,7 +60,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                 className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4 md:flex-row md:items-center md:justify-between"
               >
                 <div>
-                  <p className="text-lg font-semibold">{loan.item.name}</p>
+                  <p className="text-lg font-semibold">{loan.item?.name ?? 'アイテム情報なし'}</p>
                   <p className="text-sm text-white/70">{loan.employee.displayName}</p>
                   <p className="text-xs text-white/50">借用: {new Date(loan.borrowedAt).toLocaleString()}</p>
                 </div>

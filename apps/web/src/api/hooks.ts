@@ -11,9 +11,11 @@ import {
   getKioskConfig,
   getTransactions,
   importMaster,
+  photoBorrow,
   returnLoan,
   updateEmployee,
-  updateItem
+  updateItem,
+  type PhotoBorrowPayload
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
 
@@ -92,6 +94,17 @@ export function useReturnMutation(clientKey?: string) {
     mutationFn: (payload: ReturnPayload) => returnLoan(payload, clientKey),
     onSuccess: () => {
       // 返却成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
+export function usePhotoBorrowMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PhotoBorrowPayload) => photoBorrow(payload, clientKey),
+    onSuccess: () => {
+      // 写真撮影持出成功後、すべてのloansクエリを無効化して最新データを取得
       queryClient.invalidateQueries({ queryKey: ['loans'] });
     }
   });

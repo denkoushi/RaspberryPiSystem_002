@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
+import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskReturnPage } from './pages/kiosk/KioskReturnPage';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
@@ -18,6 +19,7 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<KioskLayout />}>
         <Route path="/kiosk" element={<KioskBorrowPage />} />
+        <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
         <Route path="/kiosk/return" element={<KioskReturnPage />} />
       </Route>
       <Route
