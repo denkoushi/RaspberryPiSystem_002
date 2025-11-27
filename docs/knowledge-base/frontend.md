@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - フロントエンド関連
+tags: [トラブルシューティング, フロントエンド, React, XState]
+audience: [開発者]
+last-verified: 2025-11-27
+related: [index.md, ../modules/tools/README.md]
+category: knowledge-base
+update-frequency: medium
+---
+
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  

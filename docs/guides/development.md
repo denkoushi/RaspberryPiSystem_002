@@ -1,6 +1,16 @@
+---
+title: 開発ガイド
+tags: [開発, セットアップ, 環境構築]
+audience: [開発者, 新規参加者]
+last-verified: 2025-11-27
+related: [deployment.md, ../architecture/overview.md]
+category: guides
+update-frequency: medium
+---
+
 # 開発ガイド
 
-最終更新: 2025-01-XX
+最終更新: 2025-11-27
 
 ## 概要
 

@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - API関連
+tags: [トラブルシューティング, API, レート制限, 認証]
+audience: [開発者]
+last-verified: 2025-11-27
+related: [index.md, ../guides/ci-troubleshooting.md]
+category: knowledge-base
+update-frequency: medium
+---
+
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  

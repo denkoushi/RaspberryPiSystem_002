@@ -1,6 +1,16 @@
+---
+title: デプロイメントガイド
+tags: [デプロイ, 運用, ラズパイ5, Docker]
+audience: [運用者, 開発者]
+last-verified: 2025-11-27
+related: [production-setup.md, backup-and-restore.md, monitoring.md]
+category: guides
+update-frequency: medium
+---
+
 # デプロイメントガイド
 
-最終更新: 2025-11-25
+最終更新: 2025-11-27
 
 ## 概要
 

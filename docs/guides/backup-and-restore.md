@@ -1,6 +1,16 @@
+---
+title: バックアップ・リストア手順
+tags: [運用, バックアップ, PostgreSQL, ラズパイ5]
+audience: [運用者, 開発者]
+last-verified: 2025-11-27
+related: [monitoring.md, deployment.md]
+category: guides
+update-frequency: medium
+---
+
 # バックアップ・リストア手順
 
-最終更新: 2025-01-XX
+最終更新: 2025-11-27
 
 ## 概要
 

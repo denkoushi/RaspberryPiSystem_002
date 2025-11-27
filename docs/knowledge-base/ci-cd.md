@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - CI/CD関連
+tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
+audience: [開発者]
+last-verified: 2025-11-27
+related: [index.md, ../guides/ci-troubleshooting.md]
+category: knowledge-base
+update-frequency: high
+---
+
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  

@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - インフラ関連
+tags: [トラブルシューティング, インフラ, Docker, Caddy]
+audience: [開発者, 運用者]
+last-verified: 2025-11-27
+related: [index.md, ../guides/deployment.md, ../guides/monitoring.md]
+category: knowledge-base
+update-frequency: medium
+---
+
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  

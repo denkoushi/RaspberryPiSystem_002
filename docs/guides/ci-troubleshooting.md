@@ -1,3 +1,13 @@
+---
+title: CIテスト失敗のトラブルシューティングガイド
+tags: [CI/CD, トラブルシューティング, GitHub Actions]
+audience: [開発者]
+last-verified: 2025-11-27
+related: [../knowledge-base/ci-cd.md, development.md]
+category: guides
+update-frequency: high
+---
+
 # CIテスト失敗のトラブルシューティングガイド
 
 ## 概要

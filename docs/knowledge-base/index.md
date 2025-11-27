@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - 索引
+tags: [トラブルシューティング, ナレッジベース, 索引]
+audience: [開発者, 運用者]
+last-verified: 2025-11-27
+related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
+category: knowledge-base
+update-frequency: high
+---
+
 # トラブルシューティングナレッジベース - 索引
 
 このドキュメントは、トラブルシューティングナレッジの索引です。各課題はカテゴリ別に分割されたファイルに記録されています。

@@ -1,3 +1,13 @@
+---
+title: トラブルシューティングナレッジベース - データベース関連
+tags: [トラブルシューティング, データベース, Prisma, PostgreSQL]
+audience: [開発者]
+last-verified: 2025-11-27
+related: [index.md, ../guides/backup-and-restore.md]
+category: knowledge-base
+update-frequency: medium
+---
+
 # トラブルシューティングナレッジベース - データベース関連
 
 **カテゴリ**: データベース関連  
