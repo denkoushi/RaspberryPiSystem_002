@@ -190,15 +190,17 @@
     - ✅ クライアント端末設定（defaultMode）が正しく取得・更新できることを確認
     - ✅ Loanレコードに`photoUrl`と`photoTakenAt`が正しく保存されることを確認
     - ✅ `itemId`が`null`で保存されることを確認（写真撮影持出ではItem情報を保存しない）
-  - **実機テスト（部分機能2: フロントエンドUI）**: 🔄 進行中（2025-11-27）
+  - **実機テスト（部分機能2: フロントエンドUI）**: ✅ 完了（2025-11-27）
     - ✅ Raspberry Pi 4でのWeb UI動作確認
     - ✅ キオスク画面のリダイレクト機能（defaultModeに応じた自動リダイレクト）が正常に動作することを確認
     - ✅ `/kiosk/photo`と`/kiosk/tag`の間で設定変更時に正しくリダイレクトされることを確認
-    - ❌ `/kiosk/photo`でタグをスキャンした際、持出一覧に自動追加が止まらない問題が発生（根本原因調査中）
+    - ✅ `/kiosk/photo`でタグをスキャンした際、持出一覧に自動追加が止まらない問題を解決
     - **修正内容**:
       - `useNfcStream`: 同じイベント（uid + timestamp）を複数回発火しないように修正（根本原因の一部を修正）
-      - `KioskLayout`: `KioskRedirect`を常にマウントして設定変更を監視
+      - `KioskLayout`: `KioskRedirect`を常にマウントして設定変更を監視（リダイレクト問題の根本原因を修正）
       - `KioskRedirect`: 返却ページではリダイレクトしないように修正
+      - `KioskPhotoBorrowPage`: `useEffect`の依存配列を`nfcEvent`から`nfcEvent?.uid`と`nfcEvent?.timestamp`に変更（NFCイベント重複処理の根本原因を修正）
+      - デバッグログの環境変数制御を実装（`VITE_ENABLE_DEBUG_LOGS`で制御、デフォルトは常に出力）
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
