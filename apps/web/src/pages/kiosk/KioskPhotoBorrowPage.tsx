@@ -95,7 +95,8 @@ export function KioskPhotoBorrowPage() {
     console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
 
     // 従業員タグをスキャンしたら、すぐに撮影＋持出処理を開始
-    setEmployeeTagUid(nfcEvent.uid);
+    const currentUid = nfcEvent.uid; // クロージャで値を保持
+    setEmployeeTagUid(currentUid);
     setIsCapturing(true);
     setError(null);
     setSuccessLoan(null);
@@ -103,7 +104,7 @@ export function KioskPhotoBorrowPage() {
     // APIを呼び出して撮影＋持出
     photoBorrowMutation.mutate(
       {
-        employeeTagUid: nfcEvent.uid,
+        employeeTagUid: currentUid,
         clientId: resolvedClientId || undefined,
       },
       {
@@ -115,7 +116,7 @@ export function KioskPhotoBorrowPage() {
           setTimeout(() => {
             setEmployeeTagUid(null);
             setSuccessLoan(null);
-            lastEventKeyRef.current = null;
+            // eventKeyはリセットしない（同じイベントを再度処理しないため）
             processingRef.current = false;
           }, 5000);
         },
@@ -126,13 +127,14 @@ export function KioskPhotoBorrowPage() {
           setError(message ?? '写真の撮影に失敗しました');
           console.error('[KioskPhotoBorrowPage] Photo borrow error:', error);
           // エラー時は3秒後にリセット可能にする（処理中フラグもリセット）
+          // eventKeyはリセットしない（同じイベントを再度処理しないため）
           setTimeout(() => {
             processingRef.current = false;
           }, 3000);
         },
       }
     );
-  }, [nfcEvent, isCapturing, photoBorrowMutation, resolvedClientId]);
+  }, [nfcEvent?.uid, nfcEvent?.timestamp, isCapturing, photoBorrowMutation, resolvedClientId]);
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
