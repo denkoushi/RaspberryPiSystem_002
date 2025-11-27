@@ -76,14 +76,20 @@ export function KioskPhotoBorrowPage() {
     
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
-      console.log('[KioskPhotoBorrowPage] Skipping duplicate event:', eventKey);
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('[KioskPhotoBorrowPage] Skipping duplicate event:', eventKey);
+      }
       return;
     }
     
     // 同じUIDが10秒以内に処理済みの場合はスキップ
     const lastProcessedTime = processedUids.get(nfcEvent.uid);
     if (lastProcessedTime && now - lastProcessedTime < 10000) {
-      console.log('[KioskPhotoBorrowPage] Skipping recently processed UID:', nfcEvent.uid, 'last processed:', lastProcessedTime);
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('[KioskPhotoBorrowPage] Skipping recently processed UID:', nfcEvent.uid, 'last processed:', lastProcessedTime);
+      }
       return;
     }
 
@@ -92,7 +98,10 @@ export function KioskPhotoBorrowPage() {
     lastEventKeyRef.current = eventKey;
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録
 
-    console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
+    // 本番環境ではログを出力しない（365日24時間動作のため）
+    if (import.meta.env.MODE !== 'production') {
+      console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
+    }
 
     // 従業員タグをスキャンしたら、すぐに撮影＋持出処理を開始
     const currentUid = nfcEvent.uid; // クロージャで値を保持
@@ -111,7 +120,10 @@ export function KioskPhotoBorrowPage() {
         onSuccess: (loan) => {
           setIsCapturing(false);
           setSuccessLoan(loan);
-          console.log('[KioskPhotoBorrowPage] Photo borrow success:', loan.id);
+          // 本番環境ではログを出力しない（365日24時間動作のため）
+          if (import.meta.env.MODE !== 'production') {
+            console.log('[KioskPhotoBorrowPage] Photo borrow success:', loan.id);
+          }
           // 5秒後にリセット（処理中フラグもリセット）
           setTimeout(() => {
             setEmployeeTagUid(null);
@@ -125,6 +137,7 @@ export function KioskPhotoBorrowPage() {
           const apiMessage: string | undefined = error?.response?.data?.message;
           const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
           setError(message ?? '写真の撮影に失敗しました');
+          // エラーログは本番環境でも出力（問題の特定に必要）
           console.error('[KioskPhotoBorrowPage] Photo borrow error:', error);
           // エラー時は3秒後にリセット可能にする（処理中フラグもリセット）
           // eventKeyはリセットしない（同じイベントを再度処理しないため）

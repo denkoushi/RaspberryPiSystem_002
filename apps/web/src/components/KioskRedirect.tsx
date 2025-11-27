@@ -24,11 +24,15 @@ export function KioskRedirect() {
   useEffect(() => {
     // ローディング中はリダイレクトしない
     if (isLoading) {
-      console.log('[KioskRedirect] Loading config...');
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('[KioskRedirect] Loading config...');
+      }
       return;
     }
 
     if (error) {
+      // エラーログは本番環境でも出力（問題の特定に必要）
       console.error('[KioskRedirect] Error loading config:', error);
       // エラー時はデフォルトでtagにリダイレクト
       navigate('/kiosk/tag', { replace: true });
@@ -36,7 +40,10 @@ export function KioskRedirect() {
     }
 
     if (!config) {
-      console.log('[KioskRedirect] Config is null, redirecting to tag');
+      // 本番環境ではログを出力しない（365日24時間動作のため）
+      if (import.meta.env.MODE !== 'production') {
+        console.log('[KioskRedirect] Config is null, redirecting to tag');
+      }
       navigate('/kiosk/tag', { replace: true });
       return;
     }
@@ -44,7 +51,10 @@ export function KioskRedirect() {
     const currentDefaultMode = config.defaultMode;
     const lastDefaultMode = lastDefaultModeRef.current;
     
-    console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
+    // 本番環境ではログを出力しない（365日24時間動作のため）
+    if (import.meta.env.MODE !== 'production') {
+      console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
+    }
     
     // 現在のパスを正規化（末尾のスラッシュを除去）
     const normalizedPath = location.pathname.replace(/\/$/, '');
@@ -67,10 +77,16 @@ export function KioskRedirect() {
       const shouldRedirectToTag = currentDefaultMode !== 'PHOTO';
       
       if (shouldRedirectToPhoto && !isOnPhotoPage) {
-        console.log('[KioskRedirect] Redirecting to /kiosk/photo');
+        // 本番環境ではログを出力しない（365日24時間動作のため）
+        if (import.meta.env.MODE !== 'production') {
+          console.log('[KioskRedirect] Redirecting to /kiosk/photo');
+        }
         navigate('/kiosk/photo', { replace: true });
       } else if (shouldRedirectToTag && !isOnTagPage) {
-        console.log('[KioskRedirect] Redirecting to /kiosk/tag');
+        // 本番環境ではログを出力しない（365日24時間動作のため）
+        if (import.meta.env.MODE !== 'production') {
+          console.log('[KioskRedirect] Redirecting to /kiosk/tag');
+        }
         navigate('/kiosk/tag', { replace: true });
       }
     }
