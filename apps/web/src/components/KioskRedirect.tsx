@@ -22,17 +22,19 @@ export function KioskRedirect() {
   }, [refetch]);
 
   useEffect(() => {
+    // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
+    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    
     // ローディング中はリダイレクトしない
     if (isLoading) {
-      // 本番環境ではログを出力しない（365日24時間動作のため）
-      if (import.meta.env.MODE !== 'production') {
+      if (enableDebugLogs) {
         console.log('[KioskRedirect] Loading config...');
       }
       return;
     }
 
     if (error) {
-      // エラーログは本番環境でも出力（問題の特定に必要）
+      // エラーログは常に出力（問題の特定に必要）
       console.error('[KioskRedirect] Error loading config:', error);
       // エラー時はデフォルトでtagにリダイレクト
       navigate('/kiosk/tag', { replace: true });
@@ -40,8 +42,7 @@ export function KioskRedirect() {
     }
 
     if (!config) {
-      // 本番環境ではログを出力しない（365日24時間動作のため）
-      if (import.meta.env.MODE !== 'production') {
+      if (enableDebugLogs) {
         console.log('[KioskRedirect] Config is null, redirecting to tag');
       }
       navigate('/kiosk/tag', { replace: true });
@@ -51,8 +52,7 @@ export function KioskRedirect() {
     const currentDefaultMode = config.defaultMode;
     const lastDefaultMode = lastDefaultModeRef.current;
     
-    // 本番環境ではログを出力しない（365日24時間動作のため）
-    if (import.meta.env.MODE !== 'production') {
+    if (enableDebugLogs) {
       console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
     }
     
@@ -77,14 +77,12 @@ export function KioskRedirect() {
       const shouldRedirectToTag = currentDefaultMode !== 'PHOTO';
       
       if (shouldRedirectToPhoto && !isOnPhotoPage) {
-        // 本番環境ではログを出力しない（365日24時間動作のため）
-        if (import.meta.env.MODE !== 'production') {
+        if (enableDebugLogs) {
           console.log('[KioskRedirect] Redirecting to /kiosk/photo');
         }
         navigate('/kiosk/photo', { replace: true });
       } else if (shouldRedirectToTag && !isOnTagPage) {
-        // 本番環境ではログを出力しない（365日24時間動作のため）
-        if (import.meta.env.MODE !== 'production') {
+        if (enableDebugLogs) {
           console.log('[KioskRedirect] Redirecting to /kiosk/tag');
         }
         navigate('/kiosk/tag', { replace: true });

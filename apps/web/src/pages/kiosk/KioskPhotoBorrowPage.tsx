@@ -74,10 +74,12 @@ export function KioskPhotoBorrowPage() {
     const now = Date.now();
     const processedUids = processedUidsRef.current;
     
+    // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
+    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
-      // 本番環境ではログを出力しない（365日24時間動作のため）
-      if (import.meta.env.MODE !== 'production') {
+      if (enableDebugLogs) {
         console.log('[KioskPhotoBorrowPage] Skipping duplicate event:', eventKey);
       }
       return;
@@ -86,8 +88,7 @@ export function KioskPhotoBorrowPage() {
     // 同じUIDが10秒以内に処理済みの場合はスキップ
     const lastProcessedTime = processedUids.get(nfcEvent.uid);
     if (lastProcessedTime && now - lastProcessedTime < 10000) {
-      // 本番環境ではログを出力しない（365日24時間動作のため）
-      if (import.meta.env.MODE !== 'production') {
+      if (enableDebugLogs) {
         console.log('[KioskPhotoBorrowPage] Skipping recently processed UID:', nfcEvent.uid, 'last processed:', lastProcessedTime);
       }
       return;
@@ -98,8 +99,7 @@ export function KioskPhotoBorrowPage() {
     lastEventKeyRef.current = eventKey;
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録
 
-    // 本番環境ではログを出力しない（365日24時間動作のため）
-    if (import.meta.env.MODE !== 'production') {
+    if (enableDebugLogs) {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
     }
 
@@ -120,8 +120,9 @@ export function KioskPhotoBorrowPage() {
         onSuccess: (loan) => {
           setIsCapturing(false);
           setSuccessLoan(loan);
-          // 本番環境ではログを出力しない（365日24時間動作のため）
-          if (import.meta.env.MODE !== 'production') {
+          // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
+          const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+          if (enableDebugLogs) {
             console.log('[KioskPhotoBorrowPage] Photo borrow success:', loan.id);
           }
           // 5秒後にリセット（処理中フラグもリセット）
