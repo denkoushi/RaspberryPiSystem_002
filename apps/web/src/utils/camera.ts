@@ -10,6 +10,11 @@
  * @returns MediaStream
  */
 export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
+  // navigator.mediaDevicesの存在確認
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('このブラウザはカメラAPIをサポートしていません。HTTPS接続またはlocalhostでのアクセスが必要です。');
+  }
+
   const constraints: MediaStreamConstraints = {
     video: deviceId
       ? { deviceId: { exact: deviceId } }
