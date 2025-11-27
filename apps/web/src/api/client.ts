@@ -165,8 +165,29 @@ export async function getTransactions(
 }
 
 export async function getKioskConfig() {
-  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number }>('/kiosk/config');
+  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number; defaultMode?: 'PHOTO' | 'TAG' }>('/kiosk/config');
   return data;
+}
+
+export interface ClientDevice {
+  id: string;
+  name: string;
+  location?: string | null;
+  apiKey: string;
+  defaultMode?: 'PHOTO' | 'TAG' | null;
+  lastSeenAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getClients() {
+  const { data } = await api.get<{ clients: ClientDevice[] }>('/clients');
+  return data.clients;
+}
+
+export async function updateClient(id: string, payload: { defaultMode?: 'PHOTO' | 'TAG' | null }) {
+  const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
+  return data.client;
 }
 
 interface ImportMasterPayload {

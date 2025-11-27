@@ -35,6 +35,9 @@ export function AdminLayout() {
           <NavLink to="/admin/tools/history" className={linkClass}>
             履歴
           </NavLink>
+          <NavLink to="/admin/clients" className={linkClass}>
+            クライアント端末
+          </NavLink>
           <NavLink to="/admin/import" className={linkClass}>
             一括登録
           </NavLink>

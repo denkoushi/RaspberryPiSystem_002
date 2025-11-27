@@ -6,6 +6,7 @@ import {
   deleteEmployee,
   deleteItem,
   getActiveLoans,
+  getClients,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -13,8 +14,10 @@ import {
   importMaster,
   photoBorrow,
   returnLoan,
+  updateClient,
   updateEmployee,
   updateItem,
+  type ClientDevice,
   type PhotoBorrowPayload
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
@@ -128,6 +131,25 @@ export function useKioskConfig() {
     staleTime: 5 * 60 * 1000, // 5分間はキャッシュを有効にする（設定は頻繁に変わらないため）
     refetchInterval: false // ポーリングを無効化（設定は頻繁に変わらないため）
   });
+}
+
+export function useClients() {
+  return useQuery({
+    queryKey: ['clients'],
+    queryFn: getClients
+  });
+}
+
+export function useClientMutations() {
+  const queryClient = useQueryClient();
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { defaultMode?: 'PHOTO' | 'TAG' | null } }) => updateClient(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+    }
+  });
+  return { update };
 }
 
 export function useImportMaster() {

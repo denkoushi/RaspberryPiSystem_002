@@ -37,4 +37,22 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     const clients = await prisma.clientDevice.findMany({ orderBy: { name: 'asc' } });
     return { clients };
   });
+
+  const updateClientSchema = z.object({
+    defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable()
+  });
+
+  app.put('/clients/:id', { preHandler: canManage }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = updateClientSchema.parse(request.body);
+
+    const client = await prisma.clientDevice.update({
+      where: { id },
+      data: {
+        defaultMode: body.defaultMode ?? undefined
+      }
+    });
+
+    return { client };
+  });
 }
