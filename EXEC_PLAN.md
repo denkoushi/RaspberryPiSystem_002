@@ -355,6 +355,57 @@
 
 - 実装完了時に記載する。
 
+**EXEC_PLAN.mdの肥大化対策（検討中・2025-11-27）**:
+
+**現状**:
+- EXEC_PLAN.mdの行数: 1129行
+- 完了タスク数: 41件（Progressセクション）
+- 未完了タスク数: 3件（Progressセクション）
+- Surprises & Discoveries: 約90行（観測事項が蓄積）
+- Decision Log: 約80行（決定事項が蓄積）
+
+**問題点**:
+- 完了したタスクをEXEC_PLAN.mdに残すと肥大化する（現在1129行）
+- 完了したタスクを削除すると、コンテキスト把握が困難になる
+- PLANS.mdの要求: 「生きたドキュメント」として常に更新が必要
+
+**ベストプラクティスの検討**:
+
+**案1: 完了タスクのアーカイブ化**
+- **方法**: 完了したタスクを「Progress Archive」セクションに移動
+- **メリット**: Progressセクションが簡潔になる、完了タスクは参照可能
+- **デメリット**: 2つのセクションを管理する必要がある
+- **推奨度**: ⭐⭐⭐（中）
+
+**案2: 完了タスクの要約化**
+- **方法**: 完了したタスクをマイルストーン単位で要約し、詳細は削除
+- **メリット**: Progressセクションが簡潔になる
+- **デメリット**: 詳細なコンテキストが失われる
+- **推奨度**: ⭐⭐（低）
+
+**案3: 完了タスクは残し、定期的にOutcomes & Retrospectiveに要約**
+- **方法**: 完了したタスクはProgressに残し、マイルストーン完了時にOutcomes & Retrospectiveに要約を追加
+- **メリット**: 詳細なコンテキストを保持、要約で一覧性を確保
+- **デメリット**: 肥大化は続くが、要約で補完
+- **推奨度**: ⭐⭐⭐⭐（高）
+
+**案4: 完了タスクを別ファイルに分離**
+- **方法**: 完了したタスクを`EXEC_PLAN_ARCHIVE.md`に移動し、EXEC_PLAN.mdから参照
+- **メリット**: EXEC_PLAN.mdが簡潔になる、完了タスクは参照可能
+- **デメリット**: PLANS.mdの「自己完結性」要件に反する可能性
+- **推奨度**: ⭐⭐（低）
+
+**推奨案**: **案3（完了タスクは残し、定期的にOutcomes & Retrospectiveに要約）**
+- **理由**: 
+  - PLANS.mdの「生きたドキュメント」要件を満たす
+  - 詳細なコンテキストを保持できる
+  - Outcomes & Retrospectiveに要約を追加することで、一覧性を確保できる
+  - 肥大化は続くが、INDEX.mdや要約で補完できる
+- **実装方針**:
+  - マイルストーン完了時に、Outcomes & Retrospectiveに要約を追加
+  - Progressセクションは完了タスクも含めて維持
+  - 定期的（四半期ごとなど）にOutcomes & Retrospectiveを更新
+
 ## Documentation Structure
 
 詳細なドキュメントは `docs/` ディレクトリに整理されています：
@@ -407,6 +458,23 @@ EXEC_PLAN.md (プロジェクト管理)
 - 階層構造での位置: AGENTS.md → PLANS.md → EXEC_PLAN.md → INDEX.md → 各種ドキュメント（docs/）
 - コードとの対応関係は、ドキュメントの「Context and Orientation」セクションに含めることで、PLANS.mdの「自己完結性」要件を満たす。
 - INDEX.md自体は「索引」であり、各ドキュメントは自己完結しているため、PLANS.mdの要件と矛盾しない。
+
+**PLANS.mdの書き分けルールとの整合性**:
+- **PLANS.mdの要求**: EXEC_PLAN.mdは「Progress」「Surprises & Discoveries」「Decision Log」「Outcomes & Retrospective」を必須セクションとして維持する。
+- **現在のEXEC_PLAN.mdの構造**: 
+  - ✅ Progress: チェックボックスリスト（タイムスタンプ付き）で維持
+  - ✅ Surprises & Discoveries: 観測・エビデンス・対応の形式で維持
+  - ✅ Decision Log: 決定・理由・日付/担当者の形式で維持
+  - ⚠️ Outcomes & Retrospective: 現在は「実装完了時に記載する。」のみで未活用
+  - ✅ Context and Orientation: 現在の状態を説明（novice向け）
+  - ✅ Plan of Work: 作業の順序（散文）
+  - ✅ Concrete Steps: 具体的なコマンド
+  - ✅ Validation and Acceptance: 検証方法
+  - ✅ Idempotence and Recovery: 冪等性・回復
+  - ✅ Artifacts and Notes: 証跡・メモ
+  - ✅ Interfaces and Dependencies: インターフェース・依存関係
+- **追加セクション**: 「Documentation Structure」「ドキュメント管理の「1本のルート」設計」は、PLANS.mdのスケルトンにはないが、プロジェクト固有の情報として追加されている。
+- **整合性**: ✅ **整合している** - PLANS.mdの必須セクションは維持されており、追加セクションはプロジェクト固有の情報として適切に配置されている。
 
 **推奨される行動順序（ユーザー指示時）**:
 1. **EXEC_PLAN.mdを確認**: 現在の進捗、関連する決定、課題を把握
