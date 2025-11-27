@@ -146,13 +146,26 @@
     - **【ドキュメント整備】タスク4**: ✅ 運用マニュアルの作成完了（`docs/guides/operation-manual.md`作成。日常的な運用手順、トラブル時の対応手順、定期メンテナンス手順を整理）
     - **【ドキュメント整備】タスク5**: ✅ 共通基盤ドキュメントの作成完了（`docs/architecture/infrastructure-base.md`作成。インフラ構成、スケール性の設計、データ永続化、ネットワーク構成、セキュリティ考慮事項を記載）
   - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（182-214行目: 次のタスクセクション）, [バックアップ・リストア手順](docs/guides/backup-and-restore.md), [監視・アラートガイド](docs/guides/monitoring.md), [検証チェックリスト](docs/guides/verification-checklist.md)
-- [ ] (2025-11-27) **新機能追加: 写真撮影持出機能（FR-009）**（優先度: 高、ブランチ: `feature/photo-loan-camera`）
+- [x] (2025-11-27) **新機能追加: 写真撮影持出機能（FR-009）**（優先度: 高、ブランチ: `feature/photo-loan-camera`）✅ **実装完了（2025-11-27）**
   - **目的**: 従業員タグのみスキャンで撮影＋持出を記録できる機能を追加（既存の2タグスキャン機能は維持）
   - **ドキュメント整備**: ✅ 完了（2025-11-27）
     - ✅ システム要件定義にFR-009を追加
     - ✅ ADR 003（カメラ機能のモジュール化）を作成
     - ✅ 写真撮影持出機能のモジュール仕様書を作成
     - ✅ INDEX.mdを更新
+  - **実装完了**: ✅ 完了（2025-11-27）
+    - ✅ データベーススキーマ変更（Loan, ClientDevice）
+    - ✅ カメラ機能のモジュール化（CameraService, MockCameraDriver）
+    - ✅ 写真保存機能（PhotoStorage）
+    - ✅ 写真配信API（GET `/api/storage/photos/*`）
+    - ✅ 従業員タグのみスキャンで撮影＋持出API（POST `/api/tools/loans/photo-borrow`）
+    - ✅ 写真撮影持出画面（KioskPhotoBorrowPage）
+    - ✅ 返却画面に写真サムネイル表示
+    - ✅ クライアント端末管理画面（初期表示設定変更）
+    - ✅ キオスク画面の初期表示リダイレクト（defaultModeに応じて）
+    - ✅ 写真自動削除機能（cleanup-photos.sh）
+    - ✅ バックアップスクリプトに写真ディレクトリ追加
+    - ✅ Caddyfileにサムネイルの静的ファイル配信設定追加
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
