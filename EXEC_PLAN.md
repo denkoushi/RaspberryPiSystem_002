@@ -634,6 +634,72 @@ docs/
   - デプロイスクリプト: `scripts/server/deploy.sh`
 ```
 
+**具体的な動作イメージ（機能追加時の例）**:
+
+**シナリオ**: ユーザーが「在庫管理機能を追加したい」と指示した場合
+
+**ステップ1: ユーザー指示を受ける**
+- ユーザー: 「在庫管理機能を追加したい」
+
+**ステップ2: EXEC_PLAN.mdを確認**
+- AI: EXEC_PLAN.mdの「Progress」セクションを確認
+- AI: 関連する決定事項（ADR 001: モジュール構造）を確認
+- AI: 既存モジュール（tools, documents, logistics）の構造を確認
+
+**ステップ3: INDEX.mdを参照して関連ドキュメントを確認**
+- AI: `docs/INDEX.md`の「目的別インデックス」→「機能を追加したい」を参照
+- AI: `docs/guides/development.md`を確認（新機能追加の手順）
+- AI: `docs/modules/`を確認（既存モジュールの構造）
+- AI: `docs/architecture/decisions/001-module-structure.md`を確認（モジュール構造の決定）
+
+**ステップ4: 実装方針を決定**
+- AI: 既存モジュール構造（toolsモジュール）を参考に、inventoryモジュールを作成
+- AI: コード構造: `apps/api/src/routes/inventory/`, `apps/web/src/pages/inventory/`
+- AI: ドキュメント構造: `docs/modules/inventory/README.md`
+
+**ステップ5: 実装を実施**
+- AI: コード実装（APIルート、サービス層、フロントエンド）
+- AI: ドキュメント作成（`docs/modules/inventory/README.md`）
+
+**ステップ6: INDEX.mdを更新**
+- AI: `docs/INDEX.md`の「カテゴリ別インデックス」→「モジュール仕様」に追加
+  ```markdown
+  - [モジュール仕様](./modules/)
+    - [工具管理モジュール](./modules/tools/README.md)
+    - [在庫管理モジュール](./modules/inventory/README.md) ← 追加
+  ```
+- AI: `docs/INDEX.md`の「コードとの対応関係」に追加
+  ```markdown
+  - **在庫管理モジュール**: 
+    - ドキュメント: [modules/inventory/README.md](./modules/inventory/README.md)
+    - APIコード: `apps/api/src/routes/inventory/`
+    - Webコード: `apps/web/src/pages/inventory/`
+    - サービス層: `apps/api/src/services/inventory/`
+    - 共通型: `packages/shared-types/src/inventory/`
+  ```
+
+**ステップ7: EXEC_PLAN.mdを更新**
+- AI: EXEC_PLAN.mdの「Progress」セクションに追加
+  ```markdown
+  - [x] (2025-11-27) 在庫管理モジュールの実装完了
+  ```
+- AI: EXEC_PLAN.mdの「Decision Log」に追加
+  ```markdown
+  - 決定: 在庫管理モジュールをinventoryとして実装
+    理由: 既存のモジュール構造（tools）に準拠し、保守性を向上させるため
+    日付/担当: 2025-11-27 / AI
+  ```
+
+**ステップ8: 関連ドキュメントを更新**
+- AI: `docs/architecture/overview.md`の「モジュール構成」セクションに追加
+- AI: `docs/modules/inventory/README.md`にコードへの参照を追加
+
+**INDEX.mdの役割**:
+- **入口として機能**: 機能追加時に、関連する既存ドキュメントを素早く見つけられる
+- **コードとの対応関係を明示**: ドキュメントとコードの対応が一目で分かる
+- **秩序の維持**: 新しいドキュメントを追加する際の「適切な場所」が明確になる
+- **検索性の向上**: 目的別・対象者別・カテゴリ別のインデックスで、必要な情報に素早くアクセスできる
+
 **2. ナレッジベースの分割**
 - **現状**: `troubleshooting-knowledge.md`（964行）→ 1ファイルに全ナレッジ
 - **提案**: カテゴリ別に分割（各200-300行）
