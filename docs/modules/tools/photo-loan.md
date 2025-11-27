@@ -179,11 +179,16 @@ apps/web/src/
 
 カメラ機能のモジュール化については [ADR 003](../../decisions/003-camera-module.md) を参照してください。
 
+## テスト計画
+
+詳細なテスト計画は [写真撮影持出機能 テスト計画](../../guides/photo-loan-test-plan.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [システム要件定義](../../requirements/system-requirements.md): FR-009（写真撮影持出機能）
 - [ADR 003: カメラ機能のモジュール化](../../decisions/003-camera-module.md)
 - [工具管理モジュール](./README.md): モジュール全体の概要
+- [写真撮影持出機能 テスト計画](../../guides/photo-loan-test-plan.md): 詳細なテスト計画
 - [検証チェックリスト](../../guides/verification-checklist.md): Validation 9（写真撮影持出）
 
 ## 実装ステータス

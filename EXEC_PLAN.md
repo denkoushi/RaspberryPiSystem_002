@@ -191,7 +191,12 @@
     - **写真自動削除機能**: 1月中に毎日チェックして2年前のデータを削除（cronジョブ）
     - **バックアップスクリプトに写真ディレクトリを追加**: 既存の`backup.sh`に写真ディレクトリを追加
     - **Caddyfileにサムネイルの静的ファイル配信設定を追加**: サムネイルをCaddyで配信
-  - **関連ドキュメント**: [システム要件定義](docs/requirements/system-requirements.md)（FR-009）, [工具管理モジュール](docs/modules/tools/README.md), [検証チェックリスト](docs/guides/verification-checklist.md)
+  - **関連ドキュメント**: 
+    - [システム要件定義](docs/requirements/system-requirements.md)（FR-009）
+    - [工具管理モジュール](docs/modules/tools/README.md)
+    - [写真撮影持出機能 モジュール仕様](docs/modules/tools/photo-loan.md)
+    - [写真撮影持出機能 テスト計画](docs/guides/photo-loan-test-plan.md)
+    - [検証チェックリスト](docs/guides/verification-checklist.md)
 
 ## Surprises & Discoveries
 
