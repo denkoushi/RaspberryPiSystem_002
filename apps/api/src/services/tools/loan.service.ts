@@ -5,12 +5,20 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { ItemService } from './item.service.js';
 import { EmployeeService } from './employee.service.js';
+import { CameraService } from '../camera/index.js';
+import { PhotoStorage } from '../../lib/photo-storage.js';
 
 export interface BorrowInput {
   itemTagUid: string;
   employeeTagUid: string;
   clientId?: string;
   dueAt?: Date;
+  note?: string | null;
+}
+
+export interface PhotoBorrowInput {
+  employeeTagUid: string;
+  clientId?: string;
   note?: string | null;
 }
 
@@ -34,10 +42,12 @@ interface LoanWithRelations extends Loan {
 export class LoanService {
   private itemService: ItemService;
   private employeeService: EmployeeService;
+  private cameraService: CameraService;
 
   constructor() {
     this.itemService = new ItemService();
     this.employeeService = new EmployeeService();
+    this.cameraService = new CameraService();
   }
 
   /**
@@ -262,6 +272,107 @@ export class LoanService {
     );
 
     return updatedLoan as LoanWithRelations;
+  }
+
+  /**
+   * 写真撮影持出処理
+   * 
+   * 従業員タグのみスキャンで撮影＋持出を記録する。
+   * Item情報は保存せず、従業員IDと写真のみを保存する。
+   */
+  async photoBorrow(input: PhotoBorrowInput, resolvedClientId?: string): Promise<LoanWithRelations> {
+    logger.info(
+      {
+        employeeTagUid: input.employeeTagUid,
+        clientId: resolvedClientId,
+      },
+      'Photo borrow request started',
+    );
+
+    // 従業員を特定
+    const employee = await this.employeeService.findByNfcTagUid(input.employeeTagUid);
+    if (!employee) {
+      logger.warn({ employeeTagUid: input.employeeTagUid }, 'Employee not found for photo borrow');
+      throw new ApiError(404, '対象従業員が登録されていません');
+    }
+
+    // カメラで撮影（3回までリトライ）
+    let photoPathInfo;
+    try {
+      const captureResult = await this.cameraService.captureAndProcess({ retryCount: 3 });
+      
+      // 写真を保存
+      photoPathInfo = await PhotoStorage.savePhoto(
+        employee.id,
+        captureResult.original,
+        captureResult.thumbnail
+      );
+
+      logger.info(
+        {
+          employeeId: employee.id,
+          photoUrl: photoPathInfo.relativePath,
+          thumbnailUrl: photoPathInfo.thumbnailRelativePath,
+        },
+        'Photo captured and saved successfully',
+      );
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error({ err, employeeTagUid: input.employeeTagUid }, 'Photo capture failed');
+      throw new ApiError(500, `写真の撮影に失敗しました: ${err.message}`);
+    }
+
+    const employeeSnapshot = {
+      id: employee.id,
+      code: employee.employeeCode,
+      name: employee.displayName,
+      nfcTagUid: employee.nfcTagUid ?? null
+    };
+
+    // Loanレコードを作成（itemIdはNULL、photoUrlとphotoTakenAtを設定）
+    const loan = await prisma.$transaction(async (tx) => {
+      const createdLoan = await tx.loan.create({
+        data: {
+          itemId: null, // Item情報は保存しない
+          employeeId: employee.id,
+          clientId: resolvedClientId,
+          photoUrl: photoPathInfo.relativePath,
+          photoTakenAt: new Date(),
+          notes: input.note ?? undefined
+        },
+        include: { item: true, employee: true, client: true }
+      });
+
+      await tx.transaction.create({
+        data: {
+          loanId: createdLoan.id,
+          action: TransactionAction.BORROW,
+          actorEmployeeId: employee.id,
+          clientId: resolvedClientId,
+          details: {
+            note: input.note ?? null,
+            employeeSnapshot,
+            photoUrl: photoPathInfo.relativePath,
+            photoTakenAt: createdLoan.photoTakenAt?.toISOString() ?? null
+          }
+        }
+      });
+
+      return createdLoan;
+    });
+
+    logger.info(
+      {
+        loanId: loan.id,
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        photoUrl: photoPathInfo.relativePath,
+        clientId: resolvedClientId,
+      },
+      'Photo borrow completed successfully',
+    );
+
+    return loan as LoanWithRelations;
   }
 
   /**
