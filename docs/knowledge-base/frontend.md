@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 6件  
+**件数**: 7件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -201,3 +201,34 @@ update-frequency: medium
 - `apps/web/src/components/KioskRedirect.tsx`
 - `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`
 - `docs/requirements/system-requirements.md`
+
+---
+
+### [KB-029] 従業員編集画面でバリデーションエラーメッセージが表示されない
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（統合フロー）（2025-11-27）
+
+**事象**: 
+- 従業員編集画面で社員コードが4桁数字でない場合、バリデーションエラーが発生するが、エラーメッセージが表示されない
+- ユーザーが何を修正すれば良いか分からない
+
+**要因**: 
+- `handleSubmit`関数でエラーハンドリングが不足していた
+- Zodバリデーションエラーの`issues`配列からエラーメッセージを抽出していなかった
+- `create.error`や`update.error`を表示するUIがなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-27）: `handleSubmit`関数にtry-catchを追加し、エラーメッセージ表示UIを追加
+- Zodバリデーションエラーの`issues`配列からエラーメッセージを抽出して表示するように修正
+- `create.error`と`update.error`を表示するUIを追加
+
+**学んだこと**: 
+- Zodバリデーションエラーは`issues`配列に詳細なエラーメッセージが含まれる
+- フロントエンドでエラーハンドリングを行う際は、`issues`配列からメッセージを抽出する必要がある
+- ユーザーに分かりやすいエラーメッセージを表示することで、操作の改善が容易になる
+
+**解決状況**: ✅ **解決済み**（2025-11-27）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/EmployeesPage.tsx`
+- `apps/api/src/plugins/error-handler.ts`

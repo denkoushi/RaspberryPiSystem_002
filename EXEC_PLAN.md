@@ -201,6 +201,16 @@
       - `KioskRedirect`: 返却ページではリダイレクトしないように修正
       - `KioskPhotoBorrowPage`: `useEffect`の依存配列を`nfcEvent`から`nfcEvent?.uid`と`nfcEvent?.timestamp`に変更（NFCイベント重複処理の根本原因を修正）
       - デバッグログの環境変数制御を実装（`VITE_ENABLE_DEBUG_LOGS`で制御、デフォルトは常に出力）
+  - **実機テスト（部分機能3: 統合フロー）**: ✅ 完了（2025-11-27）
+    - ✅ Raspberry Pi 5 + Raspberry Pi 4での統合動作確認
+    - ✅ 写真撮影持出フロー全体（従業員タグスキャン → 撮影 → 保存 → Loan作成 → 返却画面に表示）が正常に動作することを確認
+    - ✅ 複数の写真撮影持出が正しく記録されることを確認（71件の写真付きLoanレコードを確認）
+    - ✅ 写真付きLoanと通常のLoanが混在しても正しく表示されることを確認
+    - ✅ MockCameraDriverを使用してUSBカメラなしでテスト実施
+    - **修正内容**:
+      - `docker-compose.server.yml`に`CAMERA_TYPE=mock`を追加
+      - `KioskPhotoBorrowPage`: 写真撮影持出画面のメッセージを修正（従業員タグ1つだけスキャンすることを明示）
+      - `EmployeesPage`: バリデーションエラーメッセージを表示するように修正（Zodバリデーションエラーのissues配列からメッセージを抽出）
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
