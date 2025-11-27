@@ -139,8 +139,8 @@
   - **目的**: 要件定義で定義されている非機能要件（NFR-001, NFR-004の一部）が実機環境で満たされていることを確認し、運用マニュアルを作成する
   - **作業内容**:
     - **【CI検証】タスク1-1**: ✅ バックアップ・リストアスクリプトのCIテスト完了（Phase 5で再設計・実装完了。CI #215〜#222で連続成功）
-    - **【CI検証】タスク2-1**: 🔄 監視・アラート機能のCIテスト（`scripts/test/monitor.test.sh`を作成、CIパイプラインに追加済み。**CI実行結果待ち**）
-    - **【CI検証】タスク3-1**: 🔄 パフォーマンステストのCI追加（`apps/api/src/routes/__tests__/performance.test.ts`を作成、CIパイプラインに追加済み。**CI実行結果待ち**）
+    - **【CI検証】タスク2-1**: ✅ 監視・アラート機能のCIテスト完了（2025-11-26にCI #221, #222で成功を確認。`scripts/test/monitor.test.sh`がCIワークフローで`pnpm test:monitor`として実行され、APIヘルスチェック、メトリクスエンドポイント、監視スクリプトの関数テストが成功）
+    - **【CI検証】タスク3-1**: ✅ パフォーマンステストのCI追加完了（2025-11-26にCI #221, #222で成功を確認。`apps/api/src/routes/__tests__/performance.test.ts`が`pnpm test`で統合テストの一部として実行され、`/api/system/health`, `/api/tools/employees`, `/api/tools/items`, `/api/system/metrics`のレスポンス時間が1秒以内であることを検証して成功）
     - **【実機検証】タスク1-2**: ✅ バックアップ・リストアスクリプトの実機検証完了（2025-11-24にラズパイ5で`scripts/server/backup.sh`, `restore.sh`の動作確認完了。Phase 5のOutcomes & Retrospectiveに記録済み）
     - **【実機検証】タスク2-2**: ✅ 監視・アラート機能の実機検証完了（2025-11-24にラズパイ5で`scripts/server/monitor.sh`の動作確認、`/api/system/health`, `/api/system/metrics`の動作確認完了。Phase 5のOutcomes & Retrospectiveに記録済み）
     - **【実機検証】タスク3-2**: ✅ パフォーマンスの実機検証完了（2025-11-27にラズパイ5でAPIレスポンス時間1秒以内、ページ読み込み時間3秒以内の要件を満たしていることを確認完了。Phase 5のOutcomes & Retrospectiveに記録済み）
