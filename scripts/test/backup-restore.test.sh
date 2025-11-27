@@ -103,6 +103,17 @@ VALUES
   ('00000000-0000-0000-0000-000000000002', '9998', 'テスト従業員2', 'ACTIVE', NOW(), NOW());
 EOF
 
+# バックアップ前のデータ確認
+echo "バックアップ前のデータ確認..."
+BEFORE_BACKUP_COUNT=$(${DB_COMMAND} \
+  psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999', '9998');" | tr -d ' ')
+echo "バックアップ前のEmployeeレコード数: ${BEFORE_BACKUP_COUNT}"
+if [ "${BEFORE_BACKUP_COUNT}" != "2" ]; then
+  echo "エラー: バックアップ前のデータ作成に失敗しました。期待値: 2, 実際: ${BEFORE_BACKUP_COUNT}"
+  exit 1
+fi
+
 # バックアップスクリプトを実行（実際の運用環境と同じ方法でバックアップを作成）
 echo "バックアップを実行中..."
 echo "注意: 実際の運用環境と同じ方法（pg_dump、スキーマ定義も含む）でバックアップを作成します"
@@ -136,6 +147,10 @@ bash -c '
     exit 1
   fi
   
+  # バックアップファイルにデータが含まれているか確認（EmployeeテーブルのCOPY文を確認）
+  echo "バックアップファイルの内容確認（EmployeeテーブルのCOPY文）..."
+  gunzip -c "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" | grep -A 5 "COPY.*Employee" | head -10 || echo "警告: EmployeeテーブルのCOPY文が見つかりません"
+  
   echo "✅ バックアップファイルが正常に作成されました: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
   echo "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
 '
@@ -166,12 +181,35 @@ EOF
 # リストアを実行（実際の運用環境と同じ方法）
 echo "リストアを実行中..."
 echo "注意: 実際の運用環境と同じ方法（gunzip + psql）でリストアします"
-gunzip -c "${BACKUP_FILE}" | \
+RESTORE_OUTPUT=$(gunzip -c "${BACKUP_FILE}" | \
   ${DB_COMMAND_INPUT} \
-  psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off
+  psql -U postgres -d ${TEST_DB_NAME} --set ON_ERROR_STOP=off 2>&1)
+RESTORE_EXIT_CODE=$?
+
+# リストア出力からCOPY文の結果を確認
+echo "リストア出力のCOPY文の結果:"
+echo "${RESTORE_OUTPUT}" | grep -E "COPY|ERROR" | tail -20 || true
+
+if [ ${RESTORE_EXIT_CODE} -ne 0 ]; then
+  echo "警告: リストア中にエラーが発生しました（終了コード: ${RESTORE_EXIT_CODE}）"
+  echo "リストア出力の最後の50行:"
+  echo "${RESTORE_OUTPUT}" | tail -50
+fi
 
 # リストア後のデータ確認
 echo "リストア後のデータを確認中..."
+# テーブルが存在するか確認
+TABLE_EXISTS=$(${DB_COMMAND} \
+  psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Employee';" | tr -d ' ')
+echo "Employeeテーブルの存在確認: ${TABLE_EXISTS}"
+
+# 全Employeeレコード数を確認
+TOTAL_EMPLOYEE_COUNT=$(${DB_COMMAND} \
+  psql -U postgres -d ${TEST_DB_NAME} -t -c \
+  "SELECT COUNT(*) FROM \"Employee\";" | tr -d ' ')
+echo "全Employeeレコード数: ${TOTAL_EMPLOYEE_COUNT}"
+
 RESTORED_COUNT=$(${DB_COMMAND} \
   psql -U postgres -d ${TEST_DB_NAME} -t -c \
   "SELECT COUNT(*) FROM \"Employee\" WHERE \"employeeCode\" IN ('9999', '9998');" | tr -d ' ')
