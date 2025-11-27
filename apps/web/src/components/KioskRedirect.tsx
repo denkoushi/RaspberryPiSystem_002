@@ -44,22 +44,26 @@ export function KioskRedirect() {
     const currentDefaultMode = config.defaultMode;
     const lastDefaultMode = lastDefaultModeRef.current;
     
-    console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode);
+    console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
     
-    // defaultModeが変更された場合、または初回ロード時のみリダイレクト
-    if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined) {
+    // 現在のパスを正規化（末尾のスラッシュを除去）
+    const normalizedPath = location.pathname.replace(/\/$/, '');
+    const isOnKioskRoot = normalizedPath === '/kiosk';
+    const isOnPhotoPage = normalizedPath === '/kiosk/photo';
+    const isOnTagPage = normalizedPath === '/kiosk/tag';
+    
+    // defaultModeが変更された場合、または初回ロード時、または/kioskにいる場合にリダイレクト
+    if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined || isOnKioskRoot) {
       lastDefaultModeRef.current = currentDefaultMode;
       
       // 現在のパスとdefaultModeが一致しない場合のみリダイレクト
       const shouldRedirectToPhoto = currentDefaultMode === 'PHOTO';
       const shouldRedirectToTag = currentDefaultMode !== 'PHOTO';
-      const isOnPhotoPage = location.pathname === '/kiosk/photo';
-      const isOnTagPage = location.pathname === '/kiosk/tag';
       
       if (shouldRedirectToPhoto && !isOnPhotoPage) {
         console.log('[KioskRedirect] Redirecting to /kiosk/photo');
         navigate('/kiosk/photo', { replace: true });
-      } else if (shouldRedirectToTag && !isOnTagPage && location.pathname === '/kiosk') {
+      } else if (shouldRedirectToTag && !isOnTagPage) {
         console.log('[KioskRedirect] Redirecting to /kiosk/tag');
         navigate('/kiosk/tag', { replace: true });
       }
