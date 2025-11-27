@@ -211,6 +211,14 @@
       - `docker-compose.server.yml`に`CAMERA_TYPE=mock`を追加
       - `KioskPhotoBorrowPage`: 写真撮影持出画面のメッセージを修正（従業員タグ1つだけスキャンすることを明示）
       - `EmployeesPage`: バリデーションエラーメッセージを表示するように修正（Zodバリデーションエラーのissues配列からメッセージを抽出）
+  - **NFR-001（パフォーマンス）の実機検証**: ✅ 完了（2025-11-27）
+    - ✅ APIレスポンス時間の測定: すべて1秒以内（要件を満たす）
+      - `/api/system/health`: 5.2ms
+      - `/api/tools/loans/active`: 11.6ms
+      - `/api/tools/employees`: 3.3ms
+      - `/api/tools/transactions`: 17.2ms
+    - ✅ ページ読み込み時間の測定: 550ms（3秒以内、要件を満たす）
+      - `/kiosk/photo`ページのLoad時間: 550ms
   - **作業内容**:
     - **データベーススキーマ変更**: `Loan`テーブルに`photoUrl`、`photoTakenAt`カラムを追加、`ClientDevice`テーブルに`defaultMode`カラムを追加
     - **カメラ機能のモジュール化**: 共通カメラサービス + カメラドライバー抽象化 + 設定ファイルでカメラタイプ指定
