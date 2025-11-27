@@ -21,9 +21,17 @@
   }
   reverse_proxy @api api:8080
 
+  # サムネイルの静的ファイル配信（認証不要）
+  handle /storage/thumbnails/* {
+    root * /srv/storage
+    file_server
+    header Cache-Control "public, max-age=86400" # 1日キャッシュ
+  }
+
   @spa {
     not path /api/*
     not path /ws/*
+    not path /storage/*
     not file
   }
   rewrite @spa /index.html
