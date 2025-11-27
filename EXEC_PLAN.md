@@ -359,10 +359,16 @@
 
 詳細なドキュメントは `docs/` ディレクトリに整理されています：
 
+- **[`docs/INDEX.md`](./docs/INDEX.md)**: 全ドキュメントの索引（目的別・対象者別・カテゴリ別）- **各種ドキュメント（docs/）の入口**
 - **`docs/architecture/`**: システムアーキテクチャの詳細
 - **`docs/modules/`**: 機能別の詳細仕様（tools, documents, logistics）
 - **`docs/guides/`**: 開発・デプロイ・トラブルシューティングガイド
 - **`docs/decisions/`**: アーキテクチャ決定記録（ADR）
+
+**階層構造での位置づけ**:
+- このセクションは、EXEC_PLAN.md（プロジェクト管理）から各種ドキュメント（docs/）への参照を提供します。
+- 各種ドキュメント（docs/）の詳細な索引は [`docs/INDEX.md`](./docs/INDEX.md) を参照してください。
+- ドキュメント体系の基本思想については [README.md](./README.md) の「ドキュメント体系の基本思想」セクションを参照してください。
 
 各モジュールの詳細仕様は `docs/modules/{module-name}/README.md` を参照してください。
 
