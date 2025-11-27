@@ -396,8 +396,11 @@ EXEC_PLAN.md (プロジェクト管理)
 
 **ドキュメントリファクタリングとの整合性**:
 - ドキュメントリファクタリングは、この階層構造を前提として、各種ドキュメント（docs/）の秩序を保つための取り組み。
-- INDEX.mdは各種ドキュメントの「入口」として機能し、階層構造を損なわない。
+- INDEX.mdは各種ドキュメント（docs/）の「入口」として機能し、階層構造を損なわない。
+- INDEX.mdの位置づけ: `docs/INDEX.md` に配置し、EXEC_PLAN.mdから参照される構造とする。
+- 階層構造での位置: AGENTS.md → PLANS.md → EXEC_PLAN.md → INDEX.md → 各種ドキュメント（docs/）
 - コードとの対応関係は、ドキュメントの「Context and Orientation」セクションに含めることで、PLANS.mdの「自己完結性」要件を満たす。
+- INDEX.md自体は「索引」であり、各ドキュメントは自己完結しているため、PLANS.mdの要件と矛盾しない。
 
 **推奨される行動順序（ユーザー指示時）**:
 1. **EXEC_PLAN.mdを確認**: 現在の進捗、関連する決定、課題を把握
@@ -559,11 +562,18 @@ docs/
 
 **1. INDEX.md（必須）**
 
+**階層構造での位置づけ**:
+- **配置場所**: `docs/INDEX.md`
+- **階層構造での位置**: AGENTS.md → PLANS.md → EXEC_PLAN.md → INDEX.md → 各種ドキュメント（docs/）
+- **参照関係**: EXEC_PLAN.mdからINDEX.mdを参照し、INDEX.mdから各種ドキュメント（docs/）を参照する構造
+- **役割**: 各種ドキュメント（docs/）の「入口」として機能し、階層構造を損なわない
+
 **機能の詳細説明**:
 - **目的別インデックス**: 「何をしたいか」から逆引きできる。例: 「初期セットアップしたい」→ deployment.md, production-setup.md に直接リンク
 - **対象者別インデックス**: 「誰が参照するか」で分類。例: 新規参加者、開発者、運用者、アーキテクトごとに必要なドキュメントを提示
 - **カテゴリ別インデックス**: ドキュメントの種類ごとに一覧表示。例: アーキテクチャ、モジュール仕様、APIリファレンスなど
 - **コードとの連携**: 各モジュールのドキュメントから、対応するコードの場所（`apps/api/src/routes/tools/`, `apps/web/src/pages/tools/`など）への参照リンクを含める
+- **EXEC_PLAN.mdとの連携**: EXEC_PLAN.mdの「Documentation Structure」セクションからINDEX.mdへの参照を追加
 
 **コードの保存場所との連携**:
 - **モジュールドキュメント**: `docs/modules/tools/README.md` → `apps/api/src/routes/tools/`, `apps/web/src/pages/tools/` への参照
@@ -581,18 +591,22 @@ docs/
 ```markdown
 # ドキュメント索引
 
+> **注意**: このINDEX.mdは、各種ドキュメント（docs/）の「入口」として機能します。
+> プロジェクト管理ドキュメント（EXEC_PLAN.md）は [EXEC_PLAN.md](../../EXEC_PLAN.md) を参照してください。
+> ドキュメント体系の基本思想については [README.md](../../README.md) の「ドキュメント体系の基本思想」セクションを参照してください。
+
 ## 目的別インデックス
-- 初期セットアップしたい → [guides/deployment.md], [guides/production-setup.md]
-- エラーを解決したい → [knowledge-base/index.md], [guides/ci-troubleshooting.md]
-- 機能を追加したい → [guides/development.md], [modules/]
-- 運用したい → [guides/backup-and-restore.md], [guides/monitoring.md]
-- アーキテクチャを理解したい → [architecture/overview.md], [architecture/decisions/]
+- 初期セットアップしたい → [guides/deployment.md](./guides/deployment.md), [guides/production-setup.md](./guides/production-setup.md)
+- エラーを解決したい → [knowledge-base/index.md](./knowledge-base/index.md), [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md)
+- 機能を追加したい → [guides/development.md](./guides/development.md), [modules/](./modules/)
+- 運用したい → [guides/backup-and-restore.md](./guides/backup-and-restore.md), [guides/monitoring.md](./guides/monitoring.md)
+- アーキテクチャを理解したい → [architecture/overview.md](./architecture/overview.md), [architecture/decisions/](./architecture/decisions/)
 
 ## 対象者別インデックス
-- 新規参加者 → [README.md](../README.md), [guides/development.md]
-- 開発者 → [guides/development.md], [modules/], [api/]
-- 運用者 → [guides/deployment.md], [guides/monitoring.md], [guides/backup-and-restore.md]
-- アーキテクト → [architecture/], [architecture/decisions/]
+- 新規参加者 → [README.md](../../README.md), [guides/development.md](./guides/development.md)
+- 開発者 → [guides/development.md](./guides/development.md), [modules/](./modules/), [api/](./api/)
+- 運用者 → [guides/deployment.md](./guides/deployment.md), [guides/monitoring.md](./guides/monitoring.md), [guides/backup-and-restore.md](./guides/backup-and-restore.md)
+- アーキテクト → [architecture/](./architecture/), [architecture/decisions/](./architecture/decisions/)
 
 ## カテゴリ別インデックス
 - [アーキテクチャ](./architecture/)
