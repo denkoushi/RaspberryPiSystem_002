@@ -18,7 +18,7 @@ export function registerSystemInfoRoute(app: FastifyInstance): void {
         const tempMillidegrees = parseInt(tempData.trim(), 10);
         if (!isNaN(tempMillidegrees) && tempMillidegrees > 0) {
           cpuTemp = tempMillidegrees / 1000; // ミリ度を度に変換
-          request.log.debug({ tempData, tempMillidegrees, cpuTemp }, 'CPU temperature read successfully');
+          request.log.info({ tempData: tempData.trim(), tempMillidegrees, cpuTemp }, 'CPU temperature read successfully');
         } else {
           request.log.warn({ tempData, tempMillidegrees }, 'Invalid temperature data');
         }
@@ -31,11 +31,14 @@ export function registerSystemInfoRoute(app: FastifyInstance): void {
       const loadAvg = os.loadavg();
       const cpuLoadPercent = Math.min(100, (loadAvg[0] / os.cpus().length) * 100);
 
-      return reply.send({
+      const response = {
         cpuTemp,
         cpuLoad: Math.round(cpuLoadPercent * 10) / 10, // 小数点第1位まで
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      request.log.info({ response }, 'System info response');
+      return reply.send(response);
     } catch (error) {
       request.log.error({ err: error }, 'Failed to get system info');
       return reply.status(500).send({ error: 'Failed to get system info' });
