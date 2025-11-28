@@ -422,7 +422,7 @@ export class LoanService {
   async findActive(query: ActiveLoanQuery): Promise<LoanWithRelations[]> {
     const where = {
       returnedAt: null,
-      cancelledAt: null, // 取消済みも除外
+      cancelledAt: null, // 取消済みも除外（マイグレーション適用後に有効）
       ...(query.clientId ? { clientId: query.clientId } : {})
     };
 
