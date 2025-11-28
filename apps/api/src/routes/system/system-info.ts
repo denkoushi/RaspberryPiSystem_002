@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { readFile } from 'fs/promises';
 import os from 'os';
-
-const execAsync = promisify(exec);
 
 /**
  * システム情報エンドポイント
@@ -14,17 +11,17 @@ export function registerSystemInfoRoute(app: FastifyInstance): void {
   app.get('/system/system-info', async (request, reply) => {
     try {
       // CPU温度を取得（ラズパイの場合）
+      // /sys/class/thermal/thermal_zone0/tempから読み取る（ミリ度で返される）
       let cpuTemp: number | null = null;
       try {
-        const { stdout } = await execAsync('vcgencmd measure_temp', { timeout: 2000 });
-        // 出力例: "temp=45.6'C"
-        const match = stdout.match(/temp=([\d.]+)'C/);
-        if (match) {
-          cpuTemp = parseFloat(match[1]);
+        const tempData = await readFile('/sys/class/thermal/thermal_zone0/temp', 'utf-8');
+        const tempMillidegrees = parseInt(tempData.trim(), 10);
+        if (!isNaN(tempMillidegrees)) {
+          cpuTemp = tempMillidegrees / 1000; // ミリ度を度に変換
         }
       } catch (error) {
-        // vcgencmdが利用できない場合（非ラズパイ環境など）は無視
-        request.log.debug({ err: error }, 'vcgencmd not available');
+        // ファイルが読めない場合（非ラズパイ環境など）は無視
+        request.log.debug({ err: error }, 'thermal_zone0/temp not available');
       }
 
       // CPU負荷を取得（1分平均）
