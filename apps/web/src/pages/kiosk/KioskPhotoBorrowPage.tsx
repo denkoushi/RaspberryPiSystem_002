@@ -89,6 +89,14 @@ export function KioskPhotoBorrowPage() {
       }
       return;
     }
+    // successLoanが設定されている間（成功表示中）は新しいNFCイベントをスキップ
+    // 「従業員タグをスキャンしてください」に戻る前にスキャンしたイベントを無視するため
+    if (successLoan) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: success loan displayed, waiting for reset');
+      }
+      return;
+    }
     
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     const now = Date.now();
@@ -212,7 +220,7 @@ export function KioskPhotoBorrowPage() {
       }
       );
     })();
-  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId]); // photoBorrowMutationを依存配列から除外（オブジェクト参照が変わる可能性があるため）
+  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId, isCapturing, successLoan]); // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
