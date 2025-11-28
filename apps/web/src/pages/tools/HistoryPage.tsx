@@ -114,7 +114,9 @@ export function HistoryPage() {
                             // 認証付きで元画像を取得してモーダルで表示
                             if (tx.loan?.photoUrl) {
                               try {
-                                const response = await api.get(tx.loan.photoUrl, {
+                                // photoUrlは /api/storage/photos/... 形式なので、/api を除いて /storage/photos/... にする
+                                const imagePath = tx.loan.photoUrl.replace(/^\/api/, '');
+                                const response = await api.get(imagePath, {
                                   responseType: 'blob',
                                 });
                                 const blobUrl = URL.createObjectURL(response.data);
