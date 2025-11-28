@@ -110,9 +110,9 @@ export async function compressImage(blob: Blob, maxSizeKB: number = 100): Promis
       let width = img.width;
       let height = img.height;
 
-      // 800x600px以下になるようにリサイズ
-      const maxWidth = 800;
-      const maxHeight = 600;
+      // 640x480px以下になるようにリサイズ（ラズパイ4の処理能力を考慮）
+      const maxWidth = 640;
+      const maxHeight = 480;
       if (width > maxWidth || height > maxHeight) {
         const ratio = Math.min(maxWidth / width, maxHeight / height);
         width = Math.floor(width * ratio);
