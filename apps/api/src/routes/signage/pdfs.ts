@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { MultipartFile } from '@fastify/multipart';
 import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
 import { pdfSchema, pdfUpdateSchema, pdfParamsSchema } from './schemas.js';
@@ -8,10 +9,10 @@ import { ApiError } from '../../lib/errors.js';
 // 実機環境でマイグレーション実行後にPrisma Clientを生成する必要がある
 type SignageDisplayMode = 'SLIDESHOW' | 'SINGLE';
 
-async function readFile(part: any): Promise<Buffer> {
+async function readFile(part: MultipartFile): Promise<Buffer> {
   const chunks: Buffer[] = [];
-  for await (const chunk of part) {
-    chunks.push(chunk);
+  for await (const chunk of part.file) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks);
 }
@@ -43,7 +44,7 @@ export function registerPdfRoutes(app: FastifyInstance, signageService: SignageS
       for await (const part of parts) {
         if (part.type === 'file') {
           if (part.fieldname === 'file') {
-            pdfBuffer = await readFile(part);
+            pdfBuffer = await readFile(part as MultipartFile);
             filename = part.filename || 'unknown.pdf';
           }
         } else {
