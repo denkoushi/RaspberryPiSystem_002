@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { KioskReturnPage } from './KioskReturnPage';
 import type { Loan } from '../../api/types';
-import { captureAndCompressPhoto, startCameraPreview, stopCameraStream } from '../../utils/camera';
+import { captureAndCompressPhoto } from '../../utils/camera';
 
 export function KioskPhotoBorrowPage() {
   const { data: config } = useKioskConfig();
@@ -26,8 +26,6 @@ export function KioskPhotoBorrowPage() {
   const [successLoan, setSuccessLoan] = useState<Loan | null>(null);
   const pageMountedRef = useRef(false);
   const processingRef = useRef(false); // 処理中フラグ（重複処理を防ぐ）
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   // ページマウント後にマウントフラグを設定（古いNFCイベントを無視するため）
   useEffect(() => {
@@ -40,33 +38,6 @@ export function KioskPhotoBorrowPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // カメラプレビューの開始
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    let stream: MediaStream | null = null;
-
-    const startPreview = async () => {
-      try {
-        stream = await startCameraPreview(videoElement);
-        cameraStreamRef.current = stream;
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.error('[KioskPhotoBorrowPage] Failed to start camera preview:', err);
-        // エラーは表示しない（ユーザーがタグをスキャンしたときにエラーを表示）
-      }
-    };
-
-    startPreview();
-
-    return () => {
-      if (stream) {
-        stopCameraStream(stream);
-        cameraStreamRef.current = null;
-      }
-    };
-  }, []);
 
   // 処理済みUIDのクリーンアップ（3秒以上古いエントリを削除）
   useEffect(() => {
@@ -132,12 +103,14 @@ export function KioskPhotoBorrowPage() {
     // カメラで撮影してからAPIを呼び出す（async関数として定義）
     (async () => {
       // カメラで撮影（3回までリトライ）
+      // スキャン時のみカメラを起動して撮影（CPU負荷削減のため）
       let photoData: string;
       let retryCount = 0;
       const maxRetries = 3;
 
       while (retryCount < maxRetries) {
         try {
+          // カメラを起動→撮影→停止（captureAndCompressPhoto内で自動的に停止される）
           photoData = await captureAndCompressPhoto();
           break; // 成功したらループを抜ける
         } catch (error) {
@@ -207,11 +180,6 @@ export function KioskPhotoBorrowPage() {
       lastEventKeyRef.current = null;
       processingRef.current = false;
       processedUidsRef.current.clear();
-      // カメラストリームを停止
-      if (cameraStreamRef.current) {
-        stopCameraStream(cameraStreamRef.current);
-        cameraStreamRef.current = null;
-      }
     };
   }, []);
 
@@ -230,30 +198,26 @@ export function KioskPhotoBorrowPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="写真撮影持出">
           <div className="space-y-4 text-center">
-            {/* カメラプレビュー */}
-            <div className="relative mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-lg bg-black">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-contain"
-                style={{ transform: 'scaleX(-1)' }} // ミラー表示
-              />
-              {isCapturing && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <div className="rounded-lg bg-blue-600/90 p-4">
-                    <p className="text-lg font-semibold text-white">写真を撮影中...</p>
-                  </div>
+            {/* 撮影中の表示（スキャン時のみカメラを起動） */}
+            {isCapturing && (
+              <div className="mx-auto w-full max-w-2xl rounded-lg bg-blue-600/20 p-8">
+                <div className="flex flex-col items-center justify-center space-y-4">
+                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-300 border-t-transparent"></div>
+                  <p className="text-xl font-semibold text-blue-300">カメラを起動中...</p>
+                  <p className="text-sm text-white/70">従業員タグをスキャンしました</p>
+                  <p className="text-sm text-white/70">写真を撮影しています。しばらくお待ちください</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
             
-            {/* 撮影中の表示（プレビューがない場合のフォールバック） */}
-            {isCapturing && !videoRef.current && (
-              <div className="rounded-lg bg-blue-600/20 p-4">
-                <p className="text-lg font-semibold text-blue-300">写真を撮影中...</p>
-                <p className="mt-2 text-sm text-white/70">しばらくお待ちください</p>
+            {/* 待機中の表示（スキャン待ち） */}
+            {!isCapturing && !employeeTagUid && !error && !successLoan && (
+              <div className="mx-auto w-full max-w-2xl rounded-lg border border-white/10 bg-black/20 p-8">
+                <div className="flex flex-col items-center justify-center space-y-4">
+                  <div className="text-6xl">📷</div>
+                  <p className="text-lg font-semibold text-white">従業員タグをスキャンしてください</p>
+                  <p className="text-sm text-white/70">スキャン時に自動的に写真を撮影します</p>
+                </div>
               </div>
             )}
 
