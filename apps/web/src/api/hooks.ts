@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   borrowItem,
+  cancelLoan,
   createEmployee,
   createItem,
   deleteEmployee,
@@ -18,6 +19,7 @@ import {
   updateClient,
   updateEmployee,
   updateItem,
+  type CancelPayload,
   type ClientDevice,
   type PhotoBorrowPayload
 } from './client';
@@ -109,6 +111,17 @@ export function useDeleteLoanMutation(clientKey?: string) {
     mutationFn: (loanId: string) => deleteLoan(loanId, clientKey),
     onSuccess: () => {
       // 削除成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
+export function useCancelLoanMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CancelPayload) => cancelLoan(payload, clientKey),
+    onSuccess: () => {
+      // 取消成功後、すべてのloansクエリを無効化して最新データを取得
       queryClient.invalidateQueries({ queryKey: ['loans'] });
     }
   });

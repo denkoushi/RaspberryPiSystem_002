@@ -5,6 +5,7 @@ import { registerReturnRoute } from './return.js';
 import { registerActiveLoansRoute } from './active.js';
 import { registerPhotoBorrowRoute } from './photo-borrow.js';
 import { registerLoanDeleteRoute } from './delete.js';
+import { registerLoanCancelRoute } from './cancel.js';
 
 export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
   const loanService = new LoanService();
@@ -16,6 +17,7 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
       registerActiveLoansRoute(subApp, loanService);
       registerPhotoBorrowRoute(subApp, loanService);
       registerLoanDeleteRoute(subApp, loanService);
+      registerLoanCancelRoute(subApp, loanService);
     },
     { prefix: '/loans' },
   );

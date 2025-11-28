@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useActiveLoans, useReturnMutation, useDeleteLoanMutation } from '../../api/hooks';
+import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { api } from '../../api/client';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -29,7 +29,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
   const loansQuery = providedLoansQuery || ownLoansQuery;
   const returnMutation = useReturnMutation(resolvedClientKey);
-  const deleteMutation = useDeleteLoanMutation(resolvedClientKey);
+  const cancelMutation = useCancelLoanMutation(resolvedClientKey);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   const handleReturn = async (loanId: string) => {
@@ -44,11 +44,15 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
     await loansQuery.refetch();
   };
 
-  const handleDelete = async (loanId: string) => {
-    if (!confirm('この貸出記録を削除しますか？')) {
+  const handleCancel = async (loanId: string) => {
+    if (!confirm('この貸出記録を取消しますか？\n（誤スキャン時の対処に使用します。データは削除されず、ダッシュボードで除外されます）')) {
       return;
     }
-    await deleteMutation.mutateAsync(loanId);
+    const payload = {
+      loanId,
+      ...(resolvedClientId && resolvedClientId.length > 0 ? { clientId: resolvedClientId } : {})
+    };
+    await cancelMutation.mutateAsync(payload);
     await loansQuery.refetch();
   };
 
@@ -116,22 +120,19 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                   <div className="flex flex-col gap-2 md:flex-row">
                     <Button
                       onClick={() => handleReturn(loan.id)}
-                      disabled={returnMutation.isPending || deleteMutation.isPending}
+                      disabled={returnMutation.isPending || cancelMutation.isPending}
                       className="md:min-w-[140px]"
                     >
                       {returnMutation.isPending ? '送信中…' : '返却する'}
                     </Button>
-                    {/* 返却済みのLoanのみ削除ボタンを表示 */}
-                    {loan.returnedAt && (
-                      <Button
-                        onClick={() => handleDelete(loan.id)}
-                        disabled={returnMutation.isPending || deleteMutation.isPending}
-                        variant="ghost"
-                        className="md:min-w-[100px] text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                      >
-                        {deleteMutation.isPending ? '削除中…' : '削除'}
-                      </Button>
-                    )}
+                    <Button
+                      onClick={() => handleCancel(loan.id)}
+                      disabled={returnMutation.isPending || cancelMutation.isPending}
+                      variant="ghost"
+                      className="md:min-w-[100px] text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
+                    >
+                      {cancelMutation.isPending ? '取消中…' : '取消'}
+                    </Button>
                   </div>
                 </li>
               );

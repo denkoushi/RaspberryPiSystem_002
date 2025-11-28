@@ -23,3 +23,9 @@ export const loanParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+export const cancelSchema = z.object({
+  loanId: z.string().uuid(),
+  clientId: z.string().uuid().optional(),
+  performedByUserId: z.string().uuid().optional()
+});
+
