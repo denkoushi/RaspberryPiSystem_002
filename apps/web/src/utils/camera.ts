@@ -17,8 +17,18 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
 
   const constraints: MediaStreamConstraints = {
     video: deviceId
-      ? { deviceId: { exact: deviceId } }
-      : { facingMode: 'environment' }, // 背面カメラを優先
+      ? { 
+          deviceId: { exact: deviceId },
+          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
+          height: { ideal: 480, max: 480 },
+          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
+        }
+      : { 
+          facingMode: 'environment', 
+          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
+          height: { ideal: 480, max: 480 },
+          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
+        },
     audio: false,
   };
 
@@ -214,8 +224,18 @@ export async function startCameraPreview(
 
   const constraints: MediaStreamConstraints = {
     video: deviceId
-      ? { deviceId: { exact: deviceId } }
-      : { facingMode: 'environment', width: { ideal: 800 }, height: { ideal: 600 } }, // 背面カメラを優先、解像度を指定
+      ? { 
+          deviceId: { exact: deviceId },
+          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
+          height: { ideal: 480, max: 480 },
+          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
+        }
+      : { 
+          facingMode: 'environment', 
+          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
+          height: { ideal: 480, max: 480 },
+          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
+        },
     audio: false,
   };
 
