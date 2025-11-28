@@ -57,15 +57,38 @@ export function KioskPhotoBorrowPage() {
 
   // NFCイベントの処理
   useEffect(() => {
+    // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
+    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    
     // ページマウント前、または処理中、またはNFCイベントがない場合はスキップ
-    if (!pageMountedRef.current || !nfcEvent || isCapturing || processingRef.current) return;
+    if (!pageMountedRef.current) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: page not mounted');
+      }
+      return;
+    }
+    if (!nfcEvent) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: no NFC event');
+      }
+      return;
+    }
+    if (isCapturing) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: already capturing');
+      }
+      return;
+    }
+    if (processingRef.current) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: already processing');
+      }
+      return;
+    }
     
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     const now = Date.now();
     const processedUids = processedUidsRef.current;
-    
-    // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
-    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
     
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
@@ -90,7 +113,7 @@ export function KioskPhotoBorrowPage() {
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録（処理開始時に即座に記録）
 
     if (enableDebugLogs) {
-      console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
+      console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey, 'timestamp:', nfcEvent.timestamp);
     }
 
     // 従業員タグをスキャンしたら、カメラで撮影してから持出処理を開始
@@ -171,7 +194,7 @@ export function KioskPhotoBorrowPage() {
       }
       );
     })();
-  }, [nfcEvent?.uid, nfcEvent?.timestamp, photoBorrowMutation, resolvedClientId]); // isCapturingを依存配列から除外（processingRefで制御）
+  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId]); // photoBorrowMutationを依存配列から除外（オブジェクト参照が変わる可能性があるため）
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
