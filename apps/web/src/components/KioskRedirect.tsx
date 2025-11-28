@@ -28,10 +28,11 @@ export function KioskRedirect() {
     // 現在のパスを正規化（末尾のスラッシュを除去）
     const normalizedPath = location.pathname.replace(/\/$/, '');
     const isOnRoot = normalizedPath === '';
+    const isWithinKiosk = isOnRoot || normalizedPath.startsWith('/kiosk');
     const isOnKioskRoot = normalizedPath === '/kiosk';
     
-    // / または /kiosk パスでのみ動作する
-    if (!isOnRoot && !isOnKioskRoot) {
+    // / または /kiosk 配下でのみ動作する
+    if (!isWithinKiosk) {
       if (enableDebugLogs) {
         console.log('[KioskRedirect] Not on root or kiosk path, skipping:', normalizedPath);
       }
