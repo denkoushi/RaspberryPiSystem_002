@@ -144,10 +144,12 @@ export class PdfStorage {
     }
 
     try {
+      // 環境変数でDPIを設定可能（デフォルト: 150、4K表示の場合は300推奨）
+      const dpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
       await convertPdfToImages(pdfFilePath, outputDir, {
         prefix: pdfId,
         format: 'jpeg',
-        dpi: 150,
+        dpi,
         quality: 85,
       });
       

@@ -4,8 +4,10 @@ import type { SignageService, SignageContentResponse } from './signage.service.j
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 
-const WIDTH = 1920;
-const HEIGHT = 1080;
+// 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
+// 50インチモニタで近くから見る場合は4K推奨
+const WIDTH = parseInt(process.env.SIGNAGE_RENDER_WIDTH || '1920', 10);
+const HEIGHT = parseInt(process.env.SIGNAGE_RENDER_HEIGHT || '1080', 10);
 const BACKGROUND = '#0f172a';
 
 export class SignageRenderer {
@@ -105,11 +107,14 @@ export class SignageRenderer {
   }
 
   async renderMessage(message: string, customWidth = WIDTH): Promise<Buffer> {
+    // 解像度に応じて文字サイズをスケール（1920x1080基準）
+    const scale = WIDTH / 1920;
+    const fontSize = Math.round(56 * scale);
     const svg = `
       <svg width="${customWidth}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-          font-size="56" font-family="sans-serif" fill="#e2e8f0" font-weight="600">
+          font-size="${fontSize}" font-family="sans-serif" fill="#e2e8f0" font-weight="600">
           ${this.escapeXml(message)}
         </text>
       </svg>
@@ -125,10 +130,12 @@ export class SignageRenderer {
     height: number,
     mode: 'FULL' | 'SPLIT' = 'FULL'
   ): string {
-    const headerSize = mode === 'FULL' ? 72 : 58;
-    const itemFontSize = mode === 'FULL' ? 52 : 42;
-    const padding = mode === 'FULL' ? 80 : 60;
-    const lineHeight = itemFontSize + 20;
+    // 解像度に応じて文字サイズとパディングをスケール（1920x1080基準）
+    const scale = WIDTH / 1920;
+    const headerSize = Math.round((mode === 'FULL' ? 72 : 58) * scale);
+    const itemFontSize = Math.round((mode === 'FULL' ? 52 : 42) * scale);
+    const padding = Math.round((mode === 'FULL' ? 80 : 60) * scale);
+    const lineHeight = itemFontSize + Math.round(20 * scale);
     const maxItems = Math.max(4, Math.floor((height - padding * 2 - headerSize) / lineHeight));
     const rows = tools.slice(0, maxItems).map((tool, index) => {
       const y = padding + headerSize + (index + 1) * lineHeight;
