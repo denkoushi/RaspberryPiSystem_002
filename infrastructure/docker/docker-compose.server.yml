@@ -29,6 +29,7 @@ services:
       - thumbnail-storage:/app/storage/thumbnails
       - pdf-storage:/app/storage/pdfs
       - pdf-pages-storage:/app/storage/pdf-pages
+      - signage-rendered-storage:/app/storage/signage-rendered
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     ports:
@@ -98,3 +99,9 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/pdf-pages
+  signage-rendered-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/signage-rendered
