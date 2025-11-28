@@ -22,6 +22,7 @@
   @ws {
     path /ws/*
   }
+  rewrite @ws {path} {path=/stream}
   reverse_proxy @ws 192.168.10.223:7071 {
     transport http {
       versions h2c 1.1
