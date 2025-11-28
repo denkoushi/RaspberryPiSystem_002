@@ -225,3 +225,41 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/api/package.json`
 
+---
+
+### [KB-044] PDFアップロード時のmultipart処理エラー（part is not async iterable）
+
+**EXEC_PLAN.md参照**: Progress (2025-11-28)
+
+**事象**: 
+- デジタルサイネージ機能でPDFをアップロードしようとすると、500エラーが発生
+- エラーメッセージ: "part is not async iterable"
+- APIログに`TypeError: part is not async iterable`が記録される
+
+**要因**: 
+- `@fastify/multipart`の`part`オブジェクトを直接イテレートしようとしていた
+- `part`は`async iterable`ではなく、`part.file`が`async iterable`である
+- `imports.ts`では正しく`part.file`を使用していたが、`pdfs.ts`では`part`を直接使用していた
+
+**試行した対策**: 
+- [試行1] `part`を直接イテレート → **失敗**（`part is not async iterable`エラー）
+- [試行2] `imports.ts`の実装を参考に`part.file`を使用するように修正 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `MultipartFile`型をインポート
+  2. `readFile`関数の引数を`MultipartFile`型に変更
+  3. `for await (const chunk of part.file)`を使用してファイルを読み込む
+  4. `part`を`MultipartFile`として型アサーション
+
+**学んだこと**: 
+- **既存コードの参照**: 同じライブラリを使用している既存のコード（`imports.ts`）を参考にする
+- **型定義の確認**: `@fastify/multipart`の型定義を確認することで、正しい使い方を理解できる
+- **エラーメッセージの解釈**: "is not async iterable"というエラーは、イテレート可能なプロパティを探すヒントになる
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/api/src/routes/signage/pdfs.ts`
+- `apps/api/src/routes/imports.ts`
+

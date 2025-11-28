@@ -20,7 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 8件 | APIエラー、レート制限、認証、履歴 |
+| API関連 | [api.md](./api.md) | 9件 | APIエラー、レート制限、認証、履歴 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 13件 | キオスク接続、XState、UI、カメラ連携 |
@@ -42,6 +42,7 @@ update-frequency: high
 | [KB-011](./api.md#kb-011-同じアイテムが未返却のまま再借用できない) | 同じアイテムが未返却のまま再借用できない | ✅ 解決済み |
 | [KB-012](./api.md#kb-012-管理uiの履歴画面に日付フィルタcsvエクスポートがない) | 管理UIの履歴画面に日付フィルタ/CSVエクスポートがない | ✅ 解決済み |
 | [KB-017](./api.md#kb-017-fastify-swaggerが存在しない) | fastify-swaggerが存在しない | ✅ 解決済み |
+| [KB-044](./api.md#kb-044-pdfアップロード時のmultipart処理エラーpart-is-not-async-iterable) | PDFアップロード時のmultipart処理エラー（part is not async iterable） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -134,9 +135,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 35件 |
+| ✅ 解決済み | 36件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **39件** |
+| **合計** | **40件** |
 
 ---
 
@@ -155,4 +156,5 @@ update-frequency: high
 - 2025-11-28: KB-041を追加（Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題）
 - 2025-11-28: KB-042を追加（pdf-popplerがLinux（ARM64）をサポートしていない問題）
 - 2025-11-28: KB-043を追加（KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題）
+- 2025-11-28: KB-044を追加（PDFアップロード時のmultipart処理エラー）
 
