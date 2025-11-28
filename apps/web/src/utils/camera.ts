@@ -45,27 +45,62 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
  * @param stream MediaStream
  * @returns 撮影した画像のBlob（JPEG形式）
  */
-export function capturePhotoFromStream(stream: MediaStream): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
+export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob> {
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.style.position = 'fixed';
+  video.style.top = '-9999px';
+  video.style.left = '-9999px';
+  video.style.width = '1px';
+  video.style.height = '1px';
+  video.style.opacity = '0';
+  video.style.pointerEvents = 'none';
+  
+  // DOMに追加してブラウザの最適化を有効にする
+  document.body.appendChild(video);
+  
+  try {
     video.srcObject = stream;
-    video.play();
+    
+    // メタデータが読み込まれるまで待機
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('ビデオメタデータの読み込みがタイムアウトしました'));
+      }, 5000); // 5秒でタイムアウト
+      
+      video.onloadedmetadata = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      
+      video.onerror = (error) => {
+        clearTimeout(timeout);
+        reject(new Error(`ビデオの読み込みに失敗しました: ${error}`));
+      };
+    });
+    
+    // ビデオを再生
+    await video.play();
+    
+    // フレームが安定するまで少し待機（100ms）
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-    video.onloadedmetadata = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvasコンテキストの取得に失敗しました');
+    }
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvasコンテキストの取得に失敗しました'));
-        return;
-      }
+    // ビデオフレームをキャンバスに描画
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // ビデオフレームをキャンバスに描画
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // JPEG形式でBlobに変換（品質80%）
+    // JPEG形式でBlobに変換（品質80%）
+    return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
           if (blob) {
@@ -77,12 +112,15 @@ export function capturePhotoFromStream(stream: MediaStream): Promise<Blob> {
         'image/jpeg',
         0.8
       );
-    };
-
-    video.onerror = (error) => {
-      reject(new Error(`ビデオの読み込みに失敗しました: ${error}`));
-    };
-  });
+    });
+  } finally {
+    // クリーンアップ：ビデオを停止してDOMから削除
+    video.pause();
+    video.srcObject = null;
+    if (video.parentNode) {
+      video.parentNode.removeChild(video);
+    }
+  }
 }
 
 /**
