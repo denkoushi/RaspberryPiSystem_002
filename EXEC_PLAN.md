@@ -653,6 +653,30 @@
 - Dockerfileにpoppler-utilsを追加済み（APIコンテナの再ビルドが必要）
 - PDFストレージディレクトリ（`/opt/RaspberryPiSystem_002/storage/pdfs`, `/opt/RaspberryPiSystem_002/storage/pdf-pages`）の作成が必要
 
+### Phase 8: デジタルサイネージ軽量モード（進行中）
+
+**目的**:
+- Raspberry Pi 3 / Raspberry Pi Zero 2W など低スペック端末でも常時表示できる軽量クライアントを提供する。
+- サーバー側で静止画レンダリングを行い、クライアントは単純な画像ビューアとして稼働させる。
+
+**タスク**:
+1. 設計 / ドキュメント
+   - [x] `docs/modules/signage/signage-lite.md` に軽量モードの計画をまとめる。
+   - [ ] 軽量クライアント利用時の要件（OS, 依存パッケージ, ネットワーク要件）を文書化。
+2. サーバー側レンダリング
+   - [ ] `/signage` 画面を headless で静止画にレンダリングする PoC を実装。
+   - [ ] `/api/signage/current-image` で最新画像を返すAPIを追加。
+3. クライアント側
+   - [ ] Raspberry Pi OS Lite + feh で画像をループ表示する systemd サービスを作成（`setup-signage-lite.sh`）。
+   - [ ] Zero 2W 実機で24h連続稼働テストを実施し、CPU温度・再接続シナリオを記録。
+4. 統合
+   - [ ] 管理画面またはセットアップスクリプトで「通常モード / 軽量モード」を選択できるようにする。
+
+**リスク / 留意点**:
+- サーバー側レンダリングの負荷（headless Chromium or Puppeteer）により API コンテナのCPU使用率が上がる可能性がある。
+- 画像生成が失敗した場合のフォールバック画像/テキストが必要。
+- TLS/認証を維持しつつ `curl`/`feh` で画像取得するための仕組み（client-key or ベーシック認証等）を検討。
+
 ### Phase 6: 写真撮影持出機能（FR-009）実装完了（2025-11-27）
 
 **達成事項**:

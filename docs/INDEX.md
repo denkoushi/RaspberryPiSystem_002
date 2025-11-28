@@ -136,6 +136,7 @@
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
 | [signage/README.md](./modules/signage/README.md) | **デジタルサイネージモジュール** |
+| [signage/signage-lite.md](./modules/signage/signage-lite.md) | **デジタルサイネージ軽量モード計画** |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
 | [logistics/README.md](./modules/logistics/README.md) | 物流モジュール（将来実装予定） |
 
