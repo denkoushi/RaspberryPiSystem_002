@@ -78,7 +78,7 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
   return useQuery({
     queryKey: ['loans', clientId, clientKey],
     queryFn: () => getActiveLoans(clientId, clientKey),
-    refetchInterval: 2_000, // 2秒ごとに更新（キオスク画面の要件）
+    refetchInterval: 10_000, // 10秒ごとに更新（CPU負荷軽減のため）
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled !== false // デフォルトはtrue、明示的にfalseが指定された場合のみ無効化
   });
@@ -193,13 +193,13 @@ export function useImportMaster() {
 
 /**
  * システム情報（CPU温度・負荷）を取得するフック
- * 5秒間隔で自動更新
+ * 10秒間隔で自動更新
  */
 export function useSystemInfo() {
   return useQuery({
     queryKey: ['system-info'],
     queryFn: getSystemInfo,
-    refetchInterval: 5000, // 5秒間隔で更新
+    refetchInterval: 10_000, // 10秒間隔で更新（CPU負荷軽減のため）
     staleTime: 3000, // 3秒間はキャッシュを使用
     refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
   });
