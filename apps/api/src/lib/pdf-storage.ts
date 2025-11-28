@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import pdf from 'pdf-poppler';
+import { convertPdfToImages } from './pdf-converter.js';
 
 /**
  * PDF保存のベースディレクトリ
@@ -143,19 +143,13 @@ export class PdfStorage {
       // ディレクトリが存在しない場合は変換を実行
     }
 
-    // ディレクトリを作成
-    await fs.mkdir(outputDir, { recursive: true });
-
-    // PDFを画像に変換
-    const options = {
-      format: 'jpeg' as const,
-      out_dir: outputDir,
-      out_prefix: 'page',
-      page: null, // 全ページ
-    };
-
     try {
-      await pdf.convert(pdfFilePath, options);
+      await convertPdfToImages(pdfFilePath, outputDir, {
+        prefix: pdfId,
+        format: 'jpeg',
+        dpi: 150,
+        quality: 85,
+      });
       
       // 変換された画像ファイルを取得
       const files = await fs.readdir(outputDir);
