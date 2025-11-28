@@ -19,13 +19,8 @@
   reverse_proxy @api api:8080
 
   # WebSocketプロキシ（NFCエージェント用）
-  handle /ws/* {
-    rewrite * /stream
-    reverse_proxy 192.168.10.223:7071 {
-      transport http {
-        versions h2c 1.1
-      }
-    }
+  handle /ws/stream {
+    reverse_proxy 192.168.10.223:7071
   }
 
   # サムネイルの静的ファイル配信（認証不要）
