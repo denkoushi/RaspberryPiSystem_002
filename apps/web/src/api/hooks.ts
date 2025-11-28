@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   borrowItem,
+  cancelLoan,
   createEmployee,
   createItem,
   deleteEmployee,
   deleteItem,
+  deleteLoan,
   getActiveLoans,
   getClients,
   getEmployees,
   getItems,
   getKioskConfig,
+  getSystemInfo,
   getTransactions,
   importMaster,
   photoBorrow,
@@ -17,6 +20,7 @@ import {
   updateClient,
   updateEmployee,
   updateItem,
+  type CancelPayload,
   type ClientDevice,
   type PhotoBorrowPayload
 } from './client';
@@ -102,6 +106,28 @@ export function useReturnMutation(clientKey?: string) {
   });
 }
 
+export function useDeleteLoanMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (loanId: string) => deleteLoan(loanId, clientKey),
+    onSuccess: () => {
+      // 削除成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
+export function useCancelLoanMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CancelPayload) => cancelLoan(payload, clientKey),
+    onSuccess: () => {
+      // 取消成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
 export function usePhotoBorrowMutation(clientKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -162,5 +188,19 @@ export function useImportMaster() {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['items'] });
     }
+  });
+}
+
+/**
+ * システム情報（CPU温度・負荷）を取得するフック
+ * 5秒間隔で自動更新
+ */
+export function useSystemInfo() {
+  return useQuery({
+    queryKey: ['system-info'],
+    queryFn: getSystemInfo,
+    refetchInterval: 5000, // 5秒間隔で更新
+    staleTime: 3000, // 3秒間はキャッシュを使用
+    refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
   });
 }

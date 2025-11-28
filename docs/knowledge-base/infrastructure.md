@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 6件  
+**件数**: 13件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -388,4 +388,42 @@ update-frequency: medium
 
 **関連ファイル**: 
 - なし（システム設定の問題）
+
+---
+
+### [KB-039] CPU温度取得のDocker対応（/sys/class/thermalマウント）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- キオスクヘッダーにCPU温度・負荷モニターを追加したが、温度が表示されない
+- APIのレスポンスで`cpuTemp: null`が返される
+- `vcgencmd measure_temp`コマンドがDockerコンテナ内で実行できない
+
+**要因**: 
+- `vcgencmd`コマンドはホストのコマンドで、Dockerコンテナ内からは直接アクセスできない
+- Dockerコンテナ内からホストのシステム情報にアクセスするには、ボリュームマウントが必要
+
+**試行した対策**: 
+- [試行1] `vcgencmd measure_temp`コマンドを実行 → **失敗**（Dockerコンテナ内でコマンドが見つからない）
+- [試行2] `/sys/class/thermal/thermal_zone0/temp`ファイルを読み取る方式に変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `/sys/class/thermal/thermal_zone0/temp`ファイルを読み取る方式に変更（ミリ度で返されるため、1000で割って度に変換）
+  2. Docker Composeで`/sys/class/thermal`を読み取り専用でマウント: `- /sys/class/thermal:/sys/class/thermal:ro`
+  3. `fs/promises`の`readFile`を使用してファイルを読み取り
+  4. エラーハンドリングを改善し、ログ出力を`info`レベルに変更
+
+**学んだこと**: 
+- **Dockerコンテナからのシステム情報取得**: `/sys`ディレクトリをマウントすることで、ホストのシステム情報にアクセスできる
+- **ファイルベースのアプローチ**: コマンド実行よりも、ファイルを読み取る方が確実で軽量
+- **ボリュームマウント**: 読み取り専用（`:ro`）でマウントすることで、セキュリティを確保
+- **エラーハンドリング**: ファイルが読めない場合（非ラズパイ環境など）は、`null`を返して処理を継続
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/api/src/routes/system/system-info.ts`
+- `infrastructure/docker/docker-compose.server.yml`
 

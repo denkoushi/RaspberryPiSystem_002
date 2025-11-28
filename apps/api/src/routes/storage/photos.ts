@@ -1,12 +1,15 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
+import { prisma } from '../../lib/prisma.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * 写真配信ルート
  * 
  * 元画像をAPI経由で配信する（認証必要）。
  * サムネイルはCaddyで静的ファイル配信されるため、このAPIでは元画像のみを扱う。
+ * JWTトークンまたはclient-keyで認証可能。
  */
 export function registerPhotoStorageRoutes(app: FastifyInstance): void {
   // 認証が必要（JWTトークンまたはAPIキー）
@@ -18,7 +21,19 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
    * 元画像を配信する
    * パス例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg
    */
-  app.get('/storage/photos/*', { preHandler: canView }, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/photos/*', async (request: FastifyRequest, reply: FastifyReply) => {
+    // client-keyがあれば認証をスキップ
+    const headerKey = request.headers['x-client-key'];
+    if (!headerKey) {
+      // client-keyがない場合はJWT認証を要求
+      await canView(request, reply);
+    } else {
+      // client-keyの有効性を確認
+      const client = await prisma.clientDevice.findUnique({ where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] } });
+      if (!client) {
+        throw new ApiError(401, 'クライアント API キーが不正です');
+      }
+    }
     // Fastifyのワイルドカードパスは request.url から抽出する
     const urlPath = request.url.replace('/api/storage/photos/', '');
     

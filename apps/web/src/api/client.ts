@@ -131,6 +131,25 @@ export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
   return data.loan;
 }
 
+export async function deleteLoan(loanId: string, clientKey?: string) {
+  const { data } = await api.delete<{ success: boolean }>(`/tools/loans/${loanId}`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
+export interface CancelPayload {
+  loanId: string;
+  clientId?: string;
+}
+
+export async function cancelLoan(payload: CancelPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/cancel', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.loan;
+}
+
 export interface PhotoBorrowPayload {
   employeeTagUid: string;
   photoData: string; // Base64エンコードされたJPEG画像データ
@@ -213,5 +232,16 @@ export async function importMaster(payload: ImportMasterPayload) {
   const { data } = await api.post<{ summary: ImportSummary }>('/imports/master', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
+  return data;
+}
+
+export interface SystemInfo {
+  cpuTemp: number | null;
+  cpuLoad: number;
+  timestamp: string;
+}
+
+export async function getSystemInfo() {
+  const { data } = await api.get<SystemInfo>('/system/system-info');
   return data;
 }

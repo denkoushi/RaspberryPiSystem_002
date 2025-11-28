@@ -25,6 +25,7 @@ enum TransactionAction {
   BORROW
   RETURN
   ADJUST
+  CANCEL
 }
 
 enum UserRole {
@@ -106,6 +107,7 @@ model Loan {
   borrowedAt   DateTime      @default(now())
   dueAt        DateTime?
   returnedAt   DateTime?
+  cancelledAt  DateTime?     // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
   notes        String?
   photoUrl     String?        // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
   photoTakenAt DateTime?      // 撮影日時
@@ -120,6 +122,7 @@ model Loan {
   @@index([employeeId])
   @@index([clientId])
   @@index([returnedAt])
+  @@index([cancelledAt])
   @@index([photoTakenAt])
 }
 

@@ -417,10 +417,12 @@ export class LoanService {
 
   /**
    * アクティブな貸出一覧を取得
+   * 返却済み・取消済みのLoanは除外する
    */
   async findActive(query: ActiveLoanQuery): Promise<LoanWithRelations[]> {
     const where = {
       returnedAt: null,
+      cancelledAt: null, // 取消済みも除外（マイグレーション適用後に有効）
       ...(query.clientId ? { clientId: query.clientId } : {})
     };
 
@@ -431,6 +433,157 @@ export class LoanService {
     });
 
     return loans as LoanWithRelations[];
+  }
+
+  /**
+   * Loanを取消する（誤スキャン時の対処）
+   * データは削除せず、cancelledAtフラグを設定してダッシュボードで除外可能にする
+   */
+  async cancel(
+    loanId: string,
+    resolvedClientId?: string,
+    performedByUserId?: string
+  ): Promise<LoanWithRelations> {
+    logger.info(
+      {
+        loanId,
+        clientId: resolvedClientId,
+        performedByUserId,
+      },
+      'Loan cancel request started',
+    );
+
+    const loan = await prisma.loan.findUnique({
+      where: { id: loanId },
+      include: { item: true, employee: true }
+    });
+
+    if (!loan) {
+      logger.warn({ loanId }, 'Loan not found for cancel');
+      throw new ApiError(404, '貸出レコードが見つかりません');
+    }
+
+    // 既に返却済みの場合は取消できない
+    if (loan.returnedAt) {
+      logger.warn({ loanId, returnedAt: loan.returnedAt }, 'Cannot cancel returned loan');
+      throw new ApiError(400, '返却済みの貸出記録は取消できません');
+    }
+
+    // 既に取消済みの場合はエラー
+    if (loan.cancelledAt) {
+      logger.warn({ loanId, cancelledAt: loan.cancelledAt }, 'Loan already cancelled');
+      throw new ApiError(400, 'すでに取消済みです');
+    }
+
+    if (!loan.employee) {
+      throw new ApiError(400, 'この貸出記録に関連する従業員が見つかりません');
+    }
+
+    const itemSnapshot = loan.item
+      ? {
+          id: loan.item.id,
+          code: loan.item.itemCode,
+          name: loan.item.name,
+          nfcTagUid: loan.item.nfcTagUid ?? null
+        }
+      : null;
+    const employeeSnapshot = {
+      id: loan.employee.id,
+      code: loan.employee.employeeCode,
+      name: loan.employee.displayName,
+      nfcTagUid: loan.employee.nfcTagUid ?? null
+    };
+
+    const updatedLoan = await prisma.$transaction(async (tx) => {
+      // Loanを取消状態に更新
+      const loanResult = await tx.loan.update({
+        where: { id: loan.id },
+        data: {
+          cancelledAt: new Date(),
+          clientId: resolvedClientId ?? loan.clientId,
+        },
+        include: { item: true, employee: true, client: true }
+      });
+
+      // アイテムが関連付けられている場合、ステータスをAVAILABLEに戻す
+      if (loan.itemId) {
+        await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
+      }
+
+      // Transactionレコードを作成（取消履歴を記録）
+      await tx.transaction.create({
+        data: {
+          loanId: loan.id,
+          action: TransactionAction.CANCEL,
+          actorEmployeeId: loan.employeeId,
+          performedByUserId: performedByUserId,
+          clientId: resolvedClientId ?? loan.clientId,
+          details: {
+            itemSnapshot,
+            employeeSnapshot,
+            reason: '誤スキャンによる取消'
+          }
+        }
+      });
+
+      return loanResult;
+    });
+
+    logger.info(
+      {
+        loanId: updatedLoan.id,
+        itemId: updatedLoan.itemId,
+        employeeId: updatedLoan.employeeId,
+        clientId: resolvedClientId ?? loan.clientId,
+        cancelledAt: updatedLoan.cancelledAt,
+      },
+      'Loan cancelled successfully',
+    );
+
+    return updatedLoan as LoanWithRelations;
+  }
+
+  /**
+   * Loanを削除する
+   * 写真が関連付けられている場合は、写真ファイルも削除する
+   */
+  async delete(loanId: string): Promise<void> {
+    logger.info({ loanId }, 'Loan delete request started');
+
+    const loan = await prisma.loan.findUnique({
+      where: { id: loanId },
+      include: { item: true, employee: true }
+    });
+
+    if (!loan) {
+      logger.warn({ loanId }, 'Loan not found for delete');
+      throw new ApiError(404, '貸出レコードが見つかりません');
+    }
+
+    // 返却済みでない場合は削除できない
+    if (!loan.returnedAt) {
+      logger.warn({ loanId, returnedAt: loan.returnedAt }, 'Cannot delete active loan');
+      throw new ApiError(400, '未返却の貸出記録は削除できません。先に返却してください。');
+    }
+
+    // 写真が関連付けられている場合は、写真ファイルも削除
+    if (loan.photoUrl) {
+      try {
+        await PhotoStorage.deletePhoto(loan.photoUrl);
+        logger.info({ loanId, photoUrl: loan.photoUrl }, 'Photo deleted successfully');
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error({ err, loanId, photoUrl: loan.photoUrl }, 'Photo deletion failed');
+        // 写真の削除に失敗してもLoanの削除は続行する（ログに記録）
+      }
+    }
+
+    // Loanを削除（Transactionも自動的に削除される）
+    await prisma.loan.delete({
+      where: { id: loanId }
+    });
+
+    logger.info({ loanId }, 'Loan deleted successfully');
   }
 }
 

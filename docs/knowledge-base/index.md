@@ -23,8 +23,8 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 8件 | APIエラー、レート制限、認証、履歴 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 9件 | キオスク接続、XState、UI、カメラ連携 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 12件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 11件 | キオスク接続、XState、UI、カメラ連携 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 13件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
 
@@ -73,6 +73,8 @@ update-frequency: high
 | [KB-029](./frontend.md#kb-029-従業員編集画面でバリデーションエラーメッセージが表示されない) | 従業員編集画面でバリデーションエラーメッセージが表示されない | ✅ 解決済み |
 | [KB-035](./frontend.md#kb-035-useeffectの依存配列にiscapturingを含めていた問題重複処理) | useEffectの依存配列にisCapturingを含めていた問題（重複処理） | ✅ 解決済み |
 | [KB-036](./frontend.md#kb-036-履歴画面の画像表示で認証エラーwindowopenでの新しいタブ) | 履歴画面の画像表示で認証エラー（window.openでの新しいタブ） | ✅ 解決済み |
+| [KB-037](./frontend.md#kb-037-カメラプレビューのcpu負荷問題常時プレビュー削除) | カメラプレビューのCPU負荷問題（常時プレビュー削除） | ✅ 解決済み |
+| [KB-038](./frontend.md#kb-038-カメラ撮影時のcpu100問題video要素のクリーンアップ) | カメラ撮影時のCPU100%問題（video要素のクリーンアップ） | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -89,6 +91,7 @@ update-frequency: high
 | [KB-032](./infrastructure.md#kb-032-caddyfilelocal-のhttpバージョン指定エラー) | Caddyfile.local のHTTPバージョン指定エラー | ✅ 解決済み |
 | [KB-033](./infrastructure.md#kb-033-docker-composeserveryml-のyaml構文エラー手動編集による破壊) | docker-compose.server.yml のYAML構文エラー（手動編集による破壊） | ✅ 解決済み |
 | [KB-034](./infrastructure.md#kb-034-ラズパイのロケール設定euc-jpによる文字化け) | ラズパイのロケール設定（EUC-JP）による文字化け | ✅ 解決済み |
+| [KB-039](./infrastructure.md#kb-039-cpu温度取得のdocker対応sysclassthermalマウント) | CPU温度取得のDocker対応（/sys/class/thermalマウント） | ✅ 解決済み |
 
 ---
 
@@ -127,9 +130,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 28件 |
+| ✅ 解決済み | 31件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **32件** |
+| **合計** | **35件** |
 
 ---
 
@@ -143,4 +146,5 @@ update-frequency: high
 - 2025-11-26: KB-023〜KB-024を追加
 - 2025-11-27: カテゴリ別にファイルを分割（リファクタリング）
 - 2025-11-28: KB-030〜KB-036を追加（HTTPS設定、WebSocket Mixed Content、YAML構文エラー、ロケール設定、useEffect重複処理、履歴画面画像表示）
+- 2025-11-28: KB-037〜KB-039を追加（カメラプレビューCPU負荷、カメラ撮影CPU100%、CPU温度取得Docker対応）
 
