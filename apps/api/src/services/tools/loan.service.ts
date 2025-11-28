@@ -432,5 +432,48 @@ export class LoanService {
 
     return loans as LoanWithRelations[];
   }
+
+  /**
+   * Loanを削除する
+   * 写真が関連付けられている場合は、写真ファイルも削除する
+   */
+  async delete(loanId: string): Promise<void> {
+    logger.info({ loanId }, 'Loan delete request started');
+
+    const loan = await prisma.loan.findUnique({
+      where: { id: loanId },
+      include: { item: true, employee: true }
+    });
+
+    if (!loan) {
+      logger.warn({ loanId }, 'Loan not found for delete');
+      throw new ApiError(404, '貸出レコードが見つかりません');
+    }
+
+    // 返却済みでない場合は削除できない
+    if (!loan.returnedAt) {
+      logger.warn({ loanId, returnedAt: loan.returnedAt }, 'Cannot delete active loan');
+      throw new ApiError(400, '未返却の貸出記録は削除できません。先に返却してください。');
+    }
+
+    // 写真が関連付けられている場合は、写真ファイルも削除
+    if (loan.photoUrl) {
+      try {
+        await PhotoStorage.deletePhoto(loan.photoUrl);
+        logger.info({ loanId, photoUrl: loan.photoUrl }, 'Photo deleted successfully');
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error({ err, loanId, photoUrl: loan.photoUrl }, 'Photo deletion failed');
+        // 写真の削除に失敗してもLoanの削除は続行する（ログに記録）
+      }
+    }
+
+    // Loanを削除（Transactionも自動的に削除される）
+    await prisma.loan.delete({
+      where: { id: loanId }
+    });
+
+    logger.info({ loanId }, 'Loan deleted successfully');
+  }
 }
 

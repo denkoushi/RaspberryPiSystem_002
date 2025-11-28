@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useActiveLoans, useReturnMutation } from '../../api/hooks';
+import { useActiveLoans, useReturnMutation, useDeleteLoanMutation } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { api } from '../../api/client';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Loan, ReturnPayload } from '../../api/types';
 import { Card } from '../../components/ui/Card';
@@ -28,6 +29,8 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
   const loansQuery = providedLoansQuery || ownLoansQuery;
   const returnMutation = useReturnMutation(resolvedClientKey);
+  const deleteMutation = useDeleteLoanMutation(resolvedClientKey);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   const handleReturn = async (loanId: string) => {
     // clientIdが空文字列の場合は送信しない
@@ -39,6 +42,29 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
     }
     await returnMutation.mutateAsync(payload);
     await loansQuery.refetch();
+  };
+
+  const handleDelete = async (loanId: string) => {
+    if (!confirm('この貸出記録を削除しますか？')) {
+      return;
+    }
+    await deleteMutation.mutateAsync(loanId);
+    await loansQuery.refetch();
+  };
+
+  const handleImageClick = async (photoUrl: string) => {
+    try {
+      // photoUrlは /api/storage/photos/... 形式なので、/api を除いて /storage/photos/... にする
+      const imagePath = photoUrl.replace(/^\/api/, '');
+      const response = await api.get(imagePath, {
+        responseType: 'blob',
+      });
+      const blobUrl = URL.createObjectURL(response.data);
+      setSelectedImageUrl(blobUrl);
+    } catch (error) {
+      console.error('画像の取得に失敗しました:', error);
+      alert('画像の取得に失敗しました');
+    }
   };
 
   return (
@@ -68,7 +94,8 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-20 w-20 rounded-lg object-cover border border-white/10"
+                          className="h-20 w-20 rounded-lg object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          onClick={() => loan.photoUrl && handleImageClick(loan.photoUrl)}
                           onError={(e) => {
                             // サムネイルが読み込めない場合は非表示
                             (e.target as HTMLImageElement).style.display = 'none';
@@ -86,13 +113,23 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                       )}
                     </div>
                   </div>
-                  <Button
-                    onClick={() => handleReturn(loan.id)}
-                    disabled={returnMutation.isPending}
-                    className="md:min-w-[140px]"
-                  >
-                    {returnMutation.isPending ? '送信中…' : '返却する'}
-                  </Button>
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <Button
+                      onClick={() => handleReturn(loan.id)}
+                      disabled={returnMutation.isPending || deleteMutation.isPending}
+                      className="md:min-w-[140px]"
+                    >
+                      {returnMutation.isPending ? '送信中…' : '返却する'}
+                    </Button>
+                    <Button
+                      onClick={() => handleDelete(loan.id)}
+                      disabled={returnMutation.isPending || deleteMutation.isPending}
+                      variant="ghost"
+                      className="md:min-w-[100px] text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                    >
+                      {deleteMutation.isPending ? '削除中…' : '削除'}
+                    </Button>
+                  </div>
                 </li>
               );
             })}
@@ -101,6 +138,35 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
         </div>
       ) : (
         <p>現在貸出中のアイテムはありません。</p>
+      )}
+
+      {/* 画像モーダル */}
+      {selectedImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => {
+            URL.revokeObjectURL(selectedImageUrl);
+            setSelectedImageUrl(null);
+          }}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw]">
+            <img
+              src={selectedImageUrl}
+              alt="撮影した写真"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              className="absolute right-2 top-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              onClick={() => {
+                URL.revokeObjectURL(selectedImageUrl);
+                setSelectedImageUrl(null);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
     </Card>
   );

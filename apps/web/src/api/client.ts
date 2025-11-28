@@ -131,6 +131,13 @@ export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
   return data.loan;
 }
 
+export async function deleteLoan(loanId: string, clientKey?: string) {
+  const { data } = await api.delete<{ success: boolean }>(`/tools/loans/${loanId}`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
 export interface PhotoBorrowPayload {
   employeeTagUid: string;
   photoData: string; // Base64エンコードされたJPEG画像データ

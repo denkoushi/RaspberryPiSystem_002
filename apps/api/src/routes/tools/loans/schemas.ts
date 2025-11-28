@@ -19,3 +19,7 @@ export const activeLoanQuerySchema = z.object({
   clientId: z.string().uuid().optional()
 });
 
+export const loanParamsSchema = z.object({
+  id: z.string().uuid()
+});
+

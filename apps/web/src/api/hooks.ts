@@ -5,6 +5,7 @@ import {
   createItem,
   deleteEmployee,
   deleteItem,
+  deleteLoan,
   getActiveLoans,
   getClients,
   getEmployees,
@@ -97,6 +98,17 @@ export function useReturnMutation(clientKey?: string) {
     mutationFn: (payload: ReturnPayload) => returnLoan(payload, clientKey),
     onSuccess: () => {
       // 返却成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
+export function useDeleteLoanMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (loanId: string) => deleteLoan(loanId, clientKey),
+    onSuccess: () => {
+      // 削除成功後、すべてのloansクエリを無効化して最新データを取得
       queryClient.invalidateQueries({ queryKey: ['loans'] });
     }
   });
