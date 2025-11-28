@@ -219,6 +219,7 @@ APIの概要と詳細。
 
 | 種別 | 場所 |
 |------|------|
+| **デジタルサイネージ** | [modules/signage/README.md](./modules/signage/README.md) |
 | **ドキュメント** | [modules/logistics/README.md](./modules/logistics/README.md) |
 | **APIルート** | `apps/api/src/routes/logistics/` |
 | **サービス層** | `apps/api/src/services/logistics/` |
