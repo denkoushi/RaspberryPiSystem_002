@@ -27,21 +27,18 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   
   // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
   const loansQuery = providedLoansQuery || ownLoansQuery;
-  const [note, setNote] = useState('');
   const returnMutation = useReturnMutation(resolvedClientKey);
 
   const handleReturn = async (loanId: string) => {
     // clientIdが空文字列の場合は送信しない
     const payload: ReturnPayload = {
-      loanId,
-      note: note || undefined
+      loanId
     };
     if (resolvedClientId && resolvedClientId.length > 0) {
       payload.clientId = resolvedClientId;
     }
     await returnMutation.mutateAsync(payload);
     await loansQuery.refetch();
-    setNote('');
   };
 
   return (
@@ -52,15 +49,6 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
         <p>読み込み中...</p>
       ) : loansQuery.data && loansQuery.data.length > 0 ? (
         <div className="space-y-4">
-          <label className="block text-sm text-white/70">
-            備考（任意）
-            <textarea
-              className="mt-1 w-full rounded-md border border-white/10 bg-white/5 p-3 text-white"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
           <ul className="space-y-3">
             {loansQuery.data.map((loan) => {
               // 写真サムネイルのURLを生成

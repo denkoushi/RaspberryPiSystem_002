@@ -4,16 +4,14 @@ import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../ap
 import { useNfcStream } from '../../hooks/useNfcStream';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { KioskReturnPage } from './KioskReturnPage';
-import { setClientKeyHeader } from '../../api/client';
 import type { Loan } from '../../api/types';
 import { captureAndCompressPhoto, startCameraPreview, stopCameraStream } from '../../utils/camera';
 
 export function KioskPhotoBorrowPage() {
   const { data: config } = useKioskConfig();
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
-  const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const [clientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || 'client-demo-key';
   const resolvedClientId = clientId || undefined;
   const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
@@ -30,16 +28,6 @@ export function KioskPhotoBorrowPage() {
   const processingRef = useRef(false); // 処理中フラグ（重複処理を防ぐ）
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-
-  // client-key が空になってもデフォルトを自動で復元する
-  useEffect(() => {
-    if (!clientKey) {
-      setClientKey('client-demo-key');
-      setClientKeyHeader('client-demo-key');
-    } else {
-      setClientKeyHeader(clientKey);
-    }
-  }, [clientKey, setClientKey]);
 
   // ページマウント後にマウントフラグを設定（古いNFCイベントを無視するため）
   useEffect(() => {
@@ -239,26 +227,9 @@ export function KioskPhotoBorrowPage() {
 
   return (
     <div className="space-y-6">
-      <Card title="ステーション設定">
-        <div className="grid gap-4 md:grid-cols-2 lg:w-1/2">
-          <label className="block text-sm text-white/70">
-            クライアント API キー
-            <Input value={clientKey} onChange={(e) => setClientKey(e.target.value)} placeholder="client-demo-key" />
-          </label>
-          <label className="block text-sm text-white/70">
-            クライアントID（任意）
-            <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="UUID (任意)" />
-          </label>
-        </div>
-      </Card>
-
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="写真撮影持出">
           <div className="space-y-4 text-center">
-            <p className="text-3xl font-semibold">
-              Itemをカメラの前に置いて、従業員タグをスキャンしてください
-            </p>
-            
             {/* カメラプレビュー */}
             <div className="relative mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-lg bg-black">
               <video
