@@ -87,35 +87,36 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
               return (
                 <li
                   key={loan.id}
-                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-2"
+                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-2 md:flex-row md:items-center md:justify-between"
                 >
-                  {/* 写真サムネイル */}
-                  {thumbnailUrl && (
-                    <div className="flex-shrink-0">
-                      <img
-                        src={thumbnailUrl}
-                        alt="撮影した写真"
-                        className="h-20 w-full rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
-                        onClick={() => loan.photoUrl && handleImageClick(loan.photoUrl)}
-                        onError={(e) => {
-                          // サムネイルが読み込めない場合は非表示
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+                  <div className="flex flex-1 gap-2">
+                    {/* 写真サムネイル */}
+                    {thumbnailUrl && (
+                      <div className="flex-shrink-0">
+                        <img
+                          src={thumbnailUrl}
+                          alt="撮影した写真"
+                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          onClick={() => loan.photoUrl && handleImageClick(loan.photoUrl)}
+                          onError={(e) => {
+                            // サムネイルが読み込めない場合は非表示
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    {/* 貸出情報 */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{loan.item?.name ?? <span className="text-xs text-white/50">アイテム情報なし</span>}</p>
+                      <p className="text-xs text-white/70">{loan.employee?.displayName ?? '従業員情報なし'}</p>
+                      <p className="text-xs text-white/50">{new Date(loan.borrowedAt).toLocaleString()}</p>
                     </div>
-                  )}
-                  {/* 貸出情報 */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{loan.item?.name ?? <span className="text-xs text-white/50">アイテム情報なし</span>}</p>
-                    <p className="text-xs text-white/70 truncate">{loan.employee?.displayName ?? '従業員情報なし'}</p>
-                    <p className="text-xs text-white/50">{new Date(loan.borrowedAt).toLocaleString()}</p>
                   </div>
-                  {/* ボタン */}
-                  <div className="flex flex-row gap-2 mt-auto">
+                  <div className="flex flex-row gap-2">
                     <Button
                       onClick={() => handleReturn(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
-                      className="text-xs px-2 py-1 h-auto flex-1"
+                      className="text-xs px-3 py-1 h-auto"
                     >
                       {returnMutation.isPending ? '送信中…' : '返却'}
                     </Button>
@@ -123,7 +124,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                       onClick={() => handleCancel(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
                       variant="ghost"
-                      className="text-xs px-2 py-1 h-auto text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
+                      className="text-xs px-3 py-1 h-auto text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
                     >
                       {cancelMutation.isPending ? '取消中…' : '取消'}
                     </Button>
