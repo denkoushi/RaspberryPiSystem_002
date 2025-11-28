@@ -182,6 +182,43 @@ pnpm test
 pnpm test routes/tools
 ```
 
+## データ構造とダッシュボード集計
+
+### データの紐づけ
+
+持出・返却・取消のデータは、**Loanテーブルの`id`（UUID）**で紐づけられています。ダッシュボードでの集計時に、このIDを使用して正確な集計が可能です。
+
+#### Loanテーブル（貸出記録）
+
+- `id`（UUID）: 主キー。持出・返却・取消を紐づける唯一のID
+- `borrowedAt`: 持出日時
+- `returnedAt`: 返却日時（返却済みの場合）
+- `cancelledAt`: 取消日時（取消済みの場合）
+
+#### Transactionテーブル（操作履歴）
+
+- `loanId`: Loanテーブルへの外部キー（持出・返却・取消を紐づける）
+- `action`: `'BORROW' | 'RETURN' | 'CANCEL'`
+
+### ダッシュボードでの集計例
+
+取消済みLoanを除外して集計する場合：
+
+```sql
+-- 持出と返却を紐づけて集計
+SELECT 
+  l.id AS loan_id,
+  COUNT(CASE WHEN t.action = 'BORROW' THEN 1 END) AS borrow_count,
+  COUNT(CASE WHEN t.action = 'RETURN' THEN 1 END) AS return_count,
+  COUNT(CASE WHEN t.action = 'CANCEL' THEN 1 END) AS cancel_count
+FROM "Loan" l
+LEFT JOIN "Transaction" t ON t."loanId" = l.id
+WHERE l."cancelledAt" IS NULL  -- 取消済みを除外（ダッシュボード用）
+GROUP BY l.id;
+```
+
+詳細な集計例は、PowerBIなどのダッシュボードツールで`loanId`を使用してLoanテーブルとTransactionテーブルを結合することで実現できます。
+
 ## 関連ドキュメント
 
 - [API仕様書](./api.md) - 詳細なAPIエンドポイント仕様
