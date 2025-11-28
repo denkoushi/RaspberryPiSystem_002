@@ -104,7 +104,7 @@ export class SignageRenderer {
       .toBuffer();
   }
 
-  private async renderMessage(message: string, customWidth = WIDTH): Promise<Buffer> {
+  async renderMessage(message: string, customWidth = WIDTH): Promise<Buffer> {
     const svg = `
       <svg width="${customWidth}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />

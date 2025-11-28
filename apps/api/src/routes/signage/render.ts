@@ -11,9 +11,14 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const renderer = new SignageRenderer(signageService);
 
-  app.post('/render', { preHandler: canManage }, async () => {
-    const result = await renderer.renderCurrentContent();
-    return { renderedAt: result.renderedAt, filename: result.filename };
+  app.post('/render', { preHandler: canManage }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await renderer.renderCurrentContent();
+      return reply.status(200).send({ renderedAt: result.renderedAt, filename: result.filename });
+    } catch (error) {
+      request.log.error({ err: error }, 'Failed to render signage content');
+      throw new ApiError(500, 'Failed to render signage content');
+    }
   });
 
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -29,9 +34,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       }
     }
 
-    const imageBuffer = await SignageRenderStorage.readCurrentImage();
+    let imageBuffer = await SignageRenderStorage.readCurrentImage();
     if (!imageBuffer) {
-      return reply.status(404).send({ message: 'レンダリング済みの画像がありません' });
+      // 画像が存在しない場合はデフォルトメッセージを生成
+      imageBuffer = await renderer.renderMessage('表示するコンテンツがありません');
     }
 
     reply
