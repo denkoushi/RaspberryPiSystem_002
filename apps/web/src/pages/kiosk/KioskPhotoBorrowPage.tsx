@@ -8,7 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { KioskReturnPage } from './KioskReturnPage';
 import { setClientKeyHeader } from '../../api/client';
 import type { Loan } from '../../api/types';
-import { captureAndCompressPhoto } from '../../utils/camera';
+import { captureAndCompressPhoto, startCameraPreview, stopCameraStream } from '../../utils/camera';
 
 export function KioskPhotoBorrowPage() {
   const { data: config } = useKioskConfig();
@@ -28,6 +28,8 @@ export function KioskPhotoBorrowPage() {
   const [successLoan, setSuccessLoan] = useState<Loan | null>(null);
   const pageMountedRef = useRef(false);
   const processingRef = useRef(false); // 処理中フラグ（重複処理を防ぐ）
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -48,6 +50,34 @@ export function KioskPhotoBorrowPage() {
       processedUidsRef.current.clear(); // 処理済みUIDリストをクリア
     }, 500);
     return () => clearTimeout(timer);
+  }, []);
+
+  // カメラプレビューの開始
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    let stream: MediaStream | null = null;
+
+    const startPreview = async () => {
+      try {
+        stream = await startCameraPreview(videoElement);
+        cameraStreamRef.current = stream;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error('[KioskPhotoBorrowPage] Failed to start camera preview:', err);
+        // エラーは表示しない（ユーザーがタグをスキャンしたときにエラーを表示）
+      }
+    };
+
+    startPreview();
+
+    return () => {
+      if (stream) {
+        stopCameraStream(stream);
+        cameraStreamRef.current = null;
+      }
+    };
   }, []);
 
   // 処理済みUIDのクリーンアップ（10秒以上古いエントリを削除）
@@ -189,6 +219,11 @@ export function KioskPhotoBorrowPage() {
       lastEventKeyRef.current = null;
       processingRef.current = false;
       processedUidsRef.current.clear();
+      // カメラストリームを停止
+      if (cameraStreamRef.current) {
+        stopCameraStream(cameraStreamRef.current);
+        cameraStreamRef.current = null;
+      }
     };
   }, []);
 
@@ -224,8 +259,27 @@ export function KioskPhotoBorrowPage() {
               Itemをカメラの前に置いて、従業員タグをスキャンしてください
             </p>
             
-            {/* 撮影中の表示 */}
-            {isCapturing && (
+            {/* カメラプレビュー */}
+            <div className="relative mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-lg bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-contain"
+                style={{ transform: 'scaleX(-1)' }} // ミラー表示
+              />
+              {isCapturing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <div className="rounded-lg bg-blue-600/90 p-4">
+                    <p className="text-lg font-semibold text-white">写真を撮影中...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* 撮影中の表示（プレビューがない場合のフォールバック） */}
+            {isCapturing && !videoRef.current && (
               <div className="rounded-lg bg-blue-600/20 p-4">
                 <p className="text-lg font-semibold text-blue-300">写真を撮影中...</p>
                 <p className="mt-2 text-sm text-white/70">しばらくお待ちください</p>

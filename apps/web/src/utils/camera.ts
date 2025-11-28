@@ -182,7 +182,7 @@ export function blobToBase64(blob: Blob): Promise<string> {
 /**
  * カメラから写真を撮影し、100KB程度に圧縮してBase64エンコードする
  * @param deviceId カメラデバイスID（省略時はデフォルトカメラ）
- * @returns Base64エンコードされたJPEG画像データ
+ * @returns Base64エンコードされたJPEG画像データ（プレフィックスなし）
  */
 export async function captureAndCompressPhoto(deviceId?: string): Promise<string> {
   const stream = await getCameraStream(deviceId);
@@ -193,6 +193,48 @@ export async function captureAndCompressPhoto(deviceId?: string): Promise<string
     return base64;
   } finally {
     // ストリームを停止
+    stream.getTracks().forEach((track) => track.stop());
+  }
+}
+
+/**
+ * カメラストリームを取得してプレビュー用のvideo要素に設定する
+ * @param videoElement video要素
+ * @param deviceId カメラデバイスID（省略時はデフォルトカメラ）
+ * @returns MediaStream（クリーンアップ用）
+ */
+export async function startCameraPreview(
+  videoElement: HTMLVideoElement,
+  deviceId?: string
+): Promise<MediaStream> {
+  // navigator.mediaDevicesの存在確認
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('このブラウザはカメラAPIをサポートしていません。HTTPS接続またはlocalhostでのアクセスが必要です。');
+  }
+
+  const constraints: MediaStreamConstraints = {
+    video: deviceId
+      ? { deviceId: { exact: deviceId } }
+      : { facingMode: 'environment', width: { ideal: 800 }, height: { ideal: 600 } }, // 背面カメラを優先、解像度を指定
+    audio: false,
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoElement.srcObject = stream;
+    await videoElement.play();
+    return stream;
+  } catch (error) {
+    throw new Error(`カメラへのアクセスに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * カメラストリームを停止する
+ * @param stream MediaStream
+ */
+export function stopCameraStream(stream: MediaStream | null): void {
+  if (stream) {
     stream.getTracks().forEach((track) => track.stop());
   }
 }
