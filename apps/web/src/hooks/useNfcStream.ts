@@ -7,7 +7,17 @@ export interface NfcEvent {
   type?: string;
 }
 
-const AGENT_WS_URL = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
+// HTTPSページの場合は自動的にWSSに変換
+const getAgentWsUrl = () => {
+  const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
+  // HTTPSページの場合はWSSに変換
+  if (window.location.protocol === 'https:' && envUrl.startsWith('ws://')) {
+    return envUrl.replace('ws://', 'wss://');
+  }
+  return envUrl;
+};
+
+const AGENT_WS_URL = getAgentWsUrl();
 
 export function useNfcStream() {
   const [event, setEvent] = useState<NfcEvent | null>(null);
