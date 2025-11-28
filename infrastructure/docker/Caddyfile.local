@@ -15,9 +15,18 @@
 
   @api {
     path /api/*
-    path /ws/*
   }
   reverse_proxy @api api:8080
+
+  # WebSocketプロキシ（NFCエージェント用）
+  @ws {
+    path /ws/*
+  }
+  reverse_proxy @ws 192.168.10.223:7071 {
+    transport http {
+      versions h2c 1.1
+    }
+  }
 
   # サムネイルの静的ファイル配信（認証不要）
   handle_path /storage/thumbnails/* {

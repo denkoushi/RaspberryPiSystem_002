@@ -7,12 +7,13 @@ export interface NfcEvent {
   type?: string;
 }
 
-// HTTPSページの場合は自動的にWSSに変換
+// HTTPSページの場合は自動的にWSSに変換（Caddy経由）
 const getAgentWsUrl = () => {
   const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
-  // HTTPSページの場合はWSSに変換
-  if (window.location.protocol === 'https:' && envUrl.startsWith('ws://')) {
-    return envUrl.replace('ws://', 'wss://');
+  // HTTPSページの場合はCaddy経由のWSSに変換
+  if (window.location.protocol === 'https:') {
+    // Caddy経由のWebSocketプロキシを使用
+    return `wss://${window.location.host}/ws/stream`;
   }
   return envUrl;
 };
