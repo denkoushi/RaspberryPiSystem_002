@@ -19,7 +19,8 @@
   reverse_proxy @api api:8080
 
   # WebSocketプロキシ（NFCエージェント用）
-  handle /ws/stream {
+  # handle_pathで/ws/を削除してからプロキシ（/ws/stream → /stream）
+  handle_path /ws/* {
     reverse_proxy 192.168.10.223:7071
   }
 
