@@ -87,16 +87,16 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
               return (
                 <li
                   key={loan.id}
-                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-2 md:flex-row md:items-center md:justify-between"
+                  className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 p-3 md:flex-row md:items-center md:justify-between"
                 >
-                  <div className="flex flex-1 gap-2">
+                  <div className="flex flex-1 gap-3">
                     {/* 写真サムネイル */}
                     {thumbnailUrl && (
                       <div className="flex-shrink-0">
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          className="h-[72px] w-[72px] rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
                           onClick={() => loan.photoUrl && handleImageClick(loan.photoUrl)}
                           onError={(e) => {
                             // サムネイルが読み込めない場合は非表示
