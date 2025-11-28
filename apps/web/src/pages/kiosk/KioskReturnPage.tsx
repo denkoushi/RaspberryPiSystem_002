@@ -121,14 +121,17 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                     >
                       {returnMutation.isPending ? '送信中…' : '返却する'}
                     </Button>
-                    <Button
-                      onClick={() => handleDelete(loan.id)}
-                      disabled={returnMutation.isPending || deleteMutation.isPending}
-                      variant="ghost"
-                      className="md:min-w-[100px] text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                    >
-                      {deleteMutation.isPending ? '削除中…' : '削除'}
-                    </Button>
+                    {/* 返却済みのLoanのみ削除ボタンを表示 */}
+                    {loan.returnedAt && (
+                      <Button
+                        onClick={() => handleDelete(loan.id)}
+                        disabled={returnMutation.isPending || deleteMutation.isPending}
+                        variant="ghost"
+                        className="md:min-w-[100px] text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                      >
+                        {deleteMutation.isPending ? '削除中…' : '削除'}
+                      </Button>
+                    )}
                   </div>
                 </li>
               );
