@@ -43,14 +43,70 @@ update-frequency: high
 - [ ] 生成失敗時のフォールバック画像/メッセージを用意
 
 ### Phase C: 軽量クライアント実装
-- [ ] Raspberry Pi OS Lite 用のセットアップスクリプトを追加（`scripts/client/setup-signage-lite.sh` など）
-- [ ] `feh` + systemd サービスで `current.jpg` をループ表示（再取得間隔 configurable）
-- [ ] ネットワーク断時はローカルキャッシュを表示、復帰後に自動更新
+- [x] Raspberry Pi OS Lite 用のセットアップスクリプトを追加（`scripts/client/setup-signage-lite.sh`）
+- [x] `feh` + systemd サービスで `current.jpg` をループ表示（再取得間隔 configurable）
+- [x] ネットワーク断時はローカルキャッシュを表示、復帰後に自動更新
 
 ### Phase D: モード切替と統合
 - [ ] 管理画面で「表示モード（通常 / 軽量）」を切り替えられるようにする
 - [ ] `setup-signage.sh` を通常モード、`setup-signage-lite.sh` を軽量モードとして提供
 - [ ] Raspberry Pi 3 / Zero 2W で 24時間連続稼働テストを実施し、温度/負荷/再接続テストを記録
+
+## 軽量クライアントのセットアップ
+
+### 前提条件
+
+- Raspberry Pi 3 / Zero 2W に Raspberry Pi OS Lite をインストール済み
+- X11が利用可能（GUI環境またはX11のみインストール）
+- サーバー（Raspberry Pi 5）のURLとクライアントキーを取得済み
+
+### セットアップ手順
+
+1. **リポジトリをクローンまたは更新**:
+   ```bash
+   cd /opt
+   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git
+   # または既存のリポジトリを更新
+   cd RaspberryPiSystem_002
+   git pull origin feature/signage-lite-client
+   ```
+
+2. **セットアップスクリプトを実行**:
+   ```bash
+   sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+   ```
+   
+   例:
+   ```bash
+   sudo ./scripts/client/setup-signage-lite.sh https://192.168.128.131 abc123def456...
+   ```
+
+3. **動作確認**:
+   ```bash
+   # サービスステータス確認
+   systemctl status signage-lite
+   
+   # ログ確認
+   journalctl -u signage-lite -f
+   
+   # 画像更新タイマー確認
+   systemctl status signage-lite-update.timer
+   ```
+
+### 設定のカスタマイズ
+
+環境変数で更新間隔を変更可能：
+
+```bash
+export SIGNAGE_UPDATE_INTERVAL=60  # 60秒間隔に変更
+sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+```
+
+### トラブルシューティング
+
+- **画像が表示されない**: `/var/cache/signage/current.jpg` が存在するか確認
+- **ネットワークエラー**: サーバーURLとクライアントキーが正しいか確認
+- **X11エラー**: `export DISPLAY=:0` が設定されているか確認
 
 ## 解像度設定
 
