@@ -250,23 +250,21 @@ export function KioskPhotoBorrowPage() {
           <div className="space-y-4 text-center">
             {/* 撮影中の表示（スキャン時のみカメラを起動） */}
             {isCapturing && (
-              <div className="mx-auto w-full max-w-2xl rounded-lg bg-blue-600/20 p-8">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-300 border-t-transparent"></div>
-                  <p className="text-xl font-semibold text-blue-300">カメラを起動中...</p>
-                  <p className="text-sm text-white/70">従業員タグをスキャンしました</p>
-                  <p className="text-sm text-white/70">写真を撮影しています。しばらくお待ちください</p>
+              <div className="mx-auto w-full rounded-lg bg-blue-600/20 p-4">
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
+                  <p className="text-sm font-semibold text-blue-300">カメラを起動中...</p>
+                  <p className="text-xs text-white/70">写真を撮影しています</p>
                 </div>
               </div>
             )}
             
             {/* 待機中の表示（スキャン待ち） */}
             {!isCapturing && !employeeTagUid && !error && !successLoan && (
-              <div className="mx-auto w-full max-w-2xl rounded-lg border border-white/10 bg-black/20 p-8">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="text-6xl">📷</div>
-                  <p className="text-lg font-semibold text-white">従業員タグをスキャンしてください</p>
-                  <p className="text-sm text-white/70">スキャン時に自動的に写真を撮影します</p>
+              <div className="mx-auto w-full rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="flex flex-col items-center justify-center space-y-1">
+                  <div className="text-2xl">📷</div>
+                  <p className="text-xs font-semibold text-white">従業員タグをスキャンしてください</p>
                 </div>
               </div>
             )}

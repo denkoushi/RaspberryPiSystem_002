@@ -75,8 +75,8 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
       ) : loansQuery.isLoading ? (
         <p>読み込み中...</p>
       ) : loansQuery.data && loansQuery.data.length > 0 ? (
-        <div className="space-y-4">
-          <ul className="space-y-3">
+        <div className="space-y-2">
+          <ul className="space-y-2">
             {loansQuery.data.map((loan) => {
               // 写真サムネイルのURLを生成
               const thumbnailUrl = loan.photoUrl
@@ -86,16 +86,16 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
               return (
                 <li
                   key={loan.id}
-                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4 md:flex-row md:items-center md:justify-between"
+                  className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-2 md:flex-row md:items-center md:justify-between"
                 >
-                  <div className="flex flex-1 gap-4">
+                  <div className="flex flex-1 gap-2">
                     {/* 写真サムネイル */}
                     {thumbnailUrl && (
                       <div className="flex-shrink-0">
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-20 w-20 rounded-lg object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
                           onClick={() => loan.photoUrl && handleImageClick(loan.photoUrl)}
                           onError={(e) => {
                             // サムネイルが読み込めない場合は非表示
@@ -105,28 +105,25 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                       </div>
                     )}
                     {/* 貸出情報 */}
-                    <div className="flex-1">
-                      <p className="text-lg font-semibold">{loan.item?.name ?? 'アイテム情報なし'}</p>
-                      <p className="text-sm text-white/70">{loan.employee?.displayName ?? '従業員情報なし'}</p>
-                      <p className="text-xs text-white/50">借用: {new Date(loan.borrowedAt).toLocaleString()}</p>
-                      {loan.photoTakenAt && (
-                        <p className="text-xs text-white/50">撮影: {new Date(loan.photoTakenAt).toLocaleString()}</p>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{loan.item?.name ?? <span className="text-xs text-white/50">アイテム情報なし</span>}</p>
+                      <p className="text-xs text-white/70">{loan.employee?.displayName ?? '従業員情報なし'}</p>
+                      <p className="text-xs text-white/50">{new Date(loan.borrowedAt).toLocaleString()}</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 md:flex-row">
+                  <div className="flex flex-row gap-2">
                     <Button
                       onClick={() => handleReturn(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
-                      className="md:min-w-[140px]"
+                      className="text-xs px-3 py-1 h-auto"
                     >
-                      {returnMutation.isPending ? '送信中…' : '返却する'}
+                      {returnMutation.isPending ? '送信中…' : '返却'}
                     </Button>
                     <Button
                       onClick={() => handleCancel(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
                       variant="ghost"
-                      className="md:min-w-[100px] text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
+                      className="text-xs px-3 py-1 h-auto text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
                     >
                       {cancelMutation.isPending ? '取消中…' : '取消'}
                     </Button>
