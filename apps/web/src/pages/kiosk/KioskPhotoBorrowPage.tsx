@@ -80,14 +80,14 @@ export function KioskPhotoBorrowPage() {
     };
   }, []);
 
-  // 処理済みUIDのクリーンアップ（10秒以上古いエントリを削除）
+  // 処理済みUIDのクリーンアップ（3秒以上古いエントリを削除）
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       const processedUids = processedUidsRef.current;
       for (const [uid, timestamp] of processedUids.entries()) {
-        if (now - timestamp > 10000) {
-          // 10秒以上古いエントリを削除
+        if (now - timestamp > 3000) {
+          // 3秒以上古いエントリを削除
           processedUids.delete(uid);
         }
       }
@@ -116,11 +116,11 @@ export function KioskPhotoBorrowPage() {
       return;
     }
     
-    // 同じUIDが10秒以内に処理済みの場合はスキップ
+    // 同じUIDが3秒以内に処理済みの場合はスキップ
     const lastProcessedTime = processedUids.get(nfcEvent.uid);
-    if (lastProcessedTime && now - lastProcessedTime < 10000) {
+    if (lastProcessedTime && now - lastProcessedTime < 3000) {
       if (enableDebugLogs) {
-        console.log('[KioskPhotoBorrowPage] Skipping recently processed UID:', nfcEvent.uid, 'last processed:', lastProcessedTime);
+        console.log('[KioskPhotoBorrowPage] Skipping recently processed UID:', nfcEvent.uid, 'last processed:', lastProcessedTime, 'elapsed:', now - lastProcessedTime, 'ms');
       }
       return;
     }
@@ -128,7 +128,7 @@ export function KioskPhotoBorrowPage() {
     // 処理中フラグを立てる（重複処理を防ぐ）
     processingRef.current = true;
     lastEventKeyRef.current = eventKey;
-    processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録
+    processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録（処理開始時に即座に記録）
 
     if (enableDebugLogs) {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey);
