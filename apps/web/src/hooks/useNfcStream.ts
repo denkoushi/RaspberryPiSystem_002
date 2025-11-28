@@ -12,8 +12,7 @@ const getAgentWsUrl = () => {
   const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
   // HTTPSページの場合はCaddy経由のWSSに変換
   if (window.location.protocol === 'https:') {
-    // Caddy経由のWebSocketプロキシを使用
-    return `wss://${window.location.host}/ws/stream`;
+    return `wss://${window.location.host}/stream`;
   }
   return envUrl;
 };

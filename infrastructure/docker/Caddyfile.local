@@ -19,12 +19,9 @@
   reverse_proxy @api api:8080
 
   # WebSocketプロキシ（NFCエージェント用）
-  # handle_pathで /ws/ プレフィックスを取り除いた上でHTTP/1.1でプロキシ（WebSocket Upgrade必須）
-  handle_path /ws/* {
-    reverse_proxy 192.168.10.223:7071 {
-      transport http {
-        versions h1
-      }
+  reverse_proxy /stream 192.168.10.223:7071 {
+    transport http {
+      versions h1
     }
   }
 
