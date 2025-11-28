@@ -129,7 +129,7 @@ export class PdfStorage {
     try {
       const existingFiles = await fs.readdir(outputDir);
       const pageFiles = existingFiles
-        .filter((file) => file.endsWith('.png'))
+        .filter((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))
         .sort((a, b) => {
           const pageA = parseInt(a.match(/\d+/)?.[0] || '0', 10);
           const pageB = parseInt(b.match(/\d+/)?.[0] || '0', 10);
@@ -148,7 +148,7 @@ export class PdfStorage {
 
     // PDFを画像に変換
     const options = {
-      format: 'png',
+      format: 'jpeg' as const,
       out_dir: outputDir,
       out_prefix: 'page',
       page: null, // 全ページ
@@ -160,7 +160,7 @@ export class PdfStorage {
       // 変換された画像ファイルを取得
       const files = await fs.readdir(outputDir);
       const pageFiles = files
-        .filter((file) => file.endsWith('.png'))
+        .filter((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))
         .sort((a, b) => {
           const pageA = parseInt(a.match(/\d+/)?.[0] || '0', 10);
           const pageB = parseInt(b.match(/\d+/)?.[0] || '0', 10);
