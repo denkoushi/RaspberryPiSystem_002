@@ -14,11 +14,23 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# Chromiumのインストール確認
-if ! command -v chromium-browser >/dev/null 2>&1; then
-  echo "chromium-browser をインストールしています..."
+# Chromiumのインストール確認（chromium-browser優先、なければchromium）
+CHROMIUM_CMD=""
+if command -v chromium-browser >/dev/null 2>&1; then
+  CHROMIUM_CMD="chromium-browser"
+elif command -v chromium >/dev/null 2>&1; then
+  CHROMIUM_CMD="chromium"
+else
+  echo "Chromium をインストールしています..."
   apt-get update
-  apt-get install -y chromium-browser
+  if apt-get install -y chromium-browser; then
+    CHROMIUM_CMD="chromium-browser"
+  elif apt-get install -y chromium; then
+    CHROMIUM_CMD="chromium"
+  else
+    echo "Chromium (chromium-browser / chromium) のインストールに失敗しました。" >&2
+    exit 1
+  fi
 fi
 
 KIOSK_USER="${SUDO_USER:-pi}"
@@ -37,7 +49,7 @@ xset -dpms
 xset s noblank
 
 # Chromiumをキオスクモードで起動
-exec chromium-browser \\
+exec $CHROMIUM_CMD \\
   --kiosk \\
   --app="$TARGET_URL" \\
   --start-fullscreen \\
