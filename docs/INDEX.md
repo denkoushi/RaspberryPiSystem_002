@@ -8,6 +8,12 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-11-28）
+
+- **軽量サイネージPoC進捗**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) に、4K解像度の環境変数設定・`setup-signage-lite.sh`（feh+systemd）の手順・今後の自動レンダリングタスクを追記しました。
+- **軽量クライアントセットアップガイド**: [guides/signage-client-setup.md](./guides/signage-client-setup.md) は Chromium モードに加えて `scripts/client/setup-signage-lite.sh` の利用方法を参照してください。
+- **ナレッジベース更新**: [knowledge-base/index.md](./knowledge-base/index.md) の登録件数が 40件になり、最新のサイネージ／インフラ課題を反映しました。
+
 ### 初めて参加する
 
 | やりたいこと | ドキュメント |
@@ -36,7 +42,7 @@
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
 | デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
-| デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md) |
+| デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
 
 ### 検証する
 
@@ -185,12 +191,12 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
-| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全32件の一覧） |
-| [knowledge-base/api.md](./knowledge-base/api.md) | API関連（8件） |
+| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全40件の一覧） |
+| [knowledge-base/api.md](./knowledge-base/api.md) | API関連（9件） |
 | [knowledge-base/database.md](./knowledge-base/database.md) | データベース関連（3件） |
 | [knowledge-base/ci-cd.md](./knowledge-base/ci-cd.md) | CI/CD関連（4件） |
-| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（9件） |
-| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（12件） |
+| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（13件） |
+| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（15件） |
 | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) | NFCリーダー固有の問題 |
 
 ### セキュリティ（security/）
