@@ -245,3 +245,155 @@ export async function getSystemInfo() {
   const { data } = await api.get<SystemInfo>('/system/system-info');
   return data;
 }
+
+// デジタルサイネージ関連の型定義
+export interface SignageSchedule {
+  id: string;
+  name: string;
+  contentType: 'TOOLS' | 'PDF' | 'SPLIT';
+  pdfId: string | null;
+  dayOfWeek: number[];
+  startTime: string;
+  endTime: string;
+  priority: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignagePdf {
+  id: string;
+  name: string;
+  filename: string;
+  filePath: string;
+  displayMode: 'SLIDESHOW' | 'SINGLE';
+  slideInterval: number | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignageEmergency {
+  id: string;
+  message: string | null;
+  contentType: 'TOOLS' | 'PDF' | 'SPLIT' | null;
+  pdfId: string | null;
+  enabled: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignageContentResponse {
+  contentType: 'TOOLS' | 'PDF' | 'SPLIT';
+  displayMode: 'SLIDESHOW' | 'SINGLE';
+  tools?: Array<{
+    id: string;
+    itemCode: string;
+    name: string;
+    thumbnailUrl: string | null;
+  }>;
+  pdf?: {
+    id: string;
+    name: string;
+    pages: string[];
+  } | null;
+}
+
+// デジタルサイネージ関連のAPI関数
+export async function getSignageSchedules() {
+  const { data } = await api.get<{ schedules: SignageSchedule[] }>('/signage/schedules');
+  return data.schedules;
+}
+
+export async function createSignageSchedule(payload: {
+  name: string;
+  contentType: 'TOOLS' | 'PDF' | 'SPLIT';
+  pdfId?: string | null;
+  dayOfWeek: number[];
+  startTime: string;
+  endTime: string;
+  priority: number;
+  enabled?: boolean;
+}) {
+  const { data } = await api.post<{ schedule: SignageSchedule }>('/signage/schedules', payload);
+  return data.schedule;
+}
+
+export async function updateSignageSchedule(id: string, payload: Partial<{
+  name: string;
+  contentType: 'TOOLS' | 'PDF' | 'SPLIT';
+  pdfId?: string | null;
+  dayOfWeek: number[];
+  startTime: string;
+  endTime: string;
+  priority: number;
+  enabled?: boolean;
+}>) {
+  const { data } = await api.put<{ schedule: SignageSchedule }>(`/signage/schedules/${id}`, payload);
+  return data.schedule;
+}
+
+export async function deleteSignageSchedule(id: string) {
+  await api.delete(`/signage/schedules/${id}`);
+}
+
+export async function getSignagePdfs() {
+  const { data } = await api.get<{ pdfs: SignagePdf[] }>('/signage/pdfs');
+  return data.pdfs;
+}
+
+export async function uploadSignagePdf(payload: {
+  file: File;
+  name: string;
+  displayMode: 'SLIDESHOW' | 'SINGLE';
+  slideInterval?: number | null;
+}) {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('name', payload.name);
+  formData.append('displayMode', payload.displayMode);
+  if (payload.slideInterval !== undefined && payload.slideInterval !== null) {
+    formData.append('slideInterval', String(payload.slideInterval));
+  }
+
+  const { data } = await api.post<{ pdf: SignagePdf }>('/signage/pdfs', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data.pdf;
+}
+
+export async function updateSignagePdf(id: string, payload: Partial<{
+  name: string;
+  displayMode: 'SLIDESHOW' | 'SINGLE';
+  slideInterval?: number | null;
+  enabled?: boolean;
+}>) {
+  const { data } = await api.put<{ pdf: SignagePdf }>(`/signage/pdfs/${id}`, payload);
+  return data.pdf;
+}
+
+export async function deleteSignagePdf(id: string) {
+  await api.delete(`/signage/pdfs/${id}`);
+}
+
+export async function getSignageEmergency() {
+  const { data } = await api.get<{ enabled: boolean; message?: string | null; contentType?: 'TOOLS' | 'PDF' | 'SPLIT' | null; pdfId?: string | null; expiresAt?: string | null }>('/signage/emergency');
+  return data;
+}
+
+export async function setSignageEmergency(payload: {
+  message?: string | null;
+  contentType?: 'TOOLS' | 'PDF' | 'SPLIT' | null;
+  pdfId?: string | null;
+  enabled?: boolean;
+  expiresAt?: Date | null;
+}) {
+  const { data } = await api.post<{ emergency: SignageEmergency }>('/signage/emergency', payload);
+  return data.emergency;
+}
+
+export async function getSignageContent() {
+  const { data } = await api.get<SignageContentResponse>('/signage/content');
+  return data;
+}

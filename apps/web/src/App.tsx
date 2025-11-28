@@ -12,6 +12,10 @@ import { EmployeesPage } from './pages/tools/EmployeesPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
 import { HistoryPage } from './pages/tools/HistoryPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
+import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
+import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
+import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
+import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { KioskRedirect } from './components/KioskRedirect';
 
 function App() {
@@ -19,6 +23,7 @@ function App() {
     <Routes>
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signage" element={<SignageDisplayPage />} />
       <Route element={<KioskLayout />}>
         <Route path="/kiosk" element={<KioskRedirect />} />
         <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
@@ -41,6 +46,11 @@ function App() {
         </Route>
         <Route path="clients" element={<ClientsPage />} />
         <Route path="import" element={<MasterImportPage />} />
+        <Route path="signage">
+          <Route path="schedules" element={<SignageSchedulesPage />} />
+          <Route path="pdfs" element={<SignagePdfsPage />} />
+          <Route path="emergency" element={<SignageEmergencyPage />} />
+        </Route>
         {/* 後方互換性のため、既存パスも維持 */}
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="items" element={<ItemsPage />} />
