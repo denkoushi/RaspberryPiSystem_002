@@ -19,6 +19,7 @@ export function KioskPhotoBorrowPage() {
   const nfcEvent = useNfcStream();
   const lastEventKeyRef = useRef<string | null>(null);
   const processedUidsRef = useRef<Map<string, number>>(new Map()); // 処理済みUIDとタイムスタンプのマップ
+  const processedEventTimestampsRef = useRef<Map<string, string>>(new Map()); // 処理済みUIDとイベントタイムスタンプのマップ
 
   const [employeeTagUid, setEmployeeTagUid] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -34,6 +35,7 @@ export function KioskPhotoBorrowPage() {
       pageMountedRef.current = true;
       lastEventKeyRef.current = null; // マウント前のイベントをクリア
       processedUidsRef.current.clear(); // 処理済みUIDリストをクリア
+      processedEventTimestampsRef.current.clear(); // 処理済みタイムスタンプリストをクリア
     }, 500);
     return () => clearTimeout(timer);
   }, []);
@@ -44,10 +46,12 @@ export function KioskPhotoBorrowPage() {
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       const processedUids = processedUidsRef.current;
+      const processedEventTimestamps = processedEventTimestampsRef.current;
       for (const [uid, timestamp] of processedUids.entries()) {
         if (now - timestamp > 3000) {
           // 3秒以上古いエントリを削除
           processedUids.delete(uid);
+          processedEventTimestamps.delete(uid);
         }
       }
     }, 1000); // 1秒ごとにクリーンアップ
@@ -85,10 +89,19 @@ export function KioskPhotoBorrowPage() {
       }
       return;
     }
+    // successLoanが設定されている間（成功表示中）は新しいNFCイベントをスキップ
+    // 「従業員タグをスキャンしてください」に戻る前にスキャンしたイベントを無視するため
+    if (successLoan) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: success loan displayed, waiting for reset');
+      }
+      return;
+    }
     
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     const now = Date.now();
     const processedUids = processedUidsRef.current;
+    const processedEventTimestamps = processedEventTimestampsRef.current;
     
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
@@ -98,7 +111,19 @@ export function KioskPhotoBorrowPage() {
       return;
     }
     
-    // 同じUIDが3秒以内に処理済みの場合はスキップ
+    // 同じUIDの処理済みタイムスタンプを確認
+    const lastProcessedTimestamp = processedEventTimestamps.get(nfcEvent.uid);
+    if (lastProcessedTimestamp) {
+      // タイムスタンプを比較（ISO文字列を比較）
+      if (nfcEvent.timestamp <= lastProcessedTimestamp) {
+        if (enableDebugLogs) {
+          console.log('[KioskPhotoBorrowPage] Skipping old event timestamp:', nfcEvent.uid, 'current:', nfcEvent.timestamp, 'last processed:', lastProcessedTimestamp);
+        }
+        return;
+      }
+    }
+    
+    // 同じUIDが3秒以内に処理済みの場合はスキップ（タイムスタンプが新しい場合でも、処理中の場合はスキップ）
     const lastProcessedTime = processedUids.get(nfcEvent.uid);
     if (lastProcessedTime && now - lastProcessedTime < 3000) {
       if (enableDebugLogs) {
@@ -111,6 +136,7 @@ export function KioskPhotoBorrowPage() {
     processingRef.current = true;
     lastEventKeyRef.current = eventKey;
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録（処理開始時に即座に記録）
+    processedEventTimestamps.set(nfcEvent.uid, nfcEvent.timestamp); // 処理済みタイムスタンプを記録
 
     if (enableDebugLogs) {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey, 'timestamp:', nfcEvent.timestamp);
@@ -194,7 +220,7 @@ export function KioskPhotoBorrowPage() {
       }
       );
     })();
-  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId]); // photoBorrowMutationを依存配列から除外（オブジェクト参照が変わる可能性があるため）
+  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId, isCapturing, successLoan]); // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
@@ -203,6 +229,7 @@ export function KioskPhotoBorrowPage() {
       lastEventKeyRef.current = null;
       processingRef.current = false;
       processedUidsRef.current.clear();
+      processedEventTimestampsRef.current.clear();
     };
   }, []);
 
@@ -217,29 +244,27 @@ export function KioskPhotoBorrowPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="写真撮影持出">
+    <div className="flex h-full gap-4">
+      <div className="w-80 flex-shrink-0">
+        <Card title="写真撮影持出" className="h-full">
           <div className="space-y-4 text-center">
             {/* 撮影中の表示（スキャン時のみカメラを起動） */}
             {isCapturing && (
-              <div className="mx-auto w-full max-w-2xl rounded-lg bg-blue-600/20 p-8">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-blue-300 border-t-transparent"></div>
-                  <p className="text-xl font-semibold text-blue-300">カメラを起動中...</p>
-                  <p className="text-sm text-white/70">従業員タグをスキャンしました</p>
-                  <p className="text-sm text-white/70">写真を撮影しています。しばらくお待ちください</p>
+              <div className="mx-auto w-full rounded-lg bg-blue-600/20 p-4">
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
+                  <p className="text-sm font-semibold text-blue-300">カメラを起動中...</p>
+                  <p className="text-xs text-white/70">写真を撮影しています</p>
                 </div>
               </div>
             )}
             
             {/* 待機中の表示（スキャン待ち） */}
             {!isCapturing && !employeeTagUid && !error && !successLoan && (
-              <div className="mx-auto w-full max-w-2xl rounded-lg border border-white/10 bg-black/20 p-8">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="text-6xl">📷</div>
-                  <p className="text-lg font-semibold text-white">従業員タグをスキャンしてください</p>
-                  <p className="text-sm text-white/70">スキャン時に自動的に写真を撮影します</p>
+              <div className="mx-auto w-full rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="flex flex-col items-center justify-center space-y-1">
+                  <div className="text-2xl">📷</div>
+                  <p className="text-xs font-semibold text-white">従業員タグをスキャンしてください</p>
                 </div>
               </div>
             )}
@@ -293,7 +318,9 @@ export function KioskPhotoBorrowPage() {
             )}
           </div>
         </Card>
+      </div>
 
+      <div className="flex-1 min-w-0">
         <KioskReturnPage loansQuery={loansQuery} clientId={resolvedClientId} clientKey={resolvedClientKey} />
       </div>
     </div>
