@@ -232,3 +232,73 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/web/src/pages/tools/EmployeesPage.tsx`
 - `apps/api/src/plugins/error-handler.ts`
+
+---
+
+### [KB-035] useEffectの依存配列にisCapturingを含めていた問題（重複処理）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- NFCタグを1回スキャンすると、2件の持出記録が作成される
+- 重複処理防止の時間を10秒から3秒に短縮した直後から発生
+
+**要因**: 
+- `KioskPhotoBorrowPage`の`useEffect`の依存配列に`isCapturing`が含まれていた
+- NFCイベント処理開始時に`setIsCapturing(true)`を呼び出すと、`isCapturing`の値が変わり、`useEffect`が再実行される
+- 再実行時に`processingRef.current`がまだ`true`になる前に処理が開始されるため、重複処理が発生
+
+**試行した対策**: 
+- [試行1] 重複処理防止の時間を10秒から3秒に短縮 → **失敗**（問題が悪化し、1回タッチで2件登録されるようになった）
+- [試行2] `isCapturing`を依存配列から除外 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: `useEffect`の依存配列から`isCapturing`を除外し、`processingRef.current`で重複処理を制御
+- 依存配列を`[nfcEvent?.uid, nfcEvent?.timestamp, photoBorrowMutation, resolvedClientId]`に限定
+
+**学んだこと**: 
+- `useEffect`の依存配列に状態変数を含めると、その状態が変更されるたびに再実行される
+- 状態変数の変更が`useEffect`内で行われる場合、無限ループや重複処理の原因になる
+- 重複処理を防ぐには、`useRef`を使用してフラグを管理し、依存配列には含めない
+- ESLintの`react-hooks/exhaustive-deps`ルールは参考にしつつも、意図的に依存配列から除外する場合はコメントで理由を明記する
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+
+---
+
+### [KB-036] 履歴画面の画像表示で認証エラー（window.openでの新しいタブ）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- 履歴画面でサムネイルをクリックすると、新しいタブが開くが「認証トークンが必要です」というエラーが表示される
+- 元画像が表示されない
+
+**要因**: 
+- `window.open()`で新しいタブを開くと、認証情報（JWTトークン）が渡されない
+- 元画像エンドポイント（`/api/storage/photos/*`）は認証が必要なため、401エラーが発生
+
+**試行した対策**: 
+- [試行1] `window.open(fullImageUrl, '_blank')`で新しいタブを開く → **失敗**（401エラー）
+- [試行2] 認証付きでAPIから画像を取得し、モーダルで表示 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `api.get(imagePath, { responseType: 'blob' })`で認証付きで画像を取得
+  2. `URL.createObjectURL(response.data)`でBlobからURLを生成
+  3. モーダルで画像を表示
+  4. モーダルを閉じるときに`URL.revokeObjectURL()`でURLを解放
+
+**学んだこと**: 
+- `window.open()`では認証情報（Authorization ヘッダー）が渡されない
+- 認証が必要なリソースを表示する場合は、APIクライアント経由で取得する必要がある
+- Blobを使用する場合は、メモリリークを防ぐために`URL.revokeObjectURL()`で解放する
+- モーダルで画像を表示することで、ユーザー体験も向上する（新しいタブを開かずに済む）
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/HistoryPage.tsx`

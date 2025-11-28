@@ -200,3 +200,192 @@ update-frequency: medium
 - `apps/api/src/routes/system/health.ts`
 - `apps/api/src/routes/system/metrics.ts`
 
+---
+
+### [KB-030] カメラAPIがHTTP環境で動作しない（HTTPS必須）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- `navigator.mediaDevices.getUserMedia`がundefinedになりカメラが使用できない
+- エラーメッセージ: `Cannot read properties of undefined (reading 'getUserMedia')`
+- USBカメラは正しく認識されているにもかかわらず、ブラウザからアクセスできない
+
+**要因**: 
+- ブラウザのセキュリティ制約により、カメラAPI（`navigator.mediaDevices.getUserMedia`）はHTTPSまたはlocalhostでのみ動作する
+- 工場環境では`http://192.168.10.230:4173`でアクセスしていたため、カメラAPIが利用不可だった
+
+**試行した対策**: 
+- [試行1] カメラ接続確認（`lsusb`、`v4l2-ctl --list-devices`）→ カメラは正しく認識されていることを確認
+- [試行2] HTTP環境でカメラAPIを呼び出す → **失敗**（`navigator.mediaDevices`がundefined）
+- [試行3] 自己署名証明書を生成してHTTPS環境を構築 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 工場環境向けに自己署名証明書を使用したHTTPS設定を実装
+  1. `/opt/RaspberryPiSystem_002/certs/`に自己署名証明書（`cert.pem`、`key.pem`）を生成
+  2. `infrastructure/docker/Caddyfile.local`を作成し、HTTPS（ポート443）で配信
+  3. `infrastructure/docker/Dockerfile.web`を修正し、`USE_LOCAL_CERTS`環境変数で`Caddyfile.local`を選択
+  4. `infrastructure/docker/docker-compose.server.yml`でポート80/443を公開し、証明書ボリュームをマウント
+
+**学んだこと**: 
+- ブラウザのカメラAPI（`navigator.mediaDevices`）はHTTPSまたはlocalhostでのみ動作する
+- 工場などインターネット接続のない環境では、自己署名証明書を使用してHTTPS環境を構築する必要がある
+- 自己署名証明書を使用する場合、ブラウザで証明書警告が表示されるが、「詳細設定」から続行できる
+- 証明書の有効期限は10年（3650日）に設定し、長期運用に対応
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `infrastructure/docker/Caddyfile.local`
+- `infrastructure/docker/Dockerfile.web`
+- `infrastructure/docker/docker-compose.server.yml`
+- `/opt/RaspberryPiSystem_002/certs/cert.pem`（ラズパイ5上）
+- `/opt/RaspberryPiSystem_002/certs/key.pem`（ラズパイ5上）
+
+---
+
+### [KB-031] WebSocket Mixed Content エラー（HTTPSページからws://への接続）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- HTTPSページから`ws://192.168.10.223:7071/stream`への接続がブラウザでブロックされる
+- エラーメッセージ: `Mixed Content: The page at 'https://...' was loaded over HTTPS, but attempted to connect to the insecure WebSocket endpoint 'ws://...'. This request has been blocked; this endpoint must be available over WSS.`
+
+**要因**: 
+- ブラウザのMixed Content制限により、HTTPSページから非セキュアなWebSocket（ws://）への接続がブロックされる
+- NFCエージェントはラズパイ4で動作しており、直接HTTPSに対応させるのは困難
+
+**試行した対策**: 
+- [試行1] `useNfcStream.ts`で`ws://`を`wss://`に自動変換 → **部分的に成功**（ブラウザエラーは解消したが、接続先がない）
+- [試行2] Caddyfile.localに`/ws/*`パスのWebSocketプロキシを追加 → **失敗**（502エラー）
+- [試行3] WebSocketプロキシのパスを`/stream`に変更し、NFCエージェントに直接プロキシ → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: Caddyをリバースプロキシとして使用し、`wss://`を`ws://`に変換
+  1. `apps/web/src/hooks/useNfcStream.ts`を修正し、HTTPSページでは自動的に`wss://`を使用
+  2. `infrastructure/docker/Caddyfile.local`に`/stream`パスのWebSocketプロキシを追加
+  3. HTTPバージョンを`1.1`に指定してWebSocketハンドシェイクを正しく処理
+  4. `@spa`ブロックから`/stream`パスを除外して、プロキシが優先されるように設定
+
+**学んだこと**: 
+- HTTPSページから非セキュアなWebSocketへの接続は、ブラウザのMixed Content制限によりブロックされる
+- Caddyをリバースプロキシとして使用することで、`wss://`を`ws://`に変換できる
+- WebSocketプロキシでは、HTTPバージョンを`1.1`に指定する必要がある（HTTP/2ではWebSocketハンドシェイクが正しく動作しない場合がある）
+- SPAリライトよりもWebSocketプロキシを優先するため、`@spa`ブロックから該当パスを除外する必要がある
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/web/src/hooks/useNfcStream.ts`
+- `infrastructure/docker/Caddyfile.local`
+
+---
+
+### [KB-032] Caddyfile.local のHTTPバージョン指定エラー
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- Caddyが起動時にエラーで停止する
+- エラーメッセージ: `unsupported HTTP version: h1, supported version: 1.1, 2, h2c, 3`
+
+**要因**: 
+- Caddyfile.localで`transport http { versions h1 }`と指定していたが、`h1`は無効な値
+- Caddyの正しい指定は`1.1`（数値形式）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: `versions h1`を`versions 1.1`に修正
+
+**学んだこと**: 
+- Caddyのtransport設定でHTTPバージョンを指定する場合、`1.1`、`2`、`h2c`、`3`のいずれかを使用する
+- `h1`という省略形は使用できない
+- Caddyのエラーメッセージは詳細で、サポートされているバージョンを明示してくれる
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `infrastructure/docker/Caddyfile.local`
+
+---
+
+### [KB-033] docker-compose.server.yml のYAML構文エラー（手動編集による破壊）
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- `docker compose config`で`yaml: line XX: did not find expected '-' indicator`エラー
+- `docker compose up`でコンテナが起動しない
+- 複数のYAML構文エラーが連鎖的に発生
+
+**要因**: 
+- ラズパイ5上で直接`sed`コマンドやPythonスクリプトを使用してYAMLファイルを編集したため、構文が壊れた
+- 具体的な問題:
+  1. `environment:`キーの欠落（インデントの誤り）
+  2. 複数の`environment:`ブロックが不正な位置に挿入された
+  3. 文字化けによる不正な文字の混入
+
+**試行した対策**: 
+- [試行1] `sed`コマンドで`environment:`行を挿入 → **失敗**（インデントが正しくない）
+- [試行2] Pythonスクリプトで行を挿入 → **失敗**（ロケールの問題でUnicodeDecodeError）
+- [試行3] `nano`エディタで直接編集 → **失敗**（文字化けで編集困難）
+- [試行4] `git checkout -- infrastructure/docker/docker-compose.server.yml`で元に戻す → **成功**
+- [試行5] Mac側でファイルを修正し、git pushしてラズパイでgit pull → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `git checkout -- infrastructure/docker/docker-compose.server.yml`で元のファイルに戻す
+  2. Mac側（開発環境）でファイルを正しく修正
+  3. `git commit`と`git push`でリモートリポジトリを更新
+  4. ラズパイ5で`git pull`して最新の正しいファイルを取得
+  5. `docker compose up -d --force-recreate --build`で再ビルド
+
+**学んだこと**: 
+- **YAMLファイルを直接編集しない**: 特にラズパイなどの本番環境では、`sed`やPythonスクリプトでYAMLを編集するのは危険
+- **Gitワークフローを遵守する**: 設定変更は開発環境（Mac）で行い、git経由でデプロイする
+- **YAMLの構文エラーは連鎖する**: 1箇所の誤りが複数のエラーを引き起こす
+- **`docker compose config`で検証**: 変更後は`docker compose config > /dev/null && echo "OK"`で構文を検証する
+- **`git checkout`で復旧**: 構文が壊れた場合は、`git checkout`で元のファイルに戻すのが最も確実
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `infrastructure/docker/docker-compose.server.yml`
+
+---
+
+### [KB-034] ラズパイのロケール設定（EUC-JP）による文字化け
+
+**EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
+
+**事象**: 
+- ラズパイ5でUTF-8エンコードのファイルが文字化けする
+- `nano`エディタで日本語コメントが正しく表示されない
+- Pythonスクリプトで`UnicodeDecodeError: 'euc_jp' codec can't decode byte 0xe7`エラー
+
+**要因**: 
+- ラズパイ5のOS再インストール時に、ロケールがEUC-JP（`ja_JP.eucJP`）に設定されていた
+- UTF-8エンコードのファイルをEUC-JPとして読み込もうとしてエラーが発生
+
+**試行した対策**: 
+- [試行1] Pythonスクリプトで`encoding='utf-8'`を明示 → **部分的に成功**（スクリプトは動作したが、システム全体の問題は解決しない）
+- [試行2] `sudo raspi-config`でロケールをUTF-8（`ja_JP.UTF-8`）に変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `sudo raspi-config`を実行
+  2. `5 Localisation Options` → `L1 Locale`を選択
+  3. `ja_JP.UTF-8 UTF-8`を選択し、デフォルトロケールに設定
+  4. ラズパイを再起動
+
+**学んだこと**: 
+- **ロケール設定は重要**: 日本語環境では、EUC-JPとUTF-8の混在に注意が必要
+- **OS再インストール時の確認**: Raspberry Pi Imagerでのインストール時に、ロケール設定を確認する
+- **文字化けの診断**: `locale`コマンドで現在のロケール設定を確認できる
+- **Pythonでの対処**: `open(file, encoding='utf-8')`で明示的にエンコーディングを指定することで、一時的に回避できる
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- なし（システム設定の問題）
+

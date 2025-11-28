@@ -263,9 +263,65 @@
     - [写真撮影持出機能 モジュール仕様](docs/modules/tools/photo-loan.md)
     - [写真撮影持出機能 テスト計画](docs/guides/photo-loan-test-plan.md)
     - [検証チェックリスト](docs/guides/verification-checklist.md)
+  - **実機テスト（部分機能4: USB接続カメラ連携）**: ✅ 完了（2025-11-28）
+    - ✅ USBカメラ認識確認: C270 HD WEBCAMがラズパイ4で正しく認識されることを確認
+    - ✅ HTTPS環境構築: 自己署名証明書を使用してHTTPS環境を構築（ブラウザのカメラAPIはHTTPS必須）
+    - ✅ WebSocket Mixed Content対応: Caddyをリバースプロキシとして使用し、wss://をws://に変換
+    - ✅ カメラプレビュー表示: ブラウザでカメラプレビューが正常に表示されることを確認
+    - ✅ 写真撮影持出フロー: 従業員タグスキャン → 撮影 → 保存 → Loan作成が正常に動作
+    - ✅ 返却フロー連携: 写真付きの持出記録が返却画面に表示され、返却が正常に完了
+    - ✅ NFCエージェント再接続: NFCエージェント停止→再起動後に自動再接続し、持出機能が正常化
+    - ✅ 重複処理防止: 同じタグを3秒以内に2回スキャンしても1件のみ登録
+    - ✅ バックアップ・リストア: 写真付きLoanのバックアップとリストアが正常に動作
+    - ✅ 履歴画面サムネイル表示: サムネイルが表示され、クリックでモーダルで元画像が表示
+    - ✅ HTTPSアクセス安定性: 別ブラウザ（Chrome/Edge）からのアクセス、カメラ許可、WebSocketが正常動作
+    - **発生した問題と解決**:
+      - **[KB-030]** カメラAPIがHTTP環境で動作しない → 自己署名証明書を使用してHTTPS環境を構築
+      - **[KB-031]** WebSocket Mixed Content エラー → Caddyをリバースプロキシとして使用
+      - **[KB-032]** Caddyfile.local のHTTPバージョン指定エラー（`h1`→`1.1`に修正）
+      - **[KB-033]** docker-compose.server.yml のYAML構文エラー（手動編集で破壊）→ git checkoutで復旧、Gitワークフローで変更
+      - **[KB-034]** ラズパイのロケール設定（EUC-JP）による文字化け → raspi-configでUTF-8に変更
+      - **[KB-035]** useEffectの依存配列にisCapturingを含めていた問題 → 依存配列から除外
+      - **[KB-036]** 履歴画面の画像表示で認証エラー → 認証付きでAPIから取得し、モーダルで表示
+    - **修正内容**:
+      - `infrastructure/docker/Caddyfile.local`: HTTPS設定、WebSocketプロキシ（/stream）、HTTPバージョン指定修正
+      - `infrastructure/docker/Dockerfile.web`: `USE_LOCAL_CERTS`環境変数でCaddyfile.localを選択
+      - `infrastructure/docker/docker-compose.server.yml`: ポート80/443公開、証明書ボリュームマウント
+      - `apps/web/src/hooks/useNfcStream.ts`: HTTPSページで自動的にwss://を使用
+      - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`: 重複処理防止の時間を3秒に、isCapturingを依存配列から除外
+      - `apps/web/src/pages/tools/HistoryPage.tsx`: サムネイル表示追加、認証付きでAPIから画像取得、モーダル表示
+    - **学んだこと**:
+      - ブラウザのカメラAPIはHTTPSまたはlocalhostでのみ動作する
+      - 工場環境では自己署名証明書を使用してHTTPS環境を構築する必要がある
+      - HTTPSページから非セキュアなWebSocketへの接続はブロックされる（Mixed Content制限）
+      - YAMLファイルは直接編集せず、Gitワークフローで変更を適用する
+      - ロケール設定（EUC-JP vs UTF-8）は文字化けやスクリプトエラーの原因になる
+      - useEffectの依存配列に状態変数を含めると、その状態が変更されるたびに再実行される
+    - **関連ドキュメント**: [ナレッジベース索引](docs/knowledge-base/index.md)（KB-030〜KB-036）
 
 ## Surprises & Discoveries
 
+- 観測: ブラウザのカメラAPI（`navigator.mediaDevices.getUserMedia`）はHTTPSまたはlocalhostでのみ動作する。  
+  エビデンス: `http://192.168.10.230:4173/kiosk/photo`でカメラAPIを呼び出すと`navigator.mediaDevices`がundefinedになる。  
+  対応: 自己署名証明書を使用してHTTPS環境を構築（`Caddyfile.local`、`Dockerfile.web`、`docker-compose.server.yml`を修正）。**[KB-030]**
+- 観測: HTTPSページから非セキュアなWebSocket（`ws://`）への接続はブラウザのMixed Content制限によりブロックされる。  
+  エビデンス: `wss://192.168.10.230/stream`への接続で`502 Bad Gateway`、NFCエージェントは`ws://`のみ対応。  
+  対応: Caddyをリバースプロキシとして使用し、`wss://`を`ws://`に変換。`/stream`パスでNFCエージェントにプロキシ。**[KB-031]**
+- 観測: Caddyのtransport設定でHTTPバージョンを`h1`と指定するとエラーになる（正しくは`1.1`）。  
+  エビデンス: `unsupported HTTP version: h1, supported version: 1.1, 2, h2c, 3`。  
+  対応: `versions h1`を`versions 1.1`に修正。**[KB-032]**
+- 観測: ラズパイ上で`sed`やPythonスクリプトでYAMLファイルを直接編集すると、構文が壊れやすい。  
+  エビデンス: `docker compose config`で`yaml: line XX: did not find expected '-' indicator`エラーが連鎖的に発生。  
+  対応: `git checkout`で元のファイルに戻し、Mac側で修正してgit push、ラズパイでgit pullする標準ワークフローに回帰。**[KB-033]**
+- 観測: ラズパイのOS再インストール時にロケールがEUC-JPに設定されていると、UTF-8ファイルが文字化けする。  
+  エビデンス: Pythonスクリプトで`UnicodeDecodeError: 'euc_jp' codec can't decode byte`エラー。  
+  対応: `sudo raspi-config`でロケールを`ja_JP.UTF-8`に変更して再起動。**[KB-034]**
+- 観測: `useEffect`の依存配列に状態変数（`isCapturing`）を含めると、その状態が変更されるたびに再実行され、重複処理の原因になる。  
+  エビデンス: NFCタグを1回スキャンすると2件の持出記録が作成される。  
+  対応: `isCapturing`を依存配列から除外し、`processingRef.current`で重複処理を制御。**[KB-035]**
+- 観測: `window.open()`で新しいタブを開くと、認証情報（Authorization ヘッダー）が渡されない。  
+  エビデンス: 履歴画面でサムネイルをクリックすると「認証トークンが必要です」エラー。  
+  対応: 認証付きでAPIから画像を取得し、Blobからモーダルで表示。**[KB-036]**
 - 観測: `fastify-swagger@^8` が存在せず `@fastify/swagger` に名称変更されていた。  
   エビデンス: `pnpm install` で `ERR_PNPM_NO_MATCHING_VERSION fastify-swagger@^8.13.0`。  
   対応: 依存を `@fastify/swagger` に切り替え済み。
