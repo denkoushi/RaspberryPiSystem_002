@@ -1,0 +1,59 @@
+# ローカルネットワーク用Caddyfile（自己署名証明書使用）
+# 工場現場での365日運用に最適
+
+{
+  # 自己署名証明書を使用するため、自動HTTPSを無効化
+  auto_https off
+}
+
+# HTTPS設定（ポート443）
+:443 {
+  # 自己署名証明書のパスを指定
+  tls /srv/certs/cert.pem /srv/certs/key.pem
+
+  root * /srv/site
+
+  @api {
+    path /api/*
+  }
+  reverse_proxy @api api:8080
+
+  # WebSocketプロキシ（NFCエージェント用）
+  handle /stream {
+    reverse_proxy 192.168.10.223:7071 {
+      transport http {
+        versions 1.1
+      }
+    }
+  }
+
+  # サムネイルの静的ファイル配信（認証不要）
+  handle_path /storage/thumbnails/* {
+    root * /srv/storage/thumbnails
+    file_server
+    header Cache-Control "public, max-age=86400" # 1日キャッシュ
+  }
+
+  @spa {
+    not path /api/*
+    not path /stream
+    not path /storage/*
+    not file
+  }
+  rewrite @spa /index.html
+  file_server
+
+  # セキュリティヘッダー
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    X-XSS-Protection "1; mode=block"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+}
+
+# HTTPからHTTPSへのリダイレクト（ポート80）
+:80 {
+  redir https://{host}{uri} permanent
+}
+

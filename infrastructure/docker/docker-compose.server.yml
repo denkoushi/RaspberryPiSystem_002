@@ -23,6 +23,11 @@ services:
       - ../../apps/api/.env.example
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
+      PHOTO_STORAGE_DIR: /app/storage
+      CAMERA_TYPE: mock
+    volumes:
+      - photo-storage:/app/storage/photos
+      - thumbnail-storage:/app/storage/thumbnails
     ports:
       - "8080:8080"
 
@@ -39,14 +44,39 @@ services:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     depends_on:
       - api
-    # 本番環境では以下を設定してHTTPSを有効化
-    # environment:
-    #   DOMAIN: your-domain.com
-    #   CADDY_ADMIN_EMAIL: admin@your-domain.com
+    volumes:
+      - thumbnail-storage:/srv/storage/thumbnails:ro # サムネイルを読み取り専用でマウント
+      # 自己署名証明書を使用する場合（工場現場での運用に推奨）
+      - /opt/RaspberryPiSystem_002/certs:/srv/certs:ro
+    # HTTPS設定オプション:
+    # 1. 自己署名証明書を使用（工場現場での運用に推奨）
+    environment:
+      USE_LOCAL_CERTS: "true"
     ports:
-      - "4173:80"
-      # 本番環境では以下も追加
-      # - "443:443"
+      - "80:80"
+      - "443:443"
+    # 2. Let's Encryptを使用（インターネット接続とドメイン名が必要）
+    #    environment:
+    #      DOMAIN: your-domain.com
+    #      CADDY_ADMIN_EMAIL: admin@your-domain.com
+    #    ports:
+    #      - "80:80"
+    #      - "443:443"
+    # 3. HTTPのみ（開発用、カメラAPIは動作しない）
+    #    ports:
+    #      - "4173:80"
 
 volumes:
   db-data:
+  photo-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/photos
+  thumbnail-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/thumbnails

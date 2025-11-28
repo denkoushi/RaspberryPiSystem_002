@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { useTransactions } from '../../api/hooks';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { api } from '../../api/client';
 import type { Transaction } from '../../api/types';
 
 export function HistoryPage() {
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -27,7 +29,7 @@ export function HistoryPage() {
       new Date(tx.createdAt).toLocaleString(),
       tx.action,
       // スナップショットを優先し、無ければマスタ
-      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-',
+      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-',
       (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-',
       tx.client?.name ?? '-'
     ]);
@@ -84,6 +86,7 @@ export function HistoryPage() {
                 <tr>
                   <th className="px-2 py-1">日時</th>
                   <th className="px-2 py-1">アクション</th>
+                  <th className="px-2 py-1">写真</th>
                   <th className="px-2 py-1">アイテム</th>
                   <th className="px-2 py-1">従業員</th>
                   <th className="px-2 py-1">端末</th>
@@ -91,12 +94,48 @@ export function HistoryPage() {
               </thead>
               <tbody>
                 {transactions.map((tx: Transaction) => {
-                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item.name ?? '-';
+                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-';
                   const employeeName = (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
+                  // 写真サムネイルのURLを生成
+                  const thumbnailUrl = tx.loan?.photoUrl
+                    ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
+                    : null;
                   return (
                   <tr key={tx.id} className="border-t border-white/5">
                     <td className="px-2 py-1">{new Date(tx.createdAt).toLocaleString()}</td>
                     <td className="px-2 py-1">{tx.action}</td>
+                    <td className="px-2 py-1">
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt="撮影した写真"
+                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          onClick={async () => {
+                            // 認証付きで元画像を取得してモーダルで表示
+                            if (tx.loan?.photoUrl) {
+                              try {
+                                // photoUrlは /api/storage/photos/... 形式なので、/api を除いて /storage/photos/... にする
+                                const imagePath = tx.loan.photoUrl.replace(/^\/api/, '');
+                                const response = await api.get(imagePath, {
+                                  responseType: 'blob',
+                                });
+                                const blobUrl = URL.createObjectURL(response.data);
+                                setSelectedImageUrl(blobUrl);
+                              } catch (error) {
+                                console.error('画像の取得に失敗しました:', error);
+                                alert('画像の取得に失敗しました');
+                              }
+                            }
+                          }}
+                          onError={(e) => {
+                            // サムネイルが読み込めない場合は非表示
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td className="px-2 py-1">{itemName}</td>
                     <td className="px-2 py-1">{employeeName}</td>
                     <td className="px-2 py-1">{tx.client?.name ?? '-'}</td>
@@ -122,6 +161,35 @@ export function HistoryPage() {
             </Button>
           </div>
         </>
+      )}
+
+      {/* 画像モーダル */}
+      {selectedImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => {
+            URL.revokeObjectURL(selectedImageUrl);
+            setSelectedImageUrl(null);
+          }}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw]">
+            <img
+              src={selectedImageUrl}
+              alt="撮影した写真"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              className="absolute right-2 top-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              onClick={() => {
+                URL.revokeObjectURL(selectedImageUrl);
+                setSelectedImageUrl(null);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
     </Card>
   );

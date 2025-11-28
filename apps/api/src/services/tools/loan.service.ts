@@ -5,12 +5,23 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { ItemService } from './item.service.js';
 import { EmployeeService } from './employee.service.js';
+import { CameraService } from '../camera/index.js';
+import { PhotoStorage } from '../../lib/photo-storage.js';
+import sharp from 'sharp';
+import { cameraConfig } from '../../config/camera.config.js';
 
 export interface BorrowInput {
   itemTagUid: string;
   employeeTagUid: string;
   clientId?: string;
   dueAt?: Date;
+  note?: string | null;
+}
+
+export interface PhotoBorrowInput {
+  employeeTagUid: string;
+  photoData: string; // Base64エンコードされたJPEG画像データ
+  clientId?: string;
   note?: string | null;
 }
 
@@ -34,10 +45,12 @@ interface LoanWithRelations extends Loan {
 export class LoanService {
   private itemService: ItemService;
   private employeeService: EmployeeService;
+  private cameraService: CameraService;
 
   constructor() {
     this.itemService = new ItemService();
     this.employeeService = new EmployeeService();
+    this.cameraService = new CameraService();
   }
 
   /**
@@ -196,7 +209,8 @@ export class LoanService {
       throw new ApiError(400, 'すでに返却済みです');
     }
 
-    if (!loan.item) {
+    // 写真撮影持出（itemIdがnull）の場合は、アイテムチェックをスキップ
+    if (loan.itemId && !loan.item) {
       throw new ApiError(400, 'この貸出記録に関連するアイテムが見つかりません');
     }
     if (!loan.employee) {
@@ -204,12 +218,14 @@ export class LoanService {
     }
 
     const finalPerformedByUserId = performedByUserId ?? input.performedByUserId;
-    const itemSnapshot = {
-      id: loan.item.id,
-      code: loan.item.itemCode,
-      name: loan.item.name,
-      nfcTagUid: loan.item.nfcTagUid ?? null
-    };
+    const itemSnapshot = loan.item
+      ? {
+          id: loan.item.id,
+          code: loan.item.itemCode,
+          name: loan.item.name,
+          nfcTagUid: loan.item.nfcTagUid ?? null
+        }
+      : null;
     const employeeSnapshot = {
       id: loan.employee.id,
       code: loan.employee.employeeCode,
@@ -228,6 +244,7 @@ export class LoanService {
         include: { item: true, employee: true, client: true }
       });
 
+      // アイテムが関連付けられている場合のみ、ステータスを更新
       if (loan.itemId) {
         await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
       }
@@ -262,6 +279,140 @@ export class LoanService {
     );
 
     return updatedLoan as LoanWithRelations;
+  }
+
+  /**
+   * 写真撮影持出処理
+   * 
+   * 従業員タグのみスキャンで撮影＋持出を記録する。
+   * Item情報は保存せず、従業員IDと写真のみを保存する。
+   */
+  async photoBorrow(input: PhotoBorrowInput, resolvedClientId?: string): Promise<LoanWithRelations> {
+    logger.info(
+      {
+        employeeTagUid: input.employeeTagUid,
+        clientId: resolvedClientId,
+      },
+      'Photo borrow request started',
+    );
+
+    // 従業員を特定
+    const employee = await this.employeeService.findByNfcTagUid(input.employeeTagUid);
+    if (!employee) {
+      logger.warn({ employeeTagUid: input.employeeTagUid }, 'Employee not found for photo borrow');
+      throw new ApiError(404, '対象従業員が登録されていません');
+    }
+
+    // 画像データを処理（Base64エンコードされたJPEG画像データを受け取る）
+    let photoPathInfo;
+    try {
+      // Base64エンコードされた画像データをBufferに変換
+      const imageBuffer = Buffer.from(input.photoData, 'base64');
+      
+      // 画像をリサイズ・圧縮（800x600px、JPEG品質80%、100KB程度に圧縮）
+      let originalImage = await sharp(imageBuffer)
+        .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: cameraConfig.quality })
+        .toBuffer();
+
+      // 100KB程度になるまで品質を下げる（最大5回試行）
+      let quality = cameraConfig.quality;
+      for (let i = 0; i < 5 && originalImage.length > 100 * 1024; i++) {
+        quality = Math.max(50, quality - 10); // 最低50%まで
+        originalImage = await sharp(imageBuffer)
+          .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality })
+          .toBuffer();
+      }
+
+      // サムネイルを生成（150x150px、JPEG品質70%）
+      const thumbnailImage = await sharp(originalImage)
+        .resize(cameraConfig.thumbnail.width, cameraConfig.thumbnail.height, {
+          fit: 'cover',
+        })
+        .jpeg({ quality: cameraConfig.thumbnail.quality })
+        .toBuffer();
+      
+      // 写真を保存
+      photoPathInfo = await PhotoStorage.savePhoto(
+        employee.id,
+        originalImage,
+        thumbnailImage
+      );
+
+      logger.info(
+        {
+          employeeId: employee.id,
+          photoUrl: photoPathInfo.relativePath,
+          thumbnailUrl: photoPathInfo.thumbnailRelativePath,
+          photoSize: originalImage.length,
+          thumbnailSize: thumbnailImage.length,
+        },
+        'Photo processed and saved successfully',
+      );
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error({ err, employeeTagUid: input.employeeTagUid }, 'Photo processing failed');
+      throw new ApiError(500, `写真の処理に失敗しました: ${err.message}`);
+    }
+
+    const employeeSnapshot = {
+      id: employee.id,
+      code: employee.employeeCode,
+      name: employee.displayName,
+      nfcTagUid: employee.nfcTagUid ?? null
+    };
+
+    // Loanレコードを作成（itemIdはNULL、photoUrlとphotoTakenAtを設定）
+    const loan = await prisma.$transaction(async (tx) => {
+      const createdLoan = await tx.loan.create({
+        data: {
+          itemId: null, // Item情報は保存しない
+          employeeId: employee.id,
+          clientId: resolvedClientId,
+          photoUrl: photoPathInfo.relativePath,
+          photoTakenAt: new Date(),
+          notes: input.note ?? undefined
+        },
+        include: { item: true, employee: true, client: true }
+      });
+
+      await tx.transaction.create({
+        data: {
+          loanId: createdLoan.id,
+          action: TransactionAction.BORROW,
+          actorEmployeeId: employee.id,
+          clientId: resolvedClientId,
+          details: {
+            note: input.note ?? null,
+            employeeSnapshot,
+            photoUrl: photoPathInfo.relativePath,
+            photoTakenAt: createdLoan.photoTakenAt?.toISOString() ?? null
+          }
+        }
+      });
+
+      return createdLoan;
+    });
+
+    logger.info(
+      {
+        loanId: loan.id,
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        photoUrl: photoPathInfo.relativePath,
+        clientId: resolvedClientId,
+      },
+      'Photo borrow completed successfully',
+    );
+
+    return loan as LoanWithRelations;
   }
 
   /**

@@ -6,14 +6,19 @@ import {
   deleteEmployee,
   deleteItem,
   getActiveLoans,
+  getClients,
   getEmployees,
   getItems,
   getKioskConfig,
   getTransactions,
   importMaster,
+  photoBorrow,
   returnLoan,
+  updateClient,
   updateEmployee,
-  updateItem
+  updateItem,
+  type ClientDevice,
+  type PhotoBorrowPayload
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
 
@@ -97,6 +102,17 @@ export function useReturnMutation(clientKey?: string) {
   });
 }
 
+export function usePhotoBorrowMutation(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PhotoBorrowPayload) => photoBorrow(payload, clientKey),
+    onSuccess: () => {
+      // 写真撮影持出成功後、すべてのloansクエリを無効化して最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    }
+  });
+}
+
 export function useTransactions(
   page: number,
   filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
@@ -112,9 +128,29 @@ export function useKioskConfig() {
   return useQuery({
     queryKey: ['kiosk-config'],
     queryFn: getKioskConfig,
-    staleTime: 5 * 60 * 1000, // 5分間はキャッシュを有効にする（設定は頻繁に変わらないため）
-    refetchInterval: false // ポーリングを無効化（設定は頻繁に変わらないため）
+    staleTime: 0, // キャッシュを無効化して常に最新データを取得（設定変更時に即座に反映されるように）
+    refetchInterval: false, // ポーリングを無効化（設定は頻繁に変わらないため）
+    refetchOnWindowFocus: true // ウィンドウフォーカス時にリフェッチ（設定変更時に即座に反映されるように）
   });
+}
+
+export function useClients() {
+  return useQuery({
+    queryKey: ['clients'],
+    queryFn: getClients
+  });
+}
+
+export function useClientMutations() {
+  const queryClient = useQueryClient();
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { defaultMode?: 'PHOTO' | 'TAG' | null } }) => updateClient(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+    }
+  });
+  return { update };
 }
 
 export function useImportMaster() {

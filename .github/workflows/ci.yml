@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'feature/**', 'fix/**']
   pull_request:
     branches: [main, develop]
 
@@ -117,6 +117,9 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          NODE_ENV: test
 
       - name: Start API server for monitoring tests
         run: |

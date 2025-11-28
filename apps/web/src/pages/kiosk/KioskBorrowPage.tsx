@@ -78,20 +78,31 @@ export function KioskBorrowPage() {
   }, [borrowMutation, clientId, send, state]);
 
   useEffect(() => {
-    console.log('NFC Event received:', nfcEvent);
-    console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
+    // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
+    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    
+    if (enableDebugLogs) {
+      console.log('NFC Event received:', nfcEvent);
+      console.log('Current state:', state.value, 'Context:', JSON.stringify(state.context, null, 2));
+    }
     if (!nfcEvent) return;
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastEventKeyRef.current === eventKey) {
-      console.log('Skipping duplicate NFC event:', eventKey);
+      if (enableDebugLogs) {
+        console.log('Skipping duplicate NFC event:', eventKey);
+      }
       return;
     }
     if (state.matches('waitItem')) {
-      console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
+      if (enableDebugLogs) {
+        console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
+      }
       send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     } else if (state.matches('waitEmployee')) {
-      console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
+      if (enableDebugLogs) {
+        console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
+      }
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     }
@@ -133,7 +144,7 @@ export function KioskBorrowPage() {
               <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
                 <p className="text-lg font-semibold text-emerald-300">登録完了</p>
                 <p>
-                  {state.context.loan.item.name} を {state.context.loan.employee.displayName} さんが持出済み
+                  {state.context.loan.item?.name ?? 'アイテム情報なし'} を {state.context.loan.employee.displayName} さんが持出済み
                 </p>
               </div>
             ) : null}

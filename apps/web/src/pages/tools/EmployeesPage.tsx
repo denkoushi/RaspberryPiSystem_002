@@ -29,26 +29,31 @@ export function EmployeesPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (editingId) {
-      await update.mutateAsync({
-        id: editingId,
-        payload: {
+    try {
+      if (editingId) {
+        await update.mutateAsync({
+          id: editingId,
+          payload: {
+            employeeCode: form.employeeCode,
+            displayName: form.displayName,
+            department: form.department || undefined,
+            nfcTagUid: form.nfcTagUid || undefined
+          }
+        });
+      } else {
+        await create.mutateAsync({
           employeeCode: form.employeeCode,
           displayName: form.displayName,
           department: form.department || undefined,
           nfcTagUid: form.nfcTagUid || undefined
-        }
-      });
-    } else {
-      await create.mutateAsync({
-        employeeCode: form.employeeCode,
-        displayName: form.displayName,
-        department: form.department || undefined,
-        nfcTagUid: form.nfcTagUid || undefined
-      });
+        });
+      }
+      setForm(initialForm);
+      setEditingId(null);
+    } catch (error) {
+      // エラーはReact Queryが自動的に処理する（create.errorまたはupdate.errorに設定される）
+      // エラーメッセージはフォームの下に表示される
     }
-    setForm(initialForm);
-    setEditingId(null);
   };
 
   const startEdit = (emp: Employee) => {
@@ -79,6 +84,35 @@ export function EmployeesPage() {
   return (
     <div className="space-y-6">
       <Card title="従業員登録 / 編集">
+        {(create.error || update.error) ? (
+          <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+            <p className="font-semibold">エラー</p>
+            {(() => {
+              const error = create.error || update.error;
+              if (axios.isAxiosError(error) && error.response?.data) {
+                const data = error.response.data;
+                // Zodバリデーションエラーの場合、issuesからメッセージを抽出
+                if (data.issues && Array.isArray(data.issues) && data.issues.length > 0) {
+                  return (
+                    <div className="mt-1">
+                      {data.issues.map((issue: any, index: number) => (
+                        <p key={index} className="mt-1">
+                          {issue.path && issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}
+                          {issue.message}
+                        </p>
+                      ))}
+                    </div>
+                  );
+                }
+                // 通常のエラーメッセージ
+                if (data.message) {
+                  return <p className="mt-1">{data.message}</p>;
+                }
+              }
+              return <p className="mt-1">{(error as Error)?.message || '登録・更新に失敗しました'}</p>;
+            })()}
+          </div>
+        ) : null}
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-white/70">
             社員コード

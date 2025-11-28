@@ -11,6 +11,12 @@ import type {
   Transaction
 } from './types';
 
+export interface PhotoBorrowPayload {
+  employeeTagUid: string;
+  clientId?: string;
+  note?: string | null;
+}
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
 
@@ -125,6 +131,20 @@ export async function returnLoan(payload: ReturnPayload, clientKey?: string) {
   return data.loan;
 }
 
+export interface PhotoBorrowPayload {
+  employeeTagUid: string;
+  photoData: string; // Base64エンコードされたJPEG画像データ
+  clientId?: string;
+  note?: string | null;
+}
+
+export async function photoBorrow(payload: PhotoBorrowPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/photo-borrow', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.loan;
+}
+
 export async function getTransactions(
   page = 1,
   filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
@@ -146,8 +166,32 @@ export async function getTransactions(
 }
 
 export async function getKioskConfig() {
-  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number }>('/kiosk/config');
+  const key = resolveClientKey();
+  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number; defaultMode?: 'PHOTO' | 'TAG' }>('/kiosk/config', {
+    headers: { 'x-client-key': key }
+  });
   return data;
+}
+
+export interface ClientDevice {
+  id: string;
+  name: string;
+  location?: string | null;
+  apiKey: string;
+  defaultMode?: 'PHOTO' | 'TAG' | null;
+  lastSeenAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getClients() {
+  const { data } = await api.get<{ clients: ClientDevice[] }>('/clients');
+  return data.clients;
+}
+
+export async function updateClient(id: string, payload: { defaultMode?: 'PHOTO' | 'TAG' | null }) {
+  const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
+  return data.client;
 }
 
 interface ImportMasterPayload {

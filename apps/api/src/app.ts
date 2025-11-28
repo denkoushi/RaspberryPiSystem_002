@@ -6,6 +6,7 @@ import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRequestLogger } from './plugins/request-logger.js';
 import { registerRoutes } from './routes/index.js';
+import { PhotoStorage } from './lib/photo-storage.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -18,6 +19,15 @@ export async function buildServer(): Promise<FastifyInstance> {
       files: 2
     }
   });
+  
+  // 写真ストレージディレクトリを初期化
+  try {
+    await PhotoStorage.initialize();
+    app.log.info('Photo storage directories initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize photo storage directories (may not be critical)');
+  }
+  
   // ルートを登録
   await registerRoutes(app);
   // 注意: レート制限プラグインは`routes/index.ts`と`routes/tools/index.ts`でサブルーター内に登録されているため、

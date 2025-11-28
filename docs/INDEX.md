@@ -83,10 +83,11 @@
 | ドキュメント | 説明 |
 |-------------|------|
 | [guides/deployment.md](./guides/deployment.md) | デプロイ手順 |
-| [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
+| [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ（HTTPS設定含む） |
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
-| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | インフラ基盤 |
+| [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
+| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 
 ### アーキテクト
 
@@ -107,8 +108,8 @@
 
 | ファイル | 説明 |
 |---------|------|
-| [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ |
-| [infrastructure-base.md](./architecture/infrastructure-base.md) | インフラ基盤 |
+| [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
+| [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 
 ### 設計決定（decisions/）
 
@@ -118,6 +119,7 @@
 |---------|------|
 | [001-module-structure.md](./decisions/001-module-structure.md) | モジュール構造の設計決定 |
 | [002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
+| [003-camera-module.md](./decisions/003-camera-module.md) | **カメラ機能のモジュール化**（写真撮影持出機能） |
 
 ### モジュール仕様（modules/）
 
@@ -128,6 +130,7 @@
 | [tools/README.md](./modules/tools/README.md) | 工具管理モジュール概要 |
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
+| [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
 | [logistics/README.md](./modules/logistics/README.md) | 物流モジュール（将来実装予定） |
 
@@ -161,8 +164,10 @@ APIの概要と詳細。
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
+| [photo-loan-test-plan.md](./guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
+| [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
@@ -171,12 +176,12 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
-| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全24件の一覧） |
+| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全32件の一覧） |
 | [knowledge-base/api.md](./knowledge-base/api.md) | API関連（8件） |
 | [knowledge-base/database.md](./knowledge-base/database.md) | データベース関連（3件） |
 | [knowledge-base/ci-cd.md](./knowledge-base/ci-cd.md) | CI/CD関連（4件） |
-| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（3件） |
-| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（6件） |
+| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（9件） |
+| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（12件） |
 | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) | NFCリーダー固有の問題 |
 
 ### セキュリティ（security/）
@@ -237,14 +242,14 @@ APIの概要と詳細。
 | カテゴリ | ファイル数 |
 |---------|-----------|
 | アーキテクチャ | 2 |
-| 設計決定 | 2 |
-| モジュール仕様 | 5 |
+| 設計決定 | 3 |
+| モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
 | 実践ガイド | 9 |
 | トラブルシューティング | 8 |
 | セキュリティ | 1 |
-| **合計** | **30** |
+| **合計** | **32** |
 
 ---
 
