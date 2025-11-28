@@ -627,20 +627,31 @@
 - データベーススキーマ追加（SignageSchedule, SignagePdf, SignageEmergency）
 - APIエンドポイント実装（/api/signage/*）
 - PDFアップロード・配信機能
+- PDFから画像への変換機能（pdftoppm使用）
 - 管理画面実装（スケジュール設定、PDF管理、緊急表示設定）
 - サイネージ表示画面実装（工具データ・PDF・分割表示）
 - クライアント端末セットアップスクリプト作成
 - 統合テストの骨組み追加
+- **実機検証完了**: Raspberry Pi 5でPDFアップロード・表示・スケジュール機能を確認
+
+**発生した問題と解決策**:
+- **KB-042**: pdf-popplerがLinux（ARM64）をサポートしていない → PopplerのCLIツール（pdftoppm）を直接使用する方式に変更
+- **KB-043**: KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない → パスチェックを追加して`/`または`/kiosk`パスでのみ動作するように修正
+- PDFアップロード時のmultipart処理エラー → `part.file`を使用するように修正（`imports.ts`の実装を参考）
 
 **学んだこと**:
 - 機能を完成させてからテストを追加する方針が効率的（EXEC_PLAN.mdの621行目）
 - Prisma Client生成前に型エラーが発生するが、実装は進められる
 - インクリメンタルな開発により、各フェーズで動作確認が可能
+- npmパッケージがすべてのプラットフォームをサポートしているとは限らない（pdf-popplerはmacOS/Windowsのみ）
+- CLIツールを直接使用する方が確実な場合がある（pdftoppm）
+- React Routerでは`/`パスが最初にマッチするため、コンポーネントのスコープを適切に制限する必要がある
 
 **注意事項**:
-- PDFページ生成機能（サーバー側でPDFを画像に変換）は実装完了（pdf-poppler使用）
+- PDFページ生成機能（サーバー側でPDFを画像に変換）は実装完了（pdftoppm使用）
 - 実機環境でマイグレーション実行後にPrisma Client生成が必要
 - Dockerfileにpoppler-utilsを追加済み（APIコンテナの再ビルドが必要）
+- PDFストレージディレクトリ（`/opt/RaspberryPiSystem_002/storage/pdfs`, `/opt/RaspberryPiSystem_002/storage/pdf-pages`）の作成が必要
 
 ### Phase 6: 写真撮影持出機能（FR-009）実装完了（2025-11-27）
 
