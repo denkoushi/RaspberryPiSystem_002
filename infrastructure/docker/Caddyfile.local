@@ -20,7 +20,7 @@
 
   # WebSocketプロキシ（NFCエージェント用）
   handle /stream {
-    reverse_proxy 192.168.10.223:7071 {
+    reverse_proxy 192.168.128.102:7071 {
       transport http {
         versions 1.1
       }
