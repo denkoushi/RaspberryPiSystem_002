@@ -42,6 +42,7 @@
 |-------------|-------------|
 | 機能を検証したい | [guides/verification-checklist.md](./guides/verification-checklist.md) |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
+| デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 
 ### エラーを解決する
