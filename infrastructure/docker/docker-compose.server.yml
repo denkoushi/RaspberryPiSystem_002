@@ -22,10 +22,13 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
+      PDF_STORAGE_DIR: /app/storage
       CAMERA_TYPE: mock
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
+      - pdf-storage:/app/storage/pdfs
+      - pdf-pages-storage:/app/storage/pdf-pages
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     ports:
@@ -83,3 +86,15 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/thumbnails
+  pdf-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/pdfs
+  pdf-pages-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/pdf-pages
