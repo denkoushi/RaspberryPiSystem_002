@@ -8,7 +8,7 @@ import { convertPdfToImages } from './pdf-converter.js';
  */
 const STORAGE_BASE_DIR = process.env.PDF_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
 const PDFS_DIR = path.join(STORAGE_BASE_DIR, 'pdfs');
-const PDF_PAGES_DIR = path.join(STORAGE_BASE_DIR, 'pdf-pages');
+export const PDF_PAGES_DIR = path.join(STORAGE_BASE_DIR, 'pdf-pages');
 
 /**
  * PDFファイルのパス情報

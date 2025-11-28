@@ -8,6 +8,7 @@ import { registerRequestLogger } from './plugins/request-logger.js';
 import { registerRoutes } from './routes/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
+import { SignageRenderStorage } from './lib/signage-render-storage.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -34,6 +35,13 @@ export async function buildServer(): Promise<FastifyInstance> {
     app.log.info('PDF storage directories initialized');
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize PDF storage directories (may not be critical)');
+  }
+
+  try {
+    await SignageRenderStorage.initialize();
+    app.log.info('Signage render storage initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize signage render storage (may not be critical)');
   }
   
   // ルートを登録
