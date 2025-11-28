@@ -83,7 +83,7 @@
 | ドキュメント | 説明 |
 |-------------|------|
 | [guides/deployment.md](./guides/deployment.md) | デプロイ手順 |
-| [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
+| [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ（HTTPS設定含む） |
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
@@ -108,7 +108,7 @@
 
 | ファイル | 説明 |
 |---------|------|
-| [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ |
+| [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
 | [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 
 ### 設計決定（decisions/）
