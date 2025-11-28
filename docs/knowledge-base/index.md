@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 12件 | キオスク接続、XState、UI、カメラ連携 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 13件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 14件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
 
@@ -93,6 +93,7 @@ update-frequency: high
 | [KB-033](./infrastructure.md#kb-033-docker-composeserveryml-のyaml構文エラー手動編集による破壊) | docker-compose.server.yml のYAML構文エラー（手動編集による破壊） | ✅ 解決済み |
 | [KB-034](./infrastructure.md#kb-034-ラズパイのロケール設定euc-jpによる文字化け) | ラズパイのロケール設定（EUC-JP）による文字化け | ✅ 解決済み |
 | [KB-039](./infrastructure.md#kb-039-cpu温度取得のdocker対応sysclassthermalマウント) | CPU温度取得のDocker対応（/sys/class/thermalマウント） | ✅ 解決済み |
+| [KB-041](./infrastructure.md#kb-041-wi-fi変更時のipアドレス設定が手動で再ビルドが必要だった問題環境変数化) | Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題（環境変数化） | ✅ 解決済み |
 
 ---
 
@@ -131,9 +132,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 32件 |
+| ✅ 解決済み | 33件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **36件** |
+| **合計** | **37件** |
 
 ---
 
@@ -149,4 +150,5 @@ update-frequency: high
 - 2025-11-28: KB-030〜KB-036を追加（HTTPS設定、WebSocket Mixed Content、YAML構文エラー、ロケール設定、useEffect重複処理、履歴画面画像表示）
 - 2025-11-28: KB-037〜KB-039を追加（カメラプレビューCPU負荷、カメラ撮影CPU100%、CPU温度取得Docker対応）
 - 2025-11-28: KB-040を追加（返却一覧の自動更新が不要だった問題）
+- 2025-11-28: KB-041を追加（Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題）
 

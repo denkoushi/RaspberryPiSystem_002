@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 13件  
+**件数**: 14件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -425,5 +425,45 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/api/src/routes/system/system-info.ts`
+- `infrastructure/docker/docker-compose.server.yml`
+
+---
+
+### [KB-041] Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題（環境変数化）
+
+**EXEC_PLAN.md参照**: Progress (2025-11-28)
+
+**事象**: 
+- Wi-Fiが変わると、ラズパイ4のIPアドレスが変わる
+- Caddyfile.localのIPアドレスを手動で更新して、Webコンテナを再ビルドする必要があった
+- 再ビルドに時間がかかり、運用が煩雑だった
+
+**要因**: 
+- Caddyfile.localにIPアドレスがハードコードされていた
+- DockerイメージにCaddyfile.localが埋め込まれているため、IPアドレス変更時に再ビルドが必要だった
+- 環境変数でIPアドレスを設定できる仕組みがなかった
+
+**試行した対策**: 
+- [試行1] Caddyfile.localを直接編集して再ビルド → **成功したが運用が煩雑**
+- [試行2] Caddyfile.localをテンプレート化し、起動時に環境変数でIPアドレスを置換 → **成功**（再ビルド不要で対応可能）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. Caddyfile.localをテンプレート化（`Caddyfile.local.template`）し、`$NFC_AGENT_HOST`をプレースホルダーとして使用
+  2. Dockerfile.webで起動時に`sed`コマンドで環境変数`NFC_AGENT_HOST`の値を置換してCaddyfile.localを生成
+  3. docker-compose.server.ymlで環境変数`NFC_AGENT_HOST`を設定可能に（デフォルト値: `192.168.128.102`）
+  4. Wi-Fi変更時は、環境変数を変更してWebコンテナを再起動するだけで対応可能（再ビルド不要）
+
+**学んだこと**: 
+- **環境変数による設定の柔軟性**: ハードコードされた値を環境変数化することで、再ビルド不要で設定変更が可能
+- **テンプレート化の重要性**: 設定ファイルをテンプレート化し、起動時に動的に生成することで、運用の柔軟性が向上
+- **Docker Composeの環境変数**: `${ENV_VAR:-default}`形式でデフォルト値を設定できる
+- **運用の簡素化**: 再ビルド不要で設定変更できることで、運用コストが大幅に削減
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `infrastructure/docker/Caddyfile.local.template`
+- `infrastructure/docker/Dockerfile.web`
 - `infrastructure/docker/docker-compose.server.yml`
 
