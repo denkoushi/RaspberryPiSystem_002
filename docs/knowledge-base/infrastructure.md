@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 14件  
+**件数**: 15件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -466,4 +466,46 @@ update-frequency: medium
 - `infrastructure/docker/Caddyfile.local.template`
 - `infrastructure/docker/Dockerfile.web`
 - `infrastructure/docker/docker-compose.server.yml`
+
+---
+
+### [KB-042] pdf-popplerがLinux（ARM64）をサポートしていない問題
+
+**EXEC_PLAN.md参照**: Progress (2025-11-28)
+
+**事象**: 
+- デジタルサイネージ機能でPDFを画像に変換する際、`pdf-poppler`パッケージを使用していた
+- Dockerコンテナ内で`pdf-poppler`をインポートすると「linux is NOT supported.」というエラーが発生
+- APIコンテナが起動できない
+
+**要因**: 
+- `pdf-poppler`パッケージは`darwin`（macOS）と`win32`（Windows）のみをサポートしている
+- Linux（ARM64）環境では動作しない
+- パッケージの`index.js`でプラットフォームチェックがあり、Linuxの場合は`process.exit(1)`で終了する
+
+**試行した対策**: 
+- [試行1] `pdf-poppler`パッケージを使用 → **失敗**（Linux環境で動作しない）
+- [試行2] PopplerのCLIツール（`pdftoppm`）を直接使用する方式に変更 → **成功**（Linux環境で動作）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `pdf-poppler`パッケージを削除
+  2. PopplerのCLIツール（`pdftoppm`）を直接使用する`pdf-converter.ts`を作成
+  3. `child_process.spawn`を使用して`pdftoppm`コマンドを実行
+  4. Dockerfile.apiで`poppler-utils`パッケージをインストール（既にインストール済み）
+  5. PDFをJPEG形式で画像に変換し、指定されたディレクトリに保存
+
+**学んだこと**: 
+- **プラットフォーム依存パッケージの確認**: npmパッケージがすべてのプラットフォームをサポートしているとは限らない
+- **CLIツールの直接使用**: パッケージがサポートしていない場合、CLIツールを直接使用する方が確実
+- **Docker環境での動作確認**: ローカル環境（macOS）で動作しても、Docker環境（Linux）で動作しない場合がある
+- **PopplerのCLIツール**: `pdftoppm`はLinux環境で標準的に使用できるPDF変換ツール
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/api/src/lib/pdf-converter.ts`
+- `apps/api/src/lib/pdf-storage.ts`
+- `apps/api/package.json`
+- `infrastructure/docker/Dockerfile.api`
 

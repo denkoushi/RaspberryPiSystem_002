@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 12件  
+**件数**: 13件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -413,3 +413,42 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/web/src/api/hooks.ts`
 - `apps/web/src/pages/kiosk/KioskReturnPage.tsx`
+
+---
+
+### [KB-043] KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題
+
+**EXEC_PLAN.md参照**: Progress (2025-11-28)
+
+**事象**: 
+- `/admin/signage/pdfs`にアクセスしようとすると、勝手に`/kiosk/photo`にリダイレクトされる
+- 管理画面のサイネージ設定ページにアクセスできない
+- ブラウザのコンソールに`[KioskRedirect] Redirecting to /kiosk/photo`というログが出力される
+
+**要因**: 
+- `KioskRedirect`コンポーネントが`/`パスで使用されているため、すべてのパスでレンダリングされる可能性がある
+- `KioskRedirect`コンポーネント内でパスのチェックが不十分で、`/admin`パスでも動作してしまっていた
+- React Routerのルーティング設定では、`/`パスが最初にマッチするため、`KioskRedirect`が実行される
+
+**試行した対策**: 
+- [試行1] ルーティング設定を確認 → **部分的に成功**（ルーティング設定は正しい）
+- [試行2] `KioskRedirect`コンポーネントにパスチェックを追加し、`/`または`/kiosk`パスでのみ動作するように修正 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `KioskRedirect`コンポーネントの`useEffect`の最初にパスチェックを追加
+  2. `normalizedPath === ''`（ルートパス）または`normalizedPath === '/kiosk'`の場合のみ処理を実行
+  3. それ以外のパス（`/admin`など）の場合は早期リターンで処理をスキップ
+  4. TypeScriptの型エラーを修正（`normalizedPath`の型を適切に処理）
+
+**学んだこと**: 
+- **コンポーネントのスコープ制限**: 特定のパスでのみ動作すべきコンポーネントは、パスチェックを最初に行う
+- **React Routerの動作**: `/`パスが最初にマッチするため、すべてのパスでコンポーネントがレンダリングされる可能性がある
+- **早期リターンの重要性**: 不要な処理を避けるために、条件チェックを最初に行う
+- **デバッグログの活用**: コンソールログで問題の原因を特定できる
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/web/src/components/KioskRedirect.tsx`
+- `apps/web/src/App.tsx`

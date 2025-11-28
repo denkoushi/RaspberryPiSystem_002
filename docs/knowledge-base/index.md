@@ -23,8 +23,8 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 8件 | APIエラー、レート制限、認証、履歴 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 12件 | キオスク接続、XState、UI、カメラ連携 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 14件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 13件 | キオスク接続、XState、UI、カメラ連携 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 15件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
 
@@ -76,6 +76,7 @@ update-frequency: high
 | [KB-037](./frontend.md#kb-037-カメラプレビューのcpu負荷問題常時プレビュー削除) | カメラプレビューのCPU負荷問題（常時プレビュー削除） | ✅ 解決済み |
 | [KB-038](./frontend.md#kb-038-カメラ撮影時のcpu100問題video要素のクリーンアップ) | カメラ撮影時のCPU100%問題（video要素のクリーンアップ） | ✅ 解決済み |
 | [KB-040](./frontend.md#kb-040-返却一覧の自動更新が不要だった問題cpu負荷軽減) | 返却一覧の自動更新が不要だった問題（CPU負荷軽減） | ✅ 解決済み |
+| [KB-043](./frontend.md#kb-043-kioskredirectがadminパスでも動作してしまい管理画面にアクセスできない問題) | KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -94,6 +95,7 @@ update-frequency: high
 | [KB-034](./infrastructure.md#kb-034-ラズパイのロケール設定euc-jpによる文字化け) | ラズパイのロケール設定（EUC-JP）による文字化け | ✅ 解決済み |
 | [KB-039](./infrastructure.md#kb-039-cpu温度取得のdocker対応sysclassthermalマウント) | CPU温度取得のDocker対応（/sys/class/thermalマウント） | ✅ 解決済み |
 | [KB-041](./infrastructure.md#kb-041-wi-fi変更時のipアドレス設定が手動で再ビルドが必要だった問題環境変数化) | Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題（環境変数化） | ✅ 解決済み |
+| [KB-042](./infrastructure.md#kb-042-pdf-popplerがlinuxarm64をサポートしていない問題) | pdf-popplerがLinux（ARM64）をサポートしていない問題 | ✅ 解決済み |
 
 ---
 
@@ -132,9 +134,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 33件 |
+| ✅ 解決済み | 35件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **37件** |
+| **合計** | **39件** |
 
 ---
 
@@ -151,4 +153,6 @@ update-frequency: high
 - 2025-11-28: KB-037〜KB-039を追加（カメラプレビューCPU負荷、カメラ撮影CPU100%、CPU温度取得Docker対応）
 - 2025-11-28: KB-040を追加（返却一覧の自動更新が不要だった問題）
 - 2025-11-28: KB-041を追加（Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題）
+- 2025-11-28: KB-042を追加（pdf-popplerがLinux（ARM64）をサポートしていない問題）
+- 2025-11-28: KB-043を追加（KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題）
 
