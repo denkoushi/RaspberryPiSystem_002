@@ -12,6 +12,7 @@ import {
   getEmployees,
   getItems,
   getKioskConfig,
+  getSystemInfo,
   getTransactions,
   importMaster,
   photoBorrow,
@@ -187,5 +188,19 @@ export function useImportMaster() {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['items'] });
     }
+  });
+}
+
+/**
+ * システム情報（CPU温度・負荷）を取得するフック
+ * 5秒間隔で自動更新
+ */
+export function useSystemInfo() {
+  return useQuery({
+    queryKey: ['system-info'],
+    queryFn: getSystemInfo,
+    refetchInterval: 5000, // 5秒間隔で更新
+    staleTime: 3000, // 3秒間はキャッシュを使用
+    refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
   });
 }

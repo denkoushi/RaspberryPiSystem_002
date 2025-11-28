@@ -3,6 +3,7 @@ import { KioskRedirect } from '../components/KioskRedirect';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Input } from '../components/ui/Input';
 import { setClientKeyHeader } from '../api/client';
+import { useSystemInfo } from '../api/hooks';
 import { useEffect } from 'react';
 
 const navLink = 'rounded-md px-4 py-2 text-white hover:bg-white/10 transition-colors';
@@ -10,6 +11,7 @@ const navLink = 'rounded-md px-4 py-2 text-white hover:bg-white/10 transition-co
 export function KioskLayout() {
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const { data: systemInfo } = useSystemInfo();
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -54,14 +56,51 @@ export function KioskLayout() {
               </label>
             </div>
           </div>
-          <nav className="space-x-2">
-            <NavLink to="/kiosk" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
-              持出
-            </NavLink>
-            <NavLink to="/kiosk/return" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
-              返却
-            </NavLink>
-          </nav>
+          <div className="flex items-center gap-4">
+            {/* CPU温度・負荷モニター */}
+            {systemInfo && (
+              <div className="flex items-center gap-3 text-xs">
+                {systemInfo.cpuTemp !== null && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-white/70">CPU温度:</span>
+                    <span
+                      className={`font-semibold ${
+                        systemInfo.cpuTemp >= 70
+                          ? 'text-red-400'
+                          : systemInfo.cpuTemp >= 60
+                          ? 'text-yellow-400'
+                          : 'text-emerald-400'
+                      }`}
+                    >
+                      {systemInfo.cpuTemp.toFixed(1)}°C
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1">
+                  <span className="text-white/70">CPU負荷:</span>
+                  <span
+                    className={`font-semibold ${
+                      systemInfo.cpuLoad >= 80
+                        ? 'text-red-400'
+                        : systemInfo.cpuLoad >= 60
+                        ? 'text-yellow-400'
+                        : 'text-emerald-400'
+                    }`}
+                  >
+                    {systemInfo.cpuLoad.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            )}
+            <nav className="space-x-2">
+              <NavLink to="/kiosk" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
+                持出
+              </NavLink>
+              <NavLink to="/kiosk/return" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
+                返却
+              </NavLink>
+            </nav>
+          </div>
         </div>
       </header>
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">

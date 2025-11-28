@@ -234,3 +234,14 @@ export async function importMaster(payload: ImportMasterPayload) {
   });
   return data;
 }
+
+export interface SystemInfo {
+  cpuTemp: number | null;
+  cpuLoad: number;
+  timestamp: string;
+}
+
+export async function getSystemInfo() {
+  const { data } = await api.get<SystemInfo>('/system/system-info');
+  return data;
+}
