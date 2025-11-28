@@ -45,9 +45,6 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   };
 
   const handleCancel = async (loanId: string) => {
-    if (!confirm('この貸出記録を取消しますか？\n（誤スキャン時の対処に使用します。データは削除されず、ダッシュボードで除外されます）')) {
-      return;
-    }
     const payload = {
       loanId,
       ...(resolvedClientId && resolvedClientId.length > 0 ? { clientId: resolvedClientId } : {})
