@@ -47,14 +47,14 @@ services:
     volumes:
       - thumbnail-storage:/srv/storage/thumbnails:ro # サムネイルを読み取り専用でマウント
       # 自己署名証明書を使用する場合（工場現場での運用に推奨）
-      # - ./certs:/srv/certs:ro
+      - ./certs:/srv/certs:ro
     # HTTPS設定オプション:
     # 1. 自己署名証明書を使用（工場現場での運用に推奨）
-    #    environment:
-    #      USE_LOCAL_CERTS: "true"
-    #    ports:
-    #      - "80:80"
-    #      - "443:443"
+    environment:
+      USE_LOCAL_CERTS: "true"
+    ports:
+      - "80:80"
+      - "443:443"
     # 2. Let's Encryptを使用（インターネット接続とドメイン名が必要）
     #    environment:
     #      DOMAIN: your-domain.com
@@ -63,8 +63,8 @@ services:
     #      - "80:80"
     #      - "443:443"
     # 3. HTTPのみ（開発用、カメラAPIは動作しない）
-    ports:
-      - "4173:80"
+    #    ports:
+    #      - "4173:80"
 
 volumes:
   db-data:
