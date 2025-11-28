@@ -111,6 +111,7 @@
 |---------|------|
 | [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
 | [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
+| [signage-module-architecture.md](./architecture/signage-module-architecture.md) | **デジタルサイネージモジュール アーキテクチャ**（モジュール化、コンフリクト確認、スケーラビリティ） |
 
 ### 設計決定（decisions/）
 
@@ -167,6 +168,9 @@ APIの概要と詳細。
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
 | [photo-loan-test-plan.md](./guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
+| [signage-test-plan.md](./guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
+| [signage-deployment.md](./guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
+| [signage-client-setup.md](./guides/signage-client-setup.md) | **デジタルサイネージクライアント端末セットアップガイド** |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
@@ -216,11 +220,20 @@ APIの概要と詳細。
 | **サービス層** | `apps/api/src/services/documents/` |
 | **Webページ** | `apps/web/src/pages/documents/` |
 
+### デジタルサイネージモジュール（signage）
+
+| 種別 | 場所 |
+|------|------|
+| **ドキュメント** | [modules/signage/README.md](./modules/signage/README.md) |
+| **アーキテクチャ** | [architecture/signage-module-architecture.md](./architecture/signage-module-architecture.md) |
+| **APIルート** | `apps/api/src/routes/signage/` |
+| **サービス層** | `apps/api/src/services/signage/` |
+| **Webページ** | `apps/web/src/pages/signage/`, `apps/web/src/pages/admin/Signage*.tsx` |
+
 ### 物流モジュール（logistics）- 将来実装予定
 
 | 種別 | 場所 |
 |------|------|
-| **デジタルサイネージ** | [modules/signage/README.md](./modules/signage/README.md) |
 | **ドキュメント** | [modules/logistics/README.md](./modules/logistics/README.md) |
 | **APIルート** | `apps/api/src/routes/logistics/` |
 | **サービス層** | `apps/api/src/services/logistics/` |
@@ -243,15 +256,15 @@ APIの概要と詳細。
 
 | カテゴリ | ファイル数 |
 |---------|-----------|
-| アーキテクチャ | 2 |
+| アーキテクチャ | 3 |
 | 設計決定 | 3 |
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実践ガイド | 9 |
+| 実践ガイド | 12 |
 | トラブルシューティング | 8 |
 | セキュリティ | 1 |
-| **合計** | **32** |
+| **合計** | **36** |
 
 ---
 
