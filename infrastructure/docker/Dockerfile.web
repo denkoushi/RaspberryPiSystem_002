@@ -22,9 +22,9 @@ WORKDIR /srv
 COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
 COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production
-COPY infrastructure/docker/Caddyfile.local ./Caddyfile.local
+COPY infrastructure/docker/Caddyfile.local.template ./Caddyfile.local.template
 # Caddyfileの選択ロジック:
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
 # 3. それ以外 → Caddyfile（HTTPのみ、開発用）
-CMD ["sh", "-c", "if [ -n \"$USE_LOCAL_CERTS\" ]; then caddy run --config /srv/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
+CMD ["sh", "-c", "if [ -n \"$USE_LOCAL_CERTS\" ]; then sed \"s|\\$NFC_AGENT_HOST|${NFC_AGENT_HOST:-192.168.128.102}|g\" /srv/Caddyfile.local.template > /srv/Caddyfile.local && caddy run --config /srv/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]

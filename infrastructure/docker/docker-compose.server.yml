@@ -52,6 +52,9 @@ services:
     # 1. 自己署名証明書を使用（工場現場での運用に推奨）
     environment:
       USE_LOCAL_CERTS: "true"
+      # NFCエージェントのIPアドレス（Wi-Fi変更時はここを更新）
+      # ラズパイ4のIPアドレスを設定（例: 192.168.128.102）
+      NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.128.102}
     ports:
       - "80:80"
       - "443:443"
