@@ -84,6 +84,7 @@ export function HistoryPage() {
                 <tr>
                   <th className="px-2 py-1">日時</th>
                   <th className="px-2 py-1">アクション</th>
+                  <th className="px-2 py-1">写真</th>
                   <th className="px-2 py-1">アイテム</th>
                   <th className="px-2 py-1">従業員</th>
                   <th className="px-2 py-1">端末</th>
@@ -93,10 +94,36 @@ export function HistoryPage() {
                 {transactions.map((tx: Transaction) => {
                   const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-';
                   const employeeName = (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
+                  // 写真サムネイルのURLを生成
+                  const thumbnailUrl = tx.loan?.photoUrl
+                    ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
+                    : null;
                   return (
                   <tr key={tx.id} className="border-t border-white/5">
                     <td className="px-2 py-1">{new Date(tx.createdAt).toLocaleString()}</td>
                     <td className="px-2 py-1">{tx.action}</td>
+                    <td className="px-2 py-1">
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt="撮影した写真"
+                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer"
+                          onClick={() => {
+                            // クリックで元画像を表示
+                            const fullImageUrl = tx.loan?.photoUrl?.replace('/api/storage/photos', '/api/storage/photos');
+                            if (fullImageUrl) {
+                              window.open(fullImageUrl, '_blank');
+                            }
+                          }}
+                          onError={(e) => {
+                            // サムネイルが読み込めない場合は非表示
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td className="px-2 py-1">{itemName}</td>
                     <td className="px-2 py-1">{employeeName}</td>
                     <td className="px-2 py-1">{tx.client?.name ?? '-'}</td>
