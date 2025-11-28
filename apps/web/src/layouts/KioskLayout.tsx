@@ -103,7 +103,7 @@ export function KioskLayout() {
           </div>
         </div>
       </header>
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="flex h-[calc(100vh-5rem)] flex-col gap-4 px-4 py-4">
         <Outlet />
       </main>
     </div>

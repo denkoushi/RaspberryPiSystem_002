@@ -69,14 +69,15 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   };
 
   return (
-    <Card title="返却一覧">
-      {loansQuery.isError ? (
-        <p className="text-red-400">返却一覧の取得に失敗しました</p>
-      ) : loansQuery.isLoading ? (
-        <p>読み込み中...</p>
-      ) : loansQuery.data && loansQuery.data.length > 0 ? (
-        <div className="space-y-2">
-          <ul className="space-y-2">
+    <div className="h-full flex flex-col">
+      <Card title="返却一覧" className="h-full flex flex-col">
+        {loansQuery.isError ? (
+          <p className="text-red-400">返却一覧の取得に失敗しました</p>
+        ) : loansQuery.isLoading ? (
+          <p>読み込み中...</p>
+        ) : loansQuery.data && loansQuery.data.length > 0 ? (
+          <div className="flex-1 overflow-y-auto space-y-2 min-h-0 -mx-4 px-4">
+            <ul className="space-y-2">
             {loansQuery.data.map((loan) => {
               // 写真サムネイルのURLを生成
               const thumbnailUrl = loan.photoUrl
@@ -131,12 +132,13 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                 </li>
               );
             })}
-          </ul>
-          {loansQuery.isFetching ? <p className="text-xs text-white/60">更新中...</p> : null}
-        </div>
-      ) : (
-        <p>現在貸出中のアイテムはありません。</p>
-      )}
+            </ul>
+            {loansQuery.isFetching ? <p className="text-xs text-white/60">更新中...</p> : null}
+          </div>
+        ) : (
+          <p>現在貸出中のアイテムはありません。</p>
+        )}
+      </Card>
 
       {/* 画像モーダル */}
       {selectedImageUrl && (
@@ -166,6 +168,6 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

@@ -11,12 +11,14 @@ export function Card({ title, action, className, children }: CardProps) {
   return (
     <section className={clsx('rounded-xl border border-white/10 bg-white/5 p-4 text-white', className)}>
       {title ? (
-        <header className="mb-3 flex items-center justify-between">
+        <header className="mb-3 flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold">{title}</h2>
           {action}
         </header>
       ) : null}
-      {children}
+      <div className={clsx(title && className?.includes('flex flex-col') ? 'flex-1 min-h-0' : '')}>
+        {children}
+      </div>
     </section>
   );
 }

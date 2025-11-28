@@ -244,9 +244,9 @@ export function KioskPhotoBorrowPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="写真撮影持出">
+    <div className="flex h-full gap-4">
+      <div className="w-80 flex-shrink-0">
+        <Card title="写真撮影持出" className="h-full">
           <div className="space-y-4 text-center">
             {/* 撮影中の表示（スキャン時のみカメラを起動） */}
             {isCapturing && (
@@ -318,7 +318,9 @@ export function KioskPhotoBorrowPage() {
             )}
           </div>
         </Card>
+      </div>
 
+      <div className="flex-1 min-w-0">
         <KioskReturnPage loansQuery={loansQuery} clientId={resolvedClientId} clientKey={resolvedClientKey} />
       </div>
     </div>
