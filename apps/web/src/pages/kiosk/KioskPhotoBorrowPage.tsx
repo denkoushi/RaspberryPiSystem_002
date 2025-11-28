@@ -125,7 +125,7 @@ export function KioskPhotoBorrowPage() {
       return;
     }
 
-    // 処理中フラグを立てる（重複処理を防ぐ）
+    // 処理中フラグを立てる（重複処理を防ぐ）- 最初に設定して、useEffectの再実行を防ぐ
     processingRef.current = true;
     lastEventKeyRef.current = eventKey;
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録（処理開始時に即座に記録）
@@ -210,7 +210,7 @@ export function KioskPhotoBorrowPage() {
       }
       );
     })();
-  }, [nfcEvent?.uid, nfcEvent?.timestamp, isCapturing, photoBorrowMutation, resolvedClientId]);
+  }, [nfcEvent?.uid, nfcEvent?.timestamp, photoBorrowMutation, resolvedClientId]); // isCapturingを依存配列から除外（processingRefで制御）
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
