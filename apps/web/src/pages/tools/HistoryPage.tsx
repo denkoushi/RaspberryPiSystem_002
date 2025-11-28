@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { useTransactions } from '../../api/hooks';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { api } from '../../api/client';
 import type { Transaction } from '../../api/types';
 
 export function HistoryPage() {
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -107,12 +109,20 @@ export function HistoryPage() {
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer"
-                          onClick={() => {
-                            // クリックで元画像を表示
-                            const fullImageUrl = tx.loan?.photoUrl?.replace('/api/storage/photos', '/api/storage/photos');
-                            if (fullImageUrl) {
-                              window.open(fullImageUrl, '_blank');
+                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          onClick={async () => {
+                            // 認証付きで元画像を取得してモーダルで表示
+                            if (tx.loan?.photoUrl) {
+                              try {
+                                const response = await api.get(tx.loan.photoUrl, {
+                                  responseType: 'blob',
+                                });
+                                const blobUrl = URL.createObjectURL(response.data);
+                                setSelectedImageUrl(blobUrl);
+                              } catch (error) {
+                                console.error('画像の取得に失敗しました:', error);
+                                alert('画像の取得に失敗しました');
+                              }
                             }
                           }}
                           onError={(e) => {
@@ -149,6 +159,35 @@ export function HistoryPage() {
             </Button>
           </div>
         </>
+      )}
+
+      {/* 画像モーダル */}
+      {selectedImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => {
+            URL.revokeObjectURL(selectedImageUrl);
+            setSelectedImageUrl(null);
+          }}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw]">
+            <img
+              src={selectedImageUrl}
+              alt="撮影した写真"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              className="absolute right-2 top-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              onClick={() => {
+                URL.revokeObjectURL(selectedImageUrl);
+                setSelectedImageUrl(null);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
     </Card>
   );
