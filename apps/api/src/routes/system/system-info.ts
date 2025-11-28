@@ -16,12 +16,15 @@ export function registerSystemInfoRoute(app: FastifyInstance): void {
       try {
         const tempData = await readFile('/sys/class/thermal/thermal_zone0/temp', 'utf-8');
         const tempMillidegrees = parseInt(tempData.trim(), 10);
-        if (!isNaN(tempMillidegrees)) {
+        if (!isNaN(tempMillidegrees) && tempMillidegrees > 0) {
           cpuTemp = tempMillidegrees / 1000; // ミリ度を度に変換
+          request.log.debug({ tempData, tempMillidegrees, cpuTemp }, 'CPU temperature read successfully');
+        } else {
+          request.log.warn({ tempData, tempMillidegrees }, 'Invalid temperature data');
         }
       } catch (error) {
         // ファイルが読めない場合（非ラズパイ環境など）は無視
-        request.log.debug({ err: error }, 'thermal_zone0/temp not available');
+        request.log.warn({ err: error, path: '/sys/class/thermal/thermal_zone0/temp' }, 'Failed to read CPU temperature');
       }
 
       // CPU負荷を取得（1分平均）
