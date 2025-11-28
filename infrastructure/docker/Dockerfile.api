@@ -4,7 +4,7 @@ FROM node:20-bookworm-slim AS base
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y openssl \
+  && apt-get install -y openssl poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
@@ -24,7 +24,7 @@ FROM node:20-bookworm-slim AS api
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y openssl \
+  && apt-get install -y openssl poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=base /app/package.json ./package.json

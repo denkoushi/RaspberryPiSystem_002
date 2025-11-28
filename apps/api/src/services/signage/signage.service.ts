@@ -2,6 +2,7 @@ import { SignageContentType, SignageDisplayMode } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { PdfStorage } from '../../lib/pdf-storage.js';
 
 export interface SignageScheduleInput {
   name: string;
@@ -257,9 +258,21 @@ export class SignageService {
    * PDFのページURL一覧を取得
    */
   private async getPdfPages(pdfId: string): Promise<string[]> {
-    // TODO: PDFを画像に変換してページURLを生成
-    // 現時点では空配列を返す
-    return [];
+    const pdf = await prisma.signagePdf.findUnique({
+      where: { id: pdfId },
+    });
+
+    if (!pdf) {
+      return [];
+    }
+
+    // PDFファイルのパスを取得
+    const pdfFilePath = pdf.filePath;
+    
+    // PDFを画像に変換してページURL一覧を取得
+    const pageUrls = await PdfStorage.convertPdfToPages(pdfId, pdfFilePath);
+    
+    return pageUrls;
   }
 
   /**
@@ -412,6 +425,9 @@ export class SignageService {
    * PDFを削除
    */
   async deletePdf(id: string): Promise<void> {
+    // PDFページ画像も削除
+    await PdfStorage.deletePdfPages(id);
+    
     await prisma.signagePdf.delete({
       where: { id },
     });
