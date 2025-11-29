@@ -664,10 +664,13 @@
    - [x] `docs/modules/signage/signage-lite.md` に軽量モードの計画をまとめる。
    - [ ] 軽量クライアント利用時の要件（OS, 依存パッケージ, ネットワーク要件）を文書化。
 2. サーバー側レンダリング
-   - [ ] `/signage` 画面を headless で静止画にレンダリングする PoC を実装。
-   - [ ] `/api/signage/current-image` で最新画像を返すAPIを追加。
+   - [x] サイネージコンテンツを静止画にレンダリングする `SignageRenderer` を実装。
+   - [x] `/api/signage/render`（手動トリガー）と `/api/signage/current-image`（配信）を追加。
+   - [ ] **新規**: 定期レンダリング（systemd timer またはキュー）で自動更新できるようにする。
+   - [ ] **任意**: 管理画面からの再レンダリングボタンを追加して手動更新を容易にする。
 3. クライアント側
-   - [ ] Raspberry Pi OS Lite + feh で画像をループ表示する systemd サービスを作成（`setup-signage-lite.sh`）。
+   - [x] Raspberry Pi OS Lite + feh で画像をループ表示する systemd サービスを作成（`setup-signage-lite.sh`）。
+   - [x] ネットワーク断時にローカルキャッシュを表示する仕組みを実装。
    - [ ] Zero 2W 実機で24h連続稼働テストを実施し、CPU温度・再接続シナリオを記録。
 4. 統合
    - [ ] 管理画面またはセットアップスクリプトで「通常モード / 軽量モード」を選択できるようにする。
