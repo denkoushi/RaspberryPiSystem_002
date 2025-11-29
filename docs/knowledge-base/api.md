@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 8件  
+**件数**: 11件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -262,4 +262,73 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/api/src/routes/signage/pdfs.ts`
 - `apps/api/src/routes/imports.ts`
+
+---
+
+### [KB-045] サイネージが常に工具表示になる問題（タイムゾーン問題）
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージのスケジュール設定でPDFや分割表示を選択しても、常に工具管理データ（TOOLS）が表示される
+- スケジュールの時間帯（09:00-23:00）に設定しても、PDFが表示されない
+
+**要因**: 
+- `SignageService.getContent()` がサーバーのタイムゾーン（UTC）で現在時刻を取得していた
+- スケジュールの時間判定（`currentTime < schedule.startTime || currentTime >= schedule.endTime`）がUTC基準で行われていたため、日本時間（JST）のスケジュールと一致しなかった
+- 結果として、すべてのスケジュールが時間外と判定され、デフォルトの工具表示にフォールバックしていた
+
+**試行した対策**: 
+- [試行1] スケジュールの時間判定ロジックを確認 → **問題なし**（ロジック自体は正しい）
+- [試行2] `getCurrentTimeInfo()` メソッドを追加し、`SIGNAGE_TIMEZONE` 環境変数でタイムゾーンを設定可能にし、デフォルトで `Asia/Tokyo` を使用するように変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `SignageService` に `getCurrentTimeInfo()` メソッドを追加
+  2. `Intl.DateTimeFormat` を使用して、指定されたタイムゾーン（デフォルト: `Asia/Tokyo`）で現在時刻を取得
+  3. 環境変数 `SIGNAGE_TIMEZONE` でタイムゾーンを設定可能に（未設定時は `Asia/Tokyo` を使用）
+  4. スケジュール判定時に、タイムゾーンを考慮した現在時刻を使用
+
+**学んだこと**: 
+- **タイムゾーンの重要性**: サーバーがUTCで動作している場合、時刻ベースの判定にはタイムゾーン変換が必要
+- **環境変数による設定**: デフォルト値を設定しつつ、環境変数で上書き可能にすることで柔軟性を確保
+- **Intl.DateTimeFormat**: JavaScript標準のAPIを使用することで、タイムゾーン変換を簡単に実装できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
+
+---
+
+### [KB-046] サイネージで工具管理がダミーデータのみ表示される問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージの工具管理データ表示で、NFCリーダーでスキャンしたアイテムが表示されない
+- 常にダミーデータ（`Item.status === 'AVAILABLE'` のツール）のみが表示される
+
+**要因**: 
+- `SignageService.getToolsData()` が `Item.status === 'AVAILABLE'` のツールのみを取得していた
+- 実際に貸出中のツール（`Loan` テーブルで `returnedAt` と `cancelledAt` が `null`）が表示されていなかった
+
+**試行した対策**: 
+- [試行1] `getToolsData()` のロジックを確認 → **問題発見**（AVAILABLEのみを取得していた）
+- [試行2] `Loan` テーブルから現在貸出中のツールを取得し、それに紐付くアイテム情報を表示するように変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `getToolsData()` を修正し、まず `Loan` テーブルから現在貸出中のツール（`returnedAt` と `cancelledAt` が `null`）を取得
+  2. 各貸出データに紐付くアイテム情報（`itemCode`, `name`）と最新のサムネイル（`photoUrl` から生成）を取得
+  3. 貸出中のツールが1件もない場合のみ、従来通り `Item.status === 'AVAILABLE'` のツール一覧を表示
+
+**学んだこと**: 
+- **データ取得の優先順位**: 実際に使用中のデータを優先表示することで、より実用的な情報を提供できる
+- **Loanテーブルの活用**: 貸出履歴から現在の状態を取得することで、リアルタイムな情報を表示できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
 

@@ -20,10 +20,10 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 9件 | APIエラー、レート制限、認証、履歴 |
+| API関連 | [api.md](./api.md) | 11件 | APIエラー、レート制限、認証、履歴、サイネージ |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 13件 | キオスク接続、XState、UI、カメラ連携 |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 15件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 15件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
@@ -135,9 +135,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 36件 |
+| ✅ 解決済み | 40件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **40件** |
+| **合計** | **44件** |
 
 ---
 
@@ -157,4 +157,5 @@ update-frequency: high
 - 2025-11-28: KB-042を追加（pdf-popplerがLinux（ARM64）をサポートしていない問題）
 - 2025-11-28: KB-043を追加（KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題）
 - 2025-11-28: KB-044を追加（PDFアップロード時のmultipart処理エラー）
+- 2025-11-29: KB-045〜KB-046を追加（サイネージのタイムゾーン問題、工具データ表示問題、PDFスライド問題、サムネイルアスペクト比問題）
 
