@@ -36,9 +36,9 @@ export class SignageRenderScheduler {
 
     this.cronJob = cron.schedule(cronExpression, async () => {
       try {
-        logger.debug('Running scheduled signage render');
+        logger.info('Running scheduled signage render');
         await this.renderer.renderCurrentContent();
-        logger.debug('Scheduled signage render completed');
+        logger.info('Scheduled signage render completed');
       } catch (error) {
         logger.error({ err: error }, 'Failed to run scheduled signage render');
       }
