@@ -135,10 +135,47 @@ api:
 
 **注意**: 4K解像度にすると、画像サイズが約4倍になり、レンダリング処理時間とネットワーク転送時間が増加します。
 
+## 自動レンダリング機能
+
+定期レンダリングは `node-cron` を使用して実装されています。APIサーバー起動時に自動的に開始されます。
+
+### 設定方法
+
+環境変数 `SIGNAGE_RENDER_INTERVAL_SECONDS` でレンダリング間隔を設定可能（デフォルト: 30秒）：
+
+```yaml
+# docker-compose.server.yml
+api:
+  environment:
+    SIGNAGE_RENDER_INTERVAL_SECONDS: "30"  # 30秒ごとにレンダリング
+```
+
+### 動作確認
+
+1. **APIコンテナのログを確認**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -i "signage render"
+   ```
+
+2. **レンダリングされた画像を確認**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml exec api \
+     ls -la /app/storage/signage-rendered
+   ```
+
+3. **current-image APIで取得**:
+   ```bash
+   curl -H "x-client-key: <CLIENT_KEY>" \
+     http://localhost:8080/api/signage/current-image \
+     --output /tmp/current.jpg
+   ```
+
 ## 今後のタスク
 
-- サーバー側で定期的にレンダリングを実行する自動ジョブ（systemd timer）を実装する。
-- 管理画面から再レンダリングを手動トリガーできるUIを追加する。
+- [x] **自動レンダリング機能**: node-cron を使用して、定期的にコンテンツをレンダリングする機能を実装 ✅
+- [ ] **管理画面からの手動トリガー**: 管理画面にボタンを追加して、必要時に手動でレンダリングを実行できるようにする
+- [ ] **Raspberry Pi Zero 2W での実機テスト**: 24時間連続稼働テストを実施し、CPU温度・メモリ使用量・ネットワーク断時の挙動を記録
+- [ ] **モード切替機能**: 管理画面またはセットアップスクリプトで「通常モード / 軽量モード」を選択できるようにする
 - Raspberry Pi Zero 2Wによる24時間耐久テストで温度・再接続シナリオを記録する。
 - 通常モード / 軽量モードをセットアップ時に選択できるようにする。
 
