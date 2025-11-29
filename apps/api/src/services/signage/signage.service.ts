@@ -32,6 +32,16 @@ export interface SignageEmergencyInput {
   expiresAt?: Date | null;
 }
 
+const WEEKDAY_MAP: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
 export interface SignageContentResponse {
   contentType: SignageContentType;
   displayMode: SignageDisplayMode;
@@ -86,8 +96,7 @@ export class SignageService {
    */
   async getContent(): Promise<SignageContentResponse> {
     const now = new Date();
-    const currentDayOfWeek = now.getDay(); // 0=日曜日, 1=月曜日, ..., 6=土曜日
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
 
     // 緊急表示を最優先で確認
     const emergency = await prisma.signageEmergency.findFirst({
@@ -498,5 +507,21 @@ export class SignageService {
 
     return emergency;
   }
-}
 
+  private getCurrentTimeInfo(baseDate: Date): { currentDayOfWeek: number; currentTime: string } {
+    const timezone = process.env.SIGNAGE_TIMEZONE || 'Asia/Tokyo';
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const parts = formatter.formatToParts(baseDate);
+    const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Sun';
+    const hour = parts.find((part) => part.type === 'hour')?.value ?? '00';
+    const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
+    const currentDayOfWeek = WEEKDAY_MAP[weekday] ?? 0;
+    const currentTime = `${hour}:${minute}`;
+    return { currentDayOfWeek, currentTime };
+  }

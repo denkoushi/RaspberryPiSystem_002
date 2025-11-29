@@ -148,6 +148,7 @@ api:
 api:
   environment:
     SIGNAGE_RENDER_INTERVAL_SECONDS: "30"  # 30秒ごとにレンダリング
+    SIGNAGE_TIMEZONE: "Asia/Tokyo"        # スケジュール判定用タイムゾーン
 ```
 
 ### 動作確認
