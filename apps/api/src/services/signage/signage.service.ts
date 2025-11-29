@@ -182,19 +182,25 @@ export class SignageService {
         }
       } else if (schedule.contentType === SignageContentType.SPLIT) {
         const tools = await this.getToolsData();
-        const pdf = schedule.pdfId ? await prisma.signagePdf.findUnique({
-          where: { id: schedule.pdfId },
-        }) : null;
-        
+        const pdf = schedule.pdfId
+          ? await prisma.signagePdf.findUnique({
+              where: { id: schedule.pdfId },
+            })
+          : null;
+
+        const hasEnabledPdf = !!(pdf && pdf.enabled);
+
         return {
           contentType: SignageContentType.SPLIT,
-          displayMode: SignageDisplayMode.SINGLE,
+          displayMode: hasEnabledPdf ? pdf.displayMode : SignageDisplayMode.SINGLE,
           tools,
-          pdf: pdf && pdf.enabled ? {
-            id: pdf.id,
-            name: pdf.name,
-            pages: await this.getPdfPages(pdf.id),
-          } : null,
+          pdf: hasEnabledPdf
+            ? {
+                id: pdf.id,
+                name: pdf.name,
+                pages: await this.getPdfPages(pdf.id),
+              }
+            : null,
         };
       }
     }
@@ -211,12 +217,46 @@ export class SignageService {
   /**
    * 工具管理データを取得
    */
-  private async getToolsData(): Promise<Array<{
-    id: string;
-    itemCode: string;
-    name: string;
-    thumbnailUrl: string | null;
-  }>> {
+  private async getToolsData(): Promise<
+    Array<{
+      id: string;
+      itemCode: string;
+      name: string;
+      thumbnailUrl: string | null;
+    }>
+  > {
+    // まずは現在貸出中（returnedAt / cancelledAt が null）の工具を取得
+    const activeLoans = await prisma.loan.findMany({
+      where: {
+        returnedAt: null,
+        cancelledAt: null,
+      },
+      include: {
+        item: true,
+      },
+      orderBy: {
+        borrowedAt: 'desc',
+      },
+      take: 100,
+    });
+
+    const loanTools = activeLoans
+      .map((loan) => {
+        const itemCode = loan.item?.itemCode ?? loan.itemId ?? '';
+        return {
+          id: loan.id,
+          itemCode: itemCode || loan.id.slice(0, 8),
+          name: loan.item?.name ?? '貸出中の工具',
+          thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
+        };
+      })
+      .filter((tool) => Boolean(tool.itemCode));
+
+    if (loanTools.length > 0) {
+      return loanTools;
+    }
+
+    // 貸出中がない場合は、従来どおり利用可能な工具一覧を表示
     const items = await prisma.item.findMany({
       where: { status: 'AVAILABLE' },
       select: {
@@ -225,42 +265,36 @@ export class SignageService {
         name: true,
       },
       orderBy: { itemCode: 'asc' },
-      take: 100, // 最大100件
+      take: 100,
     });
 
-    // サムネイルURLを取得（LoanのphotoUrlから）
-    const itemsWithThumbnails = await Promise.all(
-      items.map(async (item) => {
-        const loan = await prisma.loan.findFirst({
-          where: {
-            itemId: item.id,
-            photoUrl: { not: null },
-          },
-          orderBy: { photoTakenAt: 'desc' },
-          select: { photoUrl: true },
-        });
+    return items.map((item) => ({
+      id: item.id,
+      itemCode: item.itemCode,
+      name: item.name,
+      thumbnailUrl: null,
+    }));
+  }
 
-        let thumbnailUrl: string | null = null;
-        if (loan?.photoUrl) {
-          // photoUrlからサムネイルURLを生成
-          // 例: /api/storage/photos/2025/11/xxx.jpg → /storage/thumbnails/2025/11/xxx_thumb.jpg
-          const photoPath = loan.photoUrl.replace('/api/storage/photos/', '');
-          const pathParts = photoPath.split('/');
-          const filename = pathParts[pathParts.length - 1];
-          const dir = pathParts.slice(0, -1).join('/');
-          thumbnailUrl = `/storage/thumbnails/${dir}/${filename.replace('.jpg', '_thumb.jpg')}`;
-        }
+  private buildThumbnailUrl(photoUrl?: string | null): string | null {
+    if (!photoUrl) {
+      return null;
+    }
 
-        return {
-          id: item.id,
-          itemCode: item.itemCode,
-          name: item.name,
-          thumbnailUrl,
-        };
-      })
-    );
+    if (!photoUrl.startsWith('/api/storage/photos/')) {
+      return null;
+    }
 
-    return itemsWithThumbnails;
+    const photoPath = photoUrl.replace('/api/storage/photos/', '');
+    const pathParts = photoPath.split('/');
+    const filename = pathParts.pop();
+    const dir = pathParts.join('/');
+
+    if (!filename) {
+      return null;
+    }
+
+    return `/storage/thumbnails/${dir}/${filename.replace('.jpg', '_thumb.jpg')}`;
   }
 
   /**
@@ -525,3 +559,4 @@ export class SignageService {
     const currentTime = `${hour}:${minute}`;
     return { currentDayOfWeek, currentTime };
   }
+}
