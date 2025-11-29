@@ -452,3 +452,72 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/web/src/components/KioskRedirect.tsx`
 - `apps/web/src/App.tsx`
+
+---
+
+### [KB-045] 分割表示でPDFがスライドしない問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージの分割表示（SPLIT）で、PDFをスライドショー設定にしても自動的にページが切り替わらない
+- 単体表示（PDFのみ）ではスライドショーが動作するが、分割表示では動作しない
+
+**要因**: 
+- `SignageService.getContent()` が分割表示時に `displayMode` を `SignageDisplayMode.SINGLE` に固定していた
+- PDFの `displayMode`（`SLIDESHOW` または `SINGLE`）が引き継がれていなかった
+
+**試行した対策**: 
+- [試行1] `SignageDisplayPage.tsx` のスライドショーロジックを確認 → **問題なし**（ロジック自体は正しい）
+- [試行2] `SignageService.getContent()` で分割表示時にPDFの `displayMode` を引き継ぐように修正 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `SignageService.getContent()` の分割表示処理を修正
+  2. PDFが存在する場合、PDFの `displayMode`（`SLIDESHOW` または `SINGLE`）を `content.displayMode` に設定
+  3. フロントエンド側で `content.displayMode === 'SLIDESHOW'` の場合に自動ページ切り替えを実行
+
+**学んだこと**: 
+- **データの引き継ぎ**: サーバー側で設定された情報（`displayMode`）をフロントエンドに正しく渡すことで、期待通りの動作を実現できる
+- **設定の一貫性**: PDFの設定（スライドショー/単一表示）を分割表示でも尊重することで、ユーザー体験を向上できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+
+---
+
+### [KB-046] サイネージのサムネイルアスペクト比がおかしい問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージの工具管理データ表示で、サムネイル画像が縦横に引き伸ばされて表示される
+- 工具管理画面（キオスク/管理画面）で表示されているアイテムカードと同じサイズ・比率で表示されない
+
+**要因**: 
+- `SignageDisplayPage.tsx` のツールカードで、画像に `object-cover` を指定していたが、アスペクト比が指定されていなかった
+- コンテナのサイズに応じて画像が引き伸ばされていた
+
+**試行した対策**: 
+- [試行1] 画像の `object-fit` を確認 → **問題なし**（`object-cover` は正しく設定されていた）
+- [試行2] 画像をラッパーdivで囲み、`aspectRatio: '4 / 3'` を指定して、工具管理画面と同じアスペクト比に統一 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. ツールカードの画像をラッパーdivで囲む
+  2. ラッパーに `aspectRatio: '4 / 3'` を指定（工具管理画面と同じ比率）
+  3. 画像に `object-cover` を指定して、アスペクト比を維持しながらコンテナに収める
+  4. 単体表示と分割表示の両方で同じアスペクト比を適用
+
+**学んだこと**: 
+- **アスペクト比の指定**: CSSの `aspect-ratio` プロパティを使用することで、画像の縦横比を固定できる
+- **UIの一貫性**: 同じデータを表示する画面では、見た目を統一することでユーザー体験を向上できる
+- **レスポンシブデザイン**: アスペクト比を指定することで、異なる画面サイズでも適切に表示される
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
