@@ -72,20 +72,25 @@ export function SignageDisplayPage() {
                   key={tool.id}
                   className="rounded-lg border border-white/10 bg-white/5 p-4 transition-transform hover:scale-105"
                 >
-                  {tool.thumbnailUrl ? (
-                    <img
-                      src={tool.thumbnailUrl}
-                      alt={tool.name}
-                      className="mb-2 h-32 w-full rounded object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="mb-2 flex h-32 w-full items-center justify-center rounded bg-white/5 text-white/30">
-                      画像なし
-                    </div>
-                  )}
+                  <div
+                    className="mb-2 w-full overflow-hidden rounded bg-white/10"
+                    style={{ aspectRatio: '4 / 3' }}
+                  >
+                    {tool.thumbnailUrl ? (
+                      <img
+                        src={tool.thumbnailUrl}
+                        alt={tool.name}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/30">
+                        画像なし
+                      </div>
+                    )}
+                  </div>
                   <p className="text-sm font-semibold text-white">{tool.name}</p>
                   <p className="text-xs text-white/60">{tool.itemCode}</p>
                 </div>
@@ -159,20 +164,25 @@ export function SignageDisplayPage() {
                   key={tool.id}
                   className="rounded-lg border border-white/10 bg-white/5 p-3 transition-transform hover:scale-105"
                 >
-                  {tool.thumbnailUrl ? (
-                    <img
-                      src={tool.thumbnailUrl}
-                      alt={tool.name}
-                      className="mb-2 h-24 w-full rounded object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="mb-2 flex h-24 w-full items-center justify-center rounded bg-white/5 text-white/30">
-                      画像なし
-                    </div>
-                  )}
+                  <div
+                    className="mb-2 w-full overflow-hidden rounded bg-white/10"
+                    style={{ aspectRatio: '4 / 3' }}
+                  >
+                    {tool.thumbnailUrl ? (
+                      <img
+                        src={tool.thumbnailUrl}
+                        alt={tool.name}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/30">
+                        画像なし
+                      </div>
+                    )}
+                  </div>
                   <p className="text-xs font-semibold text-white">{tool.name}</p>
                   <p className="text-xs text-white/60">{tool.itemCode}</p>
                 </div>
