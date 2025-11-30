@@ -397,3 +397,23 @@ export async function getSignageContent() {
   const { data } = await api.get<SignageContentResponse>('/signage/content');
   return data;
 }
+
+export interface SignageRenderResult {
+  renderedAt: string;
+  filename: string;
+}
+
+export async function renderSignage() {
+  const { data } = await api.post<SignageRenderResult>('/signage/render');
+  return data;
+}
+
+export interface SignageRenderStatus {
+  isRunning: boolean;
+  intervalSeconds: number;
+}
+
+export async function getSignageRenderStatus() {
+  const { data } = await api.get<SignageRenderStatus>('/signage/render/status');
+  return data;
+}

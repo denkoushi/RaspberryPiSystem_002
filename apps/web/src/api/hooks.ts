@@ -28,6 +28,8 @@ import {
   updateSignageSchedule,
   deleteSignageSchedule,
   getSignagePdfs,
+  renderSignage,
+  getSignageRenderStatus,
   uploadSignagePdf,
   updateSignagePdf,
   deleteSignagePdf,
@@ -287,5 +289,24 @@ export function useSignageContent() {
     queryKey: ['signage-content'],
     queryFn: getSignageContent,
     refetchInterval: 30_000 // 30秒間隔で更新（サイネージ表示用）
+  });
+}
+
+export function useSignageRenderStatus() {
+  return useQuery({
+    queryKey: ['signage-render-status'],
+    queryFn: getSignageRenderStatus,
+    refetchInterval: 10_000 // 10秒間隔で更新
+  });
+}
+
+export function useSignageRenderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: renderSignage,
+    onSuccess: () => {
+      // レンダリング成功後、ステータスを更新
+      queryClient.invalidateQueries({ queryKey: ['signage-render-status'] });
+    }
   });
 }

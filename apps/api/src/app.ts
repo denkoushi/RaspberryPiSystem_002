@@ -9,6 +9,9 @@ import { registerRoutes } from './routes/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
 import { SignageRenderStorage } from './lib/signage-render-storage.js';
+import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
+import { SignageRenderer } from './services/signage/signage.renderer.js';
+import { SignageService } from './services/signage/index.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -43,6 +46,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize signage render storage (may not be critical)');
   }
+  
+  // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）
+  const signageService = new SignageService();
+  const signageRenderer = new SignageRenderer(signageService);
+  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS);
+  
+  // アプリケーションコンテキストにスケジューラーを保存
+  app.decorate('signageRenderScheduler', scheduler);
   
   // ルートを登録
   await registerRoutes(app);

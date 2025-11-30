@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSignageSchedules, useSignageScheduleMutations, useSignagePdfs } from '../../api/hooks';
+import { useSignageSchedules, useSignageScheduleMutations, useSignagePdfs, useSignageRenderMutation, useSignageRenderStatus } from '../../api/hooks';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import type { SignageSchedule, SignagePdf } from '../../api/client';
@@ -18,6 +18,8 @@ export function SignageSchedulesPage() {
   const schedulesQuery = useSignageSchedules();
   const pdfsQuery = useSignagePdfs();
   const { create, update, remove } = useSignageScheduleMutations();
+  const renderMutation = useSignageRenderMutation();
+  const renderStatusQuery = useSignageRenderStatus();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<SignageSchedule>>({
@@ -125,13 +127,37 @@ export function SignageSchedulesPage() {
     }
   };
 
+  const handleRender = async () => {
+    try {
+      await renderMutation.mutateAsync();
+      alert('サイネージの再レンダリングを開始しました');
+    } catch (error) {
+      console.error('Failed to render signage:', error);
+      alert('サイネージの再レンダリングに失敗しました');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card
         title="スケジュール管理"
         action={
           !isCreating && !editingId ? (
-            <Button onClick={handleCreate}>新規作成</Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleRender}
+                disabled={renderMutation.isPending}
+                variant="secondary"
+              >
+                {renderMutation.isPending ? 'レンダリング中...' : '再レンダリング'}
+              </Button>
+              {renderStatusQuery.data && (
+                <span className="text-sm text-white/70">
+                  （自動更新: {renderStatusQuery.data.intervalSeconds}秒間隔）
+                </span>
+              )}
+              <Button onClick={handleCreate}>新規作成</Button>
+            </div>
           ) : null
         }
       >

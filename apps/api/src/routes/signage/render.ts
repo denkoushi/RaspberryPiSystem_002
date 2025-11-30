@@ -5,6 +5,7 @@ import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { ApiError } from '../../lib/errors.js';
+import { env } from '../../config/env.js';
 
 export function registerRenderRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
@@ -19,6 +20,14 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       request.log.error({ err: error }, 'Failed to render signage content');
       throw new ApiError(500, 'Failed to render signage content');
     }
+  });
+
+  app.get('/render/status', { preHandler: canView }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const scheduler = app.signageRenderScheduler;
+    return reply.status(200).send({
+      isRunning: scheduler.isRunning(),
+      intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS,
+    });
   });
 
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
