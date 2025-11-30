@@ -248,7 +248,7 @@ export class SignageRenderer {
       const secondsSinceEpoch = Math.floor(now / 1000);
       // slideInterval秒ごとにページを切り替え
       const pageIndex = Math.floor(secondsSinceEpoch / slideInterval) % totalPages;
-      logger.debug({
+      logger.info({
         totalPages,
         displayMode,
         slideInterval,
