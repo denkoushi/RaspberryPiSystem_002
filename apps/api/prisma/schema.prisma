@@ -99,6 +99,35 @@ model ClientDevice {
   transactions Transaction[]
 }
 
+model ClientStatus {
+  id            String   @id @default(uuid())
+  clientId      String   @unique
+  hostname      String
+  ipAddress     String
+  cpuUsage      Float
+  memoryUsage   Float
+  diskUsage     Float
+  temperature   Float?
+  uptimeSeconds Int?
+  lastBoot      DateTime?
+  lastSeen      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@index([lastSeen])
+}
+
+model ClientLog {
+  id        String    @id @default(uuid())
+  clientId  String
+  level     String
+  message   String
+  context   Json?
+  createdAt DateTime  @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([createdAt])
+}
+
 model User {
   id           String        @id @default(uuid())
   username     String        @unique

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Raspberry Pi Status Agent every minute
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=15s
+Unit=status-agent.service
+
+[Install]
+WantedBy=timers.target
+

@@ -1,0 +1,30 @@
+---
+- name: Collect signage client health data
+  hosts: clients
+  gather_facts: false
+  become: true
+  vars:
+    health_commands:
+      - name: signage-lite status
+        cmd: systemctl status signage-lite --no-pager
+      - name: kiosk-browser last logs
+        cmd: journalctl -u kiosk-browser.service -n 100 --no-pager
+      - name: disk usage
+        cmd: df -h /opt
+  tasks:
+    - name: Run health command {{ item.name }}
+      ansible.builtin.shell: |
+        set -euo pipefail
+        {{ item.cmd }}
+      args:
+        executable: /bin/bash
+      register: command_output
+      loop: "{{ health_commands }}"
+      changed_when: false
+
+    - name: Display outputs
+      ansible.builtin.debug:
+        msg: |
+          ### {{ item.item.name }} ###
+          {{ item.stdout }}
+      loop: "{{ command_output.results }}"

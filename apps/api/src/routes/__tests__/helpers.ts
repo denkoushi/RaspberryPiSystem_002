@@ -2,6 +2,10 @@ import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
 import type { ClientDevice, Employee, Item, Loan, User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+
+let employeeSequence = 0;
+let itemSequence = 0;
 
 /**
  * テスト用の認証トークンを生成
@@ -53,17 +57,34 @@ export async function createTestEmployee(data?: {
   nfcTagUid?: string;
   department?: string;
 }): Promise<Employee> {
-  // デフォルトのemployeeCodeを数字4桁の形式に変更（新しいバリデーション仕様に対応）
-  const defaultEmployeeCode = data?.employeeCode ?? String(Math.floor(1000 + Math.random() * 9000)); // 1000-9999の範囲
-  return prisma.employee.create({
-    data: {
-      employeeCode: defaultEmployeeCode,
-      displayName: data?.displayName ?? 'Test Employee',
-      nfcTagUid: data?.nfcTagUid ?? `TAG_EMP_${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      department: data?.department ?? 'Test Department',
-      status: 'ACTIVE',
-    },
-  });
+  const attempts = 10;
+  const generateCode = () =>
+    String(1000 + ((employeeSequence++ + Date.now()) % 9000)).padStart(4, '0');
+
+  for (let i = 0; i < attempts; i++) {
+    const employeeCode = data?.employeeCode ?? generateCode();
+    try {
+      return await prisma.employee.create({
+        data: {
+          employeeCode,
+          displayName: data?.displayName ?? 'Test Employee',
+          nfcTagUid: data?.nfcTagUid ?? `TAG_EMP_${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          department: data?.department ?? 'Test Department',
+          status: 'ACTIVE',
+        },
+      });
+    } catch (error) {
+      if (
+        data?.employeeCode ||
+        !(error instanceof PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('Failed to generate unique employeeCode for test');
 }
 
 /**
@@ -76,17 +97,34 @@ export async function createTestItem(data?: {
   category?: string;
   status?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
 }): Promise<Item> {
-  // デフォルトのitemCodeをTO+数字4桁の形式に変更（新しいバリデーション仕様に対応）
-  const defaultItemCode = data?.itemCode ?? `TO${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`; // TO1000-TO9999の範囲
-  return prisma.item.create({
-    data: {
-      itemCode: defaultItemCode,
-      name: data?.name ?? 'Test Item',
-      nfcTagUid: data?.nfcTagUid ?? `TAG_ITEM_${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      category: data?.category ?? 'Test Category',
-      status: data?.status ?? 'AVAILABLE',
-    },
-  });
+  const attempts = 10;
+  const generateCode = () =>
+    `TO${String(1000 + ((itemSequence++ + Date.now()) % 9000)).padStart(4, '0')}`;
+
+  for (let i = 0; i < attempts; i++) {
+    const itemCode = data?.itemCode ?? generateCode();
+    try {
+      return await prisma.item.create({
+        data: {
+          itemCode,
+          name: data?.name ?? 'Test Item',
+          nfcTagUid: data?.nfcTagUid ?? `TAG_ITEM_${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          category: data?.category ?? 'Test Category',
+          status: data?.status ?? 'AVAILABLE',
+        },
+      });
+    } catch (error) {
+      if (
+        data?.itemCode ||
+        !(error instanceof PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('Failed to generate unique itemCode for test');
 }
 
 /**

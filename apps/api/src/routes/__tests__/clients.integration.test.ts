@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
+import { prisma } from '../../lib/prisma.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -84,6 +85,168 @@ describe('PUT /api/clients/:id', () => {
       payload: {
         defaultMode: 'PHOTO',
       },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('クライアントテレメトリーAPI', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let clientKey: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    await prisma.clientLog.deleteMany();
+    await prisma.clientStatus.deleteMany();
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+    const client = await createTestClientDevice();
+    clientKey = client.apiKey;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('POST /api/clients/status stores metrics and logs', async () => {
+    const payload = {
+      clientId: `pi-${Date.now()}`,
+      hostname: 'pi-kiosk-01',
+      ipAddress: '192.168.0.30',
+      cpuUsage: 25.4,
+      memoryUsage: 44.1,
+      diskUsage: 70.2,
+      temperature: 48.5,
+      uptimeSeconds: 3600,
+      lastBoot: new Date().toISOString(),
+      logs: [
+        { level: 'INFO', message: 'Signage refreshed' },
+        { level: 'WARN', message: 'CPU temp high', context: { temp: 65 } }
+      ]
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const statusRecord = await prisma.clientStatus.findUnique({
+      where: { clientId: payload.clientId }
+    });
+    expect(statusRecord).toBeTruthy();
+    expect(statusRecord?.cpuUsage).toBeCloseTo(payload.cpuUsage);
+
+    const logRecords = await prisma.clientLog.findMany({
+      where: { clientId: payload.clientId }
+    });
+    expect(logRecords).toHaveLength(2);
+  });
+
+  it('GET /api/clients/status requires auth and returns latest logs', async () => {
+    const clientId = `pi-${Date.now()}`;
+    await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: { 'x-client-key': clientKey, 'Content-Type': 'application/json' },
+      payload: {
+        clientId,
+        hostname: 'pi-kiosk-02',
+        ipAddress: '192.168.0.31',
+        cpuUsage: 15,
+        memoryUsage: 22,
+        diskUsage: 55,
+        logs: [{ level: 'INFO', message: 'ok' }]
+      }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/clients/status',
+      headers: { ...createAuthHeader(adminToken) }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const target = body.clients.find((c: { clientId: string }) => c.clientId === clientId);
+    expect(target).toBeTruthy();
+    const latestLogs = (target as { latestLogs?: unknown[] } | undefined)?.latestLogs ?? [];
+    expect(Array.isArray(latestLogs)).toBe(true);
+    expect(latestLogs.length).toBeGreaterThan(0);
+  });
+
+  it('POST /api/clients/logs stores entries independently', async () => {
+    const clientId = `pi-${Date.now()}`;
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/logs',
+      headers: { 'x-client-key': clientKey, 'Content-Type': 'application/json' },
+      payload: {
+        clientId,
+        logs: [
+          { level: 'DEBUG', message: 'start' },
+          { level: 'ERROR', message: 'failed' }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const logs = await prisma.clientLog.findMany({ where: { clientId } });
+    expect(logs).toHaveLength(2);
+  });
+
+  it('GET /api/clients/logs filters by clientId', async () => {
+    const clientId = `pi-${Date.now()}`;
+    await prisma.clientLog.createMany({
+      data: [
+        { clientId, level: 'INFO', message: 'hello' },
+        { clientId, level: 'WARN', message: 'be careful' },
+        { clientId: 'others', level: 'INFO', message: 'skip' }
+      ]
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/clients/logs?clientId=${clientId}&limit=5`,
+      headers: { ...createAuthHeader(adminToken) }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.logs).toHaveLength(2);
+    expect(body.logs.every((log: { clientId: string }) => log.clientId === clientId)).toBe(true);
+  });
+
+  it('POST /api/clients/status requires x-client-key', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        clientId: 'pi-missing',
+        hostname: 'pi',
+        ipAddress: '192.168.0.1',
+        cpuUsage: 10,
+        memoryUsage: 10,
+        diskUsage: 10
+      }
     });
 
     expect(response.statusCode).toBe(401);

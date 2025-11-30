@@ -1,0 +1,23 @@
+---
+- name: Restart specific services on Raspberry Pi clients
+  hosts: clients
+  gather_facts: false
+  become: true
+  vars:
+    services:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - kiosk-browser.service
+  tasks:
+    - name: Restart requested services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: restarted
+        daemon_reload: true
+      loop: "{{ services }}"
+      register: restart_result
+
+    - name: Show restart summary
+      ansible.builtin.debug:
+        msg: "Restarted {{ item.item }} (changed={{ item.changed }})"
+      loop: "{{ restart_result.results }}"

@@ -126,6 +126,10 @@
   - **実装**: `useActiveLoans`の`refetchInterval`を`false`に設定して自動更新を無効化
   - **検証**: ✅ **完了**（2025-11-28）: 返却ボタンを押すと即座にアイテムが消えることを確認。手動操作による即時反映が正常に動作することを確認。**結果**: 返却一覧の自動更新無効化完了、CPU負荷がさらに軽減。
   - **ナレッジベース**: [KB-040](docs/knowledge-base/frontend.md#kb-040-返却一覧の自動更新が不要だった問題cpu負荷軽減)
+- [x] (2025-11-30) **Phase 2.3: Raspberry Pi status-agent 実装**  
+  - `clients/status-agent/` に Python3 ベースのメトリクス送信スクリプト（`status-agent.py`）と systemd service/timer を追加。  
+  - `/proc/stat`, `/proc/meminfo`, `/sys/class/thermal/*`, `shutil.disk_usage('/')` から CPU/メモリ/ディスク/温度を収集し、`x-client-key` 認証で `/api/clients/status` へ 1 分毎に POST。  
+  - 設定テンプレート（`status-agent.conf.example`）、セットアップ手順（`clients/status-agent/README.md` / [docs/guides/status-agent.md](docs/guides/status-agent.md)）を整備。
 - [ ] (2025-11-28) **Milestone 7: デジタルサイネージ機能の実装**（新規機能）
   - **目的**: ラズパイ5サーバーから取得したデータをHDMIモニターに表示するデジタルサイネージ機能を実装
   - **機能要件**:

@@ -213,6 +213,54 @@ export async function updateClient(id: string, payload: { defaultMode?: 'PHOTO' 
   return data.client;
 }
 
+export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface ClientLogEntry {
+  id?: string;
+  clientId: string;
+  level: ClientLogLevel;
+  message: string;
+  context?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ClientStatusEntry {
+  clientId: string;
+  hostname: string;
+  ipAddress: string;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  temperature?: number | null;
+  uptimeSeconds?: number | null;
+  lastBoot?: string | null;
+  lastSeen: string;
+  stale: boolean;
+  latestLogs: Array<Pick<ClientLogEntry, 'level' | 'message' | 'createdAt'>>;
+}
+
+export async function getClientStatuses() {
+  const { data } = await api.get<{ requestId: string; clients: ClientStatusEntry[] }>('/clients/status');
+  return data.clients;
+}
+
+export async function getClientLogs(filters?: {
+  clientId?: string;
+  level?: ClientLogLevel;
+  limit?: number;
+  since?: string;
+}) {
+  const { data } = await api.get<{ requestId: string; logs: ClientLogEntry[] }>('/clients/logs', {
+    params: {
+      clientId: filters?.clientId,
+      level: filters?.level,
+      limit: filters?.limit,
+      since: filters?.since
+    }
+  });
+  return data.logs;
+}
+
 interface ImportMasterPayload {
   employeesFile?: File | null;
   itemsFile?: File | null;

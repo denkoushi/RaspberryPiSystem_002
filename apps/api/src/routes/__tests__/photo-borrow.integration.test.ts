@@ -17,7 +17,15 @@ describe('POST /api/tools/loans/photo-borrow', () => {
   let clientApiKey: string;
   let employeeId: string;
   let employeeTagUid: string;
-  const testStorageDir = process.env.PHOTO_STORAGE_DIR!;
+const testStorageDir = process.env.PHOTO_STORAGE_DIR!;
+const SAMPLE_PHOTO_BASE64 =
+  '/9j/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKgE4e//2Q==';
+
+const buildPayload = (overrides: Record<string, unknown> = {}) => ({
+  employeeTagUid,
+  photoData: SAMPLE_PHOTO_BASE64,
+  ...overrides,
+});
 
   beforeAll(async () => {
     // テスト用のストレージディレクトリを作成
@@ -60,11 +68,10 @@ describe('POST /api/tools/loans/photo-borrow', () => {
         'Content-Type': 'application/json',
         'x-client-key': clientApiKey,
       },
-      payload: {
-        employeeTagUid,
+      payload: buildPayload({
         clientId,
         note: 'Test photo borrow',
-      },
+      }),
     });
 
     expect(response.statusCode).toBe(200);
@@ -85,10 +92,10 @@ describe('POST /api/tools/loans/photo-borrow', () => {
         'Content-Type': 'application/json',
         'x-client-key': clientApiKey,
       },
-      payload: {
+      payload: buildPayload({
         employeeTagUid: 'NON-EXISTENT-TAG',
         clientId,
-      },
+      }),
     });
 
     expect(response.statusCode).toBe(404);
@@ -104,9 +111,7 @@ describe('POST /api/tools/loans/photo-borrow', () => {
         'Content-Type': 'application/json',
         'x-client-key': clientApiKey,
       },
-      payload: {
-        employeeTagUid,
-      },
+      payload: buildPayload(),
     });
 
     expect(response.statusCode).toBe(200);
@@ -123,9 +128,7 @@ describe('POST /api/tools/loans/photo-borrow', () => {
         'Content-Type': 'application/json',
         'x-client-key': clientApiKey,
       },
-      payload: {
-        employeeTagUid,
-      },
+      payload: buildPayload(),
     });
 
     expect(response.statusCode).toBe(200);

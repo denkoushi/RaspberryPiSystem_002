@@ -9,6 +9,8 @@ import {
   deleteLoan,
   getActiveLoans,
   getClients,
+  getClientLogs,
+  getClientStatuses,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -37,7 +39,8 @@ import {
   setSignageEmergency,
   getSignageContent,
   type SignageSchedule,
-  type SignagePdf
+  type SignagePdf,
+  type ClientLogLevel
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
 
@@ -192,6 +195,21 @@ export function useClientMutations() {
     }
   });
   return { update };
+}
+
+export function useClientStatuses() {
+  return useQuery({
+    queryKey: ['client-status'],
+    queryFn: getClientStatuses,
+    refetchInterval: 60_000
+  });
+}
+
+export function useClientLogs(filters: { clientId?: string; level?: ClientLogLevel; limit?: number; since?: string }) {
+  return useQuery({
+    queryKey: ['client-logs', filters],
+    queryFn: () => getClientLogs(filters)
+  });
 }
 
 export function useImportMaster() {

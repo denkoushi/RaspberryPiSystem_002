@@ -1,0 +1,7 @@
+---
+- name: Connectivity check for Raspberry Pi clients
+  hosts: clients
+  gather_facts: false
+  tasks:
+    - name: Ping each client via SSH
+      ansible.builtin.ping:

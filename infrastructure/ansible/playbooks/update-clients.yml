@@ -1,0 +1,74 @@
+---
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi clients
+  hosts: clients
+  gather_facts: false
+  become: true
+  serial: 5
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: main
+    services_to_restart:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - kiosk-browser.service
+  pre_tasks:
+    - name: Ensure repository parent directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}"
+        state: directory
+        owner: pi
+        group: pi
+        mode: '0755'
+
+    - name: Sync repository to desired state
+      ansible.builtin.git:
+        repo: "{{ repo_remote }}"
+        dest: "{{ repo_path }}"
+        version: "{{ repo_version }}"
+        force: true
+        accept_hostkey: true
+        key_file: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default(omit) }}"
+      register: git_result
+
+  tasks:
+    - name: Install production dependencies (optional)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }} && pnpm install --filter signage-lite-client --prod
+      args:
+        executable: /bin/bash
+      register: install_result
+      changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
+      failed_when: false
+
+    - name: Restart required services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: restarted
+        daemon_reload: true
+      loop: "{{ services_to_restart }}"
+      register: restart_result
+      failed_when: restart_result is failed
+
+    - name: Collect health check info
+      ansible.builtin.shell: |
+        set -euo pipefail
+        echo "=== systemctl status signage-lite ==="
+        systemctl status signage-lite --no-pager | head -n 20 || true
+        echo "=== recent kiosk-browser logs ==="
+        journalctl -u kiosk-browser.service -n 50 || true
+      args:
+        executable: /bin/bash
+      register: health_info
+      changed_when: false
+
+    - name: Summarize deployment result
+      ansible.builtin.debug:
+        msg:
+          - "Git: {{ 'changed' if git_result.changed else 'up-to-date' }}"
+          - "Service restarts: {{ services_to_restart | join(', ') }}"
+
+    - name: Attach health info to run output
+      ansible.builtin.debug:
+        var: health_info.stdout_lines
