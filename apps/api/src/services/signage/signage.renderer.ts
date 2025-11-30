@@ -14,6 +14,7 @@ const BACKGROUND = '#0f172a';
 
 export class SignageRenderer {
   private readonly pdfSlideState = new Map<string, { lastIndex: number; lastRenderedAt: number }>();
+  private lastCpuSample: { idle: number; total: number } | null = null;
 
   constructor(private readonly signageService: SignageService) {}
 
@@ -383,19 +384,52 @@ export class SignageRenderer {
 
   private async getSystemMetricsText(): Promise<string | null> {
     try {
-      const [loadAvgRaw, tempRaw] = await Promise.all([
-        fs.readFile('/proc/loadavg', 'utf8'),
+      const [cpuPercent, tempRaw] = await Promise.all([
+        this.getCpuUsagePercent(),
         fs.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8').catch(() => null),
       ]);
 
-      const loadAvg = loadAvgRaw.split(' ')[0];
+      const cpuText = cpuPercent !== null ? `CPU ${cpuPercent.toFixed(0)}%` : null;
       const temperature = tempRaw ? `${(Number(tempRaw.trim()) / 1000).toFixed(1)}°C` : null;
 
-      if (!loadAvg && !temperature) {
+      if (!cpuText && !temperature) {
         return null;
       }
 
-      return temperature ? `Load ${loadAvg}  Temp ${temperature}` : `Load ${loadAvg}`;
+      return [cpuText, temperature ? `Temp ${temperature}` : null].filter(Boolean).join('  ');
+    } catch {
+      return null;
+    }
+  }
+
+  private async getCpuUsagePercent(): Promise<number | null> {
+    try {
+      const statRaw = await fs.readFile('/proc/stat', 'utf8');
+      const cpuLine = statRaw.split('\n')[0];
+      const numbers = cpuLine.trim().split(/\s+/).slice(1).map(Number);
+
+      if (numbers.length < 4) {
+        return null;
+      }
+
+      const idle = numbers[3] + (numbers[4] ?? 0); // idle + iowait
+      const total = numbers.reduce((sum, value) => sum + value, 0);
+
+      if (!this.lastCpuSample) {
+        this.lastCpuSample = { idle, total };
+        return null;
+      }
+
+      const idleDiff = idle - this.lastCpuSample.idle;
+      const totalDiff = total - this.lastCpuSample.total;
+      this.lastCpuSample = { idle, total };
+
+      if (totalDiff <= 0) {
+        return null;
+      }
+
+      const usage = (1 - idleDiff / totalDiff) * 100;
+      return Math.max(0, Math.min(100, usage));
     } catch {
       return null;
     }
