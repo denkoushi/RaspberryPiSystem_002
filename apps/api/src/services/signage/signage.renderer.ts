@@ -379,14 +379,20 @@ export class SignageRenderer {
     if (Number.isNaN(date.getTime())) {
       return null;
     }
-    // 日本時間（JST = UTC+9）に変換
-    const jstOffset = 9 * 60 * 60 * 1000; // 9時間をミリ秒に変換
-    const jstDate = new Date(date.getTime() + jstOffset);
-    // UTC時刻として扱う（getUTCMonth等を使用）
-    const month = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(jstDate.getUTCDate()).padStart(2, '0');
-    const hour = String(jstDate.getUTCHours()).padStart(2, '0');
-    const minute = String(jstDate.getUTCMinutes()).padStart(2, '0');
+    // 日本時間（JST）でフォーマット
+    const formatter = new Intl.DateTimeFormat('ja-JP', {
+      timeZone: env.SIGNAGE_TIMEZONE,
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const month = parts.find(p => p.type === 'month')?.value ?? '';
+    const day = parts.find(p => p.type === 'day')?.value ?? '';
+    const hour = parts.find(p => p.type === 'hour')?.value ?? '';
+    const minute = parts.find(p => p.type === 'minute')?.value ?? '';
     return `${month}/${day} ${hour}:${minute}`;
   }
 
