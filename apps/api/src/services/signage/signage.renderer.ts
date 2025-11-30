@@ -12,6 +12,8 @@ const HEIGHT = parseInt(process.env.SIGNAGE_RENDER_HEIGHT || '1080', 10);
 const BACKGROUND = '#0f172a';
 
 export class SignageRenderer {
+  private readonly pdfSlideState = new Map<string, { lastIndex: number; lastRenderedAt: number }>();
+
   constructor(private readonly signageService: SignageService) {}
 
   async renderCurrentContent(): Promise<{
@@ -241,39 +243,60 @@ export class SignageRenderer {
     pdfId?: string
   ): number {
     if (totalPages === 0) {
+      if (pdfId) {
+        this.pdfSlideState.delete(pdfId);
+      }
       return 0;
     }
 
-    // SLIDESHOWモードでslideIntervalが設定されている場合のみページ切り替え
-    if (displayMode === 'SLIDESHOW' && slideInterval && slideInterval > 0) {
+    if (displayMode === 'SLIDESHOW' && slideInterval && slideInterval > 0 && pdfId) {
       const now = Date.now();
-      const secondsSinceEpoch = Math.floor(now / 1000);
-      const pageOffset = this.getPdfPageOffset(pdfId) % totalPages;
-      // slideInterval秒ごとにページを切り替え（同秒数になるのを避けるためにoffset付与）
-      const baseValue = Math.floor(secondsSinceEpoch / slideInterval);
-      const pageIndex = (baseValue + pageOffset) % totalPages;
+      const slideIntervalMs = slideInterval * 1000;
+      const state = this.pdfSlideState.get(pdfId);
+
+      if (!state) {
+        this.pdfSlideState.set(pdfId, { lastIndex: 0, lastRenderedAt: now });
+        logger.info({
+          pdfId,
+          totalPages,
+          slideInterval,
+          lastIndex: 0,
+          reason: 'initialized state',
+        }, 'PDF slide show page index calculated');
+        return 0;
+      }
+
+      const elapsed = now - state.lastRenderedAt;
+      let steps = Math.floor(elapsed / slideIntervalMs);
+      if (steps <= 0) {
+        steps = 1;
+      } else {
+        steps = steps % totalPages;
+        if (steps === 0) {
+          steps = 1;
+        }
+      }
+
+      const nextIndex = (state.lastIndex + steps) % totalPages;
+      this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
+
       logger.info({
+        pdfId,
         totalPages,
-        displayMode,
         slideInterval,
-        secondsSinceEpoch,
-        pageOffset,
-        baseValue,
-        pageIndex,
+        elapsed,
+        steps,
+        nextIndex,
       }, 'PDF slide show page index calculated');
-      return pageIndex;
+
+      return nextIndex;
     }
 
-    // デフォルトは最初のページ
+    if (pdfId) {
+      this.pdfSlideState.delete(pdfId);
+    }
+
     return 0;
-  }
-
-  private getPdfPageOffset(pdfId?: string): number {
-    if (!pdfId) {
-      return 0;
-    }
-    const hash = pdfId.split('').reduce((sum, char) => (sum + char.charCodeAt(0)) % 1000, 0);
-    return hash;
   }
 
   private escapeXml(value: string): string {
