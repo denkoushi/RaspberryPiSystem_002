@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2025-12-01）
 
-- **システム安定性向上の実装完了**: エラーハンドリングとログ出力の最適化を実装しました。エラーメッセージの詳細化、エラーログの構造化、ログレベルの環境変数制御、Dockerログローテーション設定を完了。詳細は [plans/stability-improvement-plan.md](./plans/stability-improvement-plan.md) を参照してください。
+- **システム安定性向上の実装完了**: エラーハンドリングとログ出力の最適化を実装しました。エラーメッセージの詳細化、エラーログの構造化、ログレベルの環境変数制御、Dockerログローテーション設定を完了。詳細は [plans/stability-improvement-plan.md](./plans/stability-improvement-plan.md) を参照してください。ガイドドキュメント: [エラーハンドリングガイド](./guides/error-handling.md), [ログ出力ガイド](./guides/logging.md)
 - **サイネージ持出中アイテム表示の改善**: 借用日時を日本標準時（JST）で表示し、12時間超のアイテムを赤色で強調してリストの先頭に配置するように改善しました。アイテムコードのフォントサイズも日時と同じサイズに調整しました。
 - **Raspberry Pi 4再起動時のサービス起動ガイド**: [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) を追加。開発中に自動起動を無効化している場合の手動起動手順、Docker Compose推奨方法、Poetry直接起動の問題点と改善案を記載しました。
 - **サイネージ自動レンダリングの安定化**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) と [guides/signage-test-plan.md](./guides/signage-test-plan.md) に、`SignageRenderScheduler` の自動実行・管理画面からの手動再レンダリング手順・`SIGNAGE_RENDER_DIR` の設定方法を追記しました。
@@ -68,6 +68,8 @@
 | トラブルシューティングしたい | [knowledge-base/troubleshooting-knowledge.md](./knowledge-base/troubleshooting-knowledge.md) |
 | CI/CDの問題を解決したい | [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) |
 | NFCリーダーの問題を解決したい | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) |
+| **エラーハンドリングを理解したい** | **[guides/error-handling.md](./guides/error-handling.md)** |
+| **ログ出力を理解したい** | **[guides/logging.md](./guides/logging.md)** |
 
 ---
 
@@ -94,6 +96,8 @@
 | [modules/tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [decisions/001-module-structure.md](./decisions/001-module-structure.md) | モジュール構造の設計決定 |
 | [decisions/002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
+| [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
+| [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
 
 ### 運用者
 
@@ -105,6 +109,8 @@
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
+| [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
+| [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
 
 ### アーキテクト
 
