@@ -583,3 +583,40 @@ update-frequency: medium
 - `infrastructure/docker/Dockerfile.nfc-agent`
 
 ---
+
+### [KB-050] 軽量サイネージクライアントが自己署名証明書で画像を取得できない
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行655付近)
+
+**事象**:
+- Raspberry Pi 3 の軽量クライアントが `/api/signage/current-image` の取得に失敗し、`feh: No loadable images specified` でサービスが再起動を繰り返す
+- `journalctl -u signage-lite` では `Failed to update image, using cached version` が連続し、`/var/cache/signage/current.jpg` が生成されない
+
+**要因**:
+- サーバー (Raspberry Pi 5) が自己署名証明書を使用しており、`signage-update.sh` の `curl` が証明書検証で失敗していた
+- 初回取得が失敗するとキャッシュが存在せず `feh` が読み込む画像がないまま終了する
+
+**試行した対策**:
+- [試行1] ラズパイ3で手動 `curl https://...` を実行 → **成功**（`-k` オプションを付与した場合のみ成功することを確認）
+- [試行2] `signage-update.sh` を手動で `curl -k` に書き換え → **成功**（画像取得に成功し、キャッシュが生成された）
+- [試行3] セットアップスクリプトに `SIGNAGE_ALLOW_INSECURE_TLS` を追加し、初回起動時に画像が存在するまで待機 → **成功**
+
+**有効だった対策**:
+- ✅ **解決済み**（2025-11-30）:
+  1. `scripts/client/setup-signage-lite.sh` で `SIGNAGE_ALLOW_INSECURE_TLS` (デフォルト:true) を導入し、自己署名証明書でも `curl -k` を自動付与
+  2. 表示スクリプトで初回ダウンロードを試行し、キャッシュファイルが生成されるまでループ待機
+  3. ドキュメントに証明書設定とトラブルシューティング手順を追記
+
+**学んだこと**:
+- 自己署名証明書を使用する閉域網では、クライアント側でも証明書検証を制御できる仕組みが必須
+- 初回起動時にリソースが未取得だとビューアがクラッシュするため、待機＆再試行ロジックを組み込むべき
+- スクリプトに環境変数フックを設けておくと、将来的に商用証明書へ切り替える際も柔軟に対応できる
+
+**解決状況**: ✅ **解決済み**（2025-11-30）
+
+**関連ファイル**:
+- `scripts/client/setup-signage-lite.sh`
+- `docs/modules/signage/signage-lite.md`
+- `docs/knowledge-base/infrastructure.md`
+
+---

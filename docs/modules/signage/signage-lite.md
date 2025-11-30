@@ -102,10 +102,19 @@ export SIGNAGE_UPDATE_INTERVAL=60  # 60秒間隔に変更
 sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
 ```
 
+自己署名証明書を使用する環境では、デフォルトで `curl -k` を付与して証明書検証をスキップします。商用証明書を導入済みの場合は以下で無効化できます。
+
+```bash
+export SIGNAGE_ALLOW_INSECURE_TLS=false  # 証明書検証を有効化
+sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+```
+
 ### トラブルシューティング
 
 - **画像が表示されない**: `/var/cache/signage/current.jpg` が存在するか確認
+- **初回ダウンロードで `feh: No loadable images specified` が出る**: `signage-lite` サービス再起動前に `/usr/local/bin/signage-update.sh` を実行してキャッシュを生成
 - **ネットワークエラー**: サーバーURLとクライアントキーが正しいか確認
+- **自己署名証明書で失敗する**: `SIGNAGE_ALLOW_INSECURE_TLS=true` のまま実行するか、端末にルート証明書をインポート
 - **X11エラー**: `export DISPLAY=:0` が設定されているか確認
 
 ## 解像度設定

@@ -13,6 +13,12 @@ IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
 CACHE_DIR="/var/cache/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_INTERVAL="${SIGNAGE_UPDATE_INTERVAL:-30}" # デフォルト30秒
+ALLOW_INSECURE_TLS="${SIGNAGE_ALLOW_INSECURE_TLS:-true}"
+CURL_OPTIONS=(-s -f)
+if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+  CURL_OPTIONS+=(-k)
+fi
+CURL_OPTIONS_STR="${CURL_OPTIONS[*]}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "root 権限で実行してください (sudo ./scripts/client/setup-signage-lite.sh <url> <key>)" >&2
@@ -76,9 +82,10 @@ CLIENT_KEY="${CLIENT_KEY}"
 IMAGE_URL="\${SERVER_URL%/}/api/signage/current-image"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
+CURL_OPTIONS="${CURL_OPTIONS_STR}"
 
 # 画像を取得（失敗時は既存画像を保持）
-if curl -s -f -H "x-client-key: \${CLIENT_KEY}" \
+if curl \${CURL_OPTIONS} -H "x-client-key: \${CLIENT_KEY}" \
   -o "\$TEMP_IMAGE" \
   --max-time 10 \
   --connect-timeout 5 \
@@ -104,17 +111,23 @@ export DISPLAY=:0
 export XAUTHORITY=/home/${KIOSK_USER}/.Xauthority
 
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
+UPDATE_SCRIPT="${UPDATE_SCRIPT}"
 
 # 画面の自動オフを無効化
 xset s off
 xset -dpms
 xset s noblank
 
-# 初回画像取得（存在しない場合）
-if [[ ! -f "\$CURRENT_IMAGE" ]]; then
+# 初回画像取得（存在しない場合は即時取得を試行）
+if [[ ! -s "\$CURRENT_IMAGE" ]]; then
+  echo "Attempting initial image download..."
+  "\$UPDATE_SCRIPT" || true
+fi
+
+until [[ -s "\$CURRENT_IMAGE" ]]; do
   echo "Waiting for initial image download..."
   sleep 5
-fi
+done
 
 # fehでフルスクリーン表示（ファイル変更を自動検知してリロード）
 exec feh \
