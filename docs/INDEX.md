@@ -1,4 +1,4 @@
-# ドキュメント索引
+ｎ# ドキュメント索引
 
 > **注意**: このINDEX.mdは、各種ドキュメント（docs/）の「入口」として機能します。
 > - プロジェクト管理ドキュメント（EXEC_PLAN.md）は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照してください。
@@ -47,6 +47,7 @@
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
 | デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
 | デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
+| **Raspberry Pi 4 再起動時のサービス起動** | [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) |
 
 ### 検証する
 
