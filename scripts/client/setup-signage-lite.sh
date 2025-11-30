@@ -91,10 +91,20 @@ if curl \${CURL_OPTIONS} -H "x-client-key: \${CLIENT_KEY}" \
   --connect-timeout 5 \
   "\$IMAGE_URL" 2>/dev/null; then
   # 取得成功時のみ更新
-  mv "\$TEMP_IMAGE" "\$CURRENT_IMAGE"
-  echo "\$(date): Image updated successfully"
+  if [[ -s "\$TEMP_IMAGE" ]]; then
+    mv "\$TEMP_IMAGE" "\$CURRENT_IMAGE"
+    echo "\$(date): Image updated successfully"
+  else
+    echo "\$(date): Downloaded file is empty, keeping cached version"
+    rm -f "\$TEMP_IMAGE"
+  fi
 else
-  echo "\$(date): Failed to update image, using cached version"
+  # ネットワーク遮断時は既存画像を保持（エラーでも終了しない）
+  if [[ -f "\$CURRENT_IMAGE" ]]; then
+    echo "\$(date): Network unavailable, using cached image (\$(stat -c %y "\$CURRENT_IMAGE" | cut -d. -f1))"
+  else
+    echo "\$(date): Network unavailable and no cached image available"
+  fi
   rm -f "\$TEMP_IMAGE"
 fi
 EOFSCRIPT
@@ -112,6 +122,7 @@ export XAUTHORITY=/home/${KIOSK_USER}/.Xauthority
 
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_SCRIPT="${UPDATE_SCRIPT}"
+MAX_RETRIES=12  # 最大60秒待機（5秒×12回）
 
 # 画面の自動オフを無効化
 xset s off
@@ -120,16 +131,33 @@ xset s noblank
 
 # 初回画像取得（存在しない場合は即時取得を試行）
 if [[ ! -s "\$CURRENT_IMAGE" ]]; then
-  echo "Attempting initial image download..."
+  echo "\$(date): No cached image found, attempting initial download..."
   "\$UPDATE_SCRIPT" || true
 fi
 
-until [[ -s "\$CURRENT_IMAGE" ]]; do
-  echo "Waiting for initial image download..."
+# 画像が存在するまで待機（ネットワーク遮断時は既存画像があれば即座に表示）
+retry_count=0
+while [[ ! -s "\$CURRENT_IMAGE" ]] && [[ \$retry_count -lt \$MAX_RETRIES ]]; do
+  echo "\$(date): Waiting for image download (attempt \$((retry_count + 1))/\$MAX_RETRIES)..."
+  "\$UPDATE_SCRIPT" || true
   sleep 5
+  retry_count=\$((retry_count + 1))
 done
 
+# 画像が存在しない場合でも、エラーで終了せずに既存画像を表示（ネットワーク遮断時のフォールバック）
+if [[ ! -s "\$CURRENT_IMAGE" ]]; then
+  echo "\$(date): WARNING: No image available after \$MAX_RETRIES attempts. Display will show cached image if available."
+  # 既存の画像ファイルがあれば表示（サイズが0でも）
+  if [[ -f "\$CURRENT_IMAGE" ]]; then
+    echo "\$(date): Using existing cached image file"
+  else
+    echo "\$(date): ERROR: No image file available. Service will restart to retry."
+    exit 1
+  fi
+fi
+
 # fehでフルスクリーン表示（ファイル変更を自動検知してリロード）
+# ネットワーク遮断時でも、既存画像を表示し続ける
 exec feh \
   --fullscreen \
   --auto-reload \
@@ -146,23 +174,23 @@ chown "$KIOSK_USER:$KIOSK_USER" "$DISPLAY_SCRIPT"
 cat >"$SERVICE_PATH" <<EOFSERVICE
 [Unit]
 Description=Digital Signage Lite (feh-based)
-After=graphical.target network-online.target
-Wants=graphical.target network-online.target
+After=graphical.target
+Wants=graphical.target
+# ネットワーク接続を待たない（オフライン時でも既存画像を表示）
+# network-online.target への依存を削除
 
 [Service]
 Type=simple
 User=$KIOSK_USER
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/$KIOSK_USER/.Xauthority
-# 初回画像取得
-ExecStartPre=$UPDATE_SCRIPT
-
-# 画像表示
+# 画像表示（内部で画像取得を試行）
 ExecStart=$DISPLAY_SCRIPT
 
-# 定期的に画像を更新（タイマーサービスで実行）
+# ネットワーク遮断時でもサービスを再起動し続ける
+# 既存画像があれば表示し続ける
 Restart=always
-RestartSec=5
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
@@ -189,12 +217,15 @@ UPDATE_SERVICE_PATH="/etc/systemd/system/signage-lite-update.service"
 cat >"$UPDATE_SERVICE_PATH" <<EOFUPDATE
 [Unit]
 Description=Update signage image
-After=network-online.target
+# ネットワーク接続を待たない（オフライン時でもエラーで終了しない）
+# After=network-online.target を削除
 
 [Service]
 Type=oneshot
 User=$KIOSK_USER
 ExecStart=$UPDATE_SCRIPT
+# ネットワーク遮断時でもエラーで終了しない（既存画像を保持）
+SuccessExitStatus=0
 StandardOutput=journal
 StandardError=journal
 EOFUPDATE
@@ -224,7 +255,8 @@ cat <<'EOM'
 📸 画像更新:
 - 更新間隔: ${UPDATE_INTERVAL}秒（環境変数 SIGNAGE_UPDATE_INTERVAL で変更可能）
 - キャッシュディレクトリ: ${CACHE_DIR}
-- ネットワーク断時はキャッシュされた画像を表示します
+- オフライン対応: ネットワーク遮断時は、最後に取得した画像を表示し続けます
+- 初回起動時: 画像が取得できない場合は最大60秒待機し、その後も取得できない場合は既存画像があれば表示します
 
 ⚠️  注意事項:
 - サーバーURLとクライアントキーが必要です
