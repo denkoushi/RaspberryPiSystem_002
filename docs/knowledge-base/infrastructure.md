@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - インフラ関連
 tags: [トラブルシューティング, インフラ, Docker, Caddy]
 audience: [開発者, 運用者]
-last-verified: 2025-11-27
+last-verified: 2025-11-30
 related: [index.md, ../guides/deployment.md, ../guides/monitoring.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 15件  
+**件数**: 19件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -618,5 +618,37 @@ update-frequency: medium
 - `scripts/client/setup-signage-lite.sh`
 - `docs/modules/signage/signage-lite.md`
 - `docs/knowledge-base/infrastructure.md`
+
+---
+
+### [KB-053] サイネージの自動レンダリング画像が更新されない（SIGNAGE_RENDER_DIRのパス不一致）
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行663付近)
+
+**事象**:
+- `/api/signage/current-image` を取得しても常に同じJPEGが返り、軽量クライアントに最新コンテンツが表示されない
+- `docker compose exec api ls /app/storage/signage-rendered` では新しいファイルが増えるが、`current.jpg` のタイムスタンプが更新されない
+
+**要因**:
+- `SignageRenderStorage` のデフォルト保存先が `/opt/RaspberryPiSystem_002/storage/signage-rendered` で、APIコンテナ内の実パス `/app/storage/signage-rendered` と一致していなかった
+- その結果、`current.jpg` はホスト側の未マウント領域に保存され、コンテナ内で参照されるパスは更新されなかった
+
+**試行した対策**:
+- [試行1] `current.jpg` を手動でコピー → **失敗**（自動レンダリングが再び古いパスに書き込む）
+- [試行2] `signage-rendered` ボリュームを確認し、環境変数で保存先を上書き → **成功**
+
+**有効だった対策**:
+- ✅ **解決済み**（2025-11-30）:
+  1. `docker-compose.server.yml` の `api` サービスに `SIGNAGE_RENDER_DIR=/app/storage/signage-rendered` を追加
+  2. ボリューム `signage-rendered-storage` を同じパスにマウントし、ホストとコンテナで保存先を統一
+  3. 再ビルド後に `current.jpg` の更新が再開し、軽量クライアントにも最新画像が配信されるようになった
+
+**学んだこと**:
+- コンテナとホストでストレージパスが異なる場合は、環境変数や `.env` で明示的に合わせる
+- `current.jpg` の更新状況は `ls -lh` や `md5sum` で簡単に確認でき、問題切り分けに有効
+
+**関連ファイル**:
+- `infrastructure/docker/docker-compose.server.yml`
+- `apps/api/src/lib/signage-render-storage.ts`
 
 ---

@@ -20,11 +20,11 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 12件 | APIエラー、レート制限、認証、履歴、サイネージ |
+| API関連 | [api.md](./api.md) | 14件 | APIエラー、レート制限、認証、履歴、サイネージ |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 15件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 18件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 19件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
 
@@ -45,6 +45,8 @@ update-frequency: high
 | [KB-044](./api.md#kb-044-pdfアップロード時のmultipart処理エラーpart-is-not-async-iterable) | PDFアップロード時のmultipart処理エラー（part is not async iterable） | ✅ 解決済み |
 | [KB-045](./api.md#kb-045-サイネージが常に工具表示になる問題タイムゾーン問題) | サイネージが常に工具表示になる問題（タイムゾーン問題） | ✅ 解決済み |
 | [KB-046](./api.md#kb-046-サイネージで工具管理がダミーデータのみ表示される問題) | サイネージで工具管理がダミーデータのみ表示される問題 | ✅ 解決済み |
+| [KB-051](./api.md#kb-051-サイネージのpdfスライドショーが切り替わらない) | サイネージのPDFスライドショーが切り替わらない | ✅ 解決済み |
+| [KB-052](./api.md#kb-052-sharpのcompositeエラーimage-to-composite-must-have-same-dimensions-or-smaller) | sharpのcompositeエラー（Image to composite must have same dimensions or smaller） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -102,6 +104,7 @@ update-frequency: high
 | [KB-041](./infrastructure.md#kb-041-wi-fi変更時のipアドレス設定が手動で再ビルドが必要だった問題環境変数化) | Wi-Fi変更時のIPアドレス設定が手動で再ビルドが必要だった問題（環境変数化） | ✅ 解決済み |
 | [KB-042](./infrastructure.md#kb-042-pdf-popplerがlinuxarm64をサポートしていない問題) | pdf-popplerがLinux（ARM64）をサポートしていない問題 | ✅ 解決済み |
 | [KB-050](./infrastructure.md#kb-050-軽量サイネージクライアントが自己署名証明書で画像を取得できない) | 軽量サイネージクライアントが自己署名証明書で画像を取得できない | ✅ 解決済み |
+| [KB-053](./infrastructure.md#kb-053-サイネージの自動レンダリング画像が更新されないsignage_render_dirのパス不一致) | サイネージの自動レンダリング画像が更新されない（SIGNAGE_RENDER_DIRのパス不一致） | ✅ 解決済み |
 
 ---
 
@@ -140,9 +143,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 44件 |
+| ✅ 解決済み | 47件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **48件** |
+| **合計** | **51件** |
 
 ---
 
@@ -166,4 +169,5 @@ update-frequency: high
 - 2025-11-29: KB-047を追加（履歴画面のサムネイル拡大表示で401エラーが発生する問題）
 - 2025-11-29: KB-048〜KB-049を追加（NFCエージェントのDockerビルドでuvicorn/gccが見つからない問題）
 - 2025-11-30: KB-050を追加（軽量サイネージクライアントが自己署名証明書で画像を取得できない問題）
+- 2025-11-30: KB-051〜KB-053を追加（サイネージPDFスライドショー、sharp合成エラー、SIGNAGE_RENDER_DIR不一致）
 

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-11-30
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 11件  
+**件数**: 14件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -298,6 +298,60 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/api/src/services/signage/signage.service.ts`
+
+---
+
+### [KB-051] サイネージのPDFスライドショーが切り替わらない
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行660付近)
+
+**事象**: 
+- 分割表示やPDF単体表示でスライドショーを設定しても、常に同じページが描画される
+- 管理画面の再レンダリングを行っても1ページ目のまま変化しない
+
+**要因**: 
+- `SignageRenderer` がページ番号を「UNIX秒 ÷ slideInterval」で計算しており、レンダリング間隔（30秒）とslideInterval（10秒）が共通の倍数だった場合に常に同じ値になる
+- レンダリング毎に状態を保持していなかったため、前回どのページを描画したかを判定できなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-30）:
+  1. PDFごとに `lastIndex` / `lastRenderedAt` を保持する状態マップを導入
+  2. スライド間隔に応じて必ず最低1ページ進むように補正し、ページ数を超過したらループするロジックに変更
+  3. デバッグ用のINFOログを追加し、`nextIndex` が周期的に変化することを可視化
+
+**学んだこと**: 
+- スライドショーのページ番号は「時間 × 周期」のみで計算すると周期が一致した際に停止する
+- レンダリングジョブとは別に、表示状態を保持することで周期のズレを吸収できる
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.renderer.ts`
+
+---
+
+### [KB-052] sharpのcompositeエラー（Image to composite must have same dimensions or smaller）
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行662付近)
+
+**事象**: 
+- サイネージレンダラの分割表示で `Error: Image to composite must have same dimensions or smaller` が連続発生し、自動レンダリングが停止する
+- `current.jpg` が更新されず、軽量クライアント側には古い画像のまま表示され続ける
+
+**要因**: 
+- 工具サムネイルを拡大した際、SVG→JPEG変換後のバッファが想定より大きくなり、`sharp().composite()` へ合成する前にリサイズしていなかった
+- 背景キャンバスより大きい画像を合成しようとすると sharp が例外を投げる
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-30）:
+  1. SVGをJPEG化した直後に `resize(targetWidth, targetHeight, { fit: 'fill' })` を適用し、合成先と同寸に揃える
+  2. メッセージ表示 (`renderMessage`) も同様にリサイズして寸法差異をなくす
+  3. レンダリングログでエラー内容を監視し、検知後に即座に修正を適用
+
+**学んだこと**: 
+- `sharp().composite()` へ渡す画像は、合成先より大きくできないため、SVGベースのレンダリングでは必ず最終寸法へリサイズしてから合成する
+- レンダリングジョブが失敗すると `current.jpg` が更新されず、軽量クライアントにも影響するため監視ログが重要
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.renderer.ts`
 
 ---
 
