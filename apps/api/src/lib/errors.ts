@@ -1,7 +1,20 @@
 export class ApiError extends Error {
-  constructor(public statusCode: number, message: string, public details?: unknown) {
+  public details?: unknown;
+  public code?: string;
+
+  constructor(public statusCode: number, message: string, details?: unknown, code?: string) {
     super(message);
     this.name = 'ApiError';
+    this.details = details;
+
+    if (code) {
+      this.code = code;
+      return;
+    }
+
+    if (details && typeof details === 'object' && 'code' in details) {
+      this.code = String((details as Record<string, unknown>).code);
+    }
   }
 }
 
