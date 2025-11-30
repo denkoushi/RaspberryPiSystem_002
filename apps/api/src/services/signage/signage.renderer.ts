@@ -28,7 +28,12 @@ export class SignageRenderer {
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
     if (content.contentType === 'PDF' && content.pdf?.pages?.length) {
-      return await this.renderPdfImage(content.pdf.pages[0]);
+      const pdfPageIndex = this.getCurrentPdfPageIndex(
+        content.pdf.pages.length,
+        content.displayMode,
+        content.pdf.slideInterval || null
+      );
+      return await this.renderPdfImage(content.pdf.pages[pdfPageIndex]);
     }
 
     if (content.contentType === 'TOOLS' && content.tools) {
@@ -36,7 +41,13 @@ export class SignageRenderer {
     }
 
     if (content.contentType === 'SPLIT') {
-      return await this.renderSplit(content.tools || [], content.pdf?.pages?.[0]);
+      const pdfPageIndex = this.getCurrentPdfPageIndex(
+        content.pdf?.pages?.length || 0,
+        content.displayMode,
+        content.pdf?.slideInterval || null
+      );
+      const pdfPageUrl = content.pdf?.pages?.[pdfPageIndex];
+      return await this.renderSplit(content.tools || [], pdfPageUrl);
     }
 
     return await this.renderMessage('表示するコンテンツがありません');
@@ -57,7 +68,7 @@ export class SignageRenderer {
   private async renderTools(
     tools: Array<{ itemCode: string; name: string; thumbnailUrl?: string | null }>
   ): Promise<Buffer> {
-    const svg = this.buildToolsSvg(tools, WIDTH, HEIGHT);
+    const svg = await this.buildToolsSvg(tools, WIDTH, HEIGHT);
     return await sharp(Buffer.from(svg))
       .jpeg({ quality: 90 })
       .toBuffer();
@@ -70,7 +81,7 @@ export class SignageRenderer {
     const leftWidth = Math.floor(WIDTH * 0.5);
     const rightWidth = WIDTH - leftWidth;
 
-    const leftSvg = this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT');
+    const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT');
     const leftBuffer = await sharp(Buffer.from(leftSvg))
       .jpeg({ quality: 90 })
       .toBuffer();
@@ -124,28 +135,56 @@ export class SignageRenderer {
       .toBuffer();
   }
 
-  private buildToolsSvg(
-    tools: Array<{ itemCode: string; name: string }>,
+  private async buildToolsSvg(
+    tools: Array<{ itemCode: string; name: string; thumbnailUrl?: string | null }>,
     width: number,
     height: number,
     mode: 'FULL' | 'SPLIT' = 'FULL'
-  ): string {
+  ): Promise<string> {
     // 解像度に応じて文字サイズとパディングをスケール（1920x1080基準）
     const scale = WIDTH / 1920;
     const headerSize = Math.round((mode === 'FULL' ? 72 : 58) * scale);
     const itemFontSize = Math.round((mode === 'FULL' ? 52 : 42) * scale);
     const padding = Math.round((mode === 'FULL' ? 80 : 60) * scale);
-    const lineHeight = itemFontSize + Math.round(20 * scale);
+    const thumbnailSize = Math.round(120 * scale);
+    const lineHeight = Math.max(itemFontSize + Math.round(20 * scale), thumbnailSize + Math.round(10 * scale));
     const maxItems = Math.max(4, Math.floor((height - padding * 2 - headerSize) / lineHeight));
-    const rows = tools.slice(0, maxItems).map((tool, index) => {
-      const y = padding + headerSize + (index + 1) * lineHeight;
-      return `
-        <text x="${padding}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0">
-          <tspan fill="#34d399" font-weight="600">${this.escapeXml(tool.itemCode)}</tspan>
-          <tspan dx="12" fill="#e2e8f0">${this.escapeXml(tool.name)}</tspan>
-        </text>
-      `;
-    });
+    
+    const rows = await Promise.all(
+      tools.slice(0, maxItems).map(async (tool, index) => {
+        const y = padding + headerSize + (index + 1) * lineHeight;
+        const thumbnailY = y - thumbnailSize / 2;
+        
+        let thumbnailElement = '';
+        if (tool.thumbnailUrl) {
+          const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
+          if (thumbnailPath) {
+            try {
+              const thumbnailBuffer = await sharp(thumbnailPath)
+                .resize(thumbnailSize, thumbnailSize, { fit: 'cover' })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+              const thumbnailBase64 = thumbnailBuffer.toString('base64');
+              thumbnailElement = `
+                <image x="${padding}" y="${thumbnailY}" width="${thumbnailSize}" height="${thumbnailSize}"
+                  href="data:image/jpeg;base64,${thumbnailBase64}" />
+              `;
+            } catch (error) {
+              // 画像読み込み失敗時はスキップ
+            }
+          }
+        }
+        
+        const textX = tool.thumbnailUrl ? padding + thumbnailSize + Math.round(20 * scale) : padding;
+        return `
+          ${thumbnailElement}
+          <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0">
+            <tspan fill="#34d399" font-weight="600">${this.escapeXml(tool.itemCode)}</tspan>
+            <tspan dx="12" fill="#e2e8f0">${this.escapeXml(tool.name)}</tspan>
+          </text>
+        `;
+      })
+    );
 
     if (rows.length === 0) {
       rows.push(`
@@ -179,6 +218,38 @@ export class SignageRenderer {
       return null;
     }
     return path.join(PDF_PAGES_DIR, pdfId, filename);
+  }
+
+  private resolveThumbnailLocalPath(thumbnailUrl: string): string | null {
+    if (!thumbnailUrl.startsWith('/storage/thumbnails/')) {
+      return null;
+    }
+    const thumbnailPath = thumbnailUrl.replace('/storage/thumbnails/', '');
+    const storageBaseDir = process.env.PHOTO_STORAGE_DIR || '/app/storage';
+    return path.join(storageBaseDir, 'thumbnails', thumbnailPath);
+  }
+
+  private getCurrentPdfPageIndex(
+    totalPages: number,
+    displayMode: string,
+    slideInterval: number | null
+  ): number {
+    if (totalPages === 0) {
+      return 0;
+    }
+
+    // SLIDESHOWモードでslideIntervalが設定されている場合のみページ切り替え
+    if (displayMode === 'SLIDESHOW' && slideInterval && slideInterval > 0) {
+      const now = Date.now();
+      // エポック秒単位で計算（ミリ秒を秒に変換）
+      const secondsSinceEpoch = Math.floor(now / 1000);
+      // slideInterval秒ごとにページを切り替え
+      const pageIndex = Math.floor(secondsSinceEpoch / slideInterval) % totalPages;
+      return pageIndex;
+    }
+
+    // デフォルトは最初のページ
+    return 0;
   }
 
   private escapeXml(value: string): string {

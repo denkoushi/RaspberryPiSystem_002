@@ -55,6 +55,7 @@ export interface SignageContentResponse {
     id: string;
     name: string;
     pages: string[];
+    slideInterval?: number | null;
   } | null;
 }
 
@@ -177,6 +178,7 @@ export class SignageService {
               id: pdf.id,
               name: pdf.name,
               pages: await this.getPdfPages(pdf.id),
+              slideInterval: pdf.slideInterval,
             },
           };
         }
@@ -199,6 +201,7 @@ export class SignageService {
                 id: pdf.id,
                 name: pdf.name,
                 pages: await this.getPdfPages(pdf.id),
+                slideInterval: pdf.slideInterval,
               }
             : null,
         };
