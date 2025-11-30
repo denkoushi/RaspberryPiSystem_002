@@ -173,8 +173,9 @@ export class SignageRenderer {
     
     const rows = await Promise.all(
       tools.slice(0, maxItems).map(async (tool, index) => {
-        const columnIndex = Math.floor(index / rowsPerColumn);
-        const rowIndex = index % rowsPerColumn;
+        // 行優先の並び順（1行目: 1件目、2件目、2行目: 3件目、4件目...）
+        const columnIndex = index % columns;
+        const rowIndex = Math.floor(index / columns);
         const baseX = paddingX + columnIndex * (columnWidth + columnGap);
         const y = contentStartY + rowIndex * lineHeight + lineHeight / 2;
         const thumbnailY = y - thumbnailHeight / 2;
