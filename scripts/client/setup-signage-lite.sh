@@ -48,6 +48,7 @@ sleep 2
 KIOSK_USER="${SUDO_USER:-pi}"
 UPDATE_SCRIPT="/usr/local/bin/signage-update.sh"
 DISPLAY_SCRIPT="/usr/local/bin/signage-display.sh"
+STOP_SCRIPT="/usr/local/bin/signage-stop.sh"
 SERVICE_PATH="/etc/systemd/system/signage-lite.service"
 
 # 必要なパッケージのインストール確認
@@ -112,6 +113,24 @@ EOFSCRIPT
 chmod +x "$UPDATE_SCRIPT"
 chown "$KIOSK_USER:$KIOSK_USER" "$UPDATE_SCRIPT"
 
+# サービス停止スクリプトの作成（qキーで呼び出し）
+cat >"$STOP_SCRIPT" <<EOFSTOP
+#!/usr/bin/env bash
+# サイネージサービスを停止するスクリプト
+# qキーで呼び出される
+sudo systemctl stop signage-lite
+EOFSTOP
+
+chmod +x "$STOP_SCRIPT"
+chown "$KIOSK_USER:$KIOSK_USER" "$STOP_SCRIPT"
+
+# sudoersでパスワードなしで実行できるように設定
+SUDOERS_LINE="$KIOSK_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop signage-lite, /usr/bin/systemctl start signage-lite, /usr/bin/systemctl restart signage-lite"
+if ! grep -q "signage-lite" /etc/sudoers.d/* 2>/dev/null; then
+  echo "$SUDOERS_LINE" > /etc/sudoers.d/signage-lite
+  chmod 0440 /etc/sudoers.d/signage-lite
+fi
+
 # 表示スクリプトの作成
 cat >"$DISPLAY_SCRIPT" <<EOFSCRIPT
 #!/usr/bin/env bash
@@ -122,6 +141,7 @@ export XAUTHORITY=/home/${KIOSK_USER}/.Xauthority
 
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_SCRIPT="${UPDATE_SCRIPT}"
+STOP_SCRIPT="${STOP_SCRIPT}"
 MAX_RETRIES=12  # 最大60秒待機（5秒×12回）
 
 # 画面の自動オフを無効化
@@ -158,12 +178,14 @@ fi
 
 # fehでフルスクリーン表示（ファイル変更を自動検知してリロード）
 # ネットワーク遮断時でも、既存画像を表示し続ける
+# qキーでサービスを停止（標準的な終了キー）
 exec feh \
   --fullscreen \
   --auto-reload \
   --no-menus \
   --hide-pointer \
   --quiet \
+  --action "q;/usr/local/bin/signage-stop.sh" \
   "\$CURRENT_IMAGE"
 EOFSCRIPT
 
