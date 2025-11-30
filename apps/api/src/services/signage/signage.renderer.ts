@@ -75,6 +75,7 @@ export class SignageRenderer {
   ): Promise<Buffer> {
     const svg = await this.buildToolsSvg(tools, WIDTH, HEIGHT);
     return await sharp(Buffer.from(svg), { density: 300 })
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
@@ -88,6 +89,7 @@ export class SignageRenderer {
 
     const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT');
     const leftBuffer = await sharp(Buffer.from(leftSvg), { density: 300 })
+      .resize(leftWidth, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
@@ -136,6 +138,7 @@ export class SignageRenderer {
       </svg>
     `;
     return await sharp(Buffer.from(svg), { density: 300 })
+      .resize(customWidth, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
