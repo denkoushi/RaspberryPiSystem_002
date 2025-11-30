@@ -157,7 +157,7 @@ export class SignageRenderer {
   ): Promise<string> {
     // 解像度に応じて文字サイズとパディングをスケール（1920x1080基準）
     const scale = WIDTH / 1920;
-    const headerSize = Math.round((mode === 'FULL' ? 72 : 58) * scale);
+    const headerSize = Math.round(((mode === 'FULL' ? 72 : 58) * scale) / 2);
     const itemFontSize = Math.round((mode === 'FULL' ? 52 : 42) * scale);
     const padding = Math.round((mode === 'FULL' ? 80 : 60) * scale);
     // サムネイルサイズを大きく（4:3アスペクト比を維持）
@@ -196,7 +196,7 @@ export class SignageRenderer {
         const borrowedText = this.formatBorrowedAt(tool.borrowedAt);
         const secondaryText =
           borrowedText && tool.employeeName
-            ? `${borrowedText} 借用`
+            ? `${borrowedText} 持出`
             : borrowedText ?? tool.name ?? '';
         const tertiaryText = tool.employeeName ? tool.name ?? '' : '';
         const detailLineHeight = Math.round((itemFontSize * 0.7) * Math.max(0.9, scale));
@@ -241,7 +241,7 @@ export class SignageRenderer {
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="${padding}" y="${padding + headerSize / 2}" font-size="${headerSize}"
           font-family="sans-serif" fill="#38bdf8" font-weight="600" text-rendering="geometricPrecision">
-          工具在庫一覧
+          持出中アイテム
         </text>
         ${rows.join('\n')}
       </svg>
