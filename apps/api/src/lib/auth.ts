@@ -35,7 +35,7 @@ export function signRefreshToken(user: User): string {
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = request.headers['authorization'];
   if (!header) {
-    throw new ApiError(401, '認証トークンが必要です');
+    throw new ApiError(401, '認証トークンが必要です', undefined, 'AUTH_TOKEN_REQUIRED');
   }
   const [, token] = header.split(' ');
   try {
@@ -43,7 +43,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     request.user = { id: payload.sub, username: payload.username, role: payload.role };
   } catch (error) {
     reply.code(401);
-    throw new ApiError(401, 'トークンが無効です');
+    throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
 }
 
@@ -51,7 +51,7 @@ export function authorizeRoles(...roles: User['role'][]): (request: FastifyReque
   return async (request, reply) => {
     await authenticate(request, reply);
     if (!request.user || !roles.includes(request.user.role)) {
-      throw new ApiError(403, '操作権限がありません');
+      throw new ApiError(403, '操作権限がありません', undefined, 'AUTH_INSUFFICIENT_PERMISSIONS');
     }
   };
 }

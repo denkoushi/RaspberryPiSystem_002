@@ -35,6 +35,12 @@ services:
       - /sys/class/thermal:/sys/class/thermal:ro
     ports:
       - "8080:8080"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
 
   web:
     build:
@@ -63,6 +69,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
     # 2. Let's Encryptを使用（インターネット接続とドメイン名が必要）
     #    environment:
     #      DOMAIN: your-domain.com
