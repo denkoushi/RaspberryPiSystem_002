@@ -239,7 +239,7 @@ export class SignageRenderer {
                 : ''
             }
             <tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
-              itemFontSize * 0.75
+              itemFontSize * 0.6
             )}" fill="#ffffff">${this.escapeXml(tool.itemCode)}</tspan>
           </text>
         `;
