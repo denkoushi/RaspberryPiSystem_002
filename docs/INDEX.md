@@ -8,6 +8,12 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-11-28）
+
+- **軽量サイネージPoC進捗**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) に、4K解像度の環境変数設定・`setup-signage-lite.sh`（feh+systemd）の手順・今後の自動レンダリングタスクを追記しました。
+- **軽量クライアントセットアップガイド**: [guides/signage-client-setup.md](./guides/signage-client-setup.md) は Chromium モードに加えて `scripts/client/setup-signage-lite.sh` の利用方法を参照してください。
+- **ナレッジベース更新**: [knowledge-base/index.md](./knowledge-base/index.md) の登録件数が 40件になり、最新のサイネージ／インフラ課題を反映しました。
+
 ### 初めて参加する
 
 | やりたいこと | ドキュメント |
@@ -35,6 +41,8 @@
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
+| デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
+| デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
 
 ### 検証する
 
@@ -42,6 +50,7 @@
 |-------------|-------------|
 | 機能を検証したい | [guides/verification-checklist.md](./guides/verification-checklist.md) |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
+| デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 
 ### エラーを解決する
@@ -110,6 +119,7 @@
 |---------|------|
 | [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
 | [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
+| [signage-module-architecture.md](./architecture/signage-module-architecture.md) | **デジタルサイネージモジュール アーキテクチャ**（モジュール化、コンフリクト確認、スケーラビリティ） |
 
 ### 設計決定（decisions/）
 
@@ -131,6 +141,8 @@
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
+| [signage/README.md](./modules/signage/README.md) | **デジタルサイネージモジュール** |
+| [signage/signage-lite.md](./modules/signage/signage-lite.md) | **デジタルサイネージ軽量モード計画** |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
 | [logistics/README.md](./modules/logistics/README.md) | 物流モジュール（将来実装予定） |
 
@@ -166,6 +178,9 @@ APIの概要と詳細。
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
 | [photo-loan-test-plan.md](./guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
+| [signage-test-plan.md](./guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
+| [signage-deployment.md](./guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
+| [signage-client-setup.md](./guides/signage-client-setup.md) | **デジタルサイネージクライアント端末セットアップガイド** |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
@@ -176,12 +191,12 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
-| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全32件の一覧） |
-| [knowledge-base/api.md](./knowledge-base/api.md) | API関連（8件） |
+| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全40件の一覧） |
+| [knowledge-base/api.md](./knowledge-base/api.md) | API関連（9件） |
 | [knowledge-base/database.md](./knowledge-base/database.md) | データベース関連（3件） |
 | [knowledge-base/ci-cd.md](./knowledge-base/ci-cd.md) | CI/CD関連（4件） |
-| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（9件） |
-| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（12件） |
+| [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（13件） |
+| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（15件） |
 | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) | NFCリーダー固有の問題 |
 
 ### セキュリティ（security/）
@@ -215,11 +230,20 @@ APIの概要と詳細。
 | **サービス層** | `apps/api/src/services/documents/` |
 | **Webページ** | `apps/web/src/pages/documents/` |
 
+### デジタルサイネージモジュール（signage）
+
+| 種別 | 場所 |
+|------|------|
+| **ドキュメント** | [modules/signage/README.md](./modules/signage/README.md) |
+| **アーキテクチャ** | [architecture/signage-module-architecture.md](./architecture/signage-module-architecture.md) |
+| **APIルート** | `apps/api/src/routes/signage/` |
+| **サービス層** | `apps/api/src/services/signage/` |
+| **Webページ** | `apps/web/src/pages/signage/`, `apps/web/src/pages/admin/Signage*.tsx` |
+
 ### 物流モジュール（logistics）- 将来実装予定
 
 | 種別 | 場所 |
 |------|------|
-| **デジタルサイネージ** | [modules/signage/README.md](./modules/signage/README.md) |
 | **ドキュメント** | [modules/logistics/README.md](./modules/logistics/README.md) |
 | **APIルート** | `apps/api/src/routes/logistics/` |
 | **サービス層** | `apps/api/src/services/logistics/` |
@@ -242,15 +266,15 @@ APIの概要と詳細。
 
 | カテゴリ | ファイル数 |
 |---------|-----------|
-| アーキテクチャ | 2 |
+| アーキテクチャ | 3 |
 | 設計決定 | 3 |
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実践ガイド | 9 |
-| トラブルシューティング | 8 |
+| 実践ガイド | 12 |
+| トラブルシューティング | 9 |
 | セキュリティ | 1 |
-| **合計** | **32** |
+| **合計** | **37** |
 
 ---
 

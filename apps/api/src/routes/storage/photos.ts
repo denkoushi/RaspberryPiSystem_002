@@ -2,7 +2,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { prisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
 
 /**
  * 写真配信ルート
@@ -22,17 +21,16 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
    * パス例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg
    */
   app.get('/storage/photos/*', async (request: FastifyRequest, reply: FastifyReply) => {
-    // client-keyがあれば認証をスキップ
     const headerKey = request.headers['x-client-key'];
-    if (!headerKey) {
-      // client-keyがない場合はJWT認証を要求
-      await canView(request, reply);
-    } else {
-      // client-keyの有効性を確認
-      const client = await prisma.clientDevice.findUnique({ where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] } });
+    if (headerKey) {
+      // client-key が提供されている場合は優先的に検証し、無効な場合はJWTにフォールバック
+      const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
+      const client = await prisma.clientDevice.findUnique({ where: { apiKey } });
       if (!client) {
-        throw new ApiError(401, 'クライアント API キーが不正です');
+        await canView(request, reply);
       }
+    } else {
+      await canView(request, reply);
     }
     // Fastifyのワイルドカードパスは request.url から抽出する
     const urlPath = request.url.replace('/api/storage/photos/', '');

@@ -22,7 +22,20 @@ import {
   updateItem,
   type CancelPayload,
   type ClientDevice,
-  type PhotoBorrowPayload
+  type PhotoBorrowPayload,
+  getSignageSchedules,
+  createSignageSchedule,
+  updateSignageSchedule,
+  deleteSignageSchedule,
+  getSignagePdfs,
+  uploadSignagePdf,
+  updateSignagePdf,
+  deleteSignagePdf,
+  getSignageEmergency,
+  setSignageEmergency,
+  getSignageContent,
+  type SignageSchedule,
+  type SignagePdf
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
 
@@ -202,5 +215,77 @@ export function useSystemInfo() {
     refetchInterval: 10_000, // 10秒間隔で更新（CPU負荷軽減のため）
     staleTime: 3000, // 3秒間はキャッシュを使用
     refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
+  });
+}
+
+// デジタルサイネージ関連のフック
+export function useSignageSchedules() {
+  return useQuery({
+    queryKey: ['signage-schedules'],
+    queryFn: getSignageSchedules
+  });
+}
+
+export function useSignageScheduleMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: createSignageSchedule,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<SignageSchedule> }) => updateSignageSchedule(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteSignageSchedule(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+  });
+  return { create, update, remove };
+}
+
+export function useSignagePdfs() {
+  return useQuery({
+    queryKey: ['signage-pdfs'],
+    queryFn: getSignagePdfs
+  });
+}
+
+export function useSignagePdfMutations() {
+  const queryClient = useQueryClient();
+  const upload = useMutation({
+    mutationFn: uploadSignagePdf,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-pdfs'] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<SignagePdf> }) => updateSignagePdf(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-pdfs'] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteSignagePdf(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-pdfs'] })
+  });
+  return { upload, update, remove };
+}
+
+export function useSignageEmergency() {
+  return useQuery({
+    queryKey: ['signage-emergency'],
+    queryFn: getSignageEmergency
+  });
+}
+
+export function useSignageEmergencyMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setSignageEmergency,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-emergency'] })
+  });
+}
+
+export function useSignageContent() {
+  return useQuery({
+    queryKey: ['signage-content'],
+    queryFn: getSignageContent,
+    refetchInterval: 30_000 // 30秒間隔で更新（サイネージ表示用）
   });
 }

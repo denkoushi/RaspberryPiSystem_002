@@ -7,6 +7,8 @@ import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRequestLogger } from './plugins/request-logger.js';
 import { registerRoutes } from './routes/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
+import { PdfStorage } from './lib/pdf-storage.js';
+import { SignageRenderStorage } from './lib/signage-render-storage.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -15,17 +17,31 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSecurityHeaders(app);
   await app.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB per file is enough for ~100 rows CSV
-      files: 2
+      fileSize: 50 * 1024 * 1024, // 50MB per file (PDF対応)
+      files: 10
     }
   });
   
-  // 写真ストレージディレクトリを初期化
+  // ストレージディレクトリを初期化
   try {
     await PhotoStorage.initialize();
     app.log.info('Photo storage directories initialized');
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize photo storage directories (may not be critical)');
+  }
+  
+  try {
+    await PdfStorage.initialize();
+    app.log.info('PDF storage directories initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize PDF storage directories (may not be critical)');
+  }
+
+  try {
+    await SignageRenderStorage.initialize();
+    app.log.info('Signage render storage initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize signage render storage (may not be critical)');
   }
   
   // ルートを登録

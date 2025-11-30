@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 8件  
+**件数**: 11件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -224,4 +224,148 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/api/package.json`
+
+---
+
+### [KB-044] PDFアップロード時のmultipart処理エラー（part is not async iterable）
+
+**EXEC_PLAN.md参照**: Progress (2025-11-28)
+
+**事象**: 
+- デジタルサイネージ機能でPDFをアップロードしようとすると、500エラーが発生
+- エラーメッセージ: "part is not async iterable"
+- APIログに`TypeError: part is not async iterable`が記録される
+
+**要因**: 
+- `@fastify/multipart`の`part`オブジェクトを直接イテレートしようとしていた
+- `part`は`async iterable`ではなく、`part.file`が`async iterable`である
+- `imports.ts`では正しく`part.file`を使用していたが、`pdfs.ts`では`part`を直接使用していた
+
+**試行した対策**: 
+- [試行1] `part`を直接イテレート → **失敗**（`part is not async iterable`エラー）
+- [試行2] `imports.ts`の実装を参考に`part.file`を使用するように修正 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-28）: 
+  1. `MultipartFile`型をインポート
+  2. `readFile`関数の引数を`MultipartFile`型に変更
+  3. `for await (const chunk of part.file)`を使用してファイルを読み込む
+  4. `part`を`MultipartFile`として型アサーション
+
+**学んだこと**: 
+- **既存コードの参照**: 同じライブラリを使用している既存のコード（`imports.ts`）を参考にする
+- **型定義の確認**: `@fastify/multipart`の型定義を確認することで、正しい使い方を理解できる
+- **エラーメッセージの解釈**: "is not async iterable"というエラーは、イテレート可能なプロパティを探すヒントになる
+
+**解決状況**: ✅ **解決済み**（2025-11-28）
+
+**関連ファイル**: 
+- `apps/api/src/routes/signage/pdfs.ts`
+- `apps/api/src/routes/imports.ts`
+
+---
+
+### [KB-045] サイネージが常に工具表示になる問題（タイムゾーン問題）
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージのスケジュール設定でPDFや分割表示を選択しても、常に工具管理データ（TOOLS）が表示される
+- スケジュールの時間帯（09:00-23:00）に設定しても、PDFが表示されない
+
+**要因**: 
+- `SignageService.getContent()` がサーバーのタイムゾーン（UTC）で現在時刻を取得していた
+- スケジュールの時間判定（`currentTime < schedule.startTime || currentTime >= schedule.endTime`）がUTC基準で行われていたため、日本時間（JST）のスケジュールと一致しなかった
+- 結果として、すべてのスケジュールが時間外と判定され、デフォルトの工具表示にフォールバックしていた
+
+**試行した対策**: 
+- [試行1] スケジュールの時間判定ロジックを確認 → **問題なし**（ロジック自体は正しい）
+- [試行2] `getCurrentTimeInfo()` メソッドを追加し、`SIGNAGE_TIMEZONE` 環境変数でタイムゾーンを設定可能にし、デフォルトで `Asia/Tokyo` を使用するように変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `SignageService` に `getCurrentTimeInfo()` メソッドを追加
+  2. `Intl.DateTimeFormat` を使用して、指定されたタイムゾーン（デフォルト: `Asia/Tokyo`）で現在時刻を取得
+  3. 環境変数 `SIGNAGE_TIMEZONE` でタイムゾーンを設定可能に（未設定時は `Asia/Tokyo` を使用）
+  4. スケジュール判定時に、タイムゾーンを考慮した現在時刻を使用
+
+**学んだこと**: 
+- **タイムゾーンの重要性**: サーバーがUTCで動作している場合、時刻ベースの判定にはタイムゾーン変換が必要
+- **環境変数による設定**: デフォルト値を設定しつつ、環境変数で上書き可能にすることで柔軟性を確保
+- **Intl.DateTimeFormat**: JavaScript標準のAPIを使用することで、タイムゾーン変換を簡単に実装できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
+
+---
+
+### [KB-047] 履歴画面のサムネイル拡大表示で401エラーが発生する問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- 管理画面の履歴タブで、サムネイル画像をクリックして拡大表示しようとすると401エラーが発生する
+- エラーメッセージ: `Request failed with status code 401`
+- 写真API (`/api/storage/photos/...`) へのリクエストが認証エラーで失敗する
+
+**要因**: 
+- 写真API (`apps/api/src/routes/storage/photos.ts`) が、`x-client-key` ヘッダーが存在する場合に即座に認証を試みていた
+- 管理画面のブラウザは常に `x-client-key: client-demo-key` を送信しているが、このキーがデータベースに存在しない場合、即座に401エラーを返していた
+- JWTトークンによる認証にフォールバックする前にエラーを返していた
+
+**試行した対策**: 
+- [試行1] 管理画面で再ログインしてJWTトークンを更新 → **失敗**（問題は認証ロジック側にあった）
+- [試行2] 写真APIの認証ロジックを修正し、`x-client-key` が無効な場合はJWT認証にフォールバックするように変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `apps/api/src/routes/storage/photos.ts` の認証ロジックを修正
+  2. `x-client-key` が提供されている場合、まずその有効性を確認
+  3. `x-client-key` が無効または存在しない場合は、JWT認証 (`canView`) にフォールバック
+  4. これにより、管理画面からのリクエストはJWTトークンで認証され、正常に動作するようになった
+
+**学んだこと**: 
+- **認証の優先順位**: `x-client-key` とJWTトークンの両方が存在する場合、適切なフォールバックロジックが必要
+- **クライアントキーの検証**: `x-client-key` が存在しても無効な場合は、JWT認証にフォールバックすることで柔軟性を確保
+- **管理画面とキオスクの違い**: 管理画面はJWT認証、キオスクはclient-key認証という使い分けを明確にする
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/routes/storage/photos.ts`
+
+---
+
+### [KB-046] サイネージで工具管理がダミーデータのみ表示される問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- サイネージの工具管理データ表示で、NFCリーダーでスキャンしたアイテムが表示されない
+- 常にダミーデータ（`Item.status === 'AVAILABLE'` のツール）のみが表示される
+
+**要因**: 
+- `SignageService.getToolsData()` が `Item.status === 'AVAILABLE'` のツールのみを取得していた
+- 実際に貸出中のツール（`Loan` テーブルで `returnedAt` と `cancelledAt` が `null`）が表示されていなかった
+
+**試行した対策**: 
+- [試行1] `getToolsData()` のロジックを確認 → **問題発見**（AVAILABLEのみを取得していた）
+- [試行2] `Loan` テーブルから現在貸出中のツールを取得し、それに紐付くアイテム情報を表示するように変更 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `getToolsData()` を修正し、まず `Loan` テーブルから現在貸出中のツール（`returnedAt` と `cancelledAt` が `null`）を取得
+  2. 各貸出データに紐付くアイテム情報（`itemCode`, `name`）と最新のサムネイル（`photoUrl` から生成）を取得
+  3. 貸出中のツールが1件もない場合のみ、従来通り `Item.status === 'AVAILABLE'` のツール一覧を表示
+
+**学んだこと**: 
+- **データ取得の優先順位**: 実際に使用中のデータを優先表示することで、より実用的な情報を提供できる
+- **Loanテーブルの活用**: 貸出履歴から現在の状態を取得することで、リアルタイムな情報を表示できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
 

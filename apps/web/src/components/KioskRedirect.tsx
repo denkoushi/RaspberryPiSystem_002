@@ -25,6 +25,20 @@ export function KioskRedirect() {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
     const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
     
+    // 現在のパスを正規化（末尾のスラッシュを除去）
+    const normalizedPath = location.pathname.replace(/\/$/, '');
+    const isOnRoot = normalizedPath === '';
+    const isWithinKiosk = isOnRoot || normalizedPath.startsWith('/kiosk');
+    const isOnKioskRoot = normalizedPath === '/kiosk';
+    
+    // / または /kiosk 配下でのみ動作する
+    if (!isWithinKiosk) {
+      if (enableDebugLogs) {
+        console.log('[KioskRedirect] Not on root or kiosk path, skipping:', normalizedPath);
+      }
+      return;
+    }
+    
     // ローディング中はリダイレクトしない
     if (isLoading) {
       if (enableDebugLogs) {
@@ -56,9 +70,6 @@ export function KioskRedirect() {
       console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
     }
     
-    // 現在のパスを正規化（末尾のスラッシュを除去）
-    const normalizedPath = location.pathname.replace(/\/$/, '');
-    const isOnKioskRoot = normalizedPath === '/kiosk';
     const isOnPhotoPage = normalizedPath === '/kiosk/photo';
     const isOnTagPage = normalizedPath === '/kiosk/tag';
     const isOnReturnPage = normalizedPath === '/kiosk/return';
@@ -69,7 +80,7 @@ export function KioskRedirect() {
     }
     
     // defaultModeが変更された場合、または初回ロード時、または/kioskにいる場合にリダイレクト
-    if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined || isOnKioskRoot) {
+    if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined || isOnKioskRoot || isOnRoot) {
       lastDefaultModeRef.current = currentDefaultMode;
       
       // 現在のパスとdefaultModeが一致しない場合のみリダイレクト

@@ -46,6 +46,17 @@ enum ImportStatus {
   FAILED
 }
 
+enum SignageContentType {
+  TOOLS
+  PDF
+  SPLIT
+}
+
+enum SignageDisplayMode {
+  SLIDESHOW
+  SINGLE
+}
+
 model Employee {
   id           String         @id @default(uuid())
   employeeCode String         @unique
@@ -107,10 +118,10 @@ model Loan {
   borrowedAt   DateTime      @default(now())
   dueAt        DateTime?
   returnedAt   DateTime?
-  cancelledAt  DateTime?     // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
+  cancelledAt  DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
   notes        String?
-  photoUrl     String?        // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
-  photoTakenAt DateTime?      // 撮影日時
+  photoUrl     String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt DateTime? // 撮影日時
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   item         Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -147,10 +158,59 @@ model Transaction {
 }
 
 model ImportJob {
-  id          String        @id @default(uuid())
+  id          String       @id @default(uuid())
   type        String
-  status      ImportStatus  @default(PENDING)
+  status      ImportStatus @default(PENDING)
   summary     Json?
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime     @default(now())
   completedAt DateTime?
+}
+
+model SignageSchedule {
+  id          String             @id @default(uuid())
+  name        String
+  contentType SignageContentType
+  pdfId       String?
+  pdf         SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  dayOfWeek   Int[]
+  startTime   String
+  endTime     String
+  priority    Int
+  enabled     Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([enabled])
+  @@index([priority])
+}
+
+model SignagePdf {
+  id            String             @id @default(uuid())
+  name          String
+  filename      String
+  filePath      String
+  displayMode   SignageDisplayMode
+  slideInterval Int?
+  enabled       Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  schedules     SignageSchedule[]  @relation("SchedulePdf")
+  emergencies   SignageEmergency[] @relation("EmergencyPdf")
+
+  @@index([enabled])
+}
+
+model SignageEmergency {
+  id          String              @id @default(uuid())
+  message     String?
+  contentType SignageContentType?
+  pdfId       String?
+  pdf         SignagePdf?         @relation("EmergencyPdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  enabled     Boolean             @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([enabled])
+  @@index([expiresAt])
 }

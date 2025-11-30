@@ -64,6 +64,9 @@
   - PDFアップロード・管理
   - 表示パターン設定
   - 緊急表示設定
+- **タイムゾーン**:
+  - サーバー側で `SIGNAGE_TIMEZONE` 環境変数を設定（デフォルト: `Asia/Tokyo`）
+  - 例: `SIGNAGE_TIMEZONE=Asia/Tokyo`（`docker-compose.server.yml` の `api` サービスに設定）
 
 ### モニター仕様
 
