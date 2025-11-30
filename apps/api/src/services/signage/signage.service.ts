@@ -50,6 +50,8 @@ export interface SignageContentResponse {
     itemCode: string;
     name: string;
     thumbnailUrl?: string | null;
+    employeeName?: string | null;
+    borrowedAt?: string | null;
   }>;
   pdf?: {
     id: string;
@@ -236,6 +238,7 @@ export class SignageService {
       },
       include: {
         item: true,
+        employee: true,
       },
       orderBy: {
         borrowedAt: 'desc',
@@ -251,6 +254,8 @@ export class SignageService {
           itemCode: itemCode || loan.id.slice(0, 8),
           name: loan.item?.name ?? '貸出中の工具',
           thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
+          employeeName: loan.employee?.name ?? null,
+          borrowedAt: loan.borrowedAt?.toISOString() ?? null,
         };
       })
       .filter((tool) => Boolean(tool.itemCode));
@@ -276,6 +281,8 @@ export class SignageService {
       itemCode: item.itemCode,
       name: item.name,
       thumbnailUrl: null,
+      employeeName: null,
+      borrowedAt: null,
     }));
   }
 

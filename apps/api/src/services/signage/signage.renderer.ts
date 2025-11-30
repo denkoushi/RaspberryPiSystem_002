@@ -144,7 +144,13 @@ export class SignageRenderer {
   }
 
   private async buildToolsSvg(
-    tools: Array<{ itemCode: string; name: string; thumbnailUrl?: string | null }>,
+    tools: Array<{
+      itemCode: string;
+      name: string;
+      thumbnailUrl?: string | null;
+      employeeName?: string | null;
+      borrowedAt?: string | null;
+    }>,
     width: number,
     height: number,
     mode: 'FULL' | 'SPLIT' = 'FULL'
@@ -186,11 +192,36 @@ export class SignageRenderer {
         }
         
         const textX = tool.thumbnailUrl ? padding + thumbnailWidth + Math.round(30 * scale) : padding;
+        const primaryText = tool.employeeName ?? tool.name ?? tool.itemCode;
+        const borrowedText = this.formatBorrowedAt(tool.borrowedAt);
+        const secondaryText =
+          borrowedText && tool.employeeName
+            ? `${borrowedText} 借用`
+            : borrowedText ?? tool.name ?? '';
+        const tertiaryText = tool.employeeName ? tool.name ?? '' : '';
+        const detailLineHeight = Math.round((itemFontSize * 0.7) * Math.max(0.9, scale));
+
         return `
           ${thumbnailElement}
           <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0" text-rendering="geometricPrecision">
-            <tspan fill="#34d399" font-weight="600">${this.escapeXml(tool.itemCode)}</tspan>
-            <tspan dx="12" fill="#e2e8f0">${this.escapeXml(tool.name)}</tspan>
+            <tspan fill="#34d399" font-weight="600">${this.escapeXml(primaryText)}</tspan>
+            ${
+              secondaryText
+                ? `<tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
+                    itemFontSize * 0.75
+                  )}" fill="#94a3b8">${this.escapeXml(secondaryText)}</tspan>`
+                : ''
+            }
+            ${
+              tertiaryText
+                ? `<tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
+                    itemFontSize * 0.75
+                  )}" fill="#38bdf8">${this.escapeXml(tertiaryText)}</tspan>`
+                : ''
+            }
+            <tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
+              itemFontSize * 0.75
+            )}" fill="#38bdf8">${this.escapeXml(tool.itemCode)}</tspan>
           </text>
         `;
       })
@@ -309,6 +340,21 @@ export class SignageRenderer {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  private formatBorrowedAt(isoDate?: string | null): string | null {
+    if (!isoDate) {
+      return null;
+    }
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hour}:${minute}`;
   }
 }
 
