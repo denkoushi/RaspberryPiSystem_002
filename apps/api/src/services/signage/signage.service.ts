@@ -254,7 +254,7 @@ export class SignageService {
           itemCode: itemCode || loan.id.slice(0, 8),
           name: loan.item?.name ?? '貸出中の工具',
           thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
-          employeeName: loan.employee?.name ?? null,
+          employeeName: loan.employee?.displayName ?? null,
           borrowedAt: loan.borrowedAt?.toISOString() ?? null,
         };
       })
