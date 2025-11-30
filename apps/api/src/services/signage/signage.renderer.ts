@@ -155,20 +155,28 @@ export class SignageRenderer {
     height: number,
     mode: 'FULL' | 'SPLIT' = 'FULL'
   ): Promise<string> {
-    // 解像度に応じて文字サイズとパディングをスケール（1920x1080基準）
     const scale = WIDTH / 1920;
     const headerSize = Math.round(((mode === 'FULL' ? 72 : 58) * scale) / 2);
     const itemFontSize = Math.round((mode === 'FULL' ? 52 : 42) * scale);
-    const padding = Math.round((mode === 'FULL' ? 80 : 60) * scale);
-    // サムネイルサイズを大きく（4:3アスペクト比を維持）
-    const thumbnailWidth = Math.round(240 * scale);
-    const thumbnailHeight = Math.round(180 * scale);
-    const lineHeight = Math.max(itemFontSize + Math.round(20 * scale), thumbnailHeight + Math.round(20 * scale));
-    const maxItems = Math.max(4, Math.floor((height - padding * 2 - headerSize) / lineHeight));
+    const paddingX = Math.round((mode === 'FULL' ? 60 : 40) * scale);
+    const paddingTop = Math.round((mode === 'FULL' ? 24 : 18) * scale);
+    const columnGap = Math.round(40 * scale);
+    const contentGap = Math.round(8 * scale);
+    const columns = 2;
+    const thumbnailWidth = Math.round(220 * scale);
+    const thumbnailHeight = Math.round(165 * scale);
+    const lineHeight = Math.max(itemFontSize + Math.round(12 * scale), thumbnailHeight + Math.round(12 * scale));
+    const contentStartY = paddingTop + headerSize + contentGap;
+    const rowsPerColumn = Math.max(2, Math.floor((height - contentStartY - paddingTop) / lineHeight));
+    const maxItems = rowsPerColumn * columns;
+    const columnWidth = (width - paddingX * 2 - columnGap * (columns - 1)) / columns;
     
     const rows = await Promise.all(
       tools.slice(0, maxItems).map(async (tool, index) => {
-        const y = padding + headerSize + (index + 1) * lineHeight;
+        const columnIndex = Math.floor(index / rowsPerColumn);
+        const rowIndex = index % rowsPerColumn;
+        const baseX = paddingX + columnIndex * (columnWidth + columnGap);
+        const y = contentStartY + rowIndex * lineHeight + lineHeight / 2;
         const thumbnailY = y - thumbnailHeight / 2;
         
         let thumbnailElement = '';
@@ -191,14 +199,15 @@ export class SignageRenderer {
           }
         }
         
-        const textX = tool.thumbnailUrl ? padding + thumbnailWidth + Math.round(30 * scale) : padding;
+        const textX = tool.thumbnailUrl ? baseX + thumbnailWidth + Math.round(24 * scale) : baseX;
         const primaryText = tool.employeeName ?? tool.name ?? tool.itemCode;
         const borrowedText = this.formatBorrowedAt(tool.borrowedAt);
         const secondaryText =
           borrowedText && tool.employeeName
             ? `${borrowedText} 持出`
             : borrowedText ?? tool.name ?? '';
-        const tertiaryText = tool.employeeName ? tool.name ?? '' : '';
+        const tertiaryText =
+          tool.employeeName && tool.name && tool.name !== '持出中アイテム' ? tool.name : '';
         const detailLineHeight = Math.round((itemFontSize * 0.7) * Math.max(0.9, scale));
 
         return `
@@ -239,7 +248,7 @@ export class SignageRenderer {
     return `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
-        <text x="${padding}" y="${padding + headerSize / 2}" font-size="${headerSize}"
+        <text x="${paddingX}" y="${paddingTop + headerSize / 2}" font-size="${headerSize}"
           font-family="sans-serif" fill="#38bdf8" font-weight="600" text-rendering="geometricPrecision">
           持出中アイテム
         </text>
