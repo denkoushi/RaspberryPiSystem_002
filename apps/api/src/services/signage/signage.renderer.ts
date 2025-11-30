@@ -32,7 +32,8 @@ export class SignageRenderer {
       const pdfPageIndex = this.getCurrentPdfPageIndex(
         content.pdf.pages.length,
         content.displayMode,
-        content.pdf.slideInterval || null
+        content.pdf.slideInterval || null,
+        content.pdf.id
       );
       return await this.renderPdfImage(content.pdf.pages[pdfPageIndex]);
     }
@@ -45,7 +46,8 @@ export class SignageRenderer {
       const pdfPageIndex = this.getCurrentPdfPageIndex(
         content.pdf?.pages?.length || 0,
         content.displayMode,
-        content.pdf?.slideInterval || null
+        content.pdf?.slideInterval || null,
+        content.pdf?.id
       );
       const pdfPageUrl = content.pdf?.pages?.[pdfPageIndex];
       return await this.renderSplit(content.tools || [], pdfPageUrl);
@@ -235,7 +237,8 @@ export class SignageRenderer {
   private getCurrentPdfPageIndex(
     totalPages: number,
     displayMode: string,
-    slideInterval: number | null
+    slideInterval: number | null,
+    pdfId?: string
   ): number {
     if (totalPages === 0) {
       return 0;
@@ -244,15 +247,18 @@ export class SignageRenderer {
     // SLIDESHOWモードでslideIntervalが設定されている場合のみページ切り替え
     if (displayMode === 'SLIDESHOW' && slideInterval && slideInterval > 0) {
       const now = Date.now();
-      // エポック秒単位で計算（ミリ秒を秒に変換）
       const secondsSinceEpoch = Math.floor(now / 1000);
-      // slideInterval秒ごとにページを切り替え
-      const pageIndex = Math.floor(secondsSinceEpoch / slideInterval) % totalPages;
+      const pageOffset = this.getPdfPageOffset(pdfId) % totalPages;
+      // slideInterval秒ごとにページを切り替え（同秒数になるのを避けるためにoffset付与）
+      const baseValue = Math.floor(secondsSinceEpoch / slideInterval);
+      const pageIndex = (baseValue + pageOffset) % totalPages;
       logger.info({
         totalPages,
         displayMode,
         slideInterval,
         secondsSinceEpoch,
+        pageOffset,
+        baseValue,
         pageIndex,
       }, 'PDF slide show page index calculated');
       return pageIndex;
@@ -260,6 +266,14 @@ export class SignageRenderer {
 
     // デフォルトは最初のページ
     return 0;
+  }
+
+  private getPdfPageOffset(pdfId?: string): number {
+    if (!pdfId) {
+      return 0;
+    }
+    const hash = pdfId.split('').reduce((sum, char) => (sum + char.charCodeAt(0)) % 1000, 0);
+    return hash;
   }
 
   private escapeXml(value: string): string {
