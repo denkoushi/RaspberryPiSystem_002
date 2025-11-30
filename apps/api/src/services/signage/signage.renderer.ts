@@ -65,7 +65,7 @@ export class SignageRenderer {
     }
 
     return await sharp(localPath)
-      .resize(WIDTH, HEIGHT, { fit: 'cover' })
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
       .jpeg({ quality: 85 })
       .toBuffer();
   }
@@ -98,7 +98,7 @@ export class SignageRenderer {
       const localPath = this.resolvePdfPageLocalPath(pageUrl);
       if (localPath) {
         rightBuffer = await sharp(localPath)
-          .resize(rightWidth, HEIGHT, { fit: 'cover' })
+          .resize(rightWidth, HEIGHT, { fit: 'contain', background: BACKGROUND })
           .jpeg({ quality: 90 })
           .toBuffer();
       } else {
