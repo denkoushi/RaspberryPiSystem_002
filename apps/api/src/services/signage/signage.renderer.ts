@@ -3,6 +3,7 @@ import path from 'path';
 import type { SignageService, SignageContentResponse } from './signage.service.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
+import { logger } from '../../lib/logger.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -69,8 +70,8 @@ export class SignageRenderer {
     tools: Array<{ itemCode: string; name: string; thumbnailUrl?: string | null }>
   ): Promise<Buffer> {
     const svg = await this.buildToolsSvg(tools, WIDTH, HEIGHT);
-    return await sharp(Buffer.from(svg))
-      .jpeg({ quality: 90 })
+    return await sharp(Buffer.from(svg), { density: 300 })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
 
@@ -82,8 +83,8 @@ export class SignageRenderer {
     const rightWidth = WIDTH - leftWidth;
 
     const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT');
-    const leftBuffer = await sharp(Buffer.from(leftSvg))
-      .jpeg({ quality: 90 })
+    const leftBuffer = await sharp(Buffer.from(leftSvg), { density: 300 })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
     let rightBuffer: Buffer;
@@ -125,13 +126,13 @@ export class SignageRenderer {
       <svg width="${customWidth}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-          font-size="${fontSize}" font-family="sans-serif" fill="#e2e8f0" font-weight="600">
+          font-size="${fontSize}" font-family="sans-serif" fill="#e2e8f0" font-weight="600" text-rendering="geometricPrecision">
           ${this.escapeXml(message)}
         </text>
       </svg>
     `;
-    return await sharp(Buffer.from(svg))
-      .jpeg({ quality: 90 })
+    return await sharp(Buffer.from(svg), { density: 300 })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
 
@@ -146,14 +147,16 @@ export class SignageRenderer {
     const headerSize = Math.round((mode === 'FULL' ? 72 : 58) * scale);
     const itemFontSize = Math.round((mode === 'FULL' ? 52 : 42) * scale);
     const padding = Math.round((mode === 'FULL' ? 80 : 60) * scale);
-    const thumbnailSize = Math.round(120 * scale);
-    const lineHeight = Math.max(itemFontSize + Math.round(20 * scale), thumbnailSize + Math.round(10 * scale));
+    // サムネイルサイズを大きく（4:3アスペクト比を維持）
+    const thumbnailWidth = Math.round(240 * scale);
+    const thumbnailHeight = Math.round(180 * scale);
+    const lineHeight = Math.max(itemFontSize + Math.round(20 * scale), thumbnailHeight + Math.round(20 * scale));
     const maxItems = Math.max(4, Math.floor((height - padding * 2 - headerSize) / lineHeight));
     
     const rows = await Promise.all(
       tools.slice(0, maxItems).map(async (tool, index) => {
         const y = padding + headerSize + (index + 1) * lineHeight;
-        const thumbnailY = y - thumbnailSize / 2;
+        const thumbnailY = y - thumbnailHeight / 2;
         
         let thumbnailElement = '';
         if (tool.thumbnailUrl) {
@@ -161,12 +164,12 @@ export class SignageRenderer {
           if (thumbnailPath) {
             try {
               const thumbnailBuffer = await sharp(thumbnailPath)
-                .resize(thumbnailSize, thumbnailSize, { fit: 'cover' })
-                .jpeg({ quality: 85 })
+                .resize(thumbnailWidth, thumbnailHeight, { fit: 'cover' })
+                .jpeg({ quality: 90 })
                 .toBuffer();
               const thumbnailBase64 = thumbnailBuffer.toString('base64');
               thumbnailElement = `
-                <image x="${padding}" y="${thumbnailY}" width="${thumbnailSize}" height="${thumbnailSize}"
+                <image x="${padding}" y="${thumbnailY}" width="${thumbnailWidth}" height="${thumbnailHeight}"
                   href="data:image/jpeg;base64,${thumbnailBase64}" />
               `;
             } catch (error) {
@@ -175,10 +178,10 @@ export class SignageRenderer {
           }
         }
         
-        const textX = tool.thumbnailUrl ? padding + thumbnailSize + Math.round(20 * scale) : padding;
+        const textX = tool.thumbnailUrl ? padding + thumbnailWidth + Math.round(30 * scale) : padding;
         return `
           ${thumbnailElement}
-          <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0">
+          <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0" text-rendering="geometricPrecision">
             <tspan fill="#34d399" font-weight="600">${this.escapeXml(tool.itemCode)}</tspan>
             <tspan dx="12" fill="#e2e8f0">${this.escapeXml(tool.name)}</tspan>
           </text>
@@ -199,7 +202,7 @@ export class SignageRenderer {
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="${padding}" y="${padding + headerSize / 2}" font-size="${headerSize}"
-          font-family="sans-serif" fill="#38bdf8" font-weight="600">
+          font-family="sans-serif" fill="#38bdf8" font-weight="600" text-rendering="geometricPrecision">
           工具在庫一覧
         </text>
         ${rows.join('\n')}
@@ -245,6 +248,13 @@ export class SignageRenderer {
       const secondsSinceEpoch = Math.floor(now / 1000);
       // slideInterval秒ごとにページを切り替え
       const pageIndex = Math.floor(secondsSinceEpoch / slideInterval) % totalPages;
+      logger.debug({
+        totalPages,
+        displayMode,
+        slideInterval,
+        secondsSinceEpoch,
+        pageIndex,
+      }, 'PDF slide show page index calculated');
       return pageIndex;
     }
 
