@@ -76,6 +76,20 @@
 - サーバー起動: `cd apps/api && pnpm dev`
 - テスト: `cd apps/api && pnpm test`
 
+### 🐛 デバッグ時のヒント
+
+**エラーが発生したら**: エラーレスポンスの`requestId`を使ってログを検索できます。
+
+```bash
+# requestIdでログを検索
+docker compose logs api | grep "req-xxx"
+
+# エラーコードで検索（構造化ログ）
+docker compose logs api | jq 'select(.errorCode == "VALIDATION_ERROR")'
+```
+
+詳細は [開発ガイド](./docs/guides/development.md#デバッグ時のクイックリファレンス) と [エラーハンドリングガイド](./docs/guides/error-handling.md) を参照。
+
 ## Web アプリ開発メモ
 
 - 開発サーバー: `cd apps/web && pnpm dev` (デフォルト: http://localhost:4173)

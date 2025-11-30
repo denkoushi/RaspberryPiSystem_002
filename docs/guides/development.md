@@ -212,6 +212,47 @@ cd apps/web
 pnpm build
 ```
 
+## デバッグ時のクイックリファレンス
+
+### 🔍 エラーが発生したら
+
+**すべてのエラーレスポンスには`requestId`が含まれています。これを使ってログを検索できます。**
+
+```bash
+# 1. エラーレスポンスからrequestIdを取得
+# 例: {"message": "...", "requestId": "req-abc123", ...}
+
+# 2. ログでrequestIdを検索
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep "req-abc123"
+
+# 3. エラーコードで検索（構造化ログ）
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | jq 'select(.errorCode == "VALIDATION_ERROR")'
+```
+
+### 📋 よく使うデバッグコマンド
+
+```bash
+# エラーログのみを表示（警告以上）
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -E '"level":(40|50)'
+
+# 特定のエラーコードで検索
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | jq 'select(.errorCode == "P2002")'
+
+# バリデーションエラーの詳細を確認
+curl -X POST http://localhost:8080/api/tools/employees \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"employeeCode": "0001"}' | jq '.issues'
+
+# ログレベルを変更（デバッグ時）
+# .envファイルで LOG_LEVEL=debug に設定して再起動
+```
+
+### 📚 詳細なドキュメント
+
+- [エラーハンドリングガイド](./error-handling.md) - エラーレスポンス形式、エラーコード一覧
+- [ログ出力ガイド](./logging.md) - ログレベルの設定、ログの確認方法
+
 ## コードスタイル
 
 ### TypeScript

@@ -1,3 +1,21 @@
+/**
+ * エラーハンドラープラグイン
+ * 
+ * すべてのエラーレスポンスは統一された形式で返されます:
+ * {
+ *   "message": "エラーメッセージ",
+ *   "errorCode": "ERROR_CODE",      // エラーコード（例: VALIDATION_ERROR, P2002）
+ *   "requestId": "req-xxx",         // ログ検索用ID
+ *   "timestamp": "2025-11-30T...",
+ *   "details": {},                  // エラーの詳細情報
+ *   "issues": []                    // バリデーションエラーの詳細
+ * }
+ * 
+ * デバッグ時: requestIdを使ってログを検索できます
+ *   docker compose logs api | grep "req-xxx"
+ * 
+ * 詳細: docs/guides/error-handling.md
+ */
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
