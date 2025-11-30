@@ -190,7 +190,7 @@ export class SignageRenderer {
                 .toBuffer();
               const thumbnailBase64 = thumbnailBuffer.toString('base64');
               thumbnailElement = `
-                <image x="${padding}" y="${thumbnailY}" width="${thumbnailWidth}" height="${thumbnailHeight}"
+                <image x="${baseX}" y="${thumbnailY}" width="${thumbnailWidth}" height="${thumbnailHeight}"
                   href="data:image/jpeg;base64,${thumbnailBase64}" />
               `;
             } catch (error) {
@@ -238,7 +238,7 @@ export class SignageRenderer {
 
     if (rows.length === 0) {
       rows.push(`
-        <text x="${padding}" y="${padding + headerSize + lineHeight}" font-size="${itemFontSize}"
+        <text x="${paddingX}" y="${contentStartY + lineHeight}" font-size="${itemFontSize}"
           font-family="sans-serif" fill="#94a3b8">
           表示するアイテムがありません
         </text>
