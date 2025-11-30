@@ -283,7 +283,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     
     // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
     if (isPrismaLikeError(error)) {
-      const prismaError = error;
+      const prismaError: PrismaLikeError = error;
       const errorCode = prismaError.code;
       
       if (errorCode === 'P2003') {
