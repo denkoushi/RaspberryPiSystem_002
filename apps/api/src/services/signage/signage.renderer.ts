@@ -213,25 +213,25 @@ export class SignageRenderer {
 
         return `
           ${thumbnailElement}
-          <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#e2e8f0" text-rendering="geometricPrecision">
-            <tspan fill="#34d399" font-weight="600">${this.escapeXml(primaryText)}</tspan>
+          <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#ffffff" text-rendering="geometricPrecision">
+            <tspan fill="#ffffff" font-weight="600">${this.escapeXml(primaryText)}</tspan>
             ${
               secondaryText
                 ? `<tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
-                    itemFontSize * 0.75
-                  )}" fill="#94a3b8">${this.escapeXml(secondaryText)}</tspan>`
+                    itemFontSize * 0.6
+                  )}" fill="#ffffff">${this.escapeXml(secondaryText)}</tspan>`
                 : ''
             }
             ${
               tertiaryText
                 ? `<tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
                     itemFontSize * 0.75
-                  )}" fill="#38bdf8">${this.escapeXml(tertiaryText)}</tspan>`
+                  )}" fill="#ffffff">${this.escapeXml(tertiaryText)}</tspan>`
                 : ''
             }
             <tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
               itemFontSize * 0.75
-            )}" fill="#38bdf8">${this.escapeXml(tool.itemCode)}</tspan>
+            )}" fill="#ffffff">${this.escapeXml(tool.itemCode)}</tspan>
           </text>
         `;
       })
@@ -240,7 +240,7 @@ export class SignageRenderer {
     if (rows.length === 0) {
       rows.push(`
         <text x="${paddingX}" y="${contentStartY + lineHeight}" font-size="${itemFontSize}"
-          font-family="sans-serif" fill="#94a3b8">
+          font-family="sans-serif" fill="#ffffff">
           表示するアイテムがありません
         </text>
       `);
@@ -250,7 +250,7 @@ export class SignageRenderer {
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="${paddingX}" y="${paddingTop + headerSize / 2}" font-size="${headerSize}"
-          font-family="sans-serif" fill="#38bdf8" font-weight="600" text-rendering="geometricPrecision">
+          font-family="sans-serif" fill="#ffffff" font-weight="600" text-rendering="geometricPrecision">
           持出中アイテム
         </text>
         ${rows.join('\n')}
