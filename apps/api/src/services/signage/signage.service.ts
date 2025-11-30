@@ -249,16 +249,33 @@ export class SignageService {
     const loanTools = activeLoans
       .map((loan) => {
         const itemCode = loan.item?.itemCode ?? loan.itemId ?? '';
+        const borrowedAt = loan.borrowedAt?.toISOString() ?? null;
+        const now = new Date();
+        const borrowedDate = loan.borrowedAt ? new Date(loan.borrowedAt) : null;
+        const diffMs = borrowedDate ? now.getTime() - borrowedDate.getTime() : 0;
+        const diffHours = diffMs / (1000 * 60 * 60);
+        const isOver12Hours = diffHours > 12;
         return {
           id: loan.id,
           itemCode: itemCode || loan.id.slice(0, 8),
           name: loan.item?.name ?? '持出中アイテム',
           thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
           employeeName: loan.employee?.displayName ?? null,
-          borrowedAt: loan.borrowedAt?.toISOString() ?? null,
+          borrowedAt: borrowedAt,
+          isOver12Hours: isOver12Hours,
         };
       })
-      .filter((tool) => Boolean(tool.itemCode));
+      .filter((tool) => Boolean(tool.itemCode))
+      // 12時間超のアイテムを最上位にソート
+      .sort((a, b) => {
+        if (a.isOver12Hours && !b.isOver12Hours) return -1;
+        if (!a.isOver12Hours && b.isOver12Hours) return 1;
+        // 同じ条件の場合は borrowedAt で降順ソート
+        if (a.borrowedAt && b.borrowedAt) {
+          return new Date(b.borrowedAt).getTime() - new Date(a.borrowedAt).getTime();
+        }
+        return 0;
+      });
 
     if (loanTools.length > 0) {
       return loanTools;

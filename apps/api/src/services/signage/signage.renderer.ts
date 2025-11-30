@@ -5,6 +5,7 @@ import type { SignageService, SignageContentResponse } from './signage.service.j
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 import { logger } from '../../lib/logger.js';
+import { env } from '../../config/env.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -154,6 +155,7 @@ export class SignageRenderer {
       thumbnailUrl?: string | null;
       employeeName?: string | null;
       borrowedAt?: string | null;
+      isOver12Hours?: boolean;
     }>,
     width: number,
     height: number,
@@ -215,11 +217,13 @@ export class SignageRenderer {
         const tertiaryText =
           tool.employeeName && tool.name && tool.name !== '持出中アイテム' ? tool.name : '';
         const detailLineHeight = Math.round((itemFontSize * 0.7) * Math.max(0.9, scale));
+        // 12時間超のアイテムは名前を赤字にする
+        const primaryTextColor = tool.isOver12Hours ? '#ef4444' : '#ffffff';
 
         return `
           ${thumbnailElement}
           <text x="${textX}" y="${y}" font-size="${itemFontSize}" font-family="sans-serif" fill="#ffffff" text-rendering="geometricPrecision">
-            <tspan fill="#ffffff" font-weight="600">${this.escapeXml(primaryText)}</tspan>
+            <tspan fill="${primaryTextColor}" font-weight="600">${this.escapeXml(primaryText)}</tspan>
             ${
               secondaryText
                 ? `<tspan x="${textX}" dy="${detailLineHeight}" font-size="${Math.round(
@@ -375,11 +379,29 @@ export class SignageRenderer {
     if (Number.isNaN(date.getTime())) {
       return null;
     }
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
+    // 日本時間（JST = UTC+9）に変換
+    const jstOffset = 9 * 60 * 60 * 1000; // 9時間をミリ秒に変換
+    const jstDate = new Date(date.getTime() + jstOffset);
+    // UTC時刻として扱う（getUTCMonth等を使用）
+    const month = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(jstDate.getUTCDate()).padStart(2, '0');
+    const hour = String(jstDate.getUTCHours()).padStart(2, '0');
+    const minute = String(jstDate.getUTCMinutes()).padStart(2, '0');
     return `${month}/${day} ${hour}:${minute}`;
+  }
+
+  private isOver12Hours(isoDate?: string | null): boolean {
+    if (!isoDate) {
+      return false;
+    }
+    const borrowedDate = new Date(isoDate);
+    if (Number.isNaN(borrowedDate.getTime())) {
+      return false;
+    }
+    const now = new Date();
+    const diffMs = now.getTime() - borrowedDate.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return diffHours > 12;
   }
 
   private async getSystemMetricsText(): Promise<string | null> {
