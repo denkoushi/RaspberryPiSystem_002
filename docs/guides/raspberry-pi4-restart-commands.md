@@ -7,7 +7,30 @@
 - Raspberry Pi 4にSSH接続または直接ログインしていること
 - プロジェクトディレクトリ: `/opt/RaspberryPiSystem_002`
 
-## 起動手順
+## 🎯 推奨方法（これを使いましょう）
+
+**開発中・本番環境問わず、Docker Composeを使うことを強く推奨します。**
+
+### 再起動後の起動コマンド（推奨）
+
+```bash
+# 1. pcscd サービスの起動（NFCリーダー用）
+sudo systemctl start pcscd
+
+# 2. NFCエージェントの起動（Docker Compose）
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.client.yml up -d
+
+# 3. 状態確認
+docker compose -f infrastructure/docker/docker-compose.client.yml ps
+docker compose -f infrastructure/docker/docker-compose.client.yml logs -f
+```
+
+**これだけです！** これで再起動後も自動起動し、ログ管理も簡単です。
+
+---
+
+## 起動手順（詳細版）
 
 ### 1. pcscd サービスの起動（NFCリーダー用）
 
@@ -20,7 +43,7 @@ sudo systemctl status pcscd  # 状態確認
 
 ### 2. NFCエージェントの起動
 
-#### 方法A: Docker Composeで起動（推奨）
+#### 方法A: Docker Composeで起動（✅ 推奨・これを使いましょう）
 
 ```bash
 cd /opt/RaspberryPiSystem_002
@@ -33,14 +56,14 @@ docker compose -f infrastructure/docker/docker-compose.client.yml ps
 docker compose -f infrastructure/docker/docker-compose.client.yml logs -f
 ```
 
-#### 方法B: Poetryで直接起動（開発用・非推奨）
+#### 方法B: Poetryで直接起動（❌ 非推奨・使わないでください）
 
 ```bash
 cd /opt/RaspberryPiSystem_002/clients/nfc-agent
 poetry run python -m nfc_agent
 ```
 
-**⚠️ この方法の問題点**:
+**⚠️ この方法は使わないでください。以下の問題があります**:
 - **フォアグラウンド実行**: SSHセッションが切れるとプロセスが停止します
 - **再起動時に自動起動しない**: 毎回手動で起動する必要があります
 - **ログ管理が難しい**: 標準出力に直接出力され、ログファイルに保存されません
