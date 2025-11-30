@@ -28,12 +28,13 @@ class QueueStore:
                 """
             )
 
-    def enqueue(self, payload: Dict[str, Any]) -> None:
+    def enqueue(self, payload: Dict[str, Any]) -> int:
         with self._connect() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO queued_events (payload) VALUES (?)",
                 (json.dumps(payload, ensure_ascii=False),),
             )
+            return int(cur.lastrowid)
 
     def list_events(self, limit: int = 100) -> List[Tuple[int, Dict[str, Any]]]:
         with self._connect() as conn:

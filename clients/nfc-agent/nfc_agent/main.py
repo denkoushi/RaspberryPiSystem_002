@@ -29,17 +29,20 @@ class WebSocketManager:
     async def disconnect(self, websocket: WebSocket) -> None:
         self.connections.discard(websocket)
 
-    async def broadcast(self, message: Dict[str, Any]) -> None:
+    async def broadcast(self, message: Dict[str, Any]) -> bool:
+        delivered = False
         dead: list[WebSocket] = []
         for websocket in self.connections:
             try:
                 await websocket.send_json(message)
+                delivered = True
             except RuntimeError:
                 dead.append(websocket)
             except WebSocketDisconnect:
                 dead.append(websocket)
         for websocket in dead:
             await self.disconnect(websocket)
+        return delivered
 
 
 def create_app(
@@ -120,8 +123,10 @@ async def event_worker(
     while True:
         event = await event_queue.get()
         last_event_holder["event"] = event
-        queue_store.enqueue(event)
-        await event_manager.broadcast(event)
+        event_id = queue_store.enqueue(event)
+        delivered = await event_manager.broadcast(event)
+        if delivered:
+            queue_store.delete([event_id])
         event_queue.task_done()
 
 
