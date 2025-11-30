@@ -509,3 +509,77 @@ update-frequency: medium
 - `apps/api/package.json`
 - `infrastructure/docker/Dockerfile.api`
 
+---
+
+### [KB-048] NFCエージェントのDockerビルドでuvicornが見つからない問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- NFCエージェントコンテナを起動すると `ModuleNotFoundError: No module named 'uvicorn'` エラーが発生する
+- コンテナが起動直後に終了し、再起動を繰り返す
+- `poetry install` が実行されているが、依存パッケージがインストールされていない
+
+**要因**: 
+- `Dockerfile.nfc-agent` の `poetry install` コマンドに `--no-dev --no-root` オプションが使用されていた
+- Poetry 2.x では `--no-dev` オプションが廃止され、`--without dev` に変更された
+- `|| true` が含まれていたため、`poetry install` が失敗してもエラーが無視されていた
+
+**試行した対策**: 
+- [試行1] `poetry install` のログを確認 → **問題発見**（`--no-dev` オプションが存在しないというエラー）
+- [試行2] `--no-dev` を `--without dev` に変更し、`|| true` を削除 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `infrastructure/docker/Dockerfile.nfc-agent` の `poetry install` コマンドを修正
+  2. `--no-dev` を `--without dev` に変更（Poetry 2.x対応）
+  3. `|| true` を削除して、エラーが発生した場合はビルドを失敗させるように変更
+  4. これにより、依存パッケージ（uvicorn含む）が正しくインストールされるようになった
+
+**学んだこと**: 
+- **Poetryのバージョン互換性**: Poetry 2.xでは `--no-dev` が `--without dev` に変更された
+- **エラーの無視は危険**: `|| true` でエラーを無視すると、後で問題が発見しにくくなる
+- **ビルド時のエラー検出**: 依存関係のインストールに失敗した場合は、ビルドを失敗させることで早期に問題を発見できる
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `infrastructure/docker/Dockerfile.nfc-agent`
+
+---
+
+### [KB-049] NFCエージェントのDockerビルドでgccが見つからない問題
+
+**EXEC_PLAN.md参照**: Phase 8 / Surprises & Discoveries (行621)
+
+**事象**: 
+- NFCエージェントコンテナのビルド時に `error: command 'gcc' failed: No such file or directory` エラーが発生する
+- `pyscard` パッケージのビルド時にC拡張をコンパイルする必要があるが、gccがインストールされていない
+- `poetry install` が失敗し、依存パッケージがインストールされない
+
+**要因**: 
+- `Dockerfile.nfc-agent` のベースイメージが `python:3.11-slim` で、ビルドツール（gcc、swigなど）が含まれていない
+- `pyscard` パッケージはC拡張を含むため、ビルド時にコンパイラが必要
+- `pcscd` と `libpcsclite-dev` はインストールされていたが、Cコンパイラが不足していた
+
+**試行した対策**: 
+- [試行1] `poetry install` のログを確認 → **問題発見**（gccが見つからない）
+- [試行2] `Dockerfile.nfc-agent` に `build-essential` と `swig` を追加 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-11-29）:
+  1. `infrastructure/docker/Dockerfile.nfc-agent` の `apt-get install` コマンドを修正
+  2. `build-essential`（gcc、makeなど）と `swig`（pyscardのビルドに必要）を追加
+  3. これにより、`pyscard` パッケージのC拡張が正常にビルドされ、依存パッケージがインストールされるようになった
+
+**学んだこと**: 
+- **Pythonパッケージのビルド要件**: C拡張を含むPythonパッケージ（pyscardなど）は、ビルド時にコンパイラが必要
+- **slimイメージの制限**: `python:3.11-slim` は軽量だが、ビルドツールが含まれていないため、必要に応じて追加する必要がある
+- **依存関係の確認**: Pythonパッケージのビルド要件を事前に確認し、必要なビルドツールをDockerfileに含める
+
+**解決状況**: ✅ **解決済み**（2025-11-29）
+
+**関連ファイル**: 
+- `infrastructure/docker/Dockerfile.nfc-agent`
+
+---
