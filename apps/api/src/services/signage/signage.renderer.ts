@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import path from 'path';
+import { promises as fs } from 'fs';
 import type { SignageService, SignageContentResponse } from './signage.service.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
@@ -73,7 +74,8 @@ export class SignageRenderer {
   private async renderTools(
     tools: Array<{ itemCode: string; name: string; thumbnailUrl?: string | null }>
   ): Promise<Buffer> {
-    const svg = await this.buildToolsSvg(tools, WIDTH, HEIGHT);
+    const metricsText = await this.getSystemMetricsText();
+    const svg = await this.buildToolsSvg(tools, WIDTH, HEIGHT, 'FULL', metricsText);
     return await sharp(Buffer.from(svg), { density: 300 })
       .resize(WIDTH, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })
@@ -87,7 +89,8 @@ export class SignageRenderer {
     const leftWidth = Math.floor(WIDTH * 0.5);
     const rightWidth = WIDTH - leftWidth;
 
-    const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT');
+    const metricsText = await this.getSystemMetricsText();
+    const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT', metricsText);
     const leftBuffer = await sharp(Buffer.from(leftSvg), { density: 300 })
       .resize(leftWidth, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })
@@ -153,7 +156,8 @@ export class SignageRenderer {
     }>,
     width: number,
     height: number,
-    mode: 'FULL' | 'SPLIT' = 'FULL'
+    mode: 'FULL' | 'SPLIT' = 'FULL',
+    metricsText?: string | null
   ): Promise<string> {
     const scale = WIDTH / 1920;
     const headerSize = Math.round(((mode === 'FULL' ? 72 : 58) * scale) / 2);
@@ -246,6 +250,15 @@ export class SignageRenderer {
       `);
     }
 
+    const metricsElement = metricsText
+      ? `
+        <text x="${width - paddingX}" y="${paddingTop + headerSize / 2}" font-size="${Math.round(
+          headerSize * 0.6
+        )}" text-anchor="end" font-family="sans-serif" fill="#ffffff" text-rendering="geometricPrecision">
+          ${this.escapeXml(metricsText)}
+        </text>`
+      : '';
+
     return `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
@@ -253,6 +266,7 @@ export class SignageRenderer {
           font-family="sans-serif" fill="#ffffff" font-weight="600" text-rendering="geometricPrecision">
           持出中アイテム
         </text>
+        ${metricsElement}
         ${rows.join('\n')}
       </svg>
     `;
@@ -365,6 +379,26 @@ export class SignageRenderer {
     const hour = String(date.getHours()).padStart(2, '0');
     const minute = String(date.getMinutes()).padStart(2, '0');
     return `${month}/${day} ${hour}:${minute}`;
+  }
+
+  private async getSystemMetricsText(): Promise<string | null> {
+    try {
+      const [loadAvgRaw, tempRaw] = await Promise.all([
+        fs.readFile('/proc/loadavg', 'utf8'),
+        fs.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8').catch(() => null),
+      ]);
+
+      const loadAvg = loadAvgRaw.split(' ')[0];
+      const temperature = tempRaw ? `${(Number(tempRaw.trim()) / 1000).toFixed(1)}°C` : null;
+
+      if (!loadAvg && !temperature) {
+        return null;
+      }
+
+      return temperature ? `Load ${loadAvg}  Temp ${temperature}` : `Load ${loadAvg}`;
+    } catch {
+      return null;
+    }
   }
 }
 
