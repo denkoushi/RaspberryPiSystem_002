@@ -404,6 +404,7 @@ export class SignageRenderer {
     if (Number.isNaN(borrowedDate.getTime())) {
       return false;
     }
+    // 現在時刻との差分を計算（UTC時刻で計算してから時間差を算出）
     const now = new Date();
     const diffMs = now.getTime() - borrowedDate.getTime();
     const diffHours = diffMs / (1000 * 60 * 60);
