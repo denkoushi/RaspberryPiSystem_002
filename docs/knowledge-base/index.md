@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 15件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 19件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 20件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ |
 
 ---
 
@@ -107,6 +107,7 @@ update-frequency: high
 | [KB-042](./infrastructure.md#kb-042-pdf-popplerがlinuxarm64をサポートしていない問題) | pdf-popplerがLinux（ARM64）をサポートしていない問題 | ✅ 解決済み |
 | [KB-050](./infrastructure.md#kb-050-軽量サイネージクライアントが自己署名証明書で画像を取得できない) | 軽量サイネージクライアントが自己署名証明書で画像を取得できない | ✅ 解決済み |
 | [KB-053](./infrastructure.md#kb-053-サイネージの自動レンダリング画像が更新されないsignage_render_dirのパス不一致) | サイネージの自動レンダリング画像が更新されない（SIGNAGE_RENDER_DIRのパス不一致） | ✅ 解決済み |
+| [KB-056](./infrastructure.md#kb-056-工具スキャンが二重登録される問題nfcエージェントのキュー処理改善) | 工具スキャンが二重登録される問題（NFCエージェントのキュー処理改善） | ✅ 解決済み |
 
 ---
 
@@ -145,9 +146,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 49件 |
+| ✅ 解決済み | 50件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **53件** |
+| **合計** | **54件** |
 
 ---
 
@@ -174,4 +175,5 @@ update-frequency: high
 - 2025-11-30: KB-051〜KB-053を追加（サイネージPDFスライドショー、sharp合成エラー、SIGNAGE_RENDER_DIR不一致）
 - 2025-11-30: KB-054を追加（サイネージ工具表示で日本語が文字化けする問題）
 - 2025-11-30: KB-055を追加（サイネージPDFがトリミングされて表示される問題）
+- 2025-11-30: KB-056を追加（工具スキャンが二重登録される問題、NFCエージェントのキュー処理改善）
 
