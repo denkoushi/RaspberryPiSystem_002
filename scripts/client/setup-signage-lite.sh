@@ -19,6 +19,26 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# 既存のChromiumベースのサイネージサービスを停止・無効化
+echo "既存のChromiumベースのサイネージサービスを確認中..."
+if systemctl is-active --quiet signage-display.service 2>/dev/null; then
+  echo "signage-display.service を停止・無効化中..."
+  systemctl stop signage-display.service || true
+  systemctl disable signage-display.service || true
+fi
+
+# 既存のキオスクブラウザサービスも確認
+if systemctl is-active --quiet kiosk-browser.service 2>/dev/null; then
+  echo "kiosk-browser.service を停止・無効化中..."
+  systemctl stop kiosk-browser.service || true
+  systemctl disable kiosk-browser.service || true
+fi
+
+# 実行中のChromiumプロセスを終了
+echo "実行中のChromiumプロセスを終了中..."
+pkill -f "chromium" || true
+sleep 2
+
 KIOSK_USER="${SUDO_USER:-pi}"
 UPDATE_SCRIPT="/usr/local/bin/signage-update.sh"
 DISPLAY_SCRIPT="/usr/local/bin/signage-display.sh"
