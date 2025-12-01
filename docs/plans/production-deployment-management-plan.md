@@ -265,6 +265,10 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 - Raspberry Pi 3とRaspberry Pi 4への接続成功
 - Gitリポジトリの更新成功
 - サービスの再起動成功（存在するサービスのみ）
+- **Macからの実行テスト**: ✅ **成功**（2025-12-01）
+  - MacからRaspberry Pi 5にSSH接続してAnsibleを実行
+  - ログファイルがMacに保存されることを確認
+  - 1コマンドで全クライアントを更新できることを確認
 
 ---
 
