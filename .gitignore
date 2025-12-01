@@ -25,6 +25,9 @@ alerts/
 # Storage (user-uploaded files)
 storage/
 
+# SSL certificates
+certs/
+
 # Python
 __pycache__/
 *.pyc
