@@ -261,6 +261,38 @@ export async function getClientLogs(filters?: {
   return data.logs;
 }
 
+export interface FileAlert {
+  id: string;
+  type: string;
+  message: string;
+  details?: string;
+  timestamp: string;
+  acknowledged: boolean;
+}
+
+export interface ClientAlerts {
+  alerts: {
+    staleClients: number;
+    errorLogs: number;
+    fileAlerts: number;
+    hasAlerts: boolean;
+  };
+  details: {
+    staleClientIds: string[];
+    recentErrors: Array<{
+      clientId: string;
+      message: string;
+      createdAt: string;
+    }>;
+    fileAlerts: FileAlert[];
+  };
+}
+
+export async function getClientAlerts() {
+  const { data } = await api.get<{ requestId: string } & ClientAlerts>('/clients/alerts');
+  return data;
+}
+
 interface ImportMasterPayload {
   employeesFile?: File | null;
   itemsFile?: File | null;

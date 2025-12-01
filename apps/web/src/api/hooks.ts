@@ -11,6 +11,7 @@ import {
   getClients,
   getClientLogs,
   getClientStatuses,
+  getClientAlerts,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -209,6 +210,14 @@ export function useClientLogs(filters: { clientId?: string; level?: ClientLogLev
   return useQuery({
     queryKey: ['client-logs', filters],
     queryFn: () => getClientLogs(filters)
+  });
+}
+
+export function useClientAlerts() {
+  return useQuery({
+    queryKey: ['client-alerts'],
+    queryFn: getClientAlerts,
+    refetchInterval: 60_000 // 1分ごとに更新
   });
 }
 

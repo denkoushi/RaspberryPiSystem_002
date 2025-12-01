@@ -64,11 +64,25 @@ run_remotely() {
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   if ! run_remotely; then
+    # アラートファイルを生成
+    if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then
+      "${PROJECT_ROOT}/scripts/generate-alert.sh" \
+        "ansible-update-failed" \
+        "Ansible更新が失敗しました" \
+        "ログファイル: ${LOG_FILE}"
+    fi
     exit_with_error 1 "Update playbook failed. Check ${LOG_FILE} for details."
   fi
 else
   echo "[INFO] Executing update playbook locally"
   if ! run_locally; then
+    # アラートファイルを生成
+    if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then
+      "${PROJECT_ROOT}/scripts/generate-alert.sh" \
+        "ansible-update-failed" \
+        "Ansible更新が失敗しました" \
+        "ログファイル: ${LOG_FILE}"
+    fi
     exit_with_error 1 "Update playbook failed. Check ${LOG_FILE} for details."
   fi
 fi

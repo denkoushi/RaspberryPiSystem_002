@@ -296,4 +296,73 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
 
     return { requestId: request.id, logs };
   });
+
+  // アラート情報を取得（ダッシュボード用）
+  app.get('/clients/alerts', { preHandler: canViewStatus }, async (request) => {
+    const statuses = await prisma.clientStatus.findMany({
+      orderBy: { hostname: 'asc' }
+    });
+
+    const now = Date.now();
+    const staleClients = statuses.filter((status) => {
+      const lastSeen = status.lastSeen ?? status.updatedAt;
+      return now - lastSeen.getTime() > staleThresholdMs;
+    });
+
+    const clientIds = statuses.map((status) => status.clientId);
+    const recentErrorLogs = clientIds.length > 0
+      ? await prisma.clientLog.findMany({
+          where: {
+            clientId: { in: clientIds },
+            level: 'ERROR',
+            createdAt: { gte: new Date(now - 24 * 60 * 60 * 1000) } // 過去24時間
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10
+        })
+      : [];
+
+    // ファイルベースのアラートを読み込む（ローカル環境用）
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const alertDir = path.join(process.cwd(), 'alerts');
+    let fileAlerts: Array<{ id: string; type: string; message: string; timestamp: string; acknowledged: boolean }> = [];
+    
+    try {
+      const files = await fs.readdir(alertDir);
+      const alertFiles = files.filter((f) => f.startsWith('alert-') && f.endsWith('.json'));
+      for (const file of alertFiles.slice(-10)) { // 最新10件
+        try {
+          const content = await fs.readFile(path.join(alertDir, file), 'utf-8');
+          const alert = JSON.parse(content);
+          if (!alert.acknowledged) {
+            fileAlerts.push(alert);
+          }
+        } catch {
+          // ファイル読み込みエラーは無視
+        }
+      }
+    } catch {
+      // ディレクトリが存在しない場合は無視
+    }
+
+    return {
+      requestId: request.id,
+      alerts: {
+        staleClients: staleClients.length,
+        errorLogs: recentErrorLogs.length,
+        fileAlerts: fileAlerts.length,
+        hasAlerts: staleClients.length > 0 || recentErrorLogs.length > 0 || fileAlerts.length > 0
+      },
+      details: {
+        staleClientIds: staleClients.map((s) => s.clientId),
+        recentErrors: recentErrorLogs.map((log) => ({
+          clientId: log.clientId,
+          message: log.message,
+          createdAt: log.createdAt
+        })),
+        fileAlerts
+      }
+    };
+  });
 }
