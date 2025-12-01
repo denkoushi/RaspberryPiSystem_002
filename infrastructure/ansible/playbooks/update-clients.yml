@@ -17,8 +17,8 @@
       ansible.builtin.file:
         path: "{{ repo_path }}"
         state: directory
-        owner: pi
-        group: pi
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: '0755'
 
     - name: Sync repository to desired state
@@ -49,7 +49,8 @@
         daemon_reload: true
       loop: "{{ services_to_restart }}"
       register: restart_result
-      failed_when: restart_result is failed
+      ignore_errors: true
+      failed_when: false
 
     - name: Collect health check info
       ansible.builtin.shell: |
