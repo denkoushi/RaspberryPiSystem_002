@@ -1,6 +1,12 @@
-[clients]
-# pi-kiosk-01 ansible_host=192.168.0.30
-# pi-kiosk-02 ansible_host=192.168.0.31
-
-[clients:vars]
-ansible_python_interpreter=/usr/bin/python3
+all:
+  children:
+    clients:
+      hosts:
+        raspberrypi4:
+          ansible_host: 192.168.128.102
+        raspberrypi3:
+          ansible_host: 192.168.128.152
+      vars:
+        ansible_user: pi
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3

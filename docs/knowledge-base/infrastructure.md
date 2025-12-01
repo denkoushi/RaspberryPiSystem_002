@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 20件  
+**件数**: 22件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -736,5 +736,60 @@ update-frequency: medium
 - `/etc/ssh/sshd_config`（Raspberry Pi 5側）
 - `~/.ssh/authorized_keys`（Raspberry Pi 5側）
 - `/etc/hosts`（Mac側、必要に応じて）
+
+---
+
+### [KB-058] Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題（ユーザー名・SSH鍵・サービス存在確認）
+
+**EXEC_PLAN.md参照**: Phase 1 実機テスト（2025-12-01）
+
+**事象**: 
+- Raspberry Pi 5からAnsibleでRaspberry Pi 4とRaspberry Pi 3への接続テストが失敗
+- `ansible all -i infrastructure/ansible/inventory.yml -m ping` で `Permission denied (publickey,password)` エラー
+- インベントリファイルで `ansible_user: pi` と指定していたが、実際のユーザー名が異なる
+- Raspberry Pi 4のユーザー名は `tools03`、Raspberry Pi 3のユーザー名は `signageras3`
+- SSH鍵認証を設定する際、各クライアントに公開鍵を追加する必要があった
+- プレイブック実行時に `owner: pi` と `group: pi` が指定されていたが、実際のユーザー名と不一致でエラー
+- プレイブックで指定されたサービス（`signage-lite.service`、`kiosk-browser.service`）がRaspberry Pi 4に存在しないため、サービス再起動タスクが失敗
+
+**要因**: 
+- **インベントリファイルのユーザー名設定**: デフォルトで `ansible_user: pi` と設定されていたが、実際のクライアントでは異なるユーザー名が使用されていた
+- **SSH鍵認証の未設定**: Raspberry Pi 5から各クライアントへのSSH鍵認証が設定されていなかった
+- **プレイブックのユーザー名ハードコーディング**: プレイブック内で `owner: pi` と `group: pi` がハードコーディングされていた
+- **サービス存在の前提**: プレイブックが全クライアントに同じサービスが存在することを前提としていたが、実際にはクライアントごとに異なるサービスが稼働していた
+
+**試行した対策**: 
+- [試行1] インベントリファイルで `ansible_user: pi` を確認 → **失敗**（実際のユーザー名が異なる）
+- [試行2] `--ask-pass` オプションでパスワード認証を試行 → **パスワードが不明**
+- [試行3] Raspberry Pi 5でSSH鍵を生成し、各クライアントに公開鍵を追加 → **成功**
+  - `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""` で鍵を生成
+  - RealVNC経由で各クライアントに接続し、`~/.ssh/authorized_keys` に公開鍵を追加
+- [試行4] インベントリファイルで各ホストごとにユーザー名を指定 → **成功**
+  - `raspberrypi4` に `ansible_user: tools03`、`raspberrypi3` に `ansible_user: signageras3` を設定
+- [試行5] プレイブックの `owner: pi` を `owner: "{{ ansible_user }}"` に変更 → **成功**
+- [試行6] サービス再起動タスクに `ignore_errors: true` を追加 → **成功**（存在しないサービスをスキップ）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-01）: 以下の対策を組み合わせて解決
+  1. **SSH鍵認証の設定**: Raspberry Pi 5でSSH鍵を生成し、各クライアントに公開鍵を追加
+  2. **インベントリファイルのユーザー名設定**: 各ホストごとに正しいユーザー名を指定
+  3. **プレイブックのユーザー名動的化**: `owner: "{{ ansible_user }}"` で動的にユーザー名を設定
+  4. **サービス存在チェック**: `ignore_errors: true` で存在しないサービスをスキップ
+
+**学んだこと**: 
+- **インベントリファイルの重要性**: 各クライアントの実際のユーザー名を正確に設定することが重要
+- **SSH鍵認証の設定**: パスワード認証に頼らず、SSH鍵認証を設定することで自動化が可能になる
+- **プレイブックの柔軟性**: ユーザー名やサービス名をハードコーディングせず、変数や条件分岐を使用する
+- **クライアント間の差異**: 全クライアントが同じ設定・サービスを持つとは限らないため、エラーハンドリングが重要
+- **RealVNC経由での設定**: SSH接続が確立する前は、RealVNC経由で設定を行うことが有効
+- **段階的な問題解決**: 接続→認証→プレイブック実行の順で段階的に問題を解決する
+
+**解決状況**: ✅ **解決済み**（2025-12-01）
+
+**関連ファイル**: 
+- `infrastructure/ansible/inventory.yml`（インベントリファイル）
+- `infrastructure/ansible/playbooks/update-clients.yml`（更新プレイブック）
+- `~/.ssh/id_ed25519.pub`（Raspberry Pi 5側の公開鍵）
+- `~/.ssh/authorized_keys`（各クライアント側）
 
 ---
