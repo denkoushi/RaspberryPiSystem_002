@@ -63,6 +63,7 @@ run_remotely() {
 # メイン処理
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
+  echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   if ! run_remotely; then
     # アラートファイルを生成
     if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then
@@ -75,6 +76,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   fi
 else
   echo "[INFO] Executing update playbook locally"
+  echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   if ! run_locally; then
     # アラートファイルを生成
     if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then

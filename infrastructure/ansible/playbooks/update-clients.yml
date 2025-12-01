@@ -1,6 +1,6 @@
 ---
-- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi clients
-  hosts: clients
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi server and clients
+  hosts: server:clients
   gather_facts: false
   become: true
   serial: 5
@@ -8,10 +8,12 @@
     repo_path: /opt/RaspberryPiSystem_002
     repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
     repo_version: main
-    services_to_restart:
-      - signage-lite.service
-      - signage-lite-update.timer
-      - kiosk-browser.service
+  services_to_restart:
+    - signage-lite.service
+    - signage-lite-update.timer
+    - kiosk-browser.service
+  server_services_to_restart:
+    - docker  # Docker Composeサービスを再起動するため
   pre_tasks:
     - name: Ensure repository parent directory exists
       ansible.builtin.file:
@@ -42,7 +44,7 @@
       changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
       failed_when: false
 
-    - name: Restart required services
+    - name: Restart required services (clients)
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: restarted
@@ -51,7 +53,18 @@
       register: restart_result
       ignore_errors: true
       failed_when: false
-      when: item in services_to_restart
+      when: item in services_to_restart and 'server' not in group_names
+
+    - name: Restart Docker Compose services (server)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml restart api web
+      args:
+        executable: /bin/bash
+      register: docker_restart_result
+      ignore_errors: true
+      failed_when: false
+      when: 'server' in group_names
 
     - name: Collect health check info
       ansible.builtin.shell: |
