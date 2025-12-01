@@ -58,6 +58,8 @@
 | Raspberry Pi クライアントにSSH鍵を配布したい | [guides/ssh-setup.md](./guides/ssh-setup.md) |
 | **Raspberry Pi 4 再起動時のサービス起動** | [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) |
 | Raspberry Pi status-agentを導入したい | [guides/status-agent.md](./guides/status-agent.md) |
+| **クライアント一括更新と監視のクイックスタート** | [guides/quick-start-deployment.md](./guides/quick-start-deployment.md) |
+| **ローカル環境対応の通知機能** | [guides/local-alerts.md](./guides/local-alerts.md) |
 
 ### 検証する
 
