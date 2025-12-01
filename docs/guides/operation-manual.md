@@ -2,7 +2,7 @@
 title: 運用マニュアル
 tags: [運用, マニュアル, 日常運用, トラブルシューティング, メンテナンス]
 audience: [運用者, 管理者]
-last-verified: 2025-11-27
+last-verified: 2025-12-01
 related: [deployment.md, monitoring.md, backup-and-restore.md, ../knowledge-base/index.md]
 category: guides
 update-frequency: medium
@@ -17,9 +17,11 @@ update-frequency: medium
 ## 目次
 
 1. [日常的な運用手順](#日常的な運用手順)
-2. [トラブル時の対応手順](#トラブル時の対応手順)
-3. [定期メンテナンス手順](#定期メンテナンス手順)
-4. [緊急時の対応](#緊急時の対応)
+2. [クライアント一括更新](#クライアント一括更新)
+3. [クライアント状態監視](#クライアント状態監視)
+4. [トラブル時の対応手順](#トラブル時の対応手順)
+5. [定期メンテナンス手順](#定期メンテナンス手順)
+6. [緊急時の対応](#緊急時の対応)
 
 ---
 
@@ -125,6 +127,142 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50
 # ラズパイ5で実行
 docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50 web
 ```
+
+---
+
+## クライアント一括更新
+
+### Macから全クライアントを更新
+
+**Macのターミナルで実行:**
+
+```bash
+# プロジェクトディレクトリに移動
+cd /Users/tsudatakashi/RaspberryPiSystem_002
+
+# 環境変数を設定
+export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+
+# 一括更新スクリプトを実行
+./scripts/update-all-clients.sh
+```
+
+**実行結果の確認:**
+
+- `ok=7`: 全タスクが成功
+- `changed=1`: 更新があった（Gitリポジトリの更新、サービスの再起動など）
+- `failed=0`: エラーなし
+
+**ログファイルの確認:**
+
+```bash
+# 最新のログファイルを確認
+ls -lt logs/ansible-update-*.log | head -1
+cat logs/ansible-update-YYYYMMDD-HHMMSS.log
+```
+
+### 特定のクライアントのみ更新
+
+**Raspberry Pi 5のターミナルで実行:**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+ansible-playbook -i infrastructure/ansible/inventory.yml \
+  infrastructure/ansible/playbooks/update-clients.yml \
+  --limit raspberrypi3
+```
+
+### 更新前の状態確認（ドライラン）
+
+**Raspberry Pi 5のターミナルで実行:**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+ansible-playbook -i infrastructure/ansible/inventory.yml \
+  infrastructure/ansible/playbooks/update-clients.yml \
+  --check
+```
+
+### 更新頻度の推奨
+
+- **日常的な更新**: 必要に応じて（コード変更時）
+- **定期更新**: 週次または月次（セキュリティパッチ適用時）
+
+詳細は [クイックスタートガイド](./quick-start-deployment.md) を参照してください。
+
+---
+
+## クライアント状態監視
+
+### 管理画面での確認
+
+**ブラウザでアクセス:**
+
+```
+https://192.168.128.131/admin/clients
+```
+
+**表示内容:**
+
+- **クライアント稼働状況カード**: CPU、メモリ、ディスク、温度、最終確認時刻
+- **12時間超オフライン**: 12時間以上更新がないクライアントは赤背景で表示
+- **クライアント最新ログ**: 各クライアントの最新ログを表示
+
+### クライアントログの検索
+
+**ブラウザでアクセス:**
+
+```
+https://192.168.128.131/admin/clients/logs
+```
+
+**フィルタリング:**
+
+- **クライアントID**: 特定のクライアントのログのみ表示
+- **ログレベル**: DEBUG、INFO、WARN、ERRORでフィルタ
+- **件数制限**: 表示件数を指定（デフォルト: 50件）
+
+### APIでの確認
+
+**Macのターミナルで実行:**
+
+```bash
+# ログインしてトークンを取得
+TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+
+# クライアント状態を取得
+curl -X GET http://192.168.128.131:8080/api/clients/status \
+  -H "Authorization: Bearer $TOKEN" | jq '.'
+
+# クライアントログを取得
+curl -X GET "http://192.168.128.131:8080/api/clients/logs?clientId=raspberrypi5-server&limit=10" \
+  -H "Authorization: Bearer $TOKEN" | jq '.'
+```
+
+### status-agentの状態確認
+
+**クライアント（Raspberry Pi 3/4）で実行:**
+
+```bash
+# status-agentのタイマー状態確認
+systemctl status status-agent.timer
+
+# status-agentのサービス状態確認
+systemctl status status-agent.service
+
+# 最新の実行ログ確認
+journalctl -u status-agent.service -n 20 --no-pager
+```
+
+### 監視の推奨頻度
+
+- **日常的な確認**: 1日1回（管理画面で確認）
+- **異常検知**: 12時間以上更新がないクライアントを確認
+- **ログ確認**: エラーが発生した場合に確認
+
+詳細は [status-agentガイド](./status-agent.md) を参照してください。
 
 ---
 
@@ -263,6 +401,79 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
    ```
 
 **関連ナレッジ**: [NFCリーダーの問題](../troubleshooting/nfc-reader-issues.md)
+
+#### 問題5: クライアント一括更新が失敗する
+
+**症状**:
+- Ansibleプレイブックの実行が失敗する
+- 特定のクライアントに接続できない
+
+**対応手順**:
+
+1. **SSH接続の確認**
+   ```bash
+   # Raspberry Pi 5からクライアントに接続テスト
+   ssh tools03@192.168.128.102
+   ssh signageras3@192.168.128.152
+   ```
+
+2. **インベントリファイルの確認**
+   ```bash
+   # Raspberry Pi 5で確認
+   cat /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml
+   ```
+
+3. **Ansible接続テスト**
+   ```bash
+   # Raspberry Pi 5で実行
+   cd /opt/RaspberryPiSystem_002
+   ansible all -i infrastructure/ansible/inventory.yml -m ping
+   ```
+
+4. **ログファイルの確認**
+   ```bash
+   # Macで確認
+   cat logs/ansible-update-YYYYMMDD-HHMMSS.log
+   ```
+
+**関連ナレッジ**: [KB-058](../knowledge-base/infrastructure.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認)
+
+#### 問題6: クライアント状態が表示されない
+
+**症状**:
+- 管理画面でクライアント状態が表示されない
+- status-agentが動作していない
+
+**対応手順**:
+
+1. **status-agentの状態確認**
+   ```bash
+   # クライアントで確認
+   systemctl status status-agent.timer
+   systemctl status status-agent.service
+   ```
+
+2. **status-agentの再起動**
+   ```bash
+   # クライアントで実行
+   sudo systemctl restart status-agent.timer
+   sudo systemctl restart status-agent.service
+   ```
+
+3. **APIサーバーの確認**
+   ```bash
+   # Raspberry Pi 5で確認
+   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   ```
+
+4. **データベースの確認**
+   ```bash
+   # Raspberry Pi 5で確認
+   docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
+     psql -U postgres -d borrow_return -c "SELECT * FROM \"ClientStatus\" ORDER BY \"lastSeen\" DESC LIMIT 10;"
+   ```
+
+**関連ナレッジ**: [status-agentガイド](./status-agent.md)
 
 #### 問題4: ディスク容量不足
 
@@ -499,9 +710,12 @@ BACKUP_FILE="/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz"
 
 ## 関連ドキュメント
 
+- [クイックスタートガイド](./quick-start-deployment.md): 一括更新とクライアント監視のクイックスタート
 - [デプロイメントガイド](./deployment.md)
 - [監視・アラートガイド](./monitoring.md)
 - [バックアップ・リストア手順](./backup-and-restore.md)
+- [status-agentガイド](./status-agent.md): クライアント状態送信エージェントの設定
+- [一括更新システムの詳細](../plans/production-deployment-management-plan.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/index.md)
 - [インフラ基盤](../architecture/infrastructure-base.md)
 
@@ -510,4 +724,5 @@ BACKUP_FILE="/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz"
 ## 更新履歴
 
 - 2025-11-27: 初版作成
+- 2025-12-01: クライアント一括更新とクライアント状態監視のセクションを追加
 
