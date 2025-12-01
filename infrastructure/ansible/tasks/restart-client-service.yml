@@ -1,0 +1,35 @@
+---
+- block:
+    - name: Restart {{ service_name }} on client
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: true
+      register: client_service_restart
+      retries: 3
+      delay: 10
+      until: client_service_restart is succeeded
+
+    - name: Record restart success for {{ service_name }}
+      ansible.builtin.set_fact:
+        client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'ok'} ] }}"
+  rescue:
+    - name: Capture latest logs for {{ service_name }}
+      ansible.builtin.shell: |
+        set -euo pipefail
+        journalctl -u {{ service_name }} -n 50 --no-pager || true
+      args:
+        executable: /bin/bash
+      register: client_service_logs
+      changed_when: false
+
+    - name: Record restart failure for {{ service_name }}
+      ansible.builtin.set_fact:
+        client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'failed', 'log': client_service_logs.stdout | default('')} ] }}"
+
+    - name: Fail current host due to service restart failure
+      ansible.builtin.fail:
+        msg: >
+          Service {{ service_name }} failed to restart on {{ inventory_hostname }}.
+          See journal snippet above for details.
+

@@ -144,42 +144,10 @@
       notify: restart pcscd
 
     - name: Restart required services (clients) with retry
-      block:
-        - name: Restart {{ item }} on client
-          ansible.builtin.systemd:
-            name: "{{ item }}"
-            state: restarted
-            daemon_reload: true
-          register: client_service_restart
-          retries: 3
-          delay: 10
-          until: client_service_restart is succeeded
-
-        - name: Record restart success for {{ item }}
-          ansible.builtin.set_fact:
-            client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': item, 'status': 'ok'} ] }}"
-      rescue:
-        - name: Capture latest logs for {{ item }}
-          ansible.builtin.shell: |
-            set -euo pipefail
-            journalctl -u {{ item }} -n 50 --no-pager || true
-          args:
-            executable: /bin/bash
-          register: client_service_logs
-          changed_when: false
-
-        - name: Record restart failure for {{ item }}
-          ansible.builtin.set_fact:
-            client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': item, 'status': 'failed', 'log': client_service_logs.stdout | default('')} ] }}"
-
-        - name: Fail current host due to service restart failure
-          ansible.builtin.fail:
-            msg: >
-              Service {{ item }} failed to restart on {{ inventory_hostname }}.
-              See journal snippet above for details.
+      ansible.builtin.include_tasks: "../tasks/restart-client-service.yml"
       loop: "{{ services_to_restart }}"
       loop_control:
-        label: "{{ item }}"
+        loop_var: service_name
       when: '"server" not in group_names'
 
     - name: Restart Docker Compose services (server) with retry

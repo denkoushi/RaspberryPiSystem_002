@@ -37,9 +37,7 @@
           - nfc_agent_client_id is defined
           - nfc_agent_client_secret is defined
         fail_msg: "NFCエージェントのCLIENT_ID/CLIENT_SECRETが定義されていません（inventory.ymlを確認してください）"
-      when:
-        - '"clients" in group_names'
-        - nfc_agent_client_id is defined
+      when: '"clients" in group_names'
 
     # API環境変数ファイルの管理（サーバーのみ）
     - name: Ensure API .env directory exists
@@ -94,9 +92,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0600'
-      when:
-        - '"clients" in group_names'
-        - nfc_agent_client_id is defined
+      when: '"clients" in group_names'
       register: nfc_agent_env_result
 
     # Docker Compose環境変数ファイルの管理（サーバーのみ）
@@ -199,7 +195,6 @@
         PY
       when:
         - '"clients" in group_names'
-        - nfc_agent_client_id is defined
         - nfc_agent_env_result.changed | default(false)
       changed_when: false
 
