@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useActiveLoans, useEmployees, useItems, useClientStatuses, useClientAlerts } from '../../api/hooks';
+import { useActiveLoans, useEmployees, useItems, useClientStatuses, useClientAlerts, useAcknowledgeAlert } from '../../api/hooks';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 
@@ -9,10 +9,16 @@ export function DashboardPage() {
   const loans = useActiveLoans();
   const clientStatuses = useClientStatuses();
   const alertsQuery = useClientAlerts();
+  const acknowledgeMutation = useAcknowledgeAlert();
 
   // アラート情報を計算
   const alerts = alertsQuery.data?.alerts;
   const hasAlerts = alerts?.hasAlerts ?? false;
+  const fileAlerts = alertsQuery.data?.details.fileAlerts ?? [];
+
+  const handleAcknowledge = async (alertId: string) => {
+    await acknowledgeMutation.mutateAsync(alertId);
+  };
 
   return (
     <div className="space-y-6">
@@ -37,14 +43,29 @@ export function DashboardPage() {
                     </Link>
                   </p>
                 )}
-                {alertsQuery.data?.details.fileAlerts && alertsQuery.data.details.fileAlerts.length > 0 && (
+                {fileAlerts.length > 0 && (
                   <div className="mt-2">
                     <p className="font-semibold">ファイルベースのアラート:</p>
-                    {alertsQuery.data.details.fileAlerts.map((alert) => (
-                      <p key={alert.id} className="ml-2">
-                        [{alert.type}] {alert.message}
-                        {alert.details && <span className="text-xs text-white/60"> ({alert.details})</span>}
-                      </p>
+                    {fileAlerts.map((alert) => (
+                      <div key={alert.id} className="ml-2 flex items-center justify-between gap-2">
+                        <div>
+                          <p>
+                            [{alert.type}] {alert.message}
+                            {alert.details && <span className="text-xs text-white/60"> ({alert.details})</span>}
+                          </p>
+                          <p className="text-xs text-white/60">
+                            {new Date(alert.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+                          </p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleAcknowledge(alert.id)}
+                          disabled={acknowledgeMutation.isPending}
+                        >
+                          確認済み
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -365,4 +365,33 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       }
     };
   });
+
+  // ファイルベースのアラートを確認済みにする
+  app.post('/clients/alerts/:id/acknowledge', { preHandler: canManage }, async (request) => {
+    const { id } = request.params as { id: string };
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const alertDir = path.join(process.cwd(), 'alerts');
+
+    try {
+      const files = await fs.readdir(alertDir);
+      const alertFile = files.find((f) => f.startsWith(`alert-${id}`) && f.endsWith('.json'));
+      
+      if (alertFile) {
+        const filePath = path.join(alertDir, alertFile);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const alert = JSON.parse(content);
+        alert.acknowledged = true;
+        await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
+        return { requestId: request.id, acknowledged: true };
+      }
+      
+      throw new ApiError(404, 'アラートが見つかりません');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(500, 'アラートの確認処理に失敗しました');
+    }
+  });
 }

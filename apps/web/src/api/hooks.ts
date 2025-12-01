@@ -12,6 +12,7 @@ import {
   getClientLogs,
   getClientStatuses,
   getClientAlerts,
+  acknowledgeAlert,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -218,6 +219,16 @@ export function useClientAlerts() {
     queryKey: ['client-alerts'],
     queryFn: getClientAlerts,
     refetchInterval: 60_000 // 1分ごとに更新
+  });
+}
+
+export function useAcknowledgeAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: acknowledgeAlert,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-alerts'] });
+    }
   });
 }
 

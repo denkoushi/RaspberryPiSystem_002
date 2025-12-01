@@ -293,6 +293,13 @@ export async function getClientAlerts() {
   return data;
 }
 
+export async function acknowledgeAlert(alertId: string) {
+  const { data } = await api.post<{ requestId: string; acknowledged: boolean }>(
+    `/clients/alerts/${alertId}/acknowledge`
+  );
+  return data;
+}
+
 interface ImportMasterPayload {
   employeesFile?: File | null;
   itemsFile?: File | null;
