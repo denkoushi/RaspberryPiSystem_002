@@ -6,7 +6,6 @@ After=network-online.target
 [Service]
 Type=oneshot
 Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
-WorkingDirectory=/opt/RaspberryPiSystem_002/clients/status-agent
 ExecStart=/usr/bin/env python3 /opt/RaspberryPiSystem_002/clients/status-agent/status-agent.py
 Nice=5
 
