@@ -112,6 +112,8 @@ update-frequency: high
 | [KB-058](./infrastructure.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認) | Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題（ユーザー名・SSH鍵・サービス存在確認） | ✅ 解決済み |
 | [KB-059](./infrastructure.md#kb-059-ローカルアラートシステムのdockerコンテナ内からのファイルアクセス問題) | ローカルアラートシステムのDockerコンテナ内からのファイルアクセス問題 | ✅ 解決済み |
 | [KB-060](./infrastructure.md#kb-060-dockerコンテナ内からnfcリーダーpcscdにアクセスできない問題) | Dockerコンテナ内からNFCリーダー（pcscd）にアクセスできない問題 | ✅ 解決済み |
+| [KB-061](./infrastructure.md#kb-061-ansible実装後の設定ファイル削除問題と堅牢化対策) | Ansible実装後の設定ファイル削除問題と堅牢化対策 | ✅ 解決済み |
+| [KB-062](./infrastructure.md#kb-062-ansible設定ファイル管理化の実装systemdサービスアプリケーション設定) | Ansible設定ファイル管理化の実装（systemdサービス・アプリケーション設定） | ✅ 解決済み |
 
 ---
 
