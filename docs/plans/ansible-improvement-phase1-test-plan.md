@@ -187,15 +187,15 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 
 ## テスト実行順序
 
-1. ✅ テスト1: シンタックスチェック（完了）
-2. ✅ テスト4-1: 通常のデプロイ動作確認（正常系の確認）
-3. ✅ テスト4-2: 設定ファイル管理の動作確認（正常系の確認）
-4. ✅ テスト2-1: 必須変数チェック（バリデーション）
-5. テスト2-3: systemdユニットファイル検証（バリデーション）
-6. テスト3-2: サービス再起動のrescue処理（エラーハンドリング）
-7. テスト3-3: Docker再起動のrescue処理（エラーハンドリング）
-8. テスト2-2: .envファイル構文チェック
-9. テスト3-1: Git操作のリトライ機能（ネットワーク障害テスト）
+1. ✅ テスト1: シンタックスチェック（済）
+2. ✅ テスト4-1: 通常のデプロイ動作確認（済）
+3. ✅ テスト4-2: 設定ファイル管理の動作確認（済）
+4. ✅ テスト2-1: 必須変数チェック（済）
+5. ✅ テスト2-2: .envファイル構文チェック（APIテンプレートを破壊 → 期待どおり失敗）
+6. ✅ テスト2-3: systemdユニットファイル検証（kioskテンプレートを破壊 → 期待どおり失敗）
+7. ⚠️ テスト3-2: サービス再起動のrescue処理（systemdモジュールが失敗扱いにならず要改善）
+8. ⚠️ テスト3-3: Docker再起動のrescue処理（`docker compose`失敗時も成功扱いになる不具合）
+9. ⚠️ テスト3-1: Git操作のリトライ機能（`git`タスクが1回目で致命的失敗しリトライが働かない）
 
 ## テスト結果記録
 
@@ -205,19 +205,19 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 |---------|---------|------|------|
 | テスト1 | シンタックスチェック | ✅ 成功 | 2025-12-01：3本のプレイブックすべて構文OK |
 | テスト2-1 | 必須変数チェック | ✅ 成功 | raspberrypi4から`nfc_agent_client_id`/`secret`削除→assertで停止 |
-| テスト2-2 | .envファイル構文チェック | ⏳ 未実施 | 要：テンプレートに意図的な構文エラーを埋め込み |
-| テスト2-3 | systemdユニットファイル検証 | ⏳ 未実施 | 要：テンプレートに意図的な構文エラーを埋め込み |
-| テスト3-1 | Git操作のリトライ機能 | ⏳ 未実施 | ネットワーク障害の再現が困難 |
-| テスト3-2 | サービス再起動のrescue処理 | ⚠️ 途中 | `services_to_restart`をextra-varsで上書きする際にJSON指定が必要。次回: `-e '{\"services_to_restart\":[\"fake.service\"]}'`をsudo対応込みで再実施 |
-| テスト3-3 | Docker再起動のrescue処理 | ⏳ 未実施 | docker compose restartの検証は未実施（現状でも`args`警告があるため要修正） |
+| テスト2-2 | .envファイル構文チェック | ✅ 成功 | `infrastructure/ansible/templates/api.env.j2`に不正行を追加→`Validate API .env syntax`が`Invalid API .env lines -> 21:THIS LINE IS INVALID`で停止 |
+| テスト2-3 | systemdユニットファイル検証 | ✅ 成功 | `kiosk-browser.service.j2`の`ExecStart`を不正化→`restart kiosk-browser`が`BadUnitSetting`で停止 |
+| テスト3-1 | Git操作のリトライ機能 | ❌ 要修正 | `/etc/hosts`で`github.com`を127.0.0.1へ向けると`git`タスクが即時fatal。`retries/until`が働かずプレイブックが終了 |
+| テスト3-2 | サービス再起動のrescue処理 | ❌ 要修正 | `services_to_restart`に存在しない/破損サービスを指定しても`systemd`モジュールが失敗扱いにならずrescue未発火 |
+| テスト3-3 | Docker再起動のrescue処理 | ❌ 要修正 | `/usr/bin/docker`を退避させても`docker compose`タスクが`rc=127`のまま成功扱い→rescue未発火（`failed_when`不足） |
 | テスト4-1 | 通常のデプロイ動作確認 | ✅ 成功 | `update-clients.yml`を全ホスト対象で実行。既知のkiosk-browser実行ファイル欠如ログあり |
 | テスト4-2 | 設定ファイル管理の動作確認 | ✅ 成功 | `manage-system-configs.yml` / `manage-app-configs.yml`を実行。バリデーション含め成功 |
 
 ## 次のステップ
 
-1. **残テストの実施**: テスト2-2/2-3/3-1/3-2/3-3を実施（必要に応じて一時的な故障条件を作成）
-2. **エラーパターンの再現**: `services_to_restart`をJSON形式で上書きし、rescueブロックの実行ログを取得
-3. **問題の修正**: kiosk-browser.service の実行ファイル欠如、docker-compose `args` 警告など既知の課題整理
-4. **再テスト**: 修正後に該当テストを再実行
-5. **ドキュメント更新**: テスト結果を本ドキュメントに随時反映
+1. **テスト3系の改善設計**: `git`/`systemd`/`docker`の失敗を確実に「失敗扱い」にするロジックを見直し（`failed_when`や追加バリデーション）
+2. **実装修正**: 上記改善に基づきプレイブックを改修（gitタスクの`until`再検証、systemdモジュールの戻り値検査、docker restartの失敗判定）
+3. **再テスト**: 改修後にテスト3-1/3-2/3-3を再実行し、rescueの動作とリトライ挙動を確認
+4. **ログ整理**: 失敗時に記録されるstdout/stderrをKnowledge Baseへ追記
+5. **ドキュメント更新**: 本ドキュメントおよび`INDEX.md`に改善内容と結果を反映
 
