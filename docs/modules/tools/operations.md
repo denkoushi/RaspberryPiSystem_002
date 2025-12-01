@@ -677,6 +677,205 @@ chmod -R 755 storage/photos storage/thumbnails
 2. 復旧手順に従って修復
 3. 修復後、再度整合性チェックを実行して確認
 
+#### 5. NFCリーダーが認識できない、または認識できても使えない
+
+**症状**: 
+- NFCタグをスキャンしても反応がない
+- `curl http://localhost:7071/api/agent/status` で `readerConnected: false` が返る
+- `Service not available` エラーが発生する
+
+**確認項目**:
+
+1. **NFCエージェントの起動確認**
+   ```bash
+   # Dockerコンテナで実行されている場合
+   docker ps | grep nfc-agent
+   
+   # プロセスで実行されている場合
+   ps aux | grep nfc_agent
+   ```
+
+2. **NFCエージェントのステータス確認**
+   ```bash
+   curl http://localhost:7071/api/agent/status
+   ```
+   
+   期待されるレスポンス:
+   ```json
+   {
+     "readerConnected": true,
+     "readerName": "SONY FeliCa RC-S300/S (1469193) 00 00",
+     "message": "監視中",
+     "lastError": null
+   }
+   ```
+
+3. **USBデバイスの認識確認**
+   ```bash
+   lsusb | grep -i sony
+   ```
+   
+   期待される出力:
+   ```
+   Bus 001 Device 003: ID 054c:0dc8 Sony Corp. FeliCa Port/PaSoRi 4.0
+   ```
+
+4. **pcscdサービスの確認**
+   ```bash
+   sudo systemctl status pcscd
+   ```
+
+5. **pcsc_scanでのリーダー認識確認**
+   ```bash
+   # rootユーザーで実行
+   sudo pcsc_scan
+   ```
+   
+   期待される出力:
+   ```
+   Waiting for the first reader...
+   SONY FeliCa RC-S300/S (1469193) 00 00
+   ```
+
+**よくある原因と対処方法**:
+
+##### 原因1: Dockerコンテナ内からpcscdにアクセスできない
+
+**症状**: 
+- `readerConnected: false`
+- `Service not available. (0x8010001D)` エラー
+- `Failed to establish context` エラー
+
+**原因**:
+- Dockerコンテナ内からホストの`pcscd`デーモンにアクセスするには、`/run/pcscd/pcscd.comm`ソケットファイルへのアクセスが必要
+- `docker-compose.client.yml`に`/run/pcscd`のマウントが設定されていない
+
+**対処方法**:
+
+```bash
+# 1. docker-compose.client.ymlを確認
+cat /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+
+# 2. /run/pcscdのマウントが設定されているか確認
+# 以下のような設定が必要:
+# volumes:
+#   - /run/pcscd:/run/pcscd:ro
+
+# 3. 設定されていない場合、docker-compose.client.ymlを編集
+cd /opt/RaspberryPiSystem_002
+# volumesセクションに以下を追加:
+#   - /run/pcscd:/run/pcscd:ro
+
+# 4. コンテナを再作成
+docker compose -f infrastructure/docker/docker-compose.client.yml down nfc-agent
+docker compose -f infrastructure/docker/docker-compose.client.yml up -d nfc-agent
+
+# 5. コンテナ内からpcscdにアクセスできるか確認
+docker exec docker-nfc-agent-1 ls -la /run/pcscd/
+# pcscd.comm が表示されればOK
+```
+
+##### 原因2: polkit設定ファイルが削除された
+
+**症状**:
+- `Access denied` エラー
+- `pcsc_scan`はrootで動作するが、一般ユーザーでは動作しない
+- Dockerコンテナ内から`pcscd`にアクセスできない
+
+**原因**:
+- `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`が削除された（`git clean`など）
+- polkitが`pcscd`へのアクセスを拒否している
+
+**対処方法**:
+
+```bash
+# 1. polkit設定ディレクトリの確認
+ls -la /etc/polkit-1/rules.d/
+
+# 2. polkit設定ファイルが存在しない場合、作成
+sudo mkdir -p /etc/polkit-1/rules.d/
+sudo tee /etc/polkit-1/rules.d/50-pcscd-allow-all.rules > /dev/null <<'EOF'
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.debian.pcsc-lite.access_pcsc" || 
+        action.id == "org.debian.pcsc-lite.access_card") {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
+# 3. ファイルの権限を設定
+sudo chmod 644 /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+
+# 4. pcscdを再起動
+sudo systemctl restart pcscd
+
+# 5. 一般ユーザーでpcsc_scanを実行して確認
+pcsc_scan
+# リーダーが認識されればOK
+```
+
+##### 原因3: pcscdサービスが停止している
+
+**症状**:
+- `pcsc_scan`でリーダーが認識されない
+- `systemctl status pcscd`で`inactive`と表示される
+
+**対処方法**:
+
+```bash
+# 1. pcscdサービスを起動
+sudo systemctl start pcscd
+
+# 2. 自動起動を有効化
+sudo systemctl enable pcscd
+
+# 3. 状態を確認
+sudo systemctl status pcscd
+```
+
+##### 原因4: USBデバイスが認識されていない
+
+**症状**:
+- `lsusb | grep -i sony`で何も表示されない
+- USBケーブルが接続されていない、または故障している
+
+**対処方法**:
+
+```bash
+# 1. USBケーブルを確認
+# - USBケーブルが正しく接続されているか
+# - USBポートが動作しているか（他のUSBデバイスで確認）
+
+# 2. USBデバイスを再認識
+# USBケーブルを抜いて再度接続
+
+# 3. システムを再起動（最終手段）
+sudo reboot
+```
+
+##### 原因5: ポート7071が既に使用されている
+
+**症状**:
+- `address already in use` エラー
+- NFCエージェントが起動しない
+
+**対処方法**:
+
+```bash
+# 1. ポート7071を使用しているプロセスを確認
+sudo lsof -i :7071
+
+# 2. 古いプロセスを停止
+sudo pkill -9 -f nfc_agent
+
+# 3. Dockerコンテナを再起動
+docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
+```
+
+**詳細なトラブルシューティング**:
+
+詳細は [NFCリーダーのトラブルシューティング](../../troubleshooting/nfc-reader-issues.md) を参照してください。
+
 ---
 
 ## 定期メンテナンス
@@ -715,4 +914,5 @@ ls -lh /opt/backups/photos_backup_*.tar.gz | tail -1
 - [サービス層設計](./services.md) - サービス層の設計詳細
 - [バックアップ・リストア手順](../../guides/backup-and-restore.md) - システム全体のバックアップ・リストア手順
 - [写真撮影持出機能](./photo-loan.md) - 写真撮影持出機能の詳細
+- [NFCリーダーのトラブルシューティング](../../troubleshooting/nfc-reader-issues.md) - NFCリーダーの詳細なトラブルシューティング手順
 

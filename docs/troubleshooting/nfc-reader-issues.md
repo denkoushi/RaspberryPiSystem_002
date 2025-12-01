@@ -140,6 +140,104 @@ pnpm build
 docker compose -f infrastructure/docker/docker-compose.client.yml up -d --build
 ```
 
+#### 原因6: Dockerコンテナ内からpcscdにアクセスできない
+
+**症状**: 
+- `readerConnected: false`
+- `Service not available. (0x8010001D)` エラー
+- `Failed to establish context` エラー
+
+**原因**:
+- Dockerコンテナ内からホストの`pcscd`デーモンにアクセスするには、`/run/pcscd/pcscd.comm`ソケットファイルへのアクセスが必要
+- `docker-compose.client.yml`に`/run/pcscd`のマウントが設定されていない
+
+**解決方法**:
+
+```bash
+# 1. docker-compose.client.ymlを確認
+cat /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+
+# 2. /run/pcscdのマウントが設定されているか確認
+# 以下のような設定が必要:
+# volumes:
+#   - /run/pcscd:/run/pcscd:ro
+
+# 3. 設定されていない場合、docker-compose.client.ymlを編集
+cd /opt/RaspberryPiSystem_002
+# volumesセクションに以下を追加:
+#   - /run/pcscd:/run/pcscd:ro
+
+# 4. コンテナを再作成
+docker compose -f infrastructure/docker/docker-compose.client.yml down nfc-agent
+docker compose -f infrastructure/docker/docker-compose.client.yml up -d nfc-agent
+
+# 5. コンテナ内からpcscdにアクセスできるか確認
+docker exec docker-nfc-agent-1 ls -la /run/pcscd/
+# pcscd.comm が表示されればOK
+
+# 6. コンテナ内からリーダーが認識されるか確認
+docker exec docker-nfc-agent-1 python -c "from smartcard.System import readers; print(list(readers()))"
+# ['SONY FeliCa RC-S300/S (1469193) 00 00'] が表示されればOK
+```
+
+#### 原因7: polkit設定ファイルが削除された
+
+**症状**:
+- `Access denied` エラー
+- `pcsc_scan`はrootで動作するが、一般ユーザーでは動作しない
+- Dockerコンテナ内から`pcscd`にアクセスできない
+
+**原因**:
+- `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`が削除された（`git clean`など）
+- polkitが`pcscd`へのアクセスを拒否している
+
+**解決方法**:
+
+```bash
+# 1. polkit設定ディレクトリの確認
+ls -la /etc/polkit-1/rules.d/
+
+# 2. polkit設定ファイルが存在しない場合、作成
+sudo mkdir -p /etc/polkit-1/rules.d/
+sudo tee /etc/polkit-1/rules.d/50-pcscd-allow-all.rules > /dev/null <<'EOF'
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.debian.pcsc-lite.access_pcsc" || 
+        action.id == "org.debian.pcsc-lite.access_card") {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
+# 3. ファイルの権限を設定
+sudo chmod 644 /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+
+# 4. pcscdを再起動
+sudo systemctl restart pcscd
+
+# 5. 一般ユーザーでpcsc_scanを実行して確認
+pcsc_scan
+# リーダーが認識されればOK
+```
+
+#### 原因8: ポート7071が既に使用されている
+
+**症状**:
+- `address already in use` エラー
+- NFCエージェントが起動しない
+
+**解決方法**:
+
+```bash
+# 1. ポート7071を使用しているプロセスを確認
+sudo lsof -i :7071
+
+# 2. 古いプロセスを停止
+sudo pkill -9 -f nfc_agent
+
+# 3. Dockerコンテナを再起動
+docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
+```
+
 ### デバッグ用コマンド
 
 #### NFCエージェントのログ確認
