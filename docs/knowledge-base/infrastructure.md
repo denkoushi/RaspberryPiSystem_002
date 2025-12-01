@@ -838,3 +838,51 @@ update-frequency: medium
 - `scripts/generate-alert.sh`（アラート生成スクリプト）
 
 ---
+
+### [KB-060] Dockerコンテナ内からNFCリーダー（pcscd）にアクセスできない問題
+
+**EXEC_PLAN.md参照**: Phase 2.4 実機テスト（2025-12-01）
+
+**事象**: 
+- Raspberry Pi 4のキオスクでNFCリーダーからのタグスキャンが機能しない
+- `curl http://localhost:7071/api/agent/status` で `readerConnected: false` が返る
+- `Service not available. (0x8010001D)` エラーが発生する
+- `Failed to establish context` エラーが発生する
+- `pcsc_scan`はrootで動作するが、一般ユーザーでは動作しない
+- Dockerコンテナ内から`pcscd`にアクセスできない
+
+**要因**: 
+- **Dockerコンテナ内からのpcscdアクセス**: Dockerコンテナ内からホストの`pcscd`デーモンにアクセスするには、`/run/pcscd/pcscd.comm`ソケットファイルへのアクセスが必要だが、`docker-compose.client.yml`に`/run/pcscd`のマウントが設定されていなかった
+- **polkit設定ファイルの削除**: `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`が削除された（`git clean`など）ため、polkitが`pcscd`へのアクセスを拒否していた
+- **ポート7071の競合**: 古い`nfc_agent`プロセスがポート7071を占有していた
+
+**試行した対策**: 
+- [試行1] `pcscd`サービスを再起動 → **失敗**（コンテナ内からアクセスできない）
+- [試行2] `tools03`ユーザーを`pcscd`グループに追加 → **失敗**（グループが存在しない）
+- [試行3] `pcscd.service`に`--ignore-polkit`オプションを追加 → **一時的に有効だが、設定がリセットされた**
+- [試行4] `/etc/polkit-1/rules.d/`ディレクトリが存在しないことを確認 → **polkit設定ファイルが削除されていた**
+- [試行5] polkit設定ファイルを再作成 → **成功**（一般ユーザーで`pcsc_scan`が動作）
+- [試行6] `docker-compose.client.yml`に`/run/pcscd`のマウントを追加 → **成功**（コンテナ内から`pcscd`にアクセス可能）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-01）: 以下の対策を組み合わせて解決
+  1. **polkit設定ファイルの再作成**: `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`を作成して、すべてのユーザーが`pcscd`にアクセスできるように設定
+  2. **Dockerコンテナへの`/run/pcscd`マウント**: `docker-compose.client.yml`の`volumes`セクションに`/run/pcscd:/run/pcscd:ro`を追加
+  3. **コンテナの再作成**: ボリュームマウント設定を反映するため、コンテナを再作成
+
+**学んだこと**: 
+- **Dockerコンテナからのホストサービスアクセス**: ホストのデーモン（`pcscd`など）にアクセスするには、ソケットファイル（`/run/pcscd/pcscd.comm`）へのアクセスが必要で、ボリュームマウントで明示的にマウントする必要がある
+- **polkit設定の重要性**: `pcscd`はpolkitを使用してアクセス制御を行っており、設定ファイルが削除されると一般ユーザーからアクセスできなくなる
+- **git cleanの影響**: `git clean -fd`などの操作で、`.gitignore`に含まれていない設定ファイル（`/etc/polkit-1/rules.d/`など）が削除される可能性がある
+- **システム設定ファイルの保護**: `/etc/`配下の設定ファイルは、`.gitignore`に追加するか、Ansibleなどの設定管理ツールで管理する必要がある
+- **コンテナ再作成の必要性**: ボリュームマウント設定を変更した場合は、コンテナの再作成が必要
+
+**解決状況**: ✅ **解決済み**（2025-12-01）
+
+**関連ファイル**: 
+- `infrastructure/docker/docker-compose.client.yml`（`/run/pcscd`のマウント設定）
+- `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`（polkit設定ファイル）
+- `docs/modules/tools/operations.md`（NFCリーダーのトラブルシューティング手順）
+- `docs/troubleshooting/nfc-reader-issues.md`（NFCリーダーの詳細なトラブルシューティング）
+
+---

@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 15件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 23件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 24件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー |
 
 ---
 
@@ -149,9 +149,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 53件 |
+| ✅ 解決済み | 54件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **57件** |
+| **合計** | **58件** |
 
 ---
 
@@ -182,4 +182,5 @@ update-frequency: high
 - 2025-12-01: KB-057を追加（SSH接続でホスト名解決が失敗しパスワード認証が通らない問題）
 - 2025-12-01: KB-058を追加（Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題）
 - 2025-12-01: KB-059を追加（ローカルアラートシステムのDockerコンテナ内からのファイルアクセス問題）
+- 2025-12-01: KB-060を追加（Dockerコンテナ内からNFCリーダー（pcscd）にアクセスできない問題）
 
