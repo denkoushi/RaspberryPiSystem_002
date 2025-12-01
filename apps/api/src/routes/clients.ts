@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
@@ -186,7 +187,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
           clientId: metrics.clientId,
           level: entry.level,
           message: entry.message.slice(0, 1000),
-          context: entry.context ?? undefined
+          context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
         }))
       });
     }
@@ -222,7 +223,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
         clientId: payload.clientId,
         level: entry.level,
         message: entry.message.slice(0, 1000),
-        context: entry.context ?? undefined
+        context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
       }))
     });
 
