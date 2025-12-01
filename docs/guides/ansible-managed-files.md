@@ -45,7 +45,7 @@ update-frequency: high
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-system-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 **設定内容**:
 ```javascript
@@ -102,7 +102,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/kiosk-browser.service.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-system-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 #### 6. サイネージ systemdサービス
 
@@ -113,7 +113,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/signage-lite.service.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-system-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 ## アプリケーション設定ファイル
 
@@ -128,7 +128,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/api.env.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-app-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 #### 2. Web環境変数ファイル
 
@@ -139,7 +139,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/web.env.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-app-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 #### 3. NFCエージェント環境変数ファイル
 
@@ -150,7 +150,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/nfc-agent.env.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-app-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 #### 4. Docker Compose環境変数ファイル
 
@@ -161,7 +161,7 @@ polkit.addRule(function(action, subject) {
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/docker.env.j2` |
 | **プレイブック** | `infrastructure/ansible/playbooks/manage-app-configs.yml` |
-| **状態** | ⏳ 実装予定 |
+| **状態** | ✅ 管理済み |
 
 ## 保護が必要なディレクトリ（`git clean`除外対象）
 
