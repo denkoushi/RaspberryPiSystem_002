@@ -205,6 +205,8 @@ update-frequency: high
 |------|---------|---------|------|
 | `git clean`の改善 | ✅ 完了 | ✅ 検証済み | ドライランで確認 |
 | polkit設定ファイルのAnsible管理 | ✅ 完了 | ✅ 検証済み | 実際にデプロイして確認 |
+| systemdサービスファイルのAnsible管理 | ✅ 完了 | ⏳ 未検証 | kiosk-browser.service、signage-lite.service |
+| アプリケーション設定ファイルのAnsible管理 | ✅ 完了 | ⏳ 未検証 | API/Web/NFCエージェント/Docker Composeの.env |
 | バックアップ機能 | ✅ 完了 | ✅ 検証済み | Pi4/Pi3で実行して確認 |
 | ロールバック機能 | ✅ 完了 | ✅ 検証済み | 設定ファイル削除→復旧を確認 |
 | `update-clients.yml`への統合 | ✅ 完了 | ✅ 検証済み | polkit設定管理を追加済み |

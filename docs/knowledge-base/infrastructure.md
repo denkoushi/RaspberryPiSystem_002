@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 22件  
+**件数**: 26件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -931,5 +931,57 @@ update-frequency: medium
 - `scripts/ansible-backup-configs.sh`（設定ファイルバックアップスクリプト）
 - `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画）
 - `docs/guides/ansible-managed-files.md`（Ansibleで管理すべき設定ファイル一覧）
+
+---
+
+### [KB-062] Ansible設定ファイル管理化の実装（systemdサービス・アプリケーション設定）
+
+**EXEC_PLAN.md参照**: Ansible設定ファイル管理化実装計画 (2025-12-01)
+
+**事象**: 
+- `kiosk-browser.service`、`signage-lite.service`がAnsibleで管理されていないため、削除されても自動復旧できない
+- アプリケーション設定ファイル（`.env`）が手動管理のため、IP変更時などに手動作業が必要
+- 実用段階に達するために必要な設定ファイルの管理化が未実装
+
+**要因**: 
+- **systemdサービスファイルの未管理**: `kiosk-browser.service`、`signage-lite.service`がテンプレート化されていない
+- **アプリケーション設定ファイルの未管理**: API/Web/NFCエージェント/Docker Composeの`.env`ファイルがAnsibleで管理されていない
+- **環境変数の管理方針の不明確化**: 機密情報の扱い方針が明確でない
+
+**試行した対策**: 
+- [試行1] `kiosk-browser.service`テンプレートを作成 → **成功**
+- [試行2] `signage-lite.service`テンプレートを作成 → **成功**
+- [試行3] `manage-system-configs.yml`にsystemdサービス管理タスクを追加 → **成功**
+- [試行4] `manage-app-configs.yml`プレイブックを作成 → **成功**
+- [試行5] 各`.env`ファイルのテンプレートを作成 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-01）: 以下の対策を組み合わせて解決
+  1. **systemdサービスファイルのテンプレート化**: `infrastructure/ansible/templates/kiosk-browser.service.j2`、`infrastructure/ansible/templates/signage-lite.service.j2`を作成
+  2. **manage-system-configs.ymlへの統合**: systemdサービス管理タスクを追加し、条件分岐で適切なホストにのみデプロイ
+  3. **アプリケーション設定ファイルの管理化**: `infrastructure/ansible/playbooks/manage-app-configs.yml`を作成し、API/Web/NFCエージェント/Docker Composeの`.env`ファイルをテンプレート化
+  4. **inventory.ymlへの変数追加**: 環境変数の値をinventory.ymlで管理し、環境ごとの差異に対応
+  5. **機密情報の扱い明確化**: テンプレートにコメントを追加し、Ansible Vaultの使用を推奨
+
+**学んだこと**: 
+- **systemdサービスファイルの管理**: テンプレート化することで、設定変更をAnsibleで一元管理できる
+- **アプリケーション設定ファイルの管理**: `.env`ファイルをテンプレート化することで、IP変更などの環境変更に対応しやすくなる
+- **条件分岐の重要性**: クライアントごとに異なるサービスを管理するため、`when`条件で適切に分岐する必要がある
+- **機密情報の扱い**: JWT_SECRETなどの機密情報はAnsible Vaultで暗号化するか、inventory.ymlで変数として管理する
+- **実用段階への到達**: 重要な設定ファイルをAnsibleで管理することで、実用段階に到達できる
+
+**解決状況**: ✅ **解決済み**（2025-12-01）
+
+**関連ファイル**: 
+- `infrastructure/ansible/templates/kiosk-browser.service.j2`（キオスクブラウザサービステンプレート）
+- `infrastructure/ansible/templates/signage-lite.service.j2`（サイネージサービステンプレート）
+- `infrastructure/ansible/playbooks/manage-system-configs.yml`（システム設定ファイル管理プレイブック）
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`（アプリケーション設定ファイル管理プレイブック）
+- `infrastructure/ansible/templates/api.env.j2`（API環境変数テンプレート）
+- `infrastructure/ansible/templates/web.env.j2`（Web環境変数テンプレート）
+- `infrastructure/ansible/templates/nfc-agent.env.j2`（NFCエージェント環境変数テンプレート）
+- `infrastructure/ansible/templates/docker.env.j2`（Docker Compose環境変数テンプレート）
+- `infrastructure/ansible/inventory.yml`（環境変数の変数定義）
+- `docs/plans/ansible-config-files-management-plan.md`（実装計画）
 
 ---
