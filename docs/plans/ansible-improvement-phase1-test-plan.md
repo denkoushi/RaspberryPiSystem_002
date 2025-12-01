@@ -110,6 +110,12 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 - リトライ間隔が適切（5秒）
 - 最終的に成功する
 
+**実施結果（2025-12-01）**:
+- Pi5の`/etc/hosts`に`127.0.0.1 github.com # GIT_TEST_BLOCK`を追加し、GitHubへのアクセスを遮断
+- `update-clients.yml --limit raspberrypi5`を実行すると、`git fetch --all --prune --tags`が10秒間隔で3回リトライした後に失敗（`rc=128`）
+- リトライ履歴が`FAILED - RETRYING`として標準出力に残ることを確認
+- テスト後に`/etc/hosts`を元に戻し、通信を正常化
+
 **優先度**: 🟡 中（ネットワーク障害の再現が困難なため）
 
 #### テスト3-2: サービス再起動のrescue処理
@@ -201,7 +207,7 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 6. ✅ テスト2-3: systemdユニットファイル検証（kioskテンプレートを破壊 → 期待どおり失敗）
 7. ✅ テスト3-2: サービス再起動のrescue処理（失敗サービスを検知しrescueでログ収集→期待どおり停止）
 8. ✅ テスト3-3: Docker再起動のrescue処理（dockerコマンド欠如時にrescueでsystemdログへフォールバック）
-9. ⚠️ テスト3-1: Git操作のリトライ機能（`git`タスクが1回目で致命的失敗しリトライが働かない）
+9. ✅ テスト3-1: Git操作のリトライ機能（通信遮断時に3回リトライ→適切に失敗）
 
 ## テスト結果記録
 
@@ -213,7 +219,7 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 | テスト2-1 | 必須変数チェック | ✅ 成功 | raspberrypi4から`nfc_agent_client_id`/`secret`削除→assertで停止 |
 | テスト2-2 | .envファイル構文チェック | ✅ 成功 | `infrastructure/ansible/templates/api.env.j2`に不正行を追加→`Validate API .env syntax`が`Invalid API .env lines -> 21:THIS LINE IS INVALID`で停止 |
 | テスト2-3 | systemdユニットファイル検証 | ✅ 成功 | `kiosk-browser.service.j2`の`ExecStart`を不正化→`restart kiosk-browser`が`BadUnitSetting`で停止 |
-| テスト3-1 | Git操作のリトライ機能 | ❌ 要修正 | `/etc/hosts`で`github.com`を127.0.0.1へ向けると`git`タスクが即時fatal。`retries/until`が働かずプレイブックが終了 |
+| テスト3-1 | Git操作のリトライ機能 | ✅ 成功 | `/etc/hosts`で`github.com`をループバックに向け遮断。`git fetch`が3回リトライ（10秒間隔）した後に失敗し、ログにリトライ履歴が記録されることを確認 |
 | テスト3-2 | サービス再起動のrescue処理 | ✅ 成功 | `ansible-test-fail.service`を再起動 → `systemctl is-active`で失敗を検出しrescue発動。journal抜粋を取得後に安全に停止 |
 | テスト3-3 | Docker再起動のrescue処理 | ✅ 成功 | `/usr/bin/docker`退避 → `docker compose restart`が`rc=127`で失敗しrescue発火。`docker`不存在時は`journalctl -u docker`ログへ自動フォールバック |
 | テスト4-1 | 通常のデプロイ動作確認 | ✅ 成功 | `update-clients.yml`を全ホスト対象で実行。既知のkiosk-browser実行ファイル欠如ログあり |
