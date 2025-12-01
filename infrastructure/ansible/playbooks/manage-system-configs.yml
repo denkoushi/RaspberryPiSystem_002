@@ -43,6 +43,14 @@
       register: kiosk_browser_result
       notify: restart kiosk-browser
 
+    - name: Validate kiosk-browser.service unit
+      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/kiosk-browser.service
+      when:
+        - manage_kiosk_browser | default(false)
+        - kiosk_browser_result is defined
+        - kiosk_browser_result.changed
+      changed_when: false
+
     # signage-lite.serviceの管理
     - name: Deploy signage-lite.service
       ansible.builtin.template:
@@ -54,6 +62,14 @@
       when: manage_signage_lite | default(false)
       register: signage_lite_result
       notify: restart signage-lite
+
+    - name: Validate signage-lite.service unit
+      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/signage-lite.service
+      when:
+        - manage_signage_lite | default(false)
+        - signage_lite_result is defined
+        - signage_lite_result.changed
+      changed_when: false
 
     - name: Reload systemd daemon if services changed
       ansible.builtin.systemd:

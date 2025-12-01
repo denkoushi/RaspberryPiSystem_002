@@ -7,6 +7,40 @@
     repo_path: /opt/RaspberryPiSystem_002
 
   tasks:
+    - name: Validate required API variables
+      ansible.builtin.assert:
+        that:
+          - api_database_url is defined
+          - api_jwt_access_secret is defined
+          - api_jwt_refresh_secret is defined
+        fail_msg: "API環境変数が定義されていません（inventory.ymlを確認してください）"
+      when: '"server" in group_names'
+
+    - name: Validate required Web variables
+      ansible.builtin.assert:
+        that:
+          - web_api_base_url is defined
+          - web_agent_ws_url is defined
+        fail_msg: "Web環境変数（VITE_*）が定義されていません（inventory.ymlを確認してください）"
+      when: '"server" in group_names'
+
+    - name: Validate required Docker Compose variables
+      ansible.builtin.assert:
+        that:
+          - docker_server_ip is defined
+        fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
+      when: '"server" in group_names'
+
+    - name: Validate required NFC agent variables
+      ansible.builtin.assert:
+        that:
+          - nfc_agent_client_id is defined
+          - nfc_agent_client_secret is defined
+        fail_msg: "NFCエージェントのCLIENT_ID/CLIENT_SECRETが定義されていません（inventory.ymlを確認してください）"
+      when:
+        - '"clients" in group_names'
+        - nfc_agent_client_id is defined
+
     # API環境変数ファイルの管理（サーバーのみ）
     - name: Ensure API .env directory exists
       ansible.builtin.file:
@@ -60,7 +94,9 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0600'
-      when: '"clients" in group_names'
+      when:
+        - '"clients" in group_names'
+        - nfc_agent_client_id is defined
       register: nfc_agent_env_result
 
     # Docker Compose環境変数ファイルの管理（サーバーのみ）
@@ -81,6 +117,91 @@
       when: '"server" in group_names'
       register: docker_env_result
       notify: restart docker
+
+    - name: Validate API .env syntax
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+        import sys
+        path = Path("{{ repo_path }}/apps/api/.env")
+        invalid = []
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                invalid.append(f"{lineno}:{line}")
+        if invalid:
+            raise SystemExit("Invalid API .env lines -> " + ", ".join(invalid))
+        PY
+      when:
+        - '"server" in group_names'
+        - api_env_result.changed | default(false)
+      changed_when: false
+
+    - name: Validate Web .env syntax
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+        import sys
+        path = Path("{{ repo_path }}/apps/web/.env")
+        invalid = []
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                invalid.append(f"{lineno}:{line}")
+        if invalid:
+            raise SystemExit("Invalid Web .env lines -> " + ", ".join(invalid))
+        PY
+      when:
+        - '"server" in group_names'
+        - web_env_result.changed | default(false)
+      changed_when: false
+
+    - name: Validate Docker Compose .env syntax
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+        import sys
+        path = Path("{{ repo_path }}/infrastructure/docker/.env")
+        invalid = []
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                invalid.append(f"{lineno}:{line}")
+        if invalid:
+            raise SystemExit("Invalid docker .env lines -> " + ", ".join(invalid))
+        PY
+      when:
+        - '"server" in group_names'
+        - docker_env_result.changed | default(false)
+      changed_when: false
+
+    - name: Validate NFC agent .env syntax
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        from pathlib import Path
+        import sys
+        path = Path("{{ repo_path }}/clients/nfc-agent/.env")
+        invalid = []
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                invalid.append(f"{lineno}:{line}")
+        if invalid:
+            raise SystemExit("Invalid NFC agent .env lines -> " + ", ".join(invalid))
+        PY
+      when:
+        - '"clients" in group_names'
+        - nfc_agent_client_id is defined
+        - nfc_agent_env_result.changed | default(false)
+      changed_when: false
 
   handlers:
     - name: restart api

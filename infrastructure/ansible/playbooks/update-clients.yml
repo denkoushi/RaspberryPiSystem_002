@@ -24,21 +24,25 @@
         mode: '0755'
 
     - name: Clean untracked files before checkout (excluding protected directories)
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }} && git clean -fd \
-          -e storage/ -e 'storage/**' \
-          -e certs/ -e 'certs/**' \
-          -e alerts/ -e 'alerts/**' \
-          -e logs/ -e 'logs/**' \
-          || true
-      args:
-        executable: /bin/bash
-      ignore_errors: true
-      vars:
-        # 注意: /etc/配下の設定ファイルはGitリポジトリ外にあるため、
-        # git cleanでは削除されない。しかし、Ansibleで管理することで、
-        # 削除されても自動復旧できる。
+      block:
+        - name: Run git clean with protected directories
+          ansible.builtin.shell: |
+            set -euo pipefail
+            cd {{ repo_path }} && git clean -fd \
+              -e storage/ -e 'storage/**' \
+              -e certs/ -e 'certs/**' \
+              -e alerts/ -e 'alerts/**' \
+              -e logs/ -e 'logs/**'
+          args:
+            executable: /bin/bash
+          register: git_clean_result
+          changed_when: git_clean_result.stdout | length > 0
+      rescue:
+        - name: Warn when git clean failed
+          ansible.builtin.debug:
+            msg: >
+              git clean failed on {{ inventory_hostname }} ({{ git_clean_result.stderr | default('no stderr') }}).
+              Continuing because保護対象が存在しない可能性があります。
 
     - name: Sync repository to desired state
       ansible.builtin.git:
@@ -49,8 +53,16 @@
         accept_hostkey: true
         key_file: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default(omit) }}"
       register: git_result
+      retries: 3
+      delay: 10
+      until: git_result is succeeded
 
   tasks:
+    - name: Initialize deployment tracking facts
+      ansible.builtin.set_fact:
+        client_restart_results: []
+        docker_restart_summary: []
+
     - name: Install production dependencies (optional)
       ansible.builtin.shell: |
         set -euo pipefail
@@ -131,26 +143,80 @@
       register: polkit_result
       notify: restart pcscd
 
-    - name: Restart required services (clients)
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: restarted
-        daemon_reload: true
+    - name: Restart required services (clients) with retry
+      block:
+        - name: Restart {{ item }} on client
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: restarted
+            daemon_reload: true
+          register: client_service_restart
+          retries: 3
+          delay: 10
+          until: client_service_restart is succeeded
+
+        - name: Record restart success for {{ item }}
+          ansible.builtin.set_fact:
+            client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': item, 'status': 'ok'} ] }}"
+      rescue:
+        - name: Capture latest logs for {{ item }}
+          ansible.builtin.shell: |
+            set -euo pipefail
+            journalctl -u {{ item }} -n 50 --no-pager || true
+          args:
+            executable: /bin/bash
+          register: client_service_logs
+          changed_when: false
+
+        - name: Record restart failure for {{ item }}
+          ansible.builtin.set_fact:
+            client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': item, 'status': 'failed', 'log': client_service_logs.stdout | default('')} ] }}"
+
+        - name: Fail current host due to service restart failure
+          ansible.builtin.fail:
+            msg: >
+              Service {{ item }} failed to restart on {{ inventory_hostname }}.
+              See journal snippet above for details.
       loop: "{{ services_to_restart }}"
-      register: restart_result
-      ignore_errors: true
-      failed_when: false
+      loop_control:
+        label: "{{ item }}"
       when: '"server" not in group_names'
 
-    - name: Restart Docker Compose services (server)
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml restart api web
-      args:
-        executable: /bin/bash
-      register: docker_restart_result
-      ignore_errors: true
-      failed_when: false
+    - name: Restart Docker Compose services (server) with retry
+      block:
+        - name: Restart Docker services on server
+          ansible.builtin.shell: |
+            set -euo pipefail
+            cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml restart api web
+          args:
+            executable: /bin/bash
+          register: docker_restart_result
+          retries: 3
+          delay: 10
+          until: docker_restart_result is succeeded
+
+        - name: Record docker restart success
+          ansible.builtin.set_fact:
+            docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'ok'} ] }}"
+      rescue:
+        - name: Capture docker compose logs
+          ansible.builtin.shell: |
+            set -euo pipefail
+            cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50 api web
+          args:
+            executable: /bin/bash
+          register: docker_restart_logs
+          changed_when: false
+
+        - name: Record docker restart failure
+          ansible.builtin.set_fact:
+            docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'failed', 'log': docker_restart_logs.stdout | default('')} ] }}"
+
+        - name: Fail current host due to docker restart failure
+          ansible.builtin.fail:
+            msg: >
+              Docker Compose restart failed on {{ inventory_hostname }}.
+              See captured logs above for details.
       when: '"server" in group_names'
 
     - name: Collect health check info
@@ -169,7 +235,8 @@
       ansible.builtin.debug:
         msg:
           - "Git: {{ 'changed' if git_result.changed else 'up-to-date' }}"
-          - "Service restarts: {{ services_to_restart | join(', ') }}"
+          - "Client service restart summary: {{ client_restart_results | default([]) }}"
+          - "Docker restart summary: {{ docker_restart_summary | default([]) }}"
 
     - name: Attach health info to run output
       ansible.builtin.debug:

@@ -184,11 +184,17 @@ update-frequency: high
 
 **目標**: エラー発生時の自動復旧と詳細なログ出力
 
-**実装内容**:
-1. `retry`と`until`を使用した自動リトライ
-2. `rescue`ブロックによるエラー復旧処理
-3. `failed_when`による適切なエラー判定
-4. 詳細なエラーメッセージの出力
+**対象プレイブック / スクリプト**:
+- `infrastructure/ansible/playbooks/update-clients.yml`
+- `infrastructure/ansible/playbooks/manage-system-configs.yml`
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`
+- `scripts/update-all-clients.sh`
+
+**実装内容（詳細）**:
+1. 重要タスク（Git同期、サービス再起動、Docker Compose操作など）に `retries` / `delay` / `until` を付与し、一時的なネットワークエラーで直ちに失敗しないようにする。
+2. `block` / `rescue` を導入し、失敗時にログを収集してから安全にロールバック / スキップできるようにする。
+3. `ignore_errors: true` を使用している箇所は `failed_when` で明示的に判定し、失敗の閾値を制御する。
+4. `ansible.builtin.debug` / `ansible.builtin.set_fact` を活用し、失敗箇所・実行コマンド・標準出力／標準エラーをログ収集スクリプト（`scripts/update-all-clients.sh`）に返せるよう構造化する。
 
 **見積もり**: 4時間
 
@@ -197,14 +203,25 @@ update-frequency: high
 - エラー発生時の自動復旧
 - デバッグの容易化
 
+**検証ポイント**:
+- Gitリポジトリの同期タスクをわざとネットワーク切断してリトライが働くか確認
+- サービス再起動タスクで失敗を発生させ、`rescue`でログが収集されるか確認
+- `scripts/update-all-clients.sh` を実行し、失敗サマリーに詳細が残るか確認
+
 ### Phase 2: バリデーション強化（高優先度）
 
 **目標**: 設定ファイルと変数の検証
 
-**実装内容**:
-1. 設定ファイルの構文チェック（JSON/YAML/ENV形式）
-2. 変数の必須チェック（`assert`モジュール）
-3. テンプレートデプロイ前の検証
+**対象ファイル / テンプレート**:
+- `.env` テンプレート（API / Web / NFCエージェント / Docker Compose）
+- systemd サービステンプレート（kiosk / signage / status-agent）
+- `inventory.yml` に定義されている必須変数
+
+**実装内容（詳細）**:
+1. テンプレート生成前に `ansible.builtin.assert` で必須変数をチェックし、不足時は分かりやすいメッセージで停止する。
+2. `.env` ファイルをテンプレート化した後、Python（`python3 - <<'PY'`）やシェルスクリプトで `KEY=VALUE` 形式を静的検証する。
+3. systemd サービスファイルを配置した後に `systemd-analyze verify` を実行し、構文エラーを即座に検知する。
+4. `group_vars` / `host_vars` を導入し、環境ごとの差異を明示した上で `ansible-lint` の `var-naming` ルールに従う。
 
 **見積もり**: 3時間
 
@@ -212,6 +229,11 @@ update-frequency: high
 - 不正な設定ファイルのデプロイ防止
 - 実行時エラーの削減
 - サービス起動失敗の防止
+
+**検証ポイント**:
+- `.env` の誤った行（例: `FOO` のみ）を仕込んでプレイブックを実行し、バリデーションが失敗することを確認
+- systemd サービスファイルの構文エラーを意図的に入れ、`systemd-analyze verify` が検知することを確認
+- `group_vars` から必須変数を削除し、`assert` が正しく停止させることを確認
 
 ### Phase 3: ロールバック機能強化（中優先度）
 
@@ -349,6 +371,22 @@ update-frequency: high
 | Phase 10: ドキュメント化の強化 | 🟢 低 | 2時間 | 運用性向上 |
 
 **合計見積もり**: 約26時間
+
+## テスト戦略（Phase 1 & 2）
+
+1. **プレイブック単体テスト**
+   - `ansible-playbook ... --check` を活用して構文検証
+   - `ansible-lint` を CI で実行
+
+2. **障害シナリオテスト**
+   - ネットワーク切断 → リトライ動作確認
+   - systemd サービス起動失敗 → `rescue` ブロック確認
+   - `.env` に誤記 → バリデーション失敗を確認
+
+3. **実機統合テスト**
+   - Raspberry Pi 5/4/3 で `scripts/update-all-clients.sh` を実行
+   - 成功・失敗ログが正しく記録されるか確認
+   - 主要サービス（API / Web / signage / kiosk）が正常動作するかブラウザで確認
 
 ## 成功条件（Definition of Done）
 
