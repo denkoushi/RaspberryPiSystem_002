@@ -20,18 +20,22 @@
       register: polkit_backups
       when: backup_dir_stat.stat.exists
 
+    - name: Get latest polkit backup path
+      ansible.builtin.set_fact:
+        latest_polkit_backup: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first }}"
+
     - name: Restore polkit configuration from backup
       ansible.builtin.copy:
-        src: "{{ item.path }}"
+        src: "{{ latest_polkit_backup.path }}"
         dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
         owner: root
         group: root
         mode: '0644'
         remote_src: true
-      loop: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first }}"
       when:
         - backup_dir_stat.stat.exists
         - polkit_backups.matched > 0
+        - latest_polkit_backup is defined
       register: polkit_restore_result
       notify: restart pcscd
 
