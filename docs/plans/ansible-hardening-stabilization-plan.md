@@ -287,10 +287,10 @@ echo "Backup completed: $BACKUP_DIR"
 ## 成功条件（Definition of Done）
 
 1. ✅ **Phase 1完了**: Ansibleで管理すべき設定ファイルの一覧が作成されている
-2. ⏳ **Phase 2完了**: `git clean`がシステム設定ファイルを削除しない
-3. ⏳ **Phase 3完了**: polkit設定ファイルがAnsibleで管理されている
-4. ⏳ **Phase 4完了**: エラー時に自動的にロールバックできる
-5. ⏳ **Phase 5完了**: すべての進捗がナレッジベースに反映されている
+2. ✅ **Phase 2完了**: `git clean`がシステム設定ファイルを削除しない（`.gitignore`に追加、除外オプション実装済み）
+3. ✅ **Phase 3完了**: polkit設定ファイルがAnsibleで管理されている（`manage-system-configs.yml`でデプロイ可能）
+4. ✅ **Phase 4完了**: エラー時に自動的にロールバックできる（`rollback.yml`実装・検証済み）
+5. ✅ **Phase 5完了**: すべての進捗がナレッジベースに反映されている（INDEX.md更新、ベストプラクティスドキュメント作成完了）
 
 ## リスクと対策
 
