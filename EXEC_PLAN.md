@@ -130,6 +130,9 @@
   - `clients/status-agent/` に Python3 ベースのメトリクス送信スクリプト（`status-agent.py`）と systemd service/timer を追加。  
   - `/proc/stat`, `/proc/meminfo`, `/sys/class/thermal/*`, `shutil.disk_usage('/')` から CPU/メモリ/ディスク/温度を収集し、`x-client-key` 認証で `/api/clients/status` へ 1 分毎に POST。  
   - 設定テンプレート（`status-agent.conf.example`）、セットアップ手順（`clients/status-agent/README.md` / [docs/guides/status-agent.md](docs/guides/status-agent.md)）を整備。
+- [x] (2025-12-01) **Phase 2.4: 管理画面実装と実機テスト完了**
+  - 管理画面 `/admin/clients` に「クライアント稼働状況」カードと「クライアント最新ログ」ビューを追加。`GET /api/clients/status` と `GET /api/clients/logs` を可視化し、12時間以上更新がない端末を赤色で表示。
+  - **実機テスト完了**（2025-12-01）: Raspberry Pi 5上でstatus-agentを設定・実行し、systemd timerで1分ごとに自動実行されることを確認。管理画面で稼働状況カードが正しく表示され、CPU/メモリ/温度などのメトリクスが更新されることを確認。Prisma型エラー（InputJsonValue）を修正し、マイグレーションを適用してテーブルを作成。詳細は [docs/plans/production-deployment-phase2-execplan.md](docs/plans/production-deployment-phase2-execplan.md) を参照。
 - [ ] (2025-11-28) **Milestone 7: デジタルサイネージ機能の実装**（新規機能）
   - **目的**: ラズパイ5サーバーから取得したデータをHDMIモニターに表示するデジタルサイネージ機能を実装
   - **機能要件**:

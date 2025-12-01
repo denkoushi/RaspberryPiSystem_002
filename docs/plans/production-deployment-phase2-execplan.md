@@ -12,7 +12,7 @@ After this work,運用者は Raspberry Pi クライアントの稼働状況と�
 - [x] (2025-11-30 04:30Z) API ルータ `/api/clients/status` `/api/clients/logs` を実装し統合テストを追加。
 - [x] (2025-11-30 13:55Z) クライアント側 status-agent（Python + systemd timer）を追加し、CPU/メモリ/温度メトリクスを 1 分毎に HTTP 送信できるようにした。`clients/status-agent/`
 - [x] (2025-11-30 15:30Z) 管理画面 `/admin/clients` に稼働状況カードとログビューを追加。`GET /api/clients/status` と `GET /api/clients/logs` を可視化し、12時間以上更新がない端末を赤色で表示する。
-- [ ] (2025-11-30 03:00Z) E2Eテスト: ダミークライアントからAPIへ送信→Web UIで反映されるまで確認。
+- [x] (2025-12-01 09:35Z) 実機テスト完了: Raspberry Pi 5上でstatus-agentを設定・実行し、systemd timerで1分ごとに自動実行されることを確認。管理画面で稼働状況カードが正しく表示され、CPU/メモリ/温度などのメトリクスが更新されることを確認。
 
 ## Surprises & Discoveries
 
@@ -30,7 +30,18 @@ After this work,運用者は Raspberry Pi クライアントの稼働状況と�
 
 ## Outcomes & Retrospective
 
-_tbd_
+**実機テスト結果（2025-12-01）**:
+- ✅ Raspberry Pi 5上でstatus-agentを設定・実行し、APIサーバーに正常に送信されることを確認
+- ✅ systemd timerで1分ごとに自動実行され、管理画面で状態が更新されることを確認
+- ✅ 管理画面の「クライアント稼働状況」カードにCPU/メモリ/ディスク/温度が正しく表示されることを確認
+- ✅ Prisma型エラー（InputJsonValue）を修正し、マイグレーションを適用してテーブルを作成
+- ✅ SSH接続の問題（ホスト名解決）を解決し、IPアドレスで接続できることを確認
+
+**学んだこと**:
+- 実機環境では最新のコードをビルド・デプロイする必要がある（`docker compose up -d --build`）
+- マイグレーションは明示的に実行する必要がある（`pnpm prisma migrate deploy`）
+- SSH接続でホスト名解決が失敗する場合は、IPアドレスを直接指定することで回避できる
+- Prismaの`InputJsonValue`型を使用する際は、`Record<string, unknown>`を明示的にキャストする必要がある
 
 ## Context and Orientation
 
