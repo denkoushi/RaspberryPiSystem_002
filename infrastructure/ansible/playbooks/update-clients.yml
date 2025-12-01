@@ -53,7 +53,7 @@
       register: restart_result
       ignore_errors: true
       failed_when: false
-      when: item in services_to_restart and 'server' not in group_names
+      when: item in services_to_restart and '"server" not in group_names'
 
     - name: Restart Docker Compose services (server)
       ansible.builtin.shell: |
@@ -64,7 +64,7 @@
       register: docker_restart_result
       ignore_errors: true
       failed_when: false
-      when: 'server' in group_names
+      when: '"server" in group_names'
 
     - name: Collect health check info
       ansible.builtin.shell: |
