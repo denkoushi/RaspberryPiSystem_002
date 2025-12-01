@@ -55,6 +55,11 @@
 | デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
 | デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
 | クライアント端末を一括更新したい | [plans/production-deployment-management-plan.md](./plans/production-deployment-management-plan.md#phase-1-一括更新システムssh--ansible) |
+| Ansibleの堅牢化・安定化を実施したい | [plans/ansible-hardening-stabilization-plan.md](./plans/ansible-hardening-stabilization-plan.md) |
+| Ansibleで管理すべき設定ファイルを確認したい | [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) |
+| Ansibleエラーハンドリングを確認したい | [guides/ansible-error-handling.md](./guides/ansible-error-handling.md) |
+| Ansibleベストプラクティスを確認したい | [guides/ansible-best-practices.md](./guides/ansible-best-practices.md) |
+| git cleanの安全な使用方法を確認したい | [guides/git-clean-safety.md](./guides/git-clean-safety.md) |
 | クライアント状態監視のExecPlanを確認したい | [plans/production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) |
 | Raspberry Pi クライアントにSSH鍵を配布したい | [guides/ssh-setup.md](./guides/ssh-setup.md) |
 | **Raspberry Pi 4 再起動時のサービス起動** | [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) |
@@ -115,6 +120,9 @@
 | [decisions/002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
 | [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
 | [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
+| [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) | Ansibleで管理すべき設定ファイル一覧 |
+| [guides/ansible-error-handling.md](./guides/ansible-error-handling.md) | Ansibleエラーハンドリングガイド |
+| [guides/ansible-best-practices.md](./guides/ansible-best-practices.md) | Ansibleベストプラクティス |
 
 ### 運用者
 
@@ -129,6 +137,9 @@
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 | [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
 | [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
+| [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) | Ansibleで管理すべき設定ファイル一覧 |
+| [guides/ansible-error-handling.md](./guides/ansible-error-handling.md) | Ansibleエラーハンドリングガイド |
+| [guides/ansible-best-practices.md](./guides/ansible-best-practices.md) | Ansibleベストプラクティス |
 
 ### アーキテクト
 
@@ -236,6 +247,10 @@ APIの概要と詳細。
 | [status-agent.md](./guides/status-agent.md) | Raspberry Pi クライアント状態送信エージェント |
 | [quick-start-deployment.md](./guides/quick-start-deployment.md) | **クライアント一括更新と監視のクイックスタート** |
 | [local-alerts.md](./guides/local-alerts.md) | **ローカル環境対応の通知機能ガイド** |
+| [ansible-managed-files.md](./guides/ansible-managed-files.md) | **Ansibleで管理すべき設定ファイル一覧** |
+| [ansible-error-handling.md](./guides/ansible-error-handling.md) | **Ansibleエラーハンドリングガイド** |
+| [ansible-best-practices.md](./guides/ansible-best-practices.md) | **Ansibleベストプラクティス** |
+| [git-clean-safety.md](./guides/git-clean-safety.md) | **git cleanの安全な使用方法** |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
 
@@ -243,12 +258,12 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
-| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全58件の一覧） |
+| [knowledge-base/index.md](./knowledge-base/index.md) | 📋 **ナレッジベース索引**（全59件の一覧） |
 | [knowledge-base/api.md](./knowledge-base/api.md) | API関連（16件） |
 | [knowledge-base/database.md](./knowledge-base/database.md) | データベース関連（3件） |
 | [knowledge-base/ci-cd.md](./knowledge-base/ci-cd.md) | CI/CD関連（4件） |
 | [knowledge-base/frontend.md](./knowledge-base/frontend.md) | フロントエンド関連（15件） |
-| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（24件） |
+| [knowledge-base/infrastructure.md](./knowledge-base/infrastructure.md) | インフラ関連（25件） |
 | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) | NFCリーダー固有の問題 |
 
 ### セキュリティ（security/）
@@ -323,10 +338,11 @@ APIの概要と詳細。
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実践ガイド | 26 |
+| 実装計画 | 4 |
+| 実践ガイド | 30 |
 | トラブルシューティング | 6 |
 | セキュリティ | 1 |
-| **合計** | **51** |
+| **合計** | **53** |
 
 ---
 
