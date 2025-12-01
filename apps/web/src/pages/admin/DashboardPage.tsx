@@ -59,7 +59,6 @@ export function DashboardPage() {
                         </div>
                         <Button
                           variant="secondary"
-                          size="sm"
                           onClick={() => handleAcknowledge(alert.id)}
                           disabled={acknowledgeMutation.isPending}
                         >
