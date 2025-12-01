@@ -1,0 +1,109 @@
+---
+- name: Manage application configuration files
+  hosts: server:clients
+  gather_facts: true
+  become: true
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+
+  tasks:
+    # API環境変数ファイルの管理（サーバーのみ）
+    - name: Ensure API .env directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}/apps/api"
+        state: directory
+        mode: '0755'
+      when: '"server" in group_names'
+
+    - name: Deploy API environment variables
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/api.env.j2"
+        dest: "{{ repo_path }}/apps/api/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"server" in group_names'
+      register: api_env_result
+      notify: restart api
+
+    # Web環境変数ファイルの管理（サーバーのみ）
+    - name: Ensure Web .env directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}/apps/web"
+        state: directory
+        mode: '0755'
+      when: '"server" in group_names'
+
+    - name: Deploy Web environment variables
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/web.env.j2"
+        dest: "{{ repo_path }}/apps/web/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"server" in group_names'
+      register: web_env_result
+      notify: restart web
+
+    # NFCエージェント環境変数ファイルの管理（クライアントのみ）
+    - name: Ensure NFC agent .env directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}/clients/nfc-agent"
+        state: directory
+        mode: '0755'
+      when: '"clients" in group_names'
+
+    - name: Deploy NFC agent environment variables
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/nfc-agent.env.j2"
+        dest: "{{ repo_path }}/clients/nfc-agent/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"clients" in group_names'
+      register: nfc_agent_env_result
+
+    # Docker Compose環境変数ファイルの管理（サーバーのみ）
+    - name: Ensure Docker Compose .env directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}/infrastructure/docker"
+        state: directory
+        mode: '0755'
+      when: '"server" in group_names'
+
+    - name: Deploy Docker Compose environment variables
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/docker.env.j2"
+        dest: "{{ repo_path }}/infrastructure/docker/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"server" in group_names'
+      register: docker_env_result
+      notify: restart docker
+
+  handlers:
+    - name: restart api
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+      when:
+        - '"server" in group_names'
+        - api_env_result.changed | default(false)
+
+    - name: restart web
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+      when:
+        - '"server" in group_names'
+        - web_env_result.changed | default(false)
+
+    - name: restart docker
+      ansible.builtin.shell: |
+        cd {{ repo_path }}/infrastructure/docker
+        docker compose -f docker-compose.server.yml restart api web
+      when:
+        - '"server" in group_names'
+        - docker_env_result.changed | default(false)
+

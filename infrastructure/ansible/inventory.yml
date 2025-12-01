@@ -7,6 +7,16 @@ all:
           ansible_user: denkon5sd02
           ansible_connection: local  # ローカル実行のため
           ansible_python_interpreter: /usr/bin/python3
+          # API環境変数
+          api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
+          api_jwt_access_secret: "change-me-in-production"  # 本番環境では変更必須
+          api_jwt_refresh_secret: "change-me-in-production"  # 本番環境では変更必須
+          # Web環境変数
+          web_api_base_url: "/api"
+          web_ws_base_url: "/ws"
+          web_agent_ws_url: "ws://192.168.128.131:7071/stream"
+          # Docker Compose環境変数
+          docker_server_ip: "192.168.128.131"
     clients:
       hosts:
         raspberrypi4:
@@ -18,6 +28,10 @@ all:
           kiosk_url: "https://192.168.128.131/kiosk"
           # kiosk-browser.serviceを管理対象にする
           manage_kiosk_browser: true
+          # NFCエージェント環境変数
+          nfc_agent_api_base_url: "http://192.168.128.131:8080/api"
+          nfc_agent_client_id: "raspberrypi4-kiosk1"
+          nfc_agent_client_secret: "client-key-raspberrypi4-kiosk1"
         raspberrypi3:
           ansible_host: 192.168.128.152
           ansible_user: signageras3
