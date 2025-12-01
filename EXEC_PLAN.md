@@ -133,6 +133,16 @@
 - [x] (2025-12-01) **Phase 2.4: 管理画面実装と実機テスト完了**
   - 管理画面 `/admin/clients` に「クライアント稼働状況」カードと「クライアント最新ログ」ビューを追加。`GET /api/clients/status` と `GET /api/clients/logs` を可視化し、12時間以上更新がない端末を赤色で表示。
   - **実機テスト完了**（2025-12-01）: Raspberry Pi 5上でstatus-agentを設定・実行し、systemd timerで1分ごとに自動実行されることを確認。管理画面で稼働状況カードが正しく表示され、CPU/メモリ/温度などのメトリクスが更新されることを確認。Prisma型エラー（InputJsonValue）を修正し、マイグレーションを適用してテーブルを作成。詳細は [docs/plans/production-deployment-phase2-execplan.md](docs/plans/production-deployment-phase2-execplan.md) を参照。
+- [x] (2025-12-01) **ローカルアラートシステム実装完了**
+  - ファイルベースのアラートシステムを実装。`/opt/RaspberryPiSystem_002/alerts/` ディレクトリにJSONファイルを作成することでアラートを生成し、管理画面で表示・確認済み処理が可能。
+  - Dockerコンテナ内からのファイルアクセス問題を解決（`ALERTS_DIR`環境変数とボリュームマウント）。**ナレッジベース**: [KB-059](docs/knowledge-base/infrastructure.md#kb-059-ローカルアラートシステムのdockerコンテナ内からのファイルアクセス問題)
+- [x] (2025-12-01) **NFCリーダー問題解決完了**
+  - Dockerコンテナ内からNFCリーダー（pcscd）にアクセスできない問題を解決。`docker-compose.client.yml`に`/run/pcscd`のマウントを追加し、polkit設定ファイル（`/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`）を再作成。**ナレッジベース**: [KB-060](docs/knowledge-base/infrastructure.md#kb-060-dockerコンテナ内からnfcリーダーpcscdにアクセスできない問題)
+- [x] (2025-12-01) **工具管理システム運用・保守ガイド追加完了**
+  - `docs/modules/tools/operations.md`を作成。データ整合性の保証方法、状態遷移の詳細、エラーハンドリングの詳細、データ整合性チェックスクリプト、復旧手順、トラブルシューティングガイドを追加。
+  - NFCリーダーのトラブルシューティング手順を追加（Dockerコンテナ内からのpcscdアクセス、polkit設定、ポート競合など）。
+- [x] (2025-12-01) **ナレッジベース更新完了**
+  - KB-060（Dockerコンテナ内からNFCリーダーにアクセスできない問題）を追加。統計を57件→58件に更新。
 - [ ] (2025-11-28) **Milestone 7: デジタルサイネージ機能の実装**（新規機能）
   - **目的**: ラズパイ5サーバーから取得したデータをHDMIモニターに表示するデジタルサイネージ機能を実装
   - **機能要件**:
@@ -403,6 +413,12 @@
 - 観測: NFCエージェントがイベントをSQLiteキューに常に追加するだけで削除していなかったため、WebSocket再接続時に過去のイベントが再送され、工具スキャンが二重登録されることがあった。  
   エビデンス: タグを1回スキャンしても、貸出が2件登録されることが時折発生。再現性は100%ではないが、エージェント再起動後に発生しやすい。  
   対応: オンライン時にイベントを即座に配信し、配信成功したイベントはキューから即時削除するように変更。これにより、オンライン時のイベントは蓄積せず、オフライン時だけキューに残る設計になった。**[KB-056]**
+- 観測: Dockerコンテナ内からホストの`pcscd`デーモンにアクセスできない。`Service not available. (0x8010001D)`エラーが発生する。  
+  エビデンス: `curl http://localhost:7071/api/agent/status`で`readerConnected: false`が返る。`pcsc_scan`はrootで動作するが、一般ユーザーでは動作しない。  
+  対応: `docker-compose.client.yml`に`/run/pcscd:/run/pcscd:ro`のボリュームマウントを追加し、polkit設定ファイル（`/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`）を再作成してすべてのユーザーが`pcscd`にアクセスできるように設定。コンテナを再作成してNFCリーダーが認識されることを確認。**[KB-060]**
+- 観測: `git clean -fd`を実行すると、`.gitignore`に含まれていない設定ファイル（`/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`など）が削除される。  
+  エビデンス: Ansibleプレイブックで`git clean -fd`を実行した後、polkit設定ファイルが削除され、NFCリーダーにアクセスできなくなった。  
+  対応: `.gitignore`に`storage/`と`certs/`を追加し、Ansibleプレイブックの`git clean`コマンドでこれらのディレクトリを明示的に除外するように修正。システム設定ファイル（`/etc/`配下）はAnsibleなどの設定管理ツールで管理する必要があることを学んだ。
 - 観測: `fastify-swagger@^8` が存在せず `@fastify/swagger` に名称変更されていた。  
   エビデンス: `pnpm install` で `ERR_PNPM_NO_MATCHING_VERSION fastify-swagger@^8.13.0`。  
   対応: 依存を `@fastify/swagger` に切り替え済み。
@@ -1082,4 +1098,5 @@
 変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
 変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
 変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
+変更履歴: 2025-12-01 — Phase 2.4完了、ローカルアラートシステム実装完了、NFCリーダー問題解決（KB-060）、工具管理システム運用・保守ガイド追加、ナレッジベース更新（58件）を反映。Surprises & DiscoveriesにKB-060とgit clean問題を追加。
 ```
