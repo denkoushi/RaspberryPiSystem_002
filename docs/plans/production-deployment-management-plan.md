@@ -249,6 +249,23 @@ ssh "$SSH_TARGET" "cd /opt/RaspberryPiSystem_002 && \
 - スクリプト実行でAnsibleログがリアルタイムにMacへストリームされる
 - ログファイルが日時付きで保存され、失敗時の追跡が可能
 
+**実装状況**: ✅ **完了**（2025-12-01）
+- `scripts/update-all-clients.sh` が実装済み
+- 環境変数 `RASPI_SERVER_HOST` でRaspberry Pi 5の接続先を指定可能
+- ログファイルは `logs/ansible-update-YYYYMMDD-HHMMSS.log` に保存される
+
+**使用方法**:
+```bash
+# Macから実行
+export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+./scripts/update-all-clients.sh
+```
+
+**実機テスト結果**: ✅ **成功**（2025-12-01）
+- Raspberry Pi 3とRaspberry Pi 4への接続成功
+- Gitリポジトリの更新成功
+- サービスの再起動成功（存在するサービスのみ）
+
 ---
 
 ### Phase 2: デバッグ支援システム（HTTP/HTTPS）
