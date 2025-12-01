@@ -60,6 +60,10 @@
 | Raspberry Pi status-agentを導入したい | [guides/status-agent.md](./guides/status-agent.md) |
 | **クライアント一括更新と監視のクイックスタート** | [guides/quick-start-deployment.md](./guides/quick-start-deployment.md) |
 | **ローカル環境対応の通知機能** | [guides/local-alerts.md](./guides/local-alerts.md) |
+|| **新規クライアント端末の初期設定** | [guides/client-initial-setup.md](./guides/client-initial-setup.md) |
+|| **MacからRaspberry Pi 5へのSSH接続** | [guides/mac-ssh-access.md](./guides/mac-ssh-access.md) |
+|| **システム自動起動の現状と設定** | [guides/auto-startup-status.md](./guides/auto-startup-status.md) |
+|| **クライアント端末のstatus-agent設定（実機テスト用）** | [guides/setup-clients-status-agent.md](./guides/setup-clients-status-agent.md) |
 
 ### 検証する
 
@@ -207,6 +211,11 @@ APIの概要と詳細。
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
+|| [client-initial-setup.md](./guides/client-initial-setup.md) | **新規クライアント端末の初期設定手順** |
+|| [mac-ssh-access.md](./guides/mac-ssh-access.md) | **MacからRaspberry Pi 5へのSSH接続ガイド** |
+|| [auto-startup-status.md](./guides/auto-startup-status.md) | **システム自動起動の現状と設定手順** |
+|| [ai-ssh-access.md](./guides/ai-ssh-access.md) | **AIアシスタントのSSHアクセスについて** |
+|| [setup-clients-status-agent.md](./guides/setup-clients-status-agent.md) | **クライアント端末のstatus-agent設定手順（実機テスト用）** |
 | [status-agent.md](./guides/status-agent.md) | Raspberry Pi クライアント状態送信エージェント |
 | [quick-start-deployment.md](./guides/quick-start-deployment.md) | **クライアント一括更新と監視のクイックスタート** |
 | [local-alerts.md](./guides/local-alerts.md) | **ローカル環境対応の通知機能ガイド** |
@@ -297,10 +306,10 @@ APIの概要と詳細。
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実践ガイド | 12 |
-| トラブルシューティング | 9 |
+| 実践ガイド | 26 |
+| トラブルシューティング | 6 |
 | セキュリティ | 1 |
-| **合計** | **37** |
+| **合計** | **51** |
 
 ---
 
@@ -315,4 +324,5 @@ APIの概要と詳細。
 ## 📅 更新履歴
 
 - 2025-11-27: 初版作成
+- 2025-12-01: ローカルアラートシステム関連ドキュメント追加、ナレッジベースKB-059追加、統計更新
 

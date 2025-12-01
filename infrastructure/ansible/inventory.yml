@@ -12,9 +12,17 @@ all:
         raspberrypi4:
           ansible_host: 192.168.128.102
           ansible_user: tools03
+          status_agent_client_id: raspberrypi4-kiosk1
+          status_agent_client_key: client-key-raspberrypi4-kiosk1
+          status_agent_location: "ラズパイ4 - キオスク1"
         raspberrypi3:
           ansible_host: 192.168.128.152
           ansible_user: signageras3
+          status_agent_client_id: raspberrypi3-signage1
+          status_agent_client_key: client-key-raspberrypi3-signage1
+          status_agent_location: "ラズパイ3 - サイネージ1"
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
+        status_agent_api_base_url: "http://192.168.128.131:8080/api"
+        status_agent_tls_skip_verify: "1"

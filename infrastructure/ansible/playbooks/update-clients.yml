@@ -44,6 +44,57 @@
       changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
       failed_when: false
 
+    # status-agentの設定（クライアントのみ）
+    - name: Ensure status-agent configuration directory exists
+      ansible.builtin.file:
+        path: /etc
+        state: directory
+      when: '"server" not in group_names'
+
+    - name: Create status-agent configuration file
+      ansible.builtin.template:
+        src: "{{ repo_path }}/clients/status-agent/status-agent.conf.j2"
+        dest: /etc/raspi-status-agent.conf
+        owner: root
+        group: root
+        mode: '0644'
+      when: '"server" not in group_names and status_agent_client_id is defined'
+      register: status_agent_config_result
+
+    - name: Copy status-agent systemd service file
+      ansible.builtin.copy:
+        src: "{{ repo_path }}/clients/status-agent/status-agent.service"
+        dest: /etc/systemd/system/status-agent.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: '"server" not in group_names'
+      register: status_agent_service_result
+
+    - name: Copy status-agent systemd timer file
+      ansible.builtin.copy:
+        src: "{{ repo_path }}/clients/status-agent/status-agent.timer"
+        dest: /etc/systemd/system/status-agent.timer
+        owner: root
+        group: root
+        mode: '0644'
+      when: '"server" not in group_names'
+      register: status_agent_timer_result
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: '"server" not in group_names and (status_agent_service_result.changed or status_agent_timer_result.changed)'
+
+    - name: Enable and start status-agent timer
+      ansible.builtin.systemd:
+        name: status-agent.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: '"server" not in group_names'
+      register: status_agent_timer_enable_result
+
     - name: Restart required services (clients)
       ansible.builtin.systemd:
         name: "{{ item }}"

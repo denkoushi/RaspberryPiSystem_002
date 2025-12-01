@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 15件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 22件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 23件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible |
 
 ---
 
@@ -110,6 +110,7 @@ update-frequency: high
 | [KB-056](./infrastructure.md#kb-056-工具スキャンが二重登録される問題nfcエージェントのキュー処理改善) | 工具スキャンが二重登録される問題（NFCエージェントのキュー処理改善） | ✅ 解決済み |
 | [KB-057](./infrastructure.md#kb-057-ssh接続でホスト名解決が失敗しパスワード認証が通らない問題) | SSH接続でホスト名解決が失敗しパスワード認証が通らない問題 | ✅ 解決済み |
 | [KB-058](./infrastructure.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認) | Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題（ユーザー名・SSH鍵・サービス存在確認） | ✅ 解決済み |
+| [KB-059](./infrastructure.md#kb-059-ローカルアラートシステムのdockerコンテナ内からのファイルアクセス問題) | ローカルアラートシステムのDockerコンテナ内からのファイルアクセス問題 | ✅ 解決済み |
 
 ---
 
@@ -148,9 +149,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 52件 |
+| ✅ 解決済み | 53件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **56件** |
+| **合計** | **57件** |
 
 ---
 
@@ -180,4 +181,5 @@ update-frequency: high
 - 2025-11-30: KB-056を追加（工具スキャンが二重登録される問題、NFCエージェントのキュー処理改善）
 - 2025-12-01: KB-057を追加（SSH接続でホスト名解決が失敗しパスワード認証が通らない問題）
 - 2025-12-01: KB-058を追加（Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題）
+- 2025-12-01: KB-059を追加（ローカルアラートシステムのDockerコンテナ内からのファイルアクセス問題）
 

@@ -1,0 +1,24 @@
+# API のベースURL (必須)
+API_BASE_URL="{{ status_agent_api_base_url | default('http://192.168.128.131:8080/api') }}"
+
+# クライアントID (必須) - `/api/clients/status` の clientId
+CLIENT_ID="{{ status_agent_client_id }}"
+
+# クライアントキー (必須) - `x-client-key` として送信
+CLIENT_KEY="{{ status_agent_client_key }}"
+
+# 任意: 画面表示用の設置場所やメモ
+LOCATION="{{ status_agent_location | default('') }}"
+
+# 任意: ログファイル
+LOG_FILE="/var/log/raspi-status-agent.log"
+
+# 任意: HTTPタイムアウト秒
+REQUEST_TIMEOUT=10
+
+# 任意: 社内CAを使用していない場合は 1 に設定して TLS 検証を無効化（本番では推奨しない）
+TLS_SKIP_VERIFY="{{ status_agent_tls_skip_verify | default('0') }}"
+
+# 任意: CPU温度を取得するファイルパス（未設定時は thermal_zone0 を自動検出）
+# TEMPERATURE_FILE="/sys/class/thermal/thermal_zone0/temp"
+

@@ -398,6 +398,28 @@ pnpm dev
 # ブラウザの開発者ツールを使用
 ```
 
+### リモートデバッグ（MacからRaspberry Pi 5へ）
+
+**MacからRaspberry Pi 5にSSH接続してデバッグ:**
+
+```bash
+# SSH接続
+ssh raspi5  # または ssh denkon5sd02@192.168.128.131
+
+# Dockerログの確認
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=100
+
+# Git操作
+git pull origin main
+git status
+
+# コンテナの再起動
+docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+```
+
+詳細は [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md) を参照してください。
+
 ## トラブルシューティング
 
 ### 依存関係のエラー
