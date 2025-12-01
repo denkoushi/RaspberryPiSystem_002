@@ -92,6 +92,20 @@ export class SignageRenderer {
     const rightWidth = WIDTH - leftWidth;
 
     const metricsText = await this.getSystemMetricsText();
+    
+    // 左側に表示するアイテム数を計算（SPLITモード）
+    const scale = WIDTH / 1920;
+    const paddingX = Math.round(40 * scale);
+    const paddingTop = Math.round(18 * scale);
+    const headerSize = Math.round((58 * scale) / 2);
+    const itemFontSize = Math.round(42 * scale);
+    const thumbnailHeight = Math.round(165 * scale);
+    const lineHeight = Math.max(itemFontSize + Math.round(12 * scale), thumbnailHeight + Math.round(12 * scale));
+    const contentStartY = paddingTop + headerSize + Math.round(8 * scale);
+    const rowsPerColumn = Math.max(2, Math.floor((HEIGHT - contentStartY - paddingTop) / lineHeight));
+    const columns = 2;
+    const leftMaxItems = rowsPerColumn * columns;
+    
     const leftSvg = await this.buildToolsSvg(tools, leftWidth, HEIGHT, 'SPLIT', metricsText);
     const leftBuffer = await sharp(Buffer.from(leftSvg), { density: 300 })
       .resize(leftWidth, HEIGHT, { fit: 'fill' })
@@ -107,10 +121,32 @@ export class SignageRenderer {
           .jpeg({ quality: 90 })
           .toBuffer();
       } else {
-        rightBuffer = await this.renderMessage('PDFが見つかりません', rightWidth);
+        // PDFページが見つからない場合は、残りのツールリストを右側に表示
+        const remainingTools = tools.slice(leftMaxItems);
+        if (remainingTools.length > 0) {
+          const rightSvg = await this.buildToolsSvg(remainingTools, rightWidth, HEIGHT, 'SPLIT', null);
+          rightBuffer = await sharp(Buffer.from(rightSvg), { density: 300 })
+            .resize(rightWidth, HEIGHT, { fit: 'fill' })
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toBuffer();
+        } else {
+          // 残りのツールがない場合は背景色のみ
+          rightBuffer = await this.renderMessage('', rightWidth);
+        }
       }
     } else {
-      rightBuffer = await this.renderMessage('PDFがありません', rightWidth);
+      // PDFが設定されていない場合は、残りのツールリストを右側に表示
+      const remainingTools = tools.slice(leftMaxItems);
+      if (remainingTools.length > 0) {
+        const rightSvg = await this.buildToolsSvg(remainingTools, rightWidth, HEIGHT, 'SPLIT', null);
+        rightBuffer = await sharp(Buffer.from(rightSvg), { density: 300 })
+          .resize(rightWidth, HEIGHT, { fit: 'fill' })
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+      } else {
+        // 残りのツールがない場合は背景色のみ
+        rightBuffer = await this.renderMessage('', rightWidth);
+      }
     }
 
     return await sharp({
