@@ -227,17 +227,27 @@ update-frequency: high
 3. **git cleanの安全な使用方法ドキュメント** ✅ 完了（2025-12-01）
    - 安全な使用方法を文書化完了
 
-### 今後対応すべき項目
+### 完了した追加実装 ✅
 
-3. **その他のシステム設定ファイルのAnsible管理化**（1時間）
-   - kiosk-browser.service
-   - signage-lite.service
+3. **その他のシステム設定ファイルのAnsible管理化** ✅ 完了（2025-12-01）
+   - kiosk-browser.serviceテンプレート作成完了
+   - signage-lite.serviceテンプレート作成完了
+   - manage-system-configs.ymlへの統合完了
 
-4. **アプリケーション設定ファイルのAnsible管理化**（2時間）
-   - API/Web/NFCエージェント/Docker Composeの`.env`ファイル
+4. **アプリケーション設定ファイルのAnsible管理化** ✅ 完了（2025-12-01）
+   - manage-app-configs.ymlプレイブック作成完了
+   - API/Web/NFCエージェント/Docker Composeの`.env`テンプレート作成完了
+   - inventory.ymlへの変数追加完了
 
-5. **`git clean`の安全な使用方法ドキュメント**（30分）
-   - 安全な使用方法を文書化
+### 実用段階への到達 ✅
+
+**評価**: 実用段階に到達しました（2025-12-01）
+
+**理由**:
+- ✅ 重要な設定ファイル（systemdサービス、アプリケーション設定）がAnsibleで管理されている
+- ✅ 設定ファイルが削除されても自動復旧できる
+- ✅ 環境変数の変更がAnsibleで可能
+- ✅ 環境ごとの差異に対応できる仕組みが整備された
 
 ---
 
