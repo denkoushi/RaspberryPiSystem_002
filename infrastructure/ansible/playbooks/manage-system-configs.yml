@@ -1,7 +1,7 @@
 ---
 - name: Manage system configuration files
   hosts: clients
-  gather_facts: false
+  gather_facts: true
   become: true
   vars:
     repo_path: /opt/RaspberryPiSystem_002
@@ -31,6 +31,35 @@
         daemon_reload: true
       when: polkit_result.changed
 
+    # kiosk-browser.serviceの管理
+    - name: Deploy kiosk-browser.service
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/kiosk-browser.service.j2"
+        dest: /etc/systemd/system/kiosk-browser.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: manage_kiosk_browser | default(false)
+      register: kiosk_browser_result
+      notify: restart kiosk-browser
+
+    # signage-lite.serviceの管理
+    - name: Deploy signage-lite.service
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/signage-lite.service.j2"
+        dest: /etc/systemd/system/signage-lite.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: manage_signage_lite | default(false)
+      register: signage_lite_result
+      notify: restart signage-lite
+
+    - name: Reload systemd daemon if services changed
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: kiosk_browser_result.changed | default(false) or signage_lite_result.changed | default(false)
+
   handlers:
     - name: restart pcscd
       ansible.builtin.systemd:
@@ -39,4 +68,20 @@
       when:
         - ansible_facts.services is defined
         - "'pcscd.service' in ansible_facts.services"
+
+    - name: restart kiosk-browser
+      ansible.builtin.systemd:
+        name: kiosk-browser
+        state: restarted
+      when:
+        - ansible_facts.services is defined
+        - "'kiosk-browser.service' in ansible_facts.services"
+
+    - name: restart signage-lite
+      ansible.builtin.systemd:
+        name: signage-lite
+        state: restarted
+      when:
+        - ansible_facts.services is defined
+        - "'signage-lite.service' in ansible_facts.services"
 

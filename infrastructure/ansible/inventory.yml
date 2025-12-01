@@ -15,12 +15,19 @@ all:
           status_agent_client_id: raspberrypi4-kiosk1
           status_agent_client_key: client-key-raspberrypi4-kiosk1
           status_agent_location: "ラズパイ4 - キオスク1"
+          kiosk_url: "https://192.168.128.131/kiosk"
+          # kiosk-browser.serviceを管理対象にする
+          manage_kiosk_browser: true
         raspberrypi3:
           ansible_host: 192.168.128.152
           ansible_user: signageras3
           status_agent_client_id: raspberrypi3-signage1
           status_agent_client_key: client-key-raspberrypi3-signage1
           status_agent_location: "ラズパイ3 - サイネージ1"
+          signage_server_url: "https://192.168.128.131"
+          signage_client_key: "client-key-raspberrypi3-signage1"
+          # signage-lite.serviceを管理対象にする
+          manage_signage_lite: true
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
