@@ -180,7 +180,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       }
     });
 
-    const logEntries = metrics.logs ?? [];
+  const logEntries = metrics.logs ?? [];
     if (logEntries.length > 0) {
       await prisma.clientLog.createMany({
         data: logEntries.map((entry) => ({
@@ -298,6 +298,8 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // アラート情報を取得（ダッシュボード用）
+  const alertsDirectory = process.env.ALERTS_DIR;
+
   app.get('/clients/alerts', { preHandler: canViewStatus }, async (request) => {
     const statuses = await prisma.clientStatus.findMany({
       orderBy: { hostname: 'asc' }
@@ -325,7 +327,9 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     // ファイルベースのアラートを読み込む（ローカル環境用）
     const fs = await import('fs/promises');
     const path = await import('path');
-    const alertDir = path.join(process.cwd(), 'alerts');
+    const alertDir = alertsDirectory
+      ? alertsDirectory
+      : path.join(process.cwd(), 'alerts');
     let fileAlerts: Array<{ id: string; type: string; message: string; timestamp: string; acknowledged: boolean }> = [];
     
     try {

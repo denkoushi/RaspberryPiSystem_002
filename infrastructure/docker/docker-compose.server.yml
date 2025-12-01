@@ -25,12 +25,14 @@ services:
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
       CAMERA_TYPE: mock
+      ALERTS_DIR: /app/alerts
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
       - pdf-storage:/app/storage/pdfs
       - pdf-pages-storage:/app/storage/pdf-pages
       - signage-rendered-storage:/app/storage/signage-rendered
+      - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     ports:
