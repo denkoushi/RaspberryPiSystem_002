@@ -144,6 +144,12 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 - エラーログが詳細に出力される
 - プレイブックが適切に失敗する
 
+**実施結果（2025-12-01）**:
+- `/usr/bin/docker`を一時的にリネームしてコマンド欠如状態を再現
+- `docker compose restart`が`rc=127`で失敗し、rescueブロックが発動
+- `docker`コマンドが存在しない場合は`journalctl -u docker.service`へ自動フォールバックし、ログ採取に成功
+- テスト後、`/usr/bin/docker`を復旧し、通常運用へ戻した
+
 **優先度**: 🔴 高
 
 ---
@@ -193,8 +199,8 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 4. ✅ テスト2-1: 必須変数チェック（済）
 5. ✅ テスト2-2: .envファイル構文チェック（APIテンプレートを破壊 → 期待どおり失敗）
 6. ✅ テスト2-3: systemdユニットファイル検証（kioskテンプレートを破壊 → 期待どおり失敗）
-7. ⚠️ テスト3-2: サービス再起動のrescue処理（systemdモジュールが失敗扱いにならず要改善）
-8. ⚠️ テスト3-3: Docker再起動のrescue処理（`docker compose`失敗時も成功扱いになる不具合）
+7. ✅ テスト3-2: サービス再起動のrescue処理（失敗サービスを検知しrescueでログ収集→期待どおり停止）
+8. ✅ テスト3-3: Docker再起動のrescue処理（dockerコマンド欠如時にrescueでsystemdログへフォールバック）
 9. ⚠️ テスト3-1: Git操作のリトライ機能（`git`タスクが1回目で致命的失敗しリトライが働かない）
 
 ## テスト結果記録
@@ -208,8 +214,8 @@ ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --syntax-chec
 | テスト2-2 | .envファイル構文チェック | ✅ 成功 | `infrastructure/ansible/templates/api.env.j2`に不正行を追加→`Validate API .env syntax`が`Invalid API .env lines -> 21:THIS LINE IS INVALID`で停止 |
 | テスト2-3 | systemdユニットファイル検証 | ✅ 成功 | `kiosk-browser.service.j2`の`ExecStart`を不正化→`restart kiosk-browser`が`BadUnitSetting`で停止 |
 | テスト3-1 | Git操作のリトライ機能 | ❌ 要修正 | `/etc/hosts`で`github.com`を127.0.0.1へ向けると`git`タスクが即時fatal。`retries/until`が働かずプレイブックが終了 |
-| テスト3-2 | サービス再起動のrescue処理 | ❌ 要修正 | `services_to_restart`に存在しない/破損サービスを指定しても`systemd`モジュールが失敗扱いにならずrescue未発火 |
-| テスト3-3 | Docker再起動のrescue処理 | ❌ 要修正 | `/usr/bin/docker`を退避させても`docker compose`タスクが`rc=127`のまま成功扱い→rescue未発火（`failed_when`不足） |
+| テスト3-2 | サービス再起動のrescue処理 | ✅ 成功 | `ansible-test-fail.service`を再起動 → `systemctl is-active`で失敗を検出しrescue発動。journal抜粋を取得後に安全に停止 |
+| テスト3-3 | Docker再起動のrescue処理 | ✅ 成功 | `/usr/bin/docker`退避 → `docker compose restart`が`rc=127`で失敗しrescue発火。`docker`不存在時は`journalctl -u docker`ログへ自動フォールバック |
 | テスト4-1 | 通常のデプロイ動作確認 | ✅ 成功 | `update-clients.yml`を全ホスト対象で実行。既知のkiosk-browser実行ファイル欠如ログあり |
 | テスト4-2 | 設定ファイル管理の動作確認 | ✅ 成功 | `manage-system-configs.yml` / `manage-app-configs.yml`を実行。バリデーション含め成功 |
 

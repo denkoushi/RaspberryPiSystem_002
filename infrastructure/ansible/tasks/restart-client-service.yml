@@ -10,6 +10,33 @@
       delay: 10
       until: client_service_restart is succeeded
 
+    - name: Wait for {{ service_name }} to settle
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Verify {{ service_name }} is active
+      ansible.builtin.command: "systemctl is-active {{ service_name }}"
+      register: client_service_status
+      changed_when: false
+      failed_when: client_service_status.stdout.strip() not in ['active', 'activating']
+      retries: 3
+      delay: 5
+      until: client_service_status.stdout.strip() in ['active', 'activating']
+
+    - name: Ensure {{ service_name }} result is success
+      ansible.builtin.command: "systemctl show {{ service_name }} --property=Result --value"
+      register: client_service_result
+      changed_when: false
+      failed_when: client_service_result.stdout.strip() not in ['success', 'none', 'na']
+      when: service_name | regex_search('\\.service$')
+
+    - name: Ensure {{ service_name }} is not in failed state
+      ansible.builtin.command: "systemctl is-failed {{ service_name }}"
+      register: client_service_failed_check
+      changed_when: false
+      failed_when: client_service_failed_check.rc == 1
+      when: service_name | regex_search('\\.service$')
+
     - name: Record restart success for {{ service_name }}
       ansible.builtin.set_fact:
         client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'ok'} ] }}"
