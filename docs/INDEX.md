@@ -107,6 +107,7 @@
 | [modules/tools/README.md](./modules/tools/README.md) | 工具管理モジュール |
 | [modules/tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [modules/tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
+| [modules/tools/operations.md](./modules/tools/operations.md) | 工具管理運用・保守ガイド |
 | [decisions/001-module-structure.md](./decisions/001-module-structure.md) | モジュール構造の設計決定 |
 | [decisions/002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
 | [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
@@ -165,6 +166,7 @@
 | ファイル | 説明 |
 |---------|------|
 | [tools/README.md](./modules/tools/README.md) | 工具管理モジュール概要 |
+| [tools/operations.md](./modules/tools/operations.md) | 工具管理運用・保守ガイド |
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
@@ -250,7 +252,7 @@ APIの概要と詳細。
 
 | 種別 | 場所 |
 |------|------|
-| **ドキュメント** | [modules/tools/README.md](./modules/tools/README.md) |
+| **ドキュメント** | [modules/tools/README.md](./modules/tools/README.md), [modules/tools/operations.md](./modules/tools/operations.md) |
 | **APIルート** | `apps/api/src/routes/tools/` |
 | **サービス層** | `apps/api/src/services/tools/` |
 | **Webページ** | `apps/web/src/pages/tools/` |
