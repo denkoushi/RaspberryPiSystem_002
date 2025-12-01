@@ -51,6 +51,7 @@
       register: restart_result
       ignore_errors: true
       failed_when: false
+      when: item in services_to_restart
 
     - name: Collect health check info
       ansible.builtin.shell: |
@@ -73,3 +74,26 @@
     - name: Attach health info to run output
       ansible.builtin.debug:
         var: health_info.stdout_lines
+
+  post_tasks:
+    - name: Collect failed hosts summary
+      ansible.builtin.debug:
+        msg: "Failed hosts: {{ ansible_failed_hosts | default([]) | join(', ') }}"
+      when: ansible_failed_hosts | default([]) | length > 0
+      run_once: true
+
+    - name: Collect unreachable hosts summary
+      ansible.builtin.debug:
+        msg: "Unreachable hosts: {{ ansible_unreachable_hosts | default([]) | join(', ') }}"
+      when: ansible_unreachable_hosts | default([]) | length > 0
+      run_once: true
+
+    - name: Deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Deployment Summary ==="
+          - "Total hosts: {{ ansible_play_hosts | length }}"
+          - "Successful: {{ ansible_play_hosts | difference(ansible_failed_hosts | default([])) | difference(ansible_unreachable_hosts | default([])) | length }}"
+          - "Failed: {{ ansible_failed_hosts | default([]) | length }}"
+          - "Unreachable: {{ ansible_unreachable_hosts | default([]) | length }}"
+      run_once: true
