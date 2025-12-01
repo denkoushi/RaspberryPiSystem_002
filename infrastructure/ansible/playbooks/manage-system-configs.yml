@@ -7,6 +7,9 @@
     repo_path: /opt/RaspberryPiSystem_002
 
   tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
     - name: Ensure polkit rules directory exists
       ansible.builtin.file:
         path: /etc/polkit-1/rules.d
@@ -15,7 +18,7 @@
 
     - name: Deploy polkit rule for pcscd access
       ansible.builtin.template:
-        src: polkit-50-pcscd-allow-all.rules.j2
+        src: "{{ playbook_dir }}/../templates/polkit-50-pcscd-allow-all.rules.j2"
         dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
         owner: root
         group: root
@@ -33,4 +36,7 @@
       ansible.builtin.systemd:
         name: pcscd
         state: restarted
+      when:
+        - ansible_facts.services is defined
+        - "'pcscd.service' in ansible_facts.services"
 
