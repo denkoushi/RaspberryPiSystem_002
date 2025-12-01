@@ -81,6 +81,8 @@
 | トラブルシューティングしたい | [knowledge-base/troubleshooting-knowledge.md](./knowledge-base/troubleshooting-knowledge.md) |
 | CI/CDの問題を解決したい | [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) |
 | NFCリーダーの問題を解決したい | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) |
+| **工具管理システムのデータ整合性を確認したい** | **[modules/tools/operations.md](./modules/tools/operations.md)** |
+| **工具管理システムの復旧手順を知りたい** | **[modules/tools/operations.md](./modules/tools/operations.md)** |
 | **エラーハンドリングを理解したい** | **[guides/error-handling.md](./guides/error-handling.md)** |
 | **ログ出力を理解したい** | **[guides/logging.md](./guides/logging.md)** |
 
@@ -122,6 +124,7 @@
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
+| [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 | [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
 | [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
