@@ -8,12 +8,12 @@
     repo_path: /opt/RaspberryPiSystem_002
     repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
     repo_version: main
-  services_to_restart:
-    - signage-lite.service
-    - signage-lite-update.timer
-    - kiosk-browser.service
-  server_services_to_restart:
-    - docker  # Docker Composeサービスを再起動するため
+    services_to_restart:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - kiosk-browser.service
+    server_services_to_restart:
+      - docker  # Docker Composeサービスを再起動するため
   pre_tasks:
     - name: Ensure repository parent directory exists
       ansible.builtin.file:
