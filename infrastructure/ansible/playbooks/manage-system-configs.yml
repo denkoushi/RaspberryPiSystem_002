@@ -1,0 +1,36 @@
+---
+- name: Manage system configuration files
+  hosts: clients
+  gather_facts: false
+  become: true
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+
+  tasks:
+    - name: Ensure polkit rules directory exists
+      ansible.builtin.file:
+        path: /etc/polkit-1/rules.d
+        state: directory
+        mode: '0755'
+
+    - name: Deploy polkit rule for pcscd access
+      ansible.builtin.template:
+        src: polkit-50-pcscd-allow-all.rules.j2
+        dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+        owner: root
+        group: root
+        mode: '0644'
+      register: polkit_result
+      notify: restart pcscd
+
+    - name: Reload systemd daemon if polkit rule changed
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: polkit_result.changed
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+

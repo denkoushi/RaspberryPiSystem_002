@@ -1,0 +1,77 @@
+---
+- name: Rollback system configuration files
+  hosts: clients
+  gather_facts: false
+  become: true
+  vars:
+    backup_dir: /opt/backups/configs
+
+  tasks:
+    - name: Check if backup directory exists
+      ansible.builtin.stat:
+        path: "{{ backup_dir }}"
+      register: backup_dir_stat
+
+    - name: Find latest polkit backup
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns: "polkit-50-pcscd-allow-all.rules.*"
+        file_type: file
+      register: polkit_backups
+      when: backup_dir_stat.stat.exists
+
+    - name: Restore polkit configuration from backup
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: true
+      loop: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first }}"
+      when:
+        - backup_dir_stat.stat.exists
+        - polkit_backups.matched > 0
+      register: polkit_restore_result
+      notify: restart pcscd
+
+    - name: Find latest systemd service backups
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns: "*.service.*"
+        file_type: file
+      register: service_backups
+      when: backup_dir_stat.stat.exists
+
+    - name: Restore systemd services from backup
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "/etc/systemd/system/{{ item.path | basename | regex_replace('\\.[0-9]+$', '') }}"
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: true
+      loop: "{{ service_backups.files | sort(attribute='mtime', reverse=true) | list }}"
+      when:
+        - backup_dir_stat.stat.exists
+        - service_backups.matched > 0
+      register: service_restore_result
+
+    - name: Reload systemd daemon if services restored
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: service_restore_result.changed | default(false)
+
+    - name: Display rollback summary
+      ansible.builtin.debug:
+        msg:
+          - "Rollback completed"
+          - "Polkit restored: {{ polkit_restore_result.changed | default(false) }}"
+          - "Services restored: {{ service_restore_result.changed | default(false) }}"
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+

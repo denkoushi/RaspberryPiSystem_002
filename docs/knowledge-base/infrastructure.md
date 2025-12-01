@@ -886,3 +886,50 @@ update-frequency: medium
 - `docs/troubleshooting/nfc-reader-issues.md`（NFCリーダーの詳細なトラブルシューティング）
 
 ---
+
+### [KB-061] Ansible実装後の設定ファイル削除問題と堅牢化対策
+
+**EXEC_PLAN.md参照**: Ansible堅牢化・安定化計画 (2025-12-01)
+
+**事象**: 
+- `git clean -fd`を実行すると、`storage/`と`certs/`が削除された（写真ファイル、PDFファイル、自己署名証明書が消失）
+- `/etc/polkit-1/rules.d/50-pcscd-allow-all.rules`が削除され、NFCリーダーが使用不能になった
+- システム設定ファイルの管理方針が不明確で、削除されても自動復旧できない
+
+**要因**: 
+- **`git clean`の危険性**: `.gitignore`に含まれていないファイルが削除される
+- **システム設定ファイルの管理不足**: `/etc/`配下の設定ファイルがAnsibleで管理されていない
+- **保護ディレクトリの不足**: `alerts/`と`logs/`が除外されていない
+
+**試行した対策**: 
+- [試行1] `.gitignore`に`storage/`と`certs/`を追加 → **成功**（これらのディレクトリは保護された）
+- [試行2] `git clean`コマンドで`storage/`と`certs/`を除外 → **成功**（一時的な対策）
+- [試行3] polkit設定ファイルを手動で再作成 → **成功**（一時的な復旧）
+- [試行4] Ansibleでpolkit設定ファイルを管理するプレイブックを作成 → **成功**（自動復旧可能に）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-01）: 以下の対策を組み合わせて解決
+  1. **`git clean`の改善**: `alerts/`と`logs/`を除外リストに追加し、コメントで`/etc/`配下の設定ファイルについて説明を追加
+  2. **polkit設定ファイルのAnsible管理化**: `infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2`を作成し、`update-clients.yml`に統合
+  3. **バックアップ機能の実装**: `scripts/ansible-backup-configs.sh`を作成し、設定ファイルのバックアップを自動化
+  4. **ロールバック機能の実装**: `infrastructure/ansible/playbooks/rollback.yml`を作成し、設定ファイルの自動復旧を可能に
+  5. **ドキュメント化**: `docs/plans/ansible-hardening-stabilization-plan.md`と`docs/guides/ansible-managed-files.md`を作成し、管理方針を明確化
+
+**学んだこと**: 
+- **`git clean`のリスク**: `.gitignore`に含まれていないファイルは削除されるため、保護が必要なディレクトリは明示的に除外する必要がある
+- **システム設定ファイルの管理**: `/etc/`配下の設定ファイルはGitリポジトリ外にあるが、Ansibleで管理することで削除されても自動復旧できる
+- **Ansibleの堅牢化**: 設定ファイルのバックアップとロールバック機能を実装することで、誤削除時の影響を最小限に抑えられる
+- **ドキュメント化の重要性**: 管理方針を明確化することで、将来の同様の問題を防げる
+
+**解決状況**: ✅ **解決済み**（2025-12-01）
+
+**関連ファイル**: 
+- `infrastructure/ansible/playbooks/update-clients.yml`（`git clean`の改善、polkit設定ファイルの管理）
+- `infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2`（polkit設定ファイルテンプレート）
+- `infrastructure/ansible/playbooks/manage-system-configs.yml`（システム設定ファイル管理プレイブック）
+- `infrastructure/ansible/playbooks/rollback.yml`（ロールバックプレイブック）
+- `scripts/ansible-backup-configs.sh`（設定ファイルバックアップスクリプト）
+- `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画）
+- `docs/guides/ansible-managed-files.md`（Ansibleで管理すべき設定ファイル一覧）
+
+---

@@ -23,13 +23,22 @@
         group: "{{ ansible_user }}"
         mode: '0755'
 
-    - name: Clean untracked files before checkout (excluding storage and certs)
+    - name: Clean untracked files before checkout (excluding protected directories)
       ansible.builtin.shell: |
         set -euo pipefail
-        cd {{ repo_path }} && git clean -fd -e storage/ -e 'storage/**' -e certs/ -e 'certs/**' || true
+        cd {{ repo_path }} && git clean -fd \
+          -e storage/ -e 'storage/**' \
+          -e certs/ -e 'certs/**' \
+          -e alerts/ -e 'alerts/**' \
+          -e logs/ -e 'logs/**' \
+          || true
       args:
         executable: /bin/bash
       ignore_errors: true
+      vars:
+        # 注意: /etc/配下の設定ファイルはGitリポジトリ外にあるため、
+        # git cleanでは削除されない。しかし、Ansibleで管理することで、
+        # 削除されても自動復旧できる。
 
     - name: Sync repository to desired state
       ansible.builtin.git:
@@ -103,6 +112,25 @@
       when: '"server" not in group_names'
       register: status_agent_timer_enable_result
 
+    # システム設定ファイルの管理（polkit設定など）
+    - name: Ensure polkit rules directory exists
+      ansible.builtin.file:
+        path: /etc/polkit-1/rules.d
+        state: directory
+        mode: '0755'
+      when: '"server" not in group_names'
+
+    - name: Deploy polkit rule for pcscd access
+      ansible.builtin.template:
+        src: "{{ repo_path }}/infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2"
+        dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+        owner: root
+        group: root
+        mode: '0644'
+      when: '"server" not in group_names'
+      register: polkit_result
+      notify: restart pcscd
+
     - name: Restart required services (clients)
       ansible.builtin.systemd:
         name: "{{ item }}"
@@ -146,6 +174,13 @@
     - name: Attach health info to run output
       ansible.builtin.debug:
         var: health_info.stdout_lines
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+      when: '"server" not in group_names'
 
   post_tasks:
     - name: Collect failed hosts summary
