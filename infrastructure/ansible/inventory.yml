@@ -6,6 +6,7 @@ all:
           ansible_host: 192.168.128.131
           ansible_user: denkon5sd02
           ansible_connection: local  # ローカル実行のため
+          ansible_python_interpreter: /usr/bin/python3
     clients:
       hosts:
         raspberrypi4:
