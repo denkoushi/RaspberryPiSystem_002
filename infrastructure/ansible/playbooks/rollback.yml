@@ -22,7 +22,10 @@
 
     - name: Get latest polkit backup path
       ansible.builtin.set_fact:
-        latest_polkit_backup: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first }}"
+        latest_polkit_backup: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first | default({}) }}"
+      when:
+        - backup_dir_stat.stat.exists
+        - polkit_backups.matched > 0
 
     - name: Restore polkit configuration from backup
       ansible.builtin.copy:
@@ -36,6 +39,7 @@
         - backup_dir_stat.stat.exists
         - polkit_backups.matched > 0
         - latest_polkit_backup is defined
+        - latest_polkit_backup.path is defined
       register: polkit_restore_result
       notify: restart pcscd
 
