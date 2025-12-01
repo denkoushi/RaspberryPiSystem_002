@@ -23,10 +23,10 @@
         group: "{{ ansible_user }}"
         mode: '0755'
 
-    - name: Clean untracked files before checkout
+    - name: Clean untracked files before checkout (excluding storage)
       ansible.builtin.shell: |
         set -euo pipefail
-        cd {{ repo_path }} && git clean -fd || true
+        cd {{ repo_path }} && git clean -fd -e storage/ -e 'storage/**' || true
       args:
         executable: /bin/bash
       ignore_errors: true

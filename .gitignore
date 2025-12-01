@@ -22,6 +22,9 @@ pnpm-debug.log*
 logs/
 alerts/
 
+# Storage (user-uploaded files)
+storage/
+
 # Python
 __pycache__/
 *.pyc
