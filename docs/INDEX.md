@@ -208,6 +208,8 @@ APIの概要と詳細。
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
 | [status-agent.md](./guides/status-agent.md) | Raspberry Pi クライアント状態送信エージェント |
+| [quick-start-deployment.md](./guides/quick-start-deployment.md) | **クライアント一括更新と監視のクイックスタート** |
+| [local-alerts.md](./guides/local-alerts.md) | **ローカル環境対応の通知機能ガイド** |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
 
