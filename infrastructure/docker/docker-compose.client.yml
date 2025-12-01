@@ -13,6 +13,7 @@ services:
       - ../../clients/nfc-agent/.env.example
     volumes:
       - nfc-agent-data:/data
+      - /run/pcscd:/run/pcscd:ro
     restart: unless-stopped
 
 volumes:
