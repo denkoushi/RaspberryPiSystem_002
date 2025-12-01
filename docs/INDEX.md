@@ -196,6 +196,17 @@ APIの概要と詳細。
 |---------|------|
 | [system-requirements.md](./requirements/system-requirements.md) | システム要件定義 |
 
+### 実装計画（plans/）
+
+機能実装の計画と進捗。
+
+| ファイル | 説明 |
+|---------|------|
+| [production-deployment-management-plan.md](./plans/production-deployment-management-plan.md) | プロダクション環境デプロイメント・更新・デバッグ管理計画 |
+| [production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) | クライアント状態可視化とデバッグ支援システム実行計画 |
+| [stability-improvement-plan.md](./plans/stability-improvement-plan.md) | システム安定性向上計画 |
+| [ansible-hardening-stabilization-plan.md](./plans/ansible-hardening-stabilization-plan.md) | **Ansible堅牢化・安定化計画** |
+
 ### 実践ガイド（guides/）
 
 開発・デプロイ・運用の手順。
