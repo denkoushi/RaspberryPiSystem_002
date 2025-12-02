@@ -28,14 +28,14 @@
       register: client_service_result
       changed_when: false
       failed_when: client_service_result.stdout.strip() not in ['success', 'none', 'na']
-      when: (service_name | regex_search('\\.service$') | default('')) | length > 0
+      when: service_name is match('.*\\.service$')
 
     - name: Ensure {{ service_name }} is not in failed state
       ansible.builtin.command: "systemctl is-failed {{ service_name }}"
       register: client_service_failed_check
       changed_when: false
       failed_when: client_service_failed_check.rc == 0
-      when: (service_name | regex_search('\\.service$') | default('')) | length > 0
+      when: service_name is match('.*\\.service$')
 
     - name: Record restart success for {{ service_name }}
       ansible.builtin.set_fact:
