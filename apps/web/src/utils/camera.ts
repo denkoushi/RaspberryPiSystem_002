@@ -15,28 +15,55 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
     throw new Error('このブラウザはカメラAPIをサポートしていません。HTTPS接続またはlocalhostでのアクセスが必要です。');
   }
 
-  const constraints: MediaStreamConstraints = {
-    video: deviceId
-      ? { 
-          deviceId: { exact: deviceId },
-          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
-          height: { ideal: 480, max: 480 },
-          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
-        }
-      : { 
-          facingMode: 'environment', 
-          width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
-          height: { ideal: 480, max: 480 },
-          frameRate: { ideal: 15, max: 15 } // フレームレートを15fpsに制限（負荷削減）
-        },
-    audio: false,
+  const sharedVideoConstraints = {
+    width: { ideal: 640, max: 640 }, // ラズパイ4の処理能力を考慮して640x480に制限
+    height: { ideal: 480, max: 480 },
+    frameRate: { ideal: 15, max: 15 }, // フレームレートを15fpsに制限（負荷削減）
+  } as const;
+
+  const buildVideoConstraints = (fallback = false): MediaTrackConstraints => {
+    if (deviceId && !fallback) {
+      return { deviceId: { exact: deviceId }, ...sharedVideoConstraints };
+    }
+    if (!fallback) {
+      return {
+        facingMode: { ideal: 'environment' },
+        ...sharedVideoConstraints,
+      };
+    }
+    // フォールバック: facingModeやdeviceIdを指定せず、最初に利用可能なカメラを使用
+    return {
+      ...sharedVideoConstraints,
+    };
   };
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    return stream;
+    return await navigator.mediaDevices.getUserMedia({
+      video: buildVideoConstraints(),
+      audio: false,
+    });
   } catch (error) {
-    throw new Error(`カメラへのアクセスに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+    const err = error as DOMException | Error;
+    const isConstraintError =
+      err instanceof DOMException &&
+      (err.name === 'OverconstrainedError' || err.name === 'NotFoundError');
+    const message = err instanceof Error ? err.message : String(err);
+
+    if (!deviceId && isConstraintError) {
+      // 端末によっては facingMode が原因で NotFound になるため、制約を緩めて再試行
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: buildVideoConstraints(true),
+          audio: false,
+        });
+      } catch (fallbackError) {
+        throw new Error(
+          `カメラへのアクセスに失敗しました: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`
+        );
+      }
+    }
+
+    throw new Error(`カメラへのアクセスに失敗しました: ${message}`);
   }
 }
 
@@ -169,7 +196,7 @@ export async function compressImage(blob: Blob, maxSizeKB: number = 100): Promis
       ctx.drawImage(img, 0, 0, width, height);
 
       // 品質を下げながら圧縮（100KB以下になるまで）
-      let quality = 0.8;
+      const quality = 0.8;
       const minQuality = 0.5;
       const step = 0.1;
 
