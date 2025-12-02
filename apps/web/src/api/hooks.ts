@@ -98,7 +98,7 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
   return useQuery({
     queryKey: ['loans', clientId, clientKey],
     queryFn: () => getActiveLoans(clientId, clientKey),
-    refetchInterval: false, // 自動更新を無効化（手動操作で即座に反映されるため不要）
+    refetchInterval: 30000, // 30秒ごとに自動更新（12時間経過の状態をリアルタイムで反映）
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled !== false // デフォルトはtrue、明示的にfalseが指定された場合のみ無効化
   });

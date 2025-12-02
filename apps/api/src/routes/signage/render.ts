@@ -22,7 +22,22 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     }
   });
 
-  app.get('/render/status', { preHandler: canView }, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/render/status', async (request: FastifyRequest, reply: FastifyReply) => {
+    // クライアントキー認証をサポート
+    const headerKey = request.headers['x-client-key'];
+    if (!headerKey) {
+      // クライアントキーがない場合はJWT認証を要求
+      await canView(request, reply);
+    } else {
+      // クライアントキーがある場合は検証
+      const client = await prisma.clientDevice.findUnique({
+        where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] }
+      });
+      if (!client) {
+        throw new ApiError(401, 'クライアント API キーが不正です');
+      }
+    }
+
     const scheduler = app.signageRenderScheduler;
     return reply.status(200).send({
       isRunning: scheduler.isRunning(),

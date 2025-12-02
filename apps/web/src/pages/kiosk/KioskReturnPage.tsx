@@ -84,10 +84,19 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                 ? loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
                 : null;
 
+              // 12時間経過チェック: dueAtがあればそれを使用、なければborrowedAtから12時間後を計算
+              const borrowedAt = new Date(loan.borrowedAt);
+              const dueAt = loan.dueAt ? new Date(loan.dueAt) : new Date(borrowedAt.getTime() + 12 * 60 * 60 * 1000);
+              const isOverdue = new Date() > dueAt;
+
               return (
                 <li
                   key={loan.id}
-                  className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 p-3 md:flex-row md:items-center md:justify-between"
+                  className={`flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between ${
+                    isOverdue
+                      ? 'border-red-500/50 bg-red-500/10'
+                      : 'border-white/10 bg-white/5'
+                  }`}
                 >
                   <div className="flex flex-1 gap-3">
                     {/* 写真サムネイル */}
@@ -107,9 +116,22 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                     )}
                     {/* 貸出情報 */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{loan.item?.name ?? <span className="text-xs text-white/50">アイテム情報なし</span>}</p>
-                      <p className="text-xs text-white/70">{loan.employee?.displayName ?? '従業員情報なし'}</p>
-                      <p className="text-xs text-white/50">{new Date(loan.borrowedAt).toLocaleString()}</p>
+                      <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-400' : ''}`}>
+                        {loan.item?.name ?? (
+                          <span className="text-xs text-white/50">
+                            {loan.photoUrl ? '写真撮影モード' : 'アイテム情報なし'}
+                          </span>
+                        )}
+                      </p>
+                      <p className={`text-xs ${isOverdue ? 'text-red-300' : 'text-white/70'}`}>
+                        {loan.employee?.displayName ?? '従業員情報なし'}
+                      </p>
+                      <p className={`text-xs ${isOverdue ? 'text-red-300' : 'text-white/50'}`}>
+                        {borrowedAt.toLocaleString()}
+                        {isOverdue && (
+                          <span className="ml-2 font-semibold text-red-400">⚠ 期限超過</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-row gap-2">
