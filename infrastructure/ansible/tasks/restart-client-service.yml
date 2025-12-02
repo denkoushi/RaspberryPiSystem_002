@@ -35,7 +35,7 @@
       register: client_service_failed_check
       changed_when: false
       failed_when: client_service_failed_check.rc == 1
-      when: service_name | regex_search('\\.service$')
+      when: (service_name | regex_search('\\.service$')) | length > 0
 
     - name: Record restart success for {{ service_name }}
       ansible.builtin.set_fact:
