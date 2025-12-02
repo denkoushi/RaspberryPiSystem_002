@@ -240,7 +240,6 @@ APIの概要と詳細。
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [signage-test-plan.md](./guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
 | [signage-deployment.md](./guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
-| [signage-deployment-step1.md](./guides/signage-deployment-step1.md) | **デジタルサイネージ機能 デプロイメント Step 1**（signage-deployment.mdの補足） |
 | [signage-client-setup.md](./guides/signage-client-setup.md) | **デジタルサイネージクライアント端末セットアップガイド** |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |

@@ -26,10 +26,27 @@ update-frequency: medium
 
 ### 1. リポジトリの更新
 
+**Raspberry Pi 5で実行:**
+
 ```bash
 cd /opt/RaspberryPiSystem_002
-git pull origin feature/digital-signage  # または mainブランチにマージ後
+
+# feature/digital-signageブランチを取得
+git fetch origin feature/digital-signage
+
+# ブランチをチェックアウト（またはmainブランチにマージ済みの場合はmainをpull）
+git checkout feature/digital-signage
+# または
+# git pull origin main  # mainブランチにマージ済みの場合
+
+# 最新の変更を確認
+git log --oneline -5
 ```
+
+**確認事項:**
+- [ ] `git fetch`が成功したか
+- [ ] ブランチが正しくチェックアウトされたか
+- [ ] 最新のコミットが含まれているか
 
 ### 2. データベースマイグレーションの実行
 
