@@ -20,7 +20,11 @@ update-frequency: high
 
 - MacからRaspberry Pi 5にSSH接続できること
 - Raspberry Pi 5にAnsibleがインストールされていること
-- クライアント（Raspberry Pi 3/4）にSSH鍵認証が設定されていること
+- Raspberry Pi 5からクライアント（Raspberry Pi 3/4）にSSH接続できること（SSH鍵認証推奨）
+
+**⚠️ 注意**: MacからRaspberry Pi 3/4への直接SSH接続は不要です。MacからはPi5にのみ接続し、Pi5経由でAnsibleがPi3/4を更新します。詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) を参照してください。
+
+**📝 ローカルネットワークが変更された場合**: IPアドレスが変わった場合は、[環境構築ガイド](./environment-setup.md) を参照して環境を再構築してください。
 
 ## クイックスタート
 
@@ -32,8 +36,8 @@ update-frequency: high
 # プロジェクトディレクトリに移動
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
-# 環境変数を設定
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+# 環境変数を設定（Pi5のIPアドレスを指定）
+export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
 
 # 一括更新スクリプトを実行
 ./scripts/update-all-clients.sh
@@ -64,7 +68,7 @@ cat logs/ansible-update-YYYYMMDD-HHMMSS.log
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://192.168.10.230/admin/clients
 ```
 
 **表示内容:**
@@ -78,7 +82,7 @@ https://192.168.128.131/admin/clients
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients/logs
+https://192.168.10.230/admin/clients/logs
 ```
 
 **フィルタリング:**
@@ -116,13 +120,13 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 **Macのターミナルで実行:**
 
 ```bash
-# ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+# ログインしてトークンを取得（Pi5のIPアドレスを指定）
+TOKEN=$(curl -s -X POST http://192.168.10.230:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -X GET http://192.168.128.131:8080/api/clients/status \
+curl -X GET http://192.168.10.230:8080/api/clients/status \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
@@ -134,9 +138,9 @@ curl -X GET http://192.168.128.131:8080/api/clients/status \
 
 1. **SSH接続の確認**:
    ```bash
-   # Raspberry Pi 5からクライアントに接続テスト
-   ssh tools03@192.168.128.102
-   ssh signageras3@192.168.128.152
+   # Raspberry Pi 5からクライアントに接続テスト（実際のIPアドレスに置き換えてください）
+   ssh tools03@192.168.10.223
+   ssh signageras3@192.168.10.109
    ```
 
 2. **インベントリファイルの確認**:
@@ -161,14 +165,14 @@ curl -X GET http://192.168.128.131:8080/api/clients/status \
 
 2. **クライアントの状態確認**:
    ```bash
-   # 管理画面で確認
-   https://192.168.128.131/admin/clients
+   # 管理画面で確認（Pi5のIPアドレスを指定）
+   https://192.168.10.230/admin/clients
    ```
 
 3. **手動での更新確認**:
    ```bash
-   # クライアントに直接接続して確認
-   ssh tools03@192.168.128.102
+   # Pi5からクライアントに接続して確認（実際のIPアドレスに置き換えてください）
+   ssh tools03@192.168.10.223
    cd /opt/RaspberryPiSystem_002
    git status
    ```

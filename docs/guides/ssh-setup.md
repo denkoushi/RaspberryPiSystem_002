@@ -7,6 +7,16 @@
 - 必要に応じてパスワード認証を無効化する
 - 接続テストと記録を残す
 
+## ⚠️ 重要な前提知識
+
+**MacからRaspberry Pi 3/4への直接SSH接続は不要です**。
+
+- Macからは**Raspberry Pi 5にのみSSH接続**します
+- Raspberry Pi 5上でAnsibleが実行され、Pi5からPi3/4にSSH接続して更新を実行します
+- このドキュメントは、**Pi5からPi3/4へのSSH接続**を設定する手順です
+
+詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) を参照してください。
+
 ## 前提条件
 
 - サーバー（Raspberry Pi 5）から各クライアントへパスワードでSSH接続できる状態

@@ -3,7 +3,8 @@
   hosts: server:clients
   gather_facts: false
   become: true
-  serial: 5
+  serial: 1  # Phase 4: ensure hosts are updated sequentially
+  order: inventory  # honor inventory order so server runs before clients
   vars:
     repo_path: /opt/RaspberryPiSystem_002
     repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
@@ -223,6 +224,20 @@
               See captured logs above for details.
       when: '"server" in group_names'
 
+    - name: Wait for API health endpoint to recover
+      ansible.builtin.uri:
+        url: http://localhost:8080/api/system/health
+        method: GET
+        status_code: 200
+        return_content: true
+      register: api_health_result
+      retries: 8
+      delay: 5
+      until:
+        - api_health_result.status == 200
+        - (api_health_result.json.status | default('')) == 'ok'
+      when: '"server" in group_names'
+
     - name: Collect health check info
       ansible.builtin.shell: |
         set -euo pipefail
@@ -245,6 +260,34 @@
     - name: Attach health info to run output
       ansible.builtin.debug:
         var: health_info.stdout_lines
+
+    - name: Verify kiosk UI is reachable
+      ansible.builtin.uri:
+        url: "{{ kiosk_url }}"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: kiosk_health
+      retries: 5
+      delay: 5
+      until: kiosk_health.status == 200
+      when:
+        - '"server" not in group_names'
+        - kiosk_url is defined
+
+    - name: Verify signage status endpoint is reachable
+      ansible.builtin.uri:
+        url: "{{ signage_server_url }}/api/signage/render/status"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: signage_health
+      retries: 5
+      delay: 5
+      until: signage_health.status == 200
+      when:
+        - '"server" not in group_names'
+        - signage_server_url is defined
 
   handlers:
     - name: restart pcscd
