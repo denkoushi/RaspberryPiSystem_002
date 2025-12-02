@@ -41,6 +41,7 @@
 |-------------|-------------|
 | 新機能を追加したい | [guides/development.md](./guides/development.md), [modules/](./modules/) |
 | APIを理解したい | [api/overview.md](./api/overview.md), [api/auth.md](./api/auth.md) |
+| **APIキー統一の方針とフィルタリングロジック** | [guides/api-key-policy.md](./guides/api-key-policy.md) |
 | モジュール構造を理解したい | [decisions/001-module-structure.md](./decisions/001-module-structure.md) |
 | サービス層を理解したい | [decisions/002-service-layer.md](./decisions/002-service-layer.md) |
 | CSVインポート・エクスポートを理解したい | [guides/csv-import-export.md](./guides/csv-import-export.md) |

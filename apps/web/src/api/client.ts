@@ -110,8 +110,10 @@ export async function deleteItem(id: string) {
 }
 
 export async function getActiveLoans(clientId?: string, clientKey: string = 'client-demo-key') {
+  // キオスク画面では全件表示するため、clientIdを送信しない
+  // （API側でクライアントキーから自動解決されたclientIdでフィルタリングされないようにする）
   const { data } = await api.get<{ loans: Loan[] }>('/tools/loans/active', {
-    params: { clientId },
+    params: clientId ? { clientId } : {}, // clientIdが明示的に指定されている場合のみ送信
     headers: { 'x-client-key': clientKey }
   });
   return data.loans;

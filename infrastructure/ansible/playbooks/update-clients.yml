@@ -150,8 +150,32 @@
         group: root
         mode: '0644'
       when: '"server" not in group_names'
-      register: polkit_result
-      notify: restart pcscd
+
+    # signage-update.shのIPアドレスを自動更新（ネットワーク変更時の再発防止）
+    - name: Update signage-update.sh server URL
+      ansible.builtin.replace:
+        path: /usr/local/bin/signage-update.sh
+        regexp: 'SERVER_URL=https?://[0-9.]+'
+        replace: "SERVER_URL={{ signage_server_url }}"
+        backup: true
+      when:
+        - '"server" not in group_names'
+        - signage_server_url is defined
+        - manage_signage_lite | default(false) | bool
+      register: signage_update_script_result
+
+    # kiosk-launch.shのURLを自動更新（ネットワーク変更時の再発防止）
+    - name: Update kiosk-launch.sh kiosk URL
+      ansible.builtin.replace:
+        path: /usr/local/bin/kiosk-launch.sh
+        regexp: '--app="https?://[0-9.]+/kiosk"'
+        replace: '--app="{{ kiosk_url }}"'
+        backup: true
+      when:
+        - '"server" not in group_names'
+        - kiosk_url is defined
+        - manage_kiosk_browser | default(false) | bool
+      register: kiosk_launch_script_result
 
     - name: Restart required services (clients) with retry
       ansible.builtin.include_tasks: "../tasks/restart-client-service.yml"
@@ -183,10 +207,18 @@
 
     - name: Restart Docker Compose services (server) with retry
       block:
-        - name: Restart Docker services on server
+        - name: Rebuild and restart Docker services on server (auto-detect network changes)
           ansible.builtin.shell: |
             set -euo pipefail
-            cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml restart api web
+            cd {{ repo_path }}
+            # ネットワーク変更を検出: inventory.ymlのIPアドレスとdocker-compose.server.ymlのNFC_AGENT_HOSTを比較
+            CURRENT_IP="{{ docker_server_ip }}"
+            COMPOSE_IP=$(grep -E '^\s*NFC_AGENT_HOST:' infrastructure/docker/docker-compose.server.yml | sed 's/.*NFC_AGENT_HOST:\s*"\([^"]*\)".*/\1/' || echo "")
+            if [ "$CURRENT_IP" != "$COMPOSE_IP" ] && [ -n "$COMPOSE_IP" ]; then
+              echo "[INFO] Network change detected: rebuilding containers"
+              docker compose -f infrastructure/docker/docker-compose.server.yml build api web
+            fi
+            docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
           args:
             executable: /bin/bash
           register: docker_restart_result

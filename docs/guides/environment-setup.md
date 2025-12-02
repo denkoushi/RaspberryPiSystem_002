@@ -336,6 +336,10 @@ Raspberry Pi 3: 192.168.10.109
 - [ ] Pi5上の`inventory.yml`が新しいIPアドレスに更新されている
 - [ ] Ansible接続テストが成功する（`ansible all -m ping`）
 - [ ] 一括更新スクリプトが正常に動作する（`./scripts/update-all-clients.sh`）
+- [ ] **Pi5のDockerコンテナが再ビルドされている**（ネットワーク変更時は自動検出・再ビルド）
+- [ ] **Pi3のsignage-update.shが新しいIPアドレスに更新されている**（Ansibleで自動更新）
+- [ ] Pi3のサイネージが最新画像を表示している
+- [ ] Pi4のキオスクが正しいモード（PHOTO/TAG）で動作している
 
 ## 関連ドキュメント
 
