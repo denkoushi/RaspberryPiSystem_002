@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 26件  
+**件数**: 27件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1026,5 +1026,48 @@ update-frequency: medium
 - `infrastructure/docker/Caddyfile.local.template`
 - `infrastructure/docker/docker-compose.server.yml`
 - `.env`（プロジェクトルート）
+
+---
+
+### [KB-066] ラズパイ3でのAnsibleデプロイ失敗（サイネージ稼働中のリソース不足・自動再起動・401エラー）
+
+**EXEC_PLAN.md参照**: Phase 3 自動バックアップ＆ロールバック実装（2025-12-02）
+
+**事象**: 
+- ラズパイ3でAnsibleデプロイが失敗する
+- デプロイ中にサイネージ（signage-lite.service）が稼働しており、リソース不足で処理が不安定になる
+- サイネージを停止しても`Restart=always`により自動的に再起動してしまう
+- サイネージヘルスチェック（`/api/signage/render/status`）が401エラーを返し、デプロイが中断される
+- ラズパイ4と5では成功していた（サイネージが稼働していないため）
+
+**要因**: 
+1. **リソース不足**: ラズパイ3はCPU/RAMが限られており、サイネージ稼働中にデプロイ処理（依存インストール、ファイルコピー等）を実行するとリソース競合が発生
+2. **自動再起動**: `signage-lite.service`に`Restart=always`が設定されており、`systemctl stop`しても自動的に再起動してしまう
+3. **認証エラー**: サイネージヘルスチェックエンドポイントが認証トークンを要求するが、Ansibleからは`x-client-key`ヘッダーのみ送信しており、401エラーが発生
+
+**試行した対策**: 
+- [試行1] デプロイ前にサイネージを停止 → **失敗**（自動再起動してしまう）
+- [試行2] `systemctl mask`でサービスをマスク → **失敗**（サービスファイルが存在する場合は使用不可）
+- [試行3] `systemctl disable`で自動起動を無効化 → **成功**（自動再起動を防止）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-02）:
+  1. デプロイ前に`signage-lite.service`と`signage-lite-update.timer`を`enabled: false`で無効化し、その後停止
+  2. デプロイ処理を実行（リソースに余裕を持たせる）
+  3. デプロイ後に`enabled: true`で再有効化し、サービスを再起動
+  4. サイネージヘルスチェックの401エラーを`failed_when: false`で警告として扱い、デプロイを継続
+
+**学んだこと**: 
+- リソースが限られた環境（ラズパイ3）では、デプロイ前に重いサービスを停止してリソースに余裕を持たせる必要がある
+- `systemctl stop`だけでは`Restart=always`が設定されたサービスは自動再起動するため、`systemctl disable`で自動起動を無効化する必要がある
+- `systemctl mask`はサービスファイルが存在しない場合のみ使用可能
+- 認証が必要なエンドポイントのヘルスチェックは、失敗してもデプロイを継続できるように警告として扱うべき
+
+**解決状況**: ✅ **解決済み**（2025-12-02）
+
+**関連ファイル**: 
+- `infrastructure/ansible/tasks/update-clients-core.yml`
+- `infrastructure/ansible/playbooks/update-clients.yml`
+- `infrastructure/ansible/inventory.yml`
 
 ---

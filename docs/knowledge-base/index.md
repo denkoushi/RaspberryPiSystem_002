@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 17件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 26件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 27件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー |
 
 ---
 
@@ -117,6 +117,7 @@ update-frequency: high
 | [KB-063](./infrastructure.md#kb-063-websocket接続エラー502-caddyの環境変数置換が機能しない) | WebSocket接続エラー（502）: Caddyの環境変数置換が機能しない | ✅ 解決済み |
 | [KB-064](./frontend.md#kb-064-pi4キオスクでカメラが起動しない-facingmodeの指定方法の問題) | Pi4キオスクでカメラが起動しない: facingModeの指定方法の問題 | ✅ 解決済み |
 | [KB-065](./frontend.md#kb-065-カメラエラーメッセージが表示されない-デバッグログの出力条件が厳しすぎる) | カメラエラーメッセージが表示されない: デバッグログの出力条件が厳しすぎる | ✅ 解決済み |
+| [KB-066](./infrastructure.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) | ラズパイ3でのAnsibleデプロイ失敗（サイネージ稼働中のリソース不足・自動再起動・401エラー） | ✅ 解決済み |
 
 ---
 
@@ -155,9 +156,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 58件 |
+| ✅ 解決済み | 59件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **62件** |
+| **合計** | **63件** |
 
 ---
 
@@ -194,3 +195,4 @@ update-frequency: high
 - 2025-12-02: KB-063を追加（WebSocket接続エラー502: Caddyの環境変数置換が機能しない）
 - 2025-12-02: KB-064を追加（Pi4キオスクでカメラが起動しない: facingModeの指定方法の問題）
 - 2025-12-02: KB-065を追加（カメラエラーメッセージが表示されない: デバッグログの出力条件が厳しすぎる）
+- 2025-12-02: KB-066を追加（ラズパイ3でのAnsibleデプロイ失敗: サイネージ稼働中のリソース不足・自動再起動・401エラー）
