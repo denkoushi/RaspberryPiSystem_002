@@ -34,7 +34,7 @@
       ansible.builtin.command: "systemctl is-failed {{ service_name }}"
       register: client_service_failed_check
       changed_when: false
-      failed_when: client_service_failed_check.rc == 1
+      failed_when: client_service_failed_check.rc == 0
       when: (service_name | regex_search('\\.service$')) | length > 0
 
     - name: Record restart success for {{ service_name }}
