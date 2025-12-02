@@ -49,13 +49,6 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
-      args:
-        # 環境変数ファイル（.env）から読み込む
-        # デフォルト値は.env.exampleを参照
-        VITE_AGENT_WS_URL: ${VITE_AGENT_WS_URL:-ws://192.168.10.223:7071/stream}
-        # 相対パスを使用することで、Caddyのリバースプロキシ経由でAPIサーバーに接続
-        # 再起動後もIPアドレスが変わっても問題ない
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     restart: always
     depends_on:
       - api
