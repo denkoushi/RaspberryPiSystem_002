@@ -239,6 +239,7 @@ APIの概要と詳細。
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
 | [signage-test-plan.md](./guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
 | [signage-deployment.md](./guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
+| [signage-deployment-step1.md](./guides/signage-deployment-step1.md) | **デジタルサイネージ機能 デプロイメント Step 1**（signage-deployment.mdの補足） |
 | [signage-client-setup.md](./guides/signage-client-setup.md) | **デジタルサイネージクライアント端末セットアップガイド** |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
@@ -251,6 +252,8 @@ APIの概要と詳細。
 | [status-agent.md](./guides/status-agent.md) | Raspberry Pi クライアント状態送信エージェント |
 | [quick-start-deployment.md](./guides/quick-start-deployment.md) | **クライアント一括更新と監視のクイックスタート** |
 | [local-alerts.md](./guides/local-alerts.md) | **ローカル環境対応の通知機能ガイド** |
+| [local-alerts-verification.md](./guides/local-alerts-verification.md) | **ローカル環境対応の通知機能 実機検証手順** |
+| [ssd-migration.md](./guides/ssd-migration.md) | **SDカードからSSDへの移行手順** |
 | [ansible-managed-files.md](./guides/ansible-managed-files.md) | **Ansibleで管理すべき設定ファイル一覧** |
 | [ansible-error-handling.md](./guides/ansible-error-handling.md) | **Ansibleエラーハンドリングガイド** |
 | [ansible-best-practices.md](./guides/ansible-best-practices.md) | **Ansibleベストプラクティス** |
