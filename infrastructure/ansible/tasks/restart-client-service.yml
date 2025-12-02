@@ -1,4 +1,10 @@
 ---
+- name: Check if {{ service_name }} exists
+  ansible.builtin.command: "systemctl list-unit-files {{ service_name }} --no-pager"
+  register: service_exists_check
+  changed_when: false
+  failed_when: false
+
 - block:
     - name: Restart {{ service_name }} on client
       ansible.builtin.systemd:
@@ -9,6 +15,7 @@
       retries: 3
       delay: 10
       until: client_service_restart is succeeded
+  when: service_exists_check.rc == 0
 
     - name: Wait for {{ service_name }} to settle
       ansible.builtin.pause:
@@ -41,6 +48,11 @@
       ansible.builtin.set_fact:
         client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'ok'} ] }}"
   rescue:
+    - name: Check if service does not exist (skip silently)
+      ansible.builtin.fail:
+        msg: "Service {{ service_name }} does not exist, skipping"
+      when: service_exists_check.rc != 0
+      failed_when: false
     - name: Capture latest logs for {{ service_name }}
       ansible.builtin.shell: |
         set -euo pipefail
@@ -59,4 +71,5 @@
         msg: >
           Service {{ service_name }} failed to restart on {{ inventory_hostname }}.
           See journal snippet above for details.
+      when: service_exists_check.rc == 0
 
