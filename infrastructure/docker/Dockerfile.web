@@ -29,4 +29,4 @@ COPY infrastructure/docker/Caddyfile.local.template ./Caddyfile.local.template
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
 # 3. それ以外 → Caddyfile（HTTPのみ、開発用）
-CMD ["sh", "-c", "if [ -n \"$USE_LOCAL_CERTS\" ]; then envsubst '\$NFC_AGENT_HOST' < /srv/Caddyfile.local.template > /srv/Caddyfile.local && caddy run --config /srv/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
+CMD ["sh", "-c", "if [ -n \"$USE_LOCAL_CERTS\" ]; then export NFC_AGENT_HOST=${NFC_AGENT_HOST:-192.168.10.223} && envsubst '${NFC_AGENT_HOST}' < /srv/Caddyfile.local.template > /srv/Caddyfile.local && caddy run --config /srv/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
