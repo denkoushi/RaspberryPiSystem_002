@@ -12,17 +12,17 @@
         enabled: false
       register: signage_timer_stopped
 
-    - name: Stop signage-lite service (temporarily disable to prevent auto-restart)
+    - name: Disable signage-lite service to prevent auto-restart
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        enabled: false
+      register: signage_service_disabled
+
+    - name: Stop signage-lite service
       ansible.builtin.systemd:
         name: signage-lite.service
         state: stopped
       register: signage_service_stopped
-
-    - name: Temporarily mask signage-lite service to prevent auto-restart
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        masked: true
-      when: signage_service_stopped.changed | default(false)
 
     - name: Wait for signage-lite to fully stop
       ansible.builtin.pause:
@@ -137,14 +137,21 @@
     - manage_kiosk_browser | default(false) | bool
   register: kiosk_launch_script_result
 
-- name: Unmask signage-lite service before restart (if it was masked)
+- name: Re-enable signage-lite service before restart
   ansible.builtin.systemd:
     name: signage-lite.service
-    masked: false
+    enabled: true
   when:
     - '"server" not in group_names'
     - manage_signage_lite | default(false) | bool
-  failed_when: false  # マスクされていない場合はエラーを無視
+
+- name: Re-enable signage-lite update timer before restart
+  ansible.builtin.systemd:
+    name: signage-lite-update.timer
+    enabled: true
+  when:
+    - '"server" not in group_names'
+    - manage_signage_lite | default(false) | bool
 
 - name: Build services to restart list
   ansible.builtin.set_fact:
