@@ -4,6 +4,8 @@ export DISPLAY={{ kiosk_display | default(':0') }}
 export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
 export GTK_USE_PORTAL=0
 export XDG_CURRENT_DESKTOP={{ kiosk_desktop | default('LXDE') }}
+export XDG_SESSION_TYPE=x11
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 export CHROME_WRAPPER=/usr/bin/chromium-browser
 
 CHROMIUM_FLAGS=(
