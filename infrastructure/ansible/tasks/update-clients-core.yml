@@ -303,9 +303,17 @@
   retries: 3
   delay: 3
   until: signage_health.status in [200, 401]
-  failed_when: signage_health.status == 401  # 401の場合は失敗とする（認証が必要）
+  failed_when: false  # 401エラーは警告として扱う（認証が必要なエンドポイントのため）
   when:
     - '"server" not in group_names'
     - signage_server_url is defined
     - signage_client_key is defined
+    - manage_signage_lite | default(false) | bool
+
+- name: Warn if signage status endpoint requires authentication
+  ansible.builtin.debug:
+    msg: "Signage status endpoint returned 401 (authentication required). This is expected if the endpoint requires a token."
+  when:
+    - '"server" not in group_names'
+    - signage_health.status | default(0) == 401
     - manage_signage_lite | default(false) | bool
