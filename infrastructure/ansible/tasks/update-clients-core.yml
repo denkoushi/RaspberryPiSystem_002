@@ -108,6 +108,14 @@
     - manage_kiosk_browser | default(false) | bool
   register: kiosk_launch_script_result
 
+- name: Build services to restart list
+  ansible.builtin.set_fact:
+    services_to_restart: "{{ services_to_restart | default([
+      'status-agent.service',
+      'status-agent.timer'
+    ]) }}"
+  when: '"server" not in group_names'
+
 - name: Restart required services (clients) with retry
   ansible.builtin.include_tasks: "../tasks/restart-client-service.yml"
   loop: "{{ services_to_restart }}"
