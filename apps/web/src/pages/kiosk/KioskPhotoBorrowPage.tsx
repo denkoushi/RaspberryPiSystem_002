@@ -157,21 +157,23 @@ export function KioskPhotoBorrowPage() {
       let retryCount = 0;
       const maxRetries = 3;
 
+      console.log('[KioskPhotoBorrowPage] Starting camera capture...');
+      
       while (retryCount < maxRetries) {
         try {
+          console.log(`[KioskPhotoBorrowPage] Camera capture attempt ${retryCount + 1}/${maxRetries}`);
           // カメラを起動→撮影→停止（captureAndCompressPhoto内で自動的に停止される）
           photoData = await captureAndCompressPhoto();
+          console.log('[KioskPhotoBorrowPage] Camera capture successful');
           break; // 成功したらループを抜ける
         } catch (error) {
           retryCount++;
-          const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
-          if (enableDebugLogs) {
-            console.warn(`[KioskPhotoBorrowPage] Photo capture failed (attempt ${retryCount}/${maxRetries}):`, error);
-          }
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.error(`[KioskPhotoBorrowPage] Photo capture failed (attempt ${retryCount}/${maxRetries}):`, err);
+          
           if (retryCount >= maxRetries) {
             setIsCapturing(false);
-            const err = error instanceof Error ? error : new Error(String(error));
-            setError(`写真の撮影に失敗しました: ${err.message}`);
+            setError(`写真の撮影に失敗しました: ${err.message || String(err)}`);
             processingRef.current = false;
             return; // エラー時は処理を中断
           }
