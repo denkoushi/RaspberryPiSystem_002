@@ -36,7 +36,9 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
     // キオスク画面では、クライアントキー認証があっても全件表示する
     // （異なるAPIキーで作成された貸出も含めて表示するため）
     // clientIdがクエリパラメータで明示的に指定されている場合のみフィルタリング
-    const loans = await loanService.findActive({ clientId: query.clientId || undefined });
+    // 空文字列の場合はundefinedとして扱う（全件表示）
+    const filterClientId = query.clientId && query.clientId.trim() !== '' ? query.clientId : undefined;
+    const loans = await loanService.findActive({ clientId: filterClientId });
 
     return { loans };
   });
