@@ -3,6 +3,35 @@
     client_restart_results: []
     docker_restart_summary: []
 
+- name: Pause signage-lite workload before deployment
+  block:
+    - name: Stop and disable signage-lite update timer (prevent auto-restart)
+      ansible.builtin.systemd:
+        name: signage-lite-update.timer
+        state: stopped
+        enabled: false
+      register: signage_timer_stopped
+
+    - name: Stop signage-lite service (temporarily disable to prevent auto-restart)
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        state: stopped
+      register: signage_service_stopped
+
+    - name: Temporarily mask signage-lite service to prevent auto-restart
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        masked: true
+      when: signage_service_stopped.changed | default(false)
+
+    - name: Wait for signage-lite to fully stop
+      ansible.builtin.pause:
+        seconds: 3
+      when: signage_service_stopped.changed | default(false)
+  when:
+    - '"server" not in group_names'
+    - manage_signage_lite | default(false) | bool
+
 - name: Install production dependencies (optional)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -107,6 +136,15 @@
     - kiosk_url is defined
     - manage_kiosk_browser | default(false) | bool
   register: kiosk_launch_script_result
+
+- name: Unmask signage-lite service before restart (if it was masked)
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    masked: false
+  when:
+    - '"server" not in group_names'
+    - manage_signage_lite | default(false) | bool
+  failed_when: false  # マスクされていない場合はエラーを無視
 
 - name: Build services to restart list
   ansible.builtin.set_fact:
@@ -251,14 +289,16 @@
     url: "{{ signage_server_url }}/api/signage/render/status"
     method: GET
     validate_certs: false
-    status_code: 200
+    status_code: [200, 401]  # 401も許容（認証エラーは別途確認）
     headers:
       x-client-key: "{{ signage_client_key | default('') }}"
   register: signage_health
-  retries: 5
-  delay: 5
-  until: signage_health.status == 200
+  retries: 3
+  delay: 3
+  until: signage_health.status in [200, 401]
+  failed_when: signage_health.status == 401  # 401の場合は失敗とする（認証が必要）
   when:
     - '"server" not in group_names'
     - signage_server_url is defined
     - signage_client_key is defined
+    - manage_signage_lite | default(false) | bool
