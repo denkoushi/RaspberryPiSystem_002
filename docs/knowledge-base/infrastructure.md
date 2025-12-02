@@ -985,3 +985,46 @@ update-frequency: medium
 - `docs/plans/ansible-config-files-management-plan.md`（実装計画）
 
 ---
+
+### [KB-063] WebSocket接続エラー（502）: Caddyの環境変数置換が機能しない
+
+**EXEC_PLAN.md参照**: なし（2025-12-02発生）
+
+**事象**: 
+- Pi4のキオスク画面で `WebSocket connection to 'wss://192.168.10.230/stream' failed: Error during WebSocket handshake: Unexpected response code: 502` エラーが発生
+- Caddyのログに `dial tcp 192.168.128.102:7071: i/o timeout` エラーが記録される
+- NFCイベントが受信できないため、カメラ撮影機能が動作しない
+
+**要因**: 
+- `Dockerfile.web`の`envsubst`コマンドの引数が不適切で、環境変数`NFC_AGENT_HOST`が正しく置換されていなかった
+- `Caddyfile.local.template`内の`$NFC_AGENT_HOST`が古いIPアドレス（`192.168.128.102`）のまま残っていた
+- シェル環境変数に古いIPアドレスが設定されていた可能性がある
+
+**試行した対策**: 
+- [試行1] `envsubst '$$NFC_AGENT_HOST'` → **失敗**（エスケープが不適切）
+- [試行2] `envsubst '\$NFC_AGENT_HOST'` → **失敗**（変数名が正しく認識されない）
+- [試行3] `envsubst '${NFC_AGENT_HOST}'` → **失敗**（envsubstの引数形式が誤り）
+- [試行4] `envsubst`（引数なし）→ **成功**（すべての環境変数を置換）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-02）:
+  1. `Dockerfile.web`の`CMD`を修正し、`envsubst`の引数を削除してすべての環境変数を自動的に置換するように変更
+  2. `.env`ファイルに`NFC_AGENT_HOST=192.168.10.223`を設定
+  3. シェル環境変数を明示的に設定してからDocker Composeを起動
+  4. `docker-compose.server.yml`の`environment`セクションで`NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.223}`を設定（デフォルト値付き）
+
+**学んだこと**: 
+- `envsubst`コマンドは引数を指定しない場合、すべての環境変数を自動的に置換する
+- 引数を指定する場合は、`envsubst '$VAR1 $VAR2'`のようにシングルクォートで囲む必要がある
+- Docker Composeの環境変数は`.env`ファイル、シェル環境変数、`docker-compose.yml`の順で優先順位が決まる
+- ネットワーク変更時は、`.env`ファイルとシェル環境変数の両方を確認する必要がある
+
+**解決状況**: ✅ **解決済み**（2025-12-02）
+
+**関連ファイル**: 
+- `infrastructure/docker/Dockerfile.web`
+- `infrastructure/docker/Caddyfile.local.template`
+- `infrastructure/docker/docker-compose.server.yml`
+- `.env`（プロジェクトルート）
+
+---
