@@ -11,6 +11,12 @@
     repo_version: feature/production-deployment-management
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
     services_to_restart:
       - signage-lite.service
       - signage-lite-update.timer
@@ -25,6 +31,58 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
+
+    - name: Generate backup timestamp
+      ansible.builtin.set_fact:
+        backup_timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+      when: '"server" not in group_names'
+
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      when: '"server" not in group_names'
+
+    - name: Check existing polkit rule
+      ansible.builtin.stat:
+        path: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+      register: polkit_rule_stat
+      when: '"server" not in group_names'
+
+    - name: Backup polkit rule before deployment
+      ansible.builtin.copy:
+        src: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+        dest: "{{ backup_dir }}/polkit-50-pcscd-allow-all.rules.{{ backup_timestamp }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+        remote_src: true
+      when:
+        - '"server" not in group_names'
+        - polkit_rule_stat.stat.exists
+
+    - name: Check systemd service files to back up
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop: "{{ backup_service_files }}"
+      register: service_backup_stats
+      when: '"server" not in group_names'
+
+    - name: Backup systemd service units before deployment
+      ansible.builtin.copy:
+        src: "/etc/systemd/system/{{ item.item }}"
+        dest: "{{ backup_dir }}/{{ item.item }}.{{ backup_timestamp }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+        remote_src: true
+      loop: "{{ service_backup_stats.results | default([]) }}"
+      when:
+        - '"server" not in group_names'
+        - item.stat.exists
 
     - name: Clean untracked files before checkout (excluding protected directories)
       block:
@@ -68,259 +126,24 @@
       until: git_result.rc == 0
 
   tasks:
-    - name: Initialize deployment tracking facts
-      ansible.builtin.set_fact:
-        client_restart_results: []
-        docker_restart_summary: []
-
-    - name: Install production dependencies (optional)
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }} && pnpm install --filter signage-lite-client --prod
-      args:
-        executable: /bin/bash
-      register: install_result
-      changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
-      failed_when: false
-
-    # status-agentの設定（クライアントのみ）
-    - name: Ensure status-agent configuration directory exists
-      ansible.builtin.file:
-        path: /etc
-        state: directory
-      when: '"server" not in group_names'
-
-    - name: Create status-agent configuration file
-      ansible.builtin.template:
-        src: "{{ repo_path }}/clients/status-agent/status-agent.conf.j2"
-        dest: /etc/raspi-status-agent.conf
-        owner: root
-        group: root
-        mode: '0644'
-      when: '"server" not in group_names and status_agent_client_id is defined'
-      register: status_agent_config_result
-
-    - name: Copy status-agent systemd service file
-      ansible.builtin.copy:
-        src: "{{ repo_path }}/clients/status-agent/status-agent.service"
-        dest: /etc/systemd/system/status-agent.service
-        owner: root
-        group: root
-        mode: '0644'
-      when: '"server" not in group_names'
-      register: status_agent_service_result
-
-    - name: Copy status-agent systemd timer file
-      ansible.builtin.copy:
-        src: "{{ repo_path }}/clients/status-agent/status-agent.timer"
-        dest: /etc/systemd/system/status-agent.timer
-        owner: root
-        group: root
-        mode: '0644'
-      when: '"server" not in group_names'
-      register: status_agent_timer_result
-
-    - name: Reload systemd daemon
-      ansible.builtin.systemd:
-        daemon_reload: true
-      when: '"server" not in group_names and (status_agent_service_result.changed or status_agent_timer_result.changed)'
-
-    - name: Enable and start status-agent timer
-      ansible.builtin.systemd:
-        name: status-agent.timer
-        enabled: true
-        state: started
-        daemon_reload: true
-      when: '"server" not in group_names'
-      register: status_agent_timer_enable_result
-
-    # システム設定ファイルの管理（polkit設定など）
-    - name: Ensure polkit rules directory exists
-      ansible.builtin.file:
-        path: /etc/polkit-1/rules.d
-        state: directory
-        mode: '0755'
-      when: '"server" not in group_names'
-
-    - name: Deploy polkit rule for pcscd access
-      ansible.builtin.template:
-        src: "{{ repo_path }}/infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2"
-        dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-        owner: root
-        group: root
-        mode: '0644'
-      when: '"server" not in group_names'
-
-    # signage-update.shのIPアドレスを自動更新（ネットワーク変更時の再発防止）
-    - name: Update signage-update.sh server URL
-      ansible.builtin.replace:
-        path: /usr/local/bin/signage-update.sh
-        regexp: 'SERVER_URL=https?://[0-9.]+'
-        replace: "SERVER_URL={{ signage_server_url }}"
-        backup: true
-      when:
-        - '"server" not in group_names'
-        - signage_server_url is defined
-        - manage_signage_lite | default(false) | bool
-      register: signage_update_script_result
-
-    # kiosk-launch.shをテンプレートで管理（HTTPS/カメラ許可フラグ含む）
-    - name: Deploy kiosk-launch script
-      ansible.builtin.template:
-        src: "{{ repo_path }}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
-        dest: /usr/local/bin/kiosk-launch.sh
-        owner: root
-        group: root
-        mode: '0755'
-      when:
-        - '"server" not in group_names'
-        - kiosk_url is defined
-        - manage_kiosk_browser | default(false) | bool
-      register: kiosk_launch_script_result
-
-    - name: Restart required services (clients) with retry
-      ansible.builtin.include_tasks: "../tasks/restart-client-service.yml"
-      loop: "{{ services_to_restart }}"
-      loop_control:
-        loop_var: service_name
-      when: '"server" not in group_names'
-
-    - name: Verify restarted client services are healthy
-      ansible.builtin.shell: |
-        set -euo pipefail
-        sleep 2
-        systemctl is-active {{ item }}
-        if systemctl is-failed {{ item }} >/dev/null; then
-          echo "{{ item }} is in failed state"
-          exit 1
-        fi
-      args:
-        executable: /bin/bash
-      loop: "{{ services_to_restart | select('match', '\\.service$') | list }}"
-      loop_control:
-        label: "{{ item }}"
-      register: client_service_health
-      retries: 3
-      delay: 5
-      until: client_service_health.rc == 0
-      when:
-        - '"server" not in group_names'
-
-    - name: Restart Docker Compose services (server) with retry
+    - name: Execute deployment with automatic rollback
       block:
-        - name: Rebuild and restart Docker services on server (auto-detect network changes)
-          ansible.builtin.shell: |
-            set -euo pipefail
-            cd {{ repo_path }}
-            # ネットワーク変更を検出: inventory.ymlのIPアドレスとdocker-compose.server.ymlのNFC_AGENT_HOSTを比較
-            CURRENT_IP="{{ docker_server_ip }}"
-            COMPOSE_IP=$(grep -E '^\s*NFC_AGENT_HOST:' infrastructure/docker/docker-compose.server.yml | sed 's/.*NFC_AGENT_HOST:\s*"\([^"]*\)".*/\1/' || echo "")
-            if [ "$CURRENT_IP" != "$COMPOSE_IP" ] && [ -n "$COMPOSE_IP" ]; then
-              echo "[INFO] Network change detected: rebuilding containers"
-              docker compose -f infrastructure/docker/docker-compose.server.yml build api web
-            fi
-            docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
-          args:
-            executable: /bin/bash
-          register: docker_restart_result
-          retries: 3
-          delay: 10
-          until: docker_restart_result is succeeded
-          failed_when: docker_restart_result.rc != 0
-
-        - name: Record docker restart success
-          ansible.builtin.set_fact:
-            docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'ok'} ] }}"
+        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
       rescue:
-        - name: Capture docker compose logs
-          ansible.builtin.shell: |
-            set -euo pipefail
-            if command -v docker >/dev/null 2>&1; then
-              cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50 api web
-            else
-              echo "[WARN] docker command not found. Showing systemd logs instead."
-              journalctl -u docker.service -n 100 || true
-            fi
-          args:
-            executable: /bin/bash
-          register: docker_restart_logs
-          changed_when: false
-
-        - name: Record docker restart failure
+        - name: Record deployment failure reason
           ansible.builtin.set_fact:
-            docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'failed', 'log': docker_restart_logs.stdout | default('')} ] }}"
+            deployment_failed: true
+            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
 
-        - name: Fail current host due to docker restart failure
+        - name: Run rollback tasks on clients
+          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
+          when:
+            - '"server" not in group_names'
+
+        - name: Fail host after rollback
           ansible.builtin.fail:
             msg: >
-              Docker Compose restart failed on {{ inventory_hostname }}.
-              See captured logs above for details.
-      when: '"server" in group_names'
-
-    - name: Wait for API health endpoint to recover
-      ansible.builtin.uri:
-        url: http://localhost:8080/api/system/health
-        method: GET
-        status_code: 200
-        return_content: true
-      register: api_health_result
-      retries: 8
-      delay: 5
-      until:
-        - api_health_result.status == 200
-        - (api_health_result.json.status | default('')) == 'ok'
-      when: '"server" in group_names'
-
-    - name: Collect health check info
-      ansible.builtin.shell: |
-        set -euo pipefail
-        echo "=== systemctl status signage-lite ==="
-        systemctl status signage-lite --no-pager | head -n 20 || true
-        echo "=== recent kiosk-browser logs ==="
-        journalctl -u kiosk-browser.service -n 50 || true
-      args:
-        executable: /bin/bash
-      register: health_info
-      changed_when: false
-
-    - name: Summarize deployment result
-      ansible.builtin.debug:
-        msg:
-          - "Git: {{ 'changed' if git_result.changed else 'up-to-date' }}"
-          - "Client service restart summary: {{ client_restart_results | default([]) }}"
-          - "Docker restart summary: {{ docker_restart_summary | default([]) }}"
-
-    - name: Attach health info to run output
-      ansible.builtin.debug:
-        var: health_info.stdout_lines
-
-    - name: Verify kiosk UI is reachable
-      ansible.builtin.uri:
-        url: "{{ kiosk_url }}"
-        method: GET
-        validate_certs: false
-        status_code: 200
-      register: kiosk_health
-      retries: 5
-      delay: 5
-      until: kiosk_health.status == 200
-      when:
-        - '"server" not in group_names'
-        - kiosk_url is defined
-
-    - name: Verify signage status endpoint is reachable
-      ansible.builtin.uri:
-        url: "{{ signage_server_url }}/api/signage/render/status"
-        method: GET
-        validate_certs: false
-        status_code: 200
-      register: signage_health
-      retries: 5
-      delay: 5
-      until: signage_health.status == 200
-      when:
-        - '"server" not in group_names'
-        - signage_server_url is defined
+              Deployment failed on {{ inventory_hostname }}. Rollback executed.
 
   handlers:
     - name: restart pcscd

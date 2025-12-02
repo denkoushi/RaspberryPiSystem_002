@@ -28,7 +28,7 @@
       register: client_service_result
       changed_when: false
       failed_when: client_service_result.stdout.strip() not in ['success', 'none', 'na']
-      when: service_name | regex_search('\\.service$')
+      when: (service_name | regex_search('\\.service$')) | length > 0
 
     - name: Ensure {{ service_name }} is not in failed state
       ansible.builtin.command: "systemctl is-failed {{ service_name }}"

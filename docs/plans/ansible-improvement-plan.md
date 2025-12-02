@@ -411,7 +411,7 @@ update-frequency: high
 |-------|------|--------|
 | Phase 1: エラーハンドリング強化 | ✅ 完了 | 100% |
 | Phase 2: バリデーション強化 | ✅ 完了 | 100% |
-| Phase 3: ロールバック機能強化 | ✅ 基本実装 | 70% |
+| Phase 3: ロールバック機能強化 | ✅ 完了 | 100% |
 | Phase 4: 並列実行制御の改善 | ✅ 完了 | 100% |
 | Phase 5: ログ記録の強化 | ✅ 完了 | 100% |
 | Phase 6: 変数管理の改善 | ⏳ 未実装 | 0% |
@@ -452,18 +452,19 @@ update-frequency: high
 - ✅ テスト2-2: .envファイル構文チェック（実機検証済み）
 - ✅ テスト2-3: systemdユニットファイル検証（実機検証済み）
 
-#### Phase 3: ロールバック機能強化 ✅ 基本実装
+#### Phase 3: ロールバック機能強化 ✅ 完了
 
-**完了日**: 2025-12-01
+**完了日**: 2025-12-02
 
 **実装内容**:
-- ✅ `rollback.yml`プレイブック実装
-- ✅ `scripts/ansible-backup-configs.sh`実装
-- ⚠️ デプロイ前の自動バックアップ（未実装）
-- ⚠️ デプロイ失敗時の自動ロールバック（未実装）
+- ✅ `rollback.yml`をタスク化し、`infrastructure/ansible/tasks/rollback-configs.yml`として再利用可能に
+- ✅ `update-clients.yml`でデプロイ前にpolkit / systemdサービスを自動バックアップ
+- ✅ `update-clients.yml`を`block/rescue`化し、失敗時にバックアップから自動ロールバック→`fail`で停止
+- ✅ `scripts/ansible-backup-configs.sh`（手動バックアップ用）は継続利用可能
 
 **検証状況**:
 - ✅ ロールバック機能を実機検証済み（polkit設定ファイル削除→復旧成功）
+- ✅ 自動ロールバック動作は次回`update-clients.yml`実行時にログで確認予定（失敗時は即座にrollbackタスクを実行）
 
 #### 設定ファイル管理化 ✅ 完了
 
@@ -531,17 +532,12 @@ update-frequency: high
 
 #### 短期（1-2週間）
 
-1. **自動ロールバックの残タスク**（Phase 3）
-   - デプロイ直前バックアップをPlaybookに組み込み
-   - 失敗検知時に `rollback.yml` を自動呼び出し
-   - 見積もり: 3時間
-
-2. **変数管理の改善**（Phase 6）
+1. **変数管理の改善**（Phase 6）
    - Ansible Vaultへ機密情報を移行
    - `group_vars` / `host_vars` 構造と命名規則の整備
    - 見積もり: 2時間
 
-3. **テストの導入**（Phase 8）
+2. **テストの導入**（Phase 8）
    - `ansible-lint` / `molecule` の最小実行パスをCIに統合
    - Playbookの `--check` 実行を自動化
    - 見積もり: 3時間
