@@ -17,10 +17,11 @@
       - status-agent.timer
       - kiosk-browser.service
       - signage-lite.service
-    services_to_restart:
-      - signage-lite.service
-      - signage-lite-update.timer
-      - kiosk-browser.service
+    # デフォルトのサービスリスト（ホスト変数で上書き可能）
+    services_to_restart: "{{ services_to_restart | default([
+      'status-agent.service',
+      'status-agent.timer'
+    ]) }}"
     server_services_to_restart:
       - docker  # Docker Composeサービスを再起動するため
   pre_tasks:

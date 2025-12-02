@@ -28,6 +28,11 @@ all:
           kiosk_url: "https://192.168.10.230/kiosk"
           # kiosk-browser.serviceを管理対象にする
           manage_kiosk_browser: true
+          # このホストで再起動するサービスリスト
+          services_to_restart:
+            - kiosk-browser.service
+            - status-agent.service
+            - status-agent.timer
           # NFCエージェント環境変数
           nfc_agent_api_base_url: "http://192.168.10.230:8080/api"
           nfc_agent_client_id: "raspberrypi4-kiosk1"
@@ -42,6 +47,12 @@ all:
           signage_client_key: "client-key-raspberrypi3-signage1"
           # signage-lite.serviceを管理対象にする
           manage_signage_lite: true
+          # このホストで再起動するサービスリスト
+          services_to_restart:
+            - signage-lite.service
+            - signage-lite-update.timer
+            - status-agent.service
+            - status-agent.timer
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
