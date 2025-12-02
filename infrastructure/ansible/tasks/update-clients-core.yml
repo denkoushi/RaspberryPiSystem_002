@@ -244,6 +244,8 @@
     method: GET
     validate_certs: false
     status_code: 200
+    headers:
+      x-client-key: "{{ signage_client_key | default('') }}"
   register: signage_health
   retries: 5
   delay: 5
@@ -251,3 +253,4 @@
   when:
     - '"server" not in group_names'
     - signage_server_url is defined
+    - signage_client_key is defined
