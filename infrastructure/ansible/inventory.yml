@@ -9,8 +9,8 @@ all:
           ansible_python_interpreter: /usr/bin/python3
           # API環境変数
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
-          api_jwt_access_secret: "change-me-in-production"  # 本番環境では変更必須
-          api_jwt_refresh_secret: "change-me-in-production"  # 本番環境では変更必須
+          api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
+          api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret | default('change-me-in-production') }}"
           # Web環境変数
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"
@@ -23,7 +23,7 @@ all:
           ansible_host: 192.168.10.223
           ansible_user: tools03
           status_agent_client_id: raspberrypi4-kiosk1
-          status_agent_client_key: client-key-raspberrypi4-kiosk1
+          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
           status_agent_location: "ラズパイ4 - キオスク1"
           kiosk_url: "https://192.168.10.230/kiosk"
           # kiosk-browser.serviceを管理対象にする
@@ -36,15 +36,15 @@ all:
           # NFCエージェント環境変数
           nfc_agent_api_base_url: "http://192.168.10.230:8080/api"
           nfc_agent_client_id: "raspberrypi4-kiosk1"
-          nfc_agent_client_secret: "client-key-raspberrypi4-kiosk1"
+          nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
         raspberrypi3:
           ansible_host: 192.168.10.109
           ansible_user: signageras3
           status_agent_client_id: raspberrypi3-signage1
-          status_agent_client_key: client-key-raspberrypi3-signage1
+          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
           status_agent_location: "ラズパイ3 - サイネージ1"
           signage_server_url: "https://192.168.10.230"
-          signage_client_key: "client-key-raspberrypi3-signage1"
+          signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
           # signage-lite.serviceを管理対象にする
           manage_signage_lite: true
           # このホストで再起動するサービスリスト

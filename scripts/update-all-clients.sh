@@ -30,7 +30,7 @@ exit_with_error() {
 generate_summary() {
   local log_file=$1
   local summary_file=$2
-
+  
   local failed_hosts
   local unreachable_hosts
   local total_hosts
@@ -38,7 +38,7 @@ generate_summary() {
   failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
   unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
   total_hosts=$(grep -E "PLAY RECAP" -A 10 "${log_file}" | grep -E "raspberrypi[0-9]+" | wc -l | tr -d ' ' || echo "0")
-
+  
   local failed_hosts_json="[]"
   local unreachable_hosts_json="[]"
 

@@ -1,0 +1,6 @@
+# `vault.yml` を ansible-vault で暗号化する際のサンプル値です。
+# 実環境のシークレットに置き換えてから暗号化してください。
+
+vault_status_agent_client_key: "client-key-raspberrypi3-signage1"
+vault_signage_client_key: "client-key-raspberrypi3-signage1"
+

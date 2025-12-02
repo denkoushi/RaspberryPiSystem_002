@@ -1,0 +1,13 @@
+##############################################
+# Ansible Vault password file (example)
+# ------------------------------------------
+# 1. Copy this file to `.vault-pass` (same directory).
+# 2. Replace the placeholder below with a strong password.
+# 3. Keep `.vault-pass` outside version control (already gitignored).
+# 4. Encrypt vault files with:
+#      ansible-vault encrypt infrastructure/ansible/host_vars/<host>/vault.yml
+#    or encrypt strings with:
+#      ansible-vault encrypt_string --stdin-name 'secret_name'
+##############################################
+CHANGE_ME_WITH_A_STRONG_PASSWORD
+

@@ -1,0 +1,7 @@
+# このファイルは `ansible-vault encrypt` で暗号化した `vault.yml` のサンプルです。
+# 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
+# したあとに ansible-vault で暗号化してください。
+
+vault_api_jwt_access_secret: "change-me-access"
+vault_api_jwt_refresh_secret: "change-me-refresh"
+

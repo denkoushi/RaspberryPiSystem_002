@@ -13,6 +13,9 @@ build/
 apps/api/.env
 clients/nfc-agent/.env
 infrastructure/docker/.env
+infrastructure/ansible/.vault-pass
+infrastructure/ansible/group_vars/**/vault.yml
+infrastructure/ansible/host_vars/**/vault.yml
 
 # Logs
 npm-debug.log*

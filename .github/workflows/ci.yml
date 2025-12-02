@@ -8,8 +8,6 @@ on:
 
 jobs:
   lint-and-test:
-    # CIが失敗しても中断しない（警告のみ）
-    continue-on-error: true
     runs-on: ubuntu-latest
     
     steps:
