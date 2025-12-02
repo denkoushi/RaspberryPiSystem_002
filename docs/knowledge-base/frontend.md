@@ -521,3 +521,78 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+
+---
+
+### [KB-064] Pi4キオスクでカメラが起動しない: facingModeの指定方法の問題
+
+**EXEC_PLAN.md参照**: なし（2025-12-02発生）
+
+**事象**: 
+- Pi4のキオスク画面で従業員タグをスキャンしてもカメラが起動しない
+- エラーメッセージが表示されず、カメラAPIが呼ばれていないように見える
+- 数日前までは正常に動作していた
+
+**要因**: 
+- `apps/web/src/utils/camera.ts`の`getCameraStream`関数で、`facingMode: 'environment'`から`facingMode: { ideal: 'environment' }`に変更された
+- Pi4のUSBカメラが`facingMode: { ideal: 'environment' }`形式をサポートしていない可能性がある
+- フォールバックロジックが追加されたが、USBカメラでは`facingMode`自体が認識されない可能性がある
+
+**試行した対策**: 
+- [試行1] `facingMode: { ideal: 'environment' }`形式でフォールバックロジックを追加 → **失敗**（USBカメラが認識されない）
+- [試行2] 動いていた時のコード（`facingMode: 'environment'`）に戻す → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-02）:
+  1. `apps/web/src/utils/camera.ts`を動いていた時のコード（コミット`5f03d0b`）に戻した
+  2. `facingMode: 'environment'`形式を使用（`facingMode: { ideal: 'environment' }`形式は削除）
+  3. フォールバックロジックを削除し、シンプルな実装に戻した
+
+**学んだこと**: 
+- USBカメラでは`facingMode`の指定方法が重要で、`'environment'`形式の方が互換性が高い
+- `{ ideal: 'environment' }`形式はモバイルデバイス向けの最適化だが、USBカメラでは動作しない可能性がある
+- 動作していたコードを変更する際は、変更前後の動作確認が重要
+- 数日前の動作していたブランチと比較することで、問題の原因を特定できる
+
+**解決状況**: ✅ **解決済み**（2025-12-02）
+
+**関連ファイル**: 
+- `apps/web/src/utils/camera.ts`
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+
+---
+
+### [KB-065] カメラエラーメッセージが表示されない: デバッグログの出力条件が厳しすぎる
+
+**EXEC_PLAN.md参照**: なし（2025-12-02発生）
+
+**事象**: 
+- Pi4のキオスク画面でカメラが起動しないが、エラーメッセージが表示されない
+- ブラウザコンソールにもエラーログが出力されない
+- 問題の原因特定が困難
+
+**要因**: 
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`のエラーハンドリングで、デバッグログの出力が環境変数`VITE_ENABLE_DEBUG_LOGS`に依存していた
+- 本番環境では`VITE_ENABLE_DEBUG_LOGS`が`false`に設定されている可能性がある
+- エラーメッセージの表示は行われていたが、コンソールログが出力されないため、問題の特定が困難だった
+
+**試行した対策**: 
+- [試行1] 環境変数`VITE_ENABLE_DEBUG_LOGS`を確認 → **失敗**（設定されていない）
+- [試行2] エラーログを常に出力するように修正 → **成功**
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-02）:
+  1. `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`のエラーハンドリングを修正
+  2. `console.error`を常に出力するように変更（環境変数の条件を削除）
+  3. カメラ起動時のログ（`console.log`）も追加して、処理の流れを追跡できるようにした
+
+**学んだこと**: 
+- エラーログは常に出力すべきで、環境変数で制御するのは適切ではない
+- デバッグログとエラーログは区別し、エラーログは常に出力する
+- カメラAPIの呼び出し時には、開始ログとエラーログの両方を出力することで、問題の特定が容易になる
+- フルスクリーン環境ではブラウザコンソールが見えないため、ログファイルへの出力も検討すべき
+
+**解決状況**: ✅ **解決済み**（2025-12-02）
+
+**関連ファイル**: 
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
