@@ -20,7 +20,14 @@
       ansible.builtin.pause:
         seconds: 2
 
-    - name: Verify {{ service_name }} is active
+    - name: Check if {{ service_name }} is a oneshot service
+      ansible.builtin.command: "systemctl show {{ service_name }} --property=Type --value"
+      register: service_type_check
+      changed_when: false
+      failed_when: false
+      when: service_name is match('.*\\.service$')
+
+    - name: Verify {{ service_name }} is active (for non-oneshot services)
       ansible.builtin.command: "systemctl is-active {{ service_name }}"
       register: client_service_status
       changed_when: false
@@ -28,6 +35,9 @@
       retries: 3
       delay: 5
       until: client_service_status.stdout.strip() in ['active', 'activating']
+      when:
+        - service_name is match('.*\\.service$')
+        - service_type_check.stdout.strip() | default('') != 'oneshot'
 
     - name: Ensure {{ service_name }} result is success
       ansible.builtin.command: "systemctl show {{ service_name }} --property=Result --value"
