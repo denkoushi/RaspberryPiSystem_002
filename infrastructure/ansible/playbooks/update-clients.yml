@@ -164,13 +164,14 @@
         - manage_signage_lite | default(false) | bool
       register: signage_update_script_result
 
-    # kiosk-launch.shのURLを自動更新（ネットワーク変更時の再発防止）
-    - name: Update kiosk-launch.sh kiosk URL
-      ansible.builtin.replace:
-        path: /usr/local/bin/kiosk-launch.sh
-        regexp: '--app="https?://[0-9.]+/kiosk"'
-        replace: '--app="{{ kiosk_url }}"'
-        backup: true
+    # kiosk-launch.shをテンプレートで管理（HTTPS/カメラ許可フラグ含む）
+    - name: Deploy kiosk-launch script
+      ansible.builtin.template:
+        src: "{{ repo_path }}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
+        dest: /usr/local/bin/kiosk-launch.sh
+        owner: root
+        group: root
+        mode: '0755'
       when:
         - '"server" not in group_names'
         - kiosk_url is defined

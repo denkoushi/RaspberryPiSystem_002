@@ -1,0 +1,25 @@
+{% set kiosk_origin = kiosk_url | regex_replace('(/.*)$', '') %}
+#!/usr/bin/env bash
+export DISPLAY={{ kiosk_display | default(':0') }}
+export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
+export GTK_USE_PORTAL=0
+export XDG_CURRENT_DESKTOP={{ kiosk_desktop | default('LXDE') }}
+export CHROME_WRAPPER=/usr/bin/chromium-browser
+
+CHROMIUM_FLAGS=(
+  --kiosk
+  --app="{{ kiosk_url }}"
+  --start-fullscreen
+  --noerrdialogs
+  --disable-session-crashed-bubble
+  --autoplay-policy=no-user-gesture-required
+  --disable-translate
+  --overscroll-history-navigation=0
+  --use-fake-ui-for-media-stream
+  --allow-insecure-localhost
+  --ignore-certificate-errors
+  --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }}
+)
+
+exec chromium-browser "${CHROMIUM_FLAGS[@]}"
+

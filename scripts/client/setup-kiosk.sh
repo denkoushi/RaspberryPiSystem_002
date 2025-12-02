@@ -7,6 +7,10 @@ if [[ $# -lt 1 ]]; then
 fi
 
 TARGET_URL="$1"
+TARGET_ORIGIN="${TARGET_URL%%/kiosk*}"
+if [[ "$TARGET_ORIGIN" == "$TARGET_URL" ]]; then
+  TARGET_ORIGIN="${TARGET_URL%/}"
+fi
 
 if [[ $EUID -ne 0 ]]; then
   echo "root 権限で実行してください (sudo ./scripts/client/setup-kiosk.sh <url>)" >&2
@@ -26,7 +30,20 @@ cat >"$LAUNCHER_PATH" <<EOF
 #!/usr/bin/env bash
 export DISPLAY=:0
 export XAUTHORITY=/home/$KIOSK_USER/.Xauthority
-exec chromium-browser --kiosk --app="$TARGET_URL" --start-fullscreen --noerrdialogs --disable-session-crashed-bubble --autoplay-policy=no-user-gesture-required --disable-translate --overscroll-history-navigation=0
+export GTK_USE_PORTAL=0
+exec chromium-browser \\
+  --kiosk \\
+  --app="$TARGET_URL" \\
+  --start-fullscreen \\
+  --noerrdialogs \\
+  --disable-session-crashed-bubble \\
+  --autoplay-policy=no-user-gesture-required \\
+  --disable-translate \\
+  --overscroll-history-navigation=0 \\
+  --use-fake-ui-for-media-stream \\
+  --allow-insecure-localhost \\
+  --ignore-certificate-errors \\
+  --unsafely-treat-insecure-origin-as-secure="$TARGET_ORIGIN"
 EOF
 chmod +x "$LAUNCHER_PATH"
 
