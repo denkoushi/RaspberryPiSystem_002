@@ -15,7 +15,6 @@
       retries: 3
       delay: 10
       until: client_service_restart is succeeded
-  when: service_exists_check.rc == 0
 
     - name: Wait for {{ service_name }} to settle
       ansible.builtin.pause:
@@ -47,12 +46,14 @@
     - name: Record restart success for {{ service_name }}
       ansible.builtin.set_fact:
         client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'ok'} ] }}"
+  when: service_exists_check.rc == 0
   rescue:
     - name: Check if service does not exist (skip silently)
       ansible.builtin.fail:
         msg: "Service {{ service_name }} does not exist, skipping"
       when: service_exists_check.rc != 0
       failed_when: false
+
     - name: Capture latest logs for {{ service_name }}
       ansible.builtin.shell: |
         set -euo pipefail
@@ -61,10 +62,12 @@
         executable: /bin/bash
       register: client_service_logs
       changed_when: false
+      when: service_exists_check.rc == 0
 
     - name: Record restart failure for {{ service_name }}
       ansible.builtin.set_fact:
         client_restart_results: "{{ (client_restart_results | default([])) + [ {'service': service_name, 'status': 'failed', 'log': client_service_logs.stdout | default('')} ] }}"
+      when: service_exists_check.rc == 0
 
     - name: Fail current host due to service restart failure
       ansible.builtin.fail:
@@ -72,4 +75,3 @@
           Service {{ service_name }} failed to restart on {{ inventory_hostname }}.
           See journal snippet above for details.
       when: service_exists_check.rc == 0
-
