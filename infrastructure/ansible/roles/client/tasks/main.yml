@@ -69,7 +69,7 @@
   when: services_to_restart is not defined
 
 - name: Restart required services (clients) with retry
-  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/restart-client-service.yml"
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
   loop: "{{ services_to_restart }}"
   loop_control:
     loop_var: service_name

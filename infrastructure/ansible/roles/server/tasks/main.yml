@@ -32,13 +32,12 @@
 
 - name: Deploy API environment variables
   ansible.builtin.template:
-    src: "{{ role_path }}/../../templates/api.env.j2"
+    src: "{{ playbook_dir }}/../templates/api.env.j2"
     dest: "{{ repo_path }}/apps/api/.env"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0600'
   register: api_env_result
-  notify: restart api
 
 - name: Ensure Web .env directory exists
   ansible.builtin.file:
@@ -48,13 +47,12 @@
 
 - name: Deploy Web environment variables
   ansible.builtin.template:
-    src: "{{ role_path }}/../../templates/web.env.j2"
+    src: "{{ playbook_dir }}/../templates/web.env.j2"
     dest: "{{ repo_path }}/apps/web/.env"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0600'
   register: web_env_result
-  notify: restart web
 
 - name: Ensure Docker Compose .env directory exists
   ansible.builtin.file:
@@ -64,13 +62,12 @@
 
 - name: Deploy Docker Compose environment variables
   ansible.builtin.template:
-    src: "{{ role_path }}/../../templates/docker.env.j2"
+    src: "{{ playbook_dir }}/../templates/docker.env.j2"
     dest: "{{ repo_path }}/infrastructure/docker/.env"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0600'
   register: docker_env_result
-  notify: restart docker compose services
 
 - name: Validate API .env syntax
   ansible.builtin.shell: |
