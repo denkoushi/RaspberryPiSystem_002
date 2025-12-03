@@ -1,0 +1,55 @@
+---
+- name: Pause signage-lite workload before deployment
+  block:
+    - name: Stop and disable signage-lite update timer (prevent auto-restart)
+      ansible.builtin.systemd:
+        name: signage-lite-update.timer
+        state: stopped
+        enabled: false
+      register: signage_timer_stopped
+
+    - name: Disable signage-lite service to prevent auto-restart
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        enabled: false
+      register: signage_service_disabled
+
+    - name: Stop signage-lite service
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        state: stopped
+      register: signage_service_stopped
+
+    - name: Wait for signage-lite to fully stop
+      ansible.builtin.pause:
+        seconds: 3
+      when: signage_service_stopped.changed | default(false)
+
+- name: Install production dependencies (optional)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ repo_path }} && pnpm install --filter signage-lite-client --prod
+  args:
+    executable: /bin/bash
+  register: install_result
+  changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
+  failed_when: false
+
+- name: Update signage-update.sh server URL
+  ansible.builtin.replace:
+    path: /usr/local/bin/signage-update.sh
+    regexp: 'SERVER_URL=https?://[0-9.]+'
+    replace: "SERVER_URL={{ signage_server_url }}"
+    backup: true
+  when:
+    - signage_server_url is defined
+
+- name: Re-enable signage-lite service before restart
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    enabled: true
+
+- name: Re-enable signage-lite update timer before restart
+  ansible.builtin.systemd:
+    name: signage-lite-update.timer
+    enabled: true

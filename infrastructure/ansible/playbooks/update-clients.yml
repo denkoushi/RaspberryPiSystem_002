@@ -39,6 +39,20 @@
             name: client
           when: '"server" not in group_names'
 
+        - name: Apply kiosk-specific deployment tasks
+          ansible.builtin.import_role:
+            name: kiosk
+          when:
+            - '"server" not in group_names'
+            - manage_kiosk_browser | default(false) | bool
+
+        - name: Apply signage-specific deployment tasks
+          ansible.builtin.import_role:
+            name: signage
+          when:
+            - '"server" not in group_names'
+            - manage_signage_lite | default(false) | bool
+
         - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
       rescue:
         - name: Record deployment failure reason

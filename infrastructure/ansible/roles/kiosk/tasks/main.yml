@@ -1,0 +1,10 @@
+---
+- name: Deploy kiosk-launch script
+  ansible.builtin.template:
+    src: "{{ repo_path }}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
+    dest: /usr/local/bin/kiosk-launch.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: kiosk_url is defined
+  register: kiosk_launch_script_result

@@ -1,32 +1,3 @@
-- name: Pause signage-lite workload before deployment
-  block:
-    - name: Stop and disable signage-lite update timer (prevent auto-restart)
-      ansible.builtin.systemd:
-        name: signage-lite-update.timer
-        state: stopped
-        enabled: false
-      register: signage_timer_stopped
-
-    - name: Disable signage-lite service to prevent auto-restart
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        enabled: false
-      register: signage_service_disabled
-
-    - name: Stop signage-lite service
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        state: stopped
-      register: signage_service_stopped
-
-    - name: Wait for signage-lite to fully stop
-      ansible.builtin.pause:
-        seconds: 3
-      when: signage_service_stopped.changed | default(false)
-  when:
-    - '"server" not in group_names'
-    - manage_signage_lite | default(false) | bool
-
 - name: Install production dependencies (optional)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -49,20 +20,6 @@
     - signage_server_url is defined
     - manage_signage_lite | default(false) | bool
   register: signage_update_script_result
-
-# kiosk-launch.shをテンプレートで管理（HTTPS/カメラ許可フラグ含む）
-- name: Deploy kiosk-launch script
-  ansible.builtin.template:
-    src: "{{ repo_path }}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
-    dest: /usr/local/bin/kiosk-launch.sh
-    owner: root
-    group: root
-    mode: '0755'
-  when:
-    - '"server" not in group_names'
-    - kiosk_url is defined
-    - manage_kiosk_browser | default(false) | bool
-  register: kiosk_launch_script_result
 
 - name: Re-enable signage-lite service before restart
   ansible.builtin.systemd:
