@@ -1,10 +1,42 @@
 ---
 - name: Deploy kiosk-launch script
   ansible.builtin.template:
-    src: "{{ repo_path }}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
+    src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
     dest: /usr/local/bin/kiosk-launch.sh
     owner: root
     group: root
     mode: '0755'
-  when: kiosk_url is defined
+  when: manage_kiosk_browser | default(false) | bool
   register: kiosk_launch_script_result
+
+- name: Deploy kiosk-browser.service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/kiosk-browser.service.j2"
+    dest: /etc/systemd/system/kiosk-browser.service
+    owner: root
+    group: root
+    mode: '0644'
+  when: manage_kiosk_browser | default(false) | bool
+  register: kiosk_browser_result
+
+- name: Validate kiosk-browser.service unit
+  ansible.builtin.command: systemd-analyze verify /etc/systemd/system/kiosk-browser.service
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_result is defined
+    - kiosk_browser_result.changed
+  changed_when: false
+
+- name: Verify kiosk UI is reachable
+  ansible.builtin.uri:
+    url: "{{ kiosk_url }}"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: kiosk_health
+  retries: 5
+  delay: 5
+  until: kiosk_health.status == 200
+  when:
+    - kiosk_url is defined
+    - manage_kiosk_browser | default(false) | bool

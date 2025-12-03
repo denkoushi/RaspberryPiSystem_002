@@ -15,6 +15,7 @@
     owner: root
     group: root
     mode: '0644'
+    remote_src: true
   when: status_agent_client_id is defined
   register: status_agent_config_result
 
@@ -25,6 +26,7 @@
     owner: root
     group: root
     mode: '0644'
+    remote_src: true
   register: status_agent_service_result
 
 - name: Copy status-agent systemd timer file
@@ -34,6 +36,7 @@
     owner: root
     group: root
     mode: '0644'
+    remote_src: true
   register: status_agent_timer_result
 
 - name: Reload systemd daemon
@@ -57,7 +60,7 @@
 
 - name: Deploy polkit rule for pcscd access
   ansible.builtin.template:
-    src: "{{ repo_path }}/infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2"
+    src: "{{ playbook_dir }}/../templates/polkit-50-pcscd-allow-all.rules.j2"
     dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
     owner: root
     group: root
