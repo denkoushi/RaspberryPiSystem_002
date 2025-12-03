@@ -10,12 +10,11 @@
 
 - name: Create status-agent configuration file
   ansible.builtin.template:
-    src: "{{ repo_path }}/clients/status-agent/status-agent.conf.j2"
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
     dest: /etc/raspi-status-agent.conf
     owner: root
     group: root
     mode: '0644'
-    remote_src: true
   when: status_agent_client_id is defined
   register: status_agent_config_result
 

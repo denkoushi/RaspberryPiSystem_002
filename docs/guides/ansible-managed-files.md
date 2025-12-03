@@ -87,8 +87,8 @@ polkit.addRule(function(action, subject) {
 | **ファイルパス** | `/etc/raspi-status-agent.conf` |
 | **説明** | status-agent設定ファイル |
 | **管理方法** | Ansibleテンプレート |
-| **テンプレート** | `clients/status-agent/status-agent.conf.j2` |
-| **プレイブック** | `infrastructure/ansible/playbooks/update-clients.yml` |
+| **テンプレート** | `infrastructure/ansible/templates/status-agent.conf.j2` |
+| **プレイブック** | `infrastructure/ansible/playbooks/deploy.yml` |
 | **状態** | ✅ 管理済み |
 
 ### 中優先度（推奨管理）
