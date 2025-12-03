@@ -17,12 +17,19 @@
 - [x] (2025-12-03 04:55Z) キオスク固有処理を`roles/kiosk`へ移設。
 - [x] (2025-12-03 05:05Z) サイネージ固有処理を`roles/signage`へ移設。
 - [x] (2025-12-03 05:20Z) 新`playbooks/deploy.yml`を作成し、既存プレイブック（`update-clients.yml`）を委譲させる。
-- [ ] (保留) 関連ドキュメント更新と`deploy.yml`ベースの検証ログ記録。
-- [ ] (保留) `--syntax-check` / `--list-tasks` / `--check`の実行結果を本計画および必要な進捗ドキュメントに記録。
+- [x] (2025-12-03 12:30Z) テンプレートパスの修正（`playbook_dir`使用、`remote_src`追加）。
+- [x] (2025-12-03 12:40Z) `status-agent.conf.j2`を`infrastructure/ansible/templates/`に移動。
+- [x] (2025-12-03 13:00Z) Raspberry Pi 4（キオスク）での実機テスト成功。
+- [x] (2025-12-03 13:30Z) Raspberry Pi 3（サイネージ）での実機テスト成功。
+- [x] (2025-12-03 14:00Z) ロール開発ガイド（`docs/guides/ansible-role-development.md`）を作成。
+- [x] (2025-12-03 14:10Z) `docs/INDEX.md`にロール開発ガイドへのリンクを追加。
 
 ## Surprises & Discoveries
 
-- （未記入）実装中に判明した想定外の挙動や留意点をここに追加し、証跡を残す。
+- **テンプレートパスの問題**: ロール内からテンプレートファイルを参照する際、`{{ repo_path }}/infrastructure/ansible/templates/`では動作しない。`template`モジュールはコントローラー上のファイルを処理するため、`{{ playbook_dir }}/../templates/`を使用する必要がある。また、リモートファイルを参照する場合は`copy`モジュールで`remote_src: true`を指定する必要がある。
+- **`status-agent.conf.j2`の配置**: テンプレートファイルは`infrastructure/ansible/templates/`に配置する必要がある。`clients/status-agent/`に配置していたが、Ansibleコントローラーから参照できないため移動した。
+- **`role_path`変数の未定義**: ロール内で`include_tasks`を使用する際、`{{ role_path }}`は定義されていない場合がある。`{{ playbook_dir }}/../tasks/`を使用することで、より確実にパスを解決できる。
+- **ハンドラの重複実行**: `roles/server`で`.env`ファイルのデプロイ時に`notify`を使用すると、ハンドラが重複実行される可能性がある。明示的な`block/rescue`構造でDocker再起動を制御することで回避できる。
 
 ## Decision Log
 
@@ -32,7 +39,41 @@
 
 ## Outcomes & Retrospective
 
-- （保留）ロール化完了後、検証結果・残課題・学びをここにまとめる。
+### 検証結果
+
+**実機テスト結果**:
+- ✅ **Raspberry Pi 4（キオスク）**: 全タスク成功（Total 1 / Success 1 / Failed 0）
+  - `common`ロール: リポジトリ同期、バックアップ作成が正常に動作
+  - `client`ロール: status-agent設定、polkitルール配布、サービス再起動が正常に動作
+  - `kiosk`ロール: kiosk-launchスクリプト、kiosk-browser.service配布、UI疎通確認が正常に動作
+- ✅ **Raspberry Pi 3（サイネージ）**: 全タスク成功（Total 1 / Success 1 / Failed 0）
+  - `common`ロール: リポジトリ同期、バックアップ作成が正常に動作
+  - `client`ロール: status-agent設定、polkitルール配布、サービス再起動が正常に動作
+  - `signage`ロール: signage-lite停止/再有効化、依存インストール、ステータスチェックが正常に動作
+
+**構文チェック・タスク一覧確認**:
+- ✅ `ansible-playbook playbooks/deploy.yml --syntax-check`: 成功
+- ✅ `ansible-playbook playbooks/deploy.yml --list-tasks`: 成功（全ロールのタスクが正しく表示）
+
+### 達成した効果
+
+1. **コードの再利用性向上**: ロール単位で管理可能になり、他のプレイブックやプロジェクトでも再利用できる
+2. **メンテナンスの容易化**: 責務が明確に分離され、修正範囲が明確になった
+3. **拡張性の向上**: 新規ロールを追加するだけで新しい機能に対応できる（例: `camera`ロールの追加）
+4. **可読性の向上**: `deploy.yml`がシンプルになり、デプロイの流れが一目で理解できる
+5. **10台規模への対応準備**: 将来的に端末数が増えても、ロール構造により安全にデプロイを継続できる
+
+### 残課題
+
+- **Phase 8（テストの導入）**: 現状は実機テストで十分な検証ができているが、自動テストの導入により更なる品質向上が期待できる
+- **ロールのドキュメント充実**: 各ロールのREADMEをより詳細にすることで、新規参加者の理解が向上する可能性がある
+
+### 学び
+
+1. **ロール化の重要性**: モノリシックなプレイブックをロールに分割することで、保守性と拡張性が大幅に向上した
+2. **テンプレートパスの扱い**: Ansibleの`template`モジュールはコントローラー上のファイルを処理するため、パスの指定方法に注意が必要
+3. **条件分岐の統一**: `manage_<role-name>`フラグでロールの有効/無効を制御することで、インベントリ管理が容易になる
+4. **実機テストの重要性**: 構文チェックやドライランだけでは発見できない問題（テンプレートパス、変数の未定義など）が実機テストで発見された
 
 ## Context and Orientation
 
