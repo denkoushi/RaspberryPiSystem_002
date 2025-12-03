@@ -1,0 +1,5 @@
+---
+repo_path: /opt/RaspberryPiSystem_002
+client_default_services_to_restart:
+  - status-agent.service
+  - status-agent.timer

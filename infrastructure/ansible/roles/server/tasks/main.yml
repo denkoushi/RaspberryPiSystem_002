@@ -1,0 +1,189 @@
+---
+- name: Ensure docker restart summary fact exists
+  ansible.builtin.set_fact:
+    docker_restart_summary: "{{ docker_restart_summary | default([]) }}"
+
+- name: Validate required API variables
+  ansible.builtin.assert:
+    that:
+      - api_database_url is defined
+      - api_jwt_access_secret is defined
+      - api_jwt_refresh_secret is defined
+    fail_msg: "API環境変数が定義されていません（inventory.ymlを確認してください）"
+
+- name: Validate required Web variables
+  ansible.builtin.assert:
+    that:
+      - web_api_base_url is defined
+      - web_agent_ws_url is defined
+    fail_msg: "Web環境変数（VITE_*）が定義されていません（inventory.ymlを確認してください）"
+
+- name: Validate required Docker Compose variables
+  ansible.builtin.assert:
+    that:
+      - docker_server_ip is defined
+    fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
+
+- name: Ensure API .env directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/apps/api"
+    state: directory
+    mode: '0755'
+
+- name: Deploy API environment variables
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/api.env.j2"
+    dest: "{{ repo_path }}/apps/api/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: api_env_result
+  notify: restart api
+
+- name: Ensure Web .env directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/apps/web"
+    state: directory
+    mode: '0755'
+
+- name: Deploy Web environment variables
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/web.env.j2"
+    dest: "{{ repo_path }}/apps/web/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: web_env_result
+  notify: restart web
+
+- name: Ensure Docker Compose .env directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/infrastructure/docker"
+    state: directory
+    mode: '0755'
+
+- name: Deploy Docker Compose environment variables
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/docker.env.j2"
+    dest: "{{ repo_path }}/infrastructure/docker/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: docker_env_result
+  notify: restart docker compose services
+
+- name: Validate API .env syntax
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    from pathlib import Path
+    path = Path("{{ repo_path }}/apps/api/.env")
+    invalid = []
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            invalid.append(f"{lineno}:{line}")
+    if invalid:
+        raise SystemExit("Invalid API .env lines -> " + ", ".join(invalid))
+    PY
+  when: api_env_result.changed | default(false)
+  changed_when: false
+
+- name: Validate Web .env syntax
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    from pathlib import Path
+    path = Path("{{ repo_path }}/apps/web/.env")
+    invalid = []
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            invalid.append(f"{lineno}:{line}")
+    if invalid:
+        raise SystemExit("Invalid Web .env lines -> " + ", ".join(invalid))
+    PY
+  when: web_env_result.changed | default(false)
+  changed_when: false
+
+- name: Validate Docker Compose .env syntax
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    from pathlib import Path
+    path = Path("{{ repo_path }}/infrastructure/docker/.env")
+    invalid = []
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            invalid.append(f"{lineno}:{line}")
+    if invalid:
+        raise SystemExit("Invalid docker .env lines -> " + ", ".join(invalid))
+    PY
+  when: docker_env_result.changed | default(false)
+  changed_when: false
+
+- name: Rebuild and restart Docker services on server (auto-detect network changes)
+  block:
+    - name: Rebuild/Restart docker compose services
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }}
+        CURRENT_IP="{{ docker_server_ip }}"
+        COMPOSE_IP=$(grep -E '^\s*NFC_AGENT_HOST:' infrastructure/docker/docker-compose.server.yml | sed 's/.*NFC_AGENT_HOST:\s*"\([^"]*\)".*/\1/' || echo "")
+        if [ "$CURRENT_IP" != "$COMPOSE_IP" ] && [ -n "$COMPOSE_IP" ]; then
+          echo "[INFO] Network change detected: rebuilding containers"
+          docker compose -f infrastructure/docker/docker-compose.server.yml build api web
+        fi
+        docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
+      args:
+        executable: /bin/bash
+      register: docker_restart_result
+      retries: 3
+      delay: 10
+      until: docker_restart_result is succeeded
+      failed_when: docker_restart_result.rc != 0
+
+    - name: Record docker restart success
+      ansible.builtin.set_fact:
+        docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'ok'} ] }}"
+  rescue:
+    - name: Capture docker compose logs
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if command -v docker >/dev/null 2>&1; then
+          cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50 api web
+        else
+          echo "[WARN] docker command not found. Showing systemd logs instead."
+          journalctl -u docker.service -n 100 || true
+        fi
+      args:
+        executable: /bin/bash
+      register: docker_restart_logs
+      changed_when: false
+
+    - name: Record docker restart failure
+      ansible.builtin.set_fact:
+        docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'failed', 'log': docker_restart_logs.stdout | default('')} ] }}"
+
+    - name: Fail current host due to docker restart failure
+      ansible.builtin.fail:
+        msg: >
+          Docker Compose restart failed on {{ inventory_hostname }}.
+          See captured logs above for details.
+
+- name: Wait for API health endpoint to recover
+  ansible.builtin.uri:
+    url: "{{ api_healthcheck_url }}"
+    method: GET
+    status_code: 200
+    return_content: true
+  register: api_health_result
+  retries: 8
+  delay: 5
+  until:
+    - api_health_result.status == 200
+    - (api_health_result.json.status | default('')) == 'ok'

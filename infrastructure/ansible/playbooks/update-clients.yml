@@ -22,110 +22,23 @@
     server_services_to_restart:
       - docker  # Docker Composeサービスを再起動するため
   pre_tasks:
-    - name: Ensure repository parent directory exists
-      ansible.builtin.file:
-        path: "{{ repo_path }}"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-
-    - name: Generate backup timestamp
-      ansible.builtin.set_fact:
-        backup_timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
-      when: '"server" not in group_names'
-
-    - name: Ensure backup directory exists
-      ansible.builtin.file:
-        path: "{{ backup_dir }}"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0755'
-      when: '"server" not in group_names'
-
-    - name: Check existing polkit rule
-      ansible.builtin.stat:
-        path: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-      register: polkit_rule_stat
-      when: '"server" not in group_names'
-
-    - name: Backup polkit rule before deployment
-      ansible.builtin.copy:
-        src: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-        dest: "{{ backup_dir }}/polkit-50-pcscd-allow-all.rules.{{ backup_timestamp }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-        remote_src: true
-      when:
-        - '"server" not in group_names'
-        - polkit_rule_stat.stat.exists
-
-    - name: Check systemd service files to back up
-      ansible.builtin.stat:
-        path: "/etc/systemd/system/{{ item }}"
-      loop: "{{ backup_service_files }}"
-      register: service_backup_stats
-      when: '"server" not in group_names'
-
-    - name: Backup systemd service units before deployment
-      ansible.builtin.copy:
-        src: "/etc/systemd/system/{{ item.item }}"
-        dest: "{{ backup_dir }}/{{ item.item }}.{{ backup_timestamp }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: '0644'
-        remote_src: true
-      loop: "{{ service_backup_stats.results | default([]) }}"
-      when:
-        - '"server" not in group_names'
-        - item.stat.exists
-
-    - name: Clean untracked files before checkout (excluding protected directories)
-      block:
-        - name: Run git clean with protected directories
-          ansible.builtin.shell: |
-            set -euo pipefail
-            cd {{ repo_path }} && git clean -fd \
-              -e storage/ -e 'storage/**' \
-              -e certs/ -e 'certs/**' \
-              -e alerts/ -e 'alerts/**' \
-              -e logs/ -e 'logs/**'
-          args:
-            executable: /bin/bash
-          register: git_clean_result
-          changed_when: git_clean_result.stdout | length > 0
-      rescue:
-        - name: Warn when git clean failed
-          ansible.builtin.debug:
-            msg: >
-              git clean failed on {{ inventory_hostname }} ({{ git_clean_result.stderr | default('no stderr') }}).
-              Continuing because保護対象が存在しない可能性があります。
-
-    - name: Sync repository to desired state (with retries)
-      ansible.builtin.shell: |
-        set -euo pipefail
-        if [ ! -d "{{ repo_path }}/.git" ]; then
-          rm -rf "{{ repo_path }}"
-          git clone {{ repo_remote | quote }} "{{ repo_path }}"
-        fi
-        cd "{{ repo_path }}"
-        git remote set-url origin {{ repo_remote | quote }}
-        git fetch --all --prune --tags
-        git checkout {{ repo_version | quote }}
-        git reset --hard {{ repo_version | quote }}
-      args:
-        executable: /bin/bash
-      environment: "{{ git_environment }}"
-      register: git_result
-      retries: 3
-      delay: 10
-      until: git_result.rc == 0
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
 
   tasks:
     - name: Execute deployment with automatic rollback
       block:
+        - name: Apply server-specific deployment tasks
+          ansible.builtin.import_role:
+            name: server
+          when: '"server" in group_names'
+
+        - name: Apply client-specific deployment tasks
+          ansible.builtin.import_role:
+            name: client
+          when: '"server" not in group_names'
+
         - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
       rescue:
         - name: Record deployment failure reason

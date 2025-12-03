@@ -1,0 +1,94 @@
+---
+- name: Ensure client restart summary fact exists
+  ansible.builtin.set_fact:
+    client_restart_results: "{{ client_restart_results | default([]) }}"
+
+- name: Ensure status-agent configuration directory exists
+  ansible.builtin.file:
+    path: /etc
+    state: directory
+
+- name: Create status-agent configuration file
+  ansible.builtin.template:
+    src: "{{ repo_path }}/clients/status-agent/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: status_agent_client_id is defined
+  register: status_agent_config_result
+
+- name: Copy status-agent systemd service file
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/clients/status-agent/status-agent.service"
+    dest: /etc/systemd/system/status-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: status_agent_service_result
+
+- name: Copy status-agent systemd timer file
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/clients/status-agent/status-agent.timer"
+    dest: /etc/systemd/system/status-agent.timer
+    owner: root
+    group: root
+    mode: '0644'
+  register: status_agent_timer_result
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: status_agent_service_result.changed or status_agent_timer_result.changed
+
+- name: Enable and start status-agent timer
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  register: status_agent_timer_enable_result
+
+- name: Ensure polkit rules directory exists
+  ansible.builtin.file:
+    path: /etc/polkit-1/rules.d
+    state: directory
+    mode: '0755'
+
+- name: Deploy polkit rule for pcscd access
+  ansible.builtin.template:
+    src: "{{ repo_path }}/infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2"
+    dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure services_to_restart is defined
+  ansible.builtin.set_fact:
+    services_to_restart: "{{ client_default_services_to_restart }}"
+  when: services_to_restart is not defined
+
+- name: Restart required services (clients) with retry
+  ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/restart-client-service.yml"
+  loop: "{{ services_to_restart }}"
+  loop_control:
+    loop_var: service_name
+
+- name: Verify restarted client services are healthy
+  ansible.builtin.shell: |
+    set -euo pipefail
+    sleep 2
+    systemctl is-active {{ item }}
+    if systemctl is-failed {{ item }} >/dev/null; then
+      echo "{{ item }} is in failed state"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ services_to_restart | select('match', '\\.service$') | list }}"
+  loop_control:
+    label: "{{ item }}"
+  register: client_service_health
+  retries: 3
+  delay: 5
+  until: client_service_health.rc == 0

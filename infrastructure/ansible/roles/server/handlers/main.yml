@@ -1,0 +1,18 @@
+---
+- name: restart api
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+
+- name: restart web
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+
+- name: restart docker compose services
+  ansible.builtin.shell: |
+    cd {{ repo_path }}/infrastructure/docker
+    docker compose -f docker-compose.server.yml up -d api web
+  args:
+    executable: /bin/bash
+  ignore_errors: true
