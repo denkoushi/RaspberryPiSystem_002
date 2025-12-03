@@ -14,7 +14,7 @@ update-frequency: high
 
 ## 概要
 
-本ガイドでは、MacからRaspberry Piクライアントを一括更新し、クライアント状態を監視する方法を5分で説明します。
+本ガイドでは、MacからRaspberry Piクライアントを一括更新し、クライアント状態を監視する方法を5分で説明します。2025-12-03以降は `infrastructure/ansible/playbooks/deploy.yml` がメインプレイブックです（従来の `update-clients.yml` も互換ラッパーとして使用可能ですが、今後は `deploy.yml` の利用を推奨します）。
 
 ## 前提条件
 
@@ -100,7 +100,7 @@ https://192.168.10.230/admin/clients/logs
 ```bash
 cd /opt/RaspberryPiSystem_002
 ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
+  infrastructure/ansible/playbooks/deploy.yml \
   --limit raspberrypi3
 ```
 
@@ -111,7 +111,7 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 ```bash
 cd /opt/RaspberryPiSystem_002
 ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
+  infrastructure/ansible/playbooks/deploy.yml \
   --check
 ```
 
