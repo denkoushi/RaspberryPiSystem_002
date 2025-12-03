@@ -16,7 +16,8 @@
 - [x] (2025-12-03 04:45Z) クライアント共通処理を`roles/client`へ移設。
 - [x] (2025-12-03 04:55Z) キオスク固有処理を`roles/kiosk`へ移設。
 - [x] (2025-12-03 05:05Z) サイネージ固有処理を`roles/signage`へ移設。
-- [ ] (保留) 新`playbooks/deploy.yml`を作成し、既存プレイブックを委譲させる。関連ドキュメントも更新。
+- [x] (2025-12-03 05:20Z) 新`playbooks/deploy.yml`を作成し、既存プレイブック（`update-clients.yml`）を委譲させる。
+- [ ] (保留) 関連ドキュメント更新と`deploy.yml`ベースの検証ログ記録。
 - [ ] (保留) `--syntax-check` / `--list-tasks` / `--check`の実行結果を本計画および必要な進捗ドキュメントに記録。
 
 ## Surprises & Discoveries

@@ -1,0 +1,126 @@
+---
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi server and clients
+  hosts: server:clients
+  gather_facts: false
+  become: true
+  serial: 1  # Phase 4: ensure hosts are updated sequentially
+  order: inventory  # honor inventory order so server runs before clients
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: feature/production-deployment-management
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
+    # デフォルトのサービスリスト（ホスト変数で上書き可能）
+    # 注意: ホスト変数で定義されていない場合のみ使用される
+    server_services_to_restart:
+      - docker  # Docker Composeサービスを再起動するため
+  pre_tasks:
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
+
+  tasks:
+    - name: Execute deployment with automatic rollback
+      block:
+        - name: Apply server-specific deployment tasks
+          ansible.builtin.import_role:
+            name: server
+          when: '"server" in group_names'
+
+        - name: Apply client-specific deployment tasks
+          ansible.builtin.import_role:
+            name: client
+          when: '"server" not in group_names'
+
+        - name: Apply kiosk-specific deployment tasks
+          ansible.builtin.import_role:
+            name: kiosk
+          when:
+            - '"server" not in group_names'
+            - manage_kiosk_browser | default(false) | bool
+
+        - name: Apply signage-specific deployment tasks
+          ansible.builtin.import_role:
+            name: signage
+          when:
+            - '"server" not in group_names'
+            - manage_signage_lite | default(false) | bool
+
+        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
+      rescue:
+        - name: Record deployment failure reason
+          ansible.builtin.set_fact:
+            deployment_failed: true
+            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
+
+        - name: Run rollback tasks on clients
+          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
+          when:
+            - '"server" not in group_names'
+
+        - name: Fail host after rollback
+          ansible.builtin.fail:
+            msg: >
+              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+      when: '"server" not in group_names'
+
+  post_tasks:
+    - name: Collect failed hosts summary
+      ansible.builtin.debug:
+        msg: "Failed hosts: {{ ansible_failed_hosts | default([]) | join(', ') }}"
+      when: ansible_failed_hosts | default([]) | length > 0
+      run_once: true
+
+    - name: Collect unreachable hosts summary
+      ansible.builtin.debug:
+        msg: "Unreachable hosts: {{ ansible_unreachable_hosts | default([]) | join(', ') }}"
+      when: ansible_unreachable_hosts | default([]) | length > 0
+      run_once: true
+
+    - name: Deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Deployment Summary ==="
+          - "Total hosts: {{ ansible_play_hosts | length }}"
+          - "Successful: {{ ansible_play_hosts | difference(ansible_failed_hosts | default([])) | difference(ansible_unreachable_hosts | default([])) | length }}"
+          - "Failed: {{ ansible_failed_hosts | default([]) | length }}"
+          - "Unreachable: {{ ansible_unreachable_hosts | default([]) | length }}"
+      run_once: true
+---
+- name: Common preparation for all hosts
+  hosts: all
+  gather_facts: false
+  become: true
+  roles:
+    - common
+
+- name: Deploy to server hosts
+  hosts: server
+  gather_facts: false
+  become: true
+  roles:
+    - server
+
+- name: Deploy to client hosts
+  hosts: clients
+  gather_facts: false
+  become: true
+  roles:
+    - client
+    - { role: kiosk,  when: manage_kiosk_browser | default(false) | bool }
+    - { role: signage, when: manage_signage_lite | default(false) | bool }
+
+
