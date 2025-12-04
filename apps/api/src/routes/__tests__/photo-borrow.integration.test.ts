@@ -10,6 +10,10 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 process.env.CAMERA_TYPE ??= 'mock'; // テストではモックカメラを使用
 process.env.PHOTO_STORAGE_DIR ??= '/tmp/test-photo-storage'; // テスト用の一時ディレクトリ
+process.env.PDF_STORAGE_DIR ??= '/tmp/test-photo-storage';
+process.env.SIGNAGE_RENDER_DIR ??= '/tmp/test-photo-storage/signage';
+process.env.PDF_PAGES_DIR ??= '/tmp/test-photo-storage/pdf-pages';
+process.env.ALERTS_DIR ??= '/tmp/test-photo-storage/alerts';
 
 describe('POST /api/tools/loans/photo-borrow', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -19,13 +23,12 @@ describe('POST /api/tools/loans/photo-borrow', () => {
   let employeeId: string;
   let employeeTagUid: string;
 const testStorageDir = process.env.PHOTO_STORAGE_DIR!;
-const SAMPLE_PHOTO_BASE64 =
-  '/9j/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKgE4e//2Q==';
+let brightPhotoBase64: string;
 let darkPhotoBase64: string;
 
 const buildPayload = (overrides: Record<string, unknown> = {}) => ({
   employeeTagUid,
-  photoData: SAMPLE_PHOTO_BASE64,
+  photoData: brightPhotoBase64,
   ...overrides,
 });
 
@@ -33,6 +36,22 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     // テスト用のストレージディレクトリを作成
     await fs.mkdir(path.join(testStorageDir, 'photos'), { recursive: true });
     await fs.mkdir(path.join(testStorageDir, 'thumbnails'), { recursive: true });
+    await fs.mkdir(path.join(testStorageDir, 'pdfs'), { recursive: true });
+    await fs.mkdir(path.join(testStorageDir, 'pdf-pages'), { recursive: true });
+    await fs.mkdir(path.join(testStorageDir, 'signage'), { recursive: true });
+    await fs.mkdir(path.join(testStorageDir, 'alerts'), { recursive: true });
+
+    const brightBuffer = await sharp({
+      create: {
+        width: 32,
+        height: 32,
+        channels: 3,
+        background: { r: 240, g: 240, b: 240 },
+      },
+    })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    brightPhotoBase64 = brightBuffer.toString('base64');
 
     const darkBuffer = await sharp({
       create: {

@@ -85,7 +85,7 @@ export function useNfcStream() {
           // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
           reconnectTimeout.current = setTimeout(connect, 2000);
         };
-        socket.onerror = (error) => {
+        socket.onerror = (_error) => {
           // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
           // 接続が失敗した場合は、oncloseが呼ばれるので、そこで再接続する
         };

@@ -334,11 +334,12 @@ export class LoanService {
       // フレームの平均輝度を確認し、極端に暗い画像は拒否する
       const stats = await sharp(originalImage).stats();
       const rgbChannels = stats.channels.filter((channel) =>
-        ['red', 'green', 'blue'].includes(channel.name ?? channel.channel ?? ''),
+        ['red', 'green', 'blue'].includes((channel as { name?: string; channel?: string }).name ?? (channel as { name?: string; channel?: string }).channel ?? ''),
       );
+      const channelsForMean = rgbChannels.length > 0 ? rgbChannels : stats.channels.slice(0, 3);
       const meanLuma =
-        rgbChannels.reduce((sum, channel) => sum + channel.mean, 0) /
-        (rgbChannels.length || 1);
+        channelsForMean.reduce((sum, channel) => sum + channel.mean, 0) /
+        (channelsForMean.length || 1);
       if (meanLuma < cameraConfig.brightness.minMeanLuma) {
         throw new ApiError(
           422,
@@ -374,6 +375,9 @@ export class LoanService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error({ err, employeeTagUid: input.employeeTagUid }, 'Photo processing failed');
+      if (err instanceof ApiError) {
+        throw err;
+      }
       throw new ApiError(500, `写真の処理に失敗しました: ${err.message}`);
     }
 

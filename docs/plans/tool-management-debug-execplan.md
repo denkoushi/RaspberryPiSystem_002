@@ -18,12 +18,15 @@
 - [x] (2025-12-04T03:05Z) 調査タスクA：イベントIDをSQLiteの挿入IDとしてpayloadに含め、ブラウザは`sessionStorage`に最新IDを保持して再接続時も重複排除できる設計を確定。
 - [x] (2025-12-04T03:15Z) 調査タスクB：平均輝度しきい値（デフォルト18）を前後双方で検証する設計とテスト手順（明示的に暗所で撮影→422が返ることを確認）を策定。
 - [x] (2025-12-04T03:50Z) 実装ステップ1-2：ローカル環境でNFCエージェント・フロント・APIを実装、テスト、コミット（実機デプロイは未実施）。
+- [x] (2025-12-04T10:16Z) ローカル検証: `PHOTO_STORAGE_DIR=/tmp/test-photo-storage ... pnpm --filter api test -- photo-borrow.integration.test.ts` がパス。`apps/web/src/hooks/useNfcStream.ts`, `src/utils/camera.ts` への ESLint も通過を確認。
 - [ ] 実装ステップ3：Ansibleデプロイと実機検証（ユーザー許可後に実施）。
 
 ## Surprises & Discoveries
 
 - 観測: `sharp().stats()` の `channel.mean` は0-255スケールで提供されるため、閾値18前後で暗転画像を確実に識別できる。  
   エビデンス: 真っ黒な10x10 JPEGを生成してAPIへ送る統合テストを追加したところ、平均輝度 ≈0.0 で422が返却されることを確認。
+- 観測: JPEG生成時の `stats.channels` は `name` プロパティを持たないことがあり、単純に `['red','green','blue']` フィルタをかけると配列が空になり平均輝度が0と判定される。  
+  対応: RGBチャネルが特定できない場合は `stats.channels.slice(0,3)` を用いて平均値を算出するフォールバックを実装。
 
 ## Decision Log
 
