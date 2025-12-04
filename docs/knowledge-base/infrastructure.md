@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 27件  
+**件数**: 28件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1069,5 +1069,47 @@ update-frequency: medium
 - `infrastructure/ansible/tasks/update-clients-core.yml`
 - `infrastructure/ansible/playbooks/update-clients.yml`
 - `infrastructure/ansible/inventory.yml`
+
+---
+
+### [KB-067] 工具スキャンが重複登録される問題（NFCエージェントのeventId永続化対策）
+
+**EXEC_PLAN.md参照**: Phase 6 実機検証（2025-12-01）、[tool-management-debug-execplan.md](../plans/tool-management-debug-execplan.md)
+
+**事象**: 
+- NFCタグを1回しかスキャンしていないのに、1〜2件の貸出が勝手に追加される
+- 再現性は100%ではないが、WebSocket再接続後などに発生しやすい
+- 同じUIDのイベントが複数回処理される
+
+**要因**: 
+1. **キュー再送による重複**: NFCエージェントのキュー再送機能により、過去のイベントがWebSocket再接続時に再配信される
+2. **フロントエンドの重複判定不足**: フロントエンドの重複判定がWebSocket切断時にリセットされるため、再送イベントを弾けない
+3. **イベントIDの欠如**: WebSocket payloadに一意のeventIdが含まれておらず、タイムスタンプのみでは重複判定が不完全
+
+**試行した対策**: 
+- [試行1] フロントエンドで3秒以内の同一UIDを除外 → **部分的成功**（通常時は動作するが、WebSocket再接続時に失敗）
+- [試行2] WebSocket再接続時にイベントキーをリセット → **失敗**（再送イベントを弾けない）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-04）:
+  1. NFCエージェントでSQLiteの`queued_events.id`を`eventId`としてWebSocket payloadに含める
+  2. フロントエンドで`sessionStorage`に最後に処理した`eventId`を永続化
+  3. `useNfcStream`フックで`eventId`の単調増加を監視し、過去のIDを弾く
+  4. `eventId`が無い場合は従来の`uid:timestamp`方式でフォールバック
+
+**学んだこと**: 
+- WebSocket再接続時にフロントエンドの状態がリセットされるため、永続的なストレージ（`sessionStorage`）が必要
+- タイムスタンプのみでは重複判定が不完全（再送イベントは新しいタイムスタンプを持つ可能性がある）
+- イベントIDの単調増加を監視することで、確実に重複を防止できる
+- SQLiteの`lastrowid`を活用することで、一意のIDを簡単に生成できる
+
+**解決状況**: ✅ **解決済み**（2025-12-04）
+
+**関連ファイル**: 
+- `clients/nfc-agent/nfc_agent/main.py`
+- `clients/nfc-agent/nfc_agent/resend_worker.py`
+- `clients/nfc-agent/nfc_agent/queue_store.py`
+- `apps/web/src/hooks/useNfcStream.ts`
+- `docs/plans/tool-management-debug-execplan.md`
 
 ---

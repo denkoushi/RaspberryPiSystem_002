@@ -265,11 +265,14 @@
     - ✅ バックアップ・リストアテストの修正完了
   - **実機検証**: ✅ 完了（2025-12-01）
     - ✅ 実機環境で正常に動作することを確認
-    - ⏳ **既知の問題**: スキャン重複と黒画像の問題が報告されており、詳細調査・対策計画を別途作成中
+    - ✅ **既知の問題解決完了**（2025-12-04）: スキャン重複と黒画像の問題を解決
+      - **スキャン重複対策**: NFCエージェントでeventId永続化、フロントエンドでsessionStorageによる重複防止を実装 → [KB-067](docs/knowledge-base/infrastructure.md#kb-067-工具スキャンが重複登録される問題nfcエージェントのeventid永続化対策)
+      - **黒画像対策**: フロントエンドとサーバー側の両方で輝度チェックを実装 → [KB-068](docs/knowledge-base/frontend.md#kb-068-写真撮影持出のサムネイルが真っ黒になる問題輝度チェック対策)
       - 詳細は [docs/plans/tool-management-debug-execplan.md](docs/plans/tool-management-debug-execplan.md) を参照
       - `pg_dump`に`--clean --if-exists`オプション追加
       - ヒアドキュメントを使用する箇所で`DB_COMMAND_INPUT`を使用するように修正
     - ✅ CIテスト成功を確認
+    - ✅ **ローカルテスト完了**（2025-12-04）: Docker上のPostgreSQLを使用して統合テストを実行し、5テストすべて成功
   - **実機テスト（部分機能1: バックエンドAPI）**: ✅ 完了（2025-11-27）
     - ✅ Raspberry Pi 5でのデプロイ完了
     - ✅ Dockerコンテナが正常に起動することを確認
@@ -508,6 +511,12 @@
 - 観測: `health.test.ts`が古いエンドポイント（`/api/health`）を参照しており、CIテストが失敗した。  
   エビデンス: `Route GET:/api/health not found`エラー。実際のエンドポイントは`/api/system/health`に変更されていた。  
   対応: `health.test.ts`を`/api/system/health`エンドポイントに更新し、新しいレスポンス構造（`status`, `checks`, `memory`, `uptime`）に対応。
+- 観測: NFCエージェントのキュー再送機能により、WebSocket再接続時に過去のイベントが再配信され、工具スキャンが重複登録されることがあった。フロントエンドの重複判定がWebSocket切断時にリセットされるため、再送イベントを弾けない。  
+  エビデンス: NFCタグを1回しかスキャンしていないのに、1〜2件の貸出が勝手に追加される。再現性は100%ではないが、WebSocket再接続後などに発生しやすい。タイムスタンプのみでは重複判定が不完全（再送イベントは新しいタイムスタンプを持つ可能性がある）。  
+  対応: NFCエージェントでSQLiteの`queued_events.id`を`eventId`としてWebSocket payloadに含める。フロントエンドで`sessionStorage`に最後に処理した`eventId`を永続化し、`useNfcStream`フックで`eventId`の単調増加を監視して過去のIDを弾く。`eventId`が無い場合は従来の`uid:timestamp`方式でフォールバック。**[KB-067]**
+- 観測: USBカメラ（特にラズパイ4）の起動直後（200〜500ms）に露光・ホワイトバランスが安定せず、最初の数フレームが暗転または全黒になる。現在の実装ではフレーム内容を検査せず、そのまま保存しているため、写真撮影持出のサムネイルが真っ黒になることがある。  
+  エビデンス: 写真撮影持出で登録されたLoanのサムネイルが真っ黒で表示される。アイテム自体は登録されているが、サムネイルが視認できない。  
+  対応: フロントエンドで`capturePhotoFromStream`内で`ImageData`の平均輝度を計算（Rec. 601式）し、平均輝度が18未満の場合はエラーを投げて再撮影を促す。サーバー側で`sharp().stats()`を使用してRGBチャネルの平均輝度を計算し、平均輝度が`CAMERA_MIN_MEAN_LUMA`（デフォルト18）未満の場合は422エラーを返す。環境変数`CAMERA_MIN_MEAN_LUMA`でしきい値を調整可能。**[KB-068]**
 
 ## Decision Log
 
@@ -1102,4 +1111,5 @@
 変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
 変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
 変更履歴: 2025-12-01 — Phase 2.4完了、ローカルアラートシステム実装完了、NFCリーダー問題解決（KB-060）、工具管理システム運用・保守ガイド追加、ナレッジベース更新（58件）を反映。Surprises & DiscoveriesにKB-060とgit clean問題を追加。Ansible改善計画（Phase 1,2,4,5,7,10完了）と安定性改善計画（Phase 1.1,1.2,2.1,2.2完了）の進捗を追加。
+変更履歴: 2025-12-04 — 工具スキャン重複対策（KB-067）と黒画像対策（KB-068）を実装完了。NFCエージェントのeventId永続化、フロントエンド・サーバー側の輝度チェックを実装。ナレッジベース更新（65件）。Phase 6実機検証の既知の問題を解決済みに更新。Surprises & DiscoveriesにKB-067とKB-068を追加。
 ```

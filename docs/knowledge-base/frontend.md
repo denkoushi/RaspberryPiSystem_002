@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 15件  
+**件数**: 18件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -266,6 +266,49 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+
+---
+
+### [KB-068] 写真撮影持出のサムネイルが真っ黒になる問題（輝度チェック対策）
+
+**EXEC_PLAN.md参照**: Phase 6 実機検証（2025-12-01）、[tool-management-debug-execplan.md](../plans/tool-management-debug-execplan.md)
+
+**事象**: 
+- 写真撮影持出で登録されたLoanのサムネイルが真っ黒で表示される
+- アイテム自体は登録されているが、サムネイルが視認できない
+- USBカメラ（特にラズパイ4）で発生しやすい
+
+**要因**: 
+1. **USBカメラの露光安定化**: USBカメラの起動直後（200〜500ms）に露光・ホワイトバランスが安定せず、最初の数フレームが暗転または全黒になる
+2. **フロントエンドの検証不足**: 現在の実装ではフレーム内容を検査せず、そのまま保存している
+3. **サーバー側の検証不足**: サーバー側でも画像の輝度をチェックしていない
+
+**試行した対策**: 
+- [試行1] フロントエンドで100ms待機してから撮影 → **部分的成功**（改善したが完全には解決しない）
+- [試行2] フロントエンドでフレームの平均輝度をチェック → **成功**（暗いフレームを検出して再撮影を促す）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-04）:
+  1. フロントエンドで`capturePhotoFromStream`内で`ImageData`の平均輝度を計算（Rec. 601式）
+  2. 平均輝度が18未満の場合はエラーを投げて再撮影を促す
+  3. サーバー側で`sharp().stats()`を使用してRGBチャネルの平均輝度を計算
+  4. 平均輝度が`CAMERA_MIN_MEAN_LUMA`（デフォルト18）未満の場合は422エラーを返す
+  5. 環境変数`CAMERA_MIN_MEAN_LUMA`でしきい値を調整可能
+
+**学んだこと**: 
+- USBカメラは起動直後に暗転フレームを生成するため、フレーム内容の検証が必要
+- フロントエンドとサーバー側の両方で検証することで、確実に黒画像を防止できる
+- `sharp().stats()`のチャネル名は環境によって異なる可能性があるため、フォールバック処理が必要
+- 輝度しきい値は環境変数で調整可能にすることで、実環境に応じた最適化が可能
+
+**解決状況**: ✅ **解決済み**（2025-12-04）
+
+**関連ファイル**: 
+- `apps/web/src/utils/camera.ts`
+- `apps/api/src/services/tools/loan.service.ts`
+- `apps/api/src/config/camera.config.ts`
+- `apps/api/src/routes/__tests__/photo-borrow.integration.test.ts`
+- `docs/plans/tool-management-debug-execplan.md`
 
 ---
 
