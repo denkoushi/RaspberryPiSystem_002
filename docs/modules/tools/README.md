@@ -234,6 +234,8 @@ GROUP BY l.id;
 - [API仕様書](./api.md) - 詳細なAPIエンドポイント仕様
 - [サービス層設計](./services.md) - サービス層の設計詳細
 - [運用・保守ガイド](./operations.md) - 運用・保守の詳細手順
+- [写真撮影持出機能](./photo-loan.md) - 写真撮影持出機能のモジュール仕様
 - [EXEC_PLAN.md](../../EXEC_PLAN.md) - 全体の進捗とマイルストーン
+- [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) - 既知の問題の詳細調査・対策計画
 - [アーキテクチャ概要](../../architecture/overview.md) - システム全体のアーキテクチャ
 

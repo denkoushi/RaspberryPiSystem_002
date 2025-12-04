@@ -265,7 +265,8 @@
     - ✅ バックアップ・リストアテストの修正完了
   - **実機検証**: ✅ 完了（2025-12-01）
     - ✅ 実機環境で正常に動作することを確認
-    - ⏳ **改善依頼中**: 勝手にスキャンされる事象の改善を依頼済み（経過観察中）
+    - ⏳ **既知の問題**: スキャン重複と黒画像の問題が報告されており、詳細調査・対策計画を別途作成中
+      - 詳細は [docs/plans/tool-management-debug-execplan.md](docs/plans/tool-management-debug-execplan.md) を参照
       - `pg_dump`に`--clean --if-exists`オプション追加
       - ヒアドキュメントを使用する箇所で`DB_COMMAND_INPUT`を使用するように修正
     - ✅ CIテスト成功を確認

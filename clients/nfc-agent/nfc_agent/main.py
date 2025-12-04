@@ -122,9 +122,11 @@ async def event_worker(
 ) -> None:
     while True:
         event = await event_queue.get()
-        last_event_holder["event"] = event
         event_id = queue_store.enqueue(event)
-        delivered = await event_manager.broadcast(event)
+        event_with_id = dict(event)
+        event_with_id["eventId"] = event_id
+        last_event_holder["event"] = event_with_id
+        delivered = await event_manager.broadcast(event_with_id)
         if delivered:
             queue_store.delete([event_id])
         event_queue.task_done()

@@ -3,6 +3,7 @@ import { buildServer } from '../../app.js';
 import { createTestClientDevice, createTestEmployee } from './helpers.js';
 import { promises as fs } from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -20,6 +21,7 @@ describe('POST /api/tools/loans/photo-borrow', () => {
 const testStorageDir = process.env.PHOTO_STORAGE_DIR!;
 const SAMPLE_PHOTO_BASE64 =
   '/9j/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKgE4e//2Q==';
+let darkPhotoBase64: string;
 
 const buildPayload = (overrides: Record<string, unknown> = {}) => ({
   employeeTagUid,
@@ -31,6 +33,18 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     // テスト用のストレージディレクトリを作成
     await fs.mkdir(path.join(testStorageDir, 'photos'), { recursive: true });
     await fs.mkdir(path.join(testStorageDir, 'thumbnails'), { recursive: true });
+
+    const darkBuffer = await sharp({
+      create: {
+        width: 16,
+        height: 16,
+        channels: 3,
+        background: { r: 0, g: 0, b: 0 },
+      },
+    })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    darkPhotoBase64 = darkBuffer.toString('base64');
 
     app = await buildServer();
     closeServer = async () => {
@@ -153,6 +167,24 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
       // ファイルが存在しない場合はエラー
       throw new Error(`Photo files not found: ${error}`);
     }
+  });
+
+  it('should reject photos that are too dark', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey,
+      },
+      payload: buildPayload({
+        photoData: darkPhotoBase64,
+      }),
+    });
+
+    expect(response.statusCode).toBe(422);
+    const body = response.json();
+    expect(body.message).toContain('暗');
   });
 });
 

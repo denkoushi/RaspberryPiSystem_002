@@ -45,6 +45,22 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
  * @param stream MediaStream
  * @returns 撮影した画像のBlob（JPEG形式）
  */
+const MIN_FRAME_BRIGHTNESS = 18; // 0-255 スケールでの平均輝度しきい値
+
+function calculateAverageLuminance(imageData: ImageData): number {
+  const { data } = imageData;
+  let sum = 0;
+  const pixelCount = imageData.width * imageData.height;
+  for (let i = 0; i < data.length; i += 4) {
+    // 標準的な輝度近似式（Rec. 601）
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    sum += 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+  return sum / pixelCount;
+}
+
 export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob> {
   const video = document.createElement('video');
   video.autoplay = true;
@@ -98,6 +114,13 @@ export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob>
 
     // ビデオフレームをキャンバスに描画
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // フレームの平均輝度を計算し、極端に暗い場合は再撮影を促す
+    const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const averageLuma = calculateAverageLuminance(frameData);
+    if (averageLuma < MIN_FRAME_BRIGHTNESS) {
+      throw new Error('写真が暗すぎます。明るい場所でもう一度撮影してください。');
+    }
 
     // JPEG形式でBlobに変換（品質80%）
     return new Promise<Blob>((resolve, reject) => {

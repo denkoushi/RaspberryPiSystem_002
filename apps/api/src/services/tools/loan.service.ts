@@ -331,6 +331,21 @@ export class LoanService {
           .toBuffer();
       }
 
+      // フレームの平均輝度を確認し、極端に暗い画像は拒否する
+      const stats = await sharp(originalImage).stats();
+      const rgbChannels = stats.channels.filter((channel) =>
+        ['red', 'green', 'blue'].includes(channel.name ?? channel.channel ?? ''),
+      );
+      const meanLuma =
+        rgbChannels.reduce((sum, channel) => sum + channel.mean, 0) /
+        (rgbChannels.length || 1);
+      if (meanLuma < cameraConfig.brightness.minMeanLuma) {
+        throw new ApiError(
+          422,
+          '写真が暗すぎます。照明環境を整えてからもう一度撮影してください。',
+        );
+      }
+
       // サムネイルを生成（150x150px、JPEG品質70%）
       const thumbnailImage = await sharp(originalImage)
         .resize(cameraConfig.thumbnail.width, cameraConfig.thumbnail.height, {

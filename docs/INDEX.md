@@ -225,6 +225,8 @@ APIの概要と詳細。
 | [production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) | クライアント状態可視化とデバッグ支援システム実行計画 |
 | [stability-improvement-plan.md](./plans/stability-improvement-plan.md) | システム安定性向上計画 |
 | [ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) | **Ansible安定性・堅牢化・柔軟性向上計画** |
+| [ansible-phase9-role-execplan.md](./plans/ansible-phase9-role-execplan.md) | **Ansible Phase 9（ロール化）実行計画** |
+| [tool-management-debug-execplan.md](./plans/tool-management-debug-execplan.md) | **キオスク工具スキャン重複＆黒画像対策 ExecPlan** |
 
 ### 実践ガイド（guides/）
 
@@ -348,11 +350,11 @@ APIの概要と詳細。
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実装計画 | 5 |
+| 実装計画 | 6 |
 | 実践ガイド | 30 |
 | トラブルシューティング | 6 |
 | セキュリティ | 1 |
-| **合計** | **54** |
+| **合計** | **55** |
 
 ---
 
