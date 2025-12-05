@@ -16,8 +16,7 @@ all:
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"
           web_agent_ws_url: "{{ websocket_agent_url }}"
-          # Docker Compose環境変数
-          docker_server_ip: "{{ docker_server_ip }}"
+          # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
     clients:
       hosts:
         raspberrypi4:
