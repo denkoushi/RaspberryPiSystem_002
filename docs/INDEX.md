@@ -87,6 +87,9 @@
 | デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./guides/stability-improvement-test.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
+| **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
+| **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
+| **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
 
 ### エラーを解決する
 
@@ -284,6 +287,7 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
+| [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
 
 ---
@@ -350,10 +354,10 @@ APIの概要と詳細。
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
 | 要件定義 | 1 |
-| 実装計画 | 6 |
-| 実践ガイド | 30 |
+| 実装計画 | 7 |
+| 実践ガイド | 31 |
 | トラブルシューティング | 6 |
-| セキュリティ | 1 |
+| セキュリティ | 2 |
 | **合計** | **55** |
 
 ---
