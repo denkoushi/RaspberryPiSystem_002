@@ -65,7 +65,7 @@
 
 - name: Deploy fail2ban jail overrides
   ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/fail2ban.local.j2"
+    src: "{{ role_path }}/../templates/fail2ban.local.j2"
     dest: /etc/fail2ban/jail.d/factory.conf
     owner: root
     group: root
