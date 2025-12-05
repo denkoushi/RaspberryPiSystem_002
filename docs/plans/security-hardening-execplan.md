@@ -115,9 +115,47 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   Rationale: ネットワーク環境変更時に一箇所の修正で済む、メンテナンス時と通常運用時の切り替えが容易、設定ミスを防げる。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
+- Decision: 運用モードの可視化は自動検出APIとUI表示で実装する。UIでの切り替えは実装しない。
+  Rationale: メンテナンスは頻度が低く、UIでの切り替えは誤操作リスクがある。DNSルックアップで自動検出し、管理画面で表示する方が安全。
+  Date/Author: 2025-12-04 / GPT-5.1 Codex
+
+- Decision: Tailscale導入はPi5経由でPi4/Pi3にもインストールする。認証は手動で行う。
+  Rationale: Pi5からPi4/Pi3へのSSH接続は確立済み。認証URLの表示が必要なため、手動認証が適切。
+  Date/Author: 2025-12-04 / GPT-5.1 Codex
+
+- Decision: Pi3へのTailscaleインストール時はサイネージサービスを停止する。
+  Rationale: Pi3はリソースが限られており、サイネージ稼働中にインストール処理を実行するとリソース競合が発生する可能性がある。
+  Date/Author: 2025-12-04 / GPT-5.1 Codex
+
+- Decision: SSH接続設定は`~/.ssh/config`に2つ用意する（ローカル用とTailscale用）。
+  Rationale: 通常運用時とメンテナンス時で使い分けができる。`IdentityFile`は実際に使用されている鍵を指定する必要がある。
+  Date/Author: 2025-12-04 / GPT-5.1 Codex
+
 ## Outcomes & Retrospective
 
-- (未記入) — 実装完了時に成果・残課題を記載。
+### Phase 1 & 2 完了（2025-12-04）
+
+**完了した実装**:
+- ✅ IPアドレス管理の変数化（Ansible `group_vars/all.yml`）
+- ✅ 運用モード自動検出API（`/api/system/network-mode`）
+- ✅ 管理画面での運用モード表示（`NetworkModeBadge`コンポーネント）
+- ✅ Tailscale導入（Pi5、Pi4、Pi3）
+- ✅ SSH接続設定（ローカル用とTailscale用）
+
+**成果**:
+- ネットワーク環境変更時の修正箇所が1箇所に集約された
+- メンテナンス時と通常運用時の切り替えが容易になった
+- 現在の運用モードが視覚的に確認できるようになった
+- メンテナンス時にSSHポートをインターネットに公開する必要がなくなった
+
+**学んだこと**:
+- DNSルックアップは軽量で、インターネット接続検出に適している
+- Pi3はリソースが限られているため、重い処理の前にサービスを停止する必要がある
+- SSH接続設定では、実際に使用されている鍵を確認してから設定する必要がある
+- Tailscaleは無料で利用でき、設定が簡単で、セキュリティも強固
+
+**残課題**:
+- Phase 3以降の実装（バックアップ暗号化、セキュリティ対策など）
 
 ## Context and Orientation
 
