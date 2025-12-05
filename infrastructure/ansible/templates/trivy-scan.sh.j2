@@ -16,23 +16,3 @@ echo "[$TIMESTAMP] Starting Trivy filesystem scan..." >> "${LOG_FILE}"
   "{{ trivy_scan_target }}" >> "${LOG_FILE}" 2>&1 || true
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Trivy scan completed." >> "${LOG_FILE}"
-#!/bin/bash
-set -euo pipefail
-
-LOG_DIR="{{ trivy.log_dir }}"
-mkdir -p "${LOG_DIR}"
-LOG_FILE="${LOG_DIR}/trivy-$(date +%Y%m%d_%H%M%S).log"
-
-echo "[INFO] $(date --iso-8601=seconds) Starting Trivy filesystem scan" >> "${LOG_FILE}"
-trivy fs \
-  --scanners vuln,secret,config \
-  --quiet \
-  --skip-files /.git \
-  --exit-code 0 \
-  --format table \
-{% for path in trivy.target_paths %}
-  "{{ path }}" \
-{% endfor %} >> "${LOG_FILE}" 2>&1 || true
-
-echo "[INFO] $(date --iso-8601=seconds) Trivy scan completed" >> "${LOG_FILE}"
-
