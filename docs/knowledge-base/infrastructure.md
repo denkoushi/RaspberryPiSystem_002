@@ -1539,3 +1539,95 @@ update-frequency: medium
 - `infrastructure/ansible/roles/server/tasks/monitoring.yml`
 
 ---
+
+### [KB-080] Pi4キオスクがTailscale URL固定でレイアウトが旧状態のままになる
+
+**EXEC_PLAN.md参照**: Phase 8 サイネージ／キオスク回帰対応（2025-12-05）
+
+**事象**:
+- Pi4（キオスク端末）の画面が tagモード＋旧レイアウトのまま更新されない
+- 管理コンソールのURLや表示スタイルがローカル運用時と一致せず、ユーザーが混乱
+
+**要因**:
+- `kiosk-launch.sh` の `--app="https://100.106.158.2/kiosk"` がTailscale経路に固定されていた
+- `network_mode` を `local` に戻した後も、再デプロイを実施していなかったためURLが上書きされなかった
+- Tailscale経路では証明書警告を回避するためのフラグが有効になっており、Chromiumが常にTailscale URLを優先していた
+
+**試行した対策**:
+- [x] Pi5経由でPi4へSSHし、`systemctl status kiosk-browser.service` と `cat /usr/local/bin/kiosk-launch.sh` を取得して状況を可視化
+- [ ] Ansibleで `network_mode=local` を指定して `deploy.yml` を再実行し、`kiosk_url` 変数からローカルIPを再配布（未実施）
+- [ ] `signage/kiosk` ロールに「現在のURLと `current_network` の不一致を検知して警告するタスク」を追加（未実施）
+
+**有効だった対策 / 次のアクション**:
+- 調査完了。再デプロイでURLを更新し、`kiosk_launch.sh.j2` に `current_network` の値を埋め込むことで解消予定。
+
+**関連ファイル**:
+- `infrastructure/ansible/group_vars/all.yml` (`network_mode`, `server_ip`, `kiosk_full_url`)
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`
+- `docs/plans/security-hardening-execplan.md`
+- `docs/INDEX.md`（最新アップデート欄）
+
+---
+
+### [KB-081] Pi3サイネージのPDF/TOOLS画面が新デザインへ更新されない
+
+**EXEC_PLAN.md参照**: Phase 8 サイネージ／キオスク回帰対応（2025-12-05）
+
+**事象**:
+- Raspberry Pi 3 のサイネージ画面が、Reactで刷新したモダンUIではなく旧デザインのまま表示される
+- PDFスライドショーのページ送りやカードデザインが物理サイネージに反映されず、利用者が変更を確認できない
+
+**要因**:
+- 実機が参照しているのは `SignageRenderer`（`apps/api/src/services/signage/signage.renderer.ts`）が生成するJPEGであり、React側のUI更新だけでは反映されない
+- Phase 6/7 ではReact UIの改善のみを実施し、サーバー側レンダラーのSVGテンプレートを更新していなかった
+
+**試行した対策**:
+- [x] APIコードを確認し、`SignageRenderer` が旧SVGを組み立てていることを確認
+- [ ] Pi3から `/var/cache/signage/current.jpg` を取得し、実際に描画されている内容を確認（未実施）
+- [x] `SignageRenderer` の `renderTools` / `renderSplit` / `renderPdfImage` をReact版のスタイルに合わせて書き換え（2025-12-05）  
+      - グラデーション背景・ガラス調カード・PDF表示のスライド情報表示・CPU/温度メトリクスをSVGで再構築  
+      - TOOLS/PDF/SPLITの各モードでサーバーサイド描画結果がReact UIと視覚的に整合するように調整
+
+**有効だった対策 / 次のアクション**:
+- 調査段階。Phase 8-2 で新デザインのSVGテンプレートを実装し、`signage-test-plan.md` を更新する。
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+- `docs/plans/security-hardening-execplan.md`
+- `docs/guides/signage-test-plan.md`
+- `docs/INDEX.md`（最新アップデート欄）
+
+---
+
+### [KB-082] 管理コンソールでSPLITを指定してもサイネージAPIが常にTOOLSを返す
+
+**EXEC_PLAN.md参照**: Phase 8 サイネージ／キオスク回帰対応（2025-12-06）
+
+**事象**:
+- 管理コンソールで左右2ペイン（SPLIT）を設定しているのに、実機サイネージは単一ペイン（TOOLS）表示のまま
+- `/api/signage/content` を確認すると `contentType: "TOOLS"` が返却され、`pdf` 情報も付与されていない
+
+**要因**（推定含む）:
+- セキュリティ機能（Tailscale/UFW）によるブロックではなく、`SignageService.getContent()` のスケジュール/緊急表示判定がSPLITコンテンツを返していない  
+- 可能性:  
+  1. 緊急表示レコードが残っており、TOOL表示を上書きしている  
+  2. SPLITスケジュールの `dayOfWeek` / `startTime` / `endTime` が現在時刻と一致していない  
+  3. `SignageService` がSPLIT対象でも `pdfId` を取得できていないため、分岐から外れている
+
+**試行した対策**:
+- [x] Pi3クライアント側で `SERVER_URL` を Tailscale IP へ一時切替 → サーバーの最新 `current.jpg` とハッシュ一致することを確認（レンダラー改修は反映済み）  
+- [x] `prisma.signageSchedule` を直接確認し、営業終了後（21:00以降）はどのスケジュールにも一致せず `TOOLS` にフォールバックしていた事実を把握  
+- [x] `SignageService.getContent()` にフォールバック処理を追加し、SPLITスケジュールが存在する場合は優先的に返却するよう改修（2025-12-05）
+
+**有効だった対策 / 残作業**:
+- ✅ `/api/signage/content` が営業時間外でも `contentType: "SPLIT"` を返すようになり、Pi3実機も左右ペイン表示へ復帰  
+- 🔄 必要に応じてスケジュール（start/end）を見直し、意図的に単一ペインへ切り替えたい時間帯があるかを運用ドキュメントへ追記する
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `docs/plans/security-hardening-execplan.md`
+- `docs/INDEX.md`（最新アップデート欄）
+
+---

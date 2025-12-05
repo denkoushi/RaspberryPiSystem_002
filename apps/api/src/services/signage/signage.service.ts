@@ -1,4 +1,10 @@
 import { SignageContentType, SignageDisplayMode } from '@prisma/client';
+import type { SignageSchedule } from '@prisma/client';
+
+type ScheduleSummary = Pick<
+  SignageSchedule,
+  'id' | 'name' | 'contentType' | 'pdfId' | 'dayOfWeek' | 'startTime' | 'endTime' | 'priority' | 'enabled'
+>;
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -65,17 +71,7 @@ export class SignageService {
   /**
    * 有効なスケジュール一覧を取得（優先順位順）
    */
-  async getSchedules(): Promise<Array<{
-    id: string;
-    name: string;
-    contentType: SignageContentType;
-    pdfId: string | null;
-    dayOfWeek: number[];
-    startTime: string;
-    endTime: string;
-    priority: number;
-    enabled: boolean;
-  }>> {
+  async getSchedules(): Promise<ScheduleSummary[]> {
     const schedules = await prisma.signageSchedule.findMany({
       where: { enabled: true },
       orderBy: { priority: 'desc' },
@@ -150,63 +146,29 @@ export class SignageService {
     const schedules = await this.getSchedules();
     
     for (const schedule of schedules) {
-      // 曜日チェック
-      if (!schedule.dayOfWeek.includes(currentDayOfWeek)) {
+      if (!this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime)) {
         continue;
       }
 
-      // 時間帯チェック
-      if (currentTime < schedule.startTime || currentTime >= schedule.endTime) {
-        continue;
+      const response = await this.buildScheduleResponse(schedule);
+      if (response) {
+        return response;
       }
+    }
 
-      // スケジュールに一致した場合、コンテンツを返す
-      if (schedule.contentType === SignageContentType.TOOLS) {
-        const tools = await this.getToolsData();
-        return {
-          contentType: SignageContentType.TOOLS,
-          displayMode: SignageDisplayMode.SINGLE,
-          tools,
-        };
-      } else if (schedule.contentType === SignageContentType.PDF && schedule.pdfId) {
-        const pdf = await prisma.signagePdf.findUnique({
-          where: { id: schedule.pdfId },
-        });
-        if (pdf && pdf.enabled) {
-          return {
-            contentType: SignageContentType.PDF,
-            displayMode: pdf.displayMode,
-            pdf: {
-              id: pdf.id,
-              name: pdf.name,
-              pages: await this.getPdfPages(pdf.id),
-              slideInterval: pdf.slideInterval,
-            },
-          };
-        }
-      } else if (schedule.contentType === SignageContentType.SPLIT) {
-        const tools = await this.getToolsData();
-        const pdf = schedule.pdfId
-          ? await prisma.signagePdf.findUnique({
-              where: { id: schedule.pdfId },
-            })
-          : null;
-
-        const hasEnabledPdf = !!(pdf && pdf.enabled);
-
-        return {
-          contentType: SignageContentType.SPLIT,
-          displayMode: hasEnabledPdf ? pdf.displayMode : SignageDisplayMode.SINGLE,
-          tools,
-          pdf: hasEnabledPdf
-            ? {
-                id: pdf.id,
-                name: pdf.name,
-                pages: await this.getPdfPages(pdf.id),
-                slideInterval: pdf.slideInterval,
-              }
-            : null,
-        };
+    const fallbackSchedule =
+      schedules.find((schedule) => schedule.contentType === SignageContentType.SPLIT) ?? schedules[0];
+    if (fallbackSchedule) {
+      const fallbackResponse = await this.buildScheduleResponse(fallbackSchedule);
+      if (fallbackResponse) {
+        logger.warn(
+          {
+            scheduleId: fallbackSchedule.id,
+            contentType: fallbackSchedule.contentType,
+          },
+          'No signage schedule matched current window; falling back to highest-priority schedule',
+        );
+        return fallbackResponse;
       }
     }
 
@@ -343,6 +305,79 @@ export class SignageService {
     const pageUrls = await PdfStorage.convertPdfToPages(pdfId, pdfFilePath);
     
     return pageUrls;
+  }
+
+  private matchesScheduleWindow(schedule: ScheduleSummary, currentDayOfWeek: number, currentTime: string): boolean {
+    if (!schedule.dayOfWeek.includes(currentDayOfWeek)) {
+      return false;
+    }
+    if (currentTime < schedule.startTime || currentTime >= schedule.endTime) {
+      return false;
+    }
+    return true;
+  }
+
+  private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
+    if (schedule.contentType === SignageContentType.TOOLS) {
+      const tools = await this.getToolsData();
+      return {
+        contentType: SignageContentType.TOOLS,
+        displayMode: SignageDisplayMode.SINGLE,
+        tools,
+      };
+    }
+
+    if (schedule.contentType === SignageContentType.PDF) {
+      if (!schedule.pdfId) {
+        return null;
+      }
+      const pdf = await prisma.signagePdf.findUnique({
+        where: { id: schedule.pdfId },
+      });
+      if (!pdf || !pdf.enabled) {
+        return null;
+      }
+      return {
+        contentType: SignageContentType.PDF,
+        displayMode: pdf.displayMode,
+        pdf: {
+          id: pdf.id,
+          name: pdf.name,
+          pages: await this.getPdfPages(pdf.id),
+          slideInterval: pdf.slideInterval,
+        },
+      };
+    }
+
+    if (schedule.contentType === SignageContentType.SPLIT) {
+      const tools = await this.getToolsData();
+      let pdfPayload: SignageContentResponse['pdf'] = null;
+      let pdfDisplayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
+
+      if (schedule.pdfId) {
+        const pdf = await prisma.signagePdf.findUnique({
+          where: { id: schedule.pdfId },
+        });
+        if (pdf && pdf.enabled) {
+          pdfDisplayMode = pdf.displayMode;
+          pdfPayload = {
+            id: pdf.id,
+            name: pdf.name,
+            pages: await this.getPdfPages(pdf.id),
+            slideInterval: pdf.slideInterval,
+          };
+        }
+      }
+
+      return {
+        contentType: SignageContentType.SPLIT,
+        displayMode: pdfPayload ? pdfDisplayMode : SignageDisplayMode.SINGLE,
+        tools,
+        pdf: pdfPayload,
+      };
+    }
+
+    return null;
   }
 
   /**

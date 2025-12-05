@@ -96,6 +96,22 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - `sudo /usr/local/bin/clamav-scan.sh` と `trivy-scan.sh` が正常終了し、ログ `/var/log/{clamav,trivy}` に成功記録が残ることを確認  
   - `sudo /usr/local/bin/rkhunter-scan.sh` で既知警告（PermitRootLogin/hidden fileなど）が出ることを確認し、アラート `alert-20251205-184324.json` が生成されることを確認
 
+### Phase 8: サイネージ／キオスク回帰対応（新規）
+- [x] (2025-12-05) Pi4キオスク実機の状態確認  
+  - ✅ `kiosk-browser.service` の稼働とChromiumプロセスを確認（Pi5経由のSSHで `systemctl status` / `ps` を取得）  
+  - ✅ `kiosk-launch.sh` が `https://100.106.158.2/kiosk` （Tailscale経路）を指していることを特定  
+  - ⚠️ ローカル運用モード時でもTailscale URLがハードコードされ、旧レイアウト（tagモード）が表示されることを確認。`network_mode` の切り替えと再デプロイでURLを上書きするタスクを追加
+- [ ] Pi3サイネージ描画の現状把握（`/var/cache/signage/current.jpg` 収集、SignageRendererのSVG出力確認）
+- [x] (2025-12-05) サーバー側 SignageRenderer のUI刷新（Sharp生成SVGをモダンデザインへ更新し、PDF/TOOLS/SPLIT全モードを整備）  
+  - ✅ ReactサイネージUIと同じトーン（グラデーション背景／ガラス風パネル／カードレイアウト）をサーバー側レンダラーに実装  
+  - ✅ TOOLS / PDF / SPLIT 全モードでカードレイアウト、PDFスライドの秒数表示、CPU/温度メトリクスを描画  
+  - ⚠️ Pi3実機へのデプロイ＆レンダリング結果確認は未実施（次タスクで `/var/cache/signage/current.jpg` を取得して検証）
+- [ ] Pi4/Pi3の回帰試験（NFC持出・返却、写真撮影、サイネージPDF／TOOLS表示）と結果記録
+- [ ] 実機検証手順を `docs/guides/signage-test-plan.md` と新規キオスク検証ガイドに反映し、Knowledge Baseへ Lessons Learned を追記
+- [x] (2025-12-05) SignageServiceのスケジュール判定を調査し、管理コンソールでSPLITを指定しても `/api/signage/content` が `contentType: "TOOLS"` のまま後退している原因を特定・修正  
+  - ✅ 営業時間外（21:00以降）はどのスケジュールにも一致せず、デフォルトTOOLSへフォールバックしていた  
+  - ✅ 対策として「時間帯から外れた場合でも、優先度の高いSPLITスケジュールへフォールバックする」ロジックを追加し、常に左右2ペインを維持
+
 ## Surprises & Discoveries
 
 - 観測: Raspberry Pi 3はリソースが限られているため、セキュリティソフトの導入は不要と判断。
@@ -105,6 +121,12 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - 観測: IPアドレスが複数の設定ファイルに直接記述されており、ネットワーク環境変更時に複数箇所を手動で修正する必要がある。
   エビデンス: `inventory.yml`、テンプレートファイル、スクリプトなどにIPアドレスが直接記述されている。
   対応: Ansibleの`group_vars/all.yml`にIPアドレス変数を定義し、一括管理できるようにする。
+- 観測: Pi4キオスクがTailscale経路 (`https://100.106.158.2/kiosk`) を指したままになっており、ローカル運用時に旧UI（tagモード）のまま表示され続けている。  
+  エビデンス: `ssh tools03@100.74.144.79 'cat /usr/local/bin/kiosk-launch.sh'` の結果より、`--app` 引数がTailscale IPに固定されていることを確認。  
+  対応: `network_mode=local` で再デプロイし、`kiosk_url` をローカルIPへ再設定する。合わせてAnsibleタスクに「現在のnetwork_modeとURLの乖離を検知するヘルスチェック」を追加予定。
+- 観測: Pi3サイネージの物理画面はReact版の新デザインへ更新されていない。  
+  エビデンス: `SignageRenderer`（`apps/api/src/services/signage/signage.renderer.ts`）は旧SVGレイアウトを生成しており、Pi3はこのJPEGを表示している。React側のスタイル変更だけでは実機に反映されない。  
+  対応: Phase 8-2 で `SignageRenderer` を新デザインへ合わせて刷新し、TOOLS/PDF/SPLIT レイアウトを再実装する。描画結果をPi3へ転送してリグレッションテストを実施する。
 
 - 観測: fail2banでHTTPリクエストを監視するには、Caddyコンテナのログをホスト側へ出力する必要がある。
   エビデンス: 既存構成ではCaddyログがstdoutのみで、ホスト上のファイルが存在せずfail2banが参照できなかった。
@@ -261,6 +283,20 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - ✅ バックアップ: `backup-encrypted.sh` → GPG復号 → テストDB `borrow_return_restore_test` にリストアし、Loan 436件を確認後にDBを削除
 - ✅ マルウェアスキャン: `clamav-scan.sh` / `trivy-scan.sh` / `rkhunter-scan.sh` を手動実行し、ログとアラート（rkhunter警告: `alert-20251205-184324.json`）を確認
 
+### Phase 8 進捗（未着手）
+
+**背景**: Phase 5〜7 の実装後に Pi4 キオスクと Pi3 サイネージの実機検証が不十分で、旧UIのまま運用されている。
+
+**着手予定タスク**:
+- Pi4キオスク: 画面キャプチャ・ブラウザログ・ネットワーク疎通 (`curl -k https://{server}/kiosk`) の収集
+- Pi3サイネージ: `SignageRenderer` が生成するSVG/JPEGの確認とデザイン刷新
+- 実機回帰テスト（NFC、カメラ撮影、PDF/TOOLS/SPLIT表示）とドキュメント反映
+
+**完了条件**:
+- Pi4キオスクが最新UIで安定動作し、NFC/撮影機能が再確認済み
+- Pi3サイネージがモダンデザインのJPEGを表示し、PDFスライドも設定値どおりに遷移
+- テスト計画・Knowledge Baseに検証手順と結果を反映済み
+
 **確認事項/メモ**:
 - Trivyの秘密鍵検出は skip-dir 設定により抑制済みだが、ログには過去の検出履歴も残るためタイムスタンプで判断する
 - rkhunterはPermitRootLoginなど既知警告を出すが、アラート経由で把握できるため影響なし
@@ -370,6 +406,30 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
    - 暗号化されたバックアップの復号化テスト
    - データベースのリストアテスト
    - ファイルのリストアテスト
+
+### Phase 8: サイネージ／キオスク回帰対応
+
+1. **実機状態の可視化とログ収集**
+   - Pi4: `systemctl status/journalctl` 取得、VNCスクリーンショット、`curl -k https://{server}/kiosk` の疎通確認
+   - Pi3: `systemctl status signage-lite`、`/var/cache/signage/current.jpg` の取得、SignageRendererのSVG出力ログ確認
+
+2. **SignageRendererのUI刷新**
+   - React版で導入したグラデーション背景・ガラス調パネル・タイポグラフィをSharp生成SVGへ反映
+   - `FULL` / `SPLIT` / `PDF` 各モードのレイアウトと余白・フォントサイズを再設計
+   - `slideInterval`やツールグリッド描画（カラム数・行数・画像処理）をサーバー側にも適用
+
+3. **キオスクUIの回帰テスト**
+   - NFC持出／返却、写真撮影・再撮影メッセージ、ネットワーク切断時の挙動をPi4で確認
+   - HTTPS/自己署名証明書で警告が出ないかPi4から直接アクセスして検証
+
+4. **サイネージ統合テスト**
+   - PDFスライド・TOOLS・SPLIT表示を順番に切り替え、表示結果と切替間隔をスクリーンショットで記録
+   - `signage-lite.service` ログと `alerts/` を確認し、エラーや再起動ループが無いことを確認
+
+5. **ドキュメント・ナレッジ更新**
+   - `docs/guides/signage-test-plan.md` に新しい検証ケース／期待結果／証跡リンクを追加
+   - Pi4向けのキオスク検証ガイド（新規ドキュメント）を作成し、NFC・カメラ・ネットワークチェックリストを整備
+   - `docs/knowledge-base` へ今回の回帰対応とLessons Learnedを追記
 
 ### Phase 4: 通常運用時のセキュリティ対策
 
