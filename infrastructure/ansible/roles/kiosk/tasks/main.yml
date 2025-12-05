@@ -40,3 +40,6 @@
   when:
     - kiosk_url is defined
     - manage_kiosk_browser | default(false) | bool
+
+- name: Apply kiosk malware protection
+  ansible.builtin.import_tasks: security.yml

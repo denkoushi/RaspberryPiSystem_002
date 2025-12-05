@@ -1,0 +1,43 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="{{ clamav_log_dir }}"
+LOG_FILE="${LOG_DIR}/{{ clamav_log_file }}"
+mkdir -p "${LOG_DIR}"
+
+SCAN_TARGETS=(
+{% for path in clamav_scan_paths %}
+"{{ path }}"
+{% endfor %}
+)
+
+TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
+echo "[$TIMESTAMP] Starting ClamAV scan..." >> "${LOG_FILE}"
+
+/usr/bin/clamscan \
+  --recursive \
+  --infected \
+  --quiet \
+  --max-filesize=200M \
+  --max-scansize=400M \
+  "${SCAN_TARGETS[@]}" >> "${LOG_FILE}" 2>&1 || true
+
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] Scan completed." >> "${LOG_FILE}"
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="{{ clamav.log_dir }}"
+mkdir -p "${LOG_DIR}"
+LOG_FILE="${LOG_DIR}/clamav-$(date +%Y%m%d_%H%M%S).log"
+
+echo "[INFO] $(date --iso-8601=seconds) Starting ClamAV scan" >> "${LOG_FILE}"
+freshclam --quiet || echo "[WARN] $(date --iso-8601=seconds) freshclam failed" >> "${LOG_FILE}"
+
+clamscan -r --infected --recursive=yes \
+{% for path in clamav.scan_paths %}
+  "{{ path }}" \
+{% endfor %}
+  --log="${LOG_FILE}" || true
+
+echo "[INFO] $(date --iso-8601=seconds) ClamAV scan completed" >> "${LOG_FILE}"
+

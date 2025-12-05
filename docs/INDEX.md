@@ -95,6 +95,8 @@
 | **Tailscale導入について知りたい** | **[knowledge-base/infrastructure.md#kb-071](./knowledge-base/infrastructure.md#kb-071)** |
 | **ファイアウォール/HTTPS強化について知りたい** | **[knowledge-base/infrastructure.md#kb-072](./knowledge-base/infrastructure.md#kb-072)** |
 | **fail2ban設定について知りたい** | **[knowledge-base/infrastructure.md#kb-073](./knowledge-base/infrastructure.md#kb-073)** |
+| **Pi5のマルウェア対策を確認したい** | **[knowledge-base/infrastructure.md#kb-074](./knowledge-base/infrastructure.md#kb-074)** |
+| **Pi4キオスクの軽量マルウェア対策を確認したい** | **[knowledge-base/infrastructure.md#kb-075](./knowledge-base/infrastructure.md#kb-075)** |
 
 ### エラーを解決する
 

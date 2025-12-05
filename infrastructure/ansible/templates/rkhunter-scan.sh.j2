@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="{{ rkhunter_log_dir }}"
+LOG_FILE="${LOG_DIR}/{{ rkhunter_log_file }}"
+mkdir -p "${LOG_DIR}"
+
+TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
+echo "[$TIMESTAMP] Starting rkhunter check..." >> "${LOG_FILE}"
+
+/usr/bin/rkhunter --update >> "${LOG_FILE}" 2>&1 || true
+/usr/bin/rkhunter --propupd >> "${LOG_FILE}" 2>&1 || true
+/usr/bin/rkhunter --check --sk --rwo >> "${LOG_FILE}" 2>&1 || true
+
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] rkhunter check completed." >> "${LOG_FILE}"
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="{{ rkhunter.log_dir }}"
+mkdir -p "${LOG_DIR}"
+LOG_FILE="${LOG_DIR}/rkhunter-$(date +%Y%m%d_%H%M%S).log"
+
+/usr/bin/rkhunter --cronjob --report-warnings-only --logfile "${LOG_FILE}" || true
+

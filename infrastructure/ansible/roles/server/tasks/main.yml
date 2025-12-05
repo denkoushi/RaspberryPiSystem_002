@@ -126,6 +126,9 @@
 - name: Apply server security hardening
   ansible.builtin.import_tasks: security.yml
 
+- name: Apply malware protection tasks
+  ansible.builtin.import_tasks: malware.yml
+
 - name: Rebuild and restart Docker services on server (auto-detect network changes)
   block:
     - name: Rebuild/Restart docker compose services

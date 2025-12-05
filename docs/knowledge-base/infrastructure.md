@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 33件  
+**件数**: 35件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1369,4 +1369,54 @@ update-frequency: medium
 - `infrastructure/ansible/templates/fail2ban.local.j2`
 - `infrastructure/ansible/templates/fail2ban-filter-caddy-http.conf.j2`
 - `infrastructure/docker/Caddyfile*`
+- `docs/plans/security-hardening-execplan.md`### [KB-074] Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter）
+
+**EXEC_PLAN.md参照**: Phase 5 マルウェア対策（2025-12-05）
+
+**事象**: 
+- Pi5にウイルス/ルートキット検知の仕組みがなく、感染を検知できない
+- スキャンログが分散し、監視フェーズで再利用しづらかった
+
+**有効だった対策**: 
+- ✅ ClamAV/Trivy/rkhunterをAnsibleで導入し、`/usr/local/bin/*-scan.sh`を配置
+- ✅ 03:00/03:30/04:00のcronで夜間スキャンを自動化し、ログを`/var/log/{clamav,trivy,rkhunter}`へ集約
+- ✅ TrivyはGitHub公式ARM64 `.deb`をダウンロードしてdpkgでインストール（APTリポジトリが無いため）
+
+**学んだこと**: 
+- Debian bookworm系ではTrivyのAPTパッケージが提供されていないため、公式リリースを直接導入するのが確実
+- `freshclam`デーモンに任せれば手動`freshclam`は不要で、ログロックエラーも避けられる
+
+**関連ファイル**: 
+- `infrastructure/ansible/roles/server/tasks/malware.yml`
+- `infrastructure/ansible/templates/clamav-scan.sh.j2`
+- `infrastructure/ansible/templates/trivy-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-075] Pi4キオスクの軽量マルウェア対策
+
+**EXEC_PLAN.md参照**: Phase 5 マルウェア対策（2025-12-05）
+
+**事象**: 
+- Pi4（キオスク）はリソースが限られており、Pi5と同じ対象・頻度でスキャンするとUIレスポンスが低下する
+
+**有効だった対策**: 
+- ✅ ClamAVとrkhunterのみを導入し、対象を`/opt/RaspberryPiSystem_002/storage`に限定
+- ✅ 週1回（日曜02:00開始）のcronを設定し、低負荷時間帯だけスキャン
+- ✅ Pi5と同じスクリプト/ログ命名に揃え、監視・アラートの共通化を容易にした
+
+**学んだこと**: 
+- リソースが限られた端末では、対象フォルダと頻度を絞ることでセキュリティとUXの両立が可能
+- Pi5を経由したscp→sshの配布フローを整備すると、再デプロイが容易になる
+
+**関連ファイル**: 
+- `infrastructure/ansible/roles/kiosk/tasks/security.yml`
+- `infrastructure/ansible/templates/clamav-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
+
+---

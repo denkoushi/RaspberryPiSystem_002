@@ -62,3 +62,68 @@ fail2ban_defaults:
 fail2ban_http_maxretry: 15
 fail2ban_http_findtime: "15m"
 fail2ban_http_bantime: "1h"
+
+# マルウェア対策設定
+clamav_server_enabled: true
+clamav_server_scan_paths:
+  - "/opt/RaspberryPiSystem_002"
+  - "/opt/backups"
+clamav_server_scan_cron: "0 3 * * *"
+clamav_server_log_dir: "/var/log/clamav"
+clamav_server_log_file: "clamav-scan.log"
+clamav_kiosk_enabled: true
+clamav_kiosk_scan_paths:
+  - "/opt/RaspberryPiSystem_002/storage"
+clamav_kiosk_scan_cron: "0 2 * * 0"
+clamav_kiosk_log_dir: "/var/log/clamav"
+clamav_kiosk_log_file: "clamav-kiosk-scan.log"
+
+trivy_enabled: true
+trivy_scan_target: "/opt/RaspberryPiSystem_002"
+trivy_scan_cron: "30 3 * * *"
+trivy_log_dir: "/var/log/trivy"
+trivy_log_file: "trivy-scan.log"
+trivy_version: "0.54.1"
+trivy_package_file: "trivy_{{ trivy_version }}_Linux-ARM64.deb"
+trivy_download_url: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/{{ trivy_package_file }}"
+
+rkhunter_server_enabled: true
+rkhunter_server_cron: "0 4 * * *"
+rkhunter_log_dir: "/var/log/rkhunter"
+rkhunter_log_file: "rkhunter-scan.log"
+
+rkhunter_kiosk_enabled: true
+rkhunter_kiosk_cron: "30 2 * * 0"
+rkhunter_kiosk_log_dir: "/var/log/rkhunter"
+rkhunter_kiosk_log_file: "rkhunter-kiosk.log"
+
+# マルウェア対策設定
+clamav:
+  enabled: true
+  log_dir: "/var/log/clamav"
+  scan_paths:
+    - "/opt/RaspberryPiSystem_002/apps/api"
+    - "/opt/RaspberryPiSystem_002/apps/web"
+    - "/opt/RaspberryPiSystem_002/storage"
+  cron:
+    minute: "0"
+    hour: "3"
+    weekday: "0" # Sunday
+
+trivy:
+  enabled: true
+  log_dir: "/var/log/trivy"
+  target_paths:
+    - "/opt/RaspberryPiSystem_002"
+  cron:
+    minute: "0"
+    hour: "4"
+    weekday: "0"
+
+rkhunter:
+  enabled: true
+  log_dir: "/var/log/rkhunter"
+  cron:
+    minute: "30"
+    hour: "4"
+    weekday: "0"

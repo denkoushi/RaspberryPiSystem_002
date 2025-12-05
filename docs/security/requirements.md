@@ -70,7 +70,10 @@
 - Dockerイメージのスキャン
 
 **実装状況（2025-12-05）**:
-- 🔸 未着手（Phase5で実装予定）
+- ✅ Pi5にClamAV/Trivy/rkhunterを導入し、日次cronと`/var/log/{clamav,trivy,rkhunter}`へのログ集約を実装
+- ✅ Pi4に軽量ClamAV/rkhunterを導入し、ストレージ配下のみを週次スキャン（CPU負荷を最小化）
+- ✅ 手動スキャンで動作確認済み（感染ファイル検出なし／freshclamログロックは既知の注意のみ）
+- 🔸 TrivyでDockerイメージ単位のスキャン、およびスキャンログの自動監視はPhase6以降で実装予定
 
 **優先度**: 高
 

@@ -81,3 +81,126 @@
     state: started
   when: fail2ban_enabled | default(false)
 
+- name: Install ClamAV packages
+  ansible.builtin.apt:
+    name:
+      - clamav
+      - clamav-freshclam
+    state: present
+    update_cache: true
+  when: clamav.enabled | default(false)
+
+- name: Ensure ClamAV log directory exists
+  ansible.builtin.file:
+    path: "{{ clamav.log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: clamav.enabled | default(false)
+
+- name: Deploy ClamAV scan script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/clamav-scan.sh.j2"
+    dest: /usr/local/bin/clamav-weekly-scan.sh
+    owner: root
+    group: root
+    mode: "0750"
+  when: clamav.enabled | default(false)
+
+- name: Schedule ClamAV weekly scan
+  ansible.builtin.cron:
+    name: "clamav weekly scan"
+    user: root
+    minute: "{{ clamav.cron.minute }}"
+    hour: "{{ clamav.cron.hour }}"
+    weekday: "{{ clamav.cron.weekday }}"
+    job: "/usr/local/bin/clamav-weekly-scan.sh >> {{ clamav.log_dir }}/cron.log 2>&1"
+  when: clamav.enabled | default(false)
+
+- name: Install Trivy dependencies
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+    state: present
+    update_cache: true
+  when: trivy.enabled | default(false)
+
+- name: Install Trivy binary
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  args:
+    creates: /usr/local/bin/trivy
+  when: trivy.enabled | default(false)
+
+- name: Ensure Trivy log directory exists
+  ansible.builtin.file:
+    path: "{{ trivy.log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: trivy.enabled | default(false)
+
+- name: Deploy Trivy scan script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/trivy-scan.sh.j2"
+    dest: /usr/local/bin/trivy-weekly-scan.sh
+    owner: root
+    group: root
+    mode: "0750"
+  when: trivy.enabled | default(false)
+
+- name: Schedule Trivy weekly scan
+  ansible.builtin.cron:
+    name: "trivy weekly scan"
+    user: root
+    minute: "{{ trivy.cron.minute }}"
+    hour: "{{ trivy.cron.hour }}"
+    weekday: "{{ trivy.cron.weekday }}"
+    job: "/usr/local/bin/trivy-weekly-scan.sh >> {{ trivy.log_dir }}/cron.log 2>&1"
+  when: trivy.enabled | default(false)
+
+- name: Install rkhunter package
+  ansible.builtin.apt:
+    name: rkhunter
+    state: present
+    update_cache: true
+  when: rkhunter.enabled | default(false)
+
+- name: Update rkhunter property database
+  ansible.builtin.command: rkhunter --propupd
+  register: rkhunter_propupd
+  changed_when: "'File updated successfully' in rkhunter_propupd.stdout"
+  when: rkhunter.enabled | default(false)
+
+- name: Ensure rkhunter log directory exists
+  ansible.builtin.file:
+    path: "{{ rkhunter.log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: rkhunter.enabled | default(false)
+
+- name: Deploy rkhunter scan script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/rkhunter-scan.sh.j2"
+    dest: /usr/local/bin/rkhunter-weekly-scan.sh
+    owner: root
+    group: root
+    mode: "0750"
+  when: rkhunter.enabled | default(false)
+
+- name: Schedule rkhunter weekly scan
+  ansible.builtin.cron:
+    name: "rkhunter weekly scan"
+    user: root
+    minute: "{{ rkhunter.cron.minute }}"
+    hour: "{{ rkhunter.cron.hour }}"
+    weekday: "{{ rkhunter.cron.weekday }}"
+    job: "/usr/local/bin/rkhunter-weekly-scan.sh >> {{ rkhunter.log_dir }}/cron.log 2>&1"
+  when: rkhunter.enabled | default(false)
+

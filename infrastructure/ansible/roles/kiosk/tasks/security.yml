@@ -1,0 +1,77 @@
+---
+- name: Ensure kiosk malware log directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ clamav_kiosk_log_dir }}"
+    - "{{ rkhunter_kiosk_log_dir }}"
+
+- name: Install ClamAV on kiosk
+  ansible.builtin.apt:
+    name:
+      - clamav
+      - clamav-freshclam
+    state: present
+    update_cache: true
+  when: clamav_kiosk_enabled | default(false)
+
+- name: Deploy kiosk ClamAV scan script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/clamav-scan.sh.j2"
+    dest: /usr/local/bin/clamav-kiosk-scan.sh
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    clamav_log_dir: "{{ clamav_kiosk_log_dir }}"
+    clamav_log_file: "{{ clamav_kiosk_log_file }}"
+    clamav_scan_paths: "{{ clamav_kiosk_scan_paths }}"
+  when: clamav_kiosk_enabled | default(false)
+
+- name: Schedule kiosk ClamAV scan
+  ansible.builtin.cron:
+    name: "Weekly ClamAV scan (kiosk)"
+    user: root
+    minute: "{{ clamav_kiosk_scan_cron.split()[0] }}"
+    hour: "{{ clamav_kiosk_scan_cron.split()[1] }}"
+    day: "{{ clamav_kiosk_scan_cron.split()[2] }}"
+    month: "{{ clamav_kiosk_scan_cron.split()[3] }}"
+    weekday: "{{ clamav_kiosk_scan_cron.split()[4] }}"
+    job: "/usr/local/bin/clamav-kiosk-scan.sh >/dev/null 2>&1"
+  when: clamav_kiosk_enabled | default(false)
+
+- name: Install rkhunter on kiosk
+  ansible.builtin.apt:
+    name: rkhunter
+    state: present
+    update_cache: true
+  when: rkhunter_kiosk_enabled | default(false)
+
+- name: Deploy kiosk rkhunter scan script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/rkhunter-scan.sh.j2"
+    dest: /usr/local/bin/rkhunter-kiosk-scan.sh
+    owner: root
+    group: root
+    mode: "0755"
+  vars:
+    rkhunter_log_dir: "{{ rkhunter_kiosk_log_dir }}"
+    rkhunter_log_file: "{{ rkhunter_kiosk_log_file }}"
+  when: rkhunter_kiosk_enabled | default(false)
+
+- name: Schedule kiosk rkhunter scan
+  ansible.builtin.cron:
+    name: "Weekly rkhunter scan (kiosk)"
+    user: root
+    minute: "{{ rkhunter_kiosk_cron.split()[0] }}"
+    hour: "{{ rkhunter_kiosk_cron.split()[1] }}"
+    day: "{{ rkhunter_kiosk_cron.split()[2] }}"
+    month: "{{ rkhunter_kiosk_cron.split()[3] }}"
+    weekday: "{{ rkhunter_kiosk_cron.split()[4] }}"
+    job: "/usr/local/bin/rkhunter-kiosk-scan.sh >/dev/null 2>&1"
+  when: rkhunter_kiosk_enabled | default(false)
+

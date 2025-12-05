@@ -60,14 +60,14 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-05) fail2banのjail設定（SSH、Caddy HTTP API共通ログ）
 
 ### Phase 5: マルウェア対策
-- [ ] ClamAVのインストール（Pi5）
-- [ ] ClamAVの定期スキャン設定（cron）
-- [ ] Trivyのインストール（Pi5）
-- [ ] Dockerイメージの定期スキャン設定
-- [ ] rkhunterのインストール（Pi5）
-- [ ] rkhunterの定期スキャン設定
-- [ ] ClamAVの軽量設定（Pi4、週1回スキャン）
-- [ ] rkhunterの導入（Pi4）
+- [x] (2025-12-05) ClamAVのインストール（Pi5）
+- [x] (2025-12-05) ClamAVの定期スキャン設定（cron）
+- [x] (2025-12-05) Trivyのインストール（Pi5）
+- [x] (2025-12-05) Trivyの定期スキャン設定（cron / fsスキャン）
+- [x] (2025-12-05) rkhunterのインストール（Pi5）
+- [x] (2025-12-05) rkhunterの定期スキャン設定（cron）
+- [x] (2025-12-05) ClamAVの軽量設定（Pi4、週1回スキャン）
+- [x] (2025-12-05) rkhunterの導入（Pi4）
 
 ### Phase 6: 監視・アラート
 - [ ] セキュリティログの監視設定
@@ -100,6 +100,14 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - 観測: UFWを有効化する際、既存のSSHセッションを保持しつつローカルネットワークとTailscaleだけを許可する必要がある。
   エビデンス: デフォルトallowのままだとインターネット経由の22番ポートが開いたままになる。
   対応: `ufw allow from 192.168.10.0/24`および`100.64.0.0/10`のみ許可し、その他はdenyに設定。
+
+- 観測: Debian bookworm系ではTrivyがaptに含まれていないため、公式インストールスクリプトを使用する必要があった。
+  エビデンス: `apt-cache search trivy`ではパッケージ未提供。公式ドキュメントはinstall.sh経由を想定。
+  対応: `/usr/local/bin`へcurl経由でインストールし、再実行時は`creates`でスキップするようAnsibleに実装。
+
+- 観測: `freshclam`はデフォルトで常駐サービスがログをロックするため、手動実行時にロックエラーが出る。
+  エビデンス: `freshclam --quiet`実行時に`Failed to lock ... freshclam.log`が発生。
+  対応: スクリプト内では警告としてログに記録しつつスキャンを継続。必要に応じて将来`freshclam`サービスをタイマー起動に変更する余地あり。
 
 ## Decision Log
 
@@ -145,6 +153,18 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 - Decision: UFWはデフォルトdeny/allow構成とし、SSHはローカルLANとTailscaleネットワークのみ許可する。
   Rationale: 工場LANとTailscale以外からの直接アクセスを遮断し、管理面の誤操作を防ぐ。
+  Date/Author: 2025-12-05 / GPT-5.1 Codex
+
+- Decision: TrivyはGitHub公式のARM64 .debパッケージを直接導入し、`/usr/local/bin/trivy`として管理する。
+  Rationale: Debian bookworm系にTrivyのAPTリポジトリが存在しないため、最短で安定動作させるには公式リリースをダウンロードしてdpkgで導入するのが確実。
+  Date/Author: 2025-12-05 / GPT-5.1 Codex
+
+- Decision: Pi4ではストレージ配下のみを対象とした週次ClamAV/rkhunterを実行し、CPU負荷を抑える。
+  Rationale: キオスク端末は常時UIを提供しており、フルスキャンは体感遅延を生む。対象範囲と頻度を限定することで安全性とレスポンスを両立させる。
+  Date/Author: 2025-12-05 / GPT-5.1 Codex
+
+- Decision: ClamAV/Trivy/rkhunterはPi5で週1回のcron実行＋ログ保管で運用する。
+  Rationale: リソースが限られるため常駐デーモンではなく、夜間バッチでスキャンする方が安定。ログは`/var/log/{clamav,trivy,rkhunter}`に集約し、後続の監視フェーズで活用できる。
   Date/Author: 2025-12-05 / GPT-5.1 Codex
 
 ## Outcomes & Retrospective
@@ -200,26 +220,35 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - UFW/fail2banの実機テストレポートをPhase7で実施
 - API個別のfail2banチューニング（必要なら追加フィルターを検討）
 
+### Phase 5 進捗（2025-12-05）
+
+**完了した実装**:
+- ✅ Pi5にClamAV/Trivy/rkhunterを導入し、`/usr/local/bin/*-scan.sh`と日次cronを配置
+- ✅ Pi4に軽量ClamAV/rkhunterを導入し、週次cronでストレージのみスキャン（負荷を最小化）
+- ✅ `/var/log/{clamav,trivy,rkhunter}`へログを集約し、手動スキャンでも動作確認済み（freshclamロック警告のみ）
+
+**未完了のタスク**:
+- 🔸 TrivyでDockerイメージ単位のスキャン（現在はファイルシステムモードのみ）
+- 🔸 Pi5/ Pi4 のスキャンログを監視・通知する仕組み（Phase6で対応予定）
+
 ## Context and Orientation
 
 - **現状のセキュリティ対策**: 
   - ✅ 認証・認可（JWT、RBAC）
   - ✅ 入力バリデーション（zod）
-  - ✅ XSS対策（Reactのデフォルトエスケープ）
-  - ✅ SQLインジェクション対策（Prisma）
+  - ✅ XSS/SQLインジェクション対策（Reactエスケープ + Prisma）
   - ✅ APIレート制限
-  - ✅ HTTPS対応（設定可能だが強制は未実装）
-  - ✅ バックアップ機能（暗号化・オフライン保存は未実装）
+  - ✅ IPアドレス管理の変数化 ＋ネットワークモード自動検出
+  - ✅ TailscaleによるメンテナンスVPN
+  - ✅ Pi5のファイアウォール（ufw）/fail2ban/HTTPS強制
+  - ✅ バックアップ暗号化スクリプト（オフライン保存対応）
+  - ✅ マルウェア対策（Pi5: ClamAV/Trivy/rkhunter、Pi4: 軽量ClamAV+rkhunter）
 
-- **不足している対策**:
-  - ❌ ファイアウォール設定
-  - ❌ IP制限
-  - ❌ fail2ban（ブルートフォース対策）
-  - ❌ HTTPS強制
-  - ❌ バックアップ暗号化・オフライン保存
-  - ❌ セキュリティソフト（ClamAV、Trivy、rkhunter）
-  - ❌ ログ監視・アラート
-  - ❌ IPアドレス管理の変数化
+- **残っている対策**:
+  - ❌ 管理画面のIP制限（今後Tailscale ACLと連携予定）
+  - ❌ スキャンログ/セキュリティログの常時監視・通知
+  - ❌ Dockerイメージ単位のTrivyスキャン
+  - ❌ バックアップ復元テスト（検証用DB）
 
 - **IPアドレス直接記述箇所**:
   - `infrastructure/ansible/inventory.yml`: 複数箇所（`ansible_host`、URL、WebSocket URLなど）
