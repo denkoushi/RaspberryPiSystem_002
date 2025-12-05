@@ -12,9 +12,9 @@ local_network:
 # メンテナンス時（Tailscale経由）に使用するIPアドレス
 # Tailscaleで割り当てられるIPを確認して設定してください。
 tailscale_network:
-  raspberrypi5_ip: ""
-  raspberrypi4_ip: ""
-  raspberrypi3_ip: ""
+  raspberrypi5_ip: "100.106.158.2"
+  raspberrypi4_ip: "100.74.144.79"
+  raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）
 current_network: "{{ local_network if network_mode == 'local' else tailscale_network }}"
