@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 28件  
+**件数**: 31件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1111,5 +1111,192 @@ update-frequency: medium
 - `clients/nfc-agent/nfc_agent/queue_store.py`
 - `apps/web/src/hooks/useNfcStream.ts`
 - `docs/plans/tool-management-debug-execplan.md`
+
+---
+
+### [KB-069] IPアドレス管理の変数化（Ansible group_vars/all.yml）
+
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+
+**事象**: 
+- IPアドレスが複数の設定ファイルに直接記述されている
+- ネットワーク環境が変わった際に、複数箇所を手動で修正する必要がある
+- メンテナンス時と通常運用時の切り替えが煩雑
+- `inventory.yml`、テンプレートファイル（`.j2`）、スクリプトなどにIPアドレスが散在している
+
+**要因**: 
+1. **設定の分散**: IPアドレスが各ファイルに直接記述されており、一元管理されていない
+2. **変数化の不足**: Ansibleの変数機能を活用していなかった
+3. **ネットワークモードの切り替え不足**: ローカルネットワークとTailscaleの切り替えが手動で行う必要があった
+
+**試行した対策**: 
+- [試行1] 各ファイルを個別に修正 → **失敗**（修正漏れが発生しやすい）
+- [試行2] 環境変数で管理 → **部分的成功**（Ansibleテンプレートでは使用できない）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-04）:
+  1. `infrastructure/ansible/group_vars/all.yml`を作成し、IPアドレス変数を一元管理
+  2. `network_mode`（`local`/`tailscale`）で切り替え可能にする
+  3. `local_network`と`tailscale_network`の2つのIPアドレスセットを定義
+  4. `current_network`変数で`network_mode`に応じて自動選択
+  5. `inventory.yml`で変数を参照するように修正（`ansible_host`、URL、WebSocket URLなど）
+  6. テンプレートファイル（`.j2`）のデフォルト値を削除し、変数のみ参照
+  7. `scripts/register-clients.sh`を環境変数またはAnsible変数から読み込むように修正
+
+**実装の詳細**:
+- `group_vars/all.yml`に以下の変数を定義:
+  - `network_mode`: `"local"`または`"tailscale"`
+  - `local_network`: ローカルネットワーク用IPアドレス（`raspberrypi5_ip`, `raspberrypi4_ip`, `raspberrypi3_ip`）
+  - `tailscale_network`: Tailscale用IPアドレス（メンテナンス時のみ使用）
+  - `current_network`: `network_mode`に基づいて自動選択
+  - `server_ip`, `kiosk_ip`, `signage_ip`: 共通変数として定義
+  - `api_base_url`, `websocket_agent_url`など: よく使うURLを共通変数として定義
+- `inventory.yml`で`ansible_host: "{{ current_network.raspberrypi5_ip }}"`のように変数参照
+- テンプレートファイルで`{{ api_base_url }}`のように変数参照
+
+**学んだこと**: 
+- Ansibleの`group_vars/all.yml`を使用することで、IPアドレスを一元管理できる
+- `network_mode`で切り替え可能にすることで、メンテナンス時と通常運用時の切り替えが容易になる
+- 変数化により、ネットワーク環境変更時の修正箇所が1箇所に集約される
+- デフォルト値に古いIPアドレスを残さないことで、設定ミスを防げる
+
+**解決状況**: ✅ **解決済み**（2025-12-04）
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/inventory.yml`
+- `infrastructure/ansible/templates/nfc-agent.env.j2`
+- `infrastructure/ansible/templates/status-agent.conf.j2`
+- `infrastructure/ansible/templates/docker.env.j2`
+- `scripts/register-clients.sh`
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-070] 運用モード可視化（ネットワークモード自動検出API）
+
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+
+**事象**: 
+- 現在の運用モード（ローカル/メンテナンス）が分からない
+- インターネット接続の有無が分からない
+- メンテナンス時に誤ってローカルネットワーク設定で操作してしまうリスクがある
+
+**要因**: 
+1. **可視化の不足**: 現在のネットワーク状態を表示する機能がなかった
+2. **自動検出の不足**: インターネット接続の有無を自動的に検出する機能がなかった
+3. **UI表示の不足**: 管理画面で運用モードが表示されていなかった
+
+**試行した対策**: 
+- [試行1] 環境変数で手動設定 → **失敗**（設定ミスのリスクがある）
+- [試行2] 設定ファイルで管理 → **失敗**（動的な状態を反映できない）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-04）:
+  1. `/api/system/network-mode`エンドポイントを実装
+  2. DNSルックアップ（`github.com`, `tailscale.com`, `cloudflare.com`）でインターネット接続を自動検出
+  3. 接続あり → `{ mode: "maintenance", status: "internet_connected" }`
+  4. 接続なし → `{ mode: "local", status: "local_network_only" }`
+  5. 環境変数`NETWORK_STATUS_OVERRIDE`でテスト時に上書き可能にする
+  6. 管理画面のヘッダーに`NetworkModeBadge`コンポーネントを追加
+  7. React Queryで30秒ごとに自動更新
+  8. バッジやアイコンで視覚的に表示（ローカル: 緑、メンテナンス: オレンジ）
+
+**実装の詳細**:
+- API側（`apps/api/src/routes/system/network-mode.ts`）:
+  - `dns.promises.lookup()`でDNSルックアップを実行
+  - タイムアウト2秒で複数のホストを試行
+  - 接続成功したホスト名を`source`として返す
+  - レイテンシを計測して返す
+- フロントエンド側（`apps/web/src/components/NetworkModeBadge.tsx`）:
+  - `useNetworkModeStatus`フックでAPIをポーリング（30秒間隔）
+  - 検出モードと設定モードの不一致を警告表示
+  - ネットワーク状態とレイテンシを表示
+  - 最終更新時刻を表示
+
+**学んだこと**: 
+- DNSルックアップは軽量で、インターネット接続の検出に適している
+- 複数のホストを試行することで、特定ホストの障害に影響されない
+- タイムアウトを短く設定することで、レスポンス時間を短縮できる
+- UIでの可視化により、運用ミスを防げる
+- 環境変数での上書きにより、テストが容易になる
+
+**解決状況**: ✅ **解決済み**（2025-12-04）
+
+**関連ファイル**: 
+- `apps/api/src/routes/system/network-mode.ts`
+- `apps/api/src/routes/__tests__/network-mode.test.ts`
+- `apps/api/src/config/env.ts`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/web/src/components/NetworkModeBadge.tsx`
+- `apps/web/src/layouts/AdminLayout.tsx`
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-071] Tailscale導入とSSH接続設定
+
+**EXEC_PLAN.md参照**: Phase 2 メンテナンス時の安全化（Tailscale導入）（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+
+**事象**: 
+- メンテナンス時にインターネット経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開する必要がある
+- 動的IPアドレスで接続が不安定になる可能性がある
+- 自宅と会社の両方から接続する際、IPアドレスが異なる
+
+**要因**: 
+1. **VPNの未導入**: TailscaleなどのVPNが導入されていなかった
+2. **SSHポートの公開**: SSHポート（22）をインターネットに公開する必要があった
+3. **動的IPの問題**: 動的IPアドレスで接続が不安定になる可能性がある
+
+**試行した対策**: 
+- [試行1] 固定IPアドレスを取得 → **失敗**（コストが高い、設定が複雑）
+- [試行2] ポート転送を設定 → **失敗**（セキュリティリスクがある）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-04）:
+  1. Tailscaleアカウントを作成（無料プランで100デバイスまで利用可能）
+  2. MacにTailscaleクライアントをインストール・認証
+  3. Pi5、Pi4、Pi3にTailscaleクライアントをインストール
+  4. 各デバイスで`sudo tailscale up`を実行して認証
+  5. Tailscale IPアドレスを`group_vars/all.yml`に設定
+  6. Mac側の`~/.ssh/config`に2つの接続設定を追加:
+     - `raspi5-local`: 通常運用時（ローカルネットワーク `192.168.10.230`）
+     - `raspi5-tailscale`: メンテナンス時（Tailscale経由 `100.106.158.2`）
+  7. Ansibleタスク（`roles/common/tasks/tailscale.yml`）を作成し、自動インストール可能にする
+
+**実装の詳細**:
+- Tailscaleインストール:
+  - Pi5: `curl -fsSL https://tailscale.com/install.sh | sh`
+  - Pi4: Pi5経由でSSH接続してインストール
+  - Pi3: Pi5経由でSSH接続してインストール（サイネージサービスを停止してから実行）
+- Tailscale認証:
+  - 各デバイスで`sudo tailscale up`を実行
+  - 認証URLが表示されるので、Macのブラウザで開いて承認
+  - `tailscale status`でIPアドレスを確認
+- SSH接続設定:
+  - `~/.ssh/config`に`raspi5-local`と`raspi5-tailscale`を追加
+  - `IdentityFile`に正しいSSH鍵（`id_ed25519`）を指定
+  - `StrictHostKeyChecking no`でホストキーチェックを無効化（初回接続時）
+
+**学んだこと**: 
+- Tailscaleは無料で利用でき、設定が簡単
+- WireGuardベースで暗号化が強固
+- 動的IPアドレスでも固定IPのように接続可能
+- SSHポートをインターネットに公開する必要がない
+- メンテナンス時のみ使用し、通常運用時はローカルネットワークを使用する運用が適切
+- Pi3はリソースが限られているため、サイネージサービスを停止してからインストールする必要がある
+
+**解決状況**: ✅ **解決済み**（2025-12-04）
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/roles/common/tasks/tailscale.yml`
+- `infrastructure/ansible/roles/common/tasks/main.yml`
+- `~/.ssh/config`（Mac側）
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
 
 ---

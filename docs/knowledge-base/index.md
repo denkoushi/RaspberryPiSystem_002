@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 18件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 28件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 31件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理 |
 
 ---
 
@@ -158,9 +158,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 61件 |
+| ✅ 解決済み | 64件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **65件** |
+| **合計** | **68件** |
 
 ---
 
@@ -200,3 +200,6 @@ update-frequency: high
 - 2025-12-02: KB-066を追加（ラズパイ3でのAnsibleデプロイ失敗: サイネージ稼働中のリソース不足・自動再起動・401エラー）
 - 2025-12-04: KB-067を追加（工具スキャンが重複登録される問題: NFCエージェントのeventId永続化対策）
 - 2025-12-04: KB-068を追加（写真撮影持出のサムネイルが真っ黒になる問題: 輝度チェック対策）
+- 2025-12-04: KB-069を追加（IPアドレス管理の変数化: Ansible group_vars/all.yml）
+- 2025-12-04: KB-070を追加（運用モード可視化: ネットワークモード自動検出API）
+- 2025-12-04: KB-071を追加（Tailscale導入とSSH接続設定）

@@ -90,6 +90,9 @@
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
+| **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
+| **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
+| **Tailscale導入について知りたい** | **[knowledge-base/infrastructure.md#kb-071](./knowledge-base/infrastructure.md#kb-071)** |
 
 ### エラーを解決する
 
