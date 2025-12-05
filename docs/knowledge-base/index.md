@@ -133,7 +133,7 @@ update-frequency: high
 | [KB-079](./infrastructure.md#kb-079-phase7セキュリティテストの実施結果と検証ポイント) | Phase7セキュリティテストの実施結果と検証ポイント | ✅ 解決済み |
 | [KB-080](./infrastructure.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
 | [KB-081](./infrastructure.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) | Pi3サイネージが新デザインへ更新されない | 🔄 進行中 |
-| [KB-082](./infrastructure.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | 🔄 進行中 |
+| [KB-082](./infrastructure.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | ✅ 解決済み |
 
 ---
 
@@ -172,8 +172,8 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 76件 |
-| 🔄 進行中 | 7件 |
+| ✅ 解決済み | 77件 |
+| 🔄 進行中 | 6件 |
 | **合計** | **83件** |
 
 ---

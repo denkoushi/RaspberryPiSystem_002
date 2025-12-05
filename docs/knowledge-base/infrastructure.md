@@ -1608,12 +1608,9 @@ update-frequency: medium
 - 管理コンソールで左右2ペイン（SPLIT）を設定しているのに、実機サイネージは単一ペイン（TOOLS）表示のまま
 - `/api/signage/content` を確認すると `contentType: "TOOLS"` が返却され、`pdf` 情報も付与されていない
 
-**要因**（推定含む）:
-- セキュリティ機能（Tailscale/UFW）によるブロックではなく、`SignageService.getContent()` のスケジュール/緊急表示判定がSPLITコンテンツを返していない  
-- 可能性:  
-  1. 緊急表示レコードが残っており、TOOL表示を上書きしている  
-  2. SPLITスケジュールの `dayOfWeek` / `startTime` / `endTime` が現在時刻と一致していない  
-  3. `SignageService` がSPLIT対象でも `pdfId` を取得できていないため、分岐から外れている
+**要因**:
+- 営業時間（07:30–21:00）外ではどのスケジュールにも一致せず、デフォルトの TOOLS へフォールバックしていた  
+- セキュリティ機能（Tailscale/UFW）ではなく、`SignageService.getContent()` のフォールバック仕様不足が根本原因
 
 **試行した対策**:
 - [x] Pi3クライアント側で `SERVER_URL` を Tailscale IP へ一時切替 → サーバーの最新 `current.jpg` とハッシュ一致することを確認（レンダラー改修は反映済み）  
