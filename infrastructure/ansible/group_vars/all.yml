@@ -35,3 +35,9 @@ status_agent_api_base_url: "{{ api_base_url }}"
 nfc_agent_api_base_url: "{{ api_base_url }}"
 docker_server_ip: "{{ server_ip }}"
 
+# Tailscale設定（デフォルトでは無効、ホスト側で上書き）
+tailscale_enabled: false
+tailscale_auth_key: ""
+tailscale_extra_args: "--ssh"
+tailscale_install_script: "https://tailscale.com/install.sh"
+

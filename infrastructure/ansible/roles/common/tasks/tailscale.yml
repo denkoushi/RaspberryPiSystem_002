@@ -1,0 +1,54 @@
+---
+- name: Ensure curl is installed (required for Tailscale install script)
+  ansible.builtin.package:
+    name: curl
+    state: present
+
+- name: Install Tailscale package
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -fsSL {{ tailscale_install_script }} | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/sbin/tailscaled
+
+- name: Ensure tailscaled service is enabled and started
+  ansible.builtin.service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Check current Tailscale status
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  failed_when: false
+  changed_when: false
+
+- name: Parse current Tailscale backend state
+  ansible.builtin.set_fact:
+    tailscale_backend_state: "{{ ((tailscale_status.stdout | default('{}')) | from_json).BackendState | default('') }}"
+  when: tailscale_status.rc == 0
+
+- name: Determine if Tailscale is connected
+  ansible.builtin.set_fact:
+    tailscale_connected: "{{ tailscale_backend_state | default('') == 'Running' }}"
+  when: tailscale_status.rc == 0
+
+- name: Bring up Tailscale with auth key
+  ansible.builtin.command: >-
+    tailscale up {{ tailscale_extra_args }}
+    --authkey={{ tailscale_auth_key }}
+  when:
+    - (tailscale_connected | default(false)) | bool == false
+    - tailscale_auth_key | default('') | length > 0
+  no_log: true
+
+- name: Inform when manual tailscale up is required
+  ansible.builtin.debug:
+    msg: >-
+      tailscale_auth_key が設定されていないため、{{ inventory_hostname }} で
+      `sudo tailscale up` を実行してログインしてください。
+  when:
+    - (tailscale_connected | default(false)) | bool == false
+    - tailscale_auth_key | default('') | length == 0
+

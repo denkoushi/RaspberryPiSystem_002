@@ -106,3 +106,7 @@
     state: absent
   register: docs_removal_result
   changed_when: docs_removal_result.path is defined
+
+- name: Configure Tailscale when enabled
+  ansible.builtin.include_tasks: tailscale.yml
+  when: tailscale_enabled | default(false)

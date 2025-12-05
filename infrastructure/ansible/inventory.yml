@@ -7,6 +7,7 @@ all:
           ansible_user: denkon5sd02
           ansible_connection: local  # ローカル実行のため
           ansible_python_interpreter: /usr/bin/python3
+          tailscale_enabled: true
           # API環境変数
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
@@ -22,6 +23,7 @@ all:
         raspberrypi4:
           ansible_host: "{{ kiosk_ip }}"
           ansible_user: tools03
+          tailscale_enabled: true
           status_agent_client_id: raspberrypi4-kiosk1
           status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
           status_agent_location: "ラズパイ4 - キオスク1"
@@ -40,6 +42,7 @@ all:
         raspberrypi3:
           ansible_host: "{{ signage_ip }}"
           ansible_user: signageras3
+          tailscale_enabled: true
           status_agent_client_id: raspberrypi3-signage1
           status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
           status_agent_location: "ラズパイ3 - サイネージ1"
