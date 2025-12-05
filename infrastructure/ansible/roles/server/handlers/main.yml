@@ -16,3 +16,8 @@
   args:
     executable: /bin/bash
   ignore_errors: true
+
+- name: restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted

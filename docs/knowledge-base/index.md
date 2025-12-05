@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 18件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 31件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 33件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール |
 
 ---
 
@@ -120,6 +120,8 @@ update-frequency: high
 | [KB-066](./infrastructure.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) | ラズパイ3でのAnsibleデプロイ失敗（サイネージ稼働中のリソース不足・自動再起動・401エラー） | ✅ 解決済み |
 | [KB-067](./infrastructure.md#kb-067-工具スキャンが重複登録される問題nfcエージェントのeventid永続化対策) | 工具スキャンが重複登録される問題（NFCエージェントのeventId永続化対策） | ✅ 解決済み |
 | [KB-068](./frontend.md#kb-068-写真撮影持出のサムネイルが真っ黒になる問題輝度チェック対策) | 写真撮影持出のサムネイルが真っ黒になる問題（輝度チェック対策） | ✅ 解決済み |
+| [KB-072](./infrastructure.md#kb-072-pi5のufw適用とhttpsリダイレクト強化) | Pi5のUFW適用とHTTPSリダイレクト強化 | ✅ 解決済み |
+| [KB-073](./infrastructure.md#kb-073-caddyアクセスログとfail2bansshhttpの連携) | Caddyアクセスログとfail2ban（SSH/HTTP）の連携 | ✅ 解決済み |
 | [KB-069](./infrastructure.md#kb-069-ipアドレス管理の変数化ansible-group_varsallyml) | IPアドレス管理の変数化（Ansible group_vars/all.yml） | ✅ 解決済み |
 | [KB-070](./infrastructure.md#kb-070-運用モード可視化ネットワークモード自動検出api) | 運用モード可視化（ネットワークモード自動検出API） | ✅ 解決済み |
 | [KB-071](./infrastructure.md#kb-071-tailscale導入とssh接続設定) | Tailscale導入とSSH接続設定 | ✅ 解決済み |
@@ -161,9 +163,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 64件 |
+| ✅ 解決済み | 66件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **68件** |
+| **合計** | **70件** |
 
 ---
 
@@ -206,3 +208,5 @@ update-frequency: high
 - 2025-12-04: KB-069を追加（IPアドレス管理の変数化: Ansible group_vars/all.yml）
 - 2025-12-04: KB-070を追加（運用モード可視化: ネットワークモード自動検出API）
 - 2025-12-04: KB-071を追加（Tailscale導入とSSH接続設定）
+- 2025-12-05: KB-072を追加（Pi5のUFW適用とHTTPSリダイレクト強化）
+- 2025-12-05: KB-073を追加（Caddyアクセスログとfail2banの連携）

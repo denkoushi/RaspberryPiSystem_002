@@ -45,19 +45,19 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-04) SSH接続テスト完了（ローカル・Tailscale両方成功）
 
 ### Phase 3: バックアップ暗号化・オフライン保存（最優先）
-- [ ] バックアップスクリプトに暗号化機能を追加
-- [ ] オフライン保存用のUSBメモリ/外部HDDの設定
-- [ ] バックアップ自動化スクリプトの作成
-- [ ] バックアップ復元テスト
+- [x] (2025-12-05) バックアップスクリプトに暗号化機能を追加（`backup-encrypted.sh`）
+- [x] (2025-12-05) オフライン保存用USB/HDDへのコピー機能を実装（USB未マウント時は警告でスキップ）
+- [x] (2025-12-05) バックアップ自動化スクリプトの作成（復号テスト用`restore-encrypted.sh`を含む）
+- [ ] バックアップ復元テスト（検証用DBでのフルリストア＆USBメディア実機テストは未実施）
 
 ### Phase 4: 通常運用時のセキュリティ対策
-- [ ] ufwのインストールと有効化（Pi5）
-- [ ] 必要なポートのみ開放（80, 443）
-- [ ] SSHポートの制限（ローカルネットワークまたはTailscale経由のみ）
-- [ ] Caddyfile.productionでHTTP→HTTPSリダイレクトを設定
-- [ ] 環境変数`FORCE_HTTPS=true`を設定
-- [ ] fail2banのインストールと設定
-- [ ] fail2banのjail設定（SSH、HTTP、API）
+- [x] (2025-12-05) ufwのインストールと有効化（Pi5）
+- [x] (2025-12-05) 必要なポートのみ開放（80, 443）
+- [x] (2025-12-05) SSHポートの制限（ローカルネットワーク/Tailscaleのみ許可）
+- [x] (2025-12-05) CaddyのHTTP→HTTPSリダイレクト強化＆アクセスログ出力
+- [x] (2025-12-05) HTTPS強制の方針をCaddyレイヤーで徹底（アプリ側の`FORCE_HTTPS`は不要）
+- [x] (2025-12-05) fail2banのインストールと設定
+- [x] (2025-12-05) fail2banのjail設定（SSH、Caddy HTTP API共通ログ）
 
 ### Phase 5: マルウェア対策
 - [ ] ClamAVのインストール（Pi5）
@@ -92,6 +92,14 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - 観測: IPアドレスが複数の設定ファイルに直接記述されており、ネットワーク環境変更時に複数箇所を手動で修正する必要がある。
   エビデンス: `inventory.yml`、テンプレートファイル、スクリプトなどにIPアドレスが直接記述されている。
   対応: Ansibleの`group_vars/all.yml`にIPアドレス変数を定義し、一括管理できるようにする。
+
+- 観測: fail2banでHTTPリクエストを監視するには、Caddyコンテナのログをホスト側へ出力する必要がある。
+  エビデンス: 既存構成ではCaddyログがstdoutのみで、ホスト上のファイルが存在せずfail2banが参照できなかった。
+  対応: `/var/log/caddy`をマウントし、Caddyの`log`ディレクティブでCLF形式のアクセスログを書き出すように変更。
+
+- 観測: UFWを有効化する際、既存のSSHセッションを保持しつつローカルネットワークとTailscaleだけを許可する必要がある。
+  エビデンス: デフォルトallowのままだとインターネット経由の22番ポートが開いたままになる。
+  対応: `ufw allow from 192.168.10.0/24`および`100.64.0.0/10`のみ許可し、その他はdenyに設定。
 
 ## Decision Log
 
@@ -131,6 +139,14 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   Rationale: 通常運用時とメンテナンス時で使い分けができる。`IdentityFile`は実際に使用されている鍵を指定する必要がある。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
+- Decision: Caddyアクセスログをホストに出力し、fail2banでHTTP/APIリクエストを監視する。
+  Rationale: コンテナ内stdoutのみだとfail2banが解析できないため。ホスト上の`/var/log/caddy/access.log`を共有し、CLF形式で記録する。
+  Date/Author: 2025-12-05 / GPT-5.1 Codex
+
+- Decision: UFWはデフォルトdeny/allow構成とし、SSHはローカルLANとTailscaleネットワークのみ許可する。
+  Rationale: 工場LANとTailscale以外からの直接アクセスを遮断し、管理面の誤操作を防ぐ。
+  Date/Author: 2025-12-05 / GPT-5.1 Codex
+
 ## Outcomes & Retrospective
 
 ### Phase 1 & 2 完了（2025-12-04）
@@ -156,6 +172,33 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 **残課題**:
 - Phase 3以降の実装（バックアップ暗号化、セキュリティ対策など）
+
+### Phase 3 進捗（2025-12-05）
+
+**完了した実装**:
+- ✅ `backup-encrypted.sh` / `restore-encrypted.sh` を追加し、GPG暗号化・復号を自動化
+- ✅ 暗号化バックアップをPi5で取得し、復号フェーズまでのテストを実施
+- ✅ オフライン保存用マウントポイント（`/mnt/backup-usb`）へのコピー処理を実装（未マウント時は警告）
+
+**未完了のタスク**:
+- 🔸 USBメディアを実際にマウントした状態でのコピー/削除テスト
+- 🔸 検証用DBへのフルリストア（本番データを上書きせずに整合性を確認）
+
+### Phase 4 着手（2025-12-05）
+
+**完了した実装**:
+- ✅ Pi5に`ufw`/`fail2ban`をインストールし、Ansible化
+- ✅ HTTP/HTTPS/SSH(ローカルLAN + Tailscale)のみ許可し、その他はdeny
+- ✅ CaddyのHTTP→HTTPSリダイレクトを恒久化し、アクセスログをホストへ出力
+- ✅ fail2banのjailを`sshd`と`caddy-http-auth`で構成し、CLFログを監視
+
+**観測された効果**:
+- ファイアウォール設定がコード化され、再デプロイで再現可能に
+- HTTPS強制とログ出力により、fail2banでHTTP/API不正アクセスを自動遮断可能に
+
+**残課題**:
+- UFW/fail2banの実機テストレポートをPhase7で実施
+- API個別のfail2banチューニング（必要なら追加フィルターを検討）
 
 ## Context and Orientation
 

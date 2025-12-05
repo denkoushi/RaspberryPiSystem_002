@@ -1,0 +1,18 @@
+[DEFAULT]
+bantime = {{ fail2ban_defaults.bantime }}
+findtime = {{ fail2ban_defaults.findtime }}
+maxretry = {{ fail2ban_defaults.maxretry }}
+backend = systemd
+
+[sshd]
+enabled = true
+port = ssh
+logpath = /var/log/auth.log
+
+[caddy-http-auth]
+enabled = true
+logpath = {{ caddy_log_dir }}/access.log
+maxretry = {{ fail2ban_http_maxretry }}
+findtime = {{ fail2ban_http_findtime }}
+bantime = {{ fail2ban_http_bantime }}
+

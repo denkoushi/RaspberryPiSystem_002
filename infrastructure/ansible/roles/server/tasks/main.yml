@@ -123,6 +123,9 @@
   when: docker_env_result.changed | default(false)
   changed_when: false
 
+- name: Apply server security hardening
+  ansible.builtin.import_tasks: security.yml
+
 - name: Rebuild and restart Docker services on server (auto-detect network changes)
   block:
     - name: Rebuild/Restart docker compose services

@@ -93,6 +93,8 @@
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
 | **Tailscale導入について知りたい** | **[knowledge-base/infrastructure.md#kb-071](./knowledge-base/infrastructure.md#kb-071)** |
+| **ファイアウォール/HTTPS強化について知りたい** | **[knowledge-base/infrastructure.md#kb-072](./knowledge-base/infrastructure.md#kb-072)** |
+| **fail2ban設定について知りたい** | **[knowledge-base/infrastructure.md#kb-073](./knowledge-base/infrastructure.md#kb-073)** |
 
 ### エラーを解決する
 

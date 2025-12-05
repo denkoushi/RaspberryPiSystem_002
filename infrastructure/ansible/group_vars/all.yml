@@ -41,3 +41,24 @@ tailscale_auth_key: ""
 tailscale_extra_args: "--ssh"
 tailscale_install_script: "https://tailscale.com/install.sh"
 
+# セキュリティ/ファイアウォール設定
+ufw_enabled: true
+ufw_default_incoming_policy: "deny"
+ufw_default_outgoing_policy: "allow"
+ufw_allowed_tcp_ports:
+  - "80"
+  - "443"
+ufw_ssh_allowed_networks:
+  - "192.168.10.0/24"
+  - "100.64.0.0/10"
+ufw_logging_level: "medium"
+caddy_log_dir: "/var/log/caddy"
+
+fail2ban_enabled: true
+fail2ban_defaults:
+  bantime: "1h"
+  findtime: "10m"
+  maxretry: 5
+fail2ban_http_maxretry: 15
+fail2ban_http_findtime: "15m"
+fail2ban_http_bantime: "1h"

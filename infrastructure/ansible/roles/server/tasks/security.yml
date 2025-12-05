@@ -1,0 +1,83 @@
+---
+- name: Install security packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+    update_cache: true
+
+- name: Ensure Caddy log directory exists
+  ansible.builtin.file:
+    path: "{{ caddy_log_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Configure UFW default incoming policy
+  community.general.ufw:
+    direction: incoming
+    policy: "{{ ufw_default_incoming_policy }}"
+  when: ufw_enabled | default(false)
+
+- name: Configure UFW default outgoing policy
+  community.general.ufw:
+    direction: outgoing
+    policy: "{{ ufw_default_outgoing_policy }}"
+  when: ufw_enabled | default(false)
+
+- name: Allow HTTP/S traffic through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ ufw_allowed_tcp_ports | default([]) }}"
+  when: ufw_enabled | default(false)
+
+- name: Allow SSH from trusted networks
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    src: "{{ item }}"
+  loop: "{{ ufw_ssh_allowed_networks | default([]) }}"
+  when: ufw_enabled | default(false)
+
+- name: Enable UFW logging
+  community.general.ufw:
+    logging: "{{ ufw_logging_level }}"
+  when: ufw_enabled | default(false)
+
+- name: Ensure UFW is enabled
+  community.general.ufw:
+    state: enabled
+  when: ufw_enabled | default(false)
+
+- name: Deploy fail2ban jail overrides
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/fail2ban.local.j2"
+    dest: /etc/fail2ban/jail.d/factory.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | default(false)
+  notify: restart fail2ban
+
+- name: Deploy fail2ban Caddy HTTP filter
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/fail2ban-filter-caddy-http.conf.j2"
+    dest: /etc/fail2ban/filter.d/caddy-http-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | default(false)
+  notify: restart fail2ban
+
+- name: Ensure fail2ban service is enabled
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  when: fail2ban_enabled | default(false)
+

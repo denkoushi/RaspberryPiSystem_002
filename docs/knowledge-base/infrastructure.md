@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 31件  
+**件数**: 33件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1300,3 +1300,73 @@ update-frequency: medium
 - `docs/plans/security-hardening-execplan.md`
 
 ---
+
+### [KB-072] Pi5のUFW適用とHTTPSリダイレクト強化
+
+**EXEC_PLAN.md参照**: Phase 4 通常運用時のセキュリティ対策（2025-12-05）
+
+**事象**: 
+- Pi5のポート80/443/22以外も開放されており、SSHがインターネット側から到達可能だった
+- HTTPアクセスがそのまま提供され、HTTPS強制が徹底されていなかった
+
+**要因**: 
+1. UFWが未導入で、iptablesのデフォルト許可状態だった
+2. HTTP→HTTPSリダイレクトはCaddyfile.localに存在したが、設定がコード化されておらず再現性が低かった
+
+**試行した対策**: 
+- [試行1] iptablesで手動設定 → **失敗**（再起動で消える、Ansible未管理）
+- [試行2] Caddyでヘッダー追加のみ → **部分的成功**（HTTPSは使用できるがHTTPが残る）
+
+**有効だった対策**: 
+- ✅ UFWをAnsibleで導入し、デフォルトdeny/allow構成に設定
+- ✅ HTTP(S)のみ許可、SSHはローカルLANとTailscaleのサブネットからのみ許可
+- ✅ Caddyfile（dev/local/production）にHTTP→HTTPSリダイレクトとセキュリティヘッダーを明記
+- ✅ `docker-compose.server.yml`で`/var/log/caddy`をホストにマウントして設定を一元化
+
+**学んだこと**: 
+- 工場LANとTailscaleネットワークだけを明示的に許可する事で、SSH暴露を避けられる
+- WebサーバーのHTTPSリダイレクトはCaddyレイヤーで完結させるとシンプル
+- ファイアウォールとリバースプロキシの設定はAnsible管理に統一しておくと再現性が高い
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/roles/server/tasks/security.yml`
+- `infrastructure/docker/Caddyfile*`
+- `infrastructure/docker/docker-compose.server.yml`
+- `docs/security/requirements.md`
+
+---
+
+### [KB-073] Caddyアクセスログとfail2ban（SSH/HTTP）の連携
+
+**EXEC_PLAN.md参照**: Phase 4 通常運用時のセキュリティ対策（2025-12-05）
+
+**事象**: 
+- fail2banでHTTP/APIの不正アクセスを検知したかったが、Caddyのログがstdoutのみで参照できない
+- SSHブルートフォースも検知できていなかった
+
+**要因**: 
+1. Caddyコンテナのログがファイルに出力されておらず、ホスト上でfail2banが読めない
+2. fail2banのjail/filterが未構成
+
+**試行した対策**: 
+- [試行1] docker logsをfail2banで読み込む → **失敗**（ファイルではないため不可）
+- [試行2] journalctlでCaddyログを拾う → **失敗**（コンテナがjournaldに書き込んでいない）
+
+**有効だった対策**: 
+- ✅ `/var/log/caddy`をホストで作成し、コンテナにマウント
+- ✅ Caddyの`log`ディレクティブでCLF形式をファイル出力
+- ✅ fail2banに`factory.conf`（sshd + caddy-http-auth）と専用filterを追加
+- ✅ Ansibleでテンプレート化し、サービス再起動まで自動化
+
+**学んだこと**: 
+- fail2banは標準でCLF（common log format）を解析できるため、CaddyでもCLFを採用すると流用しやすい
+- コンテナのセキュリティログはホストへバインドマウントし、OS側ツールと連携させると管理が単純化する
+- SSH/HTTP双方の閾値をAnsible変数化しておくと、リスクレベルに応じた調整が容易
+
+**関連ファイル**: 
+- `infrastructure/ansible/roles/server/tasks/security.yml`
+- `infrastructure/ansible/templates/fail2ban.local.j2`
+- `infrastructure/ansible/templates/fail2ban-filter-caddy-http.conf.j2`
+- `infrastructure/docker/Caddyfile*`
+- `docs/plans/security-hardening-execplan.md`
