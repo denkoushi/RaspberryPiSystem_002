@@ -37,6 +37,22 @@
     - '"server" not in group_names'
     - manage_signage_lite | default(false) | bool
 
+- name: Start signage-lite update timer
+  ansible.builtin.systemd:
+    name: signage-lite-update.timer
+    state: started
+  when:
+    - '"server" not in group_names'
+    - manage_signage_lite | default(false) | bool
+
+- name: Start signage-lite service
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    state: started
+  when:
+    - '"server" not in group_names'
+    - manage_signage_lite | default(false) | bool
+
 - name: Collect health check info
   ansible.builtin.shell: |
     set -euo pipefail

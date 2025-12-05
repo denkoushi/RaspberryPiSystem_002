@@ -92,6 +92,7 @@
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
+| **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
 | **Tailscale導入について知りたい** | **[knowledge-base/infrastructure.md#kb-071](./knowledge-base/infrastructure.md#kb-071)** |
@@ -161,6 +162,14 @@
 | [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
 | [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) | Ansibleで管理すべき設定ファイル一覧 |
 | [guides/ansible-error-handling.md](./guides/ansible-error-handling.md) | Ansibleエラーハンドリングガイド |
+
+### システム担当者・経営層
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md) | **セキュリティ対策プレゼンテーション資料**（アサヒビールのランサムウェア被害を踏まえた対策と評価） |
+| [security/requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
+| [security/implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
 | [guides/ansible-best-practices.md](./guides/ansible-best-practices.md) | Ansibleベストプラクティス |
 
 ### アーキテクト
@@ -300,6 +309,15 @@ APIの概要と詳細。
 |---------|------|
 | [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
+| [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
+
+### プレゼンテーション（presentations/）
+
+システム担当者・経営層向けのプレゼンテーション資料。
+
+| ファイル | 説明 |
+|---------|------|
+| [security-measures-presentation.md](./presentations/security-measures-presentation.md) | **セキュリティ対策プレゼンテーション資料**（アサヒビールのランサムウェア被害を踏まえた対策と評価） |
 
 ---
 
@@ -368,7 +386,8 @@ APIの概要と詳細。
 | 実装計画 | 7 |
 | 実践ガイド | 31 |
 | トラブルシューティング | 6 |
-| セキュリティ | 2 |
+| セキュリティ | 3 |
+| プレゼンテーション | 1 |
 | **合計** | **55** |
 
 ---

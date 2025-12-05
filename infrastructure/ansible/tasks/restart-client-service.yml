@@ -6,6 +6,18 @@
   failed_when: false
 
 - block:
+    - name: Check if {{ service_name }} is enabled
+      ansible.builtin.command: "systemctl is-enabled {{ service_name }}"
+      register: service_enabled_check
+      changed_when: false
+      failed_when: false
+
+    - name: Re-enable {{ service_name }} if disabled
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        enabled: true
+      when: service_enabled_check.rc != 0
+
     - name: Restart {{ service_name }} on client
       ansible.builtin.systemd:
         name: "{{ service_name }}"

@@ -53,3 +53,13 @@
   ansible.builtin.systemd:
     name: signage-lite-update.timer
     enabled: true
+
+- name: Start signage-lite update timer
+  ansible.builtin.systemd:
+    name: signage-lite-update.timer
+    state: started
+
+- name: Start signage-lite service
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    state: started
