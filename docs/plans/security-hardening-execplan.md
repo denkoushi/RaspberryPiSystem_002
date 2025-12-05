@@ -70,18 +70,31 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-05) rkhunterの導入（Pi4）
 
 ### Phase 6: 監視・アラート
-- [ ] セキュリティログの監視設定
-- [ ] 異常検知時のアラート通知設定
-- [ ] スキャン結果のログ監視設定
+- [x] (2025-12-05) セキュリティログの監視設定
+- [x] (2025-12-05) 異常検知時のアラート通知設定
+- [x] (2025-12-05) スキャン結果のログ監視設定
 
 ### Phase 7: テスト・検証
-- [ ] IPアドレス管理の切り替えテスト
-- [ ] Tailscale接続テスト
-- [ ] ファイアウォール設定の動作確認
-- [ ] HTTPS強制の動作確認
-- [ ] fail2banの動作確認
-- [ ] バックアップ暗号化・復元テスト
-- [ ] セキュリティソフトのスキャンテスト
+- [x] (2025-12-05) IPアドレス管理の切り替えテスト  
+  - `ansible raspberrypi5 ... -e network_mode={local,tailscale}` で `server_ip/kiosk_ip/signage_ip` が期待どおりに 192.168.10.x ⇔ 100.x.x.x を往復することを確認  
+  - `curl http://localhost:8080/api/system/network-mode` のレスポンスが自動判定（detectedMode=maintenance / configuredMode=local / status=internet_connected）を返すことを確認
+- [x] (2025-12-05) Tailscale接続テスト  
+  - Mac → Pi5 へ `ssh denkon5sd02@100.106.158.2`、`curl -kI https://100.106.158.2` を実施し、Tailscale経由でもAPI/UIへ到達できることを確認  
+  - RealVNCは自宅ネットワーク `192.168.128.0/24` をUFWに追加したうえで接続確認済み
+- [x] (2025-12-05) ファイアウォール設定の動作確認  
+  - `sudo ufw status numbered` で 80/443/22/5900 のみ許可、その他遮断であることを確認  
+  - VNC用に `192.168.128.0/24` を追加し、Ansible変数 `ufw_vnc_allowed_networks` にも反映
+- [x] (2025-12-05) HTTPS強制の動作確認  
+  - `curl -I http://192.168.10.230` が 301 と `Location: https://...` を返し、`curl -kI https://{local,tailscale}` が 200 で応答することを確認
+- [x] (2025-12-05) fail2banの動作確認  
+  - `sudo fail2ban-client set sshd banip 203.0.113.50` で架空IPをBanし、`security-monitor.sh` 実行で `alerts/alert-20251205-182352.json` が生成されることを確認  
+  - `fail2ban-client set sshd unbanip` で解除後に Banned IP が空へ戻ることを確認
+- [x] (2025-12-05) バックアップ暗号化・復元テスト  
+  - `BACKUP_ENCRYPTION_KEY=factory-backup@local ./scripts/server/backup-encrypted.sh` で `.sql.gz.gpg` を作成し、GPGで復号 → `borrow_return_restore_test` DBにリストア → `SELECT COUNT(*) FROM "Loan"` が 436 件となることを確認  
+  - 復元後はテストDBと一時ファイルを削除してクリーンアップ
+- [x] (2025-12-05) セキュリティソフトのスキャンテスト  
+  - `sudo /usr/local/bin/clamav-scan.sh` と `trivy-scan.sh` が正常終了し、ログ `/var/log/{clamav,trivy}` に成功記録が残ることを確認  
+  - `sudo /usr/local/bin/rkhunter-scan.sh` で既知警告（PermitRootLogin/hidden fileなど）が出ることを確認し、アラート `alert-20251205-184324.json` が生成されることを確認
 
 ## Surprises & Discoveries
 
@@ -233,9 +246,24 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 ### Phase 6 進捗（2025-12-05）
 
 **完了した実装**:
-- ✅ `security-monitor.sh`を日次timerで実行し、fail2ban Banイベントを自動アラート化
+- ✅ `security-monitor.sh`をsystemd timer（15分間隔）で実行し、fail2ban Banイベントを自動アラート化
 - ✅ ClamAV/Trivy/rkhunterスクリプトにアラート連携を実装し、検知時に`alerts/`へ通知ファイルを生成
 - ✅ 誤検知を防ぐための除外リスト（Trivy skip dirs / rkhunter ignore patterns）をAnsible変数化
+- ✅ stateファイルによる重複通知防止と、初回実行時の既存ログ基準化を実装
+
+### Phase 7 進捗（2025-12-05）
+
+**実施した検証**:
+- ✅ ネットワーク切替: `ansible ... -e network_mode={local,tailscale}` で server/kiosk/signage IP が 192.168.10.x ⇔ 100.x.x.x に切り替わること、および `/api/system/network-mode` がネットワーク状態を正しく報告することを確認
+- ✅ Tailscale経路: Mac → Pi5 へ Tailscale SSH/HTTPS が機能し、RealVNC も自宅NW追加後に接続できることを確認
+- ✅ UFW/HTTPS: `ufw status numbered` / `curl -I http://...` / `curl -kI https://...` で許可ポートとHTTPSリダイレクトが想定通りであることを確認
+- ✅ fail2ban: 架空IP `203.0.113.50` をBanし、`security-monitor.sh` が `alert-20251205-182352.json` を生成すること、解除後にBanリストが空へ戻ることを確認
+- ✅ バックアップ: `backup-encrypted.sh` → GPG復号 → テストDB `borrow_return_restore_test` にリストアし、Loan 436件を確認後にDBを削除
+- ✅ マルウェアスキャン: `clamav-scan.sh` / `trivy-scan.sh` / `rkhunter-scan.sh` を手動実行し、ログとアラート（rkhunter警告: `alert-20251205-184324.json`）を確認
+
+**確認事項/メモ**:
+- Trivyの秘密鍵検出は skip-dir 設定により抑制済みだが、ログには過去の検出履歴も残るためタイムスタンプで判断する
+- rkhunterはPermitRootLoginなど既知警告を出すが、アラート経由で把握できるため影響なし
 
 ## Context and Orientation
 
@@ -252,7 +280,6 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 - **残っている対策**:
   - ❌ 管理画面のIP制限（今後Tailscale ACLと連携予定）
-  - ❌ スキャンログ/セキュリティログの常時監視・通知
   - ❌ Dockerイメージ単位のTrivyスキャン
   - ❌ バックアップ復元テスト（検証用DB）
 

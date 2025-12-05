@@ -1,6 +1,6 @@
 # セキュリティ要件定義
 
-最終更新: 2025-12-04
+最終更新: 2025-12-05
 
 ## 概要
 
@@ -54,8 +54,8 @@
 - ファイルシステム保護（読み取り専用マウント）
 
 **テスト状況（2025-12-05）**:
-- ✅ 暗号化バックアップ/復号テスト（Pi5上で`backup-encrypted.sh`→`restore-encrypted.sh`の復号フェーズまで実施）
-- ⚠️ 本番とは別の検証用DBに対するフルリストアテストは未実施（今後の課題）
+- ✅ 暗号化バックアップ/復号テスト（`backup-encrypted.sh` → GPG復号まで実施）
+- ✅ 検証用DBへのフルリストア検証（`borrow_return_restore_test` にリストアし、Loan 436件・復元後にDB削除まで完了）
 - ⚠️ オフライン保存用USBメディアを実際にマウントした状態でのコピー/削除テストは未実施（USB接続時に実施予定）
 
 **優先度**: 最高
@@ -72,8 +72,11 @@
 **実装状況（2025-12-05）**:
 - ✅ Pi5にClamAV/Trivy/rkhunterを導入し、日次cronと`/var/log/{clamav,trivy,rkhunter}`へのログ集約を実装
 - ✅ Pi4に軽量ClamAV/rkhunterを導入し、ストレージ配下のみを週次スキャン（CPU負荷を最小化）
-- ✅ 手動スキャンで動作確認済み（感染ファイル検出なし／freshclamログロックは既知の注意のみ）
-- 🔸 TrivyでDockerイメージ単位のスキャン、およびスキャンログの自動監視はPhase6以降で実装予定
+- ✅ 手動スキャン（2025-12-05）で動作確認済み  
+  - `sudo /usr/local/bin/clamav-scan.sh` → ログ `/var/log/clamav/clamav-scan.log` に成功記録、アラート発生なし  
+  - `sudo /usr/local/bin/trivy-scan.sh` → 秘密鍵検出は skip-dir 設定で抑制済み（ログで過去検出との区別可）  
+  - `sudo /usr/local/bin/rkhunter-scan.sh` → 既知警告（PermitRootLogin 等）で `alert-20251205-184324.json` が生成されることを確認
+- 🔸 TrivyでDockerイメージ単位のスキャン、およびスキャンログの自動監視はPhase7後の課題
 
 **優先度**: 高
 
@@ -90,6 +93,7 @@
 - ✅ `security-monitor.sh`でfail2banログ（Banイベント）と状態ファイルを監視し、`alerts/`に自動通知
 - ✅ ClamAV/Trivy/rkhunterスクリプトが感染検知・スキャン失敗時に即時アラートを発火
 - ✅ systemd timer（15分間隔）で監視を自動実行し、管理画面の既存アラート機能で確認可能
+- ✅ fail2ban → アラート動作テスト（2025-12-05）: `fail2ban-client set sshd banip 203.0.113.50` で `alert-20251205-182352.json` が生成されることを確認し、解除後にBanリストが空に戻ることを確認
 - 🔸 将来的にSlack等への外部通知を追加する場合は、アラートスクリプトの拡張で対応予定
 
 **優先度**: 中
@@ -162,6 +166,10 @@
    - `infrastructure/ansible/templates/*.j2`: デフォルト値に古いIPアドレス
    - `scripts/register-clients.sh`: ハードコードされたIPアドレス
    - ドキュメント内: 多数（参考情報として残す）
+
+**検証状況（2025-12-05）**:
+- ✅ `ansible raspberrypi5 ... -e network_mode={local,tailscale}` で `server_ip/kiosk_ip/signage_ip` が期待通りに切り替わることを確認
+- ✅ `/api/system/network-mode` エンドポイントが `detectedMode=maintenance` / `configuredMode=local` / `status=internet_connected` を返し、Network Mode Badgeが実際の回線状態を表示することを確認
 
 **優先度**: 高（メンテナンス時の運用効率化のため）
 

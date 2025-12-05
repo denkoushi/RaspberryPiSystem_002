@@ -129,6 +129,8 @@ update-frequency: high
 | [KB-069](./infrastructure.md#kb-069-ipアドレス管理の変数化ansible-group_varsallyml) | IPアドレス管理の変数化（Ansible group_vars/all.yml） | ✅ 解決済み |
 | [KB-070](./infrastructure.md#kb-070-運用モード可視化ネットワークモード自動検出api) | 運用モード可視化（ネットワークモード自動検出API） | ✅ 解決済み |
 | [KB-071](./infrastructure.md#kb-071-tailscale導入とssh接続設定) | Tailscale導入とSSH接続設定 | ✅ 解決済み |
+| [KB-078](./infrastructure.md#kb-078-複数ローカルネットワーク環境でのvnc接続設定) | 複数ローカルネットワーク環境でのVNC接続設定 | ✅ 解決済み |
+| [KB-079](./infrastructure.md#kb-079-phase7セキュリティテストの実施結果と検証ポイント) | Phase7セキュリティテストの実施結果と検証ポイント | ✅ 解決済み |
 
 ---
 
@@ -167,9 +169,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 70件 |
+| ✅ 解決済み | 76件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **74件** |
+| **合計** | **80件** |
 
 ---
 

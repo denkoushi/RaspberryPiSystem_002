@@ -1112,4 +1112,6 @@
 変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
 変更履歴: 2025-12-01 — Phase 2.4完了、ローカルアラートシステム実装完了、NFCリーダー問題解決（KB-060）、工具管理システム運用・保守ガイド追加、ナレッジベース更新（58件）を反映。Surprises & DiscoveriesにKB-060とgit clean問題を追加。Ansible改善計画（Phase 1,2,4,5,7,10完了）と安定性改善計画（Phase 1.1,1.2,2.1,2.2完了）の進捗を追加。
 変更履歴: 2025-12-04 — 工具スキャン重複対策（KB-067）と黒画像対策（KB-068）を実装完了。NFCエージェントのeventId永続化、フロントエンド・サーバー側の輝度チェックを実装。ナレッジベース更新（65件）。Phase 6実機検証の既知の問題を解決済みに更新。Surprises & DiscoveriesにKB-067とKB-068を追加。
-```
+変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 6（監視・アラート）実装完了。fail2ban連携のセキュリティ監視タイマー（KB-076）とマルウェアスキャン結果の自動アラート化（KB-077）を実装。ナレッジベース更新（74件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
+変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 7（テスト・検証）完了。IPアドレス切替、Tailscale経路、UFW/HTTPS、fail2ban、暗号化バックアップ復元、マルウェアスキャンの包括的テストを実施。複数ローカルネットワーク環境（会社/自宅）でのVNC接続設定を対応（KB-078）。Phase7テストの実施結果と検証ポイントをナレッジベースに追加（KB-079）。ナレッジベース更新（80件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
+ん```

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 35件  
+**件数**: 37件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1472,5 +1472,70 @@ update-frequency: medium
 - `infrastructure/ansible/group_vars/all.yml`
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-078] 複数ローカルネットワーク環境でのVNC接続設定
+
+**EXEC_PLAN.md参照**: Phase 7 テスト・検証（2025-12-05）
+
+**事象**: 
+- 会社のネットワーク（192.168.10.0/24）と自宅のネットワーク（192.168.128.0/24）で異なるIPアドレスを使用
+- UFWでVNCポート（5900/tcp）が `192.168.10.0/24` からのみ許可されていたため、自宅からRealVNC ViewerでPi5に接続できなかった
+
+**有効だった対策**: 
+- ✅ UFWのVNC許可ネットワークに `192.168.128.0/24` を追加（`sudo ufw allow from 192.168.128.0/24 to any port 5900`）
+- ✅ Ansibleの `group_vars/all.yml` の `ufw_vnc_allowed_networks` に両方のネットワークを定義し、次回デプロイ時に自動反映されるように設定
+- ✅ 複数のローカルネットワークに対応できるよう、リスト形式で管理
+
+**学んだこと**: 
+- 異なるネットワーク環境（会社/自宅）で運用する場合、ファイアウォール設定も複数のネットワークを許可する必要がある
+- UFWのルールは `ufw_vnc_allowed_networks` のようなリスト変数で管理することで、環境ごとの追加が容易になる
+- Tailscale経由での接続は別途設定されているため、ローカルネットワークの追加設定は必要ない
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml` (ufw_vnc_allowed_networks)
+- `infrastructure/ansible/roles/server/tasks/security.yml` (VNCポート許可タスク)
+- `docs/plans/security-hardening-execplan.md`
+- `docs/security/requirements.md`
+
+---
+
+### [KB-079] Phase7セキュリティテストの実施結果と検証ポイント
+
+**EXEC_PLAN.md参照**: Phase 7 テスト・検証（2025-12-05）
+
+**事象**: 
+- Phase1-6で実装したセキュリティ対策が正しく動作するか、包括的なテストが必要だった
+- ネットワーク環境の切り替え、Tailscale経路、ファイアウォール、HTTPS強制、fail2ban、バックアップ復元、マルウェアスキャンの各機能を検証する必要があった
+
+**実施した検証**:
+- ✅ **IPアドレス管理の切り替え**: `ansible ... -e network_mode={local,tailscale}` で server/kiosk/signage IP が正しく切り替わることを確認
+- ✅ **Tailscale接続**: Mac → Pi5 への Tailscale SSH/HTTPS が機能し、インターネット経由でも安全に接続できることを確認
+- ✅ **ファイアウォール設定**: UFWで許可されたポート（80/443/22/5900）のみ通過し、その他が遮断されることを確認
+- ✅ **HTTPS強制**: HTTPアクセスが301リダイレクトでHTTPSに転送されることを確認
+- ✅ **fail2ban動作**: 意図的なBanイベントで `security-monitor.sh` がアラートを生成し、解除後に正常に戻ることを確認
+- ✅ **バックアップ暗号化・復元**: GPG暗号化バックアップからテストDBへ復元し、データ整合性（Loan 436件）を確認
+- ✅ **マルウェアスキャン**: ClamAV/Trivy/rkhunterの手動スキャンでログとアラート生成を確認
+
+**学んだこと**: 
+- ネットワークモードの切り替えは `-e network_mode=` で動的に変更でき、Ansible変数が正しく展開されることを確認
+- Tailscale経由での接続はローカルネットワークが変わっても安定して機能する
+- fail2banのBanイベントは `security-monitor.sh` で自動的にアラート化され、管理画面で確認可能
+- バックアップ復元テストは本番DBとは別のテストDBを使用することで、安全に検証できる
+- Trivyの秘密鍵検出は `--skip-dirs` で抑制できるが、ログには過去の検出履歴も残るためタイムスタンプで判断する必要がある
+- rkhunterの既知警告（PermitRootLogin等）はアラート経由で把握できるため、運用上問題なし
+
+**残課題**:
+- オフラインUSBメディアを実際にマウントした状態でのバックアップコピー/削除テストは未実施（USB接続時に実施予定）
+- TrivyのDockerイメージ単位のスキャンは未実装（今後の課題）
+
+**関連ファイル**: 
+- `docs/plans/security-hardening-execplan.md` (Phase 7 進捗)
+- `docs/security/requirements.md` (テスト状況)
+- `scripts/server/backup-encrypted.sh`
+- `scripts/server/restore-encrypted.sh`
+- `infrastructure/ansible/roles/server/tasks/security.yml`
+- `infrastructure/ansible/roles/server/tasks/monitoring.yml`
 
 ---
