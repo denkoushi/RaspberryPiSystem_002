@@ -43,8 +43,5 @@
       roll_keep 5
       roll_keep_for 168h
     }
-    format single_field {
-      field common_log
-    }
   }
 }
