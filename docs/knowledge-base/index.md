@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 18件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 35件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 37件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視 |
 
 ---
 
@@ -124,6 +124,8 @@ update-frequency: high
 | [KB-073](./infrastructure.md#kb-073-caddyアクセスログとfail2bansshhttpの連携) | Caddyアクセスログとfail2ban（SSH/HTTP）の連携 | ✅ 解決済み |
 | [KB-074](./infrastructure.md#kb-074-pi5のマルウェアスキャン自動化clamavtrivyrkhunter) | Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter） | ✅ 解決済み |
 | [KB-075](./infrastructure.md#kb-075-pi4キオスクの軽量マルウェア対策) | Pi4キオスクの軽量マルウェア対策 | ✅ 解決済み |
+| [KB-076](./infrastructure.md#kb-076-fail2ban連携のセキュリティ監視タイマー) | fail2ban連携のセキュリティ監視タイマー | ✅ 解決済み |
+| [KB-077](./infrastructure.md#kb-077-マルウェアスキャン結果の自動アラート化) | マルウェアスキャン結果の自動アラート化 | ✅ 解決済み |
 | [KB-069](./infrastructure.md#kb-069-ipアドレス管理の変数化ansible-group_varsallyml) | IPアドレス管理の変数化（Ansible group_vars/all.yml） | ✅ 解決済み |
 | [KB-070](./infrastructure.md#kb-070-運用モード可視化ネットワークモード自動検出api) | 運用モード可視化（ネットワークモード自動検出API） | ✅ 解決済み |
 | [KB-071](./infrastructure.md#kb-071-tailscale導入とssh接続設定) | Tailscale導入とSSH接続設定 | ✅ 解決済み |
@@ -165,9 +167,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 68件 |
+| ✅ 解決済み | 70件 |
 | 🔄 進行中 | 4件 |
-| **合計** | **72件** |
+| **合計** | **74件** |
 
 ---
 
@@ -214,5 +216,7 @@ update-frequency: high
 - 2025-12-05: KB-073を追加（Caddyアクセスログとfail2banの連携）
 - 2025-12-05: KB-074を追加（Pi5のマルウェアスキャン自動化）
 - 2025-12-05: KB-075を追加（Pi4キオスクの軽量マルウェア対策）
+- 2025-12-05: KB-076を追加（fail2ban連携のセキュリティ監視タイマー）
+- 2025-12-05: KB-077を追加（マルウェアスキャン結果の自動アラート化）
 - 2025-12-05: KB-072を追加（Pi5のUFW適用とHTTPSリダイレクト強化）
 - 2025-12-05: KB-073を追加（Caddyアクセスログとfail2banの連携）

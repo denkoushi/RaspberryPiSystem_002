@@ -56,6 +56,7 @@ ufw_vnc_allowed_networks:
   - "192.168.10.0/24"
 ufw_logging_level: "medium"
 caddy_log_dir: "/var/log/caddy"
+alert_script_path: "/opt/RaspberryPiSystem_002/scripts/generate-alert.sh"
 
 fail2ban_enabled: true
 fail2ban_defaults:
@@ -89,11 +90,22 @@ trivy_log_file: "trivy-scan.log"
 trivy_version: "0.54.1"
 trivy_package_file: "trivy_{{ trivy_version }}_Linux-ARM64.deb"
 trivy_download_url: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/{{ trivy_package_file }}"
+trivy_skip_dirs:
+  - "/opt/RaspberryPiSystem_002/certs"
+trivy_alert_ignore_patterns:
+  - "/certs/"
+  - "/backups/"
 
 rkhunter_server_enabled: true
 rkhunter_server_cron: "0 4 * * *"
 rkhunter_log_dir: "/var/log/rkhunter"
 rkhunter_log_file: "rkhunter-scan.log"
+rkhunter_ignore_patterns:
+  - "User 'clamav' has been added"
+  - "Group 'clamav' has been added"
+  - "PermitRootLogin"
+  - "/dev/shm/lttng-ust-wait"
+  - "/etc/.updated"
 
 rkhunter_kiosk_enabled: true
 rkhunter_kiosk_cron: "30 2 * * 0"
@@ -130,3 +142,9 @@ rkhunter:
     minute: "30"
     hour: "4"
     weekday: "0"
+
+# 監視・アラート設定（Phase6）
+security_monitor_enabled: true
+security_monitor_state_dir: "/var/lib/security-monitor"
+security_monitor_fail2ban_log: "/var/log/fail2ban.log"
+security_monitor_timer_oncalendar: "*:0/15"

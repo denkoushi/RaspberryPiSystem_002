@@ -229,7 +229,13 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 **未完了のタスク**:
 - 🔸 TrivyでDockerイメージ単位のスキャン（現在はファイルシステムモードのみ）
-- 🔸 Pi5/ Pi4 のスキャンログを監視・通知する仕組み（Phase6で対応予定）
+
+### Phase 6 進捗（2025-12-05）
+
+**完了した実装**:
+- ✅ `security-monitor.sh`を日次timerで実行し、fail2ban Banイベントを自動アラート化
+- ✅ ClamAV/Trivy/rkhunterスクリプトにアラート連携を実装し、検知時に`alerts/`へ通知ファイルを生成
+- ✅ 誤検知を防ぐための除外リスト（Trivy skip dirs / rkhunter ignore patterns）をAnsible変数化
 
 ## Context and Orientation
 
@@ -386,16 +392,15 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 ### Phase 6: 監視・アラート
 
 1. **セキュリティログの監視設定**
-   - ログファイルの監視設定
-   - 異常パターンの検知設定
+   - [x] (2025-12-05) fail2banログのBan行を監視し、ファイルベースアラートを自動生成
+   - [x] (2025-12-05) 監視スクリプトをsystemd timerで15分ごとに実行
 
 2. **異常検知時のアラート通知設定**
-   - アラート通知方法の決定（メール、Slackなど）
-   - アラート通知スクリプトの作成
+   - [x] (2025-12-05) 既存の`generate-alert.sh`と連携し、ネットワークなしでも管理画面に通知
 
 3. **スキャン結果のログ監視設定**
-   - ClamAV、Trivy、rkhunterのスキャン結果をログに記録
-   - 異常検知時のアラート通知
+   - [x] (2025-12-05) ClamAV/Trivy/rkhunterスクリプトで検知時にアラートを発火
+   - [x] (2025-12-05) 誤検知パターン（certs/やrkhunter既知警告）を除外できるようにした
 
 ## Concrete Steps
 

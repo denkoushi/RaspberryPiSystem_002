@@ -1,0 +1,55 @@
+---
+- name: Ensure security monitor state directory exists
+  ansible.builtin.file:
+    path: "{{ security_monitor_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: security_monitor_enabled | default(false)
+
+- name: Deploy security monitor script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-monitor.sh.j2"
+    dest: /usr/local/bin/security-monitor.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: security_monitor_enabled | default(false)
+
+- name: Deploy security monitor service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-monitor.service.j2"
+    dest: /etc/systemd/system/security-monitor.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: security_monitor_service_unit
+  when: security_monitor_enabled | default(false)
+  notify: restart security monitor
+
+- name: Deploy security monitor timer
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-monitor.timer.j2"
+    dest: /etc/systemd/system/security-monitor.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: security_monitor_timer_unit
+  when: security_monitor_enabled | default(false)
+  notify: restart security monitor
+
+- name: Reload systemd daemon if security monitor units changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - security_monitor_enabled | default(false)
+    - (security_monitor_service_unit is changed) or (security_monitor_timer_unit is changed)
+
+- name: Enable and start security monitor timer
+  ansible.builtin.systemd:
+    name: security-monitor.timer
+    enabled: true
+    state: started
+  when: security_monitor_enabled | default(false)
+

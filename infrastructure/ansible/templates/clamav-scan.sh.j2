@@ -14,12 +14,29 @@ SCAN_TARGETS=(
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting ClamAV scan..." >> "${LOG_FILE}"
 
+set +e
 /usr/bin/clamscan \
   --recursive \
   --infected \
   --quiet \
   --max-filesize=200M \
   --max-scansize=400M \
-  "${SCAN_TARGETS[@]}" >> "${LOG_FILE}" 2>&1 || true
+  "${SCAN_TARGETS[@]}" >> "${LOG_FILE}" 2>&1
+SCAN_EXIT=$?
+set -e
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Scan completed." >> "${LOG_FILE}"
+
+if [[ ${SCAN_EXIT} -eq 1 && -x "{{ alert_script_path }}" ]]; then
+  DETAILS="$(grep -E 'FOUND' "${LOG_FILE}" | tail -n 20)"
+  DETAILS=${DETAILS:-"ClamAV reported infected files. See ${LOG_FILE} for details."}
+  "{{ alert_script_path }}" \
+    "clamav-detection" \
+    "ClamAVスキャンで感染ファイルを検知しました" \
+    "${DETAILS}"
+elif [[ ${SCAN_EXIT} -gt 1 && -x "{{ alert_script_path }}" ]]; then
+  "{{ alert_script_path }}" \
+    "clamav-scan-error" \
+    "ClamAVスキャンでエラーが発生しました" \
+    "詳細ログ: ${LOG_FILE}"
+fi

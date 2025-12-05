@@ -8,11 +8,47 @@ mkdir -p "${LOG_DIR}"
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting Trivy filesystem scan..." >> "${LOG_FILE}"
 
-/usr/bin/trivy fs \
-  --severity HIGH,CRITICAL \
-  --ignore-unfixed \
-  --exit-code 0 \
-  --quiet \
-  "{{ trivy_scan_target }}" >> "${LOG_FILE}" 2>&1 || true
+TRIVY_CMD=(/usr/bin/trivy fs
+  --severity HIGH,CRITICAL
+  --ignore-unfixed
+  --exit-code 1
+  --quiet
+  "{{ trivy_scan_target }}"
+)
+{% if trivy_skip_dirs %}
+TRIVY_CMD+=(
+{% for skip_dir in trivy_skip_dirs %}
+  --skip-dirs "{{ skip_dir }}"
+{% endfor %}
+)
+{% endif %}
+
+set +e
+"${TRIVY_CMD[@]}" >> "${LOG_FILE}" 2>&1
+TRIVY_EXIT=$?
+set -e
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Trivy scan completed." >> "${LOG_FILE}"
+
+if [[ ${TRIVY_EXIT} -eq 1 && -x "{{ alert_script_path }}" ]]; then
+  RAW_DETAILS="$(grep -E '^(CRITICAL|HIGH):' -A5 "${LOG_FILE}" | tail -n 50)"
+{% if trivy_alert_ignore_patterns %}
+  FILTERED_DETAILS="${RAW_DETAILS}"
+{% for ignore in trivy_alert_ignore_patterns %}
+  FILTERED_DETAILS="$(echo "${FILTERED_DETAILS}" | grep -v "{{ ignore }}" || true)"
+{% endfor %}
+{% else %}
+  FILTERED_DETAILS="${RAW_DETAILS}"
+{% endif %}
+  if [[ -n "${FILTERED_DETAILS}" ]]; then
+    "{{ alert_script_path }}" \
+      "trivy-detection" \
+      "Trivyスキャンで脆弱性または秘密情報を検知しました" \
+      "${FILTERED_DETAILS}"
+  fi
+elif [[ ${TRIVY_EXIT} -gt 1 && -x "{{ alert_script_path }}" ]]; then
+  "{{ alert_script_path }}" \
+    "trivy-scan-error" \
+    "Trivyスキャンでエラーが発生しました" \
+    "詳細ログ: ${LOG_FILE}"
+fi

@@ -1,0 +1,60 @@
+#!/bin/bash
+set -euo pipefail
+
+ALERT_SCRIPT="{{ alert_script_path }}"
+STATE_DIR="{{ security_monitor_state_dir }}"
+FAIL2BAN_LOG="{{ security_monitor_fail2ban_log }}"
+TAG="security-monitor"
+
+log_info() {
+  logger -t "${TAG}" "$1"
+}
+
+mkdir -p "${STATE_DIR}"
+
+if [[ ! -x "${ALERT_SCRIPT}" ]]; then
+  log_info "alert script not executable: ${ALERT_SCRIPT}"
+  exit 0
+fi
+
+process_fail2ban() {
+  [[ -f "${FAIL2BAN_LOG}" ]] || return
+
+  local state_file="${STATE_DIR}/fail2ban.offset"
+  local total_lines
+  total_lines=$(wc -l < "${FAIL2BAN_LOG}" 2>/dev/null || echo 0)
+
+  if [[ ! -f "${state_file}" ]]; then
+    echo "${total_lines}" > "${state_file}"
+    return
+  fi
+
+  local last_processed
+  last_processed=$(cat "${state_file}" 2>/dev/null || echo 0)
+  if (( total_lines == 0 || total_lines <= last_processed )); then
+    echo "${total_lines}" > "${state_file}"
+    return
+  fi
+
+  local start_line=$((last_processed + 1))
+  local new_lines
+  new_lines=$(sed -n "${start_line},${total_lines}p" "${FAIL2BAN_LOG}")
+  echo "${total_lines}" > "${state_file}"
+
+  [[ -z "${new_lines}" ]] && return
+
+  echo "${new_lines}" | grep "Ban " || return
+
+  while read -r line; do
+    [[ -z "${line}" ]] && continue
+    local banned_ip
+    banned_ip=$(echo "${line}" | awk '{print $NF}')
+    "{{ alert_script_path }}" \
+      "fail2ban-ban" \
+      "fail2banがIP ${banned_ip} を遮断しました" \
+      "${line}"
+  done < <(echo "${new_lines}" | grep "Ban ")
+}
+
+process_fail2ban
+

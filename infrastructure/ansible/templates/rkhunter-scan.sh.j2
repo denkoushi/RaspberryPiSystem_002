@@ -8,17 +8,42 @@ mkdir -p "${LOG_DIR}"
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting rkhunter check..." >> "${LOG_FILE}"
 
-/usr/bin/rkhunter --update >> "${LOG_FILE}" 2>&1 || true
-/usr/bin/rkhunter --propupd >> "${LOG_FILE}" 2>&1 || true
-/usr/bin/rkhunter --check --sk --rwo >> "${LOG_FILE}" 2>&1 || true
+set +e
+/usr/bin/rkhunter --update >> "${LOG_FILE}" 2>&1
+/usr/bin/rkhunter --propupd >> "${LOG_FILE}" 2>&1
+/usr/bin/rkhunter --check --sk --rwo >> "${LOG_FILE}" 2>&1
+RKH_EXIT=$?
+set -e
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] rkhunter check completed." >> "${LOG_FILE}"
-#!/bin/bash
-set -euo pipefail
 
-LOG_DIR="{{ rkhunter.log_dir }}"
-mkdir -p "${LOG_DIR}"
-LOG_FILE="${LOG_DIR}/rkhunter-$(date +%Y%m%d_%H%M%S).log"
+WARNINGS="$(grep -E '^Warning:' "${LOG_FILE}" | tail -n 50)"
 
-/usr/bin/rkhunter --cronjob --report-warnings-only --logfile "${LOG_FILE}" || true
+filter_warnings() {
+  local content="$1"
+{% if rkhunter_ignore_patterns %}
+  local filtered="${content}"
+{% for pattern in rkhunter_ignore_patterns %}
+  filtered="$(echo "${filtered}" | grep -v "{{ pattern }}" || true)"
+{% endfor %}
+  echo "${filtered}"
+{% else %}
+  echo "${content}"
+{% endif %}
+}
+
+if [[ -n "${WARNINGS}" && -x "{{ alert_script_path }}" ]]; then
+  FILTERED_WARNINGS="$(filter_warnings "${WARNINGS}")"
+  if [[ -n "${FILTERED_WARNINGS}" ]]; then
+    "{{ alert_script_path }}" \
+      "rkhunter-warning" \
+      "rkhunterが警告を検出しました" \
+      "${FILTERED_WARNINGS}"
+  fi
+elif [[ ${RKH_EXIT} -gt 0 && -x "{{ alert_script_path }}" ]]; then
+  "{{ alert_script_path }}" \
+    "rkhunter-scan-error" \
+    "rkhunterスキャンでエラーが発生しました" \
+    "詳細ログ: ${LOG_FILE}"
+fi
 

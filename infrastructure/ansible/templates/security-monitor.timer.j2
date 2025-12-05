@@ -1,0 +1,10 @@
+[Unit]
+Description=Run security monitor periodically
+
+[Timer]
+OnCalendar={{ security_monitor_timer_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

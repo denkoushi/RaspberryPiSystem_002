@@ -21,3 +21,9 @@
   ansible.builtin.systemd:
     name: fail2ban
     state: restarted
+
+- name: restart security monitor
+  ansible.builtin.systemd:
+    name: security-monitor.timer
+    state: restarted
+    enabled: true

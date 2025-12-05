@@ -22,7 +22,7 @@
 - **CPU/温度モニタリング**: 画像レンダリング時に `/proc/stat` と `/sys/class/thermal` を取得し、サイネージヘッダー右上に `CPU xx% / Temp yy.y°C` を表示するようにしました。
 - **PDFトリミング問題の解消**: `fit: 'contain'` + 背景色でレターボックス表示に変更し、PDFの縦横比にかかわらず全体が映るようになりました。詳細は [knowledge-base/api.md#kb-055-サイネージpdfがトリミングされて表示される](./knowledge-base/api.md#kb-055-サイネージpdfがトリミングされて表示される) を参照してください。
 - **NFCエージェントキュー処理改善**: 工具スキャンが二重登録される問題を解決。オンライン時にイベントを即座に配信し、配信成功したイベントはキューから即時削除するように変更。詳細は [knowledge-base/infrastructure.md#kb-056-工具スキャンが二重登録される問題nfcエージェントのキュー処理改善](./knowledge-base/infrastructure.md#kb-056-工具スキャンが二重登録される問題nfcエージェントのキュー処理改善) を参照してください。
-- **ナレッジベース更新**: [knowledge-base/index.md](./knowledge-base/index.md) の登録件数が 65件になり、工具スキャン重複対策（KB-067）と黒画像対策（KB-068）を追加しました。
+- **ナレッジベース更新**: [knowledge-base/index.md](./knowledge-base/index.md) の登録件数が 74件になり、fail2ban連携のセキュリティ監視タイマー（KB-076）とマルウェアスキャン結果の自動アラート化（KB-077）を追加しました。
 - **Raspberry Pi status-agent**: クライアント端末が1分毎にメトリクスを送信する `status-agent.py`（systemd timer 同梱）を追加。ガイドは [guides/status-agent.md](./guides/status-agent.md)、ソースは `clients/status-agent/` を参照してください。
 - **ローカル環境対応の通知機能**: 管理画面でのアラート表示とファイルベースの通知機能を実装しました。Ansible更新失敗時に自動的にアラートファイルを生成し、管理画面で確認できます。ガイドは [guides/local-alerts.md](./guides/local-alerts.md) を参照してください。
 - **Ansible堅牢化・安定化の実装**: `git clean`による設定ファイル削除問題を解決し、システム設定ファイル（polkit設定など）をAnsibleで管理する仕組みを実装しました。バックアップ・ロールバック機能も追加。詳細は [plans/ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) を参照してください。ガイド: [Ansibleで管理すべき設定ファイル一覧](./guides/ansible-managed-files.md)、ナレッジベース: [KB-061](./knowledge-base/infrastructure.md#kb-061-ansible実装後の設定ファイル削除問題と堅牢化対策)
@@ -97,6 +97,8 @@
 | **fail2ban設定について知りたい** | **[knowledge-base/infrastructure.md#kb-073](./knowledge-base/infrastructure.md#kb-073)** |
 | **Pi5のマルウェア対策を確認したい** | **[knowledge-base/infrastructure.md#kb-074](./knowledge-base/infrastructure.md#kb-074)** |
 | **Pi4キオスクの軽量マルウェア対策を確認したい** | **[knowledge-base/infrastructure.md#kb-075](./knowledge-base/infrastructure.md#kb-075)** |
+| **fail2ban連携のセキュリティ監視を確認したい** | **[knowledge-base/infrastructure.md#kb-076-fail2ban連携のセキュリティ監視タイマー](./knowledge-base/infrastructure.md#kb-076-fail2ban連携のセキュリティ監視タイマー)** |
+| **マルウェア検知アラート化について知りたい** | **[knowledge-base/infrastructure.md#kb-077-マルウェアスキャン結果の自動アラート化](./knowledge-base/infrastructure.md#kb-077-マルウェアスキャン結果の自動アラート化)** |
 
 ### エラーを解決する
 

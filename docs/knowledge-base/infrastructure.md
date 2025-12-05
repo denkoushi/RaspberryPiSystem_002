@@ -1420,3 +1420,57 @@ update-frequency: medium
 - `docs/plans/security-hardening-execplan.md`
 
 ---
+
+### [KB-076] fail2ban連携のセキュリティ監視タイマー
+
+**EXEC_PLAN.md参照**: Phase 6 監視・アラート（2025-12-05）
+
+**事象**: 
+- ローカル運用では外部通知サービス（Slack等）が使えず、fail2banログを目視しないと侵入試行に気付けない
+- 既存の`alerts/`ファイルベース通知と連携できていなかった
+
+**有効だった対策**: 
+- ✅ `/usr/local/bin/security-monitor.sh`を追加し、fail2banログのBan行を15分間隔で走査
+- ✅ systemd timer（`security-monitor.timer`）で常時起動し、stateファイルで重複通知を防止
+- ✅ Banイベントを検知すると`generate-alert.sh`を呼び、管理コンソールのアラートバナーへ自動表示
+
+**学んだこと**: 
+- 初回実行時は既存ログを基準化してから監視を開始しないと、過去のBanが大量通知になる
+- `logger`タグを付与しておくと、journalctlでも監視スクリプトの動作状況を追跡しやすい
+
+**関連ファイル**: 
+- `infrastructure/ansible/templates/security-monitor.sh.j2`
+- `infrastructure/ansible/templates/security-monitor.service.j2`
+- `infrastructure/ansible/templates/security-monitor.timer.j2`
+- `infrastructure/ansible/roles/server/tasks/monitoring.yml`
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-077] マルウェアスキャン結果の自動アラート化
+
+**EXEC_PLAN.md参照**: Phase 6 監視・アラート（2025-12-05）
+
+**事象**: 
+- ClamAV/Trivy/rkhunterが感染や秘密情報を検出しても、ログを開かなければ気づけなかった
+- rkhunterの既知警告やTrivyの秘密鍵検出など、誤検知を抑制しつつ通知したかった
+
+**有効だった対策**: 
+- ✅ 各スキャンスクリプトで終了コード／警告行を判定し、`generate-alert.sh`に詳細を渡すよう改修
+- ✅ Trivyの`--skip-dirs`とignoreパターン、rkhunterの除外リストをAnsible変数にして誤検知を抑制
+- ✅ アラート種別（`clamav-detection`、`trivy-detection`、`rkhunter-warning`）を分け、管理画面で原因を特定しやすくした
+
+**学んだこと**: 
+- `clamscan`はexit code=1で感染ファイル、2でエラーなので、両ケースを分けて通知する必要がある
+- Trivyの秘密鍵検出は証明書ディレクトリを`--skip-dirs`対象にすることでノイズを大幅に減らせる
+
+**関連ファイル**: 
+- `infrastructure/ansible/templates/clamav-scan.sh.j2`
+- `infrastructure/ansible/templates/trivy-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `infrastructure/ansible/group_vars/all.yml`
+- `docs/security/requirements.md`
+- `docs/plans/security-hardening-execplan.md`
+
+---

@@ -1,0 +1,8 @@
+[Unit]
+Description=Security log monitor
+ConditionPathExists={{ alert_script_path }}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/security-monitor.sh
+
