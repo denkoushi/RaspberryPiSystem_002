@@ -51,6 +51,9 @@ ufw_allowed_tcp_ports:
 ufw_ssh_allowed_networks:
   - "192.168.10.0/24"
   - "100.64.0.0/10"
+# VNCポート（ローカルネットワークからのみ許可）
+ufw_vnc_allowed_networks:
+  - "192.168.10.0/24"
 ufw_logging_level: "medium"
 caddy_log_dir: "/var/log/caddy"
 

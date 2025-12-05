@@ -44,6 +44,15 @@
   loop: "{{ ufw_ssh_allowed_networks | default([]) }}"
   when: ufw_enabled | default(false)
 
+- name: Allow VNC from trusted networks
+  community.general.ufw:
+    rule: allow
+    port: "5900"
+    proto: tcp
+    src: "{{ item }}"
+  loop: "{{ ufw_vnc_allowed_networks | default([]) }}"
+  when: ufw_enabled | default(false)
+
 - name: Enable UFW logging
   community.general.ufw:
     logging: "{{ ufw_logging_level }}"
