@@ -400,6 +400,7 @@ export interface SignageContentResponse {
     id: string;
     name: string;
     pages: string[];
+    slideInterval?: number | null;
   } | null;
 }
 
