@@ -5,7 +5,15 @@ set -euo pipefail
 # 使用方法: ./scripts/register-clients.sh
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_BASE_URL="${API_BASE_URL:-http://192.168.128.131:8080/api}"
+# APIベースURLは以下の優先順位で決定する：
+# 1. 環境変数 API_BASE_URL
+# 2. 環境変数 SERVER_IP があれば http://SERVER_IP:8080/api
+# 3. デフォルト値 http://127.0.0.1:8080/api
+DEFAULT_API_BASE_URL="http://127.0.0.1:8080/api"
+if [ -n "${SERVER_IP:-}" ]; then
+  DEFAULT_API_BASE_URL="http://${SERVER_IP}:8080/api"
+fi
+API_BASE_URL="${API_BASE_URL:-$DEFAULT_API_BASE_URL}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234}"
 

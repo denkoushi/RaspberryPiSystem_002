@@ -335,6 +335,20 @@ export async function getSystemInfo() {
   return data;
 }
 
+export interface NetworkModeStatus {
+  detectedMode: 'local' | 'maintenance';
+  configuredMode: 'local' | 'maintenance';
+  status: 'internet_connected' | 'local_network_only';
+  checkedAt: string;
+  latencyMs?: number;
+  source?: string;
+}
+
+export async function getNetworkModeStatus() {
+  const { data } = await api.get<NetworkModeStatus>('/system/network-mode');
+  return data;
+}
+
 // デジタルサイネージ関連の型定義
 export interface SignageSchedule {
   id: string;

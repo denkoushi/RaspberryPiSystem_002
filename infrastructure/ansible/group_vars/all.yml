@@ -1,0 +1,37 @@
+# ネットワークモードを切り替えることで、Ansibleが参照するIPアドレスを変更できます。
+# - local: ローカルネットワークのIPを使用（通常運用）
+# - tailscale: Tailscale経由のIPを使用（メンテナンス時）
+network_mode: "local"
+
+# ローカルネットワークで使用するIPアドレス
+local_network:
+  raspberrypi5_ip: "192.168.10.230"
+  raspberrypi4_ip: "192.168.10.223"
+  raspberrypi3_ip: "192.168.10.109"
+
+# メンテナンス時（Tailscale経由）に使用するIPアドレス
+# Tailscaleで割り当てられるIPを確認して設定してください。
+tailscale_network:
+  raspberrypi5_ip: ""
+  raspberrypi4_ip: ""
+  raspberrypi3_ip: ""
+
+# 現在有効なネットワーク設定（network_modeに応じて切り替え）
+current_network: "{{ local_network if network_mode == 'local' else tailscale_network }}"
+
+# サーバー（Pi5）およびクライアントのIPアドレスを共通変数として扱う
+server_ip: "{{ current_network.raspberrypi5_ip | default(local_network.raspberrypi5_ip) }}"
+kiosk_ip: "{{ current_network.raspberrypi4_ip | default(local_network.raspberrypi4_ip) }}"
+signage_ip: "{{ current_network.raspberrypi3_ip | default(local_network.raspberrypi3_ip) }}"
+
+# よく使うURLを共通変数として定義
+server_base_url: "https://{{ server_ip }}"
+kiosk_full_url: "{{ server_base_url }}/kiosk"
+api_base_url: "http://{{ server_ip }}:8080/api"
+websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
+
+# 既存の変数名との互換性を保つためのエイリアス
+status_agent_api_base_url: "{{ api_base_url }}"
+nfc_agent_api_base_url: "{{ api_base_url }}"
+docker_server_ip: "{{ server_ip }}"
+

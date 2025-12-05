@@ -18,7 +18,9 @@ const envSchema = z.object({
   SIGNAGE_RENDER_INTERVAL_SECONDS: z.coerce.number().min(10).max(3600).default(30),
   SIGNAGE_RENDER_WIDTH: z.coerce.number().min(640).max(7680).default(1920),
   SIGNAGE_RENDER_HEIGHT: z.coerce.number().min(480).max(4320).default(1080),
-  SIGNAGE_TIMEZONE: z.string().default('Asia/Tokyo')
+  SIGNAGE_TIMEZONE: z.string().default('Asia/Tokyo'),
+  NETWORK_MODE: z.enum(['local', 'maintenance']).default('local'),
+  NETWORK_STATUS_OVERRIDE: z.enum(['internet_connected', 'local_network_only']).optional()
 });
 
 export const env = envSchema.parse(process.env);

@@ -42,7 +42,8 @@ import {
   getSignageContent,
   type SignageSchedule,
   type SignagePdf,
-  type ClientLogLevel
+  type ClientLogLevel,
+  getNetworkModeStatus
 } from './client';
 import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
 
@@ -255,6 +256,16 @@ export function useSystemInfo() {
     refetchInterval: 10_000, // 10秒間隔で更新（CPU負荷軽減のため）
     staleTime: 3000, // 3秒間はキャッシュを使用
     refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
+  });
+}
+
+export function useNetworkModeStatus() {
+  return useQuery({
+    queryKey: ['network-mode-status'],
+    queryFn: getNetworkModeStatus,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true
   });
 }
 

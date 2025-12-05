@@ -1,5 +1,5 @@
 # API のベースURL (必須)
-API_BASE_URL="{{ status_agent_api_base_url | default('http://192.168.128.131:8080/api') }}"
+API_BASE_URL="{{ status_agent_api_base_url | default((api_base_url | default('http://127.0.0.1:8080/api'))) }}"
 
 # クライアントID (必須) - `/api/clients/status` の clientId
 CLIENT_ID="{{ status_agent_client_id }}"
