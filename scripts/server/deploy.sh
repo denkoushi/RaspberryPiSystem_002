@@ -20,6 +20,11 @@ cd "${PROJECT_DIR}"
 
 # Gitの最新状態を取得
 log "Gitリポジトリを更新中..."
+# ローカル変更がある場合はstashしてから更新
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  log "ローカル変更をstashします..."
+  git stash push -m "Auto-stash before deploy $(date +%Y%m%d_%H%M%S)"
+fi
 git fetch origin
 git checkout "${BRANCH}"
 git pull origin "${BRANCH}"
