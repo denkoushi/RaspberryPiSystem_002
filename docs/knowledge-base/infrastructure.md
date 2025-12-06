@@ -1826,3 +1826,32 @@ const textX = x + textAreaX;
 - `docs/guides/ansible-best-practices.md`（ベストプラクティスとして追記）
 
 ---
+
+### [KB-087] Pi3 status-agent.timer 再起動時のsudoタイムアウト
+
+**EXEC_PLAN.md参照**: Phase 8 デプロイ再実証（2025-12-07）
+
+**事象**:
+- Pi3への標準デプロイ実行中、`status-agent.timer` 再起動タスクで `Timeout (12s) waiting for privilege escalation prompt` が発生し `UNREACHABLE`
+- `signage-lite.service` や `signage-lite-update.timer` の再起動は成功するが、`status-agent.*` のみ失敗
+
+**要因**:
+1. `signageras3` の `sudo -l` を確認したところ、`NOPASSWD` が `signage-lite` 系コマンドのみに限定されていた
+2. `status-agent.service` / `status-agent.timer` に対する `systemctl` はパスワードが必要で、Ansibleはbecome passwordを持たないため昇格プロンプト待ちでタイムアウトしていた
+
+**対策**:
+- `inventory.yml` にホストごとの `sudo_nopasswd_commands` を定義（Pi3: signage-lite + status-agent、Pi4: kiosk-browser + status-agent）
+- `roles/client` に sudoers テンプレート（`/etc/sudoers.d/<user>`）を追加し、上記コマンドに `NOPASSWD` を付与
+- `visudo -cf` 検証を組み込み、設定ミスを防止
+
+**結果**:
+- 再デプロイ時に `status-agent.timer` もパスワードなしで再起動可能となり、タイムアウトは再現しなくなった
+- 既存ノウハウ（サイネージ停止→Ansible→サービス再起動）の中で sudo 権限定の抜け漏れを防止できるようになった
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory.yml`（`sudo_nopasswd_commands`）
+- `infrastructure/ansible/roles/client/tasks/main.yml`
+- `infrastructure/ansible/roles/client/templates/sudoers-client.j2`
+- `docs/guides/deployment.md`（標準プロセスの補足）
+
+---

@@ -3,3 +3,5 @@ repo_path: /opt/RaspberryPiSystem_002
 client_default_services_to_restart:
   - status-agent.service
   - status-agent.timer
+client_sudo_user: "{{ ansible_user | default('') }}"
+client_sudo_nopasswd_commands: "{{ sudo_nopasswd_commands | default([]) }}"

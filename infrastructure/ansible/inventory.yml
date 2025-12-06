@@ -34,6 +34,16 @@ all:
             - kiosk-browser.service
             - status-agent.service
             - status-agent.timer
+          sudo_nopasswd_commands:
+            - /usr/bin/systemctl start kiosk-browser.service
+            - /usr/bin/systemctl stop kiosk-browser.service
+            - /usr/bin/systemctl restart kiosk-browser.service
+            - /usr/bin/systemctl start status-agent.service
+            - /usr/bin/systemctl stop status-agent.service
+            - /usr/bin/systemctl restart status-agent.service
+            - /usr/bin/systemctl start status-agent.timer
+            - /usr/bin/systemctl stop status-agent.timer
+            - /usr/bin/systemctl restart status-agent.timer
           # NFCエージェント環境変数
           nfc_agent_api_base_url: "{{ api_base_url }}"
           nfc_agent_client_id: "raspberrypi4-kiosk1"
@@ -55,6 +65,19 @@ all:
             - signage-lite-update.timer
             - status-agent.service
             - status-agent.timer
+          sudo_nopasswd_commands:
+            - /usr/bin/systemctl start signage-lite.service
+            - /usr/bin/systemctl stop signage-lite.service
+            - /usr/bin/systemctl restart signage-lite.service
+            - /usr/bin/systemctl start signage-lite-update.timer
+            - /usr/bin/systemctl stop signage-lite-update.timer
+            - /usr/bin/systemctl restart signage-lite-update.timer
+            - /usr/bin/systemctl start status-agent.service
+            - /usr/bin/systemctl stop status-agent.service
+            - /usr/bin/systemctl restart status-agent.service
+            - /usr/bin/systemctl start status-agent.timer
+            - /usr/bin/systemctl stop status-agent.timer
+            - /usr/bin/systemctl restart status-agent.timer
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3

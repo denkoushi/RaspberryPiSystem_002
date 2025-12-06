@@ -121,6 +121,9 @@ curl http://localhost:7071/api/agent/status
 # Pi5からPi3へSSH接続してサイネージサービスを停止
 ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
 
+# sudo権限の前提
+# signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
+
 # メモリ使用状況を確認（120MB以上空きがあることを確認）
 ssh signageras3@<pi3_ip> 'free -m'
 
