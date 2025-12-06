@@ -33,6 +33,29 @@ done
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "${repo_root}"
 
+# --- Lockfile to prevent concurrent deploys ---
+# ロックファイルはプロジェクトディレクトリ内に配置（ユーザー権限で実行可能）
+LOCK_FILE="${DEPLOY_LOCK_FILE:-${repo_root}/logs/deploy/.deployment.lock}"
+LOCK_TIMEOUT_SECONDS="${DEPLOY_LOCK_TIMEOUT_SECONDS:-1800}" # 30 minutes default
+lock_dir="$(dirname "$LOCK_FILE")"
+mkdir -p "$lock_dir"
+
+if [[ -f "$LOCK_FILE" ]]; then
+  # remove stale lock older than timeout
+  if find "$LOCK_FILE" -mmin +$((LOCK_TIMEOUT_SECONDS/60)) >/dev/null 2>&1; then
+    echo "警告: 古いロックファイルを削除します: $LOCK_FILE"
+    rm -f "$LOCK_FILE"
+  fi
+fi
+
+if [[ -f "$LOCK_FILE" ]]; then
+  echo "エラー: デプロイが既に実行中です。ロックファイル: $LOCK_FILE"
+  exit 1
+fi
+
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 log_dir="${DEPLOY_LOG_DIR:-${repo_root}/logs/deploy}"
 mkdir -p "${log_dir}"
 log_file="${log_dir}/deploy-${TS}.jsonl"
@@ -169,3 +192,4 @@ summary = {
 print(json.dumps(summary, ensure_ascii=False, indent=2))
 PY
 
+# Test deployment - Sat Dec  6 17:16:47 JST 2025
