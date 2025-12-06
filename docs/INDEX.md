@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2025-12-06）
 
+- **デプロイメントモジュール設計**: Tailscale/セキュリティ機能実装後に発生したサイネージ・キオスク機能不全の根本原因を分析し、設定変更を自動検知・影響範囲を自動判定してデプロイする「堅剛なロジック」を設計。4つの独立モジュール（config-detector, impact-analyzer, deploy-executor, verifier）を標準入出力（JSON）で連携する疎結合・モジュール化アーキテクチャ。テスト項目を明確化し、単体・統合・E2Eテストの計画を策定。詳細は [architecture/deployment-modules.md](./architecture/deployment-modules.md) を参照。
 - **サイネージUI最終調整**: 左ペインTOOLSを3列化しサムネイルを最大化。右ペインの更新文言を削除。Pi3で再デプロイ済み（`signage-lite`再起動）。
 - **キオスクUI統一**: 返却（持出）一覧を5列＋ボタン縦並びに統一。APIキー初期値を管理コンソールと同一に強制し、設定カードを非表示化。Pi4で再起動済み。
 - **Phase 8 継続**: サイネージ／キオスク回帰対応を進行中。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) と [KB-080〜085](./knowledge-base/infrastructure.md) を参照。
@@ -59,6 +60,7 @@
 | やりたいこと | ドキュメント |
 |-------------|-------------|
 | 本番環境にデプロイしたい | [guides/deployment.md](./guides/deployment.md) |
+| **デプロイメントモジュール（原因分析・設計・テスト計画）を確認したい** | **[architecture/deployment-modules.md](./architecture/deployment-modules.md)** |
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
@@ -197,6 +199,7 @@
 | [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
 | [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
 | [signage-module-architecture.md](./architecture/signage-module-architecture.md) | **デジタルサイネージモジュール アーキテクチャ**（モジュール化、コンフリクト確認、スケーラビリティ） |
+| [deployment-modules.md](./architecture/deployment-modules.md) | **デプロイメントモジュール**（原因分析・設計・テスト計画統合、疎結合・モジュール化アーキテクチャ） |
 
 ### 設計決定（decisions/）
 
@@ -381,7 +384,7 @@ APIの概要と詳細。
 
 | カテゴリ | ファイル数 |
 |---------|-----------|
-| アーキテクチャ | 3 |
+| アーキテクチャ | 4 |
 | 設計決定 | 3 |
 | モジュール仕様 | 6 |
 | APIリファレンス | 2 |
@@ -391,7 +394,7 @@ APIの概要と詳細。
 | トラブルシューティング | 6 |
 | セキュリティ | 3 |
 | プレゼンテーション | 1 |
-| **合計** | **55** |
+| **合計** | **56** |
 
 ---
 

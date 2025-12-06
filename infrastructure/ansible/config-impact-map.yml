@@ -1,0 +1,30 @@
+config_impact_map:
+  network_mode:
+    impact: [server, pi4_kiosk, pi3_signage, nfc_agent]
+    reason: "ネットワーク設定は全コンポーネントに影響"
+  server_ip:
+    impact: [pi4_kiosk, pi3_signage, nfc_agent]
+    reason: "サーバーIP変更はクライアント側の接続先に影響"
+  kiosk_url:
+    impact: [pi4_kiosk]
+    reason: "キオスクURL変更はPi4キオスクのみに影響"
+  signage_server_url:
+    impact: [pi3_signage]
+    reason: "サイネージサーバーURL変更はPi3サイネージのみに影響"
+  # セキュリティ設定
+  ufw_enabled:
+    impact: [server]
+    reason: "UFW設定はサーバーに影響"
+  fail2ban_enabled:
+    impact: [server]
+    reason: "Fail2ban設定はサーバーに影響"
+  clamav_server_enabled:
+    impact: [server]
+    reason: "ClamAVサーバー設定はサーバーに影響"
+  clamav_kiosk_enabled:
+    impact: [pi4_kiosk, pi3_signage]
+    reason: "ClamAVキオスク設定はクライアントに影響"
+  security_monitor_enabled:
+    impact: [server]
+    reason: "セキュリティ監視設定はサーバーに影響"
+

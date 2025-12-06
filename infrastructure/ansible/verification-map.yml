@@ -1,0 +1,56 @@
+verification_map:
+  server:
+    - name: api_health
+      type: http_get
+      url: "http://{{ server_ip }}:8080/api/system/health"
+      expected_status: 200
+    - name: web_ui
+      type: http_get
+      url: "{{ server_base_url }}/"
+      expected_status: 200
+    # セキュリティ機能の検証
+    - name: ufw_status
+      type: command
+      command: "sudo ufw status | grep -q 'Status: active'"
+      expected_output: ""
+      when: ufw_enabled
+    - name: fail2ban_status
+      type: systemd_status
+      service: fail2ban
+      expected_status: active
+      when: fail2ban_enabled
+    - name: clamav_daemon_status
+      type: systemd_status
+      service: clamav-daemon
+      expected_status: active
+      when: clamav_server_enabled
+    - name: security_monitor_status
+      type: systemd_status
+      service: security-monitor.timer
+      expected_status: active
+      when: security_monitor_enabled
+  pi4_kiosk:
+    - name: kiosk_url
+      type: http_get
+      url: "{{ kiosk_full_url }}"
+      expected_status: 200
+    - name: service_status
+      type: systemd_status
+      service: kiosk-browser.service
+      expected_status: active
+    # キオスク側のセキュリティ機能検証
+    - name: clamav_status
+      type: command
+      command: "systemctl is-active clamav-freshclam"
+      expected_output: "active"
+      when: clamav_kiosk_enabled
+  pi3_signage:
+    - name: signage_image
+      type: http_get
+      url: "{{ server_base_url }}/api/signage/content"
+      expected_status: 200
+    - name: service_status
+      type: systemd_status
+      service: signage-lite.service
+      expected_status: active
+
