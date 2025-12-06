@@ -123,9 +123,45 @@ if ! ${no_changes}; then
   fi
   echo "{\"stage\":\"deploy-executor\",\"output\":$(json_escape "${deploy_result}")}" >> "${log_file}"
 
-  # 4. 検証
-  verify_result=$(echo "${deploy_result}" | run_and_capture "scripts/deploy/verifier.sh")
-  echo "{\"stage\":\"verifier\",\"output\":$(json_escape "${verify_result}")}" >> "${log_file}"
+  # 4. 検証（環境変数を設定してから実行）
+  # group_vars/all.ymlから環境変数を読み取り、verifier.shに渡す
+  verify_env=$(python3 - <<'PY' "${repo_root}"
+import sys, yaml, os
+repo_root = sys.argv[1]
+group_vars_path = os.path.join(repo_root, "infrastructure/ansible/group_vars/all.yml")
+if not os.path.isfile(group_vars_path):
+    print("")
+    sys.exit(0)
+with open(group_vars_path, "r") as f:
+    vars_data = yaml.safe_load(f) or {}
+network_mode = vars_data.get("network_mode", "local")
+local_net = vars_data.get("local_network", {})
+tailscale_net = vars_data.get("tailscale_network", {})
+current_net = tailscale_net if network_mode == "tailscale" else local_net
+server_ip = current_net.get("raspberrypi5_ip", local_net.get("raspberrypi5_ip", ""))
+server_base_url = f"https://{server_ip}" if server_ip else ""
+kiosk_full_url = f"{server_base_url}/kiosk" if server_base_url else ""
+env_vars = []
+if server_ip:
+    env_vars.append(f"SERVER_IP={server_ip}")
+if server_base_url:
+    env_vars.append(f"SERVER_BASE_URL={server_base_url}")
+if kiosk_full_url:
+    env_vars.append(f"KIOSK_FULL_URL={kiosk_full_url}")
+# セキュリティ機能の有効/無効も設定
+for key in ["ufw_enabled", "fail2ban_enabled", "clamav_server_enabled", "security_monitor_enabled", "clamav_kiosk_enabled"]:
+    val = vars_data.get(key, False)
+    env_vars.append(f"{key.upper()}={str(val).lower()}")
+print(" ".join(env_vars))
+PY
+)
+  if [[ -n "${verify_env}" ]]; then
+    verify_result=$(eval "export ${verify_env} && echo '${deploy_result}' | scripts/deploy/verifier.sh")
+    echo "{\"stage\":\"verifier\",\"output\":$(json_escape "${verify_result}")}" >> "${log_file}"
+  else
+    verify_result=$(echo "${deploy_result}" | run_and_capture "scripts/deploy/verifier.sh")
+    echo "{\"stage\":\"verifier\",\"output\":$(json_escape "${verify_result}")}" >> "${log_file}"
+  fi
 fi
 
 # 5. ロールバック（失敗時のみ）
