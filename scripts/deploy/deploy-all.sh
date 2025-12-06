@@ -134,7 +134,7 @@ if not os.path.isfile(group_vars_path):
     sys.exit(0)
 with open(group_vars_path, "r") as f:
     vars_data = yaml.safe_load(f) or {}
-network_mode = vars_data.get("network_mode", "local")
+network_mode = os.environ.get("NETWORK_MODE", vars_data.get("network_mode", "local"))
 local_net = vars_data.get("local_network", {})
 tailscale_net = vars_data.get("tailscale_network", {})
 current_net = tailscale_net if network_mode == "tailscale" else local_net
