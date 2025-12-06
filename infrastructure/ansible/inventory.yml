@@ -56,7 +56,8 @@ all:
             - status-agent.service
             - status-agent.timer
       vars:
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        # Pi5経由でPi3/Pi4に接続するための設定
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o ProxyJump=denkon5sd02@{{ server_ip }}'
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"
