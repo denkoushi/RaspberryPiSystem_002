@@ -108,7 +108,12 @@ else:
                 "note": "unknown target"
             })
             continue
-        exec_result = run_cmd(cmd, cwd=repo_root)
+        # Ansibleコマンドの場合は環境変数を設定
+        env_vars = {}
+        if t in ["pi4_kiosk", "pi3_signage"]:
+            ansible_roles_path = os.path.join(repo_root, "infrastructure/ansible/roles")
+            env_vars["ANSIBLE_ROLES_PATH"] = ansible_roles_path
+        exec_result = run_cmd(cmd, cwd=repo_root, env=env_vars)
         exec_result.update({
             "target": t,
             "planned_command": " ".join(cmd)
