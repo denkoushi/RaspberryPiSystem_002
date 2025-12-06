@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Ansibleベストプラクティス
 
-最終更新: 2025-12-01
+最終更新: 2025-12-06
 
 ## 概要
 
@@ -189,7 +189,44 @@ handlers:
 
 ## 運用のベストプラクティス
 
-### 1. プレイブック実行前の確認
+### 1. デプロイ前のリソース確保（重要）
+
+**原則**: リソース制約のある環境（特にPi3）では、デプロイ前に不要なサービスを停止する
+
+**理由**:
+- Pi3はメモリが少ない（1GB、実質416MB）
+- サイネージサービスが動作していると、デプロイ時の`systemd`モジュール実行時にメモリ不足でハングする可能性がある
+- `apt`パッケージマネージャーの実行時にもリソースを消費する
+
+**実装手順**:
+```bash
+# 1. サイネージサービスを停止（Pi3の場合）
+ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+
+# 2. メモリ使用状況を確認（120MB以上空きがあることを確認）
+ssh signageras3@<pi3_ip> 'free -m'
+
+# 3. 既存のAnsibleプロセスをkill（重複実行防止）
+ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+
+# 4. デプロイ実行
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
+  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+
+# 5. デプロイ完了後、サービスを再起動
+ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
+```
+
+**注意事項**:
+- デプロイ前に必ずサービスを停止する（約束を守る）
+- メモリ使用状況を確認し、十分な空き容量を確保する
+- デプロイ前に既存のAnsibleプロセスをkillし、重複実行を防止する
+- デプロイ完了後、サービスを再起動する
+
+**関連ナレッジ**: [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
+
+### 2. プレイブック実行前の確認
 
 **推奨手順**:
 1. `--check`モードで実行して変更内容を確認
@@ -315,5 +352,6 @@ src: /opt/RaspberryPiSystem_002/infrastructure/ansible/templates/template.j2
 
 ## 更新履歴
 
+- 2025-12-06: デプロイ前のリソース確保セクションを追加（KB-086参照）
 - 2025-12-01: 初版作成
 

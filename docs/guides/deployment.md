@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-11-27
+最終更新: 2025-12-06
 
 ## 概要
 
@@ -110,6 +110,56 @@ poetry run python -m nfc_agent
 curl http://localhost:7071/api/agent/status
 # "queueSize": 0 が表示されればOK
 ```
+
+## ラズパイ3（サイネージ）の更新
+
+**重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ前にサイネージサービスを停止する必要があります。
+
+### デプロイ前の準備（必須）
+
+```bash
+# Pi5からPi3へSSH接続してサイネージサービスを停止
+ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+
+# メモリ使用状況を確認（120MB以上空きがあることを確認）
+ssh signageras3@<pi3_ip> 'free -m'
+
+# Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
+ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+```
+
+### Ansibleを使用したデプロイ（推奨）
+
+```bash
+# Pi5から実行
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+
+# Pi3へのデプロイを実行
+ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
+  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+```
+
+### デプロイ後の確認
+
+```bash
+# デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
+
+# サイネージサービスを再起動
+ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
+
+# サービスが正常に動作していることを確認
+ssh signageras3@<pi3_ip> 'sudo systemctl is-active signage-lite.service'
+
+# 画像が更新されていることを確認
+ssh signageras3@<pi3_ip> 'ls -lh /var/cache/signage/current.jpg'
+```
+
+**トラブルシューティング**:
+- **デプロイがハングする**: サイネージサービスが停止しているか確認。メモリ使用状況を確認（120MB以上空きが必要）
+- **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
+- **デプロイが失敗する**: ログを確認（`/tmp/ansible-pi3.log`）
+
+**関連ナレッジ**: [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
 
 ## デプロイ方法（詳細）
 
