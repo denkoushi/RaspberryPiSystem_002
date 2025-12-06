@@ -19,6 +19,8 @@ export interface PhotoBorrowPayload {
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
+export const DEFAULT_CLIENT_KEY =
+  import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
 
 export const api = axios.create({
   baseURL: apiBase
@@ -40,13 +42,16 @@ export function setAuthToken(token?: string) {
 }
 
 export function setClientKeyHeader(key?: string) {
-  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : 'client-demo-key';
+  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : DEFAULT_CLIENT_KEY;
 }
 
 // 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
 if (typeof window !== 'undefined') {
   const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
-  setClientKeyHeader(savedKey);
+  const normalizedKey =
+    !savedKey || savedKey === 'client-demo-key' ? DEFAULT_CLIENT_KEY : savedKey;
+  window.localStorage.setItem('kiosk-client-key', normalizedKey);
+  setClientKeyHeader(normalizedKey);
 }
 
 // すべてのリクエストで client-key を付与

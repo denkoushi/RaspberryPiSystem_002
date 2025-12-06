@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { api } from '../../api/client';
+import { DEFAULT_CLIENT_KEY } from '../../api/client';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Loan, ReturnPayload } from '../../api/types';
 import { Card } from '../../components/ui/Card';
@@ -15,9 +16,9 @@ interface KioskReturnPageProps {
 
 export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: providedClientId, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
   // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
-  const [localClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [localClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [localClientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = providedClientKey || localClientKey || 'client-demo-key';
+  const resolvedClientKey = providedClientKey || localClientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = providedClientId !== undefined ? providedClientId : (localClientId || undefined);
   
   // propsで提供されている場合はuseActiveLoansを呼び出さない（重複リクエストを防ぐ）
@@ -70,14 +71,14 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
 
   return (
     <div className="h-full flex flex-col">
-      <Card title="返却一覧" className="h-full flex flex-col">
+      <Card title="持出一覧" className="h-full flex flex-col">
         {loansQuery.isError ? (
           <p className="text-red-400">返却一覧の取得に失敗しました</p>
         ) : loansQuery.isLoading ? (
           <p>読み込み中...</p>
         ) : loansQuery.data && loansQuery.data.length > 0 ? (
           <div className="flex-1 overflow-y-auto min-h-0 -mx-4 px-4">
-            <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            <ul className="grid grid-cols-5 gap-2">
             {loansQuery.data.map((loan) => {
               // 写真サムネイルのURLを生成
               const thumbnailUrl = loan.photoUrl
@@ -134,7 +135,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-row gap-2">
+                  <div className="flex flex-col gap-2 items-start md:items-end">
                     <Button
                       onClick={() => handleReturn(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}

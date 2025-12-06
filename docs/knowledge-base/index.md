@@ -24,7 +24,7 @@ update-frequency: high
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 18件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 40件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 43件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー |
 
 ---
 
@@ -134,6 +134,9 @@ update-frequency: high
 | [KB-080](./infrastructure.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
 | [KB-081](./infrastructure.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) | Pi3サイネージが新デザインへ更新されない | 🔄 進行中 |
 | [KB-082](./infrastructure.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | ✅ 解決済み |
+| [KB-083](./infrastructure.md#kb-083-サイネージカードレイアウトが崩れる2カラム固定サムネ比率) | サイネージカードレイアウトが崩れる（2カラム固定・サムネ比率） | ✅ 解決済み |
+| [KB-084](./infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない) | サイネージSVGレンダラーでカード内テキストが正しい位置に表示されない | ✅ 解決済み |
+| [KB-085](./infrastructure.md#kb-085-サイネージtools左ペインを3列化右ペインの更新文言削除) | サイネージTOOLS左ペインを3列化・右ペインの更新文言削除 | ✅ 解決済み |
 
 ---
 
@@ -172,9 +175,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 77件 |
-| 🔄 進行中 | 6件 |
-| **合計** | **83件** |
+| ✅ 解決済み | 81件 |
+| 🔄 進行中 | 5件 |
+| **合計** | **86件** |
 
 ---
 
@@ -223,5 +226,4 @@ update-frequency: high
 - 2025-12-05: KB-075を追加（Pi4キオスクの軽量マルウェア対策）
 - 2025-12-05: KB-076を追加（fail2ban連携のセキュリティ監視タイマー）
 - 2025-12-05: KB-077を追加（マルウェアスキャン結果の自動アラート化）
-- 2025-12-05: KB-072を追加（Pi5のUFW適用とHTTPSリダイレクト強化）
-- 2025-12-05: KB-073を追加（Caddyアクセスログとfail2banの連携）
+- 2025-12-06: KB-084を追加（サイネージSVGレンダラーでカード内テキストが正しい位置に表示されない）、KB-083を解決済みに更新

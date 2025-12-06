@@ -151,15 +151,15 @@ export class SignageRenderer {
 
   private async buildToolsScreenSvg(tools: ToolItem[], metricsText?: string | null): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = Math.round(60 * scale);
+    const outerPadding = Math.round(42 * scale);
     const accentColor = '#34d399';
     const gradientId = this.generateId('bg');
     const panelWidth = WIDTH - outerPadding * 2;
     const panelHeight = HEIGHT - outerPadding * 2;
     const panelX = outerPadding;
     const panelY = outerPadding;
-    const headerHeight = Math.round(90 * scale);
-    const innerPadding = Math.round(48 * scale);
+    const headerHeight = Math.round(64 * scale);
+    const innerPadding = Math.round(30 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: panelX + innerPadding,
@@ -169,19 +169,20 @@ export class SignageRenderer {
       mode: 'FULL',
       showThumbnails: true,
       maxRows: 3,
+      maxColumns: 2,
     });
 
     const overflowBadge =
       overflowCount > 0
         ? `<text x="${panelX + panelWidth - innerPadding}" y="${panelY + panelHeight - innerPadding / 2}"
-            text-anchor="end" font-size="${Math.round(28 * scale)}" fill="#fcd34d" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
 
     const metricsElement = metricsText
       ? `<text x="${panelX + panelWidth - innerPadding}" y="${panelY + innerPadding}"
-          text-anchor="end" font-size="${Math.round(28 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+          text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(metricsText)}
         </text>`
       : '';
@@ -198,16 +199,16 @@ export class SignageRenderer {
         <rect width="100%" height="100%" fill="url(#${gradientId})" />
 
         <g>
-          <text x="${panelX}" y="${panelY - Math.round(10 * scale)}" fill="${accentColor}" font-size="${Math.round(
-            18 * scale
-          )}" letter-spacing="${Math.round(scale * 6)}" font-family="sans-serif">TOOLS OVERVIEW</text>
+          <text x="${panelX}" y="${panelY - Math.round(8 * scale)}" fill="${accentColor}" font-size="${Math.round(
+            16 * scale
+          )}" letter-spacing="${Math.round(scale * 5)}" font-family="sans-serif">TOOLS OVERVIEW</text>
           <rect x="${panelX}" y="${panelY}" rx="${Math.round(32 * scale)}" ry="${Math.round(
       32 * scale
     )}" width="${panelWidth}" height="${panelHeight}"
             fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" />
 
-          <text x="${panelX + innerPadding}" y="${panelY + innerPadding + Math.round(36 * scale)}"
-            font-size="${Math.round(48 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+          <text x="${panelX + innerPadding}" y="${panelY + innerPadding + Math.round(30 * scale)}"
+            font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具在庫状況
           </text>
           ${metricsElement}
@@ -224,17 +225,17 @@ export class SignageRenderer {
     metricsText?: string | null
   ): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = Math.round(48 * scale);
-    const panelGap = Math.round(32 * scale);
+    const outerPadding = Math.round(30 * scale);
+    const panelGap = Math.round(20 * scale);
     const gradientId = this.generateId('bg');
     const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.58);
     const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
     const panelHeight = HEIGHT - outerPadding * 2;
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
-    const panelRadius = Math.round(28 * scale);
-    const innerPadding = Math.round(32 * scale);
-    const headerHeight = Math.round(80 * scale);
+    const panelRadius = Math.round(22 * scale);
+    const innerPadding = Math.round(26 * scale);
+    const headerHeight = Math.round(64 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + innerPadding,
@@ -242,15 +243,15 @@ export class SignageRenderer {
       width: leftWidth - innerPadding * 2,
       height: panelHeight - innerPadding * 2 - headerHeight,
       mode: 'SPLIT',
-      showThumbnails: false,
-      maxRows: 4,
-      maxColumns: 2,
+      showThumbnails: true,
+      maxRows: 3,
+      maxColumns: 3,
     });
 
     const overflowBadge =
       overflowCount > 0
         ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + panelHeight - innerPadding}"
-            text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#fcd34d" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.round(20 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
@@ -265,19 +266,12 @@ export class SignageRenderer {
           PDFが設定されていません
         </text>`;
 
-    const slideInfo =
-      pdfOptions?.slideInterval && pdfOptions.displayMode === 'SLIDESHOW'
-        ? `<text x="${rightX + rightWidth - innerPadding}" y="${outerPadding + innerPadding + Math.round(
-            34 * scale
-          )}" text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#cbd5f5" font-family="sans-serif">
-            ${pdfOptions.slideInterval}s 間隔
-          </text>`
-        : '';
+    const slideInfo = '';
 
     const metricsElement = metricsText
       ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + innerPadding + Math.round(
-          32 * scale
-        )}" text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+          28 * scale
+        )}" text-anchor="end" font-size="${Math.round(20 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(metricsText)}
         </text>`
       : '';
@@ -296,12 +290,12 @@ export class SignageRenderer {
         <g>
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
-            fill="rgba(15,23,42,0.65)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(32 * scale)}"
-            font-size="${Math.round(20 * scale)}" fill="#6ee7b7" letter-spacing="${Math.round(scale * 4)}"
+            fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
+          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(26 * scale)}"
+            font-size="${Math.round(18 * scale)}" fill="#6ee7b7" letter-spacing="${Math.round(scale * 4)}"
             font-family="sans-serif">TOOLS</text>
-          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(70 * scale)}"
-            font-size="${Math.round(40 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(56 * scale)}"
+            font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具データ
           </text>
           ${metricsElement}
@@ -312,12 +306,12 @@ export class SignageRenderer {
         <g>
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
-            fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(32 * scale)}"
-            font-size="${Math.round(20 * scale)}" fill="#93c5fd" letter-spacing="${Math.round(scale * 4)}"
+            fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
+          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(26 * scale)}"
+            font-size="${Math.round(18 * scale)}" fill="#93c5fd" letter-spacing="${Math.round(scale * 4)}"
             font-family="sans-serif">DOCUMENT</text>
-          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(70 * scale)}"
-            font-size="${Math.round(40 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(56 * scale)}"
+            font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ${this.escapeXml(pdfOptions?.title ?? 'PDF表示')}
           </text>
           ${slideInfo}
@@ -362,7 +356,7 @@ export class SignageRenderer {
           font-family="sans-serif">DOCUMENT</text>
 
         <text x="${outerPadding + innerPadding}" y="${outerPadding + innerPadding + Math.round(36 * scale)}"
-          font-size="${Math.round(46 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+          font-size="${Math.round(24 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
           ${this.escapeXml(options?.title ?? 'PDF表示')}
         </text>
         ${slideInfo}
@@ -399,23 +393,26 @@ export class SignageRenderer {
 
   private async buildToolCardGrid(tools: ToolItem[], config: ToolGridConfig): Promise<{ cardsSvg: string; overflowCount: number }> {
     const scale = WIDTH / 1920;
-    const gap = Math.round((config.mode === 'FULL' ? 28 : 22) * scale);
-    const idealCardWidth = (config.mode === 'FULL' ? 320 : 300) * scale;
+    const gap = Math.round(14 * scale);
+    const desiredColumns = config.maxColumns ?? 2;
+    const idealCardWidth = Math.round((config.mode === 'FULL' ? 360 : 300) * scale);
     let columns = Math.max(1, Math.floor((config.width + gap) / (idealCardWidth + gap)));
-    if (config.maxColumns) {
-      columns = Math.min(columns, config.maxColumns);
-    }
+    columns = Math.min(columns, desiredColumns);
     const cardWidth = Math.floor((config.width - gap * (columns - 1)) / columns);
-    const cardHeight = Math.round((config.mode === 'FULL' ? 220 : 190) * scale);
+    const cardHeight = Math.round(140 * scale);
     const maxRows =
       config.maxRows ??
       Math.max(1, Math.floor((config.height + gap) / (cardHeight + gap)));
     const maxItems = columns * maxRows;
     const displayTools = tools.slice(0, maxItems);
     const overflowCount = Math.max(0, tools.length - displayTools.length);
-    const cardRadius = Math.round(24 * scale);
-    const cardPadding = Math.round(22 * scale);
-    const thumbnailHeight = Math.round(cardHeight * 0.45);
+    const cardRadius = Math.round(12 * scale);
+    const cardPadding = Math.round(12 * scale);
+    const thumbnailSize = Math.round(96 * scale);
+    const thumbnailWidth = thumbnailSize;
+    const thumbnailHeight = thumbnailSize;
+    const textAreaX = cardPadding + thumbnailSize + Math.round(12 * scale);
+    const textAreaWidth = cardWidth - textAreaX - cardPadding;
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -425,55 +422,77 @@ export class SignageRenderer {
         const y = config.y + row * (cardHeight + gap);
         const statusColor = tool.isOver12Hours ? '#f43f5e' : '#34d399';
         const statusLabel = tool.employeeName ? '持出中' : '待機';
-        const borrowedText = this.formatBorrowedAt(tool.borrowedAt);
-        const primaryText = tool.name ?? tool.itemCode;
+        const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
+        const [borrowedDate, borrowedTime] = borrowedText.split(' ');
+        const primaryText = tool.name || '写真撮影モード';
         const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
-        const detail = borrowedText ? `${borrowedText} 持出` : '';
+        const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
 
         if (config.showThumbnails && tool.thumbnailUrl) {
           const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
           if (thumbnailPath) {
-            const base64 = await this.encodeLocalImageAsBase64(thumbnailPath, cardWidth - cardPadding * 2, thumbnailHeight, 'cover');
+            const base64 = await this.encodeLocalImageAsBase64(
+              thumbnailPath,
+              thumbnailWidth,
+              thumbnailHeight,
+              'cover'
+            );
             if (base64) {
+              const thumbnailX = x + cardPadding;
+              const thumbnailY = y + Math.round((cardHeight - thumbnailHeight) / 2);
               thumbnailElement = `
-                <image x="${x + cardPadding}" y="${y + cardPadding}"
-                  width="${cardWidth - cardPadding * 2}" height="${thumbnailHeight}"
-                  href="${base64}" preserveAspectRatio="xMidYMid slice" />
+                <clipPath id="${clipId}">
+                  <rect x="${thumbnailX}" y="${thumbnailY}"
+                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
+                </clipPath>
+                <image x="${thumbnailX}" y="${thumbnailY}"
+                  width="${thumbnailWidth}" height="${thumbnailHeight}"
+                  href="${base64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
               `;
             }
           }
         }
 
+        const textStartY = y + cardPadding;
+        const primaryY = textStartY + Math.round(20 * scale);
+        const nameY = primaryY + Math.round(18 * scale);
+        const dateY = nameY + Math.round(16 * scale);
+        const timeY = dateY + Math.round(16 * scale);
+        const warningY = timeY + Math.round(18 * scale);
+        
+        const textX = x + textAreaX;
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
               fill="rgba(8,15,36,0.85)" stroke="rgba(255,255,255,0.08)" />
-            <circle cx="${x + cardPadding}" cy="${y + cardPadding}" r="${Math.round(6 * scale)}" fill="${statusColor}" />
-            <text x="${x + cardPadding + Math.round(16 * scale)}" y="${y + cardPadding + Math.round(6 * scale)}"
-              font-size="${Math.round(22 * scale)}" fill="${statusColor}" font-family="sans-serif">
-              ${statusLabel}
-            </text>
             ${thumbnailElement}
-            <text x="${x + cardPadding}" y="${y + cardPadding + (config.showThumbnails ? thumbnailHeight + Math.round(36 * scale) : Math.round(46 * scale))}"
-              font-size="${Math.round(30 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+            <text x="${textX}" y="${primaryY}"
+              font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
             </text>
-            <text x="${x + cardPadding}" y="${y + cardHeight - cardPadding - Math.round(32 * scale)}"
-              font-size="${Math.round(22 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            <text x="${textX}" y="${nameY}"
+              font-size="${Math.round(16 * scale)}" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
-            ${
-              detail
-                ? `<text x="${x + cardPadding}" y="${y + cardHeight - cardPadding - Math.round(8 * scale)}"
-                    font-size="${Math.round(20 * scale)}" fill="#94a3b8" font-family="sans-serif">
-                    ${this.escapeXml(detail)}
-                  </text>`
-                : ''
+            <text x="${textX}" y="${dateY}"
+              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+              ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
+            </text>
+            <text x="${textX}" y="${timeY}"
+              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+              ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
+            </text>
+            ${tool.isOver12Hours
+              ? `<text x="${textX}" y="${warningY}"
+                  font-size="${Math.round(14 * scale)}" fill="#f43f5e" font-family="sans-serif">
+                  ⚠ 期限超過
+                </text>`
+              : ''
             }
             <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.round(20 * scale)}" fill="#e2e8f0" font-family="monospace">
+              text-anchor="end" font-size="${Math.round(10 * scale)}" fill="#94a3b8" font-family="monospace">
               ${this.escapeXml(tool.itemCode)}
             </text>
           </g>

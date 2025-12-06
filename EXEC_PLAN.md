@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [ ] (2025-12-06 00:20Z) Phase 8: サイネージUI再調整中（カード2カラム固定、サムネイル16:9・clipPath、タイトル縮小）。Pi5経由のみでPi3/Pi4へSSHし、Pi3の`signage-lite`再起動待ち（実機表示の最終確認待ち）。
 - [x] (2024-05-27 15:40Z) アーキテクチャ／データモデル／作業手順を含む初回のExecPlanを作成。
 - [x] (2024-05-27 16:30Z) Milestone 1: モノレポ足場、pnpm/Poetry 設定、Docker 雛形、`.env.example`、スクリプト、雛形アプリ（Fastify/React/NFC エージェント）を作成し `pnpm install` 済み。
 - [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。

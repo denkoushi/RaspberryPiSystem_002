@@ -8,10 +8,11 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2025-12-05）
+### 🆕 最新アップデート（2025-12-06）
 
-- **Phase 8 サイネージ／キオスク回帰対応を開始**: Pi4キオスクがTailscale URL固定のまま旧レイアウトを表示している問題、Pi3サイネージのJPEGレンダラー未更新問題を切り分けました。`kiosk-launch.sh` が `https://100.106.158.2/kiosk` を指していること、`SignageRenderer` が旧SVGを生成していることを確認し、ExecPlan/KBに課題と対策を登録済み。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) の Phase 8 と、ナレッジベース [KB-080](./knowledge-base/infrastructure.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) / [KB-081](./knowledge-base/infrastructure.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) を参照してください。
-- **サイネージAPIのSPLIT後退問題を修正**: 営業時間外にスケジュールがマッチせずTOOLSへフォールバックしていたため、優先度の高いSPLITスケジュールへフォールバックするロジックを追加し、常に左右2ペインを維持するようにしました。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) および [KB-082](./knowledge-base/infrastructure.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) を参照してください。
+- **サイネージUI最終調整**: 左ペインTOOLSを3列化しサムネイルを最大化。右ペインの更新文言を削除。Pi3で再デプロイ済み（`signage-lite`再起動）。
+- **キオスクUI統一**: 返却（持出）一覧を5列＋ボタン縦並びに統一。APIキー初期値を管理コンソールと同一に強制し、設定カードを非表示化。Pi4で再起動済み。
+- **Phase 8 継続**: サイネージ／キオスク回帰対応を進行中。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) と [KB-080〜085](./knowledge-base/infrastructure.md) を参照。
 - **Phase 7 セキュリティ検証完了**: IPアドレス切替、Tailscale経路、UFW/HTTPS、fail2ban、暗号化バックアップ復元、ClamAV/Trivy/rkhunterスキャンを一通り手動検証しました。`alerts/alert-20251205-182352.json`（fail2ban）と `alert-20251205-184324.json`（rkhunter）を生成し、監視ルートの動作も確認済み。複数ローカルネットワーク環境（会社/自宅）でのVNC接続設定も対応済み。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) および [docs/security/requirements.md](./security/requirements.md) を参照してください。ナレッジベース: [KB-078](./knowledge-base/infrastructure.md#kb-078-複数ローカルネットワーク環境でのvnc接続設定), [KB-079](./knowledge-base/infrastructure.md#kb-079-phase7セキュリティテストの実施結果と検証ポイント)
 - **Phase 6 セキュリティ監視・アラート実装完了**: fail2banのBanイベントとマルウェアスキャン結果を自動監視し、管理画面でアラート表示する仕組みを実装しました。`security-monitor.sh`がsystemd timer（15分間隔）で実行され、fail2banログを監視して侵入試行を検知します。ClamAV/Trivy/rkhunterのスキャン結果も自動でアラート化され、感染検知やスキャンエラー時に即座に通知されます。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) を参照してください。ナレッジベース: [KB-076](./knowledge-base/infrastructure.md#kb-076-fail2ban連携のセキュリティ監視タイマー), [KB-077](./knowledge-base/infrastructure.md#kb-077-マルウェアスキャン結果の自動アラート化)
 - **Ansibleロール化 & 新`deploy.yml`**: `common/server/client/kiosk/signage` ロールを導入し、メインプレイブックを `playbooks/deploy.yml` に刷新しました。既存の `update-clients.yml` は互換ラッパーとして残しつつ、今後は `ansible-playbook infrastructure/ansible/playbooks/deploy.yml` の利用を推奨します。詳細は [plans/ansible-phase9-role-execplan.md](./plans/ansible-phase9-role-execplan.md) を参照してください。

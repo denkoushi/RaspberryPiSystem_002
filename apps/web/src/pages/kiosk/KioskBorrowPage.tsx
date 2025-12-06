@@ -6,15 +6,14 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { KioskReturnPage } from './KioskReturnPage';
-import { setClientKeyHeader } from '../../api/client';
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 
 export function KioskBorrowPage() {
   const { data: config } = useKioskConfig();
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || 'client-demo-key';
+  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
   const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
@@ -26,9 +25,9 @@ export function KioskBorrowPage() {
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
-    if (!clientKey) {
-      setClientKey('client-demo-key');
-      setClientKeyHeader('client-demo-key');
+    if (!clientKey || clientKey === 'client-demo-key') {
+      setClientKey(DEFAULT_CLIENT_KEY);
+      setClientKeyHeader(DEFAULT_CLIENT_KEY);
     } else {
       setClientKeyHeader(clientKey);
     }
@@ -114,24 +113,10 @@ export function KioskBorrowPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card title="ステーション設定">
-        <div className="grid gap-4 md:grid-cols-2 lg:w-1/2">
-          <label className="block text-sm text-white/70">
-            クライアント API キー
-            <Input value={clientKey} onChange={(e) => setClientKey(e.target.value)} placeholder="client-demo-key" />
-          </label>
-          <label className="block text-sm text-white/70">
-            クライアントID（任意）
-            <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="UUID (任意)" />
-          </label>
-        </div>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="持出フロー">
-          <div className="space-y-4 text-center">
-            <p className="text-3xl font-semibold">{config?.greeting ?? 'アイテム → 社員証の順にタップ'}</p>
+    <div className="flex h-full gap-4">
+      <div className="w-80 flex-shrink-0">
+        <Card title="持出フロー" className="h-full">
+          <div className="space-y-3 text-center">
             <div className="grid gap-4 md:grid-cols-2">
               <StepCard title="① アイテム" active={state.matches('waitItem')} value={state.context.itemTagUid} />
               <StepCard title="② 社員" active={state.matches('waitEmployee')} value={state.context.employeeTagUid} />
@@ -150,7 +135,9 @@ export function KioskBorrowPage() {
             ) : null}
           </div>
         </Card>
+      </div>
 
+      <div className="flex-1 min-w-0">
         <KioskReturnPage loansQuery={loansQuery} clientId={resolvedClientId} clientKey={resolvedClientKey} />
       </div>
     </div>

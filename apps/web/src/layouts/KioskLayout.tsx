@@ -2,22 +2,22 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { Input } from '../components/ui/Input';
-import { setClientKeyHeader } from '../api/client';
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
 import { useEffect } from 'react';
 
 const navLink = 'rounded-md px-4 py-2 text-white hover:bg-white/10 transition-colors';
 
 export function KioskLayout() {
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
   const { data: systemInfo } = useSystemInfo();
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
-    if (!clientKey) {
-      setClientKey('client-demo-key');
-      setClientKeyHeader('client-demo-key');
+    if (!clientKey || clientKey === 'client-demo-key') {
+      setClientKey(DEFAULT_CLIENT_KEY);
+      setClientKeyHeader(DEFAULT_CLIENT_KEY);
     } else {
       setClientKeyHeader(clientKey);
     }

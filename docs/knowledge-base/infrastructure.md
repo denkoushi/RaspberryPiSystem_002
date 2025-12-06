@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 37件  
+**件数**: 43件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -350,6 +350,31 @@ update-frequency: medium
 **解決状況**: ✅ **解決済み**（2025-11-28）
 
 **関連ファイル**: 
+- `infrastructure/docker/docker-compose.server.yml`
+
+---
+
+### [KB-083] サイネージカードレイアウトが崩れる（2カラム固定・サムネ比率）
+
+**EXEC_PLAN.md参照**: Progress (2025-12-06)
+
+**事象**: 
+- 工具カードの列幅が不揃いで間延びし、サムネイルの縦横比も崩れて表示が潰れる。ヘッダ文字が大きく表示領域が狭い。
+
+**要因**: 
+- サムネイルを`contain`で描画して余白が生じ、列数も可変でグリッドが緩みやすかった。clipがないため角丸内に収まらず、視覚的に崩れていた。
+
+**有効だった対策**: 
+- `SignageRenderer`でカード列を2カラムに固定し、gapを20px相当に統一。サムネイルを16:9相当＋`cover`＋`clipPath`で角丸内に収め、タイトル/テキストを縮小。
+- Pi5で `docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api` を実行してデプロイ。Pi3/4への操作は従来通りPi5経由SSHのみで行い、Pi3は`signage-lite`再起動で反映予定。
+
+**学んだこと**: 
+- サイネージのカードレイアウトは列数と幅を固定し、サムネイルは`cover`＋`clipPath`で比率と角丸を両立させると崩れを防げる。
+
+**解決状況**: 🔄 進行中（Pi3実機での最終表示確認待ち）
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.renderer.ts`
 - `infrastructure/docker/docker-compose.server.yml`
 
 ---
@@ -1626,5 +1651,72 @@ update-frequency: medium
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `docs/plans/security-hardening-execplan.md`
 - `docs/INDEX.md`（最新アップデート欄）
+
+---
+
+### [KB-084] サイネージSVGレンダラーでカード内テキストが正しい位置に表示されない
+
+**EXEC_PLAN.md参照**: Phase 8 サイネージデザイン調整（2025-12-06）
+
+**事象**:
+- サイネージ画面で2列カードレイアウトを実装したが、テキストがサムネイル右側ではなく画面左端に表示される
+- 右列のカードにはテキストが一切表示されず、サムネイルのみが描画される
+
+**要因**:
+- SVGの `<text>` 要素の `x` 座標に、カード内相対位置（`textAreaX`）をそのまま使用していた
+- 正しくは、カードの絶対位置 `x` にカード内相対位置 `textAreaX` を加算した `x + textAreaX` を使用する必要がある
+
+**誤ったコード例**:
+```typescript
+// ❌ 間違い: textAreaXはカード内の相対位置（例: 120px）
+<text x="${textAreaX}" y="${primaryY}">...</text>
+```
+
+**正しいコード例**:
+```typescript
+// ✅ 正解: カードの絶対位置 + カード内相対位置
+const textX = x + textAreaX;
+<text x="${textX}" y="${primaryY}">...</text>
+```
+
+**学んだこと**:
+1. **SVGの座標は常に絶対座標**: SVGでは親要素からの相対位置ではなく、ビューポート（画面）からの絶対座標を指定する
+2. **カードレイアウトの座標計算**: グリッド内の各カード位置 `(x, y)` を基準に、カード内要素の位置を計算する
+   - サムネイル: `x + cardPadding`, `y + cardPadding`
+   - テキスト: `x + cardPadding + thumbnailWidth + gap`, `y + textOffset`
+3. **2列表示の設定**: `maxColumns: 2`, `maxRows: 3` でグリッドを制御
+4. **テキスト縦並び順序**: アイテム名 → 従業員名 → 日付 → 時刻 → 警告（12時間超過時は赤色）
+
+**有効だった対策**:
+- ✅ すべての `<text>` 要素の `x` 座標を `x + textAreaX` に修正
+- ✅ サムネイルの `x`, `y` 座標も同様にカード位置を基準に計算
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts` (`buildToolCardGrid` メソッド)
+- `docs/knowledge-base/infrastructure.md`（本エントリ）
+
+---
+
+### [KB-085] サイネージTOOLS左ペインを3列化・右ペインの更新文言削除
+
+**EXEC_PLAN.md参照**: Phase 8 サイネージデザイン調整（2025-12-06）
+
+**事象**:
+- 左ペイン（TOOLS）が2列のままで表示面積が不足し、サムネイルを大きく表示できない
+- 右ペインに「30s更新」表記があり、不要な文言となっている
+
+**要因**:
+- `buildToolCardGrid` の `maxColumns` が2に固定されていた
+- SPLIT右ペインでスライド間隔を表示していた
+
+**実施した対策**:
+- `maxColumns: 3` に変更し、gapを14px相当に微調整してサムネイルを大型化
+- SPLIT右ペインの更新間隔表示を削除
+- Pi5でAPIビルド → Docker再起動 → Pi3 `signage-lite.service` 再起動
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `infrastructure/docker/docker-compose.server.yml`（APIコンテナ）
+- `infrastructure/ansible/playbooks/restart-services.yml`（signage-lite再起動）
 
 ---

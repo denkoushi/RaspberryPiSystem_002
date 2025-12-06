@@ -7,12 +7,13 @@ import { Card } from '../../components/ui/Card';
 import { KioskReturnPage } from './KioskReturnPage';
 import type { Loan } from '../../api/types';
 import { captureAndCompressPhoto } from '../../utils/camera';
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 
 export function KioskPhotoBorrowPage() {
   const { data: config } = useKioskConfig();
-  const [clientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
+  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || 'client-demo-key';
+  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
   const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
   const photoBorrowMutation = usePhotoBorrowMutation(resolvedClientKey);
@@ -20,6 +21,15 @@ export function KioskPhotoBorrowPage() {
   const lastEventKeyRef = useRef<string | null>(null);
   const processedUidsRef = useRef<Map<string, number>>(new Map()); // 処理済みUIDとタイムスタンプのマップ
   const processedEventTimestampsRef = useRef<Map<string, string>>(new Map()); // 処理済みUIDとイベントタイムスタンプのマップ
+  useEffect(() => {
+    if (!clientKey || clientKey === 'client-demo-key') {
+      setClientKey(DEFAULT_CLIENT_KEY);
+      setClientKeyHeader(DEFAULT_CLIENT_KEY);
+    } else {
+      setClientKeyHeader(clientKey);
+    }
+  }, [clientKey, setClientKey]);
+
 
   const [employeeTagUid, setEmployeeTagUid] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
