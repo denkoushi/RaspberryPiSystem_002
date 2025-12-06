@@ -28,7 +28,7 @@ enable_exec="${DEPLOY_EXECUTOR_ENABLE:-0}"
 
 # パーサ（jq不要、pythonで安全に扱う）
 python3 - <<'PY' "${enable_exec}" "${now_ts}" "${input}" "${repo_root}"
-import sys, json, subprocess, time
+import sys, json, subprocess, time, os
 
 enable_exec, now_ts, stdin_json, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
