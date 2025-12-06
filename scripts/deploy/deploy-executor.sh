@@ -35,9 +35,9 @@ enable_exec, now_ts, stdin_json, repo_root = sys.argv[1], sys.argv[2], sys.argv[
 CMD_MAP = {
     "server": ["bash", "scripts/server/deploy.sh"],
     "pi4_kiosk": ["ansible-playbook", "-i", "infrastructure/ansible/inventory.yml",
-                  "infrastructure/ansible/playbooks/deploy.yml", "--limit", "pi4_kiosk"],
+                  "infrastructure/ansible/playbooks/deploy.yml", "--limit", "raspberrypi4"],
     "pi3_signage": ["ansible-playbook", "-i", "infrastructure/ansible/inventory.yml",
-                    "infrastructure/ansible/playbooks/deploy.yml", "--limit", "pi3_signage"],
+                    "infrastructure/ansible/playbooks/deploy.yml", "--limit", "raspberrypi3"],
 }
 
 def tail(text: str, limit: int = 600) -> str:
