@@ -48,9 +48,12 @@ def tail(text: str, limit: int = 600) -> str:
         return ""
     return text[-limit:]
 
-def run_cmd(cmd, cwd=None):
+def run_cmd(cmd, cwd=None, env=None):
     start = time.time()
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    proc_env = os.environ.copy()
+    if env:
+        proc_env.update(env)
+    proc = subprocess.run(cmd, cwd=cwd, env=proc_env, capture_output=True, text=True)
     duration = int(time.time() - start)
     status = "success" if proc.returncode == 0 else "failed"
     return {
