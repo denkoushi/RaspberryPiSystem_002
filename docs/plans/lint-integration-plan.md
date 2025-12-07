@@ -206,7 +206,7 @@ todos:
 - ✅ 循環依存0件を確認（API/Web ともに `import/no-cycle` エラー0件）
 - ⏳ CI確認待ち（コミット・プッシュ後にCIで成功を確認）
 
-### Phase 8（モジュール間契約テストと依存検証）【実施中】
+### Phase 8（モジュール間契約テストと依存検証）【完了】
 
 **目的**: API/Web 間の契約ずれや依存崩れを早期検知し、統合を安全にする。
 
@@ -233,11 +233,14 @@ todos:
   - `/api/tools/loans/active` エンドポイントの基本契約（200、loans配列、キー存在）を確認
 - ✅ Web側の型整合チェック追加（`apps/web/src/api/__tests__/contracts.client.test.ts`）
   - APIクライアントのレスポンス/ペイロード型が shared-types と一致することを型テストで確認
+  - **注意**: 初回コミット時に `import/order` 違反でCI失敗（#637-#640）。`pnpm lint --fix` で修正後、CI run #641で成功
 - ✅ 依存・互換性チェック（破壊的変更検知スナップショット）追加
   - loans系ペイロードのキー構造を固定し、破壊的変更があればテスト失敗で検知（`apps/api/src/routes/tools/__tests__/contracts.snapshot.test.ts`）
-- ✅ CI確認1回成功（GitHub Actions run #635, branch: feature/lint-integration）
+- ✅ CI確認完了（GitHub Actions run #641成功、branch: feature/lint-integration）
+  - 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）が成功
+  - import/order違反修正後の最終確認完了
 
-### Phase 9（進捗管理とナレッジ共有）【これから】
+### Phase 9（進捗管理とナレッジ共有）【実施中】
 
 **目的**: 今後の拡張やモジュール統合の知見を共有し、維持管理の負荷を下げる。
 

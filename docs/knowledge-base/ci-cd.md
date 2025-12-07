@@ -38,6 +38,7 @@ update-frequency: high
 - **根本原因9（2025-12-07）**: `e2e-smoke`ジョブでPostgreSQL/Prisma Client/シードが未実行、かつVite devサーバーにAPIプロキシがなく、`kiosk`画面が空になりリンクが不可視となる
 - **根本原因10（2025-12-07）**: shared-typesへeslint依存を追加後、`pnpm-lock.yaml`未更新のまま `pnpm install --frozen-lockfile` を実行しCIが停止（ERR_PNPM_OUTDATED_LOCKFILE）
 - **根本原因11（2025-12-07）**: CIクリーンアップステップで `postgres-test` コンテナが存在しないときに `docker stop ... && docker rm ...` が失敗しジョブが中断
+- **根本原因12（2025-12-07）**: 新規テストファイル作成時に `import/order` ルール違反（importグループ間の空行不足、相対importとtype importの順序誤り）でlint失敗。`pnpm lint --fix` で自動修正可能だが、コミット前に実行していなかった
 
 **有効だった対策**: 
 - CIワークフローで`pnpm`のバージョンを9に変更
@@ -52,6 +53,7 @@ update-frequency: high
 - （2025-12-07追加）シードに`client-key-raspberrypi4-kiosk1`を登録し、キオスク既定キーで動作するように統一
 - （2025-12-07追加）shared-types依存追加後は必ず `pnpm install` を実行し lockfile を更新してから CI を走らせる（frozen-lockfile で止めない）
 - （2025-12-07追加）CIクリーンアップでコンテナ未存在を許容するため `docker stop ... && docker rm ... || true` に変更
+- （2025-12-07追加）新規ファイル作成時は必ず `pnpm lint --fix` を実行してからコミット（特に `import/order` ルールは自動修正可能）
 
 **学んだこと**: 
 - CI環境とローカル環境の差異を常に確認する必要がある

@@ -147,6 +147,7 @@ CIが失敗しました。ログ全体を添付します。
 
 **対処法**:
 - CIワークフローの`Generate Prisma Client`ステップを確認
+
 - 環境変数の設定を確認
 
 ### 4. ビルドエラー
@@ -196,6 +197,33 @@ CIが失敗しました。ログ全体を添付します。
 
 **対処**:
 - `.github/workflows/ci.yml` のクリーンアップを `docker stop ... && docker rm ... || true` にして未存在を許容
+
+### 8. Lintエラー（import/order違反）
+
+**症状**: `import/order` エラーでlintジョブが失敗
+
+**エラーメッセージ例**:
+```
+error  There should be at least one empty line between import groups  import/order
+error  `../client` import should occur before type import of `@raspi-system/shared-types`  import/order
+```
+
+**確認事項**:
+- 新規ファイルを作成したか（特にテストファイル）
+- import文の順序が正しいか（builtin → external → internal → parent/sibling → type）
+- importグループ間に空行があるか
+
+**対処法**:
+- ローカルで `pnpm lint --fix` を実行して自動修正
+- コミット前に必ず `pnpm lint --max-warnings=0` で確認
+- 修正後、再度CIを実行して確認
+
+**予防策**:
+- 新規ファイル作成時は必ず `pnpm lint --fix` を実行してからコミット
+- VS CodeのESLint拡張機能を有効化してリアルタイムで確認
+- コミット前に `pnpm lint --max-warnings=0` で確認する習慣をつける
+
+**参考**: Phase 8実装時に `contracts.client.test.ts` で同様のエラーが発生し、CI run #637-#640が失敗。`pnpm lint --fix` で修正後、run #641で成功。
 
 ## ログの見方
 
