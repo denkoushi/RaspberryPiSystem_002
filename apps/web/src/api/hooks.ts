@@ -25,7 +25,6 @@ import {
   updateEmployee,
   updateItem,
   type CancelPayload,
-  type ClientDevice,
   type PhotoBorrowPayload,
   getSignageSchedules,
   createSignageSchedule,

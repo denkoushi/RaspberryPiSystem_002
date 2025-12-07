@@ -8,11 +8,12 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { KioskReturnPage } from './KioskReturnPage';
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+import type { AxiosError } from 'axios';
 
 export function KioskBorrowPage() {
-  const { data: config } = useKioskConfig();
+  useKioskConfig(); // 初期設定取得（キャッシュ用途）
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
@@ -52,9 +53,11 @@ export function KioskBorrowPage() {
 
     attemptBorrow()
       .then((loan) => send({ type: 'SUCCESS', loan }))
-      .catch(async (error: any) => {
-        const apiMessage: string | undefined = error?.response?.data?.message;
-        const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
+      .catch(async (error: unknown) => {
+        const apiError = error as Partial<AxiosError<{ message?: string }>>;
+        const apiMessage: string | undefined = apiError.response?.data?.message;
+        const message =
+          typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : apiError?.message;
 
         // アイテム/従業員の取り違えと思われる場合は一度だけ順序を入れ替えて再試行
         const notFoundItem = apiMessage?.includes('アイテムが登録されていません');
@@ -64,9 +67,10 @@ export function KioskBorrowPage() {
             const loan = await attemptBorrow(true);
             send({ type: 'SUCCESS', loan });
             return;
-          } catch (retryError: any) {
+          } catch (retryError: unknown) {
+            const retryApiErr = retryError as Partial<AxiosError<{ message?: string }>>;
             const retryMsg =
-              retryError?.response?.data?.message || retryError?.message || 'エラーが発生しました (再試行失敗)';
+              retryApiErr.response?.data?.message || retryApiErr?.message || 'エラーが発生しました (再試行失敗)';
             send({ type: 'FAIL', message: retryMsg });
             return;
           }
@@ -105,7 +109,7 @@ export function KioskBorrowPage() {
       send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     }
-  }, [nfcEvent, send, state.value]);
+  }, [nfcEvent, send, state]);
 
   const handleReset = () => {
     lastEventKeyRef.current = null;

@@ -95,7 +95,7 @@ export function EmployeesPage() {
                 if (data.issues && Array.isArray(data.issues) && data.issues.length > 0) {
                   return (
                     <div className="mt-1">
-                      {data.issues.map((issue: any, index: number) => (
+                      {data.issues.map((issue: { path?: (string | number)[]; message?: string }, index: number) => (
                         <p key={index} className="mt-1">
                           {issue.path && issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}
                           {issue.message}

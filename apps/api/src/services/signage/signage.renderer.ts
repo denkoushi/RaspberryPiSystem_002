@@ -412,7 +412,6 @@ export class SignageRenderer {
     const thumbnailWidth = thumbnailSize;
     const thumbnailHeight = thumbnailSize;
     const textAreaX = cardPadding + thumbnailSize + Math.round(12 * scale);
-    const textAreaWidth = cardWidth - textAreaX - cardPadding;
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -420,8 +419,6 @@ export class SignageRenderer {
         const row = Math.floor(index / columns);
         const x = config.x + column * (cardWidth + gap);
         const y = config.y + row * (cardHeight + gap);
-        const statusColor = tool.isOver12Hours ? '#f43f5e' : '#34d399';
-        const statusLabel = tool.employeeName ? '持出中' : '待機';
         const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
         const [borrowedDate, borrowedTime] = borrowedText.split(' ');
         const primaryText = tool.name || '写真撮影モード';

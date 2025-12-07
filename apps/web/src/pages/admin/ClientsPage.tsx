@@ -40,7 +40,7 @@ export function ClientsPage() {
       }),
     []
   );
-  const statusData = statusQuery.data ?? [];
+  const statusData = useMemo(() => statusQuery.data ?? [], [statusQuery.data]);
   const clientOptions = useMemo(
     () => statusData.map((status) => ({ id: status.clientId, label: status.hostname || status.clientId })),
     [statusData]

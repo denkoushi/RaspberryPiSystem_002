@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { EmployeeService } from '../../../services/tools/employee.service.js';
 import { employeeParamsSchema } from './schemas.js';
