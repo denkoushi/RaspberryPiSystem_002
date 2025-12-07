@@ -128,6 +128,14 @@ todos:
 - React Hooks依存関係修正: `apps/web/src/pages/admin/ClientsPage.tsx`, `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`, `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
 - `pnpm lint --max-warnings=0`で通過確認、build/test/E2E通過確認
 
+**注意**: Phase 2で実施したHooks依存関係修正は、実機での動作に影響する可能性があります。特に`useEffect`の依存配列修正により、無限ループが解消される一方で、修正前の動作が「たまたま動いていた」場合、修正後に動作が変わる可能性があります。
+
+**実機検証完了** (2025-12-07):
+- ✅ Pi5サーバー: Dockerコンテナ再起動完了、APIヘルスチェック成功（`/api/system/health` → `status: ok`）
+- ✅ Pi4キオスク: Ansibleデプロイ成功（67タスク、8変更）、`kiosk-browser.service` active、API疎通確認（`/api/tools/loans/active` → 2件のloans返却）
+- ✅ Pi3サイネージ: Ansibleデプロイ成功（80タスク、18変更）、`signage-lite.service` active、画像ファイル生成確認（`/var/cache/signage/current.jpg` 581K）
+- ✅ 基本動作確認: Phase 2のHooks依存関係修正による動作への影響なし（無限ループ・古い値の問題なし）
+
 ### Phase 3（ルール強化・新規コード厳格化）
 
 - 試験導入: `@typescript-eslint/recommended-type-checked`, `eslint-plugin-security`, `eslint-plugin-import` を1つずつ評価
