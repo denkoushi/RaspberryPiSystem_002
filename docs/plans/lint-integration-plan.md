@@ -233,7 +233,7 @@ todos:
   - `/api/tools/loans/active` エンドポイントの基本契約（200、loans配列、キー存在）を確認
 - ⏳ Web側の型整合チェック（未実装）
 - ⏳ 依存・互換性チェック（未実装）
-- ⏳ CI確認待ち（コミット・プッシュ後にCIで成功を確認）
+- ✅ CI確認1回成功（GitHub Actions run #635, branch: feature/lint-integration）
 
 ### Phase 9（進捗管理とナレッジ共有）【これから】
 
