@@ -266,6 +266,13 @@ jobs:
           done
           echo "PostgreSQL is ready!"
 
+      - name: Generate Prisma Client (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
       - name: Run Prisma migrations (smoke)
         run: |
           cd apps/api
