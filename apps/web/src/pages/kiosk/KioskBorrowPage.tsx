@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef } from 'react';
 import { useMachine } from '@xstate/react';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useEffect, useMemo, useRef } from 'react';
+
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
-import { useNfcStream } from '../../hooks/useNfcStream';
-import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useNfcStream } from '../../hooks/useNfcStream';
+
 import { KioskReturnPage } from './KioskReturnPage';
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+
+
 import type { AxiosError } from 'axios';
 
 export function KioskBorrowPage() {

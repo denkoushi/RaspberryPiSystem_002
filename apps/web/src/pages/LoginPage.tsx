@@ -1,9 +1,10 @@
+import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 export function LoginPage() {
   const { login, loading, user } = useAuth();

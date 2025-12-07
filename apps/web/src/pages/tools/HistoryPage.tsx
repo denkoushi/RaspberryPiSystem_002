@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useTransactions } from '../../api/hooks';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+
 import { api } from '../../api/client';
+import { useTransactions } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+
 import type { Transaction } from '../../api/types';
 
 export function HistoryPage() {

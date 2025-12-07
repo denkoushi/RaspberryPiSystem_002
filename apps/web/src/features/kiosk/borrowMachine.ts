@@ -1,4 +1,5 @@
 import { createMachine, assign } from 'xstate';
+
 import type { Loan } from '../../api/types';
 
 interface BorrowContext {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+
 import { useSignageContent } from '../../api/hooks';
+
 import type { SignageContentResponse } from '../../api/client';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];

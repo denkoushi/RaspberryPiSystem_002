@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Button } from '../components/ui/Button';
+
 import { NetworkModeBadge } from '../components/NetworkModeBadge';
+import { Button } from '../components/ui/Button';
+import { useAuth } from '../contexts/AuthContext';
 
 const linkClass =
   'rounded-md px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 transition-colors [&.active]:bg-emerald-500 [&.active]:text-white';

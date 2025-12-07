@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { PropsWithChildren } from 'react';
+
 import { loginRequest, setAuthToken } from '../api/client';
+
 import type { AuthResponse } from '../api/types';
+import type { PropsWithChildren } from 'react';
 
 interface AuthState {
   user: AuthResponse['user'] | null;

@@ -4,13 +4,13 @@
  */
 
 // ツール管理モジュールの型定義
-export * from './tools/index.js';
+export * from './tools';
 
 // 認証関連の型定義
-export * from './auth/index.js';
+export * from './auth';
 
 // 共通の型定義
-export * from './common/index.js';
+export * from './common';
 
 
 

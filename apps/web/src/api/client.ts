@@ -1,4 +1,5 @@
 import axios from 'axios';
+
 import type {
   AuthResponse,
   BorrowPayload,
@@ -9,12 +10,6 @@ import type {
   ReturnPayload,
   Transaction
 } from './types';
-
-export interface PhotoBorrowPayload {
-  employeeTagUid: string;
-  clientId?: string;
-  note?: string | null;
-}
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';

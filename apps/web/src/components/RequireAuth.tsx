@@ -1,5 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
+
 import { useAuth } from '../contexts/AuthContext';
+
 import type { PropsWithChildren } from 'react';
 
 export function RequireAuth({ children }: PropsWithChildren) {

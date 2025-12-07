@@ -12,7 +12,10 @@
 
 ## 現状の方針
 - 既存指摘は解消済み（`--max-warnings=0`で通過）
-- 厳格化（`recommended-type-checked`, security/import ルール）は評価の上、必要時に段階導入する
+- importルール強化: `import/order`、`import/no-cycle` を有効化（API/Web/shared-types）
+- shared-typesも lint 対象 (`pnpm -r lint` で `packages/shared-types` を含む)
+- dist/生成物は lint 対象外（`ignorePatterns: ['dist/**']`）
+- 厳格化（`recommended-type-checked`, securityルール）は影響範囲を見て段階導入する
 
 ## CIでの扱いと段階的な安定化
 - lintは必須ジョブとして実行（秩序維持の最低ライン）

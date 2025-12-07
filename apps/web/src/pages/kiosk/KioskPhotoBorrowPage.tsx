@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
+
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
-import { useNfcStream } from '../../hooks/useNfcStream';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { KioskReturnPage } from './KioskReturnPage';
-import type { Loan } from '../../api/types';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useNfcStream } from '../../hooks/useNfcStream';
 import { captureAndCompressPhoto } from '../../utils/camera';
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+
+import { KioskReturnPage } from './KioskReturnPage';
+
+import type { Loan } from '../../api/types';
 import type { AxiosError } from 'axios';
 
 export function KioskPhotoBorrowPage() {
