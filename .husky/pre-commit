@@ -1,6 +1,3 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # Lint check before commit
 echo "Running lint check..."
 pnpm lint --max-warnings=0
