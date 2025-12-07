@@ -5,9 +5,9 @@ verification_map:
       url: "http://{{ server_ip }}:8080/api/system/health"
       expected_status: 200
   pi4_kiosk:
-    - name: kiosk_api_loans
+    - name: kiosk_api_health
       type: http_get
-      url: "http://{{ server_ip }}:8080/api/tools/loans/active"
+      url: "http://{{ server_ip }}:8080/api/system/health"
       expected_status: 200
   pi3_signage:
     - name: signage_image

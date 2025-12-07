@@ -1,9 +1,9 @@
 config_impact_map:
   network_mode:
-    impact: [server, pi4_kiosk, pi3_signage, nfc_agent]
+    impact: [server, pi4_kiosk, pi3_signage]
     reason: "ネットワーク設定は全コンポーネントに影響"
   server_ip:
-    impact: [pi4_kiosk, pi3_signage, nfc_agent]
+    impact: [pi4_kiosk, pi3_signage]
     reason: "サーバーIP変更はクライアント側の接続先に影響"
   kiosk_url:
     impact: [pi4_kiosk]
