@@ -205,7 +205,7 @@ jobs:
 
       - name: Cleanup PostgreSQL
         if: always()
-        run: docker stop postgres-test && docker rm postgres-test
+        run: docker stop postgres-test && docker rm postgres-test || true
 
       - name: Build Web
         run: |
