@@ -70,16 +70,31 @@ async function main() {
     });
   }
 
-  await prisma.clientDevice.upsert({
-    where: { apiKey: 'client-demo-key' },
-    update: { name: 'Pi4 Station 01', location: '出入口' },
-    create: {
+  // CI向け: デフォルトのクライアントキーを2種類用意しておく
+  // - client-demo-key（既存互換）
+  // - client-key-raspberrypi4-kiosk1（kioskデフォルトキー）
+  const clientDevices = [
+    {
+      apiKey: 'client-demo-key',
       name: 'Pi4 Station 01',
       location: '出入口',
-      apiKey: 'client-demo-key',
-      defaultMode: 'TAG' // デフォルトはTAGモード（管理画面でPHOTOに変更可能）
+      defaultMode: 'TAG' as const
+    },
+    {
+      apiKey: 'client-key-raspberrypi4-kiosk1',
+      name: 'Pi4 Station 02',
+      location: '工場入口',
+      defaultMode: 'TAG' as const
     }
-  });
+  ];
+
+  for (const client of clientDevices) {
+    await prisma.clientDevice.upsert({
+      where: { apiKey: client.apiKey },
+      update: { name: client.name, location: client.location, defaultMode: client.defaultMode },
+      create: client
+    });
+  }
 
   console.log('Seed data inserted. 管理者アカウント: admin / admin1234');
 }
