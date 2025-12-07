@@ -182,6 +182,21 @@ CIが失敗しました。ログ全体を添付します。
 - `playwright.config.ts`
 - `apps/api/prisma/seed.ts`
 
+### 6. lockfile更新忘れによる frozen-lockfile エラー
+
+**症状**: `ERR_PNPM_OUTDATED_LOCKFILE` で CI が停止（例: shared-types に lint 依存を追加後）
+
+**対処**:
+- 依存追加後に必ず `pnpm install` を実行し、`pnpm-lock.yaml` を更新する
+- CI では `--frozen-lockfile` がデフォルトのため、lockfile未更新だと止まる
+
+### 7. クリーンアップステップでコンテナ未存在エラー
+
+**症状**: `docker stop postgres-test && docker rm postgres-test` が「コンテナなし」で失敗し、ジョブが中断
+
+**対処**:
+- `.github/workflows/ci.yml` のクリーンアップを `docker stop ... && docker rm ... || true` にして未存在を許容
+
 ## ログの見方
 
 ### 重要な行を探す

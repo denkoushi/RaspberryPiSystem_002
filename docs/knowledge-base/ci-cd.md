@@ -36,6 +36,8 @@ update-frequency: high
 - **根本原因7**: テストデータの形式が変更されたのにテストが更新されていない
 - **根本原因8**: `main.ts`で`NODE_ENV !== 'test'`のチェックがあるため、CIでAPIサーバーを起動する際は`NODE_ENV=production`を設定する必要がある
 - **根本原因9（2025-12-07）**: `e2e-smoke`ジョブでPostgreSQL/Prisma Client/シードが未実行、かつVite devサーバーにAPIプロキシがなく、`kiosk`画面が空になりリンクが不可視となる
+- **根本原因10（2025-12-07）**: shared-typesへeslint依存を追加後、`pnpm-lock.yaml`未更新のまま `pnpm install --frozen-lockfile` を実行しCIが停止（ERR_PNPM_OUTDATED_LOCKFILE）
+- **根本原因11（2025-12-07）**: CIクリーンアップステップで `postgres-test` コンテナが存在しないときに `docker stop ... && docker rm ...` が失敗しジョブが中断
 
 **有効だった対策**: 
 - CIワークフローで`pnpm`のバージョンを9に変更
@@ -48,6 +50,8 @@ update-frequency: high
 - CIでAPIサーバー起動時に`NODE_ENV=production`を設定
 - （2025-12-07追加）`e2e-smoke`でPostgreSQL起動→Prisma Client生成→migrate→seedを実施し、Vite devサーバーに`/api` `/ws`プロキシを付与、Playwright起動時に`VITE_API_BASE_URL`/`VITE_WS_BASE_URL`/`VITE_DEFAULT_CLIENT_KEY=client-key-raspberrypi4-kiosk1`を注入
 - （2025-12-07追加）シードに`client-key-raspberrypi4-kiosk1`を登録し、キオスク既定キーで動作するように統一
+- （2025-12-07追加）shared-types依存追加後は必ず `pnpm install` を実行し lockfile を更新してから CI を走らせる（frozen-lockfile で止めない）
+- （2025-12-07追加）CIクリーンアップでコンテナ未存在を許容するため `docker stop ... && docker rm ... || true` に変更
 
 **学んだこと**: 
 - CI環境とローカル環境の差異を常に確認する必要がある
@@ -61,6 +65,7 @@ update-frequency: high
   5. 環境変数の確認
 
 **解決状況**: 🔄 **進行中**（2025-12-07、e2e-smoke安定化を反映済み）
+**最新状況（2025-12-07）**: lockfile更新とクリーンアップ修正後、`lint-and-test`/`e2e-smoke`/`docker-build` が連続成功を確認
 
 **関連ファイル**: 
 - `.github/workflows/ci.yml`
