@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
+
+import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
-import { useNfcStream } from '../../hooks/useNfcStream';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { KioskReturnPage } from './KioskReturnPage';
-import type { Loan } from '../../api/types';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useNfcStream } from '../../hooks/useNfcStream';
 import { captureAndCompressPhoto } from '../../utils/camera';
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+
+import { KioskReturnPage } from './KioskReturnPage';
+
+import type { Loan } from '../../api/types';
+import type { AxiosError } from 'axios';
 
 export function KioskPhotoBorrowPage() {
-  const { data: config } = useKioskConfig();
+  useKioskConfig(); // 初期設定取得（キャッシュ用途）
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
@@ -216,10 +220,11 @@ export function KioskPhotoBorrowPage() {
             processingRef.current = false;
           }, 5000);
         },
-        onError: (error: any) => {
+        onError: (error: unknown) => {
           setIsCapturing(false);
-          const apiMessage: string | undefined = error?.response?.data?.message;
-          const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : error?.message;
+          const apiErr = error as Partial<AxiosError<{ message?: string }>>;
+          const apiMessage: string | undefined = apiErr.response?.data?.message;
+          const message = typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : apiErr?.message;
           setError(message ?? '写真の撮影に失敗しました');
           // エラーログは本番環境でも出力（問題の特定に必要）
           console.error('[KioskPhotoBorrowPage] Photo borrow error:', error);
@@ -232,16 +237,19 @@ export function KioskPhotoBorrowPage() {
       }
       );
     })();
-  }, [nfcEvent?.uid, nfcEvent?.timestamp, resolvedClientId, isCapturing, successLoan]); // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
+    // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
+  }, [nfcEvent, photoBorrowMutation, resolvedClientId, isCapturing, successLoan]);
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {
+    const processedUids = processedUidsRef.current;
+    const processedEventTimestamps = processedEventTimestampsRef.current;
     return () => {
       pageMountedRef.current = false;
       lastEventKeyRef.current = null;
       processingRef.current = false;
-      processedUidsRef.current.clear();
-      processedEventTimestampsRef.current.clear();
+      processedUids.clear();
+      processedEventTimestamps.clear();
     };
   }, []);
 

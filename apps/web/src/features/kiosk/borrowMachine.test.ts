@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { interpret } from 'xstate';
+
 import { createBorrowMachine } from './borrowMachine';
+
 import type { Loan } from '../../api/types';
 
 describe('borrow state machine', () => {

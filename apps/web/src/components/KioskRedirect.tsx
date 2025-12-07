@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+
 import { useKioskConfig } from '../api/hooks';
 
 /**
@@ -47,6 +48,15 @@ export function KioskRedirect() {
       return;
     }
 
+    const isOnPhotoPage = normalizedPath === '/kiosk/photo';
+    const isOnTagPage = normalizedPath === '/kiosk/tag';
+    const isOnReturnPage = normalizedPath === '/kiosk/return';
+    
+    // 返却ページにいる場合はリダイレクトしない（エラー時やconfigがnullでもリダイレクトしない）
+    if (isOnReturnPage) {
+      return;
+    }
+
     if (error) {
       // エラーログは常に出力（問題の特定に必要）
       console.error('[KioskRedirect] Error loading config:', error);
@@ -68,15 +78,6 @@ export function KioskRedirect() {
     
     if (enableDebugLogs) {
       console.log('[KioskRedirect] Config loaded:', config, 'defaultMode:', currentDefaultMode, 'lastDefaultMode:', lastDefaultMode, 'pathname:', location.pathname);
-    }
-    
-    const isOnPhotoPage = normalizedPath === '/kiosk/photo';
-    const isOnTagPage = normalizedPath === '/kiosk/tag';
-    const isOnReturnPage = normalizedPath === '/kiosk/return';
-    
-    // 返却ページにいる場合はリダイレクトしない
-    if (isOnReturnPage) {
-      return;
     }
     
     // defaultModeが変更された場合、または初回ロード時、または/kioskにいる場合にリダイレクト

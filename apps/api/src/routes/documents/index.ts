@@ -1,7 +1,3 @@
-import type { FastifyInstance } from 'fastify';
-import { registerDocumentFileRoutes } from './files/index.js';
-import { registerDocumentViewerRoutes } from './viewer/index.js';
-
 /**
  * ドキュメントモジュールのルート登録
  * 将来のPDF/Excelビューワーモジュールで使用
@@ -11,7 +7,7 @@ import { registerDocumentViewerRoutes } from './viewer/index.js';
  * 2. 各ルートハンドラーの実装
  * 3. routes/index.tsでの登録
  */
-export async function registerDocumentsRoutes(app: FastifyInstance): Promise<void> {
+export async function registerDocumentsRoutes(): Promise<void> {
   // 将来の実装時に有効化
   // await app.register(
   //   async (subApp) => {

@@ -2,7 +2,7 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-12-07
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
@@ -147,6 +147,7 @@ CIが失敗しました。ログ全体を添付します。
 
 **対処法**:
 - CIワークフローの`Generate Prisma Client`ステップを確認
+
 - 環境変数の設定を確認
 
 ### 4. ビルドエラー
@@ -160,6 +161,69 @@ CIが失敗しました。ログ全体を添付します。
 **対処法**:
 - ローカルで`pnpm build`を実行して確認
 - 型エラーを修正
+
+### 5. E2Eスモーク（kiosk）が画面表示に失敗する
+
+**症状**: Playwrightの`kiosk-smoke`でリンクが可視にならず失敗する（/kiosk でナビゲーションが表示されない）。
+
+**チェックリスト（CIで再現性を確保するための最小セット）**:
+1. PostgreSQLを起動しているか（`docker run ... postgres-e2e-smoke`）
+2. Prisma Clientを生成したか（`pnpm prisma generate`）
+3. migrateとseedを実行したか（`pnpm prisma migrate deploy` / `pnpm prisma db seed`）
+4. seedに`client-key-raspberrypi4-kiosk1`が含まれているか
+5. Vite devサーバーにAPI/WSプロキシがあるか（`vite.config.ts` で `/api` `/ws` を `http://localhost:8080` にフォワード）
+6. Playwright起動時に以下を環境変数で渡しているか
+   - `VITE_API_BASE_URL=http://localhost:8080/api`
+   - `VITE_WS_BASE_URL=ws://localhost:8080/ws`
+   - `VITE_DEFAULT_CLIENT_KEY=client-key-raspberrypi4-kiosk1`
+
+**参考ファイル**:
+- `.github/workflows/ci.yml`
+- `apps/web/vite.config.ts`
+- `playwright.config.ts`
+- `apps/api/prisma/seed.ts`
+
+### 6. lockfile更新忘れによる frozen-lockfile エラー
+
+**症状**: `ERR_PNPM_OUTDATED_LOCKFILE` で CI が停止（例: shared-types に lint 依存を追加後）
+
+**対処**:
+- 依存追加後に必ず `pnpm install` を実行し、`pnpm-lock.yaml` を更新する
+- CI では `--frozen-lockfile` がデフォルトのため、lockfile未更新だと止まる
+
+### 7. クリーンアップステップでコンテナ未存在エラー
+
+**症状**: `docker stop postgres-test && docker rm postgres-test` が「コンテナなし」で失敗し、ジョブが中断
+
+**対処**:
+- `.github/workflows/ci.yml` のクリーンアップを `docker stop ... && docker rm ... || true` にして未存在を許容
+
+### 8. Lintエラー（import/order違反）
+
+**症状**: `import/order` エラーでlintジョブが失敗
+
+**エラーメッセージ例**:
+```
+error  There should be at least one empty line between import groups  import/order
+error  `../client` import should occur before type import of `@raspi-system/shared-types`  import/order
+```
+
+**確認事項**:
+- 新規ファイルを作成したか（特にテストファイル）
+- import文の順序が正しいか（builtin → external → internal → parent/sibling → type）
+- importグループ間に空行があるか
+
+**対処法**:
+- ローカルで `pnpm lint --fix` を実行して自動修正
+- コミット前に必ず `pnpm lint --max-warnings=0` で確認
+- 修正後、再度CIを実行して確認
+
+**予防策**:
+- 新規ファイル作成時は必ず `pnpm lint --fix` を実行してからコミット
+- VS CodeのESLint拡張機能を有効化してリアルタイムで確認
+- コミット前に `pnpm lint --max-warnings=0` で確認する習慣をつける
+
+**参考**: Phase 8実装時に `contracts.client.test.ts` で同様のエラーが発生し、CI run #637-#640が失敗。`pnpm lint --fix` で修正後、run #641で成功。
 
 ## ログの見方
 

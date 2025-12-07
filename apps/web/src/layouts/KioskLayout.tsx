@@ -1,10 +1,11 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { KioskRedirect } from '../components/KioskRedirect';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import { Input } from '../components/ui/Input';
+
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
-import { useEffect } from 'react';
+import { KioskRedirect } from '../components/KioskRedirect';
+import { Input } from '../components/ui/Input';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 const navLink = 'rounded-md px-4 py-2 text-white hover:bg-white/10 transition-colors';
 

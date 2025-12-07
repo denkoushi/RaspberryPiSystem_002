@@ -1,22 +1,23 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { LoginPage } from './pages/LoginPage';
+
+import { KioskRedirect } from './components/KioskRedirect';
+import { RequireAuth } from './components/RequireAuth';
+import { AdminLayout } from './layouts/AdminLayout';
+import { KioskLayout } from './layouts/KioskLayout';
+import { ClientsPage } from './pages/admin/ClientsPage';
+import { DashboardPage } from './pages/admin/DashboardPage';
+import { MasterImportPage } from './pages/admin/MasterImportPage';
+import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
+import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
+import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskReturnPage } from './pages/kiosk/KioskReturnPage';
-import { AdminLayout } from './layouts/AdminLayout';
-import { KioskLayout } from './layouts/KioskLayout';
-import { RequireAuth } from './components/RequireAuth';
-import { DashboardPage } from './pages/admin/DashboardPage';
-import { MasterImportPage } from './pages/admin/MasterImportPage';
-import { EmployeesPage } from './pages/tools/EmployeesPage';
-import { ItemsPage } from './pages/tools/ItemsPage';
-import { HistoryPage } from './pages/tools/HistoryPage';
-import { ClientsPage } from './pages/admin/ClientsPage';
-import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
-import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
-import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
+import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
-import { KioskRedirect } from './components/KioskRedirect';
+import { EmployeesPage } from './pages/tools/EmployeesPage';
+import { HistoryPage } from './pages/tools/HistoryPage';
+import { ItemsPage } from './pages/tools/ItemsPage';
 
 function App() {
   return (

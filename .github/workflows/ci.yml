@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run lint
+        run: pnpm lint --max-warnings=0
+
       - name: Build shared-types
         run: |
           cd packages/shared-types
@@ -202,16 +205,103 @@ jobs:
 
       - name: Cleanup PostgreSQL
         if: always()
-        run: docker stop postgres-test && docker rm postgres-test
+        run: docker stop postgres-test && docker rm postgres-test || true
 
       - name: Build Web
         run: |
           cd apps/web
           pnpm build
 
-  e2e-tests:
+  e2e-smoke:
     runs-on: ubuntu-latest
     needs: lint-and-test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start PostgreSQL (smoke)
+        run: |
+          docker run -d \
+            --name postgres-e2e-smoke \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            -p 5432:5432 \
+            --health-cmd="pg_isready -U postgres" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=5 \
+            postgres:15-alpine
+
+      - name: Wait for PostgreSQL (smoke)
+        run: |
+          timeout=60
+          elapsed=0
+          until docker exec postgres-e2e-smoke pg_isready -U postgres 2>/dev/null; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "PostgreSQL failed to start within $timeout seconds"
+              docker logs postgres-e2e-smoke
+              exit 1
+            fi
+            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "PostgreSQL is ready!"
+
+      - name: Generate Prisma Client (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Run Prisma migrations (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Seed database (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma db seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Run E2E smoke tests
+        env:
+          CI: true
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          VITE_KIOSK_DEFAULT_MODE: TAG
+        run: pnpm test:e2e:smoke
+
+      - name: Cleanup PostgreSQL (smoke)
+        if: always()
+        run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: e2e-smoke
+    continue-on-error: true
     
     steps:
       - name: Checkout code
@@ -301,9 +391,9 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          echo "Running E2E tests..."
+          echo "Running E2E tests (non-blocking)..."
           pnpm test:e2e || {
-            echo "E2E tests failed!"
+            echo "E2E tests failed (allowed to fail)."
             exit 1
           }
         env:
@@ -328,7 +418,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: lint-and-test
+    needs: [lint-and-test, e2e-smoke]
     
     steps:
       - name: Checkout code

@@ -330,7 +330,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     const alertDir = alertsDirectory
       ? alertsDirectory
       : path.join(process.cwd(), 'alerts');
-    let fileAlerts: Array<{ id: string; type: string; message: string; timestamp: string; acknowledged: boolean }> = [];
+    const fileAlerts: Array<{ id: string; type: string; message: string; timestamp: string; acknowledged: boolean }> = [];
     
     try {
       const files = await fs.readdir(alertDir);

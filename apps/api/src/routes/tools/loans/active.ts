@@ -9,7 +9,6 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
   app.get('/active', { config: { rateLimit: false } }, async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
     let resolvedClientId = query.clientId;
-    let allowWithoutAuth = false;
 
     // クライアントキーがあれば優先的にデバイス認証とみなす
     const headerKey = request.headers['x-client-key'];
@@ -21,7 +20,6 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
         // clientIdが指定されている場合は検証のみ
         await loanService.resolveClientId(resolvedClientId, headerKey);
       }
-      allowWithoutAuth = true;
     } else {
       try {
         await canView(request, reply);

@@ -1,6 +1,5 @@
 import cron from 'node-cron';
 import { SignageRenderer } from './signage.renderer.js';
-import { SignageService } from './signage.service.js';
 import { logger } from '../../lib/logger.js';
 
 /**

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useTransactions } from '../../api/hooks';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+
 import { api } from '../../api/client';
+import { useTransactions } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+
 import type { Transaction } from '../../api/types';
 
 export function HistoryPage() {
@@ -25,14 +27,17 @@ export function HistoryPage() {
 
   const handleDownloadCsv = () => {
     const header = ['日時', 'アクション', 'アイテム', '従業員', '端末'];
-    const rows = transactions.map((tx) => [
+    const rows = transactions.map((tx) => {
+      const details = tx.details as { itemSnapshot?: { name?: string }; employeeSnapshot?: { name?: string } } | null;
+      return [
       new Date(tx.createdAt).toLocaleString(),
       tx.action,
       // スナップショットを優先し、無ければマスタ
-      (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-',
-      (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-',
+      details?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-',
+      details?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-',
       tx.client?.name ?? '-'
-    ]);
+    ];
+    });
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -94,8 +99,9 @@ export function HistoryPage() {
               </thead>
               <tbody>
                 {transactions.map((tx: Transaction) => {
-                  const itemName = (tx.details as any)?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-';
-                  const employeeName = (tx.details as any)?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
+                  const details = tx.details as { itemSnapshot?: { name?: string }; employeeSnapshot?: { name?: string } } | null;
+                  const itemName = details?.itemSnapshot?.name ?? tx.loan?.item?.name ?? '-';
+                  const employeeName = details?.employeeSnapshot?.name ?? tx.actorEmployee?.displayName ?? '-';
                   // 写真サムネイルのURLを生成
                   const thumbnailUrl = tx.loan?.photoUrl
                     ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')

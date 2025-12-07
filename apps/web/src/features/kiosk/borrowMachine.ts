@@ -1,4 +1,5 @@
 import { createMachine, assign } from 'xstate';
+
 import type { Loan } from '../../api/types';
 
 interface BorrowContext {
@@ -14,16 +15,6 @@ type BorrowEvent =
   | { type: 'RESET' }
   | { type: 'SUCCESS'; loan: Loan }
   | { type: 'FAIL'; message: string };
-
-function isItemEvent(event: BorrowEvent | undefined): event is Extract<BorrowEvent, { type: 'ITEM_SCANNED' }> {
-  return event?.type === 'ITEM_SCANNED';
-}
-
-function isEmployeeEvent(
-  event: BorrowEvent | undefined
-): event is Extract<BorrowEvent, { type: 'EMPLOYEE_SCANNED' }> {
-  return event?.type === 'EMPLOYEE_SCANNED';
-}
 
 function isSuccessEvent(event: BorrowEvent | undefined): event is Extract<BorrowEvent, { type: 'SUCCESS' }> {
   return event?.type === 'SUCCESS';

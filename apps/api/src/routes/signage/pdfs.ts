@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
-import { pdfSchema, pdfUpdateSchema, pdfParamsSchema } from './schemas.js';
+import { pdfUpdateSchema, pdfParamsSchema } from './schemas.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 import { ApiError } from '../../lib/errors.js';
 // SignageDisplayModeは型として使用するため、Prisma Clientが生成されるまで型エラーが発生する可能性がある

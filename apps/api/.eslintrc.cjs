@@ -8,10 +8,29 @@ module.exports = {
     sourceType: 'module',
     project: './tsconfig.json'
   },
-  plugins: ['unused-imports'],
-  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended', 'prettier'],
+  plugins: ['unused-imports', 'import'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:import/recommended',
+    'plugin:import/typescript',
+    'prettier'
+  ],
   parser: '@typescript-eslint/parser',
   rules: {
-    'unused-imports/no-unused-imports': 'error'
-  }
+    'unused-imports/no-unused-imports': 'error',
+    'import/no-unresolved': 'off',
+    'import/order': 'off',
+    'import/no-cycle': 'error'
+  },
+  overrides: [
+    {
+      files: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**/*.{ts,tsx}'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/no-unused-vars': 'off',
+        'unused-imports/no-unused-imports': 'off'
+      }
+    }
+  ]
 };

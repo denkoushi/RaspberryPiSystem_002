@@ -1,11 +1,13 @@
+import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
+
 import { useEmployeeMutations, useEmployees } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
 import { useNfcStream } from '../../hooks/useNfcStream';
+
 import type { Employee } from '../../api/types';
-import axios from 'axios';
 
 const initialForm = {
   employeeCode: '',
@@ -95,7 +97,7 @@ export function EmployeesPage() {
                 if (data.issues && Array.isArray(data.issues) && data.issues.length > 0) {
                   return (
                     <div className="mt-1">
-                      {data.issues.map((issue: any, index: number) => (
+                      {data.issues.map((issue: { path?: (string | number)[]; message?: string }, index: number) => (
                         <p key={index} className="mt-1">
                           {issue.path && issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}
                           {issue.message}

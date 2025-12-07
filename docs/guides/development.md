@@ -143,7 +143,16 @@ Webアプリケーションは`http://localhost:5173`で起動します。
    pnpm build
    ```
 
-4. **テスト実行**
+4. **Lintチェック**
+   ```bash
+   # 全プロジェクトのlintチェック
+   pnpm lint --max-warnings=0
+   ```
+   
+   **注意**: pre-commitフックが有効になっているため、コミット時に自動的にlintチェックが実行されます。
+   lint違反がある場合はコミットが拒否されます。
+
+5. **テスト実行**
    ```bash
    # APIテスト
    cd apps/api
@@ -255,12 +264,26 @@ curl -X POST http://localhost:8080/api/tools/employees \
 
 ## コードスタイル
 
+### Lint準拠の自動強制
+
+本プロジェクトでは、**仕組み上、必ずlint準拠のコードが生成される**ようになっています：
+
+1. **pre-commitフック**: コミット時に自動的にlintチェックが実行されます
+   - lint違反がある場合はコミットが拒否されます
+   - `.husky/pre-commit`で設定されています
+
+2. **CI/CD**: GitHub Actionsで`pnpm lint --max-warnings=0`が実行されます
+   - lint違反がある場合はCIが失敗し、マージできません
+   - `.github/workflows/ci.yml`で設定されています
+
+3. **開発時の手動チェック**: 必要に応じて`pnpm lint`を実行できます
+
 ### TypeScript
 
 - ESLintとPrettierを使用
 - 型安全性を重視
 - 明示的な型注釈を推奨
-- `any`の使用を避ける
+- `any`の使用を避ける（lintで警告されます）
 - エラーハンドリングを適切に実装
 
 ### 命名規則

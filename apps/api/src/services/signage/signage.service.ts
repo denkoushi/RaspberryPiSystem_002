@@ -6,7 +6,6 @@ type ScheduleSummary = Pick<
   'id' | 'name' | 'contentType' | 'pdfId' | 'dayOfWeek' | 'startTime' | 'endTime' | 'priority' | 'enabled'
 >;
 import { prisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 

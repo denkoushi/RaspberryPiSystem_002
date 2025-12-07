@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Lint check before commit
+echo "Running lint check..."
+pnpm lint --max-warnings=0
+
+if [ $? -ne 0 ]; then
+  echo "❌ Lint check failed. Please fix lint errors before committing."
+  exit 1
+fi
+
+echo "✅ Lint check passed."
+

@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { ApiError } from '../../lib/errors.js';
 
 /**
  * PDFページ画像のベースディレクトリ

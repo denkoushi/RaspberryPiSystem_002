@@ -57,6 +57,11 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
       // NODE_ENVを設定しない（デフォルトの動作を使用）
+      env: {
+        VITE_API_BASE_URL: 'http://localhost:8080/api',
+        VITE_WS_BASE_URL: 'ws://localhost:8080/ws',
+        VITE_DEFAULT_CLIENT_KEY: 'client-key-raspberrypi4-kiosk1',
+      },
     },
   ] : undefined,
 });

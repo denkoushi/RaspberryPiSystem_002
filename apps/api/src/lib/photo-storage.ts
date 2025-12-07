@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { cameraConfig } from '../config/camera.config.js';
 
 /**
  * 写真保存のベースディレクトリ

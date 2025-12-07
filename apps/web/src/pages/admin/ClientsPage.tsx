@@ -1,10 +1,12 @@
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
-import type { ClientDevice, ClientLogLevel } from '../../api/client';
+
 import { useClients, useClientMutations, useClientStatuses, useClientLogs } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+
+import type { ClientDevice, ClientLogLevel } from '../../api/client';
 
 function formatUptime(seconds?: number | null) {
   if (!seconds) return '-';
@@ -40,7 +42,7 @@ export function ClientsPage() {
       }),
     []
   );
-  const statusData = statusQuery.data ?? [];
+  const statusData = useMemo(() => statusQuery.data ?? [], [statusQuery.data]);
   const clientOptions = useMemo(
     () => statusData.map((status) => ({ id: status.clientId, label: status.hostname || status.clientId })),
     [statusData]
