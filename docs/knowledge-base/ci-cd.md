@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-12-07
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 4件  
+**件数**: 5件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -35,6 +35,7 @@ update-frequency: high
 - **根本原因6**: Vitestのタイムアウトが短すぎる
 - **根本原因7**: テストデータの形式が変更されたのにテストが更新されていない
 - **根本原因8**: `main.ts`で`NODE_ENV !== 'test'`のチェックがあるため、CIでAPIサーバーを起動する際は`NODE_ENV=production`を設定する必要がある
+- **根本原因9（2025-12-07）**: `e2e-smoke`ジョブでPostgreSQL/Prisma Client/シードが未実行、かつVite devサーバーにAPIプロキシがなく、`kiosk`画面が空になりリンクが不可視となる
 
 **有効だった対策**: 
 - CIワークフローで`pnpm`のバージョンを9に変更
@@ -45,6 +46,8 @@ update-frequency: high
 - テストデータの形式を更新
 - CI環境でE2Eテストのログインテストをスキップ
 - CIでAPIサーバー起動時に`NODE_ENV=production`を設定
+- （2025-12-07追加）`e2e-smoke`でPostgreSQL起動→Prisma Client生成→migrate→seedを実施し、Vite devサーバーに`/api` `/ws`プロキシを付与、Playwright起動時に`VITE_API_BASE_URL`/`VITE_WS_BASE_URL`/`VITE_DEFAULT_CLIENT_KEY=client-key-raspberrypi4-kiosk1`を注入
+- （2025-12-07追加）シードに`client-key-raspberrypi4-kiosk1`を登録し、キオスク既定キーで動作するように統一
 
 **学んだこと**: 
 - CI環境とローカル環境の差異を常に確認する必要がある
@@ -57,7 +60,7 @@ update-frequency: high
   4. テストの追従（コード変更に合わせてテストも更新）
   5. 環境変数の確認
 
-**解決状況**: 🔄 **進行中**（2025-11-25）
+**解決状況**: 🔄 **進行中**（2025-12-07、e2e-smoke安定化を反映済み）
 
 **関連ファイル**: 
 - `.github/workflows/ci.yml`
@@ -181,5 +184,33 @@ update-frequency: high
 - `scripts/test/backup-restore.test.sh`
 - `.github/workflows/ci.yml`
 - `apps/api/prisma/schema.prisma`
+- `apps/api/prisma/seed.ts`
+
+---
+
+### [KB-025] E2Eスモーク（kiosk）がナビゲーション不可視で失敗する
+
+**事象**:  
+- `e2e/smoke/kiosk-smoke.spec.ts` のリンク可視性チェックが3件すべて失敗（Playwright）  
+- ログにはAPI/Webサーバー起動成功が出ているが、画面上でリンクが表示されない
+
+**要因（再現性あり）**:  
+1. `e2e-smoke`ジョブでPostgreSQLを起動せず、Prisma Client生成・migrate・seedを実行していなかった  
+2. Vite devサーバーに`/api` `/ws`プロキシがなく、フロント→API通信が失敗してUIが空に見える  
+3. Playwright起動時に`VITE_API_BASE_URL` / `VITE_WS_BASE_URL` / `VITE_DEFAULT_CLIENT_KEY`を注入しておらず、キオスク既定キーが一致しない  
+4. Prisma seedに`client-key-raspberrypi4-kiosk1`が無く、`/kiosk/config`でdefaultMode解決に失敗する可能性
+
+**対策**:  
+- `.github/workflows/ci.yml`: `e2e-smoke`にPostgreSQL起動→待機→Prisma generate→migrate→seedを追加  
+- `apps/web/vite.config.ts`: Vite devサーバーに`/api` `/ws`プロキシを追加（CIでも同一オリジンで叩けるように）  
+- `playwright.config.ts`: webServer起動時に `VITE_API_BASE_URL=http://localhost:8080/api`, `VITE_WS_BASE_URL=ws://localhost:8080/ws`, `VITE_DEFAULT_CLIENT_KEY=client-key-raspberrypi4-kiosk1` を設定  
+- `apps/api/prisma/seed.ts`: `client-key-raspberrypi4-kiosk1` をseedに追加（`client-demo-key`も維持）
+
+**解決状況**: ✅ **解決済み（2025-12-07）**
+
+**関連ファイル**:  
+- `.github/workflows/ci.yml`  
+- `apps/web/vite.config.ts`  
+- `playwright.config.ts`  
 - `apps/api/prisma/seed.ts`
 

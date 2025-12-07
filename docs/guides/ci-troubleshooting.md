@@ -2,7 +2,7 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-12-07
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
@@ -160,6 +160,27 @@ CIが失敗しました。ログ全体を添付します。
 **対処法**:
 - ローカルで`pnpm build`を実行して確認
 - 型エラーを修正
+
+### 5. E2Eスモーク（kiosk）が画面表示に失敗する
+
+**症状**: Playwrightの`kiosk-smoke`でリンクが可視にならず失敗する（/kiosk でナビゲーションが表示されない）。
+
+**チェックリスト（CIで再現性を確保するための最小セット）**:
+1. PostgreSQLを起動しているか（`docker run ... postgres-e2e-smoke`）
+2. Prisma Clientを生成したか（`pnpm prisma generate`）
+3. migrateとseedを実行したか（`pnpm prisma migrate deploy` / `pnpm prisma db seed`）
+4. seedに`client-key-raspberrypi4-kiosk1`が含まれているか
+5. Vite devサーバーにAPI/WSプロキシがあるか（`vite.config.ts` で `/api` `/ws` を `http://localhost:8080` にフォワード）
+6. Playwright起動時に以下を環境変数で渡しているか
+   - `VITE_API_BASE_URL=http://localhost:8080/api`
+   - `VITE_WS_BASE_URL=ws://localhost:8080/ws`
+   - `VITE_DEFAULT_CLIENT_KEY=client-key-raspberrypi4-kiosk1`
+
+**参考ファイル**:
+- `.github/workflows/ci.yml`
+- `apps/web/vite.config.ts`
+- `playwright.config.ts`
+- `apps/api/prisma/seed.ts`
 
 ## ログの見方
 
