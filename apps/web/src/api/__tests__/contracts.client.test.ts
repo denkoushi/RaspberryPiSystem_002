@@ -1,5 +1,13 @@
 import { describe, it, expectTypeOf } from 'vitest';
 
+import {
+  borrowItem,
+  getActiveLoans,
+  getTransactions,
+  loginRequest,
+  returnLoan
+} from '../client';
+
 import type {
   AuthResponse,
   BorrowPayload,
@@ -9,13 +17,6 @@ import type {
   ReturnPayload,
   Transaction
 } from '@raspi-system/shared-types';
-import {
-  borrowItem,
-  getActiveLoans,
-  getTransactions,
-  loginRequest,
-  returnLoan
-} from '../client';
 
 describe('契約テスト: web APIクライアントと shared-types の整合性', () => {
   it('レスポンス型が shared-types に一致する', () => {
