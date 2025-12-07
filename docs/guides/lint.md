@@ -17,6 +17,21 @@
 - dist/生成物は lint 対象外（`ignorePatterns: ['dist/**']`）
 - 厳格化（`recommended-type-checked`, securityルール）は影響範囲を見て段階導入する
 
+### import/order 運用メモ
+- グループ順: builtin → external → internal（`@raspi-system/**`など） → parent/sibling → object → type
+- グループ間は空行を1行入れる
+- 新規ファイル作成時は `pnpm lint --fix` を実行して自動整形する
+
+### CIで落ちやすいポイントと対策
+- import/order: 空行不足・type importの位置ずれ → `pnpm lint --fix` で解決可
+- lockfile: 依存追加後に `pnpm install` で `pnpm-lock.yaml` を更新（`--frozen-lockfile` 回避）
+- E2Eスモーク: `VITE_DEFAULT_CLIENT_KEY` など環境変数を固定し、DB起動→generate→migrate→seedを実行
+
+### コミット前チェックリスト
+- `pnpm lint --max-warnings=0`
+- 追加/更新ファイルで `pnpm lint --fix` を実行
+- 依存を追加した場合は `pnpm install` 後に lockfile をコミット
+
 ## CIでの扱いと段階的な安定化
 - lintは必須ジョブとして実行（秩序維持の最低ライン）
 - E2Eは段階導入：まずはUIスモーク（初期表示＋タブ遷移など最小ケース）を安定化し、重いシナリオは任意ジョブに退避
