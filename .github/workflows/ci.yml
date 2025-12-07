@@ -237,12 +237,59 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Start PostgreSQL (smoke)
+        run: |
+          docker run -d \
+            --name postgres-e2e-smoke \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            -p 5432:5432 \
+            --health-cmd="pg_isready -U postgres" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=5 \
+            postgres:15-alpine
+
+      - name: Wait for PostgreSQL (smoke)
+        run: |
+          timeout=60
+          elapsed=0
+          until docker exec postgres-e2e-smoke pg_isready -U postgres 2>/dev/null; do
+            if [ $elapsed -ge $timeout ]; then
+              echo "PostgreSQL failed to start within $timeout seconds"
+              docker logs postgres-e2e-smoke
+              exit 1
+            fi
+            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "PostgreSQL is ready!"
+
+      - name: Run Prisma migrations (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Seed database (smoke)
+        run: |
+          cd apps/api
+          pnpm prisma db seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
       - name: Run E2E smoke tests
         env:
           CI: true
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           VITE_KIOSK_DEFAULT_MODE: TAG
         run: pnpm test:e2e:smoke
+
+      - name: Cleanup PostgreSQL (smoke)
+        if: always()
+        run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke
 
   e2e-tests:
     runs-on: ubuntu-latest
