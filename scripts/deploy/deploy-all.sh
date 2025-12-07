@@ -4,6 +4,13 @@ set -euo pipefail
 # deploy-all: change-detector -> impact-analyzer -> deploy-executor -> verifier を順次実行する。
 # デフォルトは executor/verifier が dry-run。DEPLOY_EXECUTOR_ENABLE=1 / DEPLOY_VERIFIER_ENABLE=1 で実行。
 # ログ: ${DEPLOY_LOG_DIR:-logs/deploy}/deploy-<ts>.jsonl
+#
+# 【重要】Pi3デプロイ前の必須手順（KB-086, KB-089参照）:
+#   1. Pi3サイネージサービスを停止・無効化: systemctl stop + disable signage-lite.service signage-lite-update.timer
+#   2. メモリ空き確認: free -m（120MB以上必要）
+#   3. 既存Ansibleプロセスkill: pkill -9 -f ansible-playbook
+#   デプロイ後: systemctl enable + start でサイネージを再有効化
+#   参照: docs/knowledge-base/infrastructure.md#kb-086, docs/knowledge-base/infrastructure.md#kb-089
 
 usage() {
   cat <<'EOF'

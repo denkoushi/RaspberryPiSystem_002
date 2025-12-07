@@ -1785,11 +1785,12 @@ const textX = x + textAreaX;
 4. **メモリ使用状況の監視**: デプロイ前にメモリ使用状況を確認し、十分な空き容量を確保する
 5. **ドキュメント参照の徹底**: デプロイ前に必ずドキュメントを参照し、標準手順を確認する
 
-**標準プロセス**:
+**標準プロセス**（KB-089で更新）:
 1. **デプロイ前の準備**:
    ```bash
-   # Pi3サイネージサービスを停止
+   # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
    ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+   ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
    
    # メモリ使用状況を確認（120MB以上空きがあることを確認）
    ssh signageras3@<pi3_ip> 'free -m'
@@ -1809,11 +1810,12 @@ const textX = x + textAreaX;
 3. **デプロイ後の確認**:
    ```bash
    # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
-   # サイネージサービスを再起動
+   # サイネージサービスを再有効化・再起動
+   ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
    ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
    
    # サービスが正常に動作していることを確認
-   ssh signageras3@<pi3_ip> 'sudo systemctl is-active signage-lite.service'
+   ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
    ```
 
 **解決状況**: ✅ **解決済み**（2025-12-06）
@@ -1853,5 +1855,108 @@ const textX = x + textAreaX;
 - `infrastructure/ansible/roles/client/tasks/main.yml`
 - `infrastructure/ansible/roles/client/templates/sudoers-client.j2`
 - `docs/guides/deployment.md`（標準プロセスの補足）
+
+---
+
+### [KB-088] Prisma P3009 (Signage migrations) 既存型が残存し migrate deploy 失敗
+
+**EXEC_PLAN.md参照**: Phase 8 デプロイ再実証（2025-12-07）
+
+**事象**:
+- `pnpm prisma migrate status` が `Following migration have failed: 20251128180000_add_signage_models` を出力
+- `pnpm prisma migrate deploy` で `P3018` / `ERROR: type "SignageContentType" already exists`（DBエラー 42710）
+- DBには既に`SignageSchedule`/`SignagePdf`/`SignageEmergency`テーブルと `SignageContentType`/`SignageDisplayMode` ENUM が存在していた
+
+**要因**:
+- 過去にマイグレーションが途中適用され、DB上では型・テーブルが作成済みだが、Prismaのマイグレーション状態は「failed」のまま残っていた（不整合）
+
+**対策**:
+1. **バックアップ取得**: `docker compose exec db pg_dump -U postgres -Fc borrow_return > /var/lib/postgresql/data/backups/borrow_return_pre_20251207.dump`
+2. **残存ENUMの確認/削除**: `SELECT typname FROM pg_type ... WHERE typname ILIKE 'signage%';` で存在を確認し、必要に応じて `DROP TYPE IF EXISTS "SignageContentType" CASCADE; DROP TYPE IF EXISTS "SignageDisplayMode" CASCADE;`
+3. **マイグレーション状態の調整**: `pnpm prisma migrate resolve --applied 20251128180000_add_signage_models`
+4. **整合性確認**: `pnpm prisma migrate deploy` → pendingなしを確認
+
+**結果**:
+- `migrate deploy` で pending 0 を確認し、P3009は解消
+- Signage関連テーブル/ENUMはDBに存在し、再作成は不要
+
+**関連ファイル/コマンド**:
+- `apps/api/prisma/migrations/20251128180000_add_signage_models/migration.sql`
+- `/var/lib/postgresql/data/backups/borrow_return_pre_20251207.dump`（DBバックアップ）
+- `docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status|deploy`
+
+---
+
+### [KB-089] Pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング
+
+**EXEC_PLAN.md参照**: Phase 8 デプロイ再実証（2025-12-07）
+
+**事象**:
+- `deploy-all.sh`実行中、Pi3へのAnsibleデプロイが12分以上ハング
+- Pi3向けAnsibleプロセスが重複起動（親子プロセス）
+- ログが`impact-analyzer`で止まり、`deploy-executor`の結果が記録されない
+- Pi3のメモリ空きが80-100MB程度で不足（120MB以上必要）
+
+**経緯**:
+1. **11:33**: deploy-all.sh実行開始、Pi3サイネージサービスを停止してから実行
+2. **11:33-11:45**: Pi3デプロイが進行中、Ansibleプロセスが重複起動
+3. **11:45**: Pi4デプロイ開始、Pi3デプロイは継続中
+4. **11:48**: Pi3デプロイ完了（756秒）、Pi4デプロイ完了（121秒）、Serverデプロイ完了（45秒）
+5. **11:48**: 検証完了、全PASS
+
+**要因**:
+1. **サイネージサービスの自動再起動**: `signage-lite-update.timer`が有効なままで、デプロイ中にサイネージサービスが自動再起動し、メモリを消費
+2. **メモリ不足**: Pi3のメモリは416MB（実質利用可能120MB程度）。サイネージサービスが起動するとメモリ使用量が約295MBとなり、Ansibleデプロイ時にメモリ不足でハング
+3. **標準手順の無視**: KB-086で「サイネージサービスを停止してからデプロイ」と明記されているが、`systemctl disable`で自動再起動を防止する手順が実行されていなかった
+
+**有効だった対策**:
+- ✅ **サイネージサービスのdisable**: `sudo systemctl disable signage-lite.service signage-lite-update.timer`で自動再起動を防止
+- ✅ **十分な待機時間**: Pi3デプロイに756秒（約12.6分）を要したが、プロセスをkillせずに完了を待った
+- ✅ **プロセスの完全停止**: 再実行前に`pkill -9 ansible; pkill -9 -f deploy-all`で全プロセスをkill
+
+**標準プロセス**（KB-086を更新）:
+1. **デプロイ前の準備**:
+   ```bash
+   # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
+   ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+   ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
+   
+   # メモリ使用状況を確認（120MB以上空きがあることを確認）
+   ssh signageras3@<pi3_ip> 'free -m'
+   
+   # 既存のAnsibleプロセスをkill
+   ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+   ```
+
+2. **デプロイ実行**:
+   ```bash
+   # Pi5からPi3へデプロイ（deploy-all.sh経由）
+   cd /opt/RaspberryPiSystem_002
+   NETWORK_MODE=tailscale DEPLOY_EXECUTOR_ENABLE=1 DEPLOY_VERIFIER_ENABLE=1 ROLLBACK_ON_FAIL=1 \
+     bash scripts/deploy/deploy-all.sh
+   ```
+
+3. **デプロイ後の確認**:
+   ```bash
+   # デプロイが正常に完了したことを確認（ログでfailed=0）
+   # サイネージサービスを再有効化・再起動
+   ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
+   ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
+   
+   # サービスが正常に動作していることを確認
+   ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
+   ```
+
+**学んだこと**:
+1. **自動再起動の防止**: `systemctl stop`だけでは不十分。`systemctl disable`で自動再起動を防止する必要がある
+2. **十分な待機時間**: Pi3デプロイは10-15分かかる可能性がある。プロセスをkillせずに完了を待つ
+3. **標準手順の徹底**: KB-086/KB-089の標準手順を必ず実行する。特にPi3デプロイ時は`systemctl disable`を忘れない
+
+**解決状況**: ✅ **解決済み**（2025-12-07）
+
+**関連ファイル**:
+- `scripts/deploy/deploy-all.sh`（標準手順参照を追加）
+- `docs/guides/deployment.md`（標準プロセスの更新）
+- `docs/knowledge-base/infrastructure.md`（KB-086更新、KB-089追加）
 
 ---

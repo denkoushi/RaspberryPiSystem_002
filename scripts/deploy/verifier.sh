@@ -55,10 +55,14 @@ def render_vars(text: str):
         return os.environ.get(env_key, "")
     return re.sub(r"\{\{\s*([^\}]+?)\s*\}\}", repl, text)
 
-def http_get(url: str, expected_status: int, timeout: int = 5):
+def http_get(url: str, expected_status: int, timeout: int = 5, headers: dict = None):
     start = time.time()
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        req = urllib.request.Request(url)
+        if headers:
+            for key, value in headers.items():
+                req.add_header(key, value)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = resp.getcode()
             duration = int(time.time() - start)
             return {
@@ -168,7 +172,12 @@ for target, checks in ver_map_obj.items():
         if chk_type == "http_get":
             url = render_vars(chk.get("url", ""))
             expected_status = int(chk.get("expected_status", 200))
-            res = http_get(url, expected_status)
+            headers = chk.get("headers", {})
+            # headersの値もrender_varsで変数展開
+            rendered_headers = {}
+            for key, value in headers.items():
+                rendered_headers[key] = render_vars(str(value))
+            res = http_get(url, expected_status, headers=rendered_headers if rendered_headers else None)
             res.update({"name": name, "type": chk_type, "url": url})
         elif chk_type == "systemd_status":
             service = chk.get("service", "")

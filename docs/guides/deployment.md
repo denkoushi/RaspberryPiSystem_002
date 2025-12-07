@@ -118,8 +118,9 @@ curl http://localhost:7071/api/agent/status
 ### デプロイ前の準備（必須）
 
 ```bash
-# Pi5からPi3へSSH接続してサイネージサービスを停止
+# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化（自動再起動を防止）
 ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
 
 # sudo権限の前提
 # signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
@@ -130,6 +131,8 @@ ssh signageras3@<pi3_ip> 'free -m'
 # Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
 ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
 ```
+
+**重要**: `systemctl disable`を実行しないと、デプロイ中に`signage-lite-update.timer`がサイネージサービスを自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）。
 
 ### Ansibleを使用したデプロイ（推奨）
 
@@ -147,22 +150,25 @@ ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
 ```bash
 # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
 
-# サイネージサービスを再起動
+# サイネージサービスを再有効化・再起動
+ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
 ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
 
 # サービスが正常に動作していることを確認
-ssh signageras3@<pi3_ip> 'sudo systemctl is-active signage-lite.service'
+ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
 
 # 画像が更新されていることを確認
 ssh signageras3@<pi3_ip> 'ls -lh /var/cache/signage/current.jpg'
 ```
 
 **トラブルシューティング**:
-- **デプロイがハングする**: サイネージサービスが停止しているか確認。メモリ使用状況を確認（120MB以上空きが必要）
+- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ
 - **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
-- **デプロイが失敗する**: ログを確認（`/tmp/ansible-pi3.log`）
+- **デプロイが失敗する**: ログを確認（`logs/deploy/deploy-*.jsonl`）
 
-**関連ナレッジ**: [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
+**関連ナレッジ**: 
+- [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
+- [KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
 
 ## デプロイ方法（詳細）
 
@@ -364,6 +370,67 @@ git checkout <前のコミットハッシュ>
      pnpm prisma migrate deploy
    ```
 
+## 統合デプロイモジュール（deploy-all.sh）
+
+### 概要
+
+`scripts/deploy/deploy-all.sh`は変更検知→影響分析→デプロイ実行→検証を自動化する統合スクリプトです。
+
+### 使用方法
+
+```bash
+# Pi5で実行
+cd /opt/RaspberryPiSystem_002
+
+# ドライラン（変更検知のみ、実行なし）
+NETWORK_MODE=tailscale bash scripts/deploy/deploy-all.sh --dry-run
+
+# 本番実行（変更があれば自動デプロイ＋検証）
+NETWORK_MODE=tailscale \
+  DEPLOY_EXECUTOR_ENABLE=1 \
+  DEPLOY_VERIFIER_ENABLE=1 \
+  ROLLBACK_ON_FAIL=1 \
+  bash scripts/deploy/deploy-all.sh
+```
+
+### 環境変数
+
+| 変数 | 説明 | デフォルト |
+|------|------|-----------|
+| `NETWORK_MODE` | `local` または `tailscale` | `local` |
+| `DEPLOY_EXECUTOR_ENABLE` | デプロイ実行を有効化 | `0` |
+| `DEPLOY_VERIFIER_ENABLE` | 検証を有効化 | `0` |
+| `ROLLBACK_ON_FAIL` | 失敗時ロールバック | `0` |
+
+### 検証項目
+
+`infrastructure/ansible/verification-map.yml`で定義。詳細は[deployment-modules.md](../architecture/deployment-modules.md)を参照。
+
+## 運用チェックリスト
+
+### デプロイ前チェック
+
+- [ ] Pi5への接続確認（`ping 100.106.158.2` または `ssh denkon5sd02@<ip>`）
+- [ ] 既存Ansibleプロセスなし（`pgrep -a ansible`）
+- [ ] メモリ空き確認（Pi5: 2GB以上、Pi3: 120MB以上）
+- [ ] Pi3サイネージサービス停止（メモリ確保のため）
+
+### デプロイ後確認
+
+- [ ] サーバーAPIヘルス: `curl http://<server_ip>:8080/api/system/health` → 200
+- [ ] キオスク用API: `curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://<server_ip>:8080/api/tools/loans/active` → 200
+- [ ] サイネージ用API: `curl http://<server_ip>:8080/api/signage/content` → 200
+- [ ] Pi4 systemd: `kiosk-browser.service`, `status-agent.timer` → active
+- [ ] Pi3 systemd: `signage-lite.service`, `status-agent.timer` → active
+
+### Tailscale IP一覧
+
+| デバイス | Tailscale IP | ユーザー |
+|----------|--------------|----------|
+| Pi5 (サーバー) | 100.106.158.2 | denkon5sd02 |
+| Pi4 (キオスク) | 100.74.144.79 | tools03 |
+| Pi3 (サイネージ) | 100.105.224.86 | signageras3 |
+
 ## ベストプラクティス
 
 1. **デプロイ前のバックアップ**: 必ずデプロイ前にバックアップを取得
@@ -371,4 +438,5 @@ git checkout <前のコミットハッシュ>
 3. **ロールバック計画**: 問題発生時のロールバック手順を事前に準備
 4. **監視**: デプロイ後は監視スクリプトでシステムの状態を確認
 5. **ドキュメント更新**: デプロイ手順に変更があった場合はドキュメントを更新
+6. **Tailscale使用**: リモートアクセス時は必ず`NETWORK_MODE=tailscale`を指定
 
