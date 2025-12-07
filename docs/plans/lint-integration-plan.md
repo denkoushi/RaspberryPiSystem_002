@@ -225,6 +225,16 @@ todos:
 - 契約テストが CI で成功し、破壊的変更を検知できる体制になる
 - E2E スモークに契約チェックを追加後も安定して通る
 
+**実施状況** (2025-12-07):
+- ✅ API契約テスト追加（`apps/api/src/routes/tools/__tests__/contracts.loans.test.ts`）
+  - shared-types の BorrowPayload / ReturnPayload サンプルが zod schema を通過することを確認
+  - shared-types と zod schema のキー整合性をチェック
+- ✅ E2Eスモーク拡張（`e2e/smoke/contract-smoke.spec.ts`）
+  - `/api/tools/loans/active` エンドポイントの基本契約（200、loans配列、キー存在）を確認
+- ⏳ Web側の型整合チェック（未実装）
+- ⏳ 依存・互換性チェック（未実装）
+- ⏳ CI確認待ち（コミット・プッシュ後にCIで成功を確認）
+
 ### Phase 9（進捗管理とナレッジ共有）【これから】
 
 **目的**: 今後の拡張やモジュール統合の知見を共有し、維持管理の負荷を下げる。
