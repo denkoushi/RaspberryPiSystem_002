@@ -233,7 +233,8 @@ todos:
   - `/api/tools/loans/active` エンドポイントの基本契約（200、loans配列、キー存在）を確認
 - ✅ Web側の型整合チェック追加（`apps/web/src/api/__tests__/contracts.client.test.ts`）
   - APIクライアントのレスポンス/ペイロード型が shared-types と一致することを型テストで確認
-- ⏳ 依存・互換性チェック（破壊的変更検知スクリプト）未実装
+- ✅ 依存・互換性チェック（破壊的変更検知スナップショット）追加
+  - loans系ペイロードのキー構造を固定し、破壊的変更があればテスト失敗で検知（`apps/api/src/routes/tools/__tests__/contracts.snapshot.test.ts`）
 - ✅ CI確認1回成功（GitHub Actions run #635, branch: feature/lint-integration）
 
 ### Phase 9（進捗管理とナレッジ共有）【これから】
