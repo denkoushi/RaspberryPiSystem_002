@@ -16,6 +16,7 @@
     "test:backup": "bash scripts/test/backup-restore.test.sh",
     "test:monitor": "bash scripts/test/monitor.test.sh",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test e2e/smoke --workers=1 --retries=1",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:postgres:start": "bash scripts/test/start-postgres.sh",
