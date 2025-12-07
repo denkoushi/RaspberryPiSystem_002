@@ -64,17 +64,17 @@ todos:
       - phase5-ci-lint-strict
   - id: phase7-arch-lint
     content: "Phase 7: モジュール統合のlint強化（shared-types厳格・import/depルール）"
-    status: pending
+    status: completed
     dependencies:
       - phase6-ci-continuous-success
   - id: phase8-contract-tests
     content: "Phase 8: モジュール間契約テストと依存検証（API/Web）"
-    status: pending
+    status: completed
     dependencies:
       - phase7-arch-lint
   - id: phase9-knowledge-sharing
     content: "Phase 9: 進捗管理とナレッジ共有（docs/guides等更新）"
-    status: pending
+    status: completed
     dependencies:
       - phase8-contract-tests
 ---
@@ -178,7 +178,7 @@ todos:
 **理想状態到達の判定**:
 - Phase 6が完了した時点で「全コードがlint適合し、CIが安定して連続成功する状態」に到達したと判定する ✅
 
-### Phase 7（モジュール統合のlint強化）【実施中】
+### Phase 7（モジュール統合のlint強化）【完了】
 
 **目的**: モジュール化された機能同士の統合で衝突や依存崩れを防ぐため、lintで境界と依存を強化する。
 
@@ -240,7 +240,7 @@ todos:
   - 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）が成功
   - import/order違反修正後の最終確認完了
 
-### Phase 9（進捗管理とナレッジ共有）【実施中】
+### Phase 9（進捗管理とナレッジ共有）【完了】
 
 **目的**: 今後の拡張やモジュール統合の知見を共有し、維持管理の負荷を下げる。
 
@@ -257,6 +257,13 @@ todos:
 **成功基準**:
 - lintガイド/CIトラブルシュートガイドに新ルールと運用手順が反映される
 - チームが参照しやすい場所（docs/ 配下）に集約されている
+
+**実施状況** (2025-12-07):
+- ✅ `docs/guides/lint.md` 更新（import/order運用メモ、CIで落ちやすいポイント、コミット前チェックリスト追加）
+- ✅ `docs/guides/ci-troubleshooting.md` 更新（セクション8「Lintエラー（import/order違反）」追加）
+- ✅ `docs/knowledge-base/ci-cd.md` 更新（KB-005に根本原因12追加、import/order違反対策追記）
+- ✅ `docs/INDEX.md` 更新（最新アップデートにPhase 8完了を追記）
+- ✅ 計画表ステータス更新（Phase 7-9をcompletedに変更）
 
 ## 4. テスト項目と明確な基準
 
