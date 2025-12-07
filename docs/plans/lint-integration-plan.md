@@ -231,8 +231,9 @@ todos:
   - shared-types と zod schema のキー整合性をチェック
 - ✅ E2Eスモーク拡張（`e2e/smoke/contract-smoke.spec.ts`）
   - `/api/tools/loans/active` エンドポイントの基本契約（200、loans配列、キー存在）を確認
-- ⏳ Web側の型整合チェック（未実装）
-- ⏳ 依存・互換性チェック（未実装）
+- ✅ Web側の型整合チェック追加（`apps/web/src/api/__tests__/contracts.client.test.ts`）
+  - APIクライアントのレスポンス/ペイロード型が shared-types と一致することを型テストで確認
+- ⏳ 依存・互換性チェック（破壊的変更検知スクリプト）未実装
 - ✅ CI確認1回成功（GitHub Actions run #635, branch: feature/lint-integration）
 
 ### Phase 9（進捗管理とナレッジ共有）【これから】
