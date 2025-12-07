@@ -1,0 +1,30 @@
+verification_map:
+  server:
+    # 目的: サーバー側APIがデプロイ後に正常に起動し、リクエストに応答できることを確認
+    # 成功基準: HTTP GETが200を返す
+    # 失敗基準: タイムアウト、接続エラー、または200以外のステータスコード
+    - name: api_health
+      type: http_get
+      url: "http://{{ server_ip }}:8080/api/system/health"
+      expected_status: 200
+  pi4_kiosk:
+    # 目的: Pi4キオスクが「持出一覧」を表示できることを確認（キオスクが実際に使用する機能の検証）
+    # 検証対象: /api/tools/loans/activeエンドポイント（キオスクが実際に使用するエンドポイント）
+    # 成功基準: HTTP GETが200を返し、レスポンスにloans配列が含まれる
+    # 失敗基準: タイムアウト、接続エラー、401（認証失敗）、500（サーバーエラー）、または200以外のステータスコード
+    # 検証方法: x-client-keyヘッダーにclient-key-raspberrypi4-kiosk1（または管理コンソールで設定されたキー）を付与
+    - name: kiosk_active_loans
+      type: http_get
+      url: "http://{{ server_ip }}:8080/api/tools/loans/active"
+      expected_status: 200
+      headers:
+        x-client-key: "client-key-raspberrypi4-kiosk1"
+  pi3_signage:
+    # 目的: Pi3サイネージがサーバーからコンテンツを取得できることを確認
+    # 成功基準: HTTP GETが200を返し、画像データが返される
+    # 失敗基準: タイムアウト、接続エラー、または200以外のステータスコード
+    - name: signage_image
+      type: http_get
+      url: "http://{{ server_ip }}:8080/api/signage/content"
+      expected_status: 200
+

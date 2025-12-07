@@ -1,0 +1,56 @@
+dependency_map:
+  api_endpoints:
+    "/api/signage/content":
+      used_by: [pi3_signage, admin_console]
+      module: signage
+      files:
+        - apps/api/src/services/signage/signage.service.ts
+        - apps/api/src/services/signage/signage.renderer.ts
+        - apps/api/src/routes/signage/content.ts
+    "/api/tools/borrow":
+      used_by: [pi4_kiosk, admin_console]
+      module: tools
+      files:
+        - apps/api/src/services/tools/loan.service.ts
+        - apps/api/src/routes/tools/loans/borrow.ts
+    "/api/tools/loans/active":
+      used_by: [pi4_kiosk, admin_console]
+      module: tools
+      files:
+        - apps/api/src/services/tools/loan.service.ts
+        - apps/api/src/routes/tools/loans/active.ts
+    "/api/tools/return":
+      used_by: [pi4_kiosk, admin_console]
+      module: tools
+      files:
+        - apps/api/src/services/tools/loan.service.ts
+        - apps/api/src/routes/tools/loans/return.ts
+    "/api/tools/cancel":
+      used_by: [pi4_kiosk, admin_console]
+      module: tools
+      files:
+        - apps/api/src/services/tools/loan.service.ts
+        - apps/api/src/routes/tools/loans/cancel.ts
+
+  frontend_components:
+    "apps/web/src/pages/kiosk/KioskReturnPage.tsx":
+      depends_on: ["/api/tools/loans/active"]
+      deploy_target: pi4_kiosk
+    "apps/web/src/pages/signage/SignageDisplayPage.tsx":
+      depends_on: ["/api/signage/content"]
+      deploy_target: pi3_signage
+
+  module_dependencies:
+    tools:
+      depends_on: []
+      reason: "独立モジュール"
+    signage:
+      depends_on: [tools]
+      reason: "SignageServiceがtoolsモジュールのデータを参照"
+    kiosk:
+      depends_on: [tools]
+      reason: "キオスクがtoolsモジュールのAPIを使用"
+    documents:
+      depends_on: []
+      reason: "将来追加予定の独立モジュール"
+

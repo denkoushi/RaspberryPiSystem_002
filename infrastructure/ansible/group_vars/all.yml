@@ -7,7 +7,7 @@ network_mode: "local"
 local_network:
   raspberrypi5_ip: "192.168.10.230"
   raspberrypi4_ip: "192.168.10.223"
-  raspberrypi3_ip: "192.168.10.109"
+  raspberrypi3_ip: "192.168.128.152"
 
 # メンテナンス時（Tailscale経由）に使用するIPアドレス
 # Tailscaleで割り当てられるIPを確認して設定してください。

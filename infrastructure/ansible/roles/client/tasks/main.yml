@@ -65,6 +65,18 @@
     group: root
     mode: '0644'
 
+- name: Ensure sudoers overrides for client services
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/sudoers-client.j2"
+    dest: "/etc/sudoers.d/{{ client_sudo_user }}"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
+  when:
+    - client_sudo_user | length > 0
+    - client_sudo_nopasswd_commands | length > 0
+
 - name: Ensure services_to_restart is defined
   ansible.builtin.set_fact:
     services_to_restart: "{{ client_default_services_to_restart }}"

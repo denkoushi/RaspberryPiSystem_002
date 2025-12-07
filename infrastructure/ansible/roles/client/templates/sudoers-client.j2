@@ -1,0 +1,3 @@
+# Ansible managed: allow required systemctl commands for {{ client_sudo_user }}
+{{ client_sudo_user }} ALL=(ALL) NOPASSWD: {{ client_sudo_nopasswd_commands | join(', ') }}
+
