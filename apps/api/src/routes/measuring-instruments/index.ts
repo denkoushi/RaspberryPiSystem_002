@@ -1,0 +1,141 @@
+import type { FastifyInstance } from 'fastify';
+import { authorizeRoles } from '../../lib/auth.js';
+import {
+  MeasuringInstrumentService,
+  InspectionItemService,
+  MeasuringInstrumentTagService,
+  InspectionRecordService
+} from '../../services/measuring-instruments/index.js';
+import {
+  instrumentQuerySchema,
+  instrumentCreateSchema,
+  instrumentUpdateSchema,
+  instrumentParamsSchema,
+  inspectionItemCreateSchema,
+  inspectionItemUpdateSchema,
+  inspectionItemParamsSchema,
+  tagCreateSchema,
+  tagParamsSchema,
+  inspectionRecordCreateSchema,
+  inspectionRecordQuerySchema
+} from './schemas.js';
+
+export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): Promise<void> {
+  const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
+  const canWrite = authorizeRoles('ADMIN', 'MANAGER');
+
+  const instrumentService = new MeasuringInstrumentService();
+  const inspectionItemService = new InspectionItemService();
+  const tagService = new MeasuringInstrumentTagService();
+  const inspectionRecordService = new InspectionRecordService();
+
+  // 計測機器一覧
+  app.get('/measuring-instruments', { preHandler: canView }, async (request) => {
+    const query = instrumentQuerySchema.parse(request.query);
+    const instruments = await instrumentService.findAll(query);
+    return { instruments };
+  });
+
+  // 計測機器詳細
+  app.get('/measuring-instruments/:id', { preHandler: canView }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const instrument = await instrumentService.findById(params.id);
+    return { instrument };
+  });
+
+  // 計測機器作成
+  app.post('/measuring-instruments', { preHandler: canWrite }, async (request) => {
+    const body = instrumentCreateSchema.parse(request.body);
+    const instrument = await instrumentService.create(body);
+    return { instrument };
+  });
+
+  // 計測機器更新
+  app.put('/measuring-instruments/:id', { preHandler: canWrite }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const body = instrumentUpdateSchema.parse(request.body);
+    const instrument = await instrumentService.update(params.id, body);
+    return { instrument };
+  });
+
+  // 計測機器削除
+  app.delete('/measuring-instruments/:id', { preHandler: canWrite }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const instrument = await instrumentService.delete(params.id);
+    return { instrument };
+  });
+
+  // 点検項目一覧（計測機器単位）
+  app.get('/measuring-instruments/:id/inspection-items', { preHandler: canView }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const items = await inspectionItemService.findByInstrument(params.id);
+    return { inspectionItems: items };
+  });
+
+  // 点検項目作成
+  app.post('/measuring-instruments/:id/inspection-items', { preHandler: canWrite }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const body = inspectionItemCreateSchema.parse({ ...request.body, measuringInstrumentId: params.id });
+    const item = await inspectionItemService.create(body);
+    return { inspectionItem: item };
+  });
+
+  // 点検項目更新
+  app.put('/inspection-items/:itemId', { preHandler: canWrite }, async (request) => {
+    const params = inspectionItemParamsSchema.parse(request.params);
+    const body = inspectionItemUpdateSchema.parse(request.body);
+    const item = await inspectionItemService.update(params.itemId, body);
+    return { inspectionItem: item };
+  });
+
+  // 点検項目削除
+  app.delete('/inspection-items/:itemId', { preHandler: canWrite }, async (request) => {
+    const params = inspectionItemParamsSchema.parse(request.params);
+    const item = await inspectionItemService.delete(params.itemId);
+    return { inspectionItem: item };
+  });
+
+  // RFIDタグ一覧
+  app.get('/measuring-instruments/:id/tags', { preHandler: canView }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const tags = await tagService.findByInstrument(params.id);
+    return { tags };
+  });
+
+  // RFIDタグ紐付け作成
+  app.post('/measuring-instruments/:id/tags', { preHandler: canWrite }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const body = tagCreateSchema.parse(request.body);
+    const tag = await tagService.create({ measuringInstrumentId: params.id, rfidTagUid: body.rfidTagUid });
+    return { tag };
+  });
+
+  // RFIDタグ紐付け削除
+  app.delete('/measuring-instruments/tags/:tagId', { preHandler: canWrite }, async (request) => {
+    const params = tagParamsSchema.parse(request.params);
+    const tag = await tagService.delete(params.tagId);
+    return { tag };
+  });
+
+  // 点検記録一覧（計測機器単位）
+  app.get('/measuring-instruments/:id/inspection-records', { preHandler: canView }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const query = inspectionRecordQuerySchema.parse(request.query);
+    const records = await inspectionRecordService.findByInstrument({
+      measuringInstrumentId: params.id,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      employeeId: query.employeeId,
+      result: query.result
+    });
+    return { inspectionRecords: records };
+  });
+
+  // 点検記録作成
+  app.post('/measuring-instruments/:id/inspection-records', { preHandler: canWrite }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const body = inspectionRecordCreateSchema.parse({ ...request.body, measuringInstrumentId: params.id });
+    const record = await inspectionRecordService.create(body);
+    return { inspectionRecord: record };
+  });
+}
