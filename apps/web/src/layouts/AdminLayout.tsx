@@ -41,6 +41,12 @@ export function AdminLayout() {
           <NavLink to="/admin/tools/inspection-items" className={linkClass}>
             点検項目
           </NavLink>
+          <NavLink to="/admin/tools/instrument-tags" className={linkClass}>
+            RFIDタグ
+          </NavLink>
+          <NavLink to="/admin/tools/inspection-records" className={linkClass}>
+            点検記録
+          </NavLink>
           <NavLink to="/admin/tools/history" className={linkClass}>
             履歴
           </NavLink>
