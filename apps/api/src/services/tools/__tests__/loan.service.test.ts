@@ -383,7 +383,7 @@ describe('LoanService', () => {
       expect(result).toEqual(mockLoans);
       expect(prisma.loan.findMany).toHaveBeenCalledWith({
         where: { returnedAt: null, cancelledAt: null },
-        include: { item: true, employee: true, client: true },
+        include: { item: true, employee: true, client: true, measuringInstrument: true },
         orderBy: { borrowedAt: 'desc' },
       });
     });
@@ -397,7 +397,7 @@ describe('LoanService', () => {
 
       expect(prisma.loan.findMany).toHaveBeenCalledWith({
         where: { returnedAt: null, cancelledAt: null, clientId: 'client-123' },
-        include: { item: true, employee: true, client: true },
+        include: { item: true, employee: true, client: true, measuringInstrument: true },
         orderBy: { borrowedAt: 'desc' },
       });
     });

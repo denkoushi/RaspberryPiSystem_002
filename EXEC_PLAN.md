@@ -11,6 +11,7 @@
 
 - [ ] (2025-12-06 00:20Z) Phase 8: サイネージUI再調整中（カード2カラム固定、サムネイル16:9・clipPath、タイトル縮小）。Pi5経由のみでPi3/Pi4へSSHし、Pi3の`signage-lite`再起動待ち（実機表示の最終確認待ち）。
 - [ ] (2025-12-06) **デプロイメントモジュール設計**: Tailscale/セキュリティ機能実装後に発生したサイネージ・キオスク機能不全の根本原因を分析し、設定変更を自動検知・影響範囲を自動判定してデプロイする「堅剛なロジック」を設計。4つの独立モジュール（config-detector, impact-analyzer, deploy-executor, verifier）を標準入出力（JSON）で連携する疎結合・モジュール化アーキテクチャ。テスト項目を明確化し、単体・統合・E2Eテストの計画を策定。詳細は [docs/architecture/deployment-modules.md](./docs/architecture/deployment-modules.md) を参照。
+- [x] (2025-12-08) **計測機器管理システム Phase 1-3 完了**: データベーススキーマ（MeasuringInstrument, InspectionItem, InspectionRecord, MeasuringInstrumentTag）、バックエンドAPI（CRUD、持ち出し/返却API）、フロントエンドAPI統合（React Queryフック）、管理コンソールUI（計測機器・点検項目・RFIDタグ・点検記録のCRUDページ）を実装完了。キオスク持出・返却ページ（手入力対応）を実装し、ルーティング統合完了。詳細は [docs/modules/measuring-instruments/README.md](./docs/modules/measuring-instruments/README.md) を参照。
 - [x] (2024-05-27 15:40Z) アーキテクチャ／データモデル／作業手順を含む初回のExecPlanを作成。
 - [x] (2024-05-27 16:30Z) Milestone 1: モノレポ足場、pnpm/Poetry 設定、Docker 雛形、`.env.example`、スクリプト、雛形アプリ（Fastify/React/NFC エージェント）を作成し `pnpm install` 済み。
 - [x] (2025-11-18 01:45Z) Milestone 2: Prisma スキーマ／マイグレーション／シード、Fastify ルーティング、JWT 認証、従業員・アイテム CRUD、持出・返却・履歴 API を実装し `pnpm --filter api lint|test|build` を完走。

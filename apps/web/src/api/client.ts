@@ -209,6 +209,11 @@ export async function getMeasuringInstrument(id: string) {
   return data.instrument;
 }
 
+export async function getMeasuringInstrumentByTagUid(tagUid: string) {
+  const { data } = await api.get<{ instrument: MeasuringInstrument }>(`/measuring-instruments/by-tag/${tagUid}`);
+  return data.instrument;
+}
+
 export async function createMeasuringInstrument(input: Partial<MeasuringInstrument>) {
   const { data } = await api.post<{ instrument: MeasuringInstrument }>('/measuring-instruments', input);
   return data.instrument;

@@ -1,6 +1,7 @@
 /**
  * ツール管理モジュールの型定義
  */
+import type { MeasuringInstrument } from '../measuring-instruments';
 
 export interface Employee {
   id: string;
@@ -45,6 +46,8 @@ export interface Loan {
   photoTakenAt?: string | null; // 撮影日時（写真撮影持出機能で使用）
   employee: Employee;
   item: Item | null; // 写真撮影持出機能ではnullになる可能性がある
+  measuringInstrumentId?: string | null;
+  measuringInstrument?: MeasuringInstrument | null;
   client?: ClientDevice | null;
 }
 
@@ -75,6 +78,3 @@ export interface ReturnPayload {
   clientId?: string;
   note?: string | null;
 }
-
-
-

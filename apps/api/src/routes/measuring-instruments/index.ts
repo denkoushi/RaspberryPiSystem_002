@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
+import { ApiError } from '../../lib/errors.js';
 import {
   MeasuringInstrumentService,
   InspectionItemService,
@@ -44,6 +46,16 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   app.get('/measuring-instruments/:id', { preHandler: canView }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
     const instrument = await instrumentService.findById(params.id);
+    return { instrument };
+  });
+
+  // タグUIDから計測機器を取得
+  app.get('/measuring-instruments/by-tag/:tagUid', { preHandler: canView }, async (request) => {
+    const tagUid = z.string().min(1).parse(request.params.tagUid);
+    const instrument = await instrumentService.findByTagUid(tagUid);
+    if (!instrument) {
+      throw new ApiError(404, '指定されたタグUIDに紐づく計測機器が見つかりません');
+    }
     return { instrument };
   });
 

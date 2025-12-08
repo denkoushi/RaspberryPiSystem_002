@@ -1,0 +1,324 @@
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+
+import {
+  borrowMeasuringInstrument,
+  createInspectionRecord,
+  getInspectionItems,
+  getMeasuringInstrumentByTagUid
+} from '../../api/client';
+import { useMeasuringInstruments } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+import { useNfcStream } from '../../hooks/useNfcStream';
+
+import type { InspectionItem } from '../../api/types';
+
+export function KioskInstrumentBorrowPage() {
+  const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
+
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
+  const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([]);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
+
+  const [instrumentTagUid, setInstrumentTagUid] = useState('');
+  const [employeeTagUid, setEmployeeTagUid] = useState('');
+  const [note, setNote] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isNg, setIsNg] = useState(false);
+  const employeeTagInputRef = useRef<HTMLInputElement>(null);
+  const nfcEvent = useNfcStream();
+  const lastNfcEventKeyRef = useRef<string | null>(null);
+
+  // タグUID入力時に計測機器を自動選択
+  useEffect(() => {
+    const searchInstrumentByTag = async () => {
+      if (!instrumentTagUid || instrumentTagUid.trim().length === 0) {
+        return;
+      }
+      try {
+        const instrument = await getMeasuringInstrumentByTagUid(instrumentTagUid.trim());
+        if (instrument && instrument.id !== selectedInstrumentId) {
+          setSelectedInstrumentId(instrument.id);
+        }
+      } catch (error) {
+        // タグUIDが見つからない場合はエラーを表示しない（手動選択も可能なため）
+        console.debug('Tag UID not found:', instrumentTagUid);
+      }
+    };
+
+    // デバウンス: 500ms後に検索
+    const timeoutId = setTimeout(searchInstrumentByTag, 500);
+    return () => clearTimeout(timeoutId);
+  }, [instrumentTagUid, selectedInstrumentId]);
+
+  // 選択された計測機器に紐づく点検項目を取得
+  useEffect(() => {
+    const fetchInspectionItems = async () => {
+      if (!selectedInstrumentId) {
+        setInspectionItems([]);
+        setIsNg(false);
+        return;
+      }
+      setInspectionLoading(true);
+      try {
+        const items = await getInspectionItems(selectedInstrumentId);
+        setInspectionItems(items);
+        setIsNg(false); // 計測機器変更時にNGフラグをリセット
+      } catch (error) {
+        console.error(error);
+        setMessage('点検項目の取得に失敗しました。計測機器を確認してください。');
+      } finally {
+        setInspectionLoading(false);
+      }
+    };
+    fetchInspectionItems();
+  }, [selectedInstrumentId]);
+
+  // 計測機器選択後、氏名タグ入力欄にフォーカス
+  useEffect(() => {
+    if (selectedInstrumentId && inspectionItems.length > 0 && !isNg) {
+      employeeTagInputRef.current?.focus();
+    }
+  }, [selectedInstrumentId, inspectionItems.length, isNg]);
+
+  const handleNg = async () => {
+    if (!selectedInstrumentId) {
+      setMessage('計測機器を選択してください。');
+      return;
+    }
+    if (!employeeTagUid.trim()) {
+      setMessage('氏名タグUIDを入力してください。');
+      return;
+    }
+    setIsNg(true);
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const loan = await borrowMeasuringInstrument({
+        instrumentTagUid,
+        employeeTagUid,
+        note: note || undefined
+      });
+      // NGの場合は点検記録を作成しない（個別項目の記録は不要）
+      setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      setMessage('エラーが発生しました。入力値を確認してください。');
+      setIsNg(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = useCallback(async (e?: FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
+    if (!selectedInstrumentId) {
+      setMessage('計測機器を選択してください。');
+      return;
+    }
+    if (!employeeTagUid.trim()) {
+      setMessage('氏名タグUIDを入力してください。');
+      return;
+    }
+    if (isNg) {
+      // NGの場合はhandleNgで処理済み
+      return;
+    }
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const loan = await borrowMeasuringInstrument({
+        instrumentTagUid,
+        employeeTagUid,
+        note: note || undefined
+      });
+      // OKの場合：全項目PASSとして点検記録を作成
+      const selectedInstrument = instruments?.find((inst) => inst.id === selectedInstrumentId);
+      if (inspectionItems.length > 0 && selectedInstrument && loan.employee?.id) {
+        const tasks = inspectionItems.map((item) =>
+          createInspectionRecord({
+            measuringInstrumentId: selectedInstrument.id,
+            loanId: loan.id,
+            employeeId: loan.employee.id,
+            inspectionItemId: item.id,
+            result: 'PASS',
+            inspectedAt: new Date().toISOString()
+          })
+        );
+        await Promise.all(tasks);
+      }
+      setMessage(`持出登録完了: Loan ID = ${loan.id}`);
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      setMessage('エラーが発生しました。入力値を確認してください。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [selectedInstrumentId, employeeTagUid, isNg, instrumentTagUid, note, inspectionItems, instruments]);
+
+  // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
+  useEffect(() => {
+    if (!nfcEvent) return;
+
+    const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastNfcEventKeyRef.current === eventKey) {
+      return;
+    }
+    lastNfcEventKeyRef.current = eventKey;
+
+    // 1枚目のスキャンは計測機器タグとみなす
+    if (!instrumentTagUid) {
+      setInstrumentTagUid(nfcEvent.uid);
+      setMessage('計測機器タグを読み取りました。氏名タグをスキャンしてください。');
+      return;
+    }
+
+    // 2枚目のスキャンは氏名タグとみなす
+    if (!employeeTagUid) {
+      setEmployeeTagUid(nfcEvent.uid);
+      if (isNg || isSubmitting) {
+        return;
+      }
+      if (!selectedInstrumentId) {
+        setMessage('計測機器を選択中です。少し待ってから再スキャンしてください。');
+        return;
+      }
+      // OKフローは自動送信
+      handleSubmit();
+    }
+  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, selectedInstrumentId, handleSubmit]);
+
+  const resetForm = () => {
+    setSelectedInstrumentId('');
+    setInstrumentTagUid('');
+    setEmployeeTagUid('');
+    setNote('');
+    setInspectionItems([]);
+    setIsNg(false);
+  };
+
+  // 氏名タグUID入力時に自動送信（OKの場合のみ）
+  useEffect(() => {
+    if (!employeeTagUid.trim() || !selectedInstrumentId || isNg || isSubmitting) {
+      return;
+    }
+    if (inspectionItems.length === 0) {
+      // 点検項目がない場合は自動送信しない（手動送信が必要）
+      return;
+    }
+    // デバウンス: 500ms後に自動送信
+    const timeoutId = setTimeout(() => {
+      handleSubmit();
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [employeeTagUid, selectedInstrumentId, isNg, isSubmitting, inspectionItems.length, handleSubmit]);
+
+  return (
+    <div className="flex flex-col items-center gap-6 p-6">
+      <Card title="計測機器 持出">
+        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+          <label className="text-sm text-white/70 md:col-span-2">
+            計測機器を選択
+            <div className="mt-1">
+              <select
+                className="w-full rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+                value={selectedInstrumentId}
+                onChange={(e) => setSelectedInstrumentId(e.target.value)}
+                required
+                disabled={isLoadingInstruments}
+              >
+                <option value="">選択してください</option>
+                {instruments?.map((instrument) => (
+                  <option key={instrument.id} value={instrument.id}>
+                    {instrument.name}（{instrument.managementNumber}）
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="text-sm text-white/70">
+            計測機器タグUID
+            <Input
+              value={instrumentTagUid}
+              onChange={(e) => setInstrumentTagUid(e.target.value)}
+              required
+              placeholder="スキャンまたは手入力"
+            />
+          </label>
+          <label className="text-sm text-white/70">
+            氏名タグUID
+            <Input
+              ref={employeeTagInputRef}
+              value={employeeTagUid}
+              onChange={(e) => setEmployeeTagUid(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && selectedInstrumentId) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              required
+              placeholder="スキャンまたは手入力（OKの場合は自動送信）"
+              disabled={isSubmitting || isNg}
+            />
+          </label>
+          <label className="text-sm text-white/70 md:col-span-2">
+            備考
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="任意" />
+          </label>
+
+          <div className="md:col-span-2">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm text-white/80">点検項目</p>
+              {inspectionItems.length > 0 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={isNg ? 'bg-red-500 text-white hover:bg-red-600' : undefined}
+                  onClick={handleNg}
+                  disabled={isSubmitting || !selectedInstrumentId || !employeeTagUid.trim()}
+                >
+                  NGにする
+                </Button>
+              )}
+            </div>
+            {inspectionLoading ? (
+              <p className="text-sm text-white/70">点検項目を読み込み中…</p>
+            ) : inspectionItems.length === 0 ? (
+              <p className="text-sm text-white/70">計測機器を選択すると点検項目が表示されます。</p>
+            ) : (
+              <div className="grid gap-3">
+                {inspectionItems.map((item) => (
+                  <div key={item.id} className="rounded border border-white/10 bg-white/5 p-3">
+                    <p className="font-medium text-white">{item.name}</p>
+                    <p className="text-xs text-white/70">内容: {item.content}</p>
+                    <p className="text-xs text-white/70">基準: {item.criteria}</p>
+                    <p className="text-xs text-white/70">方法: {item.method}</p>
+                    <p className="mt-2 text-xs text-white/80">
+                      {isNg ? '❌ NG' : '✅ OK（氏名タグスキャンで自動送信）'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {inspectionItems.length === 0 && (
+            <div className="md:col-span-2">
+              <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
+                {isSubmitting ? '送信中…' : '持出登録'}
+              </Button>
+            </div>
+          )}
+        </form>
+        {message ? <p className="mt-4 text-sm text-white/80">{message}</p> : null}
+      </Card>
+    </div>
+  );
+}
