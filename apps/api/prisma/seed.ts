@@ -1,4 +1,11 @@
-import { PrismaClient, EmployeeStatus, ItemStatus, UserRole, UserStatus } from '@prisma/client';
+import {
+  PrismaClient,
+  EmployeeStatus,
+  ItemStatus,
+  UserRole,
+  UserStatus,
+  MeasuringInstrumentStatus
+} from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -96,7 +103,102 @@ async function main() {
     });
   }
 
+  // 計測機器のテストデータ（実機検証用）
+  const now = new Date();
+  const overdueDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000); // 10日前（期限切れ）
+  const soonDate = new Date(now.getTime() + 20 * 24 * 60 * 60 * 1000); // 20日後（期限間近）
+  const normalDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90日後（正常）
+
+  const measuringInstruments = [
+    {
+      managementNumber: 'MI-001',
+      name: 'デジタルマルチメータ',
+      storageLocation: '計測機器庫A',
+      measurementRange: 'DC 0-1000V, AC 0-750V',
+      calibrationExpiryDate: overdueDate,
+      status: MeasuringInstrumentStatus.AVAILABLE
+    },
+    {
+      managementNumber: 'MI-002',
+      name: 'ノギス',
+      storageLocation: '計測機器庫B',
+      measurementRange: '0-200mm',
+      calibrationExpiryDate: soonDate,
+      status: MeasuringInstrumentStatus.AVAILABLE
+    },
+    {
+      managementNumber: 'MI-003',
+      name: 'トルクレンチ',
+      storageLocation: '計測機器庫A',
+      measurementRange: '5-50N・m',
+      calibrationExpiryDate: normalDate,
+      status: MeasuringInstrumentStatus.AVAILABLE
+    }
+  ];
+
+  for (const inst of measuringInstruments) {
+    const created = await prisma.measuringInstrument.upsert({
+      where: { managementNumber: inst.managementNumber },
+      update: inst,
+      create: inst
+    });
+
+    // 点検項目を追加
+    const inspectionItems = [
+      {
+        measuringInstrumentId: created.id,
+        name: '外観点検',
+        content: '本体に損傷や汚れがないか確認',
+        criteria: '損傷・汚れなし',
+        method: '目視確認'
+      },
+      {
+        measuringInstrumentId: created.id,
+        name: '表示確認',
+        content: 'ディスプレイが正常に表示されるか確認',
+        criteria: '正常表示',
+        method: '電源投入して確認'
+      },
+      {
+        measuringInstrumentId: created.id,
+        name: '校正期限確認',
+        content: '校正期限が有効期限内か確認',
+        criteria: '有効期限内',
+        method: '校正期限ラベルを確認'
+      }
+    ];
+
+    for (const item of inspectionItems) {
+      await prisma.inspectionItem.upsert({
+        where: {
+          measuringInstrumentId_name: {
+            measuringInstrumentId: item.measuringInstrumentId,
+            name: item.name
+          }
+        },
+        update: item,
+        create: item
+      });
+    }
+
+    // RFIDタグの紐付け（テスト用UID）
+    await prisma.measuringInstrumentTag.upsert({
+      where: {
+        measuringInstrumentId_rfidTagUid: {
+          measuringInstrumentId: created.id,
+          rfidTagUid: `MI-${inst.managementNumber}`
+        }
+      },
+      update: {},
+      create: {
+        measuringInstrumentId: created.id,
+        rfidTagUid: `MI-${inst.managementNumber}`
+      }
+    });
+  }
+
   console.log('Seed data inserted. 管理者アカウント: admin / admin1234');
+  console.log('計測機器テストデータ: MI-001（期限切れ）, MI-002（期限間近）, MI-003（正常）');
 }
 
 main()
