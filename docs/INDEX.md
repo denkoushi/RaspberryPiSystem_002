@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2025-12-07）
 
+- **計測機器管理システム要件定義開始**: 計測機器の持ち出し返却システムの要件定義を開始しました。RFIDリーダーTS100を使用した計測機器管理機能を実装予定。工具管理システムと疎結合で併用し、同じ画面で工具と計測機器を統合表示します。詳細は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [requirements/measuring-instruments-requirements.md](./requirements/measuring-instruments-requirements.md) を参照。
+
 - **Lint統合 Phase 8 完了**: 契約テスト（API/Web）と破壊的変更検知スナップショットを追加。`pnpm lint --max-warnings=0`/e2e-smoke/e2e-tests/docker-build がCIで成功（run #641）。import/order違反ナレッジをガイドに追加。詳細は [plans/lint-integration-plan.md](./plans/lint-integration-plan.md) / [guides/lint.md](./guides/lint.md) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
 - **デプロイメントモジュール設計**: Tailscale/セキュリティ機能実装後に発生したサイネージ・キオスク機能不全の根本原因を分析し、設定変更を自動検知・影響範囲を自動判定してデプロイする「堅剛なロジック」を設計。4つの独立モジュール（config-detector, impact-analyzer, deploy-executor, verifier）を標準入出力（JSON）で連携する疎結合・モジュール化アーキテクチャ。テスト項目を明確化し、単体・統合・E2Eテストの計画を策定。詳細は [architecture/deployment-modules.md](./architecture/deployment-modules.md) を参照。
@@ -50,6 +52,7 @@
 | やりたいこと | ドキュメント |
 |-------------|-------------|
 | 新機能を追加したい | [guides/development.md](./guides/development.md), [modules/](./modules/) |
+| **計測機器管理システムを理解したい** | **[modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md)**, **[requirements/measuring-instruments-requirements.md](./requirements/measuring-instruments-requirements.md)** |
 | **Ansibleロールを追加・修正したい** | **[guides/ansible-role-development.md](./guides/ansible-role-development.md)** |
 | APIを理解したい | [api/overview.md](./api/overview.md), [api/auth.md](./api/auth.md) |
 | **APIキー統一の方針とフィルタリングロジック** | [guides/api-key-policy.md](./guides/api-key-policy.md) |
@@ -224,6 +227,7 @@
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
+| [measuring-instruments/README.md](./modules/measuring-instruments/README.md) | **計測機器管理モジュール**（要件定義中） |
 | [signage/README.md](./modules/signage/README.md) | **デジタルサイネージモジュール** |
 | [signage/signage-lite.md](./modules/signage/signage-lite.md) | **デジタルサイネージ軽量モード計画** |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
@@ -245,6 +249,7 @@ APIの概要と詳細。
 | ファイル | 説明 |
 |---------|------|
 | [system-requirements.md](./requirements/system-requirements.md) | システム要件定義 |
+| [measuring-instruments-requirements.md](./requirements/measuring-instruments-requirements.md) | **計測機器管理システム要件定義** |
 
 ### 実装計画（plans/）
 

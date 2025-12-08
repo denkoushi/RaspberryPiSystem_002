@@ -21,6 +21,13 @@ enum ItemStatus {
   RETIRED
 }
 
+enum MeasuringInstrumentStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
 enum TransactionAction {
   BORROW
   RETURN
@@ -58,17 +65,18 @@ enum SignageDisplayMode {
 }
 
 model Employee {
-  id           String         @id @default(uuid())
-  employeeCode String         @unique
-  displayName  String
-  nfcTagUid    String?        @unique
-  department   String?
-  contact      String?
-  status       EmployeeStatus @default(ACTIVE)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  loans        Loan[]
-  transactions Transaction[]  @relation("EmployeeActor")
+  id                String             @id @default(uuid())
+  employeeCode      String             @unique
+  displayName       String
+  nfcTagUid         String?            @unique
+  department        String?
+  contact           String?
+  status            EmployeeStatus     @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  loans             Loan[]
+  inspectionRecords InspectionRecord[]
+  transactions      Transaction[]      @relation("EmployeeActor")
 }
 
 model Item {
@@ -86,6 +94,77 @@ model Item {
   loans           Loan[]
 }
 
+model MeasuringInstrument {
+  id                    String                    @id @default(uuid())
+  name                  String
+  managementNumber      String                    @unique
+  storageLocation       String?
+  measurementRange      String?
+  calibrationExpiryDate DateTime?
+  status                MeasuringInstrumentStatus @default(AVAILABLE)
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  inspectionItems       InspectionItem[]
+  inspectionRecords     InspectionRecord[]
+  tags                  MeasuringInstrumentTag[]
+  loans                 Loan[]
+}
+
+model InspectionItem {
+  id                    String              @id @default(uuid())
+  measuringInstrumentId String
+  name                  String
+  content               String
+  criteria              String
+  method                String
+  order                 Int
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
+  inspectionRecords     InspectionRecord[]
+
+  @@index([measuringInstrumentId])
+  @@index([order])
+}
+
+enum InspectionResult {
+  PASS
+  FAIL
+}
+
+model InspectionRecord {
+  id                    String              @id @default(uuid())
+  measuringInstrumentId String
+  loanId                String?
+  employeeId            String
+  inspectionItemId      String
+  result                InspectionResult
+  inspectedAt           DateTime
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
+  loan                  Loan?               @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  employee              Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  inspectionItem        InspectionItem      @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+
+  @@index([measuringInstrumentId])
+  @@index([loanId])
+  @@index([employeeId])
+  @@index([inspectionItemId])
+  @@index([inspectedAt])
+}
+
+model MeasuringInstrumentTag {
+  id                    String              @id @default(uuid())
+  measuringInstrumentId String
+  rfidTagUid            String              @unique
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
+
+  @@index([measuringInstrumentId])
+}
+
 model ClientDevice {
   id           String        @id @default(uuid())
   name         String
@@ -100,8 +179,8 @@ model ClientDevice {
 }
 
 model ClientStatus {
-  id            String   @id @default(uuid())
-  clientId      String   @unique
+  id            String    @id @default(uuid())
+  clientId      String    @unique
   hostname      String
   ipAddress     String
   cpuUsage      Float
@@ -113,16 +192,17 @@ model ClientStatus {
   lastSeen      DateTime  @default(now())
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
   @@index([lastSeen])
 }
 
 model ClientLog {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   clientId  String
   level     String
   message   String
   context   Json?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([clientId, createdAt])
   @@index([createdAt])
@@ -140,25 +220,29 @@ model User {
 }
 
 model Loan {
-  id           String        @id @default(uuid())
-  itemId       String?
-  employeeId   String?
-  clientId     String?
-  borrowedAt   DateTime      @default(now())
-  dueAt        DateTime?
-  returnedAt   DateTime?
-  cancelledAt  DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
-  notes        String?
-  photoUrl     String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
-  photoTakenAt DateTime? // 撮影日時
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  item         Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  employee     Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  client       ClientDevice? @relation(fields: [clientId], references: [id])
-  transactions Transaction[]
+  id                    String               @id @default(uuid())
+  itemId                String?
+  measuringInstrumentId String?
+  employeeId            String?
+  clientId              String?
+  borrowedAt            DateTime             @default(now())
+  dueAt                 DateTime?
+  returnedAt            DateTime?
+  cancelledAt           DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
+  notes                 String?
+  photoUrl              String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt          DateTime? // 撮影日時
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  item                  Item?                @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  measuringInstrument   MeasuringInstrument? @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  employee              Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  client                ClientDevice?        @relation(fields: [clientId], references: [id])
+  transactions          Transaction[]
+  InspectionRecord      InspectionRecord[]
 
   @@index([itemId])
+  @@index([measuringInstrumentId])
   @@index([employeeId])
   @@index([clientId])
   @@index([returnedAt])
