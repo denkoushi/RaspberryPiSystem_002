@@ -8,7 +8,15 @@ import type {
   Item,
   Loan,
   ReturnPayload,
-  Transaction
+  Transaction,
+  MeasuringInstrument,
+  MeasuringInstrumentBorrowPayload,
+  MeasuringInstrumentReturnPayload,
+  MeasuringInstrumentStatus,
+  InspectionItem,
+  MeasuringInstrumentTag,
+  InspectionRecord,
+  InspectionRecordCreatePayload
 } from './types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
@@ -183,6 +191,121 @@ export async function getTransactions(
     }
   );
   return data;
+}
+
+// 計測機器 API
+export async function getMeasuringInstruments(params?: {
+  search?: string;
+  status?: MeasuringInstrumentStatus;
+}) {
+  const { data } = await api.get<{ instruments: MeasuringInstrument[] }>('/measuring-instruments', {
+    params
+  });
+  return data.instruments;
+}
+
+export async function getMeasuringInstrument(id: string) {
+  const { data } = await api.get<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`);
+  return data.instrument;
+}
+
+export async function createMeasuringInstrument(input: Partial<MeasuringInstrument>) {
+  const { data } = await api.post<{ instrument: MeasuringInstrument }>('/measuring-instruments', input);
+  return data.instrument;
+}
+
+export async function updateMeasuringInstrument(id: string, input: Partial<MeasuringInstrument>) {
+  const { data } = await api.put<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`, input);
+  return data.instrument;
+}
+
+export async function deleteMeasuringInstrument(id: string) {
+  const { data } = await api.delete<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`);
+  return data.instrument;
+}
+
+// 点検項目 API
+export async function getInspectionItems(measuringInstrumentId: string) {
+  const { data } = await api.get<{ inspectionItems: InspectionItem[] }>(
+    `/measuring-instruments/${measuringInstrumentId}/inspection-items`
+  );
+  return data.inspectionItems;
+}
+
+export async function createInspectionItem(measuringInstrumentId: string, input: Partial<InspectionItem>) {
+  const body = { ...input, measuringInstrumentId };
+  const { data } = await api.post<{ inspectionItem: InspectionItem }>(
+    `/measuring-instruments/${measuringInstrumentId}/inspection-items`,
+    body
+  );
+  return data.inspectionItem;
+}
+
+export async function updateInspectionItem(itemId: string, input: Partial<InspectionItem>) {
+  const { data } = await api.put<{ inspectionItem: InspectionItem }>(`/inspection-items/${itemId}`, input);
+  return data.inspectionItem;
+}
+
+export async function deleteInspectionItem(itemId: string) {
+  const { data } = await api.delete<{ inspectionItem: InspectionItem }>(`/inspection-items/${itemId}`);
+  return data.inspectionItem;
+}
+
+// RFIDタグ API
+export async function getInstrumentTags(measuringInstrumentId: string) {
+  const { data } = await api.get<{ tags: MeasuringInstrumentTag[] }>(
+    `/measuring-instruments/${measuringInstrumentId}/tags`
+  );
+  return data.tags;
+}
+
+export async function createInstrumentTag(measuringInstrumentId: string, rfidTagUid: string) {
+  const { data } = await api.post<{ tag: MeasuringInstrumentTag }>(
+    `/measuring-instruments/${measuringInstrumentId}/tags`,
+    { rfidTagUid }
+  );
+  return data.tag;
+}
+
+export async function deleteInstrumentTag(tagId: string) {
+  const { data } = await api.delete<{ tag: MeasuringInstrumentTag }>(`/measuring-instruments/tags/${tagId}`);
+  return data.tag;
+}
+
+// 点検記録 API
+export async function getInspectionRecords(
+  measuringInstrumentId: string,
+  filters?: { startDate?: string; endDate?: string; employeeId?: string; result?: string }
+) {
+  const { data } = await api.get<{ inspectionRecords: InspectionRecord[] }>(
+    `/measuring-instruments/${measuringInstrumentId}/inspection-records`,
+    { params: filters }
+  );
+  return data.inspectionRecords;
+}
+
+export async function createInspectionRecord(payload: InspectionRecordCreatePayload) {
+  const { measuringInstrumentId, ...rest } = payload;
+  const { data } = await api.post<{ inspectionRecord: InspectionRecord }>(
+    `/measuring-instruments/${measuringInstrumentId}/inspection-records`,
+    rest
+  );
+  return data.inspectionRecord;
+}
+
+// 計測機器の持出/返却
+export async function borrowMeasuringInstrument(payload: MeasuringInstrumentBorrowPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/measuring-instruments/borrow', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.loan;
+}
+
+export async function returnMeasuringInstrument(payload: MeasuringInstrumentReturnPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/measuring-instruments/return', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.loan;
 }
 
 export async function getKioskConfig() {

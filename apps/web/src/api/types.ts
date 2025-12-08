@@ -14,4 +14,13 @@ export type {
   ImportSummarySection,
   ImportSummary,
   ImportJob,
+  MeasuringInstrument,
+  MeasuringInstrumentStatus,
+  InspectionItem,
+  InspectionRecord,
+  MeasuringInstrumentTag,
+  MeasuringInstrumentBorrowPayload,
+  MeasuringInstrumentReturnPayload,
+  InspectionRecordCreatePayload,
+  InspectionResult
 } from '@raspi-system/shared-types';
