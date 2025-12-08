@@ -204,6 +204,36 @@ export async function getMeasuringInstruments(params?: {
   return data.instruments;
 }
 
+export interface UnifiedItem {
+  id: string;
+  type: 'TOOL' | 'MEASURING_INSTRUMENT';
+  name: string;
+  code: string;
+  category?: string | null;
+  storageLocation?: string | null;
+  status: string;
+  nfcTagUid?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnifiedListParams {
+  search?: string;
+  category?: 'TOOLS' | 'MEASURING_INSTRUMENTS' | 'ALL';
+  itemStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
+  instrumentStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
+}
+
+export async function getUnifiedItems(params?: UnifiedListParams) {
+  const { data } = await api.get<{ items: UnifiedItem[] }>('/tools/unified', {
+    params: {
+      ...params,
+      category: params?.category ?? 'ALL'
+    }
+  });
+  return data.items;
+}
+
 export async function getMeasuringInstrument(id: string) {
   const { data } = await api.get<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`);
   return data.instrument;

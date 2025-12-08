@@ -24,3 +24,5 @@ export type {
   InspectionRecordCreatePayload,
   InspectionResult
 } from '@raspi-system/shared-types';
+
+export type { UnifiedItem, UnifiedListParams } from './client';

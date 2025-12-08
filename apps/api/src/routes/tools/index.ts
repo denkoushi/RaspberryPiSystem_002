@@ -3,6 +3,7 @@ import { registerEmployeeRoutes } from './employees/index.js';
 import { registerItemRoutes } from './items/index.js';
 import { registerLoanRoutes } from './loans/index.js';
 import { registerTransactionRoutes } from './transactions/index.js';
+import { registerUnifiedRoutes } from './unified/index.js';
 
 /**
  * ツール管理モジュールのルートを登録
@@ -22,6 +23,7 @@ export async function registerToolsRoutes(app: FastifyInstance): Promise<void> {
       await registerItemRoutes(subApp);
       await registerLoanRoutes(subApp);
       await registerTransactionRoutes(subApp);
+      await registerUnifiedRoutes(subApp);
     },
     { prefix: '/tools' },
   );

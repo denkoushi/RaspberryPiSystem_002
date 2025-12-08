@@ -59,7 +59,9 @@ import {
   getInspectionRecords,
   createInspectionRecord,
   borrowMeasuringInstrument,
-  returnMeasuringInstrument
+  returnMeasuringInstrument,
+  getUnifiedItems,
+  type UnifiedListParams
 } from './client';
 
 import type {
@@ -511,5 +513,13 @@ export function useSignageRenderMutation() {
       // レンダリング成功後、ステータスを更新
       queryClient.invalidateQueries({ queryKey: ['signage-render-status'] });
     }
+  });
+}
+
+export function useUnifiedItems(params?: UnifiedListParams) {
+  return useQuery({
+    queryKey: ['unified-items', params],
+    queryFn: () => getUnifiedItems(params),
+    placeholderData: (previous) => previous
   });
 }

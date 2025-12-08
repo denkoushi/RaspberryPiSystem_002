@@ -24,6 +24,7 @@ import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
 import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
+import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
 
 function App() {
   return (
@@ -51,6 +52,7 @@ function App() {
         <Route path="tools">
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="items" element={<ItemsPage />} />
+          <Route path="unified" element={<UnifiedItemsPage />} />
           <Route path="inspection-items" element={<InspectionItemsPage />} />
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
