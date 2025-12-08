@@ -553,6 +553,16 @@ export interface SignageContentResponse {
     name: string;
     thumbnailUrl: string | null;
   }>;
+  measuringInstruments?: Array<{
+    id: string;
+    managementNumber: string;
+    name: string;
+    storageLocation: string | null;
+    calibrationExpiryDate: string | null;
+    status: string;
+    isOverdue: boolean;
+    isDueSoon: boolean;
+  }>;
   pdf?: {
     id: string;
     name: string;

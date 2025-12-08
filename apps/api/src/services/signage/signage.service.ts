@@ -58,6 +58,16 @@ export interface SignageContentResponse {
     employeeName?: string | null;
     borrowedAt?: string | null;
   }>;
+  measuringInstruments?: Array<{
+    id: string;
+    managementNumber: string;
+    name: string;
+    storageLocation?: string | null;
+    calibrationExpiryDate?: string | null;
+    status: string;
+    isOverdue?: boolean;
+    isDueSoon?: boolean;
+  }>;
   pdf?: {
     id: string;
     name: string;
@@ -115,11 +125,12 @@ export class SignageService {
       logger.info({ emergencyId: emergency.id }, 'Emergency display active');
       
       if (emergency.contentType === SignageContentType.TOOLS) {
-        const tools = await this.getToolsData();
+        const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
         return {
           contentType: SignageContentType.TOOLS,
           displayMode: SignageDisplayMode.SINGLE,
           tools,
+          measuringInstruments,
         };
       } else if (emergency.contentType === SignageContentType.PDF && emergency.pdf) {
         return {
@@ -172,11 +183,12 @@ export class SignageService {
     }
 
     // デフォルト: 工具管理データを表示
-    const tools = await this.getToolsData();
+    const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
     return {
       contentType: SignageContentType.TOOLS,
       displayMode: SignageDisplayMode.SINGLE,
       tools,
+      measuringInstruments,
     };
   }
 
@@ -264,6 +276,54 @@ export class SignageService {
     }));
   }
 
+  /**
+   * 計測機器データを取得（校正期限アラート含む）
+   */
+  private async getMeasuringInstrumentData(): Promise<
+    Array<{
+      id: string;
+      managementNumber: string;
+      name: string;
+      storageLocation: string | null;
+      calibrationExpiryDate: string | null;
+      status: string;
+      isOverdue: boolean;
+      isDueSoon: boolean;
+    }>
+  > {
+    const instruments = await prisma.measuringInstrument.findMany({
+      select: {
+        id: true,
+        managementNumber: true,
+        name: true,
+        storageLocation: true,
+        calibrationExpiryDate: true,
+        status: true,
+      },
+      orderBy: { managementNumber: 'asc' },
+      take: 100,
+    });
+
+    const now = new Date();
+    const soonThresholdMs = 30 * 24 * 60 * 60 * 1000; // 30日
+
+    return instruments.map((inst) => {
+      const expiry = inst.calibrationExpiryDate ? new Date(inst.calibrationExpiryDate) : null;
+      const isOverdue = expiry ? expiry.getTime() < now.getTime() : false;
+      const isDueSoon = expiry ? !isOverdue && expiry.getTime() - now.getTime() <= soonThresholdMs : false;
+      return {
+        id: inst.id,
+        managementNumber: inst.managementNumber,
+        name: inst.name,
+        storageLocation: inst.storageLocation ?? null,
+        calibrationExpiryDate: inst.calibrationExpiryDate?.toISOString() ?? null,
+        status: inst.status,
+        isOverdue,
+        isDueSoon,
+      };
+    });
+  }
+
   private buildThumbnailUrl(photoUrl?: string | null): string | null {
     if (!photoUrl) {
       return null;
@@ -318,11 +378,12 @@ export class SignageService {
 
   private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
     if (schedule.contentType === SignageContentType.TOOLS) {
-      const tools = await this.getToolsData();
+      const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
       return {
         contentType: SignageContentType.TOOLS,
         displayMode: SignageDisplayMode.SINGLE,
         tools,
+        measuringInstruments,
       };
     }
 
@@ -349,7 +410,7 @@ export class SignageService {
     }
 
     if (schedule.contentType === SignageContentType.SPLIT) {
-      const tools = await this.getToolsData();
+      const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
       let pdfPayload: SignageContentResponse['pdf'] = null;
       let pdfDisplayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
 
@@ -372,6 +433,7 @@ export class SignageService {
         contentType: SignageContentType.SPLIT,
         displayMode: pdfPayload ? pdfDisplayMode : SignageDisplayMode.SINGLE,
         tools,
+        measuringInstruments,
         pdf: pdfPayload,
       };
     }

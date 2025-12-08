@@ -5,6 +5,7 @@ import { useSignageContent } from '../../api/hooks';
 import type { SignageContentResponse } from '../../api/client';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
+type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 
 const screenClass =
   'min-h-screen w-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white';
@@ -59,6 +60,32 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
           {tool.itemCode}
         </p>
       </div>
+    </div>
+  );
+}
+
+function InstrumentCard({ instrument }: { instrument: InstrumentItem }) {
+  const badgeClass = instrument.isOverdue
+    ? 'bg-red-500/20 text-red-200'
+    : instrument.isDueSoon
+      ? 'bg-yellow-500/20 text-yellow-200'
+      : 'bg-emerald-500/20 text-emerald-200';
+  const badgeText = instrument.isOverdue ? '校正期限切れ' : instrument.isDueSoon ? '校正期限間近' : '正常';
+  return (
+    <div className="rounded-2xl border border-white/5 bg-white/5 p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)]">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-base font-semibold text-white/90">{instrument.name}</p>
+          <p className="text-[0.65rem] uppercase tracking-[0.3em] text-white/50">{instrument.managementNumber}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${badgeClass}`}>{badgeText}</span>
+      </div>
+      <p className="mt-2 text-sm text-white/80">
+        保管: {instrument.storageLocation ?? '-'} / 状態: {instrument.status}
+      </p>
+      <p className="text-sm text-white/70">
+        校正期限: {instrument.calibrationExpiryDate ? instrument.calibrationExpiryDate.slice(0, 10) : '未設定'}
+      </p>
     </div>
   );
 }
@@ -141,6 +168,19 @@ export function SignageDisplayPage() {
               </div>
             )}
           </div>
+          {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
+            <section className={`${glassPanelClass} mt-4`}>
+              <div className="mb-3">
+                <p className={accentTextClass}>MEASURING INSTRUMENTS</p>
+                <h2 className="text-2xl font-semibold text-white">計測機器ステータス</h2>
+              </div>
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
+                {content.measuringInstruments.map((inst) => (
+                  <InstrumentCard key={inst.id} instrument={inst} />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
     );
@@ -189,6 +229,26 @@ export function SignageDisplayPage() {
               ) : (
                 <div className="flex h-full items-center justify-center text-white/60">
                   工具データがありません
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className={`flex min-h-0 flex-col gap-4 ${glassPanelClass}`}>
+            <div>
+              <p className={accentTextClass}>INSTRUMENTS</p>
+              <h2 className="text-3xl font-semibold text-white">計測機器ステータス</h2>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
+                  {content.measuringInstruments.map((inst) => (
+                    <InstrumentCard key={inst.id} instrument={inst} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-white/60">
+                  計測機器データがありません
                 </div>
               )}
             </div>
