@@ -33,6 +33,12 @@ git pull origin "${BRANCH}"
 log "依存関係をインストール中..."
 pnpm install
 
+# Prisma Clientを生成
+log "Prisma Clientを生成中..."
+cd apps/api
+pnpm prisma generate
+cd "${PROJECT_DIR}"
+
 # 共有型パッケージをビルド
 log "共有型パッケージをビルド中..."
 cd packages/shared-types
