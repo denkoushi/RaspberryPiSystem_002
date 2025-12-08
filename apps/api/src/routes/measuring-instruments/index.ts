@@ -51,7 +51,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
 
   // タグUIDから計測機器を取得
   app.get('/measuring-instruments/by-tag/:tagUid', { preHandler: canView }, async (request) => {
-    const tagUid = z.string().min(1).parse(request.params.tagUid);
+    const params = z.object({ tagUid: z.string().min(1) }).parse(request.params);
+    const tagUid = params.tagUid;
     const instrument = await instrumentService.findByTagUid(tagUid);
     if (!instrument) {
       throw new ApiError(404, '指定されたタグUIDに紐づく計測機器が見つかりません');
@@ -91,7 +92,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   // 点検項目作成
   app.post('/measuring-instruments/:id/inspection-items', { preHandler: canWrite }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
-    const body = inspectionItemCreateSchema.parse({ ...request.body, measuringInstrumentId: params.id });
+    const rawBody = typeof request.body === 'object' && request.body !== null ? request.body : {};
+    const body = inspectionItemCreateSchema.parse({ ...rawBody, measuringInstrumentId: params.id });
     const item = await inspectionItemService.create(body);
     return { inspectionItem: item };
   });
@@ -150,7 +152,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   // 点検記録作成
   app.post('/measuring-instruments/:id/inspection-records', { preHandler: canWrite }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
-    const body = inspectionRecordCreateSchema.parse({ ...request.body, measuringInstrumentId: params.id });
+    const rawBody = typeof request.body === 'object' && request.body !== null ? request.body : {};
+    const body = inspectionRecordCreateSchema.parse({ ...rawBody, measuringInstrumentId: params.id });
     const record = await inspectionRecordService.create(body);
     return { inspectionRecord: record };
   });
