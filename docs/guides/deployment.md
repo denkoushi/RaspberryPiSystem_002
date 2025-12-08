@@ -178,10 +178,11 @@ ssh signageras3@<pi3_ip> 'ls -lh /var/cache/signage/current.jpg'
 
 1. **Gitリポジトリの更新**: 指定されたブランチをチェックアウトし、最新の変更を取得
 2. **依存関係のインストール**: `pnpm install`を実行
-3. **ビルド**: 共有型パッケージとAPIをビルド
-4. **Dockerコンテナの再ビルド・再起動**: `docker compose up -d --build`を実行
-5. **データベースマイグレーション**: Prismaマイグレーションを実行
-6. **ヘルスチェック**: APIが正常に起動しているか確認
+3. **Prisma Client生成**: `pnpm prisma generate`を実行（スキーマ変更時に必要）
+4. **ビルド**: 共有型パッケージとAPIをビルド
+5. **Dockerコンテナの再ビルド・再起動**: `docker compose up -d --build`を実行
+6. **データベースマイグレーション**: Prismaマイグレーションを実行
+7. **ヘルスチェック**: APIが正常に起動しているか確認
 
 ### 3. 自動デプロイ（cron）
 
