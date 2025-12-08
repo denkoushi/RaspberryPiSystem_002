@@ -64,11 +64,11 @@
 ## 持ち出し・返却 API（計測機器対応）
 
 ### POST /api/measuring-instruments/borrow
-- 計測機器タグUIDと氏名タグUIDで持ち出しを登録
-- ボディ: `instrumentTagUid`, `employeeTagUid`, `inspectionResults[]`（{inspectionItemId, result}）、`clientId?`, `note?`
+- 計測機器タグUIDと氏名タグUIDで持ち出しを登録（Loan作成＋ステータスIN_USE）
+- ボディ: `instrumentTagUid`, `employeeTagUid`, `clientId?`, `dueAt?`, `note?`
 
 ### POST /api/measuring-instruments/return
-- 返却を登録
+- 返却を登録（ステータスAVAILABLE、TransactionにRETURN記録）
 - ボディ: `loanId`, `clientId?`, `performedByUserId?`, `note?`
 
 ## WebSocket（キオスク連携）
