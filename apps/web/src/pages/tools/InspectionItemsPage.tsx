@@ -172,10 +172,10 @@ export function InspectionItemsPage() {
                     <td className="px-2 py-1">{item.criteria}</td>
                     <td className="px-2 py-1">{item.method}</td>
                     <td className="px-2 py-1 space-x-2">
-                      <Button size="sm" variant="secondary" onClick={() => startEdit(item)}>
+                      <Button className="px-2 py-1 text-xs" variant="secondary" onClick={() => startEdit(item)}>
                         編集
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(item.id)}>
+                      <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(item.id)}>
                         削除
                       </Button>
                     </td>

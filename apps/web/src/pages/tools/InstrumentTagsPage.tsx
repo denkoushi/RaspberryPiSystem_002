@@ -92,7 +92,7 @@ export function InstrumentTagsPage() {
                   <tr key={tag.id} className="border-t border-white/10">
                     <td className="px-2 py-1">{tag.rfidTagUid}</td>
                     <td className="px-2 py-1 space-x-2">
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(tag.id)}>
+                      <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(tag.id)}>
                         削除
                       </Button>
                     </td>

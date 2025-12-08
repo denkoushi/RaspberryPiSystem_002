@@ -178,10 +178,10 @@ export function MeasuringInstrumentsPage() {
                     </td>
                     <td className="px-2 py-1">{instrument.status}</td>
                     <td className="px-2 py-1 space-x-2">
-                      <Button size="sm" variant="secondary" onClick={() => startEdit(instrument)}>
+                      <Button className="px-2 py-1 text-xs" variant="secondary" onClick={() => startEdit(instrument)}>
                         編集
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(instrument.id)}>
+                      <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(instrument.id)}>
                         削除
                       </Button>
                     </td>
