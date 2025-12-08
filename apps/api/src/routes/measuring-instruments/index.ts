@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
@@ -24,6 +24,7 @@ import {
   instrumentReturnSchema
 } from './schemas.js';
 import { MeasuringInstrumentLoanService } from '../../services/measuring-instruments/loan.service.js';
+import { prisma } from '../../lib/prisma.js';
 
 export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
@@ -35,22 +36,69 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const inspectionRecordService = new InspectionRecordService();
   const instrumentLoanService = new MeasuringInstrumentLoanService();
 
+  // Kiosk向け: x-client-key でも閲覧を許可する簡易認証
+  const allowClientKey = async (request: FastifyRequest) => {
+    // 既にJWT認証を試みる前提のフォールバックとして使用する
+
+    const rawClientKey = request.headers['x-client-key'];
+    let clientKey: string | undefined;
+    if (typeof rawClientKey === 'string') {
+      try {
+        const parsed = JSON.parse(rawClientKey);
+        clientKey = typeof parsed === 'string' ? parsed : rawClientKey;
+      } catch {
+        clientKey = rawClientKey;
+      }
+    } else if (Array.isArray(rawClientKey) && rawClientKey.length > 0) {
+      clientKey = rawClientKey[0];
+    }
+
+    if (!clientKey) {
+      throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
+    }
+
+    const client = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+    if (!client) {
+      throw new ApiError(403, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
+    }
+  };
+
+  // JWT or クライアントキー どちらかで閲覧を許可
+  const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      await canView(request, reply);
+      return;
+    } catch (error) {
+      // JWT認証に失敗した場合のみクライアントキーで再判定
+      await allowClientKey(request);
+    }
+  };
+
+  const allowWrite = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      await canWrite(request, reply);
+      return;
+    } catch (error) {
+      await allowClientKey(request);
+    }
+  };
+
   // 計測機器一覧
-  app.get('/measuring-instruments', { preHandler: canView }, async (request) => {
+  app.get('/measuring-instruments', { preHandler: allowView }, async (request) => {
     const query = instrumentQuerySchema.parse(request.query);
     const instruments = await instrumentService.findAll(query);
     return { instruments };
   });
 
   // 計測機器詳細
-  app.get('/measuring-instruments/:id', { preHandler: canView }, async (request) => {
+  app.get('/measuring-instruments/:id', { preHandler: allowView }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
     const instrument = await instrumentService.findById(params.id);
     return { instrument };
   });
 
   // タグUIDから計測機器を取得
-  app.get('/measuring-instruments/by-tag/:tagUid', { preHandler: canView }, async (request) => {
+  app.get('/measuring-instruments/by-tag/:tagUid', { preHandler: allowView }, async (request) => {
     const params = z.object({ tagUid: z.string().min(1) }).parse(request.params);
     const tagUid = params.tagUid;
     const instrument = await instrumentService.findByTagUid(tagUid);
@@ -83,7 +131,7 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   });
 
   // 点検項目一覧（計測機器単位）
-  app.get('/measuring-instruments/:id/inspection-items', { preHandler: canView }, async (request) => {
+  app.get('/measuring-instruments/:id/inspection-items', { preHandler: allowView }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
     const items = await inspectionItemService.findByInstrument(params.id);
     return { inspectionItems: items };
@@ -159,14 +207,14 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   });
 
   // 計測機器持出
-  app.post('/measuring-instruments/borrow', { preHandler: canWrite }, async (request) => {
+  app.post('/measuring-instruments/borrow', { preHandler: allowWrite }, async (request) => {
     const body = instrumentBorrowSchema.parse(request.body);
     const loan = await instrumentLoanService.borrow(body);
     return { loan };
   });
 
   // 計測機器返却
-  app.post('/measuring-instruments/return', { preHandler: canWrite }, async (request) => {
+  app.post('/measuring-instruments/return', { preHandler: allowWrite }, async (request) => {
     const body = instrumentReturnSchema.parse(request.body);
     const loan = await instrumentLoanService.return(body);
     return { loan };
