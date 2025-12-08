@@ -35,6 +35,9 @@ export function AdminLayout() {
           <NavLink to="/admin/tools/items" className={linkClass}>
             アイテム
           </NavLink>
+          <NavLink to="/admin/tools/measuring-instruments" className={linkClass}>
+            計測機器
+          </NavLink>
           <NavLink to="/admin/tools/history" className={linkClass}>
             履歴
           </NavLink>

@@ -18,6 +18,7 @@ import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { EmployeesPage } from './pages/tools/EmployeesPage';
 import { HistoryPage } from './pages/tools/HistoryPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
+import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
         <Route path="tools">
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="items" element={<ItemsPage />} />
+          <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
           <Route path="history" element={<HistoryPage />} />
         </Route>
         <Route path="clients" element={<ClientsPage />} />
@@ -55,6 +57,7 @@ function App() {
         {/* 後方互換性のため、既存パスも維持 */}
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="items" element={<ItemsPage />} />
+        <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
