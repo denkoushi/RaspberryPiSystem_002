@@ -31,6 +31,8 @@ export function KioskInstrumentBorrowPage() {
   const nfcEvent = useNfcStream();
   const lastNfcEventKeyRef = useRef<string | null>(null);
 
+  const hasInstrument = selectedInstrumentId || instrumentTagUid.trim();
+
   // タグUID入力時に計測機器を自動選択
   useEffect(() => {
     const searchInstrumentByTag = async () => {
@@ -84,8 +86,8 @@ export function KioskInstrumentBorrowPage() {
   }, [selectedInstrumentId, inspectionItems.length, isNg]);
 
   const handleNg = async () => {
-    if (!selectedInstrumentId) {
-      setMessage('計測機器を選択してください。');
+    if (!hasInstrument) {
+      setMessage('計測機器を選択するかタグUIDを入力してください。');
       return;
     }
     if (!employeeTagUid.trim()) {
@@ -117,8 +119,8 @@ export function KioskInstrumentBorrowPage() {
     if (e) {
       e.preventDefault();
     }
-    if (!selectedInstrumentId) {
-      setMessage('計測機器を選択してください。');
+    if (!hasInstrument) {
+      setMessage('計測機器を選択するかタグUIDを入力してください。');
       return;
     }
     if (!employeeTagUid.trim()) {
@@ -160,7 +162,7 @@ export function KioskInstrumentBorrowPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [selectedInstrumentId, employeeTagUid, isNg, instrumentTagUid, note, inspectionItems, instruments]);
+  }, [selectedInstrumentId, employeeTagUid, isNg, instrumentTagUid, note, inspectionItems, instruments, hasInstrument]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
   useEffect(() => {
@@ -185,14 +187,14 @@ export function KioskInstrumentBorrowPage() {
       if (isNg || isSubmitting) {
         return;
       }
-      if (!selectedInstrumentId) {
+      if (!hasInstrument) {
         setMessage('計測機器を選択中です。少し待ってから再スキャンしてください。');
         return;
       }
       // OKフローは自動送信
       handleSubmit();
     }
-  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, selectedInstrumentId, handleSubmit]);
+  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit]);
 
   const resetForm = () => {
     setSelectedInstrumentId('');
@@ -205,11 +207,7 @@ export function KioskInstrumentBorrowPage() {
 
   // 氏名タグUID入力時に自動送信（OKの場合のみ）
   useEffect(() => {
-    if (!employeeTagUid.trim() || !selectedInstrumentId || isNg || isSubmitting) {
-      return;
-    }
-    if (inspectionItems.length === 0) {
-      // 点検項目がない場合は自動送信しない（手動送信が必要）
+    if (!employeeTagUid.trim() || !hasInstrument || isNg || isSubmitting) {
       return;
     }
     // デバウンス: 500ms後に自動送信
@@ -217,7 +215,7 @@ export function KioskInstrumentBorrowPage() {
       handleSubmit();
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [employeeTagUid, selectedInstrumentId, isNg, isSubmitting, inspectionItems.length, handleSubmit]);
+  }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit]);
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
@@ -230,7 +228,7 @@ export function KioskInstrumentBorrowPage() {
                 className="w-full rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
                 value={selectedInstrumentId}
                 onChange={(e) => setSelectedInstrumentId(e.target.value)}
-                required
+                required={instrumentTagUid.trim().length === 0}
                 disabled={isLoadingInstruments}
               >
                 <option value="">選択してください</option>
@@ -247,7 +245,7 @@ export function KioskInstrumentBorrowPage() {
             <Input
               value={instrumentTagUid}
               onChange={(e) => setInstrumentTagUid(e.target.value)}
-              required
+              required={selectedInstrumentId.trim().length === 0}
               placeholder="スキャンまたは手入力"
             />
           </label>
@@ -258,7 +256,7 @@ export function KioskInstrumentBorrowPage() {
               value={employeeTagUid}
               onChange={(e) => setEmployeeTagUid(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && selectedInstrumentId) {
+                if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
                   e.preventDefault();
                   handleSubmit();
                 }
@@ -282,7 +280,7 @@ export function KioskInstrumentBorrowPage() {
                   variant="secondary"
                   className={isNg ? 'bg-red-500 text-white hover:bg-red-600' : undefined}
                   onClick={handleNg}
-                  disabled={isSubmitting || !selectedInstrumentId || !employeeTagUid.trim()}
+                  disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim()}
                 >
                   NGにする
                 </Button>

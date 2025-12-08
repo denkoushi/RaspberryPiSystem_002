@@ -65,13 +65,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
     // JWTトークンがある場合は通常の認証を試みる
     if (request.headers.authorization) {
-      try {
-        await canView(request, reply);
-        return;
-      } catch (error) {
-        // JWT認証に失敗した場合はエラーをそのまま投げる
-        throw error;
-      }
+      await canView(request, reply);
+      return;
     }
     // JWTトークンがない場合はクライアントキー認証
     await allowClientKey(request);
@@ -80,13 +75,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const allowWrite = async (request: FastifyRequest, reply: FastifyReply) => {
     // JWTトークンがある場合は通常の認証を試みる
     if (request.headers.authorization) {
-      try {
-        await canWrite(request, reply);
-        return;
-      } catch (error) {
-        // JWT認証に失敗した場合はエラーをそのまま投げる
-        throw error;
-      }
+      await canWrite(request, reply);
+      return;
     }
     // JWTトークンがない場合はクライアントキー認証
     await allowClientKey(request);
