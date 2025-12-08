@@ -15,8 +15,18 @@
 
 1. **サーバー側の準備**
    - ラズパイ5でAPI/Web/DBが起動していること
-   - 最新のコードがデプロイされていること
+   - featureブランチの最新コードがデプロイされていること
+     ```bash
+     # ラズパイ5で実行
+     cd /opt/RaspberryPiSystem_002
+     ./scripts/server/deploy.sh feature/measuring-instruments-requirements
+     ```
    - シードデータが投入されていること（計測機器テストデータ含む）
+     ```bash
+     # ラズパイ5で実行（デプロイ後）
+     cd /opt/RaspberryPiSystem_002/apps/api
+     docker compose -f ../../infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma db seed
+     ```
 
 2. **クライアント側の準備**
    - ラズパイ4でNFCエージェントが起動していること
