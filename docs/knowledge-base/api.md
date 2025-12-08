@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 16件  
+**件数**: 17件  
 **索引**: [index.md](./index.md)
 
 ---

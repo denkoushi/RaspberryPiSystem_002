@@ -20,11 +20,11 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 16件 | APIエラー、レート制限、認証、履歴、サイネージ |
+| API関連 | [api.md](./api.md) | 17件 | APIエラー、レート制限、認証、履歴、サイネージ |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 18件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 43件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 19件 | キオスク接続、XState、UI、カメラ連携、サイネージ |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 44件 | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー |
 
 ---
 
@@ -49,6 +49,7 @@ update-frequency: high
 | [KB-052](./api.md#kb-052-sharpのcompositeエラーimage-to-composite-must-have-same-dimensions-or-smaller) | sharpのcompositeエラー（Image to composite must have same dimensions or smaller） | ✅ 解決済み |
 | [KB-054](./api.md#kb-054-サイネージ工具表示で日本語が文字化けする問題) | サイネージ工具表示で日本語が文字化けする問題 | ✅ 解決済み |
 | [KB-055](./api.md#kb-055-サイネージpdfがトリミングされて表示される) | サイネージPDFがトリミングされて表示される | ✅ 解決済み |
+| [KB-090](./api.md#kb-090-キオスクから計測機器一覧を取得できない問題client-key認証追加) | キオスクから計測機器一覧を取得できない問題（client-key認証追加） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -86,6 +87,7 @@ update-frequency: high
 | [KB-043](./frontend.md#kb-043-kioskredirectがadminパスでも動作してしまい管理画面にアクセスできない問題) | KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題 | ✅ 解決済み |
 | [KB-045](./frontend.md#kb-045-分割表示でpdfがスライドしない問題) | 分割表示でPDFがスライドしない問題 | ✅ 解決済み |
 | [KB-046](./frontend.md#kb-046-サイネージのサムネイルアスペクト比がおかしい問題) | サイネージのサムネイルアスペクト比がおかしい問題 | ✅ 解決済み |
+| [KB-091](./frontend.md#kb-091-キオスク持出フローの改善選択-or-タグuid点検項目なしでも送信) | キオスク持出フローの改善（選択 or タグUID、点検項目なしでも送信） | ✅ 解決済み |
 
 ### インフラ関連
 

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 43件  
+**件数**: 44件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1958,5 +1958,59 @@ const textX = x + textAreaX;
 - `scripts/deploy/deploy-all.sh`（標準手順参照を追加）
 - `docs/guides/deployment.md`（標準プロセスの更新）
 - `docs/knowledge-base/infrastructure.md`（KB-086更新、KB-089追加）
+
+---
+
+### [KB-092] Pi4キオスクのGPUクラッシュ問題
+
+**EXEC_PLAN.md参照**: 実機検証準備完了（2025-12-08）
+
+**事象**: 
+- Pi4キオスクがエンドレスエラー中
+- ブラウザの開発者コンソールが開けない環境（フルスクリーン）でエラーの詳細が不明
+- キオスク画面が表示されない、または頻繁にクラッシュする
+
+**要因**: 
+- ChromiumのGPUアクセラレーションがPi4のハードウェアと相性が悪い
+- GPU関連エラー（SharedImage/GPU state invalid）が頻発
+- メモリ不足やGPUリソース不足により、ブラウザプロセスがクラッシュ
+
+**エラーログの例**:
+```
+ERROR:gpu/command_buffer/service/shared_image/shared_image_factory.cc:928] Could not find SharedImageBackingFactory
+ERROR:gpu/ipc/service/shared_image_stub.cc:206] SharedImageStub: Unable to create shared image
+ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:327] GPU state invalid after WaitForGetOffsetInRange
+```
+
+**試行した対策**: 
+- [試行1] キオスクブラウザサービスを再起動 → **一時的解決**（再起動後は動作するが、時間が経つと再発）
+- [試行2] Pi4を再起動 → **確認中**（ユーザー要請により実施）
+
+**有効だった対策**: 
+- ✅ **一時的解決**（2025-12-08）:
+  1. `sudo -n systemctl restart kiosk-browser.service`でサービス再起動
+  2. Pi4の再起動でGPUリソースをリセット
+
+**推奨対策**（未実施）:
+- GPU無効化オプションを追加: Chromium起動時に`--disable-gpu --disable-software-rasterizer`を追加
+- ソフトウェアレンダリングに切り替え: `--use-gl=swiftshader`オプションを追加
+- メモリ使用量の最適化: 不要なタブや拡張機能を無効化
+
+**学んだこと**: 
+- Pi4のChromiumでGPU関連エラーが頻発する可能性がある
+- フルスクリーン環境ではブラウザコンソールが開けないため、systemdログで問題を特定する必要がある
+- GPUアクセラレーションを無効化することで、安定性が向上する可能性がある
+- 再起動で一時的に解決するが、根本的な対策（GPU無効化）が必要
+
+**解決状況**: 🔄 **一時的解決**（2025-12-08、根本対策は未実施）
+
+**関連ファイル**: 
+- `/etc/systemd/system/kiosk-browser.service`
+- `scripts/client/setup-kiosk.sh`
+
+**次のステップ**:
+1. GPU無効化オプションをkiosk-browser.serviceに追加
+2. ソフトウェアレンダリングへの切り替えを検討
+3. 長時間稼働テストを実施して安定性を確認
 
 ---
