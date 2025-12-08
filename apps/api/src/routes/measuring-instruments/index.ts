@@ -38,8 +38,6 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
 
   // Kiosk向け: x-client-key でも閲覧を許可する簡易認証
   const allowClientKey = async (request: FastifyRequest) => {
-    // 既にJWT認証を試みる前提のフォールバックとして使用する
-
     const rawClientKey = request.headers['x-client-key'];
     let clientKey: string | undefined;
     if (typeof rawClientKey === 'string') {
@@ -65,22 +63,33 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
 
   // JWT or クライアントキー どちらかで閲覧を許可
   const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await canView(request, reply);
-      return;
-    } catch (error) {
-      // JWT認証に失敗した場合のみクライアントキーで再判定
-      await allowClientKey(request);
+    // JWTトークンがある場合は通常の認証を試みる
+    if (request.headers.authorization) {
+      try {
+        await canView(request, reply);
+        return;
+      } catch (error) {
+        // JWT認証に失敗した場合はエラーをそのまま投げる
+        throw error;
+      }
     }
+    // JWTトークンがない場合はクライアントキー認証
+    await allowClientKey(request);
   };
 
   const allowWrite = async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await canWrite(request, reply);
-      return;
-    } catch (error) {
-      await allowClientKey(request);
+    // JWTトークンがある場合は通常の認証を試みる
+    if (request.headers.authorization) {
+      try {
+        await canWrite(request, reply);
+        return;
+      } catch (error) {
+        // JWT認証に失敗した場合はエラーをそのまま投げる
+        throw error;
+      }
     }
+    // JWTトークンがない場合はクライアントキー認証
+    await allowClientKey(request);
   };
 
   // 計測機器一覧
