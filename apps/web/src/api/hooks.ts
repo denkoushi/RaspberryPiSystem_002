@@ -43,10 +43,37 @@ import {
   type SignageSchedule,
   type SignagePdf,
   type ClientLogLevel,
-  getNetworkModeStatus
+  getNetworkModeStatus,
+  getMeasuringInstruments,
+  getMeasuringInstrument,
+  createMeasuringInstrument,
+  updateMeasuringInstrument,
+  deleteMeasuringInstrument,
+  getInspectionItems,
+  createInspectionItem,
+  updateInspectionItem,
+  deleteInspectionItem,
+  getInstrumentTags,
+  createInstrumentTag,
+  deleteInstrumentTag,
+  getInspectionRecords,
+  createInspectionRecord,
+  borrowMeasuringInstrument,
+  returnMeasuringInstrument
 } from './client';
 
-import type { BorrowPayload, Employee, Item, ReturnPayload } from './types';
+import type {
+  BorrowPayload,
+  Employee,
+  Item,
+  ReturnPayload,
+  MeasuringInstrument,
+  MeasuringInstrumentStatus,
+  InspectionItem,
+  MeasuringInstrumentBorrowPayload,
+  MeasuringInstrumentReturnPayload,
+  InspectionRecordCreatePayload
+} from './types';
 
 export function useEmployees() {
   return useQuery({
@@ -169,6 +196,132 @@ export function useTransactions(
     queryKey: ['transactions', page, filters],
     queryFn: () => getTransactions(page, filters),
     placeholderData: (previousData) => previousData
+  });
+}
+
+// 計測機器
+export function useMeasuringInstruments(filters?: { search?: string; status?: MeasuringInstrumentStatus }) {
+  return useQuery({
+    queryKey: ['measuring-instruments', filters],
+    queryFn: () => getMeasuringInstruments(filters),
+    placeholderData: (previous) => previous
+  });
+}
+
+export function useMeasuringInstrument(id?: string) {
+  return useQuery({
+    queryKey: ['measuring-instrument', id],
+    queryFn: () => getMeasuringInstrument(id!),
+    enabled: !!id
+  });
+}
+
+export function useMeasuringInstrumentMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (payload: Partial<MeasuringInstrument>) => createMeasuringInstrument(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<MeasuringInstrument> }) =>
+      updateMeasuringInstrument(id, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
+      queryClient.invalidateQueries({ queryKey: ['measuring-instrument', vars.id] });
+    }
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteMeasuringInstrument(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] })
+  });
+  return { create, update, remove };
+}
+
+// 点検項目
+export function useInspectionItems(measuringInstrumentId?: string) {
+  return useQuery({
+    queryKey: ['inspection-items', measuringInstrumentId],
+    queryFn: () => getInspectionItems(measuringInstrumentId!),
+    enabled: !!measuringInstrumentId
+  });
+}
+
+export function useInspectionItemMutations(measuringInstrumentId: string) {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (payload: Partial<InspectionItem>) => createInspectionItem(measuringInstrumentId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<InspectionItem> }) =>
+      updateInspectionItem(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteInspectionItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+  });
+  return { create, update, remove };
+}
+
+// RFIDタグ
+export function useInstrumentTags(measuringInstrumentId?: string) {
+  return useQuery({
+    queryKey: ['instrument-tags', measuringInstrumentId],
+    queryFn: () => getInstrumentTags(measuringInstrumentId!),
+    enabled: !!measuringInstrumentId
+  });
+}
+
+export function useInstrumentTagMutations(measuringInstrumentId: string) {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (rfidTagUid: string) => createInstrumentTag(measuringInstrumentId, rfidTagUid),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instrument-tags', measuringInstrumentId] })
+  });
+  const remove = useMutation({
+    mutationFn: (tagId: string) => deleteInstrumentTag(tagId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instrument-tags', measuringInstrumentId] })
+  });
+  return { create, remove };
+}
+
+// 点検記録
+export function useInspectionRecords(
+  measuringInstrumentId?: string,
+  filters?: { startDate?: string; endDate?: string; employeeId?: string; result?: string }
+) {
+  return useQuery({
+    queryKey: ['inspection-records', measuringInstrumentId, filters],
+    queryFn: () => getInspectionRecords(measuringInstrumentId!, filters),
+    enabled: !!measuringInstrumentId
+  });
+}
+
+export function useInspectionRecordCreate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InspectionRecordCreatePayload) => createInspectionRecord(payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['inspection-records', vars.measuringInstrumentId] });
+    }
+  });
+}
+
+// 計測機器の持出/返却
+export function useBorrowMeasuringInstrument(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MeasuringInstrumentBorrowPayload) => borrowMeasuringInstrument(payload, clientKey),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+  });
+}
+
+export function useReturnMeasuringInstrument(clientKey?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MeasuringInstrumentReturnPayload) => returnMeasuringInstrument(payload, clientKey),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
   });
 }
 
