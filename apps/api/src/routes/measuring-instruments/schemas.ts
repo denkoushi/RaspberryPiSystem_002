@@ -70,3 +70,18 @@ export const inspectionRecordQuerySchema = z.object({
   employeeId: z.string().uuid().optional(),
   result: z.nativeEnum(InspectionResult).optional()
 });
+
+export const instrumentBorrowSchema = z.object({
+  instrumentTagUid: z.string().min(1),
+  employeeTagUid: z.string().min(1),
+  clientId: z.string().uuid().optional(),
+  dueAt: z.coerce.date().optional(),
+  note: z.string().optional().nullable()
+});
+
+export const instrumentReturnSchema = z.object({
+  loanId: z.string().uuid(),
+  clientId: z.string().uuid().optional(),
+  performedByUserId: z.string().uuid().optional(),
+  note: z.string().optional().nullable()
+});

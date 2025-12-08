@@ -53,6 +53,14 @@ export class MeasuringInstrumentService {
     return instrument;
   }
 
+  async findByTagUid(tagUid: string): Promise<MeasuringInstrument | null> {
+    const tag = await prisma.measuringInstrumentTag.findFirst({
+      where: { rfidTagUid: tagUid },
+      include: { measuringInstrument: true }
+    });
+    return tag?.measuringInstrument ?? null;
+  }
+
   async create(data: MeasuringInstrumentCreateInput): Promise<MeasuringInstrument> {
     return await prisma.measuringInstrument.create({
       data: {

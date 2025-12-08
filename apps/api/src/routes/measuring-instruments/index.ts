@@ -17,8 +17,11 @@ import {
   tagCreateSchema,
   tagParamsSchema,
   inspectionRecordCreateSchema,
-  inspectionRecordQuerySchema
+  inspectionRecordQuerySchema,
+  instrumentBorrowSchema,
+  instrumentReturnSchema
 } from './schemas.js';
+import { MeasuringInstrumentLoanService } from '../../services/measuring-instruments/loan.service.js';
 
 export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
@@ -28,6 +31,7 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const inspectionItemService = new InspectionItemService();
   const tagService = new MeasuringInstrumentTagService();
   const inspectionRecordService = new InspectionRecordService();
+  const instrumentLoanService = new MeasuringInstrumentLoanService();
 
   // 計測機器一覧
   app.get('/measuring-instruments', { preHandler: canView }, async (request) => {
@@ -137,5 +141,19 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     const body = inspectionRecordCreateSchema.parse({ ...request.body, measuringInstrumentId: params.id });
     const record = await inspectionRecordService.create(body);
     return { inspectionRecord: record };
+  });
+
+  // 計測機器持出
+  app.post('/measuring-instruments/borrow', { preHandler: canWrite }, async (request) => {
+    const body = instrumentBorrowSchema.parse(request.body);
+    const loan = await instrumentLoanService.borrow(body);
+    return { loan };
+  });
+
+  // 計測機器返却
+  app.post('/measuring-instruments/return', { preHandler: canWrite }, async (request) => {
+    const body = instrumentReturnSchema.parse(request.body);
+    const loan = await instrumentLoanService.return(body);
+    return { loan };
   });
 }
