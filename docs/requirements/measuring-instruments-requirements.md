@@ -262,10 +262,10 @@ update-frequency: medium
 
 ### RFIDリーダーTS100
 
-- **接続方式**: Bluetooth接続（調査が必要）
-- **SDK**: 公式SDKは Android/iOS/Windows のみ。Linux版は提供なし → Raspberry Pi では Bluetooth HID/シリアル（SPP など）での動作検証が必要
-- **Raspberry Pi対応**: Raspberry Piでの動作確認が必要（HID/シリアルモードの有無確認、サンプル実装検証）
-- **参考URL**: https://rfid.tss21.co.jp/product/ts100/sdk.html
+- **接続方式**: USB HIDキーボードエミュレーションを優先（Linuxでドライバ不要）。BLEはHID想定、SPP対応は未確認。
+- **SDK**: 公式SDKは Android/iOS/Windows のみ。Linux版なし → エッジ側でHIDイベントを読み取り、`nfc-agent`拡張でWebSocket配信する方針。
+- **Raspberry Pi対応**: HIDデバイスを`evdev`等で読み取り、`{ uid, reader: 'ts100', type: 'rfid-tag' }`でキオスクへ配信する実装を予定。
+- **参考URL**: https://rfid.tss21.co.jp/product/ts100/sdk.html / [TS100統合計画](../plans/ts100-integration-plan.md)
 
 ### データベース
 
@@ -281,10 +281,9 @@ update-frequency: medium
 ## 未確定事項
 
 1. **RFIDリーダーTS100**（技術実装課題）
-   - Raspberry Piでの動作確認
-   - Linux用SDKの有無
-   - Bluetooth接続の実装方法
-   - **状態**: 実装時に調査・検証が必要
+   - **決定**: USB HIDを優先し、`nfc-agent`をHID読み取り対応に拡張する。BLEはHID前提でSPPは未確認。
+   - **残課題**: 実機でUID出力フォーマット・デバウンス挙動を確認し、HIDデバイスパスを特定する。
+   - **参考**: [TS100統合計画](../plans/ts100-integration-plan.md)
 
 2. **NG項目の記録方法** ✅ 解決済み（2025-12-08）
    - **決定**: 計測機器全体で1つのNGボタンのみ。NGの場合は点検記録を作成しない（個別項目の記録は不要）
@@ -312,7 +311,7 @@ update-frequency: medium
 
 ### 未実装機能
 
-- ⏳ **RFIDリーダーTS100統合**: Bluetooth HID/シリアルモードでの実装
+- ⏳ **RFIDリーダーTS100統合**: USB/BLE HIDでのエージェント連携実装（計画: [ts100-integration-plan](../plans/ts100-integration-plan.md)）
 - ⏳ **サイネージ表示**: 計測機器ステータス・校正期限アラート表示
 
 ## 関連ドキュメント

@@ -5,7 +5,7 @@ Sony RC-S300/S1 NFC リーダーから Felica / Mifare の UID を取得し、We
 ## セットアップ
 
 ```bash
-sudo apt-get install -y pcscd python3-pyscard
+sudo apt-get install -y pcscd python3-pyscard python3-evdev
 sudo systemctl enable --now pcscd
 
 cd clients/nfc-agent
@@ -16,6 +16,11 @@ poetry run python -m nfc_agent
 ```
 
 `pyscard` がリーダーを認識できない場合は `pcsc_scan` コマンドで接続を確認し、`sudo systemctl restart pcscd` を試してください。それでも認識できない場合は `.env` に `AGENT_MODE=mock` を設定してモックUIDをブラウザへ送り、`nfcpy` など他方式への切り替えを検討してください。
+
+### TS100 (USB/BLE HID) で使う場合
+- `.env` で `AGENT_MODE=ts100-hid` を設定。
+- HIDデバイスパスを明示する場合は `TS100_HID_DEVICE=/dev/input/by-id/usb-...-event-kbd` を指定（未指定なら「ts100」を含むデバイス名を自動検出）。
+- UIDは Enter/改行で確定とみなし WebSocket `/stream` に `{uid, reader: \"ts100-hid\", type: \"rfid-tag\"}` で配信。
 
 ## 提供インターフェース
 

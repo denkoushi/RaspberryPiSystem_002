@@ -9,6 +9,7 @@ packages = [{ include = "nfc_agent" }]
 [tool.poetry.dependencies]
 python = "^3.11"
 pyscard = "^2.0.7"
+evdev = "^1.7.0"
 websockets = "^12.0"
 fastapi = "^0.111.0"
 uvicorn = { version = "^0.29.0", extras = ["standard"] }

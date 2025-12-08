@@ -33,6 +33,9 @@ else:
         IMPORT_ERROR_MESSAGE = f"NoReadersAvailable missing ({exc})"
 
 
+from .ts100_hid import Ts100HidReader
+
+
 LOGGER = logging.getLogger("nfc_agent.reader")
 
 if IMPORT_ERROR_MESSAGE:
@@ -48,6 +51,7 @@ class ReaderStatus:
     reader_name: Optional[str] = None
     message: str = ""
     last_error: Optional[str] = None
+    device_path: Optional[str] = None
 
 
 def _format_uid(data: list[int]) -> str:
@@ -116,11 +120,25 @@ class ReaderService:
         self.observer: Optional[AsyncCardObserver] = None
         self.status = ReaderStatus(message="initializing")
         self.mock_task: Optional[asyncio.Task[None]] = None
+        self.ts100_reader: Optional[Ts100HidReader] = None
 
     def start(self, mode: str) -> None:
         if mode == "mock":
             self.status = ReaderStatus(connected=True, reader_name="mock-reader", message="Mock mode")
             self.mock_task = self.loop.create_task(self._mock_events())
+            return
+
+        if mode == "ts100-hid":
+            self.ts100_reader = Ts100HidReader(self.event_queue, self.loop)
+            self.ts100_reader.start()
+            ts100_status = self.ts100_reader.status
+            self.status = ReaderStatus(
+                connected=ts100_status.connected,
+                reader_name=ts100_status.reader_name,
+                message=ts100_status.message,
+                last_error=ts100_status.last_error,
+                device_path=getattr(ts100_status, "device_path", None),
+            )
             return
 
         if CardMonitor is None:
@@ -179,6 +197,8 @@ class ReaderService:
             self.mock_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.mock_task
+        if self.ts100_reader:
+            await self.ts100_reader.shutdown()
 
     def get_status(self) -> ReaderStatus:
         return self.status
