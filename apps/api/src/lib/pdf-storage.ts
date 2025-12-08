@@ -3,12 +3,11 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { convertPdfToImages } from './pdf-converter.js';
 
-/**
- * PDF保存のベースディレクトリ
- */
-const STORAGE_BASE_DIR = process.env.PDF_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
-const PDFS_DIR = path.join(STORAGE_BASE_DIR, 'pdfs');
-export const PDF_PAGES_DIR = path.join(STORAGE_BASE_DIR, 'pdf-pages');
+const getStorageBaseDir = () =>
+  process.env.PDF_STORAGE_DIR ||
+  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getPdfsDir = () => path.join(getStorageBaseDir(), 'pdfs');
+export const PDF_PAGES_DIR = path.join(getStorageBaseDir(), 'pdf-pages');
 
 /**
  * PDFファイルのパス情報
@@ -30,7 +29,7 @@ export class PdfStorage {
    * ストレージディレクトリを初期化する
    */
   static async initialize(): Promise<void> {
-    await fs.mkdir(PDFS_DIR, { recursive: true });
+    await fs.mkdir(getPdfsDir(), { recursive: true });
     await fs.mkdir(PDF_PAGES_DIR, { recursive: true });
   }
 
@@ -47,7 +46,7 @@ export class PdfStorage {
     const sanitizedBasename = basename.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `${sanitizedBasename}_${id}${ext}`;
     
-    const filePath = path.join(PDFS_DIR, filename);
+    const filePath = path.join(getPdfsDir(), filename);
     const relativePath = `/api/storage/pdfs/${filename}`;
 
     return {
@@ -72,7 +71,7 @@ export class PdfStorage {
     const pathInfo = this.generatePdfPath(originalFilename);
 
     // ディレクトリを作成（存在しない場合）
-    await fs.mkdir(PDFS_DIR, { recursive: true });
+    await fs.mkdir(getPdfsDir(), { recursive: true });
 
     // ファイルを保存
     await fs.writeFile(pathInfo.filePath, pdfBuffer);
@@ -88,7 +87,7 @@ export class PdfStorage {
   static async deletePdf(pdfUrl: string): Promise<void> {
     // URLからファイルパスを抽出
     const filename = path.basename(pdfUrl);
-    const fullPath = path.join(PDFS_DIR, filename);
+    const fullPath = path.join(getPdfsDir(), filename);
 
     // ファイルを削除（存在しない場合はエラーを無視）
     try {
@@ -110,7 +109,7 @@ export class PdfStorage {
   static async readPdf(pdfUrl: string): Promise<Buffer> {
     // URLからファイルパスを抽出
     const filename = path.basename(pdfUrl);
-    const fullPath = path.join(PDFS_DIR, filename);
+    const fullPath = path.join(getPdfsDir(), filename);
 
     return await fs.readFile(fullPath);
   }
@@ -127,6 +126,7 @@ export class PdfStorage {
     
     // 既に変換済みの場合は既存の画像を返す
     try {
+      await fs.mkdir(outputDir, { recursive: true });
       const existingFiles = await fs.readdir(outputDir);
       const pageFiles = existingFiles
         .filter((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))
@@ -146,6 +146,7 @@ export class PdfStorage {
     try {
       // 環境変数でDPIを設定可能（デフォルト: 150、4K表示の場合は300推奨）
       const dpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
+      await fs.mkdir(outputDir, { recursive: true });
       await convertPdfToImages(pdfFilePath, outputDir, {
         prefix: pdfId,
         format: 'jpeg',

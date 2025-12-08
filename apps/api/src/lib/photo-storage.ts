@@ -1,12 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-/**
- * 写真保存のベースディレクトリ
- */
-const STORAGE_BASE_DIR = process.env.PHOTO_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
-const PHOTOS_DIR = path.join(STORAGE_BASE_DIR, 'photos');
-const THUMBNAILS_DIR = path.join(STORAGE_BASE_DIR, 'thumbnails');
+const getStorageBaseDir = () =>
+  process.env.PHOTO_STORAGE_DIR ||
+  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getPhotosDir = () => path.join(getStorageBaseDir(), 'photos');
+const getThumbnailsDir = () => path.join(getStorageBaseDir(), 'thumbnails');
 
 /**
  * 写真ファイルのパス情報
@@ -32,8 +31,8 @@ export class PhotoStorage {
    * ストレージディレクトリを初期化する
    */
   static async initialize(): Promise<void> {
-    await fs.mkdir(PHOTOS_DIR, { recursive: true });
-    await fs.mkdir(THUMBNAILS_DIR, { recursive: true });
+    await fs.mkdir(getPhotosDir(), { recursive: true });
+    await fs.mkdir(getThumbnailsDir(), { recursive: true });
   }
 
   /**
@@ -56,8 +55,8 @@ export class PhotoStorage {
     const thumbnailFilename = `${timestamp}_${employeeId}_thumb.jpg`;
 
     const yearMonthDir = path.join(year, month);
-    const fullPath = path.join(PHOTOS_DIR, yearMonthDir, filename);
-    const thumbnailPath = path.join(THUMBNAILS_DIR, yearMonthDir, thumbnailFilename);
+    const fullPath = path.join(getPhotosDir(), yearMonthDir, filename);
+    const thumbnailPath = path.join(getThumbnailsDir(), yearMonthDir, thumbnailFilename);
 
     // API経由でアクセスする相対パス
     const relativePath = `/api/storage/photos/${yearMonthDir}/${filename}`;
@@ -92,8 +91,8 @@ export class PhotoStorage {
     const pathInfo = this.generatePhotoPath(employeeId);
 
     // ディレクトリを作成（存在しない場合）
-    const yearMonthDir = path.join(PHOTOS_DIR, pathInfo.year, pathInfo.month);
-    const thumbnailYearMonthDir = path.join(THUMBNAILS_DIR, pathInfo.year, pathInfo.month);
+    const yearMonthDir = path.join(getPhotosDir(), pathInfo.year, pathInfo.month);
+    const thumbnailYearMonthDir = path.join(getThumbnailsDir(), pathInfo.year, pathInfo.month);
     await fs.mkdir(yearMonthDir, { recursive: true });
     await fs.mkdir(thumbnailYearMonthDir, { recursive: true });
 
@@ -113,13 +112,13 @@ export class PhotoStorage {
     // URLからファイルパスを抽出
     // /api/storage/photos/YYYY/MM/filename.jpg -> /opt/RaspberryPiSystem_002/storage/photos/YYYY/MM/filename.jpg
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(PHOTOS_DIR, relativePath);
+    const fullPath = path.join(getPhotosDir(), relativePath);
 
     // サムネイルのパスも生成
     const thumbnailRelativePath = photoUrl
       .replace('/api/storage/photos/', '/storage/thumbnails/')
       .replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = thumbnailRelativePath.replace('/storage/thumbnails/', THUMBNAILS_DIR + '/');
+    const thumbnailFullPath = thumbnailRelativePath.replace('/storage/thumbnails/', getThumbnailsDir() + '/');
 
     // ファイルを削除（存在しない場合はエラーを無視）
     try {
@@ -150,8 +149,8 @@ export class PhotoStorage {
     const targetYear = year + 2; // 2年後
     const targetMonth = '01'; // 1月
 
-    const yearDir = path.join(PHOTOS_DIR, targetYear.toString(), targetMonth);
-    const thumbnailYearDir = path.join(THUMBNAILS_DIR, targetYear.toString(), targetMonth);
+    const yearDir = path.join(getPhotosDir(), targetYear.toString(), targetMonth);
+    const thumbnailYearDir = path.join(getThumbnailsDir(), targetYear.toString(), targetMonth);
 
     let deletedCount = 0;
 
@@ -191,7 +190,7 @@ export class PhotoStorage {
   static async readPhoto(photoUrl: string): Promise<Buffer> {
     // URLからファイルパスを抽出
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(PHOTOS_DIR, relativePath);
+    const fullPath = path.join(getPhotosDir(), relativePath);
 
     return await fs.readFile(fullPath);
   }
