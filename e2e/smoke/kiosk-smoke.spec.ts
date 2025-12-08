@@ -4,24 +4,28 @@ test.describe('キオスク画面スモーク', () => {
   test('持出画面が表示され、ナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
     await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('link', { name: /持出/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /返却/i })).toBeVisible();
+    // 完全一致で「持出」リンクを特定（計測機器の「計測機器 持出」と区別）
+    await expect(page.getByRole('link', { name: '持出', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: '返却', exact: true }).first()).toBeVisible();
   });
 
   test('返却画面が表示される', async ({ page }) => {
     await page.goto('/kiosk/return');
     await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('link', { name: /返却/i })).toBeVisible();
+    // 完全一致で「返却」リンクを特定
+    await expect(page.getByRole('link', { name: '返却', exact: true }).first()).toBeVisible();
   });
 
   test('持出↔返却のナビゲーションが動作する', async ({ page }) => {
     await page.goto('/kiosk');
-    const returnLink = page.getByRole('link', { name: /返却/i });
+    // href属性で直接特定（計測機器のリンクと区別）
+    const returnLink = page.locator('a[href="/kiosk/return"]');
     await returnLink.waitFor({ state: 'visible' });
     await returnLink.click();
     await expect(page).toHaveURL(/\/kiosk\/return/);
 
-    const borrowLink = page.getByRole('link', { name: /持出/i });
+    // href属性で直接特定（持出リンクは複数あるのでfirst()で最初のものを取得）
+    const borrowLink = page.locator('a[href="/kiosk"]').first();
     await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.click();
     await expect(page).toHaveURL(/\/kiosk$/);
