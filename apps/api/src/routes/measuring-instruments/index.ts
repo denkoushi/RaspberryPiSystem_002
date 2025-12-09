@@ -160,8 +160,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     return { inspectionItem: item };
   });
 
-  // RFIDタグ一覧
-  app.get('/measuring-instruments/:id/tags', { preHandler: canView }, async (request) => {
+  // RFIDタグ一覧（クライアントキーでも閲覧可）
+  app.get('/measuring-instruments/:id/tags', { preHandler: allowView }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
     const tags = await tagService.findByInstrument(params.id);
     return { tags };

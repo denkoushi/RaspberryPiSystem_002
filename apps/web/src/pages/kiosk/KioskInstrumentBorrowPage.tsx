@@ -4,7 +4,8 @@ import {
   borrowMeasuringInstrument,
   createInspectionRecord,
   getInspectionItems,
-  getMeasuringInstrumentByTagUid
+  getMeasuringInstrumentByTagUid,
+  getMeasuringInstrumentTags
 } from '../../api/client';
 import { useMeasuringInstruments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -25,6 +26,7 @@ export function KioskInstrumentBorrowPage() {
   const [inspectionLoading, setInspectionLoading] = useState(false);
 
   const [instrumentTagUid, setInstrumentTagUid] = useState('');
+  const [resolvedInstrumentTagUid, setResolvedInstrumentTagUid] = useState('');
   const [employeeTagUid, setEmployeeTagUid] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -40,9 +42,11 @@ export function KioskInstrumentBorrowPage() {
   useEffect(() => {
     const searchInstrumentByTag = async () => {
       if (!instrumentTagUid || instrumentTagUid.trim().length === 0) {
+        setResolvedInstrumentTagUid('');
         return;
       }
       try {
+        setResolvedInstrumentTagUid(instrumentTagUid.trim());
         const instrument = await getMeasuringInstrumentByTagUid(instrumentTagUid.trim());
         if (instrument && instrument.id !== selectedInstrumentId) {
           setSelectedInstrumentId(instrument.id);
@@ -60,6 +64,27 @@ export function KioskInstrumentBorrowPage() {
     const timeoutId = setTimeout(searchInstrumentByTag, 500);
     return () => clearTimeout(timeoutId);
   }, [instrumentTagUid, selectedInstrumentId, instrumentSource]);
+
+  // ドロップダウン選択時、最初のタグを自動解決する
+  useEffect(() => {
+    const resolveTagFromSelection = async () => {
+      if (!selectedInstrumentId || instrumentSource !== 'select') {
+        return;
+      }
+      try {
+        const { tags } = await getMeasuringInstrumentTags(selectedInstrumentId);
+        const firstTag = tags?.[0]?.rfidTagUid ?? '';
+        setResolvedInstrumentTagUid(firstTag);
+        if (!firstTag) {
+          setMessage('計測機器のタグが未登録です。タグを紐付けてください。');
+        }
+      } catch (error) {
+        console.error(error);
+        setMessage('計測機器タグの取得に失敗しました。');
+      }
+    };
+    resolveTagFromSelection();
+  }, [selectedInstrumentId, instrumentSource]);
 
   // 選択された計測機器に紐づく点検項目を取得
   useEffect(() => {
@@ -96,6 +121,10 @@ export function KioskInstrumentBorrowPage() {
       setMessage('計測機器を選択するかタグUIDを入力してください。');
       return;
     }
+    if (!resolvedInstrumentTagUid.trim()) {
+      setMessage('計測機器のタグが未登録です。タグを紐付けてください。');
+      return;
+    }
     if (!employeeTagUid.trim()) {
       setMessage('氏名タグUIDを入力してください。');
       return;
@@ -105,7 +134,7 @@ export function KioskInstrumentBorrowPage() {
     setMessage(null);
     try {
       const loan = await borrowMeasuringInstrument({
-        instrumentTagUid,
+        instrumentTagUid: resolvedInstrumentTagUid.trim(),
         employeeTagUid,
         note: note || undefined
       });
@@ -137,11 +166,15 @@ export function KioskInstrumentBorrowPage() {
       // NGの場合はhandleNgで処理済み
       return;
     }
+    if (!resolvedInstrumentTagUid.trim()) {
+      setMessage('計測機器のタグが未登録です。タグを紐付けてください。');
+      return;
+    }
     setIsSubmitting(true);
     setMessage(null);
     try {
       const loan = await borrowMeasuringInstrument({
-        instrumentTagUid,
+        instrumentTagUid: resolvedInstrumentTagUid.trim(),
         employeeTagUid,
         note: note || undefined
       });
@@ -168,7 +201,16 @@ export function KioskInstrumentBorrowPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [selectedInstrumentId, employeeTagUid, isNg, instrumentTagUid, note, inspectionItems, instruments, hasInstrument]);
+  }, [
+    selectedInstrumentId,
+    employeeTagUid,
+    isNg,
+    note,
+    inspectionItems,
+    instruments,
+    hasInstrument,
+    resolvedInstrumentTagUid
+  ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
   useEffect(() => {
@@ -183,6 +225,7 @@ export function KioskInstrumentBorrowPage() {
     // 1枚目のスキャンは計測機器タグとみなす（ただし最初に選択したソースを尊重）
     if (!instrumentTagUid && (!instrumentSource || instrumentSource === 'tag')) {
       setInstrumentTagUid(nfcEvent.uid);
+      setResolvedInstrumentTagUid(nfcEvent.uid);
       setInstrumentSource('tag');
       setMessage('計測機器タグを読み取りました。氏名タグをスキャンしてください。');
       return;
@@ -207,6 +250,7 @@ export function KioskInstrumentBorrowPage() {
     setSelectedInstrumentId('');
     setInstrumentSource(null);
     setInstrumentTagUid('');
+    setResolvedInstrumentTagUid('');
     setEmployeeTagUid('');
     setNote('');
     setInspectionItems([]);
@@ -215,7 +259,13 @@ export function KioskInstrumentBorrowPage() {
 
   // 氏名タグUID入力時に自動送信（OKの場合のみ）
   useEffect(() => {
-    if (!employeeTagUid.trim() || !hasInstrument || isNg || isSubmitting) {
+    if (
+      !employeeTagUid.trim() ||
+      !hasInstrument ||
+      !resolvedInstrumentTagUid.trim() ||
+      isNg ||
+      isSubmitting
+    ) {
       return;
     }
     // デバウンス: 500ms後に自動送信
@@ -223,7 +273,7 @@ export function KioskInstrumentBorrowPage() {
       handleSubmit();
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit]);
+  }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit, resolvedInstrumentTagUid]);
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
