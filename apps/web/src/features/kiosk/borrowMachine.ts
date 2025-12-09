@@ -31,7 +31,7 @@ export function createBorrowMachine() {
       events: {} as BorrowEvent
     },
     id: 'borrow',
-    initial: 'waitItem',
+    initial: 'collecting',
     context: {
       itemTagUid: undefined,
       employeeTagUid: undefined,
@@ -39,41 +39,51 @@ export function createBorrowMachine() {
       loan: undefined
     },
     states: {
-      waitItem: {
+      // 任意の順序（アイテム→社員、社員→アイテムの両方）でタグを収集する
+      collecting: {
         on: {
-          ITEM_SCANNED: {
-            target: 'waitEmployee',
-            actions: assign(({ event }) => {
-              if (event?.type === 'ITEM_SCANNED') {
-                return { itemTagUid: event.uid, employeeTagUid: undefined, error: undefined, loan: undefined };
-              }
-              return {};
-            })
-          },
+          ITEM_SCANNED: [
+            {
+              target: 'submitting',
+              guard: ({ context }) => Boolean(context.employeeTagUid),
+              actions: assign(({ event }) => ({
+                itemTagUid: event?.type === 'ITEM_SCANNED' ? event.uid : undefined,
+                error: undefined,
+                loan: undefined
+              }))
+            },
+            {
+              target: 'collecting',
+              actions: assign(({ event }) => ({
+                itemTagUid: event?.type === 'ITEM_SCANNED' ? event.uid : undefined,
+                employeeTagUid: undefined,
+                error: undefined,
+                loan: undefined
+              }))
+            }
+          ],
+          EMPLOYEE_SCANNED: [
+            {
+              target: 'submitting',
+              guard: ({ context }) => Boolean(context.itemTagUid),
+              actions: assign(({ event }) => ({
+                employeeTagUid: event?.type === 'EMPLOYEE_SCANNED' ? event.uid : undefined,
+                error: undefined,
+                loan: undefined
+              }))
+            },
+            {
+              target: 'collecting',
+              actions: assign(({ event }) => ({
+                employeeTagUid: event?.type === 'EMPLOYEE_SCANNED' ? event.uid : undefined,
+                itemTagUid: undefined,
+                error: undefined,
+                loan: undefined
+              }))
+            }
+          ],
           RESET: {
-            target: 'waitItem',
-            actions: assign(() => ({
-              itemTagUid: undefined,
-              employeeTagUid: undefined,
-              error: undefined,
-              loan: undefined
-            }))
-          }
-        }
-      },
-      waitEmployee: {
-        on: {
-          EMPLOYEE_SCANNED: {
-            target: 'submitting',
-            actions: assign(({ event }) => {
-              if (event?.type === 'EMPLOYEE_SCANNED') {
-                return { employeeTagUid: event.uid, error: undefined };
-              }
-              return {};
-            })
-          },
-          RESET: {
-            target: 'waitItem',
+            target: 'collecting',
             actions: assign(() => ({
               itemTagUid: undefined,
               employeeTagUid: undefined,
@@ -96,7 +106,7 @@ export function createBorrowMachine() {
             })
           },
           FAIL: {
-            target: 'waitItem',
+            target: 'collecting',
             actions: assign({
               error: (_ctx, event) => {
                 const typed = event as BorrowEvent | undefined;
@@ -112,7 +122,7 @@ export function createBorrowMachine() {
         entry: assign({ itemTagUid: () => undefined, employeeTagUid: () => undefined }),
         on: {
           RESET: {
-            target: 'waitItem',
+            target: 'collecting',
             actions: assign(() => ({
               itemTagUid: undefined,
               employeeTagUid: undefined,
@@ -122,7 +132,7 @@ export function createBorrowMachine() {
           }
         },
         after: {
-          4000: { target: 'waitItem', actions: assign({ loan: () => undefined }) }
+          4000: { target: 'collecting', actions: assign({ loan: () => undefined }) }
         }
       }
     }

@@ -39,7 +39,7 @@ export function KioskBorrowPage() {
   }, [clientKey, setClientKey]);
 
   useEffect(() => {
-    if (!state.matches('submitting') || borrowMutation.isPending) {
+    if (state.value !== 'submitting' || borrowMutation.isPending) {
       return;
     }
     const payload = {
@@ -100,19 +100,14 @@ export function KioskBorrowPage() {
       }
       return;
     }
-    if (state.matches('waitItem')) {
-      if (enableDebugLogs) {
-        console.log('Sending ITEM_SCANNED:', nfcEvent.uid);
-      }
-      send({ type: 'ITEM_SCANNED', uid: nfcEvent.uid });
-      lastEventKeyRef.current = eventKey;
-    } else if (state.matches('waitEmployee')) {
-      if (enableDebugLogs) {
-        console.log('Sending EMPLOYEE_SCANNED:', nfcEvent.uid);
-      }
-      send({ type: 'EMPLOYEE_SCANNED', uid: nfcEvent.uid });
-      lastEventKeyRef.current = eventKey;
+    // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信
+    const shouldSendItem = !state.context.itemTagUid;
+    const eventType = shouldSendItem ? 'ITEM_SCANNED' : 'EMPLOYEE_SCANNED';
+    if (enableDebugLogs) {
+      console.log(`Sending ${eventType}:`, nfcEvent.uid);
     }
+    send({ type: eventType, uid: nfcEvent.uid });
+    lastEventKeyRef.current = eventKey;
   }, [nfcEvent, send, state]);
 
   const handleReset = () => {
@@ -126,8 +121,16 @@ export function KioskBorrowPage() {
         <Card title="持出フロー" className="h-full">
           <div className="space-y-3 text-center">
             <div className="grid gap-4 md:grid-cols-2">
-              <StepCard title="① アイテム" active={state.matches('waitItem')} value={state.context.itemTagUid} />
-              <StepCard title="② 社員" active={state.matches('waitEmployee')} value={state.context.employeeTagUid} />
+              <StepCard
+                title="① アイテム"
+                active={!state.context.itemTagUid}
+                value={state.context.itemTagUid}
+              />
+              <StepCard
+                title="② 社員"
+                active={Boolean(state.context.itemTagUid) && !state.context.employeeTagUid}
+                value={state.context.employeeTagUid}
+              />
             </div>
             <div className="flex justify-center gap-4">
               <Button onClick={handleReset}>リセット</Button>
