@@ -29,10 +29,22 @@ export const api = axios.create({
 });
 
 // 各リクエストで確実に client-key を付与するためのヘルパー
+// useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
 const resolveClientKey = () => {
   if (typeof window === 'undefined') return 'client-demo-key';
   const savedKey = window.localStorage.getItem('kiosk-client-key');
-  return savedKey && savedKey.length > 0 ? savedKey : 'client-demo-key';
+  if (!savedKey || savedKey.length === 0) return 'client-demo-key';
+  
+  // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
+  try {
+    const parsed = JSON.parse(savedKey);
+    if (typeof parsed === 'string' && parsed.length > 0) {
+      return parsed;
+    }
+  } catch {
+    // JSON.parseに失敗した場合は生の値をそのまま使用
+  }
+  return savedKey;
 };
 
 export function setAuthToken(token?: string) {
@@ -48,11 +60,29 @@ export function setClientKeyHeader(key?: string) {
 }
 
 // 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
+// useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
   const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
+  let parsedKey: string | undefined;
+  
+  // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
+  if (savedKey) {
+    try {
+      const parsed = JSON.parse(savedKey);
+      if (typeof parsed === 'string') {
+        parsedKey = parsed;
+      }
+    } catch {
+      // JSON.parseに失敗した場合は生の値をそのまま使用（古い形式との互換性）
+      parsedKey = savedKey;
+    }
+  }
+  
   const normalizedKey =
-    !savedKey || savedKey === 'client-demo-key' ? DEFAULT_CLIENT_KEY : savedKey;
-  window.localStorage.setItem('kiosk-client-key', normalizedKey);
+    !parsedKey || parsedKey === 'client-demo-key' ? DEFAULT_CLIENT_KEY : parsedKey;
+  
+  // useLocalStorageと同じ形式（JSON.stringify）で保存して互換性を保つ
+  window.localStorage.setItem('kiosk-client-key', JSON.stringify(normalizedKey));
   setClientKeyHeader(normalizedKey);
 }
 
