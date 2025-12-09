@@ -1,7 +1,7 @@
 import { useMachine } from '@xstate/react';
 import { useEffect, useMemo, useRef } from 'react';
 
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+import { DEFAULT_CLIENT_KEY, postClientLogs, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -48,6 +48,23 @@ export function KioskBorrowPage() {
       clientId: clientId || undefined
     };
 
+    // デバッグログをサーバーに送信（ブラウザコンソールが見られない環境向け）
+    postClientLogs(
+      {
+        clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+        logs: [
+          {
+            level: 'DEBUG',
+            message: 'kiosk-borrow submitting',
+            context: { payload }
+          }
+        ]
+      },
+      resolvedClientKey
+    ).catch(() => {
+      /* noop */
+    });
+
     const attemptBorrow = async (swapOrder = false) => {
       const p = swapOrder
         ? { ...payload, itemTagUid: payload.employeeTagUid, employeeTagUid: payload.itemTagUid }
@@ -82,7 +99,7 @@ export function KioskBorrowPage() {
 
         send({ type: 'FAIL', message: message ?? 'エラーが発生しました' });
       });
-  }, [borrowMutation, clientId, send, state]);
+  }, [borrowMutation, clientId, resolvedClientId, resolvedClientKey, send, state]);
 
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）

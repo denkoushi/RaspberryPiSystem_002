@@ -450,6 +450,17 @@ export async function getClientLogs(filters?: {
   return data.logs;
 }
 
+// クライアントログを送信（デバッグ用）
+export async function postClientLogs(
+  payload: { clientId: string; logs: Array<{ level: ClientLogLevel; message: string; context?: Record<string, unknown> | null }> },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ requestId: string; logsStored: number }>('/clients/logs', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
 export interface FileAlert {
   id: string;
   type: string;
