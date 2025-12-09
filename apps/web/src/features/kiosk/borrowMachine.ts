@@ -110,7 +110,7 @@ export function createBorrowMachine() {
             actions: assign({
               error: (_ctx, event) => {
                 const typed = event as BorrowEvent | undefined;
-                return isFailEvent(typed) ? typed.message : 'エラーが発生しました';
+                return isFailEvent(typed) ? typed.message : '登録エラーが発生しました';
               },
               itemTagUid: () => undefined,
               employeeTagUid: () => undefined

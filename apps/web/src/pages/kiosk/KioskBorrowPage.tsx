@@ -109,7 +109,7 @@ export function KioskBorrowPage() {
           }
         }
 
-        send({ type: 'FAIL', message: message ?? 'エラーが発生しました' });
+        send({ type: 'FAIL', message: message ?? '登録エラーが発生しました' });
       });
   }, [borrowMutation, clientId, resolvedClientId, resolvedClientKey, send, state]);
 
@@ -140,6 +140,11 @@ export function KioskBorrowPage() {
   }, [nfcEvent, send, state]);
 
   const handleReset = () => {
+    // 単純な画面リロードでキャッシュも含めて初期化
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+      return;
+    }
     lastEventKeyRef.current = null;
     send({ type: 'RESET' });
   };
