@@ -72,7 +72,8 @@ export const inspectionRecordQuerySchema = z.object({
 });
 
 export const instrumentBorrowSchema = z.object({
-  instrumentTagUid: z.string().min(1),
+  instrumentTagUid: z.string().min(1).optional(),
+  instrumentId: z.string().uuid().optional(),
   employeeTagUid: z.string().min(1),
   clientId: z.string().uuid().optional(),
   dueAt: z.coerce.date().optional(),

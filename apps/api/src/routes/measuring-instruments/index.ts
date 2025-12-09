@@ -208,6 +208,9 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   // 計測機器持出
   app.post('/measuring-instruments/borrow', { preHandler: allowWrite }, async (request) => {
     const body = instrumentBorrowSchema.parse(request.body);
+    if (!body.instrumentTagUid && !body.instrumentId) {
+      throw new ApiError(400, '計測機器が選択されていません');
+    }
     const loan = await instrumentLoanService.borrow(body);
     return { loan };
   });

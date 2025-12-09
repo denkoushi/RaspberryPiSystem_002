@@ -75,12 +75,17 @@ export function KioskInstrumentBorrowPage() {
         const { tags } = await getMeasuringInstrumentTags(selectedInstrumentId);
         const firstTag = tags?.[0]?.rfidTagUid ?? '';
         setResolvedInstrumentTagUid(firstTag);
+        setInstrumentTagUid(firstTag);
+        // タグ未登録でもドロップダウン選択で進めるため、メッセージのみ表示
         if (!firstTag) {
-          setMessage('計測機器のタグが未登録です。タグを紐付けてください。');
+          setMessage('計測機器のタグが未登録です。タグを紐付けるか、このまま氏名タグをスキャンしてください。');
+        } else {
+          setMessage(null);
         }
       } catch (error) {
         console.error(error);
-        setMessage('計測機器タグの取得に失敗しました。');
+        // タグ取得失敗時も計測機器IDで進める
+        setMessage('計測機器タグの取得に失敗しました。氏名タグをスキャンして続行できます。');
       }
     };
     resolveTagFromSelection();
@@ -109,12 +114,12 @@ export function KioskInstrumentBorrowPage() {
     fetchInspectionItems();
   }, [selectedInstrumentId]);
 
-  // 計測機器選択後、氏名タグ入力欄にフォーカス
+  // 計測機器選択後、氏名タグ入力欄にフォーカス（点検項目有無に関係なくフォーカス）
   useEffect(() => {
-    if (selectedInstrumentId && inspectionItems.length > 0 && !isNg) {
+    if (selectedInstrumentId && !isNg) {
       employeeTagInputRef.current?.focus();
     }
-  }, [selectedInstrumentId, inspectionItems.length, isNg]);
+  }, [selectedInstrumentId, isNg]);
 
   const handleNg = async () => {
     if (!hasInstrument) {
@@ -166,15 +171,13 @@ export function KioskInstrumentBorrowPage() {
       // NGの場合はhandleNgで処理済み
       return;
     }
-    if (!resolvedInstrumentTagUid.trim()) {
-      setMessage('計測機器のタグが未登録です。タグを紐付けてください。');
-      return;
-    }
+    // タグ未登録でも計測機器IDで進める
     setIsSubmitting(true);
     setMessage(null);
     try {
       const loan = await borrowMeasuringInstrument({
-        instrumentTagUid: resolvedInstrumentTagUid.trim(),
+        instrumentTagUid: resolvedInstrumentTagUid.trim() || undefined,
+        instrumentId: resolvedInstrumentTagUid.trim() ? undefined : selectedInstrumentId || undefined,
         employeeTagUid,
         note: note || undefined
       });
@@ -308,13 +311,16 @@ export function KioskInstrumentBorrowPage() {
             <Input
               value={instrumentTagUid}
               onChange={(e) => {
-                if (instrumentSource && instrumentSource !== 'tag') return;
+                // ドロップダウンでタグ未解決の場合は手入力を許可する
+                if (instrumentSource && instrumentSource !== 'tag' && resolvedInstrumentTagUid) return;
                 setInstrumentTagUid(e.target.value);
-                if (!instrumentSource) setInstrumentSource('tag');
+                if (!instrumentSource || instrumentSource === 'select') {
+                  setInstrumentSource('tag');
+                }
               }}
               required={selectedInstrumentId.trim().length === 0}
               placeholder="スキャンまたは手入力"
-              disabled={instrumentSource === 'select'}
+              disabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
             />
           </label>
           <label className="text-sm text-white/70">

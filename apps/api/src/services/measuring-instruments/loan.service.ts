@@ -7,7 +7,8 @@ import { MeasuringInstrumentService } from './measuring-instrument.service.js';
 import { EmployeeService } from '../tools/employee.service.js';
 
 export interface InstrumentBorrowInput {
-  instrumentTagUid: string;
+  instrumentTagUid?: string;
+  instrumentId?: string;
   employeeTagUid: string;
   clientId?: string;
   dueAt?: Date;
@@ -46,11 +47,22 @@ export class MeasuringInstrumentLoanService {
 
   async borrow(input: InstrumentBorrowInput): Promise<LoanWithRelations> {
     logger.info(
-      { instrumentTagUid: input.instrumentTagUid, employeeTagUid: input.employeeTagUid, clientId: input.clientId },
+      {
+        instrumentTagUid: input.instrumentTagUid,
+        instrumentId: input.instrumentId,
+        employeeTagUid: input.employeeTagUid,
+        clientId: input.clientId
+      },
       'Instrument borrow request started'
     );
 
-    const instrument = await this.instrumentService.findByTagUid(input.instrumentTagUid);
+    if (!input.instrumentTagUid && !input.instrumentId) {
+      throw new ApiError(400, '計測機器が選択されていません');
+    }
+
+    const instrument = input.instrumentTagUid
+      ? await this.instrumentService.findByTagUid(input.instrumentTagUid)
+      : await this.instrumentService.findById(input.instrumentId!);
     if (!instrument) {
       throw new ApiError(404, '計測機器が登録されていません');
     }

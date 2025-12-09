@@ -46,7 +46,8 @@ export interface InspectionRecord {
 }
 
 export interface MeasuringInstrumentBorrowPayload {
-  instrumentTagUid: string;
+  instrumentTagUid?: string;
+  instrumentId?: string;
   employeeTagUid: string;
   clientId?: string;
   dueAt?: string;
