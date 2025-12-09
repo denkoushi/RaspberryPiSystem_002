@@ -14,10 +14,13 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem } from '../../api/types';
 
+type InstrumentSource = 'select' | 'tag' | null;
+
 export function KioskInstrumentBorrowPage() {
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
+  const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([]);
   const [inspectionLoading, setInspectionLoading] = useState(false);
 
@@ -43,6 +46,9 @@ export function KioskInstrumentBorrowPage() {
         const instrument = await getMeasuringInstrumentByTagUid(instrumentTagUid.trim());
         if (instrument && instrument.id !== selectedInstrumentId) {
           setSelectedInstrumentId(instrument.id);
+          if (!instrumentSource) {
+            setInstrumentSource('tag');
+          }
         }
       } catch (error) {
         // タグUIDが見つからない場合はエラーを表示しない（手動選択も可能なため）
@@ -53,7 +59,7 @@ export function KioskInstrumentBorrowPage() {
     // デバウンス: 500ms後に検索
     const timeoutId = setTimeout(searchInstrumentByTag, 500);
     return () => clearTimeout(timeoutId);
-  }, [instrumentTagUid, selectedInstrumentId]);
+  }, [instrumentTagUid, selectedInstrumentId, instrumentSource]);
 
   // 選択された計測機器に紐づく点検項目を取得
   useEffect(() => {
@@ -174,9 +180,10 @@ export function KioskInstrumentBorrowPage() {
     }
     lastNfcEventKeyRef.current = eventKey;
 
-    // 1枚目のスキャンは計測機器タグとみなす
-    if (!instrumentTagUid) {
+    // 1枚目のスキャンは計測機器タグとみなす（ただし最初に選択したソースを尊重）
+    if (!instrumentTagUid && (!instrumentSource || instrumentSource === 'tag')) {
       setInstrumentTagUid(nfcEvent.uid);
+      setInstrumentSource('tag');
       setMessage('計測機器タグを読み取りました。氏名タグをスキャンしてください。');
       return;
     }
@@ -194,10 +201,11 @@ export function KioskInstrumentBorrowPage() {
       // OKフローは自動送信
       handleSubmit();
     }
-  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit]);
+  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource]);
 
   const resetForm = () => {
     setSelectedInstrumentId('');
+    setInstrumentSource(null);
     setInstrumentTagUid('');
     setEmployeeTagUid('');
     setNote('');
@@ -227,9 +235,14 @@ export function KioskInstrumentBorrowPage() {
               <select
                 className="w-full rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
                 value={selectedInstrumentId}
-                onChange={(e) => setSelectedInstrumentId(e.target.value)}
+                onChange={(e) => {
+                  // 最初に操作したソースを優先する
+                  if (instrumentSource && instrumentSource !== 'select') return;
+                  setSelectedInstrumentId(e.target.value);
+                  setInstrumentSource('select');
+                }}
                 required={instrumentTagUid.trim().length === 0}
-                disabled={isLoadingInstruments}
+                disabled={isLoadingInstruments || instrumentSource === 'tag'}
               >
                 <option value="">選択してください</option>
                 {instruments?.map((instrument) => (
@@ -244,9 +257,14 @@ export function KioskInstrumentBorrowPage() {
             計測機器タグUID
             <Input
               value={instrumentTagUid}
-              onChange={(e) => setInstrumentTagUid(e.target.value)}
+              onChange={(e) => {
+                if (instrumentSource && instrumentSource !== 'tag') return;
+                setInstrumentTagUid(e.target.value);
+                if (!instrumentSource) setInstrumentSource('tag');
+              }}
               required={selectedInstrumentId.trim().length === 0}
               placeholder="スキャンまたは手入力"
+              disabled={instrumentSource === 'select'}
             />
           </label>
           <label className="text-sm text-white/70">
