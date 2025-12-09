@@ -63,7 +63,7 @@ services:
       USE_LOCAL_CERTS: "true"
       # NFCエージェントのIPアドレス（Wi-Fi変更時はここを更新）
       # ラズパイ4のIPアドレスを設定（例: 192.168.128.102）
-      NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.223}
+      NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
     ports:
       - "80:80"
       - "443:443"
