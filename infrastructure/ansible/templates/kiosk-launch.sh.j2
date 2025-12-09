@@ -9,9 +9,9 @@ export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 export CHROME_WRAPPER=/usr/bin/chromium-browser
 
 CHROMIUM_FLAGS=(
-  --kiosk
+  # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
   --app="{{ kiosk_url }}"
-  --start-fullscreen
+  --start-maximized
   --noerrdialogs
   --disable-session-crashed-bubble
   --autoplay-policy=no-user-gesture-required
