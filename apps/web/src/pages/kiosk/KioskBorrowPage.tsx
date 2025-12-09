@@ -77,8 +77,19 @@ export function KioskBorrowPage() {
       .catch(async (error: unknown) => {
         const apiError = error as Partial<AxiosError<{ message?: string }>>;
         const apiMessage: string | undefined = apiError.response?.data?.message;
-        const message =
+        const rawMessage =
           typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : apiError?.message;
+        const toShortMessage = (msg?: string) => {
+          if (!msg) return '登録に失敗しました';
+          if (msg.includes('アイテムが登録されていません') || msg.toLowerCase().includes('item not found')) {
+            return 'タグ未登録（アイテム）';
+          }
+          if (msg.includes('従業員が登録されていません') || msg.toLowerCase().includes('employee not found')) {
+            return 'タグ未登録（社員）';
+          }
+          return msg.length > 40 ? '登録エラーが発生しました' : msg;
+        };
+        const message = toShortMessage(rawMessage);
 
         // アイテム/従業員の取り違えと思われる場合は一度だけ順序を入れ替えて再試行
         const notFoundItem = apiMessage?.includes('アイテムが登録されていません');
