@@ -221,6 +221,33 @@
 - APIレスポンスを確認: `curl http://<ラズパイ5のIP>:8080/api/signage/content`
 - サイネージ画面をリロード
 
+### 問題5: キオスクブラウザ起動が空URLでカメラ・APIが動かない
+
+**事象**:
+- `/usr/local/bin/kiosk-launch.sh` の変数展開が壊れ、`--app=""` / `--user-data-dir=` / `--unsafely-treat-insecure-origin-as-secure=` が空になる
+- Chromiumが空URLで起動し、カメラAPI起動遅延・API 401/404・UI未描画が発生
+
+**原因**:
+- テンプレート外の手作業修正で変数が消失し、従来のAnsibleテンプレート (`infrastructure/ansible/templates/kiosk-launch.sh.j2`) と乖離
+
+**対処法**:
+- Pi4で修正済みスクリプトを再配置し、サービスを再起動
+  ```bash
+  # Pi4 (tools03)
+  sudo cp /tmp/kiosk-launch-fixed.sh /usr/local/bin/kiosk-launch.sh
+  sudo chmod +x /usr/local/bin/kiosk-launch.sh
+  sudo systemctl restart kiosk-browser.service
+  ```
+- 正常なフラグが入っていることを確認  
+  `--app=https://100.106.158.2/kiosk`  
+  `--user-data-dir=/home/tools03/.config/chromium-kiosk`  
+  `--unsafely-treat-insecure-origin-as-secure=https://100.106.158.2`  
+  `--use-fake-ui-for-media-stream` / `--ignore-certificate-errors`
+
+**再発防止**:
+- kiosk-launch.sh は必ず Ansible テンプレートを適用し、手作業上書きを避ける
+- 変更時は `systemctl restart kiosk-browser.service` 後に `journalctl -u kiosk-browser.service -n 50` で起動オプションを確認
+
 ## 検証完了条件
 
 以下のすべてが確認できれば検証完了：

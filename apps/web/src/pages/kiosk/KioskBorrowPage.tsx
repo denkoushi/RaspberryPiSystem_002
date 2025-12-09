@@ -21,7 +21,8 @@ export function KioskBorrowPage() {
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
-  const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
+  // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
+  const loansQuery = useActiveLoans(undefined, resolvedClientKey);
   const borrowMutation = useBorrowMutation(resolvedClientKey);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);

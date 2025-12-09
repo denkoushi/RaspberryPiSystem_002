@@ -12,20 +12,18 @@ import type { UseQueryResult } from '@tanstack/react-query';
 
 interface KioskReturnPageProps {
   loansQuery?: UseQueryResult<Loan[], Error>;
-  clientId?: string;
   clientKey?: string;
 }
 
-export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: providedClientId, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
+export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
   // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
   const [localClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [localClientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = providedClientKey || localClientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = providedClientId !== undefined ? providedClientId : (localClientId || undefined);
+  // 返却一覧は全件表示（clientIdで絞らない）
   
   // propsで提供されている場合はuseActiveLoansを呼び出さない（重複リクエストを防ぐ）
   // React Queryのenabledオプションを使用して、propsがない場合のみクエリを実行
-  const ownLoansQuery = useActiveLoans(resolvedClientId, resolvedClientKey, {
+  const ownLoansQuery = useActiveLoans(undefined, resolvedClientKey, {
     enabled: !providedLoansQuery // propsが提供されていない場合のみ有効化
   });
   
@@ -36,22 +34,13 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientId: prov
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
   const handleReturn = async (loanId: string) => {
-    // clientIdが空文字列の場合は送信しない
-    const payload: ReturnPayload = {
-      loanId
-    };
-    if (resolvedClientId && resolvedClientId.length > 0) {
-      payload.clientId = resolvedClientId;
-    }
+    const payload: ReturnPayload = { loanId };
     await returnMutation.mutateAsync(payload);
     await loansQuery.refetch();
   };
 
   const handleCancel = async (loanId: string) => {
-    const payload = {
-      loanId,
-      ...(resolvedClientId && resolvedClientId.length > 0 ? { clientId: resolvedClientId } : {})
-    };
+    const payload = { loanId };
     await cancelMutation.mutateAsync(payload);
     await loansQuery.refetch();
   };
