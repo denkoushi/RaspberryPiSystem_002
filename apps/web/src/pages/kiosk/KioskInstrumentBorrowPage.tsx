@@ -114,12 +114,14 @@ export function KioskInstrumentBorrowPage() {
     fetchInspectionItems();
   }, [selectedInstrumentId]);
 
-  // 計測機器選択後、氏名タグ入力欄にフォーカス（点検項目有無に関係なくフォーカス）
+  // 計測機器選択後、氏名タグ入力欄にフォーカス（タグ解決後も再度フォーカス）
   useEffect(() => {
     if (selectedInstrumentId && !isNg) {
-      employeeTagInputRef.current?.focus();
+      setTimeout(() => {
+        employeeTagInputRef.current?.focus();
+      }, 0);
     }
-  }, [selectedInstrumentId, isNg]);
+  }, [selectedInstrumentId, resolvedInstrumentTagUid, instrumentSource, isNg]);
 
   const handleNg = async () => {
     if (!hasInstrument) {
