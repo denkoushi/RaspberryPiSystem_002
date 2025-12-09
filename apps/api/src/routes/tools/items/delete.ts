@@ -13,10 +13,12 @@ export function registerItemDeleteRoute(app: FastifyInstance, itemService: ItemS
     const params = itemParamsSchema.parse(request.params);
     try {
       // 削除前に未返却の貸出記録の存在を確認
+      // 未返却かつ未取消のLoanのみをカウント（履歴は保持するがブロックしない）
       const activeLoanCount = await prisma.loan.count({
         where: {
           itemId: params.id,
-          returnedAt: null
+          returnedAt: null,
+          cancelledAt: null
         }
       });
 
