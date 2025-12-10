@@ -22,7 +22,7 @@ export function ItemsPage() {
   const { create, update, remove } = useItemMutations();
   const [form, setForm] = useState(initialItem);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const nfcEvent = useNfcStream();
+  const nfcEvent = useNfcStream(true);
 
   useEffect(() => {
     if (nfcEvent?.uid) {

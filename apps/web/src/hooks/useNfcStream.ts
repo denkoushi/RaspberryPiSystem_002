@@ -35,13 +35,18 @@ const getAgentWsUrl = () => {
 
 const AGENT_WS_URL = getAgentWsUrl();
 
-export function useNfcStream() {
+export function useNfcStream(enabled = false) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
   const lastProcessedEventIdRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setEvent(null);
+      return;
+    }
+
     let socket: WebSocket | null = null;
     let isMounted = true;
 
@@ -107,8 +112,9 @@ export function useNfcStream() {
       }
       // クリーンアップ時にイベントキーをリセット（再接続時に新しいイベントを受け付けるため）
       lastEventKeyRef.current = null;
+      setEvent(null);
     };
-  }, []);
+  }, [enabled]);
 
   return event;
 }

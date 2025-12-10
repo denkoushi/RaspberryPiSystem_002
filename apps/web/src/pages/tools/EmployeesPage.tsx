@@ -21,7 +21,7 @@ export function EmployeesPage() {
   const { create, update, remove } = useEmployeeMutations();
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const nfcEvent = useNfcStream();
+  const nfcEvent = useNfcStream(true);
 
   useEffect(() => {
     if (nfcEvent?.uid) {

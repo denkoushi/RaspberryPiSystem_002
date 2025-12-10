@@ -26,7 +26,7 @@ export function KioskBorrowPage() {
   const borrowMutation = useBorrowMutation(resolvedClientKey);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
-  const nfcEvent = useNfcStream();
+  const nfcEvent = useNfcStream(true);
   const lastEventKeyRef = useRef<string | null>(null);
 
   // client-key が空になってもデフォルトを自動で復元する

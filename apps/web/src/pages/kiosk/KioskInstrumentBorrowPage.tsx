@@ -33,7 +33,7 @@ export function KioskInstrumentBorrowPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNg, setIsNg] = useState(false);
   const employeeTagInputRef = useRef<HTMLInputElement>(null);
-  const nfcEvent = useNfcStream();
+  const nfcEvent = useNfcStream(true);
   const lastNfcEventKeyRef = useRef<string | null>(null);
 
   const hasInstrument = selectedInstrumentId || instrumentTagUid.trim();

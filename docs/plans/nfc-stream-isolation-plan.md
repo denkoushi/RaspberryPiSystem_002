@@ -21,17 +21,16 @@
 1. **NFC購読のスコープ化**  
    - `useNfcStream` に `enabled` フラグを追加し、デフォルトは `false`。  
    - 各ページで「アクティブ時のみ enabled=true」にする（マウント/アンマウント、タブ切替、非表示時は false）。
-2. **PHOTOモードは「手動アーム」必須**  
-   - `/kiosk/photo` に「撮影開始」ボタンを設置。押下までは `enabled=false`。  
-   - 撮影完了/キャンセル時に `enabled=false` に戻す。  
-   - これにより defaultMode=PHOTO の場合でも、意図しない撮影発火を防ぐ。
+2. **PHOTOモードは自動撮影を維持しつつ、PHOTOページ内だけで購読**  
+   - PHOTOページ遷移時にのみ `enabled=true` でNFCを購読し、他ページでは購読停止。  
+   - defaultMode=PHOTO でも、PHOTOページ以外でイベントを拾わないようにする。
 3. **直近パス優先のリダイレクトは維持しつつ、/kiosk 直アクセス時のみ defaultMode 適用**  
-   - 既存の「直近パス復元」を `/` に限定し、`/kiosk` では defaultMode を優先する（実装済み）。  
+   - 「直近パス復元」は `/` に限定し、`/kiosk` では defaultMode を優先（実装済み）。  
    - 設定変更（defaultMode）時は `/kiosk` でのみ効くため、PHOTO運用も継続可能。
 
 ## 実装タスク
 - [ ] `apps/web/src/hooks/useNfcStream.ts` に `enabled:boolean` を追加（デフォルト false）し、enabledがtrueのときのみイベントを発火。
-- [ ] `/kiosk/photo` に「撮影開始」トグルを追加し、押下で `enabled=true`、撮影完了/失敗/キャンセルで `enabled=false` に戻す。
+- [ ] `/kiosk/photo` はページ表示中のみ `enabled=true`、離脱で `enabled=false`。自動撮影フローは維持。
 - [ ] `/kiosk/instruments/borrow` など計測機器/工具の各ページで、マウント時に `enabled=true`、アンマウント/他タブ切替時に `enabled=false` を適用。
 - [ ] `KioskLayout`/`KioskRedirect` の挙動は現状維持（直近パス復元は `/` のみ）。
 - [ ] ドキュメント更新（INDEXリンク、検証ガイドへのテスト項目追記）。
