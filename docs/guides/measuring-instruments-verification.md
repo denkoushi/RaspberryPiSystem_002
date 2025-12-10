@@ -296,6 +296,28 @@
 
 **ナレッジベース**: [KB-093](../knowledge-base/infrastructure.md#kb-093-計測機器apiの401エラー期限切れjwtとx-client-keyの競合)
 
+### 問題8: ドロップダウン選択時に氏名タグ自動送信されない
+
+**事象**:
+- 計測機器をドロップダウンで選択し氏名タグをスキャンしても自動送信されず、持出登録ボタンを押す必要がある
+- 計測機器タグが未登録の状態で再現しやすい
+
+**原因**:
+- フロントエンドの自動送信判定が「計測機器タグ解決済み（resolvedInstrumentTagUidが非空）」を必須としていた
+- ドロップダウン選択のみ（タグ未登録）では判定を満たさず自動送信が走らない
+
+**対処**:
+1. 自動送信判定を「計測機器が選択されていること（ドロップダウン or タグ入力）」に緩和  
+   - 変更箇所: `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`  
+   - 条件から `!resolvedInstrumentTagUid.trim()` を除去し、`hasInstrument` のみを確認
+2. Pi5でWebを再ビルド・デプロイし、Pi4キオスクブラウザを再起動
+3. 確認手順: ドロップダウンで計測機器を選択 → 氏名タグをスキャン → 自動送信され、持出一覧に反映されること
+
+**メモ**:
+- API側ではJWT失敗後も`x-client-key`で認証が通った場合にHTTP 200へ戻すよう修正済み（`apps/api/src/routes/measuring-instruments/index.ts`）
+- 計測機器タグ未登録でも、計測機器IDのみで送信可能
+- PHOTOモード誤発火については、入力スコープ分離計画を参照（`docs/plans/nfc-stream-isolation-plan.md`）
+
 ## 検証完了条件
 
 以下のすべてが確認できれば検証完了：

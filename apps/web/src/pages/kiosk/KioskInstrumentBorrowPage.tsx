@@ -13,7 +13,7 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
-import type { InspectionItem } from '../../api/types';
+import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
 
 type InstrumentSource = 'select' | 'tag' | null;
 
@@ -177,12 +177,24 @@ export function KioskInstrumentBorrowPage() {
     setIsSubmitting(true);
     setMessage(null);
     try {
-      const loan = await borrowMeasuringInstrument({
-        instrumentTagUid: resolvedInstrumentTagUid.trim() || undefined,
-        instrumentId: resolvedInstrumentTagUid.trim() ? undefined : selectedInstrumentId || undefined,
+      // undefinedを明示的に渡さず、存在するものだけを送る
+      const payload: {
+        employeeTagUid: string;
+        note?: string;
+        instrumentTagUid?: string;
+        instrumentId?: string;
+      } = {
         employeeTagUid,
         note: note || undefined
-      });
+      };
+      const tagUid = resolvedInstrumentTagUid.trim();
+      if (tagUid) {
+        payload.instrumentTagUid = tagUid;
+      } else if (selectedInstrumentId) {
+        payload.instrumentId = selectedInstrumentId;
+      }
+
+      const loan = await borrowMeasuringInstrument(payload as MeasuringInstrumentBorrowPayload);
       // OKの場合：全項目PASSとして点検記録を作成
       const selectedInstrument = instruments?.find((inst) => inst.id === selectedInstrumentId);
       if (inspectionItems.length > 0 && selectedInstrument && loan.employee?.id) {
@@ -267,7 +279,6 @@ export function KioskInstrumentBorrowPage() {
     if (
       !employeeTagUid.trim() ||
       !hasInstrument ||
-      !resolvedInstrumentTagUid.trim() ||
       isNg ||
       isSubmitting
     ) {

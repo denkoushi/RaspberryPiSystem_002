@@ -76,6 +76,10 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     }
     // JWTトークンがない場合、またはJWT認証失敗時はクライアントキー認証
     await allowClientKey(request);
+    // JWT認証で一度401が設定されていても、クライアントキーで通った場合は200に戻す
+    if (reply.statusCode === 401) {
+      reply.code(200);
+    }
   };
 
   const allowWrite = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -90,6 +94,10 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     }
     // JWTトークンがない場合、またはJWT認証失敗時はクライアントキー認証
     await allowClientKey(request);
+    // JWT認証で一度401が設定されていても、クライアントキーで通った場合は200に戻す
+    if (reply.statusCode === 401) {
+      reply.code(200);
+    }
   };
 
   // 計測機器一覧

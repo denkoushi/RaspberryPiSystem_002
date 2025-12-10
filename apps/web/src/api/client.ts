@@ -31,9 +31,9 @@ export const api = axios.create({
 // 各リクエストで確実に client-key を付与するためのヘルパー
 // useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
 const resolveClientKey = () => {
-  if (typeof window === 'undefined') return 'client-demo-key';
+  if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
   const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return 'client-demo-key';
+  if (!savedKey || savedKey.length === 0) return DEFAULT_CLIENT_KEY;
   
   // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
   try {
@@ -44,7 +44,7 @@ const resolveClientKey = () => {
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
   }
-  return savedKey;
+  return savedKey || DEFAULT_CLIENT_KEY;
 };
 
 export function setAuthToken(token?: string) {

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
@@ -13,6 +13,7 @@ export function KioskLayout() {
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
   const { data: systemInfo } = useSystemInfo();
+  const location = useLocation();
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -23,6 +24,14 @@ export function KioskLayout() {
       setClientKeyHeader(clientKey);
     }
   }, [clientKey, setClientKey]);
+
+  // 直近のキオスクパスを記録し、/kiosk リロード時に復元できるようにする
+  useEffect(() => {
+    const path = location.pathname.replace(/\/$/, '');
+    if (path.startsWith('/kiosk') && path !== '/kiosk') {
+      sessionStorage.setItem('kiosk-last-path', path);
+    }
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
