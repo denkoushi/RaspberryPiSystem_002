@@ -62,23 +62,33 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   };
 
   // JWT or クライアントキー どちらかで閲覧を許可
+  // 注意: ブラウザが期限切れJWTを送信し続ける場合があるため、
+  // JWT認証失敗時はx-client-keyへフォールバックする
   const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
     // JWTトークンがある場合は通常の認証を試みる
     if (request.headers.authorization) {
-      await canView(request, reply);
-      return;
+      try {
+        await canView(request, reply);
+        return;
+      } catch {
+        // JWT認証失敗時はx-client-keyへフォールバック
+      }
     }
-    // JWTトークンがない場合はクライアントキー認証
+    // JWTトークンがない場合、またはJWT認証失敗時はクライアントキー認証
     await allowClientKey(request);
   };
 
   const allowWrite = async (request: FastifyRequest, reply: FastifyReply) => {
     // JWTトークンがある場合は通常の認証を試みる
     if (request.headers.authorization) {
-      await canWrite(request, reply);
-      return;
+      try {
+        await canWrite(request, reply);
+        return;
+      } catch {
+        // JWT認証失敗時はx-client-keyへフォールバック
+      }
     }
-    // JWTトークンがない場合はクライアントキー認証
+    // JWTトークンがない場合、またはJWT認証失敗時はクライアントキー認証
     await allowClientKey(request);
   };
 

@@ -231,7 +231,9 @@
 | [tools/api.md](./modules/tools/api.md) | 工具管理API |
 | [tools/services.md](./modules/tools/services.md) | 工具管理サービス層 |
 | [tools/photo-loan.md](./modules/tools/photo-loan.md) | **写真撮影持出機能**（FR-009） |
-| [measuring-instruments/README.md](./modules/measuring-instruments/README.md) | **計測機器管理モジュール**（要件定義中） |
+| [measuring-instruments/README.md](./modules/measuring-instruments/README.md) | **計測機器管理モジュール概要** |
+| [measuring-instruments/api.md](./modules/measuring-instruments/api.md) | **計測機器管理API仕様** |
+| [measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) | **計測機器管理UI設計メモ** |
 | [signage/README.md](./modules/signage/README.md) | **デジタルサイネージモジュール** |
 | [signage/signage-lite.md](./modules/signage/signage-lite.md) | **デジタルサイネージ軽量モード計画** |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
@@ -267,6 +269,7 @@ APIの概要と詳細。
 | [ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) | **Ansible安定性・堅牢化・柔軟性向上計画** |
 | [ansible-phase9-role-execplan.md](./plans/ansible-phase9-role-execplan.md) | **Ansible Phase 9（ロール化）実行計画** |
 | [tool-management-debug-execplan.md](./plans/tool-management-debug-execplan.md) | **キオスク工具スキャン重複＆黒画像対策 ExecPlan** |
+| [ts100-integration-plan.md](./plans/ts100-integration-plan.md) | **TS100 RFIDリーダー統合計画**（計測機器管理システム用） |
 
 ### 実践ガイド（guides/）
 

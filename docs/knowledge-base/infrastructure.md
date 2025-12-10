@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - インフラ関連
 tags: [トラブルシューティング, インフラ, Docker, Caddy]
 audience: [開発者, 運用者]
-last-verified: 2025-11-30
+last-verified: 2025-12-10
 related: [index.md, ../guides/deployment.md, ../guides/monitoring.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 44件  
+**件数**: 45件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2020,5 +2020,65 @@ ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:327] GPU state invalid after W
 3. 定期的な再起動スケジュールの設定（cron）
 4. メモリ使用量の最適化
 5. GPU無効化は最後の手段として検討（CPU負荷増加のリスクを理解した上で）
+
+---
+
+### [KB-093] 計測機器APIの401エラー（期限切れJWTとx-client-keyの競合）
+
+**EXEC_PLAN.md参照**: 計測機器管理システム実機検証（2025-12-10）
+
+**事象**: 
+- キオスクの計測機器持出画面（`/kiosk/instruments/borrow`）でドロップダウンが空になる
+- APIログに`AUTH_TOKEN_INVALID`（401）エラーが連続して記録される
+- `curl -H 'x-client-key: ...' http://localhost:8080/api/measuring-instruments`は成功するが、ブラウザからのリクエストは失敗
+
+**APIエラーログの例**:
+```json
+{"level":40,"time":...,"errorCode":"AUTH_TOKEN_INVALID","errorMessage":"トークンが無効です","statusCode":401}
+```
+
+**要因**: 
+- ブラウザが期限切れのJWTトークン（`Authorization: Bearer eyJ...`）と`x-client-key`の両方を送信
+- APIの`allowView`関数が`Authorization`ヘッダーの存在を優先し、JWT認証失敗時に`x-client-key`へフォールバックしない実装だった
+
+**問題のコード（修正前）**:
+```typescript
+const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (request.headers.authorization) {
+    await canView(request, reply);  // JWT失敗で例外→x-client-keyフォールバックなし
+    return;
+  }
+  await allowClientKey(request);
+};
+```
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-10）: `allowView`と`allowWrite`を修正し、JWT認証失敗時に`x-client-key`へフォールバックするようtry-catchを追加
+
+**修正後のコード**:
+```typescript
+const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (request.headers.authorization) {
+    try {
+      await canView(request, reply);
+      return;
+    } catch {
+      // JWT認証失敗時はx-client-keyへフォールバック
+    }
+  }
+  await allowClientKey(request);
+};
+```
+
+**学んだこと**: 
+- ブラウザは古いJWTトークンを`localStorage`等に保持し続け、キオスク画面でも送信する可能性がある
+- `Authorization`ヘッダーと`x-client-key`の両方が存在する場合の優先順位とフォールバックを明確に設計する必要がある
+- キオスク向けAPIは`x-client-key`認証を確実にフォールバックとして機能させる必要がある
+
+**解決状況**: ✅ **解決済み**（2025-12-10）
+
+**関連ファイル**: 
+- `apps/api/src/routes/measuring-instruments/index.ts`（`allowView`, `allowWrite`関数）
+- `apps/api/src/lib/auth.ts`（`authorizeRoles`関数）
 
 ---

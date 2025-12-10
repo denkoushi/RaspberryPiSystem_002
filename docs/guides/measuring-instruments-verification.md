@@ -271,6 +271,31 @@
 - リセットボタン: 画面をリロード（F5相当）して初期化
 - キオスクブラウザ: Pi3サイネージ同様に上端メニューを残す（`kiosk-launch.sh`から`--kiosk`/`--start-fullscreen`を外し`--start-maximized`に変更）
 
+### 問題7: 計測機器ドロップダウンが空になる（401エラー）
+
+**事象**:
+- 計測機器持出画面 (`/kiosk/instruments/borrow`) でドロップダウンが空
+- APIログに `AUTH_TOKEN_INVALID` (401) エラーが連続して記録される
+
+**原因**:
+- ブラウザが期限切れJWTトークンと`x-client-key`の両方を送信
+- APIの`allowView`関数がJWT認証失敗時に`x-client-key`へフォールバックしない
+
+**対処法**:
+1. APIコードを修正（`apps/api/src/routes/measuring-instruments/index.ts`）
+   - `allowView`と`allowWrite`関数でJWT認証失敗時にtry-catchで`x-client-key`フォールバック
+2. Pi5でAPIコンテナを再ビルド・再起動
+   ```bash
+   cd /opt/RaspberryPiSystem_002
+   docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api
+   ```
+3. Pi4でキオスクブラウザを再起動
+   ```bash
+   sudo systemctl restart kiosk-browser.service
+   ```
+
+**ナレッジベース**: [KB-093](../knowledge-base/infrastructure.md#kb-093-計測機器apiの401エラー期限切れjwtとx-client-keyの競合)
+
 ## 検証完了条件
 
 以下のすべてが確認できれば検証完了：
