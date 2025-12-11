@@ -273,7 +273,8 @@ export function KioskInstrumentBorrowPage() {
     inspectionItems,
     instruments,
     hasInstrument,
-    resolvedInstrumentTagUid
+    resolvedInstrumentTagUid,
+    navigate
   ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）

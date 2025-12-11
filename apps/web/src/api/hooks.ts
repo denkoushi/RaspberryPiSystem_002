@@ -70,7 +70,6 @@ import type {
   Employee,
   Item,
   ReturnPayload,
-  MeasuringInstrument,
   MeasuringInstrumentStatus,
   InspectionItem,
   MeasuringInstrumentBorrowPayload,
