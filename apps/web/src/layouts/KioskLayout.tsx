@@ -106,20 +106,11 @@ export function KioskLayout() {
               <NavLink to="/kiosk" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
                 持出
               </NavLink>
-              <NavLink to="/kiosk/return" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
-                返却
-              </NavLink>
               <NavLink
                 to="/kiosk/instruments/borrow"
                 className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
               >
                 計測機器 持出
-              </NavLink>
-              <NavLink
-                to="/kiosk/instruments/return"
-                className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
-              >
-                計測機器 返却
               </NavLink>
             </nav>
           </div>

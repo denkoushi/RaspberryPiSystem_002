@@ -80,15 +80,18 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               const borrowedAt = new Date(loan.borrowedAt);
               const dueAt = loan.dueAt ? new Date(loan.dueAt) : new Date(borrowedAt.getTime() + 12 * 60 * 60 * 1000);
               const isOverdue = new Date() > dueAt;
+              const isInstrument = Boolean(loan.measuringInstrument);
+
+              const baseCardClass = isOverdue
+                ? 'border-red-500/50 bg-red-500/10'
+                : isInstrument
+                  ? 'border-indigo-400/40 bg-indigo-900/40'
+                  : 'border-white/10 bg-white/5';
 
               return (
                 <li
                   key={loan.id}
-                  className={`flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between ${
-                    isOverdue
-                      ? 'border-red-500/50 bg-red-500/10'
-                      : 'border-white/10 bg-white/5'
-                  }`}
+                  className={`flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between ${baseCardClass}`}
                 >
                   <div className="flex flex-1 gap-3">
                     {/* 写真サムネイル */}
@@ -108,13 +111,24 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                     )}
                     {/* 貸出情報 */}
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-400' : ''}`}>
-                        {loan.item?.name ?? (
-                          <span className="text-xs text-white/50">
-                            {loan.photoUrl ? '写真撮影モード' : 'アイテム情報なし'}
-                          </span>
-                        )}
-                      </p>
+                      {isInstrument ? (
+                        <>
+                          <p className={`text-xs font-semibold truncate ${isOverdue ? 'text-red-300' : 'text-indigo-100'}`}>
+                            {loan.measuringInstrument?.managementNumber ?? '管理番号なし'}
+                          </p>
+                          <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-300' : 'text-white'}`}>
+                            {loan.measuringInstrument?.name ?? '計測機器'}
+                          </p>
+                        </>
+                      ) : (
+                        <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-400' : ''}`}>
+                          {loan.item?.name ?? (
+                            <span className="text-xs text-white/50">
+                              {loan.photoUrl ? '写真撮影モード' : 'アイテム'}
+                            </span>
+                          )}
+                        </p>
+                      )}
                       <p className={`text-xs ${isOverdue ? 'text-red-300' : 'text-white/70'}`}>
                         {loan.employee?.displayName ?? '従業員情報なし'}
                       </p>

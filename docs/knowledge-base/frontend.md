@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 19件  
+**件数**: 20件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -639,3 +639,78 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+
+---
+
+### [KB-091] NFC/カメラ入力のスコープ分離: 別ページからのイベント横漏れ防止
+
+**EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-11）
+
+**事象**: 
+- 計測機器ページで氏名タグをスキャンした直後に、`defaultMode=PHOTO`によりPHOTOページへ遷移
+- PHOTOページが遷移直前のNFCイベントを拾い、意図せず自動撮影が1回発火
+- 同一NFCリーダーを複数機能で共用しているため、入力の横漏れが発生
+
+**要因**: 
+- `useNfcStream`フックがアプリ全体で共有されており、画面/モード単位のスコープ分離がなかった
+- WebSocket経由のNFCイベントがすべてのページで購読され、遷移直後に古いイベントを処理してしまう
+- `KioskRedirect`が`defaultMode`に従い自動遷移するため、意図しないページでイベントを受信
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-11）:
+  1. `useNfcStream`フックに`enabled`パラメータを追加（デフォルト`false`）
+  2. `enabledAt`タイムスタンプを記録し、`enabled=true`になった時刻より前のイベントを無視
+  3. 各キオスクページで`useMatch`を使用し、アクティブなルートの時のみNFCを有効化:
+     - `/kiosk/photo` → `useMatch('/kiosk/photo')`
+     - `/kiosk/tag` → `useMatch('/kiosk/tag')`
+     - `/kiosk/instruments/borrow` → `useMatch('/kiosk/instruments/borrow')`
+  4. 管理コンソールページ（`EmployeesPage`、`ItemsPage`）も同様にスコープ分離
+
+**実装のポイント**:
+```typescript
+// useNfcStream.ts
+export function useNfcStream(enabled = false) {
+  const enabledAtRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (!enabled) {
+      enabledAtRef.current = null;
+      return;
+    }
+    // enabled=trueになった時刻を記録
+    enabledAtRef.current = new Date().toISOString();
+    // ... WebSocket接続
+    socket.onmessage = (message) => {
+      const payload = JSON.parse(message.data);
+      // 遷移前のイベントを無視
+      if (enabledAtRef.current && payload.timestamp < enabledAtRef.current) {
+        return;
+      }
+      setEvent(payload);
+    };
+  }, [enabled]);
+}
+
+// 各ページでの使用例
+const isActiveRoute = useMatch('/kiosk/photo');
+const nfcEvent = useNfcStream(Boolean(isActiveRoute));
+```
+
+**学んだこと**: 
+- 複数機能で同一入力デバイスを共用する場合、スコープ分離が必須
+- WebSocketイベントはタイムスタンプで古いイベントをフィルタリングする
+- React Routerの`useMatch`でルートマッチングを判定し、アクティブページのみ購読を有効化
+- 将来の機能拡張でも同じパターンで入力スコープを管理可能
+
+**解決状況**: ✅ **解決済み**（2025-12-11）
+
+**関連ファイル**: 
+- `apps/web/src/hooks/useNfcStream.ts`
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`
+- `apps/web/src/pages/tools/EmployeesPage.tsx`
+- `apps/web/src/pages/tools/ItemsPage.tsx`
+
+**関連計画書**: 
+- `docs/plans/nfc-stream-isolation-plan.md`

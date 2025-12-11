@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { useItemMutations, useItems } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -22,7 +23,10 @@ export function ItemsPage() {
   const { create, update, remove } = useItemMutations();
   const [form, setForm] = useState(initialItem);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const nfcEvent = useNfcStream();
+  // スコープ分離: このページがアクティブな場合のみNFCを有効にする
+  const location = useLocation();
+  const isActiveRoute = location.pathname.endsWith('/items');
+  const nfcEvent = useNfcStream(isActiveRoute);
 
   useEffect(() => {
     if (nfcEvent?.uid) {

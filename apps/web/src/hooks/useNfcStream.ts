@@ -35,13 +35,26 @@ const getAgentWsUrl = () => {
 
 const AGENT_WS_URL = getAgentWsUrl();
 
-export function useNfcStream() {
+export function useNfcStream(enabled = false) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
   const lastProcessedEventIdRef = useRef<number | null>(null);
+  // enabled=trueになった時刻を記録し、それ以前のイベントを無視するためのref
+  const enabledAtRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setEvent(null);
+      // enabled=falseになったらenabledAtをリセット
+      enabledAtRef.current = null;
+      return;
+    }
+
+    // enabled=trueになった時刻を記録（ISO文字列で比較可能）
+    const enabledAt = new Date().toISOString();
+    enabledAtRef.current = enabledAt;
+
     let socket: WebSocket | null = null;
     let isMounted = true;
 
@@ -58,6 +71,13 @@ export function useNfcStream() {
           if (!isMounted) return;
           try {
             const payload = JSON.parse(message.data) as NfcEvent;
+
+            // スコープ分離: enabled=trueになった時刻より前のイベントは無視
+            // これにより、別ページから遷移してきた際に以前のイベントを拾わない
+            if (enabledAtRef.current && payload.timestamp < enabledAtRef.current) {
+              return;
+            }
+
             const eventId = typeof payload.eventId === 'number' ? payload.eventId : null;
             if (eventId !== null) {
               const lastProcessed = lastProcessedEventIdRef.current ?? readStoredEventId();
@@ -107,8 +127,9 @@ export function useNfcStream() {
       }
       // クリーンアップ時にイベントキーをリセット（再接続時に新しいイベントを受け付けるため）
       lastEventKeyRef.current = null;
+      setEvent(null);
     };
-  }, []);
+  }, [enabled]);
 
   return event;
 }

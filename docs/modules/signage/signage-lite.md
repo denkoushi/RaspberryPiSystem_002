@@ -186,9 +186,39 @@ api:
      --output /tmp/current.jpg
    ```
 
+## 計測機器持出アイテムの表示改善（2025-12-11）
+
+サイネージの工具データ左ペインで、計測機器の持出アイテムを視覚的に識別できるよう改善しました。
+
+### 変更内容
+
+1. **バックエンド（`signage.service.ts`）**:
+   - `getToolsData()` で `measuringInstrument` をincludeし、`isInstrument` / `managementNumber` フィールドを追加
+   - 計測機器の場合は名称・管理番号を計測機器マスターから取得
+
+2. **レンダラー（`signage.renderer.ts`）**:
+   - `buildToolCardGrid()` で `isInstrument` 判定を追加
+   - 計測機器: 藍系背景（`rgba(49,46,129,0.6)`）、藍系ストローク（`rgba(99,102,241,0.5)`）
+   - 計測機器: 管理番号を上段（藍色・小さめ）、名称を下段（白・標準）に表示
+   - 工具: 従来のダーク背景を維持
+
+3. **フロントエンド（`SignageDisplayPage.tsx`）**:
+   - `ToolCard` コンポーネントで `isInstrument` 判定を追加
+   - 計測機器は `bg-indigo-900/30` + `border-indigo-400/40` で表示
+   - 計測機器は管理番号＋名称の2行表示
+
+### 確認方法
+
+```bash
+# サイネージコンテンツAPIで確認
+curl -s -H 'x-client-key: client-key-raspberrypi3-signage1' \
+  http://localhost:8080/api/signage/content | jq '.tools[] | {name, isInstrument, managementNumber}'
+```
+
 ## 今後のタスク
 
 - [x] **自動レンダリング機能**: node-cron を使用して、定期的にコンテンツをレンダリングする機能を実装 ✅
+- [x] **計測機器持出アイテムの識別表示**: 藍系背景・管理番号表示で工具と識別 ✅
 - [ ] **管理画面からの手動トリガー**: 管理画面にボタンを追加して、必要時に手動でレンダリングを実行できるようにする
 - [ ] **Raspberry Pi Zero 2W での実機テスト**: 24時間連続稼働テストを実施し、CPU温度・メモリ使用量・ネットワーク断時の挙動を記録
 - [ ] **モード切替機能**: 管理画面またはセットアップスクリプトで「通常モード / 軽量モード」を選択できるようにする

@@ -423,6 +423,13 @@ export class SignageRenderer {
         const [borrowedDate, borrowedTime] = borrowedText.split(' ');
         const primaryText = tool.name || '写真撮影モード';
         const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
+        const isInstrument = Boolean(tool.isInstrument);
+        const managementText = isInstrument
+          ? (tool.managementNumber || tool.itemCode || '')
+          : (tool.itemCode || '');
+        const cardFill = isInstrument ? 'rgba(35,48,94,0.90)' : 'rgba(8,15,36,0.85)';
+        const cardStroke = isInstrument ? 'rgba(129,140,248,0.60)' : 'rgba(255,255,255,0.08)';
+        const codeColor = isInstrument ? '#c7d2fe' : '#94a3b8';
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
 
@@ -452,7 +459,8 @@ export class SignageRenderer {
         }
 
         const textStartY = y + cardPadding;
-        const primaryY = textStartY + Math.round(20 * scale);
+        const managementY = textStartY + Math.round(14 * scale);
+        const primaryY = isInstrument ? managementY + Math.round(18 * scale) : textStartY + Math.round(20 * scale);
         const nameY = primaryY + Math.round(18 * scale);
         const dateY = nameY + Math.round(16 * scale);
         const timeY = dateY + Math.round(16 * scale);
@@ -463,8 +471,15 @@ export class SignageRenderer {
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
-              fill="rgba(8,15,36,0.85)" stroke="rgba(255,255,255,0.08)" />
+              fill="${cardFill}" stroke="${cardStroke}" />
             ${thumbnailElement}
+            ${isInstrument
+              ? `<text x="${textX}" y="${managementY}"
+                  font-size="${Math.round(14 * scale)}" font-weight="600" fill="#c7d2fe" font-family="sans-serif">
+                  ${this.escapeXml(managementText)}
+                </text>`
+              : ''
+            }
             <text x="${textX}" y="${primaryY}"
               font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
@@ -489,8 +504,8 @@ export class SignageRenderer {
               : ''
             }
             <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.round(10 * scale)}" fill="#94a3b8" font-family="monospace">
-              ${this.escapeXml(tool.itemCode)}
+              text-anchor="end" font-size="${Math.round(10 * scale)}" fill="${codeColor}" font-family="monospace">
+              ${this.escapeXml(managementText || tool.itemCode || '')}
             </text>
           </g>
         `;

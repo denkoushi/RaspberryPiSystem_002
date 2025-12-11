@@ -57,6 +57,8 @@ export interface SignageContentResponse {
     thumbnailUrl?: string | null;
     employeeName?: string | null;
     borrowedAt?: string | null;
+    isInstrument?: boolean;
+    managementNumber?: string | null;
   }>;
   measuringInstruments?: Array<{
     id: string;
@@ -193,7 +195,7 @@ export class SignageService {
   }
 
   /**
-   * 工具管理データを取得
+   * 工具管理データを取得（計測機器の持出も含む）
    */
   private async getToolsData(): Promise<
     Array<{
@@ -201,9 +203,13 @@ export class SignageService {
       itemCode: string;
       name: string;
       thumbnailUrl: string | null;
+      employeeName?: string | null;
+      borrowedAt?: string | null;
+      isInstrument?: boolean;
+      managementNumber?: string | null;
     }>
   > {
-    // まずは現在貸出中（returnedAt / cancelledAt が null）の工具を取得
+    // まずは現在貸出中（returnedAt / cancelledAt が null）の工具・計測機器を取得
     const activeLoans = await prisma.loan.findMany({
       where: {
         returnedAt: null,
@@ -212,6 +218,7 @@ export class SignageService {
       include: {
         item: true,
         employee: true,
+        measuringInstrument: true,
       },
       orderBy: {
         borrowedAt: 'desc',
@@ -221,24 +228,35 @@ export class SignageService {
 
     const loanTools = activeLoans
       .map((loan) => {
-        const itemCode = loan.item?.itemCode ?? loan.itemId ?? '';
+        const isInstrument = Boolean(loan.measuringInstrument);
+        const itemCode = isInstrument
+          ? (loan.measuringInstrument?.managementNumber ?? '')
+          : (loan.item?.itemCode ?? loan.itemId ?? '');
         const borrowedAt = loan.borrowedAt?.toISOString() ?? null;
         const now = new Date();
         const borrowedDate = loan.borrowedAt ? new Date(loan.borrowedAt) : null;
         const diffMs = borrowedDate ? now.getTime() - borrowedDate.getTime() : 0;
         const diffHours = diffMs / (1000 * 60 * 60);
         const isOver12Hours = diffHours > 12;
+        
+        // 計測機器の場合は計測機器名、工具の場合は工具名、それ以外は写真モード
+        const name = isInstrument
+          ? (loan.measuringInstrument?.name ?? '計測機器')
+          : (loan.item?.name ?? (loan.photoUrl ? '写真撮影モード' : '持出中アイテム'));
+        
         return {
           id: loan.id,
           itemCode: itemCode || loan.id.slice(0, 8),
-          name: loan.item?.name ?? '持出中アイテム',
+          name,
           thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
           employeeName: loan.employee?.displayName ?? null,
           borrowedAt: borrowedAt,
           isOver12Hours: isOver12Hours,
+          isInstrument,
+          managementNumber: isInstrument ? loan.measuringInstrument?.managementNumber : null,
         };
       })
-      .filter((tool) => Boolean(tool.itemCode))
+      .filter((tool) => Boolean(tool.itemCode) || tool.isInstrument)
       // 12時間超のアイテムを最上位にソート
       .sort((a, b) => {
         if (a.isOver12Hours && !b.isOver12Hours) return -1;
@@ -273,6 +291,8 @@ export class SignageService {
       thumbnailUrl: null,
       employeeName: null,
       borrowedAt: null,
+      isInstrument: false,
+      managementNumber: null,
     }));
   }
 

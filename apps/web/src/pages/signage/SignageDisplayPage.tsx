@@ -30,9 +30,17 @@ const renderPdfImage = (src?: string, alt?: string) => {
 };
 
 function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean }) {
+  const isInstrument = Boolean(tool.isInstrument);
+  
+  // 計測機器は藍系背景、工具は従来の背景
+  const borderClass = isInstrument
+    ? 'border-indigo-400/40 hover:border-indigo-300/60'
+    : 'border-white/5 hover:border-emerald-400/40';
+  const bgClass = isInstrument ? 'bg-indigo-900/30' : 'bg-white/5';
+  
   return (
     <div
-      className={`group flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl border border-white/5 bg-white/5 p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)] transition-all duration-300 hover:-translate-y-1 hover:border-emerald-400/40`}
+      className={`group flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl border ${borderClass} ${bgClass} p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)] transition-all duration-300 hover:-translate-y-1`}
     >
       <div
         className="relative overflow-hidden rounded-2xl bg-slate-900/40"
@@ -48,17 +56,32 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             }}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/30">画像なし</div>
+          <div className="flex h-full w-full items-center justify-center text-white/30">
+            {isInstrument ? '計測機器' : '画像なし'}
+          </div>
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
       <div>
-        <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-          {tool.name}
-        </p>
-        <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
-          {tool.itemCode}
-        </p>
+        {isInstrument ? (
+          <>
+            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} font-semibold uppercase tracking-[0.2em] text-indigo-200/80`}>
+              {tool.managementNumber ?? tool.itemCode}
+            </p>
+            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
+              {tool.name}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
+              {tool.name}
+            </p>
+            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
+              {tool.itemCode}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

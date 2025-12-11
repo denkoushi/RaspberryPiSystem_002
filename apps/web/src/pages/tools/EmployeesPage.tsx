@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { useEmployeeMutations, useEmployees } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -21,7 +22,10 @@ export function EmployeesPage() {
   const { create, update, remove } = useEmployeeMutations();
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const nfcEvent = useNfcStream();
+  // スコープ分離: このページがアクティブな場合のみNFCを有効にする
+  const location = useLocation();
+  const isActiveRoute = location.pathname.endsWith('/employees');
+  const nfcEvent = useNfcStream(isActiveRoute);
 
   useEffect(() => {
     if (nfcEvent?.uid) {

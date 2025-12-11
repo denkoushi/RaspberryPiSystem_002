@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMatch } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
@@ -21,7 +22,9 @@ export function KioskPhotoBorrowPage() {
   const resolvedClientId = clientId || undefined;
   const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
   const photoBorrowMutation = usePhotoBorrowMutation(resolvedClientKey);
-  const nfcEvent = useNfcStream();
+  // スコープ分離: このページがアクティブな場合のみNFCを有効にする
+  const isActiveRoute = useMatch('/kiosk/photo');
+  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastEventKeyRef = useRef<string | null>(null);
   const processedUidsRef = useRef<Map<string, number>>(new Map()); // 処理済みUIDとタイムスタンプのマップ
   const processedEventTimestampsRef = useRef<Map<string, string>>(new Map()); // 処理済みUIDとイベントタイムスタンプのマップ
@@ -159,7 +162,7 @@ export function KioskPhotoBorrowPage() {
     // 従業員タグをスキャンしたら、カメラで撮影してから持出処理を開始
     const currentUid = nfcEvent.uid; // クロージャで値を保持
     setEmployeeTagUid(currentUid);
-    setIsCapturing(true);
+      setIsCapturing(true);
     setError(null);
     setSuccessLoan(null);
 
