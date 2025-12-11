@@ -61,7 +61,8 @@ import {
   borrowMeasuringInstrument,
   returnMeasuringInstrument,
   getUnifiedItems,
-  type UnifiedListParams
+  type UnifiedListParams,
+  type MeasuringInstrumentInput
 } from './client';
 
 import type {
@@ -221,11 +222,11 @@ export function useMeasuringInstrument(id?: string) {
 export function useMeasuringInstrumentMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
-    mutationFn: (payload: Partial<MeasuringInstrument>) => createMeasuringInstrument(payload),
+    mutationFn: (payload: MeasuringInstrumentInput) => createMeasuringInstrument(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] })
   });
   const update = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<MeasuringInstrument> }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: MeasuringInstrumentInput }) =>
       updateMeasuringInstrument(id, payload),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });

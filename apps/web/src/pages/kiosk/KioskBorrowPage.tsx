@@ -1,8 +1,8 @@
 import { useMachine } from '@xstate/react';
 import { useEffect, useMemo, useRef } from 'react';
-import { useMatch } from 'react-router-dom';
+import { useMatch, useNavigate } from 'react-router-dom';
 
-import { DEFAULT_CLIENT_KEY, postClientLogs, setClientKeyHeader } from '../../api/client';
+import { DEFAULT_CLIENT_KEY, getMeasuringInstrumentByTagUid, postClientLogs, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -21,6 +21,7 @@ export function KioskBorrowPage() {
   const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
+  const navigate = useNavigate();
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
   // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
   const loansQuery = useActiveLoans(undefined, resolvedClientKey);
@@ -132,15 +133,31 @@ export function KioskBorrowPage() {
       }
       return;
     }
-    // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信
-    const shouldSendItem = !state.context.itemTagUid;
-    const eventType = shouldSendItem ? 'ITEM_SCANNED' : 'EMPLOYEE_SCANNED';
-    if (enableDebugLogs) {
-      console.log(`Sending ${eventType}:`, nfcEvent.uid);
-    }
-    send({ type: eventType, uid: nfcEvent.uid });
-    lastEventKeyRef.current = eventKey;
-  }, [nfcEvent, send, state]);
+    const processNfc = async () => {
+      try {
+        // 計測機器タグなら計測機器持出ページへ遷移（タグUIDをクエリで渡す）
+        const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
+        if (instrument) {
+          navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+          lastEventKeyRef.current = eventKey;
+          return;
+        }
+      } catch {
+        // 計測機器タグでなければ工具フローを継続
+      }
+
+      // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信
+      const shouldSendItem = !state.context.itemTagUid;
+      const eventType = shouldSendItem ? 'ITEM_SCANNED' : 'EMPLOYEE_SCANNED';
+      if (enableDebugLogs) {
+        console.log(`Sending ${eventType}:`, nfcEvent.uid);
+      }
+      send({ type: eventType, uid: nfcEvent.uid });
+      lastEventKeyRef.current = eventKey;
+    };
+
+    processNfc();
+  }, [nfcEvent, navigate, send, state]);
 
   const handleReset = () => {
     // 単純な画面リロードでキャッシュも含めて初期化

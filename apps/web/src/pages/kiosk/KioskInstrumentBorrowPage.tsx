@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { useMatch } from 'react-router-dom';
+import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
   borrowMeasuringInstrument,
@@ -21,6 +21,8 @@ type InstrumentSource = 'select' | 'tag' | null;
 
 export function KioskInstrumentBorrowPage() {
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
@@ -64,6 +66,16 @@ export function KioskInstrumentBorrowPage() {
   };
 
   // タグUID入力時に計測機器を自動選択
+  useEffect(() => {
+    // URLクエリに tagUid があれば初期セット（持出タブからの誘導用）
+    const initialTag = searchParams.get('tagUid');
+    if (initialTag) {
+      setInstrumentTagUid(initialTag);
+    }
+    // 一度だけ評価
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const searchInstrumentByTag = async () => {
       if (!instrumentTagUid || instrumentTagUid.trim().length === 0) {
@@ -173,6 +185,8 @@ export function KioskInstrumentBorrowPage() {
       // NGの場合は点検記録を作成しない（個別項目の記録は不要）
       setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
       resetForm();
+      // 持出タブへ戻す
+      navigate('/kiosk/tag', { replace: true });
     } catch (error) {
       console.error(error);
       setMessage('エラーが発生しました。入力値を確認してください。');
@@ -237,6 +251,8 @@ export function KioskInstrumentBorrowPage() {
       }
       setMessage(`持出登録完了: Loan ID = ${loan.id}`);
       resetForm();
+      // 持出タブへ戻す
+      navigate('/kiosk/tag', { replace: true });
     } catch (error) {
       console.error(error);
       const apiErr = error as Partial<AxiosError<{ message?: string }>>;

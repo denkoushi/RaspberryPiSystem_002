@@ -1,4 +1,5 @@
-import type { MeasuringInstrument, MeasuringInstrumentStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { MeasuringInstrument, MeasuringInstrumentStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 
@@ -9,6 +10,7 @@ export interface MeasuringInstrumentCreateInput {
   measurementRange?: string | null;
   calibrationExpiryDate?: Date | null;
   status?: MeasuringInstrumentStatus;
+  rfidTagUid?: string | null;
 }
 
 export interface MeasuringInstrumentUpdateInput {
@@ -18,6 +20,7 @@ export interface MeasuringInstrumentUpdateInput {
   measurementRange?: string | null;
   calibrationExpiryDate?: Date | null;
   status?: MeasuringInstrumentStatus;
+  rfidTagUid?: string | null;
 }
 
 export interface MeasuringInstrumentQuery {
@@ -62,25 +65,75 @@ export class MeasuringInstrumentService {
   }
 
   async create(data: MeasuringInstrumentCreateInput): Promise<MeasuringInstrument> {
-    return await prisma.measuringInstrument.create({
-      data: {
-        name: data.name,
-        managementNumber: data.managementNumber,
-        storageLocation: data.storageLocation ?? undefined,
-        measurementRange: data.measurementRange ?? undefined,
-        calibrationExpiryDate: data.calibrationExpiryDate ?? undefined,
-        status: data.status ?? 'AVAILABLE'
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const instrument = await tx.measuringInstrument.create({
+          data: {
+            name: data.name,
+            managementNumber: data.managementNumber,
+            storageLocation: data.storageLocation ?? undefined,
+            measurementRange: data.measurementRange ?? undefined,
+            calibrationExpiryDate: data.calibrationExpiryDate ?? undefined,
+            status: data.status ?? 'AVAILABLE'
+          }
+        });
+
+        const tagUid = data.rfidTagUid?.trim();
+        if (tagUid) {
+          const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
+          if (existing) {
+            throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
+          }
+          await tx.measuringInstrumentTag.create({
+            data: { measuringInstrumentId: instrument.id, rfidTagUid: tagUid }
+          });
+        }
+
+        return instrument;
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
       }
-    });
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ApiError(409, 'RFIDタグUIDが重複しています');
+      }
+      throw error;
+    }
   }
 
   async update(id: string, data: MeasuringInstrumentUpdateInput): Promise<MeasuringInstrument> {
+    const { rfidTagUid, ...instrumentData } = data;
+    const tagUid = rfidTagUid?.trim();
+
     try {
-      return await prisma.measuringInstrument.update({
-        where: { id },
-        data
+      return await prisma.$transaction(async (tx) => {
+        const instrument = await tx.measuringInstrument.update({
+          where: { id },
+          data: instrumentData
+        });
+
+        if (tagUid) {
+          const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
+          if (existing && existing.measuringInstrumentId !== id) {
+            throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
+          }
+          await tx.measuringInstrumentTag.upsert({
+            where: { rfidTagUid: tagUid },
+            update: { measuringInstrumentId: id },
+            create: { measuringInstrumentId: id, rfidTagUid: tagUid }
+          });
+        }
+
+        return instrument;
       });
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ApiError(409, 'RFIDタグUIDが重複しています');
+      }
       throw new ApiError(404, '計測機器が見つかりません');
     }
   }

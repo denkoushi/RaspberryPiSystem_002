@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 
-import { useMeasuringInstruments, useMeasuringInstrumentMutations } from '../../api/hooks';
+import {
+  useMeasuringInstruments,
+  useMeasuringInstrumentMutations,
+  useInstrumentTags
+} from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -15,7 +19,8 @@ const initialForm = {
   storageLocation: '',
   measurementRange: '',
   calibrationExpiryDate: '',
-  status: 'AVAILABLE' as MeasuringInstrumentStatus
+  status: 'AVAILABLE' as MeasuringInstrumentStatus,
+  rfidTagUid: ''
 };
 
 export function MeasuringInstrumentsPage() {
@@ -23,21 +28,30 @@ export function MeasuringInstrumentsPage() {
   const { create, update, remove } = useMeasuringInstrumentMutations();
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const { data: editingTags } = useInstrumentTags(editingId || undefined);
 
   useEffect(() => {
     if (editingId) return;
     setForm((prev) => ({ ...prev, status: prev.status ?? 'AVAILABLE' }));
   }, [editingId]);
 
+  useEffect(() => {
+    if (!editingId || !editingTags) return;
+    const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
+    setForm((prev) => (prev.rfidTagUid ? prev : { ...prev, rfidTagUid: existingTagUid }));
+  }, [editingId, editingTags]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    const normalizedTagUid = form.rfidTagUid.trim();
     const payload = {
       name: form.name,
       managementNumber: form.managementNumber,
       storageLocation: form.storageLocation || undefined,
       measurementRange: form.measurementRange || undefined,
       calibrationExpiryDate: form.calibrationExpiryDate ? new Date(form.calibrationExpiryDate).toISOString() : undefined,
-      status: form.status
+      status: form.status,
+      rfidTagUid: normalizedTagUid || undefined
     };
     if (editingId) {
       await update.mutateAsync({ id: editingId, payload });
@@ -58,7 +72,8 @@ export function MeasuringInstrumentsPage() {
       calibrationExpiryDate: instrument.calibrationExpiryDate
         ? instrument.calibrationExpiryDate.slice(0, 10)
         : '',
-      status: instrument.status
+      status: instrument.status,
+      rfidTagUid: ''
     });
   };
 
@@ -79,6 +94,14 @@ export function MeasuringInstrumentsPage() {
           <label className="text-sm text-white/70">
             名称
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          </label>
+          <label className="text-sm text-white/70 md:col-span-2">
+            NFC / RFIDタグUID
+            <Input
+              value={form.rfidTagUid}
+              onChange={(e) => setForm({ ...form, rfidTagUid: e.target.value })}
+              placeholder="例: 04A1B2C3D4"
+            />
           </label>
           <label className="text-sm text-white/70">
             管理番号

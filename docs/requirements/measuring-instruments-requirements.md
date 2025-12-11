@@ -2,7 +2,7 @@
 title: 計測機器管理システム要件定義
 tags: [要件定義, 機能要件, 非機能要件, 計測機器, 点検]
 audience: [開発者, アーキテクト, 新規参加者]
-last-verified: 2025-12-07
+last-verified: 2025-12-12
 related: [../modules/measuring-instruments/README.md, ../modules/tools/README.md, system-requirements.md]
 category: requirements
 update-frequency: medium
@@ -30,6 +30,7 @@ update-frequency: medium
   - 計測機器測定範囲（オプション）
   - 校正期限（オプション）
   - ステータス管理（AVAILABLE, IN_USE, MAINTENANCE, RETIRED）
+- **拡張**: 登録/編集フォームで **NFC/RFIDタグUID** を入力すると、保存時にRFIDタグ紐付けを自動作成・更新（重複UIDは409で拒否）
 - **検証**: 計測機器のCRUD操作が正常に動作することを確認
 
 ### FR-MI-002: 点検項目マスター管理機能
@@ -51,6 +52,7 @@ update-frequency: medium
   - 計測機器への紐付け（必須）
   - RFIDタグUID（必須、ユニーク）
   - 複数のRFIDタグを1つの計測機器に紐付け可能
+- **実装状況**: ✅ 管理コンソールの計測機器登録/編集フォームにタグUID入力欄を追加し、保存時に紐付けを自動作成・更新（既存UIDは409で拒否）。既存のRFIDタグ管理ページ（`/admin/tools/instrument-tags`）も併用可。
 - **検証**: RFIDタグの紐付け・解除が正常に動作することを確認
 
 ### FR-MI-004: 計測機器持ち出し機能

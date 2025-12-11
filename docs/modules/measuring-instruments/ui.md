@@ -26,6 +26,7 @@
 ## 管理コンソール
 
 - 計測機器一覧（登録/編集/削除）: `/admin/tools/measuring-instruments`
+- 計測機器登録/編集フォームに **NFC/RFIDタグUID** を追加（保存時にタグ紐付けを自動作成。既存UIDは409で拒否）
 - 点検項目管理（登録/編集/削除）: `/admin/tools/inspection-items`
 - RFIDタグ紐付け管理（登録/削除）: `/admin/tools/instrument-tags`
 - 点検記録の閲覧/手動登録: `/admin/tools/inspection-records`

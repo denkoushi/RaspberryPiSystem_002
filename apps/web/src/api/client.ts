@@ -254,6 +254,11 @@ export interface UnifiedListParams {
   instrumentStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
 }
 
+// 計測機器作成/更新用の入力
+export type MeasuringInstrumentInput = Partial<MeasuringInstrument> & {
+  rfidTagUid?: string | null;
+};
+
 export async function getUnifiedItems(params?: UnifiedListParams) {
   const { data } = await api.get<{ items: UnifiedItem[] }>('/tools/unified', {
     params: {
@@ -279,12 +284,12 @@ export async function getMeasuringInstrumentTags(instrumentId: string) {
   return data;
 }
 
-export async function createMeasuringInstrument(input: Partial<MeasuringInstrument>) {
+export async function createMeasuringInstrument(input: MeasuringInstrumentInput) {
   const { data } = await api.post<{ instrument: MeasuringInstrument }>('/measuring-instruments', input);
   return data.instrument;
 }
 
-export async function updateMeasuringInstrument(id: string, input: Partial<MeasuringInstrument>) {
+export async function updateMeasuringInstrument(id: string, input: MeasuringInstrumentInput) {
   const { data } = await api.put<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`, input);
   return data.instrument;
 }
