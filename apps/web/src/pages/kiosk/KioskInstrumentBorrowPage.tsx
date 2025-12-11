@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useMatch } from 'react-router-dom';
 
 import {
   borrowMeasuringInstrument,
@@ -14,6 +15,7 @@ import { Input } from '../../components/ui/Input';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
+import type { AxiosError } from 'axios';
 
 type InstrumentSource = 'select' | 'tag' | null;
 
@@ -33,10 +35,33 @@ export function KioskInstrumentBorrowPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNg, setIsNg] = useState(false);
   const employeeTagInputRef = useRef<HTMLInputElement>(null);
-  const nfcEvent = useNfcStream(true);
+  // スコープ分離: このページがアクティブな場合のみNFCを有効にする
+  const isActiveRoute = useMatch('/kiosk/instruments/borrow');
+  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastNfcEventKeyRef = useRef<string | null>(null);
 
   const hasInstrument = selectedInstrumentId || instrumentTagUid.trim();
+
+  const toShortMessage = (msg?: string) => {
+    if (!msg) return '送信に失敗しました。再スキャンしてください。';
+    const lower = msg.toLowerCase();
+    if (
+      msg.includes('計測機器') &&
+      (msg.includes('登録されていません') || lower.includes('instrument not found'))
+    ) {
+      return 'タグ未登録（計測機器）';
+    }
+    if (
+      msg.includes('従業員') &&
+      (msg.includes('登録されていません') || lower.includes('employee not found'))
+    ) {
+      return 'タグ未登録（社員）';
+    }
+    if (msg.includes('貸出中') || lower.includes('already borrowed')) {
+      return '既に貸出中です';
+    }
+    return msg.length > 40 ? '送信に失敗しました。再スキャンしてください。' : msg;
+  };
 
   // タグUID入力時に計測機器を自動選択
   useEffect(() => {
@@ -214,7 +239,13 @@ export function KioskInstrumentBorrowPage() {
       resetForm();
     } catch (error) {
       console.error(error);
-      setMessage('エラーが発生しました。入力値を確認してください。');
+      const apiErr = error as Partial<AxiosError<{ message?: string }>>;
+      const apiMessage: string | undefined = apiErr.response?.data?.message;
+      const rawMessage =
+        typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : apiErr?.message;
+      setMessage(toShortMessage(rawMessage));
+      // エラー時は自動再送を防ぐため、氏名タグをクリアして再スキャンを促す
+      setEmployeeTagUid('');
     } finally {
       setIsSubmitting(false);
     }

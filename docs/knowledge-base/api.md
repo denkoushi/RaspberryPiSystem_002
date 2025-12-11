@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 17件  
+**件数**: 18件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -489,4 +489,32 @@ update-frequency: medium
 
 **関連ファイル**: 
 - `apps/api/src/services/signage/signage.renderer.ts`
+
+---
+
+### [KB-094] サイネージ左ペインで計測機器と工具を視覚的に識別できない
+
+**事象**: 
+- Pi3サイネージの工具データ左ペインで、計測機器の持出アイテムと工具を視覚的に区別できない
+- 計測機器の管理番号が表示されず、識別しにくい
+
+**要因**: 
+- `signage.service.ts` の `getToolsData()` で `measuringInstrument` をincludeしておらず、計測機器情報が取得できていなかった
+- `signage.renderer.ts` の `buildToolCardGrid()` で計測機器と工具を区別する処理がなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-11）:
+  1. **バックエンド**: `signage.service.ts` の `getToolsData()` で `measuringInstrument` をincludeし、`isInstrument` / `managementNumber` フィールドを追加
+  2. **レンダラー**: `signage.renderer.ts` の `buildToolCardGrid()` で計測機器判定を追加し、藍系背景（`rgba(49,46,129,0.6)`）とストローク（`rgba(99,102,241,0.5)`）で表示
+  3. **表示形式**: 計測機器は管理番号を上段（藍色・小さめ）、名称を下段（白・標準）に2行表示
+  4. **フロントエンド**: `SignageDisplayPage.tsx` の `ToolCard` でも同様の識別表示を実装
+
+**学んだこと**: 
+- サイネージは「サーバー側レンダリング（静止画出力）」アーキテクチャのため、フロントエンドのReactコンポーネント変更だけでなく、レンダラー（`signage.renderer.ts`）の変更も必要
+- 計測機器と工具を混在表示する場合は、色・レイアウトで視覚的に識別できるようにすることが重要
+
+**関連ファイル**: 
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 

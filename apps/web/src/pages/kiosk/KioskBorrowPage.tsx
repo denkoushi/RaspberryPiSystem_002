@@ -1,5 +1,6 @@
 import { useMachine } from '@xstate/react';
 import { useEffect, useMemo, useRef } from 'react';
+import { useMatch } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, postClientLogs, setClientKeyHeader } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
@@ -26,7 +27,9 @@ export function KioskBorrowPage() {
   const borrowMutation = useBorrowMutation(resolvedClientKey);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
-  const nfcEvent = useNfcStream(true);
+  // スコープ分離: このページがアクティブな場合のみNFCを有効にする
+  const isActiveRoute = useMatch('/kiosk/tag');
+  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastEventKeyRef = useRef<string | null>(null);
 
   // client-key が空になってもデフォルトを自動で復元する

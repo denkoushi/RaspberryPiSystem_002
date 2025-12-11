@@ -40,6 +40,13 @@ RUN corepack enable \
 WORKDIR /app/apps/api
 RUN pnpm prisma generate
 
+# ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
+RUN mkdir -p /app/storage/photos \
+  /app/storage/thumbnails \
+  /app/storage/pdfs \
+  /app/storage/pdf-pages \
+  /app/storage/signage-rendered
+
 ENV NODE_ENV=production
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 

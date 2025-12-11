@@ -598,6 +598,10 @@ export interface SignageContentResponse {
     itemCode: string;
     name: string;
     thumbnailUrl: string | null;
+    employeeName?: string | null;
+    borrowedAt?: string | null;
+    isInstrument?: boolean;
+    managementNumber?: string | null;
   }>;
   measuringInstruments?: Array<{
     id: string;

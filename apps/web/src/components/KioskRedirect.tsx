@@ -31,11 +31,12 @@ export function KioskRedirect() {
     const isOnRoot = normalizedPath === '';
     const isWithinKiosk = isOnRoot || normalizedPath.startsWith('/kiosk');
     const isOnKioskRoot = normalizedPath === '/kiosk';
+    const isOnKioskSubPath = normalizedPath.startsWith('/kiosk/');
     const lastKioskPath = sessionStorage.getItem('kiosk-last-path') || '';
     
     // ルートもしくは /kiosk 自体でのみ自動遷移を行い、
     // サブパス（/kiosk/...）にいるときはユーザー操作を優先する
-    if (!isWithinKiosk || normalizedPath.startsWith('/kiosk/')) {
+    if (!isWithinKiosk || isOnKioskSubPath) {
       if (enableDebugLogs) {
         console.log('[KioskRedirect] Skip auto-redirect on subpath:', normalizedPath);
       }
@@ -86,8 +87,7 @@ export function KioskRedirect() {
     if (currentDefaultMode !== lastDefaultMode || lastDefaultMode === undefined || isOnKioskRoot || isOnRoot) {
       lastDefaultModeRef.current = currentDefaultMode;
       
-      // 直近のキオスクパスがあれば最優先で戻す（意図しないPHOTO遷移を防ぐ）
-      // ただし /kiosk 直アクセス時は defaultMode を優先（ナビゲーション操作を阻害しない）
+      // 直近パス復元はルート"/"アクセス時のみ（/kioskアクセスではユーザー操作を優先）
       if (isOnRoot && lastKioskPath && lastKioskPath !== '/kiosk') {
         if (enableDebugLogs) {
           console.log('[KioskRedirect] Restoring last kiosk path:', lastKioskPath);
