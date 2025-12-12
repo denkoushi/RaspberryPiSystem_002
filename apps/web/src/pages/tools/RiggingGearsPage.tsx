@@ -1,6 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { setRiggingGearTag } from '../../api/client';
 import {
   useRiggingGears,
   useRiggingGearMutations,
@@ -17,6 +19,7 @@ import type { RiggingStatus, RiggingGear } from '../../api/types';
 type FormState = Partial<RiggingGear> & { rfidTagUid?: string };
 
 export function RiggingGearsPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<RiggingStatus | 'ALL'>('ALL');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,7 +49,7 @@ export function RiggingGearsPage() {
     }
   }, [nfcEvent]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name || !form.managementNumber) {
       alert('名称と管理番号は必須です');
       return;
@@ -65,11 +68,24 @@ export function RiggingGearsPage() {
       notes: form.notes || null,
       rfidTagUid: form.rfidTagUid
     };
+    let gearId = editingId;
     if (isEditing && editingId) {
-      riggingMutations.update.mutate({ id: editingId, payload });
+      const updated = await riggingMutations.update.mutateAsync({ id: editingId, payload });
+      gearId = updated?.id ?? editingId;
     } else {
-      riggingMutations.create.mutate(payload as { name: string; managementNumber: string });
+      const created = await riggingMutations.create.mutateAsync(payload as { name: string; managementNumber: string });
+      gearId = created?.id ?? gearId;
     }
+    // タグ登録（入力ありの場合のみ）
+    if (form.rfidTagUid && gearId) {
+      try {
+        await setRiggingGearTag(gearId, form.rfidTagUid);
+      } catch (err) {
+        console.error('Failed to set rigging tag', err);
+        alert('タグ登録に失敗しました');
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: ['rigging-gears'] });
     setEditingId(null);
     setForm({ name: '', managementNumber: '' });
   };
