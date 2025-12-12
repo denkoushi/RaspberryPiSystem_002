@@ -139,8 +139,45 @@ export function KioskRiggingBorrowPage() {
       <Card>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <h2 className="text-xl font-semibold">吊具 持出</h2>
-            <p className="text-sm text-white/70">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2">
+                <h2 className="text-xl font-semibold">吊具 持出</h2>
+                <p className="text-sm text-white/70">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/60">吊具タグUID:</span>
+                  <span className="font-mono">{riggingTagUid || '-'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/60">従業員タグUID:</span>
+                  <span className="font-mono">{employeeTagUid || '-'}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setRiggingTagUid('');
+                      setEmployeeTagUid('');
+                      setMessage(null);
+                      setError(null);
+                    }}
+                  >
+                    リセット
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      navigate('/kiosk', {
+                        replace: true
+                      })
+                    }
+                    variant="secondary"
+                  >
+                    持出一覧へ戻る
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="grid gap-4 lg:grid-cols-[3fr,1fr]">
             <div className="flex flex-col gap-3">
@@ -152,37 +189,6 @@ export function KioskRiggingBorrowPage() {
                   className="mt-2 w-full max-w-none rounded-md border border-white/10 object-contain"
                 />
                 <p className="mt-2 text-xs text-white/70">画像を参照し、目視点検後にOK/NGを判断してください。</p>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-white/60">吊具タグUID:</span>
-                <span className="font-mono">{riggingTagUid || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-white/60">従業員タグUID:</span>
-                <span className="font-mono">{employeeTagUid || '-'}</span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setRiggingTagUid('');
-                    setEmployeeTagUid('');
-                    setMessage(null);
-                    setError(null);
-                  }}
-                >
-                  リセット
-                </Button>
-                <Button
-                  onClick={() =>
-                    navigate('/kiosk', {
-                      replace: true
-                    })
-                  }
-                  variant="secondary"
-                >
-                  持出一覧へ戻る
-                </Button>
               </div>
             </div>
             <div className="flex flex-col gap-3">
