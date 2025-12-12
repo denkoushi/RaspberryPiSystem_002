@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
@@ -128,6 +128,12 @@ export function KioskLayout() {
               >
                 吊具 持出
               </NavLink>
+              <Link
+                to="/admin"
+                className={`${navLink} bg-blue-600 hover:bg-blue-700`}
+              >
+                管理コンソール
+              </Link>
             </nav>
           </div>
         </div>
