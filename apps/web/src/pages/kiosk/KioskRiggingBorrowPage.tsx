@@ -9,6 +9,7 @@ import {
   postClientLogs,
   setClientKeyHeader
 } from '../../api/client';
+import { useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -19,6 +20,9 @@ export function KioskRiggingBorrowPage() {
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const { data: kioskConfig } = useKioskConfig();
+  const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
 
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId] = useLocalStorage('kiosk-client-id', '');
@@ -92,6 +96,8 @@ export function KioskRiggingBorrowPage() {
           setMessage(`持出登録完了: Loan ID = ${loan.id}`);
           setRiggingTagUid('');
           setEmployeeTagUid('');
+          // 計測機器と同じく成功時は戻り先へ自動遷移
+          navigate(returnPath, { replace: true });
         }
       } catch (err) {
         const msg =
@@ -126,7 +132,7 @@ export function KioskRiggingBorrowPage() {
       }
     })();
     // success表示中でも新しいイベントは処理するので依存配列なし
-  }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey]);
+  }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey, navigate, returnPath]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
