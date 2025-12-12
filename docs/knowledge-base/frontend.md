@@ -735,9 +735,10 @@ const nfcEvent = useNfcStream(Boolean(isActiveRoute));
 - ✅ **解決済み**（2025-12-12）:
   1. `getUnifiedItems({ category: 'ALL' })`で工具と計測機器のマップを事前取得
   2. NFCイベント受信時に`tagTypeMap`でキャッシュ判定、または`getMeasuringInstrumentByTagUid`でAPI判定
-  3. 計測機器タグなら即座に`/kiosk/instruments/borrow?tagUid=...`へ遷移
-  4. 未登録計測機器タグ（404）も計測機器タブへ誘導（`&notFound=1`パラメータ付き）
+  3. **計測機器として明示的に登録されているタグのみ**計測機器タブへ遷移
+  4. 未登録タグ（404）は従来の工具/従業員フローを継続（従業員タグの誤判定を防止）
   5. PHOTOモードでも同様のロジックを実装し、カメラ起動前に計測機器タグを判定
+  6. 計測機器持出完了後の戻り先を`kioskConfig.defaultMode`に基づいて決定（PHOTO/TAG）
 
 **実装のポイント**:
 ```typescript
@@ -748,26 +749,24 @@ if (cachedType === 'MEASURING_INSTRUMENT') {
   return;
 }
 
-// APIで判定
+// APIで判定（計測機器として登録されている場合のみ遷移）
 try {
   const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
   if (instrument) {
     navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
     return;
   }
-} catch (error) {
-  // 404でも計測機器タブへ誘導（未登録タグとして表示）
-  if (status === 404) {
-    navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`);
-    return;
-  }
+} catch {
+  // 404や他のエラーは従業員/工具フローを継続
+  // ※未登録タグを計測機器として扱うと従業員タグが誤判定されるため
 }
-// 計測機器でなければ工具フローを継続
+// 計測機器でなければ工具/従業員フローを継続
 ```
 
 **教訓**: 
 - 複数種類のタグを扱う場合、スキャン時に種類を判定するロジックを各ページに統一的に実装する
-- 未登録タグの場合も適切な画面へ誘導することでユーザー体験を向上
+- **未登録タグ（404）を特定タイプとして扱わない**: 従業員タグも「計測機器として未登録」なので404が返され、誤判定の原因となる
+- 明示的に登録されているタグのみを対象タイプとして扱う
 
 **解決状況**: ✅ **解決済み**（2025-12-12）
 

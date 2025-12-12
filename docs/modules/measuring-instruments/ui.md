@@ -49,9 +49,9 @@
 - **計測機器タグ自動遷移機能**: ✅ **実装完了**（2025-12-12）
   - 持出タブ（`/kiosk/tag`）またはPHOTOモード（`/kiosk/photo`）で計測機器タグをスキャン
   - `getUnifiedItems`で事前取得したマップ、または`getMeasuringInstrumentByTagUid`でAPI判定
-  - 計測機器タグなら自動で `/kiosk/instruments/borrow?tagUid=...` へ遷移
-  - 未登録計測機器タグ（404）も計測機器タブへ誘導（`&notFound=1`パラメータで「タグ未登録（計測機器）」表示）
-  - 工具/従業員タグと誤認されてカメラが起動する問題を解消
+  - **計測機器として明示的に登録されているタグのみ** `/kiosk/instruments/borrow?tagUid=...` へ遷移
+  - 未登録タグ（404）は従来の工具/従業員フローを継続（従業員タグの誤判定を防止）
+  - 計測機器持出完了後の戻り先は管理コンソールの`defaultMode`設定に従う（PHOTO/TAG）
   - **ナレッジベース**: [KB-095](../../knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - **持ち出し画面**: `/kiosk/instruments/borrow`
   - 計測機器タグUID・氏名タグUIDの手入力フォーム（実装済み）

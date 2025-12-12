@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2025-12-12) **計測機器タグ自動遷移機能実装完了**: 持出タブ（`/kiosk/tag`）およびPHOTOモード（`/kiosk/photo`）で計測機器タグをスキャン時、自動で計測機器持出タブ（`/kiosk/instruments/borrow`）へ遷移する機能を実装。工具/従業員タグと誤認されてカメラが起動する問題を解消。未登録計測機器タグも適切に処理（「タグ未登録（計測機器）」表示）。**ナレッジベース**: [KB-095](docs/knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
+- [x] (2025-12-12) **計測機器タグ自動遷移機能実装完了**: 持出タブ（`/kiosk/tag`）およびPHOTOモード（`/kiosk/photo`）で計測機器タグをスキャン時、自動で計測機器持出タブ（`/kiosk/instruments/borrow`）へ遷移する機能を実装。**計測機器として明示的に登録されているタグのみ遷移**（未登録タグは従来フロー継続、従業員タグ誤判定を防止）。計測機器持出完了後の戻り先は`defaultMode`設定に従う（PHOTO/TAG）。**ナレッジベース**: [KB-095](docs/knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - [x] (2025-12-12) **クライアントログ取得ベストプラクティス実装完了**: Cursorデバッグログ（127.0.0.1:7242）を削除し、`postClientLogs`（API経由）に統一。全キオスクページでNFCイベントログを送信し、管理コンソールで一元確認可能に。**ナレッジベース**: [KB-096](docs/knowledge-base/frontend.md#kb-096-クライアントログ取得のベストプラクティスpostclientlogsへの統一)
 - [ ] (2025-12-06 00:20Z) Phase 8: サイネージUI再調整中（カード2カラム固定、サムネイル16:9・clipPath、タイトル縮小）。Pi5経由のみでPi3/Pi4へSSHし、Pi3の`signage-lite`再起動待ち（実機表示の最終確認待ち）。
 - [ ] (2025-12-06) **デプロイメントモジュール設計**: Tailscale/セキュリティ機能実装後に発生したサイネージ・キオスク機能不全の根本原因を分析し、設定変更を自動検知・影響範囲を自動判定してデプロイする「堅剛なロジック」を設計。4つの独立モジュール（config-detector, impact-analyzer, deploy-executor, verifier）を標準入出力（JSON）で連携する疎結合・モジュール化アーキテクチャ。テスト項目を明確化し、単体・統合・E2Eテストの計画を策定。詳細は [docs/architecture/deployment-modules.md](./docs/architecture/deployment-modules.md) を参照。
