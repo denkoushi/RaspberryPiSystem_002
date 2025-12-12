@@ -39,6 +39,7 @@ export interface ActiveLoanQuery {
 interface LoanWithRelations extends Loan {
   item: { id: string; itemCode: string; name: string; nfcTagUid: string | null } | null;
   measuringInstrument?: { id: string; managementNumber: string; name: string } | null;
+  riggingGear?: { id: string; managementNumber: string; name: string } | null;
   employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string | null } | null;
   client?: { id: string; name: string; location: string | null } | null;
 }
@@ -448,7 +449,7 @@ export class LoanService {
 
     const loans = await prisma.loan.findMany({
       where,
-      include: { item: true, measuringInstrument: true, employee: true, client: true },
+      include: { item: true, measuringInstrument: true, riggingGear: true, employee: true, client: true },
       orderBy: { borrowedAt: 'desc' }
     });
 

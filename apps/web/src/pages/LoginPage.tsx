@@ -77,6 +77,14 @@ export function LoginPage() {
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? '送信中...' : 'ログイン'}
         </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => navigate('/kiosk')}
+        >
+          キオスクに戻る
+        </Button>
       </form>
     </div>
   );

@@ -149,7 +149,7 @@ export function KioskRiggingBorrowPage() {
                 <img
                   src="/assets/rigging-inspection.png"
                   alt="Rigging inspection reference"
-                  className="mt-2 rounded-md border border-white/10"
+                  className="mt-2 w-full max-w-2xl rounded-md border border-white/10"
                 />
                 <p className="mt-2 text-xs text-white/70">画像を参照し、目視点検後にOK/NGを判断してください。</p>
               </div>

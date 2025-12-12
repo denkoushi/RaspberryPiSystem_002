@@ -81,12 +81,15 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               const dueAt = loan.dueAt ? new Date(loan.dueAt) : new Date(borrowedAt.getTime() + 12 * 60 * 60 * 1000);
               const isOverdue = new Date() > dueAt;
               const isInstrument = Boolean(loan.measuringInstrument);
+              const isRigging = Boolean(loan.riggingGear);
 
               const baseCardClass = isOverdue
                 ? 'border-red-500/50 bg-red-500/10'
-                : isInstrument
-                  ? 'border-indigo-400/40 bg-indigo-900/40'
-                  : 'border-white/10 bg-white/5';
+                : isRigging
+                  ? 'border-amber-400/50 bg-amber-300/20'
+                  : isInstrument
+                    ? 'border-indigo-400/40 bg-indigo-900/40'
+                    : 'border-white/10 bg-white/5';
 
               return (
                 <li
@@ -118,6 +121,15 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                           </p>
                           <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-300' : 'text-white'}`}>
                             {loan.measuringInstrument?.name ?? '計測機器'}
+                          </p>
+                        </>
+                      ) : isRigging ? (
+                        <>
+                          <p className={`text-xs font-semibold truncate ${isOverdue ? 'text-red-500' : 'text-amber-900'}`}>
+                            {loan.riggingGear?.managementNumber ?? '管理番号なし'}
+                          </p>
+                          <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-500' : 'text-amber-950'}`}>
+                            {loan.riggingGear?.name ?? '吊具'}
                           </p>
                         </>
                       ) : (
