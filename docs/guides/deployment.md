@@ -2,19 +2,25 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2025-11-27
-related: [production-setup.md, backup-and-restore.md, monitoring.md]
+last-verified: 2025-12-13
+related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
 
-最終更新: 2025-12-12
+最終更新: 2025-12-13
 
 ## 概要
 
 本ドキュメントでは、Raspberry Pi 5上で動作するシステムのデプロイメント手順を説明します。
+
+## 📖 このドキュメントを読む前に
+
+- **初めてデプロイする場合**: まず [クイックスタートガイド](./quick-start-deployment.md) を読んでください
+- **ネットワーク環境が変わった場合**: [環境構築ガイド](./environment-setup.md) を参照してください
+- **SSH接続の仕組みを理解したい場合**: [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) を参照してください
 
 ## ⚠️ 重要な原則
 
@@ -30,6 +36,47 @@ update-frequency: medium
 - `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
 - どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
 
+## 🌐 ネットワーク環境の確認（デプロイ前必須）
+
+**重要**: デプロイ前に、現在のネットワーク環境（オフィス/自宅）を確認し、Pi5上の`group_vars/all.yml`の`network_mode`を適切に設定してください。これがデプロイ成功の最重要ポイントです。
+
+### ネットワークモードの選択
+
+| ネットワーク環境 | network_mode | 使用IP | 用途 |
+|----------------|-------------|--------|------|
+| オフィス（ローカルネットワーク） | `local` | ローカルIP（192.168.x.x） | 同一ネットワーク内からのアクセス |
+| 自宅/リモートアクセス | `tailscale` | Tailscale IP（100.x.x.x） | リモートアクセス、異なるネットワーク環境 |
+
+### ネットワークモード設定の確認・変更
+
+**1. 現在の設定を確認**:
+```bash
+# Pi5上のnetwork_modeを確認
+ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+```
+
+**2. 設定を変更（必要に応じて）**:
+```bash
+# Tailscaleモードに変更（自宅ネットワーク/リモートアクセスの場合）
+ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+
+# Localモードに変更（オフィスネットワークの場合）
+ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"tailscale\"/network_mode: \"local\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+```
+
+**3. 接続テスト**:
+```bash
+# Pi5からPi4への接続テスト（実際に使われるIPで）
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m ping"
+```
+
+**⚠️ 注意**: 
+- `network_mode`が`local`の場合、ローカルIP（`192.168.10.223`など）が使われます
+- `network_mode`が`tailscale`の場合、Tailscale IP（`100.74.144.79`など）が使われます
+- 現在のネットワーク環境に応じた設定でないと、接続エラーが発生します
+
+詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
+
 ## ラズパイ5（サーバー）の更新
 
 ### 初回セットアップ: 環境変数ファイルの作成
@@ -42,10 +89,6 @@ cd /opt/RaspberryPiSystem_002
 
 # 環境変数ファイルのサンプルをコピー
 cp infrastructure/docker/.env.example infrastructure/docker/.env
-
-# IPアドレスを確認して設定
-# ラズパイ4のIPアドレスを確認
-ping -c 1 192.168.10.223  # または実際のIPアドレス
 
 # .envファイルを編集（必要に応じて）
 nano infrastructure/docker/.env
@@ -152,19 +195,30 @@ ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
 
 #### Macから全クライアントを一括更新
 
+**⚠️ デプロイ前の必須チェック**:
+1. [ネットワークモード設定の確認](#ネットワーク環境の確認デプロイ前必須)（最重要）
+2. [デプロイ前チェックリスト](#デプロイ前チェック)の確認
+
 ```bash
 # Macのターミナルで実行
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
-# 環境変数を設定（Pi5のIPアドレスを指定）
-export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
+# 環境変数を設定（Pi5のTailscale IPを指定）
+# 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
-./scripts/update-all-clients.sh
+./scripts/update-all-clients.sh main
 
 # 特定のブランチで全デバイスを更新
 ./scripts/update-all-clients.sh feature/rigging-management
 ```
+
+**重要**: 
+- `scripts/update-all-clients.sh`はPi5も含めて更新します
+- デフォルトは`main`ブランチです
+- ブランチを指定する場合は引数として渡してください
+- **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
 
 **重要**: 
 - `scripts/update-all-clients.sh`はPi5も含めて更新します
@@ -292,6 +346,8 @@ cd apps/web && pnpm build && cd ../..
 
 ## ラズパイ5のIPアドレス確認と設定
 
+**⚠️ 注意**: このセクションは、`group_vars/all.yml`の`network_mode`設定を使用しない場合の手動設定方法です。通常は、[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を使用することを推奨します。
+
 再起動後はIPアドレスが変わる可能性があるため、以下の手順で確認・更新してください。
 
 ### 1. ラズパイ5のIPアドレスを確認
@@ -299,10 +355,13 @@ cd apps/web && pnpm build && cd ../..
 ```bash
 # ラズパイ5で実行
 hostname -I
-# 例: 192.168.10.230
+# ローカルIP: 192.168.x.x（ネットワーク環境によって変動）
+# Tailscale IP: 100.106.158.2（固定、推奨）
 ```
 
 ### 2. docker-compose.server.ymlのIPアドレスを更新
+
+**⚠️ 非推奨**: 通常は、`group_vars/all.yml`の`network_mode`設定を使用してください。
 
 ```bash
 # ラズパイ5で実行
@@ -316,8 +375,8 @@ nano infrastructure/docker/docker-compose.server.yml
 web:
   build:
     args:
-      VITE_AGENT_WS_URL: ws://192.168.10.223:7071/stream  # ラズパイ4のIP
-      VITE_API_BASE_URL: http://192.168.10.230:8080/api   # ラズパイ5のIP（更新）
+      VITE_AGENT_WS_URL: ws://100.74.144.79:7071/stream  # Pi4のTailscale IP（推奨）
+      VITE_API_BASE_URL: http://100.106.158.2:8080/api   # Pi5のTailscale IP（推奨）
 ```
 
 ### 3. Webコンテナを再ビルド・再起動
@@ -452,20 +511,94 @@ NETWORK_MODE=tailscale \
 
 ## 運用チェックリスト
 
-### デプロイ前チェック
+### デプロイ前チェック（必須）
 
-- [ ] Pi5への接続確認（`ping 100.106.158.2` または `ssh denkon5sd02@<ip>`）
-- [ ] 既存Ansibleプロセスなし（`pgrep -a ansible`）
-- [ ] メモリ空き確認（Pi5: 2GB以上、Pi3: 120MB以上）
-- [ ] Pi3サイネージサービス停止（メモリ確保のため）
+**⚠️ これらのチェックを実行してからデプロイを開始してください**
+
+1. **ネットワークモード設定の確認**（最重要）
+   ```bash
+   # Pi5上のnetwork_modeを確認
+   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ```
+   - `network_mode: "local"` → オフィスネットワーク用
+   - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用
+   - **現在のネットワーク環境に応じて設定を変更**（[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を参照）
+
+2. **Pi5への接続確認**
+   ```bash
+   # Tailscale IPで接続確認（推奨）
+   ping -c 1 100.106.158.2
+   ssh denkon5sd02@100.106.158.2 'echo "Connected"'
+   ```
+
+3. **接続テスト**
+   ```bash
+   # Pi5からPi4/Pi3への接続テスト（実際に使われるIPで）
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
+   ```
+   - すべてのホストで`SUCCESS`が表示されることを確認
+   - `UNREACHABLE`が表示される場合は、`network_mode`設定を確認
+
+4. **既存Ansibleプロセスの確認**
+   ```bash
+   # Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
+   ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
+   ```
+
+5. **メモリ空き確認**
+   ```bash
+   # Pi5のメモリ確認（2GB以上推奨）
+   ssh denkon5sd02@100.106.158.2 'free -m'
+   
+   # Pi3のメモリ確認（120MB以上必要）
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "free -m"'
+   ```
+
+6. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
+   ```bash
+   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer"'
+   ```
+   - **重要**: `systemctl disable`を実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします
 
 ### デプロイ後確認
 
-- [ ] サーバーAPIヘルス: `curl http://<server_ip>:8080/api/system/health` → 200
-- [ ] キオスク用API: `curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://<server_ip>:8080/api/tools/loans/active` → 200
-- [ ] サイネージ用API: `curl http://<server_ip>:8080/api/signage/content` → 200
-- [ ] Pi4 systemd: `kiosk-browser.service`, `status-agent.timer` → active
-- [ ] Pi3 systemd: `signage-lite.service`, `status-agent.timer` → active
+1. **サーバーAPIヘルスチェック**
+   ```bash
+   curl http://100.106.158.2:8080/api/system/health
+   # → 200 OK を確認
+   ```
+
+2. **キオスク用API確認**
+   ```bash
+   curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://100.106.158.2:8080/api/tools/loans/active
+   # → 200 OK を確認
+   ```
+
+3. **サイネージ用API確認**
+   ```bash
+   curl http://100.106.158.2:8080/api/signage/content
+   # → 200 OK を確認
+   ```
+
+4. **Pi4 systemdサービス確認**
+   ```bash
+   ssh denkon5sd02@100.106.158.2 'ssh tools03@100.74.144.79 "systemctl is-active kiosk-browser.service status-agent.timer"'
+   # → active を確認
+   ```
+
+5. **Pi3サイネージサービスの再有効化・再起動**（デプロイ前に停止した場合）
+   ```bash
+   # サイネージサービスを再有効化・再起動
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl enable signage-lite.service signage-lite-update.timer && sudo systemctl start signage-lite.service signage-lite-update.timer"'
+   
+   # サービスが正常に動作していることを確認
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "systemctl is-active signage-lite.service"'
+   # → active を確認
+   
+   # 画像が更新されていることを確認
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
+   ```
 
 ### Tailscale IP一覧
 
@@ -478,9 +611,19 @@ NETWORK_MODE=tailscale \
 ## ベストプラクティス
 
 1. **デプロイ前のバックアップ**: 必ずデプロイ前にバックアップを取得
-2. **段階的なデプロイ**: まず開発環境でテストしてから本番環境にデプロイ
-3. **ロールバック計画**: 問題発生時のロールバック手順を事前に準備
-4. **監視**: デプロイ後は監視スクリプトでシステムの状態を確認
-5. **ドキュメント更新**: デプロイ手順に変更があった場合はドキュメントを更新
-6. **Tailscale使用**: リモートアクセス時は必ず`NETWORK_MODE=tailscale`を指定
+2. **ネットワークモード設定の確認**: デプロイ前に必ず`network_mode`設定を確認・修正
+3. **段階的なデプロイ**: まず開発環境でテストしてから本番環境にデプロイ
+4. **ロールバック計画**: 問題発生時のロールバック手順を事前に準備
+5. **監視**: デプロイ後は監視スクリプトでシステムの状態を確認
+6. **ドキュメント更新**: デプロイ手順に変更があった場合はドキュメントを更新
+7. **Tailscale使用**: リモートアクセス時は必ず`network_mode: "tailscale"`に設定
+
+## 関連ドキュメント
+
+- [クイックスタートガイド](./quick-start-deployment.md): 一括更新とクライアント監視のクイックスタート
+- [環境構築ガイド](./environment-setup.md): ローカルネットワーク変更時の対応
+- [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md): SSH接続の構成と説明
+- [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ
+- [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順
+- [監視・アラートガイド](./monitoring.md): システム監視とアラート設定
 

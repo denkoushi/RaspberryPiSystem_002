@@ -53,17 +53,75 @@ hostname -I
 **Macのターミナルで実行**:
 
 ```bash
-# Pi5の新しいIPアドレスで接続テスト
-ssh denkon5sd02@192.168.10.230
+# Pi5のTailscale IPで接続テスト（推奨）
+ssh denkon5sd02@100.106.158.2
+
+# または、ローカルIPで接続テスト（オフィスネットワークの場合）
+# ssh denkon5sd02@192.168.10.230
 
 # 接続成功したら、Pi5のシェルが起動します
 # 接続できない場合:
 # 1. IPアドレスが正しいか確認
 # 2. Pi5が起動しているか確認
 # 3. SSHサーバーが起動しているか確認（Pi5で `sudo systemctl status ssh`）
+# 4. Tailscaleが接続されているか確認（Pi5で `tailscale status`）
 ```
 
-### Step 3: inventory.ymlの更新
+### Step 3: ネットワークモード設定（推奨方法）
+
+**⚠️ 重要**: `inventory.yml`を直接編集するのではなく、`group_vars/all.yml`の`network_mode`設定を使用することを推奨します。これにより、ネットワーク環境に応じたIPアドレスの切り替えが自動的に行われます。
+
+**Pi5上の`group_vars/all.yml`を更新**:
+
+```bash
+# Pi5上のgroup_vars/all.ymlを編集
+ssh denkon5sd02@100.106.158.2 "nano /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+```
+
+**更新内容**:
+
+1. **ネットワークモードの選択**:
+   ```yaml
+   # オフィスネットワークの場合
+   network_mode: "local"
+   
+   # 自宅ネットワーク/リモートアクセスの場合（推奨）
+   network_mode: "tailscale"
+   ```
+
+2. **ローカルネットワークIPの更新**（`network_mode: "local"`の場合）:
+   ```yaml
+   local_network:
+     raspberrypi5_ip: "192.168.10.230"  # 新しいPi5のIP
+     raspberrypi4_ip: "192.168.10.223"   # 新しいPi4のIP
+     raspberrypi3_ip: "192.168.10.109"  # 新しいPi3のIP
+   ```
+
+3. **Tailscale IPの確認**（`network_mode: "tailscale"`の場合）:
+   ```yaml
+   tailscale_network:
+     raspberrypi5_ip: "100.106.158.2"    # Pi5のTailscale IP（通常は変更不要）
+     raspberrypi4_ip: "100.74.144.79"   # Pi4のTailscale IP（通常は変更不要）
+     raspberrypi3_ip: "100.105.224.86"  # Pi3のTailscale IP（通常は変更不要）
+   ```
+
+**確認**:
+```bash
+# Pi5上で確認
+ssh denkon5sd02@100.106.158.2 "grep -A 3 'network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+
+# 実際に使われるIPを確認
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m debug -a 'var=kiosk_ip'"
+```
+
+**⚠️ 注意**: 
+- `network_mode: "local"`の場合、ローカルIPが使われます（オフィスネットワーク用）
+- `network_mode: "tailscale"`の場合、Tailscale IPが使われます（自宅ネットワーク/リモートアクセス用、推奨）
+- ネットワーク環境に応じた設定でないと、接続エラーが発生します
+
+### Step 4: 旧方法（inventory.yml直接編集）
+
+**⚠️ 非推奨**: 以下の方法は、`group_vars/all.yml`の`network_mode`設定を使用できない場合のみ使用してください。
 
 **Mac側のinventory.ymlを更新**:
 
@@ -74,69 +132,28 @@ nano infrastructure/ansible/inventory.yml
 ```
 
 **更新内容**:
-- `ansible_host`: 各Raspberry Piの新しいIPアドレスに更新
-- `docker_server_ip`: Pi5の新しいIPアドレスに更新
-- `web_agent_ws_url`: Pi5の新しいIPアドレスに更新
-- `kiosk_url`: Pi5の新しいIPアドレスに更新
-- `signage_server_url`: Pi5の新しいIPアドレスに更新
-- `nfc_agent_api_base_url`: Pi5の新しいIPアドレスに更新
-- `status_agent_api_base_url`: Pi5の新しいIPアドレスに更新
+- `ansible_host`: 各Raspberry Piの新しいIPアドレスに更新（変数参照`{{ kiosk_ip }}`などは変更不要）
 
-**更新例**:
-```yaml
-server:
-  hosts:
-    raspberrypi5:
-      ansible_host: 192.168.10.230  # 新しいIPアドレス
-      docker_server_ip: "192.168.10.230"
-      web_agent_ws_url: "ws://192.168.10.230:7071/stream"
-clients:
-  hosts:
-    raspberrypi4:
-      ansible_host: 192.168.10.223  # 新しいIPアドレス
-      kiosk_url: "https://192.168.10.230/kiosk"
-      nfc_agent_api_base_url: "http://192.168.10.230:8080/api"
-    raspberrypi3:
-      ansible_host: 192.168.10.109  # 新しいIPアドレス
-      signage_server_url: "https://192.168.10.230"
-  vars:
-    status_agent_api_base_url: "http://192.168.10.230:8080/api"
-```
-
-### Step 4: Pi5上のinventory.ymlの更新
-
-**MacからPi5にinventory.ymlをコピー**:
+**Pi5上のinventory.ymlの更新**:
 
 ```bash
-# Macのターミナルで実行
-# 方法1: sudoを使用してコピー（推奨）
-cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@192.168.10.230 "sudo tee /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml > /dev/null && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
-
-# 方法2: 一時ファイル経由でコピー
-scp infrastructure/ansible/inventory.yml denkon5sd02@192.168.10.230:/tmp/inventory.yml
-ssh denkon5sd02@192.168.10.230 "sudo mv /tmp/inventory.yml /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
+# MacからPi5にinventory.ymlをコピー
+cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@100.106.158.2 "sudo tee /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml > /dev/null && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
 ```
 
-**確認**:
-```bash
-# Pi5上で確認
-ssh denkon5sd02@192.168.10.230 "cat /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml | grep -A 2 'raspberrypi4:' | head -3"
-# ansible_host: 192.168.10.223 が表示されればOK
-```
+### Step 5: Pi5からPi4/3へのSSH接続確認（network_mode設定後）
 
-### Step 5: Pi5からPi4/3へのSSH接続確認
-
-**Pi5に接続して実行**:
+**Macのターミナルで実行**:
 
 ```bash
-# Pi5にSSH接続
-ssh denkon5sd02@192.168.10.230
+# Pi5からPi4への接続テスト（Tailscale IPを使用、推奨）
+ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 "echo Pi4接続成功 && hostname"'
 
-# Pi5上で実行: Pi4への接続テスト
-ssh -o StrictHostKeyChecking=no tools03@192.168.10.223 "echo 'Pi4接続成功' && hostname"
+# Pi5からPi3への接続テスト（Tailscale IPを使用、推奨）
+ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 "echo Pi3接続成功 && hostname"'
 
-# Pi5上で実行: Pi3への接続テスト
-ssh -o StrictHostKeyChecking=no signageras3@192.168.10.109 "echo 'Pi3接続成功' && hostname"
+# または、Ansible接続テスト（推奨、実際に使われるIPでテスト）
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
 **期待される結果**:
@@ -290,31 +307,54 @@ chmod 600 ~/.ssh/authorized_keys
 ### 問題4: Ansible接続テストで古いIPアドレスに接続しようとする
 
 **症状**:
-- Mac側の`inventory.yml`は更新したが、Ansibleが古いIPアドレスに接続しようとする
+- Mac側の設定は更新したが、Ansibleが古いIPアドレスに接続しようとする
 
 **原因**:
-- Pi5上の`inventory.yml`が更新されていない
+- Pi5上の`group_vars/all.yml`の`network_mode`設定が適切でない
+- または、Pi5上の`group_vars/all.yml`の`local_network`設定が古い
 
 **解決方法**:
-- Step 4を実行してPi5上の`inventory.yml`を更新してください
+- Step 3を実行してPi5上の`group_vars/all.yml`の`network_mode`とIP設定を更新してください
+- `network_mode: "tailscale"`に設定することで、Tailscale IPが自動的に使われます（推奨）
 
-## 実例: 自宅ネットワーク → オフィスネットワークへの変更
+## 実例: ネットワーク環境の変更
 
-### 変更前（自宅ネットワーク）
+### 推奨方法: network_mode設定の変更
 
+**自宅ネットワーク → オフィスネットワーク**:
+```bash
+# Pi5上のgroup_vars/all.ymlを編集
+ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"tailscale\"/network_mode: \"local\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+
+# local_networkのIPを更新（必要に応じて）
+ssh denkon5sd02@100.106.158.2 "nano /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
-Raspberry Pi 5: 192.168.128.131
-Raspberry Pi 4: 192.168.128.102
-Raspberry Pi 3: 192.168.128.152
+
+**オフィスネットワーク → 自宅ネットワーク/リモートアクセス**:
+```bash
+# Pi5上のgroup_vars/all.ymlを編集（推奨）
+ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
-### 変更後（オフィスネットワーク）
+### 旧方法: IPアドレスの直接変更
 
+**変更前（自宅ネットワーク）**:
 ```
-Raspberry Pi 5: 192.168.10.230
-Raspberry Pi 4: 192.168.10.223
-Raspberry Pi 3: 192.168.10.109
+ローカルIP:
+- Raspberry Pi 5: 192.168.128.131
+- Raspberry Pi 4: 192.168.128.102
+- Raspberry Pi 3: 192.168.128.152
 ```
+
+**変更後（オフィスネットワーク）**:
+```
+ローカルIP:
+- Raspberry Pi 5: 192.168.10.230
+- Raspberry Pi 4: 192.168.10.223
+- Raspberry Pi 3: 192.168.10.109
+```
+
+**⚠️ 注意**: ローカルIPはネットワーク環境によって変動します。`network_mode: "tailscale"`を使用することで、ネットワーク環境に依存しないデプロイが可能です。
 
 ### 実施した手順（2025-12-01）
 
@@ -330,10 +370,10 @@ Raspberry Pi 3: 192.168.10.109
 
 環境構築が完了したら、以下のチェックリストを確認してください：
 
-- [ ] MacからPi5にSSH接続できる
+- [ ] MacからPi5にSSH接続できる（Tailscale IP推奨）
 - [ ] Pi5からPi4/3にSSH接続できる（SSH鍵認証）
-- [ ] Mac側の`inventory.yml`が新しいIPアドレスに更新されている
-- [ ] Pi5上の`inventory.yml`が新しいIPアドレスに更新されている
+- [ ] Pi5上の`group_vars/all.yml`の`network_mode`が適切に設定されている（`local`または`tailscale`）
+- [ ] Pi5上の`group_vars/all.yml`のIP設定が正しい（`local_network`または`tailscale_network`）
 - [ ] Ansible接続テストが成功する（`ansible all -m ping`）
 - [ ] 一括更新スクリプトが正常に動作する（`./scripts/update-all-clients.sh`）
 - [ ] **Pi5のDockerコンテナが再ビルドされている**（ネットワーク変更時は自動検出・再ビルド）
@@ -346,6 +386,7 @@ Raspberry Pi 3: 192.168.10.109
 - [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md): SSH接続の構成と説明
 - [SSH鍵ベース運用ガイド](./ssh-setup.md): Pi5からPi4/3へのSSH鍵設定手順
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新の実行方法
+- [デプロイメントガイド](./deployment.md): 詳細なデプロイ手順とネットワークモード設定
 - [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md): MacからPi5への接続設定
 
 ## 更新履歴

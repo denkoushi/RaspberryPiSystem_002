@@ -1,7 +1,7 @@
 # ネットワークモードを切り替えることで、Ansibleが参照するIPアドレスを変更できます。
 # - local: ローカルネットワークのIPを使用（通常運用）
 # - tailscale: Tailscale経由のIPを使用（メンテナンス時）
-network_mode: "local"
+network_mode: "tailscale"
 
 # ローカルネットワークで使用するIPアドレス
 local_network:

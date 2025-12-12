@@ -107,6 +107,39 @@ with open(history_path, "a", encoding="utf-8") as out:
 PY
 }
 
+check_network_mode() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+
+  echo "[INFO] Checking network_mode configuration on Pi5..."
+  local network_mode
+  network_mode=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml 2>/dev/null | awk '{print \$2}' | tr -d '\"'" || echo "")
+
+  if [[ "${network_mode}" = "local" ]]; then
+    echo "⚠️  警告: Pi5上のnetwork_modeが'local'です"
+    echo "   現在のネットワーク環境を確認してください:"
+    echo "   - オフィスネットワーク: network_mode=local でOK"
+    echo "   - 自宅ネットワーク/リモートアクセス: network_mode=tailscale に変更が必要"
+    echo ""
+    echo "   変更方法:"
+    echo "   ssh ${REMOTE_HOST} \"sed -i 's/network_mode: \\\"local\\\"/network_mode: \\\"tailscale\\\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml\""
+    echo ""
+    read -p "続行しますか？ (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "[INFO] デプロイをキャンセルしました"
+      exit 1
+    fi
+  elif [[ "${network_mode}" = "tailscale" ]]; then
+    echo "[INFO] network_mode='tailscale' が設定されています（リモートアクセス用）"
+  else
+    echo "⚠️  警告: network_modeの設定を確認できませんでした（${network_mode}）"
+    echo "   手動で確認してください:"
+    echo "   ssh ${REMOTE_HOST} \"cat /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml | grep network_mode\""
+  fi
+}
+
 run_locally() {
   cd "${PROJECT_ROOT}"
   local exit_code=0
@@ -158,6 +191,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
+  check_network_mode
   if ! run_remotely; then
     if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then
       "${PROJECT_ROOT}/scripts/generate-alert.sh" \
