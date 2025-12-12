@@ -1,7 +1,7 @@
 ---
 repo_path: /opt/RaspberryPiSystem_002
 repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
-repo_version: feature/production-deployment-management
+repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
 git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
 git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
 backup_dir: /opt/backups/configs

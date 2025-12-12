@@ -39,9 +39,17 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # 環境変数を設定（Pi5のIPアドレスを指定）
 export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
 
-# 一括更新スクリプトを実行
+# mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
 ./scripts/update-all-clients.sh
+
+# 特定のブランチで全デバイスを更新
+./scripts/update-all-clients.sh feature/rigging-management
 ```
+
+**⚠️ 注意**: 
+- `scripts/update-all-clients.sh`はPi5も含めて更新します
+- デフォルトは`main`ブランチです
+- Pi5のみを開発ブランチで更新したい場合は、Pi5上で`scripts/server/deploy.sh <ブランチ>`を使用してください
 
 **実行結果の確認:**
 
