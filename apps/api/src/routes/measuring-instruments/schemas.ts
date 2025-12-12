@@ -10,8 +10,8 @@ export const instrumentBaseSchema = z.object({
   measurementRange: z.string().optional().nullable(),
   calibrationExpiryDate: z.coerce.date().optional().nullable(),
   status: z.nativeEnum(MeasuringInstrumentStatus).optional(),
-  // NFC/RFIDタグのUID（任意）
-  rfidTagUid: z.string().trim().min(1).optional()
+  // NFC/RFIDタグのUID（任意）。空文字は削除を意味する
+  rfidTagUid: z.union([z.string().trim().min(1), z.literal('')]).optional()
 });
 
 export const instrumentCreateSchema = instrumentBaseSchema;

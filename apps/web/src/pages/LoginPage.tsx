@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from '../components/ui/Button';
@@ -7,13 +7,25 @@ import { Input } from '../components/ui/Input';
 import { useAuth } from '../contexts/AuthContext';
 
 export function LoginPage() {
-  const { login, loading, user } = useAuth();
+  const { login, logout, loading, user } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
+  const forceLogin = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const byState = (location.state as { forceLogin?: boolean })?.forceLogin;
+    return params.get('force') === '1' || byState === true;
+  }, [location.search, location.state]);
+
+  // 強制ログイン指定時は事前にログアウトしてセッションをクリア
+  useEffect(() => {
+    if (forceLogin && user) {
+      void logout();
+    }
+  }, [forceLogin, user, logout]);
 
   // ログイン成功後、認証済みユーザーが利用可能になったら遷移
   useEffect(() => {
@@ -64,6 +76,14 @@ export function LoginPage() {
         ) : null}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? '送信中...' : 'ログイン'}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => navigate('/kiosk')}
+        >
+          キオスクに戻る
         </Button>
       </form>
     </div>

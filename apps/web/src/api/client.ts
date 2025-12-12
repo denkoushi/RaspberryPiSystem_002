@@ -16,7 +16,14 @@ import type {
   InspectionItem,
   MeasuringInstrumentTag,
   InspectionRecord,
-  InspectionRecordCreatePayload
+  InspectionRecordCreatePayload,
+  RiggingGear,
+  RiggingGearTag,
+  RiggingBorrowPayload,
+  RiggingReturnPayload,
+  RiggingInspectionRecord,
+  RiggingInspectionResult,
+  RiggingStatus
 } from './types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
@@ -236,7 +243,7 @@ export async function getMeasuringInstruments(params?: {
 
 export interface UnifiedItem {
   id: string;
-  type: 'TOOL' | 'MEASURING_INSTRUMENT';
+  type: 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR';
   name: string;
   code: string;
   category?: string | null;
@@ -249,9 +256,10 @@ export interface UnifiedItem {
 
 export interface UnifiedListParams {
   search?: string;
-  category?: 'TOOLS' | 'MEASURING_INSTRUMENTS' | 'ALL';
+  category?: 'TOOLS' | 'MEASURING_INSTRUMENTS' | 'RIGGING_GEARS' | 'ALL';
   itemStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
   instrumentStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
+  riggingStatus?: 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
 }
 
 // 計測機器作成/更新用の入力
@@ -277,6 +285,71 @@ export async function getMeasuringInstrument(id: string) {
 export async function getMeasuringInstrumentByTagUid(tagUid: string) {
   const { data } = await api.get<{ instrument: MeasuringInstrument }>(`/measuring-instruments/by-tag/${tagUid}`);
   return data.instrument;
+}
+
+// 吊具 API
+export async function getRiggingGears(params?: { search?: string; status?: RiggingStatus }) {
+  const { data } = await api.get<{ riggingGears: RiggingGear[] }>('/rigging-gears', { params });
+  return data.riggingGears;
+}
+
+export async function getRiggingGear(id: string) {
+  const { data } = await api.get<{ riggingGear: RiggingGear }>(`/rigging-gears/${id}`);
+  return data.riggingGear;
+}
+
+export async function getRiggingGearByTagUid(tagUid: string) {
+  const { data } = await api.get<{ riggingGear: RiggingGear }>(`/rigging-gears/by-tag/${encodeURIComponent(tagUid)}`);
+  return data.riggingGear;
+}
+
+export async function createRiggingGear(payload: Partial<RiggingGear> & { name: string; managementNumber: string }) {
+  const { data } = await api.post<{ riggingGear: RiggingGear }>('/rigging-gears', payload);
+  return data.riggingGear;
+}
+
+export async function updateRiggingGear(id: string, payload: Partial<RiggingGear>) {
+  const { data } = await api.put<{ riggingGear: RiggingGear }>(`/rigging-gears/${encodeURIComponent(id)}`, payload);
+  return data.riggingGear;
+}
+
+export async function deleteRiggingGear(id: string) {
+  const { data } = await api.delete<{ riggingGear: RiggingGear }>(`/rigging-gears/${encodeURIComponent(id)}`);
+  return data.riggingGear;
+}
+
+export async function setRiggingGearTag(riggingGearId: string, rfidTagUid: string) {
+  const { data } = await api.post<{ tag: RiggingGearTag }>(`/rigging-gears/${encodeURIComponent(riggingGearId)}/tags`, {
+    rfidTagUid
+  });
+  return data.tag;
+}
+
+export async function deleteRiggingGearTag(tagId: string) {
+  const { data } = await api.delete<{ tag: RiggingGearTag }>(`/rigging-gear-tags/${encodeURIComponent(tagId)}`);
+  return data.tag;
+}
+
+export async function createRiggingInspectionRecord(payload: {
+  riggingGearId: string;
+  loanId?: string | null;
+  employeeId: string;
+  result: RiggingInspectionResult;
+  inspectedAt: string;
+  notes?: string | null;
+}) {
+  const { data } = await api.post<{ inspectionRecord: RiggingInspectionRecord }>('/rigging-inspection-records', payload);
+  return data.inspectionRecord;
+}
+
+export async function borrowRiggingGear(payload: RiggingBorrowPayload) {
+  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/borrow', payload);
+  return data.loan;
+}
+
+export async function returnRiggingGear(payload: RiggingReturnPayload) {
+  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/return', payload);
+  return data.loan;
 }
 
 export async function getMeasuringInstrumentTags(instrumentId: string) {

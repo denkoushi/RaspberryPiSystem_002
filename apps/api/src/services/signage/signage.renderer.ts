@@ -424,12 +424,21 @@ export class SignageRenderer {
         const primaryText = tool.name || '写真撮影モード';
         const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
         const isInstrument = Boolean(tool.isInstrument);
-        const managementText = isInstrument
+        const isRigging = Boolean(tool.isRigging);
+        const managementText = isInstrument || isRigging
           ? (tool.managementNumber || tool.itemCode || '')
           : (tool.itemCode || '');
-        const cardFill = isInstrument ? 'rgba(35,48,94,0.90)' : 'rgba(8,15,36,0.85)';
-        const cardStroke = isInstrument ? 'rgba(129,140,248,0.60)' : 'rgba(255,255,255,0.08)';
-        const codeColor = isInstrument ? '#c7d2fe' : '#94a3b8';
+        const cardFill = isInstrument
+          ? 'rgba(35,48,94,0.90)'
+          : isRigging
+            ? 'rgba(255,247,204,0.90)' // 薄い黄色
+            : 'rgba(8,15,36,0.85)';
+        const cardStroke = isInstrument
+          ? 'rgba(129,140,248,0.60)'
+          : isRigging
+            ? 'rgba(255,221,128,0.80)'
+            : 'rgba(255,255,255,0.08)';
+        const codeColor = isInstrument ? '#c7d2fe' : isRigging ? '#facc15' : '#94a3b8';
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
 

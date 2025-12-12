@@ -6,7 +6,7 @@ import { Input } from '../../components/ui/Input';
 
 import type { UnifiedItem } from '../../api/types';
 
-type CategoryFilter = 'ALL' | 'TOOLS' | 'MEASURING_INSTRUMENTS';
+type CategoryFilter = 'ALL' | 'TOOLS' | 'MEASURING_INSTRUMENTS' | 'RIGGING_GEARS';
 
 export function UnifiedItemsPage() {
   const [search, setSearch] = useState('');
@@ -17,7 +17,9 @@ export function UnifiedItemsPage() {
   });
 
   const getTypeLabel = (type: UnifiedItem['type']) => {
-    return type === 'TOOL' ? '工具' : '計測機器';
+    if (type === 'TOOL') return '工具';
+    if (type === 'MEASURING_INSTRUMENT') return '計測機器';
+    return '吊具';
   };
 
   const getStatusLabel = (status: string) => {
@@ -32,7 +34,7 @@ export function UnifiedItemsPage() {
 
   return (
     <div className="space-y-6">
-      <Card title="工具・計測機器統合一覧">
+      <Card title="工具・計測機器・吊具 統合一覧">
         <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-1 flex-col gap-2 md:flex-row md:items-center">
             <Input
@@ -49,6 +51,7 @@ export function UnifiedItemsPage() {
               <option value="ALL">すべて</option>
               <option value="TOOLS">工具のみ</option>
               <option value="MEASURING_INSTRUMENTS">計測機器のみ</option>
+              <option value="RIGGING_GEARS">吊具のみ</option>
             </select>
           </div>
         </div>
@@ -77,7 +80,9 @@ export function UnifiedItemsPage() {
                         className={`inline-block rounded px-2 py-0.5 text-xs ${
                           item.type === 'TOOL'
                             ? 'bg-blue-500/20 text-blue-300'
-                            : 'bg-purple-500/20 text-purple-300'
+                            : item.type === 'MEASURING_INSTRUMENT'
+                              ? 'bg-purple-500/20 text-purple-300'
+                              : 'bg-amber-400/20 text-amber-200'
                         }`}
                       >
                         {getTypeLabel(item.type)}

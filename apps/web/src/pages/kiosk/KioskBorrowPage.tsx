@@ -5,6 +5,7 @@ import { useMatch, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_CLIENT_KEY,
   getMeasuringInstrumentByTagUid,
+  getRiggingGearByTagUid,
   getUnifiedItems,
   postClientLogs,
   setClientKeyHeader
@@ -38,7 +39,9 @@ export function KioskBorrowPage() {
   const isActiveRoute = useMatch('/kiosk/tag');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastEventKeyRef = useRef<string | null>(null);
-  const [tagTypeMap, setTagTypeMap] = useState<Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'>>({});
+  const [tagTypeMap, setTagTypeMap] = useState<
+    Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'>
+  >({});
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -56,7 +59,7 @@ export function KioskBorrowPage() {
     getUnifiedItems({ category: 'ALL' })
       .then((items) => {
         if (cancelled) return;
-        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'> = {};
+        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'> = {};
         items.forEach((item) => {
           if (item.nfcTagUid) {
             map[item.nfcTagUid] = item.type;
@@ -181,15 +184,21 @@ export function KioskBorrowPage() {
         resolvedClientKey
       ).catch(() => {});
 
-      // 事前に取得したマップで計測機器タグと判定できる場合は即座に遷移
+      // 事前に取得したマップで計測機器タグ/吊具タグと判定できる場合は即座に遷移
       if (cachedType === 'MEASURING_INSTRUMENT') {
         navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        lastEventKeyRef.current = eventKey;
+        return;
+      }
+      if (cachedType === 'RIGGING_GEAR') {
+        navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
         lastEventKeyRef.current = eventKey;
         return;
       }
 
       try {
         // APIで計測機器タグなら計測機器持出ページへ遷移（タグUIDをクエリで渡す）
+        // 計測機器タグ判定
         const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
         if (instrument) {
           navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
@@ -197,7 +206,19 @@ export function KioskBorrowPage() {
           return;
         }
       } catch {
-        // 404や他のエラーは工具フローを継続（未登録タグは計測機器として扱わない）
+        // 計測機器なし → 続行
+      }
+
+      // 吊具タグ判定
+      try {
+        const rigging = await getRiggingGearByTagUid(nfcEvent.uid);
+        if (rigging) {
+          navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+          lastEventKeyRef.current = eventKey;
+          return;
+        }
+      } catch {
+        // 404や他のエラーは工具フローを継続
       }
 
       // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信

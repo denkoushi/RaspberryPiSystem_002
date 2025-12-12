@@ -10,11 +10,25 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-06
+最終更新: 2025-12-12
 
 ## 概要
 
 本ドキュメントでは、Raspberry Pi 5上で動作するシステムのデプロイメント手順を説明します。
+
+## ⚠️ 重要な原則
+
+### デプロイ方法の使い分け
+
+| 用途 | スクリプト | 実行場所 | ブランチ指定 |
+|------|-----------|---------|------------|
+| **開発時（Pi5のみ）** | `scripts/server/deploy.sh` | Pi5上で直接実行 | ✅ 可能（引数で指定） |
+| **運用時（全デバイス）** | `scripts/update-all-clients.sh` | Macから実行 | ✅ 可能（引数で指定、デフォルトは`main`） |
+
+**⚠️ 注意**: 
+- Pi5のデプロイには`scripts/server/deploy.sh`を使用してください
+- `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
+- どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
 
 ## ラズパイ5（サーバー）の更新
 
@@ -136,12 +150,40 @@ ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
 
 ### Ansibleを使用したデプロイ（推奨）
 
+#### Macから全クライアントを一括更新
+
+```bash
+# Macのターミナルで実行
+cd /Users/tsudatakashi/RaspberryPiSystem_002
+
+# 環境変数を設定（Pi5のIPアドレスを指定）
+export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
+
+# mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
+./scripts/update-all-clients.sh
+
+# 特定のブランチで全デバイスを更新
+./scripts/update-all-clients.sh feature/rigging-management
+```
+
+**重要**: 
+- `scripts/update-all-clients.sh`はPi5も含めて更新します
+- デフォルトは`main`ブランチです
+- ブランチを指定する場合は引数として渡してください
+
+#### Pi5から特定のクライアントのみ更新
+
 ```bash
 # Pi5から実行
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 
-# Pi3へのデプロイを実行
+# Pi3へのデプロイを実行（mainブランチ、デフォルト）
 ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
+  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+
+# 特定のブランチでPi3を更新
+ANSIBLE_REPO_VERSION=feature/rigging-management \
+  ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
   ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
 ```
 

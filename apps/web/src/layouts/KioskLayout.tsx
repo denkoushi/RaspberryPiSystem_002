@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
@@ -38,7 +38,7 @@ export function KioskLayout() {
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
       <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-2">
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
@@ -102,27 +102,42 @@ export function KioskLayout() {
                 </div>
               </div>
             )}
-            <nav className="space-x-2">
-              <NavLink
-                to="/kiosk"
-                className={() => {
-                  // 持出タブ: /kiosk, /kiosk/tag, /kiosk/photo でアクティブ
-                  const isBorrowActive =
-                    location.pathname === '/kiosk' ||
-                    location.pathname === '/kiosk/tag' ||
-                    location.pathname === '/kiosk/photo';
-                  return isBorrowActive ? `${navLink} bg-emerald-500` : navLink;
-                }}
-              >
-                持出
-              </NavLink>
-              <NavLink
-                to="/kiosk/instruments/borrow"
-                className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
-              >
-                計測機器 持出
-              </NavLink>
-            </nav>
+            <div className="overflow-x-auto whitespace-nowrap">
+              <nav className="flex items-center gap-3 pr-2">
+                <NavLink
+                  to="/kiosk"
+                  className={() => {
+                    // 持出タブ: /kiosk, /kiosk/tag, /kiosk/photo でアクティブ
+                    const isBorrowActive =
+                      location.pathname === '/kiosk' ||
+                      location.pathname === '/kiosk/tag' ||
+                      location.pathname === '/kiosk/photo';
+                    return isBorrowActive ? `${navLink} bg-emerald-500` : navLink;
+                  }}
+                >
+                  持出
+                </NavLink>
+                <NavLink
+                  to="/kiosk/instruments/borrow"
+                  className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
+                >
+                  計測機器 持出
+                </NavLink>
+                <NavLink
+                  to="/kiosk/rigging/borrow"
+                  className={({ isActive }) => (isActive ? `${navLink} bg-amber-400 text-slate-900` : navLink)}
+                >
+                  吊具 持出
+                </NavLink>
+                <Link
+                  to="/login"
+                  state={{ from: { pathname: '/admin' }, forceLogin: true }}
+                  className={`${navLink} bg-blue-600 hover:bg-blue-700`}
+                >
+                  管理コンソール
+                </Link>
+              </nav>
+            </div>
           </div>
         </div>
       </header>

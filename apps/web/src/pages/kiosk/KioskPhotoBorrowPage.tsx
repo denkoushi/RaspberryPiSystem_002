@@ -5,6 +5,7 @@ import {
   DEFAULT_CLIENT_KEY,
   getMeasuringInstrumentByTagUid,
   getUnifiedItems,
+  getRiggingGearByTagUid,
   postClientLogs,
   setClientKeyHeader
 } from '../../api/client';
@@ -34,7 +35,9 @@ export function KioskPhotoBorrowPage() {
   const lastEventKeyRef = useRef<string | null>(null);
   const processedUidsRef = useRef<Map<string, number>>(new Map()); // 処理済みUIDとタイムスタンプのマップ
   const processedEventTimestampsRef = useRef<Map<string, string>>(new Map()); // 処理済みUIDとイベントタイムスタンプのマップ
-  const [tagTypeMap, setTagTypeMap] = useState<Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'>>({});
+  const [tagTypeMap, setTagTypeMap] = useState<
+    Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'>
+  >({});
   const navigate = useNavigate();
   useEffect(() => {
     if (!clientKey || clientKey === 'client-demo-key') {
@@ -51,7 +54,7 @@ export function KioskPhotoBorrowPage() {
     getUnifiedItems({ category: 'ALL' })
       .then((items) => {
         if (cancelled) return;
-        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'> = {};
+        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'> = {};
         items.forEach((item) => {
           if (item.nfcTagUid) {
             map[item.nfcTagUid] = item.type;
@@ -205,16 +208,21 @@ export function KioskPhotoBorrowPage() {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey, 'timestamp:', nfcEvent.timestamp);
     }
 
-    // 計測機器タグ判定（カメラ起動前に判定）
-    // 計測機器として明示的に登録されているタグのみ計測機器タブへ遷移
-    // 未登録タグ（404）は従業員フローを継続（従業員タグと誤判定を防ぐ）
+    // 計測機器/吊具タグ判定（カメラ起動前に判定）
+    // 明示的に登録されているタグのみ専用タブへ遷移
+    // 未登録タグ（404）は従業員フローを継続（誤判定防止）
     void (async () => {
       const cachedType = tagTypeMap[nfcEvent.uid];
 
-      // 事前に取得したマップで計測機器タグと判定できる場合は即座に遷移
+      // 事前に取得したマップで計測機器/吊具タグと判定できる場合は即座に遷移
       if (cachedType === 'MEASURING_INSTRUMENT') {
         processingRef.current = false; // フラグをリセット
         navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        return;
+      }
+      if (cachedType === 'RIGGING_GEAR') {
+        processingRef.current = false;
+        navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
         return;
       }
 
@@ -228,6 +236,17 @@ export function KioskPhotoBorrowPage() {
         }
       } catch {
         // 404や他のエラーは従業員フローを継続（未登録タグは計測機器として扱わない）
+      }
+
+      try {
+        const rigging = await getRiggingGearByTagUid(nfcEvent.uid);
+        if (rigging) {
+          processingRef.current = false;
+          navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+          return;
+        }
+      } catch {
+        // 404や他のエラーは従業員フローを継続
       }
 
       // 計測機器タグでない場合、従業員タグとして処理を継続（カメラ起動）

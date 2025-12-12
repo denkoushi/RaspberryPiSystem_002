@@ -22,7 +22,14 @@ export type {
   MeasuringInstrumentBorrowPayload,
   MeasuringInstrumentReturnPayload,
   InspectionRecordCreatePayload,
-  InspectionResult
+  InspectionResult,
+  RiggingGear,
+  RiggingGearTag,
+  RiggingBorrowPayload,
+  RiggingReturnPayload,
+  RiggingStatus,
+  RiggingInspectionRecord,
+  RiggingInspectionResult
 } from '@raspi-system/shared-types';
 
 export type { UnifiedItem, UnifiedListParams } from './client';

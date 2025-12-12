@@ -28,6 +28,13 @@ enum MeasuringInstrumentStatus {
   RETIRED
 }
 
+enum RiggingStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
 enum TransactionAction {
   BORROW
   RETURN
@@ -76,6 +83,7 @@ model Employee {
   updatedAt         DateTime           @updatedAt
   loans             Loan[]
   inspectionRecords InspectionRecord[]
+  riggingInspectionRecords RiggingInspectionRecord[]
   transactions      Transaction[]      @relation("EmployeeActor")
 }
 
@@ -165,6 +173,57 @@ model MeasuringInstrumentTag {
   @@index([measuringInstrumentId])
 }
 
+model RiggingGear {
+  id               String         @id @default(uuid())
+  name             String
+  managementNumber String         @unique
+  storageLocation  String?
+  department       String?
+  maxLoadTon       Float?
+  lengthMm         Int?
+  widthMm          Int?
+  thicknessMm      Int?
+  startedAt        DateTime?
+  status           RiggingStatus  @default(AVAILABLE)
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  tags             RiggingGearTag[]
+  inspectionRecords RiggingInspectionRecord[]
+  loans            Loan[]
+}
+
+model RiggingGearTag {
+  id            String      @id @default(uuid())
+  riggingGearId String
+  rfidTagUid    String      @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  riggingGear   RiggingGear @relation(fields: [riggingGearId], references: [id], onDelete: Cascade)
+
+  @@index([riggingGearId])
+}
+
+model RiggingInspectionRecord {
+  id            String      @id @default(uuid())
+  riggingGearId String
+  loanId        String?
+  employeeId    String
+  result        InspectionResult
+  inspectedAt   DateTime
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  riggingGear   RiggingGear @relation(fields: [riggingGearId], references: [id], onDelete: Cascade)
+  loan          Loan?       @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([riggingGearId])
+  @@index([loanId])
+  @@index([employeeId])
+  @@index([inspectedAt])
+}
+
 model ClientDevice {
   id           String        @id @default(uuid())
   name         String
@@ -223,6 +282,7 @@ model Loan {
   id                    String               @id @default(uuid())
   itemId                String?
   measuringInstrumentId String?
+  riggingGearId         String?
   employeeId            String?
   clientId              String?
   borrowedAt            DateTime             @default(now())
@@ -236,13 +296,16 @@ model Loan {
   updatedAt             DateTime             @updatedAt
   item                  Item?                @relation(fields: [itemId], references: [id], onDelete: SetNull)
   measuringInstrument   MeasuringInstrument? @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  riggingGear           RiggingGear?         @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
   employee              Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   client                ClientDevice?        @relation(fields: [clientId], references: [id])
   transactions          Transaction[]
   InspectionRecord      InspectionRecord[]
+  RiggingInspectionRecord RiggingInspectionRecord[]
 
   @@index([itemId])
   @@index([measuringInstrumentId])
+  @@index([riggingGearId])
   @@index([employeeId])
   @@index([clientId])
   @@index([returnedAt])

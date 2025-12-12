@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 使用方法: ./scripts/update-all-clients.sh [ブランチ名]
+# デフォルト: mainブランチ
+# 環境変数 ANSIBLE_REPO_VERSION でも指定可能（引数より優先度低い）
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INVENTORY_PATH="infrastructure/ansible/inventory.yml"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
@@ -14,6 +18,10 @@ SUMMARY_FILE="${LOG_DIR}/ansible-update-${TIMESTAMP}.summary.json"
 HEALTH_LOG_FILE="${LOG_DIR}/ansible-health-${TIMESTAMP}.log"
 HEALTH_SUMMARY_FILE="${LOG_DIR}/ansible-health-${TIMESTAMP}.summary.json"
 HISTORY_FILE="${LOG_DIR}/ansible-history.jsonl"
+
+# ブランチ指定: 引数 > 環境変数 > デフォルト(main)
+REPO_VERSION="${1:-${ANSIBLE_REPO_VERSION:-main}}"
+export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 
 mkdir -p "${LOG_DIR}"
 
@@ -104,7 +112,7 @@ run_locally() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  ANSIBLE_REPO_VERSION="${REPO_VERSION}" ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "local"
@@ -115,7 +123,7 @@ run_remotely() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "${REMOTE_HOST}"
@@ -148,6 +156,7 @@ run_health_check_remotely() {
 # メイン処理
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
+  echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   if ! run_remotely; then
     if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then
@@ -171,6 +180,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   fi
 else
   echo "[INFO] Executing update playbook locally"
+  echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   if ! run_locally; then
     if [ -f "${PROJECT_ROOT}/scripts/generate-alert.sh" ]; then

@@ -1,13 +1,15 @@
 import type { FastifyInstance } from 'fastify';
+import { RiggingStatus } from '@prisma/client';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { prisma } from '../../../lib/prisma.js';
 import { ItemService } from '../../../services/tools/item.service.js';
 import { MeasuringInstrumentService } from '../../../services/measuring-instruments/measuring-instrument.service.js';
+import { RiggingGearService } from '../../../services/rigging/rigging-gear.service.js';
 import { unifiedQuerySchema } from './schemas.js';
 
 export interface UnifiedItem {
   id: string;
-  type: 'TOOL' | 'MEASURING_INSTRUMENT';
+  type: 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR';
   name: string;
   code: string; // itemCode or managementNumber
   category?: string | null;
@@ -22,6 +24,7 @@ export function registerUnifiedListRoute(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const itemService = new ItemService();
   const instrumentService = new MeasuringInstrumentService();
+  const riggingService = new RiggingGearService();
 
   app.get('/unified', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
     const query = unifiedQuerySchema.parse(request.query);
@@ -86,6 +89,43 @@ export function registerUnifiedListRoute(app: FastifyInstance): void {
           nfcTagUid: tagMap.get(instrument.id) ?? null,
           createdAt: instrument.createdAt,
           updatedAt: instrument.updatedAt
+        }))
+      );
+    }
+
+    // 吊具を取得
+    if (query.category === 'ALL' || query.category === 'RIGGING_GEARS') {
+      const riggings = await riggingService.findAll({
+        search: query.search,
+        status: query.riggingStatus as RiggingStatus | undefined
+      });
+
+      const riggingIds = riggings.map((gear) => gear.id);
+      const tags = riggingIds.length
+        ? await prisma.riggingGearTag.findMany({
+            where: { riggingGearId: { in: riggingIds } },
+            select: { riggingGearId: true, rfidTagUid: true }
+          })
+        : [];
+      const tagMap = new Map<string, string>();
+      tags.forEach((tag) => {
+        if (!tagMap.has(tag.riggingGearId)) {
+          tagMap.set(tag.riggingGearId, tag.rfidTagUid);
+        }
+      });
+
+      results.push(
+        ...riggings.map((gear) => ({
+          id: gear.id,
+          type: 'RIGGING_GEAR' as const,
+          name: gear.name,
+          code: gear.managementNumber,
+          category: gear.department ?? null,
+          storageLocation: gear.storageLocation,
+          status: gear.status,
+          nfcTagUid: tagMap.get(gear.id) ?? null,
+          createdAt: gear.createdAt,
+          updatedAt: gear.updatedAt
         }))
       );
     }

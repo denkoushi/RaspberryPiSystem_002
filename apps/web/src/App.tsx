@@ -13,6 +13,7 @@ import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
+import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { EmployeesPage } from './pages/tools/EmployeesPage';
@@ -22,6 +23,7 @@ import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
 import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
+import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
 import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
 
 function App() {
@@ -35,6 +37,7 @@ function App() {
         <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
         <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
         <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
+        <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
       </Route>
       <Route
         path="/admin"
@@ -49,6 +52,7 @@ function App() {
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="items" element={<ItemsPage />} />
           <Route path="unified" element={<UnifiedItemsPage />} />
+          <Route path="rigging-gears" element={<RiggingGearsPage />} />
           <Route path="inspection-items" element={<InspectionItemsPage />} />
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
@@ -69,6 +73,7 @@ function App() {
         <Route path="instrument-tags" element={<InstrumentTagsPage />} />
         <Route path="inspection-records" element={<InspectionRecordsPage />} />
         <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+        <Route path="rigging-gears" element={<RiggingGearsPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />

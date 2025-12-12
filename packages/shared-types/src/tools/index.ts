@@ -2,6 +2,7 @@
  * ツール管理モジュールの型定義
  */
 import type { MeasuringInstrument } from '../measuring-instruments';
+import type { RiggingGear } from '../rigging';
 
 export interface Employee {
   id: string;
@@ -48,6 +49,8 @@ export interface Loan {
   item: Item | null; // 写真撮影持出機能ではnullになる可能性がある
   measuringInstrumentId?: string | null;
   measuringInstrument?: MeasuringInstrument | null;
+  riggingGearId?: string | null;
+  riggingGear?: RiggingGear | null;
   client?: ClientDevice | null;
 }
 

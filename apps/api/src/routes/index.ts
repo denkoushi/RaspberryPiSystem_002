@@ -8,6 +8,7 @@ import { registerImportRoutes } from './imports.js';
 import { registerStorageRoutes } from './storage/index.js';
 import { registerSignageRoutes } from './signage/index.js';
 import { registerMeasuringInstrumentRoutes } from './measuring-instruments/index.js';
+import { registerRiggingRoutes } from './rigging/index.js';
 
 /**
  * すべてのルートを登録
@@ -27,6 +28,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerToolsRoutes(subApp);
       // 計測機器管理モジュール（パス: /api/measuring-instruments/*）
       await registerMeasuringInstrumentRoutes(subApp);
+      // 吊具管理モジュール（パス: /api/rigging-gears/*）
+      await registerRiggingRoutes(subApp);
       
       await registerClientRoutes(subApp);
       await registerKioskRoutes(subApp);

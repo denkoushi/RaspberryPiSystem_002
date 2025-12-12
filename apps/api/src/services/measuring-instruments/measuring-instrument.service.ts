@@ -113,16 +113,21 @@ export class MeasuringInstrumentService {
           data: instrumentData
         });
 
-        if (tagUid) {
-          const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
-          if (existing && existing.measuringInstrumentId !== id) {
-            throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
+        if (rfidTagUid !== undefined) {
+          if (tagUid) {
+            const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
+            if (existing && existing.measuringInstrumentId !== id) {
+              throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
+            }
+            await tx.measuringInstrumentTag.upsert({
+              where: { rfidTagUid: tagUid },
+              update: { measuringInstrumentId: id },
+              create: { measuringInstrumentId: id, rfidTagUid: tagUid }
+            });
+          } else {
+            // 空文字指定ならタグを削除
+            await tx.measuringInstrumentTag.deleteMany({ where: { measuringInstrumentId: id } });
           }
-          await tx.measuringInstrumentTag.upsert({
-            where: { rfidTagUid: tagUid },
-            update: { measuringInstrumentId: id },
-            create: { measuringInstrumentId: id, rfidTagUid: tagUid }
-          });
         }
 
         return instrument;
