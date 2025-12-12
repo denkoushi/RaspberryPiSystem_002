@@ -135,21 +135,21 @@ export function KioskRiggingBorrowPage() {
   }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey, navigate, returnPath]);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
       <Card>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <h2 className="text-xl font-semibold">吊具 持出</h2>
             <p className="text-sm text-white/70">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
             <div className="flex flex-col gap-3">
               <div className="rounded-md border border-white/10 bg-white/5 p-3">
                 <p className="text-sm font-semibold text-amber-200">点検見本（確認のみ）</p>
                 <img
                   src="/assets/rigging-inspection.png"
                   alt="Rigging inspection reference"
-                  className="mt-2 w-full max-w-2xl rounded-md border border-white/10"
+                  className="mt-2 w-full max-w-none rounded-md border border-white/10 object-contain"
                 />
                 <p className="mt-2 text-xs text-white/70">画像を参照し、目視点検後にOK/NGを判断してください。</p>
               </div>
