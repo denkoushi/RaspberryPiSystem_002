@@ -53,6 +53,7 @@ export function RiggingGearsPage() {
       alert('名称と管理番号は必須です');
       return;
     }
+    const trimmedTag = form.rfidTagUid?.trim();
     const payload: FormState = {
       name: form.name,
       managementNumber: form.managementNumber,
@@ -65,7 +66,7 @@ export function RiggingGearsPage() {
       startedAt: form.startedAt || null,
       status: form.status,
       notes: form.notes || null,
-      rfidTagUid: form.rfidTagUid
+      rfidTagUid: trimmedTag && trimmedTag.length > 0 ? trimmedTag : undefined
     };
     let gearId = editingId;
     if (isEditing && editingId) {
