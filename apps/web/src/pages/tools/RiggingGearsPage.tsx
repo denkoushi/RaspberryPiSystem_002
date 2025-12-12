@@ -1,0 +1,360 @@
+import { useMemo, useState } from 'react';
+
+import {
+  useRiggingGears,
+  useRiggingGearMutations,
+  useRiggingInspectionRecords,
+  useRiggingInspectionRecordMutations
+} from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+
+import type { RiggingStatus, RiggingGear } from '../../api/types';
+
+type FormState = Partial<RiggingGear> & { rfidTagUid?: string };
+
+export function RiggingGearsPage() {
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<RiggingStatus | 'ALL'>('ALL');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>({ name: '', managementNumber: '' });
+  const [selectedForInspection, setSelectedForInspection] = useState<string | null>(null);
+  const [inspectionEmployeeId, setInspectionEmployeeId] = useState('');
+  const [inspectionResult, setInspectionResult] = useState<'PASS' | 'FAIL'>('PASS');
+  const [inspectionNotes, setInspectionNotes] = useState('');
+
+  const { data: riggings, isLoading } = useRiggingGears({
+    search: search || undefined,
+    status: status === 'ALL' ? undefined : status
+  });
+  const inspections = useRiggingInspectionRecords(selectedForInspection || undefined);
+  const riggingMutations = useRiggingGearMutations();
+  const inspectionMutations = useRiggingInspectionRecordMutations();
+
+  const isEditing = Boolean(editingId);
+
+  const handleSubmit = () => {
+    if (!form.name || !form.managementNumber) {
+      alert('名称と管理番号は必須です');
+      return;
+    }
+    const payload: FormState = {
+      name: form.name,
+      managementNumber: form.managementNumber,
+      storageLocation: form.storageLocation || null,
+      department: form.department || null,
+      maxLoadTon: form.maxLoadTon ?? null,
+      lengthMm: form.lengthMm ?? null,
+      widthMm: form.widthMm ?? null,
+      thicknessMm: form.thicknessMm ?? null,
+      startedAt: form.startedAt || null,
+      status: form.status,
+      notes: form.notes || null,
+      rfidTagUid: form.rfidTagUid
+    };
+    if (isEditing && editingId) {
+      riggingMutations.update.mutate({ id: editingId, payload });
+    } else {
+      riggingMutations.create.mutate(payload as { name: string; managementNumber: string });
+    }
+    setEditingId(null);
+    setForm({ name: '', managementNumber: '' });
+  };
+
+  const handleEdit = (gear: RiggingGear) => {
+    setEditingId(gear.id);
+    setForm({
+      ...gear,
+      rfidTagUid: undefined // タグは別取得していないので空のまま、再設定したい場合入力
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm('削除しますか？')) return;
+    riggingMutations.remove.mutate(id);
+    if (editingId === id) {
+      setEditingId(null);
+      setForm({ name: '', managementNumber: '' });
+    }
+  };
+
+  const handleAddInspection = () => {
+    if (!selectedForInspection) {
+      alert('吊具を選択してください');
+      return;
+    }
+    if (!inspectionEmployeeId) {
+      alert('従業員IDを入力してください');
+      return;
+    }
+    inspectionMutations.create.mutate({
+      riggingGearId: selectedForInspection,
+      employeeId: inspectionEmployeeId,
+      result: inspectionResult,
+      inspectedAt: new Date().toISOString(),
+      notes: inspectionNotes || undefined
+    });
+    setInspectionNotes('');
+  };
+
+  const statusOptions: (RiggingStatus | 'ALL')[] = ['ALL', 'AVAILABLE', 'IN_USE', 'MAINTENANCE', 'RETIRED'];
+
+  const selectedName = useMemo(() => {
+    return riggings?.find((g) => g.id === selectedForInspection)?.name ?? '';
+  }, [riggings, selectedForInspection]);
+
+  return (
+    <div className="space-y-6">
+      <Card title="吊具マスター">
+        <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-1 flex-col gap-2 md:flex-row md:items-center">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="名称または管理番号で検索"
+              className="md:max-w-xs"
+            />
+            <select
+              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white md:max-w-xs"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as RiggingStatus | 'ALL')}
+            >
+              {statusOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+          <div className="overflow-x-auto">
+            {isLoading ? (
+              <p className="text-white/70">読み込み中...</p>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="text-white/60">
+                  <tr>
+                    <th className="px-2 py-1">名称</th>
+                    <th className="px-2 py-1">管理番号</th>
+                    <th className="px-2 py-1">保管場所</th>
+                    <th className="px-2 py-1">部署</th>
+                    <th className="px-2 py-1">荷重(t)</th>
+                    <th className="px-2 py-1">長さ/幅/厚み(mm)</th>
+                    <th className="px-2 py-1">状態</th>
+                    <th className="px-2 py-1 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {riggings?.map((gear) => (
+                    <tr key={gear.id} className="border-t border-white/5">
+                      <td className="px-2 py-1">{gear.name}</td>
+                      <td className="px-2 py-1 font-mono text-xs">{gear.managementNumber}</td>
+                      <td className="px-2 py-1 text-white/70">{gear.storageLocation ?? '-'}</td>
+                      <td className="px-2 py-1 text-white/70">{gear.department ?? '-'}</td>
+                      <td className="px-2 py-1 text-white/70">{gear.maxLoadTon ?? '-'}</td>
+                      <td className="px-2 py-1 text-white/70">
+                        {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
+                      </td>
+                      <td className="px-2 py-1 text-white/70">{gear.status}</td>
+                      <td className="px-2 py-1 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => handleEdit(gear)}>
+                            編集
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedForInspection(gear.id)}>
+                            点検
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDelete(gear.id)}>
+                            削除
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {riggings?.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-2 py-4 text-center text-white/70">
+                        該当する吊具がありません
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="rounded-md border border-white/10 bg-white/5 p-4">
+            <h3 className="text-lg font-semibold">{isEditing ? '吊具編集' : '吊具登録'}</h3>
+            <div className="mt-3 flex flex-col gap-2">
+              <Input
+                value={form.name ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="名称（必須）"
+              />
+              <Input
+                value={form.managementNumber ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, managementNumber: e.target.value }))}
+                placeholder="管理番号（必須）"
+              />
+              <Input
+                value={form.storageLocation ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, storageLocation: e.target.value }))}
+                placeholder="保管場所"
+              />
+              <Input
+                value={form.department ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                placeholder="部署"
+              />
+              <Input
+                value={form.maxLoadTon ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, maxLoadTon: e.target.value ? Number(e.target.value) : null }))}
+                placeholder="最大使用荷重(t)"
+                type="number"
+              />
+              <Input
+                value={form.lengthMm ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, lengthMm: e.target.value ? Number(e.target.value) : null }))}
+                placeholder="長さ(mm)"
+                type="number"
+              />
+              <Input
+                value={form.widthMm ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, widthMm: e.target.value ? Number(e.target.value) : null }))}
+                placeholder="幅(mm)"
+                type="number"
+              />
+              <Input
+                value={form.thicknessMm ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, thicknessMm: e.target.value ? Number(e.target.value) : null }))
+                }
+                placeholder="厚み(mm)"
+                type="number"
+              />
+              <Input
+                value={form.startedAt ? String(form.startedAt).substring(0, 10) : ''}
+                onChange={(e) => setForm((f) => ({ ...f, startedAt: e.target.value || null }))}
+                placeholder="使用開始日"
+                type="date"
+              />
+              <Input
+                value={form.rfidTagUid ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, rfidTagUid: e.target.value || undefined }))}
+                placeholder="RFIDタグUID（任意・上書き登録）"
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleSubmit}>{isEditing ? '更新' : '登録'}</Button>
+                {isEditing && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingId(null);
+                      setForm({ name: '', managementNumber: '' });
+                    }}
+                  >
+                    キャンセル
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="点検記録（簡易）">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <select
+              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+              value={selectedForInspection ?? ''}
+              onChange={(e) => setSelectedForInspection(e.target.value || null)}
+            >
+              <option value="">吊具を選択</option>
+              {riggings?.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} ({g.managementNumber})
+                </option>
+              ))}
+            </select>
+            <Input
+              value={inspectionEmployeeId}
+              onChange={(e) => setInspectionEmployeeId(e.target.value)}
+              placeholder="従業員ID"
+              className="md:max-w-xs"
+            />
+            <select
+              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+              value={inspectionResult}
+              onChange={(e) => setInspectionResult(e.target.value as 'PASS' | 'FAIL')}
+            >
+              <option value="PASS">OK</option>
+              <option value="FAIL">NG</option>
+            </select>
+            <Input
+              value={inspectionNotes}
+              onChange={(e) => setInspectionNotes(e.target.value)}
+              placeholder="備考（任意）"
+              className="md:max-w-xs"
+            />
+            <Button onClick={handleAddInspection} disabled={!selectedForInspection}>
+              点検記録を追加
+            </Button>
+          </div>
+
+          {selectedForInspection && (
+            <div className="rounded-md border border-white/10 bg-white/5 p-3">
+              <h4 className="text-sm font-semibold">
+                {selectedName || selectedForInspection} の点検記録
+              </h4>
+              {inspections.isLoading ? (
+                <p className="text-white/70">読み込み中...</p>
+              ) : (
+                <table className="mt-2 w-full text-left text-sm">
+                  <thead className="text-white/60">
+                    <tr>
+                      <th className="px-2 py-1">結果</th>
+                      <th className="px-2 py-1">従業員ID</th>
+                      <th className="px-2 py-1">日時</th>
+                      <th className="px-2 py-1">備考</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspections.data?.map((rec) => (
+                      <tr key={rec.id} className="border-t border-white/5">
+                        <td className="px-2 py-1">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-xs ${
+                              rec.result === 'PASS' ? 'bg-emerald-500/20 text-emerald-200' : 'bg-red-500/20 text-red-200'
+                            }`}
+                          >
+                            {rec.result === 'PASS' ? 'OK' : 'NG'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1 font-mono text-xs text-white/70">{rec.employeeId}</td>
+                        <td className="px-2 py-1 text-white/70">
+                          {new Date(rec.inspectedAt).toLocaleString()}
+                        </td>
+                        <td className="px-2 py-1 text-white/70">{rec.notes ?? '-'}</td>
+                      </tr>
+                    ))}
+                    {inspections.data?.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-2 py-3 text-center text-white/70">
+                          点検記録がありません
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}

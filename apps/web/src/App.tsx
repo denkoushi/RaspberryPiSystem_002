@@ -23,6 +23,7 @@ import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
 import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
+import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
 import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
 
 function App() {
@@ -51,6 +52,7 @@ function App() {
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="items" element={<ItemsPage />} />
           <Route path="unified" element={<UnifiedItemsPage />} />
+          <Route path="rigging-gears" element={<RiggingGearsPage />} />
           <Route path="inspection-items" element={<InspectionItemsPage />} />
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
@@ -71,6 +73,7 @@ function App() {
         <Route path="instrument-tags" element={<InstrumentTagsPage />} />
         <Route path="inspection-records" element={<InspectionRecordsPage />} />
         <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+        <Route path="rigging-gears" element={<RiggingGearsPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />

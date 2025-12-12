@@ -50,6 +50,9 @@ export function AdminLayout() {
           <NavLink to="/admin/tools/inspection-records" className={linkClass}>
             点検記録
           </NavLink>
+          <NavLink to="/admin/tools/rigging-gears" className={linkClass}>
+            吊具
+          </NavLink>
           <NavLink to="/admin/tools/history" className={linkClass}>
             履歴
           </NavLink>
