@@ -12,7 +12,7 @@ export function AdminLayout() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-2">
           <div>
             <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
             <h1 className="text-xl font-semibold">管理コンソール</h1>
@@ -24,8 +24,8 @@ export function AdminLayout() {
             </Button>
           </div>
         </div>
-        <div className="mx-auto mt-4 flex max-w-6xl flex-col gap-3">
-          <nav className="flex gap-2">
+        <div className="mx-auto mt-4 flex max-w-7xl flex-col gap-3 px-2">
+          <nav className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
           <NavLink to="/admin" end className={linkClass}>
             ダッシュボード
           </NavLink>
@@ -69,7 +69,7 @@ export function AdminLayout() {
           <NetworkModeBadge />
         </div>
       </header>
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8">
         <Outlet />
       </main>
     </div>

@@ -156,7 +156,7 @@ export function RiggingGearsPage() {
                     <th className="w-24 px-2 py-1 whitespace-nowrap">荷重(t)</th>
                     <th className="w-44 px-2 py-1 whitespace-nowrap">長さ/幅/厚み(mm)</th>
                     <th className="w-24 px-2 py-1 whitespace-nowrap">状態</th>
-                    <th className="w-36 px-2 py-1 text-right whitespace-nowrap">操作</th>
+                    <th className="w-48 px-2 py-1 text-right whitespace-nowrap">操作</th>
                   </tr>
                 </thead>
                 <tbody>
