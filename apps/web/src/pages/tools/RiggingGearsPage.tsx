@@ -2,7 +2,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { setRiggingGearTag } from '../../api/client';
 import {
   useRiggingGears,
   useRiggingGearMutations,
@@ -76,16 +75,9 @@ export function RiggingGearsPage() {
       const created = await riggingMutations.create.mutateAsync(payload as { name: string; managementNumber: string });
       gearId = created?.id ?? gearId;
     }
-    // タグ登録（入力ありの場合のみ）
-    if (form.rfidTagUid && gearId) {
-      try {
-        await setRiggingGearTag(gearId, form.rfidTagUid);
-      } catch (err) {
-        console.error('Failed to set rigging tag', err);
-        alert('タグ登録に失敗しました');
-      }
+    if (gearId) {
+      await queryClient.invalidateQueries({ queryKey: ['rigging-gears'] });
     }
-    await queryClient.invalidateQueries({ queryKey: ['rigging-gears'] });
     setEditingId(null);
     setForm({ name: '', managementNumber: '' });
   };
@@ -94,7 +86,7 @@ export function RiggingGearsPage() {
     setEditingId(gear.id);
     setForm({
       ...gear,
-      rfidTagUid: undefined // タグは別取得していないので空のまま、再設定したい場合入力
+      rfidTagUid: gear.tags?.[0]?.rfidTagUid ?? ''
     });
   };
 
@@ -157,12 +149,12 @@ export function RiggingGearsPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[3fr,1.1fr]">
+        <div className="grid gap-4 lg:grid-cols-[3.5fr,1fr]">
           <div className="overflow-x-auto">
             {isLoading ? (
               <p className="text-white/70">読み込み中...</p>
             ) : (
-              <table className="w-full table-fixed text-left text-sm min-w-[960px]">
+              <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
                 <thead className="text-white/60">
                   <tr>
                     <th className="w-40 px-2 py-1 whitespace-nowrap">名称</th>
@@ -171,6 +163,7 @@ export function RiggingGearsPage() {
                     <th className="w-28 px-2 py-1 whitespace-nowrap">部署</th>
                     <th className="w-24 px-2 py-1 whitespace-nowrap">荷重(t)</th>
                     <th className="w-44 px-2 py-1 whitespace-nowrap">長さ/幅/厚み(mm)</th>
+                    <th className="w-32 px-2 py-1 whitespace-nowrap">RFIDタグUID</th>
                     <th className="w-24 px-2 py-1 whitespace-nowrap">状態</th>
                     <th className="w-48 px-2 py-1 text-right whitespace-nowrap">操作</th>
                   </tr>
@@ -192,6 +185,7 @@ export function RiggingGearsPage() {
                       <td className="px-2 py-1 text-white/70 whitespace-nowrap">
                         {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
                       </td>
+                      <td className="px-2 py-1 font-mono text-xs whitespace-nowrap">{gear.tags?.[0]?.rfidTagUid ?? '-'}</td>
                       <td className="px-2 py-1 text-white/70 whitespace-nowrap">{gear.status}</td>
                       <td className="px-2 py-1 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2">

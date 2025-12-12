@@ -16,6 +16,7 @@ export interface RiggingGear {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  tags?: RiggingGearTag[]; // optional tag list for admin display
 }
 
 export interface RiggingGearTag {

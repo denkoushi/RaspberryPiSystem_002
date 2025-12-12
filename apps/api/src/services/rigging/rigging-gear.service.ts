@@ -41,6 +41,7 @@ export class RiggingGearService {
       where: {
         AND: filters.length ? filters : undefined
       },
+      include: { tags: true },
       orderBy: { managementNumber: 'asc' }
     });
   }
