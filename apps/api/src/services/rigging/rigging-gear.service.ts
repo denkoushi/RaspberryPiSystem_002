@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import { RiggingStatus } from '@prisma/client';
+import { RiggingStatus, type Prisma } from '@prisma/client';
 
 export interface RiggingGearInput {
   name: string;
@@ -24,19 +24,22 @@ export interface RiggingGearQuery {
 
 export class RiggingGearService {
   async findAll(query: RiggingGearQuery) {
+    const filters: Prisma.RiggingGearWhereInput[] = [];
+    if (query.search) {
+      filters.push({
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' } },
+          { managementNumber: { contains: query.search, mode: 'insensitive' } }
+        ]
+      });
+    }
+    if (query.status) {
+      filters.push({ status: query.status });
+    }
+
     return prisma.riggingGear.findMany({
       where: {
-        AND: [
-          query.search
-            ? {
-                OR: [
-                  { name: { contains: query.search, mode: 'insensitive' } },
-                  { managementNumber: { contains: query.search, mode: 'insensitive' } }
-                ]
-              }
-            : undefined,
-          query.status ? { status: query.status } : undefined
-        ]
+        AND: filters.length ? filters : undefined
       },
       orderBy: { managementNumber: 'asc' }
     });
