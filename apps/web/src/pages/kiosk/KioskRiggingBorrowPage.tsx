@@ -149,7 +149,7 @@ export function KioskRiggingBorrowPage() {
                       replace: true
                     })
                   }
-                  variant="outline"
+                  variant="secondary"
                 >
                   持出一覧へ戻る
                 </Button>

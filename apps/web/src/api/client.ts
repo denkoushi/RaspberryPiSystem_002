@@ -16,7 +16,14 @@ import type {
   InspectionItem,
   MeasuringInstrumentTag,
   InspectionRecord,
-  InspectionRecordCreatePayload
+  InspectionRecordCreatePayload,
+  RiggingGear,
+  RiggingGearTag,
+  RiggingBorrowPayload,
+  RiggingReturnPayload,
+  RiggingInspectionRecord,
+  RiggingInspectionResult,
+  RiggingStatus
 } from './types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';

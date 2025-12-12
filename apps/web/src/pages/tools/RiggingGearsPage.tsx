@@ -161,13 +161,13 @@ export function RiggingGearsPage() {
                       <td className="px-2 py-1 text-white/70">{gear.status}</td>
                       <td className="px-2 py-1 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="secondary" size="sm" onClick={() => handleEdit(gear)}>
+                          <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleEdit(gear)}>
                             編集
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedForInspection(gear.id)}>
+                          <Button variant="ghost" className="h-8 px-2 text-xs" onClick={() => setSelectedForInspection(gear.id)}>
                             点検
                           </Button>
-                          <Button variant="destructive" size="sm" onClick={() => handleDelete(gear.id)}>
+                          <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleDelete(gear.id)}>
                             削除
                           </Button>
                         </div>
