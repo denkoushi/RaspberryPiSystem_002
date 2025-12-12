@@ -53,7 +53,8 @@ export function RiggingGearsPage() {
       alert('名称と管理番号は必須です');
       return;
     }
-    const trimmedTag = form.rfidTagUid?.trim();
+    const rawTag = form.rfidTagUid ?? '';
+    const trimmedTag = rawTag.trim();
     const payload: FormState = {
       name: form.name,
       managementNumber: form.managementNumber,
@@ -66,7 +67,8 @@ export function RiggingGearsPage() {
       startedAt: form.startedAt || null,
       status: form.status,
       notes: form.notes || null,
-      rfidTagUid: trimmedTag && trimmedTag.length > 0 ? trimmedTag : undefined
+      // 空文字は削除、非空はtrimして送信。未入力(null/undefined)は無変更。
+      rfidTagUid: rawTag === '' ? '' : trimmedTag || undefined
     };
     let gearId = editingId;
     if (isEditing && editingId) {

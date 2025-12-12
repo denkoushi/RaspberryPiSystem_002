@@ -15,7 +15,8 @@ export const riggingGearBaseSchema = z.object({
   startedAt: z.coerce.date().optional().nullable(),
   status: z.nativeEnum(RiggingStatus).optional(),
   notes: z.string().optional().nullable(),
-  rfidTagUid: z.string().trim().min(1).optional()
+  // 空文字は「タグ削除」を意味する
+  rfidTagUid: z.union([z.string().trim().min(1), z.literal('')]).optional()
 });
 
 export const riggingGearCreateSchema = riggingGearBaseSchema;

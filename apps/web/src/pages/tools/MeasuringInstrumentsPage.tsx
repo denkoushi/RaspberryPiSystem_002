@@ -43,7 +43,8 @@ export function MeasuringInstrumentsPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const normalizedTagUid = form.rfidTagUid.trim();
+    const rawTag = form.rfidTagUid ?? '';
+    const normalizedTagUid = rawTag.trim();
     const payload = {
       name: form.name,
       managementNumber: form.managementNumber,
@@ -51,7 +52,8 @@ export function MeasuringInstrumentsPage() {
       measurementRange: form.measurementRange || undefined,
       calibrationExpiryDate: form.calibrationExpiryDate ? new Date(form.calibrationExpiryDate).toISOString() : undefined,
       status: form.status,
-      rfidTagUid: normalizedTagUid || undefined
+      // 空文字は削除、非空はtrim、未入力は無変更
+      rfidTagUid: rawTag === '' ? '' : normalizedTagUid || undefined
     };
     if (editingId) {
       await update.mutateAsync({ id: editingId, payload });

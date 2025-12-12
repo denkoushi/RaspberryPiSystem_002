@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 
 import { NetworkModeBadge } from '../components/NetworkModeBadge';
 import { Button } from '../components/ui/Button';
@@ -18,6 +18,12 @@ export function AdminLayout() {
             <h1 className="text-xl font-semibold">管理コンソール</h1>
           </div>
           <div className="flex items-center gap-4">
+            <Link
+              to="/kiosk"
+              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
+            >
+              キオスクへ
+            </Link>
             <p className="text-sm text-white/70">{user?.username}</p>
             <Button variant="ghost" onClick={logout}>
               ログアウト
