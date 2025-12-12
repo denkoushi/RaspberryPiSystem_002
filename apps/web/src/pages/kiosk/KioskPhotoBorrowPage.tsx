@@ -206,6 +206,8 @@ export function KioskPhotoBorrowPage() {
     }
 
     // 計測機器タグ判定（カメラ起動前に判定）
+    // 計測機器として明示的に登録されているタグのみ計測機器タブへ遷移
+    // 未登録タグ（404）は従業員フローを継続（従業員タグと誤判定を防ぐ）
     void (async () => {
       const cachedType = tagTypeMap[nfcEvent.uid];
 
@@ -224,19 +226,11 @@ export function KioskPhotoBorrowPage() {
           navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
           return;
         }
-      } catch (error) {
-        // 404の場合は計測機器タブへ誘導
-        const axiosError = error as Partial<AxiosError>;
-        const status = axiosError.response?.status;
-        if (status === 404) {
-          processingRef.current = false; // フラグをリセット
-          navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`);
-          return;
-        }
-        // その他のエラーは工具フローを継続
+      } catch {
+        // 404や他のエラーは従業員フローを継続（未登録タグは計測機器として扱わない）
       }
 
-      // 計測機器タグでない場合のみ、従業員タグとして処理を継続
+      // 計測機器タグでない場合、従業員タグとして処理を継続（カメラ起動）
       const currentUid = nfcEvent.uid; // クロージャで値を保持
       setEmployeeTagUid(currentUid);
       setIsCapturing(true);

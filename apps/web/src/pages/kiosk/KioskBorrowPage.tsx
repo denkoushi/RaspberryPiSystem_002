@@ -196,18 +196,8 @@ export function KioskBorrowPage() {
           lastEventKeyRef.current = eventKey;
           return;
         }
-      } catch (error) {
-        // 未登録の計測機器タグでも工具フローに落とさず計測機器タブへ誘導する
-        const axiosError = error as Partial<AxiosError>;
-        const status = axiosError.response?.status;
-        if (isFirstScan && status === 404) {
-          navigate(
-            `/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`
-          );
-          lastEventKeyRef.current = eventKey;
-          return;
-        }
-        // 計測機器タグでなければ工具フローを継続
+      } catch {
+        // 404や他のエラーは工具フローを継続（未登録タグは計測機器として扱わない）
       }
 
       // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信

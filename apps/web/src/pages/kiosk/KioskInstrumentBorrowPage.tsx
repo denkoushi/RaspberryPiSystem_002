@@ -10,7 +10,7 @@ import {
   getMeasuringInstrumentTags,
   postClientLogs
 } from '../../api/client';
-import { useMeasuringInstruments } from '../../api/hooks';
+import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -24,12 +24,16 @@ type InstrumentSource = 'select' | 'tag' | null;
 
 export function KioskInstrumentBorrowPage() {
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
+  const { data: kioskConfig } = useKioskConfig();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
+
+  // defaultModeに基づいて戻り先を決定
+  const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
@@ -199,8 +203,8 @@ export function KioskInstrumentBorrowPage() {
       // NGの場合は点検記録を作成しない（個別項目の記録は不要）
       setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
       resetForm();
-      // 持出タブへ戻す
-      navigate('/kiosk/tag', { replace: true });
+      // defaultModeに応じた画面へ戻す
+      navigate(returnPath, { replace: true });
     } catch (error) {
       console.error(error);
       setMessage('エラーが発生しました。入力値を確認してください。');
@@ -265,8 +269,8 @@ export function KioskInstrumentBorrowPage() {
       }
       setMessage(`持出登録完了: Loan ID = ${loan.id}`);
       resetForm();
-      // 持出タブへ戻す
-      navigate('/kiosk/tag', { replace: true });
+      // defaultModeに応じた画面へ戻す
+      navigate(returnPath, { replace: true });
     } catch (error) {
       console.error(error);
       const apiErr = error as Partial<AxiosError<{ message?: string }>>;
@@ -288,7 +292,8 @@ export function KioskInstrumentBorrowPage() {
     instruments,
     hasInstrument,
     resolvedInstrumentTagUid,
-    navigate
+    navigate,
+    returnPath
   ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
