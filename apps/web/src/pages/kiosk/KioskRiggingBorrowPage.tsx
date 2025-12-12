@@ -1,4 +1,5 @@
-import { useRef, useState, useEffect } from 'react';
+import axios from 'axios';
+import { useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
@@ -93,9 +94,32 @@ export function KioskRiggingBorrowPage() {
           setEmployeeTagUid('');
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : '持出に失敗しました';
+        const msg =
+          axios.isAxiosError(err) && err.response?.data?.message
+            ? err.response.data.message
+            : err instanceof Error
+            ? err.message
+            : '持出に失敗しました';
         setError(msg);
         setMessage(null);
+        // エラー詳細をログ送信
+        postClientLogs(
+          {
+            clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+            logs: [
+              {
+                level: 'ERROR',
+                message: 'rigging borrow failed',
+                context: {
+                  error: msg,
+                  riggingTagUid,
+                  employeeTagUid: employeeTagUid || nfcEvent?.uid
+                }
+              }
+            ]
+          },
+          resolvedClientKey
+        ).catch(() => {});
       } finally {
         setIsSubmitting(false);
         processingRef.current = false;
