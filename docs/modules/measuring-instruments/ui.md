@@ -46,6 +46,13 @@
 
 ## キオスク専用画面（ラズパイ4）
 
+- **計測機器タグ自動遷移機能**: ✅ **実装完了**（2025-12-12）
+  - 持出タブ（`/kiosk/tag`）またはPHOTOモード（`/kiosk/photo`）で計測機器タグをスキャン
+  - `getUnifiedItems`で事前取得したマップ、または`getMeasuringInstrumentByTagUid`でAPI判定
+  - 計測機器タグなら自動で `/kiosk/instruments/borrow?tagUid=...` へ遷移
+  - 未登録計測機器タグ（404）も計測機器タブへ誘導（`&notFound=1`パラメータで「タグ未登録（計測機器）」表示）
+  - 工具/従業員タグと誤認されてカメラが起動する問題を解消
+  - **ナレッジベース**: [KB-095](../../knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - **持ち出し画面**: `/kiosk/instruments/borrow`
   - 計測機器タグUID・氏名タグUIDの手入力フォーム（実装済み）
   - NFCエージェント連携実装済み（計測機器タグ→氏名タグの順で自動送信）

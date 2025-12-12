@@ -714,3 +714,124 @@ const nfcEvent = useNfcStream(Boolean(isActiveRoute));
 
 **関連計画書**: 
 - `docs/plans/nfc-stream-isolation-plan.md`
+
+---
+
+### [KB-095] 計測機器タグスキャン時の自動遷移機能
+
+**EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）
+
+**事象**: 
+- 持出タブ（`/kiosk/tag`）またはPHOTOモード（`/kiosk/photo`）で計測機器タグをスキャンすると、工具/従業員タグとして処理されエラーが発生
+- カメラが起動し、「氏名紐づけないUID」としてエラーメッセージが表示される
+- 計測機器タグと従業員/工具タグの区別ができていなかった
+
+**要因**: 
+- 持出タブ/PHOTOモードは工具・従業員のNFCフローを前提として設計されていた
+- 計測機器タグはDBに別テーブル（`MeasuringInstrumentTag`）で管理されており、工具タグと区別する判定ロジックがなかった
+- NFCスキャン時に計測機器かどうかを判定せず、一律で工具フローを実行していた
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-12）:
+  1. `getUnifiedItems({ category: 'ALL' })`で工具と計測機器のマップを事前取得
+  2. NFCイベント受信時に`tagTypeMap`でキャッシュ判定、または`getMeasuringInstrumentByTagUid`でAPI判定
+  3. 計測機器タグなら即座に`/kiosk/instruments/borrow?tagUid=...`へ遷移
+  4. 未登録計測機器タグ（404）も計測機器タブへ誘導（`&notFound=1`パラメータ付き）
+  5. PHOTOモードでも同様のロジックを実装し、カメラ起動前に計測機器タグを判定
+
+**実装のポイント**:
+```typescript
+// KioskBorrowPage.tsx / KioskPhotoBorrowPage.tsx
+// マップで計測機器タグと判定できる場合は即座に遷移
+if (cachedType === 'MEASURING_INSTRUMENT') {
+  navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+  return;
+}
+
+// APIで判定
+try {
+  const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
+  if (instrument) {
+    navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+    return;
+  }
+} catch (error) {
+  // 404でも計測機器タブへ誘導（未登録タグとして表示）
+  if (status === 404) {
+    navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`);
+    return;
+  }
+}
+// 計測機器でなければ工具フローを継続
+```
+
+**教訓**: 
+- 複数種類のタグを扱う場合、スキャン時に種類を判定するロジックを各ページに統一的に実装する
+- 未登録タグの場合も適切な画面へ誘導することでユーザー体験を向上
+
+**解決状況**: ✅ **解決済み**（2025-12-12）
+
+**関連ファイル**: 
+- `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
+
+---
+
+### [KB-096] クライアントログ取得のベストプラクティス（postClientLogsへの統一）
+
+**EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）
+
+**事象**: 
+- Cursorデバッグログ（`http://127.0.0.1:7242/...`）がPi4クライアントから到達不可
+- ログが管理コンソールに表示されず、デバッグが困難
+
+**要因**: 
+- `127.0.0.1`はlocalhostを指すため、Pi4のブラウザからはPi4自身に送信される
+- CursorデバッグサーバーはMac上で動作しており、Pi4からは到達できない
+- 既存の`postClientLogs`（API経由）が全ページに実装されていなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-12）:
+  1. Cursorデバッグログ（`fetch('http://127.0.0.1:7242/...')`）を全ページから削除
+  2. `postClientLogs`を全キオスクページに統一的に実装
+  3. NFCイベント発生時に`postClientLogs`でログを送信
+
+**実装のポイント**:
+```typescript
+// 全キオスクページで統一パターンを使用
+postClientLogs(
+  {
+    clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+    logs: [
+      {
+        level: 'DEBUG',
+        message: 'tag-page nfc event', // ページごとに識別可能なメッセージ
+        context: { uid: nfcEvent.uid, cachedType, isFirstScan }
+      }
+    ]
+  },
+  resolvedClientKey
+).catch(() => {});
+```
+
+**ログメッセージ一覧**:
+| ページ | メッセージ |
+|--------|-----------|
+| `/kiosk/tag` | `tag-page nfc event` |
+| `/kiosk/photo` | `photo-page nfc event` |
+| `/kiosk/instruments/borrow` | `instrument-page nfc event` |
+
+**教訓**: 
+- ローカル環境向けのデバッグ手法（localhost宛ログ）は本番環境では機能しない
+- 既存のインフラ（`postClientLogs` → `/clients/logs` API → DB → 管理コンソール）を活用する
+- クライアントログはAPI経由でサーバーに送信し、管理コンソールで一元管理する
+
+**解決状況**: ✅ **解決済み**（2025-12-12）
+
+**関連ファイル**: 
+- `apps/web/src/api/client.ts`（`postClientLogs`関数）
+- `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
+- `apps/api/src/routes/clients.ts`（`/clients/logs`エンドポイント）
