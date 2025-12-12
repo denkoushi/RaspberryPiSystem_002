@@ -3,5 +3,11 @@
   "compilerOptions": {
     "noEmit": false
   },
-  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts", "prisma/seed.ts", "vitest.config.ts"]
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "prisma/seed.ts",
+    "vitest.config.ts",
+    "scripts/import-rigging.ts"
+  ]
 }
