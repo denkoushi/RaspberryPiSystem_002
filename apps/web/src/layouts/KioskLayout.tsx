@@ -129,7 +129,8 @@ export function KioskLayout() {
                 吊具 持出
               </NavLink>
               <Link
-                to="/admin"
+                to="/login"
+                state={{ from: { pathname: '/admin' } }}
                 className={`${navLink} bg-blue-600 hover:bg-blue-700`}
               >
                 管理コンソール

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import {
   useMeasuringInstruments,
@@ -8,6 +9,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { MeasuringInstrument, MeasuringInstrumentStatus } from '../../api/types';
 
@@ -29,6 +31,9 @@ export function MeasuringInstrumentsPage() {
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const { data: editingTags } = useInstrumentTags(editingId || undefined);
+  const location = useLocation();
+  const isActiveRoute = location.pathname.endsWith('/measuring-instruments');
+  const nfcEvent = useNfcStream(isActiveRoute);
 
   useEffect(() => {
     if (editingId) return;
@@ -40,6 +45,13 @@ export function MeasuringInstrumentsPage() {
     const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
     setForm((prev) => (prev.rfidTagUid ? prev : { ...prev, rfidTagUid: existingTagUid }));
   }, [editingId, editingTags]);
+
+  // NFCスキャンでUID自動入力（このページがアクティブな場合のみ）
+  useEffect(() => {
+    if (nfcEvent?.uid) {
+      setForm((prev) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
+    }
+  }, [nfcEvent]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
