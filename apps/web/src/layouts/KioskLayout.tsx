@@ -122,6 +122,12 @@ export function KioskLayout() {
               >
                 計測機器 持出
               </NavLink>
+              <NavLink
+                to="/kiosk/rigging/borrow"
+                className={({ isActive }) => (isActive ? `${navLink} bg-amber-400 text-slate-900` : navLink)}
+              >
+                吊具 持出
+              </NavLink>
             </nav>
           </div>
         </div>

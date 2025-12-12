@@ -13,6 +13,7 @@ import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
+import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { EmployeesPage } from './pages/tools/EmployeesPage';
@@ -35,6 +36,7 @@ function App() {
         <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
         <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
         <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
+        <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
       </Route>
       <Route
         path="/admin"
