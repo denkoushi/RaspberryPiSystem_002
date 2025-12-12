@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import {
   useRiggingGears,
@@ -9,6 +10,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { RiggingStatus, RiggingGear } from '../../api/types';
 
@@ -33,6 +35,16 @@ export function RiggingGearsPage() {
   const inspectionMutations = useRiggingInspectionRecordMutations();
 
   const isEditing = Boolean(editingId);
+  const location = useLocation();
+  const isActiveRoute = location.pathname.endsWith('/rigging-gears');
+  const nfcEvent = useNfcStream(isActiveRoute);
+
+  // 管理コンソールでのUID自動入力（Pi4のNFCリーダー）
+  useEffect(() => {
+    if (nfcEvent?.uid) {
+      setForm((prev) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
+    }
+  }, [nfcEvent]);
 
   const handleSubmit = () => {
     if (!form.name || !form.managementNumber) {
@@ -129,37 +141,43 @@ export function RiggingGearsPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+        <div className="grid gap-4 lg:grid-cols-[3fr,1.1fr]">
           <div className="overflow-x-auto">
             {isLoading ? (
               <p className="text-white/70">読み込み中...</p>
             ) : (
-              <table className="w-full text-left text-sm">
+              <table className="w-full table-fixed text-left text-sm min-w-[960px]">
                 <thead className="text-white/60">
                   <tr>
-                    <th className="px-2 py-1">名称</th>
-                    <th className="px-2 py-1">管理番号</th>
-                    <th className="px-2 py-1">保管場所</th>
-                    <th className="px-2 py-1">部署</th>
-                    <th className="px-2 py-1">荷重(t)</th>
-                    <th className="px-2 py-1">長さ/幅/厚み(mm)</th>
-                    <th className="px-2 py-1">状態</th>
-                    <th className="px-2 py-1 text-right">操作</th>
+                    <th className="w-40 px-2 py-1 whitespace-nowrap">名称</th>
+                    <th className="w-32 px-2 py-1 whitespace-nowrap">管理番号</th>
+                    <th className="w-32 px-2 py-1 whitespace-nowrap">保管場所</th>
+                    <th className="w-28 px-2 py-1 whitespace-nowrap">部署</th>
+                    <th className="w-24 px-2 py-1 whitespace-nowrap">荷重(t)</th>
+                    <th className="w-44 px-2 py-1 whitespace-nowrap">長さ/幅/厚み(mm)</th>
+                    <th className="w-24 px-2 py-1 whitespace-nowrap">状態</th>
+                    <th className="w-36 px-2 py-1 text-right whitespace-nowrap">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {riggings?.map((gear) => (
                     <tr key={gear.id} className="border-t border-white/5">
-                      <td className="px-2 py-1">{gear.name}</td>
-                      <td className="px-2 py-1 font-mono text-xs">{gear.managementNumber}</td>
-                      <td className="px-2 py-1 text-white/70">{gear.storageLocation ?? '-'}</td>
-                      <td className="px-2 py-1 text-white/70">{gear.department ?? '-'}</td>
-                      <td className="px-2 py-1 text-white/70">{gear.maxLoadTon ?? '-'}</td>
-                      <td className="px-2 py-1 text-white/70">
+                      <td className="px-2 py-1 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
+                        {gear.name}
+                      </td>
+                      <td className="px-2 py-1 font-mono text-xs whitespace-nowrap">{gear.managementNumber}</td>
+                      <td className="px-2 py-1 text-white/70 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
+                        {gear.storageLocation ?? '-'}
+                      </td>
+                      <td className="px-2 py-1 text-white/70 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.department ?? '-'}>
+                        {gear.department ?? '-'}
+                      </td>
+                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">{gear.maxLoadTon ?? '-'}</td>
+                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">
                         {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
                       </td>
-                      <td className="px-2 py-1 text-white/70">{gear.status}</td>
-                      <td className="px-2 py-1 text-right">
+                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">{gear.status}</td>
+                      <td className="px-2 py-1 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleEdit(gear)}>
                             編集
