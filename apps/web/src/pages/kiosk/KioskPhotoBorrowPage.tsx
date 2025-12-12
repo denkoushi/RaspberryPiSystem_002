@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMatch } from 'react-router-dom';
+import { useMatch, useNavigate } from 'react-router-dom';
 
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../../api/client';
+import {
+  DEFAULT_CLIENT_KEY,
+  getMeasuringInstrumentByTagUid,
+  getUnifiedItems,
+  postClientLogs,
+  setClientKeyHeader
+} from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -28,6 +34,8 @@ export function KioskPhotoBorrowPage() {
   const lastEventKeyRef = useRef<string | null>(null);
   const processedUidsRef = useRef<Map<string, number>>(new Map()); // 処理済みUIDとタイムスタンプのマップ
   const processedEventTimestampsRef = useRef<Map<string, string>>(new Map()); // 処理済みUIDとイベントタイムスタンプのマップ
+  const [tagTypeMap, setTagTypeMap] = useState<Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'>>({});
+  const navigate = useNavigate();
   useEffect(() => {
     if (!clientKey || clientKey === 'client-demo-key') {
       setClientKey(DEFAULT_CLIENT_KEY);
@@ -36,6 +44,28 @@ export function KioskPhotoBorrowPage() {
       setClientKeyHeader(clientKey);
     }
   }, [clientKey, setClientKey]);
+
+  // タグの種別マップを取得（工具/計測機器の判定を高速化）
+  useEffect(() => {
+    let cancelled = false;
+    getUnifiedItems({ category: 'ALL' })
+      .then((items) => {
+        if (cancelled) return;
+        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'> = {};
+        items.forEach((item) => {
+          if (item.nfcTagUid) {
+            map[item.nfcTagUid] = item.type;
+          }
+        });
+        setTagTypeMap(map);
+      })
+      .catch(() => {
+        // マップ取得に失敗しても致命的ではないため握りつぶす
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
 
   const [employeeTagUid, setEmployeeTagUid] = useState<string | null>(null);
@@ -119,6 +149,22 @@ export function KioskPhotoBorrowPage() {
     const now = Date.now();
     const processedUids = processedUidsRef.current;
     const processedEventTimestamps = processedEventTimestampsRef.current;
+
+    // デバッグログをサーバーに送信
+    const cachedType = tagTypeMap[nfcEvent.uid];
+    postClientLogs(
+      {
+        clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+        logs: [
+          {
+            level: 'DEBUG',
+            message: 'photo-page nfc event',
+            context: { uid: nfcEvent.uid, cachedType, timestamp: nfcEvent.timestamp }
+          }
+        ]
+      },
+      resolvedClientKey
+    ).catch(() => {});
     
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
@@ -159,15 +205,46 @@ export function KioskPhotoBorrowPage() {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey, 'timestamp:', nfcEvent.timestamp);
     }
 
-    // 従業員タグをスキャンしたら、カメラで撮影してから持出処理を開始
-    const currentUid = nfcEvent.uid; // クロージャで値を保持
-    setEmployeeTagUid(currentUid);
-      setIsCapturing(true);
-    setError(null);
-    setSuccessLoan(null);
+    // 計測機器タグ判定（カメラ起動前に判定）
+    void (async () => {
+      const cachedType = tagTypeMap[nfcEvent.uid];
 
-    // カメラで撮影してからAPIを呼び出す（async関数として定義）
-    (async () => {
+      // 事前に取得したマップで計測機器タグと判定できる場合は即座に遷移
+      if (cachedType === 'MEASURING_INSTRUMENT') {
+        processingRef.current = false; // フラグをリセット
+        navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        return;
+      }
+
+      try {
+        // APIで計測機器タグなら計測機器持出ページへ遷移
+        const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
+        if (instrument) {
+          processingRef.current = false; // フラグをリセット
+          navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+          return;
+        }
+      } catch (error) {
+        // 404の場合は計測機器タブへ誘導
+        const axiosError = error as Partial<AxiosError>;
+        const status = axiosError.response?.status;
+        if (status === 404) {
+          processingRef.current = false; // フラグをリセット
+          navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`);
+          return;
+        }
+        // その他のエラーは工具フローを継続
+      }
+
+      // 計測機器タグでない場合のみ、従業員タグとして処理を継続
+      const currentUid = nfcEvent.uid; // クロージャで値を保持
+      setEmployeeTagUid(currentUid);
+      setIsCapturing(true);
+      setError(null);
+      setSuccessLoan(null);
+
+      // カメラで撮影してからAPIを呼び出す
+      (async () => {
       // カメラで撮影（3回までリトライ）
       // スキャン時のみカメラを起動して撮影（CPU負荷削減のため）
       let photoData: string;
@@ -239,9 +316,10 @@ export function KioskPhotoBorrowPage() {
         },
       }
       );
+      })();
     })();
     // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
-  }, [nfcEvent, photoBorrowMutation, resolvedClientId, isCapturing, successLoan]);
+  }, [nfcEvent, photoBorrowMutation, resolvedClientId, resolvedClientKey, isCapturing, successLoan, tagTypeMap, navigate]);
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {

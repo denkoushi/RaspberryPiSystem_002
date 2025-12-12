@@ -4,14 +4,17 @@ import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   borrowMeasuringInstrument,
   createInspectionRecord,
+  DEFAULT_CLIENT_KEY,
   getInspectionItems,
   getMeasuringInstrumentByTagUid,
-  getMeasuringInstrumentTags
+  getMeasuringInstrumentTags,
+  postClientLogs
 } from '../../api/client';
 import { useMeasuringInstruments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
@@ -23,6 +26,10 @@ export function KioskInstrumentBorrowPage() {
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
+  const [clientId] = useLocalStorage('kiosk-client-id', '');
+  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
+  const resolvedClientId = clientId || undefined;
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
@@ -75,6 +82,13 @@ export function KioskInstrumentBorrowPage() {
     // 一度だけ評価
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 計測機器タグ未登録で誘導された場合は明示的にエラーメッセージを表示
+  useEffect(() => {
+    if (searchParams.get('notFound') === '1') {
+      setMessage('タグ未登録（計測機器）');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const searchInstrumentByTag = async () => {
@@ -287,8 +301,24 @@ export function KioskInstrumentBorrowPage() {
     }
     lastNfcEventKeyRef.current = eventKey;
 
+    // デバッグログをサーバーに送信
+    const isFirstScan = !instrumentTagUid && (!instrumentSource || instrumentSource === 'tag');
+    postClientLogs(
+      {
+        clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+        logs: [
+          {
+            level: 'DEBUG',
+            message: 'instrument-page nfc event',
+            context: { uid: nfcEvent.uid, isFirstScan, hasInstrument }
+          }
+        ]
+      },
+      resolvedClientKey
+    ).catch(() => {});
+
     // 1枚目のスキャンは計測機器タグとみなす（ただし最初に選択したソースを尊重）
-    if (!instrumentTagUid && (!instrumentSource || instrumentSource === 'tag')) {
+    if (isFirstScan) {
       setInstrumentTagUid(nfcEvent.uid);
       setResolvedInstrumentTagUid(nfcEvent.uid);
       setInstrumentSource('tag');
@@ -309,7 +339,7 @@ export function KioskInstrumentBorrowPage() {
       // OKフローは自動送信
       handleSubmit();
     }
-  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource]);
+  }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource, resolvedClientId, resolvedClientKey]);
 
   const resetForm = () => {
     setSelectedInstrumentId('');

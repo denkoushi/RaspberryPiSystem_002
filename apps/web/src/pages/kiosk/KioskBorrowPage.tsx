@@ -1,8 +1,14 @@
 import { useMachine } from '@xstate/react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
-import { DEFAULT_CLIENT_KEY, getMeasuringInstrumentByTagUid, postClientLogs, setClientKeyHeader } from '../../api/client';
+import {
+  DEFAULT_CLIENT_KEY,
+  getMeasuringInstrumentByTagUid,
+  getUnifiedItems,
+  postClientLogs,
+  setClientKeyHeader
+} from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -32,6 +38,7 @@ export function KioskBorrowPage() {
   const isActiveRoute = useMatch('/kiosk/tag');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastEventKeyRef = useRef<string | null>(null);
+  const [tagTypeMap, setTagTypeMap] = useState<Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'>>({});
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -42,6 +49,28 @@ export function KioskBorrowPage() {
       setClientKeyHeader(clientKey);
     }
   }, [clientKey, setClientKey]);
+
+  // タグの種別マップを取得（工具/計測機器の判定を高速化）
+  useEffect(() => {
+    let cancelled = false;
+    getUnifiedItems({ category: 'ALL' })
+      .then((items) => {
+        if (cancelled) return;
+        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT'> = {};
+        items.forEach((item) => {
+          if (item.nfcTagUid) {
+            map[item.nfcTagUid] = item.type;
+          }
+        });
+        setTagTypeMap(map);
+      })
+      .catch(() => {
+        // マップ取得に失敗しても致命的ではないため握りつぶす
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (state.value !== 'submitting' || borrowMutation.isPending) {
@@ -134,15 +163,50 @@ export function KioskBorrowPage() {
       return;
     }
     const processNfc = async () => {
+      const isFirstScan = !state.context.itemTagUid && !state.context.employeeTagUid;
+      const cachedType = tagTypeMap[nfcEvent.uid];
+
+      // デバッグログをサーバーに送信
+      postClientLogs(
+        {
+          clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+          logs: [
+            {
+              level: 'DEBUG',
+              message: 'tag-page nfc event',
+              context: { uid: nfcEvent.uid, cachedType, isFirstScan }
+            }
+          ]
+        },
+        resolvedClientKey
+      ).catch(() => {});
+
+      // 事前に取得したマップで計測機器タグと判定できる場合は即座に遷移
+      if (cachedType === 'MEASURING_INSTRUMENT') {
+        navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        lastEventKeyRef.current = eventKey;
+        return;
+      }
+
       try {
-        // 計測機器タグなら計測機器持出ページへ遷移（タグUIDをクエリで渡す）
+        // APIで計測機器タグなら計測機器持出ページへ遷移（タグUIDをクエリで渡す）
         const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
         if (instrument) {
           navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
           lastEventKeyRef.current = eventKey;
           return;
         }
-      } catch {
+      } catch (error) {
+        // 未登録の計測機器タグでも工具フローに落とさず計測機器タブへ誘導する
+        const axiosError = error as Partial<AxiosError>;
+        const status = axiosError.response?.status;
+        if (isFirstScan && status === 404) {
+          navigate(
+            `/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}&notFound=1`
+          );
+          lastEventKeyRef.current = eventKey;
+          return;
+        }
         // 計測機器タグでなければ工具フローを継続
       }
 
@@ -157,7 +221,7 @@ export function KioskBorrowPage() {
     };
 
     processNfc();
-  }, [nfcEvent, navigate, send, state]);
+  }, [nfcEvent, navigate, send, state, tagTypeMap, resolvedClientId, resolvedClientKey]);
 
   const handleReset = () => {
     // 単純な画面リロードでキャッシュも含めて初期化
