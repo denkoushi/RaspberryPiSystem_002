@@ -135,14 +135,14 @@ export function KioskRiggingBorrowPage() {
   }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey, navigate, returnPath]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
       <Card>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <h2 className="text-xl font-semibold">吊具 持出</h2>
             <p className="text-sm text-white/70">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+          <div className="grid gap-4 lg:grid-cols-[2.5fr,1fr]">
             <div className="flex flex-col gap-3">
               <div className="rounded-md border border-white/10 bg-white/5 p-3">
                 <p className="text-sm font-semibold text-amber-200">点検見本（確認のみ）</p>
