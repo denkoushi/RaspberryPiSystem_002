@@ -103,7 +103,17 @@ export function KioskLayout() {
               </div>
             )}
             <nav className="space-x-2">
-              <NavLink to="/kiosk" className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}>
+              <NavLink
+                to="/kiosk"
+                className={() => {
+                  // 持出タブ: /kiosk, /kiosk/tag, /kiosk/photo でアクティブ
+                  const isBorrowActive =
+                    location.pathname === '/kiosk' ||
+                    location.pathname === '/kiosk/tag' ||
+                    location.pathname === '/kiosk/photo';
+                  return isBorrowActive ? `${navLink} bg-emerald-500` : navLink;
+                }}
+              >
                 持出
               </NavLink>
               <NavLink
