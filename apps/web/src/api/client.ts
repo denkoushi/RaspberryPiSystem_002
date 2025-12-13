@@ -108,7 +108,7 @@ export function getWebSocketUrl(path: string) {
   return `${wsBase}${path}`;
 }
 
-export async function loginRequest(body: { username: string; password: string }) {
+export async function loginRequest(body: { username: string; password: string; totpCode?: string; backupCode?: string }) {
   const { data } = await api.post<AuthResponse>('/auth/login', body);
   return data;
 }

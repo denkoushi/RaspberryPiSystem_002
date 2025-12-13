@@ -3,19 +3,36 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
-import { signAccessToken, signRefreshToken } from '../lib/auth.js';
+import { authorizeRoles, authenticate, signAccessToken, signRefreshToken, type JwtPayload } from '../lib/auth.js';
+import { generateBackupCodes, generateTotpSecret, hashBackupCodes, matchAndConsumeBackupCode, verifyTotpCode } from '../lib/mfa.js';
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import type { JwtPayload } from '../lib/auth.js';
+import { authorizeRoles, authenticate } from '../lib/auth.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
-  password: z.string().min(1)
+  password: z.string().min(1),
+  totpCode: z.string().optional(),
+  backupCode: z.string().optional()
 });
 
 const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1)
+});
+
+const mfaInitiateSchema = z.object({
+  // no input; reserved for future options
+});
+
+const mfaActivateSchema = z.object({
+  secret: z.string().min(10),
+  code: z.string().min(6),
+  backupCodes: z.array(z.string().min(4)).min(1)
+});
+
+const mfaDisableSchema = z.object({
+  password: z.string().min(1)
 });
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -35,6 +52,26 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!ok) {
       throw new ApiError(401, 'ユーザー名またはパスワードが違います');
     }
+
+    if (user.mfaEnabled) {
+      const totpOk = user.totpSecret ? verifyTotpCode(user.totpSecret, body.totpCode ?? '') : false;
+      let backupOk = false;
+      let remainingCodes = user.mfaBackupCodes;
+      if (!totpOk && user.mfaBackupCodes.length > 0) {
+        const result = await matchAndConsumeBackupCode(user.mfaBackupCodes, body.backupCode);
+        backupOk = result.ok;
+        remainingCodes = result.remaining;
+        if (backupOk) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { mfaBackupCodes: remainingCodes }
+          });
+        }
+      }
+      if (!totpOk && !backupOk) {
+        throw new ApiError(401, 'MFAコードが必要です');
+      }
+    }
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
     return {
@@ -43,7 +80,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        mfaEnabled: user.mfaEnabled
       }
     };
   });
@@ -67,7 +105,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         user: {
           id: user.id,
           username: user.username,
-          role: user.role
+          role: user.role,
+          mfaEnabled: user.mfaEnabled
         }
       };
     } catch (error) {
@@ -76,5 +115,55 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       }
       throw error;
     }
+  });
+
+  // MFA: 初期化（シークレット/バックアップコード払い出し）
+  app.post('/auth/mfa/initiate', { preHandler: authorizeRoles('ADMIN', 'MANAGER') }, async (request) => {
+    mfaInitiateSchema.parse(request.body ?? {});
+    const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
+    if (!user) throw new ApiError(401, 'ユーザーが見つかりません');
+    const secret = generateTotpSecret();
+    const backupCodes = generateBackupCodes(10);
+    const otpauthUrl = `otpauth://totp/RaspberryPiSystem:${encodeURIComponent(user.username)}?secret=${secret}&issuer=RaspberryPiSystem`;
+    return { secret, otpauthUrl, backupCodes };
+  });
+
+  // MFA: 有効化
+  app.post('/auth/mfa/activate', { preHandler: authorizeRoles('ADMIN', 'MANAGER') }, async (request) => {
+    const body = mfaActivateSchema.parse(request.body);
+    const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
+    if (!user) throw new ApiError(401, 'ユーザーが見つかりません');
+    const ok = verifyTotpCode(body.secret, body.code);
+    if (!ok) {
+      throw new ApiError(400, 'MFAコードが正しくありません');
+    }
+    const hashedCodes = await hashBackupCodes(body.backupCodes);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaEnabled: true,
+        totpSecret: body.secret,
+        mfaBackupCodes: hashedCodes
+      }
+    });
+    return { backupCodes: body.backupCodes };
+  });
+
+  // MFA: 無効化
+  app.post('/auth/mfa/disable', { preHandler: authenticate }, async (request) => {
+    const body = mfaDisableSchema.parse(request.body);
+    const user = await prisma.user.findUnique({ where: { id: request.user!.id } });
+    if (!user) throw new ApiError(401, 'ユーザーが見つかりません');
+    const ok = await bcrypt.compare(body.password, user.passwordHash);
+    if (!ok) throw new ApiError(401, 'パスワードが違います');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaEnabled: false,
+        totpSecret: null,
+        mfaBackupCodes: []
+      }
+    });
+    return { success: true };
   });
 }

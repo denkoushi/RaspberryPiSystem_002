@@ -9,7 +9,7 @@ interface AuthState {
   user: AuthResponse['user'] | null;
   token: string | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, opts?: { totpCode?: string; backupCode?: string }) => Promise<void>;
   logout: () => void;
 }
 
@@ -47,10 +47,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [token]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, opts?: { totpCode?: string; backupCode?: string }) => {
     setLoading(true);
     try {
-      const response = await loginRequest({ username, password });
+      const response = await loginRequest({ username, password, totpCode: opts?.totpCode, backupCode: opts?.backupCode });
       setToken(response.accessToken);
       setUser(response.user);
       localStorage.setItem(
