@@ -2082,3 +2082,203 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
 - `apps/api/src/lib/auth.ts`（`authorizeRoles`関数）
 
 ---
+
+### [KB-094] Ansibleデプロイ時の`group_vars/all.yml`の`network_mode`設定がリポジトリ更新で失われる問題
+
+**EXEC_PLAN.md参照**: デプロイプロセス改善（2025-12-13）
+
+**事象**: 
+- Pi5上の`group_vars/all.yml`の`network_mode`を`tailscale`に手動変更しても、Ansibleデプロイ時に`local`に戻る
+- リモートアクセス環境（自宅ネットワーク）でデプロイすると、Pi4やPi3への接続が失敗する（`ssh: connect to host 192.168.x.x port 22: Connection timed out`）
+
+**要因**: 
+- `group_vars/all.yml`はGit管理されているファイル
+- Ansibleの`common : Sync repository to desired state`タスクが`git reset --hard {{ repo_version }}`を実行し、ローカルの変更（`network_mode: "tailscale"`）を上書きする
+- リポジトリのデフォルト値が`network_mode: "local"`のため、デプロイのたびに設定がリセットされる
+
+**問題のコード**:
+```yaml
+# infrastructure/ansible/roles/common/tasks/main.yml
+- name: Sync repository to desired state (with retries)
+  git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_path }}"
+    version: "{{ repo_version }}"
+    force: yes
+  register: git_sync_result
+  retries: 3
+  until: git_sync_result is succeeded
+  delay: 5
+
+- name: Reset repository to desired branch
+  command: git reset --hard {{ repo_version | quote }}
+  args:
+    chdir: "{{ repo_path }}"
+```
+
+**有効だった対策**: 
+- ✅ **デプロイスクリプトに自動チェック機能を追加**（2025-12-13）: `scripts/update-all-clients.sh`に`check_network_mode()`関数を追加し、デプロイ前に`network_mode`を確認・警告
+- ✅ **手動修正コマンドの提供**: デプロイ前に`ssh ${REMOTE_HOST} "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"`で設定を変更
+- ✅ **ヘルスチェック前の再確認を標準化**: デプロイ後のgit syncで`network_mode`が戻る場合があるため、ヘルスチェック実行前にも再確認する運用を追加（ヘルスチェックがローカルIPに向かわないようにする）
+- ✅ **ローカルIPは都度取得**: 例示の`192.168.x.x`を固定値で使わず、毎回`hostname -I`等で実IPを取得して`group_vars/all.yml`を更新する
+
+**標準プロセス**:
+1. **デプロイ前の確認**:
+   ```bash
+   # Pi5上のnetwork_modeを確認
+   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   
+   # リモートアクセス環境の場合はtailscaleに変更
+   ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ```
+
+2. **デプロイ実行**:
+   ```bash
+   # update-all-clients.shが自動的にnetwork_modeをチェック（警告表示）
+   ./scripts/update-all-clients.sh main
+   ```
+
+3. **デプロイ後の確認**:
+   ```bash
+   # network_modeが正しく設定されているか確認
+   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ```
+
+**学んだこと**: 
+- Git管理されている設定ファイルは、`git reset --hard`でローカル変更が失われる
+- 環境依存の設定（`network_mode`）は、リポジトリのデフォルト値と実際の環境が異なる場合、デプロイのたびに再設定が必要
+- デプロイスクリプトに自動チェック機能を追加することで、設定ミスを事前に検出できる
+
+**解決状況**: ⚠️ **部分的に解決**（2025-12-13）
+- デプロイスクリプトに自動チェック機能を追加済み
+- 根本的な解決（`group_vars/all.yml`をGit管理外にする、または環境変数化）は今後の課題
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml`（`network_mode`設定）
+- `infrastructure/ansible/roles/common/tasks/main.yml`（`Sync repository`タスク）
+- `scripts/update-all-clients.sh`（`check_network_mode()`関数）
+- `docs/guides/deployment.md`（デプロイ前チェックリスト）
+
+---
+
+### [KB-095] Pi4デプロイ時のファイルが見つからないエラーと権限問題
+
+**EXEC_PLAN.md参照**: デプロイプロセス改善（2025-12-13）
+
+**事象**: 
+- Pi4へのAnsibleデプロイ時に`Source /opt/RaspberryPiSystem_002/clients/status-agent/status-agent.service not found`エラーが発生
+- `Permission denied`エラーが発生し、Git操作が失敗する
+
+**要因**: 
+- Pi4上のリポジトリが古く（302コミット遅れ）、ファイル構造が変わっていた
+- `/opt/RaspberryPiSystem_002`ディレクトリの所有者が`tools03`ユーザーではなく、rootや他のユーザーになっていた
+- 古いリポジトリには`clients/status-agent/status-agent.service`ファイルが存在しない（削除されたか、パスが変更された）
+
+**有効だった対策**: 
+- ✅ **権限の修正**: `sudo chown -R tools03:tools03 /opt/RaspberryPiSystem_002`で所有者を修正
+- ✅ **リポジトリの強制更新**: `git reset --hard origin/main && git clean -fd && git pull origin main`でリポジトリを最新状態に強制更新
+
+**標準プロセス**:
+1. **デプロイ前の確認**:
+   ```bash
+   # Pi4のリポジトリ状態を確認
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.4 'cd /opt/RaspberryPiSystem_002 && git log --oneline -5'"
+   
+   # 権限を確認
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.4 'ls -ld /opt/RaspberryPiSystem_002'"
+   ```
+
+2. **問題が発生した場合の修正**:
+   ```bash
+   # Pi4にSSH接続（Pi5経由）
+   ssh denkon5sd02@100.106.158.2
+   ssh tools03@100.106.158.4
+   
+   # 権限を修正
+   sudo chown -R tools03:tools03 /opt/RaspberryPiSystem_002
+   
+   # リポジトリを強制更新
+   cd /opt/RaspberryPiSystem_002
+   git reset --hard origin/main
+   git clean -fd
+   git pull origin main
+   ```
+
+3. **デプロイ再実行**:
+   ```bash
+   # Macから再デプロイ
+   ./scripts/update-all-clients.sh main
+   ```
+
+**学んだこと**: 
+- クライアントデバイスのリポジトリが古いと、ファイル構造の変更によりデプロイが失敗する
+- 権限問題は、手動操作や過去のデプロイ失敗により発生する可能性がある
+- 定期的なデプロイでリポジトリの遅れを防ぐことが重要
+
+**解決状況**: ✅ **解決済み**（2025-12-13）
+
+**関連ファイル**: 
+- `infrastructure/ansible/roles/common/tasks/main.yml`（リポジトリ同期タスク）
+- `docs/guides/deployment.md`（デプロイ前チェックリスト）
+
+---
+
+### [KB-096] Pi3デプロイに時間がかかる問題（リポジトリの遅れ・メモリ制約）
+
+**EXEC_PLAN.md参照**: デプロイプロセス改善（2025-12-13）
+
+**事象**: 
+- Pi3へのAnsibleデプロイに10-15分以上かかる
+- デプロイ中にPi3へのSSH接続がタイムアウトする
+- ログに`git reset --hard`や`git clean`の操作が長時間実行されている
+
+**要因**: 
+- Pi3上のリポジトリが302コミット遅れている（`git log --oneline | wc -l`で確認）
+- Pi3のメモリが少ない（1GB、実質416MB、利用可能120MB程度）
+- `git reset --hard`や`git clean -fd`などの操作がメモリを消費し、処理が遅くなる
+- サイネージサービスが起動している場合、メモリ不足でハングする可能性がある（KB-089参照）
+
+**有効だった対策**: 
+- ✅ **十分な待機時間の確保**: Pi3デプロイには15-20分の時間を確保する
+- ✅ **サイネージサービスの停止**: デプロイ前に`sudo systemctl stop signage-lite.service signage-lite-update.timer`でサービスを停止（KB-089参照）
+- ✅ **定期的なデプロイ**: リポジトリの遅れを防ぐため、定期的にデプロイを実行する
+
+**標準プロセス**:
+1. **デプロイ前の準備**（KB-089参照）:
+   ```bash
+   # Pi3サイネージサービスを停止・無効化
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.3 'sudo systemctl stop signage-lite.service signage-lite-update.timer'"
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.3 'sudo systemctl disable signage-lite.service signage-lite-update.timer'"
+   
+   # メモリ使用状況を確認（120MB以上空きがあることを確認）
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.3 'free -m'"
+   ```
+
+2. **デプロイ実行**:
+   ```bash
+   # Pi3デプロイには15-20分の時間を確保
+   ./scripts/update-all-clients.sh main
+   ```
+
+3. **デプロイ後の確認**:
+   ```bash
+   # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
+   # サイネージサービスを再有効化・再起動
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.3 'sudo systemctl enable signage-lite.service signage-lite-update.timer'"
+   ssh denkon5sd02@100.106.158.2 "ssh tools03@100.106.158.3 'sudo systemctl start signage-lite.service'"
+   ```
+
+**学んだこと**: 
+- リポジトリが大幅に遅れている場合、デプロイに時間がかかる
+- Pi3のようなリソース制約のあるデバイスでは、メモリ使用量に注意が必要
+- サイネージサービスが起動している状態でのデプロイは、メモリ不足でハングするリスクがある
+
+**解決状況**: ⚠️ **部分的に解決**（2025-12-13）
+- 標準プロセスを確立済み
+- 定期的なデプロイでリポジトリの遅れを防ぐことが重要
+
+**関連ファイル**: 
+- `docs/guides/deployment.md`（デプロイ前チェックリスト、Pi3サイネージサービス停止手順）
+- `docs/knowledge-base/infrastructure.md`（KB-089: Pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング）
+
+---

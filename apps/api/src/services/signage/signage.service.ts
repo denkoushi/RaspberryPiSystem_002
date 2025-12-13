@@ -237,7 +237,7 @@ export class SignageService {
           ? (loan.measuringInstrument?.managementNumber ?? '')
           : isRigging
             ? (loan.riggingGear?.managementNumber ?? '')
-            : (loan.item?.itemCode ?? loan.itemId ?? '');
+          : (loan.item?.itemCode ?? loan.itemId ?? '');
         const borrowedAt = loan.borrowedAt?.toISOString() ?? null;
         const now = new Date();
         const borrowedDate = loan.borrowedAt ? new Date(loan.borrowedAt) : null;
@@ -249,7 +249,7 @@ export class SignageService {
           ? (loan.measuringInstrument?.name ?? '計測機器')
           : isRigging
             ? (loan.riggingGear?.name ?? '吊具')
-            : (loan.item?.name ?? (loan.photoUrl ? '写真撮影モード' : '持出中アイテム'));
+          : (loan.item?.name ?? (loan.photoUrl ? '写真撮影モード' : '持出中アイテム'));
         
         return {
           id: loan.id,

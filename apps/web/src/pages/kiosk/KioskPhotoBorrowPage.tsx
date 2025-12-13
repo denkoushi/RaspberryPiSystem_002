@@ -250,14 +250,14 @@ export function KioskPhotoBorrowPage() {
       }
 
       // 計測機器タグでない場合、従業員タグとして処理を継続（カメラ起動）
-      const currentUid = nfcEvent.uid; // クロージャで値を保持
-      setEmployeeTagUid(currentUid);
+    const currentUid = nfcEvent.uid; // クロージャで値を保持
+    setEmployeeTagUid(currentUid);
       setIsCapturing(true);
-      setError(null);
-      setSuccessLoan(null);
+    setError(null);
+    setSuccessLoan(null);
 
       // カメラで撮影してからAPIを呼び出す
-      (async () => {
+    (async () => {
       // カメラで撮影（3回までリトライ）
       // スキャン時のみカメラを起動して撮影（CPU負荷削減のため）
       let photoData: string;
