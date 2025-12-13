@@ -151,7 +151,7 @@ export class SignageRenderer {
 
   private async buildToolsScreenSvg(tools: ToolItem[], metricsText?: string | null): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = 0;
+    const outerPadding = Math.round(4 * scale); // 最小限の外枠余白で上貼り付き回避
     const gradientId = this.generateId('bg');
     const panelWidth = WIDTH - outerPadding * 2;
     const panelHeight = HEIGHT - outerPadding * 2;
@@ -229,10 +229,10 @@ export class SignageRenderer {
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
     const panelRadius = Math.round(10 * scale);
-    const leftInnerPadding = Math.round(18 * scale);   // 左ペイン: タイトルとカードにしっかり余白
-    const rightInnerPadding = Math.round(4 * scale);   // 右ペイン: 最大限詰めて表示領域確保
-    const leftHeaderHeight = Math.round(32 * scale);   // 左ペイン: タイトル（フォント20*scale）の下端からカードまでの余白
-    const rightHeaderHeight = Math.round(28 * scale);   // 右ペイン: タイトル（フォント20*scale）の下端からPDFまでの最小余白（タイトルy=24*scale + フォント20*scaleの下端≈28*scale）
+    const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
+    const rightInnerPadding = Math.round(10 * scale);  // 右ペイン: タイトルが枠に張り付かない程度の余白
+    const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
+    const rightHeaderHeight = Math.round(42 * scale);  // 右ペイン: タイトル下からPDFまで十分な間隔
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
@@ -275,7 +275,7 @@ export class SignageRenderer {
 
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-      ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + rightHeaderHeight + Math.round(8 * scale)}"
+        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + rightHeaderHeight + Math.round(8 * scale)}"
             font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
@@ -296,7 +296,7 @@ export class SignageRenderer {
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(20 * scale)}"
+          <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(22 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具管理データ
           </text>
@@ -309,7 +309,7 @@ export class SignageRenderer {
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(20 * scale)}"
+          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(22 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             PDF表示
           </text>
