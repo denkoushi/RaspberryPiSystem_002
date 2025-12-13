@@ -151,15 +151,16 @@ export class SignageRenderer {
 
   private async buildToolsScreenSvg(tools: ToolItem[], metricsText?: string | null): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = Math.round(42 * scale);
+    const outerPadding = 0;
     const accentColor = '#34d399';
     const gradientId = this.generateId('bg');
     const panelWidth = WIDTH - outerPadding * 2;
     const panelHeight = HEIGHT - outerPadding * 2;
     const panelX = outerPadding;
     const panelY = outerPadding;
-    const headerHeight = Math.round(64 * scale);
-    const innerPadding = Math.round(30 * scale);
+    const headerHeight = Math.round(28 * scale);
+    const innerPadding = Math.round(10 * scale);
+    const panelRadius = Math.round(12 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: panelX + innerPadding,
@@ -175,14 +176,14 @@ export class SignageRenderer {
     const overflowBadge =
       overflowCount > 0
         ? `<text x="${panelX + panelWidth - innerPadding}" y="${panelY + panelHeight - innerPadding / 2}"
-            text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#fcd34d" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.round(18 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
 
     const metricsElement = metricsText
       ? `<text x="${panelX + panelWidth - innerPadding}" y="${panelY + innerPadding}"
-          text-anchor="end" font-size="${Math.round(24 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+          text-anchor="end" font-size="${Math.round(18 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(metricsText)}
         </text>`
       : '';
@@ -199,15 +200,10 @@ export class SignageRenderer {
         <rect width="100%" height="100%" fill="url(#${gradientId})" />
 
         <g>
-          <text x="${panelX}" y="${panelY - Math.round(8 * scale)}" fill="${accentColor}" font-size="${Math.round(
-            16 * scale
-          )}" letter-spacing="${Math.round(scale * 5)}" font-family="sans-serif">TOOLS OVERVIEW</text>
-          <rect x="${panelX}" y="${panelY}" rx="${Math.round(32 * scale)}" ry="${Math.round(
-      32 * scale
-    )}" width="${panelWidth}" height="${panelHeight}"
+          <rect x="${panelX}" y="${panelY}" rx="${panelRadius}" ry="${panelRadius}" width="${panelWidth}" height="${panelHeight}"
             fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" />
 
-          <text x="${panelX + innerPadding}" y="${panelY + innerPadding + Math.round(30 * scale)}"
+          <text x="${panelX + innerPadding}" y="${panelY + innerPadding + Math.round(18 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具在庫状況
           </text>
@@ -225,17 +221,17 @@ export class SignageRenderer {
     metricsText?: string | null
   ): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = Math.round(30 * scale);
-    const panelGap = Math.round(20 * scale);
+    const outerPadding = 0;
+    const panelGap = Math.round(8 * scale);
     const gradientId = this.generateId('bg');
     const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.58);
     const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
     const panelHeight = HEIGHT - outerPadding * 2;
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
-    const panelRadius = Math.round(22 * scale);
-    const innerPadding = Math.round(26 * scale);
-    const headerHeight = Math.round(64 * scale);
+    const panelRadius = Math.round(10 * scale);
+    const innerPadding = Math.round(10 * scale);
+    const headerHeight = Math.round(22 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + innerPadding,
@@ -251,7 +247,7 @@ export class SignageRenderer {
     const overflowBadge =
       overflowCount > 0
         ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + panelHeight - innerPadding}"
-            text-anchor="end" font-size="${Math.round(20 * scale)}" fill="#fcd34d" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
@@ -271,10 +267,18 @@ export class SignageRenderer {
     const metricsElement = metricsText
       ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + innerPadding + Math.round(
           28 * scale
-        )}" text-anchor="end" font-size="${Math.round(20 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+        )}" text-anchor="end" font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(metricsText)}
         </text>`
       : '';
+
+    const fileNameOverlay =
+      pdfOptions?.title && pdfOptions.title.trim().length > 0
+        ? `<text x="${rightX + innerPadding + Math.round(4 * scale)}" y="${outerPadding + innerPadding + headerHeight + Math.round(12 * scale)}"
+            font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            ${this.escapeXml(pdfOptions.title)}
+          </text>`
+        : '';
 
     return `
       <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
@@ -291,12 +295,9 @@ export class SignageRenderer {
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(26 * scale)}"
-            font-size="${Math.round(18 * scale)}" fill="#6ee7b7" letter-spacing="${Math.round(scale * 4)}"
-            font-family="sans-serif">TOOLS</text>
-          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(56 * scale)}"
-            font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            工具データ
+          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(18 * scale)}"
+            font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+            工具管理データ
           </text>
           ${metricsElement}
           ${cardsSvg}
@@ -307,15 +308,13 @@ export class SignageRenderer {
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(26 * scale)}"
-            font-size="${Math.round(18 * scale)}" fill="#93c5fd" letter-spacing="${Math.round(scale * 4)}"
-            font-family="sans-serif">DOCUMENT</text>
-          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(56 * scale)}"
-            font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            ${this.escapeXml(pdfOptions?.title ?? 'PDF表示')}
+          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(18 * scale)}"
+            font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+            PDF表示
           </text>
           ${slideInfo}
           ${pdfContent}
+          ${fileNameOverlay}
         </g>
       </svg>
     `;
@@ -323,17 +322,17 @@ export class SignageRenderer {
 
   private buildPdfScreenSvg(imageBase64: string, options?: PdfRenderOptions): string {
     const scale = WIDTH / 1920;
-    const outerPadding = Math.round(60 * scale);
+    const outerPadding = 0;
     const gradientId = this.generateId('bg');
     const panelWidth = WIDTH - outerPadding * 2;
     const panelHeight = HEIGHT - outerPadding * 2;
-    const panelRadius = Math.round(32 * scale);
-    const innerPadding = Math.round(40 * scale);
+    const panelRadius = Math.round(10 * scale);
+    const innerPadding = Math.round(12 * scale);
 
     const slideInfo =
       options?.slideInterval && options.displayMode === 'SLIDESHOW'
         ? `<text x="${outerPadding + panelWidth - innerPadding}" y="${outerPadding + innerPadding}"
-            text-anchor="end" font-size="${Math.round(26 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.round(12 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${options.slideInterval}s ごとに切替
           </text>`
         : '';
@@ -351,18 +350,14 @@ export class SignageRenderer {
         <rect x="${outerPadding}" y="${outerPadding}" width="${panelWidth}" height="${panelHeight}"
           rx="${panelRadius}" ry="${panelRadius}" fill="rgba(15,23,42,0.65)" stroke="rgba(255,255,255,0.08)" />
 
-        <text x="${outerPadding}" y="${outerPadding - Math.round(8 * scale)}"
-          fill="#a5b4fc" font-size="${Math.round(18 * scale)}" letter-spacing="${Math.round(scale * 6)}"
-          font-family="sans-serif">DOCUMENT</text>
-
-        <text x="${outerPadding + innerPadding}" y="${outerPadding + innerPadding + Math.round(36 * scale)}"
-          font-size="${Math.round(24 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+        <text x="${outerPadding + innerPadding}" y="${outerPadding + innerPadding + Math.round(18 * scale)}"
+          font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
           ${this.escapeXml(options?.title ?? 'PDF表示')}
         </text>
         ${slideInfo}
 
-        <image x="${outerPadding + innerPadding}" y="${outerPadding + innerPadding + Math.round(70 * scale)}"
-          width="${panelWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - Math.round(70 * scale)}"
+        <image x="${outerPadding + innerPadding}" y="${outerPadding + innerPadding + Math.round(32 * scale)}"
+          width="${panelWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - Math.round(32 * scale)}"
           preserveAspectRatio="xMidYMid meet"
           href="${imageBase64}" />
       </svg>
