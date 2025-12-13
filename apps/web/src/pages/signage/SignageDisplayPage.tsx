@@ -7,11 +7,8 @@ import type { SignageContentResponse } from '../../api/client';
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 
-const screenClass =
-  'min-h-screen w-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white';
-const glassPanelClass =
-  'rounded-[32px] border border-white/5 bg-white/5 px-6 py-6 shadow-[0_25px_90px_rgba(2,6,23,0.6)] backdrop-blur-xl';
-const accentTextClass = 'text-[0.65rem] uppercase tracking-[0.4em] text-emerald-300/80';
+const screenClass = 'min-h-screen w-screen bg-slate-950 text-white';
+const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
 
 const renderPdfImage = (src?: string, alt?: string) => {
   if (!src) {
@@ -143,7 +140,7 @@ export function SignageDisplayPage() {
   }, [content?.pdf?.pages]);
 
   const renderStateScreen = (title: string, description?: string) => (
-    <div className={`${screenClass} flex items-center justify-center p-10`}>
+  <div className={`${screenClass} flex items-center justify-center p-6`}>
       <div className="text-center">
         <p className="text-2xl font-semibold text-white">{title}</p>
         {description ? <p className="mt-2 text-base text-white/70">{description}</p> : null}
@@ -172,15 +169,14 @@ export function SignageDisplayPage() {
 
   if (content.contentType === 'TOOLS') {
     return (
-      <div className={`${screenClass} px-6 py-8`}>
-        <div className="mx-auto flex h-full max-w-[1920px] flex-col gap-6">
+      <div className={`${screenClass} px-2 py-2`}>
+        <div className="mx-auto flex h-full w-full flex-col gap-3">
           <header>
-            <p className={accentTextClass}>TOOLS OVERVIEW</p>
-            <h1 className="text-4xl font-semibold text-white">工具在庫状況</h1>
+            <h1 className="text-3xl font-semibold text-white">工具在庫状況</h1>
           </header>
-          <div className="flex-1 overflow-hidden rounded-[36px] border border-white/5 bg-slate-950/30 p-1">
+          <div className="flex-1 overflow-hidden rounded-xl border border-white/5 bg-slate-950/40 p-1">
             {content.tools && content.tools.length > 0 ? (
-              <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 overflow-y-auto rounded-[30px] p-4">
+              <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 overflow-y-auto rounded-xl p-3">
                 {content.tools.map((tool) => (
                   <ToolCard key={tool.id} tool={tool} />
                 ))}
@@ -192,10 +188,9 @@ export function SignageDisplayPage() {
             )}
           </div>
           {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
-            <section className={`${glassPanelClass} mt-4`}>
-              <div className="mb-3">
-                <p className={accentTextClass}>MEASURING INSTRUMENTS</p>
-                <h2 className="text-2xl font-semibold text-white">計測機器ステータス</h2>
+            <section className={`${panelClass} mt-2`}>
+              <div className="mb-2">
+                <h2 className="text-xl font-semibold text-white">計測機器ステータス</h2>
               </div>
               <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
                 {content.measuringInstruments.map((inst) => (
@@ -216,8 +211,8 @@ export function SignageDisplayPage() {
 
     if (content.displayMode === 'SLIDESHOW') {
       return (
-        <div className={`${screenClass} flex items-center justify-center p-8`}>
-          <div className={`${glassPanelClass} flex h-full w-full items-center justify-center`}>
+        <div className={`${screenClass} flex items-center justify-center p-4`}>
+          <div className={`${panelClass} flex h-full w-full items-center justify-center`}>
             {renderPdfImage(pdfPages[currentPdfPage], `PDF Page ${currentPdfPage + 1}`)}
           </div>
         </div>
@@ -225,8 +220,8 @@ export function SignageDisplayPage() {
     }
 
     return (
-      <div className={`${screenClass} flex items-center justify-center p-8`}>
-        <div className={`${glassPanelClass} flex h-full w-full items-center justify-center`}>
+      <div className={`${screenClass} flex items-center justify-center p-4`}>
+        <div className={`${panelClass} flex h-full w-full items-center justify-center`}>
           {renderPdfImage(pdfPages[0], 'PDF')}
         </div>
       </div>
@@ -235,16 +230,15 @@ export function SignageDisplayPage() {
 
   if (content.contentType === 'SPLIT') {
     return (
-      <div className={`${screenClass} px-6 py-8`}>
-        <div className="mx-auto grid h-full max-w-[1920px] grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
-          <section className={`flex min-h-0 flex-col gap-4 ${glassPanelClass}`}>
+      <div className={`${screenClass} px-2 py-2`}>
+        <div className="mx-auto grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[3fr_2fr]">
+          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
             <div>
-              <p className={accentTextClass}>TOOLS</p>
-              <h2 className="text-3xl font-semibold text-white">工具管理データ</h2>
+              <h2 className="text-2xl font-semibold text-white">工具管理データ</h2>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {content.tools && content.tools.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
                   {content.tools.map((tool) => (
                     <ToolCard key={tool.id} tool={tool} compact />
                   ))}
@@ -257,14 +251,13 @@ export function SignageDisplayPage() {
             </div>
           </section>
 
-          <section className={`flex min-h-0 flex-col gap-4 ${glassPanelClass}`}>
+          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
             <div>
-              <p className={accentTextClass}>INSTRUMENTS</p>
-              <h2 className="text-3xl font-semibold text-white">計測機器ステータス</h2>
+              <h2 className="text-2xl font-semibold text-white">計測機器ステータス</h2>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
                   {content.measuringInstruments.map((inst) => (
                     <InstrumentCard key={inst.id} instrument={inst} />
                   ))}
@@ -277,10 +270,12 @@ export function SignageDisplayPage() {
             </div>
           </section>
 
-          <section className={`flex min-h-0 flex-col gap-4 ${glassPanelClass}`}>
-            <div>
-              <p className={accentTextClass}>DOCUMENT</p>
-              <h2 className="text-3xl font-semibold text-white">PDF表示</h2>
+          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+            <div className="flex flex-col">
+              <h2 className="text-2xl font-semibold text-white">PDF表示</h2>
+              {content.pdf?.name ? (
+                <span className="text-xs text-white/60">{content.pdf.name}</span>
+              ) : null}
             </div>
             <div className="flex flex-1 items-center justify-center">
               {content.pdf && content.pdf.pages.length > 0 ? (
