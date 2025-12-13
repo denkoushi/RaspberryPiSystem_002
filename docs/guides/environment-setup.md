@@ -34,15 +34,15 @@ update-frequency: medium
 ```bash
 # Raspberry Pi 5で実行
 hostname -I
-# 例: 192.168.10.230
+# 出力されたIPアドレスをメモしてください
 
 # Raspberry Pi 4で実行（VNC経由など）
 hostname -I
-# 例: 192.168.10.223
+# 出力されたIPアドレスをメモしてください
 
 # Raspberry Pi 3で実行（VNC経由など）
 hostname -I
-# 例: 192.168.10.109
+# 出力されたIPアドレスをメモしてください
 ```
 
 **または、管理画面で確認**:
@@ -92,9 +92,9 @@ ssh denkon5sd02@100.106.158.2 "nano /opt/RaspberryPiSystem_002/infrastructure/an
 2. **ローカルネットワークIPの更新**（`network_mode: "local"`の場合）:
    ```yaml
    local_network:
-     raspberrypi5_ip: "192.168.10.230"  # 新しいPi5のIP
-     raspberrypi4_ip: "192.168.10.223"   # 新しいPi4のIP
-     raspberrypi3_ip: "192.168.10.109"  # 新しいPi3のIP
+     raspberrypi5_ip: "<hostname -Iで取得したPi5のIP>"
+     raspberrypi4_ip: "<hostname -Iで取得したPi4のIP>"
+     raspberrypi3_ip: "<hostname -Iで取得したPi3のIP>"
    ```
 
 3. **Tailscale IPの確認**（`network_mode: "tailscale"`の場合）:
@@ -173,15 +173,16 @@ raspberrypi
 **Pi5からPi4/3へのSSH鍵が設定されていない場合**:
 
 ```bash
-# Pi5に接続
-ssh denkon5sd02@192.168.10.230
+# Pi5に接続（実際のIPアドレスに置き換える）
+# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
+# ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
 
-# Pi5上で実行: Pi4に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@192.168.10.223
+# Pi5上で実行: Pi4に公開鍵を追加（実際のIPアドレスに置き換える）
+ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<pi4のIP>
 # パスワード入力が必要（初回のみ）
 
-# Pi5上で実行: Pi3に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@192.168.10.109
+# Pi5上で実行: Pi3に公開鍵を追加（実際のIPアドレスに置き換える）
+ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<pi3のIP>
 # パスワード入力が必要（初回のみ）
 ```
 
@@ -194,8 +195,9 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@192.168.10.109
 **Pi5上で実行**:
 
 ```bash
-# Pi5に接続
-ssh denkon5sd02@192.168.10.230
+# Pi5に接続（実際のIPアドレスに置き換える）
+# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
+# ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
 
 # Pi5上で実行: Ansible接続テスト
 cd /opt/RaspberryPiSystem_002
@@ -230,7 +232,9 @@ raspberrypi3 | SUCCESS => {
 ```bash
 # Macのターミナルで実行
 cd /Users/tsudatakashi/RaspberryPiSystem_002
-export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
+# Tailscale経由の場合（推奨）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+# ローカルネットワークの場合: export RASPI_SERVER_HOST="denkon5sd02@<pi5のIP>"
 ./scripts/update-all-clients.sh
 ```
 
@@ -338,23 +342,9 @@ ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \
 
 ### 旧方法: IPアドレスの直接変更
 
-**変更前（自宅ネットワーク）**:
-```
-ローカルIP:
-- Raspberry Pi 5: 192.168.128.131
-- Raspberry Pi 4: 192.168.128.102
-- Raspberry Pi 3: 192.168.128.152
-```
-
-**変更後（オフィスネットワーク）**:
-```
-ローカルIP:
-- Raspberry Pi 5: 192.168.10.230
-- Raspberry Pi 4: 192.168.10.223
-- Raspberry Pi 3: 192.168.10.109
-```
-
 **⚠️ 注意**: ローカルIPはネットワーク環境によって変動します。`network_mode: "tailscale"`を使用することで、ネットワーク環境に依存しないデプロイが可能です。
+
+**重要**: ローカルIPは環境ごとに異なります。実際のIPアドレスは`hostname -I`コマンドで確認してください。固定IPアドレスをドキュメントに記載しないよう注意してください。
 
 ### 実施した手順（2025-12-01）
 

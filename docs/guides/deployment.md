@@ -71,10 +71,10 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 ```
 
 **⚠️ 注意**: 
-- `network_mode`が`local`の場合、ローカルIP（`192.168.10.223`など）が使われます
-- `network_mode`が`tailscale`の場合、Tailscale IP（`100.74.144.79`など）が使われます
+- `network_mode`が`local`の場合、ローカルIPが使われます（`hostname -I`で取得した値を使用）
+- `network_mode`が`tailscale`の場合、Tailscale IPが使われます（`tailscale status`で確認）
 - 現在のネットワーク環境に応じた設定でないと、接続エラーが発生します
-- ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること（例の値をそのまま使い回さない）
+- ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
 - **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
 
 詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
