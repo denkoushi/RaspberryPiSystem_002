@@ -259,8 +259,10 @@ raspberrypi3                : ok=XX    changed=X    unreachable=0    failed=0
 
 **解決方法**:
 ```bash
-# Macから実行: sudoを使用してコピー
-cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@192.168.10.230 "sudo tee /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml > /dev/null && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
+# Macから実行: sudoを使用してコピー（実際のPi5のIPアドレスに置き換える）
+# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
+# ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
+cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@<pi5のIP> "sudo tee /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml > /dev/null && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
 ```
 
 ### 問題2: SSH接続がタイムアウトする

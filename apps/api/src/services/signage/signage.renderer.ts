@@ -152,7 +152,6 @@ export class SignageRenderer {
   private async buildToolsScreenSvg(tools: ToolItem[], metricsText?: string | null): Promise<string> {
     const scale = WIDTH / 1920;
     const outerPadding = 0;
-    const accentColor = '#34d399';
     const gradientId = this.generateId('bg');
     const panelWidth = WIDTH - outerPadding * 2;
     const panelHeight = HEIGHT - outerPadding * 2;

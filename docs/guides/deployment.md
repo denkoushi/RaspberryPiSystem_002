@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-13
+最終更新: 2025-12-13（KB-097反映）
 
 ## 概要
 
@@ -178,23 +178,31 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（必須）
 
+**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+
 ```bash
-# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化（自動再起動を防止）
-ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
-ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
+# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer'"
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer'"
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
 
 # sudo権限の前提
 # signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
 
 # メモリ使用状況を確認（120MB以上空きがあることを確認）
-ssh signageras3@<pi3_ip> 'free -m'
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
+
+# プロセスが完全に停止していることを確認
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep signage-lite | grep -v grep'"
+# → 何も表示されないことを確認
 
 # Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
-ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
 ```
 
 **重要**: 
-- `systemctl disable`を実行しないと、デプロイ中に`signage-lite-update.timer`がサイネージサービスを自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
+- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 - Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
@@ -252,16 +260,17 @@ ANSIBLE_REPO_VERSION=feature/rigging-management \
 ```bash
 # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
 
-# サイネージサービスを再有効化・再起動
-ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
-ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
-
+# 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
 # サービスが正常に動作していることを確認
-ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"
+# → active を確認（Ansibleが自動的に再有効化している）
 
 # 画像が更新されていることを確認
-ssh signageras3@<pi3_ip> 'ls -lh /var/cache/signage/current.jpg'
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache/signage/current.jpg'"
 ```
+
+**重要**: 
+- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 **トラブルシューティング**:
 - **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
@@ -273,6 +282,7 @@ ssh signageras3@<pi3_ip> 'ls -lh /var/cache/signage/current.jpg'
 - [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
 - [KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
 - [KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
+- [KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
 
 ## デプロイ方法（詳細）
 
@@ -565,10 +575,15 @@ NETWORK_MODE=tailscale \
 
 6. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
    ```bash
-   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer"'
+   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service"'
+   
+   # プロセスが完全に停止していることを確認
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ps aux | grep signage-lite | grep -v grep"'
+   # → 何も表示されないことを確認
    ```
-   - **重要**: `systemctl disable`を実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
+   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
    - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 7. **ローカルIPを使う場合の事前確認**
    ```bash
@@ -605,18 +620,17 @@ NETWORK_MODE=tailscale \
    # → active を確認
    ```
 
-5. **Pi3サイネージサービスの再有効化・再起動**（デプロイ前に停止した場合）
+5. **Pi3サイネージサービスの確認**（デプロイ前に停止した場合）
    ```bash
-   # サイネージサービスを再有効化・再起動
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl enable signage-lite.service signage-lite-update.timer && sudo systemctl start signage-lite.service signage-lite-update.timer"'
-   
+   # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
    # サービスが正常に動作していることを確認
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "systemctl is-active signage-lite.service"'
-   # → active を確認
+   # → active を確認（Ansibleが自動的に再有効化している）
    
    # 画像が更新されていることを確認
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
    ```
+   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 ### Tailscale IP一覧
 

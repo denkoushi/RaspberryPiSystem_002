@@ -1951,6 +1951,7 @@ const textX = x + textAreaX;
 1. **自動再起動の防止**: `systemctl stop`だけでは不十分。`systemctl disable`で自動再起動を防止する必要がある
 2. **十分な待機時間**: Pi3デプロイは10-15分かかる可能性がある。プロセスをkillせずに完了を待つ
 3. **標準手順の徹底**: KB-086/KB-089の標準手順を必ず実行する。特にPi3デプロイ時は`systemctl disable`を忘れない
+4. **注意**: `systemctl disable`だけでは不十分な場合がある。`systemctl mask --runtime`も必要（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 **解決状況**: ✅ **解決済み**（2025-12-07）
 
@@ -1958,6 +1959,8 @@ const textX = x + textAreaX;
 - `scripts/deploy/deploy-all.sh`（標準手順参照を追加）
 - `docs/guides/deployment.md`（標準プロセスの更新）
 - `docs/knowledge-base/infrastructure.md`（KB-086更新、KB-089追加）
+
+**注意**: KB-089の対策（`systemctl disable`）だけでは不十分な場合があります。`systemctl mask --runtime`も必要です（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
 
 ---
 
@@ -2279,6 +2282,83 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
 
 **関連ファイル**: 
 - `docs/guides/deployment.md`（デプロイ前チェックリスト、Pi3サイネージサービス停止手順）
-- `docs/knowledge-base/infrastructure.md`（KB-089: Pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング）
+- `docs/knowledge-base/infrastructure.md`（KB-089: Pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング、KB-097: systemctl maskの必要性）
+
+---
+
+### [KB-097] Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
+
+**EXEC_PLAN.md参照**: Pi3デプロイプロセス改善（2025-12-13）
+
+**事象**: 
+- Pi3デプロイ中に`signage-lite.service`が自動再起動し、リソースを奪う
+- `systemctl disable`だけでは不十分で、デプロイ中にサービスが復帰する
+- デプロイが30分以上経過しても完了しない
+
+**要因**: 
+- `signage-lite.service`が`enabled`のままだと、systemdが自動的に再起動を試みる
+- `systemctl disable`だけでは、既に`enabled`状態のサービスがデプロイ中に再起動される可能性がある
+- `status-agent.timer`も`enabled`のままで、関連サービスが自動起動する可能性がある
+- Pi3固有の問題（Pi4では発生しない）
+
+**調査結果**:
+```bash
+# デプロイ中にサービス状態を確認
+systemctl is-active signage-lite.service  # → active（自動再起動していた）
+systemctl is-enabled signage-lite.service  # → enabled（無効化されていなかった）
+systemctl is-enabled signage-lite-update.timer  # → enabled
+systemctl is-enabled status-agent.timer  # → enabled（これも無効化が必要）
+```
+
+**有効だった対策**: 
+- ✅ **`systemctl mask --runtime`の追加**: `systemctl disable`に加えて`systemctl mask --runtime`を実行することで、デプロイ中の自動再起動を完全に防止
+- ✅ **`status-agent.timer`も無効化**: `signage-lite.service`だけでなく、`status-agent.timer`も無効化対象に追加
+- ✅ **デプロイ完了後はAnsibleが自動再有効化**: デプロイ後は手動で再有効化する必要がない（Ansibleが自動的に行う）
+
+**標準プロセス**（KB-089を更新）:
+1. **デプロイ前の準備**（完全な停止・無効化・マスク）:
+   ```bash
+   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer'"
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer'"
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
+   
+   # メモリ使用状況を確認（120MB以上空きがあることを確認）
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
+   
+   # プロセスが完全に停止していることを確認
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep signage-lite | grep -v grep'"
+   # → 何も表示されないことを確認
+   
+   # Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
+   ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
+   ```
+
+2. **デプロイ実行**:
+   ```bash
+   # Pi5からPi3へデプロイ
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=main ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3"
+   ```
+
+3. **デプロイ後の確認**:
+   ```bash
+   # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
+   # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"
+   # → active を確認（Ansibleが自動的に再有効化している）
+   ```
+
+**学んだこと**: 
+1. **`systemctl disable`だけでは不十分**: `enabled`状態のサービスは、デプロイ中に自動再起動する可能性がある
+2. **`systemctl mask --runtime`の重要性**: デプロイ中の自動再起動を完全に防止するには、`mask --runtime`が必要
+3. **関連タイマーも無効化**: `signage-lite.service`だけでなく、`status-agent.timer`も無効化対象に追加する必要がある
+4. **Pi3固有の問題**: Pi4では発生しないPi3固有の問題であることを認識する
+5. **Ansibleの自動再有効化**: デプロイ完了後はAnsibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
+
+**解決状況**: ✅ **解決済み**（2025-12-13）
+
+**関連ファイル**:
+- `docs/guides/deployment.md`（Pi3デプロイ前準備手順の更新）
+- `docs/knowledge-base/infrastructure.md`（KB-089更新、KB-097追加）
 
 ---

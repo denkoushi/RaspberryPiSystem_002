@@ -2,10 +2,10 @@ import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 
 import { useClients, useClientMutations, useClientStatuses, useClientLogs } from '../../api/hooks';
+import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
-import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 
 import type { ClientDevice, ClientLogLevel } from '../../api/client';
 
