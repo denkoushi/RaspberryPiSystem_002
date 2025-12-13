@@ -10,6 +10,10 @@
 
 ### 🆕 最新アップデート（2025-12-13）
 
+- **✅ Phase 9 セキュリティ強化完了**: インターネット接続時の追加防御機能を実装完了。管理画面IP制限、アラート外部通知、DockerイメージTrivyスキャン、レート制限再導入、ログ長期保持（52週）、インシデント対応手順の明文化を完了。CIでの脆弱性スキャンも統合済み。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/incident-response.md](./security/incident-response.md) を参照。
+
+### 🆕 最新アップデート（2025-12-13）
+
 - **✅ サイネージデザイン改善（レイアウト/座標再調整）**: サーバー側レンダラーで余白を最小化しつつ、右ペインのタイトル・ファイル名とPDF表示領域の重なりを解消。外枠余白を極小化、タイトル・ファイル名のベースラインオフセットを揃え、PDFの黒地を拡大。詳細は [modules/signage/README.md](./modules/signage/README.md) / [knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない](./knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない) を参照。
 
 - **✅ サイネージタブ内にPDFアップロード機能を統合**: 管理コンソールの「サイネージ」タブ（`/admin/signage/schedules`）にPDFアップロード・管理機能を追加。スケジュール設定画面と同じページでPDFをアップロード・管理できるようになり、ワークフローが改善されました。`SignagePdfManager`コンポーネントを新規作成して共通化し、サイネージタブとクライアント端末管理ページの両方で使用可能に。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
@@ -140,6 +144,7 @@
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
+| **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
@@ -155,6 +160,7 @@
 
 | やりたいこと | ドキュメント |
 |-------------|-------------|
+| セキュリティインシデントに対応したい | [security/incident-response.md](./security/incident-response.md) |
 | トラブルシューティングしたい | [knowledge-base/troubleshooting-knowledge.md](./knowledge-base/troubleshooting-knowledge.md) |
 | CI/CDの問題を解決したい | [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) |
 | NFCリーダーの問題を解決したい | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) |
@@ -364,6 +370,7 @@ APIの概要と詳細。
 | [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
 | [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
+| [incident-response.md](./security/incident-response.md) | **インシデント対応手順**（侵入・マルウェア検知時の初動・封じ込め・復旧手順） |
 
 ### プレゼンテーション（presentations/）
 
