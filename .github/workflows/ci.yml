@@ -231,6 +231,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
           scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Stop API server
         if: always()

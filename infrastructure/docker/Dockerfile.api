@@ -41,11 +41,14 @@ WORKDIR /app/apps/api
 RUN pnpm prisma generate
 
 # ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
+# npm/corepackキャッシュを削除（セキュリティスキャン対策: pnpmのみ使用するため）
 RUN mkdir -p /app/storage/photos \
   /app/storage/thumbnails \
   /app/storage/pdfs \
   /app/storage/pdf-pages \
-  /app/storage/signage-rendered
+  /app/storage/signage-rendered \
+  && rm -rf /usr/local/lib/node_modules/npm \
+  && rm -rf /root/.cache/node/corepack
 
 ENV NODE_ENV=production
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
