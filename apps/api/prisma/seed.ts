@@ -187,10 +187,7 @@ async function main() {
     // RFIDタグの紐付け（テスト用UID）
     await prisma.measuringInstrumentTag.upsert({
       where: {
-        measuringInstrumentId_rfidTagUid: {
-          measuringInstrumentId: created.id,
-          rfidTagUid: `MI-${inst.managementNumber}`
-        }
+        rfidTagUid: `MI-${inst.managementNumber}`
       },
       update: {},
       create: {
