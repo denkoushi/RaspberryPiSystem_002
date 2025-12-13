@@ -19,9 +19,10 @@ const refreshTokenSchema = z.object({
 });
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
-  // 注意: レート制限プラグインは完全に削除されました（429エラー対策のため）
+  // ログイン系エンドポイントには厳格なレート制限を適用（ブルートフォース対策）
+  const authRateLimit = { max: 10, timeWindow: '1 minute' };
 
-  app.post('/auth/login', async (request) => {
+  app.post('/auth/login', { config: { rateLimit: authRateLimit } }, async (request) => {
     const body = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { username: body.username } });
     if (!user) {
@@ -47,7 +48,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post('/auth/refresh', async (request) => {
+  app.post('/auth/refresh', { config: { rateLimit: authRateLimit } }, async (request) => {
     const body = refreshTokenSchema.parse(request.body);
     try {
       const payload = jwt.verify(body.refreshToken, env.JWT_REFRESH_SECRET) as JwtPayload;
