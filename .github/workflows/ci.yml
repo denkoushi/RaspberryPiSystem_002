@@ -201,7 +201,7 @@ jobs:
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-          security-checks: 'vuln'
+          scanners: 'vuln'
           skip-dirs: |
             **/certs
             **/alerts
@@ -220,7 +220,7 @@ jobs:
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-          security-checks: 'vuln'
+          scanners: 'vuln'
 
       - name: Security scan (Trivy image web)
         uses: aquasecurity/trivy-action@0.25.0
@@ -230,7 +230,7 @@ jobs:
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-          security-checks: 'vuln'
+          scanners: 'vuln'
 
       - name: Stop API server
         if: always()
