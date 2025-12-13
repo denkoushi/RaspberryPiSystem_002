@@ -231,13 +231,14 @@ export class SignageRenderer {
     const panelRadius = Math.round(10 * scale);
     const leftInnerPadding = Math.round(18 * scale);   // 左ペイン: タイトルとカードにしっかり余白
     const rightInnerPadding = Math.round(4 * scale);   // 右ペイン: 最大限詰めて表示領域確保
-    const headerHeight = Math.round(22 * scale);       // 左ペインの見出し→カードまでの縦間隔を確保
+    const leftHeaderHeight = Math.round(32 * scale);   // 左ペイン: タイトル（フォント20*scale）の下端からカードまでの余白
+    const rightHeaderHeight = Math.round(28 * scale);   // 右ペイン: タイトル（フォント20*scale）の下端からPDFまでの最小余白（タイトルy=24*scale + フォント20*scaleの下端≈28*scale）
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
-      y: outerPadding + leftInnerPadding + headerHeight,
+      y: outerPadding + leftInnerPadding + leftHeaderHeight,
       width: leftWidth - leftInnerPadding * 2,
-      height: panelHeight - leftInnerPadding * 2 - headerHeight,
+      height: panelHeight - leftInnerPadding * 2 - leftHeaderHeight,
       mode: 'SPLIT',
       showThumbnails: true,
       maxRows: 3,
@@ -253,8 +254,8 @@ export class SignageRenderer {
         : '';
 
     const pdfContent = pdfOptions?.imageBase64
-      ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + headerHeight}"
-          width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - headerHeight}"
+      ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + rightHeaderHeight}"
+          width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - rightHeaderHeight}"
           preserveAspectRatio="xMidYMid meet"
           href="${pdfOptions.imageBase64}" />`
       : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
@@ -274,7 +275,7 @@ export class SignageRenderer {
 
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-      ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + headerHeight + Math.round(8 * scale)}"
+      ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + rightHeaderHeight + Math.round(8 * scale)}"
             font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
@@ -295,7 +296,7 @@ export class SignageRenderer {
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(18 * scale)}"
+          <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(20 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具管理データ
           </text>
@@ -308,7 +309,7 @@ export class SignageRenderer {
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(12 * scale)}"
+          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(20 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             PDF表示
           </text>
