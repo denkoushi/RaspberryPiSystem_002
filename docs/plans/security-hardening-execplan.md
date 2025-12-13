@@ -126,10 +126,12 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - ✅ `infrastructure/ansible/group_vars/all.yml`に`alert_webhook_url`/`alert_webhook_timeout_seconds`を追加  
   - ✅ `infrastructure/ansible/templates/security-monitor.sh.j2`からWebhook設定を環境変数として渡すよう修正  
   - テスト: fail2ban Ban発生時にWebhookへPOSTされ、ban IP/ログ行がpayloadに含まれること。実機テスト待ち。  
-- [x] (2025-12-13) Dockerイメージ単位のTrivyスキャンをCIに追加（`trivy image`）  
+- [x] (2025-12-13) Dockerイメージ単位のTrivyスキャンをCI・定期ジョブに追加（`trivy image`）  
   - ✅ `.github/workflows/ci.yml`にTrivy fs/imageスキャンを追加（api/webイメージをビルドしてスキャン）  
   - ✅ HIGH/CRITICALでFail、skip-dirsでcerts/alertsを除外  
-  - テスト: CIで自動実行されるため、GitHub Actionsの結果を確認。  
+  - ✅ Pi5上で定期実行スクリプト（`trivy-image-scan.sh.j2`）を追加、cronで毎日4時に実行  
+  - ✅ スキャン結果をalertsに反映（Webhook通知対応）  
+  - テスト: CIで自動実行されるため、GitHub Actionsの結果を確認。Pi5上での定期実行は次回デプロイ後に確認。  
 - [x] (2025-12-13) オフラインバックアップの実媒体テストスクリプトを追加  
   - ✅ `scripts/test/backup-offline-verify.sh`を追加（USB/HDD検出→最新バックアップを検証用DBにリストア→Loan件数確認）  
   - ✅ 未マウント時はスキップし、運用を止めない設計  
