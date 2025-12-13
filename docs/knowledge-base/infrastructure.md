@@ -1686,6 +1686,11 @@ const textX = x + textAreaX;
    - テキスト: `x + cardPadding + thumbnailWidth + gap`, `y + textOffset`
 3. **2列表示の設定**: `maxColumns: 2`, `maxRows: 3` でグリッドを制御
 4. **テキスト縦並び順序**: アイテム名 → 従業員名 → 日付 → 時刻 → 警告（12時間超過時は赤色）
+5. **SPLIT右ペインのタイトル/ファイル名/画像の位置決め**:
+   - `text`の`y`はベースライン。フォント20pxの場合、下方向に約4pxぶん余白を見込む
+   - タイトルとファイル名は基準オフセット（例: titleOffsetY ≈ 22px * scale）で揃える
+   - PDF画像開始はタイトル下余白（rightHeaderHeight）を最小化して黒地を最大化（例: rightHeaderHeight ≈ 12px * scale）
+   - 外枠余白は0〜2px * scale程度に抑え、上貼り付きだけ防ぐ
 
 **有効だった対策**:
 - ✅ すべての `<text>` 要素の `x` 座標を `x + textAreaX` に修正
@@ -1693,6 +1698,7 @@ const textX = x + textAreaX;
 
 **関連ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts` (`buildToolCardGrid` メソッド)
+- `apps/api/src/services/signage/signage.renderer.ts`（SPLITペインのタイトル/ファイル名/画像オフセット調整）
 - `docs/knowledge-base/infrastructure.md`（本エントリ）
 
 ---

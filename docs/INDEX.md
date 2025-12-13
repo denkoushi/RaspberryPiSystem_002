@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2025-12-13）
 
-- **✅ サイネージデザイン改善（Pi3表示領域最大化）**: サーバー側レンダラー（`signage.renderer.ts`）を改善し、Pi3サイネージの表示領域を最大化。余白を削減（outerPadding=0）、タイトルを1行表示に統一、PDFファイル名を小さなフォントで画像領域内にオーバーレイ表示。パネル角丸・ヘッダー高さも縮小し、データ表示領域を拡大。50インチFHDモニターでの可読性向上。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **✅ サイネージデザイン改善（レイアウト/座標再調整）**: サーバー側レンダラーで余白を最小化しつつ、右ペインのタイトル・ファイル名とPDF表示領域の重なりを解消。外枠余白を極小化、タイトル・ファイル名のベースラインオフセットを揃え、PDFの黒地を拡大。詳細は [modules/signage/README.md](./modules/signage/README.md) / [knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない](./knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない) を参照。
 
 - **✅ サイネージタブ内にPDFアップロード機能を統合**: 管理コンソールの「サイネージ」タブ（`/admin/signage/schedules`）にPDFアップロード・管理機能を追加。スケジュール設定画面と同じページでPDFをアップロード・管理できるようになり、ワークフローが改善されました。`SignagePdfManager`コンポーネントを新規作成して共通化し、サイネージタブとクライアント端末管理ページの両方で使用可能に。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
 
