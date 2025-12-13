@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { convertPdfToImages } from './pdf-converter.js';
+import { logger } from './logger.js';
 
 const getStorageBaseDir = () =>
   process.env.PDF_STORAGE_DIR ||
@@ -143,6 +144,18 @@ export class PdfStorage {
       // ディレクトリが存在しない場合は変換を実行
     }
 
+    // PDFファイルの存在確認
+    try {
+      await fs.access(pdfFilePath);
+    } catch (error) {
+      // PDFファイルが存在しない場合はエラーログを出力して空配列を返す
+      logger.error(
+        { pdfId, pdfFilePath, error: (error as Error).message },
+        'PDFファイルが見つかりません。PDFを再アップロードするか、スケジュールからPDFを削除してください。'
+      );
+      return [];
+    }
+
     try {
       // 環境変数でDPIを設定可能（デフォルト: 150、4K表示の場合は300推奨）
       const dpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
@@ -166,8 +179,11 @@ export class PdfStorage {
 
       return pageFiles.map((file) => `/api/storage/pdf-pages/${pdfId}/${file}`);
     } catch (error) {
-      // 変換に失敗した場合は空配列を返す
-      console.error('PDF変換エラー:', error);
+      // 変換に失敗した場合はエラーログを出力して空配列を返す
+      logger.error(
+        { pdfId, pdfFilePath, error: (error as Error).message },
+        'PDF変換エラーが発生しました'
+      );
       return [];
     }
   }

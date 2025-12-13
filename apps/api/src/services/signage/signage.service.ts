@@ -451,10 +451,17 @@ export class SignageService {
         });
         if (pdf && pdf.enabled) {
           pdfDisplayMode = pdf.displayMode;
+          const pages = await this.getPdfPages(pdf.id);
+          if (pages.length === 0) {
+            logger.warn(
+              { scheduleId: schedule.id, pdfId: pdf.id, pdfName: pdf.name, pdfFilePath: pdf.filePath },
+              'SPLITモードのスケジュールでPDFページが空です。PDFファイルが存在するか確認してください。'
+            );
+          }
           pdfPayload = {
             id: pdf.id,
             name: pdf.name,
-            pages: await this.getPdfPages(pdf.id),
+            pages,
             slideInterval: pdf.slideInterval,
           };
         }
