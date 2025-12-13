@@ -1,33 +1,29 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('キオスク画面', () => {
-  test('キオスク持出画面が表示される', async ({ page }) => {
+  test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
     await expect(page.getByText(/キオスク端末/i)).toBeVisible();
-    // ナビゲーションリンクを確認（href属性とテキストで特定）
+    // defaultMode により /kiosk/tag または /kiosk/photo へ遷移するが、ヘッダーナビは共通
+    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
-    await expect(page.locator('a[href="/kiosk/return"]').filter({ hasText: '返却' }).first()).toBeVisible();
+    await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
 
-  test('キオスク返却画面が表示される', async ({ page }) => {
-    await page.goto('/kiosk/return');
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
-    // ナビゲーションリンクを確認（href属性とテキストで特定）
-    await expect(page.locator('a[href="/kiosk/return"]').filter({ hasText: '返却' }).first()).toBeVisible();
-  });
+  test('持出と吊具持出のナビゲーションが動作する', async ({ page }) => {
+    await page.goto('/kiosk/tag');
 
-  test('持出と返却のナビゲーションが動作する', async ({ page }) => {
-    await page.goto('/kiosk');
-    
-    // 返却タブをクリック
-    const returnLink = page.locator('a[href="/kiosk/return"]').filter({ hasText: '返却' }).first();
-    await returnLink.click();
-    await expect(page).toHaveURL(/\/kiosk\/return/);
+    // 吊具持出へ遷移
+    const riggingLink = page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first();
+    await riggingLink.waitFor({ state: 'visible' });
+    await riggingLink.click();
+    await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
-    // 持出タブをクリック
+    // 持出（タグまたはフォト）へ戻れることを確認
     const borrowLink = page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first();
+    await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.click();
-    await expect(page).toHaveURL(/\/kiosk$/);
+    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
   });
 
   // 注意: NFCスキャンのE2EテストはCI環境では実行しない
