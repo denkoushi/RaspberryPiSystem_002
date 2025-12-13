@@ -221,7 +221,7 @@ export class SignageRenderer {
   ): Promise<string> {
     const scale = WIDTH / 1920;
     const outerPadding = 0;
-    const panelGap = Math.round(10 * scale);
+    const panelGap = Math.round(12 * scale); // ペイン間に少し余裕
     const gradientId = this.generateId('bg');
     const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.58);
     const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
@@ -229,9 +229,9 @@ export class SignageRenderer {
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
     const panelRadius = Math.round(10 * scale);
-    const leftInnerPadding = Math.round(16 * scale);   // 左ペインに余白を増やしタイトルと本文の間隔を確保
-    const rightInnerPadding = Math.round(6 * scale);   // 右ペインはさらに詰めて表示領域を確保
-    const headerHeight = Math.round(14 * scale);       // ヘッダーを圧縮してPDF領域を拡大
+    const leftInnerPadding = Math.round(18 * scale);   // 左ペイン: タイトルとカードにしっかり余白
+    const rightInnerPadding = Math.round(4 * scale);   // 右ペイン: 最大限詰めて表示領域確保
+    const headerHeight = Math.round(22 * scale);       // 左ペインの見出し→カードまでの縦間隔を確保
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
@@ -274,7 +274,7 @@ export class SignageRenderer {
 
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + headerHeight + Math.round(10 * scale)}"
+      ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + headerHeight + Math.round(8 * scale)}"
             font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
@@ -308,7 +308,7 @@ export class SignageRenderer {
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(14 * scale)}"
+          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(12 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             PDF表示
           </text>
