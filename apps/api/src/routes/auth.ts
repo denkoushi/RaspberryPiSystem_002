@@ -8,7 +8,6 @@ import { generateBackupCodes, generateTotpSecret, hashBackupCodes, matchAndConsu
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { authorizeRoles, authenticate } from '../lib/auth.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
