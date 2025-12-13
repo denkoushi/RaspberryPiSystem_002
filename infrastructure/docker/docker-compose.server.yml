@@ -25,6 +25,7 @@ services:
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
+      SIGNAGE_PDF_DPI: "240"
       CAMERA_TYPE: mock
       ALERTS_DIR: /app/alerts
     volumes:
