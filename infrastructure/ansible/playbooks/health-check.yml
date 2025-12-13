@@ -4,9 +4,14 @@
   gather_facts: false
   become: true
   vars:
-    health_commands:
+    health_commands_signage:
       - name: signage-lite status
         cmd: systemctl status signage-lite --no-pager
+      - name: kiosk-browser last logs
+        cmd: journalctl -u kiosk-browser.service -n 100 --no-pager
+      - name: disk usage
+        cmd: df -h /opt
+    health_commands_kiosk:
       - name: kiosk-browser last logs
         cmd: journalctl -u kiosk-browser.service -n 100 --no-pager
       - name: disk usage
@@ -19,7 +24,7 @@
       args:
         executable: /bin/bash
       register: command_output
-      loop: "{{ health_commands }}"
+      loop: "{{ health_commands_signage if inventory_hostname == 'raspberrypi3' else health_commands_kiosk }}"
       changed_when: false
 
     - name: Display outputs
