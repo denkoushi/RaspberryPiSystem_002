@@ -131,6 +131,7 @@ model InspectionItem {
   measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
   inspectionRecords     InspectionRecord[]
 
+  @@unique([measuringInstrumentId, name])
   @@index([measuringInstrumentId])
   @@index([order])
 }
