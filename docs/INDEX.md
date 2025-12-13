@@ -12,7 +12,7 @@
 
 - **✅ Phase 9 セキュリティ強化完了**: インターネット接続時の追加防御機能を実装完了。管理画面IP制限、アラート外部通知、DockerイメージTrivyスキャン、レート制限再導入、ログ長期保持（52週）、インシデント対応手順の明文化を完了。CIでの脆弱性スキャンも統合済み。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/incident-response.md](./security/incident-response.md) を参照。
 
-- **📊 アスクルランサムウェア攻撃への対応可否評価**: 2025年10月のアスクル株式会社のランサムウェア攻撃事故報告を踏まえ、現在のシステムの対応可否を評価。オフラインバックアップによりバックアップ削除・暗号化には完全対応可能。MFA未実装のため認証情報窃取リスクが残るが、MFA導入により大幅に改善可能。詳細は [security/askul-incident-assessment.md](./security/askul-incident-assessment.md) を参照。
+- **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を [security/implementation-assessment.md](./security/implementation-assessment.md) に統合。
 
 ### 🆕 最新アップデート（2025-12-13）
 
@@ -147,8 +147,7 @@
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
 | **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
-| **アスクルランサムウェア攻撃への対応可否評価** | **[security/askul-incident-assessment.md](./security/askul-incident-assessment.md)** |
-| **推奨セキュリティ対策の平易解説とユーザビリティ評価** | **[security/recommended-countermeasures-explained.md](./security/recommended-countermeasures-explained.md)** |
+| **外部インシデント評価と追加対策** | **[security/implementation-assessment.md](./security/implementation-assessment.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
@@ -375,8 +374,7 @@ APIの概要と詳細。
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
 | [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
 | [incident-response.md](./security/incident-response.md) | **インシデント対応手順**（侵入・マルウェア検知時の初動・封じ込め・復旧手順） |
-| [askul-incident-assessment.md](./security/askul-incident-assessment.md) | **アスクルランサムウェア攻撃への対応可否評価**（2025年10月の事故報告を踏まえた評価） |
-| [recommended-countermeasures-explained.md](./security/recommended-countermeasures-explained.md) | **推奨セキュリティ対策の平易解説とユーザビリティ評価**（MFA、リアルタイム監視、権限監査の解説） |
+| [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（外部インシデント評価と追加対策を含む） |
 
 ### プレゼンテーション（presentations/）
 
