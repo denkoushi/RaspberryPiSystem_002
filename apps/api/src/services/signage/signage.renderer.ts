@@ -229,9 +229,9 @@ export class SignageRenderer {
     const panelRadius = Math.round(10 * scale);
     const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
     const rightInnerPadding = Math.round(6 * scale);   // 右ペイン: タイトルが枠に張り付かない最小余白
-    const titleOffsetY = Math.round(24 * scale);       // 左右共通: タイトルのベースラインオフセット
+    const titleOffsetY = Math.round(22 * scale);       // 左右共通: タイトルのベースラインオフセット
     const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
-    const rightHeaderHeight = Math.round(18 * scale);  // 右ペイン: タイトル下からPDFまでの余白を最小限に
+    const rightHeaderHeight = Math.round(12 * scale);  // 右ペイン: タイトル下からPDFまでの余白をさらに圧縮して黒エリアを拡大
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
@@ -266,7 +266,7 @@ export class SignageRenderer {
 
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-      ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + rightHeaderHeight + Math.round(8 * scale)}"
+        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
             font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
