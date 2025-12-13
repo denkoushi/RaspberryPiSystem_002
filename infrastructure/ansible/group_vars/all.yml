@@ -89,6 +89,7 @@ clamav_kiosk_log_file: "clamav-kiosk-scan.log"
 trivy_enabled: true
 trivy_scan_target: "/opt/RaspberryPiSystem_002"
 trivy_scan_cron: "30 3 * * *"
+trivy_image_scan_cron: "0 4 * * *"
 trivy_log_dir: "/var/log/trivy"
 trivy_log_file: "trivy-scan.log"
 trivy_version: "0.54.1"
