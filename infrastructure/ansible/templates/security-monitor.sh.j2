@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ALERT_SCRIPT="{{ alert_script_path }}"
+WEBHOOK_URL="{{ alert_webhook_url | default('') }}"
+WEBHOOK_TIMEOUT="{{ alert_webhook_timeout_seconds | default(5) }}"
 STATE_DIR="{{ security_monitor_state_dir }}"
 FAIL2BAN_LOG="{{ security_monitor_fail2ban_log }}"
 TAG="security-monitor"
@@ -49,10 +51,11 @@ process_fail2ban() {
     [[ -z "${line}" ]] && continue
     local banned_ip
     banned_ip=$(echo "${line}" | awk '{print $NF}')
-    "{{ alert_script_path }}" \
-      "fail2ban-ban" \
-      "fail2banがIP ${banned_ip} を遮断しました" \
-      "${line}"
+    WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
+      "{{ alert_script_path }}" \
+        "fail2ban-ban" \
+        "fail2banがIP ${banned_ip} を遮断しました" \
+        "${line}"
   done < <(echo "${new_lines}" | grep "Ban ")
 }
 

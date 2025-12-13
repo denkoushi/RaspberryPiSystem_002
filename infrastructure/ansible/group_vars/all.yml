@@ -59,6 +59,8 @@ ufw_vnc_allowed_networks:
 ufw_logging_level: "medium"
 caddy_log_dir: "/var/log/caddy"
 alert_script_path: "/opt/RaspberryPiSystem_002/scripts/generate-alert.sh"
+alert_webhook_url: ""
+alert_webhook_timeout_seconds: 5
 
 fail2ban_enabled: true
 fail2ban_defaults:

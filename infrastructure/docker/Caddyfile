@@ -13,6 +13,14 @@
   }
   reverse_proxy @api api:8080
 
+  # 管理画面へのIP制限（Tailscale / ローカルLAN をデフォルト許可）
+  # 環境変数 ADMIN_ALLOW_NETS で上書き可能（空白区切りのCIDRリスト）
+  @admin_protect {
+    path /admin*
+    not remote_ip {$ADMIN_ALLOW_NETS:192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32}
+  }
+  respond @admin_protect "Forbidden" 403
+
   # サムネイルの静的ファイル配信（認証不要）
   handle_path /storage/thumbnails/* {
     root * /srv/storage/thumbnails

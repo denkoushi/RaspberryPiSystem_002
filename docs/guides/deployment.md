@@ -79,6 +79,14 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 
 詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
 
+### 管理画面のIP制限（インターネット接続時）
+
+- **Caddyでの制限**: `ADMIN_ALLOW_NETS` 環境変数（空白区切りCIDR、デフォルト: `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`）を設定すると、`/admin*` へのアクセスが許可ネットワークに限定されます。  
+  - Docker Compose: `web.environment.ADMIN_ALLOW_NETS` を上書き。  
+  - テスト: 許可IPから `curl -kI https://<pi5>/admin` が200/302、非許可IPは403/timeout。
+- **Tailscale ACL推奨**: 併せて Tailscale ACL で管理画面のCIDRを信頼セグメントに限定してください（例: `100.64.0.0/10` のみ許可）。
+- **HTTPS/ヘッダー確認**: `scripts/test/check-caddy-https-headers.sh` で HTTP→HTTPS リダイレクトと HSTS/Content-Type-Options/X-Frame-Options/Referrer-Policy をチェック可能。
+
 ## ラズパイ5（サーバー）の更新
 
 ### 初回セットアップ: 環境変数ファイルの作成
