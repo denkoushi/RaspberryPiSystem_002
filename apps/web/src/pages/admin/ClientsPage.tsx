@@ -5,6 +5,7 @@ import { useClients, useClientMutations, useClientStatuses, useClientLogs } from
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 
 import type { ClientDevice, ClientLogLevel } from '../../api/client';
 
@@ -330,7 +331,7 @@ export function ClientsPage() {
           <p>クライアント端末が登録されていません。</p>
         )}
       </Card>
+      <SignagePdfManager title="サイネージPDFアップロード（キオスク向け）" />
     </div>
   );
 }
-

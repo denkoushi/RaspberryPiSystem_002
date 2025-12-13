@@ -1,6 +1,13 @@
 import { useState } from 'react';
 
-import { useSignageSchedules, useSignageScheduleMutations, useSignagePdfs, useSignageRenderMutation, useSignageRenderStatus } from '../../api/hooks';
+import {
+  useSignageSchedules,
+  useSignageScheduleMutations,
+  useSignagePdfs,
+  useSignageRenderMutation,
+  useSignageRenderStatus
+} from '../../api/hooks';
+import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
@@ -141,6 +148,8 @@ export function SignageSchedulesPage() {
 
   return (
     <div className="space-y-6">
+      <SignagePdfManager title="サイネージPDFアップロード（サイネージタブ）" />
+
       <Card
         title="スケジュール管理"
         action={
