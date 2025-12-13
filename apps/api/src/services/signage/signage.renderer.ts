@@ -221,7 +221,7 @@ export class SignageRenderer {
   ): Promise<string> {
     const scale = WIDTH / 1920;
     const outerPadding = 0;
-    const panelGap = Math.round(8 * scale);
+    const panelGap = Math.round(10 * scale);
     const gradientId = this.generateId('bg');
     const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.58);
     const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
@@ -229,14 +229,15 @@ export class SignageRenderer {
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
     const panelRadius = Math.round(10 * scale);
-    const innerPadding = Math.round(10 * scale);
-    const headerHeight = Math.round(22 * scale);
+    const leftInnerPadding = Math.round(12 * scale);   // 左ペインは少し余裕を持たせる
+    const rightInnerPadding = Math.round(8 * scale);   // 右ペインは表示領域を最大化
+    const headerHeight = Math.round(18 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
-      x: leftX + innerPadding,
-      y: outerPadding + innerPadding + headerHeight,
-      width: leftWidth - innerPadding * 2,
-      height: panelHeight - innerPadding * 2 - headerHeight,
+      x: leftX + leftInnerPadding,
+      y: outerPadding + leftInnerPadding + headerHeight,
+      width: leftWidth - leftInnerPadding * 2,
+      height: panelHeight - leftInnerPadding * 2 - headerHeight,
       mode: 'SPLIT',
       showThumbnails: true,
       maxRows: 3,
@@ -245,15 +246,15 @@ export class SignageRenderer {
 
     const overflowBadge =
       overflowCount > 0
-        ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + panelHeight - innerPadding}"
+        ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + panelHeight - leftInnerPadding}"
             text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
 
     const pdfContent = pdfOptions?.imageBase64
-      ? `<image x="${rightX + innerPadding}" y="${outerPadding + innerPadding + headerHeight}"
-          width="${rightWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - headerHeight}"
+      ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + headerHeight}"
+          width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - headerHeight}"
           preserveAspectRatio="xMidYMid meet"
           href="${pdfOptions.imageBase64}" />`
       : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
@@ -264,7 +265,7 @@ export class SignageRenderer {
     const slideInfo = '';
 
     const metricsElement = metricsText
-      ? `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + innerPadding + Math.round(
+      ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(
           28 * scale
         )}" text-anchor="end" font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(metricsText)}
@@ -273,7 +274,7 @@ export class SignageRenderer {
 
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-        ? `<text x="${rightX + innerPadding + Math.round(4 * scale)}" y="${outerPadding + innerPadding + headerHeight + Math.round(12 * scale)}"
+        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + headerHeight + Math.round(12 * scale)}"
             font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
@@ -294,7 +295,7 @@ export class SignageRenderer {
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + Math.round(18 * scale)}"
+          <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + Math.round(18 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             工具管理データ
           </text>
@@ -307,7 +308,7 @@ export class SignageRenderer {
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
-          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + Math.round(18 * scale)}"
+          <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + Math.round(18 * scale)}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             PDF表示
           </text>
