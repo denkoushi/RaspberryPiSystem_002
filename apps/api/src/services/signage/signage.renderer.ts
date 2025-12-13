@@ -230,9 +230,9 @@ export class SignageRenderer {
     const rightX = leftX + leftWidth + panelGap;
     const panelRadius = Math.round(10 * scale);
     const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
-    const rightInnerPadding = Math.round(10 * scale);  // 右ペイン: タイトルが枠に張り付かない程度の余白
+    const rightInnerPadding = Math.round(8 * scale);   // 右ペイン: タイトルが枠に張り付かず、上余白を最小限に
     const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
-    const rightHeaderHeight = Math.round(42 * scale);  // 右ペイン: タイトル下からPDFまで十分な間隔
+    const rightHeaderHeight = Math.round(26 * scale);  // 右ペイン: タイトル下からPDFまでの余白を最小限にして表示領域拡大
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
