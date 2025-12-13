@@ -648,6 +648,89 @@ NETWORK_MODE=tailscale \
 | Pi4 (キオスク) | 100.74.144.79 | tools03 |
 | Pi3 (サイネージ) | 100.105.224.86 | signageras3 |
 
+## Phase 9 セキュリティ強化機能の実機テスト
+
+### 1. HTTPS/ヘッダー確認テスト
+
+```bash
+# Pi5上で実行（またはMacから）
+export TARGET_HOST="100.106.158.2"
+bash /opt/RaspberryPiSystem_002/scripts/test/check-caddy-https-headers.sh
+```
+
+**期待される結果**:
+- HTTPアクセスが301/302/308でHTTPSへリダイレクトされる
+- HTTPSレスポンスに以下のヘッダーが含まれる:
+  - `Strict-Transport-Security`
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options`
+  - `Referrer-Policy`
+
+### 2. 管理画面IP制限テスト
+
+```bash
+# 許可IPからのアクセス確認（Tailscale経由）
+curl -kI https://100.106.158.2/admin
+# → 200または302が返ることを確認
+
+# 非許可IPからのアクセス確認（ADMIN_ALLOW_NETSを一時的に変更してテスト）
+# docker-compose.server.ymlのADMIN_ALLOW_NETSを変更してwebコンテナを再起動
+# → 403が返ることを確認
+```
+
+### 3. アラート外部通知テスト
+
+```bash
+# Pi5上で実行
+# Webhook URLを設定（例: Slack Incoming Webhook）
+export WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# 擬似Banでアラート生成
+sudo fail2ban-client set sshd banip 203.0.113.50
+# → WebhookにPOSTされることを確認（Slackでメッセージが表示される）
+
+# クリーンアップ
+sudo fail2ban-client set sshd unbanip 203.0.113.50
+```
+
+### 4. オフラインバックアップ実機検証テスト
+
+```bash
+# Pi5上で実行
+# USB/HDDをマウント（例: /mnt/backup-usb）
+sudo mount /dev/sda1 /mnt/backup-usb
+
+# バックアップ作成
+export BACKUP_ENCRYPTION_KEY="your-gpg-key-id"
+export BACKUP_OFFLINE_MOUNT="/mnt/backup-usb"
+bash /opt/RaspberryPiSystem_002/scripts/server/backup-encrypted.sh
+
+# 検証スクリプト実行
+export BACKUP_OFFLINE_MOUNT="/mnt/backup-usb"
+export BACKUP_DECRYPTION_KEY="your-gpg-key-id"
+bash /opt/RaspberryPiSystem_002/scripts/test/backup-offline-verify.sh
+# → 検証用DBにリストアされ、Loan件数が確認できることを確認
+
+# クリーンアップ（検証用DB削除）
+docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -c "DROP DATABASE IF EXISTS borrow_return_restore_test;"
+```
+
+### 5. セキュリティE2Eテスト
+
+```bash
+# Pi5上で実行（またはMacから）
+export TARGET_HOST="100.106.158.2"
+export ADMIN_URL="https://100.106.158.2/admin"
+export ADMIN_EXPECT_STATUS="200"  # または403（IP制限が有効な場合）
+bash /opt/RaspberryPiSystem_002/scripts/test/security-e2e.sh
+```
+
+**期待される結果**:
+- HTTPS/ヘッダー確認が成功する
+- 管理画面アクセス確認が期待ステータスと一致する
+
+詳細なテスト手順は [セキュリティ強化 ExecPlan](../plans/security-hardening-execplan.md#phase-9-インターネット接続時の追加防御テスト) を参照してください。
+
 ## ベストプラクティス
 
 1. **デプロイ前のバックアップ**: 必ずデプロイ前にバックアップを取得
