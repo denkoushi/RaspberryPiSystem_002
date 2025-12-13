@@ -148,6 +148,7 @@
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
 | **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
 | **アスクルランサムウェア攻撃への対応可否評価** | **[security/askul-incident-assessment.md](./security/askul-incident-assessment.md)** |
+| **推奨セキュリティ対策の平易解説とユーザビリティ評価** | **[security/recommended-countermeasures-explained.md](./security/recommended-countermeasures-explained.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
@@ -375,6 +376,7 @@ APIの概要と詳細。
 | [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
 | [incident-response.md](./security/incident-response.md) | **インシデント対応手順**（侵入・マルウェア検知時の初動・封じ込め・復旧手順） |
 | [askul-incident-assessment.md](./security/askul-incident-assessment.md) | **アスクルランサムウェア攻撃への対応可否評価**（2025年10月の事故報告を踏まえた評価） |
+| [recommended-countermeasures-explained.md](./security/recommended-countermeasures-explained.md) | **推奨セキュリティ対策の平易解説とユーザビリティ評価**（MFA、リアルタイム監視、権限監査の解説） |
 
 ### プレゼンテーション（presentations/）
 
