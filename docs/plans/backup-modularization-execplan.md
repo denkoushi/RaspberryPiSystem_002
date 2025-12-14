@@ -23,6 +23,8 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 - `docs/security/sharepoint-dropbox-integration-assessment.md`: Dropbox統合のセキュリティ評価
 - `docs/security/sharepoint-dropbox-multi-purpose-assessment.md`: 多目的用途の評価
 - `docs/plans/imports-ts-refactoring-plan.md`: CSVインポート機能のリファクタリング計画（完了）
+- `docs/guides/backup-configuration.md`: バックアップ設定ガイド（設定ファイルの作成・編集方法）
+- `docs/guides/dropbox-setup-guide.md`: Dropbox連携セットアップガイド
 
 ### 既存実装
 
