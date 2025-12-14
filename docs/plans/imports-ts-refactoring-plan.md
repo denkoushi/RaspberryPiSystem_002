@@ -284,6 +284,7 @@ async function importItems(
 
 - [ ] `main`ブランチへのマージ
 - [ ] 実機での動作確認（オプション）
+- [ ] バックアップ機能との統合（`docs/plans/backup-modularization-execplan.md`参照）
 
 ## 関連ドキュメント
 

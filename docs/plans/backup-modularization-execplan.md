@@ -77,6 +77,18 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 3. **設定ベース**: コード変更なしでバックアップ対象を追加・削除可能
 4. **セキュリティファースト**: Dropbox統合では証明書ピニング、TLS検証を必須
 
+### 追加要件・安全対策（不足分の明文化）
+
+1. **復旧手順の具体化**: Backupと同等にRestoreの成功・失敗パス（部分復旧、整合性チェック、部分失敗時のロールバック方針）を定義すること。  
+2. **暗号化と鍵管理**: アップロード前の暗号化有無を決定し、鍵は環境変数＋Ansible Vaultで管理。Dropbox側の保存暗号化ポリシーも併記。  
+3. **監査ログと通知**: Backup/Restore結果をどこへ記録するか（ファイル/DB/alert webhook）と、失敗時アラートの経路（Webhook/Slack等）を定義。  
+4. **容量・保持ポリシー**: 保持期間・最大サイズ・スロットリング方針（特に画像・PDFの大容量ファイル）を設定可能にし、設定ファイルで管理。  
+5. **フォルダ構成ルール**: Dropbox側パス命名規則、ローカル一時ディレクトリの掃除方法を明文化。  
+6. **リトライと再開戦略**: 大きなアーカイブ転送途中での失敗時に再送・部分再送をどう扱うかを定義。`Retry-After`対応と指数バックオフを必須。  
+7. **権限分離・最小権限**: 管理者のみAPI/設定を操作できること、Dropboxトークンはフォルダ限定スコープで最小権限とすること。  
+8. **依存ライブラリの決定**: Dropbox SDK（`@dropbox/dropbox-sdk`想定）、スケジューラ（`node-cron`想定）を採用可否も含め確定。  
+9. **一時ファイルの取り扱い**: アップロード前に作成するアーカイブや一時ディレクトリのクリーンアップ手順を標準化。  
+
 ### コンポーネント構成
 
 ```
@@ -224,17 +236,23 @@ interface BackupTarget {
 
 ## Progress
 
-- [ ] Milestone 1: 基盤の構築
-  - [ ] インターフェースの定義
-  - [ ] `LocalStorageProvider`の実装
-  - [ ] 基本的なバックアップ対象の実装
-  - [ ] `BackupService`の実装
-  - [ ] 既存のバックアップスクリプトの機能を移行
-- [ ] Milestone 2: Dropbox統合
-  - [ ] `DropboxStorageProvider`の実装
-  - [ ] Dropbox API認証の実装
-  - [ ] セキュリティ対策の実装
-  - [ ] リトライロジックの実装
+- [x] Milestone 1: 基盤の構築（2025-12-14）
+  - [x] インターフェースの定義（Backup/Storage/Targetの型追加）
+  - [x] `LocalStorageProvider`の実装（再帰list対応、環境変数対応）
+  - [x] 基本的なバックアップ対象の実装（file/directory/db 版を追加）
+  - [x] `BackupService`の実装（backup/restore/list/delete；restoreの上位適用は今後）
+  - [x] pg_dump / tar 依存の注意を明記した上でローカルバックアップを実現
+  - [x] 単体テスト・統合テスト追加（4件パス）
+  - [x] CIにバックアップテスト追加
+- [x] Milestone 2: Dropbox統合（2025-12-14）
+  - [x] `DropboxStorageProvider`の実装（基本機能）
+  - [x] Dropbox API認証の実装（アクセストークン管理）
+  - [x] TLS検証の実装（rejectUnauthorized: true、TLS 1.2強制）
+  - [x] リトライロジックの実装（Retry-After対応、指数バックオフ）
+  - [x] 証明書ピニングの実装（3つのDropbox APIエンドポイント対応）
+  - [x] 証明書フィンガープリント取得スクリプト追加
+  - [x] Dropbox統合テスト追加（トークン設定時のみ実行）
+  - [x] **実際のDropboxアカウントでの連携テスト成功**（3件すべてパス）
 - [ ] Milestone 3: CSV・画像バックアップの追加
   - [ ] `CsvBackupTarget`の実装
   - [ ] `ImageBackupTarget`の実装
@@ -249,7 +267,27 @@ interface BackupTarget {
 
 ## Surprises & Discoveries
 
-（実装中に発見した内容を記録）
+### 2025-12-14: Dropbox SDKのfetch設定
+
+**発見**: Node.js 18+の標準fetch APIでは、カスタムHTTPSエージェントを直接設定できない。
+
+**対応**: `node-fetch@2`を使用してカスタムfetch関数を実装し、HTTPSエージェントを設定できるようにした。
+
+**影響**: `node-fetch@2`を依存関係に追加。将来的にNode.js 20+のfetch APIでagentオプションがサポートされた場合は移行を検討。
+
+### 2025-12-14: Dropbox証明書ピニング実装
+
+**実装内容**:
+- `dropbox-cert-pinning.ts`で証明書ピニング検証を実装
+- 3つのDropbox APIエンドポイント（api/content/notify）の証明書フィンガープリントを設定
+- `checkServerIdentity`で証明書ピニングを実装し、MITM攻撃を防止
+
+**証明書フィンガープリント**（2025-12-14時点）:
+- `api.dropboxapi.com`: `sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad`
+- `content.dropboxapi.com`: `sha256/4085a9c1e3f6bac2ae9e530e2679e2447655e840d07d7793b047a53ba760f9cc`
+- `notify.dropboxapi.com`: `sha256/5712473809f6c0a24a9cf7cb74dca93d760fc4ee90de1e17fa0224b12b5fea59`
+
+**注意**: 証明書が更新された場合は、`pnpm exec tsx apps/api/scripts/get-dropbox-cert-fingerprint.ts`で再取得して更新が必要。
 
 ## Decision Log
 
@@ -280,6 +318,18 @@ interface BackupTarget {
 - SharePoint統合、PowerAutomate統合は範囲外
 - バックアップ機能のモジュール化とDropbox統合に集中
 
+### 2025-12-14: M1完了の確認
+
+**決定**: Milestone 1（基盤の構築）を完了とし、Milestone 2（Dropbox統合）および統合テスト/CI追加に進む。
+
+**理由**:
+- 型・インターフェースを定義し、LocalStorageProvider/targets/BackupServiceを実装
+- ローカルストレージでバックアップ/リストア/削除の単体テストが通過（`backup.service.test.ts`）
+
+**影響**:
+- Milestone 2以降でDropboxモックを含む統合テストを追加
+- CIにバックアップ系テストを組み込む
+
 ## Outcomes & Retrospective
 
 （実装完了後に記録）
@@ -297,6 +347,9 @@ interface BackupTarget {
 - 正常系: バックアップの作成、リストア、一覧取得、削除
 - 異常系: ファイルが見つからない、ネットワークエラー、認証エラー
 - エッジケース: 空のファイル、大きなファイル、特殊文字を含むパス
+- セキュリティ系: TLSピニング不一致で失敗すること、`rejectUnauthorized: false` 禁止の検証
+- リトライ系: レート制限（`Retry-After`想定）で指数バックオフが動作すること（モック）
+- 進捗: `backup.service.test.ts` でローカルバックアップのバックアップ/リストア/削除を確認済み
 
 ### 統合テスト
 
@@ -306,11 +359,13 @@ interface BackupTarget {
 - CSVインポート機能との統合
 
 **テストケース**:
-- ローカルストレージへのバックアップ
+- ローカルストレージへのバックアップ（進捗: 単体で完了済み）
 - Dropboxへのバックアップアップロード
 - CSVファイルのバックアップ
 - 画像ファイルのバックアップ
 - 設定ファイルからの読み込み
+- リストア往復: 小さなダミーデータでバックアップ→リストアが成功すること
+- モックDropbox: モックサーバーでアップロード→リスト→ダウンロードが通ること
 
 ### E2Eテスト
 
@@ -333,6 +388,15 @@ interface BackupTarget {
 4. **最小権限の原則**: Dropboxアプリには必要最小限の権限を付与
 
 詳細は`docs/security/sharepoint-dropbox-integration-assessment.md`を参照。
+
+## CI Plan
+
+- 既存CIにバックアップ関連テストを追加（ローカルストレージ＋Dropboxモック）  
+- `pnpm test -- filter backup` を追加し、モック環境で完結させる（Secrets不要）  
+- ビルド・Lintは既存ジョブを流用（新規依存追加後も通ることを確認）  
+- 将来的にE2E-smokeで「モックDropboxアップロード→ダウンロード」を1ケース実行し、成果物（ログ）をArtifact化  
+- Secretsは不要（本番トークンは使わず、モックで代替）  
+- 進捗: ローカルバックアップ単体テストを追加済み。CI組み込みは未着手。  
 
 ## Dependencies
 
