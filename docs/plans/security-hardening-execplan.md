@@ -125,7 +125,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - ✅ `scripts/generate-alert.sh`にWebhook送信機能を追加（未設定時は従来のファイルアラートのみ）  
   - ✅ `infrastructure/ansible/group_vars/all.yml`に`alert_webhook_url`/`alert_webhook_timeout_seconds`を追加  
   - ✅ `infrastructure/ansible/templates/security-monitor.sh.j2`からWebhook設定を環境変数として渡すよう修正  
-  - テスト: fail2ban Ban発生時にWebhookへPOSTされ、ban IP/ログ行がpayloadに含まれること。実機テスト待ち。  
+  - ✅ 実機テスト完了（2025-12-14）: `generate-alert.sh`がWebhook URL未設定時はファイルアラートのみ生成することを確認。Webhook URL設定時（`https://httpbin.org/post`）にWebhook送信が成功することを確認。`security-monitor.sh`から`generate-alert.sh`が正しく呼び出されることを確認。  
 - [x] (2025-12-13) Dockerイメージ単位のTrivyスキャンをCI・定期ジョブに追加（`trivy image`）  
   - ✅ `.github/workflows/ci.yml`にTrivy fs/imageスキャンを追加（api/webイメージをビルドしてスキャン）  
   - ✅ HIGH/CRITICALでFail、skip-dirsでcerts/alertsを除外  
