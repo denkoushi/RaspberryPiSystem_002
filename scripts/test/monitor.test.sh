@@ -207,10 +207,10 @@ TARGET_FILE="${TMP_DIR}/watched.txt"
 echo "initial" > "${TARGET_FILE}"
 
 run_monitor() {
-  FILE_HASH_TARGETS="${TARGET_FILE}" \
-  FILE_HASH_EXCLUDES="" \
-  REQUIRED_PROCESSES="" \
-  ALLOWED_LISTEN_PORTS="${ALLOWED_PORTS}" \
+  FILE_HASH_TARGETS="${FILE_HASH_TARGETS:-${TARGET_FILE}}" \
+  FILE_HASH_EXCLUDES="${FILE_HASH_EXCLUDES:-}" \
+  REQUIRED_PROCESSES="${REQUIRED_PROCESSES:-}" \
+  ALLOWED_LISTEN_PORTS="${ALLOWED_LISTEN_PORTS:-${ALLOWED_PORTS}}" \
   WEBHOOK_URL="" \
   WEBHOOK_TIMEOUT_SECONDS="5" \
   "${MONITOR_SCRIPT}"
@@ -231,6 +231,53 @@ if echo "${OUTPUT2}" | grep -q "file-integrity"; then
   echo "✅ 変更検知でfile-integrityアラートを発報しました"
 else
   echo "⚠️  変更検知でfile-integrityアラートが発報されませんでした"
+  exit 1
+fi
+
+# 2. 除外リストのテスト（file-integrity誤検知を防ぐ）
+EXCLUDED_FILE="${TMP_DIR}/excluded.txt"
+echo "initial" > "${EXCLUDED_FILE}"
+rm -f "${TMP_DIR}/file-hashes.txt"
+FILE_HASH_TARGETS="${TARGET_FILE} ${EXCLUDED_FILE}"
+FILE_HASH_EXCLUDES="${EXCLUDED_FILE}"
+OUTPUT_EXCLUDE1=$(run_monitor || true)
+if echo "${OUTPUT_EXCLUDE1}" | grep -q "file-integrity"; then
+  echo "⚠️  除外付き初回実行でfile-integrityアラートが発生しました（期待: なし）"
+  exit 1
+else
+  echo "✅ 除外付き初回実行ではfile-integrityアラートなし（スナップショット作成のみ）"
+fi
+echo "modified" > "${EXCLUDED_FILE}"
+OUTPUT_EXCLUDE2=$(run_monitor || true)
+if echo "${OUTPUT_EXCLUDE2}" | grep -q "file-integrity"; then
+  echo "⚠️  除外対象の変更でfile-integrityアラートが発生しました（期待: なし）"
+  exit 1
+else
+  echo "✅ 除外対象の変更ではfile-integrityアラートなし（除外リスト有効）"
+fi
+
+# 3. 必須プロセス欠落の検知テスト
+rm -f "${TMP_DIR}/file-hashes.txt"
+OUTPUT_PROC=$(REQUIRED_PROCESSES="__process_not_running__" FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" ALLOWED_LISTEN_PORTS="${ALLOWED_PORTS}" run_monitor || true)
+if echo "${OUTPUT_PROC}" | grep -q "process-missing"; then
+  echo "✅ 必須プロセス欠落を検知しました"
+else
+  echo "⚠️  必須プロセス欠落の検知に失敗しました"
+  exit 1
+fi
+
+# 4. 許可外LISTENポート検知テスト
+rm -f "${TMP_DIR}/file-hashes.txt"
+UNEXPECTED_PORT=8000
+python -m http.server "${UNEXPECTED_PORT}" >/dev/null 2>&1 &
+HTTP_PID=$!
+sleep 2
+OUTPUT_PORTS=$(ALLOWED_LISTEN_PORTS="" FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" REQUIRED_PROCESSES="" run_monitor || true)
+kill "${HTTP_PID}" >/dev/null 2>&1 || true
+if echo "${OUTPUT_PORTS}" | grep -q "ports-unexpected"; then
+  echo "✅ 許可外LISTENポートを検知しました"
+else
+  echo "⚠️  許可外LISTENポートの検知に失敗しました"
   exit 1
 fi
 

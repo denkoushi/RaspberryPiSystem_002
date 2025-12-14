@@ -221,3 +221,34 @@ update-frequency: high
 - `playwright.config.ts`  
 - `apps/api/prisma/seed.ts`
 
+---
+
+### [KB-026] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
+
+**EXEC_PLAN.md参照**: Phase 10 (リアルタイム監視強化)
+
+**事象**:  
+- `scripts/test/monitor.test.sh`でAnsible経由でJinja2テンプレート（`security-monitor.sh.j2`）をレンダリングする際に、`jinja2.exceptions.TemplateSyntaxError: Missing end of comment tag`が発生
+- レンダリング後のスクリプトが`set -euo pipefail`環境で早期終了し、ファイル整合性チェックが実行されない
+
+**要因**:  
+1. **Jinja2のコメント開始タグとの衝突**: bashの配列長取得構文 `${#missing[@]}` が、Jinja2のコメント開始タグ `{#` として誤解釈される
+2. **`set -euo pipefail`環境での`return`の扱い**: `[[ -f "${FAIL2BAN_LOG}" ]] || return` だけだと、`return`の終了コードが不定になり、`set -e`の影響でスクリプト全体が早期終了する可能性がある
+
+**有効だった対策**:  
+1. **bash構文のエスケープ**: `${#missing[@]}` → `{{ '${#' }}missing[@]}` とすることで、Jinja2が文字列リテラルとして出力し、レンダリング後に正しいbash構文 `${#missing[@]}` が生成される
+2. **明示的な正常終了**: `return` → `return 0` とすることで、関数の正常終了を明示的に保証し、スクリプトの意図（fail2banログがない場合はスキップして続行）を正しく実現
+
+**学んだこと**:  
+- **Jinja2テンプレートでのbash構文エスケープ**: Jinja2の構文と衝突するbash構文は、`{{ '...' }}` で文字列リテラルとして出力する必要がある
+- **`set -euo pipefail`環境での関数終了**: `return`だけだと終了コードが不定になるため、正常終了を意図する場合は`return 0`を明示する
+- **テンプレートレンダリングの検証**: 本番環境と同じ方法（Ansibleの`template`モジュール）でレンダリングしてテストすることで、実際の動作を正確に検証できる
+- **根本的な修正の重要性**: CI通過だけを目的とした対処療法ではなく、テンプレートエンジンとbashの動作を理解した上での修正が重要
+
+**解決状況**: ✅ **解決済み（2025-12-14）**
+
+**関連ファイル**:  
+- `infrastructure/ansible/templates/security-monitor.sh.j2`  
+- `scripts/test/monitor.test.sh`  
+- `.github/workflows/ci.yml`
+
