@@ -23,5 +23,16 @@ export interface MfaActivateResponse {
   backupCodes: string[];
 }
 
+export interface RoleAuditLog {
+  id: string;
+  actorUserId: string;
+  targetUserId: string;
+  fromRole: 'ADMIN' | 'MANAGER' | 'VIEWER';
+  toRole: 'ADMIN' | 'MANAGER' | 'VIEWER';
+  createdAt: string;
+  actorUser?: { id: string; username: string };
+  targetUser?: { id: string; username: string };
+}
+
 
 
