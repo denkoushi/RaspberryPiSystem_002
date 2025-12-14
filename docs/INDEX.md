@@ -111,6 +111,7 @@
 | **デプロイメントモジュール（原因分析・設計・テスト計画）を確認したい** | **[architecture/deployment-modules.md](./architecture/deployment-modules.md)** |
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
+| **バックアップ設定を変更したい** | **[guides/backup-configuration.md](./guides/backup-configuration.md)** |
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
 | デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
 | デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
