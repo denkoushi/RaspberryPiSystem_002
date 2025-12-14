@@ -149,51 +149,65 @@ detect_ports() {
 
 ALLOWED_PORTS="$(detect_ports | xargs)"
 
-# テスト用に最小限の監視スクリプトを生成（ファイルハッシュ検知のみを本番ロジックに寄せて再現）
-cat > "${MONITOR_SCRIPT}" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+# Jinja2テンプレートをレンダリング（PythonでJinja2を使用）
+if command -v python3 >/dev/null 2>&1; then
+  python3 <<PYTHON_SCRIPT
+import sys
+from pathlib import Path
 
-ALERT_SCRIPT="${ALERT_SCRIPT:-/bin/echo}"
-STATE_DIR="${STATE_DIR:-/tmp/security-monitor-state}"
-FILE_HASH_TARGETS="${FILE_HASH_TARGETS:-}"
-FILE_HASH_EXCLUDES="${FILE_HASH_EXCLUDES:-}"
-FILE_HASH_STATE="${STATE_DIR}/file-hashes.txt"
+try:
+    from jinja2 import Template
+except ImportError:
+    print("⚠️  jinja2がインストールされていません。pip install jinja2 を実行してください", file=sys.stderr)
+    sys.exit(1)
 
-mkdir -p "${STATE_DIR}"
+template_path = Path("${MONITOR_TEMPLATE}")
+if not template_path.exists():
+    print(f"⚠️  テンプレートが見つかりません: {template_path}", file=sys.stderr)
+    sys.exit(1)
 
-process_file_integrity() {
-  local tmp_hashes
-  tmp_hashes=$(mktemp)
-  for f in ${FILE_HASH_TARGETS}; do
-    [[ -r "${f}" ]] || continue
-    local skip=false
-    for pat in ${FILE_HASH_EXCLUDES}; do
-      [[ -n "${pat}" && "${f}" == ${pat} ]] && skip=true && break
-    done
-    [[ "${skip}" == true ]] && continue
-    sha256sum "${f}" || true
-  done > "${tmp_hashes}"
+with open(template_path, 'r', encoding='utf-8') as f:
+    template_content = f.read()
 
-  if [[ ! -f "${FILE_HASH_STATE}" ]]; then
-    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
-    return
+template = Template(template_content)
+rendered = template.render(
+    alert_script_path='/bin/echo',
+    alert_webhook_url='',
+    alert_webhook_timeout_seconds=5,
+    security_monitor_state_dir='${TMP_DIR}',
+    security_monitor_fail2ban_log='${TMP_DIR}/fail2ban.log'
+)
+
+output_path = Path("${MONITOR_SCRIPT}")
+with open(output_path, 'w', encoding='utf-8') as f:
+    f.write(rendered)
+
+print(f"✅ テンプレートをレンダリングしました: {output_path}")
+PYTHON_SCRIPT
+
+  if [[ $? -ne 0 ]]; then
+    echo "⚠️  テンプレートのレンダリングに失敗しました。jinja2がインストールされていない可能性があります。"
+    echo "   代替として、sedで簡易置換を試みます..."
+    # フォールバック: sedで簡易置換（区切り文字を#に変更してパス問題を回避）
+    sed \
+      -e "s#{{ alert_script_path }}#/bin/echo#g" \
+      -e "s#{{ alert_webhook_url | default('') }}##g" \
+      -e "s#{{ alert_webhook_timeout_seconds | default(5) }}#5#g" \
+      -e "s#{{ security_monitor_state_dir }}#${TMP_DIR}#g" \
+      -e "s#{{ security_monitor_fail2ban_log }}#${TMP_DIR}/fail2ban.log#g" \
+      "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
   fi
-
-  if ! diff -q "${FILE_HASH_STATE}" "${tmp_hashes}" >/dev/null 2>&1; then
-    "${ALERT_SCRIPT}" \
-      "file-integrity" \
-      "重要ファイルのハッシュが変更されました" \
-      "$(diff -u "${FILE_HASH_STATE}" "${tmp_hashes}" || true)"
-    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
-    return
-  fi
-
-  rm -f "${tmp_hashes}"
-}
-
-process_file_integrity
-EOF
+else
+  echo "⚠️  python3が見つかりません。sedで簡易置換を試みます..."
+  # フォールバック: sedで簡易置換（区切り文字を#に変更してパス問題を回避）
+  sed \
+    -e "s#{{ alert_script_path }}#/bin/echo#g" \
+    -e "s#{{ alert_webhook_url | default('') }}##g" \
+    -e "s#{{ alert_webhook_timeout_seconds | default(5) }}#5#g" \
+    -e "s#{{ security_monitor_state_dir }}#${TMP_DIR}#g" \
+    -e "s#{{ security_monitor_fail2ban_log }}#${TMP_DIR}/fail2ban.log#g" \
+    "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
+fi
 
 chmod +x "${MONITOR_SCRIPT}"
 
