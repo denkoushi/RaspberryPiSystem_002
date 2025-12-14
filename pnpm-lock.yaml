@@ -89,6 +89,9 @@ importers:
       '@types/bcryptjs':
         specifier: ^2.4.2
         version: 2.4.6
+      '@types/form-data':
+        specifier: ^2.5.2
+        version: 2.5.2
       '@types/jsonwebtoken':
         specifier: ^9.0.5
         version: 9.0.10
@@ -116,6 +119,9 @@ importers:
       eslint-plugin-unused-imports:
         specifier: ^3.2.0
         version: 3.2.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)
+      form-data:
+        specifier: ^4.0.5
+        version: 4.0.5
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@20.19.25)(typescript@5.9.3)
@@ -1083,6 +1089,10 @@ packages:
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
+
+  '@types/form-data@2.5.2':
+    resolution: {integrity: sha512-tfmcyHn1Pp9YHAO5r40+UuZUPAZbUEgqTel3EuEKpmF9hPkXgR4l41853raliXnb4gwyPNoQOfvgGGlHN5WSog==}
+    deprecated: This is a stub types definition. form-data provides its own type definitions, so you do not need this installed.
 
   '@types/json5@0.0.29':
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
@@ -3828,6 +3838,10 @@ snapshots:
   '@types/bcryptjs@2.4.6': {}
 
   '@types/estree@1.0.8': {}
+
+  '@types/form-data@2.5.2':
+    dependencies:
+      form-data: 4.0.5
 
   '@types/json5@0.0.29': {}
 
