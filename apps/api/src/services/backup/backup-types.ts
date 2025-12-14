@@ -13,6 +13,7 @@ export interface BackupResult {
   sizeBytes?: number;
   error?: string;
   timestamp: Date;
+  modifiedAt?: Date;
 }
 
 export interface RestoreResult {

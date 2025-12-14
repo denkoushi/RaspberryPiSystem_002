@@ -1,6 +1,7 @@
 import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../../../lib/prisma.js';
-import type { BackupTarget, BackupTargetInfo } from '../backup-target.interface';
+import type { BackupTarget } from '../backup-target.interface';
+import type { BackupTargetInfo } from '../backup-types.js';
 
 /**
  * CSVバックアップターゲット

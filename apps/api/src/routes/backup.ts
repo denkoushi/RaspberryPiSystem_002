@@ -10,6 +10,7 @@ import { DirectoryBackupTarget } from '../services/backup/targets/directory-back
 import { CsvBackupTarget } from '../services/backup/targets/csv-backup.target.js';
 import { ImageBackupTarget } from '../services/backup/targets/image-backup.target.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
+import type { BackupConfig } from '../services/backup/backup-config.js';
 import { ApiError } from '../lib/errors.js';
 
 /**
@@ -47,7 +48,7 @@ function createBackupTarget(kind: string, source: string, metadata?: Record<stri
 function createStorageProvider(provider: string, options?: Record<string, unknown>) {
   switch (provider) {
     case 'local': {
-      return new LocalStorageProvider(options);
+      return new LocalStorageProvider();
     }
     case 'dropbox': {
       const accessToken = options?.accessToken as string;
@@ -244,7 +245,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       }
     }
   }, async (request, reply) => {
-    const config = request.body;
+    const config = request.body as BackupConfig;
     await BackupConfigLoader.save(config);
     return reply.status(200).send({ success: true });
   });

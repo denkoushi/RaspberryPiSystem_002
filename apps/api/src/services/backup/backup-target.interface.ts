@@ -1,4 +1,4 @@
-import type { BackupKind } from './backup-types';
+import type { BackupKind, BackupTargetInfo } from './backup-types';
 
 export interface BackupTarget {
   info: BackupTargetInfo;

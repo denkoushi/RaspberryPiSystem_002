@@ -72,7 +72,8 @@ export class BackupService implements BackupProvider {
       success: true,
       path: entry.path,
       sizeBytes: entry.sizeBytes,
-      timestamp: entry.modifiedAt ?? now
+      timestamp: entry.modifiedAt ?? now,
+      modifiedAt: entry.modifiedAt ?? now
     }));
   }
 

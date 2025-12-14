@@ -8,6 +8,7 @@
     "src/**/*.test.ts",
     "prisma/seed.ts",
     "vitest.config.ts",
-    "scripts/import-rigging.ts"
+    "scripts/import-rigging.ts",
+    "scripts/get-dropbox-cert-fingerprint.ts"
   ]
 }

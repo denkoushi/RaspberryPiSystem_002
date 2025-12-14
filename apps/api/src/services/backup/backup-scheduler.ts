@@ -7,7 +7,8 @@ import { FileBackupTarget } from './targets/file-backup.target.js';
 import { DirectoryBackupTarget } from './targets/directory-backup.target.js';
 import { CsvBackupTarget } from './targets/csv-backup.target.js';
 import { ImageBackupTarget } from './targets/image-backup.target.js';
-import { BackupConfigLoader, type BackupConfig } from './backup-config.loader.js';
+import { BackupConfigLoader } from './backup-config.loader.js';
+import type { BackupConfig } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -126,7 +127,7 @@ export class BackupScheduler {
         basePath: config.storage.options?.basePath as string
       });
     } else {
-      storageProvider = new LocalStorageProvider(config.storage.options);
+      storageProvider = new LocalStorageProvider();
     }
 
     const backupService = new BackupService(storageProvider);
@@ -199,6 +200,7 @@ export class BackupScheduler {
     if (retention.maxBackups && backups.length > retention.maxBackups) {
       const toDelete = sortedBackups.slice(0, backups.length - retention.maxBackups);
       for (const backup of toDelete) {
+        if (!backup.path) continue;
         try {
           await backupService.deleteBackup(backup.path);
           logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
@@ -209,6 +211,7 @@ export class BackupScheduler {
     } else {
       // 保持期間を超えたバックアップを削除
       for (const backup of sortedBackups) {
+        if (!backup.path) continue;
         try {
           await backupService.deleteBackup(backup.path);
           logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
