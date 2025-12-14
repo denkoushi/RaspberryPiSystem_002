@@ -7,6 +7,9 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 API_URL="${API_URL:-http://localhost:8080/api}"
 TEST_LOG_FILE="/tmp/test-system-monitor.log"
+TMP_DIR="$(mktemp -d)"
+MONITOR_TEMPLATE="${PROJECT_DIR}/infrastructure/ansible/templates/security-monitor.sh.j2"
+MONITOR_SCRIPT="${TMP_DIR}/security-monitor.sh"
 
 echo "=========================================="
 echo "監視スクリプトのテスト"
@@ -119,4 +122,74 @@ fi
 
 echo ""
 echo "✅ 監視スクリプトのテスト完了"
+
+# -----------------------------------
+# 4. ファイル改ざん検知の回帰テスト
+# -----------------------------------
+
+echo ""
+echo "4. ファイル改ざん検知（ファイルハッシュ差分）のテスト"
+echo "-----------------------------------"
+
+if [[ ! -f "${MONITOR_TEMPLATE}" ]]; then
+  echo "⚠️  テンプレートが見つかりません: ${MONITOR_TEMPLATE}"
+  exit 0
+fi
+
+# 現在開いているLISTENポートを許可リストにして誤検知を避ける
+detect_ports() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tuln | awk 'NR>1 {print $5}' | awk -F':' '{print $NF}' | sort -u
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tuln | awk 'NR>2 {print $4}' | awk -F':' '{print $NF}' | sort -u
+  else
+    echo ""
+  fi
+}
+
+ALLOWED_PORTS="$(detect_ports | xargs)"
+
+# テンプレートのJinja部分を簡易置換して一時スクリプトを生成（アラート送信はechoで代替）
+sed \
+  -e "s|{{ alert_script_path }}|/bin/echo|g" \
+  -e "s|{{ alert_webhook_url | default('') }}||g" \
+  -e "s|{{ alert_webhook_timeout_seconds | default(5) }}|5|g" \
+  -e "s|{{ security_monitor_state_dir }}|${TMP_DIR}|g" \
+  -e "s|{{ security_monitor_fail2ban_log }}|${TMP_DIR}/fail2ban.log|g" \
+  "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
+
+chmod +x "${MONITOR_SCRIPT}"
+
+TARGET_FILE="${TMP_DIR}/watched.txt"
+echo "initial" > "${TARGET_FILE}"
+
+run_monitor() {
+  FILE_HASH_TARGETS="${TARGET_FILE}" \
+  FILE_HASH_EXCLUDES="" \
+  REQUIRED_PROCESSES="" \
+  ALLOWED_LISTEN_PORTS="${ALLOWED_PORTS}" \
+  WEBHOOK_URL="" \
+  WEBHOOK_TIMEOUT_SECONDS="5" \
+  "${MONITOR_SCRIPT}"
+}
+
+# 1回目: 初回スナップショットのみでアラートなし
+OUTPUT1=$(run_monitor || true)
+if echo "${OUTPUT1}" | grep -q "file-integrity"; then
+  echo "⚠️  初回実行でfile-integrityアラートが発生しました（期待: なし）"
+else
+  echo "✅ 初回実行ではfile-integrityアラートなし（スナップショット作成のみ）"
+fi
+
+# 2回目: 内容変更→アラートが出ることを確認
+echo "modified" > "${TARGET_FILE}"
+OUTPUT2=$(run_monitor || true)
+if echo "${OUTPUT2}" | grep -q "file-integrity"; then
+  echo "✅ 変更検知でfile-integrityアラートを発報しました"
+else
+  echo "⚠️  変更検知でfile-integrityアラートが発報されませんでした"
+  exit 1
+fi
+
+rm -rf "${TMP_DIR}"
 
