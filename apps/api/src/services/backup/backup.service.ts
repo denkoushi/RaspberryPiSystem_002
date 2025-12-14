@@ -1,7 +1,7 @@
 import path from 'path';
 import { promises as fs } from 'fs';
-import type { BackupProvider } from './backup-provider.interface';
-import type { BackupTarget } from './backup-target.interface';
+import type { BackupProvider } from './backup-provider.interface.js';
+import type { BackupTarget } from './backup-target.interface.js';
 import type {
   BackupOptions,
   BackupResult,
@@ -9,8 +9,8 @@ import type {
   ListBackupsOptions,
   RestoreOptions,
   RestoreResult
-} from './backup-types';
-import type { StorageProvider } from './storage/storage-provider.interface';
+} from './backup-types.js';
+import type { StorageProvider, FileInfo } from './storage/storage-provider.interface.js';
 
 export class BackupService implements BackupProvider {
   constructor(private readonly storage: StorageProvider) {}
@@ -67,7 +67,7 @@ export class BackupService implements BackupProvider {
     const entries = await this.storage.list(prefix);
     const now = new Date();
 
-    return entries.map((entry) => ({
+    return entries.map((entry: FileInfo) => ({
       target: { type: 'file', source: entry.path },
       success: true,
       path: entry.path,
