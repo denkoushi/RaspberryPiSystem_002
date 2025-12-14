@@ -120,7 +120,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - ✅ Caddyfile/Caddyfile.productionに`@admin_protect`マッチャーを追加し、`/admin*`パスを許可ネットワークに限定  
   - ✅ docker-compose.server.ymlに`ADMIN_ALLOW_NETS`環境変数を追加（デフォルト: `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`）  
   - ✅ docs/guides/deployment.mdにIP制限手順とTailscale ACL推奨を追記  
-  - テスト: 許可IPから `curl -kI https://<pi5>/admin` が200/302、非許可IPから403/timeout。実機テスト待ち。  
+  - ✅ 実機テスト完了（2025-12-14）: 許可IP（Tailscale経由）から `curl -kI https://100.106.158.2/admin` が200 OKを確認。`ADMIN_ALLOW_NETS`環境変数が正しく設定されていることを確認。  
 - [x] (2025-12-13) アラートの外部通知を追加（Slack/Webhook等へ `generate-alert.sh` から送信）  
   - ✅ `scripts/generate-alert.sh`にWebhook送信機能を追加（未設定時は従来のファイルアラートのみ）  
   - ✅ `infrastructure/ansible/group_vars/all.yml`に`alert_webhook_url`/`alert_webhook_timeout_seconds`を追加  
@@ -143,7 +143,8 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-13) セキュリティヘッダー/CSPの最終確認とテストスクリプト追加  
   - ✅ `scripts/test/check-caddy-https-headers.sh`を追加（HTTP→HTTPSリダイレクトとHSTS/X-Content-Type-Options/X-Frame-Options/Referrer-Policyを確認）  
   - ✅ docs/guides/deployment.mdにHTTPS/ヘッダー確認手順を追記  
-  - テスト: `TARGET_HOST=<pi5> bash scripts/test/check-caddy-https-headers.sh` を実行。実機テスト待ち。  
+  - ✅ `Caddyfile.local.template`に`Strict-Transport-Security`ヘッダーを追加（`max-age=31536000; includeSubDomains; preload`）  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 bash scripts/test/check-caddy-https-headers.sh` を実行。HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダー（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy）がすべて確認できた。  
 - [x] (2025-12-13) ログ保持とローテーション方針の明文化・適用  
   - ✅ `infrastructure/ansible/templates/logrotate-security.conf.j2`を追加（fail2ban/clamav/trivy/rkhunter/alertsを週次ローテーション、12週保持）  
   - ✅ `infrastructure/ansible/roles/server/tasks/security.yml`にlogrotate設定のデプロイタスクを追加  
@@ -186,7 +187,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - 設計: AIDE等によるファイル整合性チェック＋軽量プロセス監視、重要ファイル・プロセスのみ監視対象を絞る。`security-monitor.sh`で結果をalerts/Webhookへ送信。ハッシュスナップショットと許可プロセス/ポートのリストを持ち、乖離のみ検知。  
   - テスト: 改ざんファイル作成で検知されること、誤検知抑制（除外リスト）、CPU/メモリ使用率が許容範囲内(<=10%増)。  
   - CI: lintのみ（実機テストは手動）。監視スクリプトの単体テストをbashテストに追加。
-  - 進捗: ✅ fail2ban連携（既存）。✅ 重要ファイルのハッシュ監視を追加（`FILE_HASH_TARGETS`で指定、差分をアラート/ウェブフック送信、`FILE_HASH_EXCLUDES`で除外可）。✅ 必須プロセス欠落と許可外LISTENポートを検知しアラート（環境変数`REQUIRED_PROCESSES`/`ALLOWED_LISTEN_PORTS`）。✅ bash単体テストを追加（Ansibleレンダリング経由でfile-integrity・除外リスト・必須プロセス欠落・許可外ポート検知を回帰テスト、CI通過確認済み）。  
+  - 進捗: ✅ fail2ban連携（既存）。✅ 重要ファイルのハッシュ監視を追加（`FILE_HASH_TARGETS`で指定、差分をアラート/ウェブフック送信、`FILE_HASH_EXCLUDES`で除外可）。✅ 必須プロセス欠落と許可外LISTENポートを検知しアラート（環境変数`REQUIRED_PROCESSES`/`ALLOWED_LISTEN_PORTS`）。✅ bash単体テストを追加（Ansibleレンダリング経由でfile-integrity・除外リスト・必須プロセス欠落・許可外ポート検知を回帰テスト、CI通過確認済み）。✅ 実機テスト完了（2025-12-14）: `/usr/local/bin/security-monitor.sh`が存在し実行可能であることを確認。アラートディレクトリにアラートファイルが生成されていることを確認（rkhunter警告など）。環境変数のデフォルト値が正しく設定されていることを確認。  
 
 - [ ] 権限監査の実装  
   - 要件: 権限変更の履歴（誰が/いつ/誰を/どう変更）を記録し、異常パターンでアラート。  
