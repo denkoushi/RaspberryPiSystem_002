@@ -1,7 +1,7 @@
 import { buildServer } from './app.js';
 import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
-import { getBackupScheduler } from './services/backup/backup-scheduler.js';
+import { getBackupScheduler } from './services/backup/backup-scheduler';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()

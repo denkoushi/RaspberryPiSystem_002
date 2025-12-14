@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { BackupConfigSchema, type BackupConfig, defaultBackupConfig } from './backup-config.js';
+import { BackupConfigSchema, type BackupConfig, defaultBackupConfig } from './backup-config';
 import { logger } from '../../lib/logger.js';
 
 /**

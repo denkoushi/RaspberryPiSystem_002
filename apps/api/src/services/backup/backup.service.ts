@@ -1,7 +1,7 @@
 import path from 'path';
 import { promises as fs } from 'fs';
-import type { BackupProvider } from './backup-provider.interface.js';
-import type { BackupTarget } from './backup-target.interface.js';
+import type { BackupProvider } from './backup-provider.interface';
+import type { BackupTarget } from './backup-target.interface';
 import type {
   BackupOptions,
   BackupResult,
@@ -9,8 +9,8 @@ import type {
   ListBackupsOptions,
   RestoreOptions,
   RestoreResult
-} from './backup-types.js';
-import type { StorageProvider, FileInfo } from './storage/storage-provider.interface.js';
+} from './backup-types';
+import type { StorageProvider, FileInfo } from './storage/storage-provider.interface';
 
 export class BackupService implements BackupProvider {
   constructor(private readonly storage: StorageProvider) {}

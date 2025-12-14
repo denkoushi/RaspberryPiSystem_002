@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../lib/auth.js';
-import { BackupService } from '../services/backup/backup.service.js';
-import { LocalStorageProvider } from '../services/backup/storage/local-storage.provider.js';
-import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
-import { DatabaseBackupTarget } from '../services/backup/targets/database-backup.target.js';
-import { FileBackupTarget } from '../services/backup/targets/file-backup.target.js';
-import { DirectoryBackupTarget } from '../services/backup/targets/directory-backup.target.js';
-import { CsvBackupTarget } from '../services/backup/targets/csv-backup.target.js';
-import { ImageBackupTarget } from '../services/backup/targets/image-backup.target.js';
-import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
-import type { BackupConfig } from '../services/backup/backup-config.js';
+import { BackupService } from '../services/backup/backup.service';
+import { LocalStorageProvider } from '../services/backup/storage/local-storage.provider';
+import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider';
+import { DatabaseBackupTarget } from '../services/backup/targets/database-backup.target';
+import { FileBackupTarget } from '../services/backup/targets/file-backup.target';
+import { DirectoryBackupTarget } from '../services/backup/targets/directory-backup.target';
+import { CsvBackupTarget } from '../services/backup/targets/csv-backup.target';
+import { ImageBackupTarget } from '../services/backup/targets/image-backup.target';
+import { BackupConfigLoader } from '../services/backup/backup-config.loader';
+import type { BackupConfig } from '../services/backup/backup-config';
 import { ApiError } from '../lib/errors.js';
 
 /**

@@ -4,8 +4,8 @@ import type {
   ListBackupsOptions,
   RestoreOptions,
   RestoreResult
-} from './backup-types.js';
-import type { BackupTarget } from './backup-target.interface.js';
+} from './backup-types';
+import type { BackupTarget } from './backup-target.interface';
 
 export interface BackupProvider {
   backup(target: BackupTarget, options?: BackupOptions): Promise<BackupResult>;
