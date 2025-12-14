@@ -25,8 +25,11 @@ test.describe('MFA remember-me (30日記憶) smoke', () => {
     });
 
     await page.goto('/login');
-    await page.getByRole('textbox', { name: /ユーザー名/i }).fill('admin');
-    await page.getByLabel(/パスワード/i).fill('mock-password');
+    await expect(page.getByRole('heading', { name: /管理者ログイン/i })).toBeVisible();
+    const usernameInput = page.getByRole('textbox').first();
+    const passwordInput = page.getByRole('textbox').nth(1);
+    await usernameInput.fill('admin');
+    await passwordInput.fill('mock-password');
     await page.getByLabel(/30日間この端末でサインイン状態を維持する/i).check();
     await page.getByRole('button', { name: /ログイン/i }).click();
 
@@ -58,8 +61,11 @@ test.describe('MFA remember-me (30日記憶) smoke', () => {
     });
 
     await page.goto('/login');
-    await page.getByRole('textbox', { name: /ユーザー名/i }).fill('admin');
-    await page.getByLabel(/パスワード/i).fill('mock-password');
+    await expect(page.getByRole('heading', { name: /管理者ログイン/i })).toBeVisible();
+    const usernameInput = page.getByRole('textbox').first();
+    const passwordInput = page.getByRole('textbox').nth(1);
+    await usernameInput.fill('admin');
+    await passwordInput.fill('mock-password');
     // チェックしないでログイン
     await page.getByRole('button', { name: /ログイン/i }).click();
 
