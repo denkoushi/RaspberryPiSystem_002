@@ -101,7 +101,7 @@ process_required_processes() {
   for p in ${REQUIRED_PROCESSES}; do
     pgrep -f "${p}" >/dev/null 2>&1 || missing+=("${p}")
   done
-  if (( ${#missing[@]} > 0 )); then
+  if (( {{ '${#' }}missing[@]} > 0 )); then
     WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
       "{{ alert_script_path }}" \
       "process-missing" \
@@ -127,7 +127,7 @@ process_listen_ports() {
     [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${port}")
   done <<< "${current_ports}"
 
-  if (( ${#unexpected[@]} > 0 )); then
+  if (( {{ '${#' }}unexpected[@]} > 0 )); then
     WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
       "{{ alert_script_path }}" \
       "ports-unexpected" \
