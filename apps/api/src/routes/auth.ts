@@ -66,6 +66,8 @@ async function emitRoleChangeAlert(options: {
   reasons: string[];
   logger: FastifyInstance['log'];
 }) {
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+  const webhookTimeoutMs = Number.parseInt(process.env.ALERT_WEBHOOK_TIMEOUT_MS ?? '5000', 10);
   const alertsDir = process.env.ALERTS_DIR ?? path.join(process.cwd(), 'alerts');
   const id = crypto.randomUUID();
   const alert = {
@@ -91,6 +93,23 @@ async function emitRoleChangeAlert(options: {
     await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
   } catch (error) {
     options.logger.warn({ err: error, alert }, 'Failed to write role change alert');
+  }
+
+  if (webhookUrl) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), webhookTimeoutMs);
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(alert),
+        signal: controller.signal
+      });
+    } catch (error) {
+      options.logger.warn({ err: error, alert }, 'Failed to send role change alert webhook');
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
