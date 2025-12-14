@@ -27,6 +27,7 @@
     "@raspi-system/shared-types": "workspace:*",
     "bcryptjs": "^2.4.3",
     "csv-parse": "^5.5.6",
+    "csv-stringify": "^6.6.0",
     "dotenv": "^16.4.5",
     "dropbox": "^10.34.0",
     "fastify": "^4.26.2",

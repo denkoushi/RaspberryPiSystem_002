@@ -253,11 +253,12 @@ interface BackupTarget {
   - [x] 証明書フィンガープリント取得スクリプト追加
   - [x] Dropbox統合テスト追加（トークン設定時のみ実行）
   - [x] **実際のDropboxアカウントでの連携テスト成功**（3件すべてパス）
-- [ ] Milestone 3: CSV・画像バックアップの追加
-  - [ ] `CsvBackupTarget`の実装
-  - [ ] `ImageBackupTarget`の実装
-  - [ ] 既存の`PhotoStorage`との統合
-  - [ ] CSVインポート機能との統合
+- [x] Milestone 3: CSV・画像バックアップの追加（2025-12-14）
+  - [x] `CsvBackupTarget`の実装（従業員・アイテムCSVエクスポート）
+  - [x] `ImageBackupTarget`の実装（PhotoStorageディレクトリのtarアーカイブ）
+  - [x] 既存の`PhotoStorage`との統合（写真ディレクトリのバックアップ）
+  - [x] CSVインポート機能との統合（同じCSV形式でエクスポート）
+  - [x] テスト追加（CSV: 2件、Image: 2件）
 - [ ] Milestone 4: 設定・スケジューリング機能
   - [ ] `BackupConfig`の実装
   - [ ] 設定ファイルの読み込み機能
