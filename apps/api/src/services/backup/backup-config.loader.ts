@@ -8,7 +8,7 @@ import { logger } from '../../lib/logger.js';
  */
 export class BackupConfigLoader {
   private static configPath = process.env.BACKUP_CONFIG_PATH || 
-    '/opt/RaspberryPiSystem_002/config/backup.json';
+    '/app/config/backup.json';
 
   /**
    * 設定ファイルを読み込む

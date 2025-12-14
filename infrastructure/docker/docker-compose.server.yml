@@ -36,7 +36,7 @@ services:
       - pdf-pages-storage:/app/storage/pdf-pages
       - signage-rendered-storage:/app/storage/signage-rendered
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
-      - /opt/RaspberryPiSystem_002/config:/opt/RaspberryPiSystem_002/config:ro
+      - /opt/RaspberryPiSystem_002/config:/app/config:ro
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     ports:
