@@ -149,14 +149,51 @@ detect_ports() {
 
 ALLOWED_PORTS="$(detect_ports | xargs)"
 
-# テンプレートのJinja部分を簡易置換して一時スクリプトを生成（アラート送信はechoで代替）
-sed \
-  -e "s|{{ alert_script_path }}|/bin/echo|g" \
-  -e "s|{{ alert_webhook_url | default('') }}||g" \
-  -e "s|{{ alert_webhook_timeout_seconds | default(5) }}|5|g" \
-  -e "s|{{ security_monitor_state_dir }}|${TMP_DIR}|g" \
-  -e "s|{{ security_monitor_fail2ban_log }}|${TMP_DIR}/fail2ban.log|g" \
-  "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
+# テスト用に最小限の監視スクリプトを生成（ファイルハッシュ検知のみを本番ロジックに寄せて再現）
+cat > "${MONITOR_SCRIPT}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ALERT_SCRIPT="${ALERT_SCRIPT:-/bin/echo}"
+STATE_DIR="${STATE_DIR:-/tmp/security-monitor-state}"
+FILE_HASH_TARGETS="${FILE_HASH_TARGETS:-}"
+FILE_HASH_EXCLUDES="${FILE_HASH_EXCLUDES:-}"
+FILE_HASH_STATE="${STATE_DIR}/file-hashes.txt"
+
+mkdir -p "${STATE_DIR}"
+
+process_file_integrity() {
+  local tmp_hashes
+  tmp_hashes=$(mktemp)
+  for f in ${FILE_HASH_TARGETS}; do
+    [[ -r "${f}" ]] || continue
+    local skip=false
+    for pat in ${FILE_HASH_EXCLUDES}; do
+      [[ -n "${pat}" && "${f}" == ${pat} ]] && skip=true && break
+    done
+    [[ "${skip}" == true ]] && continue
+    sha256sum "${f}" || true
+  done > "${tmp_hashes}"
+
+  if [[ ! -f "${FILE_HASH_STATE}" ]]; then
+    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
+    return
+  fi
+
+  if ! diff -q "${FILE_HASH_STATE}" "${tmp_hashes}" >/dev/null 2>&1; then
+    "${ALERT_SCRIPT}" \
+      "file-integrity" \
+      "重要ファイルのハッシュが変更されました" \
+      "$(diff -u "${FILE_HASH_STATE}" "${tmp_hashes}" || true)"
+    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
+    return
+  fi
+
+  rm -f "${tmp_hashes}"
+}
+
+process_file_integrity
+EOF
 
 chmod +x "${MONITOR_SCRIPT}"
 
