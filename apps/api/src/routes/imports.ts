@@ -15,8 +15,6 @@ const { EmployeeStatus, ItemStatus } = pkg;
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
     (val) => {
-      // デバッグ: 値を確認
-      console.log('[fieldSchema] replaceExisting raw value:', val, 'type:', typeof val);
       if (val === 'true' || val === true || val === '1' || val === 1) {
         return true;
       }
@@ -101,9 +99,18 @@ async function importEmployees(
   replaceExisting: boolean,
   logger?: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
 ): Promise<ImportResult> {
-  // エラーレベルでログを出して、確実に実行されていることを確認
-  logger?.error({ replaceExisting, rowsCount: rows.length, __filename: import.meta.url }, '[importEmployees] ENTER');
-  
+  // === 処理シーケンス ===
+  // 1. 入力検証（rows.length === 0 の場合は早期リターン）
+  // 2. replaceExisting=trueの場合: Loanレコードが存在しない従業員を削除
+  // 3. CSV内のnfcTagUid重複チェック（CSV内での重複を検出）
+  // 4. 各行をループ処理:
+  //    4-1. 既存従業員の存在確認
+  //    4-2. 既存の場合: 更新処理（DB内のnfcTagUid重複チェック含む）
+  //    4-3. 新規の場合: 作成処理（DB内のnfcTagUid重複チェック含む）
+  //    4-4. エラーハンドリング（P2002エラーの詳細化）
+  // 5. 結果を返す
+
+  // === 1. 入力検証 ===
   if (rows.length === 0) {
     return { processed: 0, created: 0, updated: 0 };
   }
@@ -114,21 +121,15 @@ async function importEmployees(
     updated: 0
   };
 
-  // デバッグログ: replaceExistingの値を確認
-  logger?.error({ replaceExisting, rowsCount: rows.length }, '[importEmployees] Starting import');
-
+  // === 2. replaceExisting=trueの場合: Loanレコードが存在しない従業員を削除 ===
   if (replaceExisting) {
     // Loanレコードが存在する従業員は削除できないため、Loanレコードが存在しない従業員のみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在する従業員は削除しない
     try {
-      logger?.info({}, '[importEmployees] Starting deleteMany with replaceExisting=true');
-      // employeeIdは必須フィールドなので、nullになることはないが、念のためフィルタリング
       const loans = await tx.loan.findMany({
         select: { employeeId: true }
       });
       const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
-      
-      logger?.info({ employeesWithLoans: employeeIdsWithLoans.size }, '[importEmployees] Found employees with loans');
       
       if (employeeIdsWithLoans.size > 0) {
         // Loanレコードが存在する従業員は削除しない
@@ -143,16 +144,13 @@ async function importEmployees(
         // Loanレコードが存在しない場合は全て削除可能
         await tx.employee.deleteMany();
       }
-      logger?.info({}, '[importEmployees] deleteMany completed successfully');
     } catch (error) {
-      // 削除処理でエラーが発生した場合は、エラーを再スロー
       logger?.error({ err: error }, '[importEmployees] Error in deleteMany');
       throw error;
     }
-  } else {
-    logger?.error({ replaceExisting }, '[importEmployees] Skipping deleteMany (replaceExisting=false)');
   }
-  // CSV内でnfcTagUidの重複をチェック
+
+  // === 3. CSV内のnfcTagUid重複チェック ===
   const nfcTagUidMap = new Map<string, string[]>(); // nfcTagUid -> employeeCode[]
   for (const row of rows) {
     if (row.nfcTagUid && row.nfcTagUid.trim()) {
@@ -173,10 +171,13 @@ async function importEmployees(
     throw new ApiError(400, errorMessage);
   }
 
+  // === 4. 各行をループ処理 ===
   for (const row of rows) {
-    // rowからidを明示的に除外（CSVにidカラムが含まれている場合に備える）
-    const { id: _ignoredId, ...rowWithoutId } = row as any;
-    
+    // 4-1. 既存従業員の存在確認
+    // 4-2. 既存の場合: 更新処理（DB内のnfcTagUid重複チェック含む）
+    // 4-3. 新規の場合: 作成処理（DB内のnfcTagUid重複チェック含む）
+    // 4-4. エラーハンドリング（P2002エラーの詳細化）
+
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
     const updateData = {
       displayName: row.displayName,
@@ -189,15 +190,12 @@ async function importEmployees(
       employeeCode: row.employeeCode,
       ...updateData
     };
+
     try {
       const existing = await tx.employee.findUnique({ where: { employeeCode: row.employeeCode } });
+      
       if (existing) {
-        logger?.error({ 
-          employeeCode: row.employeeCode,
-          existingId: existing.id,
-          updateDataKeys: Object.keys(updateData)
-        }, '[importEmployees] Updating employee');
-        
+        // === 4-2. 既存の場合: 更新処理 ===
         // nfcTagUidが設定されている場合、他の従業員が同じnfcTagUidを持っていないかチェック
         const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
         if (nfcTagUidToCheck) {
@@ -220,24 +218,15 @@ async function importEmployees(
         
         // update時はidを明示的に除外（念のため二重で防御）
         const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, employeeCode: _ignoredEmployeeCode, ...finalUpdateData } = updateData as any;
-        logger?.error({ 
-          finalUpdateDataKeys: Object.keys(finalUpdateData),
-          hasId: 'id' in finalUpdateData
-        }, '[importEmployees] finalUpdateData確認');
         await tx.employee.update({
           where: { employeeCode: row.employeeCode },
           data: finalUpdateData
         });
         result.updated += 1;
       } else {
+        // === 4-3. 新規の場合: 作成処理 ===
         // 新規作成時も、同じnfcTagUidを持つ既存の従業員が存在するかチェック
         const nfcTagUidToCheck = row.nfcTagUid ? row.nfcTagUid.trim() : null;
-        logger?.error({ 
-          employeeCode: row.employeeCode,
-          nfcTagUidRaw: row.nfcTagUid,
-          nfcTagUidToCheck: nfcTagUidToCheck,
-          createDataNfcTagUid: createData.nfcTagUid
-        }, '[importEmployees] 新規作成前のチェック');
         
         if (nfcTagUidToCheck) {
           const existingWithSameNfcTag = await tx.employee.findFirst({
@@ -245,14 +234,6 @@ async function importEmployees(
               nfcTagUid: nfcTagUidToCheck
             }
           });
-          logger?.error({ 
-            nfcTagUidToCheck: nfcTagUidToCheck,
-            existingWithSameNfcTag: existingWithSameNfcTag ? {
-              id: existingWithSameNfcTag.id,
-              employeeCode: existingWithSameNfcTag.employeeCode,
-              nfcTagUid: existingWithSameNfcTag.nfcTagUid
-            } : null
-          }, '[importEmployees] nfcTagUid重複チェック結果');
           
           if (existingWithSameNfcTag) {
             const errorMessage = `nfcTagUid="${nfcTagUidToCheck}"は既にemployeeCode="${existingWithSameNfcTag.employeeCode}"で使用されています。employeeCode="${row.employeeCode}"では使用できません。`;
@@ -265,22 +246,13 @@ async function importEmployees(
           }
         }
         
-        logger?.error({ 
-          employeeCode: row.employeeCode,
-          nfcTagUid: nfcTagUidToCheck,
-          createData: {
-            employeeCode: createData.employeeCode,
-            nfcTagUid: createData.nfcTagUid,
-            displayName: createData.displayName
-          }
-        }, '[importEmployees] Creating employee');
         try {
           await tx.employee.create({
             data: createData
           });
           result.created += 1;
         } catch (createError) {
-          // P2002エラー（ユニーク制約違反）の場合、より詳細なエラーメッセージを返す
+          // === 4-4. エラーハンドリング（P2002エラーの詳細化） ===
           if (createError instanceof PrismaClientKnownRequestError && createError.code === 'P2002') {
             const target = (createError.meta as any)?.target || [];
             if (target.includes('nfcTagUid')) {
@@ -319,6 +291,7 @@ async function importEmployees(
     }
   }
 
+  // === 5. 結果を返す ===
   return result;
 }
 
@@ -327,6 +300,18 @@ async function importItems(
   rows: ItemCsvRow[],
   replaceExisting: boolean
 ): Promise<ImportResult> {
+  // === 処理シーケンス ===
+  // 1. 入力検証（rows.length === 0 の場合は早期リターン）
+  // 2. replaceExisting=trueの場合: Loanレコードが存在しないアイテムを削除
+  // 3. CSV内のnfcTagUid重複チェック（CSV内での重複を検出）
+  // 4. 各行をループ処理:
+  //    4-1. 既存アイテムの存在確認
+  //    4-2. 既存の場合: 更新処理（DB内のnfcTagUid重複チェック含む）
+  //    4-3. 新規の場合: 作成処理（DB内のnfcTagUid重複チェック含む）
+  //    4-4. エラーハンドリング（P2002エラーの詳細化）
+  // 5. 結果を返す
+
+  // === 1. 入力検証 ===
   if (rows.length === 0) {
     return { processed: 0, created: 0, updated: 0 };
   }
@@ -337,6 +322,7 @@ async function importItems(
     updated: 0
   };
 
+  // === 2. replaceExisting=trueの場合: Loanレコードが存在しないアイテムを削除 ===
   if (replaceExisting) {
     // Loanレコードが存在するアイテムは削除できないため、Loanレコードが存在しないアイテムのみを削除
     // 外部キー制約違反を避けるため、Loanレコードが存在するアイテムは削除しない
@@ -364,7 +350,8 @@ async function importItems(
       await tx.item.deleteMany();
     }
   }
-  // CSV内でnfcTagUidの重複をチェック
+
+  // === 3. CSV内のnfcTagUid重複チェック ===
   const itemNfcTagUidMap = new Map<string, string[]>(); // nfcTagUid -> itemCode[]
   for (const row of rows) {
     if (row.nfcTagUid && row.nfcTagUid.trim()) {
@@ -384,7 +371,13 @@ async function importItems(
     throw new ApiError(400, errorMessage);
   }
 
+  // === 4. 各行をループ処理 ===
   for (const row of rows) {
+    // 4-1. 既存アイテムの存在確認
+    // 4-2. 既存の場合: 更新処理（DB内のnfcTagUid重複チェック含む）
+    // 4-3. 新規の場合: 作成処理（DB内のnfcTagUid重複チェック含む）
+    // 4-4. エラーハンドリング（P2002エラーの詳細化）
+
     // idは絶対に更新しない（外部キー制約違反を防ぐため）
     const updateData = {
       name: row.name,
@@ -399,8 +392,11 @@ async function importItems(
       itemCode: row.itemCode,
       ...updateData
     };
+
     const existing = await tx.item.findUnique({ where: { itemCode: row.itemCode } });
+    
     if (existing) {
+      // === 4-2. 既存の場合: 更新処理 ===
       // nfcTagUidが設定されている場合、他のアイテムが同じnfcTagUidを持っていないかチェック
       if (row.nfcTagUid && row.nfcTagUid.trim()) {
         const otherItem = await tx.item.findFirst({
@@ -423,6 +419,7 @@ async function importItems(
       });
       result.updated += 1;
     } else {
+      // === 4-3. 新規の場合: 作成処理 ===
       // 新規作成時も、同じnfcTagUidを持つ既存のアイテムが存在するかチェック
       if (row.nfcTagUid && row.nfcTagUid.trim()) {
         const existingWithSameNfcTag = await tx.item.findFirst({
@@ -443,6 +440,7 @@ async function importItems(
     }
   }
 
+  // === 5. 結果を返す ===
   return result;
 }
 
@@ -451,11 +449,19 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
   // シンプルな同期処理: ジョブテーブルを使わず、結果を直接返す
   app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request, reply) => {
+    // === 処理シーケンス ===
+    // 1. マルチパートリクエストの検証とファイル取得
+    // 2. replaceExistingフラグの解析
+    // 3. CSVファイルのパースとバリデーション
+    // 4. 従業員とアイテム間のnfcTagUid重複チェック
+    // 5. トランザクション内でインポート処理実行
+    // 6. 結果を返す
+
     const files: { employees?: Buffer; items?: Buffer } = {};
     const fieldValues: Record<string, string> = {};
 
+    // === 1. マルチパートリクエストの検証とファイル取得 ===
     try {
-      // マルチパートリクエストの処理
       if (!request.isMultipart()) {
         throw new ApiError(400, 'マルチパートフォームデータが必要です。Content-Type: multipart/form-dataを指定してください。');
       }
@@ -474,7 +480,6 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         }
       }
     } catch (error) {
-      // エラーログを記録
       request.log.error({ err: error }, 'マルチパート処理エラー');
       
       if (error instanceof ApiError) {
@@ -482,20 +487,17 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
       
       if (error instanceof Error) {
-        // マルチパート関連のエラーかどうかを判定
         const errorMessage = error.message.toLowerCase();
         if (errorMessage.includes('multipart') || errorMessage.includes('content-type')) {
           throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
         }
-        // その他のエラーもApiErrorとしてラップ
         throw new ApiError(400, `リクエスト処理エラー: ${error.message}`);
       }
       
-      // 未知のエラー
       throw new ApiError(400, 'リクエストの処理に失敗しました');
     }
 
-    // replaceExistingの値を確実に取得（文字列も含めて明示的に判定）
+    // === 2. replaceExistingフラグの解析 ===
     const parsedFields = fieldSchema.parse(fieldValues);
     const rawReplaceExisting = parsedFields.replaceExisting;
     // Boolean()は使わない（'false'文字列がtrueになるため）
@@ -504,15 +506,8 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            (typeof rawReplaceExisting === 'number' && rawReplaceExisting === 1) || 
                            (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
                            false;
-    
-    // デバッグログ: フォームから取得した値を確認
-    request.log.info({ 
-      fieldValues,
-      parsedFields,
-      replaceExisting,
-      replaceExistingType: typeof replaceExisting
-    }, 'replaceExisting値の確認');
 
+    // === 3. CSVファイルのパースとバリデーション ===
     if (!files.employees && !files.items) {
       throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
     }
@@ -550,10 +545,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
     }
 
-    // 同期処理: トランザクション内でインポートを実行し、結果を直接返す
-    const summary: Record<string, ImportResult> = {};
-
-    // 従業員とアイテム間でnfcTagUidの重複をチェック
+    // === 4. 従業員とアイテム間のnfcTagUid重複チェック ===
     const employeeNfcTagUids = new Set(
       employeeRows
         .map(row => row.nfcTagUid?.trim())
@@ -571,42 +563,22 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, errorMessage);
     }
 
-    // デバッグログ: replaceExistingの値を確認
-    request.log.info({ 
-      replaceExisting,
-      replaceExistingType: typeof replaceExisting,
-      employeeRowsCount: employeeRows.length,
-      itemRowsCount: itemRows.length,
-      fieldValues
-    }, 'インポート処理開始前');
+    // === 5. トランザクション内でインポート処理実行 ===
+    const summary: Record<string, ImportResult> = {};
 
     try {
-      request.log.error({ replaceExisting, replaceExistingType: typeof replaceExisting }, '[imports] handler start - トランザクション開始前');
-      // awaitを確実につける
       await prisma.$transaction(async (tx) => {
-        // トランザクション内でもreplaceExistingの値を確認
-        request.log.error({ 
-          replaceExisting,
-          replaceExistingType: typeof replaceExisting,
-          employeeRowsCount: employeeRows.length
-        }, '[imports] トランザクション内: importEmployees呼び出し前');
         if (employeeRows.length > 0) {
-          // replaceExistingの値を確実に渡す（Boolean()は使わない）
-          request.log.error({ replaceExisting }, '[imports] importEmployeesに渡すreplaceExisting値');
           summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
         }
-        request.log.error({ replaceExisting }, '[imports] トランザクション内: importItems呼び出し前');
         if (itemRows.length > 0) {
           summary.items = await importItems(tx, itemRows, replaceExisting);
         }
-        request.log.error({}, '[imports] トランザクション内: すべての処理完了');
       }, {
         timeout: 30000, // 30秒のタイムアウト
         isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
       });
-      request.log.error({}, '[imports] トランザクション完了');
     } catch (error) {
-      // トランザクション内で発生したエラーをキャッチ
       request.log.error({ 
         err: error,
         errorName: error instanceof Error ? error.name : typeof error,
@@ -616,7 +588,6 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }, 'インポート処理エラー');
       
       if (error instanceof PrismaClientKnownRequestError) {
-        // PrismaエラーをApiErrorとしてラップ
         if (error.code === 'P2003') {
           const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
           const modelName = (error.meta as any)?.model_name || '不明なモデル';
@@ -640,10 +611,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         throw error;
       }
       
-      // その他のエラー
       throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
     }
 
+    // === 6. 結果を返す ===
     return { summary };
   });
 }
