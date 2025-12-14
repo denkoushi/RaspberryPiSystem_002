@@ -16,7 +16,7 @@ export class BackupConfigLoader {
   static async load(): Promise<BackupConfig> {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf-8');
-      let configJson = JSON.parse(configContent);
+      const configJson = JSON.parse(configContent);
       
       // 環境変数の参照を解決（${VAR_NAME}形式）
       if (configJson.storage?.options?.accessToken && 
