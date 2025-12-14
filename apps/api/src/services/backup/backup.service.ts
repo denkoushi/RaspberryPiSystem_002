@@ -67,7 +67,7 @@ export class BackupService implements BackupProvider {
     const entries = await this.storage.list(prefix);
     const now = new Date();
 
-    return entries.map(entry => ({
+    return entries.map((entry) => ({
       target: { type: 'file', source: entry.path },
       success: true,
       path: entry.path,
