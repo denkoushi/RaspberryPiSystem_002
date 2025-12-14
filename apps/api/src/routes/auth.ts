@@ -17,7 +17,8 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   totpCode: z.string().optional(),
-  backupCode: z.string().optional()
+  backupCode: z.string().optional(),
+  rememberMe: z.boolean().optional()
 });
 
 const refreshTokenSchema = z.object({

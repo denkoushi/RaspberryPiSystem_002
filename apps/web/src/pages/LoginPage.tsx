@@ -12,6 +12,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [backupCode, setBackupCode] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,7 +41,11 @@ export function LoginPage() {
     event.preventDefault();
     setError(null);
     try {
-      await login(username, password, { totpCode: totpCode || undefined, backupCode: backupCode || undefined });
+      await login(username, password, {
+        totpCode: totpCode || undefined,
+        backupCode: backupCode || undefined,
+        rememberMe
+      });
     } catch (err) {
       // axiosエラーの場合、response.data.messageを優先的に使用
       let errorMessage = 'ログインに失敗しました';
@@ -87,6 +92,15 @@ export function LoginPage() {
             onChange={(e) => setBackupCode(e.target.value)}
             placeholder="バックアップコード"
           />
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="h-4 w-4 accent-emerald-400"
+          />
+          <span className="text-sm text-white/80">30日間この端末でサインイン状態を維持する</span>
         </label>
         {error ? (
           <p className="text-sm text-red-400" role="alert">
