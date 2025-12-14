@@ -151,8 +151,12 @@ ALLOWED_PORTS="$(detect_ports | xargs)"
 
 # Jinja2テンプレートをレンダリング（PythonでJinja2を使用）
 if command -v python3 >/dev/null 2>&1; then
-  python3 <<PYTHON_SCRIPT
+  MONITOR_TEMPLATE_VAR="${MONITOR_TEMPLATE}" \
+  TMP_DIR_VAR="${TMP_DIR}" \
+  MONITOR_SCRIPT_VAR="${MONITOR_SCRIPT}" \
+  python3 <<'PYTHON_SCRIPT'
 import sys
+import os
 from pathlib import Path
 
 try:
@@ -161,7 +165,7 @@ except ImportError:
     print("⚠️  jinja2がインストールされていません。pip install jinja2 を実行してください", file=sys.stderr)
     sys.exit(1)
 
-template_path = Path("${MONITOR_TEMPLATE}")
+template_path = Path(os.environ['MONITOR_TEMPLATE_VAR'])
 if not template_path.exists():
     print(f"⚠️  テンプレートが見つかりません: {template_path}", file=sys.stderr)
     sys.exit(1)
@@ -174,11 +178,11 @@ rendered = template.render(
     alert_script_path='/bin/echo',
     alert_webhook_url='',
     alert_webhook_timeout_seconds=5,
-    security_monitor_state_dir='${TMP_DIR}',
-    security_monitor_fail2ban_log='${TMP_DIR}/fail2ban.log'
+    security_monitor_state_dir=os.environ['TMP_DIR_VAR'],
+    security_monitor_fail2ban_log=os.path.join(os.environ['TMP_DIR_VAR'], 'fail2ban.log')
 )
 
-output_path = Path("${MONITOR_SCRIPT}")
+output_path = Path(os.environ['MONITOR_SCRIPT_VAR'])
 with open(output_path, 'w', encoding='utf-8') as f:
     f.write(rendered)
 
