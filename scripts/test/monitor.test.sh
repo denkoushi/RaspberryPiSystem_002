@@ -149,42 +149,49 @@ detect_ports() {
 
 ALLOWED_PORTS="$(detect_ports | xargs)"
 
-# Jinja2テンプレートをレンダリング（PythonでJinja2を使用）
-if command -v python3 >/dev/null 2>&1; then
-  MONITOR_TEMPLATE_VAR="${MONITOR_TEMPLATE}" \
-  TMP_DIR_VAR="${TMP_DIR}" \
-  MONITOR_SCRIPT_VAR="${MONITOR_SCRIPT}" \
-  python3 <<'PYTHON_SCRIPT'
-import os
-from pathlib import Path
-
-template_path = Path(os.environ['MONITOR_TEMPLATE_VAR'])
-if not template_path.exists():
-    print(f"⚠️  テンプレートが見つかりません: {template_path}", flush=True)
-    raise SystemExit(1)
-
-with open(template_path, "r", encoding="utf-8") as f:
-    content = f.read()
-
-replacements = {
-    "{{ alert_script_path }}": "/bin/echo",
-    "{{ alert_webhook_url | default('') }}": "",
-    "{{ alert_webhook_timeout_seconds | default(5) }}": "5",
-    "{{ security_monitor_state_dir }}": os.environ["TMP_DIR_VAR"],
-    "{{ security_monitor_fail2ban_log }}": os.path.join(os.environ["TMP_DIR_VAR"], "fail2ban.log"),
-}
-
-for key, value in replacements.items():
-    content = content.replace(key, value)
-
-out_path = Path(os.environ["MONITOR_SCRIPT_VAR"])
-with open(out_path, "w", encoding="utf-8") as f:
-    f.write(content)
-
-print(f"✅ テンプレートをレンダリングしました: {out_path}", flush=True)
-PYTHON_SCRIPT
+# Ansibleを使ってテンプレートをレンダリング（本番環境と同じ方法）
+if command -v ansible-playbook >/dev/null 2>&1; then
+  # Ansibleのtemplateモジュールを使ってレンダリング
+  ANSIBLE_TMP_DIR="${TMP_DIR}/ansible"
+  mkdir -p "${ANSIBLE_TMP_DIR}/templates"
+  
+  # テンプレートファイルをtemplatesディレクトリにコピー
+  cp "${MONITOR_TEMPLATE}" "${ANSIBLE_TMP_DIR}/templates/security-monitor.sh.j2"
+  
+  cat > "${ANSIBLE_TMP_DIR}/render.yml" <<EOF
+---
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Render security monitor script
+      ansible.builtin.template:
+        src: security-monitor.sh.j2
+        dest: "${MONITOR_SCRIPT}"
+        mode: '0755'
+      vars:
+        alert_script_path: /bin/echo
+        alert_webhook_url: ''
+        alert_webhook_timeout_seconds: 5
+        security_monitor_state_dir: "${TMP_DIR}"
+        security_monitor_fail2ban_log: "${TMP_DIR}/fail2ban.log"
+EOF
+  
+  cd "${ANSIBLE_TMP_DIR}"
+  ansible-playbook -i localhost, -c local render.yml || {
+    echo "⚠️  Ansibleでのレンダリングに失敗しました。フォールバックを使用します..."
+    cd "${PROJECT_DIR}"
+    # フォールバック: sedで簡易置換（bashの${#}構文は保護されないが、動作確認は可能）
+    sed \
+      -e "s#{{ alert_script_path }}#/bin/echo#g" \
+      -e "s#{{ alert_webhook_url | default('') }}##g" \
+      -e "s#{{ alert_webhook_timeout_seconds | default(5) }}#5#g" \
+      -e "s#{{ security_monitor_state_dir }}#${TMP_DIR}#g" \
+      -e "s#{{ security_monitor_fail2ban_log }}#${TMP_DIR}/fail2ban.log#g" \
+      "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
+  }
+  cd "${PROJECT_DIR}"
 else
-  echo "⚠️  python3が見つかりません。sedで簡易置換を試みます..."
+  echo "⚠️  Ansibleが見つかりません。sedで簡易置換を試みます（bashの\${#}構文は保護されません）..."
   sed \
     -e "s#{{ alert_script_path }}#/bin/echo#g" \
     -e "s#{{ alert_webhook_url | default('') }}##g" \
