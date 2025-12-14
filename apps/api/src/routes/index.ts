@@ -9,6 +9,7 @@ import { registerStorageRoutes } from './storage/index.js';
 import { registerSignageRoutes } from './signage/index.js';
 import { registerMeasuringInstrumentRoutes } from './measuring-instruments/index.js';
 import { registerRiggingRoutes } from './rigging/index.js';
+import { registerBackupRoutes } from './backup.js';
 
 /**
  * すべてのルートを登録
@@ -36,6 +37,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerImportRoutes(subApp);
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);
+      await registerBackupRoutes(subApp);
     },
     { prefix: '/api' },
   );

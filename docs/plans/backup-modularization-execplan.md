@@ -259,12 +259,13 @@ interface BackupTarget {
   - [x] 既存の`PhotoStorage`との統合（写真ディレクトリのバックアップ）
   - [x] CSVインポート機能との統合（同じCSV形式でエクスポート）
   - [x] テスト追加（CSV: 2件、Image: 2件）
-- [ ] Milestone 4: 設定・スケジューリング機能
-  - [ ] `BackupConfig`の実装
-  - [ ] 設定ファイルの読み込み機能
-  - [ ] cron形式のスケジュール設定
-  - [ ] 自動バックアップの実行機能
-  - [ ] APIエンドポイントの追加
+- [x] Milestone 4: 設定・スケジューリング機能（2025-12-14）
+  - [x] `BackupConfig`の実装（Zodスキーマ、デフォルト設定）
+  - [x] 設定ファイルの読み込み機能（JSON形式、デフォルト設定フォールバック）
+  - [x] cron形式のスケジュール設定（node-cron使用、タイムゾーン対応）
+  - [x] 自動バックアップの実行機能（スケジューラー、保持期間管理）
+  - [x] APIエンドポイントの追加（POST /api/backup, GET /api/backup, POST /api/backup/restore, DELETE /api/backup/:path, GET/PUT /api/backup/config）
+  - [x] テスト追加（API統合テスト: 3件パス）
 
 ## Surprises & Discoveries
 

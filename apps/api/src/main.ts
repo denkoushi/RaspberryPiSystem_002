@@ -12,6 +12,12 @@ if (process.env['NODE_ENV'] !== 'test') {
       app.signageRenderScheduler.start();
       
       logger.info({ intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS }, 'Signage render scheduler started');
+      
+      // バックアップスケジューラーを開始
+      const backupScheduler = getBackupScheduler();
+      await backupScheduler.start();
+      
+      logger.info('Backup scheduler started');
     })
     .catch((err) => {
       logger.error({ err }, 'Failed to start API server');
