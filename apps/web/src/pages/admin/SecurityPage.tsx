@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import {
-  getRoleAuditLogs,
-  mfaActivate,
-  mfaDisable,
-  mfaInitiate,
-  type RoleAuditLog
-} from '../../api/client';
+import { getRoleAuditLogs, mfaActivate, mfaDisable, mfaInitiate } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
+
+import type { RoleAuditLog } from '../../api/types';
 
 type Status = { message: string; tone: 'info' | 'error' | 'success' } | null;
 
