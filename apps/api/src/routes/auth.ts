@@ -1,3 +1,6 @@
+import crypto from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -42,6 +45,52 @@ const updateRoleSchema = z.object({
 const auditQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(200).optional()
 });
+
+const businessHourStart = Number.parseInt(process.env.BUSINESS_HOUR_START ?? '8', 10);
+const businessHourEnd = Number.parseInt(process.env.BUSINESS_HOUR_END ?? '20', 10);
+
+function isOutsideBusinessHours(now: Date): boolean {
+  const hour = now.getHours();
+  return hour < businessHourStart || hour >= businessHourEnd;
+}
+
+async function emitRoleChangeAlert(options: {
+  actorUserId: string;
+  actorUsername?: string;
+  targetUserId: string;
+  targetUsername: string;
+  fromRole: UserRole;
+  toRole: UserRole;
+  reasons: string[];
+  logger: FastifyInstance['log'];
+}) {
+  const alertsDir = process.env.ALERTS_DIR ?? path.join(process.cwd(), 'alerts');
+  const id = crypto.randomUUID();
+  const alert = {
+    id,
+    type: 'role_change',
+    severity: 'warning',
+    message: `権限変更: ${options.targetUsername} を ${options.fromRole} から ${options.toRole} に変更 (by ${options.actorUsername ?? options.actorUserId})`,
+    reasons: options.reasons,
+    details: {
+      actorUserId: options.actorUserId,
+      actorUsername: options.actorUsername,
+      targetUserId: options.targetUserId,
+      targetUsername: options.targetUsername,
+      fromRole: options.fromRole,
+      toRole: options.toRole
+    },
+    timestamp: new Date().toISOString(),
+    acknowledged: false
+  };
+  try {
+    await fs.mkdir(alertsDir, { recursive: true });
+    const filePath = path.join(alertsDir, `alert-${id}.json`);
+    await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
+  } catch (error) {
+    options.logger.warn({ err: error, alert }, 'Failed to write role change alert');
+  }
+}
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // ログイン系エンドポイントには厳格なレート制限を適用（ブルートフォース対策）
@@ -199,6 +248,32 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       });
       return next;
     });
+
+    const now = new Date();
+    const reasons: string[] = [];
+    if (request.user!.id === params.id) {
+      reasons.push('self-role-change');
+    }
+    if (target.role !== 'ADMIN' && body.role === 'ADMIN') {
+      reasons.push('promotion-to-admin');
+    }
+    if (isOutsideBusinessHours(now)) {
+      reasons.push('outside-business-hours');
+    }
+
+    if (reasons.length > 0) {
+      void emitRoleChangeAlert({
+        actorUserId: request.user!.id,
+        actorUsername: request.user!.username,
+        targetUserId: params.id,
+        targetUsername: target.username,
+        fromRole: target.role as UserRole,
+        toRole: body.role as UserRole,
+        reasons,
+        logger: request.server.log
+      });
+    }
+
     return { user: { id: updated.id, username: updated.username, role: updated.role, mfaEnabled: updated.mfaEnabled } };
   });
 
