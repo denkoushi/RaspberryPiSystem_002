@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Security scan (pnpm audit, high+)
+        run: pnpm audit --audit-level=high
+
       - name: Run lint
         run: pnpm lint --max-warnings=0
 
@@ -181,6 +184,12 @@ jobs:
             exit 1
           }
 
+      - name: Install Ansible for template rendering
+        run: |
+          python3 -m pip install --user ansible-core || {
+            echo "Warning: Failed to install ansible-core, tests will use sed fallback"
+          }
+
       - name: Test monitoring scripts
         run: |
           echo "Testing monitoring scripts..."
@@ -190,6 +199,45 @@ jobs:
             cat /tmp/api-server.log || true
             exit 1
           }
+
+      - name: Security scan (Trivy fs)
+        uses: aquasecurity/trivy-action@0.25.0
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          skip-dirs: |
+            **/certs
+            **/alerts
+
+      - name: Build api image for Trivy image scan
+        run: docker build -t raspisys-api:ci -f infrastructure/docker/Dockerfile.api .
+
+      - name: Build web image for Trivy image scan
+        run: docker build -t raspisys-web:ci -f infrastructure/docker/Dockerfile.web .
+
+      - name: Security scan (Trivy image api)
+        uses: aquasecurity/trivy-action@0.25.0
+        with:
+          scan-type: 'image'
+          image-ref: 'raspisys-api:ci'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+
+      - name: Security scan (Trivy image web)
+        uses: aquasecurity/trivy-action@0.25.0
+        with:
+          scan-type: 'image'
+          image-ref: 'raspisys-web:ci'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Stop API server
         if: always()

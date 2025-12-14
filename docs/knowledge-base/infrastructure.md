@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 45件  
+**件数**: 46件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2366,5 +2366,42 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 **関連ファイル**:
 - `docs/guides/deployment.md`（Pi3デプロイ前準備手順の更新）
 - `docs/knowledge-base/infrastructure.md`（KB-089更新、KB-097追加）
+
+---
+
+### [KB-098] Phase 9/10 セキュリティ強化実装の実機テストと仕様記録
+
+**EXEC_PLAN.md参照**: Phase 9/10 実装完了（2025-12-14）
+
+**実装内容**: 
+- Phase 9: インターネット接続時の追加防御（管理画面IP制限、Webhookアラート、セキュリティヘッダー、レート制限、ログローテーション）
+- Phase 10: 認証・監視強化（MFA、リアルタイム監視、権限監査）
+
+**実機テスト結果（2025-12-14）**:
+- ✅ HTTPS/ヘッダー確認: HTTP→HTTPSリダイレクト（301）、Strict-Transport-Security含む主要セキュリティヘッダーを確認
+- ✅ 管理画面IP制限: `ADMIN_ALLOW_NETS`環境変数が正しく設定され、許可IPからのアクセスが200 OK
+- ✅ Webhookアラート: Webhook URL未設定時はファイルアラートのみ、設定時はWebhook送信成功
+- ✅ レート制限: 認証エンドポイント10 req/min、システムAPI 120 req/minが正しく動作
+- ✅ リアルタイム監視: `security-monitor.sh`が存在し実行可能、アラートファイルが生成される
+- ✅ MFA/権限監査: APIエンドポイントが存在し正しく応答、統合テストで動作確認済み
+
+**重要な知見**:
+- **Strict-Transport-Securityヘッダーの追加**: `Caddyfile.local.template`に`Strict-Transport-Security`ヘッダーを追加する必要があった。デフォルトのCaddyfileには含まれていないため、明示的に追加が必要。Dockerビルドキャッシュの影響で、変更を反映するには`--no-cache`オプションでの再ビルドが必要な場合がある。
+- **レート制限の実装**: Fastifyの`@fastify/rate-limit`プラグインを使用し、エンドポイント別にレート制限を設定。キー生成方法（`{IP}:{URL}`）により、同一IPから異なるエンドポイントへのアクセスは別々にカウントされる。allowListで高トラフィックエンドポイント（キオスク、WebSocket等）を除外することで、通常運用への影響を最小化。
+- **Webhook送信のフォールバック**: Webhook URLが未設定でもファイルアラートは必ず生成される設計。Webhook送信失敗時もスクリプトは継続し、ファイルアラートは確実に生成される。これにより、ネットワーク障害時でもアラートが失われない。
+- **環境変数のデフォルト値**: `security-monitor.sh`は環境変数のデフォルト値を使用するため、systemdサービスから実行される際も動作する。ただし、明示的に環境変数を設定することで、より柔軟な監視設定が可能。
+
+**設定方法**:
+- 詳細は [security/phase9-10-specifications.md](../security/phase9-10-specifications.md) を参照
+
+**解決状況**: ✅ **実装完了・実機テスト完了**（2025-12-14）
+
+**関連ファイル**: 
+- `infrastructure/docker/Caddyfile.local.template`（セキュリティヘッダー設定）
+- `apps/api/src/plugins/rate-limit.ts`（レート制限実装）
+- `scripts/generate-alert.sh`（Webhookアラート通知）
+- `infrastructure/ansible/templates/security-monitor.sh.j2`（リアルタイム監視スクリプト）
+- `apps/api/src/routes/auth.ts`（MFA/権限監査API）
+- `docs/security/phase9-10-specifications.md`（詳細仕様書）
 
 ---

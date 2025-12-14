@@ -131,6 +131,7 @@ model InspectionItem {
   measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
   inspectionRecords     InspectionRecord[]
 
+  @@unique([measuringInstrumentId, name])
   @@index([measuringInstrumentId])
   @@index([order])
 }
@@ -273,9 +274,29 @@ model User {
   passwordHash String
   role         UserRole      @default(VIEWER)
   status       UserStatus    @default(ACTIVE)
+  mfaEnabled   Boolean       @default(false)
+  totpSecret   String?
+  mfaBackupCodes String[]    @default([])
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
+  auditLogsActor  RoleAuditLog[] @relation("RoleAuditActor")
+  auditLogsTarget RoleAuditLog[] @relation("RoleAuditTarget")
+}
+
+model RoleAuditLog {
+  id           String   @id @default(uuid())
+  actorUserId  String
+  targetUserId String
+  fromRole     UserRole
+  toRole       UserRole
+  createdAt    DateTime @default(now())
+
+  actorUser   User @relation("RoleAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  targetUser  User @relation("RoleAuditTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId])
+  @@index([targetUserId])
 }
 
 model Loan {

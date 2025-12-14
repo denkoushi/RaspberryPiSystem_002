@@ -71,6 +71,9 @@ export function AdminLayout() {
           <NavLink to="/admin/signage/schedules" className={linkClass}>
             サイネージ
           </NavLink>
+          <NavLink to="/admin/security" className={linkClass}>
+            セキュリティ
+          </NavLink>
           </nav>
           <NetworkModeBadge />
         </div>

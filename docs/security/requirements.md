@@ -1,6 +1,6 @@
 # セキュリティ要件定義
 
-最終更新: 2025-12-05
+最終更新: 2025-12-14
 
 ## 概要
 
@@ -36,13 +36,31 @@
 - IP制限（管理画面へのアクセス）
 - fail2ban（ブルートフォース対策）
 
-**実装状況（2025-12-05）**:
+**実装状況（2025-12-14）**:
 - ✅ ufwを導入し、HTTP/HTTPSと信頼済みSSH経路のみ許可
 - ✅ CaddyでHTTP→HTTPSを常時リダイレクト、自己署名証明書を継続活用
 - ✅ fail2ban（SSH/Caddy HTTP）を導入し、CLFログ監視で自動遮断
-- 🔸 管理画面のIP制限は今後の課題（Tailscale ACLと併用予定）
+- ✅ 管理画面のIP制限を実装（Caddyの`ADMIN_ALLOW_NETS`環境変数、デフォルト: ローカルLAN/Tailscale、実機テスト完了）
+- ✅ セキュリティヘッダーを実装（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy、実機テスト完了）
+- ✅ DDoS/ブルートフォース緩和を実装（レート制限: 認証10 req/min、グローバル120 req/min、実機テスト完了）
 
 **優先度**: 高
+
+### 2.5 認証・監視の追加強化（新規）
+
+**要件**:
+- 管理画面ログインにMFA（TOTP）を必須化し、バックアップコードを提供する
+- ファイル整合性・プロセス・ネットワーク異常をリアルタイムまたは準リアルタイムで検知し、アラートに連携する
+- 権限変更の履歴（誰が/いつ/誰を/どう変更）を保存し、異常な権限昇格を検知する
+
+**実装状況（2025-12-14）**:
+- ✅ MFA: Userに`mfaEnabled`/`totpSecret`/`mfaBackupCodes`を追加し、ログインAPIでパスワード+TOTP検証を実装。管理者向けSecurityページでMFAセットアップUIを実装。30日記憶オプション（remember-me）を実装。統合テスト・実機テスト完了。
+- ✅ リアルタイム監視: ファイル整合性（`FILE_HASH_TARGETS`）、必須プロセス（`REQUIRED_PROCESSES`）、許可外ポート（`ALLOWED_LISTEN_PORTS`）の監視を`security-monitor.sh`に統合。bash単体テスト・実機テスト完了。
+- ✅ 権限監査: 監査テーブル（`RoleAuditLog`）を追加し、ロール変更時に履歴保存＋異常パターン（自己変更・ADMIN昇格・業務時間外・短時間に複数のADMIN昇格）でアラートを実装。統合テスト・実機テスト完了。
+
+**詳細仕様**: [Phase 9/10 詳細仕様書](./phase9-10-specifications.md)を参照
+
+**優先度**: 最高（MFA）、高（リアルタイム監視・権限監査） - ✅ 実装完了
 
 ### 3. ランサムウェア対策
 
@@ -69,14 +87,15 @@
 - 定期スキャンの設定
 - Dockerイメージのスキャン
 
-**実装状況（2025-12-05）**:
+**実装状況（2025-12-14）**:
 - ✅ Pi5にClamAV/Trivy/rkhunterを導入し、日次cronと`/var/log/{clamav,trivy,rkhunter}`へのログ集約を実装
 - ✅ Pi4に軽量ClamAV/rkhunterを導入し、ストレージ配下のみを週次スキャン（CPU負荷を最小化）
 - ✅ 手動スキャン（2025-12-05）で動作確認済み  
   - `sudo /usr/local/bin/clamav-scan.sh` → ログ `/var/log/clamav/clamav-scan.log` に成功記録、アラート発生なし  
   - `sudo /usr/local/bin/trivy-scan.sh` → 秘密鍵検出は skip-dir 設定で抑制済み（ログで過去検出との区別可）  
   - `sudo /usr/local/bin/rkhunter-scan.sh` → 既知警告（PermitRootLogin 等）で `alert-20251205-184324.json` が生成されることを確認
-- 🔸 TrivyでDockerイメージ単位のスキャン、およびスキャンログの自動監視はPhase7後の課題
+- ✅ TrivyでDockerイメージ単位のスキャンをCIに追加（`.github/workflows/ci.yml`、HIGH/CRITICALでFail）
+- ✅ Pi5上で定期実行スクリプト（`trivy-image-scan.sh.j2`）を追加、cronで毎日4時に実行（次回デプロイ後に確認予定）
 
 **優先度**: 高
 
@@ -89,12 +108,13 @@
 - 異常検知時のアラート通知
 - スキャン結果のログ監視
 
-**実装状況（2025-12-05）**:
+**実装状況（2025-12-14）**:
 - ✅ `security-monitor.sh`でfail2banログ（Banイベント）と状態ファイルを監視し、`alerts/`に自動通知
 - ✅ ClamAV/Trivy/rkhunterスクリプトが感染検知・スキャン失敗時に即時アラートを発火
 - ✅ systemd timer（15分間隔）で監視を自動実行し、管理画面の既存アラート機能で確認可能
 - ✅ fail2ban → アラート動作テスト（2025-12-05）: `fail2ban-client set sshd banip 203.0.113.50` で `alert-20251205-182352.json` が生成されることを確認し、解除後にBanリストが空に戻ることを確認
-- 🔸 将来的にSlack等への外部通知を追加する場合は、アラートスクリプトの拡張で対応予定
+- ✅ Webhookアラート通知を実装（`generate-alert.sh`にWebhook送信機能を追加、未設定時はファイルアラートのみ、実機テスト完了）
+- ✅ リアルタイム監視強化（ファイル整合性・プロセス・ポート監視、実機テスト完了）
 
 **優先度**: 中
 
@@ -246,5 +266,7 @@
 
 - [セキュリティ検証レビュー](./validation-review.md) - 既存のセキュリティ対策のレビュー
 - [セキュリティ強化 ExecPlan](../plans/security-hardening-execplan.md) - 実装計画の詳細
+- [Phase 9/10 詳細仕様書](./phase9-10-specifications.md) - Phase 9/10の詳細仕様（設定方法・動作仕様・API仕様・テスト方法）
+- [セキュリティ実装の妥当性評価](./implementation-assessment.md) - 実装評価と残タスク
 - [セキュリティ強化テスト計画](../guides/security-test-plan.md) - テスト計画の詳細
 

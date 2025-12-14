@@ -150,21 +150,24 @@ async function main() {
         name: '外観点検',
         content: '本体に損傷や汚れがないか確認',
         criteria: '損傷・汚れなし',
-        method: '目視確認'
+        method: '目視確認',
+        order: 1
       },
       {
         measuringInstrumentId: created.id,
         name: '表示確認',
         content: 'ディスプレイが正常に表示されるか確認',
         criteria: '正常表示',
-        method: '電源投入して確認'
+        method: '電源投入して確認',
+        order: 2
       },
       {
         measuringInstrumentId: created.id,
         name: '校正期限確認',
         content: '校正期限が有効期限内か確認',
         criteria: '有効期限内',
-        method: '校正期限ラベルを確認'
+        method: '校正期限ラベルを確認',
+        order: 3
       }
     ];
 
@@ -184,10 +187,7 @@ async function main() {
     // RFIDタグの紐付け（テスト用UID）
     await prisma.measuringInstrumentTag.upsert({
       where: {
-        measuringInstrumentId_rfidTagUid: {
-          measuringInstrumentId: created.id,
-          rfidTagUid: `MI-${inst.managementNumber}`
-        }
+        rfidTagUid: `MI-${inst.managementNumber}`
       },
       update: {},
       create: {

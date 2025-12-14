@@ -2,9 +2,16 @@
 set -euo pipefail
 
 ALERT_SCRIPT="{{ alert_script_path }}"
+WEBHOOK_URL="{{ alert_webhook_url | default('') }}"
+WEBHOOK_TIMEOUT="{{ alert_webhook_timeout_seconds | default(5) }}"
 STATE_DIR="{{ security_monitor_state_dir }}"
 FAIL2BAN_LOG="{{ security_monitor_fail2ban_log }}"
 TAG="security-monitor"
+FILE_HASH_TARGETS="${FILE_HASH_TARGETS:-/etc/ssh/sshd_config /etc/passwd /etc/shadow}"
+FILE_HASH_STATE="${STATE_DIR}/file-hashes.txt"
+FILE_HASH_EXCLUDES="${FILE_HASH_EXCLUDES:-}"
+REQUIRED_PROCESSES="${REQUIRED_PROCESSES:-sshd caddy}"
+ALLOWED_LISTEN_PORTS="${ALLOWED_LISTEN_PORTS:-22 80 443}"
 
 log_info() {
   logger -t "${TAG}" "$1"
@@ -18,7 +25,7 @@ if [[ ! -x "${ALERT_SCRIPT}" ]]; then
 fi
 
 process_fail2ban() {
-  [[ -f "${FAIL2BAN_LOG}" ]] || return
+  [[ -f "${FAIL2BAN_LOG}" ]] || return 0
 
   local state_file="${STATE_DIR}/fail2ban.offset"
   local total_lines
@@ -49,12 +56,88 @@ process_fail2ban() {
     [[ -z "${line}" ]] && continue
     local banned_ip
     banned_ip=$(echo "${line}" | awk '{print $NF}')
-    "{{ alert_script_path }}" \
-      "fail2ban-ban" \
-      "fail2banがIP ${banned_ip} を遮断しました" \
-      "${line}"
+    WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
+      "{{ alert_script_path }}" \
+        "fail2ban-ban" \
+        "fail2banがIP ${banned_ip} を遮断しました" \
+        "${line}"
   done < <(echo "${new_lines}" | grep "Ban ")
 }
 
+process_file_integrity() {
+  mkdir -p "${STATE_DIR}"
+  local tmp_hashes
+  tmp_hashes=$(mktemp)
+  for f in ${FILE_HASH_TARGETS}; do
+    [[ -r "${f}" ]] || continue
+    local skip=false
+    for pat in ${FILE_HASH_EXCLUDES}; do
+      [[ -n "${pat}" && "${f}" == ${pat} ]] && skip=true && break
+    done
+    [[ "${skip}" == true ]] && continue
+    sha256sum "${f}" || true
+  done > "${tmp_hashes}"
+
+  if [[ ! -f "${FILE_HASH_STATE}" ]]; then
+    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
+    return
+  fi
+
+  if ! diff -q "${FILE_HASH_STATE}" "${tmp_hashes}" >/dev/null 2>&1; then
+    WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
+      "{{ alert_script_path }}" \
+      "file-integrity" \
+      "重要ファイルのハッシュが変更されました" \
+      "$(diff -u "${FILE_HASH_STATE}" "${tmp_hashes}" || true)"
+    mv "${tmp_hashes}" "${FILE_HASH_STATE}"
+    return
+  fi
+
+  rm -f "${tmp_hashes}"
+}
+
+process_required_processes() {
+  local missing=()
+  for p in ${REQUIRED_PROCESSES}; do
+    pgrep -f "${p}" >/dev/null 2>&1 || missing+=("${p}")
+  done
+  if (( {{ '${#' }}missing[@]} > 0 )); then
+    WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
+      "{{ alert_script_path }}" \
+      "process-missing" \
+      "必須プロセスが見つかりません: ${missing[*]}" \
+      "${missing[*]}"
+  fi
+}
+
+process_listen_ports() {
+  local current_ports
+  if command -v ss >/dev/null 2>&1; then
+    current_ports=$(ss -tuln | awk 'NR>1 {print $5}' | awk -F':' '{print $NF}' | sort -u)
+  elif command -v netstat >/dev/null 2>&1; then
+    current_ports=$(netstat -tuln | awk 'NR>2 {print $4}' | awk -F':' '{print $NF}' | sort -u)
+  else
+    return
+  fi
+
+  local unexpected=()
+  local allowed_set=" ${ALLOWED_LISTEN_PORTS} "
+  while read -r port; do
+    [[ -z "${port}" ]] && continue
+    [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${port}")
+  done <<< "${current_ports}"
+
+  if (( {{ '${#' }}unexpected[@]} > 0 )); then
+    WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
+      "{{ alert_script_path }}" \
+      "ports-unexpected" \
+      "許可されていないLISTENポートを検出: ${unexpected[*]}" \
+      "${unexpected[*]}"
+  fi
+}
+
 process_fail2ban
+process_file_integrity
+process_required_processes
+process_listen_ports
 

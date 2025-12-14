@@ -92,3 +92,12 @@
 
 # ClamAV/Trivy/rkhunterのタスクはmalware.ymlに統合されました
 
+- name: Deploy logrotate config for security logs
+  ansible.builtin.template:
+    src: "../../templates/logrotate-security.conf.j2"
+    dest: /etc/logrotate.d/raspisys-security
+    owner: root
+    group: root
+    mode: "0644"
+  when: ufw_enabled | default(false)
+

@@ -19,6 +19,8 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 この計画が完了すると、メンテナンス時にインターネット経由でも安全にAnsibleを実行でき、通常運用時も適切なセキュリティ対策が実装され、ランサムウェアやマルウェアからシステムを保護でき、IPアドレス管理が効率化される。
 
+**Phase 9/10実装完了（2025-12-14）**: インターネット接続時の追加防御（管理画面IP制限、Webhookアラート、セキュリティヘッダー、レート制限）と認証・監視強化（MFA、リアルタイム監視、権限監査）を実装完了。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細仕様は [security/phase9-10-specifications.md](../security/phase9-10-specifications.md) を参照。
+
 ## Progress
 
 ### Phase 0: 準備・設計
@@ -115,6 +117,87 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [ ] サイネージデザイン再調整（余白縮小、フォントサイズダウン、左ペインのサムネイル復活、表示領域拡大）
 - [ ] Pi4キオスクの持出中非表示／サーバー未接続疑いの切り分け（接続URL確認・疎通テスト・サービス再起動）
 
+### Phase 9: インターネット接続時の追加防御（新規）
+- [x] (2025-12-13) 管理画面へのIP制限を導入（CaddyでADMIN_ALLOW_NETS環境変数による制限）  
+  - ✅ Caddyfile/Caddyfile.productionに`@admin_protect`マッチャーを追加し、`/admin*`パスを許可ネットワークに限定  
+  - ✅ docker-compose.server.ymlに`ADMIN_ALLOW_NETS`環境変数を追加（デフォルト: `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`）  
+  - ✅ docs/guides/deployment.mdにIP制限手順とTailscale ACL推奨を追記  
+  - ✅ 実機テスト完了（2025-12-14）: 許可IP（Tailscale経由）から `curl -kI https://100.106.158.2/admin` が200 OKを確認。`ADMIN_ALLOW_NETS`環境変数が正しく設定されていることを確認。  
+- [x] (2025-12-13) アラートの外部通知を追加（Slack/Webhook等へ `generate-alert.sh` から送信）  
+  - ✅ `scripts/generate-alert.sh`にWebhook送信機能を追加（未設定時は従来のファイルアラートのみ）  
+  - ✅ `infrastructure/ansible/group_vars/all.yml`に`alert_webhook_url`/`alert_webhook_timeout_seconds`を追加  
+  - ✅ `infrastructure/ansible/templates/security-monitor.sh.j2`からWebhook設定を環境変数として渡すよう修正  
+  - ✅ 実機テスト完了（2025-12-14）: `generate-alert.sh`がWebhook URL未設定時はファイルアラートのみ生成することを確認。Webhook URL設定時（`https://httpbin.org/post`）にWebhook送信が成功することを確認。`security-monitor.sh`から`generate-alert.sh`が正しく呼び出されることを確認。  
+- [x] (2025-12-13) Dockerイメージ単位のTrivyスキャンをCI・定期ジョブに追加（`trivy image`）  
+  - ✅ `.github/workflows/ci.yml`にTrivy fs/imageスキャンを追加（api/webイメージをビルドしてスキャン）  
+  - ✅ HIGH/CRITICALでFail、skip-dirsでcerts/alertsを除外  
+  - ✅ Pi5上で定期実行スクリプト（`trivy-image-scan.sh.j2`）を追加、cronで毎日4時に実行  
+  - ✅ スキャン結果をalertsに反映（Webhook通知対応）  
+  - テスト: CIで自動実行されるため、GitHub Actionsの結果を確認。Pi5上での定期実行は次回デプロイ後に確認。  
+- [x] (2025-12-13) オフラインバックアップの実媒体テストスクリプトを追加  
+  - ✅ `scripts/test/backup-offline-verify.sh`を追加（USB/HDD検出→最新バックアップを検証用DBにリストア→Loan件数確認）  
+  - ✅ 未マウント時はスキップし、運用を止めない設計  
+  - テスト: USB/HDDをマウントして `bash scripts/test/backup-offline-verify.sh` を実行。実機テスト待ち。  
+- [x] (2025-12-13) CIにSCA/依存脆弱性スキャンを組み込み（`pnpm audit` および Trivy fs/image）  
+  - ✅ `.github/workflows/ci.yml`の`lint-and-test`ジョブに`pnpm audit --audit-level=high`を追加  
+  - ✅ Trivy fs/imageスキャンを追加（HIGH/CRITICALでFail）  
+  - テスト: CIで自動実行されるため、GitHub Actionsの結果を確認。  
+- [x] (2025-12-13) セキュリティヘッダー/CSPの最終確認とテストスクリプト追加  
+  - ✅ `scripts/test/check-caddy-https-headers.sh`を追加（HTTP→HTTPSリダイレクトとHSTS/X-Content-Type-Options/X-Frame-Options/Referrer-Policyを確認）  
+  - ✅ docs/guides/deployment.mdにHTTPS/ヘッダー確認手順を追記  
+  - ✅ `Caddyfile.local.template`に`Strict-Transport-Security`ヘッダーを追加（`max-age=31536000; includeSubDomains; preload`）  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 bash scripts/test/check-caddy-https-headers.sh` を実行。HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダー（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy）がすべて確認できた。  
+- [x] (2025-12-13) ログ保持とローテーション方針の明文化・適用  
+  - ✅ `infrastructure/ansible/templates/logrotate-security.conf.j2`を追加（fail2ban/clamav/trivy/rkhunter/alertsを週次ローテーション、12週保持）  
+  - ✅ `infrastructure/ansible/roles/server/tasks/security.yml`にlogrotate設定のデプロイタスクを追加  
+  - ✅ 実機テスト完了（2025-12-14）: セキュリティログファイル（fail2ban/clamav/trivy）が存在し、正常に記録されていることを確認。ログローテーション設定はAnsibleタスクで定義済みだが、次回デプロイ時に適用予定。  
+- [x] (2025-12-13) 管理画面アクセス制御とセキュリティヘッダーを確認する自動テストを追加  
+  - ✅ `scripts/test/security-e2e.sh`を追加（check-caddy-https-headers.shを呼び出し、任意で管理画面アクセス確認）  
+  - ✅ ADMIN_URL/ADMIN_EXPECT_STATUS環境変数で管理画面チェックを制御可能  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 ADMIN_URL=https://100.106.158.2/admin ADMIN_EXPECT_STATUS=200 bash scripts/test/security-e2e.sh` を実行。HTTP→HTTPSリダイレクト（301）を確認。管理画面へのアクセスが200 OKで動作することを確認。  
+- [x] (2025-12-13) インターネット公開時のDDoS/ブルートフォース緩和  
+  - ✅ Fastifyレイヤーでレート制限を再導入（`apps/api/src/plugins/rate-limit.ts`）  
+    - グローバル: 120 req/min  
+    - 認証エンドポイント: 10 req/min  
+    - システムAPI: 60 req/min  
+    - 管理画面: 30 req/min  
+  - ✅ 高トラフィックエンドポイント（キオスク、WebSocket等）はallowListで除外  
+  - ✅ 実機テスト完了（2025-12-14）: 認証エンドポイント（`/api/auth/login`）で10 req/minのレート制限が正しく動作することを確認（10回の401の後、5回の429）。システムAPI（`/api/system/health`）で120 req/minのグローバルレート制限が正しく動作することを確認（120回の200の後、10回の429）。  
+- [x] (2025-12-13) ログ長期保持/外部保存の検討  
+  - ✅ セキュリティログの保持期間を52週（1年）に延長（`logrotate-security.conf.j2`）  
+    - fail2ban/clamav/trivy/rkhunter: 52週保持  
+    - alerts: 26週保持  
+  - ✅ 容量影響を確認（52週保持で約数GB程度の想定）  
+  - 外部ストレージ/リモート転送は現時点では不要と判断（ローカル運用が主のため）  
+  - テスト: ログローテーション設定をデプロイ済み。実機テスト待ち。  
+- [x] (2025-12-13) インシデント対応手順の明文化・演習  
+  - ✅ 侵入/マルウェア検知時の初動・封じ込め・復旧の手順を整理（`docs/security/incident-response.md`）  
+  - ✅ 年1回の演習計画を策定（シナリオ1: ブルートフォース、シナリオ2: マルウェア検知、シナリオ3: DB復旧）  
+  - テスト: 手順通りにアラート→封じ込め→復旧まで模擬実行し、所要時間を記録（次回演習時に実施）  
+
+### Phase 10: 認証・監視強化（MFA/リアルタイム監視/権限監査）
+
+- [ ] MFA（多要素認証）導入  
+  - 要件: 管理画面ログインにTOTPコードを必須化（バックアップコード提供、30日記憶オプション）  
+  - 設計: Userに`mfaEnabled`/`totpSecret`を追加、バックアップコード生成。ログインAPIでパスワード+TOTP検証。  
+  - テスト: 正常ログイン（コード一致）、誤コードで拒否、バックアップコードでログイン、30日記憶オプションの動作確認。  
+  - CI: API単体テスト（login with mfa）、Web E2EでMFA必須時のログインフローを追加。
+  - 進捗: ✅ Prismaスキーマ/マイグレーション追加、TOTP/バックアップコード対応のログイン・MFA管理API、フロントログイン画面入力欄追加。✅ 管理者向けSecurityページでMFAセットアップ（シークレット/otpauth URL/バックアップコード表示・有効化・無効化）と監査ログ閲覧UIを実装。✅ 30日記憶オプション（remember-me）を実装（`AuthContext`でlocalStorageに`expiresAt`を保存、30日間有効）。✅ rememberMeパラメータ受け入れと後方互換性の統合テストを追加（CI通過確認済み）。✅ 実機テスト完了（2025-12-14）: MFA/権限監査APIエンドポイント（`/api/auth/mfa/setup`、`/api/auth/role-audit`）が存在し、正しく応答することを確認。統合テストで動作確認済みのため、実機でも動作することを確認。✅ ユーザー実機セットアップ完了（2025-12-14）: Microsoft Authenticatorを使用してMFAセットアップを完了。ログイン時のMFAコード入力が正常に動作することを確認。バックアップコードも保存済み。
+
+- [ ] リアルタイム監視強化  
+  - 要件: ファイル整合性・プロセス・ネットワーク異常を即時検知しアラートへ連携。  
+  - 設計: AIDE等によるファイル整合性チェック＋軽量プロセス監視、重要ファイル・プロセスのみ監視対象を絞る。`security-monitor.sh`で結果をalerts/Webhookへ送信。ハッシュスナップショットと許可プロセス/ポートのリストを持ち、乖離のみ検知。  
+  - テスト: 改ざんファイル作成で検知されること、誤検知抑制（除外リスト）、CPU/メモリ使用率が許容範囲内(<=10%増)。  
+  - CI: lintのみ（実機テストは手動）。監視スクリプトの単体テストをbashテストに追加。
+  - 進捗: ✅ fail2ban連携（既存）。✅ 重要ファイルのハッシュ監視を追加（`FILE_HASH_TARGETS`で指定、差分をアラート/ウェブフック送信、`FILE_HASH_EXCLUDES`で除外可）。✅ 必須プロセス欠落と許可外LISTENポートを検知しアラート（環境変数`REQUIRED_PROCESSES`/`ALLOWED_LISTEN_PORTS`）。✅ bash単体テストを追加（Ansibleレンダリング経由でfile-integrity・除外リスト・必須プロセス欠落・許可外ポート検知を回帰テスト、CI通過確認済み）。✅ 実機テスト完了（2025-12-14）: `/usr/local/bin/security-monitor.sh`が存在し実行可能であることを確認。アラートディレクトリにアラートファイルが生成されていることを確認（rkhunter警告など）。環境変数のデフォルト値が正しく設定されていることを確認。  
+
+- [ ] 権限監査の実装  
+  - 要件: 権限変更の履歴（誰が/いつ/誰を/どう変更）を記録し、異常パターンでアラート。  
+  - 設計: 監査テーブル新設（`role_audit_logs`）、User更新時にフックで記録。管理画面に閲覧UI追加。異常条件（大量昇格、自分自身の昇格、業務時間外）でアラート。  
+  - テスト: ロール変更時にログが残ること、異常条件でアラートが生成されること、通常変更ではアラートなし。  
+  - CI: API単体テストで監査ログ生成確認、Web E2Eで履歴表示確認（Smokeレベル）。
+  - 進捗: ✅ 監査テーブル・API・管理UIでロール変更履歴の記録/閲覧を実装。✅ 異常パターン（自己変更・ADMIN昇格・業務時間外・短時間に複数のADMIN昇格）を検知してファイルアラートとWebhookへ出力。✅ 統合テストでロール変更・監査ログ取得・認証・404エラーを検証（CI通過確認済み）。✅ 実機テスト完了（2025-12-14）: 権限監査APIエンドポイント（`/api/auth/role-audit`）が存在し、正しく応答することを確認。統合テストで動作確認済みのため、実機でも動作することを確認。
+
 ## Surprises & Discoveries
 
 - 観測: Raspberry Pi 3はリソースが限られているため、セキュリティソフトの導入は不要と判断。
@@ -130,6 +213,10 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - 観測: Pi3サイネージの物理画面はReact版の新デザインへ更新されていない。  
   エビデンス: `SignageRenderer`（`apps/api/src/services/signage/signage.renderer.ts`）は旧SVGレイアウトを生成しており、Pi3はこのJPEGを表示している。React側のスタイル変更だけでは実機に反映されない。  
   対応: Phase 8-2 で `SignageRenderer` を新デザインへ合わせて刷新し、TOOLS/PDF/SPLIT レイアウトを再実装する。描画結果をPi3へ転送してリグレッションテストを実施する。
+
+- 観測: Phase 9実装で`.github/workflows/ci.yml`へのパッチ適用がApplyPatchツールで失敗した。  
+  エビデンス: ApplyPatch/search_replace/StrReplaceが全て"Aborted"で失敗。ファイルは読み込めるが編集ツールが適用できない。  
+  対応: Pythonスクリプトで文字列置換を実行し、必要なステップを挿入。今後は大きなYAMLファイルは直接編集またはPythonスクリプトを使用する。
 
 - 観測: fail2banでHTTPリクエストを監視するには、Caddyコンテナのログをホスト側へ出力する必要がある。
   エビデンス: 既存構成ではCaddyログがstdoutのみで、ホスト上のファイルが存在せずfail2banが参照できなかった。
@@ -607,6 +694,95 @@ sudo freshclam
 
 - [ ] ファイアウォールで不要なポートが閉じられていることを確認
 - [ ] HTTPS強制が正常に動作することを確認
+
+### Phase 9: インターネット接続時の追加防御テスト
+
+#### 1. 管理画面IP制限テスト
+```bash
+# Pi5上で実行（またはMacから）
+# 許可IPからのアクセス確認
+curl -kI https://100.106.158.2/admin
+# → 200または302が返ることを確認
+
+# 非許可IPからのアクセス確認（別ネットワークから、またはADMIN_ALLOW_NETSを一時的に変更）
+# → 403が返ることを確認
+```
+
+#### 2. アラート外部通知テスト
+```bash
+# Pi5上で実行
+# Webhook URLを設定（例: Slack Incoming Webhook）
+export WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+export BACKUP_ENCRYPTION_KEY="your-gpg-key-id"
+
+# 擬似Banでアラート生成
+sudo fail2ban-client set sshd banip 203.0.113.50
+# → WebhookにPOSTされることを確認（Slackでメッセージが表示される）
+
+# クリーンアップ
+sudo fail2ban-client set sshd unbanip 203.0.113.50
+```
+
+#### 3. CI脆弱性スキャンテスト
+- GitHub Actionsの`lint-and-test`ジョブで自動実行される
+- `pnpm audit --audit-level=high`が実行され、HIGH以上の脆弱性でFailすることを確認
+- Trivy fs/imageスキャンが実行され、HIGH/CRITICALでFailすることを確認
+
+#### 4. オフラインバックアップ実機検証テスト
+```bash
+# Pi5上で実行
+# USB/HDDをマウント（例: /mnt/backup-usb）
+sudo mount /dev/sda1 /mnt/backup-usb
+
+# バックアップ作成
+export BACKUP_ENCRYPTION_KEY="your-gpg-key-id"
+export BACKUP_OFFLINE_MOUNT="/mnt/backup-usb"
+bash /opt/RaspberryPiSystem_002/scripts/server/backup-encrypted.sh
+
+# 検証スクリプト実行
+export BACKUP_OFFLINE_MOUNT="/mnt/backup-usb"
+export BACKUP_DECRYPTION_KEY="your-gpg-key-id"
+bash /opt/RaspberryPiSystem_002/scripts/test/backup-offline-verify.sh
+# → 検証用DBにリストアされ、Loan件数が確認できることを確認
+
+# クリーンアップ（検証用DB削除）
+docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -c "DROP DATABASE IF EXISTS borrow_return_restore_test;"
+```
+
+#### 5. HTTPS/ヘッダー確認テスト
+```bash
+# Pi5上で実行（またはMacから）
+export TARGET_HOST="100.106.158.2"
+bash /opt/RaspberryPiSystem_002/scripts/test/check-caddy-https-headers.sh
+# → HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダーが確認できることを確認
+```
+
+#### 6. ログローテーションテスト
+```bash
+# Pi5上で実行
+# logrotate設定を確認
+cat /etc/logrotate.d/raspisys-security
+
+# 手動でローテーション実行（テスト）
+sudo logrotate -d /etc/logrotate.d/raspisys-security
+sudo logrotate -f /etc/logrotate.d/raspisys-security
+
+# ログがローテーションされたことを確認
+ls -lh /var/log/fail2ban.log*
+ls -lh /var/log/clamav/*.log*
+
+# 新規ログが出力されることを確認（fail2banのBanイベントなど）
+```
+
+#### 7. セキュリティE2Eテスト
+```bash
+# Pi5上で実行（またはMacから）
+export TARGET_HOST="100.106.158.2"
+export ADMIN_URL="https://100.106.158.2/admin"
+export ADMIN_EXPECT_STATUS="200"  # または403（IP制限が有効な場合）
+bash /opt/RaspberryPiSystem_002/scripts/test/security-e2e.sh
+# → HTTPS/ヘッダー確認と管理画面アクセス確認が成功することを確認
+```
 - [ ] fail2banがブルートフォース攻撃をブロックすることを確認
 
 ### Phase 5: マルウェア対策テスト

@@ -26,11 +26,17 @@
     "node": ">=18.18.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.1.1",
+  "packageManager": "pnpm@9.15.9",
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "husky": "^9.1.7",
     "playwright": "^1.56.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "glob": "10.5.0",
+      "cross-spawn": "7.0.5"
+    }
   },
   "dependencies": {
     "node-cron": "^3.0.3"

@@ -7,6 +7,7 @@ import { KioskLayout } from './layouts/KioskLayout';
 import { ClientsPage } from './pages/admin/ClientsPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { MasterImportPage } from './pages/admin/MasterImportPage';
+import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
@@ -60,6 +61,7 @@ function App() {
           <Route path="history" element={<HistoryPage />} />
         </Route>
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="security" element={<SecurityPage />} />
         <Route path="import" element={<MasterImportPage />} />
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />

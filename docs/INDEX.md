@@ -8,6 +8,12 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-14）
+
+- **✅ Phase 9/10 セキュリティ強化完了**: インターネット接続時の追加防御（Phase 9）と認証・監視強化（Phase 10）を実装完了。管理画面IP制限、Webhookアラート通知、セキュリティヘッダー（Strict-Transport-Security含む）、DDoS/ブルートフォース緩和（レート制限）、MFA（多要素認証）、リアルタイム監視強化、権限監査を実装。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/phase9-10-specifications.md](./security/phase9-10-specifications.md) / [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
+
+- **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を実装完了。詳細は [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-13）
 
 - **✅ サイネージデザイン改善（レイアウト/座標再調整）**: サーバー側レンダラーで余白を最小化しつつ、右ペインのタイトル・ファイル名とPDF表示領域の重なりを解消。外枠余白を極小化、タイトル・ファイル名のベースラインオフセットを揃え、PDFの黒地を拡大。詳細は [modules/signage/README.md](./modules/signage/README.md) / [knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない](./knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない) を参照。
@@ -139,7 +145,10 @@
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
+| **Phase 9/10 セキュリティ機能の詳細仕様を確認したい** | **[security/phase9-10-specifications.md](./security/phase9-10-specifications.md)** |
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
+| **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
+| **外部インシデント評価と追加対策** | **[security/implementation-assessment.md](./security/implementation-assessment.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |
@@ -155,6 +164,7 @@
 
 | やりたいこと | ドキュメント |
 |-------------|-------------|
+| セキュリティインシデントに対応したい | [security/incident-response.md](./security/incident-response.md) |
 | トラブルシューティングしたい | [knowledge-base/troubleshooting-knowledge.md](./knowledge-base/troubleshooting-knowledge.md) |
 | CI/CDの問題を解決したい | [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) |
 | NFCリーダーの問題を解決したい | [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) |
@@ -364,6 +374,8 @@ APIの概要と詳細。
 | [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
 | [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
+| [incident-response.md](./security/incident-response.md) | **インシデント対応手順**（侵入・マルウェア検知時の初動・封じ込め・復旧手順） |
+| [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（外部インシデント評価と追加対策を含む） |
 
 ### プレゼンテーション（presentations/）
 

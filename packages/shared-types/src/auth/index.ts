@@ -9,7 +9,29 @@ export interface AuthResponse {
     id: string;
     username: string;
     role: 'ADMIN' | 'MANAGER' | 'VIEWER';
+    mfaEnabled: boolean;
   };
+}
+
+export interface MfaInitiateResponse {
+  secret: string;
+  otpauthUrl: string;
+  backupCodes: string[];
+}
+
+export interface MfaActivateResponse {
+  backupCodes: string[];
+}
+
+export interface RoleAuditLog {
+  id: string;
+  actorUserId: string;
+  targetUserId: string;
+  fromRole: 'ADMIN' | 'MANAGER' | 'VIEWER';
+  toRole: 'ADMIN' | 'MANAGER' | 'VIEWER';
+  createdAt: string;
+  actorUser?: { id: string; username: string };
+  targetUser?: { id: string; username: string };
 }
 
 

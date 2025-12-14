@@ -1,0 +1,47 @@
+/var/log/fail2ban.log {
+    weekly
+    rotate 52
+    missingok
+    compress
+    delaycompress
+    notifempty
+    postrotate
+        /usr/bin/systemctl reload fail2ban 2>/dev/null || true
+    endscript
+}
+
+/var/log/clamav/*.log {
+    weekly
+    rotate 52
+    missingok
+    compress
+    delaycompress
+    notifempty
+}
+
+/var/log/trivy/*.log {
+    weekly
+    rotate 52
+    missingok
+    compress
+    delaycompress
+    notifempty
+}
+
+/var/log/rkhunter/*.log {
+    weekly
+    rotate 52
+    missingok
+    compress
+    delaycompress
+    notifempty
+}
+
+/opt/RaspberryPiSystem_002/alerts/*.json {
+    weekly
+    rotate 26
+    missingok
+    compress
+    delaycompress
+    notifempty
+}
