@@ -16,7 +16,26 @@ export class BackupConfigLoader {
   static async load(): Promise<BackupConfig> {
     try {
       const configContent = await fs.readFile(this.configPath, 'utf-8');
-      const configJson = JSON.parse(configContent);
+      let configJson = JSON.parse(configContent);
+      
+      // 環境変数の参照を解決（${VAR_NAME}形式）
+      if (configJson.storage?.options?.accessToken && 
+          typeof configJson.storage.options.accessToken === 'string' &&
+          configJson.storage.options.accessToken.startsWith('${') &&
+          configJson.storage.options.accessToken.endsWith('}')) {
+        const envVarName = configJson.storage.options.accessToken.slice(2, -1);
+        const envValue = process.env[envVarName];
+        if (envValue) {
+          configJson.storage.options.accessToken = envValue;
+          logger?.info({ envVarName }, '[BackupConfigLoader] Resolved environment variable');
+        } else {
+          logger?.warn(
+            { envVarName },
+            '[BackupConfigLoader] Environment variable not found, using as-is'
+          );
+        }
+      }
+      
       const config = BackupConfigSchema.parse(configJson);
       
       logger?.info({ configPath: this.configPath }, '[BackupConfigLoader] Config loaded');
