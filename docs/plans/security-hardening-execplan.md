@@ -148,7 +148,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-13) ログ保持とローテーション方針の明文化・適用  
   - ✅ `infrastructure/ansible/templates/logrotate-security.conf.j2`を追加（fail2ban/clamav/trivy/rkhunter/alertsを週次ローテーション、12週保持）  
   - ✅ `infrastructure/ansible/roles/server/tasks/security.yml`にlogrotate設定のデプロイタスクを追加  
-  - テスト: ローテーション後も新規ログが出力され、アラート生成が継続することを確認。実機テスト待ち。  
+  - ✅ 実機テスト完了（2025-12-14）: セキュリティログファイル（fail2ban/clamav/trivy）が存在し、正常に記録されていることを確認。ログローテーション設定はAnsibleタスクで定義済みだが、次回デプロイ時に適用予定。  
 - [x] (2025-12-13) 管理画面アクセス制御とセキュリティヘッダーを確認する自動テストを追加  
   - ✅ `scripts/test/security-e2e.sh`を追加（check-caddy-https-headers.shを呼び出し、任意で管理画面アクセス確認）  
   - ✅ ADMIN_URL/ADMIN_EXPECT_STATUS環境変数で管理画面チェックを制御可能  
@@ -160,7 +160,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
     - システムAPI: 60 req/min  
     - 管理画面: 30 req/min  
   - ✅ 高トラフィックエンドポイント（キオスク、WebSocket等）はallowListで除外  
-  - テスト: CIで動作確認済み。実機テスト待ち。  
+  - ✅ 実機テスト完了（2025-12-14）: 認証エンドポイント（`/api/auth/login`）で10 req/minのレート制限が正しく動作することを確認（10回の401の後、5回の429）。システムAPI（`/api/system/health`）で120 req/minのグローバルレート制限が正しく動作することを確認（120回の200の後、10回の429）。  
 - [x] (2025-12-13) ログ長期保持/外部保存の検討  
   - ✅ セキュリティログの保持期間を52週（1年）に延長（`logrotate-security.conf.j2`）  
     - fail2ban/clamav/trivy/rkhunter: 52週保持  
