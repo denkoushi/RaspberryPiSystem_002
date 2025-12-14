@@ -1,14 +1,14 @@
 import cron from 'node-cron';
-import { BackupService } from './backup.service';
-import { LocalStorageProvider } from './storage/local-storage.provider';
-import { DropboxStorageProvider } from './storage/dropbox-storage.provider';
-import { DatabaseBackupTarget } from './targets/database-backup.target';
-import { FileBackupTarget } from './targets/file-backup.target';
-import { DirectoryBackupTarget } from './targets/directory-backup.target';
-import { CsvBackupTarget } from './targets/csv-backup.target';
-import { ImageBackupTarget } from './targets/image-backup.target';
-import { BackupConfigLoader } from './backup-config.loader';
-import type { BackupConfig } from './backup-config';
+import { BackupService } from './backup.service.js';
+import { LocalStorageProvider } from './storage/local-storage.provider.js';
+import { DropboxStorageProvider } from './storage/dropbox-storage.provider.js';
+import { DatabaseBackupTarget } from './targets/database-backup.target.js';
+import { FileBackupTarget } from './targets/file-backup.target.js';
+import { DirectoryBackupTarget } from './targets/directory-backup.target.js';
+import { CsvBackupTarget } from './targets/csv-backup.target.js';
+import { ImageBackupTarget } from './targets/image-backup.target.js';
+import { BackupConfigLoader } from './backup-config.loader.js';
+import type { BackupConfig } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
 
 /**

@@ -3,8 +3,8 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { BackupTarget } from '../backup-target.interface';
-import type { BackupTargetInfo } from '../backup-types';
+import type { BackupTarget } from '../backup-target.interface.js';
+import type { BackupTargetInfo } from '../backup-types.js';
 
 const execFileAsync = promisify(execFile);
 
