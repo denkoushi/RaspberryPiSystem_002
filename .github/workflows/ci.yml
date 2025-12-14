@@ -184,12 +184,6 @@ jobs:
             exit 1
           }
 
-      - name: Install jinja2 for template rendering
-        run: |
-          python3 -m pip install --user jinja2 || {
-            echo "Warning: Failed to install jinja2, tests will use sed fallback"
-          }
-
       - name: Test monitoring scripts
         run: |
           echo "Testing monitoring scripts..."

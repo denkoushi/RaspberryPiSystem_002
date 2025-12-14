@@ -155,55 +155,36 @@ if command -v python3 >/dev/null 2>&1; then
   TMP_DIR_VAR="${TMP_DIR}" \
   MONITOR_SCRIPT_VAR="${MONITOR_SCRIPT}" \
   python3 <<'PYTHON_SCRIPT'
-import sys
 import os
 from pathlib import Path
 
-try:
-    from jinja2 import Template
-except ImportError:
-    print("⚠️  jinja2がインストールされていません。pip install jinja2 を実行してください", file=sys.stderr)
-    sys.exit(1)
-
 template_path = Path(os.environ['MONITOR_TEMPLATE_VAR'])
 if not template_path.exists():
-    print(f"⚠️  テンプレートが見つかりません: {template_path}", file=sys.stderr)
-    sys.exit(1)
+    print(f"⚠️  テンプレートが見つかりません: {template_path}", flush=True)
+    raise SystemExit(1)
 
-with open(template_path, 'r', encoding='utf-8') as f:
-    template_content = f.read()
+with open(template_path, "r", encoding="utf-8") as f:
+    content = f.read()
 
-template = Template(template_content)
-rendered = template.render(
-    alert_script_path='/bin/echo',
-    alert_webhook_url='',
-    alert_webhook_timeout_seconds=5,
-    security_monitor_state_dir=os.environ['TMP_DIR_VAR'],
-    security_monitor_fail2ban_log=os.path.join(os.environ['TMP_DIR_VAR'], 'fail2ban.log')
-)
+replacements = {
+    "{{ alert_script_path }}": "/bin/echo",
+    "{{ alert_webhook_url | default('') }}": "",
+    "{{ alert_webhook_timeout_seconds | default(5) }}": "5",
+    "{{ security_monitor_state_dir }}": os.environ["TMP_DIR_VAR"],
+    "{{ security_monitor_fail2ban_log }}": os.path.join(os.environ["TMP_DIR_VAR"], "fail2ban.log"),
+}
 
-output_path = Path(os.environ['MONITOR_SCRIPT_VAR'])
-with open(output_path, 'w', encoding='utf-8') as f:
-    f.write(rendered)
+for key, value in replacements.items():
+    content = content.replace(key, value)
 
-print(f"✅ テンプレートをレンダリングしました: {output_path}")
+out_path = Path(os.environ["MONITOR_SCRIPT_VAR"])
+with open(out_path, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print(f"✅ テンプレートをレンダリングしました: {out_path}", flush=True)
 PYTHON_SCRIPT
-
-  if [[ $? -ne 0 ]]; then
-    echo "⚠️  テンプレートのレンダリングに失敗しました。jinja2がインストールされていない可能性があります。"
-    echo "   代替として、sedで簡易置換を試みます..."
-    # フォールバック: sedで簡易置換（区切り文字を#に変更してパス問題を回避）
-    sed \
-      -e "s#{{ alert_script_path }}#/bin/echo#g" \
-      -e "s#{{ alert_webhook_url | default('') }}##g" \
-      -e "s#{{ alert_webhook_timeout_seconds | default(5) }}#5#g" \
-      -e "s#{{ security_monitor_state_dir }}#${TMP_DIR}#g" \
-      -e "s#{{ security_monitor_fail2ban_log }}#${TMP_DIR}/fail2ban.log#g" \
-      "${MONITOR_TEMPLATE}" > "${MONITOR_SCRIPT}"
-  fi
 else
   echo "⚠️  python3が見つかりません。sedで簡易置換を試みます..."
-  # フォールバック: sedで簡易置換（区切り文字を#に変更してパス問題を回避）
   sed \
     -e "s#{{ alert_script_path }}#/bin/echo#g" \
     -e "s#{{ alert_webhook_url | default('') }}##g" \
