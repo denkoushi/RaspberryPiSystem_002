@@ -8,11 +8,11 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2025-12-13）
+### 🆕 最新アップデート（2025-12-14）
 
-- **✅ Phase 9 セキュリティ強化完了**: インターネット接続時の追加防御機能を実装完了。管理画面IP制限、アラート外部通知、DockerイメージTrivyスキャン、レート制限再導入、ログ長期保持（52週）、インシデント対応手順の明文化を完了。CIでの脆弱性スキャンも統合済み。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/incident-response.md](./security/incident-response.md) を参照。
+- **✅ Phase 9/10 セキュリティ強化完了**: インターネット接続時の追加防御（Phase 9）と認証・監視強化（Phase 10）を実装完了。管理画面IP制限、Webhookアラート通知、セキュリティヘッダー（Strict-Transport-Security含む）、DDoS/ブルートフォース緩和（レート制限）、MFA（多要素認証）、リアルタイム監視強化、権限監査を実装。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/phase9-10-specifications.md](./security/phase9-10-specifications.md) / [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
 
-- **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を [security/implementation-assessment.md](./security/implementation-assessment.md) に統合。
+- **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を実装完了。詳細は [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
 
 ### 🆕 最新アップデート（2025-12-13）
 
