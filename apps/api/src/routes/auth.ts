@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { authorizeRoles, authenticate, signAccessToken, signRefreshToken, type JwtPayload } from '../lib/auth.js';
 import { generateBackupCodes, generateTotpSecret, hashBackupCodes, matchAndConsumeBackupCode, verifyTotpCode } from '../lib/mfa.js';
+import { UserRole } from '@prisma/client';
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
@@ -32,6 +33,14 @@ const mfaActivateSchema = z.object({
 
 const mfaDisableSchema = z.object({
   password: z.string().min(1)
+});
+
+const updateRoleSchema = z.object({
+  role: z.enum(['ADMIN', 'MANAGER', 'VIEWER'])
+});
+
+const auditQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(200).optional()
 });
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -164,5 +173,47 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       }
     });
     return { success: true };
+  });
+
+  // 権限変更（監査ログを記録）
+  app.post('/auth/users/:id/role', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = updateRoleSchema.parse(request.body);
+    const target = await prisma.user.findUnique({ where: { id: params.id } });
+    if (!target) throw new ApiError(404, 'ユーザーが見つかりません');
+    if (target.role === body.role) {
+      return { user: { id: target.id, username: target.username, role: target.role, mfaEnabled: target.mfaEnabled } };
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.user.update({
+        where: { id: params.id },
+        data: { role: body.role as UserRole }
+      });
+      await tx.roleAuditLog.create({
+        data: {
+          actorUserId: request.user!.id,
+          targetUserId: params.id,
+          fromRole: target.role as UserRole,
+          toRole: body.role as UserRole
+        }
+      });
+      return next;
+    });
+    return { user: { id: updated.id, username: updated.username, role: updated.role, mfaEnabled: updated.mfaEnabled } };
+  });
+
+  // 権限変更の監査ログ一覧
+  app.get('/auth/role-audit', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+    const query = auditQuerySchema.parse(request.query);
+    const limit = query.limit ?? 100;
+    const logs = await prisma.roleAuditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        actorUser: { select: { id: true, username: true } },
+        targetUser: { select: { id: true, username: true } }
+      }
+    });
+    return { logs };
   });
 }
