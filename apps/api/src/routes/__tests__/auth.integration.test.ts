@@ -93,6 +93,42 @@ describe('POST /api/auth/login', () => {
 
     expect(response.statusCode).toBe(400);
   });
+
+  it('should accept rememberMe parameter and return tokens', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        username: testUsername,
+        password: testPassword,
+        rememberMe: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('accessToken');
+    expect(body).toHaveProperty('refreshToken');
+    expect(body).toHaveProperty('user');
+  });
+
+  it('should work without rememberMe parameter (backward compatibility)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        username: testUsername,
+        password: testPassword,
+        // rememberMe not provided
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('accessToken');
+  });
 });
 
 describe('POST /api/auth/refresh', () => {
@@ -157,6 +193,112 @@ describe('POST /api/auth/refresh', () => {
     });
 
     expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let targetUserId: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    // Create admin user and get token
+    const adminUser = await createTestUser('ADMIN', 'admin-password');
+    const loginResponse = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      payload: { username: adminUser.user.username, password: adminUser.password },
+    });
+    adminToken = loginResponse.json().accessToken;
+
+    // Create target user to change role
+    const targetUser = await createTestUser('VIEWER', 'target-password');
+    targetUserId = targetUser.user.id;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should change user role and create audit log', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/auth/users/${targetUserId}/role`,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      payload: { role: 'MANAGER' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.user.role).toBe('MANAGER');
+  });
+
+  it('should return audit logs', async () => {
+    // First change a role to generate audit log
+    await app.inject({
+      method: 'POST',
+      url: `/api/auth/users/${targetUserId}/role`,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      payload: { role: 'MANAGER' },
+    });
+
+    // Get audit logs
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/role-audit',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('logs');
+    expect(Array.isArray(body.logs)).toBe(true);
+    expect(body.logs.length).toBeGreaterThan(0);
+    expect(body.logs[0]).toHaveProperty('fromRole');
+    expect(body.logs[0]).toHaveProperty('toRole');
+  });
+
+  it('should return 401 without auth token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/auth/users/${targetUserId}/role`,
+      headers: { 'Content-Type': 'application/json' },
+      payload: { role: 'MANAGER' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('should return 404 for non-existent user', async () => {
+    const fakeId = '00000000-0000-0000-0000-000000000000';
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/auth/users/${fakeId}/role`,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      payload: { role: 'MANAGER' },
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 });
 
