@@ -48,6 +48,8 @@ const auditQuerySchema = z.object({
 
 const businessHourStart = Number.parseInt(process.env.BUSINESS_HOUR_START ?? '8', 10);
 const businessHourEnd = Number.parseInt(process.env.BUSINESS_HOUR_END ?? '20', 10);
+const bulkPromotionWindowMinutes = Number.parseInt(process.env.BULK_PROMOTION_WINDOW_MINUTES ?? '60', 10);
+const bulkPromotionThreshold = Number.parseInt(process.env.BULK_PROMOTION_THRESHOLD ?? '3', 10);
 
 function isOutsideBusinessHours(now: Date): boolean {
   const hour = now.getHours();
@@ -259,6 +261,18 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
     if (isOutsideBusinessHours(now)) {
       reasons.push('outside-business-hours');
+    }
+    if (body.role === 'ADMIN' && bulkPromotionThreshold > 0 && bulkPromotionWindowMinutes > 0) {
+      const windowStart = new Date(now.getTime() - bulkPromotionWindowMinutes * 60 * 1000);
+      const count = await prisma.roleAuditLog.count({
+        where: {
+          toRole: 'ADMIN',
+          createdAt: { gte: windowStart }
+        }
+      });
+      if (count >= bulkPromotionThreshold) {
+        reasons.push(`bulk-promotion-${count}-within-${bulkPromotionWindowMinutes}m`);
+      }
     }
 
     if (reasons.length > 0) {
