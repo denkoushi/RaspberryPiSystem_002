@@ -152,7 +152,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-13) 管理画面アクセス制御とセキュリティヘッダーを確認する自動テストを追加  
   - ✅ `scripts/test/security-e2e.sh`を追加（check-caddy-https-headers.shを呼び出し、任意で管理画面アクセス確認）  
   - ✅ ADMIN_URL/ADMIN_EXPECT_STATUS環境変数で管理画面チェックを制御可能  
-  - テスト: `bash scripts/test/security-e2e.sh` を実行。実機テスト待ち。  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 ADMIN_URL=https://100.106.158.2/admin ADMIN_EXPECT_STATUS=200 bash scripts/test/security-e2e.sh` を実行。HTTP→HTTPSリダイレクト（301）を確認。管理画面へのアクセスが200 OKで動作することを確認。  
 - [x] (2025-12-13) インターネット公開時のDDoS/ブルートフォース緩和  
   - ✅ Fastifyレイヤーでレート制限を再導入（`apps/api/src/plugins/rate-limit.ts`）  
     - グローバル: 120 req/min  
