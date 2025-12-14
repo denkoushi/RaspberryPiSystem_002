@@ -2,8 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "moduleResolution": "Bundler"
   },
   "exclude": [
     "src/**/*.spec.ts",
