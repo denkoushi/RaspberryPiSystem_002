@@ -137,13 +137,16 @@ export class DropboxStorageProvider implements StorageProvider {
       const err: any = error;
       // 401エラー、expired_access_tokenエラー、または400エラー（malformed token）の場合、リフレッシュを試みる
       const isAuthError = err?.status === 401 || err?.error?.error?.['.tag'] === 'expired_access_token';
+      // 400エラーでmalformed/invalid tokenの場合を検出（errorが文字列またはオブジェクトの両方に対応）
+      const errorMessage = typeof err?.error === 'string' ? err.error : err?.error?.toString() || '';
+      const errorMessageLower = errorMessage.toLowerCase();
       const isMalformedToken = err?.status === 400 && 
-        (err?.error?.includes?.('malformed') || err?.error?.includes?.('invalid') || 
-         err?.message?.includes?.('malformed') || err?.message?.includes?.('invalid'));
+        (errorMessageLower.includes('malformed') || errorMessageLower.includes('invalid') ||
+         err?.message?.toLowerCase()?.includes('malformed') || err?.message?.toLowerCase()?.includes('invalid'));
       
       if (isAuthError || isMalformedToken) {
         logger?.warn(
-          { status: err?.status, error: err?.error, message: err?.message },
+          { status: err?.status, error: err?.error, message: err?.message, isAuthError, isMalformedToken },
           '[DropboxStorageProvider] Access token invalid or expired, attempting refresh'
         );
         await this.refreshAccessTokenIfNeeded();
