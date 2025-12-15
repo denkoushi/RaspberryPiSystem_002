@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { createTestUser } from './helpers.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
@@ -6,18 +6,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-// テスト用の設定ディレクトリを設定
+// テスト用の設定ディレクトリを設定（buildServer前に環境変数を設定）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const testConfigDir = path.join(__dirname, '../../../.test-config');
 const testConfigPath = path.join(testConfigDir, 'backup.json');
+
+// buildServer()が呼ばれる前に環境変数を設定
+if (!process.env.BACKUP_CONFIG_PATH) {
+  process.env.BACKUP_CONFIG_PATH = testConfigPath;
+}
+if (!process.env.PROJECT_ROOT) {
+  process.env.PROJECT_ROOT = process.cwd();
+}
 
 describe('CSV Import Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
   let viewerToken: string;
-  const originalBackupConfigPath = process.env.BACKUP_CONFIG_PATH;
 
   beforeAll(async () => {
     // テスト用の設定ディレクトリを作成
@@ -25,10 +32,8 @@ describe('CSV Import Schedule API', () => {
       fs.mkdirSync(testConfigDir, { recursive: true });
     }
     
-    // テスト用の設定パスを設定（buildServer前に設定する必要がある）
+    // 環境変数を確実に設定
     process.env.BACKUP_CONFIG_PATH = testConfigPath;
-    process.env.PROJECT_ROOT = process.cwd();
-    // ImportAlertServiceが/appディレクトリを作成しようとするのを防ぐ
     process.env.PROJECT_ROOT = process.cwd();
 
     app = await buildServer();
@@ -50,13 +55,6 @@ describe('CSV Import Schedule API', () => {
   });
 
   afterAll(async () => {
-    // 環境変数を復元
-    if (originalBackupConfigPath) {
-      process.env.BACKUP_CONFIG_PATH = originalBackupConfigPath;
-    } else {
-      delete process.env.BACKUP_CONFIG_PATH;
-    }
-
     if (closeServer) {
       await closeServer();
     }
