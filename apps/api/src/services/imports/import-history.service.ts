@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { ImportStatus } from '@prisma/client';
+import { ImportStatus, Prisma } from '@prisma/client';
 
 export interface ImportSummary {
   employees?: {
@@ -51,7 +51,7 @@ export class ImportHistoryService {
       where: { id: historyId },
       data: {
         status: ImportStatus.COMPLETED,
-        summary: summary as Record<string, unknown>,
+        summary: summary as unknown as Prisma.InputJsonValue,
         completedAt: new Date()
       }
     });
