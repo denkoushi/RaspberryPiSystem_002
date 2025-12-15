@@ -236,6 +236,37 @@ interface BackupTarget {
 - 自動バックアップが実行されている
 - APIエンドポイントが実装され、動作している
 
+### Milestone 5: OAuth 2.0フローとリフレッシュトークン自動更新（新規）
+
+**目標**: Dropbox OAuth 2.0フローを実装し、リフレッシュトークンによる自動アクセストークン更新機能を追加する。
+
+**作業内容**:
+1. OAuth 2.0認証フローの実装
+   - 認証URL生成エンドポイント（`GET /api/backup/oauth/authorize`）
+   - 認証コード受け取りエンドポイント（`GET /api/backup/oauth/callback`）
+   - トークン交換エンドポイント（`POST /api/backup/oauth/token`）
+2. リフレッシュトークンによる自動更新機能の実装
+   - `DropboxStorageProvider`にリフレッシュ機能を追加
+   - アクセストークンが期限切れになったら自動的にリフレッシュ
+   - 更新されたアクセストークンを保存
+3. 設定ファイルの拡張
+   - `refreshToken`, `appKey`, `appSecret`を追加
+   - 環境変数参照のサポート（`${DROPBOX_REFRESH_TOKEN}`など）
+4. 環境変数の追加
+   - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`をdocker-composeに追加
+
+**検証方法**:
+- OAuth 2.0認証フローのテスト（モックサーバー使用）
+- リフレッシュトークンによる自動更新のテスト
+- アクセストークン期限切れ時の自動リフレッシュのテスト
+- `pnpm test`でテストが通過することを確認
+
+**完了条件**:
+- OAuth 2.0認証フローが実装され、テストが通過している
+- リフレッシュトークンによる自動更新機能が実装され、テストが通過している
+- 設定ファイルに`refreshToken`, `appKey`, `appSecret`が追加されている
+- 環境変数がdocker-composeに追加されている
+
 ## Progress
 
 - [x] Milestone 1: 基盤の構築（2025-12-14）
@@ -273,6 +304,21 @@ interface BackupTarget {
     - [x] `@types/node-fetch` 追加
     - [x] ESMランタイム対応（すべてのインポートに `.js` 拡張子追加）
     - [x] CI環境での全テスト成功（14件すべてパス）
+- [x] Milestone 5: OAuth 2.0フローとリフレッシュトークン自動更新（2025-12-15）
+  - [x] OAuth 2.0認証フローの実装（認証URL生成、認証コード受け取り、トークン交換）
+    - [x] `DropboxOAuthService`の実装（認証URL生成、トークン交換、リフレッシュ）
+    - [x] OAuthルートの追加（GET /api/backup/oauth/authorize, GET /api/backup/oauth/callback, POST /api/backup/oauth/refresh）
+  - [x] リフレッシュトークンによる自動更新機能の実装（DropboxStorageProviderに追加）
+    - [x] リフレッシュトークンとOAuthサービスへの参照を追加
+    - [x] 401エラー（expired_access_token）時の自動リフレッシュ機能
+    - [x] トークン更新コールバック機能（設定ファイル自動更新）
+  - [x] 設定ファイルの拡張（refreshToken, appKey, appSecret）
+    - [x] `BackupConfigSchema`に`refreshToken`, `appKey`, `appSecret`を追加
+    - [x] 環境変数参照のサポート（`${DROPBOX_REFRESH_TOKEN}`など）
+  - [x] 環境変数の追加（DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN）
+    - [x] docker-compose.server.ymlに環境変数を追加
+  - [ ] OAuth 2.0フローのテスト実装
+  - [ ] リフレッシュトークン自動更新のテスト実装
 
 ## Surprises & Discoveries
 

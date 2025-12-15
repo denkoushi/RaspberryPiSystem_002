@@ -8,7 +8,10 @@ export const BackupConfigSchema = z.object({
     provider: z.enum(['local', 'dropbox']),
     options: z.object({
       basePath: z.string().optional(),
-      accessToken: z.string().optional() // Dropbox用
+      accessToken: z.string().optional(), // Dropbox用
+      refreshToken: z.string().optional(), // Dropbox用（リフレッシュトークン）
+      appKey: z.string().optional(), // Dropbox用（OAuth 2.0 App Key）
+      appSecret: z.string().optional() // Dropbox用（OAuth 2.0 App Secret）
     }).optional()
   }),
   targets: z.array(z.object({

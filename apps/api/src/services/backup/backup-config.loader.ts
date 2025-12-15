@@ -19,20 +19,48 @@ export class BackupConfigLoader {
       const configJson = JSON.parse(configContent);
       
       // 環境変数の参照を解決（${VAR_NAME}形式）
-      if (configJson.storage?.options?.accessToken && 
-          typeof configJson.storage.options.accessToken === 'string' &&
-          configJson.storage.options.accessToken.startsWith('${') &&
-          configJson.storage.options.accessToken.endsWith('}')) {
-        const envVarName = configJson.storage.options.accessToken.slice(2, -1);
-        const envValue = process.env[envVarName];
-        if (envValue) {
-          configJson.storage.options.accessToken = envValue;
-          logger?.info({ envVarName }, '[BackupConfigLoader] Resolved environment variable');
-        } else {
-          logger?.warn(
-            { envVarName },
-            '[BackupConfigLoader] Environment variable not found, using as-is'
-          );
+      const resolveEnvVar = (value: unknown, key: string): unknown => {
+        if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
+          const envVarName = value.slice(2, -1);
+          const envValue = process.env[envVarName];
+          if (envValue) {
+            logger?.info({ envVarName, key }, '[BackupConfigLoader] Resolved environment variable');
+            return envValue;
+          } else {
+            logger?.warn(
+              { envVarName, key },
+              '[BackupConfigLoader] Environment variable not found, using as-is'
+            );
+          }
+        }
+        return value;
+      };
+
+      // accessToken, refreshToken, appKey, appSecretの環境変数を解決
+      if (configJson.storage?.options) {
+        if (configJson.storage.options.accessToken) {
+          configJson.storage.options.accessToken = resolveEnvVar(
+            configJson.storage.options.accessToken,
+            'accessToken'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.refreshToken) {
+          configJson.storage.options.refreshToken = resolveEnvVar(
+            configJson.storage.options.refreshToken,
+            'refreshToken'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.appKey) {
+          configJson.storage.options.appKey = resolveEnvVar(
+            configJson.storage.options.appKey,
+            'appKey'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.appSecret) {
+          configJson.storage.options.appSecret = resolveEnvVar(
+            configJson.storage.options.appSecret,
+            'appSecret'
+          ) as string | undefined;
         }
       }
       

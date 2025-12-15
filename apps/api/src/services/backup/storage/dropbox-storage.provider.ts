@@ -5,16 +5,28 @@ import fetch from 'node-fetch';
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { verifyDropboxCertificate } from './dropbox-cert-pinning.js';
+import { DropboxOAuthService } from '../dropbox-oauth.service.js';
 
 /**
  * Dropbox APIを使用したストレージプロバイダー。
  * セキュリティ対策として証明書ピニング、TLS検証、リトライロジックを実装。
+ * リフレッシュトークンによる自動アクセストークン更新機能をサポート。
  */
 export class DropboxStorageProvider implements StorageProvider {
-  private readonly dbx: Dropbox;
+  private dbx: Dropbox;
   private readonly basePath: string;
+  private accessToken: string;
+  private refreshToken?: string;
+  private oauthService?: DropboxOAuthService;
+  private onTokenUpdate?: (token: string) => Promise<void>;
 
-  constructor(options: { accessToken: string; basePath?: string }) {
+  constructor(options: {
+    accessToken: string;
+    basePath?: string;
+    refreshToken?: string;
+    oauthService?: DropboxOAuthService;
+    onTokenUpdate?: (token: string) => Promise<void>;
+  }) {
     // HTTPSエージェントの設定（証明書検証を有効化、証明書ピニング対応）
     const httpsAgent = new https.Agent({
       rejectUnauthorized: true, // 証明書検証を有効化（必須）
@@ -44,8 +56,13 @@ export class DropboxStorageProvider implements StorageProvider {
       } as any);
     };
 
+    this.accessToken = options.accessToken;
+    this.refreshToken = options.refreshToken;
+    this.oauthService = options.oauthService;
+    this.onTokenUpdate = options.onTokenUpdate;
+
     this.dbx = new Dropbox({
-      accessToken: options.accessToken,
+      accessToken: this.accessToken,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fetch: customFetch as any
     });
@@ -54,8 +71,85 @@ export class DropboxStorageProvider implements StorageProvider {
   }
 
   /**
+   * アクセストークンを更新する
+   */
+  private async refreshAccessTokenIfNeeded(): Promise<void> {
+    if (!this.refreshToken || !this.oauthService) {
+      return; // リフレッシュトークンまたはOAuthサービスが設定されていない場合は何もしない
+    }
+
+    try {
+      const tokenInfo = await this.oauthService.refreshAccessToken(this.refreshToken);
+      this.accessToken = tokenInfo.accessToken;
+      
+      // Dropboxインスタンスを更新
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: true,
+        keepAlive: true,
+        keepAliveMsecs: 1000,
+        maxSockets: 5,
+        timeout: 30000,
+        secureProtocol: 'TLSv1_2_method',
+        checkServerIdentity: (servername: string, cert: tls.PeerCertificate) => {
+          const pinningError = verifyDropboxCertificate(servername, cert);
+          if (pinningError) {
+            return pinningError;
+          }
+          return tls.checkServerIdentity(servername, cert);
+        }
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const customFetch = (url: string, init?: RequestInit) => {
+        return fetch(url, {
+          ...init,
+          agent: httpsAgent
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+      };
+
+      this.dbx = new Dropbox({
+        accessToken: this.accessToken,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fetch: customFetch as any
+      });
+
+      // トークン更新コールバックを呼び出す
+      if (this.onTokenUpdate) {
+        await this.onTokenUpdate(this.accessToken);
+      }
+
+      logger?.info('[DropboxStorageProvider] Access token refreshed successfully');
+    } catch (error) {
+      logger?.error({ err: error }, '[DropboxStorageProvider] Failed to refresh access token');
+      throw error;
+    }
+  }
+
+  /**
+   * エラーが401（認証エラー）の場合、リフレッシュトークンで自動更新を試みる
+   */
+  private async handleAuthError<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err: any = error;
+      // 401エラーまたはexpired_access_tokenエラーの場合、リフレッシュを試みる
+      if (err?.status === 401 || err?.error?.error?.['.tag'] === 'expired_access_token') {
+        logger?.warn('[DropboxStorageProvider] Access token expired, attempting refresh');
+        await this.refreshAccessTokenIfNeeded();
+        // リフレッシュ後に再試行
+        return await operation();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * ファイルをアップロードする
    * リトライロジック: レート制限エラー（429）時に指数バックオフでリトライ
+   * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async upload(file: Buffer, path: string): Promise<void> {
     const fullPath = this.normalizePath(path);
@@ -64,10 +158,12 @@ export class DropboxStorageProvider implements StorageProvider {
 
     while (retryCount < maxRetries) {
       try {
-        await this.dbx.filesUpload({
-          path: fullPath,
-          contents: file,
-          mode: { '.tag': 'overwrite' }
+        await this.handleAuthError(async () => {
+          await this.dbx.filesUpload({
+            path: fullPath,
+            contents: file,
+            mode: { '.tag': 'overwrite' }
+          });
         });
         logger?.info({ path: fullPath, size: file.length }, '[DropboxStorageProvider] File uploaded');
         return;
@@ -100,11 +196,12 @@ export class DropboxStorageProvider implements StorageProvider {
 
   /**
    * ファイルをダウンロードする
+   * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async download(path: string): Promise<Buffer> {
     const fullPath = this.normalizePath(path);
     
-    try {
+    return await this.handleAuthError(async () => {
       const response = await this.dbx.filesDownload({ path: fullPath });
       
       // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
@@ -115,20 +212,20 @@ export class DropboxStorageProvider implements StorageProvider {
       }
 
       return Buffer.from(fileBinary);
-    } catch (error) {
-      logger?.error({ err: error, path: fullPath }, '[DropboxStorageProvider] Download failed');
-      throw error;
-    }
+    });
   }
 
   /**
    * ファイルを削除する
+   * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async delete(path: string): Promise<void> {
     const fullPath = this.normalizePath(path);
     
     try {
-      await this.dbx.filesDeleteV2({ path: fullPath });
+      await this.handleAuthError(async () => {
+        await this.dbx.filesDeleteV2({ path: fullPath });
+      });
       logger?.info({ path: fullPath }, '[DropboxStorageProvider] File deleted');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -144,6 +241,7 @@ export class DropboxStorageProvider implements StorageProvider {
 
   /**
    * ファイル一覧を取得する
+   * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async list(path: string): Promise<FileInfo[]> {
     // listメソッドでは、basePathを含む完全パスを直接使用
@@ -164,7 +262,9 @@ export class DropboxStorageProvider implements StorageProvider {
     const results: FileInfo[] = [];
 
     try {
-      const response = await this.dbx.filesListFolder({ path: fullPath });
+      const response = await this.handleAuthError(async () => {
+        return await this.dbx.filesListFolder({ path: fullPath });
+      });
       
       for (const entry of response.result.entries) {
         if (entry['.tag'] === 'file') {
@@ -210,7 +310,9 @@ export class DropboxStorageProvider implements StorageProvider {
     const results: FileInfo[] = [];
 
     try {
-      const response = await this.dbx.filesListFolderContinue({ cursor });
+      const response = await this.handleAuthError(async () => {
+        return await this.dbx.filesListFolderContinue({ cursor });
+      });
       
       for (const entry of response.result.entries) {
         if (entry['.tag'] === 'file') {
