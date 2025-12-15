@@ -47,11 +47,11 @@ describe('BackupService integration (mock storage)', () => {
     const result = await backupService.backup(target, { label: 'int2' });
     expect(result.success).toBe(true);
 
-    const list = await backupService.listBackups({ prefix: 'backups' });
+    const list = await backupService.listBackups({ prefix: '' });
     expect(list.some(x => x.path === result.path)).toBe(true);
 
     await backupService.deleteBackup(result.path!);
-    const listAfter = await backupService.listBackups({ prefix: 'backups' });
+    const listAfter = await backupService.listBackups({ prefix: '' });
     expect(listAfter.some(x => x.path === result.path)).toBe(false);
   });
 });

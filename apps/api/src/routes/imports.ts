@@ -149,7 +149,7 @@ async function processCsvImport(
   log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
 ) {
   if (!files.employees && !files.items) {
-    throw new ApiError(400, 'employees.csv もしくは items.csv を指定してください');
+  throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
   }
 
   let employeeRows: EmployeeCsvRow[] = [];
