@@ -180,6 +180,7 @@
 | **工具管理システムの復旧手順を知りたい** | **[modules/tools/operations.md](./modules/tools/operations.md)** |
 | **エラーハンドリングを理解したい** | **[guides/error-handling.md](./guides/error-handling.md)** |
 | **ログ出力を理解したい** | **[guides/logging.md](./guides/logging.md)** |
+| **Dropbox OAuth設定でエラーが発生した** | **[knowledge-base/infrastructure.md#kb-099](./knowledge-base/infrastructure.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)** |
 
 ---
 
