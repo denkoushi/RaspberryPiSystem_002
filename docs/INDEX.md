@@ -106,6 +106,7 @@
 | モジュール構造を理解したい | [decisions/001-module-structure.md](./decisions/001-module-structure.md) |
 | サービス層を理解したい | [decisions/002-service-layer.md](./decisions/002-service-layer.md) |
 | CSVインポート・エクスポートを理解したい | [guides/csv-import-export.md](./guides/csv-import-export.md) |
+| **Dropbox CSV統合機能の現状を把握したい** | **[analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md)** |
 
 ### デプロイ・運用する
 
