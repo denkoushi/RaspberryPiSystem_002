@@ -10,27 +10,25 @@
 
 ## 解決策
 
-### 解決策1: App Consoleで「No expiration」トークンを生成（推奨・最も簡単）
+### ⚠️ 重要な確認事項
 
-Dropbox App Consoleで、生成されるトークンを無期限に設定できます。
+**「Access token expiration」設定は存在しません**
+
+Dropboxは2021年9月30日以降、長期アクセストークンの新規発行を停止し、この設定も削除されました。現在、App Consoleの「Generated access token」で生成されるトークンも**短期トークン（約4時間）**です。
+
+### 解決策1: 新しいトークンを生成して設定（暫定対応）
+
+短期トークンでも、新しいトークンを生成して設定することで一時的に動作します。
 
 #### 手順
 
-1. **Dropbox App Consoleにアクセス**
+1. **Dropbox App Consoleで新しいトークンを生成**
    - https://www.dropbox.com/developers/apps を開く
    - アプリを選択
-
-2. **OAuth 2設定を確認・変更**
-   - 「Settings」タブを開く
-   - 「OAuth 2」セクションを確認
-   - **「Access token expiration」を「No expiration」に設定**（可能な場合）
-     - この設定が表示されない場合は、アプリの種類によっては利用できない可能性があります
-
-3. **新しいトークンを生成**
    - 「Generated access token」セクションで「Generate」ボタンをクリック
    - 表示されたトークンをコピー（`sl.`で始まる長い文字列）
 
-4. **Pi5に設定**
+2. **Pi5に設定**
    ```bash
    # Macのターミナルから実行
    DROPBOX_TOKEN="sl.新しいトークン"
@@ -40,12 +38,7 @@ Dropbox App Consoleで、生成されるトークンを無期限に設定でき�
    ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
    ```
 
-#### 確認方法
-
-```bash
-# トークンの有効性を確認
-ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api env | grep DROPBOX"
-```
+**注意**: このトークンは約4時間で期限切れになります。定期的に更新が必要です。
 
 ### 解決策2: OAuth 2.0フローでリフレッシュトークンを取得（将来的な実装）
 
