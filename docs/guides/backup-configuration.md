@@ -246,6 +246,47 @@ PostgreSQLデータベースをバックアップする場合：
 - `days`: バックアップを保持する日数（デフォルト: 30日）
 - `maxBackups`: 最大バックアップ数（オプション、指定した場合は日数に関係なく最大数まで保持）
 
+## バックアップパス構造の仕様
+
+バックアップ機能では、APIレスポンスの`path`と実際のファイルパスが異なる形式で返されます。
+
+### APIレスポンスの`path`形式
+
+APIレスポンスの`path`は**相対パス**で返されます：
+
+```
+{type}/{timestamp}/{source}.{extension}
+```
+
+**例**:
+- `csv/2025-12-15T00-42-04-953Z/employees.csv`
+- `csv/2025-12-15T00-42-04-953Z/items.csv`
+- `database/2025-12-15T00-40-00-000Z/borrow_return.sql`
+
+**注意**: `backups/`プレフィックスは含まれません。これは`LocalStorageProvider`の`getBaseDir()`と結合するためです。
+
+### 実際のファイルパス
+
+実際のファイルパスは以下のように構成されます：
+
+```
+{getBaseDir()}/{path}
+```
+
+**ローカルストレージの場合**:
+- `getBaseDir()`: `/opt/RaspberryPiSystem_002/backups`（`options.basePath`の値）
+- 完全パス例: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+
+**Dropboxストレージの場合**:
+- `getBaseDir()`: `/backups`（`options.basePath`の値、デフォルト）
+- 完全パス例: `/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+
+### ファイル拡張子
+
+- **CSVバックアップ**: 自動的に`.csv`拡張子が付与されます
+- **データベースバックアップ**: `.sql`拡張子が付与されます
+- **その他のバックアップ**: タイプに応じた拡張子が付与されます
+
 **動作**:
 - `days` を超えたバックアップは自動削除されます
 - `maxBackups` が指定されている場合、古いバックアップから順に削除されます

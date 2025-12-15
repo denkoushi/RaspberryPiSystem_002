@@ -382,9 +382,23 @@ interface BackupTarget {
 - ✅ **バックアップファイルが正常に作成された**（CSV形式、データ整合性確認済み）
 - ✅ **バックアップ一覧が正常に取得できた**（3件のバックアップ確認）
 
-**発見された問題**:
-1. **バックアップディレクトリの二重構造**: `/opt/RaspberryPiSystem_002/backups/backups/csv/...`（機能的な問題はないが、パス構造が冗長）
-2. **ファイル名に拡張子がない**: `employees`、`items`（`.csv`拡張子なし、機能的な問題はない）
+**発見された問題と解決**:
+1. **バックアップディレクトリの二重構造** ✅ **解決済み**
+   - **問題**: `/opt/RaspberryPiSystem_002/backups/backups/csv/...`（`backups`が2階層）
+   - **原因**: `BackupService.buildPath()`が`backups/`プレフィックスを含んでいた
+   - **解決**: `buildPath()`から`backups/`プレフィックスを削除し、相対パスのみを返すように修正
+   - **結果**: 正しいパス構造 `/opt/RaspberryPiSystem_002/backups/csv/...` に修正
+
+2. **ファイル名に拡張子がない** ✅ **解決済み**
+   - **問題**: `employees`、`items`（`.csv`拡張子なし）
+   - **原因**: `buildPath()`で拡張子を付与していなかった
+   - **解決**: CSVファイルタイプの場合に`.csv`拡張子を自動付与するロジックを追加
+   - **結果**: `employees.csv`、`items.csv` に修正
+
+**改善後の仕様**:
+- **APIレスポンスの`path`**: 相対パス形式 `{type}/{timestamp}/{source}.{extension}`（例: `csv/2025-12-15T00-42-04-953Z/employees.csv`）
+- **実際のファイルパス**: `{getBaseDir()}/{path}`（例: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`）
+- **実装のポイント**: `LocalStorageProvider.getBaseDir()`と`BackupService.buildPath()`の責任分離を明確化
 
 **検証ドキュメント**:
 - `docs/guides/backup-verification.md`: 実機検証ガイド

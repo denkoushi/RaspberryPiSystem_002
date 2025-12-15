@@ -6,7 +6,7 @@
 
 - **デバイス**: Raspberry Pi 5 (100.106.158.2)
 - **ブランチ**: `refactor/imports-ts-refactoring`
-- **検証日時**: 2025-12-15 00:29-00:30
+- **検証日時**: 2025-12-15 00:29-00:30（初回検証）、00:42（改善後検証）
 
 ## 検証結果サマリー
 
@@ -75,13 +75,13 @@ Authorization: Bearer <token>
 }
 ```
 
-**レスポンス**:
+**レスポンス（改善後）**:
 ```json
 {
   "success": true,
-  "path": "backups/csv/2025-12-15T00-29-43-887Z/employees",
+  "path": "csv/2025-12-15T00-42-04-953Z/employees.csv",
   "sizeBytes": 279,
-  "timestamp": "2025-12-15T00:29:43.890Z"
+  "timestamp": "2025-12-15T00:42:04.964Z"
 }
 ```
 
@@ -94,7 +94,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 8888,佐藤 花子,04131705340289,組立,,ACTIVE
 ```
 
-**ファイルパス**: `/opt/RaspberryPiSystem_002/backups/backups/csv/2025-12-15T00-29-43-887Z/employees`
+**ファイルパス（改善後）**: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
 #### 4.2 CSVバックアップ（アイテムデータ）
 
@@ -108,13 +108,13 @@ Authorization: Bearer <token>
 }
 ```
 
-**レスポンス**:
+**レスポンス（改善後）**:
 ```json
 {
   "success": true,
-  "path": "backups/csv/2025-12-15T00-29-50-581Z/items",
+  "path": "csv/2025-12-15T00-42-04-953Z/items.csv",
   "sizeBytes": 168,
-  "timestamp": "2025-12-15T00:29:50.582Z"
+  "timestamp": "2025-12-15T00:42:04.964Z"
 }
 ```
 
@@ -126,28 +126,20 @@ GET /api/backup
 Authorization: Bearer <token>
 ```
 
-**レスポンス**:
+**レスポンス（改善後）**:
 ```json
 {
   "backups": [
     {
-      "path": "backups/csv/2025-12-15T00-29-43-887Z/employees",
+      "path": "csv/2025-12-15T00-42-04-953Z/employees.csv",
       "sizeBytes": 279,
-      "modifiedAt": "2025-12-15T00:29:43.888Z"
-    },
-    {
-      "path": "backups/csv/2025-12-15T00-29-50-581Z/items",
-      "sizeBytes": 168,
-      "modifiedAt": "2025-12-15T00:29:50.580Z"
-    },
-    {
-      "path": "backups/csv/2025-12-15T00-30-20-362Z/employees",
-      "sizeBytes": 279,
-      "modifiedAt": "2025-12-15T00:30:20.361Z"
+      "modifiedAt": "2025-12-15T00:42:04.961Z"
     }
   ]
 }
 ```
+
+**注意**: APIレスポンスの`path`は相対パス（`backups/`プレフィックスなし）で返されます。完全なファイルパスは`LocalStorageProvider`の`getBaseDir()`（`/opt/RaspberryPiSystem_002/backups`）と結合して取得します。
 
 ### 6. バックアップファイルの整合性確認
 
@@ -166,27 +158,38 @@ Authorization: Bearer <token>
 
 **レスポンス**: デフォルト設定が返される
 
-## 発見された問題
+## 発見された問題と解決
 
-### 問題1: バックアップディレクトリの二重構造
+### 問題1: バックアップディレクトリの二重構造 ✅ 解決済み
 
 **現象**: バックアップファイルが `/opt/RaspberryPiSystem_002/backups/backups/csv/...` に作成される（`backups`が2階層）
 
-**原因**: `LocalStorageProvider`の`getBaseDir()`が`/opt/RaspberryPiSystem_002/backups`を返し、APIレスポンスの`path`が`backups/csv/...`で始まるため、結合時に`backups/backups`になる
+**原因**: `BackupService.buildPath()`が`backups/`プレフィックスを含んでいたため、`LocalStorageProvider`の`getBaseDir()`（`/opt/RaspberryPiSystem_002/backups`）と結合時に`backups/backups`になった
 
-**影響**: 機能的な問題はないが、パス構造が冗長
+**解決策**: `BackupService.buildPath()`から`backups/`プレフィックスを削除し、相対パス（`csv/{timestamp}/{source}.csv`）のみを返すように修正
 
-**対応**: 設定ファイルの`basePath`を調整するか、APIレスポンスの`path`形式を変更する
+**解決後の動作**:
+- APIレスポンスの`path`: `csv/2025-12-15T00-42-04-953Z/employees.csv`
+- 実際のファイルパス: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
-### 問題2: ファイル名に拡張子がない
+**変更内容**:
+- `apps/api/src/services/backup/backup.service.ts`: `buildPath()`メソッドを修正
+- `listBackups()`のデフォルトプレフィックスを空文字列に変更
+
+### 問題2: ファイル名に拡張子がない ✅ 解決済み
 
 **現象**: CSVファイルが`employees`、`items`という名前で保存される（`.csv`拡張子なし）
 
-**原因**: `CsvBackupTarget`の実装で拡張子を付与していない
+**原因**: `BackupService.buildPath()`で拡張子を付与していなかった
 
-**影響**: 機能的な問題はないが、ファイルタイプの識別が困難
+**解決策**: `buildPath()`メソッドでCSVファイルタイプの場合に`.csv`拡張子を自動付与
 
-**対応**: 必要に応じて拡張子を追加する
+**解決後の動作**:
+- ファイル名: `employees.csv`、`items.csv`
+- APIレスポンスの`path`: `csv/.../employees.csv`
+
+**変更内容**:
+- `apps/api/src/services/backup/backup.service.ts`: `buildPath()`メソッドに拡張子付与ロジックを追加
 
 ## 未検証項目
 
@@ -225,10 +228,28 @@ Authorization: Bearer <token>
 - ✅ 手動バックアップ実行（CSV items）
 - ✅ バックアップ一覧取得
 - ✅ バックアップファイル内容確認
+- ✅ **パス構造の改善**（`backups/backups`の二重構造を解消）
+- ✅ **CSVファイル拡張子の追加**（`.csv`拡張子を自動付与）
+
+## 改善内容の詳細
+
+### バックアップパス構造の仕様
+
+**APIレスポンスの`path`形式**:
+- 相対パス: `{type}/{timestamp}/{source}.{extension}`
+- 例: `csv/2025-12-15T00-42-04-953Z/employees.csv`
+
+**実際のファイルパス**:
+- `{getBaseDir()}/{path}`
+- 例: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+
+**実装のポイント**:
+- `LocalStorageProvider.getBaseDir()`: `/opt/RaspberryPiSystem_002/backups`を返す
+- `BackupService.buildPath()`: 相対パスのみを返す（`backups/`プレフィックスなし）
+- CSVファイルタイプの場合、自動的に`.csv`拡張子を付与
 
 ## 次のステップ
 
 1. **Dropbox連携テスト**: 実際のDropboxトークンを設定して検証
 2. **スケジュールバックアップ確認**: 実際のスケジュール実行を確認
 3. **リストア機能検証**: バックアップファイルのリストアを検証
-4. **パス構造の改善**: `backups/backups`の二重構造を解消
