@@ -127,7 +127,7 @@ export class DropboxStorageProvider implements StorageProvider {
   }
 
   /**
-   * エラーが401（認証エラー）の場合、リフレッシュトークンで自動更新を試みる
+   * エラーが401（認証エラー）または400（malformed token）の場合、リフレッシュトークンで自動更新を試みる
    */
   private async handleAuthError<T>(operation: () => Promise<T>): Promise<T> {
     try {
@@ -135,9 +135,17 @@ export class DropboxStorageProvider implements StorageProvider {
     } catch (error: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const err: any = error;
-      // 401エラーまたはexpired_access_tokenエラーの場合、リフレッシュを試みる
-      if (err?.status === 401 || err?.error?.error?.['.tag'] === 'expired_access_token') {
-        logger?.warn('[DropboxStorageProvider] Access token expired, attempting refresh');
+      // 401エラー、expired_access_tokenエラー、または400エラー（malformed token）の場合、リフレッシュを試みる
+      const isAuthError = err?.status === 401 || err?.error?.error?.['.tag'] === 'expired_access_token';
+      const isMalformedToken = err?.status === 400 && 
+        (err?.error?.includes?.('malformed') || err?.error?.includes?.('invalid') || 
+         err?.message?.includes?.('malformed') || err?.message?.includes?.('invalid'));
+      
+      if (isAuthError || isMalformedToken) {
+        logger?.warn(
+          { status: err?.status, error: err?.error, message: err?.message },
+          '[DropboxStorageProvider] Access token invalid or expired, attempting refresh'
+        );
         await this.refreshAccessTokenIfNeeded();
         // リフレッシュ後に再試行
         return await operation();
