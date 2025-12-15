@@ -996,6 +996,14 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
     
+    // スケジュールが存在するか確認
+    const config = await BackupConfigLoader.load();
+    const schedule = config.csvImports?.find(s => s.id === id);
+    
+    if (!schedule) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+    
     const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
     const scheduler = getCsvImportScheduler();
     
@@ -1006,6 +1014,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     } catch (error) {
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
       if (error instanceof Error) {
+        // スケジュールが見つからないエラーの場合は404
+        if (error.message.includes('not found') || error.message.includes('見つかりません')) {
+          throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+        }
         throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
       }
       throw new ApiError(500, 'インポート実行に失敗しました');

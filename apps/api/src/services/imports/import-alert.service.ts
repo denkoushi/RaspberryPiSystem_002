@@ -92,7 +92,6 @@ export class ImportAlertService {
     }, null, 2);
 
     try {
-      const { join } = await import('path');
       const scriptPath = join(this.projectRoot, 'scripts', 'generate-alert.sh');
       
       const escapedType = this.escapeShellArg(alertType);
