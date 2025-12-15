@@ -5,7 +5,7 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["src", "prisma", "vitest.config.ts", "scripts/import-rigging.ts"],
+  "include": ["src", "prisma", "vitest.config.ts", "scripts/import-rigging.ts", "scripts/get-dropbox-cert-fingerprint.ts"],
   "references": [
     { "path": "../../packages/shared-types" }
   ]
