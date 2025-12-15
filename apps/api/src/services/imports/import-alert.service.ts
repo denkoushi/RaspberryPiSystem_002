@@ -1,7 +1,8 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { dirname, resolve, join } from 'path';
 import { logger } from '../../lib/logger.js';
-import * as path from 'path';
 
 const execAsync = promisify(exec);
 
@@ -14,8 +15,10 @@ export class ImportAlertService {
   constructor() {
     // プロジェクトルートを取得（通常は /opt/RaspberryPiSystem_002）
     // 環境変数から取得、なければ現在のディレクトリから推測
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
     this.projectRoot = process.env.PROJECT_ROOT || 
-      path.resolve(__dirname, '../../../../..');
+      resolve(__dirname, '../../../../..');
   }
 
   /**
@@ -38,7 +41,7 @@ export class ImportAlertService {
 
     try {
       // generate-alert.shスクリプトを実行
-      const scriptPath = path.join(this.projectRoot, 'scripts', 'generate-alert.sh');
+      const scriptPath = join(this.projectRoot, 'scripts', 'generate-alert.sh');
       
       // シェルエスケープ
       const escapedType = this.escapeShellArg(alertType);
@@ -89,7 +92,8 @@ export class ImportAlertService {
     }, null, 2);
 
     try {
-      const scriptPath = path.join(this.projectRoot, 'scripts', 'generate-alert.sh');
+      const { join } = await import('path');
+      const scriptPath = join(this.projectRoot, 'scripts', 'generate-alert.sh');
       
       const escapedType = this.escapeShellArg(alertType);
       const escapedMessage = this.escapeShellArg(message);
