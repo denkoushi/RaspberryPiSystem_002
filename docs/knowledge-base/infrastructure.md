@@ -2487,18 +2487,48 @@ ssh-keygen -F raspberrypi.local -l
 sudo cat /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-#### 2. システム再起動の影響
+#### 2. Git force pushの影響（主原因の可能性）
 
 **状況**:
-- Pi5は **2025-12-15 17:01** に再起動
+- **2025-12-15 16:53:49**: mainブランチに`feature/dropbox-csv-import-phase1`をマージ
+- **2025-12-15 16:59:57**: mainブランチをforce pushでロールバック（`git reset --hard af2946e` → `git push origin main --force`）
+- **2025-12-15 17:01**: Pi5がシステム再起動
+
+**影響**:
+- Pi5側の`refactor/imports-ts-refactoring`ブランチがリモートより13コミット先行している状態になった
+- Pi5側は既に`git pull`で新しいコミット（`feature/dropbox-csv-import-phase1`のコミット）を取得していた
+- force pushによりリモートブランチが巻き戻り、Pi5側のローカルブランチがリモートより先行
+- この状態で`git pull`を実行すると、競合やエラーが発生する可能性がある
+
+**確認方法**:
+```bash
+# Pi5側で確認
+git log --oneline refactor/imports-ts-refactoring ^origin/refactor/imports-ts-refactoring
+# 13コミットが先行していることを確認
+
+# リモートとの差分確認
+git fetch origin
+git log --oneline origin/refactor/imports-ts-refactoring..refactor/imports-ts-refactoring
+```
+
+**根本原因**:
+- **mainブランチへのforce push**により、リモートのブランチ履歴が巻き戻った
+- Pi5側は既に新しいコミットを取得していたため、ローカルブランチがリモートより先行
+- この状態でgit操作（`git pull`など）を実行すると、予期しない動作やエラーが発生する可能性がある
+
+#### 3. システム再起動の影響
+
+**状況**:
+- Pi5は **2025-12-15 17:01** に再起動（force pushの直後）
 - SSHサービスは正常に起動（`systemctl status ssh`）
 - WiFi接続も正常に確立（`wlan0: 192.168.10.230`）
 
 **影響**:
 - 再起動によりネットワーク設定がリセットされた可能性
 - mDNS/Bonjourサービス（`avahi-daemon`）も再起動
+- **force pushの影響で壊れたgit状態が、再起動時に問題を引き起こした可能性**
 
-#### 3. ネットワークの一時的な問題
+#### 4. ネットワークの一時的な問題
 
 **状況**:
 - WiFi接続は12月15日17:01に確立
@@ -2509,7 +2539,7 @@ sudo cat /etc/ssh/ssh_host_ed25519_key.pub
 - WiFi接続の一時的な不安定さ
 - mDNS/Bonjourの解決遅延
 
-#### 4. ユーザー名の不一致
+#### 5. ユーザー名の不一致
 
 **状況**:
 - 最初は `tsuda@raspberrypi.local` で接続試行 → 失敗
@@ -2566,20 +2596,41 @@ ssh denkon5sd02@192.168.10.230
 
 **根本原因**:
 
-1. **SSHホストキーの不一致**（最も可能性が高い）
+1. **Git force pushの影響**（最も可能性が高い）
+   - mainブランチへのforce pushにより、リモートブランチが巻き戻った
+   - Pi5側は既に新しいコミットを取得していたため、ローカルブランチがリモートより先行
+   - この状態でgit操作を実行すると、予期しない動作やエラーが発生
+   - **force pushのタイミング（16:59:57）とPi5の再起動（17:01）が一致している**
+
+2. **SSHホストキーの不一致**
    - Pi5のSSHホストキーが変更された（OS再インストール、SSH設定の再生成など）
    - クライアント側のknown_hostsが古い状態だった
+   - ただし、これはforce pushとは直接関係ない可能性が高い
 
-2. **ユーザー名の不一致**
+3. **ユーザー名の不一致**
    - `tsuda` ユーザーが存在しない、またはSSH公開鍵が登録されていない
    - 正しいユーザー名 `denkon5sd02` を使用する必要がある
 
-3. **システム再起動の影響**
+4. **システム再起動の影響**
    - 12月15日17:01に再起動があり、ネットワーク設定がリセットされた可能性
+   - force pushの直後に再起動が発生したため、git状態の問題が表面化した可能性
 
 **再発防止策**:
 
-1. **SSH接続の自動化スクリプト**:
+1. **mainブランチへのforce pushの禁止**:
+   - mainブランチへのforce pushは絶対に避ける
+   - ロールバックが必要な場合は、新しいコミットで修正する
+   - 既にpullしたリモート環境への影響を考慮する
+
+2. **Git状態の確認**:
+   ```bash
+   # Pi5側で定期的にgit状態を確認
+   git fetch origin
+   git status
+   git log --oneline HEAD..origin/refactor/imports-ts-refactoring
+   ```
+
+3. **SSH接続の自動化スクリプト**:
    ```bash
    # ~/.ssh/config に設定を追加
    Host raspberrypi
@@ -2589,27 +2640,31 @@ ssh denkon5sd02@192.168.10.230
        UserKnownHostsFile ~/.ssh/known_hosts
    ```
 
-2. **定期的な接続確認**:
+4. **定期的な接続確認**:
    ```bash
    # 接続テストスクリプト
    ssh -o ConnectTimeout=5 denkon5sd02@raspberrypi.local "echo 'OK'"
    ```
 
-3. **SSHホストキーのバックアップ**:
+5. **SSHホストキーのバックアップ**:
    ```bash
    # Pi5側でホストキーをバックアップ
    sudo tar czf /opt/backup/ssh_host_keys_$(date +%Y%m%d).tar.gz /etc/ssh/ssh_host_*_key*
    ```
 
-4. **監視とアラート**:
+6. **監視とアラート**:
    - SSH接続失敗を監視
    - ホストキー変更を検知したらアラート
 
 **学んだこと**: 
+- **mainブランチへのforce pushは絶対に避けるべき**。既にpullしたリモート環境に深刻な影響を与える
+- force pushの影響で、リモートブランチが巻き戻ると、既に新しいコミットを取得していた環境でgit状態が壊れる
+- Pi5側の`refactor/imports-ts-refactoring`ブランチがリモートより13コミット先行している状態は、force pushの影響によるもの
 - SSHホストキーの変更は、OS再インストールやSSH設定の再生成時に発生する
 - `REMOTE HOST IDENTIFICATION HAS CHANGED!` エラーは、セキュリティ上の警告であり、正しいホストキーで更新する必要がある
 - ユーザー名の不一致も接続失敗の原因となる
 - システム再起動後は、ネットワーク設定やサービスがリセットされる可能性がある
+- **force pushのタイミングと問題発生のタイミングが一致している場合、git操作が原因の可能性が高い**
 
 **解決状況**: ✅ **解決済み**（2025-12-16）
 
