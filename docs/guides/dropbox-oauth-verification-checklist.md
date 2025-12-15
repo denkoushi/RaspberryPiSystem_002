@@ -175,14 +175,16 @@
 
 #### 3.1 スケジュールバックアップの設定確認
 
-- [ ] 設定ファイルのスケジュール設定を確認
+- [x] 設定ファイルのスケジュール設定を確認 ✅ **完了**（2025-12-15）
   ```bash
   cat /opt/RaspberryPiSystem_002/config/backup.json | python3 -m json.tool | grep schedule
   ```
-- [ ] スケジューラーが起動していることを確認
+  - 4つのタスクが設定済み: database (4時), csv-employees (5時), csv-items (5時), image-photo-storage (6時)
+- [x] スケジューラーが起動していることを確認 ✅ **完了**（2025-12-15）
   ```bash
   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep "BackupScheduler\|Scheduled backup"
   ```
+  - スケジューラーが正常に起動し、4つのタスクが登録されていることを確認
 
 #### 3.2 スケジュール時刻での実行確認
 
