@@ -271,35 +271,31 @@
   - `POST /api/imports/master/from-dropbox`エンドポイントを追加
   - リクエストボディ: `{ employeesPath?: string, itemsPath?: string, replaceExisting?: boolean }`
   - レスポンス: 既存の`POST /api/imports/master`と同じ形式
-- **見積もり**: 2時間
-- **依存関係**: なし
+- **実装状況**: ✅ 完了（2025-12-15）
 
 **タスク1.2: DropboxからのCSVダウンロード機能の実装**
 - **ファイル**: `apps/api/src/routes/imports.ts`（新規関数）
 - **内容**:
-  - `downloadCsvFromDropbox(dropboxPath: string): Promise<Buffer>`関数を実装
   - `DropboxStorageProvider`の`download()`メソッドを使用
   - エラーハンドリング（ファイル不存在、ダウンロード失敗など）
-- **見積もり**: 3時間
-- **依存関係**: タスク1.1
+- **実装状況**: ✅ 完了（2025-12-15）
 
 **タスク1.3: CSVインポート処理の統合**
 - **ファイル**: `apps/api/src/routes/imports.ts`
 - **内容**:
-  - DropboxからダウンロードしたCSVを既存の`importEmployees()`と`importItems()`に渡す
+  - DropboxからダウンロードしたCSVを既存の`processCsvImport()`に渡す
   - 既存のCSVパース処理を再利用
   - エラーハンドリングの統一
-- **見積もり**: 2時間
-- **依存関係**: タスク1.2
+- **実装状況**: ✅ 完了（2025-12-15）
 
 **タスク1.4: バリデーションの追加**
 - **ファイル**: `apps/api/src/routes/imports.ts`
 - **内容**:
   - Dropboxパスのバリデーション（Zodスキーマ）
   - ファイル拡張子の検証（`.csv`のみ許可）
-  - パス形式の検証（`/backups/csv/...`形式）
-- **見積もり**: 1時間
-- **依存関係**: タスク1.1
+  - パストラバーサル防止（`..`, `/../`, `//`, `/.csv`を拒否）
+  - パス長の上限（1000文字）
+- **実装状況**: ✅ 完了（2025-12-15）
 
 **タスク1.5: ログ出力の追加**
 - **ファイル**: `apps/api/src/routes/imports.ts`
@@ -307,8 +303,8 @@
   - Dropboxからのダウンロード開始・完了ログ
   - エラー時の詳細ログ
   - インポート処理のログ（既存と統一）
-- **見積もり**: 1時間
-- **依存関係**: タスク1.3
+  - メモリ使用量の計測とログ出力
+- **実装状況**: ✅ 完了（2025-12-15）
 
 #### テスト計画
 
@@ -320,13 +316,15 @@
   3. ✅ Dropboxから従業員・アイテムCSVを同時にダウンロードしてインポート成功
   4. ✅ `replaceExisting: true`で既存データを置き換え
   5. ✅ `replaceExisting: false`で既存データを保持
-  6. ❌ Dropboxファイルが存在しない場合のエラーハンドリング
-  7. ❌ Dropboxパスが無効な場合のエラーハンドリング
-  8. ❌ CSV形式が不正な場合のエラーハンドリング
-  9. ❌ Dropbox API認証エラー時のエラーハンドリング
-  10. ❌ Dropbox API接続エラー時のエラーハンドリング
-- **モック**: `DropboxStorageProvider`をモック化（`MockStorageProvider`を使用）
-- **見積もり**: 4時間
+  6. ✅ Dropboxファイルが存在しない場合のエラーハンドリング（404）
+  7. ✅ Dropboxパスが無効な場合のエラーハンドリング（400、パストラバーサル拒否）
+  8. ✅ CSV形式が不正な場合のエラーハンドリング（既存のprocessCsvImportで処理）
+  9. ✅ Dropbox API認証エラー時のエラーハンドリング（401）
+  10. ✅ パストラバーサル防止テスト（`..`, `/../`, `//`, `/.csv`を拒否）
+  11. ✅ パス長と拡張子バリデーション（1000文字上限、`.csv`必須）
+  12. ✅ 大規模CSV処理（1000行、30秒以内）
+- **モック**: `DropboxStorageProvider`をモック化（動的モック実装）
+- **実装状況**: ✅ 完了（2025-12-15）
 
 **統合テスト**:
 - **ファイル**: `apps/api/src/routes/__tests__/imports-dropbox.integration.test.ts`
@@ -349,7 +347,7 @@
 **CIパイプラインへの追加**:
 - **ファイル**: `.github/workflows/ci.yml`
 - **追加内容**:
-  1. **単体テストの実行**:
+  1. ✅ **単体テストの実行**: `Run imports-dropbox tests`ステップを追加（2025-12-15）
      ```yaml
      - name: Run imports-dropbox tests
        run: |
@@ -359,42 +357,26 @@
            exit 1
          }
        env:
+         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+         JWT_ACCESS_SECRET: test-access-secret-1234567890
+         JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+         CAMERA_TYPE: mock
+         PHOTO_STORAGE_DIR: /tmp/test-photo-storage
          BACKUP_STORAGE_DIR: /tmp/test-backups
          NODE_ENV: test
      ```
-  2. **統合テストの実行**（条件付き）:
-     ```yaml
-     - name: Run imports-dropbox integration tests
-       if: env.DROPBOX_ACCESS_TOKEN != ''
-       run: |
-         cd apps/api
-         pnpm test -- imports-dropbox.integration --reporter=verbose || {
-           echo "Imports-dropbox integration tests failed!"
-           exit 1
-         }
-       env:
-         DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
-         BACKUP_STORAGE_DIR: /tmp/test-backups
-         NODE_ENV: test
-     ```
-  3. **E2Eテストの実行**:
-     ```yaml
-     - name: Run imports-dropbox E2E tests
-       run: pnpm test:e2e e2e/imports-dropbox.spec.ts || {
-         echo "Imports-dropbox E2E tests failed!"
-         exit 1
-       }
-     ```
+  2. ⚠️ **統合テストの実行**（条件付き）: 実トークンが必要なため、現時点ではスキップ（将来実装）
+  3. ⚠️ **E2Eテストの実行**: フロントエンド側の実装が必要なため、Phase 2以降で実装予定
 
 **CI必須化**:
-- ⚠️ **重要**: CIテストが失敗した場合、マージをブロックする
-- `continue-on-error: false`を設定（デフォルト）
-- テストが失敗した場合、PRのマージを禁止
+- ✅ **完了**: `continue-on-error: true`を削除（`e2e-tests`ジョブ、2025-12-15）
+- ✅ **完了**: CIテストが失敗した場合、マージをブロックする設定を実装
+- ✅ **完了**: ブランチ保護設定ガイドを作成（`docs/guides/ci-branch-protection.md`）
 
 **CIスルーの防止**:
-- GitHub Actionsのブランチ保護ルールを設定
-- 必須チェック: `lint-and-test`, `e2e-smoke`, `imports-dropbox-tests`
-- 管理者でもスルーできない設定
+- ⚠️ **手動設定が必要**: GitHub Actionsのブランチ保護ルールを設定（手動で実施）
+- 必須チェック: `lint-and-test`, `e2e-smoke`, `docker-build`
+- 管理者でもスルーできない設定（`Do not allow bypassing the above settings`）
 
 #### 成功要件
 

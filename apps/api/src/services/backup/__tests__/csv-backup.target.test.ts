@@ -8,9 +8,12 @@ describe('CsvBackupTarget', () => {
   let storageProvider: MockStorageProvider;
   let backupService: BackupService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     storageProvider = new MockStorageProvider();
     backupService = new BackupService(storageProvider);
+    // テストデータをクリーンアップ（他のテストの影響を防ぐ）
+    await prisma.employee.deleteMany({});
+    await prisma.item.deleteMany({});
   });
 
   afterEach(async () => {
@@ -20,12 +23,14 @@ describe('CsvBackupTarget', () => {
   });
 
   it('should backup employees CSV', async () => {
-    // テストデータを作成
-    await prisma.employee.create({
+    // テストデータを作成（一意のemployeeCodeを使用）
+    const timestamp = Date.now();
+    const uniqueCode = `EMP${timestamp.toString().slice(-6)}`;
+    const employee = await prisma.employee.create({
       data: {
-        employeeCode: '0001',
+        employeeCode: uniqueCode,
         displayName: 'テスト従業員',
-        nfcTagUid: '04C362E1330289',
+        nfcTagUid: `04C362E1330289${timestamp}`,
         department: '製造部',
         contact: '090-1234-5678',
         status: 'ACTIVE'
@@ -45,17 +50,19 @@ describe('CsvBackupTarget', () => {
     
     expect(csvContent).toContain('employeeCode');
     expect(csvContent).toContain('displayName');
-    expect(csvContent).toContain('0001');
+    expect(csvContent).toContain(employee.employeeCode);
     expect(csvContent).toContain('テスト従業員');
   });
 
   it('should backup items CSV', async () => {
-    // テストデータを作成
-    await prisma.item.create({
+    // テストデータを作成（一意のitemCodeを使用）
+    const timestamp = Date.now();
+    const uniqueCode = `TO${timestamp.toString().slice(-6)}`;
+    const item = await prisma.item.create({
       data: {
-        itemCode: 'TO0001',
+        itemCode: uniqueCode,
         name: 'テスト工具',
-        nfcTagUid: '04DE8366BC2A81',
+        nfcTagUid: `04DE8366BC2A81${timestamp}`,
         category: '工具',
         storageLocation: '工具庫A',
         status: 'AVAILABLE',
@@ -76,7 +83,7 @@ describe('CsvBackupTarget', () => {
     
     expect(csvContent).toContain('itemCode');
     expect(csvContent).toContain('name');
-    expect(csvContent).toContain('TO0001');
+    expect(csvContent).toContain(item.itemCode);
     expect(csvContent).toContain('テスト工具');
   });
 });

@@ -29,10 +29,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Security scan (pnpm audit, high+)
-        run: pnpm audit --audit-level=high
+        run: |
+          pnpm audit --audit-level=high || {
+            echo "Security scan failed!"
+            exit 1
+          }
 
       - name: Run lint
-        run: pnpm lint --max-warnings=0
+        run: |
+          pnpm lint --max-warnings=0 || {
+            echo "Lint failed!"
+            exit 1
+          }
 
       - name: Build shared-types
         run: |
@@ -137,6 +145,23 @@ jobs:
             exit 1
           }
         env:
+          BACKUP_STORAGE_DIR: /tmp/test-backups
+          NODE_ENV: test
+
+      - name: Run imports-dropbox tests
+        run: |
+          cd apps/api
+          echo "Running imports-dropbox tests..."
+          pnpm test -- imports-dropbox --reporter=verbose || {
+            echo "Imports-dropbox tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
@@ -271,7 +296,10 @@ jobs:
       - name: Build Web
         run: |
           cd apps/web
-          pnpm build
+          pnpm build || {
+            echo "Build Web failed!"
+            exit 1
+          }
 
   e2e-smoke:
     runs-on: ubuntu-latest
@@ -330,21 +358,30 @@ jobs:
       - name: Generate Prisma Client (smoke)
         run: |
           cd apps/api
-          pnpm prisma generate
+          pnpm prisma generate || {
+            echo "Prisma generate failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Run Prisma migrations (smoke)
         run: |
           cd apps/api
-          pnpm prisma migrate deploy
+          pnpm prisma migrate deploy || {
+            echo "Prisma migrate deploy failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Seed database (smoke)
         run: |
           cd apps/api
-          pnpm prisma db seed
+          pnpm prisma db seed || {
+            echo "Database seed failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
@@ -353,7 +390,11 @@ jobs:
           CI: true
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           VITE_KIOSK_DEFAULT_MODE: TAG
-        run: pnpm test:e2e:smoke
+        run: |
+          pnpm test:e2e:smoke || {
+            echo "E2E smoke tests failed!"
+            exit 1
+          }
 
       - name: Cleanup PostgreSQL (smoke)
         if: always()
@@ -362,7 +403,6 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     needs: e2e-smoke
-    continue-on-error: true
     
     steps:
       - name: Checkout code
@@ -388,24 +428,36 @@ jobs:
       - name: Build shared-types
         run: |
           cd packages/shared-types
-          pnpm build
+          pnpm build || {
+            echo "Build shared-types failed!"
+            exit 1
+          }
 
       - name: Generate Prisma Client
         run: |
           cd apps/api
-          pnpm prisma generate
+          pnpm prisma generate || {
+            echo "Prisma generate failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build API
         run: |
           cd apps/api
-          pnpm build
+          pnpm build || {
+            echo "Build API failed!"
+            exit 1
+          }
 
       - name: Build Web
         run: |
           cd apps/web
-          pnpm build
+          pnpm build || {
+            echo "Build Web failed!"
+            exit 1
+          }
 
       - name: Start PostgreSQL
         run: |
@@ -439,22 +491,28 @@ jobs:
       - name: Run Prisma migrations
         run: |
           cd apps/api
-          pnpm prisma migrate deploy
+          pnpm prisma migrate deploy || {
+            echo "Prisma migrate deploy failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Seed database
         run: |
           cd apps/api
-          pnpm prisma db seed
+          pnpm prisma db seed || {
+            echo "Database seed failed!"
+            exit 1
+          }
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Run E2E tests
         run: |
-          echo "Running E2E tests (non-blocking)..."
+          echo "Running E2E tests..."
           pnpm test:e2e || {
-            echo "E2E tests failed (allowed to fail)."
+            echo "E2E tests failed!"
             exit 1
           }
         env:

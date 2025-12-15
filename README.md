@@ -17,6 +17,13 @@
   - [物流管理モジュール](./docs/modules/logistics/)（将来実装予定）
 - **[アーキテクチャ決定記録](./docs/decisions/)**: 重要な設計決定の記録
 
+## ⚠️ 重要: CI必須化とブランチ保護設定
+
+**CIテストが失敗してもマージが進んでしまう問題を防ぐため、必ずブランチ保護ルールを設定してください。**
+
+- **[ブランチ保護ルール設定手順](./.github/BRANCH_PROTECTION_SETUP.md)**: GitHubでの設定手順（必須）
+- **[CI必須化とブランチ保護設定ガイド](./docs/guides/ci-branch-protection.md)**: 詳細な説明とトラブルシューティング
+
 詳細な実装手順は `EXEC_PLAN.md` を参照してください。.agent/PLANS.md の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
 
 ## ディレクトリ概要

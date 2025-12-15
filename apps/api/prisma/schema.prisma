@@ -363,6 +363,26 @@ model ImportJob {
   completedAt DateTime?
 }
 
+model CsvImportHistory {
+  id              String       @id @default(uuid())
+  scheduleId      String       // スケジュールID（backup.jsonのcsvImports[].id）
+  scheduleName    String?      // スケジュール名（表示用）
+  status          ImportStatus @default(PENDING)
+  employeesPath   String?      // Dropbox上の従業員CSVパス
+  itemsPath       String?      // Dropbox上のアイテムCSVパス
+  summary         Json?        // インポート結果サマリー（{ employees: { processed, created, updated }, items: { processed, created, updated } }）
+  errorMessage    String?      // エラーメッセージ（失敗時）
+  startedAt       DateTime     @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([completedAt])
+}
+
 model SignageSchedule {
   id          String             @id @default(uuid())
   name        String

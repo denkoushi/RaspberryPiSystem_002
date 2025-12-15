@@ -24,7 +24,17 @@ export const BackupConfigSchema = z.object({
   retention: z.object({
     days: z.number().default(30),
     maxBackups: z.number().optional()
-  }).optional()
+  }).optional(),
+  csvImports: z.array(z.object({
+    id: z.string(), // スケジュールID（一意）
+    name: z.string().optional(), // スケジュール名（表示用）
+    employeesPath: z.string().optional(), // Dropbox上の従業員CSVパス
+    itemsPath: z.string().optional(), // Dropbox上のアイテムCSVパス
+    schedule: z.string(), // cron形式（例: "0 4 * * *"）
+    enabled: z.boolean().default(true),
+    replaceExisting: z.boolean().default(false), // 既存データを置き換えるか
+    metadata: z.record(z.unknown()).optional()
+  })).optional().default([])
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -68,5 +78,6 @@ export const defaultBackupConfig: BackupConfig = {
   retention: {
     days: 30,
     maxBackups: 100
-  }
+  },
+  csvImports: []
 };

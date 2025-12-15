@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { parse } from 'csv-parse/sync';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
@@ -30,9 +30,53 @@ const fieldSchema = z.object({
   )
 });
 
+// パストラバーサル防止: .. や絶対パスを拒否
+function validateDropboxPath(path: string): boolean {
+  // 空文字列は既にmin(1)で除外される
+  const normalized = path.trim();
+  
+  // .. を含むパスを拒否
+  if (normalized.includes('..')) {
+    return false;
+  }
+  
+  // 先頭が / で始まる絶対パスは許可（Dropboxのパス形式）
+  // ただし、/ のみや /../ のような危険なパスは拒否
+  if (normalized.startsWith('/')) {
+    // /../ や // を含むパスを拒否
+    if (normalized.includes('/../') || normalized.includes('//')) {
+      return false;
+    }
+    // / のみは拒否
+    if (normalized === '/') {
+      return false;
+    }
+    // /. で始まるパス（例: /.csv, /..csv）を拒否
+    if (normalized.startsWith('/.')) {
+      return false;
+    }
+  }
+  
+  // パス長の上限（1000文字）
+  if (normalized.length > 1000) {
+    return false;
+  }
+  
+  return true;
+}
+
+const dropboxPathSchema = z.string()
+  .trim()
+  .min(1, 'パスは必須です')
+  .max(1000, 'パスは1000文字以内である必要があります')
+  .regex(/\.csv$/i, 'パスは.csvで終わる必要があります')
+  .refine(validateDropboxPath, {
+    message: '無効なパス形式です。パストラバーサル（..）や危険なパスは許可されません'
+  });
+
 const dropboxImportSchema = z.object({
-  employeesPath: z.string().trim().min(1).regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
-  itemsPath: z.string().trim().min(1).regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+  employeesPath: dropboxPathSchema.optional(),
+  itemsPath: dropboxPathSchema.optional(),
   replaceExisting: z.boolean().optional().default(false)
 }).refine((data) => data.employeesPath || data.itemsPath, {
   message: 'employeesPath または itemsPath のいずれかを指定してください'
@@ -143,7 +187,7 @@ async function createDropboxStorageProviderFromConfig(
   });
 }
 
-async function processCsvImport(
+export async function processCsvImport(
   files: { employees?: Buffer; items?: Buffer },
   replaceExisting: boolean,
   log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
@@ -675,33 +719,350 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
   // DropboxからCSVを取得してインポート
   app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
-    const body = dropboxImportSchema.parse(request.body ?? {});
+    const startTime = Date.now();
+    const initialMemory = process.memoryUsage();
+    
+    try {
+      const body = dropboxImportSchema.parse(request.body ?? {});
 
-    const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
-    const host = request.headers.host || 'localhost:8080';
+      const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
 
-    const onTokenUpdate = async (token: string) => {
-      const latestConfig = await BackupConfigLoader.load();
-      if (latestConfig.storage.provider === 'dropbox') {
-        latestConfig.storage.options = {
-          ...(latestConfig.storage.options || {}),
-          accessToken: token
-        };
-        await BackupConfigLoader.save(latestConfig);
+      request.log.info({
+        employeesPath: body.employeesPath,
+        itemsPath: body.itemsPath,
+        replaceExisting: body.replaceExisting
+      }, '[Dropbox Import] インポート開始');
+
+      const onTokenUpdate = async (token: string) => {
+        const latestConfig = await BackupConfigLoader.load();
+        if (latestConfig.storage.provider === 'dropbox') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            accessToken: token
+          };
+          await BackupConfigLoader.save(latestConfig);
+          request.log.info({}, '[Dropbox Import] アクセストークンを更新しました');
+        }
+      };
+
+      const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+
+      const files: { employees?: Buffer; items?: Buffer } = {};
+      
+      // 従業員CSVのダウンロード
+      if (body.employeesPath) {
+        try {
+          request.log.info({ path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード開始');
+          const downloadStart = Date.now();
+          files.employees = await dropboxProvider.download(body.employeesPath);
+          const downloadTime = Date.now() - downloadStart;
+          const fileSize = files.employees.length;
+          request.log.info({
+            path: body.employeesPath,
+            size: fileSize,
+            downloadTimeMs: downloadTime
+          }, '[Dropbox Import] 従業員CSVダウンロード完了');
+        } catch (error: unknown) {
+          request.log.error({ err: error, path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード失敗');
+          if (error instanceof Error) {
+            const errorMessage = error.message.toLowerCase();
+            if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
+              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${body.employeesPath}`);
+            }
+            if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
+              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+            }
+            throw new ApiError(500, `従業員CSVのダウンロードに失敗しました: ${error.message}`);
+          }
+          throw new ApiError(500, `従業員CSVのダウンロードに失敗しました`);
+        }
       }
+      
+      // アイテムCSVのダウンロード
+      if (body.itemsPath) {
+        try {
+          request.log.info({ path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード開始');
+          const downloadStart = Date.now();
+          files.items = await dropboxProvider.download(body.itemsPath);
+          const downloadTime = Date.now() - downloadStart;
+          const fileSize = files.items.length;
+          request.log.info({
+            path: body.itemsPath,
+            size: fileSize,
+            downloadTimeMs: downloadTime
+          }, '[Dropbox Import] アイテムCSVダウンロード完了');
+        } catch (error: unknown) {
+          request.log.error({ err: error, path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード失敗');
+          if (error instanceof Error) {
+            const errorMessage = error.message.toLowerCase();
+            if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
+              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${body.itemsPath}`);
+            }
+            if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
+              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+            }
+            throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました: ${error.message}`);
+          }
+          throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました`);
+        }
+      }
+
+      // CSVインポート処理
+      const importStart = Date.now();
+      const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
+      const importTime = Date.now() - importStart;
+      
+      // メモリ使用量の計測
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      const totalTime = Date.now() - startTime;
+      
+      request.log.info({
+        summary,
+        importTimeMs: importTime,
+        totalTimeMs: totalTime,
+        memoryDelta,
+        replaceExisting: body.replaceExisting
+      }, '[Dropbox Import] インポート完了');
+      
+      return { summary, source: 'dropbox' };
+    } catch (error: unknown) {
+      const totalTime = Date.now() - startTime;
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      
+      request.log.error({
+        err: error,
+        totalTimeMs: totalTime,
+        memoryDelta
+      }, '[Dropbox Import] インポート失敗');
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      // ZodErrorはバリデーションエラーなので400を返す
+      if (error instanceof ZodError) {
+        const firstIssue = error.issues[0];
+        const errorMessage = firstIssue?.message || 'バリデーションエラー';
+        throw new ApiError(400, errorMessage);
+      }
+      
+      if (error instanceof Error) {
+        throw new ApiError(500, `Dropboxインポート処理に失敗しました: ${error.message}`);
+      }
+      
+      throw new ApiError(500, 'Dropboxインポート処理に失敗しました');
+    }
+  });
+
+  // === CSVインポートスケジュール管理API ===
+  
+  // スケジュール一覧取得
+  app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
+    const config = await BackupConfigLoader.load();
+    return {
+      schedules: config.csvImports || []
+    };
+  });
+
+  // スケジュール追加
+  const csvImportScheduleSchema = z.object({
+    id: z.string().min(1, 'IDは必須です'),
+    name: z.string().optional(),
+    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
+    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    schedule: z.string().min(1, 'スケジュール（cron形式）は必須です'),
+    enabled: z.boolean().optional().default(true),
+    replaceExisting: z.boolean().optional().default(false)
+  }).refine((data) => data.employeesPath || data.itemsPath, {
+    message: 'employeesPath または itemsPath のいずれかを指定してください'
+  });
+
+  app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
+    const body = csvImportScheduleSchema.parse(request.body ?? {});
+    
+    const config = await BackupConfigLoader.load();
+    
+    // IDの重複チェック
+    if (config.csvImports?.some(s => s.id === body.id)) {
+      throw new ApiError(409, `スケジュールIDが既に存在します: ${body.id}`);
+    }
+
+    // スケジュールを追加
+    const newSchedule = {
+      id: body.id,
+      name: body.name,
+      employeesPath: body.employeesPath,
+      itemsPath: body.itemsPath,
+      schedule: body.schedule,
+      enabled: body.enabled ?? true,
+      replaceExisting: body.replaceExisting ?? false
     };
 
-    const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+    config.csvImports = [...(config.csvImports || []), newSchedule];
+    await BackupConfigLoader.save(config);
 
-    const files: { employees?: Buffer; items?: Buffer } = {};
-    if (body.employeesPath) {
-      files.employees = await dropboxProvider.download(body.employeesPath);
-    }
-    if (body.itemsPath) {
-      files.items = await dropboxProvider.download(body.itemsPath);
-    }
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
 
-    const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
-    return { summary, source: 'dropbox' };
+    request.log.info({ scheduleId: body.id }, '[CSV Import Schedule] Schedule added');
+    return { schedule: newSchedule };
   });
+
+  // スケジュール更新用スキーマ（すべてのフィールドをオプショナルに）
+  const csvImportScheduleUpdateSchema = z.object({
+    id: z.string().min(1).optional(),
+    name: z.string().optional(),
+    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
+    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    schedule: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    replaceExisting: z.boolean().optional()
+  }).refine((data) => !data.employeesPath && !data.itemsPath || data.employeesPath || data.itemsPath, {
+    message: 'employeesPath または itemsPath のいずれかを指定してください'
+  });
+
+  // スケジュール更新
+  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = csvImportScheduleUpdateSchema.parse(request.body ?? {});
+    
+    const config = await BackupConfigLoader.load();
+    const scheduleIndex = config.csvImports?.findIndex(s => s.id === id);
+    
+    if (scheduleIndex === undefined || scheduleIndex === -1) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+
+    // スケジュールを更新
+    const existingSchedule = config.csvImports![scheduleIndex];
+    const updatedSchedule = {
+      ...existingSchedule,
+      ...body,
+      id // IDは変更不可
+    };
+
+    config.csvImports![scheduleIndex] = updatedSchedule;
+    await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
+
+    request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule updated');
+    return { schedule: updatedSchedule };
+  });
+
+  // スケジュール削除
+  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    const config = await BackupConfigLoader.load();
+    const scheduleIndex = config.csvImports?.findIndex(s => s.id === id);
+    
+    if (scheduleIndex === undefined || scheduleIndex === -1) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+
+    // スケジュールを削除
+    config.csvImports = config.csvImports!.filter(s => s.id !== id);
+    await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
+
+    request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule deleted');
+    return { message: 'スケジュールを削除しました' };
+  });
+
+  // 手動実行
+  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    
+    try {
+      await scheduler.runImport(id);
+      request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
+      return { message: 'インポートを実行しました' };
+    } catch (error) {
+      request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+      if (error instanceof Error) {
+        throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
+      }
+      throw new ApiError(500, 'インポート実行に失敗しました');
+    }
+  });
+
+  // === CSVインポート履歴API ===
+  // 注意: マイグレーション実行後に有効化（Prisma ClientにcsvImportHistoryモデルが追加されるまで）
+  
+  // 履歴一覧取得（全スケジュール）
+  // app.get('/imports/history', { preHandler: mustBeAdmin }, async (request) => {
+  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+  //   const historyService = new ImportHistoryService();
+  //   
+  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
+  //   const histories = await historyService.getAllHistory(limit);
+  //   
+  //   return { histories };
+  // });
+
+  // スケジュールIDで履歴取得
+  // app.get('/imports/schedule/:id/history', { preHandler: mustBeAdmin }, async (request) => {
+  //   const { id } = request.params as { id: string };
+  //   
+  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+  //   const historyService = new ImportHistoryService();
+  //   
+  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
+  //   const histories = await historyService.getHistoryByScheduleId(id, limit);
+  //   
+  //   return { histories };
+  // });
+
+  // 失敗した履歴取得
+  // app.get('/imports/history/failed', { preHandler: mustBeAdmin }, async (request) => {
+  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+  //   const historyService = new ImportHistoryService();
+  //   
+  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
+  //   const histories = await historyService.getFailedHistory(limit);
+  //   
+  //   return { histories };
+  // });
+
+  // 履歴詳細取得
+  // app.get('/imports/history/:historyId', { preHandler: mustBeAdmin }, async (request) => {
+  //   const { historyId } = request.params as { historyId: string };
+  //   
+  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+  //   const historyService = new ImportHistoryService();
+  //   
+  //   const history = await historyService.getHistory(historyId);
+  //   
+  //   if (!history) {
+  //     throw new ApiError(404, `履歴が見つかりません: ${historyId}`);
+  //   }
+  //   
+  //   return { history };
+  // });
 }

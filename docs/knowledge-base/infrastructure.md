@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 49件  
+**件数**: 50件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2403,5 +2403,59 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 - `infrastructure/ansible/templates/security-monitor.sh.j2`（リアルタイム監視スクリプト）
 - `apps/api/src/routes/auth.ts`（MFA/権限監査API）
 - `docs/security/phase9-10-specifications.md`（詳細仕様書）
+
+---
+
+### [KB-100] CIテストが失敗してもマージが進んでしまう問題（再発）
+
+**発生日**: 2025-12-15
+
+**事象**: 
+- CIテストが失敗しているにもかかわらず、PRがマージされてしまう
+- ブランチ保護ルールが設定されていない、または適切に設定されていない
+
+**要因**: 
+- GitHubのブランチ保護ルールが設定されていない
+- 「Do not allow bypassing the above settings」がチェックされていない
+- CIワークフローで一部のステップに`|| exit 1`が設定されていない
+
+**有効だった対策**: 
+- ✅ **CIワークフローの強化**（2025-12-15）:
+  - すべてのテストステップに`|| exit 1`を追加
+  - `e2e-tests`ジョブから`continue-on-error: true`を削除（既に実施済み）
+  - `e2e-tests`ジョブのコメントを修正（「non-blocking」→「blocking」に変更）
+  - `imports-dropbox`テストをCIワークフローに追加
+- ✅ **ドキュメントの作成**（2025-12-15）:
+  - `.github/BRANCH_PROTECTION_SETUP.md`を作成（設定手順を明確化）
+  - `docs/guides/ci-branch-protection.md`を更新
+  - `README.md`にブランチ保護設定のリンクを追加
+
+**必須対応**: 
+- ⚠️ **GitHubでのブランチ保護ルール設定**（手動で実施が必要）:
+  1. GitHubリポジトリの「Settings」→「Branches」にアクセス
+  2. `main`ブランチの保護ルールを追加
+  3. 「Require status checks to pass before merging」にチェック
+  4. 「Require branches to be up to date before merging」にチェック
+  5. 必須チェックとして以下を選択：
+     - `lint-and-test`
+     - `e2e-smoke`
+     - `docker-build`
+  6. **「Do not allow bypassing the above settings」にチェック**（最重要）
+  7. 設定を保存
+  8. `develop`ブランチにも同様の設定
+
+**学んだこと**: 
+- CIワークフローで`|| exit 1`を設定しても、ブランチ保護ルールが設定されていないとマージできてしまう
+- 「Do not allow bypassing the above settings」をチェックしないと、管理者でもテストをスルーできてしまう
+- ブランチ保護ルールの設定は手動で実施する必要があり、自動化できない
+- CI必須化の実装だけでなく、GitHubの設定も必須
+
+**解決状況**: ⚠️ **部分解決**（CIワークフローは強化済み、ブランチ保護ルールの設定は手動で実施が必要）
+
+**関連ファイル**: 
+- `.github/workflows/ci.yml`（CIワークフロー）
+- `.github/BRANCH_PROTECTION_SETUP.md`（設定手順）
+- `docs/guides/ci-branch-protection.md`（詳細ガイド）
+- `README.md`（READMEにリンク追加）
 
 ---
