@@ -164,12 +164,18 @@
 
 #### 2.3 自動リフレッシュの動作確認
 
-- [ ] 期限切れのアクセストークンでバックアップを実行（実際の期限切れを待つか、手動で期限切れトークンに設定）
-- [ ] ログで自動リフレッシュが実行されたことを確認
+- [x] 期限切れのアクセストークンでバックアップを実行 ✅ **完了**（2025-12-15）
+  - 無効なアクセストークン（`invalid_expired_token_for_testing`）に設定してテスト
+- [x] ログで自動リフレッシュが実行されたことを確認 ✅ **完了**（2025-12-15）
   ```bash
   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep "Access token expired\|Access token refreshed"
   ```
-- [ ] バックアップが成功することを確認
+  - 400エラー（malformed token）が検出され、自動リフレッシュが実行された
+  - ログ: `"[DropboxStorageProvider] Access token invalid or expired, attempting refresh"`
+  - ログ: `"[DropboxStorageProvider] Access token refreshed successfully"`
+- [x] バックアップが成功することを確認 ✅ **完了**（2025-12-15）
+  - リフレッシュ後のアクセストークンでバックアップが成功
+  - 設定ファイルのアクセストークンが自動更新された
 
 ### Phase 3: スケジュールバックアップの動作確認
 
