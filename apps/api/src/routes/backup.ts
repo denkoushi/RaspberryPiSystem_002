@@ -213,11 +213,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // バックアップの削除
-  app.delete('/backup/:path', {
+  // パスにスラッシュが含まれる可能性があるため、ワイルドカード（*）を使用
+  app.delete('/backup/*', {
     preHandler: [mustBeAdmin]
   }, async (request, reply) => {
-    const params = request.params as { path: string };
-    const decodedPath = decodeURIComponent(params.path);
+    // Fastifyのワイルドカードパラメータは`*`として取得される
+    const pathParam = (request.params as { '*': string })['*'];
+    const decodedPath = decodeURIComponent(pathParam);
     
     // デフォルトはローカルストレージを使用
     const storageProvider = new LocalStorageProvider();
