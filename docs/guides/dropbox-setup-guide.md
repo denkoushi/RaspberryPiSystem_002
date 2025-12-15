@@ -37,14 +37,43 @@
 
 ### Step 2: アクセストークンを生成
 
+⚠️ **重要: Dropboxのトークン有効期限について**
+
+Dropboxは2024年以降、**長期アクセストークン（無期限）の新規発行を停止**しました。現在は以下の2つの方法があります：
+
+#### 方法A: App Consoleで生成（簡易、短期トークン）
+
 1. **Generated access tokenを生成**
    - アプリのページで「Generate access token」ボタンをクリック
-   - 表示されたトークンをコピー（**このトークンは後で使用します**）
-   - ⚠️ **重要**: このトークンは一度しか表示されません。安全な場所に保存してください。
+   - 表示されたトークンをコピー（**このトークンは一度しか表示されません**）
+   - ⚠️ **注意**: この方法で生成されるトークンは**短期トークン（通常4時間）**の可能性があります
+   - アプリの設定で「Access token expiration」を確認してください
 
 2. **トークンの確認**
    - トークンは `sl.` で始まる長い文字列です
    - 例: `sl.Bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+#### 方法B: OAuth 2.0フローでリフレッシュトークンを取得（推奨、長期アクセス）
+
+長期アクセスが必要な場合は、OAuth 2.0フローを使用してリフレッシュトークンを取得することを推奨します：
+
+1. **アプリの設定**
+   - Dropbox App Consoleで「OAuth 2」セクションを開く
+   - 「Access token expiration」を「Short-lived」に設定
+   - 「Redirect URI」を設定（例: `http://localhost:8080/oauth/callback`）
+
+2. **認証URLにアクセス**
+   ```
+   https://www.dropbox.com/oauth2/authorize?client_id=<APP_KEY>&response_type=code&token_access_type=offline
+   ```
+   - `<APP_KEY>`をアプリのキーに置き換え
+   - `token_access_type=offline`でリフレッシュトークンを取得
+
+3. **認証コードをトークンに交換**
+   - 認証後、リダイレクトURIに認証コードが返される
+   - 認証コードをアクセストークンとリフレッシュトークンに交換
+
+**現在の実装**: 本システムはアクセストークンのみをサポートしています。リフレッシュトークンの自動更新機能は未実装です。
 
 ### Step 3: 環境変数に設定
 

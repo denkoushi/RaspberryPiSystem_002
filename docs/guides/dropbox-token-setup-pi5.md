@@ -15,9 +15,16 @@
 
 ### Step 1: Dropboxアクセストークンの取得
 
+⚠️ **重要: トークンの有効期限について**
+
+Dropboxは2024年以降、**長期アクセストークン（無期限）の新規発行を停止**しました。App Consoleの「Generate access token」で生成されるトークンは、アプリの設定によっては**短期トークン（通常4時間）**になる可能性があります。
+
+**推奨**: アプリの設定で「Access token expiration」を確認し、可能であれば「No expiration」に設定してください。それでも期限切れになる場合は、OAuth 2.0フローでリフレッシュトークンを取得することを検討してください。
+
 1. **Dropbox App Consoleにアクセス**
    - https://www.dropbox.com/developers/apps を開く
    - アプリを作成（または既存のアプリを選択）
+   - 「Settings」→「OAuth 2」で「Access token expiration」を確認
    - 「Generate access token」ボタンをクリック
    - 表示されたトークンをコピー（`sl.`で始まる長い文字列）
 
@@ -105,11 +112,14 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 - APIコンテナを再起動したか確認
 - コンテナ内の環境変数を確認: `docker compose exec api env | grep DROPBOX`
 
-### エラー: "Invalid access token"
+### エラー: "Invalid access token" または "expired_access_token"
 
-- トークンが正しくコピーされているか確認（`sl.`で始まる）
-- トークンに余分なスペースや改行が含まれていないか確認
-- Dropbox App Consoleで新しいトークンを生成
+- **トークンが期限切れの可能性**: Dropboxの短期トークンは通常4時間で期限切れになります
+- **対応方法**:
+  1. Dropbox App Consoleで新しいトークンを生成
+  2. Pi5の`.env`ファイルを更新
+  3. APIコンテナを再起動
+- **根本的な解決**: アプリの設定で「Access token expiration」を「No expiration」に設定するか、OAuth 2.0フローでリフレッシュトークンを取得
 
 ### 設定が反映されない
 
