@@ -5,7 +5,7 @@ import { DropboxStorageProvider } from '../backup/storage/dropbox-storage.provid
 import { DropboxOAuthService } from '../backup/dropbox-oauth.service.js';
 import { logger } from '../../lib/logger.js';
 import { processCsvImport } from '../../routes/imports.js';
-// import { ImportHistoryService } from './import-history.service.js';
+import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 
 /**
@@ -15,12 +15,12 @@ export class CsvImportScheduler {
   private tasks: Map<string, cron.ScheduledTask> = new Map();
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
-  // private historyService: ImportHistoryService;
+  private historyService: ImportHistoryService;
   private alertService: ImportAlertService;
   private consecutiveFailures: Map<string, number> = new Map(); // スケジュールID -> 連続失敗回数
 
   constructor() {
-    // this.historyService = new ImportHistoryService();
+    this.historyService = new ImportHistoryService();
     this.alertService = new ImportAlertService();
   }
 
@@ -69,27 +69,27 @@ export class CsvImportScheduler {
         }
 
         this.runningImports.add(taskId);
-        // let historyId: string | undefined;
+        let historyId: string | undefined;
         try {
           logger?.info(
             { taskId, name: importSchedule.name },
             '[CsvImportScheduler] Starting scheduled CSV import'
           );
 
-          // インポート履歴を作成（マイグレーション実行後に有効化）
-          // historyId = await this.historyService.createHistory({
-          //   scheduleId: taskId,
-          //   scheduleName: importSchedule.name,
-          //   employeesPath: importSchedule.employeesPath,
-          //   itemsPath: importSchedule.itemsPath
-          // });
+          // インポート履歴を作成
+          historyId = await this.historyService.createHistory({
+            scheduleId: taskId,
+            scheduleName: importSchedule.name,
+            employeesPath: importSchedule.employeesPath,
+            itemsPath: importSchedule.itemsPath
+          });
 
-          await this.executeImport(config, importSchedule);
+          const summary = await this.executeImport(config, importSchedule);
 
-          // インポート履歴を完了として更新（マイグレーション実行後に有効化）
-          // if (historyId) {
-          //   await this.historyService.completeHistory(historyId, summary);
-          // }
+          // インポート履歴を完了として更新
+          if (historyId) {
+            await this.historyService.completeHistory(historyId, summary);
+          }
 
           logger?.info(
             { taskId, name: importSchedule.name },
@@ -104,18 +104,18 @@ export class CsvImportScheduler {
             '[CsvImportScheduler] Scheduled CSV import failed'
           );
 
-          // インポート履歴を失敗として更新（マイグレーション実行後に有効化）
+          // インポート履歴を失敗として更新
           const errorMessage = error instanceof Error ? error.message : String(error);
-          // if (historyId) {
-          //   await this.historyService.failHistory(historyId, errorMessage);
-          // }
+          if (historyId) {
+            await this.historyService.failHistory(historyId, errorMessage);
+          }
 
           // アラートを生成
           await this.alertService.generateFailureAlert({
             scheduleId: taskId,
             scheduleName: importSchedule.name,
-            errorMessage
-            // historyId
+            errorMessage,
+            historyId
           });
 
           // 連続失敗回数を更新
@@ -201,27 +201,27 @@ export class CsvImportScheduler {
     }
 
     this.runningImports.add(importId);
-    // let historyId: string | undefined;
+    let historyId: string | undefined;
     try {
       logger?.info(
         { taskId: importId, name: importSchedule.name },
         '[CsvImportScheduler] Starting manual CSV import'
       );
 
-      // インポート履歴を作成（マイグレーション実行後に有効化）
-      // historyId = await this.historyService.createHistory({
-      //   scheduleId: importId,
-      //   scheduleName: importSchedule.name,
-      //   employeesPath: importSchedule.employeesPath,
-      //   itemsPath: importSchedule.itemsPath
-      // });
+      // インポート履歴を作成
+      historyId = await this.historyService.createHistory({
+        scheduleId: importId,
+        scheduleName: importSchedule.name,
+        employeesPath: importSchedule.employeesPath,
+        itemsPath: importSchedule.itemsPath
+      });
 
-      await this.executeImport(config, importSchedule);
+      const summary = await this.executeImport(config, importSchedule);
 
-      // インポート履歴を完了として更新（マイグレーション実行後に有効化）
-      // if (historyId) {
-      //   await this.historyService.completeHistory(historyId, summary);
-      // }
+      // インポート履歴を完了として更新
+      if (historyId) {
+        await this.historyService.completeHistory(historyId, summary);
+      }
 
       logger?.info(
         { taskId: importId, name: importSchedule.name },
@@ -233,18 +233,18 @@ export class CsvImportScheduler {
         '[CsvImportScheduler] Manual CSV import failed'
       );
 
-      // インポート履歴を失敗として更新（マイグレーション実行後に有効化）
+      // インポート履歴を失敗として更新
       const errorMessage = error instanceof Error ? error.message : String(error);
-      // if (historyId) {
-      //   await this.historyService.failHistory(historyId, errorMessage);
-      // }
+      if (historyId) {
+        await this.historyService.failHistory(historyId, errorMessage);
+      }
 
       // アラートを生成
       await this.alertService.generateFailureAlert({
         scheduleId: importId,
         scheduleName: importSchedule.name,
-        errorMessage
-        // historyId
+        errorMessage,
+        historyId
       });
 
       throw error;
