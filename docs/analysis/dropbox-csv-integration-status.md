@@ -470,6 +470,10 @@
   - 履歴の取得・検索機能
 - **見積もり**: 3時間
 - **依存関係**: タスク2.1
+- **実装状況**: ✅ 完了（2025-12-15）
+  - ImportHistoryServiceの実装完了
+  - Prismaマイグレーション実行完了（ローカル・実機）
+  - CsvImportHistoryテーブル作成確認
 
 **タスク2.5: エラーアラート機能の実装**
 - **ファイル**: `apps/api/src/services/imports/csv-import-scheduler.ts`
@@ -972,9 +976,11 @@
 - テスト失敗時にマージをブロック
 
 **Phase 2実装時**:
-- `imports-schedule-tests`ジョブを追加
-- 必須チェックに追加
-- テスト失敗時にマージをブロック
+- ✅ `csv-import-scheduler tests`ジョブを追加（2025-12-15）
+- ✅ `imports-schedule integration tests`ジョブを追加（2025-12-15）
+- ✅ `import-alert service tests`ジョブを追加（2025-12-15）
+- ✅ 必須チェックに追加（2025-12-15）
+- ✅ テスト失敗時にマージをブロック（2025-12-15）
 
 **Phase 3実装時**:
 - `backup-restore-dropbox-tests`ジョブを追加

@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2025-12-15）
 
-- **✅ Dropbox CSVインポート Phase 2 CI統合完了**: Phase 2のスケジュール実行機能のテストをCIに追加完了。csv-import-scheduler（10件）、imports-schedule（13件）、import-alert（4件）の合計27件のテストがCIで実行され、すべて成功。環境変数設定の問題を解決し、CIパイプラインに統合完了。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) を参照。
+- **✅ Dropbox CSVインポート Phase 2 実装完了**: Phase 2のスケジュール実行機能の実装とCI統合が完了。csv-import-scheduler（10件）、imports-schedule（13件）、import-alert（4件）の合計27件のテストがCIで実行され、すべて成功。ImportHistoryServiceの有効化とPrismaマイグレーション実行も完了（ローカル・実機の両方）。CsvImportHistoryテーブルが作成され、インポート履歴の記録機能が利用可能に。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/csv-import-history-migration.md](./guides/csv-import-history-migration.md) を参照。
 
 - **✅ Dropbox CSVインポート Phase 1 実装完了**: DropboxからCSVファイルをダウンロードしてインポートする機能を実装完了。パストラバーサル防止、バリデーション強化、ログ出力、エラーハンドリング、追加テスト（13件すべてパス）を実装。CI必須化（`continue-on-error`削除）とブランチ保護設定ガイドも作成。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/ci-branch-protection.md](./guides/ci-branch-protection.md) を参照。
 
