@@ -317,8 +317,12 @@ interface BackupTarget {
     - [x] 環境変数参照のサポート（`${DROPBOX_REFRESH_TOKEN}`など）
   - [x] 環境変数の追加（DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN）
     - [x] docker-compose.server.ymlに環境変数を追加
-  - [ ] OAuth 2.0フローのテスト実装
-  - [ ] リフレッシュトークン自動更新のテスト実装
+  - [x] OAuth 2.0フローのテスト実装
+    - [x] `DropboxOAuthService`の単体テスト（6件パス）
+    - [x] 認証URL生成、トークン交換、リフレッシュのテスト
+  - [x] リフレッシュトークン自動更新のテスト実装
+    - [x] `DropboxStorageProvider`のリフレッシュ機能テスト（4件パス）
+    - [x] 401エラー時の自動リフレッシュ、リフレッシュトークンなしの場合、非401エラーのテスト
 
 ## Surprises & Discoveries
 
