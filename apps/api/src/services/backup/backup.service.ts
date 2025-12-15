@@ -63,7 +63,9 @@ export class BackupService implements BackupProvider {
   }
 
   async listBackups(options?: ListBackupsOptions): Promise<BackupResult[]> {
-    const prefix = options?.prefix ?? 'backups';
+    // LocalStorageProviderのgetBaseDir()が既に/opt/RaspberryPiSystem_002/backupsを返すため、
+    // プレフィックスは空文字列または相対パスのみ
+    const prefix = options?.prefix ?? '';
     const entries = await this.storage.list(prefix);
     const now = new Date();
 
@@ -84,7 +86,11 @@ export class BackupService implements BackupProvider {
   private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
     const now = new Date().toISOString().replace(/[:.]/g, '-');
     const label = options?.label ? `-${options.label}` : '';
-    return `backups/${info.type}/${now}${label}/${info.source}`;
+    // LocalStorageProviderのgetBaseDir()が既に/opt/RaspberryPiSystem_002/backupsを返すため、
+    // ここでは相対パスのみを返す（backups/プレフィックスなし）
+    // CSVファイルには拡張子を付与
+    const extension = info.type === 'csv' ? '.csv' : '';
+    return `${info.type}/${now}${label}/${info.source}${extension}`;
   }
 }
 
