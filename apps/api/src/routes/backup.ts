@@ -12,6 +12,7 @@ import { ImageBackupTarget } from '../services/backup/targets/image-backup.targe
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../services/backup/backup-config.js';
 import { ApiError } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * バックアップターゲットを作成
@@ -116,9 +117,28 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const body = request.body as z.infer<typeof backupRequestSchema>;
     
     // ストレージプロバイダーを作成
-    const storageProvider = body.storage
-      ? createStorageProvider(body.storage.provider, body.storage.options)
-      : new LocalStorageProvider();
+    let storageProvider;
+    if (body.storage) {
+      // リクエストボディでストレージが指定されている場合
+      storageProvider = createStorageProvider(body.storage.provider, body.storage.options);
+    } else {
+      // リクエストボディでストレージが指定されていない場合、設定ファイルから読み込む
+      const config = await BackupConfigLoader.load();
+      if (config.storage.provider === 'dropbox') {
+        const accessToken = config.storage.options?.accessToken as string;
+        if (!accessToken) {
+          throw new ApiError(400, 'Dropbox access token is required in config file');
+        }
+        storageProvider = new DropboxStorageProvider({
+          accessToken,
+          basePath: config.storage.options?.basePath as string
+        });
+        logger?.info('[BackupRoute] Using Dropbox storage from config file');
+      } else {
+        storageProvider = new LocalStorageProvider();
+        logger?.info('[BackupRoute] Using local storage from config file');
+      }
+    }
 
     const backupService = new BackupService(storageProvider);
     
