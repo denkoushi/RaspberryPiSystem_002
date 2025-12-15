@@ -123,7 +123,8 @@ jobs:
             echo "PostgreSQL connection failed!"
             exit 1
           }
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test --reporter=verbose || {
+          # imports-scheduleは専用ステップで実行するため除外
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
             echo "Tests failed, showing test output..."
             exit 1
           }

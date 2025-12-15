@@ -44,18 +44,17 @@ export class ImportHistoryService {
    * インポート履歴を完了として更新
    */
   async completeHistory(
-    _historyId: string,
-    _summary: ImportSummary
+    historyId: string,
+    summary: ImportSummary
   ): Promise<void> {
-    // マイグレーション実行後に有効化
-    // await prisma.csvImportHistory.update({
-    //   where: { id: historyId },
-    //   data: {
-    //     status: ImportStatus.COMPLETED,
-    //     summary: summary as Record<string, unknown>,
-    //     completedAt: new Date()
-    //   }
-    // });
+    await prisma.csvImportHistory.update({
+      where: { id: historyId },
+      data: {
+        status: ImportStatus.COMPLETED,
+        summary: summary as Record<string, unknown>,
+        completedAt: new Date()
+      }
+    });
   }
 
   /**
