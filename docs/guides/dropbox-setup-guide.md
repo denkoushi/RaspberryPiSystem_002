@@ -53,27 +53,19 @@ Dropboxは2024年以降、**長期アクセストークン（無期限）の新�
    - トークンは `sl.` で始まる長い文字列です
    - 例: `sl.Bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 
-#### 方法B: OAuth 2.0フローでリフレッシュトークンを取得（推奨、長期アクセス）
+#### 方法B: OAuth 2.0フローでリフレッシュトークンを取得（推奨、長期アクセス）✅ **実装完了**
 
 長期アクセスが必要な場合は、OAuth 2.0フローを使用してリフレッシュトークンを取得することを推奨します：
 
-1. **アプリの設定**
-   - Dropbox App Consoleで「OAuth 2」セクションを開く
-   - 「Access token expiration」を「Short-lived」に設定
-   - 「Redirect URI」を設定（例: `http://localhost:8080/oauth/callback`）
+**✅ 実装状況**: OAuth 2.0フローとリフレッシュトークンの自動更新機能が実装済みです。
 
-2. **認証URLにアクセス**
-   ```
-   https://www.dropbox.com/oauth2/authorize?client_id=<APP_KEY>&response_type=code&token_access_type=offline
-   ```
-   - `<APP_KEY>`をアプリのキーに置き換え
-   - `token_access_type=offline`でリフレッシュトークンを取得
+詳細な手順は [`docs/guides/dropbox-oauth-setup-guide.md`](./dropbox-oauth-setup-guide.md) を参照してください。
 
-3. **認証コードをトークンに交換**
-   - 認証後、リダイレクトURIに認証コードが返される
-   - 認証コードをアクセストークンとリフレッシュトークンに交換
-
-**現在の実装**: 本システムはアクセストークンのみをサポートしています。リフレッシュトークンの自動更新機能は未実装です。
+**主な機能**:
+- OAuth 2.0認証フロー（認証URL生成、認証コード受け取り、トークン交換）
+- リフレッシュトークンによる自動アクセストークン更新
+- 401エラー（`expired_access_token`）時の自動リフレッシュ
+- 設定ファイルへの自動トークン保存
 
 ### Step 3: 環境変数に設定
 
