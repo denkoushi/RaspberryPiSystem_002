@@ -926,10 +926,15 @@
 
 **マイルストーン**:
 - ✅ Pi5側実装完了
-- ✅ テスト実装完了
+- ✅ テスト実装完了（27件: 単体10 + 統合13 + アラート4）
 - ✅ CI統合完了（必須チェックに追加）
-- ✅ PowerAutomate側実装完了
-- ✅ 統合テスト・実機検証完了
+- ✅ 実機検証完了（2025-12-16）
+  - スケジュールAPI (CRUD): ✅ 成功
+  - 手動実行API: ✅ 成功
+  - CsvImportScheduler: ✅ 成功
+  - ImportHistoryService（履歴記録）: ✅ 成功
+  - ImportAlertService（アラート生成）: ✅ 成功
+- ⚠️ PowerAutomate側実装: 未着手（別途実施）
 
 ### Phase 3: 統合機能の拡張
 
