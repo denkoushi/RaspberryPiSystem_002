@@ -123,7 +123,7 @@ jobs:
             echo "PostgreSQL connection failed!"
             exit 1
           }
-          pnpm test --reporter=verbose || {
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test --reporter=verbose || {
             echo "Tests failed, showing test output..."
             exit 1
           }
