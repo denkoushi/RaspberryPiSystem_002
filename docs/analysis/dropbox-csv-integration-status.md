@@ -525,25 +525,30 @@
 **CIパイプラインへの追加**:
 - **ファイル**: `.github/workflows/ci.yml`
 - **追加内容**:
-  1. **単体テストの実行**:
+  1. ✅ **単体テストの実行**: `Run csv-import-scheduler tests`ステップを追加（2025-12-15）
      ```yaml
      - name: Run csv-import-scheduler tests
        run: |
          cd apps/api
-         pnpm test -- csv-import-scheduler --reporter=verbose || {
+         BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- csv-import-scheduler --reporter=verbose || {
            echo "Csv-import-scheduler tests failed!"
            exit 1
          }
        env:
+         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+         JWT_ACCESS_SECRET: test-access-secret-1234567890
+         JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+         CAMERA_TYPE: mock
+         PHOTO_STORAGE_DIR: /tmp/test-photo-storage
          BACKUP_STORAGE_DIR: /tmp/test-backups
          NODE_ENV: test
      ```
-  2. **統合テストの実行**:
+  2. ✅ **統合テストの実行**: `Run imports-schedule integration tests`ステップを追加（2025-12-15）
      ```yaml
      - name: Run imports-schedule integration tests
        run: |
          cd apps/api
-         pnpm test -- imports-schedule.integration --reporter=verbose || {
+         BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- imports-schedule --reporter=verbose || {
            echo "Imports-schedule integration tests failed!"
            exit 1
          }

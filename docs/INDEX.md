@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2025-12-15）
 
+- **✅ Dropbox CSVインポート Phase 2 CI統合完了**: Phase 2のスケジュール実行機能のテストをCIに追加完了。csv-import-scheduler（10件）、imports-schedule（13件）、import-alert（4件）の合計27件のテストがCIで実行され、すべて成功。環境変数設定の問題を解決し、CIパイプラインに統合完了。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) を参照。
+
 - **✅ Dropbox CSVインポート Phase 1 実装完了**: DropboxからCSVファイルをダウンロードしてインポートする機能を実装完了。パストラバーサル防止、バリデーション強化、ログ出力、エラーハンドリング、追加テスト（13件すべてパス）を実装。CI必須化（`continue-on-error`削除）とブランチ保護設定ガイドも作成。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/ci-branch-protection.md](./guides/ci-branch-protection.md) を参照。
 
 - **✅ Dropbox OAuth 2.0フローとリフレッシュトークン自動更新機能実装・実機検証完了**: OAuth 2.0認証フロー、リフレッシュトークンによる自動アクセストークン更新機能を実装完了し、実機検証も完了。401エラー（`expired_access_token`）時に自動的にリフレッシュし、設定ファイルを自動更新。テストも実装済み（10件すべてパス）。実機検証では、Docker Composeのconfigボリューム読み書き権限問題（KB-099）を解決し、OAuth認証フロー、リフレッシュトークン更新、ファイルバックアップの動作を確認済み。詳細は [plans/backup-modularization-execplan.md](./plans/backup-modularization-execplan.md) / [guides/dropbox-oauth-setup-guide.md](./guides/dropbox-oauth-setup-guide.md) / [guides/dropbox-oauth-verification-checklist.md](./guides/dropbox-oauth-verification-checklist.md) / [knowledge-base/infrastructure.md#kb-099](./knowledge-base/infrastructure.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) を参照。
