@@ -1,24 +1,26 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildServer } from '../../app.js';
-import { createTestUser } from './helpers.js';
-import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
-import * as fs from 'fs';
+// 環境変数をモジュール読み込み前に設定（BackupConfigLoaderが静的プロパティで読み取るため）
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import * as fs from 'fs';
 
-// テスト用の設定ディレクトリを設定（buildServer前に環境変数を設定）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const testConfigDir = path.join(__dirname, '../../../.test-config');
 const testConfigPath = path.join(testConfigDir, 'backup.json');
 
-// buildServer()が呼ばれる前に環境変数を設定
-if (!process.env.BACKUP_CONFIG_PATH) {
-  process.env.BACKUP_CONFIG_PATH = testConfigPath;
+// モジュール読み込み前に環境変数を設定
+process.env.BACKUP_CONFIG_PATH = testConfigPath;
+process.env.PROJECT_ROOT = process.cwd();
+
+// テスト用の設定ディレクトリを作成
+if (!fs.existsSync(testConfigDir)) {
+  fs.mkdirSync(testConfigDir, { recursive: true });
 }
-if (!process.env.PROJECT_ROOT) {
-  process.env.PROJECT_ROOT = process.cwd();
-}
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { buildServer } from '../../app.js';
+import { createTestUser } from './helpers.js';
+import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 
 describe('CSV Import Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
