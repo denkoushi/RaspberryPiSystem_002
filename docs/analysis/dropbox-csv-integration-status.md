@@ -189,24 +189,182 @@
 
 **目的**: CSVインポート機能とDropbox統合を連携させ、DropboxからCSVをダウンロードしてインポートできるようにする
 
-**実装内容**:
-1. **DropboxからのCSVダウンロード機能を追加**
-   - `apps/api/src/routes/imports.ts`に新しいエンドポイントを追加
-   - `POST /api/imports/master/from-dropbox`: DropboxからCSVをダウンロードしてインポート
-   - パラメータ: `dropboxPath`（Dropbox上のCSVファイルパス）
+#### 要件定義
 
-2. **既存のCSVインポート機能を再利用**
-   - `importEmployees()`と`importItems()`関数を再利用
-   - DropboxからダウンロードしたCSVを既存のインポート処理に渡す
+**機能要件**:
+1. DropboxからCSVファイルをダウンロードしてインポートできる
+2. 既存のCSVインポート機能（マルチパートフォームデータ）と同等の機能を提供
+3. エラーハンドリングが適切に実装されている
+4. モジュール化・疎結合の原則に従う
 
-3. **エラーハンドリング**
-   - Dropboxからのダウンロード失敗時のエラーハンドリング
-   - CSVパースエラーの詳細化
+**非機能要件**:
+1. パフォーマンス: CSVダウンロードとインポートが30秒以内に完了する（1000行以下のCSV）
+2. セキュリティ: Dropbox API認証が適切に実装されている
+3. 可用性: Dropbox APIエラー時に適切なエラーメッセージを返す
+4. 保守性: 既存のCSVインポート機能を再利用し、コード重複を避ける
 
-**モジュール化の観点**:
+**制約条件**:
+- 既存のCSVインポート機能（`importEmployees()`, `importItems()`）を変更しない
+- `DropboxStorageProvider`の既存インターフェースを変更しない
+- 既存のAPIエンドポイント（`POST /api/imports/master`）に影響を与えない
+
+#### 実装タスク
+
+**タスク1.1: APIエンドポイントの追加**
+- **ファイル**: `apps/api/src/routes/imports.ts`
+- **内容**: 
+  - `POST /api/imports/master/from-dropbox`エンドポイントを追加
+  - リクエストボディ: `{ employeesPath?: string, itemsPath?: string, replaceExisting?: boolean }`
+  - レスポンス: 既存の`POST /api/imports/master`と同じ形式
+- **見積もり**: 2時間
+- **依存関係**: なし
+
+**タスク1.2: DropboxからのCSVダウンロード機能の実装**
+- **ファイル**: `apps/api/src/routes/imports.ts`（新規関数）
+- **内容**:
+  - `downloadCsvFromDropbox(dropboxPath: string): Promise<Buffer>`関数を実装
+  - `DropboxStorageProvider`の`download()`メソッドを使用
+  - エラーハンドリング（ファイル不存在、ダウンロード失敗など）
+- **見積もり**: 3時間
+- **依存関係**: タスク1.1
+
+**タスク1.3: CSVインポート処理の統合**
+- **ファイル**: `apps/api/src/routes/imports.ts`
+- **内容**:
+  - DropboxからダウンロードしたCSVを既存の`importEmployees()`と`importItems()`に渡す
+  - 既存のCSVパース処理を再利用
+  - エラーハンドリングの統一
+- **見積もり**: 2時間
+- **依存関係**: タスク1.2
+
+**タスク1.4: バリデーションの追加**
+- **ファイル**: `apps/api/src/routes/imports.ts`
+- **内容**:
+  - Dropboxパスのバリデーション（Zodスキーマ）
+  - ファイル拡張子の検証（`.csv`のみ許可）
+  - パス形式の検証（`/backups/csv/...`形式）
+- **見積もり**: 1時間
+- **依存関係**: タスク1.1
+
+**タスク1.5: ログ出力の追加**
+- **ファイル**: `apps/api/src/routes/imports.ts`
+- **内容**:
+  - Dropboxからのダウンロード開始・完了ログ
+  - エラー時の詳細ログ
+  - インポート処理のログ（既存と統一）
+- **見積もり**: 1時間
+- **依存関係**: タスク1.3
+
+#### テスト計画
+
+**単体テスト**:
+- **ファイル**: `apps/api/src/routes/__tests__/imports-dropbox.integration.test.ts`（新規）
+- **テストケース**:
+  1. ✅ Dropboxから従業員CSVをダウンロードしてインポート成功
+  2. ✅ DropboxからアイテムCSVをダウンロードしてインポート成功
+  3. ✅ Dropboxから従業員・アイテムCSVを同時にダウンロードしてインポート成功
+  4. ✅ `replaceExisting: true`で既存データを置き換え
+  5. ✅ `replaceExisting: false`で既存データを保持
+  6. ❌ Dropboxファイルが存在しない場合のエラーハンドリング
+  7. ❌ Dropboxパスが無効な場合のエラーハンドリング
+  8. ❌ CSV形式が不正な場合のエラーハンドリング
+  9. ❌ Dropbox API認証エラー時のエラーハンドリング
+  10. ❌ Dropbox API接続エラー時のエラーハンドリング
+- **モック**: `DropboxStorageProvider`をモック化（`MockStorageProvider`を使用）
+- **見積もり**: 4時間
+
+**統合テスト**:
+- **ファイル**: `apps/api/src/routes/__tests__/imports-dropbox.integration.test.ts`
+- **テストケース**:
+  1. ✅ 実際のDropbox APIを使用したテスト（トークン設定時のみ実行）
+  2. ✅ エンドツーエンドのテスト（ダウンロード→パース→インポート→DB確認）
+- **条件**: `DROPBOX_ACCESS_TOKEN`環境変数が設定されている場合のみ実行
+- **見積もり**: 2時間
+
+**E2Eテスト**:
+- **ファイル**: `e2e/imports-dropbox.spec.ts`（新規）
+- **テストケース**:
+  1. ✅ 管理画面からDropbox経由でCSVインポートを実行
+  2. ✅ インポート結果が正しく表示される
+  3. ❌ エラー時のエラーメッセージが正しく表示される
+- **見積もり**: 2時間
+
+#### CI/CD計画
+
+**CIパイプラインへの追加**:
+- **ファイル**: `.github/workflows/ci.yml`
+- **追加内容**:
+  1. **単体テストの実行**:
+     ```yaml
+     - name: Run imports-dropbox tests
+       run: |
+         cd apps/api
+         pnpm test -- imports-dropbox --reporter=verbose || {
+           echo "Imports-dropbox tests failed!"
+           exit 1
+         }
+       env:
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  2. **統合テストの実行**（条件付き）:
+     ```yaml
+     - name: Run imports-dropbox integration tests
+       if: env.DROPBOX_ACCESS_TOKEN != ''
+       run: |
+         cd apps/api
+         pnpm test -- imports-dropbox.integration --reporter=verbose || {
+           echo "Imports-dropbox integration tests failed!"
+           exit 1
+         }
+       env:
+         DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  3. **E2Eテストの実行**:
+     ```yaml
+     - name: Run imports-dropbox E2E tests
+       run: pnpm test:e2e e2e/imports-dropbox.spec.ts || {
+         echo "Imports-dropbox E2E tests failed!"
+         exit 1
+       }
+     ```
+
+**CI必須化**:
+- ⚠️ **重要**: CIテストが失敗した場合、マージをブロックする
+- `continue-on-error: false`を設定（デフォルト）
+- テストが失敗した場合、PRのマージを禁止
+
+**CIスルーの防止**:
+- GitHub Actionsのブランチ保護ルールを設定
+- 必須チェック: `lint-and-test`, `e2e-smoke`, `imports-dropbox-tests`
+- 管理者でもスルーできない設定
+
+#### 成功要件
+
+**機能要件**:
+- ✅ DropboxからCSVをダウンロードしてインポートできる
+- ✅ 既存のCSVインポート機能と同等の機能を提供
+- ✅ エラーハンドリングが適切に実装されている
+
+**非機能要件**:
+- ✅ パフォーマンス: CSVダウンロードとインポートが30秒以内に完了する
+- ✅ セキュリティ: Dropbox API認証が適切に実装されている
+- ✅ 可用性: Dropbox APIエラー時に適切なエラーメッセージを返す
+
+**品質要件**:
+- ✅ 単体テストカバレッジ: 80%以上
+- ✅ 統合テスト: すべてのテストケースがパス
+- ✅ E2Eテスト: すべてのテストケースがパス
+- ✅ CI: すべてのテストがパス（必須）
+- ✅ コードレビュー: 2名以上の承認
+
+**モジュール化要件**:
 - ✅ CSVインポート機能とDropbox統合を疎結合に保つ
 - ✅ 既存の`DropboxStorageProvider`を再利用
 - ✅ 既存のCSVインポート処理を再利用
+- ✅ コード重複を避ける
 
 **期待される効果**:
 - PowerAutomate統合の基盤となる
@@ -216,22 +374,202 @@
 
 **目的**: SharePointリストからPowerAutomateでCSV出力し、Dropboxに保存するスキームを実現する
 
-**実装内容**:
-1. **PowerAutomate側の実装**（別途実装）
-   - SharePointリストからCSV出力
-   - DropboxにCSV保存
-   - ファイル名に日付を含める（`employees-20251214.csv`）
-   - 古いファイルの自動削除（30日以上経過）
+#### 要件定義
 
-2. **Pi5側の実装**
-   - Phase 1で実装したDropboxからのCSVダウンロード機能を利用
-   - スケジュール実行機能を追加（cron形式）
-   - 設定ファイルで管理（`backup.json`に追加）
+**機能要件**:
+1. スケジュール実行でDropboxからCSVを自動取得してインポートできる
+2. 設定ファイルでスケジュールを管理できる
+3. インポート成功・失敗のログを記録できる
+4. エラー時にアラートを送信できる
 
-**モジュール化の観点**:
+**非機能要件**:
+1. パフォーマンス: スケジュール実行が1分以内に完了する（1000行以下のCSV）
+2. 可用性: スケジュール実行の失敗時にリトライできる
+3. 監視: スケジュール実行の履歴を確認できる
+4. セキュリティ: Dropbox API認証が適切に実装されている
+
+**制約条件**:
+- PowerAutomate側の実装は別途実施（本PhaseではPi5側のみ）
+- 既存のバックアップスケジューラーを拡張する
+- 既存の設定ファイル（`backup.json`）に追加する
+
+#### 実装タスク
+
+**タスク2.1: CSVインポートスケジューラーの実装**
+- **ファイル**: `apps/api/src/services/imports/csv-import-scheduler.ts`（新規）
+- **内容**:
+  - `CsvImportScheduler`クラスを実装
+  - cron形式のスケジュール設定をサポート
+  - `BackupScheduler`と同様の構造で実装
+  - 設定ファイルからスケジュールを読み込む
+- **見積もり**: 4時間
+- **依存関係**: Phase 1完了
+
+**タスク2.2: 設定ファイルスキーマの拡張**
+- **ファイル**: `apps/api/src/services/backup/backup-config.ts`
+- **内容**:
+  - `BackupConfigSchema`に`csvImports`セクションを追加
+  - スケジュール設定のスキーマ定義
+  - バリデーションルールの追加
+- **見積もり**: 2時間
+- **依存関係**: タスク2.1
+
+**タスク2.3: APIエンドポイントの追加**
+- **ファイル**: `apps/api/src/routes/imports.ts`
+- **内容**:
+  - `GET /api/imports/schedule`: スケジュール一覧取得
+  - `POST /api/imports/schedule`: スケジュール追加
+  - `PUT /api/imports/schedule/:id`: スケジュール更新
+  - `DELETE /api/imports/schedule/:id`: スケジュール削除
+  - `POST /api/imports/schedule/:id/run`: 手動実行
+- **見積もり**: 4時間
+- **依存関係**: タスク2.1, タスク2.2
+
+**タスク2.4: インポート履歴の記録機能**
+- **ファイル**: `apps/api/src/services/imports/import-history.service.ts`（新規）
+- **内容**:
+  - インポート実行履歴をデータベースに記録
+  - Prismaスキーマに`CsvImportHistory`モデルを追加
+  - 履歴の取得・検索機能
+- **見積もり**: 3時間
+- **依存関係**: タスク2.1
+
+**タスク2.5: エラーアラート機能の実装**
+- **ファイル**: `apps/api/src/services/imports/csv-import-scheduler.ts`
+- **内容**:
+  - インポート失敗時にアラートを生成
+  - 既存のアラートシステム（`scripts/generate-alert.sh`）と統合
+  - Webhook通知のサポート
+- **見積もり**: 2時間
+- **依存関係**: タスク2.1
+
+**タスク2.6: アプリ起動時のスケジューラー初期化**
+- **ファイル**: `apps/api/src/app.ts`
+- **内容**:
+  - `CsvImportScheduler`を初期化して起動
+  - `BackupScheduler`と同様の実装
+- **見積もり**: 1時間
+- **依存関係**: タスク2.1
+
+#### テスト計画
+
+**単体テスト**:
+- **ファイル**: `apps/api/src/services/imports/__tests__/csv-import-scheduler.test.ts`（新規）
+- **テストケース**:
+  1. ✅ スケジュールの登録・更新・削除
+  2. ✅ cron形式のスケジュール設定の検証
+  3. ✅ スケジュール実行の成功
+  4. ✅ スケジュール実行の失敗時のエラーハンドリング
+  5. ✅ インポート履歴の記録
+  6. ❌ 無効なスケジュール設定の検証
+  7. ❌ スケジュール実行中の重複実行の防止
+- **モック**: `DropboxStorageProvider`をモック化
+- **見積もり**: 4時間
+
+**統合テスト**:
+- **ファイル**: `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（新規）
+- **テストケース**:
+  1. ✅ スケジュールAPIエンドポイントの動作確認
+  2. ✅ スケジュール実行のエンドツーエンドテスト
+  3. ✅ インポート履歴APIの動作確認
+- **見積もり**: 3時間
+
+**E2Eテスト**:
+- **ファイル**: `e2e/imports-schedule.spec.ts`（新規）
+- **テストケース**:
+  1. ✅ 管理画面からスケジュールを設定
+  2. ✅ スケジュール実行の確認
+  3. ✅ インポート履歴の確認
+  4. ❌ エラー時のアラート確認
+- **見積もり**: 3時間
+
+#### CI/CD計画
+
+**CIパイプラインへの追加**:
+- **ファイル**: `.github/workflows/ci.yml`
+- **追加内容**:
+  1. **単体テストの実行**:
+     ```yaml
+     - name: Run csv-import-scheduler tests
+       run: |
+         cd apps/api
+         pnpm test -- csv-import-scheduler --reporter=verbose || {
+           echo "Csv-import-scheduler tests failed!"
+           exit 1
+         }
+       env:
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  2. **統合テストの実行**:
+     ```yaml
+     - name: Run imports-schedule integration tests
+       run: |
+         cd apps/api
+         pnpm test -- imports-schedule.integration --reporter=verbose || {
+           echo "Imports-schedule integration tests failed!"
+           exit 1
+         }
+       env:
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  3. **E2Eテストの実行**:
+     ```yaml
+     - name: Run imports-schedule E2E tests
+       run: pnpm test:e2e e2e/imports-schedule.spec.ts || {
+         echo "Imports-schedule E2E tests failed!"
+         exit 1
+       }
+     ```
+
+**CI必須化**:
+- ⚠️ **重要**: CIテストが失敗した場合、マージをブロックする
+- `continue-on-error: false`を設定（デフォルト）
+- テストが失敗した場合、PRのマージを禁止
+
+**CIスルーの防止**:
+- GitHub Actionsのブランチ保護ルールを設定
+- 必須チェック: `lint-and-test`, `e2e-smoke`, `imports-schedule-tests`
+- 管理者でもスルーできない設定
+
+#### PowerAutomate側の実装要件（別途実装）
+
+**機能要件**:
+1. SharePointリストからCSV出力
+2. DropboxにCSV保存
+3. ファイル名に日付を含める（`employees-20251214.csv`）
+4. 古いファイルの自動削除（30日以上経過）
+
+**実装ガイド**:
+- `docs/guides/powerautomate-dropbox-integration.md`（新規作成予定）を参照
+
+#### 成功要件
+
+**機能要件**:
+- ✅ スケジュール実行でDropboxからCSVを自動取得してインポートできる
+- ✅ 設定ファイルでスケジュールを管理できる
+- ✅ インポート成功・失敗のログを記録できる
+- ✅ エラー時にアラートを送信できる
+
+**非機能要件**:
+- ✅ パフォーマンス: スケジュール実行が1分以内に完了する
+- ✅ 可用性: スケジュール実行の失敗時にリトライできる
+- ✅ 監視: スケジュール実行の履歴を確認できる
+- ✅ セキュリティ: Dropbox API認証が適切に実装されている
+
+**品質要件**:
+- ✅ 単体テストカバレッジ: 80%以上
+- ✅ 統合テスト: すべてのテストケースがパス
+- ✅ E2Eテスト: すべてのテストケースがパス
+- ✅ CI: すべてのテストがパス（必須）
+- ✅ コードレビュー: 2名以上の承認
+
+**モジュール化要件**:
 - ✅ Phase 1で実装した機能を再利用
 - ✅ 設定ベースで管理
 - ✅ 既存のバックアップスケジューラーを拡張
+- ✅ コード重複を避ける
 
 **期待される効果**:
 - SharePointリストから自動的にCSVを取得してインポートできるようになる
@@ -241,23 +579,252 @@
 
 **目的**: CSVインポート機能とバックアップ機能を統合し、より柔軟な運用を実現する
 
-**実装内容**:
-1. **CSVインポート後の自動バックアップ**
-   - CSVインポート成功時に自動的にバックアップを実行
-   - 設定ファイルで有効/無効を切り替え可能
+#### 要件定義
 
-2. **バックアップからの自動リストア**
-   - Dropboxからバックアップをダウンロードしてリストア
-   - 災害復旧時の自動化
+**機能要件**:
+1. CSVインポート成功時に自動的にバックアップを実行できる
+2. Dropboxからバックアップをダウンロードしてリストアできる
+3. 設定ファイルで有効/無効を切り替えできる
+4. バックアップ・リストアの履歴を確認できる
 
-**モジュール化の観点**:
+**非機能要件**:
+1. パフォーマンス: 自動バックアップが5分以内に完了する
+2. 可用性: バックアップ・リストアの失敗時にリトライできる
+3. 監視: バックアップ・リストアの履歴を確認できる
+4. セキュリティ: バックアップファイルの整合性を検証できる
+
+**制約条件**:
+- 既存のバックアップ機能とCSVインポート機能を変更しない
+- 各機能を独立して維持する
+- 設定ベースで管理する
+
+#### 実装タスク
+
+**タスク3.1: CSVインポート後の自動バックアップ機能**
+- **ファイル**: `apps/api/src/services/imports/csv-import-scheduler.ts`
+- **内容**:
+  - CSVインポート成功時に`BackupService`を呼び出す
+  - 設定ファイルで有効/無効を切り替え可能
+  - バックアップ対象の設定（CSVのみ、全データなど）
+- **見積もり**: 3時間
+- **依存関係**: Phase 1, Phase 2完了
+
+**タスク3.2: バックアップからの自動リストア機能**
+- **ファイル**: `apps/api/src/routes/backup.ts`
+- **内容**:
+  - `POST /api/backup/restore/from-dropbox`エンドポイントを追加
+  - Dropboxからバックアップをダウンロードしてリストア
+  - バックアップファイルの整合性検証
+- **見積もり**: 4時間
+- **依存関係**: Phase 1完了
+
+**タスク3.3: 設定ファイルスキーマの拡張**
+- **ファイル**: `apps/api/src/services/backup/backup-config.ts`
+- **内容**:
+  - `autoBackupAfterImport`設定を追加
+  - `restoreFromDropbox`設定を追加
+  - バリデーションルールの追加
+- **見積もり**: 1時間
+- **依存関係**: タスク3.1, タスク3.2
+
+**タスク3.4: バックアップ・リストア履歴の記録機能**
+- **ファイル**: `apps/api/src/services/backup/backup-history.service.ts`（新規）
+- **内容**:
+  - バックアップ・リストア実行履歴をデータベースに記録
+  - Prismaスキーマに`BackupHistory`モデルを追加
+  - 履歴の取得・検索機能
+- **見積もり**: 3時間
+- **依存関係**: タスク3.1, タスク3.2
+
+**タスク3.5: バックアップファイルの整合性検証機能**
+- **ファイル**: `apps/api/src/services/backup/backup-verifier.ts`（新規）
+- **内容**:
+  - バックアップファイルのハッシュ値検証
+  - ファイルサイズの検証
+  - ファイル形式の検証
+- **見積もり**: 2時間
+- **依存関係**: タスク3.2
+
+**タスク3.6: APIエンドポイントの追加**
+- **ファイル**: `apps/api/src/routes/backup.ts`
+- **内容**:
+  - `GET /api/backup/history`: バックアップ履歴一覧取得
+  - `GET /api/backup/history/:id`: バックアップ履歴詳細取得
+  - `POST /api/backup/restore/from-dropbox`: Dropboxからリストア
+- **見積もり**: 2時間
+- **依存関係**: タスク3.2, タスク3.4
+
+#### テスト計画
+
+**単体テスト**:
+- **ファイル**: `apps/api/src/services/imports/__tests__/auto-backup.test.ts`（新規）
+- **テストケース**:
+  1. ✅ CSVインポート成功時の自動バックアップ実行
+  2. ✅ 自動バックアップの無効化
+  3. ✅ バックアップ失敗時のエラーハンドリング
+  4. ❌ バックアップ設定が不正な場合のエラーハンドリング
+- **モック**: `BackupService`をモック化
+- **見積もり**: 2時間
+
+**統合テスト**:
+- **ファイル**: `apps/api/src/routes/__tests__/backup-restore-dropbox.integration.test.ts`（新規）
+- **テストケース**:
+  1. ✅ Dropboxからバックアップをダウンロードしてリストア成功
+  2. ✅ バックアップファイルの整合性検証
+  3. ✅ バックアップ履歴の記録
+  4. ❌ 無効なバックアップファイルの検証
+  5. ❌ Dropbox APIエラー時のエラーハンドリング
+- **モック**: `DropboxStorageProvider`をモック化
+- **見積もり**: 3時間
+
+**E2Eテスト**:
+- **ファイル**: `e2e/backup-restore-dropbox.spec.ts`（新規）
+- **テストケース**:
+  1. ✅ 管理画面からDropbox経由でバックアップをリストア
+  2. ✅ バックアップ履歴の確認
+  3. ❌ エラー時のエラーメッセージ確認
+- **見積もり**: 2時間
+
+#### CI/CD計画
+
+**CIパイプラインへの追加**:
+- **ファイル**: `.github/workflows/ci.yml`
+- **追加内容**:
+  1. **単体テストの実行**:
+     ```yaml
+     - name: Run auto-backup tests
+       run: |
+         cd apps/api
+         pnpm test -- auto-backup --reporter=verbose || {
+           echo "Auto-backup tests failed!"
+           exit 1
+         }
+       env:
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  2. **統合テストの実行**:
+     ```yaml
+     - name: Run backup-restore-dropbox integration tests
+       run: |
+         cd apps/api
+         pnpm test -- backup-restore-dropbox.integration --reporter=verbose || {
+           echo "Backup-restore-dropbox integration tests failed!"
+           exit 1
+         }
+       env:
+         BACKUP_STORAGE_DIR: /tmp/test-backups
+         NODE_ENV: test
+     ```
+  3. **E2Eテストの実行**:
+     ```yaml
+     - name: Run backup-restore-dropbox E2E tests
+       run: pnpm test:e2e e2e/backup-restore-dropbox.spec.ts || {
+         echo "Backup-restore-dropbox E2E tests failed!"
+         exit 1
+       }
+     ```
+
+**CI必須化**:
+- ⚠️ **重要**: CIテストが失敗した場合、マージをブロックする
+- `continue-on-error: false`を設定（デフォルト）
+- テストが失敗した場合、PRのマージを禁止
+
+**CIスルーの防止**:
+- GitHub Actionsのブランチ保護ルールを設定
+- 必須チェック: `lint-and-test`, `e2e-smoke`, `backup-restore-dropbox-tests`
+- 管理者でもスルーできない設定
+
+#### 成功要件
+
+**機能要件**:
+- ✅ CSVインポート成功時に自動的にバックアップを実行できる
+- ✅ Dropboxからバックアップをダウンロードしてリストアできる
+- ✅ 設定ファイルで有効/無効を切り替えできる
+- ✅ バックアップ・リストアの履歴を確認できる
+
+**非機能要件**:
+- ✅ パフォーマンス: 自動バックアップが5分以内に完了する
+- ✅ 可用性: バックアップ・リストアの失敗時にリトライできる
+- ✅ 監視: バックアップ・リストアの履歴を確認できる
+- ✅ セキュリティ: バックアップファイルの整合性を検証できる
+
+**品質要件**:
+- ✅ 単体テストカバレッジ: 80%以上
+- ✅ 統合テスト: すべてのテストケースがパス
+- ✅ E2Eテスト: すべてのテストケースがパス
+- ✅ CI: すべてのテストがパス（必須）
+- ✅ コードレビュー: 2名以上の承認
+
+**モジュール化要件**:
 - ✅ 既存のバックアップ機能とCSVインポート機能を統合
 - ✅ 設定ベースで管理
 - ✅ 各機能を独立して維持
+- ✅ コード重複を避ける
 
 **期待される効果**:
 - より柔軟な運用が可能になる
 - 災害復旧の自動化
+
+## CI/CDの課題と対策
+
+### ⚠️ 現在の問題: CIの未実施やスルーが続いている
+
+**問題の現状**:
+- CIテストが失敗してもマージが進んでいる
+- `continue-on-error: true`が設定されているテストがある
+- ブランチ保護ルールが適切に設定されていない
+- テストがスルーされている
+
+**影響**:
+- バグが本番環境に流入するリスクが高い
+- コード品質が低下する
+- リファクタリングが困難になる
+- 技術的負債が蓄積する
+
+### 対策
+
+#### 1. CIテストの必須化
+
+**GitHub Actionsの設定**:
+- `continue-on-error: false`をデフォルトに設定
+- すべてのテストジョブで`exit-code: 1`を設定
+- テスト失敗時にPRのマージをブロック
+
+**ブランチ保護ルールの設定**:
+- `main`ブランチと`develop`ブランチに保護ルールを設定
+- 必須チェック:
+  - `lint-and-test`
+  - `e2e-smoke`
+  - `docker-build`
+  - Phase 1実装後: `imports-dropbox-tests`
+  - Phase 2実装後: `imports-schedule-tests`
+  - Phase 3実装後: `backup-restore-dropbox-tests`
+- `Require status checks to pass before merging`: ✅ 有効
+- `Require branches to be up to date before merging`: ✅ 有効
+- `Do not allow bypassing the above settings`: ✅ 有効（管理者でもスルー不可）
+
+#### 2. CIテストの安定化
+
+**テストの安定化対策**:
+- タイムアウトを適切に設定（CI環境では長めに）
+- リトライロジックの実装（`retries: 2`）
+- テストの独立性を保つ（各テストが独立して実行可能）
+- 環境変数の適切な設定
+
+**参考**: `CI_TESTING_BEST_PRACTICES.md`を参照
+
+#### 3. CIテストの監視
+
+**監視項目**:
+- CIテストの成功率を追跡
+- テスト実行時間を監視
+- 失敗したテストの原因分析
+- CIテストのスルー状況を監視
+
+**アラート**:
+- CIテストが3回連続で失敗した場合にアラート
+- CIテストのスルーが検出された場合にアラート
 
 ## まとめ
 
@@ -290,9 +857,93 @@
    - CSVインポート後の自動バックアップ
    - バックアップからの自動リストア
 
+## 実装スケジュール（推奨）
+
+### Phase 1: CSVインポート機能とDropbox統合の連携
+
+**期間**: 2週間
+- Week 1: 実装（タスク1.1-1.5）
+- Week 2: テスト実装・CI統合・実機検証
+
+**マイルストーン**:
+- ✅ 実装完了
+- ✅ 単体テスト・統合テスト・E2Eテスト完了
+- ✅ CI統合完了（必須チェックに追加）
+- ✅ 実機検証完了
+
+### Phase 2: PowerAutomate統合の実装
+
+**期間**: 3週間
+- Week 1: Pi5側実装（タスク2.1-2.6）
+- Week 2: テスト実装・CI統合
+- Week 3: PowerAutomate側実装・統合テスト・実機検証
+
+**マイルストーン**:
+- ✅ Pi5側実装完了
+- ✅ テスト実装完了
+- ✅ CI統合完了（必須チェックに追加）
+- ✅ PowerAutomate側実装完了
+- ✅ 統合テスト・実機検証完了
+
+### Phase 3: 統合機能の拡張
+
+**期間**: 2週間
+- Week 1: 実装（タスク3.1-3.6）
+- Week 2: テスト実装・CI統合・実機検証
+
+**マイルストーン**:
+- ✅ 実装完了
+- ✅ テスト実装完了
+- ✅ CI統合完了（必須チェックに追加）
+- ✅ 実機検証完了
+
+## CI/CD必須化の実装計画
+
+### 即座に実施すべき対策
+
+**1. GitHub Actionsの設定変更**
+- **ファイル**: `.github/workflows/ci.yml`
+- **変更内容**:
+  - `e2e-tests`ジョブの`continue-on-error: true`を削除
+  - すべてのテストジョブで`exit-code: 1`を設定
+  - テスト失敗時に必ずエラーを返す
+
+**2. ブランチ保護ルールの設定**
+- **設定場所**: GitHubリポジトリのSettings → Branches
+- **設定内容**:
+  - `main`ブランチと`develop`ブランチに保護ルールを追加
+  - 必須チェックを設定
+  - 管理者でもスルーできない設定
+
+**3. CIテストの監視**
+- **監視ツール**: GitHub Actionsのワークフロー実行履歴
+- **監視項目**:
+  - テスト成功率
+  - テスト実行時間
+  - 失敗したテストの原因
+
+### 各Phase実装時のCI統合
+
+**Phase 1実装時**:
+- `imports-dropbox-tests`ジョブを追加
+- 必須チェックに追加
+- テスト失敗時にマージをブロック
+
+**Phase 2実装時**:
+- `imports-schedule-tests`ジョブを追加
+- 必須チェックに追加
+- テスト失敗時にマージをブロック
+
+**Phase 3実装時**:
+- `backup-restore-dropbox-tests`ジョブを追加
+- 必須チェックに追加
+- テスト失敗時にマージをブロック
+
 ## 関連ドキュメント
 
 - `docs/plans/backup-modularization-execplan.md`: バックアップ機能のモジュール化ExecPlan
 - `docs/architecture/backup-modularity-assessment.md`: バックアップ機能のモジュール化評価
 - `docs/security/sharepoint-dropbox-integration-assessment.md`: SharePoint→Dropbox→Pi5統合のセキュリティ評価
 - `docs/security/sharepoint-dropbox-multi-purpose-assessment.md`: 多目的用途の評価
+- `CI_TESTING_BEST_PRACTICES.md`: CI環境でのテスト安定化のベストプラクティス
+- `.github/workflows/ci.yml`: CIパイプライン設定
