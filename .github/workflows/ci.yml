@@ -124,7 +124,7 @@ jobs:
             exit 1
           }
           # imports-scheduleは専用ステップで実行するため除外
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
             echo "Tests failed, showing test output..."
             exit 1
           }
