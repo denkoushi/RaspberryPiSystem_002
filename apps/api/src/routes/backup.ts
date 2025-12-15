@@ -357,9 +357,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // OAuth 2.0コールバック（認証コードを受け取る）
-  app.get('/backup/oauth/callback', {
-    preHandler: [mustBeAdmin]
-  }, async (request, reply) => {
+  // 注意: コールバックエンドポイントはDropboxからリダイレクトされるため、認証をスキップする
+  // CSRF保護は`state`パラメータで行う（簡易実装）
+  app.get('/backup/oauth/callback', async (request, reply) => {
     const query = request.query as { code?: string; state?: string; error?: string };
     
     if (query.error) {
