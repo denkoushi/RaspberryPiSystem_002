@@ -9,6 +9,9 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
+import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
+import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
+import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 
 const { EmployeeStatus, ItemStatus } = pkg;
 
@@ -25,6 +28,14 @@ const fieldSchema = z.object({
     },
     z.coerce.boolean().optional().default(false)
   )
+});
+
+const dropboxImportSchema = z.object({
+  employeesPath: z.string().trim().min(1).regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
+  itemsPath: z.string().trim().min(1).regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+  replaceExisting: z.boolean().optional().default(false)
+}).refine((data) => data.employeesPath || data.itemsPath, {
+  message: 'employeesPath または itemsPath のいずれかを指定してください'
 });
 
 const employeeCsvSchema = z.object({
@@ -92,6 +103,157 @@ function normalizeItemStatus(value?: string) {
   // 無効な値の場合はデフォルト値（AVAILABLE）を使用（エラーにしない）
   return ItemStatus.AVAILABLE;
 }
+
+async function createDropboxStorageProviderFromConfig(
+  protocol: string,
+  host: string,
+  onTokenUpdate?: (token: string) => Promise<void>
+) {
+  const config = await BackupConfigLoader.load();
+  if (config.storage.provider !== 'dropbox') {
+    throw new ApiError(400, '設定ファイルでDropboxがストレージとして設定されていません');
+  }
+
+  const accessToken = config.storage.options?.accessToken as string | undefined;
+  const refreshToken = config.storage.options?.refreshToken as string | undefined;
+  const appKey = config.storage.options?.appKey as string | undefined;
+  const appSecret = config.storage.options?.appSecret as string | undefined;
+  const basePath = config.storage.options?.basePath as string | undefined;
+
+  if (!accessToken) {
+    throw new ApiError(400, 'Dropbox access token is required in config file');
+  }
+
+  let oauthService: DropboxOAuthService | undefined;
+  if (refreshToken && appKey && appSecret) {
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
+    oauthService = new DropboxOAuthService({
+      appKey,
+      appSecret,
+      redirectUri
+    });
+  }
+
+  return new DropboxStorageProvider({
+    accessToken,
+    basePath,
+    refreshToken,
+    oauthService,
+    onTokenUpdate
+  });
+}
+
+async function processCsvImport(
+  files: { employees?: Buffer; items?: Buffer },
+  replaceExisting: boolean,
+  log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
+) {
+  if (!files.employees && !files.items) {
+    throw new ApiError(400, 'employees.csv もしくは items.csv を指定してください');
+  }
+
+  let employeeRows: EmployeeCsvRow[] = [];
+  let itemRows: ItemCsvRow[] = [];
+
+  if (files.employees) {
+    try {
+      const parsedRows = parseCsvRows(files.employees);
+      employeeRows = parsedRows.map((row, index) => {
+        try {
+          return employeeCsvSchema.parse(row);
+        } catch (error) {
+          throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    } catch (error) {
+      throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (files.items) {
+    try {
+      const parsedRows = parseCsvRows(files.items);
+      itemRows = parsedRows.map((row, index) => {
+        try {
+          return itemCsvSchema.parse(row);
+        } catch (error) {
+          throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    } catch (error) {
+      throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const employeeNfcTagUids = new Set(
+    employeeRows
+      .map(row => row.nfcTagUid?.trim())
+      .filter((uid): uid is string => Boolean(uid))
+  );
+  const itemNfcTagUids = new Set(
+    itemRows
+      .map(row => row.nfcTagUid?.trim())
+      .filter((uid): uid is string => Boolean(uid))
+  );
+  const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
+  if (crossDuplicateNfcTagUids.length > 0) {
+    const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
+    log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
+    throw new ApiError(400, errorMessage);
+  }
+
+  const summary: Record<string, ImportResult> = {};
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (employeeRows.length > 0) {
+        summary.employees = await importEmployees(tx, employeeRows, replaceExisting, log);
+      }
+      if (itemRows.length > 0) {
+        summary.items = await importItems(tx, itemRows, replaceExisting);
+      }
+    }, {
+      timeout: 30000,
+      isolationLevel: 'ReadCommitted'
+    });
+  } catch (error) {
+    log.error({ 
+      err: error,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorCode: (error as any)?.code,
+      errorMeta: (error as any)?.meta
+    }, 'インポート処理エラー');
+    
+    if (error instanceof PrismaClientKnownRequestError) {
+      if (error.code === 'P2003') {
+        const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
+        const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        throw new ApiError(
+          400,
+          `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
+          { code: error.code, ...error.meta }
+        );
+      }
+      throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
+    }
+    
+    if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
+      const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
+      const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+      throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
+    }
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
+  }
+
+  return { summary };
+}
+
 
 async function importEmployees(
   tx: Prisma.TransactionClient,
@@ -507,114 +669,39 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
                            false;
 
-    // === 3. CSVファイルのパースとバリデーション ===
-    if (!files.employees && !files.items) {
-      throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
-    }
-
-    let employeeRows: EmployeeCsvRow[] = [];
-    let itemRows: ItemCsvRow[] = [];
-
-    if (files.employees) {
-      try {
-        const parsedRows = parseCsvRows(files.employees);
-        employeeRows = parsedRows.map((row, index) => {
-          try {
-            return employeeCsvSchema.parse(row);
-          } catch (error) {
-            throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      } catch (error) {
-        throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    if (files.items) {
-      try {
-        const parsedRows = parseCsvRows(files.items);
-        itemRows = parsedRows.map((row, index) => {
-          try {
-            return itemCsvSchema.parse(row);
-          } catch (error) {
-            throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      } catch (error) {
-        throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    // === 4. 従業員とアイテム間のnfcTagUid重複チェック ===
-    const employeeNfcTagUids = new Set(
-      employeeRows
-        .map(row => row.nfcTagUid?.trim())
-        .filter((uid): uid is string => Boolean(uid))
-    );
-    const itemNfcTagUids = new Set(
-      itemRows
-        .map(row => row.nfcTagUid?.trim())
-        .filter((uid): uid is string => Boolean(uid))
-    );
-    const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
-    if (crossDuplicateNfcTagUids.length > 0) {
-      const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
-      request.log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
-      throw new ApiError(400, errorMessage);
-    }
-
-    // === 5. トランザクション内でインポート処理実行 ===
-    const summary: Record<string, ImportResult> = {};
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        if (employeeRows.length > 0) {
-          summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
-        }
-        if (itemRows.length > 0) {
-          summary.items = await importItems(tx, itemRows, replaceExisting);
-        }
-      }, {
-        timeout: 30000, // 30秒のタイムアウト
-        isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
-      });
-    } catch (error) {
-      request.log.error({ 
-        err: error,
-        errorName: error instanceof Error ? error.name : typeof error,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorCode: (error as any)?.code,
-        errorMeta: (error as any)?.meta
-      }, 'インポート処理エラー');
-      
-      if (error instanceof PrismaClientKnownRequestError) {
-        if (error.code === 'P2003') {
-          const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
-          const modelName = (error.meta as any)?.model_name || '不明なモデル';
-          throw new ApiError(
-            400,
-            `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
-            { code: error.code, ...error.meta }
-          );
-        }
-        throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
-      }
-      
-      // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
-      if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
-        const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
-        const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
-        throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
-      }
-      
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      
-      throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
-    }
-
-    // === 6. 結果を返す ===
+    const { summary } = await processCsvImport(files, replaceExisting, request.log);
     return { summary };
+  });
+
+  // DropboxからCSVを取得してインポート
+  app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+    const body = dropboxImportSchema.parse(request.body ?? {});
+
+    const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
+
+    const onTokenUpdate = async (token: string) => {
+      const latestConfig = await BackupConfigLoader.load();
+      if (latestConfig.storage.provider === 'dropbox') {
+        latestConfig.storage.options = {
+          ...(latestConfig.storage.options || {}),
+          accessToken: token
+        };
+        await BackupConfigLoader.save(latestConfig);
+      }
+    };
+
+    const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+
+    const files: { employees?: Buffer; items?: Buffer } = {};
+    if (body.employeesPath) {
+      files.employees = await dropboxProvider.download(body.employeesPath);
+    }
+    if (body.itemsPath) {
+      files.items = await dropboxProvider.download(body.itemsPath);
+    }
+
+    const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
+    return { summary, source: 'dropbox' };
   });
 }
