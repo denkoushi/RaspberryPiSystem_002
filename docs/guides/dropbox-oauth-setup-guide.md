@@ -258,6 +258,26 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
   - `backup.json`に`refreshToken`, `appKey`, `appSecret`が設定されていることを確認
   - 環境変数が正しく設定されていることを確認
 
+### 設定ファイルへの書き込みエラー（EROFS: read-only file system）
+
+- **エラーメッセージ**: `EROFS: read-only file system, open '/app/config/backup.json'`
+- **原因**: Docker Composeのconfigボリュームが読み取り専用（`:ro`）でマウントされている
+- **解決策**: 
+  1. `infrastructure/docker/docker-compose.server.yml`を確認
+  2. configボリュームのマウント設定から`:ro`フラグを削除：
+     ```yaml
+     # 修正前
+     - /opt/RaspberryPiSystem_002/config:/app/config:ro
+     
+     # 修正後
+     - /opt/RaspberryPiSystem_002/config:/app/config
+     ```
+  3. APIコンテナを再起動：
+     ```bash
+     docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+     ```
+- **参考**: [KB-099](../knowledge-base/infrastructure.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)
+
 ## セキュリティに関する注意事項
 
 1. **App SecretとRefresh Tokenは機密情報**
