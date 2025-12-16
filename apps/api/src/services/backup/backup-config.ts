@@ -42,7 +42,12 @@ export const BackupConfigSchema = z.object({
   csvImportHistory: z.object({
     retentionDays: z.number().default(90), // 履歴保持期間（日数）
     cleanupSchedule: z.string().optional().default('0 2 * * *') // クリーンアップ実行スケジュール（cron形式、デフォルト: 毎日2時）
-  }).optional()
+  }).optional(),
+  restoreFromDropbox: z.object({
+    enabled: z.boolean().default(false), // Dropboxからのリストア機能を有効にするか
+    verifyIntegrity: z.boolean().default(true), // リストア時に整合性検証を実行するか
+    defaultTargetKind: z.enum(['database', 'csv']).optional() // デフォルトのリストア対象の種類
+  }).optional().default({ enabled: false, verifyIntegrity: true })
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -91,5 +96,9 @@ export const defaultBackupConfig: BackupConfig = {
   csvImportHistory: {
     retentionDays: 90,
     cleanupSchedule: '0 2 * * *' // 毎日2時
+  },
+  restoreFromDropbox: {
+    enabled: false,
+    verifyIntegrity: true
   }
 };
