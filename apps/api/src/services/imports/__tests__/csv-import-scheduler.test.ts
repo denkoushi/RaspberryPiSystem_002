@@ -292,6 +292,75 @@ describe('CsvImportScheduler', () => {
     });
   });
 
+  describe('history cleanup', () => {
+    it('should start cleanup job when configured', async () => {
+      const mockConfig = {
+        storage: {
+          provider: 'local' as const,
+          options: {
+            basePath: '/backups'
+          }
+        },
+        csvImports: [],
+        csvImportHistory: {
+          retentionDays: 90,
+          cleanupSchedule: '0 2 * * *'
+        }
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+
+      expect(BackupConfigLoader.load).toHaveBeenCalled();
+      // クリーンアップJobが開始されたことを確認（エラーが発生しないことを確認）
+      await scheduler.stop();
+    });
+
+    it('should skip cleanup job when not configured', async () => {
+      const mockConfig = {
+        storage: {
+          provider: 'local' as const,
+          options: {
+            basePath: '/backups'
+          }
+        },
+        csvImports: []
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+
+      expect(BackupConfigLoader.load).toHaveBeenCalled();
+      await scheduler.stop();
+    });
+
+    it('should skip cleanup job with invalid schedule', async () => {
+      const mockConfig = {
+        storage: {
+          provider: 'local' as const,
+          options: {
+            basePath: '/backups'
+          }
+        },
+        csvImports: [],
+        csvImportHistory: {
+          retentionDays: 90,
+          cleanupSchedule: 'invalid-cron-expression'
+        }
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+
+      expect(BackupConfigLoader.load).toHaveBeenCalled();
+      // 無効なスケジュールはスキップされる（エラーが発生しないことを確認）
+      await scheduler.stop();
+    });
+  });
+
   describe('getCsvImportScheduler', () => {
     it('should return singleton instance', () => {
       const instance1 = getCsvImportScheduler();

@@ -34,7 +34,11 @@ export const BackupConfigSchema = z.object({
     enabled: z.boolean().default(true),
     replaceExisting: z.boolean().default(false), // 既存データを置き換えるか
     metadata: z.record(z.unknown()).optional()
-  })).optional().default([])
+  })).optional().default([]),
+  csvImportHistory: z.object({
+    retentionDays: z.number().default(90), // 履歴保持期間（日数）
+    cleanupSchedule: z.string().optional().default('0 2 * * *') // クリーンアップ実行スケジュール（cron形式、デフォルト: 毎日2時）
+  }).optional()
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -79,5 +83,9 @@ export const defaultBackupConfig: BackupConfig = {
     days: 30,
     maxBackups: 100
   },
-  csvImports: []
+  csvImports: [],
+  csvImportHistory: {
+    retentionDays: 90,
+    cleanupSchedule: '0 2 * * *' // 毎日2時
+  }
 };

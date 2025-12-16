@@ -36,10 +36,11 @@ export class CsvImportScheduler {
     this.isRunning = true;
     const config = await BackupConfigLoader.load();
     
-    // csvImportsが設定されていない場合は何もしない
+    // csvImportsが設定されていない場合でもクリーンアップJobは開始する
     if (!config.csvImports || config.csvImports.length === 0) {
       logger?.info('[CsvImportScheduler] No CSV import schedules configured');
-      this.isRunning = false;
+      // クリーンアップJobのみ開始
+      await this.startCleanupJob(config);
       return;
     }
 
@@ -169,6 +170,75 @@ export class CsvImportScheduler {
       { taskCount: this.tasks.size },
       '[CsvImportScheduler] Scheduler started'
     );
+
+    // 履歴クリーンアップJobを開始
+    await this.startCleanupJob(config);
+  }
+
+  /**
+   * 履歴クリーンアップJobを開始
+   */
+  private async startCleanupJob(config: BackupConfig): Promise<void> {
+    // 既存のクリーンアップタスクがあれば停止
+    if (this.cleanupTask) {
+      this.cleanupTask.stop();
+      this.cleanupTask = null;
+    }
+
+    // 設定がない場合はスキップ
+    if (!config.csvImportHistory) {
+      logger?.info('[CsvImportScheduler] No CSV import history cleanup configuration');
+      return;
+    }
+
+    const { retentionDays = 90, cleanupSchedule = '0 2 * * *' } = config.csvImportHistory;
+
+    // cron形式のバリデーション
+    try {
+      if (!validate(cleanupSchedule)) {
+        logger?.warn(
+          { schedule: cleanupSchedule },
+          '[CsvImportScheduler] Invalid cleanup schedule format, skipping'
+        );
+        return;
+      }
+    } catch (error) {
+      logger?.warn(
+        { err: error, schedule: cleanupSchedule },
+        '[CsvImportScheduler] Invalid cleanup schedule format, skipping'
+      );
+      return;
+    }
+
+    // クリーンアップタスクを作成
+    this.cleanupTask = cron.schedule(cleanupSchedule, async () => {
+      try {
+        logger?.info(
+          { retentionDays },
+          '[CsvImportScheduler] Starting history cleanup'
+        );
+
+        const deletedCount = await this.historyService.cleanupOldHistory(retentionDays);
+
+        logger?.info(
+          { deletedCount, retentionDays },
+          '[CsvImportScheduler] History cleanup completed'
+        );
+      } catch (error) {
+        logger?.error(
+          { err: error },
+          '[CsvImportScheduler] History cleanup failed'
+        );
+      }
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Tokyo'
+    });
+
+    logger?.info(
+      { schedule: cleanupSchedule, retentionDays },
+      '[CsvImportScheduler] History cleanup job registered'
+    );
   }
 
   /**
@@ -182,6 +252,13 @@ export class CsvImportScheduler {
     for (const [taskId, task] of this.tasks.entries()) {
       task.stop();
       logger?.info({ taskId }, '[CsvImportScheduler] Task stopped');
+    }
+
+    // クリーンアップタスクを停止
+    if (this.cleanupTask) {
+      this.cleanupTask.stop();
+      this.cleanupTask = null;
+      logger?.info('[CsvImportScheduler] Cleanup task stopped');
     }
 
     this.tasks.clear();
