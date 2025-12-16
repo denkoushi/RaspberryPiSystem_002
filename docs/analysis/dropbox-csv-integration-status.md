@@ -911,12 +911,16 @@
 
 5. **テストカバレッジ**:
    - Phase 1: 単体テスト13件 ✅、統合テスト14件 ✅（大規模CSVテスト2件追加）、E2Eテスト2/3件（フロントエンド実装待ち）
-   - Phase 2: 単体テスト12件 ✅、統合テスト26件 ✅（履歴APIフィルタ/ページング13件追加）、E2Eテスト3/4件（フロントエンド実装待ち）
+   - Phase 2: 単体テスト18件 ✅（PowerAutomate未配置時のテスト3件追加）、統合テスト26件 ✅（履歴APIフィルタ/ページング13件追加）、E2Eテスト3/4件（フロントエンド実装待ち）
    - **CI統合**: すべてのテストがCIで実行され、成功を確認（2025-12-16）
-     - APIテスト: 192 passed | 3 skipped (195) ✅
+     - APIテスト: 195 passed | 3 skipped (198) ✅
      - Backup Serviceテスト: 21 passed | 3 skipped (24) ✅
      - Imports-Dropboxテスト: 14 passed (14) ✅
+     - CSV Import Schedulerテスト: 18 passed (18) ✅（PowerAutomate未配置時のテスト3件追加）
+     - Imports-Schedule統合テスト: 24 passed (24) ✅
+     - Import Alert Serviceテスト: 4 passed (4) ✅
      - E2Eテスト: 9 passed | 5 skipped (14) ✅
+     - **合計**: 279 passed | 11 skipped (290) ✅
 
 ### 推奨展開
 
@@ -929,6 +933,8 @@
 2. **Phase 2（優先度: 中）**: PowerAutomate統合の実装 ⚠️ **Pi5側完了、PowerAutomate側未着手**
    - Pi5側: スケジュール実行機能を実装完了（2025-12-16）
    - 履歴APIのフィルタ/ページング機能を実装完了（2025-12-16）
+   - PowerAutomate未配置時のリトライ/アラート確認テストを追加完了（2025-12-16）
+   - PowerAutomate側仕様のドキュメント化完了（2025-12-16）
    - PowerAutomate側: SharePointリストからCSV出力し、Dropboxに保存（別途実施が必要）
 
 3. **Phase 3（優先度: 低）**: 統合機能の拡張 ❌ **未着手**
