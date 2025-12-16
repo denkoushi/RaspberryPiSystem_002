@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
 import { createTestUser } from './helpers.js';
 import { prisma } from '../../lib/prisma.js';
@@ -307,6 +307,12 @@ describe('POST /api/imports/master/from-dropbox', () => {
       await prisma.item.deleteMany({});
     });
 
+    afterEach(async () => {
+      // 大規模CSVテスト後にデータをクリーンアップ（他のテストに影響を与えないため）
+      await prisma.employee.deleteMany({});
+      await prisma.item.deleteMany({});
+    });
+
     it('should handle large CSV files (1000 rows)', async () => {
       // 1000行のCSVを生成
       const csvRows = ['employeeCode,displayName'];
@@ -357,9 +363,6 @@ describe('POST /api/imports/master/from-dropbox', () => {
         console.log('Skipping 10000 rows test in CI');
         return;
       }
-
-      // テストデータをクリーンアップ（大規模テストの前に確実にクリーンな状態にする）
-      await prisma.employee.deleteMany({});
 
       // 1万行のCSVを生成
       const csvRows = ['employeeCode,displayName'];
