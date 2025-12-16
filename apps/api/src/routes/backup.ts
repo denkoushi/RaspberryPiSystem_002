@@ -420,6 +420,232 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
+  // Dropboxからバックアップをリストア
+  const restoreFromDropboxRequestSchema = z.object({
+    backupPath: z.string().min(1, 'バックアップパスは必須です'),
+    targetKind: z.enum(['database', 'csv']).optional(), // リストア対象の種類
+    verifyIntegrity: z.boolean().optional().default(true), // 整合性検証を実行するか
+    expectedSize: z.number().optional(), // 期待されるファイルサイズ
+    expectedHash: z.string().optional() // 期待されるハッシュ値（SHA256）
+  });
+
+  app.post('/backup/restore/from-dropbox', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          backupPath: { type: 'string' },
+          targetKind: { type: 'string', enum: ['database', 'csv'] },
+          verifyIntegrity: { type: 'boolean' },
+          expectedSize: { type: 'number' },
+          expectedHash: { type: 'string' }
+        },
+        required: ['backupPath']
+      }
+    }
+  }, async (request, reply) => {
+    const body = restoreFromDropboxRequestSchema.parse(request.body ?? {});
+    
+    // 設定ファイルからDropboxの認証情報を読み込む
+    const config = await BackupConfigLoader.load();
+    if (config.storage.provider !== 'dropbox') {
+      throw new ApiError(400, 'Dropbox storage provider is not configured');
+    }
+
+    const accessToken = config.storage.options?.accessToken as string | undefined;
+    if (!accessToken) {
+      throw new ApiError(400, 'Dropbox access token is required in config file');
+    }
+
+    // OAuthサービスを作成（リフレッシュトークンがある場合）
+    let oauthService: DropboxOAuthService | undefined;
+    const refreshToken = config.storage.options?.refreshToken as string | undefined;
+    const appKey = config.storage.options?.appKey as string | undefined;
+    const appSecret = config.storage.options?.appSecret as string | undefined;
+    
+    if (refreshToken && appKey && appSecret) {
+      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
+      const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
+      
+      oauthService = new DropboxOAuthService({
+        appKey,
+        appSecret,
+        redirectUri
+      });
+    }
+
+    // トークン更新コールバック
+    const onTokenUpdate = async (newToken: string) => {
+      const updatedConfig: BackupConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          options: {
+            ...config.storage.options,
+            accessToken: newToken
+          }
+        }
+      };
+      await BackupConfigLoader.save(updatedConfig);
+    };
+
+    // Dropboxストレージプロバイダーを作成
+    const dropboxProvider = new DropboxStorageProvider({
+      accessToken,
+      basePath: config.storage.options?.basePath as string,
+      refreshToken,
+      oauthService,
+      onTokenUpdate: oauthService ? onTokenUpdate : undefined
+    });
+
+    const backupService = new BackupService(dropboxProvider);
+
+    try {
+      // Dropboxからバックアップファイルをダウンロード
+      logger?.info({ backupPath: body.backupPath }, '[BackupRoute] Downloading backup from Dropbox');
+      const backupData = await dropboxProvider.download(body.backupPath);
+
+      // 整合性検証
+      if (body.verifyIntegrity) {
+        const { BackupVerifier } = await import('../services/backup/backup-verifier.js');
+        const verification = BackupVerifier.verify(
+          backupData,
+          body.expectedSize,
+          body.expectedHash
+        );
+
+        if (!verification.valid) {
+          logger?.error(
+            { errors: verification.errors, backupPath: body.backupPath },
+            '[BackupRoute] Backup integrity verification failed'
+          );
+          throw new ApiError(400, `Backup integrity verification failed: ${verification.errors.join(', ')}`);
+        }
+
+        logger?.info(
+          { fileSize: verification.fileSize, hash: verification.hash },
+          '[BackupRoute] Backup integrity verified'
+        );
+      }
+
+      // リストアを実行
+      if (body.targetKind === 'database') {
+        // データベースバックアップのリストア
+        const { spawn } = await import('child_process');
+        const { Readable } = await import('stream');
+
+        const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
+        const url = new URL(dbUrl);
+        const dbName = url.pathname.replace(/^\//, '');
+        const user = decodeURIComponent(url.username || 'postgres');
+        const host = url.hostname || 'localhost';
+        const port = url.port || '5432';
+        const password = url.password ? decodeURIComponent(url.password) : undefined;
+
+        const env = { ...process.env };
+        if (password) {
+          env.PGPASSWORD = password;
+        }
+
+        logger?.info({ dbName, host, port }, '[BackupRoute] Restoring database from backup');
+        
+        // psqlでリストア（stdinにSQLを流し込む）
+        await new Promise<void>((resolve, reject) => {
+          const psql = spawn(
+            'psql',
+            ['-h', host, '-p', port, '-U', user, '-d', dbName, '--set', 'ON_ERROR_STOP=off'],
+            { env, stdio: ['pipe', 'pipe', 'pipe'] }
+          );
+
+          const errors: string[] = [];
+          psql.stderr.on('data', (data: Buffer) => {
+            const errorMsg = data.toString('utf-8');
+            // 警告メッセージは無視（エラーとして扱わない）
+            if (!errorMsg.includes('WARNING') && !errorMsg.includes('NOTICE')) {
+              errors.push(errorMsg);
+            }
+          });
+
+          psql.on('close', (code) => {
+            if (code !== 0 && errors.length > 0) {
+              logger?.error({ errors, code }, '[BackupRoute] Database restore failed');
+              reject(new ApiError(500, `Database restore failed: ${errors.join(', ')}`));
+            } else {
+              logger?.info({ backupPath: body.backupPath }, '[BackupRoute] Database restore completed');
+              resolve();
+            }
+          });
+
+          psql.on('error', (error) => {
+            logger?.error({ err: error }, '[BackupRoute] Failed to spawn psql');
+            reject(new ApiError(500, `Failed to spawn psql: ${error.message}`));
+          });
+
+          // バックアップデータをstdinに書き込む
+          const inputStream = Readable.from(backupData);
+          inputStream.pipe(psql.stdin);
+          inputStream.on('end', () => {
+            psql.stdin.end();
+          });
+        });
+      } else if (body.targetKind === 'csv') {
+        // CSVバックアップのリストア（既存のCSVインポート機能を再利用）
+        const { processCsvImport } = await import('./imports.js');
+        
+        // バックアップパスからCSVタイプを判定（employees/items）
+        const csvType = body.backupPath.includes('employees') ? 'employees' : 'items';
+        const files = csvType === 'employees' 
+          ? { employees: backupData }
+          : { items: backupData };
+
+        const logWrapper = {
+          info: (obj: unknown, msg: string) => {
+            logger?.info(obj, msg);
+          },
+          error: (obj: unknown, msg: string) => {
+            logger?.error(obj, msg);
+          }
+        };
+
+        logger?.info({ csvType, backupPath: body.backupPath }, '[BackupRoute] Restoring CSV from backup');
+        await processCsvImport(files, true, logWrapper); // replaceExisting = true
+
+        logger?.info({ backupPath: body.backupPath }, '[BackupRoute] CSV restore completed');
+      } else {
+        // 汎用的なリストア（ファイルとして保存）
+        const tempPath = `/tmp/restored-${Date.now()}.backup`;
+        await backupService.restore(body.backupPath, {
+          destination: tempPath
+        });
+
+        logger?.info({ backupPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
+      }
+
+      return reply.status(200).send({
+        success: true,
+        message: 'Backup restored successfully',
+        backupPath: body.backupPath,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      logger?.error(
+        { err: error, backupPath: body.backupPath },
+        '[BackupRoute] Failed to restore backup from Dropbox'
+      );
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      throw new ApiError(
+        500,
+        `Failed to restore backup: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  });
+
   // リフレッシュトークンでアクセストークンを更新（手動用）
   app.post('/backup/oauth/refresh', {
     preHandler: [mustBeAdmin]
