@@ -301,16 +301,16 @@ describe('POST /api/imports/master/from-dropbox', () => {
   });
 
   describe('大規模CSV処理', () => {
+    // 注意: 大規模CSVテストはemployeesのみをインポートするため、itemのクリーンアップは行わない
+    // itemをクリーンアップすると、並列実行される他のテストに影響を与える
     beforeEach(async () => {
-      // 大規模CSVテストの前にデータをクリーンアップ（テストの独立性を保つため）
+      // 大規模CSVテストの前にemployeeをクリーンアップ
       await prisma.employee.deleteMany({});
-      await prisma.item.deleteMany({});
     });
 
     afterEach(async () => {
-      // 大規模CSVテスト後にデータをクリーンアップ（他のテストに影響を与えないため）
+      // 大規模CSVテスト後にemployeeをクリーンアップ
       await prisma.employee.deleteMany({});
-      await prisma.item.deleteMany({});
     });
 
     it('should handle large CSV files (1000 rows)', async () => {
