@@ -60,9 +60,6 @@ describe('Backup API integration', () => {
       }
     });
 
-    if (response.statusCode !== 200) {
-      console.error('Backup API error:', response.body);
-    }
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.success).toBe(true);

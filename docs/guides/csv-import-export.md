@@ -195,6 +195,112 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 
 **詳細**: [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
 
+### CSVインポート後の自動バックアップ（Phase 3）
+
+CSVインポート成功時に自動的にバックアップを実行できます。
+
+**設定例**:
+```json
+{
+  "csvImports": [
+    {
+      "id": "daily-employees-import",
+      "name": "毎日の従業員CSVインポート",
+      "schedule": "0 2 * * *",
+      "employeesPath": "/backups/csv/employees-YYYYMMDD.csv",
+      "enabled": true,
+      "autoBackupAfterImport": {
+        "enabled": true,
+        "targets": ["csv"]
+      }
+    }
+  ]
+}
+```
+
+**バックアップ対象**:
+- `csv`: CSVデータのみ（employees, items）
+- `database`: データベース全体
+- `all`: CSV + データベース
+
+**動作**:
+- CSVインポート成功時に自動的にバックアップを実行
+- バックアップ失敗時もインポート成功は維持（エラーログのみ記録）
+- バックアップ履歴が自動的に記録される
+
+### Dropboxからのバックアップリストア（Phase 3）
+
+Dropboxからバックアップをダウンロードしてリストアできます。
+
+**APIエンドポイント**: `POST /api/backup/restore/from-dropbox`
+
+**リクエスト例**:
+```json
+{
+  "backupPath": "/backups/database/2025-12-16T04-00-00-000Z/database",
+  "targetKind": "database",
+  "verifyIntegrity": true,
+  "expectedSize": 1024000,
+  "expectedHash": "sha256-hash-value"
+}
+```
+
+**パラメータ**:
+- `backupPath`: Dropbox上のバックアップファイルパス（必須）
+- `targetKind`: リストア対象の種類（`database`, `csv`、オプション）
+- `verifyIntegrity`: 整合性検証を実行するか（デフォルト: `true`）
+- `expectedSize`: 期待されるファイルサイズ（バイト、オプション）
+- `expectedHash`: 期待されるハッシュ値（SHA256、オプション）
+
+**認証**: 管理者権限（`ADMIN`）が必要
+
+**動作**:
+- Dropboxからバックアップファイルをダウンロード
+- 整合性検証（ファイルサイズ、ハッシュ値、形式）
+- データベースまたはCSVのリストアを実行
+- リストア履歴が自動的に記録される
+
+### バックアップ・リストア履歴（Phase 3）
+
+バックアップ・リストア実行履歴を確認できます。
+
+**APIエンドポイント**:
+- `GET /api/backup/history`: バックアップ履歴一覧取得（フィルタ・ページング対応）
+- `GET /api/backup/history/:id`: バックアップ履歴詳細取得
+
+**クエリパラメータ**（`GET /api/backup/history`）:
+- `operationType`: `BACKUP` または `RESTORE`
+- `targetKind`: バックアップ対象の種類（`database`, `csv`, `file`, `directory`, `image`）
+- `status`: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`
+- `startDate`: 開始日時（ISO 8601形式）
+- `endDate`: 終了日時（ISO 8601形式）
+- `offset`: オフセット（ページング）
+- `limit`: 取得件数（デフォルト: 100）
+
+**レスポンス例**:
+```json
+{
+  "history": [
+    {
+      "id": "uuid",
+      "operationType": "BACKUP",
+      "targetKind": "csv",
+      "targetSource": "employees",
+      "backupPath": "/backups/csv/2025-12-16T04-00-00-000Z/employees.csv",
+      "storageProvider": "dropbox",
+      "status": "COMPLETED",
+      "sizeBytes": 1024,
+      "hash": "sha256-hash-value",
+      "startedAt": "2025-12-16T04:00:00.000Z",
+      "completedAt": "2025-12-16T04:00:05.000Z"
+    }
+  ],
+  "total": 1,
+  "offset": 0,
+  "limit": 100
+}
+```
+
 ## 将来の拡張予定
 
 ### マスターデータエクスポート
