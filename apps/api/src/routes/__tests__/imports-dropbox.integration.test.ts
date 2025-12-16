@@ -312,7 +312,10 @@ describe('POST /api/imports/master/from-dropbox', () => {
       // モックを一時的に変更して大規模CSVを返す
       mockDownload.mockImplementationOnce(async () => largeCsv);
 
+      // メモリ使用量の計測開始
+      const memoryBefore = process.memoryUsage();
       const startTime = Date.now();
+      
       const response = await app.inject({
         method: 'POST',
         url: '/api/imports/master/from-dropbox',
@@ -324,7 +327,10 @@ describe('POST /api/imports/master/from-dropbox', () => {
           replaceExisting: false
         }
       });
+      
       const processingTime = Date.now() - startTime;
+      const memoryAfter = process.memoryUsage();
+      const memoryUsedMB = (memoryAfter.heapUsed - memoryBefore.heapUsed) / 1024 / 1024;
 
       expect(response.statusCode).toBe(200);
       const json = response.json() as { summary: Record<string, { processed: number }> };
@@ -333,6 +339,71 @@ describe('POST /api/imports/master/from-dropbox', () => {
       // 処理時間が30秒以内であることを確認（CIでは緩める）
       const maxTime = process.env.CI ? 60000 : 30000;
       expect(processingTime).toBeLessThan(maxTime);
+      
+      // メモリ使用量をログ出力（CIでは確認用）
+      console.log(`[1000行テスト] 処理時間: ${processingTime}ms, メモリ使用量: ${memoryUsedMB.toFixed(2)}MB`);
+    });
+
+    it('should handle very large CSV files (10000 rows)', async () => {
+      // CI環境ではスキップ（時間がかかりすぎる可能性がある）
+      if (process.env.CI && process.env.SKIP_LARGE_CSV_TEST === 'true') {
+        console.log('Skipping 10000 rows test in CI');
+        return;
+      }
+
+      // 1万行のCSVを生成
+      const csvRows = ['employeeCode,displayName'];
+      for (let i = 0; i < 10000; i++) {
+        const code = i.toString().padStart(4, '0');
+        csvRows.push(`${code},Employee-${code}`);
+      }
+      const veryLargeCsv = Buffer.from(csvRows.join('\n'));
+      
+      // モックを一時的に変更して大規模CSVを返す
+      mockDownload.mockImplementationOnce(async () => veryLargeCsv);
+
+      // メモリ使用量の計測開始
+      const memoryBefore = process.memoryUsage();
+      const startTime = Date.now();
+      
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/imports/master/from-dropbox',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          employeesPath: '/backups/csv/very-large-employees.csv',
+          replaceExisting: false
+        }
+      });
+      
+      const processingTime = Date.now() - startTime;
+      const memoryAfter = process.memoryUsage();
+      const memoryUsedMB = (memoryAfter.heapUsed - memoryBefore.heapUsed) / 1024 / 1024;
+      const memoryUsagePercent = (memoryAfter.heapUsed / memoryAfter.heapTotal) * 100;
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as { summary: Record<string, { processed: number }> };
+      expect(json.summary.employees?.processed).toBe(10000);
+      
+      // 処理時間が5分以内であることを確認（CIでは緩める）
+      const maxTime = process.env.CI ? 600000 : 300000; // 5分 = 300000ms
+      expect(processingTime).toBeLessThan(maxTime);
+      
+      // メモリ使用量をログ出力（CIでは確認用）
+      console.log(`[10000行テスト] 処理時間: ${processingTime}ms, メモリ使用量: ${memoryUsedMB.toFixed(2)}MB, ヒープ使用率: ${memoryUsagePercent.toFixed(2)}%`);
+      
+      // メモリ使用量がAPIコンテナの50%未満であることを確認（概算）
+      // 注意: 実際のコンテナメモリ制限は環境によって異なるため、警告として扱う
+      // CI環境ではスキップ（環境によってメモリ使用量が異なるため）
+      if (!process.env.CI) {
+        // ローカル環境では警告として扱う（70%未満を推奨）
+        if (memoryUsagePercent >= 70) {
+          console.warn(`[警告] メモリ使用率が高いです: ${memoryUsagePercent.toFixed(2)}% (推奨: 50%未満)`);
+        }
+        // 厳密なチェックは行わない（環境によって異なるため）
+      }
     });
   });
 });
