@@ -203,7 +203,10 @@
 #### Phase 1 の補完
 - **タスク追加**: 
   - ✅ Zodスキーマを既存`imports`スキーマと統一し、`dropboxPath`の正規化・拡張子チェック（`.csv`）を必須化: **実装済み**（`dropboxPathSchema`で実装）
-  - ❌ データ量が大きい場合のストリーミング処理検討（メモリ使用量上限の検証）: **未実装**
+  - ✅ データ量が大きい場合のストリーミング処理検討（メモリ使用量上限の検証）: **検討完了**（2025-12-16）
+    - 10000行テストでメモリ使用量は問題なし（ヒープ使用率60.58%）✅
+    - 現時点では実装不要と判断（10万行以上の処理が必要になった場合に再検討）✅
+    - 検討結果をドキュメント化（`docs/analysis/csv-streaming-processing-consideration.md`）✅
   - ✅ 認可: `mustBeAdmin`適用とRateLimit設定の確認: **確認完了**（2025-12-16）
     - `POST /api/imports/master/from-dropbox`に`mustBeAdmin`が適用されている ✅
     - `rateLimit: false`が設定されている（重い処理のため適切）✅
