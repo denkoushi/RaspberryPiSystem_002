@@ -23,6 +23,32 @@ vi.mock('../../backup/dropbox-oauth.service.js', () => ({
     refreshAccessTokenIfNeeded: vi.fn().mockResolvedValue(undefined)
   }))
 }));
+// BackupServiceのモック関数（テストで使用）
+const mockBackupServiceBackup = vi.fn().mockResolvedValue({ success: true, path: '/backups/test', sizeBytes: 1024, timestamp: new Date() });
+vi.mock('../../backup/backup.service.js', () => ({
+  BackupService: vi.fn().mockImplementation(() => ({
+    backup: mockBackupServiceBackup
+  }))
+}));
+// CsvBackupTargetのモック関数（テストで使用）
+const mockCsvBackupTarget = vi.fn();
+vi.mock('../../backup/targets/csv-backup.target.js', () => ({
+  CsvBackupTarget: vi.fn().mockImplementation(() => ({
+    info: { type: 'csv', source: 'employees' },
+    createBackup: vi.fn().mockResolvedValue(Buffer.from('test'))
+  }))
+}));
+vi.mock('../../backup/targets/database-backup.target.js', () => ({
+  DatabaseBackupTarget: vi.fn().mockImplementation(() => ({
+    info: { type: 'database', source: 'borrow_return' },
+    createBackup: vi.fn().mockResolvedValue(Buffer.from('test'))
+  }))
+}));
+vi.mock('../../backup/storage/local-storage.provider.js', () => ({
+  LocalStorageProvider: vi.fn().mockImplementation(() => ({
+    upload: vi.fn().mockResolvedValue(undefined)
+  }))
+}));
 
 // ImportHistoryServiceのモック（クリーンアップ機能の検証用）
 const mockCleanupOldHistory = vi.fn().mockResolvedValue(0);
@@ -227,7 +253,9 @@ describe('CsvImportScheduler', () => {
 
       vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
       vi.mocked(processCsvImport).mockResolvedValue({
-        employees: { processed: 1, created: 1, updated: 0 }
+        summary: {
+          employees: { processed: 1, created: 1, updated: 0 }
+        }
       } as any);
 
       await scheduler.start();
@@ -662,6 +690,159 @@ describe('CsvImportScheduler', () => {
         'test-history-id',
         expect.stringContaining('File not found')
       );
+    });
+  });
+
+  describe('自動バックアップ機能（Phase 3）', () => {
+    beforeEach(() => {
+      // モックをリセット
+      mockBackupServiceBackup.mockClear();
+      mockBackupServiceBackup.mockResolvedValue({ success: true, path: '/backups/test', sizeBytes: 1024, timestamp: new Date() });
+    });
+
+    it('should execute auto backup after successful CSV import when enabled', async () => {
+      const { CsvBackupTarget } = await import('../../backup/targets/csv-backup.target.js');
+
+      const { DropboxStorageProvider } = await import('../../backup/storage/dropbox-storage.provider.js');
+      vi.mocked(DropboxStorageProvider).mockImplementation(() => ({
+        download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
+      } as any));
+
+      vi.mocked(processCsvImport).mockResolvedValue({
+        summary: {
+          employees: { processed: 1, created: 1, updated: 0 }
+        }
+      } as any);
+
+      const mockConfig = {
+        storage: {
+          provider: 'dropbox' as const,
+          options: {
+            accessToken: 'dummy-token',
+            basePath: '/backups'
+          }
+        },
+        csvImports: [
+          {
+            id: 'test-auto-backup',
+            name: 'Test Import - Auto Backup',
+            employeesPath: '/backups/csv/employees-20251216.csv',
+            schedule: '0 4 * * *',
+            enabled: true,
+            replaceExisting: false,
+            autoBackupAfterImport: {
+              enabled: true,
+              targets: ['csv']
+            }
+          }
+        ]
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+      await scheduler.runImport('test-auto-backup');
+
+      // 自動バックアップが実行されたことを確認
+      expect(mockBackupServiceBackup).toHaveBeenCalled();
+      expect(CsvBackupTarget).toHaveBeenCalledWith('employees', expect.objectContaining({
+        label: expect.stringContaining('auto-after-import-test-auto-backup')
+      }));
+    });
+
+    it('should not execute auto backup when disabled', async () => {
+
+      const { DropboxStorageProvider } = await import('../../backup/storage/dropbox-storage.provider.js');
+      vi.mocked(DropboxStorageProvider).mockImplementation(() => ({
+        download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
+      } as any));
+
+      vi.mocked(processCsvImport).mockResolvedValue({
+        summary: {
+          employees: { processed: 1, created: 1, updated: 0 }
+        }
+      } as any);
+
+      const mockConfig = {
+        storage: {
+          provider: 'dropbox' as const,
+          options: {
+            accessToken: 'dummy-token',
+            basePath: '/backups'
+          }
+        },
+        csvImports: [
+          {
+            id: 'test-no-auto-backup',
+            name: 'Test Import - No Auto Backup',
+            employeesPath: '/backups/csv/employees-20251216.csv',
+            schedule: '0 4 * * *',
+            enabled: true,
+            replaceExisting: false,
+            autoBackupAfterImport: {
+              enabled: false,
+              targets: ['csv']
+            }
+          }
+        ]
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+      await scheduler.runImport('test-no-auto-backup');
+
+      // 自動バックアップが実行されなかったことを確認
+      expect(mockBackupServiceBackup).not.toHaveBeenCalled();
+    });
+
+    it('should continue import success even if auto backup fails', async () => {
+      mockBackupServiceBackup.mockRejectedValue(new Error('Backup failed'));
+
+      const { DropboxStorageProvider } = await import('../../backup/storage/dropbox-storage.provider.js');
+      vi.mocked(DropboxStorageProvider).mockImplementation(() => ({
+        download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
+      } as any));
+
+      vi.mocked(processCsvImport).mockResolvedValue({
+        summary: {
+          employees: { processed: 1, created: 1, updated: 0 }
+        }
+      } as any);
+
+      const mockConfig = {
+        storage: {
+          provider: 'dropbox' as const,
+          options: {
+            accessToken: 'dummy-token',
+            basePath: '/backups'
+          }
+        },
+        csvImports: [
+          {
+            id: 'test-backup-failure',
+            name: 'Test Import - Backup Failure',
+            employeesPath: '/backups/csv/employees-20251216.csv',
+            schedule: '0 4 * * *',
+            enabled: true,
+            replaceExisting: false,
+            autoBackupAfterImport: {
+              enabled: true,
+              targets: ['csv']
+            }
+          }
+        ]
+      };
+
+      vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
+
+      await scheduler.start();
+      
+      // バックアップ失敗でもインポートは成功する
+      await expect(scheduler.runImport('test-backup-failure')).resolves.not.toThrow();
+      
+      // バックアップが試行されたことを確認
+      expect(mockBackupServiceBackup).toHaveBeenCalled();
     });
   });
 

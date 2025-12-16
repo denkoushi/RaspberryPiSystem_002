@@ -3,6 +3,10 @@ import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { DropboxStorageProvider } from '../backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../backup/dropbox-oauth.service.js';
+import { LocalStorageProvider } from '../backup/storage/local-storage.provider.js';
+import { BackupService } from '../backup/backup.service.js';
+import { CsvBackupTarget } from '../backup/targets/csv-backup.target.js';
+import { DatabaseBackupTarget } from '../backup/targets/database-backup.target.js';
 import { logger } from '../../lib/logger.js';
 import { processCsvImport } from '../../routes/imports.js';
 import { ImportHistoryService } from './import-history.service.js';
@@ -115,6 +119,19 @@ export class CsvImportScheduler {
             { taskId, name: importSchedule.name },
             '[CsvImportScheduler] Scheduled CSV import completed'
           );
+
+          // 自動バックアップが有効な場合、バックアップを実行
+          if (importSchedule.autoBackupAfterImport?.enabled) {
+            try {
+              await this.executeAutoBackup(config, importSchedule, summary);
+            } catch (backupError) {
+              // バックアップ失敗はログに記録するが、インポート成功は維持
+              logger?.error(
+                { err: backupError, taskId, name: importSchedule.name },
+                '[CsvImportScheduler] Auto backup after import failed'
+              );
+            }
+          }
 
           // 成功した場合は連続失敗回数をリセット
           this.consecutiveFailures.delete(taskId);
@@ -323,6 +340,19 @@ export class CsvImportScheduler {
         { taskId: importId, name: importSchedule.name },
         '[CsvImportScheduler] Manual CSV import completed'
       );
+
+      // 自動バックアップが有効な場合、バックアップを実行
+      if (importSchedule.autoBackupAfterImport?.enabled) {
+        try {
+          await this.executeAutoBackup(config, importSchedule, summary);
+        } catch (backupError) {
+          // バックアップ失敗はログに記録するが、インポート成功は維持
+          logger?.error(
+            { err: backupError, taskId: importId, name: importSchedule.name },
+            '[CsvImportScheduler] Auto backup after import failed'
+          );
+        }
+      }
     } catch (error) {
       logger?.error(
         { err: error, taskId: importId, name: importSchedule.name },
@@ -457,6 +487,159 @@ export class CsvImportScheduler {
     );
 
     return summary;
+  }
+
+  /**
+   * CSVインポート成功後の自動バックアップを実行
+   */
+  private async executeAutoBackup(
+    config: BackupConfig,
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0],
+    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }
+  ): Promise<void> {
+    const autoBackupConfig = importSchedule.autoBackupAfterImport;
+    if (!autoBackupConfig?.enabled) {
+      return;
+    }
+
+    logger?.info(
+      { taskId: importSchedule.id, targets: autoBackupConfig.targets },
+      '[CsvImportScheduler] Starting auto backup after import'
+    );
+
+    // ストレージプロバイダーを作成
+    let storageProvider;
+    if (config.storage.provider === 'dropbox') {
+      const accessToken = config.storage.options?.accessToken as string | undefined;
+      const refreshToken = config.storage.options?.refreshToken as string | undefined;
+      const appKey = config.storage.options?.appKey as string | undefined;
+      const appSecret = config.storage.options?.appSecret as string | undefined;
+      const basePath = config.storage.options?.basePath as string | undefined;
+
+      if (!accessToken) {
+        throw new Error('Dropbox access token is required for auto backup');
+      }
+
+      // OAuthサービスを作成（トークン更新用）
+      let oauthService: DropboxOAuthService | undefined;
+      if (refreshToken && appKey && appSecret) {
+        oauthService = new DropboxOAuthService({
+          appKey,
+          appSecret,
+          redirectUri: 'http://localhost:8080/api/backup/oauth/callback'
+        });
+      }
+
+      // トークン更新コールバック
+      const onTokenUpdate = async (token: string) => {
+        const latestConfig = await BackupConfigLoader.load();
+        if (latestConfig.storage.provider === 'dropbox') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            accessToken: token
+          };
+          await BackupConfigLoader.save(latestConfig);
+          logger?.info({}, '[CsvImportScheduler] Access token updated during auto backup');
+        }
+      };
+
+      storageProvider = new DropboxStorageProvider({
+        accessToken,
+        basePath,
+        refreshToken,
+        oauthService,
+        onTokenUpdate
+      });
+    } else {
+      storageProvider = new LocalStorageProvider();
+    }
+
+    const backupService = new BackupService(storageProvider);
+
+    // バックアップ対象に基づいてバックアップを実行
+    const backupResults = [];
+    for (const target of autoBackupConfig.targets) {
+      try {
+        if (target === 'csv') {
+          // CSVバックアップ: インポートされたデータのみ
+          if (importSummary.employees) {
+            const employeesBackup = new CsvBackupTarget('employees', {
+              label: `auto-after-import-${importSchedule.id}`
+            });
+            const result = await backupService.backup(employeesBackup, {
+              label: `auto-after-import-${importSchedule.id}-employees`
+            });
+            backupResults.push(result);
+            logger?.info(
+              { taskId: importSchedule.id, target: 'employees', result },
+              '[CsvImportScheduler] Auto backup completed for employees'
+            );
+          }
+          if (importSummary.items) {
+            const itemsBackup = new CsvBackupTarget('items', {
+              label: `auto-after-import-${importSchedule.id}`
+            });
+            const result = await backupService.backup(itemsBackup, {
+              label: `auto-after-import-${importSchedule.id}-items`
+            });
+            backupResults.push(result);
+            logger?.info(
+              { taskId: importSchedule.id, target: 'items', result },
+              '[CsvImportScheduler] Auto backup completed for items'
+            );
+          }
+        } else if (target === 'database') {
+          // データベースバックアップ
+          const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
+          const databaseBackup = new DatabaseBackupTarget(dbUrl);
+          const result = await backupService.backup(databaseBackup, {
+            label: `auto-after-import-${importSchedule.id}-database`
+          });
+          backupResults.push(result);
+          logger?.info(
+            { taskId: importSchedule.id, target: 'database', result },
+            '[CsvImportScheduler] Auto backup completed for database'
+          );
+        } else if (target === 'all') {
+          // すべてのバックアップ: CSV + データベース
+          if (importSummary.employees) {
+            const employeesBackup = new CsvBackupTarget('employees', {
+              label: `auto-after-import-${importSchedule.id}`
+            });
+            const result = await backupService.backup(employeesBackup, {
+              label: `auto-after-import-${importSchedule.id}-employees`
+            });
+            backupResults.push(result);
+          }
+          if (importSummary.items) {
+            const itemsBackup = new CsvBackupTarget('items', {
+              label: `auto-after-import-${importSchedule.id}`
+            });
+            const result = await backupService.backup(itemsBackup, {
+              label: `auto-after-import-${importSchedule.id}-items`
+            });
+            backupResults.push(result);
+          }
+          const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
+          const databaseBackup = new DatabaseBackupTarget(dbUrl);
+          const result = await backupService.backup(databaseBackup, {
+            label: `auto-after-import-${importSchedule.id}-database`
+          });
+          backupResults.push(result);
+        }
+      } catch (error) {
+        logger?.error(
+          { err: error, taskId: importSchedule.id, target },
+          '[CsvImportScheduler] Auto backup failed for target'
+        );
+        // 個別のバックアップ失敗は続行（他のバックアップは実行）
+      }
+    }
+
+    logger?.info(
+      { taskId: importSchedule.id, results: backupResults },
+      '[CsvImportScheduler] Auto backup after import completed'
+    );
   }
 }
 

@@ -33,6 +33,10 @@ export const BackupConfigSchema = z.object({
     schedule: z.string(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
     replaceExisting: z.boolean().default(false), // 既存データを置き換えるか
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false), // 自動バックアップを有効にするか
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv']) // バックアップ対象（csv: CSVのみ、database: データベースのみ、all: すべて）
+    }).optional().default({ enabled: false, targets: ['csv'] }),
     metadata: z.record(z.unknown()).optional()
   })).optional().default([]),
   csvImportHistory: z.object({

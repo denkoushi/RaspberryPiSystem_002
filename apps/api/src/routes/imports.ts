@@ -885,7 +885,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
     schedule: z.string().min(1, 'スケジュール（cron形式）は必須です'),
     enabled: z.boolean().optional().default(true),
-    replaceExisting: z.boolean().optional().default(false)
+    replaceExisting: z.boolean().optional().default(false),
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false),
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional().default({ enabled: false, targets: ['csv'] })
   }).refine((data) => data.employeesPath || data.itemsPath, {
     message: 'employeesPath または itemsPath のいずれかを指定してください'
   });
@@ -908,7 +912,8 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       itemsPath: body.itemsPath,
       schedule: body.schedule,
       enabled: body.enabled ?? true,
-      replaceExisting: body.replaceExisting ?? false
+      replaceExisting: body.replaceExisting ?? false,
+      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
     };
 
     config.csvImports = [...(config.csvImports || []), newSchedule];
@@ -931,7 +936,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
     schedule: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
-    replaceExisting: z.boolean().optional()
+    replaceExisting: z.boolean().optional(),
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false),
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional()
   }).refine((data) => !data.employeesPath && !data.itemsPath || data.employeesPath || data.itemsPath, {
     message: 'employeesPath または itemsPath のいずれかを指定してください'
   });
@@ -953,7 +962,9 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const updatedSchedule = {
       ...existingSchedule,
       ...body,
-      id // IDは変更不可
+      id, // IDは変更不可
+      // autoBackupAfterImportが指定されていない場合は既存の値を保持
+      autoBackupAfterImport: body.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
     };
 
     config.csvImports![scheduleIndex] = updatedSchedule;
