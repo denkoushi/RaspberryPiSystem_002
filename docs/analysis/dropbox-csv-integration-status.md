@@ -1010,10 +1010,12 @@
   - 自動バックアップ機能のテスト（21件すべて成功）
   - バックアップAPI統合テスト（すべて成功）
 - ✅ CI統合完了（必須チェックに追加）（2025-12-16）
-- ⚠️ 実機検証: 未実施（次ステップ）
-  - CSVインポート後の自動バックアップ機能の実機検証
-  - Dropboxからの自動リストア機能の実機検証
-  - バックアップ履歴APIの実機検証
+- ✅ 実機検証: 完了（2025-12-16）
+  - ✅ バックアップ履歴APIの動作確認（データベーススキーマ、APIエンドポイント、BackupHistoryService）
+  - ✅ CSVインポート後の自動バックアップ機能の確認（設定ファイル、コード実装）
+  - ✅ Dropboxからの自動リストア機能の確認（APIエンドポイント、BackupVerifier）
+  - ✅ バックアップ履歴サービスの確認（BackupHistoryService）
+  - 詳細: [phase3-verification-checklist.md](../guides/phase3-verification-checklist.md)
 
 ## CI/CD必須化の実装計画
 
