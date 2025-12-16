@@ -2,7 +2,13 @@
 
 ## 概要
 
-本システムでは、USBメモリ経由でマスターデータ（従業員・工具）を一括インポートできます。また、トランザクション履歴をCSV形式でエクスポートできます。
+本システムでは、以下の方法でマスターデータ（従業員・工具）を一括インポートできます：
+
+1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード
+2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）
+3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート
+
+また、トランザクション履歴をCSV形式でエクスポートできます。
 
 ## CSVインポート仕様
 
@@ -135,6 +141,60 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 3. 「CSVエクスポート」ボタンをクリック
 4. `transactions.csv`がダウンロードされます
 
+## DropboxからのCSVインポート
+
+### 手動実行
+
+管理画面からDropbox経由でCSVをインポートできます。
+
+**APIエンドポイント**: `POST /api/imports/master/from-dropbox`
+
+**リクエスト例**:
+```json
+{
+  "employeesPath": "/backups/csv/employees-20251216.csv",
+  "itemsPath": "/backups/csv/items-20251216.csv",
+  "replaceExisting": false
+}
+```
+
+**認証**: 管理者権限（`ADMIN`）が必要
+
+### スケジュール実行
+
+設定ファイル（`backup.json`）でスケジュールを設定すると、自動的にDropboxからCSVを取得してインポートします。
+
+**設定例**:
+```json
+{
+  "csvImports": [
+    {
+      "id": "daily-employees-import",
+      "name": "毎日の従業員CSVインポート",
+      "schedule": "0 2 * * *",
+      "timezone": "Asia/Tokyo",
+      "employeesPath": "/backups/csv/employees-YYYYMMDD.csv",
+      "replaceExisting": false,
+      "enabled": true
+    }
+  ]
+}
+```
+
+**詳細**: [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
+
+### インポート履歴
+
+スケジュール実行や手動実行の履歴を確認できます。
+
+**APIエンドポイント**:
+- `GET /api/imports/history`: 全履歴取得（フィルタ・ページング対応）
+- `GET /api/imports/schedule/:id/history`: 特定スケジュールの履歴取得
+- `GET /api/imports/history/failed`: 失敗した履歴のみ取得
+- `GET /api/imports/history/:historyId`: 詳細履歴取得
+
+**詳細**: [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+
 ## 将来の拡張予定
 
 ### マスターデータエクスポート
@@ -149,5 +209,8 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 ## 関連ドキュメント
 
 - [デプロイメントガイド](./deployment.md)
+- [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
+- [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+- [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-003-p2002エラーnfctaguidの重複が発生する)
 
