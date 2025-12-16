@@ -13,6 +13,7 @@ import { ImportAlertService } from './import-alert.service.js';
  */
 export class CsvImportScheduler {
   private tasks: Map<string, cron.ScheduledTask> = new Map();
+  private cleanupTask: cron.ScheduledTask | null = null;
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
