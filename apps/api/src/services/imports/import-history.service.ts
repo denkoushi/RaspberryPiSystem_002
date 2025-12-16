@@ -119,6 +119,64 @@ export class ImportHistoryService {
   }
 
   /**
+   * フィルタ/ページング付きでインポート履歴を取得
+   */
+  async getHistoryWithFilter(params: {
+    status?: ImportStatus;
+    scheduleId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    offset?: number;
+    limit?: number;
+  }) {
+    const {
+      status,
+      scheduleId,
+      startDate,
+      endDate,
+      offset = 0,
+      limit = 100
+    } = params;
+
+    const where: Prisma.CsvImportHistoryWhereInput = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (scheduleId) {
+      where.scheduleId = scheduleId;
+    }
+
+    if (startDate || endDate) {
+      where.startedAt = {};
+      if (startDate) {
+        where.startedAt.gte = startDate;
+      }
+      if (endDate) {
+        where.startedAt.lte = endDate;
+      }
+    }
+
+    const [histories, total] = await Promise.all([
+      prisma.csvImportHistory.findMany({
+        where,
+        orderBy: { startedAt: 'desc' },
+        skip: offset,
+        take: limit
+      }),
+      prisma.csvImportHistory.count({ where })
+    ]);
+
+    return {
+      histories,
+      total,
+      offset,
+      limit
+    };
+  }
+
+  /**
    * 古い履歴を削除（保持期間を超えた履歴）
    */
   async cleanupOldHistory(retentionDays: number = 90): Promise<number> {

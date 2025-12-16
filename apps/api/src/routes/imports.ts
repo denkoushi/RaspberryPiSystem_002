@@ -13,7 +13,7 @@ import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 
-const { EmployeeStatus, ItemStatus } = pkg;
+const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
@@ -1025,56 +1025,121 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // === CSVインポート履歴API ===
-  // 注意: マイグレーション実行後に有効化（Prisma ClientにcsvImportHistoryモデルが追加されるまで）
   
-  // 履歴一覧取得（全スケジュール）
-  // app.get('/imports/history', { preHandler: mustBeAdmin }, async (request) => {
-  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
-  //   const historyService = new ImportHistoryService();
-  //   
-  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
-  //   const histories = await historyService.getAllHistory(limit);
-  //   
-  //   return { histories };
-  // });
+  // 履歴一覧取得（フィルタ/ページング対応）
+  app.get('/imports/history', { preHandler: mustBeAdmin }, async (request) => {
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      status?: string;
+      scheduleId?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const status = (query.status && Object.values(ImportStatus).includes(query.status as any)) 
+      ? (query.status as typeof ImportStatus[keyof typeof ImportStatus])
+      : undefined;
+    const scheduleId = query.scheduleId;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      status,
+      scheduleId,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
 
-  // スケジュールIDで履歴取得
-  // app.get('/imports/schedule/:id/history', { preHandler: mustBeAdmin }, async (request) => {
-  //   const { id } = request.params as { id: string };
-  //   
-  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
-  //   const historyService = new ImportHistoryService();
-  //   
-  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
-  //   const histories = await historyService.getHistoryByScheduleId(id, limit);
-  //   
-  //   return { histories };
-  // });
+  // スケジュールIDで履歴取得（フィルタ/ページング対応）
+  app.get('/imports/schedule/:id/history', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const status = (query.status && Object.values(ImportStatus).includes(query.status as any)) 
+      ? (query.status as typeof ImportStatus[keyof typeof ImportStatus])
+      : undefined;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      scheduleId: id,
+      status,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
 
-  // 失敗した履歴取得
-  // app.get('/imports/history/failed', { preHandler: mustBeAdmin }, async (request) => {
-  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
-  //   const historyService = new ImportHistoryService();
-  //   
-  //   const limit = parseInt((request.query as { limit?: string })?.limit || '100', 10);
-  //   const histories = await historyService.getFailedHistory(limit);
-  //   
-  //   return { histories };
-  // });
+  // 失敗した履歴取得（フィルタ/ページング対応）
+  app.get('/imports/history/failed', { preHandler: mustBeAdmin }, async (request) => {
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      scheduleId?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const scheduleId = query.scheduleId;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      status: ImportStatus.FAILED,
+      scheduleId,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
 
   // 履歴詳細取得
-  // app.get('/imports/history/:historyId', { preHandler: mustBeAdmin }, async (request) => {
-  //   const { historyId } = request.params as { historyId: string };
-  //   
-  //   const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
-  //   const historyService = new ImportHistoryService();
-  //   
-  //   const history = await historyService.getHistory(historyId);
-  //   
-  //   if (!history) {
-  //     throw new ApiError(404, `履歴が見つかりません: ${historyId}`);
-  //   }
-  //   
-  //   return { history };
-  // });
+  app.get('/imports/history/:historyId', { preHandler: mustBeAdmin }, async (request) => {
+    const { historyId } = request.params as { historyId: string };
+    
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const history = await historyService.getHistory(historyId);
+    
+    if (!history) {
+      throw new ApiError(404, `履歴が見つかりません: ${historyId}`);
+    }
+    
+    return { history };
+  });
 }
