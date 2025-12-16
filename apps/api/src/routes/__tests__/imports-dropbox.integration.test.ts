@@ -59,10 +59,6 @@ describe('POST /api/imports/master/from-dropbox', () => {
   });
 
   beforeEach(async () => {
-    // テストデータをクリーンアップ（テストの独立性を保つため）
-    await prisma.employee.deleteMany({});
-    await prisma.item.deleteMany({});
-    
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
@@ -305,6 +301,12 @@ describe('POST /api/imports/master/from-dropbox', () => {
   });
 
   describe('大規模CSV処理', () => {
+    beforeEach(async () => {
+      // 大規模CSVテストの前にデータをクリーンアップ（テストの独立性を保つため）
+      await prisma.employee.deleteMany({});
+      await prisma.item.deleteMany({});
+    });
+
     it('should handle large CSV files (1000 rows)', async () => {
       // 1000行のCSVを生成
       const csvRows = ['employeeCode,displayName'];
