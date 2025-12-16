@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
 import { createTestUser } from './helpers.js';
+import { prisma } from '../../lib/prisma.js';
 
 // モック: BackupConfigLoader → Dropbox設定を返す
 vi.mock('../../services/backup/backup-config.loader.js', () => {
@@ -58,6 +59,10 @@ describe('POST /api/imports/master/from-dropbox', () => {
   });
 
   beforeEach(async () => {
+    // テストデータをクリーンアップ（テストの独立性を保つため）
+    await prisma.employee.deleteMany({});
+    await prisma.item.deleteMany({});
+    
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
@@ -350,6 +355,9 @@ describe('POST /api/imports/master/from-dropbox', () => {
         console.log('Skipping 10000 rows test in CI');
         return;
       }
+
+      // テストデータをクリーンアップ（大規模テストの前に確実にクリーンな状態にする）
+      await prisma.employee.deleteMany({});
 
       // 1万行のCSVを生成
       const csvRows = ['employeeCode,displayName'];
