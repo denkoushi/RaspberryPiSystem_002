@@ -68,6 +68,12 @@ export function AdminLayout() {
           <NavLink to="/admin/import" className={linkClass}>
             一括登録
           </NavLink>
+          <NavLink to="/admin/imports/schedule" className={linkClass}>
+            CSVインポート
+          </NavLink>
+          <NavLink to="/admin/backup/history" className={linkClass}>
+            バックアップ
+          </NavLink>
           <NavLink to="/admin/signage/schedules" className={linkClass}>
             サイネージ
           </NavLink>

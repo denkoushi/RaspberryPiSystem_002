@@ -4,7 +4,10 @@ import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
+import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
+import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { ClientsPage } from './pages/admin/ClientsPage';
+import { CsvImportSchedulePage } from './pages/admin/CsvImportSchedulePage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { MasterImportPage } from './pages/admin/MasterImportPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
@@ -63,6 +66,13 @@ function App() {
         <Route path="clients" element={<ClientsPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="import" element={<MasterImportPage />} />
+        <Route path="backup">
+          <Route path="history" element={<BackupHistoryPage />} />
+          <Route path="restore" element={<BackupRestorePage />} />
+        </Route>
+        <Route path="imports">
+          <Route path="schedule" element={<CsvImportSchedulePage />} />
+        </Route>
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />
           <Route path="pdfs" element={<SignagePdfsPage />} />
