@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import cron, { validate } from 'node-cron';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { DropboxStorageProvider } from '../backup/storage/dropbox-storage.provider.js';
@@ -55,6 +55,24 @@ export class CsvImportScheduler {
       const existingTask = this.tasks.get(taskId);
       if (existingTask) {
         existingTask.stop();
+      }
+
+      // cron形式のバリデーション（無効な形式の場合はスキップ）
+      try {
+        // node-cronのバリデーションを試行
+        if (!validate(importSchedule.schedule)) {
+          logger?.warn(
+            { taskId, name: importSchedule.name, schedule: importSchedule.schedule },
+            '[CsvImportScheduler] Invalid cron schedule format, skipping'
+          );
+          continue;
+        }
+      } catch (error) {
+        logger?.warn(
+          { err: error, taskId, name: importSchedule.name, schedule: importSchedule.schedule },
+          '[CsvImportScheduler] Invalid cron schedule format, skipping'
+        );
+        continue;
       }
 
       // 新しいタスクを作成
