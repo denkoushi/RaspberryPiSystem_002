@@ -880,26 +880,31 @@
    - モジュール化・疎結合・スケーラビリティが実現されている
    - Dropbox統合も完了し、OAuth 2.0による自動トークン更新も実装済み
 
-2. **PowerAutomate経由でのCSV取得機能**: ❌ **未実装**
-   - 評価ドキュメントは存在するが、実装は未着手
-   - CSVインポート機能とDropbox統合の連携も未実装
+2. **DropboxからのCSV取得機能**: ✅ **実装完了**
+   - Phase 1: DropboxからCSVをダウンロードしてインポートする機能を実装完了（2025-12-15）
+   - Phase 2: スケジュール実行機能を実装完了（2025-12-16）
+   - 実機検証も完了し、正常に動作することを確認
 
-3. **モジュール化・疎結合の状態**:
+3. **PowerAutomate経由でのCSV取得機能**: ⚠️ **Pi5側は完了、PowerAutomate側は未着手**
+   - Pi5側の実装は完了（DropboxからCSVを取得してインポート可能）
+   - PowerAutomate側の実装は別途実施が必要（SharePointリストからCSV出力し、Dropboxに保存）
+
+4. **モジュール化・疎結合の状態**:
    - バックアップ機能: ✅ 完了
-   - CSVインポート機能: ⚠️ 部分的（Dropbox統合は未実装）
-   - PowerAutomate統合: ❌ 未実装
+   - CSVインポート機能: ✅ 完了（Dropbox統合も実装済み）
+   - PowerAutomate統合: ⚠️ Pi5側完了、PowerAutomate側未着手
 
 ### 推奨展開
 
-1. **Phase 1（優先度: 高）**: CSVインポート機能とDropbox統合の連携
-   - DropboxからCSVをダウンロードしてインポートする機能を実装
+1. **Phase 1（優先度: 高）**: CSVインポート機能とDropbox統合の連携 ✅ **完了**
+   - DropboxからCSVをダウンロードしてインポートする機能を実装完了（2025-12-15）
    - PowerAutomate統合の基盤となる
 
-2. **Phase 2（優先度: 中）**: PowerAutomate統合の実装
-   - SharePointリストからPowerAutomateでCSV出力し、Dropboxに保存
-   - Pi5がDropboxからCSVを取得してインポート
+2. **Phase 2（優先度: 中）**: PowerAutomate統合の実装 ⚠️ **Pi5側完了、PowerAutomate側未着手**
+   - Pi5側: スケジュール実行機能を実装完了（2025-12-16）
+   - PowerAutomate側: SharePointリストからCSV出力し、Dropboxに保存（別途実施が必要）
 
-3. **Phase 3（優先度: 低）**: 統合機能の拡張
+3. **Phase 3（優先度: 低）**: 統合機能の拡張 ❌ **未着手**
    - CSVインポート後の自動バックアップ
    - バックアップからの自動リストア
 
