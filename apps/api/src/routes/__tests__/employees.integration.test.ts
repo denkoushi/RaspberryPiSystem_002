@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestItem, createTestLoan, createTestUser } from './helpers.js';
 import { randomUUID } from 'node:crypto';
+import { prisma } from '../../lib/prisma.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -21,6 +22,8 @@ describe('GET /api/tools/employees', () => {
   });
 
   beforeEach(async () => {
+    // テストの独立性を保つため、Employeeテーブルをクリーンアップ
+    await prisma.employee.deleteMany({});
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
     const viewer = await createTestUser('VIEWER');
@@ -93,6 +96,8 @@ describe('POST /api/tools/employees', () => {
   });
 
   beforeEach(async () => {
+    // テストの独立性を保つため、Employeeテーブルをクリーンアップ
+    await prisma.employee.deleteMany({});
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
@@ -158,6 +163,8 @@ describe('DELETE /api/tools/employees/:id', () => {
   });
 
   beforeEach(async () => {
+    // テストの独立性を保つため、Employeeテーブルをクリーンアップ
+    await prisma.employee.deleteMany({});
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
     const manager = await createTestUser('MANAGER');
