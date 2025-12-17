@@ -64,9 +64,9 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
     <div className="h-full flex flex-col">
       <Card title="持出一覧" className="h-full flex flex-col">
         {loansQuery.isError ? (
-          <p className="text-red-400">返却一覧の取得に失敗しました</p>
+          <p className="text-sm font-semibold text-red-400">返却一覧の取得に失敗しました</p>
         ) : loansQuery.isLoading ? (
-          <p>読み込み中...</p>
+          <p className="text-sm text-slate-200">読み込み中...</p>
         ) : loansQuery.data && loansQuery.data.length > 0 ? (
           <div className="flex-1 overflow-y-auto min-h-0 -mx-4 px-4">
             <ul className="grid grid-cols-5 gap-2">
@@ -84,12 +84,12 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               const isRigging = Boolean(loan.riggingGear);
 
               const baseCardClass = isOverdue
-                ? 'border-red-500/50 bg-red-500/10'
+                ? 'border-2 border-red-700 bg-red-600 text-white shadow-lg'
                 : isRigging
-                  ? 'border-amber-400/50 bg-amber-300/20'
+                  ? 'border-2 border-orange-700 bg-orange-500 text-white shadow-lg'
                   : isInstrument
-                    ? 'border-indigo-400/40 bg-indigo-900/40'
-                    : 'border-white/10 bg-white/5';
+                    ? 'border-2 border-purple-800 bg-purple-600 text-white shadow-lg'
+                    : 'border-2 border-blue-700 bg-blue-500 text-white shadow-lg';
 
               return (
                 <li
@@ -116,38 +116,49 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                     <div className="flex-1 min-w-0">
                       {isInstrument ? (
                         <>
-                          <p className={`text-xs font-semibold truncate ${isOverdue ? 'text-red-300' : 'text-indigo-100'}`}>
-                            {loan.measuringInstrument?.managementNumber ?? '管理番号なし'}
-                          </p>
-                          <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-300' : 'text-white'}`}>
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-sm">📏</span>
+                            <p className={`text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
+                              {loan.measuringInstrument?.managementNumber ?? '管理番号なし'}
+                            </p>
+                          </div>
+                          <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
                             {loan.measuringInstrument?.name ?? '計測機器'}
                           </p>
                         </>
                       ) : isRigging ? (
                         <>
-                          <p className={`text-xs font-semibold truncate ${isOverdue ? 'text-red-500' : 'text-amber-900'}`}>
-                            {loan.riggingGear?.managementNumber ?? '管理番号なし'}
-                          </p>
-                          <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-500' : 'text-amber-950'}`}>
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-sm">⚙️</span>
+                            <p className={`text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
+                              {loan.riggingGear?.managementNumber ?? '管理番号なし'}
+                            </p>
+                          </div>
+                          <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
                             {loan.riggingGear?.name ?? '吊具'}
                           </p>
                         </>
                       ) : (
-                        <p className={`text-sm font-semibold truncate ${isOverdue ? 'text-red-400' : ''}`}>
-                          {loan.item?.name ?? (
-                            <span className="text-xs text-white/50">
-                              {loan.photoUrl ? '写真撮影モード' : 'アイテム'}
-                            </span>
-                          )}
-                        </p>
+                        <>
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-sm">🔧</span>
+                            <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
+                              {loan.item?.name ?? (
+                                <span className="text-sm text-white/90">
+                                  {loan.photoUrl ? '写真撮影モード' : 'アイテム'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </>
                       )}
-                      <p className={`text-xs ${isOverdue ? 'text-red-300' : 'text-white/70'}`}>
+                      <p className={`text-sm font-semibold mt-1 ${isOverdue ? 'text-red-200' : 'text-white/95'}`}>
                         {loan.employee?.displayName ?? '従業員情報なし'}
                       </p>
-                      <p className={`text-xs ${isOverdue ? 'text-red-300' : 'text-white/50'}`}>
+                      <p className={`text-sm mt-1 ${isOverdue ? 'text-red-200' : 'text-white/90'}`}>
                         {borrowedAt.toLocaleString()}
                         {isOverdue && (
-                          <span className="ml-2 font-semibold text-red-400">⚠ 期限超過</span>
+                          <span className="ml-2 font-bold text-red-200">⚠ 期限超過</span>
                         )}
                       </p>
                     </div>
@@ -156,7 +167,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                     <Button
                       onClick={() => handleReturn(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
-                      className="text-xs px-3 py-1 h-auto"
+                      className="text-sm font-semibold px-3 py-1 h-auto"
                     >
                       {returnMutation.isPending ? '送信中…' : '返却'}
                     </Button>
@@ -164,7 +175,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                       onClick={() => handleCancel(loan.id)}
                       disabled={returnMutation.isPending || cancelMutation.isPending}
                       variant="ghost"
-                      className="text-xs px-3 py-1 h-auto text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
+                      className="text-sm font-semibold px-3 py-1 h-auto text-white/90 hover:text-white hover:bg-white/20"
                     >
                       {cancelMutation.isPending ? '取消中…' : '取消'}
                     </Button>
@@ -173,10 +184,10 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               );
             })}
             </ul>
-            {loansQuery.isFetching ? <p className="text-xs text-white/60">更新中...</p> : null}
+            {loansQuery.isFetching ? <p className="text-sm text-white/80">更新中...</p> : null}
           </div>
         ) : (
-          <p>現在貸出中のアイテムはありません。</p>
+          <p className="text-sm text-slate-200">現在貸出中のアイテムはありません。</p>
         )}
       </Card>
 

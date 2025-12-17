@@ -264,11 +264,11 @@ export function KioskBorrowPage() {
             <div className="flex justify-center gap-4">
               <Button onClick={handleReset}>リセット</Button>
             </div>
-            {state.context.error ? <p className="text-red-400">{state.context.error}</p> : null}
+            {state.context.error ? <p className="text-sm font-semibold text-red-400">{state.context.error}</p> : null}
             {state.context.loan ? (
-              <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
-                <p className="text-lg font-semibold text-emerald-300">登録完了</p>
-                <p>
+              <div className="rounded-lg border-2 border-emerald-700 bg-emerald-600 p-4 text-left text-white shadow-lg">
+                <p className="text-lg font-bold">登録完了</p>
+                <p className="text-base font-semibold mt-1">
                   {state.context.loan.item?.name ?? 'アイテム情報なし'} を {state.context.loan.employee.displayName} さんが持出済み
                 </p>
               </div>
@@ -287,11 +287,13 @@ export function KioskBorrowPage() {
 function StepCard({ title, value, active }: { title: string; value?: string; active: boolean }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        active ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 text-white/70'
+      className={`rounded-xl border-2 p-4 shadow-lg ${
+        active
+          ? 'border-emerald-400 bg-emerald-600 text-white'
+          : 'border-white/20 bg-white/10 text-white/80'
       }`}
     >
-      <p className="text-sm">{title}</p>
+      <p className="text-sm font-semibold">{title}</p>
       <p className="mt-2 text-xl font-bold">{value ?? '---'}</p>
     </div>
   );
