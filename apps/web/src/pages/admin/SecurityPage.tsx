@@ -100,11 +100,11 @@ export function SecurityPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="text-xl font-semibold text-white">MFA（多要素認証）設定</h2>
-        <p className="text-sm text-white/70">
+        <h2 className="text-xl font-bold text-slate-900">MFA（多要素認証）設定</h2>
+        <p className="text-sm font-semibold text-slate-700">
           管理画面ログインにワンタイムコードを追加します。TOTPアプリ（例: Google Authenticator）に登録し、バックアップコードを保管してください。
         </p>
-        <div className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-300 bg-slate-100 p-4 shadow-lg">
           <div className="flex gap-3">
             <Button onClick={handleInitiate} disabled={loading}>
               セットアップ情報を生成
@@ -116,19 +116,19 @@ export function SecurityPage() {
             )}
           </div>
           {mfaSecret ? (
-            <div className="space-y-2 text-sm text-white/80">
+            <div className="space-y-2 text-sm font-semibold text-slate-700">
               <p>
-                シークレットキー: <span className="font-mono">{mfaSecret}</span>
+                シークレットキー: <span className="font-mono text-slate-900">{mfaSecret}</span>
               </p>
               <p>
-                otpauth URL: <span className="font-mono break-all">{otpauthUrl}</span>
+                otpauth URL: <span className="font-mono break-all text-slate-900">{otpauthUrl}</span>
               </p>
               {backupCodes.length > 0 && (
                 <div>
-                  <p className="font-semibold">バックアップコード（紙などに保管）</p>
-                  <ul className="grid grid-cols-2 gap-2 text-white/80">
+                  <p className="font-bold text-slate-900">バックアップコード（紙などに保管）</p>
+                  <ul className="grid grid-cols-2 gap-2">
                     {backupCodes.map((code) => (
-                      <li key={code} className="font-mono rounded bg-slate-800 px-2 py-1">
+                      <li key={code} className="font-mono rounded border-2 border-slate-300 bg-white px-2 py-1 text-slate-900 shadow-lg">
                         {code}
                       </li>
                     ))}
@@ -136,7 +136,7 @@ export function SecurityPage() {
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-white/70">
+                <label className="text-sm font-semibold text-slate-700">
                   認証アプリに表示された6桁コード
                   <Input
                     value={codeInput}
@@ -151,8 +151,8 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <div className="space-y-2 text-sm text-white/80">
-            <label className="text-sm text-white/70">
+          <div className="space-y-2 text-sm font-semibold text-slate-700">
+            <label className="text-sm font-semibold text-slate-700">
               MFA無効化（パスワード確認）
               <Input
                 type="password"

@@ -29,7 +29,7 @@ export function MasterImportPage() {
     <div className="space-y-6">
       <Card title="USB 一括登録">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <p className="text-sm text-white/70">
+          <p className="text-sm font-semibold text-slate-700">
             USBメモリ上の `employees.csv` と `items.csv` をPCにコピーした後、以下から選択してアップロードしてください。
             <br />
             CSVはUTF-8、1行1レコード、ヘッダー必須です。
@@ -39,24 +39,24 @@ export function MasterImportPage() {
             <strong>工具CSV</strong>: itemCode（必須・TO + 数字4桁、例: TO0001）, name（必須・工具名）, nfcTagUid（任意）, category（任意）, storageLocation（任意）, status（任意）, notes（任意）
           </p>
           <label className="block">
-            <span className="text-sm text-white/70">従業員CSV（任意）</span>
+            <span className="text-sm font-semibold text-slate-700">従業員CSV（任意）</span>
             <input
               type="file"
               accept=".csv"
-              className="mt-1 block w-full text-sm text-white/80"
+              className="mt-1 block w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
               onChange={(e) => setEmployeesFile(e.target.files?.[0] ?? null)}
             />
           </label>
           <label className="block">
-            <span className="text-sm text-white/70">アイテムCSV（任意）</span>
+            <span className="text-sm font-semibold text-slate-700">アイテムCSV（任意）</span>
             <input
               type="file"
               accept=".csv"
-              className="mt-1 block w-full text-sm text-white/80"
+              className="mt-1 block w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
               onChange={(e) => setItemsFile(e.target.files?.[0] ?? null)}
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-white/80">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
               checked={replaceExisting}
@@ -68,17 +68,17 @@ export function MasterImportPage() {
             {importMutation.isPending ? '取り込み中…' : '取り込み開始'}
           </Button>
           {importMutation.error ? (
-            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
-              <p className="font-semibold">エラー</p>
-              <p className="mt-1">
+            <div className="rounded-lg border-2 border-red-700 bg-red-600 p-4 text-sm text-white shadow-lg">
+              <p className="font-bold">エラー</p>
+              <p className="mt-1 font-semibold">
                 {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data?.message
                   ? importMutation.error.response.data.message
                   : (importMutation.error as Error).message || '取り込みに失敗しました'}
               </p>
               {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data && (
                 <details className="mt-2 text-xs">
-                  <summary className="cursor-pointer text-red-300">詳細情報</summary>
-                  <pre className="mt-1 overflow-auto rounded bg-red-900/20 p-2">
+                  <summary className="cursor-pointer font-semibold">詳細情報</summary>
+                  <pre className="mt-1 overflow-auto rounded bg-red-700 p-2 text-white">
                     {JSON.stringify(importMutation.error.response.data, null, 2)}
                   </pre>
                 </details>
@@ -86,9 +86,9 @@ export function MasterImportPage() {
             </div>
           ) : null}
           {importMutation.data ? (
-            <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 p-4 text-left text-sm text-emerald-200">
-              <p className="font-semibold">取り込み完了</p>
-              <pre className="mt-2 whitespace-pre-wrap text-xs">
+            <div className="rounded-lg border-2 border-emerald-700 bg-emerald-600 p-4 text-left text-sm text-white shadow-lg">
+              <p className="font-bold">取り込み完了</p>
+              <pre className="mt-2 whitespace-pre-wrap text-xs font-semibold">
                 {JSON.stringify(importMutation.data.summary, null, 2)}
               </pre>
             </div>
