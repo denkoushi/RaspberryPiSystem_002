@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-17）
+
+- **✅ Dropbox CSVインポート Phase 3実装・実機検証完了**: Phase 3管理画面UI実装完了（バックアップ履歴、Dropboxリストア、CSVインポートスケジュール管理）。実機検証も完了（バックエンド・フロントエンドUI・CRUD操作・スケジュール実行・トークンリフレッシュ）。Dropboxトークンリフレッシュの修正も完了（`CsvImportScheduler.executeImport`で`refreshToken`の未渡しを修正）。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/phase3-verification-complete-summary.md](./guides/phase3-verification-complete-summary.md) / [guides/phase3-dropbox-token-refresh-fix.md](./guides/phase3-dropbox-token-refresh-fix.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-16）
 
 - **✅ Dropbox CSVインポート Phase 3実装完了**: CSVインポート後の自動バックアップ機能、Dropboxからの自動リストア機能、バックアップ・リストア履歴機能を実装完了。`BackupHistory`モデル追加、`BackupHistoryService`実装、`BackupVerifier`による整合性検証機能、バックアップ履歴APIエンドポイント追加を完了。CIテストもすべて成功（BackupVerifier 12件、自動バックアップ機能 21件、バックアップAPI統合テストすべて成功）。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。

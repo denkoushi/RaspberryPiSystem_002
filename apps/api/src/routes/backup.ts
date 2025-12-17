@@ -630,23 +630,34 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const historyService = new BackupHistoryService();
 
     // バックアップパスからtargetKindとtargetSourceを推測
-    const backupPathParts = body.backupPath.split('/');
+    // basePathが含まれている場合は削除（例: /backups/csv/... -> csv/...）
+    const basePath = config.storage.options?.basePath as string | undefined;
+    let normalizedBackupPath = body.backupPath;
+    if (basePath && normalizedBackupPath.startsWith(basePath)) {
+      normalizedBackupPath = normalizedBackupPath.slice(basePath.length);
+      // 先頭のスラッシュを削除
+      if (normalizedBackupPath.startsWith('/')) {
+        normalizedBackupPath = normalizedBackupPath.slice(1);
+      }
+    }
+
+    const backupPathParts = normalizedBackupPath.split('/');
     const targetKind = body.targetKind || backupPathParts[0] || 'file';
-    const targetSource = backupPathParts[backupPathParts.length - 1] || body.backupPath;
+    const targetSource = backupPathParts[backupPathParts.length - 1] || normalizedBackupPath;
 
     // リストア履歴を作成
     const historyId = await historyService.createHistory({
       operationType: BackupOperationType.RESTORE,
       targetKind,
       targetSource,
-      backupPath: body.backupPath,
+      backupPath: normalizedBackupPath,
       storageProvider: 'dropbox'
     });
 
     try {
       // Dropboxからバックアップファイルをダウンロード
-      logger?.info({ backupPath: body.backupPath }, '[BackupRoute] Downloading backup from Dropbox');
-      const backupData = await dropboxProvider.download(body.backupPath);
+      logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Downloading backup from Dropbox');
+      const backupData = await dropboxProvider.download(normalizedBackupPath);
 
       // 整合性検証
       if (body.verifyIntegrity) {
@@ -659,14 +670,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
         if (!verification.valid) {
           logger?.error(
-            { errors: verification.errors, backupPath: body.backupPath },
+            { errors: verification.errors, backupPath: normalizedBackupPath, originalPath: body.backupPath },
             '[BackupRoute] Backup integrity verification failed'
           );
           throw new ApiError(400, `Backup integrity verification failed: ${verification.errors.join(', ')}`);
         }
 
         logger?.info(
-          { fileSize: verification.fileSize, hash: verification.hash },
+          { fileSize: verification.fileSize, hash: verification.hash, backupPath: normalizedBackupPath },
           '[BackupRoute] Backup integrity verified'
         );
       }
@@ -690,7 +701,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           env.PGPASSWORD = password;
         }
 
-        logger?.info({ dbName, host, port }, '[BackupRoute] Restoring database from backup');
+        logger?.info({ dbName, host, port, backupPath: normalizedBackupPath }, '[BackupRoute] Restoring database from backup');
         
         // psqlでリストア（stdinにSQLを流し込む）
         await new Promise<void>((resolve, reject) => {
@@ -716,14 +727,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               await historyService.failHistory(historyId, errorMessage);
               reject(new ApiError(500, errorMessage));
             } else {
-              logger?.info({ backupPath: body.backupPath }, '[BackupRoute] Database restore completed');
+              logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Database restore completed');
               // リストア履歴を完了として更新
               await historyService.completeHistory(historyId, {
                 targetKind,
                 targetSource,
                 sizeBytes: backupData.length,
                 hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-                path: body.backupPath
+                path: normalizedBackupPath
               });
               resolve();
             }
@@ -746,7 +757,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         const { processCsvImport } = await import('./imports.js');
         
         // バックアップパスからCSVタイプを判定（employees/items）
-        const csvType = body.backupPath.includes('employees') ? 'employees' : 'items';
+        const csvType = normalizedBackupPath.includes('employees') ? 'employees' : 'items';
         const files = csvType === 'employees' 
           ? { employees: backupData }
           : { items: backupData };
@@ -760,10 +771,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           }
         };
 
-        logger?.info({ csvType, backupPath: body.backupPath }, '[BackupRoute] Restoring CSV from backup');
+        logger?.info({ csvType, backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring CSV from backup');
         await processCsvImport(files, true, logWrapper); // replaceExisting = true
 
-        logger?.info({ backupPath: body.backupPath }, '[BackupRoute] CSV restore completed');
+        logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] CSV restore completed');
         
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {
@@ -771,16 +782,16 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           targetSource,
           sizeBytes: backupData.length,
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-          path: body.backupPath
+          path: normalizedBackupPath
         });
       } else {
         // 汎用的なリストア（ファイルとして保存）
         const tempPath = `/tmp/restored-${Date.now()}.backup`;
-        await backupService.restore(body.backupPath, {
+        await backupService.restore(normalizedBackupPath, {
           destination: tempPath
         });
 
-        logger?.info({ backupPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
+        logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
         
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {
@@ -788,20 +799,21 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           targetSource,
           sizeBytes: backupData.length,
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-          path: body.backupPath
+          path: normalizedBackupPath
         });
       }
 
       return reply.status(200).send({
         success: true,
         message: 'Backup restored successfully',
-        backupPath: body.backupPath,
+        backupPath: normalizedBackupPath,
+        originalPath: body.backupPath,
         timestamp: new Date(),
         historyId
       });
     } catch (error) {
       logger?.error(
-        { err: error, backupPath: body.backupPath },
+        { err: error, backupPath: normalizedBackupPath, originalPath: body.backupPath },
         '[BackupRoute] Failed to restore backup from Dropbox'
       );
       

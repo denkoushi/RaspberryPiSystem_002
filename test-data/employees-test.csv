@@ -1,0 +1,3 @@
+employeeCode,displayName,nfcTagUid,department,contact,status
+0001,テスト従業員1,04TEST00000001,テスト部,090-1234-5678,ACTIVE
+0002,テスト従業員2,04TEST00000002,テスト部,090-2345-6789,ACTIVE

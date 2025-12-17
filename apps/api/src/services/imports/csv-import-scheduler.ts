@@ -7,6 +7,9 @@ import { LocalStorageProvider } from '../backup/storage/local-storage.provider.j
 import { BackupService } from '../backup/backup.service.js';
 import { CsvBackupTarget } from '../backup/targets/csv-backup.target.js';
 import { DatabaseBackupTarget } from '../backup/targets/database-backup.target.js';
+import { BackupHistoryService } from '../backup/backup-history.service.js';
+import { BackupVerifier } from '../backup/backup-verifier.js';
+import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 import { processCsvImport } from '../../routes/imports.js';
 import { ImportHistoryService } from './import-history.service.js';
@@ -22,11 +25,13 @@ export class CsvImportScheduler {
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
   private alertService: ImportAlertService;
+  private backupHistoryService: BackupHistoryService;
   private consecutiveFailures: Map<string, number> = new Map(); // スケジュールID -> 連続失敗回数
 
   constructor() {
     this.historyService = new ImportHistoryService();
     this.alertService = new ImportAlertService();
+    this.backupHistoryService = new BackupHistoryService();
   }
 
   /**
@@ -556,6 +561,7 @@ export class CsvImportScheduler {
     }
 
     const backupService = new BackupService(storageProvider);
+    const storageProviderName = config.storage.provider === 'dropbox' ? 'dropbox' : 'local';
 
     // バックアップ対象に基づいてバックアップを実行
     const backupResults = [];
@@ -567,66 +573,228 @@ export class CsvImportScheduler {
             const employeesBackup = new CsvBackupTarget('employees', {
               label: `auto-after-import-${importSchedule.id}`
             });
-            const result = await backupService.backup(employeesBackup, {
-              label: `auto-after-import-${importSchedule.id}-employees`
+            // バックアップデータを取得してハッシュを計算
+            const backupData = await employeesBackup.createBackup();
+            const verification = BackupVerifier.verify(backupData);
+            const hash = verification.hash;
+
+            // バックアップ履歴を作成
+            const historyId = await this.backupHistoryService.createHistory({
+              operationType: BackupOperationType.BACKUP,
+              targetKind: 'csv',
+              targetSource: 'employees',
+              storageProvider: storageProviderName
             });
-            backupResults.push(result);
-            logger?.info(
-              { taskId: importSchedule.id, target: 'employees', result },
-              '[CsvImportScheduler] Auto backup completed for employees'
-            );
+
+            try {
+              const result = await backupService.backup(employeesBackup, {
+                label: `auto-after-import-${importSchedule.id}-employees`
+              });
+              backupResults.push(result);
+
+              // バックアップ履歴を完了として更新
+              await this.backupHistoryService.completeHistory(historyId, {
+                targetKind: 'csv',
+                targetSource: 'employees',
+                path: result.path,
+                sizeBytes: result.sizeBytes,
+                hash
+              });
+
+              logger?.info(
+                { taskId: importSchedule.id, target: 'employees', result, historyId },
+                '[CsvImportScheduler] Auto backup completed for employees'
+              );
+            } catch (backupError) {
+              // バックアップ失敗時は履歴を失敗として更新
+              const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+              await this.backupHistoryService.failHistory(historyId, errorMessage);
+              throw backupError;
+            }
           }
           if (importSummary.items) {
             const itemsBackup = new CsvBackupTarget('items', {
               label: `auto-after-import-${importSchedule.id}`
             });
-            const result = await backupService.backup(itemsBackup, {
-              label: `auto-after-import-${importSchedule.id}-items`
+            // バックアップデータを取得してハッシュを計算
+            const backupData = await itemsBackup.createBackup();
+            const verification = BackupVerifier.verify(backupData);
+            const hash = verification.hash;
+
+            // バックアップ履歴を作成
+            const historyId = await this.backupHistoryService.createHistory({
+              operationType: BackupOperationType.BACKUP,
+              targetKind: 'csv',
+              targetSource: 'items',
+              storageProvider: storageProviderName
             });
-            backupResults.push(result);
-            logger?.info(
-              { taskId: importSchedule.id, target: 'items', result },
-              '[CsvImportScheduler] Auto backup completed for items'
-            );
+
+            try {
+              const result = await backupService.backup(itemsBackup, {
+                label: `auto-after-import-${importSchedule.id}-items`
+              });
+              backupResults.push(result);
+
+              // バックアップ履歴を完了として更新
+              await this.backupHistoryService.completeHistory(historyId, {
+                targetKind: 'csv',
+                targetSource: 'items',
+                path: result.path,
+                sizeBytes: result.sizeBytes,
+                hash
+              });
+
+              logger?.info(
+                { taskId: importSchedule.id, target: 'items', result, historyId },
+                '[CsvImportScheduler] Auto backup completed for items'
+              );
+            } catch (backupError) {
+              // バックアップ失敗時は履歴を失敗として更新
+              const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+              await this.backupHistoryService.failHistory(historyId, errorMessage);
+              throw backupError;
+            }
           }
         } else if (target === 'database') {
           // データベースバックアップ
           const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
           const databaseBackup = new DatabaseBackupTarget(dbUrl);
-          const result = await backupService.backup(databaseBackup, {
-            label: `auto-after-import-${importSchedule.id}-database`
+          // バックアップデータを取得してハッシュを計算
+          const backupData = await databaseBackup.createBackup();
+          const verification = BackupVerifier.verify(backupData);
+          const hash = verification.hash;
+
+          // バックアップ履歴を作成
+          const historyId = await this.backupHistoryService.createHistory({
+            operationType: BackupOperationType.BACKUP,
+            targetKind: 'database',
+            targetSource: 'borrow_return',
+            storageProvider: storageProviderName
           });
-          backupResults.push(result);
-          logger?.info(
-            { taskId: importSchedule.id, target: 'database', result },
-            '[CsvImportScheduler] Auto backup completed for database'
-          );
+
+          try {
+            const result = await backupService.backup(databaseBackup, {
+              label: `auto-after-import-${importSchedule.id}-database`
+            });
+            backupResults.push(result);
+
+            // バックアップ履歴を完了として更新
+            await this.backupHistoryService.completeHistory(historyId, {
+              targetKind: 'database',
+              targetSource: 'borrow_return',
+              path: result.path,
+              sizeBytes: result.sizeBytes,
+              hash
+            });
+
+            logger?.info(
+              { taskId: importSchedule.id, target: 'database', result, historyId },
+              '[CsvImportScheduler] Auto backup completed for database'
+            );
+          } catch (backupError) {
+            // バックアップ失敗時は履歴を失敗として更新
+            const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+            await this.backupHistoryService.failHistory(historyId, errorMessage);
+            throw backupError;
+          }
         } else if (target === 'all') {
           // すべてのバックアップ: CSV + データベース
           if (importSummary.employees) {
             const employeesBackup = new CsvBackupTarget('employees', {
               label: `auto-after-import-${importSchedule.id}`
             });
-            const result = await backupService.backup(employeesBackup, {
-              label: `auto-after-import-${importSchedule.id}-employees`
+            const backupData = await employeesBackup.createBackup();
+            const verification = BackupVerifier.verify(backupData);
+            const hash = verification.hash;
+
+            const historyId = await this.backupHistoryService.createHistory({
+              operationType: BackupOperationType.BACKUP,
+              targetKind: 'csv',
+              targetSource: 'employees',
+              storageProvider: storageProviderName
             });
-            backupResults.push(result);
+
+            try {
+              const result = await backupService.backup(employeesBackup, {
+                label: `auto-after-import-${importSchedule.id}-employees`
+              });
+              backupResults.push(result);
+              await this.backupHistoryService.completeHistory(historyId, {
+                targetKind: 'csv',
+                targetSource: 'employees',
+                path: result.path,
+                sizeBytes: result.sizeBytes,
+                hash
+              });
+            } catch (backupError) {
+              const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+              await this.backupHistoryService.failHistory(historyId, errorMessage);
+              throw backupError;
+            }
           }
           if (importSummary.items) {
             const itemsBackup = new CsvBackupTarget('items', {
               label: `auto-after-import-${importSchedule.id}`
             });
-            const result = await backupService.backup(itemsBackup, {
-              label: `auto-after-import-${importSchedule.id}-items`
+            const backupData = await itemsBackup.createBackup();
+            const verification = BackupVerifier.verify(backupData);
+            const hash = verification.hash;
+
+            const historyId = await this.backupHistoryService.createHistory({
+              operationType: BackupOperationType.BACKUP,
+              targetKind: 'csv',
+              targetSource: 'items',
+              storageProvider: storageProviderName
             });
-            backupResults.push(result);
+
+            try {
+              const result = await backupService.backup(itemsBackup, {
+                label: `auto-after-import-${importSchedule.id}-items`
+              });
+              backupResults.push(result);
+              await this.backupHistoryService.completeHistory(historyId, {
+                targetKind: 'csv',
+                targetSource: 'items',
+                path: result.path,
+                sizeBytes: result.sizeBytes,
+                hash
+              });
+            } catch (backupError) {
+              const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+              await this.backupHistoryService.failHistory(historyId, errorMessage);
+              throw backupError;
+            }
           }
           const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
           const databaseBackup = new DatabaseBackupTarget(dbUrl);
-          const result = await backupService.backup(databaseBackup, {
-            label: `auto-after-import-${importSchedule.id}-database`
+          const backupData = await databaseBackup.createBackup();
+          const verification = BackupVerifier.verify(backupData);
+          const hash = verification.hash;
+
+          const historyId = await this.backupHistoryService.createHistory({
+            operationType: BackupOperationType.BACKUP,
+            targetKind: 'database',
+            targetSource: 'borrow_return',
+            storageProvider: storageProviderName
           });
-          backupResults.push(result);
+
+          try {
+            const result = await backupService.backup(databaseBackup, {
+              label: `auto-after-import-${importSchedule.id}-database`
+            });
+            backupResults.push(result);
+            await this.backupHistoryService.completeHistory(historyId, {
+              targetKind: 'database',
+              targetSource: 'borrow_return',
+              path: result.path,
+              sizeBytes: result.sizeBytes,
+              hash
+            });
+          } catch (backupError) {
+            const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
+            await this.backupHistoryService.failHistory(historyId, errorMessage);
+            throw backupError;
+          }
         }
       } catch (error) {
         logger?.error(
