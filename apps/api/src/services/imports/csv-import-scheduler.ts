@@ -428,6 +428,7 @@ export class CsvImportScheduler {
     const dropboxProvider = new DropboxStorageProvider({
       accessToken,
       basePath,
+      refreshToken,
       oauthService,
       onTokenUpdate
     });
