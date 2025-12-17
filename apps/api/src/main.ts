@@ -2,6 +2,7 @@ import { buildServer } from './app.js';
 import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
 import { getBackupScheduler } from './services/backup/backup-scheduler.js';
+import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()
@@ -19,6 +20,12 @@ if (process.env['NODE_ENV'] !== 'test') {
       await backupScheduler.start();
       
       logger.info('Backup scheduler started');
+      
+      // CSVインポートスケジューラーを開始
+      const csvImportScheduler = getCsvImportScheduler();
+      await csvImportScheduler.start();
+      
+      logger.info('CSV import scheduler started');
     })
     .catch((err) => {
       logger.error({ err }, 'Failed to start API server');

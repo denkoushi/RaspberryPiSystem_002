@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 49件  
+**件数**: 50件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2403,5 +2403,274 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 - `infrastructure/ansible/templates/security-monitor.sh.j2`（リアルタイム監視スクリプト）
 - `apps/api/src/routes/auth.ts`（MFA/権限監査API）
 - `docs/security/phase9-10-specifications.md`（詳細仕様書）
+
+---
+
+### [KB-100] CIテストが失敗してもマージが進んでしまう問題（再発）
+
+**発生日**: 2025-12-15
+
+**事象**: 
+- CIテストが失敗しているにもかかわらず、PRがマージされてしまう
+- ブランチ保護ルールが設定されていない、または適切に設定されていない
+
+**要因**: 
+- GitHubのブランチ保護ルールが設定されていない
+- 「Do not allow bypassing the above settings」がチェックされていない
+- CIワークフローで一部のステップに`|| exit 1`が設定されていない
+
+**有効だった対策**: 
+- ✅ **CIワークフローの強化**（2025-12-15）:
+  - すべてのテストステップに`|| exit 1`を追加
+  - `e2e-tests`ジョブから`continue-on-error: true`を削除（既に実施済み）
+  - `e2e-tests`ジョブのコメントを修正（「non-blocking」→「blocking」に変更）
+  - `imports-dropbox`テストをCIワークフローに追加
+- ✅ **ドキュメントの作成**（2025-12-15）:
+  - `.github/BRANCH_PROTECTION_SETUP.md`を作成（設定手順を明確化）
+  - `docs/guides/ci-branch-protection.md`を更新
+  - `README.md`にブランチ保護設定のリンクを追加
+
+**必須対応**: 
+- ⚠️ **GitHubでのブランチ保護ルール設定**（手動で実施が必要）:
+  1. GitHubリポジトリの「Settings」→「Branches」にアクセス
+  2. `main`ブランチの保護ルールを追加
+  3. 「Require status checks to pass before merging」にチェック
+  4. 「Require branches to be up to date before merging」にチェック
+  5. 必須チェックとして以下を選択：
+     - `lint-and-test`
+     - `e2e-smoke`
+     - `docker-build`
+  6. **「Do not allow bypassing the above settings」にチェック**（最重要）
+  7. 設定を保存
+  8. `develop`ブランチにも同様の設定
+
+**学んだこと**: 
+- CIワークフローで`|| exit 1`を設定しても、ブランチ保護ルールが設定されていないとマージできてしまう
+- 「Do not allow bypassing the above settings」をチェックしないと、管理者でもテストをスルーできてしまう
+- ブランチ保護ルールの設定は手動で実施する必要があり、自動化できない
+- CI必須化の実装だけでなく、GitHubの設定も必須
+
+**解決状況**: ⚠️ **部分解決**（CIワークフローは強化済み、ブランチ保護ルールの設定は手動で実施が必要）
+
+**関連ファイル**: 
+- `.github/workflows/ci.yml`（CIワークフロー）
+- `.github/BRANCH_PROTECTION_SETUP.md`（設定手順）
+- `docs/guides/ci-branch-protection.md`（詳細ガイド）
+- `README.md`（READMEにリンク追加）
+
+---
+
+### [KB-101] Pi5へのSSH接続不可問題の原因と解決
+
+**発生日時**: 2025-12-15（推定）
+
+**症状**: 
+- Pi5 (`raspberrypi.local`) へのSSH接続が突然失敗
+- エラーメッセージ: `REMOTE HOST IDENTIFICATION HAS CHANGED!`
+- `Permission denied (publickey,password)` エラー
+
+**原因分析**:
+
+#### 1. SSHホストキーの不一致（主原因）
+
+**状況**:
+- Pi5のSSHホストキー（`/etc/ssh/ssh_host_ed25519_key.pub`）は **2025-11-24 11:11** に作成
+- クライアント側の `~/.ssh/known_hosts` に古いホストキーが記録されていた
+- Pi5のSSHホストキーが変更されたか、またはクライアント側のknown_hostsが古い状態だった
+
+**確認方法**:
+```bash
+# クライアント側で確認
+ssh-keygen -F raspberrypi.local -l
+
+# Pi5側で確認
+sudo cat /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+#### 2. Git force pushの影響（主原因の可能性）
+
+**状況**:
+- **2025-12-15 16:53:49**: mainブランチに`feature/dropbox-csv-import-phase1`をマージ
+- **2025-12-15 16:59:57**: mainブランチをforce pushでロールバック（`git reset --hard af2946e` → `git push origin main --force`）
+- **2025-12-15 17:01**: Pi5がシステム再起動
+
+**影響**:
+- Pi5側の`refactor/imports-ts-refactoring`ブランチがリモートより13コミット先行している状態になった
+- Pi5側は既に`git pull`で新しいコミット（`feature/dropbox-csv-import-phase1`のコミット）を取得していた
+- force pushによりリモートブランチが巻き戻り、Pi5側のローカルブランチがリモートより先行
+- この状態で`git pull`を実行すると、競合やエラーが発生する可能性がある
+
+**確認方法**:
+```bash
+# Pi5側で確認
+git log --oneline refactor/imports-ts-refactoring ^origin/refactor/imports-ts-refactoring
+# 13コミットが先行していることを確認
+
+# リモートとの差分確認
+git fetch origin
+git log --oneline origin/refactor/imports-ts-refactoring..refactor/imports-ts-refactoring
+```
+
+**根本原因**:
+- **mainブランチへのforce push**により、リモートのブランチ履歴が巻き戻った
+- Pi5側は既に新しいコミットを取得していたため、ローカルブランチがリモートより先行
+- この状態でgit操作（`git pull`など）を実行すると、予期しない動作やエラーが発生する可能性がある
+
+#### 3. システム再起動の影響
+
+**状況**:
+- Pi5は **2025-12-15 17:01** に再起動（force pushの直後）
+- SSHサービスは正常に起動（`systemctl status ssh`）
+- WiFi接続も正常に確立（`wlan0: 192.168.10.230`）
+
+**影響**:
+- 再起動によりネットワーク設定がリセットされた可能性
+- mDNS/Bonjourサービス（`avahi-daemon`）も再起動
+- **force pushの影響で壊れたgit状態が、再起動時に問題を引き起こした可能性**
+
+#### 4. ネットワークの一時的な問題
+
+**状況**:
+- WiFi接続は12月15日17:01に確立
+- mDNS/Bonjourサービスは正常動作
+- `.local` ドメイン解決は正常
+
+**可能性**:
+- WiFi接続の一時的な不安定さ
+- mDNS/Bonjourの解決遅延
+
+#### 5. ユーザー名の不一致
+
+**状況**:
+- 最初は `tsuda@raspberrypi.local` で接続試行 → 失敗
+- その後 `denkon5sd02@raspberrypi.local` で接続成功
+
+**原因**:
+- Pi5に `tsuda` ユーザーが存在しない、またはSSH公開鍵が登録されていない
+
+**解決方法**:
+
+##### 1. SSHホストキーの更新（実施済み）
+
+```bash
+# クライアント側で古いホストキーを削除
+ssh-keygen -R raspberrypi.local
+
+# 新しいホストキーで接続（自動的に追加される）
+ssh -o StrictHostKeyChecking=accept-new denkon5sd02@raspberrypi.local
+```
+
+##### 2. 正しいユーザー名の使用
+
+```bash
+# 正しいユーザー名で接続
+ssh denkon5sd02@raspberrypi.local
+
+# または、IPアドレス直接指定
+ssh denkon5sd02@192.168.10.230
+```
+
+##### 3. SSH設定の確認
+
+**Pi5側の設定**:
+- `PubkeyAuthentication yes` ✅
+- `PasswordAuthentication yes` ✅
+- SSHポート: 22（デフォルト）
+
+**クライアント側の設定**:
+- `~/.ssh/config` に設定があれば確認
+- SSH公開鍵が正しく登録されているか確認
+
+##### 4. ネットワーク接続の確認
+
+```bash
+# Pi5へのping確認
+ping -c 3 raspberrypi.local
+
+# mDNS解決の確認
+avahi-resolve -n raspberrypi.local
+
+# 直接IPアドレスで接続
+ssh denkon5sd02@192.168.10.230
+```
+
+**根本原因**:
+
+1. **Git force pushの影響**（最も可能性が高い）
+   - mainブランチへのforce pushにより、リモートブランチが巻き戻った
+   - Pi5側は既に新しいコミットを取得していたため、ローカルブランチがリモートより先行
+   - この状態でgit操作を実行すると、予期しない動作やエラーが発生
+   - **force pushのタイミング（16:59:57）とPi5の再起動（17:01）が一致している**
+
+2. **SSHホストキーの不一致**
+   - Pi5のSSHホストキーが変更された（OS再インストール、SSH設定の再生成など）
+   - クライアント側のknown_hostsが古い状態だった
+   - ただし、これはforce pushとは直接関係ない可能性が高い
+
+3. **ユーザー名の不一致**
+   - `tsuda` ユーザーが存在しない、またはSSH公開鍵が登録されていない
+   - 正しいユーザー名 `denkon5sd02` を使用する必要がある
+
+4. **システム再起動の影響**
+   - 12月15日17:01に再起動があり、ネットワーク設定がリセットされた可能性
+   - force pushの直後に再起動が発生したため、git状態の問題が表面化した可能性
+
+**再発防止策**:
+
+1. **mainブランチへのforce pushの禁止**:
+   - mainブランチへのforce pushは絶対に避ける
+   - ロールバックが必要な場合は、新しいコミットで修正する
+   - 既にpullしたリモート環境への影響を考慮する
+
+2. **Git状態の確認**:
+   ```bash
+   # Pi5側で定期的にgit状態を確認
+   git fetch origin
+   git status
+   git log --oneline HEAD..origin/refactor/imports-ts-refactoring
+   ```
+
+3. **SSH接続の自動化スクリプト**:
+   ```bash
+   # ~/.ssh/config に設定を追加
+   Host raspberrypi
+       HostName raspberrypi.local
+       User denkon5sd02
+       StrictHostKeyChecking accept-new
+       UserKnownHostsFile ~/.ssh/known_hosts
+   ```
+
+4. **定期的な接続確認**:
+   ```bash
+   # 接続テストスクリプト
+   ssh -o ConnectTimeout=5 denkon5sd02@raspberrypi.local "echo 'OK'"
+   ```
+
+5. **SSHホストキーのバックアップ**:
+   ```bash
+   # Pi5側でホストキーをバックアップ
+   sudo tar czf /opt/backup/ssh_host_keys_$(date +%Y%m%d).tar.gz /etc/ssh/ssh_host_*_key*
+   ```
+
+6. **監視とアラート**:
+   - SSH接続失敗を監視
+   - ホストキー変更を検知したらアラート
+
+**学んだこと**: 
+- **mainブランチへのforce pushは絶対に避けるべき**。既にpullしたリモート環境に深刻な影響を与える
+- force pushの影響で、リモートブランチが巻き戻ると、既に新しいコミットを取得していた環境でgit状態が壊れる
+- Pi5側の`refactor/imports-ts-refactoring`ブランチがリモートより13コミット先行している状態は、force pushの影響によるもの
+- SSHホストキーの変更は、OS再インストールやSSH設定の再生成時に発生する
+- `REMOTE HOST IDENTIFICATION HAS CHANGED!` エラーは、セキュリティ上の警告であり、正しいホストキーで更新する必要がある
+- ユーザー名の不一致も接続失敗の原因となる
+- システム再起動後は、ネットワーク設定やサービスがリセットされる可能性がある
+- **force pushのタイミングと問題発生のタイミングが一致している場合、git操作が原因の可能性が高い**
+
+**解決状況**: ✅ **解決済み**（2025-12-16）
+
+**関連ファイル**: 
+- `~/.ssh/known_hosts`（クライアント側）
+- `/etc/ssh/ssh_host_*_key*`（Pi5側）
+- `~/.ssh/config`（SSH設定ファイル）
 
 ---

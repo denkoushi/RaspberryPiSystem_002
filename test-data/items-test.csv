@@ -1,0 +1,3 @@
+itemCode,name,nfcTagUid,category,storageLocation,status,notes
+TEST001,テスト工具1,04TEST00000003,工具,テスト庫A,AVAILABLE,テスト用
+TEST002,テスト工具2,04TEST00000004,工具,テスト庫B,AVAILABLE,テスト用

@@ -34,10 +34,14 @@ describe('Backup API integration', () => {
   });
 
   it('should backup employees CSV', async () => {
-    // テストデータを作成
+    // テストデータをクリーンアップ（他のテストの影響を防ぐ）
+    await prisma.employee.deleteMany({});
+    
+    // テストデータを作成（一意のemployeeCodeを使用）
+    const uniqueCode = `EMP${Date.now().toString().slice(-6)}`;
     await prisma.employee.create({
       data: {
-        employeeCode: '0001',
+        employeeCode: uniqueCode,
         displayName: 'テスト従業員',
         status: 'ACTIVE'
       }

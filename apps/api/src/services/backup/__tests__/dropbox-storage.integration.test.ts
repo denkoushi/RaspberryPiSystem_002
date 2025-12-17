@@ -14,8 +14,9 @@ import os from 'os';
  * CI環境では実行されません（モックテストを使用）。
  */
 describe('DropboxStorageProvider integration (requires DROPBOX_ACCESS_TOKEN)', () => {
-  const accessToken = process.env.DROPBOX_ACCESS_TOKEN;
-  const skipIfNoToken = !accessToken ? it.skip : it;
+const accessToken = process.env.DROPBOX_ACCESS_TOKEN;
+const enableLive = process.env.DROPBOX_ENABLE_LIVE_TEST === '1';
+const skipIfNoToken = !accessToken || !enableLive ? it.skip : it;
 
   skipIfNoToken('should upload and download file to Dropbox', async () => {
     const provider = new DropboxStorageProvider({

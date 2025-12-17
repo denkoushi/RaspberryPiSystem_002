@@ -72,19 +72,19 @@ enum SignageDisplayMode {
 }
 
 model Employee {
-  id                String             @id @default(uuid())
-  employeeCode      String             @unique
-  displayName       String
-  nfcTagUid         String?            @unique
-  department        String?
-  contact           String?
-  status            EmployeeStatus     @default(ACTIVE)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  loans             Loan[]
-  inspectionRecords InspectionRecord[]
+  id                       String                    @id @default(uuid())
+  employeeCode             String                    @unique
+  displayName              String
+  nfcTagUid                String?                   @unique
+  department               String?
+  contact                  String?
+  status                   EmployeeStatus            @default(ACTIVE)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  loans                    Loan[]
+  inspectionRecords        InspectionRecord[]
   riggingInspectionRecords RiggingInspectionRecord[]
-  transactions      Transaction[]      @relation("EmployeeActor")
+  transactions             Transaction[]             @relation("EmployeeActor")
 }
 
 model Item {
@@ -175,23 +175,23 @@ model MeasuringInstrumentTag {
 }
 
 model RiggingGear {
-  id               String         @id @default(uuid())
-  name             String
-  managementNumber String         @unique
-  storageLocation  String?
-  department       String?
-  maxLoadTon       Float?
-  lengthMm         Int?
-  widthMm          Int?
-  thicknessMm      Int?
-  startedAt        DateTime?
-  status           RiggingStatus  @default(AVAILABLE)
-  notes            String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  tags             RiggingGearTag[]
+  id                String                    @id @default(uuid())
+  name              String
+  managementNumber  String                    @unique
+  storageLocation   String?
+  department        String?
+  maxLoadTon        Float?
+  lengthMm          Int?
+  widthMm           Int?
+  thicknessMm       Int?
+  startedAt         DateTime?
+  status            RiggingStatus             @default(AVAILABLE)
+  notes             String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  tags              RiggingGearTag[]
   inspectionRecords RiggingInspectionRecord[]
-  loans            Loan[]
+  loans             Loan[]
 }
 
 model RiggingGearTag {
@@ -206,18 +206,18 @@ model RiggingGearTag {
 }
 
 model RiggingInspectionRecord {
-  id            String      @id @default(uuid())
+  id            String           @id @default(uuid())
   riggingGearId String
   loanId        String?
   employeeId    String
   result        InspectionResult
   inspectedAt   DateTime
   notes         String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  riggingGear   RiggingGear @relation(fields: [riggingGearId], references: [id], onDelete: Cascade)
-  loan          Loan?       @relation(fields: [loanId], references: [id], onDelete: SetNull)
-  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  riggingGear   RiggingGear      @relation(fields: [riggingGearId], references: [id], onDelete: Cascade)
+  loan          Loan?            @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  employee      Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([riggingGearId])
   @@index([loanId])
@@ -269,17 +269,17 @@ model ClientLog {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  username     String        @unique
-  passwordHash String
-  role         UserRole      @default(VIEWER)
-  status       UserStatus    @default(ACTIVE)
-  mfaEnabled   Boolean       @default(false)
-  totpSecret   String?
-  mfaBackupCodes String[]    @default([])
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  transactions Transaction[]
+  id              String         @id @default(uuid())
+  username        String         @unique
+  passwordHash    String
+  role            UserRole       @default(VIEWER)
+  status          UserStatus     @default(ACTIVE)
+  mfaEnabled      Boolean        @default(false)
+  totpSecret      String?
+  mfaBackupCodes  String[]       @default([])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  transactions    Transaction[]
   auditLogsActor  RoleAuditLog[] @relation("RoleAuditActor")
   auditLogsTarget RoleAuditLog[] @relation("RoleAuditTarget")
 }
@@ -292,36 +292,36 @@ model RoleAuditLog {
   toRole       UserRole
   createdAt    DateTime @default(now())
 
-  actorUser   User @relation("RoleAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
-  targetUser  User @relation("RoleAuditTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  actorUser  User @relation("RoleAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  targetUser User @relation("RoleAuditTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
 
   @@index([actorUserId])
   @@index([targetUserId])
 }
 
 model Loan {
-  id                    String               @id @default(uuid())
-  itemId                String?
-  measuringInstrumentId String?
-  riggingGearId         String?
-  employeeId            String?
-  clientId              String?
-  borrowedAt            DateTime             @default(now())
-  dueAt                 DateTime?
-  returnedAt            DateTime?
-  cancelledAt           DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
-  notes                 String?
-  photoUrl              String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
-  photoTakenAt          DateTime? // 撮影日時
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  item                  Item?                @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  measuringInstrument   MeasuringInstrument? @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  riggingGear           RiggingGear?         @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
-  employee              Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  client                ClientDevice?        @relation(fields: [clientId], references: [id])
-  transactions          Transaction[]
-  InspectionRecord      InspectionRecord[]
+  id                      String                    @id @default(uuid())
+  itemId                  String?
+  measuringInstrumentId   String?
+  riggingGearId           String?
+  employeeId              String?
+  clientId                String?
+  borrowedAt              DateTime                  @default(now())
+  dueAt                   DateTime?
+  returnedAt              DateTime?
+  cancelledAt             DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
+  notes                   String?
+  photoUrl                String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt            DateTime? // 撮影日時
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  item                    Item?                     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  measuringInstrument     MeasuringInstrument?      @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  riggingGear             RiggingGear?              @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
+  employee                Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  client                  ClientDevice?             @relation(fields: [clientId], references: [id])
+  transactions            Transaction[]
+  InspectionRecord        InspectionRecord[]
   RiggingInspectionRecord RiggingInspectionRecord[]
 
   @@index([itemId])
@@ -361,6 +361,62 @@ model ImportJob {
   summary     Json?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
+}
+
+model CsvImportHistory {
+  id            String       @id @default(uuid())
+  scheduleId    String // スケジュールID（backup.jsonのcsvImports[].id）
+  scheduleName  String? // スケジュール名（表示用）
+  status        ImportStatus @default(PENDING)
+  employeesPath String? // Dropbox上の従業員CSVパス
+  itemsPath     String? // Dropbox上のアイテムCSVパス
+  summary       Json? // インポート結果サマリー（{ employees: { processed, created, updated }, items: { processed, created, updated } }）
+  errorMessage  String? // エラーメッセージ（失敗時）
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([completedAt])
+}
+
+enum BackupOperationType {
+  BACKUP
+  RESTORE
+}
+
+enum BackupStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model BackupHistory {
+  id              String              @id @default(uuid())
+  operationType   BackupOperationType // バックアップまたはリストア
+  targetKind      String // バックアップ対象の種類（database, csv, file, directory, image）
+  targetSource    String // バックアップ対象のソース
+  backupPath      String? // バックアップファイルのパス（Dropboxまたはローカル）
+  storageProvider String              @default("local") // ストレージプロバイダー（local, dropbox）
+  status          BackupStatus        @default(PENDING)
+  sizeBytes       Int? // バックアップファイルサイズ（バイト）
+  hash            String? // バックアップファイルのハッシュ値（SHA256）
+  summary         Json? // バックアップ・リストア結果サマリー
+  errorMessage    String? // エラーメッセージ（失敗時）
+  startedAt       DateTime            @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([operationType])
+  @@index([targetKind])
+  @@index([status])
+  @@index([startedAt])
+  @@index([completedAt])
 }
 
 model SignageSchedule {

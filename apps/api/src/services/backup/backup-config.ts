@@ -24,7 +24,30 @@ export const BackupConfigSchema = z.object({
   retention: z.object({
     days: z.number().default(30),
     maxBackups: z.number().optional()
-  }).optional()
+  }).optional(),
+  csvImports: z.array(z.object({
+    id: z.string(), // スケジュールID（一意）
+    name: z.string().optional(), // スケジュール名（表示用）
+    employeesPath: z.string().optional(), // Dropbox上の従業員CSVパス
+    itemsPath: z.string().optional(), // Dropbox上のアイテムCSVパス
+    schedule: z.string(), // cron形式（例: "0 4 * * *"）
+    enabled: z.boolean().default(true),
+    replaceExisting: z.boolean().default(false), // 既存データを置き換えるか
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false), // 自動バックアップを有効にするか
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv']) // バックアップ対象（csv: CSVのみ、database: データベースのみ、all: すべて）
+    }).optional().default({ enabled: false, targets: ['csv'] }),
+    metadata: z.record(z.unknown()).optional()
+  })).optional().default([]),
+  csvImportHistory: z.object({
+    retentionDays: z.number().default(90), // 履歴保持期間（日数）
+    cleanupSchedule: z.string().optional().default('0 2 * * *') // クリーンアップ実行スケジュール（cron形式、デフォルト: 毎日2時）
+  }).optional(),
+  restoreFromDropbox: z.object({
+    enabled: z.boolean().default(false), // Dropboxからのリストア機能を有効にするか
+    verifyIntegrity: z.boolean().default(true), // リストア時に整合性検証を実行するか
+    defaultTargetKind: z.enum(['database', 'csv']).optional() // デフォルトのリストア対象の種類
+  }).optional().default({ enabled: false, verifyIntegrity: true })
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -68,5 +91,14 @@ export const defaultBackupConfig: BackupConfig = {
   retention: {
     days: 30,
     maxBackups: 100
+  },
+  csvImports: [],
+  csvImportHistory: {
+    retentionDays: 90,
+    cleanupSchedule: '0 2 * * *' // 毎日2時
+  },
+  restoreFromDropbox: {
+    enabled: false,
+    verifyIntegrity: true
   }
 };

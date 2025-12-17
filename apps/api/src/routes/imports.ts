@@ -2,15 +2,18 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { parse } from 'csv-parse/sync';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
+import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
+import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
+import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 
-const { EmployeeStatus, ItemStatus } = pkg;
+const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
@@ -25,6 +28,58 @@ const fieldSchema = z.object({
     },
     z.coerce.boolean().optional().default(false)
   )
+});
+
+// パストラバーサル防止: .. や絶対パスを拒否
+function validateDropboxPath(path: string): boolean {
+  // 空文字列は既にmin(1)で除外される
+  const normalized = path.trim();
+  
+  // .. を含むパスを拒否
+  if (normalized.includes('..')) {
+    return false;
+  }
+  
+  // 先頭が / で始まる絶対パスは許可（Dropboxのパス形式）
+  // ただし、/ のみや /../ のような危険なパスは拒否
+  if (normalized.startsWith('/')) {
+    // /../ や // を含むパスを拒否
+    if (normalized.includes('/../') || normalized.includes('//')) {
+      return false;
+    }
+    // / のみは拒否
+    if (normalized === '/') {
+      return false;
+    }
+    // /. で始まるパス（例: /.csv, /..csv）を拒否
+    if (normalized.startsWith('/.')) {
+      return false;
+    }
+  }
+  
+  // パス長の上限（1000文字）
+  if (normalized.length > 1000) {
+    return false;
+  }
+  
+  return true;
+}
+
+const dropboxPathSchema = z.string()
+  .trim()
+  .min(1, 'パスは必須です')
+  .max(1000, 'パスは1000文字以内である必要があります')
+  .regex(/\.csv$/i, 'パスは.csvで終わる必要があります')
+  .refine(validateDropboxPath, {
+    message: '無効なパス形式です。パストラバーサル（..）や危険なパスは許可されません'
+  });
+
+const dropboxImportSchema = z.object({
+  employeesPath: dropboxPathSchema.optional(),
+  itemsPath: dropboxPathSchema.optional(),
+  replaceExisting: z.boolean().optional().default(false)
+}).refine((data) => data.employeesPath || data.itemsPath, {
+  message: 'employeesPath または itemsPath のいずれかを指定してください'
 });
 
 const employeeCsvSchema = z.object({
@@ -92,6 +147,157 @@ function normalizeItemStatus(value?: string) {
   // 無効な値の場合はデフォルト値（AVAILABLE）を使用（エラーにしない）
   return ItemStatus.AVAILABLE;
 }
+
+async function createDropboxStorageProviderFromConfig(
+  protocol: string,
+  host: string,
+  onTokenUpdate?: (token: string) => Promise<void>
+) {
+  const config = await BackupConfigLoader.load();
+  if (config.storage.provider !== 'dropbox') {
+    throw new ApiError(400, '設定ファイルでDropboxがストレージとして設定されていません');
+  }
+
+  const accessToken = config.storage.options?.accessToken as string | undefined;
+  const refreshToken = config.storage.options?.refreshToken as string | undefined;
+  const appKey = config.storage.options?.appKey as string | undefined;
+  const appSecret = config.storage.options?.appSecret as string | undefined;
+  const basePath = config.storage.options?.basePath as string | undefined;
+
+  if (!accessToken) {
+    throw new ApiError(400, 'Dropbox access token is required in config file');
+  }
+
+  let oauthService: DropboxOAuthService | undefined;
+  if (refreshToken && appKey && appSecret) {
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
+    oauthService = new DropboxOAuthService({
+      appKey,
+      appSecret,
+      redirectUri
+    });
+  }
+
+  return new DropboxStorageProvider({
+    accessToken,
+    basePath,
+    refreshToken,
+    oauthService,
+    onTokenUpdate
+  });
+}
+
+export async function processCsvImport(
+  files: { employees?: Buffer; items?: Buffer },
+  replaceExisting: boolean,
+  log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
+) {
+  if (!files.employees && !files.items) {
+  throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
+  }
+
+  let employeeRows: EmployeeCsvRow[] = [];
+  let itemRows: ItemCsvRow[] = [];
+
+  if (files.employees) {
+    try {
+      const parsedRows = parseCsvRows(files.employees);
+      employeeRows = parsedRows.map((row, index) => {
+        try {
+          return employeeCsvSchema.parse(row);
+        } catch (error) {
+          throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    } catch (error) {
+      throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (files.items) {
+    try {
+      const parsedRows = parseCsvRows(files.items);
+      itemRows = parsedRows.map((row, index) => {
+        try {
+          return itemCsvSchema.parse(row);
+        } catch (error) {
+          throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    } catch (error) {
+      throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const employeeNfcTagUids = new Set(
+    employeeRows
+      .map(row => row.nfcTagUid?.trim())
+      .filter((uid): uid is string => Boolean(uid))
+  );
+  const itemNfcTagUids = new Set(
+    itemRows
+      .map(row => row.nfcTagUid?.trim())
+      .filter((uid): uid is string => Boolean(uid))
+  );
+  const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
+  if (crossDuplicateNfcTagUids.length > 0) {
+    const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
+    log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
+    throw new ApiError(400, errorMessage);
+  }
+
+  const summary: Record<string, ImportResult> = {};
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (employeeRows.length > 0) {
+        summary.employees = await importEmployees(tx, employeeRows, replaceExisting, log);
+      }
+      if (itemRows.length > 0) {
+        summary.items = await importItems(tx, itemRows, replaceExisting);
+      }
+    }, {
+      timeout: 30000,
+      isolationLevel: 'ReadCommitted'
+    });
+  } catch (error) {
+    log.error({ 
+      err: error,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorCode: (error as any)?.code,
+      errorMeta: (error as any)?.meta
+    }, 'インポート処理エラー');
+    
+    if (error instanceof PrismaClientKnownRequestError) {
+      if (error.code === 'P2003') {
+        const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
+        const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        throw new ApiError(
+          400,
+          `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
+          { code: error.code, ...error.meta }
+        );
+      }
+      throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
+    }
+    
+    if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
+      const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
+      const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
+      throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
+    }
+    
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
+  }
+
+  return { summary };
+}
+
 
 async function importEmployees(
   tx: Prisma.TransactionClient,
@@ -507,114 +713,444 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
                            false;
 
-    // === 3. CSVファイルのパースとバリデーション ===
-    if (!files.employees && !files.items) {
-      throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
-    }
+    const { summary } = await processCsvImport(files, replaceExisting, request.log);
+    return { summary };
+  });
 
-    let employeeRows: EmployeeCsvRow[] = [];
-    let itemRows: ItemCsvRow[] = [];
-
-    if (files.employees) {
-      try {
-        const parsedRows = parseCsvRows(files.employees);
-        employeeRows = parsedRows.map((row, index) => {
-          try {
-            return employeeCsvSchema.parse(row);
-          } catch (error) {
-            throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      } catch (error) {
-        throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    if (files.items) {
-      try {
-        const parsedRows = parseCsvRows(files.items);
-        itemRows = parsedRows.map((row, index) => {
-          try {
-            return itemCsvSchema.parse(row);
-          } catch (error) {
-            throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      } catch (error) {
-        throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    // === 4. 従業員とアイテム間のnfcTagUid重複チェック ===
-    const employeeNfcTagUids = new Set(
-      employeeRows
-        .map(row => row.nfcTagUid?.trim())
-        .filter((uid): uid is string => Boolean(uid))
-    );
-    const itemNfcTagUids = new Set(
-      itemRows
-        .map(row => row.nfcTagUid?.trim())
-        .filter((uid): uid is string => Boolean(uid))
-    );
-    const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
-    if (crossDuplicateNfcTagUids.length > 0) {
-      const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
-      request.log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
-      throw new ApiError(400, errorMessage);
-    }
-
-    // === 5. トランザクション内でインポート処理実行 ===
-    const summary: Record<string, ImportResult> = {};
-
+  // DropboxからCSVを取得してインポート
+  app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+    const startTime = Date.now();
+    const initialMemory = process.memoryUsage();
+    
     try {
-      await prisma.$transaction(async (tx) => {
-        if (employeeRows.length > 0) {
-          summary.employees = await importEmployees(tx, employeeRows, replaceExisting, request.log);
+      const body = dropboxImportSchema.parse(request.body ?? {});
+
+      const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
+
+      request.log.info({
+        employeesPath: body.employeesPath,
+        itemsPath: body.itemsPath,
+        replaceExisting: body.replaceExisting
+      }, '[Dropbox Import] インポート開始');
+
+      const onTokenUpdate = async (token: string) => {
+        const latestConfig = await BackupConfigLoader.load();
+        if (latestConfig.storage.provider === 'dropbox') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            accessToken: token
+          };
+          await BackupConfigLoader.save(latestConfig);
+          request.log.info({}, '[Dropbox Import] アクセストークンを更新しました');
         }
-        if (itemRows.length > 0) {
-          summary.items = await importItems(tx, itemRows, replaceExisting);
+      };
+
+      const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+
+      const files: { employees?: Buffer; items?: Buffer } = {};
+      
+      // 従業員CSVのダウンロード
+      if (body.employeesPath) {
+        try {
+          request.log.info({ path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード開始');
+          const downloadStart = Date.now();
+          files.employees = await dropboxProvider.download(body.employeesPath);
+          const downloadTime = Date.now() - downloadStart;
+          const fileSize = files.employees.length;
+          request.log.info({
+            path: body.employeesPath,
+            size: fileSize,
+            downloadTimeMs: downloadTime
+          }, '[Dropbox Import] 従業員CSVダウンロード完了');
+        } catch (error: unknown) {
+          request.log.error({ err: error, path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード失敗');
+          if (error instanceof Error) {
+            const errorMessage = error.message.toLowerCase();
+            if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
+              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${body.employeesPath}`);
+            }
+            if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
+              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+            }
+            throw new ApiError(500, `従業員CSVのダウンロードに失敗しました: ${error.message}`);
+          }
+          throw new ApiError(500, `従業員CSVのダウンロードに失敗しました`);
         }
-      }, {
-        timeout: 30000, // 30秒のタイムアウト
-        isolationLevel: 'ReadCommitted' // 読み取りコミット分離レベル
-      });
-    } catch (error) {
-      request.log.error({ 
+      }
+      
+      // アイテムCSVのダウンロード
+      if (body.itemsPath) {
+        try {
+          request.log.info({ path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード開始');
+          const downloadStart = Date.now();
+          files.items = await dropboxProvider.download(body.itemsPath);
+          const downloadTime = Date.now() - downloadStart;
+          const fileSize = files.items.length;
+          request.log.info({
+            path: body.itemsPath,
+            size: fileSize,
+            downloadTimeMs: downloadTime
+          }, '[Dropbox Import] アイテムCSVダウンロード完了');
+        } catch (error: unknown) {
+          request.log.error({ err: error, path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード失敗');
+          if (error instanceof Error) {
+            const errorMessage = error.message.toLowerCase();
+            if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
+              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${body.itemsPath}`);
+            }
+            if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
+              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+            }
+            throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました: ${error.message}`);
+          }
+          throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました`);
+        }
+      }
+
+      // CSVインポート処理
+      const importStart = Date.now();
+      const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
+      const importTime = Date.now() - importStart;
+      
+      // メモリ使用量の計測
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      const totalTime = Date.now() - startTime;
+      
+      request.log.info({
+        summary,
+        importTimeMs: importTime,
+        totalTimeMs: totalTime,
+        memoryDelta,
+        replaceExisting: body.replaceExisting
+      }, '[Dropbox Import] インポート完了');
+      
+      return { summary, source: 'dropbox' };
+    } catch (error: unknown) {
+      const totalTime = Date.now() - startTime;
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      
+      request.log.error({
         err: error,
-        errorName: error instanceof Error ? error.name : typeof error,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorCode: (error as any)?.code,
-        errorMeta: (error as any)?.meta
-      }, 'インポート処理エラー');
-      
-      if (error instanceof PrismaClientKnownRequestError) {
-        if (error.code === 'P2003') {
-          const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
-          const modelName = (error.meta as any)?.model_name || '不明なモデル';
-          throw new ApiError(
-            400,
-            `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
-            { code: error.code, ...error.meta }
-          );
-        }
-        throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
-      }
-      
-      // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
-      if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
-        const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
-        const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
-        throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
-      }
+        totalTimeMs: totalTime,
+        memoryDelta
+      }, '[Dropbox Import] インポート失敗');
       
       if (error instanceof ApiError) {
         throw error;
       }
       
-      throw new ApiError(400, `インポート処理エラー: ${error instanceof Error ? error.message : '不明なエラー'}`);
+      // ZodErrorはバリデーションエラーなので400を返す
+      if (error instanceof ZodError) {
+        const firstIssue = error.issues[0];
+        const errorMessage = firstIssue?.message || 'バリデーションエラー';
+        throw new ApiError(400, errorMessage);
+      }
+      
+      if (error instanceof Error) {
+        throw new ApiError(500, `Dropboxインポート処理に失敗しました: ${error.message}`);
+      }
+      
+      throw new ApiError(500, 'Dropboxインポート処理に失敗しました');
+    }
+  });
+
+  // === CSVインポートスケジュール管理API ===
+  
+  // スケジュール一覧取得
+  app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
+    const config = await BackupConfigLoader.load();
+    return {
+      schedules: config.csvImports || []
+    };
+  });
+
+  // スケジュール追加
+  const csvImportScheduleSchema = z.object({
+    id: z.string().min(1, 'IDは必須です'),
+    name: z.string().optional(),
+    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
+    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    schedule: z.string().min(1, 'スケジュール（cron形式）は必須です'),
+    enabled: z.boolean().optional().default(true),
+    replaceExisting: z.boolean().optional().default(false),
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false),
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional().default({ enabled: false, targets: ['csv'] })
+  }).refine((data) => data.employeesPath || data.itemsPath, {
+    message: 'employeesPath または itemsPath のいずれかを指定してください'
+  });
+
+  app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
+    const body = csvImportScheduleSchema.parse(request.body ?? {});
+    
+    const config = await BackupConfigLoader.load();
+    
+    // IDの重複チェック
+    if (config.csvImports?.some(s => s.id === body.id)) {
+      throw new ApiError(409, `スケジュールIDが既に存在します: ${body.id}`);
     }
 
-    // === 6. 結果を返す ===
-    return { summary };
+    // スケジュールを追加
+    const newSchedule = {
+      id: body.id,
+      name: body.name,
+      employeesPath: body.employeesPath,
+      itemsPath: body.itemsPath,
+      schedule: body.schedule,
+      enabled: body.enabled ?? true,
+      replaceExisting: body.replaceExisting ?? false,
+      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
+    };
+
+    config.csvImports = [...(config.csvImports || []), newSchedule];
+    await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
+
+    request.log.info({ scheduleId: body.id }, '[CSV Import Schedule] Schedule added');
+    return { schedule: newSchedule };
+  });
+
+  // スケジュール更新用スキーマ（すべてのフィールドをオプショナルに）
+  const csvImportScheduleUpdateSchema = z.object({
+    id: z.string().min(1).optional(),
+    name: z.string().optional(),
+    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
+    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    schedule: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    replaceExisting: z.boolean().optional(),
+    autoBackupAfterImport: z.object({
+      enabled: z.boolean().default(false),
+      targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional()
+  }).refine((data) => !data.employeesPath && !data.itemsPath || data.employeesPath || data.itemsPath, {
+    message: 'employeesPath または itemsPath のいずれかを指定してください'
+  });
+
+  // スケジュール更新
+  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    const body = csvImportScheduleUpdateSchema.parse(request.body ?? {});
+    
+    const config = await BackupConfigLoader.load();
+    const scheduleIndex = config.csvImports?.findIndex(s => s.id === id);
+    
+    if (scheduleIndex === undefined || scheduleIndex === -1) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+
+    // スケジュールを更新
+    const existingSchedule = config.csvImports![scheduleIndex];
+    const updatedSchedule = {
+      ...existingSchedule,
+      ...body,
+      id, // IDは変更不可
+      // autoBackupAfterImportが指定されていない場合は既存の値を保持
+      autoBackupAfterImport: body.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
+    };
+
+    config.csvImports![scheduleIndex] = updatedSchedule;
+    await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
+
+    request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule updated');
+    return { schedule: updatedSchedule };
+  });
+
+  // スケジュール削除
+  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    const config = await BackupConfigLoader.load();
+    const scheduleIndex = config.csvImports?.findIndex(s => s.id === id);
+    
+    if (scheduleIndex === undefined || scheduleIndex === -1) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+
+    // スケジュールを削除
+    config.csvImports = config.csvImports!.filter(s => s.id !== id);
+    await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    await scheduler.reload();
+
+    request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule deleted');
+    return { message: 'スケジュールを削除しました' };
+  });
+
+  // 手動実行
+  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    // スケジュールが存在するか確認
+    const config = await BackupConfigLoader.load();
+    const schedule = config.csvImports?.find(s => s.id === id);
+    
+    if (!schedule) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+    
+    const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
+    const scheduler = getCsvImportScheduler();
+    
+    try {
+      await scheduler.runImport(id);
+      request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
+      return { message: 'インポートを実行しました' };
+    } catch (error) {
+      request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+      if (error instanceof Error) {
+        // スケジュールが見つからないエラーの場合は404
+        if (error.message.includes('not found') || error.message.includes('見つかりません')) {
+          throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+        }
+        throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
+      }
+      throw new ApiError(500, 'インポート実行に失敗しました');
+    }
+  });
+
+  // === CSVインポート履歴API ===
+  
+  // 履歴一覧取得（フィルタ/ページング対応）
+  app.get('/imports/history', { preHandler: mustBeAdmin }, async (request) => {
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      status?: string;
+      scheduleId?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const status = (query.status && Object.values(ImportStatus).includes(query.status as any)) 
+      ? (query.status as typeof ImportStatus[keyof typeof ImportStatus])
+      : undefined;
+    const scheduleId = query.scheduleId;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      status,
+      scheduleId,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
+
+  // スケジュールIDで履歴取得（フィルタ/ページング対応）
+  app.get('/imports/schedule/:id/history', { preHandler: mustBeAdmin }, async (request) => {
+    const { id } = request.params as { id: string };
+    
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const status = (query.status && Object.values(ImportStatus).includes(query.status as any)) 
+      ? (query.status as typeof ImportStatus[keyof typeof ImportStatus])
+      : undefined;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      scheduleId: id,
+      status,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
+
+  // 失敗した履歴取得（フィルタ/ページング対応）
+  app.get('/imports/history/failed', { preHandler: mustBeAdmin }, async (request) => {
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const query = request.query as {
+      scheduleId?: string;
+      startDate?: string;
+      endDate?: string;
+      offset?: string;
+      limit?: string;
+    };
+    
+    const scheduleId = query.scheduleId;
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    const offset = query.offset ? parseInt(query.offset, 10) : undefined;
+    const limit = query.limit ? parseInt(query.limit, 10) : undefined;
+    
+    const result = await historyService.getHistoryWithFilter({
+      status: ImportStatus.FAILED,
+      scheduleId,
+      startDate,
+      endDate,
+      offset,
+      limit
+    });
+    
+    return result;
+  });
+
+  // 履歴詳細取得
+  app.get('/imports/history/:historyId', { preHandler: mustBeAdmin }, async (request) => {
+    const { historyId } = request.params as { historyId: string };
+    
+    const { ImportHistoryService } = await import('../services/imports/import-history.service.js');
+    const historyService = new ImportHistoryService();
+    
+    const history = await historyService.getHistory(historyId);
+    
+    if (!history) {
+      throw new ApiError(404, `履歴が見つかりません: ${historyId}`);
+    }
+    
+    return { history };
   });
 }

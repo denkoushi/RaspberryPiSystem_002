@@ -1,6 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  getBackupHistory,
+  getBackupHistoryById,
+  restoreFromDropbox,
+  getCsvImportSchedules,
+  createCsvImportSchedule,
+  updateCsvImportSchedule,
+  deleteCsvImportSchedule,
+  runCsvImportSchedule,
+  type BackupHistoryFilters,
+  type RestoreFromDropboxRequest
+} from './backup';
+import {
   borrowItem,
   cancelLoan,
   createEmployee,
@@ -591,4 +603,64 @@ export function useRiggingInspectionRecordMutations() {
       queryClient.invalidateQueries({ queryKey: ['rigging-inspection-records', variables.riggingGearId] })
   });
   return { create };
+}
+
+// バックアップ履歴フック
+export function useBackupHistory(filters?: BackupHistoryFilters) {
+  return useQuery({
+    queryKey: ['backup-history', filters],
+    queryFn: () => getBackupHistory(filters)
+  });
+}
+
+export function useBackupHistoryById(id: string) {
+  return useQuery({
+    queryKey: ['backup-history', id],
+    queryFn: () => getBackupHistoryById(id),
+    enabled: !!id
+  });
+}
+
+export function useRestoreFromDropbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RestoreFromDropboxRequest) => restoreFromDropbox(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
+    }
+  });
+}
+
+// CSVインポートスケジュールフック
+export function useCsvImportSchedules() {
+  return useQuery({
+    queryKey: ['csv-import-schedules'],
+    queryFn: getCsvImportSchedules
+  });
+}
+
+export function useCsvImportScheduleMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (schedule: Parameters<typeof createCsvImportSchedule>[0]) => createCsvImportSchedule(schedule),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, schedule }: { id: string; schedule: Parameters<typeof updateCsvImportSchedule>[1] }) =>
+      updateCsvImportSchedule(id, schedule),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteCsvImportSchedule(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+  });
+  const run = useMutation({
+    mutationFn: (id: string) => runCsvImportSchedule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['import-history'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
+    }
+  });
+  return { create, update, remove, run };
 }

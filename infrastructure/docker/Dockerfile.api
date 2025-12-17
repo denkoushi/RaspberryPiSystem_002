@@ -10,6 +10,7 @@ RUN apt-get update \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
+COPY scripts ./scripts
 
 RUN corepack enable && pnpm install
 
@@ -32,6 +33,7 @@ COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=base /app/apps/api ./apps/api
 COPY --from=base /app/packages/shared-types ./packages/shared-types
+COPY --from=base /app/scripts ./scripts
 
 WORKDIR /app
 RUN corepack enable \
