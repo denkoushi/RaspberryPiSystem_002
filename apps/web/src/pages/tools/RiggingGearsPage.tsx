@@ -345,36 +345,36 @@ export function RiggingGearsPage() {
                 <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
               ) : (
                 <table className="mt-2 w-full text-left text-sm">
-                  <thead className="text-white/60">
+                  <thead className="bg-slate-200">
                     <tr>
-                      <th className="px-2 py-1">結果</th>
-                      <th className="px-2 py-1">従業員ID</th>
-                      <th className="px-2 py-1">日時</th>
-                      <th className="px-2 py-1">備考</th>
+                      <th className="px-2 py-1 text-sm font-semibold text-slate-900">結果</th>
+                      <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員ID</th>
+                      <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
+                      <th className="px-2 py-1 text-sm font-semibold text-slate-900">備考</th>
                     </tr>
                   </thead>
                   <tbody>
                     {inspections.data?.map((rec) => (
-                      <tr key={rec.id} className="border-t border-white/5">
+                      <tr key={rec.id} className="border-t border-slate-200">
                         <td className="px-2 py-1">
                           <span
-                            className={`inline-block rounded px-2 py-0.5 text-xs ${
-                              rec.result === 'PASS' ? 'bg-emerald-500/20 text-emerald-200' : 'bg-red-500/20 text-red-200'
+                            className={`inline-block rounded border-2 px-2 py-0.5 text-xs font-bold shadow-lg ${
+                              rec.result === 'PASS' ? 'border-emerald-700 bg-emerald-600 text-white' : 'border-red-700 bg-red-600 text-white'
                             }`}
                           >
                             {rec.result === 'PASS' ? 'OK' : 'NG'}
                           </span>
                         </td>
-                        <td className="px-2 py-1 font-mono text-xs text-white/70">{rec.employeeId}</td>
-                        <td className="px-2 py-1 text-white/70">
+                        <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{rec.employeeId}</td>
+                        <td className="px-2 py-1 text-sm text-slate-700">
                           {new Date(rec.inspectedAt).toLocaleString()}
                         </td>
-                        <td className="px-2 py-1 text-white/70">{rec.notes ?? '-'}</td>
+                        <td className="px-2 py-1 text-sm text-slate-700">{rec.notes ?? '-'}</td>
                       </tr>
                     ))}
                     {inspections.data?.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-2 py-3 text-center text-white/70">
+                        <td colSpan={4} className="px-2 py-3 text-center text-sm text-slate-700">
                           点検記録がありません
                         </td>
                       </tr>
