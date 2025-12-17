@@ -268,8 +268,10 @@
   - 自動バックアップ: ✅ 実行確認（ログとDropboxファイルで確認）
   - Dropboxからのリストア: ✅ 成功
   - CSVインポート失敗時のエラーハンドリング: ✅ 正常動作
-  - **発見された問題**: バックアップ履歴に記録されていない（`executeAutoBackup`が`BackupHistoryService`を使用していない）、リストアAPIのパス指定（`basePath`を除いた相対パスで指定する必要がある）
-  - 詳細は [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md) を参照
+  - バックアップ失敗時のエラーハンドリング: ✅ 正常動作（履歴に記録される）
+  - リストア失敗時のエラーハンドリング: ✅ 正常動作（存在しないパス、整合性検証失敗）
+  - **修正完了**: バックアップ履歴の記録機能を追加（`executeAutoBackup`で`BackupHistoryService`を使用）、リストアAPIのパス処理を改善（`basePath`が含まれている場合、自動的に削除）
+  - 詳細は [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md) / [phase3-error-handling-test-results.md](../guides/phase3-error-handling-test-results.md) / [phase3-complete-verification-summary.md](../guides/phase3-complete-verification-summary.md) を参照
 - ⏳ 本番運用への移行準備（長期運用テスト、監視・アラート設定、運用ドキュメント作成）
 - ⏳ E2Eテストの追加（フロントエンドとバックエンドを統合したE2Eテスト）
 
@@ -1071,7 +1073,10 @@
   - ✅ スケジュール実行テスト完了（トークンリフレッシュ動作確認）
   - ✅ Dropboxトークンリフレッシュ修正完了（`refreshToken`の未渡しを修正）
   - 詳細: [phase3-verification-checklist.md](../guides/phase3-verification-checklist.md)
-  - 実機検証結果: [phase3-verification-complete-summary.md](../guides/phase3-verification-complete-summary.md)
+  - 実機検証結果: [phase3-complete-verification-summary.md](../guides/phase3-complete-verification-summary.md)
+  - 必須検証結果: [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md)
+  - エラーハンドリングテスト結果: [phase3-error-handling-test-results.md](../guides/phase3-error-handling-test-results.md)
+  - 本番運用可否評価: [phase3-production-readiness-assessment.md](../guides/phase3-production-readiness-assessment.md)
   - トークンリフレッシュ修正: [phase3-dropbox-token-refresh-fix.md](../guides/phase3-dropbox-token-refresh-fix.md)
 
 ## CI/CD必須化の実装計画

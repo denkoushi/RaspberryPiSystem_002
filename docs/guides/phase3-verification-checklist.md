@@ -136,13 +136,15 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ls
   - 設定ファイル: ✅ 成功（`csvImports`スケジュールのCRUD操作が正常に動作）
   - コード実装: ✅ 成功（`csv-import-scheduler.js`がコンパイルされている）
   - 自動バックアップ機能: ✅ コード確認済み（実装が正常であることを確認）
+  - バックアップ履歴記録: ✅ 成功（`executeAutoBackup`で`BackupHistoryService`を使用して履歴に記録）
 - [x] Phase 3.3: Dropboxからの自動リストア機能の確認 ✅ **完了**
   - APIエンドポイント: ✅ 成功（ルートが正しくコンパイルされている）
   - BackupVerifier: ✅ 成功（`backup-verifier.js`がコンパイルされている）
   - 管理画面UI: ✅ 成功（Dropboxリストアページが正常に表示される）
+  - パス処理改善: ✅ 成功（`basePath`が含まれている場合、自動的に削除する処理を追加）
 - [x] Phase 3.4: バックアップ履歴サービスの確認 ✅ **完了**
   - BackupHistoryService: ✅ 成功（`backup-history.service.js`がコンパイルされている）
-  - データベース: ✅ 成功（現在0件の履歴、正常動作）
+  - データベース: ✅ 成功（バックアップ・リストア履歴が記録される）
 - [x] Phase 3.5: 管理画面UIの実装 ✅ **完了**
   - バックアップ履歴ページ: ✅ 成功（表示確認、コードレビュー完了）
   - Dropboxリストアページ: ✅ 成功（表示確認、コードレビュー完了）
@@ -153,13 +155,26 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ls
 - [x] Phase 3.7: Dropboxトークンリフレッシュの修正 ✅ **完了**
   - 修正内容: `CsvImportScheduler.executeImport`で`refreshToken`を追加
   - テスト結果: ✅ 成功（トークンリフレッシュが正常に動作することを確認）
+- [x] Phase 3.8: 必須検証（実際のデータファイルを使用したエンドツーエンドテスト） ✅ **完了**
+  - CSVインポート: ✅ 成功（従業員2件作成）
+  - 自動バックアップ: ✅ 実行確認（ログとDropboxファイルで確認）
+  - Dropboxからのリストア: ✅ 成功（履歴ID: `dd841c9c-ce26-402d-9008-ec7c64a0582b`）
+- [x] Phase 3.9: エラーハンドリングテスト ✅ **完了**
+  - CSVインポート失敗時: ✅ 正常動作（エラーメッセージが適切に表示される、自動バックアップが実行されない）
+  - バックアップ失敗時: ✅ 正常動作（エラーメッセージが適切に表示される、バックアップ履歴に失敗が記録される）
+  - リストア失敗時: ✅ 正常動作（存在しないパス、整合性検証失敗の両方で適切にエラーが表示される、リストア履歴に失敗が記録される）
+- [x] Phase 3.10: ベストプラクティス実装 ✅ **完了**
+  - バックアップ履歴の記録機能: ✅ 完了（`executeAutoBackup`で`BackupHistoryService`を使用）
+  - リストアAPIのパス処理改善: ✅ 完了（`basePath`が含まれている場合、自動的に削除）
 
 **発見された問題**: 
 - ✅ **修正完了**: `CsvImportScheduler.executeImport`で`DropboxStorageProvider`作成時に`refreshToken`が渡されていなかった問題を修正（2025-12-17）
+- ✅ **修正完了**: `executeAutoBackup`で`BackupHistoryService`を使用していなかった問題を修正（2025-12-17）
+- ✅ **修正完了**: リストアAPIのパス処理を改善（`basePath`が含まれている場合、自動的に削除）（2025-12-17）
 
-**次のステップ**: 
-- 実際のCSVファイルを使用して、完全なエンドツーエンドテストを実施（CSVインポート→自動バックアップ→バックアップ履歴確認）
-- 実際のバックアップファイルを使用して、Dropboxからのリストアをテスト
+**検証完了**: 
+- ✅ 実際のCSVファイルを使用したエンドツーエンドテスト: ✅ 完了（CSVインポート→自動バックアップ→Dropboxからのリストア）
+- ✅ エラーハンドリングテスト: ✅ 完了（すべてのケースで正常動作を確認）
 
 ## トラブルシューティング
 
