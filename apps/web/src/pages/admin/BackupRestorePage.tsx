@@ -53,28 +53,28 @@ export function BackupRestorePage() {
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-white/70 mb-2">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
             バックアップパス（Dropbox上のパス）
           </label>
           <input
             type="text"
-            className="w-full rounded-md border border-white/10 bg-white/5 p-2 text-white font-mono text-sm"
+            className="w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900 font-mono"
             placeholder="/backups/csv/2025-12-16T04-00-00-000Z/employees.csv"
             value={backupPath}
             onChange={(e) => setBackupPath(e.target.value)}
             disabled={isRestoring}
           />
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-slate-600">
             例: /backups/csv/2025-12-16T04-00-00-000Z/employees.csv
           </p>
         </div>
 
         <div>
-          <label className="block text-sm text-white/70 mb-2">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
             リストア対象
           </label>
           <select
-            className="w-full rounded-md border border-white/10 bg-white/5 p-2 text-white"
+            className="w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
             value={targetKind}
             onChange={(e) => setTargetKind(e.target.value as 'database' | 'csv')}
             disabled={isRestoring}
@@ -85,16 +85,17 @@ export function BackupRestorePage() {
         </div>
 
         <div>
-          <label className="flex items-center gap-2 text-sm text-white/70">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
               checked={verifyIntegrity}
               onChange={(e) => setVerifyIntegrity(e.target.checked)}
               disabled={isRestoring}
+              className="rounded border-2 border-slate-300"
             />
             整合性検証を実行する（推奨）
           </label>
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-slate-600">
             バックアップファイルのハッシュ値とファイルサイズを検証します
           </p>
         </div>
@@ -110,13 +111,13 @@ export function BackupRestorePage() {
         </div>
 
         {restoreMutation.isError && (
-          <div className="rounded-md bg-red-500/20 border border-red-500/50 p-3 text-red-400 text-sm">
+          <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">
             エラー: {restoreMutation.error instanceof Error ? restoreMutation.error.message : 'リストアに失敗しました'}
           </div>
         )}
 
         {restoreMutation.isSuccess && (
-          <div className="rounded-md bg-emerald-500/20 border border-emerald-500/50 p-3 text-emerald-400 text-sm">
+          <div className="rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg">
             リストアが完了しました
           </div>
         )}

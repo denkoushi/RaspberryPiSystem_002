@@ -76,13 +76,13 @@ export function SignageEmergencyPage() {
               onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
               className="rounded border-white/10"
             />
-            <label className="text-sm text-white/70">緊急表示を有効にする</label>
+            <label className="text-sm font-semibold text-slate-700">緊急表示を有効にする</label>
           </div>
 
           {formData.enabled && (
             <>
               <div>
-                <label className="block text-sm text-white/70">コンテンツタイプ</label>
+                <label className="block text-sm font-semibold text-slate-700">コンテンツタイプ</label>
                 <select
                   value={formData.contentType || ''}
                   onChange={(e) =>
@@ -91,7 +91,7 @@ export function SignageEmergencyPage() {
                       contentType: (e.target.value || null) as 'TOOLS' | 'PDF' | 'SPLIT' | null,
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 >
                   <option value="">メッセージのみ</option>
                   <option value="TOOLS">工具管理データ</option>
@@ -101,11 +101,11 @@ export function SignageEmergencyPage() {
 
               {formData.contentType === 'PDF' && (
                 <div>
-                  <label className="block text-sm text-white/70">PDF</label>
+                  <label className="block text-sm font-semibold text-slate-700">PDF</label>
                   <select
                     value={formData.pdfId || ''}
                     onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
-                    className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                   >
                     <option value="">選択してください</option>
                     {pdfsQuery.data?.map((pdf: SignagePdf) => (
@@ -119,19 +119,19 @@ export function SignageEmergencyPage() {
 
               {formData.contentType === null && (
                 <div>
-                  <label className="block text-sm text-white/70">メッセージ</label>
+                  <label className="block text-sm font-semibold text-slate-700">メッセージ</label>
                   <textarea
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     rows={4}
-                    className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                    className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                     placeholder="緊急メッセージを入力してください"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm text-white/70">有効期限（任意）</label>
+                <label className="block text-sm font-semibold text-slate-700">有効期限（任意）</label>
                 <input
                   type="datetime-local"
                   value={
@@ -147,7 +147,7 @@ export function SignageEmergencyPage() {
                       expiresAt: e.target.value ? new Date(e.target.value) : null,
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
             </>
