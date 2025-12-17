@@ -145,6 +145,132 @@
 - **色覚多様性テスト**: 色だけでなくアイコンでも識別可能であることを確認
 - **レスポンシブテスト**: 異なる画面サイズでの表示確認
 
+## 実機検証手順
+
+### デプロイ前の確認事項
+
+#### 1. ネットワーク環境の確認
+
+現在のネットワーク環境（オフィス/自宅）を確認し、Pi5上の`group_vars/all.yml`の`network_mode`を適切に設定してください。
+
+```bash
+# Pi5上のnetwork_modeを確認
+ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+
+# 必要に応じて変更（Tailscaleモードの場合）
+ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+```
+
+詳細は [デプロイメントガイド](../guides/deployment.md) を参照してください。
+
+#### 2. ブランチの確認
+
+実機検証用のブランチ `feature/improve-visibility-color-theme` がリモートにプッシュされていることを確認してください。
+
+```bash
+# リモートブランチの確認
+git ls-remote --heads origin feature/improve-visibility-color-theme
+```
+
+### デプロイ手順
+
+#### ステップ1: Pi5へのデプロイ
+
+```bash
+# Pi5にSSH接続してデプロイ
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ./scripts/server/deploy.sh feature/improve-visibility-color-theme"
+```
+
+**期待される結果**:
+- ✅ リポジトリが更新される
+- ✅ Dockerコンテナが再ビルドされる
+- ✅ コンテナが正常に起動する
+
+#### ステップ2: デプロイ後の確認
+
+```bash
+# コンテナの状態を確認
+ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
+
+# APIのヘルスチェック
+ssh denkon5sd02@100.106.158.2 "curl http://localhost:8080/health"
+
+# Webサーバーの確認
+ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
+```
+
+**期待される結果**:
+- ✅ すべてのコンテナが`Up`状態
+- ✅ APIヘルスチェックが`200 OK`を返す
+- ✅ Webサーバーが正常に応答する
+
+### 実機検証チェックリスト
+
+#### 1. 管理コンソールの視認性確認
+
+- [ ] **統合一覧ページ** (`/admin/tools/unified`): メイン背景`bg-slate-800`、カード背景`bg-white`、アイテム種別バッジ（工具=青🔧、計測機器=紫📏、吊具=オレンジ⚙️）
+- [ ] **アイテム一覧ページ** (`/admin/tools/items`): テーブルヘッダー`bg-slate-200`、テーブルセル`text-slate-700`、フォーム要素`border-2 border-slate-300`
+- [ ] **その他の管理ページ**: ダッシュボード、従業員管理、履歴、計測機器管理、吊具管理が新テーマ適用
+
+#### 2. キオスクの視認性確認
+
+- [ ] **持出画面** (`/kiosk/tag`): メイン背景`bg-slate-800`、成功メッセージ`bg-emerald-600`
+- [ ] **返却画面** (`/kiosk`): アイテム種別に応じた背景色（工具=青、計測機器=紫、吊具=オレンジ）、アイコン表示
+- [ ] **計測機器持出画面** (`/kiosk/instruments/borrow`): フォーム要素`border-2 border-slate-300`、点検項目カード`bg-slate-100`
+- [ ] **吊具持出画面** (`/kiosk/rigging/borrow`): タイトル`text-xl font-bold text-slate-900`
+
+#### 3. サイネージの視認性確認
+
+- [ ] **サイネージ表示** (`/signage`): メイン背景`bg-slate-800`、工具カードと計測機器カードは現状の背景を維持、フォントサイズ最小14px、アイコン表示
+
+#### 4. 異なる照明条件での視認性確認
+
+- [ ] **蛍光灯照明**: 管理コンソール、キオスク、サイネージで文字がはっきり見える
+- [ ] **LED照明**: 管理コンソール、キオスク、サイネージで文字がはっきり見える
+- [ ] **自然光**: 管理コンソール、キオスク、サイネージで文字がはっきり見える
+
+#### 5. 距離からの視認性確認
+
+- [ ] **1m離れた位置**: 主要な情報が識別できる
+- [ ] **2m離れた位置**: 主要な情報が識別できる
+
+#### 6. 色覚多様性テスト
+
+- [ ] **工具**: 🔧アイコンで識別可能
+- [ ] **計測機器**: 📏アイコンで識別可能
+- [ ] **吊具**: ⚙️アイコンで識別可能
+
+#### 7. レスポンシブテスト
+
+- [ ] **モバイルサイズ**: フォントサイズが適切に表示される
+- [ ] **タブレットサイズ**: テーブルやフォームが適切にスクロール可能
+- [ ] **デスクトップサイズ**: すべての要素が適切に表示される
+
+### トラブルシューティング
+
+#### デプロイが失敗する場合
+
+1. **ネットワークモードの確認**
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ```
+
+2. **コンテナのログ確認**
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs web"
+   ```
+
+#### 視認性が改善されていない場合
+
+1. **ブラウザのキャッシュをクリア**: 開発者ツールで「キャッシュの無効化とハード再読み込み」を実行
+
+2. **コンテナの再ビルド**
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+   ```
+
+詳細な検証手順は [実機検証手順書](../guides/ui-visibility-color-theme-real-device-verification.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [計測機器管理 UI設計メモ](../modules/measuring-instruments/ui.md)
@@ -232,6 +358,7 @@
 
 ## 変更履歴
 
+- 2025-12-17: 実機検証手順セクション追加（実機検証手順書を統合）
 - 2025-12-17: Phase 5-8完了（優先度の高いページ、管理コンソール、工具管理ページの更新完了）
 - 2025-12-17: 実装状況セクション追加（総点検レポート統合）
 - 2025-12-17: 初版作成（提案3採用）
