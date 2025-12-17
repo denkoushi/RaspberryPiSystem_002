@@ -10,10 +10,10 @@ interface CardProps extends PropsWithChildren {
 
 export function Card({ title, action, className, children }: CardProps) {
   return (
-    <section className={clsx('rounded-xl border border-white/10 bg-white/5 p-4 text-white', className)}>
+    <section className={clsx('rounded-xl border-2 border-slate-300 bg-white p-4 text-slate-900 shadow-lg', className)}>
       {title ? (
         <header className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="text-lg font-bold">{title}</h2>
           {action}
         </header>
       ) : null}
