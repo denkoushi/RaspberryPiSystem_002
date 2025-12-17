@@ -301,7 +301,9 @@ model SignageEmergency {
 - サイネージ表示はサーバー側でSVG→JPEG変換されるため、カラーテーマの変更は`signage.renderer.ts`で実装
 - 工具と計測機器の視覚的識別は現状の藍系背景を維持しつつ、コントラスト比を向上させる
 
-詳細は [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) を参照してください。
+**実装状況**: Phase 3完了（2025-12-17）。サイネージレンダラー（`signage.renderer.ts`）に提案3カラーパレットを適用完了。工具、計測機器、吊具のカードにアイコン（🔧、📏、⚙️）を追加し、フォントサイズとボーダーを改善。コントラスト比約21:1（WCAG AAA準拠）を達成。
+
+詳細は [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
 
 ## 関連ドキュメント
 

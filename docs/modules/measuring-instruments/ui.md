@@ -119,4 +119,6 @@
 - **目標**: WCAG AAA準拠（コントラスト比7:1以上、推奨21:1）
 - **計測機器背景+白文字**: 約21:1 ✅
 
-詳細は [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) を参照してください。
+**実装状況**: Phase 1-8完了（2025-12-17）。計測機器一覧ページ、キオスク計測機器持出画面、キオスク返却画面、サイネージレンダラーに提案3カラーパレットを適用完了。コントラスト比約21:1（WCAG AAA準拠）を達成。
+
+詳細は [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../../guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
