@@ -267,7 +267,7 @@ export class SignageRenderer {
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
         ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
-            font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
         : '';
@@ -323,7 +323,7 @@ export class SignageRenderer {
     const slideInfo =
       options?.slideInterval && options.displayMode === 'SLIDESHOW'
         ? `<text x="${outerPadding + panelWidth - innerPadding}" y="${outerPadding + innerPadding}"
-            text-anchor="end" font-size="${Math.round(12 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ${options.slideInterval}s ごとに切替
           </text>`
         : '';
@@ -414,17 +414,21 @@ export class SignageRenderer {
         const managementText = isInstrument || isRigging
           ? (tool.managementNumber || tool.itemCode || '')
           : (tool.itemCode || '');
+        // 提案3カラーパレット: 工場現場特化・高視認性テーマ
+        // 工具: bg-blue-500 (RGB: 59,130,246), ボーダー: border-blue-700 (RGB: 29,78,216)
+        // 計測機器: bg-purple-600 (RGB: 147,51,234), ボーダー: border-purple-800 (RGB: 107,33,168)
+        // 吊具: bg-orange-500 (RGB: 249,115,22), ボーダー: border-orange-700 (RGB: 194,65,12)
         const cardFill = isInstrument
-          ? 'rgba(35,48,94,0.90)'
+          ? 'rgba(147,51,234,1.0)' // purple-600
           : isRigging
-            ? 'rgba(255,247,204,0.90)' // 薄い黄色
-            : 'rgba(8,15,36,0.85)';
+            ? 'rgba(249,115,22,1.0)' // orange-500
+            : 'rgba(59,130,246,1.0)'; // blue-500
         const cardStroke = isInstrument
-          ? 'rgba(129,140,248,0.60)'
+          ? 'rgba(107,33,168,1.0)' // purple-800
           : isRigging
-            ? 'rgba(255,221,128,0.80)'
-            : 'rgba(255,255,255,0.08)';
-        const codeColor = isInstrument ? '#c7d2fe' : isRigging ? '#facc15' : '#94a3b8';
+            ? 'rgba(194,65,12,1.0)' // orange-700
+            : 'rgba(29,78,216,1.0)'; // blue-700
+        const strokeWidth = Math.max(2, Math.round(2 * scale)); // 2px以上
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
 
@@ -466,40 +470,48 @@ export class SignageRenderer {
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
-              fill="${cardFill}" stroke="${cardStroke}" />
+              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
             ${thumbnailElement}
             ${isInstrument
               ? `<text x="${textX}" y="${managementY}"
-                  font-size="${Math.round(14 * scale)}" font-weight="600" fill="#c7d2fe" font-family="sans-serif">
-                  ${this.escapeXml(managementText)}
+                  font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+                  📏 ${this.escapeXml(managementText)}
                 </text>`
-              : ''
+              : isRigging
+                ? `<text x="${textX}" y="${managementY}"
+                    font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+                    ⚙️ ${this.escapeXml(managementText)}
+                  </text>`
+                : `<text x="${textX}" y="${managementY}"
+                    font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+                    🔧 ${this.escapeXml(managementText)}
+                  </text>`
             }
             <text x="${textX}" y="${primaryY}"
-              font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
             </text>
             <text x="${textX}" y="${nameY}"
-              font-size="${Math.round(16 * scale)}" fill="#ffffff" font-family="sans-serif">
+              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
             <text x="${textX}" y="${dateY}"
-              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
             </text>
             <text x="${textX}" y="${timeY}"
-              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
             </text>
             ${tool.isOver12Hours
               ? `<text x="${textX}" y="${warningY}"
-                  font-size="${Math.round(14 * scale)}" fill="#f43f5e" font-family="sans-serif">
+                  font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   ⚠ 期限超過
                 </text>`
               : ''
             }
             <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.round(10 * scale)}" fill="${codeColor}" font-family="monospace">
+              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
               ${this.escapeXml(managementText || tool.itemCode || '')}
             </text>
           </g>
