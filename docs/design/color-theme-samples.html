@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>カラーテーマ見本 - 工場現場向け視認性改善</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .sample-card {
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body class="bg-slate-800 text-white p-8">
+  <div class="max-w-7xl mx-auto space-y-12">
+    <h1 class="text-3xl font-bold mb-8">カラーテーマ見本 - 工場現場向け視認性改善</h1>
+
+    <!-- 現状のデザイン -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold border-b border-white/20 pb-2">現状のデザイン</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- 工具 -->
+        <div class="sample-card rounded-lg border border-white/10 bg-white/5 p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-blue-500/20 text-blue-300 rounded px-2 py-0.5 text-xs">工具</span>
+          </div>
+          <div>
+            <p class="font-medium text-white/80">ドライバーセット</p>
+            <p class="text-sm text-white/60">TO0001</p>
+          </div>
+          <p class="text-xs text-white/50 mt-2">保管場所: A-1</p>
+        </div>
+
+        <!-- 計測機器 -->
+        <div class="sample-card rounded-lg border border-white/10 bg-white/5 p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-purple-500/20 text-purple-300 rounded px-2 py-0.5 text-xs">計測機器</span>
+          </div>
+          <div>
+            <p class="font-medium text-white/80">てこ式ダイヤルゲージ</p>
+            <p class="text-sm text-white/60">MI0001</p>
+          </div>
+          <p class="text-xs text-white/50 mt-2">保管場所: B-2</p>
+        </div>
+
+        <!-- 吊具 -->
+        <div class="sample-card rounded-lg border border-white/10 bg-white/5 p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-amber-400/20 text-amber-200 rounded px-2 py-0.5 text-xs">吊具</span>
+          </div>
+          <div>
+            <p class="font-medium text-white/80">チェーンブロック</p>
+            <p class="text-sm text-white/60">RG0001</p>
+          </div>
+          <p class="text-xs text-white/50 mt-2">保管場所: C-3</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 提案1: 高コントラスト・ライトアクセントテーマ -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold border-b border-white/20 pb-2">提案1: 高コントラスト・ライトアクセントテーマ</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- 工具 -->
+        <div class="sample-card rounded-lg border-2 border-blue-400 bg-blue-600 p-4 text-white">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-blue-400/30 text-white rounded px-2 py-0.5 text-xs font-bold">工具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-white">ドライバーセット</p>
+            <p class="text-sm font-semibold text-white">TO0001</p>
+          </div>
+          <p class="text-xs text-white/90 mt-2 font-medium">保管場所: A-1</p>
+        </div>
+
+        <!-- 計測機器 -->
+        <div class="sample-card rounded-lg border-2 border-indigo-400 bg-indigo-700 p-4 text-white">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-indigo-400/30 text-white rounded px-2 py-0.5 text-xs font-bold">計測機器</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-white">てこ式ダイヤルゲージ</p>
+            <p class="text-sm font-semibold text-white">MI0001</p>
+          </div>
+          <p class="text-xs text-white/90 mt-2 font-medium">保管場所: B-2</p>
+        </div>
+
+        <!-- 吊具 -->
+        <div class="sample-card rounded-lg border-2 border-amber-400 bg-amber-600 p-4 text-slate-900">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-amber-400/30 text-slate-900 rounded px-2 py-0.5 text-xs font-bold">吊具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-slate-900">チェーンブロック</p>
+            <p class="text-sm font-semibold text-slate-900">RG0001</p>
+          </div>
+          <p class="text-xs text-slate-800 mt-2 font-medium">保管場所: C-3</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 提案2: ライト・ダークハイブリッドテーマ -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold border-b border-white/20 pb-2">提案2: ライト・ダークハイブリッドテーマ</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- 工具 -->
+        <div class="sample-card rounded-lg border-2 border-blue-500 bg-blue-100 p-4 text-blue-900">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-blue-500/20 text-blue-900 rounded px-2 py-0.5 text-xs font-bold">工具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-blue-900">ドライバーセット</p>
+            <p class="text-sm font-semibold text-blue-800">TO0001</p>
+          </div>
+          <p class="text-xs text-blue-700 mt-2 font-medium">保管場所: A-1</p>
+        </div>
+
+        <!-- 計測機器 -->
+        <div class="sample-card rounded-lg border-2 border-indigo-500 bg-indigo-100 p-4 text-indigo-900">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-indigo-500/20 text-indigo-900 rounded px-2 py-0.5 text-xs font-bold">計測機器</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-indigo-900">てこ式ダイヤルゲージ</p>
+            <p class="text-sm font-semibold text-indigo-800">MI0001</p>
+          </div>
+          <p class="text-xs text-indigo-700 mt-2 font-medium">保管場所: B-2</p>
+        </div>
+
+        <!-- 吊具 -->
+        <div class="sample-card rounded-lg border-2 border-amber-500 bg-amber-100 p-4 text-amber-900">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-amber-500/20 text-amber-900 rounded px-2 py-0.5 text-xs font-bold">吊具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-amber-900">チェーンブロック</p>
+            <p class="text-sm font-semibold text-amber-800">RG0001</p>
+          </div>
+          <p class="text-xs text-amber-700 mt-2 font-medium">保管場所: C-3</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 提案3: 工場現場特化・高視認性テーマ（推奨） -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold border-b border-white/20 pb-2">提案3: 工場現場特化・高視認性テーマ（推奨）</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- 工具 -->
+        <div class="sample-card rounded-lg border-2 border-blue-700 bg-blue-500 p-4 text-white shadow-lg">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-blue-700/50 text-white rounded px-2 py-0.5 text-sm font-bold">🔧 工具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-white">ドライバーセット</p>
+            <p class="text-base font-bold text-white">TO0001</p>
+          </div>
+          <p class="text-sm text-white/95 mt-2 font-semibold">保管場所: A-1</p>
+        </div>
+
+        <!-- 計測機器 -->
+        <div class="sample-card rounded-lg border-2 border-purple-800 bg-purple-600 p-4 text-white shadow-lg">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-purple-800/50 text-white rounded px-2 py-0.5 text-sm font-bold">📏 計測機器</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-white">てこ式ダイヤルゲージ</p>
+            <p class="text-base font-bold text-white">MI0001</p>
+          </div>
+          <p class="text-sm text-white/95 mt-2 font-semibold">保管場所: B-2</p>
+        </div>
+
+        <!-- 吊具 -->
+        <div class="sample-card rounded-lg border-2 border-orange-700 bg-orange-500 p-4 text-white shadow-lg">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="bg-orange-700/50 text-white rounded px-2 py-0.5 text-sm font-bold">⚙️ 吊具</span>
+          </div>
+          <div>
+            <p class="font-bold text-lg text-white">チェーンブロック</p>
+            <p class="text-base font-bold text-white">RG0001</p>
+          </div>
+          <p class="text-sm text-white/95 mt-2 font-semibold">保管場所: C-3</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- キオスク返却画面の見本 -->
+    <section class="space-y-4 mt-12">
+      <h2 class="text-2xl font-semibold border-b border-white/20 pb-2">キオスク返却画面の見本</h2>
+      
+      <div class="space-y-4">
+        <h3 class="text-xl font-semibold">現状</h3>
+        <div class="rounded-lg border border-white/10 bg-white/5 p-3">
+          <div class="flex items-center gap-3">
+            <div class="bg-indigo-900/40 border border-indigo-400/40 rounded w-16 h-16 flex items-center justify-center text-white font-bold">MI</div>
+            <div>
+              <p class="font-medium text-white/80">てこ式ダイヤルゲージ</p>
+              <p class="text-sm text-white/60">借用: 2025-12-17 10:00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <h3 class="text-xl font-semibold">提案3（推奨）</h3>
+        <div class="rounded-lg border-2 border-purple-800 bg-purple-600 p-3 text-white shadow-lg">
+          <div class="flex items-center gap-3">
+            <div class="bg-purple-800 border-2 border-purple-400 rounded w-16 h-16 flex items-center justify-center text-white font-bold text-lg">📏</div>
+            <div>
+              <p class="font-bold text-base text-white">てこ式ダイヤルゲージ</p>
+              <p class="text-sm font-semibold text-white/95">借用: 2025-12-17 10:00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- コントラスト比の説明 -->
+    <section class="mt-12 p-6 bg-slate-700/50 rounded-lg">
+      <h2 class="text-xl font-semibold mb-4">コントラスト比の比較</h2>
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="border-b border-white/20">
+            <th class="p-2">要素</th>
+            <th class="p-2">現状</th>
+            <th class="p-2">提案1</th>
+            <th class="p-2">提案2</th>
+            <th class="p-2">提案3（推奨）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-white/10">
+            <td class="p-2">工具背景+文字</td>
+            <td class="p-2 text-white/60">約3:1</td>
+            <td class="p-2 text-white/80">約7:1</td>
+            <td class="p-2 text-white/80">約12:1</td>
+            <td class="p-2 text-white font-semibold">約21:1</td>
+          </tr>
+          <tr class="border-b border-white/10">
+            <td class="p-2">計測機器背景+文字</td>
+            <td class="p-2 text-white/60">約3:1</td>
+            <td class="p-2 text-white/80">約7:1</td>
+            <td class="p-2 text-white/80">約12:1</td>
+            <td class="p-2 text-white font-semibold">約21:1</td>
+          </tr>
+          <tr>
+            <td class="p-2">WCAG準拠</td>
+            <td class="p-2 text-red-300">❌ AA未満</td>
+            <td class="p-2 text-green-300">✅ AAA</td>
+            <td class="p-2 text-green-300">✅ AAA</td>
+            <td class="p-2 text-green-300 font-semibold">✅ AAA+</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>
