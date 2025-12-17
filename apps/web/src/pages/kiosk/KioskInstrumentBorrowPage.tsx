@@ -378,11 +378,11 @@ export function KioskInstrumentBorrowPage() {
     <div className="flex flex-col items-center gap-6 p-6">
       <Card title="計測機器 持出">
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             計測機器を選択
             <div className="mt-1">
               <select
-                className="w-full rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+                className="w-full rounded border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 value={selectedInstrumentId}
                 onChange={(e) => {
                   // 最初に操作したソースを優先する
@@ -402,7 +402,7 @@ export function KioskInstrumentBorrowPage() {
               </select>
             </div>
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             計測機器タグUID
             <Input
               value={instrumentTagUid}
@@ -419,7 +419,7 @@ export function KioskInstrumentBorrowPage() {
               disabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             氏名タグUID
             <Input
               ref={employeeTagInputRef}
@@ -436,14 +436,14 @@ export function KioskInstrumentBorrowPage() {
               disabled={isSubmitting || isNg}
             />
           </label>
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             備考
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="任意" />
           </label>
 
           <div className="md:col-span-2">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm text-white/80">点検項目</p>
+              <p className="text-sm font-semibold text-slate-700">点検項目</p>
               {inspectionItems.length > 0 && (
                 <Button
                   type="button"
@@ -457,18 +457,18 @@ export function KioskInstrumentBorrowPage() {
               )}
             </div>
             {inspectionLoading ? (
-              <p className="text-sm text-white/70">点検項目を読み込み中…</p>
+              <p className="text-sm text-slate-700">点検項目を読み込み中…</p>
             ) : inspectionItems.length === 0 ? (
-              <p className="text-sm text-white/70">計測機器を選択すると点検項目が表示されます。</p>
+              <p className="text-sm text-slate-700">計測機器を選択すると点検項目が表示されます。</p>
             ) : (
               <div className="grid gap-3">
                 {inspectionItems.map((item) => (
-                  <div key={item.id} className="rounded border border-white/10 bg-white/5 p-3">
-                    <p className="font-medium text-white">{item.name}</p>
-                    <p className="text-xs text-white/70">内容: {item.content}</p>
-                    <p className="text-xs text-white/70">基準: {item.criteria}</p>
-                    <p className="text-xs text-white/70">方法: {item.method}</p>
-                    <p className="mt-2 text-xs text-white/80">
+                  <div key={item.id} className="rounded border-2 border-slate-300 bg-slate-100 p-3 shadow-lg">
+                    <p className="font-bold text-base text-slate-900">{item.name}</p>
+                    <p className="text-sm text-slate-700">内容: {item.content}</p>
+                    <p className="text-sm text-slate-700">基準: {item.criteria}</p>
+                    <p className="text-sm text-slate-700">方法: {item.method}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-700">
                       {isNg ? '❌ NG' : '✅ OK（氏名タグスキャンで自動送信）'}
                     </p>
                   </div>
@@ -485,7 +485,7 @@ export function KioskInstrumentBorrowPage() {
             </div>
           )}
         </form>
-        {message ? <p className="mt-4 text-sm text-white/80">{message}</p> : null}
+        {message ? <p className="mt-4 text-sm font-semibold text-slate-700">{message}</p> : null}
       </Card>
     </div>
   );

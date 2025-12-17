@@ -155,41 +155,41 @@ export function RiggingGearsPage() {
         <div className="grid gap-4 lg:grid-cols-[3.5fr,1fr]">
           <div className="overflow-x-auto">
             {isLoading ? (
-              <p className="text-white/70">読み込み中...</p>
+              <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
             ) : (
               <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
-                <thead className="text-white/60">
+                <thead className="bg-slate-100">
                   <tr>
-                    <th className="w-40 px-2 py-1 whitespace-nowrap">名称</th>
-                    <th className="w-32 px-2 py-1 whitespace-nowrap">管理番号</th>
-                    <th className="w-32 px-2 py-1 whitespace-nowrap">保管場所</th>
-                    <th className="w-28 px-2 py-1 whitespace-nowrap">部署</th>
-                    <th className="w-24 px-2 py-1 whitespace-nowrap">荷重(t)</th>
-                    <th className="w-44 px-2 py-1 whitespace-nowrap">長さ/幅/厚み(mm)</th>
-                    <th className="w-32 px-2 py-1 whitespace-nowrap">RFIDタグUID</th>
-                    <th className="w-24 px-2 py-1 whitespace-nowrap">状態</th>
-                    <th className="w-48 px-2 py-1 text-right whitespace-nowrap">操作</th>
+                    <th className="w-40 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">名称</th>
+                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">管理番号</th>
+                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">保管場所</th>
+                    <th className="w-28 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">部署</th>
+                    <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">荷重(t)</th>
+                    <th className="w-44 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">長さ/幅/厚み(mm)</th>
+                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">RFIDタグUID</th>
+                    <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">状態</th>
+                    <th className="w-48 px-2 py-1 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {riggings?.map((gear) => (
-                    <tr key={gear.id} className="border-t border-white/5">
-                      <td className="px-2 py-1 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
+                    <tr key={gear.id} className="border-t border-slate-200">
+                      <td className="px-2 py-1 font-bold text-base text-slate-900 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
                         {gear.name}
                       </td>
-                      <td className="px-2 py-1 font-mono text-xs whitespace-nowrap">{gear.managementNumber}</td>
-                      <td className="px-2 py-1 text-white/70 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
+                      <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.managementNumber}</td>
+                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
                         {gear.storageLocation ?? '-'}
                       </td>
-                      <td className="px-2 py-1 text-white/70 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.department ?? '-'}>
+                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.department ?? '-'}>
                         {gear.department ?? '-'}
                       </td>
-                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">{gear.maxLoadTon ?? '-'}</td>
-                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">
+                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.maxLoadTon ?? '-'}</td>
+                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">
                         {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
                       </td>
-                      <td className="px-2 py-1 font-mono text-xs whitespace-nowrap">{gear.tags?.[0]?.rfidTagUid ?? '-'}</td>
-                      <td className="px-2 py-1 text-white/70 whitespace-nowrap">{gear.status}</td>
+                      <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.tags?.[0]?.rfidTagUid ?? '-'}</td>
+                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.status}</td>
                       <td className="px-2 py-1 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleEdit(gear)}>
@@ -207,7 +207,7 @@ export function RiggingGearsPage() {
                   ))}
                   {riggings?.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-2 py-4 text-center text-white/70">
+                      <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-700">
                         該当する吊具がありません
                       </td>
                     </tr>
@@ -342,7 +342,7 @@ export function RiggingGearsPage() {
                 {selectedName || selectedForInspection} の点検記録
               </h4>
               {inspections.isLoading ? (
-                <p className="text-white/70">読み込み中...</p>
+                <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
               ) : (
                 <table className="mt-2 w-full text-left text-sm">
                   <thead className="text-white/60">

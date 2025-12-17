@@ -141,17 +141,17 @@ export function KioskRiggingBorrowPage() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-2">
-                <h2 className="text-xl font-semibold">吊具 持出</h2>
-                <p className="text-sm text-white/70">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
+                <h2 className="text-xl font-bold text-slate-900">吊具 持出</h2>
+                <p className="text-sm font-semibold text-slate-700">吊具タグ → 従業員タグ の順にスキャンしてください。</p>
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="text-white/60">吊具タグUID:</span>
-                  <span className="font-mono">{riggingTagUid || '-'}</span>
+                  <span className="font-semibold text-slate-600">吊具タグUID:</span>
+                  <span className="font-mono font-semibold text-slate-900">{riggingTagUid || '-'}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-white/60">従業員タグUID:</span>
-                  <span className="font-mono">{employeeTagUid || '-'}</span>
+                  <span className="font-semibold text-slate-600">従業員タグUID:</span>
+                  <span className="font-mono font-semibold text-slate-900">{employeeTagUid || '-'}</span>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -181,20 +181,20 @@ export function KioskRiggingBorrowPage() {
           </div>
           <div className="grid gap-4 lg:grid-cols-[3fr,1fr]">
             <div className="flex flex-col gap-3">
-              <div className="rounded-md border border-white/10 bg-white/5 p-3">
-                <p className="text-sm font-semibold text-amber-200">点検見本（確認のみ）</p>
+              <div className="rounded-md border-2 border-slate-300 bg-slate-100 p-3 shadow-lg">
+                <p className="text-sm font-bold text-amber-600">点検見本（確認のみ）</p>
                 <img
                   src="/assets/rigging-inspection.png"
                   alt="Rigging inspection reference"
-                  className="mt-2 w-full max-w-none rounded-md border border-white/10 object-contain"
+                  className="mt-2 w-full max-w-none rounded-md border-2 border-slate-300 object-contain"
                 />
-                <p className="mt-2 text-xs text-white/70">画像を参照し、目視点検後にOK/NGを判断してください。</p>
+                <p className="mt-2 text-sm font-semibold text-slate-700">画像を参照し、目視点検後にOK/NGを判断してください。</p>
               </div>
             </div>
             <div className="flex flex-col gap-3">
-              {message && <div className="rounded-md bg-emerald-900/50 p-3 text-emerald-200">{message}</div>}
-              {error && <div className="rounded-md bg-red-900/50 p-3 text-red-200">{error}</div>}
-              {isSubmitting && <div className="text-sm text-white/70">送信中…</div>}
+              {message && <div className="rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg">{message}</div>}
+              {error && <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">{error}</div>}
+              {isSubmitting && <div className="text-sm font-semibold text-slate-700">送信中…</div>}
             </div>
           </div>
         </div>
