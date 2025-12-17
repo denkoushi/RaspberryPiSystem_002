@@ -82,19 +82,19 @@ export function HistoryPage() {
       </div>
 
       {isLoading ? (
-        <p>読み込み中...</p>
+        <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
+              <thead className="bg-slate-200">
                 <tr>
-                  <th className="px-2 py-1">日時</th>
-                  <th className="px-2 py-1">アクション</th>
-                  <th className="px-2 py-1">写真</th>
-                  <th className="px-2 py-1">アイテム</th>
-                  <th className="px-2 py-1">従業員</th>
-                  <th className="px-2 py-1">端末</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">アクション</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">写真</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">アイテム</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">端末</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,9 +107,9 @@ export function HistoryPage() {
                     ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
                     : null;
                   return (
-                  <tr key={tx.id} className="border-t border-white/5">
-                    <td className="px-2 py-1">{new Date(tx.createdAt).toLocaleString()}</td>
-                    <td className="px-2 py-1">{tx.action}</td>
+                  <tr key={tx.id} className="border-t border-slate-200">
+                    <td className="px-2 py-1 text-sm text-slate-700">{new Date(tx.createdAt).toLocaleString()}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{tx.action}</td>
                     <td className="px-2 py-1">
                       {thumbnailUrl ? (
                         <img

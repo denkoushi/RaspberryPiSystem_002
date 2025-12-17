@@ -91,7 +91,7 @@ export function EmployeesPage() {
     <div className="space-y-6">
       <Card title="従業員登録 / 編集">
         {(create.error || update.error) ? (
-          <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+          <div className="mb-4 rounded-lg border-2 border-red-700 bg-red-600 p-4 text-sm font-semibold text-white shadow-lg">
             <p className="font-semibold">エラー</p>
             {(() => {
               const error = create.error || update.error;
