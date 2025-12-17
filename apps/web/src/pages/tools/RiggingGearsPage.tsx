@@ -337,8 +337,8 @@ export function RiggingGearsPage() {
           </div>
 
           {selectedForInspection && (
-            <div className="rounded-md border border-white/10 bg-white/5 p-3">
-              <h4 className="text-sm font-semibold">
+            <div className="rounded-md border-2 border-slate-300 bg-slate-100 p-3 shadow-lg">
+              <h4 className="text-sm font-bold text-slate-900">
                 {selectedName || selectedForInspection} の点検記録
               </h4>
               {inspections.isLoading ? (
