@@ -10,7 +10,7 @@ const linkClass =
 export function AdminLayout() {
   const { user, logout } = useAuth();
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-800 text-white">
       <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-4">
           <div>

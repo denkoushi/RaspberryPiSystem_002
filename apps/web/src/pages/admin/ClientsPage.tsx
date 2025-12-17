@@ -89,66 +89,66 @@ export function ClientsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {statusData.map((client) => (
-              <article key={client.clientId} className="rounded-lg border border-white/10 bg-black/20 p-4">
+              <article key={client.clientId} className="rounded-lg border-2 border-slate-300 bg-white p-4 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold">{client.hostname}</p>
-                    <p className="text-xs text-white/60">{client.ipAddress}</p>
+                    <p className="text-base font-bold text-slate-900">{client.hostname}</p>
+                    <p className="text-xs font-semibold text-slate-700">{client.ipAddress}</p>
                   </div>
                   <span
                     className={clsx(
-                      'rounded-full px-3 py-1 text-xs font-semibold',
-                      client.stale ? 'bg-red-500/20 text-red-200' : 'bg-emerald-500/20 text-emerald-100'
+                      'rounded-full px-3 py-1 text-xs font-bold',
+                      client.stale ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
                     )}
                   >
                     {client.stale ? '12時間超オフライン' : 'オンライン'}
                   </span>
                 </div>
-                <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm text-white/80">
+                <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <div>
-                    <dt className="text-xs text-white/50">CPU使用率</dt>
-                    <dd className="text-lg font-semibold">{client.cpuUsage.toFixed(1)}%</dd>
+                    <dt className="text-xs font-semibold text-slate-700">CPU使用率</dt>
+                    <dd className="text-lg font-bold text-slate-900">{client.cpuUsage.toFixed(1)}%</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/50">メモリ使用率</dt>
-                    <dd className="text-lg font-semibold">{client.memoryUsage.toFixed(1)}%</dd>
+                    <dt className="text-xs font-semibold text-slate-700">メモリ使用率</dt>
+                    <dd className="text-lg font-bold text-slate-900">{client.memoryUsage.toFixed(1)}%</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/50">ディスク使用率</dt>
-                    <dd className="text-lg font-semibold">{client.diskUsage.toFixed(1)}%</dd>
+                    <dt className="text-xs font-semibold text-slate-700">ディスク使用率</dt>
+                    <dd className="text-lg font-bold text-slate-900">{client.diskUsage.toFixed(1)}%</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/50">CPU温度</dt>
-                    <dd className="text-lg font-semibold">{client.temperature != null ? `${client.temperature.toFixed(1)}°C` : '-'}</dd>
+                    <dt className="text-xs font-semibold text-slate-700">CPU温度</dt>
+                    <dd className="text-lg font-bold text-slate-900">{client.temperature != null ? `${client.temperature.toFixed(1)}°C` : '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/50">稼働時間</dt>
-                    <dd className="text-base font-semibold">{formatUptime(client.uptimeSeconds)}</dd>
+                    <dt className="text-xs font-semibold text-slate-700">稼働時間</dt>
+                    <dd className="text-base font-bold text-slate-900">{formatUptime(client.uptimeSeconds)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/50">最終報告</dt>
-                    <dd className="text-base font-semibold">{formatDateTime(client.lastSeen)}</dd>
+                    <dt className="text-xs font-semibold text-slate-700">最終報告</dt>
+                    <dd className="text-base font-bold text-slate-900">{formatDateTime(client.lastSeen)}</dd>
                   </div>
                 </dl>
                 {client.latestLogs.length > 0 ? (
-                  <div className="mt-4 rounded-md bg-white/5 p-2 text-xs text-white/80">
-                    <p className="mb-1 text-[11px] uppercase tracking-wide text-white/50">最新ログ</p>
+                  <div className="mt-4 rounded-md border border-slate-200 bg-slate-100 p-2 text-xs">
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-700">最新ログ</p>
                     <ul className="space-y-1">
                       {client.latestLogs.slice(0, 3).map((log, index) => (
                         <li key={`${client.clientId}-${log.createdAt}-${index}`} className="flex items-start gap-2">
                           <span
                             className={clsx(
-                              'rounded px-1 py-[1px] text-[10px] font-semibold',
+                              'rounded px-1 py-[1px] text-xs font-bold',
                               log.level === 'ERROR'
-                                ? 'bg-red-500/30 text-red-100'
+                                ? 'bg-red-600 text-white'
                                 : log.level === 'WARN'
-                                ? 'bg-amber-400/30 text-amber-100'
-                                : 'bg-slate-500/30 text-slate-100'
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-slate-600 text-white'
                             )}
                           >
                             {log.level}
                           </span>
-                          <span className="flex-1">{log.message}</span>
+                          <span className="flex-1 text-sm font-semibold text-slate-900">{log.message}</span>
                         </li>
                       ))}
                     </ul>
@@ -170,11 +170,11 @@ export function ClientsPage() {
       >
         <div className="grid gap-4 md:grid-cols-4">
           <label className="text-sm">
-            <span className="mb-1 block text-white/70">クライアント</span>
+            <span className="mb-1 block font-semibold text-slate-700">クライアント</span>
             <select
               value={logClientFilter}
               onChange={(e) => setLogClientFilter(e.target.value)}
-              className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-white"
+              className="w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
             >
               <option value="all">すべて</option>
               {clientOptions.map((client) => (
@@ -185,11 +185,11 @@ export function ClientsPage() {
             </select>
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-white/70">ログレベル</span>
+            <span className="mb-1 block font-semibold text-slate-700">ログレベル</span>
             <select
               value={logLevelFilter}
               onChange={(e) => setLogLevelFilter(e.target.value as 'ALL' | ClientLogLevel)}
-              className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-white"
+              className="w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
             >
               <option value="ALL">すべて</option>
               <option value="ERROR">ERROR</option>
@@ -199,7 +199,7 @@ export function ClientsPage() {
             </select>
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-white/70">取得件数（最大200）</span>
+            <span className="mb-1 block font-semibold text-slate-700">取得件数（最大200）</span>
             <Input
               type="number"
               min={10}
@@ -213,13 +213,13 @@ export function ClientsPage() {
 
         <div className="mt-4 overflow-x-auto">
           {logsQuery.isError ? (
-            <p className="text-red-400">ログの取得に失敗しました</p>
+            <p className="text-sm font-semibold text-red-600">ログの取得に失敗しました</p>
           ) : logsQuery.isLoading ? (
-            <p>読み込み中...</p>
+            <p className="text-sm text-slate-700">読み込み中...</p>
           ) : logsQuery.data && logsQuery.data.length > 0 ? (
             <table className="min-w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-left text-xs uppercase text-white/60">
+                <tr className="border-b-2 border-slate-300 text-left text-sm font-bold uppercase text-slate-900">
                   <th className="px-3 py-2">時刻 (JST)</th>
                   <th className="px-3 py-2">クライアント</th>
                   <th className="px-3 py-2">レベル</th>
@@ -228,75 +228,75 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {logsQuery.data.map((log) => (
-                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-white/5">
-                    <td className="px-3 py-2 align-top text-xs text-white/70">{formatDateTime(log.createdAt)}</td>
-                    <td className="px-3 py-2 align-top font-mono text-xs text-white/80">{log.clientId}</td>
+                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-slate-200">
+                    <td className="px-3 py-2 align-top text-sm font-semibold text-slate-700">{formatDateTime(log.createdAt)}</td>
+                    <td className="px-3 py-2 align-top font-mono text-sm font-semibold text-slate-900">{log.clientId}</td>
                     <td className="px-3 py-2 align-top">
                       <span
                         className={clsx(
-                          'rounded px-2 py-1 text-xs font-semibold',
+                          'rounded px-2 py-1 text-xs font-bold',
                           log.level === 'ERROR'
-                            ? 'bg-red-500/20 text-red-100'
+                            ? 'bg-red-600 text-white'
                             : log.level === 'WARN'
-                            ? 'bg-amber-400/20 text-amber-900'
+                            ? 'bg-amber-500 text-white'
                             : log.level === 'INFO'
-                            ? 'bg-emerald-500/20 text-emerald-100'
-                            : 'bg-slate-500/30 text-slate-100'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-600 text-white'
                         )}
                       >
                         {log.level}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-white/80">{log.message}</td>
+                    <td className="px-3 py-2 text-sm font-semibold text-slate-900">{log.message}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
-            <p>表示できるログがありません。</p>
+            <p className="text-sm text-slate-700">表示できるログがありません。</p>
           )}
         </div>
       </Card>
 
       <Card title="クライアント端末管理">
         {clientsQuery.isError ? (
-          <p className="text-red-400">クライアント端末一覧の取得に失敗しました</p>
+          <p className="text-sm font-semibold text-red-600">クライアント端末一覧の取得に失敗しました</p>
         ) : clientsQuery.isLoading ? (
-          <p>読み込み中...</p>
+          <p className="text-sm text-slate-700">読み込み中...</p>
         ) : clientsQuery.data && clientsQuery.data.length > 0 ? (
           <div className="space-y-4">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-white/10">
-                  <th className="px-4 py-2 text-left">名前</th>
-                  <th className="px-4 py-2 text-left">場所</th>
-                  <th className="px-4 py-2 text-left">APIキー</th>
-                  <th className="px-4 py-2 text-left">初期表示</th>
-                  <th className="px-4 py-2 text-left">最終確認</th>
-                  <th className="px-4 py-2 text-left">操作</th>
+                <tr className="border-b-2 border-slate-300">
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">名前</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">場所</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">初期表示</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">最終確認</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {clientsQuery.data.map((client: ClientDevice) => (
-                  <tr key={client.id} className="border-b border-white/5">
-                    <td className="px-4 py-2">{client.name}</td>
-                    <td className="px-4 py-2 text-white/70">{client.location ?? '-'}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-white/60">{client.apiKey}</td>
+                  <tr key={client.id} className="border-b border-slate-200">
+                    <td className="px-4 py-2 font-bold text-base text-slate-900">{client.name}</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
+                    <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
                     <td className="px-4 py-2">
                       {editingId === client.id ? (
                         <select
                           value={selectedMode ?? 'TAG'}
                           onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
-                          className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-white"
+                          className="rounded-md border-2 border-slate-300 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
                         >
                           <option value="TAG">2タグスキャン</option>
                           <option value="PHOTO">写真撮影持出</option>
                         </select>
                       ) : (
-                        <span>{client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}</span>
+                        <span className="text-sm font-semibold text-slate-900">{client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}</span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-sm text-white/60">{formatDateTime(client.lastSeenAt)}</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-slate-700">{formatDateTime(client.lastSeenAt)}</td>
                     <td className="px-4 py-2">
                       {editingId === client.id ? (
                         <div className="flex gap-2">
@@ -327,10 +327,10 @@ export function ClientsPage() {
               </tbody>
             </table>
           </div>
-        ) : (
-          <p>クライアント端末が登録されていません。</p>
-        )}
-      </Card>
+          ) : (
+            <p className="text-sm text-slate-700">クライアント端末が登録されていません。</p>
+          )}
+        </Card>
       <SignagePdfManager title="サイネージPDFアップロード（キオスク向け）" />
     </div>
   );

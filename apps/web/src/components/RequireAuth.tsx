@@ -10,7 +10,7 @@ export function RequireAuth({ children }: PropsWithChildren) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+      <div className="flex min-h-screen items-center justify-center bg-slate-800 text-white">
         <p className="text-sm text-white/70">認証状態を確認しています...</p>
       </div>
     );

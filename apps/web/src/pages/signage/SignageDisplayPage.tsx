@@ -7,7 +7,7 @@ import type { SignageContentResponse } from '../../api/client';
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 
-const screenClass = 'min-h-screen w-screen bg-slate-950 text-white';
+const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
 const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
 
 const renderPdfImage = (src?: string, alt?: string) => {

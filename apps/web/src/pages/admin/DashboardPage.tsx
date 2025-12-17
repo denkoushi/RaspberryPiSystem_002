@@ -50,11 +50,11 @@ export function DashboardPage() {
                     {fileAlerts.map((alert) => (
                       <div key={alert.id} className="ml-2 flex items-center justify-between gap-2">
                         <div>
-                          <p>
+                          <p className="text-sm font-semibold text-slate-900">
                             [{alert.type}] {alert.message}
-                            {alert.details && <span className="text-xs text-white/60"> ({alert.details})</span>}
+                            {alert.details && <span className="text-xs text-slate-600"> ({alert.details})</span>}
                           </p>
-                          <p className="text-xs text-white/60">
+                          <p className="text-xs text-slate-600">
                             {new Date(alert.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                           </p>
                         </div>
@@ -81,13 +81,13 @@ export function DashboardPage() {
       {/* 統計カード */}
       <div className="grid gap-6 md:grid-cols-3">
         <Card title="従業員">
-          <p className="text-4xl font-bold">{employees.data?.length ?? '--'}</p>
+          <p className="text-4xl font-bold text-slate-900">{employees.data?.length ?? '--'}</p>
         </Card>
         <Card title="アイテム">
-          <p className="text-4xl font-bold">{items.data?.length ?? '--'}</p>
+          <p className="text-4xl font-bold text-slate-900">{items.data?.length ?? '--'}</p>
         </Card>
         <Card title="貸出中">
-          <p className="text-4xl font-bold">{loans.data?.length ?? '--'}</p>
+          <p className="text-4xl font-bold text-slate-900">{loans.data?.length ?? '--'}</p>
         </Card>
       </div>
 
@@ -96,22 +96,22 @@ export function DashboardPage() {
         <Card title="クライアント状態サマリー">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <p className="text-sm text-white/60">オンライン</p>
-              <p className="text-2xl font-bold text-emerald-400">
+              <p className="text-sm font-semibold text-slate-700">オンライン</p>
+              <p className="text-2xl font-bold text-emerald-600">
                 {clientStatuses.data.filter((c) => !c.stale).length}
               </p>
             </div>
             <div>
-              <p className="text-sm text-white/60">オフライン（12時間超）</p>
-              <p className="text-2xl font-bold text-red-400">
+              <p className="text-sm font-semibold text-slate-700">オフライン（12時間超）</p>
+              <p className="text-2xl font-bold text-red-600">
                 {clientStatuses.data.filter((c) => c.stale).length}
               </p>
             </div>
           </div>
           {alerts && alerts.errorLogs > 0 && (
             <div className="mt-4">
-              <p className="text-sm text-white/60">エラーログ（過去24時間）</p>
-              <p className="text-2xl font-bold text-yellow-400">{alerts.errorLogs}</p>
+              <p className="text-sm font-semibold text-slate-700">エラーログ（過去24時間）</p>
+              <p className="text-2xl font-bold text-yellow-600">{alerts.errorLogs}</p>
             </div>
           )}
           <div className="mt-4">
