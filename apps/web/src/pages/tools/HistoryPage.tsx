@@ -54,20 +54,20 @@ export function HistoryPage() {
     <Card title="履歴">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             開始日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </label>
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             終了日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
@@ -115,7 +115,7 @@ export function HistoryPage() {
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          className="h-12 w-12 rounded object-cover border-2 border-slate-300 cursor-pointer hover:opacity-80"
                           onClick={async () => {
                             // 認証付きで元画像を取得してモーダルで表示
                             if (tx.loan?.photoUrl) {
@@ -142,16 +142,16 @@ export function HistoryPage() {
                         '-'
                       )}
                     </td>
-                    <td className="px-2 py-1">{itemName}</td>
-                    <td className="px-2 py-1">{employeeName}</td>
-                    <td className="px-2 py-1">{tx.client?.name ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{itemName}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{employeeName}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{tx.client?.name ?? '-'}</td>
                   </tr>
                 );
                 })}
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex items-center justify-between text-sm text-white/70">
+          <div className="mt-4 flex items-center justify-between text-sm font-semibold text-slate-700">
             <Button variant="ghost" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               前へ
             </Button>

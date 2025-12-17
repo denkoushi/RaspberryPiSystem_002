@@ -34,7 +34,7 @@ export function InstrumentTagsPage() {
     <div className="space-y-6">
       <Card title="計測機器選択">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             計測機器ID
             <Input
               value={instrumentId}
@@ -47,11 +47,11 @@ export function InstrumentTagsPage() {
           </label>
           <div className="flex items-end">
             {instrument ? (
-              <p className="text-white/80">
+              <p className="text-sm font-semibold text-slate-700">
                 {instrument.name} ({instrument.managementNumber})
               </p>
             ) : (
-              <p className="text-white/50">計測機器を選択してください</p>
+              <p className="text-sm text-slate-600">計測機器を選択してください</p>
             )}
           </div>
         </div>
@@ -59,7 +59,7 @@ export function InstrumentTagsPage() {
 
       <Card title="RFIDタグ 紐付け">
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             RFIDタグUID
             <Input value={tagUid} onChange={(e) => setTagUid(e.target.value)} disabled={!instrumentId} required />
           </label>
@@ -73,24 +73,24 @@ export function InstrumentTagsPage() {
 
       <Card title="RFIDタグ一覧">
         {!instrumentId ? (
-          <p className="text-white/60">計測機器IDを入力してください。</p>
+          <p className="text-sm text-slate-600">計測機器IDを入力してください。</p>
         ) : !tags ? (
-          <p className="text-white/60">読み込み中…</p>
+          <p className="text-sm font-semibold text-slate-700">読み込み中…</p>
         ) : tags.length === 0 ? (
-          <p className="text-white/60">紐付けはありません。</p>
+          <p className="text-sm text-slate-600">紐付けはありません。</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm text-white">
-              <thead className="text-left text-white/70">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-200 text-left">
                 <tr>
-                  <th className="px-2 py-1">RFIDタグUID</th>
-                  <th className="px-2 py-1">操作</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">RFIDタグUID</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {tags.map((tag) => (
-                  <tr key={tag.id} className="border-t border-white/10">
-                    <td className="px-2 py-1">{tag.rfidTagUid}</td>
+                  <tr key={tag.id} className="border-t border-slate-200">
+                    <td className="px-2 py-1 text-sm text-slate-700">{tag.rfidTagUid}</td>
                     <td className="px-2 py-1 space-x-2">
                       <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(tag.id)}>
                         削除

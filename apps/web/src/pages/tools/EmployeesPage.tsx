@@ -120,19 +120,19 @@ export function EmployeesPage() {
           </div>
         ) : null}
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             社員コード
             <Input value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} required />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             氏名
             <Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             部署
             <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             NFC UID
             <Input value={form.nfcTagUid} onChange={(e) => setForm({ ...form, nfcTagUid: e.target.value })} />
           </label>
@@ -151,7 +151,7 @@ export function EmployeesPage() {
 
       <Card title="従業員一覧">
         {remove.error ? (
-          <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+          <div className="mb-4 rounded-lg border-2 border-red-700 bg-red-600 p-4 text-sm font-semibold text-white shadow-lg">
             <p className="font-semibold">エラー</p>
             <p className="mt-1">
               {axios.isAxiosError(remove.error) && remove.error.response?.data?.message
@@ -161,26 +161,26 @@ export function EmployeesPage() {
           </div>
         ) : null}
         {isLoading ? (
-          <p>読み込み中...</p>
+          <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
+              <thead className="bg-slate-200">
                 <tr>
-                  <th className="px-2 py-1">氏名</th>
-                  <th className="px-2 py-1">社員コード</th>
-                  <th className="px-2 py-1">部署</th>
-                  <th className="px-2 py-1">NFC UID</th>
-                  <th className="px-2 py-1">操作</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">氏名</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">社員コード</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">部署</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">NFC UID</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.map((employee) => (
-                <tr key={employee.id} className="border-t border-white/5">
-                  <td className="px-2 py-1">{employee.displayName}</td>
-                  <td className="px-2 py-1">{employee.employeeCode}</td>
-                  <td className="px-2 py-1">{employee.department ?? '-'}</td>
-                  <td className="px-2 py-1 font-mono text-xs">{employee.nfcTagUid ?? '-'}</td>
+                <tr key={employee.id} className="border-t border-slate-200">
+                  <td className="px-2 py-1 text-sm text-slate-700">{employee.displayName}</td>
+                  <td className="px-2 py-1 text-sm text-slate-700">{employee.employeeCode}</td>
+                  <td className="px-2 py-1 text-sm text-slate-700">{employee.department ?? '-'}</td>
+                  <td className="px-2 py-1 font-mono text-xs text-slate-700">{employee.nfcTagUid ?? '-'}</td>
                   <td className="px-2 py-1 flex gap-2">
                     <Button className="px-2 py-1 text-xs" onClick={() => startEdit(employee)}>編集</Button>
                     <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(employee.id)} disabled={remove.isPending}>

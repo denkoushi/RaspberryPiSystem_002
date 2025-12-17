@@ -49,17 +49,17 @@ export function InspectionRecordsPage() {
     <div className="space-y-6">
       <Card title="計測機器選択">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             計測機器ID
             <Input value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)} placeholder="UUIDを入力" />
           </label>
           <div className="flex items-end">
             {instrument ? (
-              <p className="text-white/80">
+              <p className="text-sm font-semibold text-slate-700">
                 {instrument.name} ({instrument.managementNumber})
               </p>
             ) : (
-              <p className="text-white/50">計測機器を選択してください</p>
+              <p className="text-sm text-slate-600">計測機器を選択してください</p>
             )}
           </div>
         </div>
@@ -67,7 +67,7 @@ export function InspectionRecordsPage() {
 
       <Card title="フィルタ">
         <form onSubmit={handleFilter} className="grid gap-4 md:grid-cols-4">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             開始日
             <Input
               type="date"
@@ -75,7 +75,7 @@ export function InspectionRecordsPage() {
               onChange={(e) => setFilters((prev) => ({ ...prev, startDate: e.target.value || undefined }))}
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             終了日
             <Input
               type="date"
@@ -91,10 +91,10 @@ export function InspectionRecordsPage() {
               placeholder="従業員UUID"
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             結果
             <select
-              className="mt-1 w-full rounded-md bg-gray-800 px-3 py-2 text-white"
+              className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               value={filters.result ?? ''}
               onChange={(e) => setFilters((prev) => ({ ...prev, result: e.target.value || undefined }))}
             >
@@ -114,7 +114,7 @@ export function InspectionRecordsPage() {
 
       <Card title="点検記録 登録（手動）">
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             Loan ID
             <Input
               value={form.loanId}
@@ -122,7 +122,7 @@ export function InspectionRecordsPage() {
               placeholder="任意（未入力可）"
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             従業員ID
             <Input
               value={form.employeeId}
@@ -130,7 +130,7 @@ export function InspectionRecordsPage() {
               required
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             点検項目ID
             <Input
               value={form.inspectionItemId}
@@ -138,10 +138,10 @@ export function InspectionRecordsPage() {
               required
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             点検結果
             <select
-              className="mt-1 w-full rounded-md bg-gray-800 px-3 py-2 text-white"
+              className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               value={form.result}
               onChange={(e) => setForm((prev) => ({ ...prev, result: e.target.value as InspectionResult }))}
             >
@@ -152,7 +152,7 @@ export function InspectionRecordsPage() {
               ))}
             </select>
           </label>
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             点検日時
             <Input
               type="datetime-local"
@@ -170,33 +170,33 @@ export function InspectionRecordsPage() {
 
       <Card title="点検記録一覧">
         {!instrumentId ? (
-          <p className="text-white/60">計測機器IDを入力してください。</p>
+          <p className="text-sm text-slate-600">計測機器IDを入力してください。</p>
         ) : !records ? (
-          <p className="text-white/60">読み込み中…</p>
+          <p className="text-sm font-semibold text-slate-700">読み込み中…</p>
         ) : records.length === 0 ? (
-          <p className="text-white/60">記録はありません。</p>
+          <p className="text-sm text-slate-600">記録はありません。</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm text-white">
-              <thead className="text-left text-white/70">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-200 text-left">
                 <tr>
-                  <th className="px-2 py-1">日時</th>
-                  <th className="px-2 py-1">結果</th>
-                  <th className="px-2 py-1">従業員ID</th>
-                  <th className="px-2 py-1">点検項目ID</th>
-                  <th className="px-2 py-1">Loan ID</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">結果</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員ID</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">点検項目ID</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">Loan ID</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((r: InspectionRecord) => (
-                  <tr key={r.id} className="border-t border-white/10">
-                    <td className="px-2 py-1">
+                  <tr key={r.id} className="border-t border-slate-200">
+                    <td className="px-2 py-1 text-sm text-slate-700">
                       {r.inspectedAt ? new Date(r.inspectedAt).toLocaleString() : '-'}
                     </td>
-                    <td className="px-2 py-1">{r.result}</td>
-                    <td className="px-2 py-1">{r.employeeId}</td>
-                    <td className="px-2 py-1">{r.inspectionItemId}</td>
-                    <td className="px-2 py-1">{r.loanId ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{r.result}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{r.employeeId}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{r.inspectionItemId}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{r.loanId ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>
