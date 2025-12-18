@@ -335,11 +335,24 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
    - `InspectionItemsPage.tsx`: フォーム要素とテーブルのテキスト色を更新完了
    - `InstrumentTagsPage.tsx`: フォーム要素とテーブルのテキスト色を更新完了
 
+#### ✅ 完了: サイネージ管理画面のPDF管理エリア（Phase 9）
+5. ✅ **SignagePdfManagerコンポーネントの更新** (2025-12-18)
+   - `SignagePdfManager.tsx`: 白背景のCard内で使用されるPDF管理エリアを白背景対応に修正完了
+   - **form要素**: `border-white/10 bg-white/5` → `border-2 border-slate-500 bg-white`
+   - **input要素（3箇所）**: `border-white/10 bg-white/5 text-white` → `border-2 border-slate-500 bg-white text-slate-900`
+   - **select要素**: `border-white/10 bg-white/5 text-white` → `border-2 border-slate-500 bg-white text-slate-900`
+   - **ラベル文字色**: `text-white/70` → `text-slate-700`
+   - **テーブルヘッダー**: `border-b border-white/10` → `border-b-2 border-slate-500 bg-slate-100`
+   - **テーブル行**: `border-b border-white/5` → `border-b border-slate-500`
+   - **テーブルセル文字色**: `text-white/60` → `text-slate-600`, デフォルト → `text-slate-700`
+   - **ボタン文字色**: `text-emerald-300` → `text-emerald-700`, `text-gray-400` → `text-gray-700`, `text-red-400` → `text-red-600`
+   - **影響箇所**: サイネージタブ（`/admin/signage/schedules`）、クライアント端末タブのサイネージエリア（`/admin/clients`）
+
 #### 優先度: 低
-5. **LoginPageの更新**
+6. **LoginPageの更新**
    - フォームの背景色を`bg-white`に変更（オプション）
 
-6. **SignageDisplayPageの更新**
+7. **SignageDisplayPageの更新**
    - 要件定義で「現状の藍系背景は維持」とあるため、更新は任意
 
 ### 要件定義との整合性確認
@@ -363,6 +376,7 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
 
 ## 変更履歴
 
+- 2025-12-18: Phase 9完了（SignagePdfManagerコンポーネントを白背景対応に修正、サイネージタブとクライアント端末タブのPDF管理エリアの視認性改善）
 - 2025-12-17: 実機検証手順セクション追加（実機検証手順書を統合）
 - 2025-12-17: Phase 5-8完了（優先度の高いページ、管理コンソール、工具管理ページの更新完了）
 - 2025-12-17: 実装状況セクション追加（総点検レポート統合）
