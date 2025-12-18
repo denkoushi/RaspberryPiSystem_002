@@ -474,35 +474,22 @@ export class SignageRenderer {
           : cardPadding;
 
         const textStartY = y + cardPadding;
-        // 計測機器のみ上段に管理番号を表示（仕様: 管理番号を上段、名称を下段に表示）
-        // 工具/吊具は上段に管理番号を表示しない（右下のみに表示）
-        const managementY = textStartY + Math.round(20 * scale); // 管理番号の位置（計測機器のみ使用、フォント14px）
-        // フォントサイズに応じた行間を設定（フォントサイズの1.6-2倍で文字が重ならないように）
-        // primaryText: 18px → 行間28px以上
-        // secondary: 16px → 行間26px以上
-        // date/time: 14px → 行間24-26px以上
-        const primaryY = isInstrument 
-          ? managementY + Math.round(28 * scale) // 計測機器: 管理番号(14px) + 28px間隔 → 名称を下段に表示
-          : textStartY + Math.round(20 * scale); // 工具/吊具: 開始位置 + 20px間隔（管理番号なし、名称から開始）
-        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
-        const dateY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
-        const timeY = dateY + Math.round(24 * scale); // date(14px) + 24px間隔（約1.7倍）
-        const warningY = timeY + Math.round(26 * scale); // time(14px) + 26px間隔（約1.9倍）
-        
         const textX = x + textAreaX;
+        // 統一された情報の並び順: 名称、従業員名、日付+時刻（横並び）、警告
+        // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
+        const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
+        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
+        const dateTimeY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
+        // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
+        const dateX = textX;
+        const timeX = textX + (borrowedDate ? Math.round(80 * scale) : 0); // 日付の右側に時刻を配置（日付がない場合は左端から）
+        const warningY = dateTimeY + Math.round(24 * scale); // date/time(14px) + 24px間隔（約1.7倍）
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
               fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
             ${thumbnailElement}
-            ${isInstrument
-              ? `<text x="${textX}" y="${managementY}"
-                  font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                  📏 ${this.escapeXml(managementText)}
-                </text>`
-              : ''
-            }
             <text x="${textX}" y="${primaryY}"
               font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
@@ -511,11 +498,11 @@ export class SignageRenderer {
               font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
-            <text x="${textX}" y="${dateY}"
+            <text x="${dateX}" y="${dateTimeY}"
               font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
             </text>
-            <text x="${textX}" y="${timeY}"
+            <text x="${timeX}" y="${dateTimeY}"
               font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
             </text>
