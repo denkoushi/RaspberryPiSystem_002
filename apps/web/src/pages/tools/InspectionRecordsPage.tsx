@@ -179,7 +179,7 @@ export function InspectionRecordsPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-200 text-left">
-                <tr>
+                <tr className="border-b-2 border-slate-500">
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">結果</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員ID</th>

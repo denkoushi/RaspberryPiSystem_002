@@ -178,7 +178,7 @@ export function SecurityPage() {
         <div className="mt-4 overflow-x-auto rounded-xl border-2 border-slate-500 bg-slate-100 shadow-lg">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-slate-200 text-left">
+              <tr className="border-b-2 border-slate-500 bg-slate-200 text-left">
                 <th className="px-3 py-2 text-sm font-semibold text-slate-900">日時</th>
                 <th className="px-3 py-2 text-sm font-semibold text-slate-900">実行者</th>
                 <th className="px-3 py-2 text-sm font-semibold text-slate-900">対象</th>

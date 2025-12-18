@@ -82,14 +82,14 @@ export function InstrumentTagsPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-200 text-left">
-                <tr>
+                <tr className="border-b-2 border-slate-500">
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">RFIDタグUID</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {tags.map((tag) => (
-                  <tr key={tag.id} className="border-t border-slate-400">
+                  <tr key={tag.id} className="border-t border-slate-500">
                     <td className="px-2 py-1 text-sm text-slate-700">{tag.rfidTagUid}</td>
                     <td className="px-2 py-1 space-x-2">
                       <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(tag.id)}>

@@ -74,7 +74,7 @@ export function SignageEmergencyPage() {
               type="checkbox"
               checked={formData.enabled}
               onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-              className="rounded border-white/10"
+              className="rounded border-slate-500"
             />
             <label className="text-sm font-semibold text-slate-700">緊急表示を有効にする</label>
           </div>

@@ -159,7 +159,7 @@ export function RiggingGearsPage() {
             ) : (
               <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
                 <thead className="bg-slate-100">
-                  <tr>
+                  <tr className="border-b-2 border-slate-500">
                     <th className="w-40 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">名称</th>
                     <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">管理番号</th>
                     <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">保管場所</th>
@@ -217,7 +217,7 @@ export function RiggingGearsPage() {
             )}
           </div>
 
-          <div className="rounded-md border border-white/10 bg-white/5 p-4">
+          <div className="rounded-md border border-slate-500 bg-white/5 p-4">
             <h3 className="text-lg font-semibold">{isEditing ? '吊具編集' : '吊具登録'}</h3>
             <div className="mt-3 flex flex-col gap-2">
               <Input
@@ -346,7 +346,7 @@ export function RiggingGearsPage() {
               ) : (
                 <table className="mt-2 w-full text-left text-sm">
                   <thead className="bg-slate-200">
-                    <tr>
+                    <tr className="border-b-2 border-slate-500">
                       <th className="px-2 py-1 text-sm font-semibold text-slate-900">結果</th>
                       <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員ID</th>
                       <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
@@ -355,7 +355,7 @@ export function RiggingGearsPage() {
                   </thead>
                   <tbody>
                     {inspections.data?.map((rec) => (
-                      <tr key={rec.id} className="border-t border-slate-400">
+                      <tr key={rec.id} className="border-t border-slate-500">
                         <td className="px-2 py-1">
                           <span
                             className={`inline-block rounded border-2 px-2 py-0.5 text-xs font-bold shadow-lg ${

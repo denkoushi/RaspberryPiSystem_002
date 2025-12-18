@@ -58,11 +58,11 @@ export function UnifiedItemsPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-slate-200">読み込み中...</p>
+          <p className="text-sm text-slate-700">読み込み中...</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-200">
+              <thead className="bg-slate-100 border-b-2 border-slate-500">
                 <tr>
                   <th className="px-2 py-1 text-sm font-semibold">種類</th>
                   <th className="px-2 py-1 text-sm font-semibold">名称</th>
@@ -79,10 +79,10 @@ export function UnifiedItemsPage() {
                     <td className="px-2 py-1">
                       <ItemTypeBadge type={item.type} label={getTypeLabel(item.type)} />
                     </td>
-                    <td className="px-2 py-1 font-bold text-base text-white">{item.name}</td>
-                    <td className="px-2 py-1 font-mono text-sm font-semibold">{item.code}</td>
-                    <td className="px-2 py-1 text-sm text-slate-200">{item.category ?? '-'}</td>
-                    <td className="px-2 py-1 text-sm text-slate-200">{item.storageLocation ?? '-'}</td>
+                    <td className="px-2 py-1 font-bold text-base text-slate-900">{item.name}</td>
+                    <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{item.code}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.category ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.storageLocation ?? '-'}</td>
                     <td className="px-2 py-1">
                       <span
                         className={`inline-block rounded px-2 py-0.5 text-xs ${
@@ -98,14 +98,14 @@ export function UnifiedItemsPage() {
                         {getStatusLabel(item.status)}
                       </span>
                     </td>
-                    <td className="px-2 py-1 font-mono text-sm text-slate-200">
+                    <td className="px-2 py-1 font-mono text-sm text-slate-700">
                       {item.nfcTagUid ?? '-'}
                     </td>
                   </tr>
                 ))}
                 {data?.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-2 py-4 text-center text-sm text-slate-200">
+                    <td colSpan={7} className="px-2 py-4 text-center text-sm text-slate-700">
                       該当するアイテムがありません
                     </td>
                   </tr>

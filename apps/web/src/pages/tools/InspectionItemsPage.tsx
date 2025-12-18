@@ -154,7 +154,7 @@ export function InspectionItemsPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-200 text-left">
-                <tr>
+                <tr className="border-b-2 border-slate-500">
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">順序</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">項目名</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">内容</th>

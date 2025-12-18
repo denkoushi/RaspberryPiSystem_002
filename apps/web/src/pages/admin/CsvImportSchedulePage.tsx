@@ -151,7 +151,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm text-slate-700 font-semibold mb-1">名前</label>
               <input
                 type="text"
-                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-white"
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
@@ -276,7 +276,7 @@ export function CsvImportSchedulePage() {
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-200 text-slate-900">
-            <tr>
+            <tr className="border-b-2 border-slate-500">
               <th className="px-2 py-1">ID</th>
               <th className="px-2 py-1">名前</th>
               <th className="px-2 py-1">スケジュール</th>
@@ -295,7 +295,7 @@ export function CsvImportSchedulePage() {
               </tr>
             ) : (
               schedules.map((schedule) => (
-                <tr key={schedule.id} className="border-t border-white/5">
+                <tr key={schedule.id} className="border-t border-slate-500">
                   {editingId === schedule.id ? (
                     <>
                       <td className="px-2 py-1">{schedule.id}</td>
