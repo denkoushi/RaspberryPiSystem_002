@@ -8,8 +8,10 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - db-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
+    # APIコンテナからは `db:5432` でアクセス可能
+    # ports:
+    #   - "5432:5432"
 
   api:
     build:
@@ -42,8 +44,10 @@ services:
       - /opt/RaspberryPiSystem_002/config:/app/config
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
-    ports:
-      - "8080:8080"
+    # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
+    # Caddyからは `api:8080` でアクセス可能
+    # ports:
+    #   - "8080:8080"
     logging:
       driver: "json-file"
       options:
