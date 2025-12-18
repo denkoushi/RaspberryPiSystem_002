@@ -89,7 +89,7 @@ export function ClientsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {statusData.map((client) => (
-              <article key={client.clientId} className="rounded-lg border-2 border-slate-300 bg-white p-4 shadow-lg">
+              <article key={client.clientId} className="rounded-lg border-2 border-slate-500 bg-white p-4 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-base font-bold text-slate-900">{client.hostname}</p>
@@ -131,7 +131,7 @@ export function ClientsPage() {
                   </div>
                 </dl>
                 {client.latestLogs.length > 0 ? (
-                  <div className="mt-4 rounded-md border border-slate-200 bg-slate-100 p-2 text-xs">
+                  <div className="mt-4 rounded-md border border-slate-400 bg-slate-100 p-2 text-xs">
                     <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-700">最新ログ</p>
                     <ul className="space-y-1">
                       {client.latestLogs.slice(0, 3).map((log, index) => (
@@ -174,7 +174,7 @@ export function ClientsPage() {
             <select
               value={logClientFilter}
               onChange={(e) => setLogClientFilter(e.target.value)}
-              className="w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+              className="w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
             >
               <option value="all">すべて</option>
               {clientOptions.map((client) => (
@@ -189,7 +189,7 @@ export function ClientsPage() {
             <select
               value={logLevelFilter}
               onChange={(e) => setLogLevelFilter(e.target.value as 'ALL' | ClientLogLevel)}
-              className="w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+              className="w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
             >
               <option value="ALL">すべて</option>
               <option value="ERROR">ERROR</option>
@@ -219,7 +219,7 @@ export function ClientsPage() {
           ) : logsQuery.data && logsQuery.data.length > 0 ? (
             <table className="min-w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b-2 border-slate-300 text-left text-sm font-bold uppercase text-slate-900">
+                <tr className="border-b-2 border-slate-500 text-left text-sm font-bold uppercase text-slate-900">
                   <th className="px-3 py-2">時刻 (JST)</th>
                   <th className="px-3 py-2">クライアント</th>
                   <th className="px-3 py-2">レベル</th>
@@ -228,7 +228,7 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {logsQuery.data.map((log) => (
-                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-slate-200">
+                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-slate-400">
                     <td className="px-3 py-2 align-top text-sm font-semibold text-slate-700">{formatDateTime(log.createdAt)}</td>
                     <td className="px-3 py-2 align-top font-mono text-sm font-semibold text-slate-900">{log.clientId}</td>
                     <td className="px-3 py-2 align-top">
@@ -267,7 +267,7 @@ export function ClientsPage() {
           <div className="space-y-4">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b-2 border-slate-300">
+                <tr className="border-b-2 border-slate-500">
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">名前</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">場所</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
@@ -278,7 +278,7 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {clientsQuery.data.map((client: ClientDevice) => (
-                  <tr key={client.id} className="border-b border-slate-200">
+                  <tr key={client.id} className="border-b border-slate-400">
                     <td className="px-4 py-2 font-bold text-base text-slate-900">{client.name}</td>
                     <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
                     <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
@@ -287,7 +287,7 @@ export function ClientsPage() {
                         <select
                           value={selectedMode ?? 'TAG'}
                           onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
-                          className="rounded-md border-2 border-slate-300 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
+                          className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
                         >
                           <option value="TAG">2タグスキャン</option>
                           <option value="PHOTO">写真撮影持出</option>

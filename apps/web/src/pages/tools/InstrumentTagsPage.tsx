@@ -89,7 +89,7 @@ export function InstrumentTagsPage() {
               </thead>
               <tbody>
                 {tags.map((tag) => (
-                  <tr key={tag.id} className="border-t border-slate-200">
+                  <tr key={tag.id} className="border-t border-slate-400">
                     <td className="px-2 py-1 text-sm text-slate-700">{tag.rfidTagUid}</td>
                     <td className="px-2 py-1 space-x-2">
                       <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(tag.id)}>

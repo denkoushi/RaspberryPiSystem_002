@@ -58,7 +58,7 @@ export function HistoryPage() {
             開始日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
@@ -67,7 +67,7 @@ export function HistoryPage() {
             終了日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
@@ -107,7 +107,7 @@ export function HistoryPage() {
                     ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
                     : null;
                   return (
-                  <tr key={tx.id} className="border-t border-slate-200">
+                  <tr key={tx.id} className="border-t border-slate-400">
                     <td className="px-2 py-1 text-sm text-slate-700">{new Date(tx.createdAt).toLocaleString()}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{tx.action}</td>
                     <td className="px-2 py-1">
@@ -115,7 +115,7 @@ export function HistoryPage() {
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-12 w-12 rounded object-cover border-2 border-slate-300 cursor-pointer hover:opacity-80"
+                          className="h-12 w-12 rounded object-cover border-2 border-slate-500 cursor-pointer hover:opacity-80"
                           onClick={async () => {
                             // 認証付きで元画像を取得してモーダルで表示
                             if (tx.loan?.photoUrl) {

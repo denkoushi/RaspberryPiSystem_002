@@ -91,7 +91,7 @@ export function SignageEmergencyPage() {
                       contentType: (e.target.value || null) as 'TOOLS' | 'PDF' | 'SPLIT' | null,
                     })
                   }
-                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 >
                   <option value="">メッセージのみ</option>
                   <option value="TOOLS">工具管理データ</option>
@@ -105,7 +105,7 @@ export function SignageEmergencyPage() {
                   <select
                     value={formData.pdfId || ''}
                     onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
-                    className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                   >
                     <option value="">選択してください</option>
                     {pdfsQuery.data?.map((pdf: SignagePdf) => (
@@ -124,7 +124,7 @@ export function SignageEmergencyPage() {
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     rows={4}
-                    className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                     placeholder="緊急メッセージを入力してください"
                   />
                 </div>
@@ -147,7 +147,7 @@ export function SignageEmergencyPage() {
                       expiresAt: e.target.value ? new Date(e.target.value) : null,
                     })
                   }
-                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
             </>

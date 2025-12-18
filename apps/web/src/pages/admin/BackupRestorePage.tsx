@@ -58,7 +58,7 @@ export function BackupRestorePage() {
           </label>
           <input
             type="text"
-            className="w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900 font-mono"
+            className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900 font-mono"
             placeholder="/backups/csv/2025-12-16T04-00-00-000Z/employees.csv"
             value={backupPath}
             onChange={(e) => setBackupPath(e.target.value)}
@@ -74,7 +74,7 @@ export function BackupRestorePage() {
             リストア対象
           </label>
           <select
-            className="w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+            className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
             value={targetKind}
             onChange={(e) => setTargetKind(e.target.value as 'database' | 'csv')}
             disabled={isRestoring}
@@ -91,7 +91,7 @@ export function BackupRestorePage() {
               checked={verifyIntegrity}
               onChange={(e) => setVerifyIntegrity(e.target.checked)}
               disabled={isRestoring}
-              className="rounded border-2 border-slate-300"
+              className="rounded border-2 border-slate-500"
             />
             整合性検証を実行する（推奨）
           </label>

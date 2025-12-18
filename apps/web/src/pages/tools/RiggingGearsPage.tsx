@@ -173,7 +173,7 @@ export function RiggingGearsPage() {
                 </thead>
                 <tbody>
                   {riggings?.map((gear) => (
-                    <tr key={gear.id} className="border-t border-slate-200">
+                    <tr key={gear.id} className="border-t border-slate-400">
                       <td className="px-2 py-1 font-bold text-base text-slate-900 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
                         {gear.name}
                       </td>
@@ -337,7 +337,7 @@ export function RiggingGearsPage() {
           </div>
 
           {selectedForInspection && (
-            <div className="rounded-md border-2 border-slate-300 bg-slate-100 p-3 shadow-lg">
+            <div className="rounded-md border-2 border-slate-500 bg-slate-100 p-3 shadow-lg">
               <h4 className="text-sm font-bold text-slate-900">
                 {selectedName || selectedForInspection} の点検記録
               </h4>
@@ -355,7 +355,7 @@ export function RiggingGearsPage() {
                   </thead>
                   <tbody>
                     {inspections.data?.map((rec) => (
-                      <tr key={rec.id} className="border-t border-slate-200">
+                      <tr key={rec.id} className="border-t border-slate-400">
                         <td className="px-2 py-1">
                           <span
                             className={`inline-block rounded border-2 px-2 py-0.5 text-xs font-bold shadow-lg ${

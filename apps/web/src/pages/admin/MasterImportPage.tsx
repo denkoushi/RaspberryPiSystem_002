@@ -43,7 +43,7 @@ export function MasterImportPage() {
             <input
               type="file"
               accept=".csv"
-              className="mt-1 block w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 block w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               onChange={(e) => setEmployeesFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -52,7 +52,7 @@ export function MasterImportPage() {
             <input
               type="file"
               accept=".csv"
-              className="mt-1 block w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 block w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               onChange={(e) => setItemsFile(e.target.files?.[0] ?? null)}
             />
           </label>

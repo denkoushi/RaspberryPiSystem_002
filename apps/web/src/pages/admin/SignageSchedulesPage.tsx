@@ -173,14 +173,14 @@ export function SignageSchedulesPage() {
         }
       >
         {(isCreating || editingId) && (
-          <div className="mb-6 space-y-4 rounded-lg border-2 border-slate-300 bg-slate-100 p-4 shadow-lg">
+          <div className="mb-6 space-y-4 rounded-lg border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
             <div>
               <label className="block text-sm font-semibold text-slate-700">スケジュール名</label>
               <input
                 type="text"
                 value={formData.name || ''}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
             <div>
@@ -188,7 +188,7 @@ export function SignageSchedulesPage() {
               <select
                 value={formData.contentType || 'TOOLS'}
                 onChange={(e) => setFormData({ ...formData, contentType: e.target.value as 'TOOLS' | 'PDF' | 'SPLIT' })}
-                className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               >
                 <option value="TOOLS">工具管理データ</option>
                 <option value="PDF">PDF</option>
@@ -201,7 +201,7 @@ export function SignageSchedulesPage() {
                 <select
                   value={formData.pdfId || ''}
                   onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
-                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 >
                   <option value="">選択してください</option>
                   {pdfsQuery.data?.map((pdf: SignagePdf) => (
@@ -223,7 +223,7 @@ export function SignageSchedulesPage() {
                     className={`rounded-md border-2 px-3 py-1 text-sm font-semibold shadow-lg ${
                       formData.dayOfWeek?.includes(day.value)
                         ? 'border-emerald-700 bg-emerald-600 text-white'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                        : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     {day.label}
@@ -238,7 +238,7 @@ export function SignageSchedulesPage() {
                   type="time"
                   value={formData.startTime || ''}
                   onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
               <div>
@@ -247,7 +247,7 @@ export function SignageSchedulesPage() {
                   type="time"
                   value={formData.endTime || ''}
                   onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
             </div>
@@ -257,7 +257,7 @@ export function SignageSchedulesPage() {
                 type="number"
                 value={formData.priority || 0}
                 onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value, 10) })}
-                className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -265,7 +265,7 @@ export function SignageSchedulesPage() {
                 type="checkbox"
                 checked={formData.enabled ?? true}
                 onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="rounded border-2 border-slate-300"
+                className="rounded border-2 border-slate-500"
               />
               <label className="text-sm font-semibold text-slate-700">有効</label>
             </div>
@@ -288,7 +288,7 @@ export function SignageSchedulesPage() {
           <div className="space-y-4">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b-2 border-slate-300 bg-slate-100">
+                <tr className="border-b-2 border-slate-500 bg-slate-100">
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">名前</th>
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">コンテンツタイプ</th>
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">曜日</th>
@@ -300,7 +300,7 @@ export function SignageSchedulesPage() {
               </thead>
               <tbody>
                 {schedulesQuery.data.map((schedule: SignageSchedule) => (
-                  <tr key={schedule.id} className="border-b border-slate-200">
+                  <tr key={schedule.id} className="border-b border-slate-400">
                     <td className="px-4 py-2 text-sm text-slate-700">{schedule.name}</td>
                     <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.contentType === 'TOOLS' && '工具管理データ'}

@@ -176,7 +176,7 @@ export function EmployeesPage() {
               </thead>
               <tbody>
                 {data?.map((employee) => (
-                <tr key={employee.id} className="border-t border-slate-200">
+                <tr key={employee.id} className="border-t border-slate-400">
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.displayName}</td>
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.employeeCode}</td>
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.department ?? '-'}</td>

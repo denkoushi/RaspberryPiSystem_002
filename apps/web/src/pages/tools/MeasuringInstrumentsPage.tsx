@@ -203,7 +203,7 @@ export function MeasuringInstrumentsPage() {
               </thead>
               <tbody>
                 {data?.map((instrument) => (
-                  <tr key={instrument.id} className="border-t border-white/10">
+                  <tr key={instrument.id} className="border-t border-slate-400">
                     <td className="px-2 py-1 font-bold text-base text-white">{instrument.name}</td>
                     <td className="px-2 py-1 font-mono text-sm font-semibold">{instrument.managementNumber}</td>
                     <td className="px-2 py-1 text-sm text-slate-200">{instrument.storageLocation ?? '-'}</td>

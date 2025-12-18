@@ -75,7 +75,7 @@ export function UnifiedItemsPage() {
               </thead>
               <tbody>
                 {data?.map((item) => (
-                  <tr key={`${item.type}-${item.id}`} className="border-t border-white/5">
+                  <tr key={`${item.type}-${item.id}`} className="border-t border-slate-400">
                     <td className="px-2 py-1">
                       <ItemTypeBadge type={item.type} label={getTypeLabel(item.type)} />
                     </td>

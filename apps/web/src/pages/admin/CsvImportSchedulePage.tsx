@@ -135,7 +135,7 @@ export function CsvImportSchedulePage() {
       }
     >
       {showCreateForm && (
-        <div className="mb-4 rounded-md border-2 border-slate-300 bg-slate-100 p-4 shadow-lg">
+        <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <h3 className="mb-3 text-lg font-bold text-slate-900">新規スケジュール作成</h3>
           <div className="space-y-3">
             <div>
@@ -151,7 +151,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm text-slate-700 font-semibold mb-1">名前</label>
               <input
                 type="text"
-                className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-2 text-white"
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-white"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
@@ -160,7 +160,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm text-slate-700 font-semibold mb-1">従業員CSVパス</label>
               <input
                 type="text"
-                className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
                 placeholder="/backups/csv/employees.csv"
                 value={formData.employeesPath}
                 onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
@@ -170,7 +170,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm text-slate-700 font-semibold mb-1">アイテムCSVパス</label>
               <input
                 type="text"
-                className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
                 placeholder="/backups/csv/items.csv"
                 value={formData.itemsPath}
                 onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
@@ -180,7 +180,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm text-slate-700 font-semibold mb-1">スケジュール（cron形式） *</label>
               <input
                 type="text"
-                className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
                 placeholder="0 2 * * *"
                 value={formData.schedule}
                 onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
@@ -209,7 +209,7 @@ export function CsvImportSchedulePage() {
                 既存データを置き換える
               </label>
             </div>
-            <div className="rounded-md border border-2 border-slate-300 bg-slate-100 p-3">
+            <div className="rounded-md border-2 border-slate-500 bg-slate-100 p-3">
               <div className="flex items-center gap-2 mb-2">
                 <input
                   type="checkbox"
@@ -302,7 +302,7 @@ export function CsvImportSchedulePage() {
                       <td className="px-2 py-1">
                         <input
                           type="text"
-                          className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-1 text-slate-900 text-xs"
+                          className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 text-xs"
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         />
@@ -310,7 +310,7 @@ export function CsvImportSchedulePage() {
                       <td className="px-2 py-1">
                         <input
                           type="text"
-                          className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                          className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
                           value={formData.schedule}
                           onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
                         />
@@ -319,14 +319,14 @@ export function CsvImportSchedulePage() {
                         <div className="space-y-1">
                           <input
                             type="text"
-                            className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                            className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
                             placeholder="従業員CSV"
                             value={formData.employeesPath}
                             onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
                           />
                           <input
                             type="text"
-                            className="w-full rounded-md border border-2 border-slate-300 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                            className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
                             placeholder="アイテムCSV"
                             value={formData.itemsPath}
                             onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}

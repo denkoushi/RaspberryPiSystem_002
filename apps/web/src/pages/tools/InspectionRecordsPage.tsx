@@ -94,7 +94,7 @@ export function InspectionRecordsPage() {
           <label className="text-sm font-semibold text-slate-700">
             結果
             <select
-              className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               value={filters.result ?? ''}
               onChange={(e) => setFilters((prev) => ({ ...prev, result: e.target.value || undefined }))}
             >
@@ -141,7 +141,7 @@ export function InspectionRecordsPage() {
           <label className="text-sm font-semibold text-slate-700">
             点検結果
             <select
-              className="mt-1 w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               value={form.result}
               onChange={(e) => setForm((prev) => ({ ...prev, result: e.target.value as InspectionResult }))}
             >
@@ -189,7 +189,7 @@ export function InspectionRecordsPage() {
               </thead>
               <tbody>
                 {records.map((r: InspectionRecord) => (
-                  <tr key={r.id} className="border-t border-slate-200">
+                  <tr key={r.id} className="border-t border-slate-400">
                     <td className="px-2 py-1 text-sm text-slate-700">
                       {r.inspectedAt ? new Date(r.inspectedAt).toLocaleString() : '-'}
                     </td>

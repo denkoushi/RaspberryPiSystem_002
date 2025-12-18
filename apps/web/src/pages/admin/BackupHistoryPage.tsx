@@ -85,7 +85,7 @@ export function BackupHistoryPage() {
           <label className="block text-sm font-semibold text-slate-700">
             操作種別
             <select
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={operationTypeFilter}
               onChange={(e) => {
                 setOperationTypeFilter(e.target.value as BackupOperationType | '');
@@ -100,7 +100,7 @@ export function BackupHistoryPage() {
           <label className="block text-sm font-semibold text-slate-700">
             ステータス
             <select
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as BackupStatus | '');
@@ -118,7 +118,7 @@ export function BackupHistoryPage() {
             開始日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -130,7 +130,7 @@ export function BackupHistoryPage() {
             終了日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={endDate}
               onChange={(e) => {
                 setEndDate(e.target.value);
@@ -171,7 +171,7 @@ export function BackupHistoryPage() {
                   </tr>
                 ) : (
                   history.map((item) => (
-                    <tr key={item.id} className="border-t border-slate-200">
+                    <tr key={item.id} className="border-t border-slate-400">
                       <td className="px-2 py-1 text-sm text-slate-700">{new Date(item.startedAt).toLocaleString()}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">{getOperationTypeLabel(item.operationType)}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">

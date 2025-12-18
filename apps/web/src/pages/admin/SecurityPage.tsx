@@ -104,7 +104,7 @@ export function SecurityPage() {
         <p className="text-sm font-semibold text-slate-700">
           管理画面ログインにワンタイムコードを追加します。TOTPアプリ（例: Google Authenticator）に登録し、バックアップコードを保管してください。
         </p>
-        <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-300 bg-slate-100 p-4 shadow-lg">
+        <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <div className="flex gap-3">
             <Button onClick={handleInitiate} disabled={loading}>
               セットアップ情報を生成
@@ -128,7 +128,7 @@ export function SecurityPage() {
                   <p className="font-bold text-slate-900">バックアップコード（紙などに保管）</p>
                   <ul className="grid grid-cols-2 gap-2">
                     {backupCodes.map((code) => (
-                      <li key={code} className="font-mono rounded border-2 border-slate-300 bg-white px-2 py-1 text-slate-900 shadow-lg">
+                      <li key={code} className="font-mono rounded border-2 border-slate-500 bg-white px-2 py-1 text-slate-900 shadow-lg">
                         {code}
                       </li>
                     ))}
@@ -175,7 +175,7 @@ export function SecurityPage() {
             再読込
           </Button>
         </div>
-        <div className="mt-4 overflow-x-auto rounded-xl border-2 border-slate-300 bg-slate-100 shadow-lg">
+        <div className="mt-4 overflow-x-auto rounded-xl border-2 border-slate-500 bg-slate-100 shadow-lg">
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-slate-200 text-left">
@@ -187,7 +187,7 @@ export function SecurityPage() {
             </thead>
             <tbody>
               {auditLogs.map((log) => (
-                <tr key={log.id} className="border-t border-slate-200">
+                <tr key={log.id} className="border-t border-slate-400">
                   <td className="px-3 py-2 text-sm text-slate-700">{new Date(log.createdAt).toLocaleString()}</td>
                   <td className="px-3 py-2 text-sm text-slate-700">{log.actorUser?.username ?? log.actorUserId}</td>
                   <td className="px-3 py-2 text-sm text-slate-700">{log.targetUser?.username ?? log.targetUserId}</td>
