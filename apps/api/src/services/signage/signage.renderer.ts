@@ -474,14 +474,16 @@ export class SignageRenderer {
           : cardPadding;
 
         const textStartY = y + cardPadding;
-        const managementY = textStartY + Math.round(20 * scale); // 管理番号の位置（フォント14px、行間20px）
-        // フォントサイズに応じた行間を設定（フォントサイズの2倍以上で文字が重ならないように）
-        // primaryText: 18px → 行間36px以上（2倍）
-        // secondary: 16px → 行間32px以上（2倍）
-        // date/time: 14px → 行間28px以上（2倍）
+        // 計測機器のみ上段に管理番号を表示（仕様: 管理番号を上段、名称を下段に表示）
+        // 工具/吊具は上段に管理番号を表示しない（右下のみに表示）
+        const managementY = textStartY + Math.round(20 * scale); // 管理番号の位置（計測機器のみ使用、フォント14px）
+        // フォントサイズに応じた行間を設定（フォントサイズの1.6-2倍で文字が重ならないように）
+        // primaryText: 18px → 行間28px以上
+        // secondary: 16px → 行間26px以上
+        // date/time: 14px → 行間24-26px以上
         const primaryY = isInstrument 
-          ? managementY + Math.round(28 * scale) // 計測機器: 管理番号(14px) + 28px間隔
-          : textStartY + Math.round(24 * scale); // 工具/吊具: 開始位置 + 24px間隔
+          ? managementY + Math.round(28 * scale) // 計測機器: 管理番号(14px) + 28px間隔 → 名称を下段に表示
+          : textStartY + Math.round(20 * scale); // 工具/吊具: 開始位置 + 20px間隔（管理番号なし、名称から開始）
         const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
         const dateY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
         const timeY = dateY + Math.round(24 * scale); // date(14px) + 24px間隔（約1.7倍）
@@ -499,15 +501,7 @@ export class SignageRenderer {
                   font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   📏 ${this.escapeXml(managementText)}
                 </text>`
-              : isRigging
-                ? `<text x="${textX}" y="${managementY}"
-                    font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                    ⚙️ ${this.escapeXml(managementText)}
-                  </text>`
-                : `<text x="${textX}" y="${managementY}"
-                    font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                    🔧 ${this.escapeXml(managementText)}
-                  </text>`
+              : ''
             }
             <text x="${textX}" y="${primaryY}"
               font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
