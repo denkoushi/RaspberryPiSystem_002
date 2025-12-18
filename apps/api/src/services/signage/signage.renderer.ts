@@ -474,18 +474,18 @@ export class SignageRenderer {
           : cardPadding;
 
         const textStartY = y + cardPadding;
-        const managementY = textStartY + Math.round(18 * scale); // 管理番号の位置（フォント14px、行間18px）
-        // フォントサイズに応じた行間を設定（フォントサイズの1.5倍以上）
-        // primaryText: 18px → 行間27px以上
-        // secondary: 16px → 行間24px以上
-        // date/time: 14px → 行間21px以上
+        const managementY = textStartY + Math.round(20 * scale); // 管理番号の位置（フォント14px、行間20px）
+        // フォントサイズに応じた行間を設定（フォントサイズの2倍以上で文字が重ならないように）
+        // primaryText: 18px → 行間36px以上（2倍）
+        // secondary: 16px → 行間32px以上（2倍）
+        // date/time: 14px → 行間28px以上（2倍）
         const primaryY = isInstrument 
-          ? managementY + Math.round(24 * scale) // 計測機器: 管理番号(14px) + 24px間隔
-          : textStartY + Math.round(22 * scale); // 工具/吊具: 開始位置 + 22px間隔
-        const nameY = primaryY + Math.round(24 * scale); // primaryText(18px) + 24px間隔 = 42px
-        const dateY = nameY + Math.round(22 * scale); // secondary(16px) + 22px間隔 = 38px
-        const timeY = dateY + Math.round(20 * scale); // date(14px) + 20px間隔 = 34px
-        const warningY = timeY + Math.round(22 * scale); // time(14px) + 22px間隔 = 36px
+          ? managementY + Math.round(28 * scale) // 計測機器: 管理番号(14px) + 28px間隔
+          : textStartY + Math.round(24 * scale); // 工具/吊具: 開始位置 + 24px間隔
+        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
+        const dateY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
+        const timeY = dateY + Math.round(24 * scale); // date(14px) + 24px間隔（約1.7倍）
+        const warningY = timeY + Math.round(26 * scale); // time(14px) + 26px間隔（約1.9倍）
         
         const textX = x + textAreaX;
         return `
