@@ -109,7 +109,7 @@ export function MeasuringInstrumentsPage() {
             名称
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </label>
-          <label className="text-sm font-semibold text-slate-200 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             NFC / RFIDタグUID
             <Input
               value={form.rfidTagUid}
@@ -152,7 +152,7 @@ export function MeasuringInstrumentsPage() {
           <label className="text-sm font-semibold text-slate-700">
             ステータス
             <select
-              className="mt-1 w-full rounded-md bg-gray-800 px-3 py-2 text-white"
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value as MeasuringInstrumentStatus })}
             >

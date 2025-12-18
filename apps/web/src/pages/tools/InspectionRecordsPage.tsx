@@ -83,7 +83,7 @@ export function InspectionRecordsPage() {
               onChange={(e) => setFilters((prev) => ({ ...prev, endDate: e.target.value || undefined }))}
             />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             従業員ID
             <Input
               value={filters.employeeId ?? ''}

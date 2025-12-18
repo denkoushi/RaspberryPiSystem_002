@@ -139,7 +139,7 @@ export function RiggingGearsPage() {
               className="md:max-w-xs"
             />
             <select
-              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white md:max-w-xs"
+              className="rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900 md:max-w-xs"
               value={status}
               onChange={(e) => setStatus(e.target.value as RiggingStatus | 'ALL')}
             >
@@ -217,7 +217,7 @@ export function RiggingGearsPage() {
             )}
           </div>
 
-          <div className="rounded-md border border-slate-500 bg-white/5 p-4">
+          <div className="rounded-md border border-slate-500 bg-white p-4">
             <h3 className="text-lg font-semibold">{isEditing ? '吊具編集' : '吊具登録'}</h3>
             <div className="mt-3 flex flex-col gap-2">
               <Input
@@ -300,7 +300,7 @@ export function RiggingGearsPage() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
             <select
-              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+              className="rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
               value={selectedForInspection ?? ''}
               onChange={(e) => setSelectedForInspection(e.target.value || null)}
             >
@@ -318,7 +318,7 @@ export function RiggingGearsPage() {
               className="md:max-w-xs"
             />
             <select
-              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white"
+              className="rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
               value={inspectionResult}
               onChange={(e) => setInspectionResult(e.target.value as 'PASS' | 'FAIL')}
             >

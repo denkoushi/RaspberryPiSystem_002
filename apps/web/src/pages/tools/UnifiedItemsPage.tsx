@@ -45,7 +45,7 @@ export function UnifiedItemsPage() {
               className="md:max-w-xs"
             />
             <select
-              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white md:max-w-xs"
+              className="rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900 md:max-w-xs"
               value={category}
               onChange={(e) => setCategory(e.target.value as CategoryFilter)}
             >
