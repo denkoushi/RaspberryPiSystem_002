@@ -187,7 +187,7 @@ export function SecurityPage() {
             </thead>
             <tbody>
               {auditLogs.map((log) => (
-                <tr key={log.id} className="border-t border-slate-400">
+                <tr key={log.id} className="border-t border-slate-500">
                   <td className="px-3 py-2 text-sm text-slate-700">{new Date(log.createdAt).toLocaleString()}</td>
                   <td className="px-3 py-2 text-sm text-slate-700">{log.actorUser?.username ?? log.actorUserId}</td>
                   <td className="px-3 py-2 text-sm text-slate-700">{log.targetUser?.username ?? log.targetUserId}</td>

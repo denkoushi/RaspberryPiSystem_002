@@ -142,7 +142,7 @@ export function CsvImportSchedulePage() {
               <label className="block text-sm font-semibold text-slate-700 mb-1">ID *</label>
               <input
                 type="text"
-                className="w-full rounded-md border-2 border-slate-300 bg-white p-2 text-sm font-semibold text-slate-900"
+                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                 value={formData.id}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
               />

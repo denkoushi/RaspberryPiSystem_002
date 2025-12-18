@@ -131,7 +131,7 @@ export function ClientsPage() {
                   </div>
                 </dl>
                 {client.latestLogs.length > 0 ? (
-                  <div className="mt-4 rounded-md border border-slate-400 bg-slate-100 p-2 text-xs">
+                  <div className="mt-4 rounded-md border border-slate-500 bg-slate-100 p-2 text-xs">
                     <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-700">最新ログ</p>
                     <ul className="space-y-1">
                       {client.latestLogs.slice(0, 3).map((log, index) => (
@@ -228,7 +228,7 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {logsQuery.data.map((log) => (
-                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-slate-400">
+                  <tr key={`${log.id ?? `${log.clientId}-${log.createdAt}`}`} className="border-b border-slate-500">
                     <td className="px-3 py-2 align-top text-sm font-semibold text-slate-700">{formatDateTime(log.createdAt)}</td>
                     <td className="px-3 py-2 align-top font-mono text-sm font-semibold text-slate-900">{log.clientId}</td>
                     <td className="px-3 py-2 align-top">
@@ -278,7 +278,7 @@ export function ClientsPage() {
               </thead>
               <tbody>
                 {clientsQuery.data.map((client: ClientDevice) => (
-                  <tr key={client.id} className="border-b border-slate-400">
+                  <tr key={client.id} className="border-b border-slate-500">
                     <td className="px-4 py-2 font-bold text-base text-slate-900">{client.name}</td>
                     <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
                     <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>

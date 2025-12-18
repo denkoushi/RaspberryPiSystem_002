@@ -300,7 +300,7 @@ export function SignageSchedulesPage() {
               </thead>
               <tbody>
                 {schedulesQuery.data.map((schedule: SignageSchedule) => (
-                  <tr key={schedule.id} className="border-b border-slate-400">
+                  <tr key={schedule.id} className="border-b border-slate-500">
                     <td className="px-4 py-2 text-sm text-slate-700">{schedule.name}</td>
                     <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.contentType === 'TOOLS' && '工具管理データ'}

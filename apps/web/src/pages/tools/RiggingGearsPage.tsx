@@ -173,7 +173,7 @@ export function RiggingGearsPage() {
                 </thead>
                 <tbody>
                   {riggings?.map((gear) => (
-                    <tr key={gear.id} className="border-t border-slate-400">
+                    <tr key={gear.id} className="border-t border-slate-500">
                       <td className="px-2 py-1 font-bold text-base text-slate-900 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
                         {gear.name}
                       </td>

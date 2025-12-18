@@ -171,7 +171,7 @@ export function BackupHistoryPage() {
                   </tr>
                 ) : (
                   history.map((item) => (
-                    <tr key={item.id} className="border-t border-slate-400">
+                    <tr key={item.id} className="border-t border-slate-500">
                       <td className="px-2 py-1 text-sm text-slate-700">{new Date(item.startedAt).toLocaleString()}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">{getOperationTypeLabel(item.operationType)}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">
