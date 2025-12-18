@@ -15,6 +15,7 @@ const BACKGROUND = '#020617';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number] & {
   isOver12Hours?: boolean;
+  isOverdue?: boolean;
 };
 
 interface ToolGridConfig {
@@ -392,12 +393,12 @@ export class SignageRenderer {
     const maxItems = columns * maxRows;
     const displayTools = tools.slice(0, maxItems);
     const overflowCount = Math.max(0, tools.length - displayTools.length);
-    const cardRadius = Math.round(12 * scale);
-    const cardPadding = Math.round(12 * scale);
-    const thumbnailSize = Math.round(96 * scale);
-    const thumbnailWidth = thumbnailSize;
-    const thumbnailHeight = thumbnailSize;
-    const textAreaX = cardPadding + thumbnailSize + Math.round(12 * scale);
+        const cardRadius = Math.round(12 * scale);
+        const cardPadding = Math.round(12 * scale);
+        const thumbnailSize = Math.round(96 * scale);
+        const thumbnailWidth = thumbnailSize;
+        const thumbnailHeight = thumbnailSize;
+        const thumbnailGap = Math.round(12 * scale);
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -423,14 +424,23 @@ export class SignageRenderer {
           : isRigging
             ? 'rgba(249,115,22,1.0)' // orange-500
             : 'rgba(59,130,246,1.0)'; // blue-500
-        const cardStroke = isInstrument
-          ? 'rgba(107,33,168,1.0)' // purple-800
-          : isRigging
-            ? 'rgba(194,65,12,1.0)' // orange-700
-            : 'rgba(29,78,216,1.0)'; // blue-700
-        const strokeWidth = Math.max(2, Math.round(2 * scale)); // 2px以上
+        // 超過アイテムの判定（isOver12Hours または isOverdue）
+        const isExceeded = tool.isOver12Hours || Boolean(tool.isOverdue);
+        
+        // 超過アイテムは赤い太枠、それ以外は通常のボーダー
+        const cardStroke = isExceeded
+          ? 'rgba(220,38,38,1.0)' // red-600 赤い太枠
+          : isInstrument
+            ? 'rgba(107,33,168,1.0)' // purple-800
+            : isRigging
+              ? 'rgba(194,65,12,1.0)' // orange-700
+              : 'rgba(29,78,216,1.0)'; // blue-700
+        const strokeWidth = isExceeded
+          ? Math.max(4, Math.round(4 * scale)) // 超過アイテムは4px以上の太枠
+          : Math.max(2, Math.round(2 * scale)); // 通常は2px以上
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
+        let hasThumbnail = false;
 
         if (config.showThumbnails && tool.thumbnailUrl) {
           const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
@@ -442,6 +452,7 @@ export class SignageRenderer {
               'cover'
             );
             if (base64) {
+              hasThumbnail = true;
               const thumbnailX = x + cardPadding;
               const thumbnailY = y + Math.round((cardHeight - thumbnailHeight) / 2);
               thumbnailElement = `
@@ -456,6 +467,11 @@ export class SignageRenderer {
             }
           }
         }
+
+        // テキストエリアのX座標: サムネイルがある場合は右側、ない場合は左側から開始
+        const textAreaX = hasThumbnail
+          ? cardPadding + thumbnailSize + thumbnailGap
+          : cardPadding;
 
         const textStartY = y + cardPadding;
         const managementY = textStartY + Math.round(14 * scale);
@@ -503,7 +519,7 @@ export class SignageRenderer {
               font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
             </text>
-            ${tool.isOver12Hours
+            ${isExceeded
               ? `<text x="${textX}" y="${warningY}"
                   font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   ⚠ 期限超過
