@@ -115,8 +115,38 @@ update-frequency: medium
       "enabled": true
     },
     {
+      "kind": "file",
+      "source": "/opt/RaspberryPiSystem_002/apps/api/.env",
+      "schedule": "0 4 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "file",
+      "source": "/opt/RaspberryPiSystem_002/apps/web/.env",
+      "schedule": "0 4 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "file",
+      "source": "/opt/RaspberryPiSystem_002/infrastructure/docker/.env",
+      "schedule": "0 4 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "file",
+      "source": "/opt/RaspberryPiSystem_002/clients/nfc-agent/.env",
+      "schedule": "0 4 * * *",
+      "enabled": true
+    },
+    {
       "kind": "csv",
       "source": "employees",
+      "schedule": "0 5 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "csv",
+      "source": "items",
       "schedule": "0 5 * * *",
       "enabled": true
     },
