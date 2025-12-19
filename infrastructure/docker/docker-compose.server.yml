@@ -51,6 +51,11 @@ services:
       - signage-rendered-storage:/app/storage/signage-rendered
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/config:/app/config
+      # 環境変数ファイルのバックアップ用にマウント（読み取り専用）
+      - /opt/RaspberryPiSystem_002/apps/api:/app/host/apps/api:ro
+      - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro
+      - /opt/RaspberryPiSystem_002/infrastructure/docker:/app/host/infrastructure/docker:ro
+      - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）

@@ -19,6 +19,29 @@ import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
 
 /**
+ * ホストのパスをDockerコンテナ内のパスに変換
+ * 環境変数ファイルのバックアップ用に、ホストのパスをコンテナ内のマウントパスに変換
+ */
+function convertHostPathToContainerPath(hostPath: string): string {
+  // Dockerコンテナ内のマウントパスに変換
+  const pathMappings: Array<[string, string]> = [
+    ['/opt/RaspberryPiSystem_002/apps/api/.env', '/app/host/apps/api/.env'],
+    ['/opt/RaspberryPiSystem_002/apps/web/.env', '/app/host/apps/web/.env'],
+    ['/opt/RaspberryPiSystem_002/infrastructure/docker/.env', '/app/host/infrastructure/docker/.env'],
+    ['/opt/RaspberryPiSystem_002/clients/nfc-agent/.env', '/app/host/clients/nfc-agent/.env']
+  ];
+
+  for (const [host, container] of pathMappings) {
+    if (hostPath === host) {
+      return container;
+    }
+  }
+
+  // マッピングがない場合はそのまま返す（既にコンテナ内のパスの可能性）
+  return hostPath;
+}
+
+/**
  * バックアップターゲットを作成
  */
 function createBackupTarget(kind: string, source: string, metadata?: Record<string, unknown>) {
@@ -27,7 +50,9 @@ function createBackupTarget(kind: string, source: string, metadata?: Record<stri
       return new DatabaseBackupTarget(source);
     }
     case 'file': {
-      return new FileBackupTarget(source);
+      // ホストのパスをコンテナ内のパスに変換
+      const containerPath = convertHostPathToContainerPath(source);
+      return new FileBackupTarget(containerPath);
     }
     case 'directory': {
       return new DirectoryBackupTarget(source);
