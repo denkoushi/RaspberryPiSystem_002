@@ -6,6 +6,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
 import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
+import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
 import { CsvImportSchedulePage } from './pages/admin/CsvImportSchedulePage';
 import { DashboardPage } from './pages/admin/DashboardPage';
@@ -67,6 +68,7 @@ function App() {
         <Route path="security" element={<SecurityPage />} />
         <Route path="import" element={<MasterImportPage />} />
         <Route path="backup">
+          <Route path="targets" element={<BackupTargetsPage />} />
           <Route path="history" element={<BackupHistoryPage />} />
           <Route path="restore" element={<BackupRestorePage />} />
         </Route>

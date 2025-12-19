@@ -71,7 +71,7 @@ export function AdminLayout() {
           <NavLink to="/admin/imports/schedule" className={linkClass}>
             CSVインポート
           </NavLink>
-          <NavLink to="/admin/backup/history" className={linkClass}>
+          <NavLink to="/admin/backup/targets" className={linkClass}>
             バックアップ
           </NavLink>
           <NavLink to="/admin/signage/schedules" className={linkClass}>
