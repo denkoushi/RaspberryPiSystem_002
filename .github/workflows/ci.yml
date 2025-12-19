@@ -146,6 +146,7 @@ jobs:
             exit 1
           }
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
