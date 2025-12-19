@@ -15,7 +15,7 @@ export const BackupConfigSchema = z.object({
     }).optional()
   }),
   targets: z.array(z.object({
-    kind: z.enum(['database', 'file', 'directory', 'csv', 'image']),
+    kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
     source: z.string(),
     schedule: z.string().optional(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
