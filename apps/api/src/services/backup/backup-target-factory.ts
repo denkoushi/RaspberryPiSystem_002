@@ -26,7 +26,7 @@ export class BackupTargetFactory {
   private static readonly targetCreators: Map<
     BackupKind,
     (source: string, metadata?: Record<string, unknown>, pathMappings?: PathMapping[]) => BackupTarget
-  > = new Map([
+  > = new Map<BackupKind, (source: string, metadata?: Record<string, unknown>, pathMappings?: PathMapping[]) => BackupTarget>([
     ['database', (source: string) => new DatabaseBackupTarget(source)],
     [
       'file',

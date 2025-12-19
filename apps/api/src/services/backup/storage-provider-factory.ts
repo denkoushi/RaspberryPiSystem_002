@@ -27,7 +27,7 @@ export class StorageProviderFactory {
   private static readonly providerCreators: Map<
     'local' | 'dropbox',
     (options: StorageProviderOptions) => StorageProvider
-  > = new Map([
+  > = new Map<'local' | 'dropbox', (options: StorageProviderOptions) => StorageProvider>([
     ['local', () => new LocalStorageProvider()],
     [
       'dropbox',

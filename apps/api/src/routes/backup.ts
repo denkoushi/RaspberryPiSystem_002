@@ -57,8 +57,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const config = await BackupConfigLoader.load();
     
     // ストレージプロバイダーを作成（Factoryパターンを使用）
-    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-    const host = request.headers.host || 'localhost:8080';
+    const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
+      ? request.headers['x-forwarded-proto'][0] 
+      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+    const host = Array.isArray(request.headers.host) 
+      ? request.headers.host[0] 
+      : (request.headers.host || 'localhost:8080');
     
     // トークン更新コールバック（設定ファイルを更新）
     const onTokenUpdate = async (newToken: string) => {
@@ -165,8 +169,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       });
     } else {
       // リクエストボディでストレージが指定されていない場合、設定ファイルから読み込む
-      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-      const host = request.headers.host || 'localhost:8080';
+      const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
+        ? request.headers['x-forwarded-proto'][0] 
+        : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+      const host = Array.isArray(request.headers.host) 
+        ? request.headers.host[0] 
+        : (request.headers.host || 'localhost:8080');
       
       // トークン更新コールバック（設定ファイルを更新）
       const onTokenUpdate = async (newToken: string) => {
@@ -738,8 +746,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     }
 
     // ストレージプロバイダーを作成（Factoryパターンを使用）
-    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-    const host = request.headers.host || 'localhost:8080';
+    const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
+      ? request.headers['x-forwarded-proto'][0] 
+      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+    const host = Array.isArray(request.headers.host) 
+      ? request.headers.host[0] 
+      : (request.headers.host || 'localhost:8080');
     
     // トークン更新コールバック
     const onTokenUpdate = async (newToken: string) => {
