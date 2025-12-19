@@ -56,6 +56,8 @@ export class ClientFileBackupTarget implements BackupTarget {
     // 一時ディレクトリを作成
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'client-backup-'));
     const backupDestination = tmpDir;
+    // ファイル名はAnsibleが生成する形式に合わせる（inventory_hostname_basename）
+    // Ansibleのfetchモジュールは inventory_hostname を使用するため
     const outputFileName = `${this.clientHost}_${path.basename(this.remotePath)}`;
     const outputFilePath = path.join(backupDestination, outputFileName);
 

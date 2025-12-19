@@ -58,6 +58,8 @@ services:
       - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
       - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
+      # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）
+      - /home/denkon5sd02/.ssh:/root/.ssh:ro
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
