@@ -3,112 +3,17 @@ import { z } from 'zod';
 import { authorizeRoles } from '../lib/auth.js';
 import { BackupService } from '../services/backup/backup.service.js';
 import { LocalStorageProvider } from '../services/backup/storage/local-storage.provider.js';
-import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
-import { DatabaseBackupTarget } from '../services/backup/targets/database-backup.target.js';
-import { FileBackupTarget } from '../services/backup/targets/file-backup.target.js';
-import { DirectoryBackupTarget } from '../services/backup/targets/directory-backup.target.js';
-import { CsvBackupTarget } from '../services/backup/targets/csv-backup.target.js';
-import { ImageBackupTarget } from '../services/backup/targets/image-backup.target.js';
-import { ClientFileBackupTarget } from '../services/backup/targets/client-file-backup.target.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../services/backup/backup-config.js';
+import { BackupTargetFactory } from '../services/backup/backup-target-factory.js';
+import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
+import type { BackupKind } from '../services/backup/backup-types.js';
 import { ApiError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { BackupHistoryService } from '../services/backup/backup-history.service.js';
 import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
-
-/**
- * ホストのパスをDockerコンテナ内のパスに変換
- * 環境変数ファイルのバックアップ用に、ホストのパスをコンテナ内のマウントパスに変換
- */
-function convertHostPathToContainerPath(hostPath: string): string {
-  // Dockerコンテナ内のマウントパスに変換
-  const pathMappings: Array<[string, string]> = [
-    ['/opt/RaspberryPiSystem_002/apps/api/.env', '/app/host/apps/api/.env'],
-    ['/opt/RaspberryPiSystem_002/apps/web/.env', '/app/host/apps/web/.env'],
-    ['/opt/RaspberryPiSystem_002/infrastructure/docker/.env', '/app/host/infrastructure/docker/.env'],
-    ['/opt/RaspberryPiSystem_002/clients/nfc-agent/.env', '/app/host/clients/nfc-agent/.env']
-  ];
-
-  for (const [host, container] of pathMappings) {
-    if (hostPath === host) {
-      return container;
-    }
-  }
-
-  // マッピングがない場合はそのまま返す（既にコンテナ内のパスの可能性）
-  return hostPath;
-}
-
-/**
- * バックアップターゲットを作成
- */
-function createBackupTarget(kind: string, source: string, metadata?: Record<string, unknown>) {
-  switch (kind) {
-    case 'database': {
-      return new DatabaseBackupTarget(source);
-    }
-    case 'file': {
-      // ホストのパスをコンテナ内のパスに変換
-      const containerPath = convertHostPathToContainerPath(source);
-      return new FileBackupTarget(containerPath);
-    }
-    case 'directory': {
-      return new DirectoryBackupTarget(source);
-    }
-    case 'csv': {
-      if (source === 'employees' || source === 'items') {
-        return new CsvBackupTarget(source as 'employees' | 'items', metadata);
-      }
-      throw new ApiError(400, `Invalid CSV source: ${source}. Must be 'employees' or 'items'`);
-    }
-        case 'image': {
-          return new ImageBackupTarget(metadata);
-        }
-        case 'client-file': {
-          // source形式: "hostname:/path/to/file"
-          // 例: "raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env"
-          return new ClientFileBackupTarget(source);
-        }
-        default: {
-          throw new ApiError(400, `Unknown backup kind: ${kind}`);
-        }
-  }
-}
-
-/**
- * ストレージプロバイダーを作成
- */
-function createStorageProvider(
-  provider: string,
-  options?: Record<string, unknown>,
-  oauthService?: DropboxOAuthService,
-  onTokenUpdate?: (token: string) => Promise<void>
-) {
-  switch (provider) {
-    case 'local': {
-      return new LocalStorageProvider();
-    }
-    case 'dropbox': {
-      const accessToken = options?.accessToken as string;
-      if (!accessToken) {
-        throw new ApiError(400, 'Dropbox access token is required');
-      }
-      return new DropboxStorageProvider({
-        accessToken,
-        basePath: options?.basePath as string,
-        refreshToken: options?.refreshToken as string | undefined,
-        oauthService,
-        onTokenUpdate
-      });
-    }
-    default: {
-      throw new ApiError(400, `Unknown storage provider: ${provider}`);
-    }
-  }
-}
 
 const backupRequestSchema = z.object({
   kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
@@ -151,66 +56,33 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
     
-    // ストレージプロバイダーを作成（設定ファイルから読み込む）
-    let storageProvider;
-    if (config.storage.provider === 'dropbox') {
-      const accessToken = config.storage.options?.accessToken as string;
-      if (!accessToken) {
-        throw new ApiError(400, 'Dropbox access token is required in config file');
-      }
-      
-      // OAuthサービスを作成（リフレッシュトークンがある場合）
-      let oauthService: DropboxOAuthService | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
-      const appKey = config.storage.options?.appKey as string | undefined;
-      const appSecret = config.storage.options?.appSecret as string | undefined;
-      
-      if (refreshToken && appKey && appSecret) {
-        // リダイレクトURI（現在のホストを使用）
-        const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-        const host = request.headers.host || 'localhost:8080';
-        const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
-        
-        oauthService = new DropboxOAuthService({
-          appKey,
-          appSecret,
-          redirectUri
-        });
-      }
-      
-      // トークン更新コールバック（設定ファイルを更新）
-      const onTokenUpdate = async (newToken: string) => {
-        const updatedConfig: BackupConfig = {
-          ...config,
-          storage: {
-            ...config.storage,
-            options: {
-              ...config.storage.options,
-              accessToken: newToken
-            }
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
+    
+    // トークン更新コールバック（設定ファイルを更新）
+    const onTokenUpdate = async (newToken: string) => {
+      const updatedConfig: BackupConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          options: {
+            ...config.storage.options,
+            accessToken: newToken
           }
-        };
-        await BackupConfigLoader.save(updatedConfig);
+        }
       };
-      
-      storageProvider = new DropboxStorageProvider({
-        accessToken,
-        basePath: config.storage.options?.basePath as string,
-        refreshToken,
-        oauthService,
-        onTokenUpdate: oauthService ? onTokenUpdate : undefined
-      });
-      logger?.info('[BackupRoute] Using Dropbox storage from config file (internal endpoint)');
-    } else {
-      storageProvider = new LocalStorageProvider();
-      logger?.info('[BackupRoute] Using local storage from config file (internal endpoint)');
-    }
+      await BackupConfigLoader.save(updatedConfig);
+    };
+    
+    const storageProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+    logger?.info('[BackupRoute] Using storage from config file (internal endpoint)');
 
     const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
     
-    // バックアップターゲットを作成
-    const target = createBackupTarget(body.kind, body.source, body.metadata);
+    // バックアップターゲットを作成（Factoryパターンを使用）
+    const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
     // バックアップ履歴を作成
     const historyId = await historyService.createHistory({
@@ -276,72 +148,50 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
     
-    // ストレージプロバイダーを作成
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
     let storageProvider;
     if (body.storage) {
       // リクエストボディでストレージが指定されている場合
-      storageProvider = createStorageProvider(body.storage.provider, body.storage.options);
+      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
+      storageProvider = StorageProviderFactory.create({
+        provider: body.storage.provider,
+        accessToken: body.storage.options?.accessToken as string | undefined,
+        basePath: body.storage.options?.basePath as string | undefined,
+        refreshToken: body.storage.options?.refreshToken as string | undefined,
+        appKey: body.storage.options?.appKey as string | undefined,
+        appSecret: body.storage.options?.appSecret as string | undefined,
+        redirectUri: `${protocol}://${host}/api/backup/oauth/callback`
+      });
     } else {
       // リクエストボディでストレージが指定されていない場合、設定ファイルから読み込む
-      if (config.storage.provider === 'dropbox') {
-        const accessToken = config.storage.options?.accessToken as string;
-        if (!accessToken) {
-          throw new ApiError(400, 'Dropbox access token is required in config file');
-        }
-        
-        // OAuthサービスを作成（リフレッシュトークンがある場合）
-        let oauthService: DropboxOAuthService | undefined;
-        const refreshToken = config.storage.options?.refreshToken as string | undefined;
-        const appKey = config.storage.options?.appKey as string | undefined;
-        const appSecret = config.storage.options?.appSecret as string | undefined;
-        
-        if (refreshToken && appKey && appSecret) {
-          // リダイレクトURI（現在のホストを使用）
-          const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-          const host = request.headers.host || 'localhost:8080';
-          const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
-          
-          oauthService = new DropboxOAuthService({
-            appKey,
-            appSecret,
-            redirectUri
-          });
-        }
-        
-        // トークン更新コールバック（設定ファイルを更新）
-        const onTokenUpdate = async (newToken: string) => {
-          const updatedConfig: BackupConfig = {
-            ...config,
-            storage: {
-              ...config.storage,
-              options: {
-                ...config.storage.options,
-                accessToken: newToken
-              }
+      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
+      
+      // トークン更新コールバック（設定ファイルを更新）
+      const onTokenUpdate = async (newToken: string) => {
+        const updatedConfig: BackupConfig = {
+          ...config,
+          storage: {
+            ...config.storage,
+            options: {
+              ...config.storage.options,
+              accessToken: newToken
             }
-          };
-          await BackupConfigLoader.save(updatedConfig);
+          }
         };
-        
-        storageProvider = new DropboxStorageProvider({
-          accessToken,
-          basePath: config.storage.options?.basePath as string,
-          refreshToken,
-          oauthService,
-          onTokenUpdate: oauthService ? onTokenUpdate : undefined
-        });
-        logger?.info('[BackupRoute] Using Dropbox storage from config file');
-      } else {
-        storageProvider = new LocalStorageProvider();
-        logger?.info('[BackupRoute] Using local storage from config file');
-      }
+        await BackupConfigLoader.save(updatedConfig);
+      };
+      
+      storageProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+      logger?.info('[BackupRoute] Using storage from config file');
     }
 
     const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
     
-    // バックアップターゲットを作成
-    const target = createBackupTarget(body.kind, body.source, body.metadata);
+    // バックアップターゲットを作成（Factoryパターンを使用）
+    const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
     // バックアップ履歴を作成
     const historyId = await historyService.createHistory({
@@ -436,9 +286,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   }, async (request, reply) => {
     const body = request.body as z.infer<typeof restoreRequestSchema>;
     
-    // ストレージプロバイダーを作成
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
     const storageProvider = body.storage
-      ? createStorageProvider(body.storage.provider, body.storage.options)
+      ? StorageProviderFactory.create({
+          provider: body.storage.provider,
+          accessToken: body.storage.options?.accessToken as string | undefined,
+          basePath: body.storage.options?.basePath as string | undefined,
+          refreshToken: body.storage.options?.refreshToken as string | undefined,
+          appKey: body.storage.options?.appKey as string | undefined,
+          appSecret: body.storage.options?.appSecret as string | undefined,
+          redirectUri: `${protocol}://${host}/api/backup/oauth/callback`
+        })
       : new LocalStorageProvider();
 
     const backupService = new BackupService(storageProvider);
@@ -459,102 +319,37 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     });
 
     try {
-      // 画像バックアップの場合は特別な処理を実行
-      if (targetKind === 'image') {
-        const { promises: fs } = await import('fs');
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const path = await import('path');
-        const os = await import('os');
-        const execFileAsync = promisify(execFile);
+      // バックアップデータをダウンロード
+      const backupData = await storageProvider.download(body.backupPath);
 
-        // バックアップデータをダウンロード
-        const backupData = await storageProvider.download(body.backupPath);
+      // 設定ファイルを読み込む
+      const config = await BackupConfigLoader.load();
 
-        // 環境変数から取得、なければデフォルト値を使用
-        const baseDir = process.env.PHOTO_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
-        const photosDir = path.join(baseDir, 'photos');
-        const thumbnailsDir = path.join(baseDir, 'thumbnails');
+      // バックアップターゲットを作成（Factoryパターンを使用）
+      const target = BackupTargetFactory.createFromConfig(config, targetKind as BackupKind, targetSource);
 
-        // 一時ディレクトリを作成してtar.gzを展開
-        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
-        const archivePath = path.join(tmpDir, 'images.tar.gz');
+      // ターゲットがrestoreメソッドを実装している場合はそれを使用
+      if (target.restore) {
+        logger?.info({ targetKind, targetSource, backupPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
+        const result = await target.restore(backupData, {
+          destination: body.destination,
+          overwrite: true
+        });
 
-        try {
-          // tar.gzファイルを一時ディレクトリに保存
-          await fs.writeFile(archivePath, backupData);
+        // リストア履歴を完了として更新
+        await historyService.completeHistory(historyId, {
+          targetKind,
+          targetSource,
+          path: body.backupPath
+        });
 
-          logger?.info({ backupPath: body.backupPath, tmpDir, photosDir, thumbnailsDir }, '[BackupRoute] Restoring image backup from tar.gz');
-
-          // tar.gzを展開
-          await execFileAsync('tar', ['-xzf', archivePath, '-C', tmpDir]);
-
-          // 展開されたディレクトリを確認
-          const extractedPhotosDir = path.join(tmpDir, 'photos');
-          const extractedThumbnailsDir = path.join(tmpDir, 'thumbnails');
-
-          // 既存のディレクトリをバックアップ（オプション）または削除
-          // 安全のため、既存ディレクトリをリネームしてバックアップ
-          const backupSuffix = `-backup-${Date.now()}`;
-          try {
-            await fs.access(photosDir);
-            await fs.rename(photosDir, `${photosDir}${backupSuffix}`);
-            logger?.info({ backupDir: `${photosDir}${backupSuffix}` }, '[BackupRoute] Backed up existing photos directory');
-          } catch {
-            // ディレクトリが存在しない場合は何もしない
-          }
-
-          try {
-            await fs.access(thumbnailsDir);
-            await fs.rename(thumbnailsDir, `${thumbnailsDir}${backupSuffix}`);
-            logger?.info({ backupDir: `${thumbnailsDir}${backupSuffix}` }, '[BackupRoute] Backed up existing thumbnails directory');
-          } catch {
-            // ディレクトリが存在しない場合は何もしない
-          }
-
-          // 展開されたディレクトリを目的の場所に移動
-          try {
-            await fs.access(extractedPhotosDir);
-            await fs.mkdir(path.dirname(photosDir), { recursive: true });
-            await fs.rename(extractedPhotosDir, photosDir);
-            logger?.info({ photosDir }, '[BackupRoute] Restored photos directory');
-          } catch (error) {
-            logger?.warn({ err: error, extractedPhotosDir }, '[BackupRoute] Photos directory not found in backup, skipping');
-          }
-
-          try {
-            await fs.access(extractedThumbnailsDir);
-            await fs.mkdir(path.dirname(thumbnailsDir), { recursive: true });
-            await fs.rename(extractedThumbnailsDir, thumbnailsDir);
-            logger?.info({ thumbnailsDir }, '[BackupRoute] Restored thumbnails directory');
-          } catch (error) {
-            logger?.warn({ err: error, extractedThumbnailsDir }, '[BackupRoute] Thumbnails directory not found in backup, skipping');
-          }
-
-          // 一時ファイルを削除
-          await fs.rm(tmpDir, { recursive: true, force: true });
-
-          logger?.info({ backupPath: body.backupPath, photosDir, thumbnailsDir }, '[BackupRoute] Image restore completed');
-          
-          // リストア履歴を完了として更新
-          await historyService.completeHistory(historyId, {
-            targetKind,
-            targetSource,
-            path: body.backupPath
-          });
-
-          return reply.status(200).send({
-            success: true,
-            timestamp: new Date(),
-            historyId
-          });
-        } catch (error) {
-          // エラー時も一時ファイルを削除
-          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-          throw error;
-        }
+        return reply.status(200).send({
+          success: result.success,
+          timestamp: result.timestamp,
+          historyId
+        });
       } else {
-        // その他のバックアップは通常の処理を実行
+        // restoreメソッドが実装されていない場合は通常の処理を実行
         const result = await backupService.restore(body.backupPath, {
           destination: body.destination
         });
@@ -942,24 +737,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, 'Dropbox access token is required in config file');
     }
 
-    // OAuthサービスを作成（リフレッシュトークンがある場合）
-    let oauthService: DropboxOAuthService | undefined;
-    const refreshToken = config.storage.options?.refreshToken as string | undefined;
-    const appKey = config.storage.options?.appKey as string | undefined;
-    const appSecret = config.storage.options?.appSecret as string | undefined;
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
     
-    if (refreshToken && appKey && appSecret) {
-      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-      const host = request.headers.host || 'localhost:8080';
-      const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
-      
-      oauthService = new DropboxOAuthService({
-        appKey,
-        appSecret,
-        redirectUri
-      });
-    }
-
     // トークン更新コールバック
     const onTokenUpdate = async (newToken: string) => {
       const updatedConfig: BackupConfig = {
@@ -975,14 +756,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       await BackupConfigLoader.save(updatedConfig);
     };
 
-    // Dropboxストレージプロバイダーを作成
-    const dropboxProvider = new DropboxStorageProvider({
-      accessToken,
-      basePath: config.storage.options?.basePath as string,
-      refreshToken,
-      oauthService,
-      onTokenUpdate: oauthService ? onTokenUpdate : undefined
-    });
+    // Dropboxストレージプロバイダーを作成（Factoryパターンを使用）
+    const dropboxProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
 
     const backupService = new BackupService(dropboxProvider);
     const historyService = new BackupHistoryService();
@@ -1040,100 +815,16 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         );
       }
 
-      // リストアを実行
-      if (body.targetKind === 'database') {
-        // データベースバックアップのリストア
-        const { spawn } = await import('child_process');
-        const { Readable } = await import('stream');
+      // バックアップターゲットを作成（Factoryパターンを使用）
+      const target = BackupTargetFactory.createFromConfig(config, targetKind as BackupKind, targetSource);
 
-        const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return';
-        const url = new URL(dbUrl);
-        const dbName = url.pathname.replace(/^\//, '');
-        const user = decodeURIComponent(url.username || 'postgres');
-        const host = url.hostname || 'localhost';
-        const port = url.port || '5432';
-        const password = url.password ? decodeURIComponent(url.password) : undefined;
-
-        const env = { ...process.env };
-        if (password) {
-          env.PGPASSWORD = password;
-        }
-
-        logger?.info({ dbName, host, port, backupPath: normalizedBackupPath }, '[BackupRoute] Restoring database from backup');
-        
-        // psqlでリストア（stdinにSQLを流し込む）
-        await new Promise<void>((resolve, reject) => {
-          const psql = spawn(
-            'psql',
-            ['-h', host, '-p', port, '-U', user, '-d', dbName, '--set', 'ON_ERROR_STOP=off'],
-            { env, stdio: ['pipe', 'pipe', 'pipe'] }
-          );
-
-          const errors: string[] = [];
-          psql.stderr.on('data', (data: Buffer) => {
-            const errorMsg = data.toString('utf-8');
-            // 警告メッセージは無視（エラーとして扱わない）
-            if (!errorMsg.includes('WARNING') && !errorMsg.includes('NOTICE')) {
-              errors.push(errorMsg);
-            }
-          });
-
-          psql.on('close', async (code) => {
-            if (code !== 0 && errors.length > 0) {
-              logger?.error({ errors, code }, '[BackupRoute] Database restore failed');
-              const errorMessage = `Database restore failed: ${errors.join(', ')}`;
-              await historyService.failHistory(historyId, errorMessage);
-              reject(new ApiError(500, errorMessage));
-            } else {
-              logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Database restore completed');
-              // リストア履歴を完了として更新
-              await historyService.completeHistory(historyId, {
-                targetKind,
-                targetSource,
-                sizeBytes: backupData.length,
-                hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-                path: normalizedBackupPath
-              });
-              resolve();
-            }
-          });
-
-          psql.on('error', (error) => {
-            logger?.error({ err: error }, '[BackupRoute] Failed to spawn psql');
-            reject(new ApiError(500, `Failed to spawn psql: ${error.message}`));
-          });
-
-          // バックアップデータをstdinに書き込む
-          const inputStream = Readable.from(backupData);
-          inputStream.pipe(psql.stdin);
-          inputStream.on('end', () => {
-            psql.stdin.end();
-          });
+      // ターゲットがrestoreメソッドを実装している場合はそれを使用
+      if (target.restore) {
+        logger?.info({ targetKind, targetSource, backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
+        const result = await target.restore(backupData, {
+          overwrite: true
         });
-      } else if (body.targetKind === 'csv') {
-        // CSVバックアップのリストア（既存のCSVインポート機能を再利用）
-        const { processCsvImport } = await import('./imports.js');
-        
-        // バックアップパスからCSVタイプを判定（employees/items）
-        const csvType = normalizedBackupPath.includes('employees') ? 'employees' : 'items';
-        const files = csvType === 'employees' 
-          ? { employees: backupData }
-          : { items: backupData };
 
-        const logWrapper = {
-          info: (obj: unknown, msg: string) => {
-            logger?.info(obj, msg);
-          },
-          error: (obj: unknown, msg: string) => {
-            logger?.error(obj, msg);
-          }
-        };
-
-        logger?.info({ csvType, backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring CSV from backup');
-        await processCsvImport(files, true, logWrapper); // replaceExisting = true
-
-        logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] CSV restore completed');
-        
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {
           targetKind,
@@ -1142,95 +833,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
           path: normalizedBackupPath
         });
-      } else if (body.targetKind === 'image') {
-        // 画像バックアップのリストア（tar.gzを展開して写真ディレクトリとサムネイルディレクトリに復元）
-        const { promises: fs } = await import('fs');
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const path = await import('path');
-        const os = await import('os');
-        const execFileAsync = promisify(execFile);
 
-        // 環境変数から取得、なければデフォルト値を使用
-        const baseDir = process.env.PHOTO_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
-        const photosDir = path.join(baseDir, 'photos');
-        const thumbnailsDir = path.join(baseDir, 'thumbnails');
-
-        // 一時ディレクトリを作成してtar.gzを展開
-        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
-        const archivePath = path.join(tmpDir, 'images.tar.gz');
-
-        try {
-          // tar.gzファイルを一時ディレクトリに保存
-          await fs.writeFile(archivePath, backupData);
-
-          logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, tmpDir, photosDir, thumbnailsDir }, '[BackupRoute] Restoring image backup from tar.gz');
-
-          // tar.gzを展開
-          await execFileAsync('tar', ['-xzf', archivePath, '-C', tmpDir]);
-
-          // 展開されたディレクトリを確認
-          const extractedPhotosDir = path.join(tmpDir, 'photos');
-          const extractedThumbnailsDir = path.join(tmpDir, 'thumbnails');
-
-          // 既存のディレクトリをバックアップ（オプション）または削除
-          // 安全のため、既存ディレクトリをリネームしてバックアップ
-          const backupSuffix = `-backup-${Date.now()}`;
-          try {
-            await fs.access(photosDir);
-            await fs.rename(photosDir, `${photosDir}${backupSuffix}`);
-            logger?.info({ backupDir: `${photosDir}${backupSuffix}` }, '[BackupRoute] Backed up existing photos directory');
-          } catch {
-            // ディレクトリが存在しない場合は何もしない
-          }
-
-          try {
-            await fs.access(thumbnailsDir);
-            await fs.rename(thumbnailsDir, `${thumbnailsDir}${backupSuffix}`);
-            logger?.info({ backupDir: `${thumbnailsDir}${backupSuffix}` }, '[BackupRoute] Backed up existing thumbnails directory');
-          } catch {
-            // ディレクトリが存在しない場合は何もしない
-          }
-
-          // 展開されたディレクトリを目的の場所に移動
-          try {
-            await fs.access(extractedPhotosDir);
-            await fs.mkdir(path.dirname(photosDir), { recursive: true });
-            await fs.rename(extractedPhotosDir, photosDir);
-            logger?.info({ photosDir }, '[BackupRoute] Restored photos directory');
-          } catch (error) {
-            logger?.warn({ err: error, extractedPhotosDir }, '[BackupRoute] Photos directory not found in backup, skipping');
-          }
-
-          try {
-            await fs.access(extractedThumbnailsDir);
-            await fs.mkdir(path.dirname(thumbnailsDir), { recursive: true });
-            await fs.rename(extractedThumbnailsDir, thumbnailsDir);
-            logger?.info({ thumbnailsDir }, '[BackupRoute] Restored thumbnails directory');
-          } catch (error) {
-            logger?.warn({ err: error, extractedThumbnailsDir }, '[BackupRoute] Thumbnails directory not found in backup, skipping');
-          }
-
-          // 一時ファイルを削除
-          await fs.rm(tmpDir, { recursive: true, force: true });
-
-          logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, photosDir, thumbnailsDir }, '[BackupRoute] Image restore completed');
-          
-          // リストア履歴を完了として更新
-          await historyService.completeHistory(historyId, {
-            targetKind,
-            targetSource,
-            sizeBytes: backupData.length,
-            hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-            path: normalizedBackupPath
-          });
-        } catch (error) {
-          // エラー時も一時ファイルを削除
-          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-          throw error;
-        }
+        return reply.status(200).send({
+          success: result.success,
+          timestamp: result.timestamp,
+          historyId
+        });
       } else {
-        // 汎用的なリストア（ファイルとして保存）
+        // restoreメソッドが実装されていない場合は汎用的なリストア（ファイルとして保存）
         const tempPath = `/tmp/restored-${Date.now()}.backup`;
         await backupService.restore(normalizedBackupPath, {
           destination: tempPath

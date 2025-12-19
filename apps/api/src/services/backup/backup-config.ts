@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
 /**
+ * パスマッピング設定のスキーマ
+ */
+export const PathMappingSchema = z.object({
+  hostPath: z.string(),
+  containerPath: z.string()
+});
+
+/**
  * バックアップ設定のスキーマ
  */
 export const BackupConfigSchema = z.object({
@@ -14,6 +22,7 @@ export const BackupConfigSchema = z.object({
       appSecret: z.string().optional() // Dropbox用（OAuth 2.0 App Secret）
     }).optional()
   }),
+  pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング
   targets: z.array(z.object({
     kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
     source: z.string(),
@@ -62,6 +71,18 @@ export const defaultBackupConfig: BackupConfig = {
       basePath: '/opt/RaspberryPiSystem_002/backups'
     }
   },
+  pathMappings: [
+    { hostPath: '/opt/RaspberryPiSystem_002/apps/api/.env', containerPath: '/app/host/apps/api/.env' },
+    { hostPath: '/opt/RaspberryPiSystem_002/apps/web/.env', containerPath: '/app/host/apps/web/.env' },
+    {
+      hostPath: '/opt/RaspberryPiSystem_002/infrastructure/docker/.env',
+      containerPath: '/app/host/infrastructure/docker/.env'
+    },
+    {
+      hostPath: '/opt/RaspberryPiSystem_002/clients/nfc-agent/.env',
+      containerPath: '/app/host/clients/nfc-agent/.env'
+    }
+  ],
   targets: [
     {
       kind: 'database',

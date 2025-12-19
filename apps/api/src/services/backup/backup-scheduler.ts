@@ -1,14 +1,9 @@
 import cron from 'node-cron';
 import { BackupService } from './backup.service.js';
-import { LocalStorageProvider } from './storage/local-storage.provider.js';
-import { DropboxStorageProvider } from './storage/dropbox-storage.provider.js';
-import { DatabaseBackupTarget } from './targets/database-backup.target.js';
-import { FileBackupTarget } from './targets/file-backup.target.js';
-import { DirectoryBackupTarget } from './targets/directory-backup.target.js';
-import { CsvBackupTarget } from './targets/csv-backup.target.js';
-import { ImageBackupTarget } from './targets/image-backup.target.js';
 import { BackupConfigLoader } from './backup-config.loader.js';
 import type { BackupConfig } from './backup-config.js';
+import { BackupTargetFactory } from './backup-target-factory.js';
+import { StorageProviderFactory } from './storage-provider-factory.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -115,48 +110,13 @@ export class BackupScheduler {
     config: BackupConfig,
     target: BackupConfig['targets'][0]
   ): Promise<void> {
-    // ストレージプロバイダーを作成
-    let storageProvider;
-    if (config.storage.provider === 'dropbox') {
-      const accessToken = config.storage.options?.accessToken as string;
-      if (!accessToken) {
-        throw new Error('Dropbox access token is required');
-      }
-      storageProvider = new DropboxStorageProvider({
-        accessToken,
-        basePath: config.storage.options?.basePath as string
-      });
-    } else {
-      storageProvider = new LocalStorageProvider();
-    }
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const storageProvider = StorageProviderFactory.createFromConfig(config);
 
     const backupService = new BackupService(storageProvider);
 
-    // バックアップターゲットを作成
-    let backupTarget;
-    switch (target.kind) {
-      case 'database':
-        backupTarget = new DatabaseBackupTarget(target.source);
-        break;
-      case 'file':
-        backupTarget = new FileBackupTarget(target.source);
-        break;
-      case 'directory':
-        backupTarget = new DirectoryBackupTarget(target.source);
-        break;
-      case 'csv':
-        if (target.source === 'employees' || target.source === 'items') {
-          backupTarget = new CsvBackupTarget(target.source as 'employees' | 'items', target.metadata);
-        } else {
-          throw new Error(`Invalid CSV source: ${target.source}`);
-        }
-        break;
-      case 'image':
-        backupTarget = new ImageBackupTarget(target.metadata);
-        break;
-      default:
-        throw new Error(`Unknown backup kind: ${target.kind}`);
-    }
+    // バックアップターゲットを作成（Factoryパターンを使用）
+    const backupTarget = BackupTargetFactory.createFromConfig(config, target.kind, target.source, target.metadata);
 
     // バックアップを実行
     const result = await backupService.backup(backupTarget, {
