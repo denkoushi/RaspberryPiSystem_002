@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-19）
+
+- **✅ 画像バックアップリストア処理追加**: 画像バックアップは`tar.gz`形式で保存されるが、リストア時に展開処理がなかった問題を修正。`/api/backup/restore/from-dropbox`と`/api/backup/restore`エンドポイントに画像バックアップのリストア処理を追加。`tar.gz`を展開して写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）に復元。既存ディレクトリの自動バックアップ機能も追加。ドキュメントを更新して画像バックアップのリストア手順を明記。詳細は [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) / [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-18）
 
 - **✅ バックアップ対象管理UI実装完了**: 管理コンソールの「バックアップ」タブからバックアップ対象（`targets`）を管理できる機能を実装完了。バックアップ対象の追加・編集・削除、有効/無効切り替え、手動バックアップ実行が可能。`backup.sh`スクリプトと管理コンソールの機能が整合性を保ち、設定ファイル（`backup.json`）の変更が即座に反映される。統合テスト・E2Eテストも実装済み。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) / [guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。

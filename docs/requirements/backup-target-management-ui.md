@@ -1,6 +1,6 @@
 # バックアップ対象管理UI実装計画
 
-最終更新: 2025-12-18
+最終更新: 2025-12-19
 
 ## 概要
 
@@ -17,6 +17,7 @@
 
 2. **Dropboxからのリストア** (`BackupRestorePage.tsx`)
    - Dropbox上のバックアップファイルからリストア実行
+   - 画像バックアップ（`tar.gz`形式）の自動展開・復元機能
 
 3. **APIエンドポイント**
    - `GET /api/backup/config`: バックアップ設定の取得
@@ -434,6 +435,17 @@ export interface BackupConfig {
 - ✅ 統合テスト実装（`apps/api/src/routes/__tests__/backup.integration.test.ts`）
 - ✅ E2Eテスト実装（`e2e/admin.spec.ts`）
 - ✅ 実機検証手順ドキュメント作成（`docs/guides/backup-target-management-verification.md`）
+
+### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
+
+- ✅ 画像バックアップのリストア処理を追加
+  - `/api/backup/restore/from-dropbox`エンドポイントに画像バックアップのリストア処理を追加
+  - `/api/backup/restore`エンドポイントにも画像バックアップのリストア処理を追加
+  - `tar.gz`を展開して写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）に復元
+  - 既存ディレクトリの自動バックアップ機能を追加（タイムスタンプ付きでリネーム）
+- ✅ ドキュメント更新（`docs/guides/backup-and-restore.md`）
+  - 画像バックアップのリストア手順を追加
+  - API経由と手動でのリストア方法を記載
 
 ## 関連ドキュメント
 
