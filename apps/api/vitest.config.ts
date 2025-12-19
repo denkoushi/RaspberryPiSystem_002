@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./src/test/setup-env.ts'],
+    // NOTE:
+    // 共有DBを使う統合テストが多く、テストファイル並列実行だと別ファイルのdeleteMany等が割り込んで
+    // 外部キー制約(P2003)などのフレークを起こすことがあるため、ファイル単位の並列実行を無効化する。
+    fileParallelism: false,
     sequence: {
       concurrent: false
     },
