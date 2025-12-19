@@ -447,6 +447,24 @@ export interface BackupConfig {
   - 画像バックアップのリストア手順を追加
   - API経由と手動でのリストア方法を記載
 
+### Phase 6: Ansibleによるクライアント端末バックアップ機能 🔄 実装予定
+
+**問題点**:
+- クライアント端末（Pi4、Pi3など）のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできない
+- クライアント端末が増えた場合、各端末で個別にバックアップを実行する方法では破綻する
+
+**解決策**:
+- Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップ
+- `ansible fetch`モジュールまたは`ansible synchronize`モジュールを使用
+- バックアップAPIからAnsible経由で各クライアント端末のファイルを取得
+- Ansibleのinventoryでクライアント端末を管理し、スケーラブルに対応
+
+**実装内容**:
+- Ansible Playbook作成（`infrastructure/ansible/playbooks/backup-clients.yml`）
+- バックアップAPIにクライアント端末バックアップターゲットを追加
+- `kind: "client-file"`または`kind: "client-directory"`を追加
+- `source`にクライアント端末のホスト名とファイルパスを指定（例: `raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`）
+
 ## 関連ドキュメント
 
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
