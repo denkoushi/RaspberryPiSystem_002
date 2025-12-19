@@ -21,7 +21,13 @@ export class FileBackupTarget implements BackupTarget {
       return fs.readFile(this.sourcePath);
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        throw new ApiError(404, `バックアップ対象のファイルが見つかりません: ${this.sourcePath}`);
+        // ファイルが存在しない場合、より詳細なエラーメッセージを提供
+        // ホストパスとコンテナパスの両方を表示してデバッグを容易にする
+        const hostPath = this.sourcePath.replace('/app/host', '/opt/RaspberryPiSystem_002');
+        throw new ApiError(
+          404,
+          `バックアップ対象のファイルが見つかりません: ${this.sourcePath}${hostPath !== this.sourcePath ? ` (ホストパス: ${hostPath})` : ''}`
+        );
       }
       throw error;
     }
