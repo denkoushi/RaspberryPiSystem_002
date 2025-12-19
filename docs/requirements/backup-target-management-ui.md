@@ -387,25 +387,53 @@ export interface BackupConfig {
 
 ## 実装順序
 
-1. **Phase 1: API拡張**（1-2日）
+1. **Phase 1: API拡張**（1-2日） ✅ **完了**
    - バックアップ対象の個別操作APIを実装
    - 単体テストを実装
 
-2. **Phase 2: フロントエンドAPIクライアント拡張**（1日）
+2. **Phase 2: フロントエンドAPIクライアント拡張**（1日） ✅ **完了**
    - APIクライアント関数を追加
    - React Query Hooksを追加
 
-3. **Phase 3: UI実装**（2-3日）
+3. **Phase 3: UI実装**（2-3日） ✅ **完了**
    - バックアップ対象管理ページを実装
    - バックアップ対象追加/編集フォームを実装
    - ルーティング・ナビゲーションを追加
 
-4. **Phase 4: 統合・テスト**（1-2日）
+4. **Phase 4: 統合・テスト**（1-2日） 🔄 **進行中**
    - 統合テストを実装
    - E2Eテストを実装
    - 実機検証を実施
 
 **合計**: 5-8日
+
+## 実装状況
+
+### Phase 1: API拡張 ✅ 完了
+
+- ✅ `POST /api/backup/config/targets`: バックアップ対象を追加
+- ✅ `PUT /api/backup/config/targets/:index`: バックアップ対象を更新
+- ✅ `DELETE /api/backup/config/targets/:index`: バックアップ対象を削除
+
+### Phase 2: フロントエンドAPIクライアント拡張 ✅ 完了
+
+- ✅ `getBackupConfig()`, `updateBackupConfig()`関数を追加
+- ✅ `addBackupTarget()`, `updateBackupTarget()`, `deleteBackupTarget()`関数を追加
+- ✅ `runBackup()`関数を追加（手動バックアップ実行）
+- ✅ `useBackupConfig()`, `useBackupConfigMutations()` Hooksを追加
+
+### Phase 3: UI実装 ✅ 完了
+
+- ✅ `BackupTargetsPage.tsx`: バックアップ対象一覧表示、有効/無効切り替え、追加・編集・削除機能
+- ✅ `BackupTargetForm.tsx`: バックアップ対象追加/編集フォーム
+- ✅ ルーティング追加: `/admin/backup/targets`
+- ✅ ナビゲーション更新: バックアップタブのデフォルトルートを変更
+
+### Phase 4: 統合・テスト 🔄 進行中
+
+- ⏳ 統合テスト実装
+- ⏳ E2Eテスト実装
+- ⏳ 実機検証
 
 ## 関連ドキュメント
 
