@@ -126,3 +126,87 @@ export async function runCsvImportSchedule(id: string): Promise<{ message: strin
   const { data } = await api.post<{ message: string }>(`/imports/schedule/${id}/run`, {});
   return data;
 }
+
+// バックアップ設定の型定義
+export interface BackupTarget {
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+  source: string;
+  schedule?: string;
+  enabled: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BackupConfig {
+  storage: {
+    provider: 'local' | 'dropbox';
+    options?: {
+      basePath?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      appKey?: string;
+      appSecret?: string;
+    };
+  };
+  targets: BackupTarget[];
+  retention?: {
+    days?: number;
+    maxBackups?: number;
+  };
+  csvImports?: CsvImportSchedule[];
+  csvImportHistory?: {
+    retentionDays?: number;
+    cleanupSchedule?: string;
+  };
+  restoreFromDropbox?: {
+    enabled?: boolean;
+    verifyIntegrity?: boolean;
+    defaultTargetKind?: 'database' | 'csv';
+  };
+}
+
+// バックアップ設定API
+export async function getBackupConfig(): Promise<BackupConfig> {
+  const { data } = await api.get<BackupConfig>('/backup/config');
+  return data;
+}
+
+export async function updateBackupConfig(config: BackupConfig): Promise<{ success: boolean }> {
+  const { data } = await api.put<{ success: boolean }>('/backup/config', config);
+  return data;
+}
+
+// バックアップ対象操作API
+export async function addBackupTarget(target: Omit<BackupTarget, 'enabled'> & { enabled?: boolean }): Promise<{ success: boolean; target: BackupTarget }> {
+  const { data } = await api.post<{ success: boolean; target: BackupTarget }>('/backup/config/targets', target);
+  return data;
+}
+
+export async function updateBackupTarget(index: number, target: Partial<BackupTarget>): Promise<{ success: boolean; target: BackupTarget }> {
+  const { data } = await api.put<{ success: boolean; target: BackupTarget }>(`/backup/config/targets/${index}`, target);
+  return data;
+}
+
+export async function deleteBackupTarget(index: number): Promise<{ success: boolean; target: BackupTarget }> {
+  const { data } = await api.delete<{ success: boolean; target: BackupTarget }>(`/backup/config/targets/${index}`);
+  return data;
+}
+
+// 手動バックアップ実行API
+export interface RunBackupRequest {
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+  source: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RunBackupResponse {
+  success: boolean;
+  path?: string;
+  sizeBytes?: number;
+  timestamp: string;
+  historyId?: string;
+}
+
+export async function runBackup(request: RunBackupRequest): Promise<RunBackupResponse> {
+  const { data } = await api.post<RunBackupResponse>('/backup', request);
+  return data;
+}
