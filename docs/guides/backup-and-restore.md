@@ -18,9 +18,64 @@ update-frequency: medium
 
 ## バックアップ対象
 
-- **PostgreSQLデータベース**: すべてのデータ（従業員、アイテム、貸出履歴、トランザクション等）
-- **環境変数ファイル**: `.env`ファイル（JWTシークレット、データベース接続情報等）
-- **Dockerボリューム**: `db-data`ボリューム
+### 必須バックアップ（失うと復旧困難）
+
+1. **PostgreSQLデータベース**: すべてのデータ（従業員、アイテム、貸出履歴、トランザクション等）
+   - **場所**: Dockerボリューム `db-data`
+   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
+   - **頻度**: 日次（推奨）
+   - **保存先**: `/opt/backups/`
+
+2. **環境変数ファイル**: `.env`ファイル（JWTシークレット、データベース接続情報等）
+   - **場所**: `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env`
+   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
+   - **頻度**: 変更時（自動バックアップスクリプトに含まれる）
+   - **保存先**: `/opt/backups/`
+
+3. **証明書ファイル**
+   - **場所**: `/opt/RaspberryPiSystem_002/certs/`
+   - **バックアップ方法**: 手動でコピー（バックアップスクリプトに含まれていない）
+   - **頻度**: 証明書生成時（一度だけ）
+   - **保存先**: USBメディアまたは安全な場所
+
+4. **写真・PDFファイル**
+   - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/pdfs`
+   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
+   - **頻度**: 日次（推奨）
+   - **保存先**: `/opt/backups/`
+
+### 推奨バックアップ（失っても再設定可能だが時間がかかる）
+
+1. **IPアドレス設定**
+   - **場所**: `infrastructure/ansible/group_vars/all.yml`
+   - **バックアップ方法**: リポジトリに含まれるため、Gitで管理
+   - **頻度**: 変更時（Gitコミット）
+   - **注意**: デバイスごとに異なる値が設定されているため、新しいデバイスでは再設定が必要
+
+### デバイスごとのバックアップ対象
+
+#### Pi5（サーバー）にのみ存在する情報
+
+| 情報の種類 | 場所 | バックアップ | 管理方法 |
+|-----------|------|------------|---------|
+| **環境変数ファイル** | `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env` | ✅ **必須** | `.env.example`をコピーして作成、バックアップスクリプトで自動バックアップ |
+| **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | 自己署名証明書を生成、手動でバックアップ |
+| **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
+| **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
+| **写真・PDFファイル** | `/opt/RaspberryPiSystem_002/storage/` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
+
+#### Pi4（キオスク）にのみ存在する情報
+
+| 情報の種類 | 場所 | バックアップ | 管理方法 |
+|-----------|------|------------|---------|
+| **環境変数ファイル** | `clients/nfc-agent/.env` | ⚠️ **推奨** | `.env.example`をコピーして作成、Ansibleでデプロイ可能 |
+| **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
+
+#### Pi3（サイネージ）にのみ存在する情報
+
+| 情報の種類 | 場所 | バックアップ | 管理方法 |
+|-----------|------|------------|---------|
+| **ブラウザ設定** | Chromium設定 | ❌ 不要 | 再設定可能 |
 
 ## バックアップ手順
 
@@ -51,10 +106,30 @@ echo "バックアップ完了: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
 # 環境変数ファイルをバックアップ
 cp apps/api/.env "${BACKUP_DIR}/api_env_${DATE}.env"
 cp apps/web/.env "${BACKUP_DIR}/web_env_${DATE}.env" 2>/dev/null || true
+cp infrastructure/docker/.env "${BACKUP_DIR}/docker_env_${DATE}.env" 2>/dev/null || true
 cp clients/nfc-agent/.env "${BACKUP_DIR}/nfc_agent_env_${DATE}.env" 2>/dev/null || true
 ```
 
-### 3. Dockerボリュームのバックアップ
+**重要**: 環境変数ファイルには機密情報（パスワード、APIキーなど）が含まれているため、バックアップファイルも安全に保管してください。
+
+### 3. 証明書ファイルのバックアップ
+
+証明書ファイルはバックアップスクリプトに含まれていないため、手動でバックアップする必要があります：
+
+```bash
+# Pi5上で実行
+# 証明書ファイルをバックアップ
+tar -czf "${BACKUP_DIR}/certs_backup_${DATE}.tar.gz" -C /opt/RaspberryPiSystem_002 certs/
+
+# USBメディアにコピー（USBメディアがマウントされている場合）
+# sudo mount /dev/sda1 /mnt/usb
+# cp "${BACKUP_DIR}/certs_backup_${DATE}.tar.gz" /mnt/usb/
+# sudo umount /mnt/usb
+```
+
+**重要**: 証明書ファイルを失うと、HTTPS接続ができなくなります。証明書生成時（一度だけ）に必ずバックアップを取得してください。
+
+### 4. Dockerボリュームのバックアップ
 
 ```bash
 # Dockerボリュームのバックアップ
@@ -64,7 +139,7 @@ docker run --rm \
   alpine tar czf /backup/volume_db-data_${DATE}.tar.gz -C /data .
 ```
 
-### 4. 自動バックアップスクリプト
+### 5. 自動バックアップスクリプト
 
 `scripts/server/backup.sh`を作成：
 
@@ -93,7 +168,7 @@ find "${BACKUP_DIR}" -name "*.env" -mtime +${RETENTION_DAYS} -delete
 echo "バックアップ完了: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
 ```
 
-### 5. cronによる自動バックアップ
+### 6. cronによる自動バックアップ
 
 ```bash
 # crontabを編集

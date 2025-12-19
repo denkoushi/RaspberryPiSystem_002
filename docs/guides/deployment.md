@@ -99,12 +99,25 @@ cd /opt/RaspberryPiSystem_002
 
 # 環境変数ファイルのサンプルをコピー
 cp infrastructure/docker/.env.example infrastructure/docker/.env
+cp apps/api/.env.example apps/api/.env 2>/dev/null || true
 
 # .envファイルを編集（必要に応じて）
 nano infrastructure/docker/.env
+nano apps/api/.env
 ```
 
-**重要**: `.env`ファイルはGitにコミットされません（`.gitignore`に含まれています）。各ラズパイで個別に設定してください。
+**重要**: 
+- `.env`ファイルはGitにコミットされません（`.gitignore`に含まれています）。各ラズパイで個別に設定してください。
+- 本番環境では、強力なパスワードを設定してください（`POSTGRES_PASSWORD`など）。パスワード生成方法: `openssl rand -base64 32`
+- ファイルのパーミッションを設定（所有者のみ読み書き可能）: `chmod 600 infrastructure/docker/.env apps/api/.env`
+
+**環境変数の管理方法**:
+- `.env.example`ファイル: リポジトリに含まれるテンプレートファイル
+- 手動でコピー: `.env.example`をコピーして`.env`を作成し、本番環境用の値を設定
+- Ansibleテンプレート: Ansibleを使用する場合、`.j2`テンプレートファイルから生成
+- バックアップ: バックアップスクリプトで`.env`ファイルを自動バックアップ
+
+詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。
 
 ### 方法1: デプロイスクリプトを使用（推奨）
 
@@ -741,12 +754,54 @@ bash /opt/RaspberryPiSystem_002/scripts/test/security-e2e.sh
 6. **ドキュメント更新**: デプロイ手順に変更があった場合はドキュメントを更新
 7. **Tailscale使用**: リモートアクセス時は必ず`network_mode: "tailscale"`に設定
 
+## よくある質問（FAQ）
+
+### Q1: 環境変数ファイルはリモートリポジトリに含まれないのに、どうやって管理する？
+
+**A**: 以下の方法で管理します：
+
+1. **`.env.example`ファイル**: リポジトリに含まれるテンプレートファイル
+2. **手動でコピー**: `.env.example`をコピーして`.env`を作成し、本番環境用の値を設定
+3. **Ansibleテンプレート**: Ansibleを使用する場合、`.j2`テンプレートファイルから生成
+4. **バックアップ**: バックアップスクリプトで`.env`ファイルを自動バックアップ
+
+詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。
+
+### Q2: 環境変数を変更した後、どうやって反映させる？
+
+**A**: Docker Composeを再起動します：
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml down
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+```
+
+### Q3: パスワードを忘れた場合、どうすれば良い？
+
+**A**: バックアップから復元します：
+
+```bash
+# バックアップディレクトリから環境変数ファイルを確認
+ls -la /opt/backups/*.env
+
+# 最新のバックアップから復元
+cp /opt/backups/api_env_YYYYMMDD_HHMMSS.env /opt/RaspberryPiSystem_002/apps/api/.env
+cp /opt/backups/docker_env_YYYYMMDD_HHMMSS.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+
+# Docker Composeを再起動
+docker compose -f infrastructure/docker/docker-compose.server.yml down
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+```
+
+詳細は [バックアップ・リストアガイド](./backup-and-restore.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新とクライアント監視のクイックスタート
 - [環境構築ガイド](./environment-setup.md): ローカルネットワーク変更時の対応
 - [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md): SSH接続の構成と説明
-- [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ
-- [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順
+- [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ（環境変数の管理、新しいPi5での環境構築手順を含む）
+- [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順（デバイスごとのバックアップ対象を含む）
 - [監視・アラートガイド](./monitoring.md): システム監視とアラート設定
 
