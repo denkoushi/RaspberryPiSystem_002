@@ -715,7 +715,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const config = await BackupConfigLoader.load();
     
     // 新しいtargetを追加
-    const newTarget = {
+    const newTarget: BackupConfig['targets'][number] = {
       kind: body.kind,
       source: body.source,
       schedule: body.schedule,
@@ -771,10 +771,11 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     // 既存のtargetを更新
     const existingTarget = config.targets[targetIndex];
-    config.targets[targetIndex] = {
+    const updatedTarget: BackupConfig['targets'][number] = {
       ...existingTarget,
       ...body
     };
+    config.targets[targetIndex] = updatedTarget;
 
     await BackupConfigLoader.save(config);
 
