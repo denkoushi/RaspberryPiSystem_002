@@ -70,5 +70,71 @@ test.describe('管理画面', () => {
     // Cardコンポーネントの見出しを確認
     await expect(page.getByRole('heading', { name: /履歴/i })).toBeVisible();
   });
+
+  test.describe('バックアップ対象管理', () => {
+    test('バックアップ対象管理画面にアクセスできる', async ({ page }) => {
+      await page.getByRole('link', { name: /バックアップ/i }).click();
+      await expect(page).toHaveURL(/\/admin\/backup\/targets/);
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /バックアップ対象管理/i })).toBeVisible();
+    });
+
+    test('バックアップ対象を追加できる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // 「追加」ボタンをクリック
+      await page.getByRole('button', { name: /追加/i }).click();
+
+      // フォームに入力
+      await page.getByLabel(/種類/i).selectOption('file');
+      await page.getByLabel(/ソース/i).fill('/tmp/test-backup-file.txt');
+      await page.getByLabel(/スケジュール/i).fill('0 3 * * *');
+      
+      // 「保存」ボタンをクリック
+      await page.getByRole('button', { name: /保存/i }).click();
+
+      // 一覧に新しい対象が表示されることを確認
+      await expect(page.getByText('/tmp/test-backup-file.txt')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('バックアップ対象の有効/無効を切り替えられる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // 最初のチェックボックスを取得
+      const firstCheckbox = page.locator('input[type="checkbox"]').first();
+      const initialChecked = await firstCheckbox.isChecked();
+
+      // チェックボックスをクリック
+      await firstCheckbox.click();
+
+      // 状態が変更されたことを確認
+      await expect(firstCheckbox).toHaveProperty('checked', !initialChecked, { timeout: 3000 });
+    });
+
+    test('バックアップ対象を削除できる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // 最初の「削除」ボタンをクリック
+      const deleteButtons = page.getByRole('button', { name: /削除/i });
+      const deleteButtonCount = await deleteButtons.count();
+      
+      if (deleteButtonCount > 0) {
+        // 確認ダイアログを自動承認
+        page.on('dialog', dialog => dialog.accept());
+        
+        await deleteButtons.first().click();
+        
+        // 削除が完了するまで待機
+        await page.waitForTimeout(1000);
+        
+        // 削除ボタンの数が減ったことを確認
+        const newDeleteButtonCount = await page.getByRole('button', { name: /削除/i }).count();
+        expect(newDeleteButtonCount).toBeLessThan(deleteButtonCount);
+      }
+    });
+  });
 });
 
