@@ -5,7 +5,9 @@ services:
     environment:
       POSTGRES_DB: borrow_return
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # セキュリティ強化: 環境変数からパスワードを取得（デフォルト値は開発環境用）
+      # 本番環境では強力なパスワードを環境変数で設定すること
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - db-data:/var/lib/postgresql/data
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
@@ -23,7 +25,9 @@ services:
     env_file:
       - ../../apps/api/.env.example
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
+      # セキュリティ強化: 環境変数からデータベースURLを構築（パスワードは環境変数から取得）
+      # 本番環境では強力なパスワードを環境変数で設定すること
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered

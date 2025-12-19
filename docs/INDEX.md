@@ -415,6 +415,7 @@ APIの概要と詳細。
 | [port-security-verification.md](./security/port-security-verification.md) | **ポートセキュリティ修正後の動作確認手順**（ポートマッピング削除後の動作確認手順、2025-12-18） |
 | [port-security-verification-results.md](./security/port-security-verification-results.md) | **ポートセキュリティ修正後の実機検証結果**（実機検証結果と評価、2025-12-18） |
 | [standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) | **標準セキュリティチェックリスト監査レポート**（IPA、OWASP、CISベンチマークに基づく監査結果、2025-12-18） |
+| [postgresql-password-policy-implementation.md](./security/postgresql-password-policy-implementation.md) | **PostgreSQLパスワードポリシー強化の実装**（環境変数によるパスワード管理の実装手順、2025-12-18完了） |
 
 ### プレゼンテーション（presentations/）
 
