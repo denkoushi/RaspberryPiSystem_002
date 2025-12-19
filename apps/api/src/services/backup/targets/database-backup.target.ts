@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo } from '../backup-types.js';
+import { ApiError } from '../../../lib/errors.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,17 +36,31 @@ export class DatabaseBackupTarget implements BackupTarget {
       env.PGPASSWORD = password;
     }
 
-    const { stdout } = await execFileAsync(
-      'pg_dump',
-      ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', dbName],
-      {
-        env,
-        maxBuffer: 1024 * 1024 * 200,
-        encoding: 'buffer'
-      }
-    );
+    try {
+      const { stdout } = await execFileAsync(
+        'pg_dump',
+        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', dbName],
+        {
+          env,
+          maxBuffer: 1024 * 1024 * 200,
+          encoding: 'buffer'
+        }
+      );
 
-    return stdout;
+      return stdout;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        throw new ApiError(
+          500,
+          `pg_dumpコマンドが見つかりません。データベースバックアップにはpg_dumpが必要です。Dockerコンテナ内にpg_dumpがインストールされていることを確認してください。`
+        );
+      }
+      if (error instanceof Error && 'stderr' in error) {
+        const stderr = (error as { stderr?: string }).stderr || '';
+        throw new ApiError(500, `データベースバックアップに失敗しました: ${error.message}${stderr ? `\n${stderr}` : ''}`);
+      }
+      throw error;
+    }
   }
 }
 
