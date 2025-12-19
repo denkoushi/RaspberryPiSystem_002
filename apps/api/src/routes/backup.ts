@@ -560,6 +560,122 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(200).send({ success: true });
   });
 
+  // バックアップ対象の追加
+  app.post('/backup/config/targets', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image'] },
+          source: { type: 'string' },
+          schedule: { type: 'string' },
+          enabled: { type: 'boolean' },
+          metadata: { type: 'object' }
+        },
+        required: ['kind', 'source']
+      }
+    }
+  }, async (request, reply) => {
+    const body = request.body as {
+      kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+      source: string;
+      schedule?: string;
+      enabled?: boolean;
+      metadata?: Record<string, unknown>;
+    };
+
+    const config = await BackupConfigLoader.load();
+    
+    // 新しいtargetを追加
+    const newTarget = {
+      kind: body.kind,
+      source: body.source,
+      schedule: body.schedule,
+      enabled: body.enabled ?? true,
+      metadata: body.metadata
+    };
+
+    config.targets.push(newTarget);
+    await BackupConfigLoader.save(config);
+
+    logger?.info({ target: newTarget }, '[BackupRoute] Backup target added');
+    return reply.status(200).send({ success: true, target: newTarget });
+  });
+
+  // バックアップ対象の更新
+  app.put('/backup/config/targets/:index', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          index: { type: 'number' }
+        },
+        required: ['index']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image'] },
+          source: { type: 'string' },
+          schedule: { type: 'string' },
+          enabled: { type: 'boolean' },
+          metadata: { type: 'object' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { index } = request.params as { index: string };
+    const targetIndex = parseInt(index, 10);
+    const body = request.body as Partial<{
+      kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+      source: string;
+      schedule: string;
+      enabled: boolean;
+      metadata: Record<string, unknown>;
+    }>;
+
+    const config = await BackupConfigLoader.load();
+
+    if (targetIndex < 0 || targetIndex >= config.targets.length) {
+      throw new ApiError(400, `Invalid target index: ${index}`);
+    }
+
+    // 既存のtargetを更新
+    const existingTarget = config.targets[targetIndex];
+    config.targets[targetIndex] = {
+      ...existingTarget,
+      ...body
+    };
+
+    await BackupConfigLoader.save(config);
+
+    logger?.info({ index: targetIndex, target: config.targets[targetIndex] }, '[BackupRoute] Backup target updated');
+    return reply.status(200).send({ success: true, target: config.targets[targetIndex] });
+  });
+
+  // バックアップ対象の削除
+  app.delete('/backup/config/targets/:index', {
+    preHandler: [mustBeAdmin]
+  }, async (request, reply) => {
+    const { index } = request.params as { index: string };
+    const targetIndex = parseInt(index, 10);
+
+    const config = await BackupConfigLoader.load();
+
+    if (targetIndex < 0 || targetIndex >= config.targets.length) {
+      throw new ApiError(400, `Invalid target index: ${index}`);
+    }
+
+    const deletedTarget = config.targets[targetIndex];
+    config.targets.splice(targetIndex, 1);
+    await BackupConfigLoader.save(config);
+
+    logger?.info({ index: targetIndex, target: deletedTarget }, '[BackupRoute] Backup target deleted');
+    return reply.status(200).send({ success: true, target: deletedTarget });
+  });
+
   // OAuth 2.0認証URL生成
   app.get('/backup/oauth/authorize', {
     preHandler: [mustBeAdmin]
