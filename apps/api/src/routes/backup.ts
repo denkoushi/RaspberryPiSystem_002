@@ -9,6 +9,7 @@ import { FileBackupTarget } from '../services/backup/targets/file-backup.target.
 import { DirectoryBackupTarget } from '../services/backup/targets/directory-backup.target.js';
 import { CsvBackupTarget } from '../services/backup/targets/csv-backup.target.js';
 import { ImageBackupTarget } from '../services/backup/targets/image-backup.target.js';
+import { ClientFileBackupTarget } from '../services/backup/targets/client-file-backup.target.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../services/backup/backup-config.js';
 import { ApiError } from '../lib/errors.js';
@@ -63,12 +64,17 @@ function createBackupTarget(kind: string, source: string, metadata?: Record<stri
       }
       throw new ApiError(400, `Invalid CSV source: ${source}. Must be 'employees' or 'items'`);
     }
-    case 'image': {
-      return new ImageBackupTarget(metadata);
-    }
-    default: {
-      throw new ApiError(400, `Unknown backup kind: ${kind}`);
-    }
+        case 'image': {
+          return new ImageBackupTarget(metadata);
+        }
+        case 'client-file': {
+          // source形式: "hostname:/path/to/file"
+          // 例: "raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env"
+          return new ClientFileBackupTarget(source);
+        }
+        default: {
+          throw new ApiError(400, `Unknown backup kind: ${kind}`);
+        }
   }
 }
 
@@ -105,7 +111,7 @@ function createStorageProvider(
 }
 
 const backupRequestSchema = z.object({
-  kind: z.enum(['database', 'file', 'directory', 'csv', 'image']),
+  kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
   source: z.string(),
   storage: z.object({
     provider: z.enum(['local', 'dropbox']),
@@ -250,7 +256,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       body: {
         type: 'object',
         properties: {
-          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image'] },
+          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image', 'client-file'] },
           source: { type: 'string' },
           storage: {
             type: 'object',
@@ -688,7 +694,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       body: {
         type: 'object',
         properties: {
-          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image'] },
+          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image', 'client-file'] },
           source: { type: 'string' },
           schedule: { type: 'string' },
           enabled: { type: 'boolean' },
@@ -699,7 +705,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     }
   }, async (request, reply) => {
     const body = request.body as {
-      kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+      kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
       source: string;
       schedule?: string;
       enabled?: boolean;
@@ -738,7 +744,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       body: {
         type: 'object',
         properties: {
-          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image'] },
+          kind: { type: 'string', enum: ['database', 'file', 'directory', 'csv', 'image', 'client-file'] },
           source: { type: 'string' },
           schedule: { type: 'string' },
           enabled: { type: 'boolean' },
@@ -750,7 +756,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const { index } = request.params as { index: string };
     const targetIndex = parseInt(index, 10);
     const body = request.body as Partial<{
-      kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+      kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
       source: string;
       schedule: string;
       enabled: boolean;
