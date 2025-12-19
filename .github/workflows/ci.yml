@@ -141,7 +141,7 @@ jobs:
         run: |
           cd apps/api
           echo "Running backup service tests..."
-          pnpm test -- backup --reporter=verbose || {
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- backup --reporter=verbose || {
             echo "Backup tests failed, showing test output..."
             exit 1
           }
