@@ -453,23 +453,119 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     });
 
     try {
-      // 復元を実行
-      const result = await backupService.restore(body.backupPath, {
-        destination: body.destination
-      });
+      // 画像バックアップの場合は特別な処理を実行
+      if (targetKind === 'image') {
+        const { promises: fs } = await import('fs');
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const path = await import('path');
+        const os = await import('os');
+        const execFileAsync = promisify(execFile);
 
-      // リストア履歴を完了として更新
-      await historyService.completeHistory(historyId, {
-        targetKind,
-        targetSource,
-        path: body.backupPath
-      });
+        // バックアップデータをダウンロード
+        const backupData = await storageProvider.download(body.backupPath);
 
-      return reply.status(200).send({
-        success: result.success,
-        timestamp: result.timestamp,
-        historyId
-      });
+        // 環境変数から取得、なければデフォルト値を使用
+        const baseDir = process.env.PHOTO_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
+        const photosDir = path.join(baseDir, 'photos');
+        const thumbnailsDir = path.join(baseDir, 'thumbnails');
+
+        // 一時ディレクトリを作成してtar.gzを展開
+        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
+        const archivePath = path.join(tmpDir, 'images.tar.gz');
+
+        try {
+          // tar.gzファイルを一時ディレクトリに保存
+          await fs.writeFile(archivePath, backupData);
+
+          logger?.info({ backupPath: body.backupPath, tmpDir, photosDir, thumbnailsDir }, '[BackupRoute] Restoring image backup from tar.gz');
+
+          // tar.gzを展開
+          await execFileAsync('tar', ['-xzf', archivePath, '-C', tmpDir]);
+
+          // 展開されたディレクトリを確認
+          const extractedPhotosDir = path.join(tmpDir, 'photos');
+          const extractedThumbnailsDir = path.join(tmpDir, 'thumbnails');
+
+          // 既存のディレクトリをバックアップ（オプション）または削除
+          // 安全のため、既存ディレクトリをリネームしてバックアップ
+          const backupSuffix = `-backup-${Date.now()}`;
+          try {
+            await fs.access(photosDir);
+            await fs.rename(photosDir, `${photosDir}${backupSuffix}`);
+            logger?.info({ backupDir: `${photosDir}${backupSuffix}` }, '[BackupRoute] Backed up existing photos directory');
+          } catch {
+            // ディレクトリが存在しない場合は何もしない
+          }
+
+          try {
+            await fs.access(thumbnailsDir);
+            await fs.rename(thumbnailsDir, `${thumbnailsDir}${backupSuffix}`);
+            logger?.info({ backupDir: `${thumbnailsDir}${backupSuffix}` }, '[BackupRoute] Backed up existing thumbnails directory');
+          } catch {
+            // ディレクトリが存在しない場合は何もしない
+          }
+
+          // 展開されたディレクトリを目的の場所に移動
+          try {
+            await fs.access(extractedPhotosDir);
+            await fs.mkdir(path.dirname(photosDir), { recursive: true });
+            await fs.rename(extractedPhotosDir, photosDir);
+            logger?.info({ photosDir }, '[BackupRoute] Restored photos directory');
+          } catch (error) {
+            logger?.warn({ err: error, extractedPhotosDir }, '[BackupRoute] Photos directory not found in backup, skipping');
+          }
+
+          try {
+            await fs.access(extractedThumbnailsDir);
+            await fs.mkdir(path.dirname(thumbnailsDir), { recursive: true });
+            await fs.rename(extractedThumbnailsDir, thumbnailsDir);
+            logger?.info({ thumbnailsDir }, '[BackupRoute] Restored thumbnails directory');
+          } catch (error) {
+            logger?.warn({ err: error, extractedThumbnailsDir }, '[BackupRoute] Thumbnails directory not found in backup, skipping');
+          }
+
+          // 一時ファイルを削除
+          await fs.rm(tmpDir, { recursive: true, force: true });
+
+          logger?.info({ backupPath: body.backupPath, photosDir, thumbnailsDir }, '[BackupRoute] Image restore completed');
+          
+          // リストア履歴を完了として更新
+          await historyService.completeHistory(historyId, {
+            targetKind,
+            targetSource,
+            path: body.backupPath
+          });
+
+          return reply.status(200).send({
+            success: true,
+            timestamp: new Date(),
+            historyId
+          });
+        } catch (error) {
+          // エラー時も一時ファイルを削除
+          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          throw error;
+        }
+      } else {
+        // その他のバックアップは通常の処理を実行
+        const result = await backupService.restore(body.backupPath, {
+          destination: body.destination
+        });
+
+        // リストア履歴を完了として更新
+        await historyService.completeHistory(historyId, {
+          targetKind,
+          targetSource,
+          path: body.backupPath
+        });
+
+        return reply.status(200).send({
+          success: result.success,
+          timestamp: result.timestamp,
+          historyId
+        });
+      }
     } catch (error) {
       // リストア履歴を失敗として更新
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -804,7 +900,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   // Dropboxからバックアップをリストア
   const restoreFromDropboxRequestSchema = z.object({
     backupPath: z.string().min(1, 'バックアップパスは必須です'),
-    targetKind: z.enum(['database', 'csv']).optional(), // リストア対象の種類
+    targetKind: z.enum(['database', 'csv', 'image']).optional(), // リストア対象の種類
     verifyIntegrity: z.boolean().optional().default(true), // 整合性検証を実行するか
     expectedSize: z.number().optional(), // 期待されるファイルサイズ
     expectedHash: z.string().optional() // 期待されるハッシュ値（SHA256）
@@ -817,7 +913,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         type: 'object',
         properties: {
           backupPath: { type: 'string' },
-          targetKind: { type: 'string', enum: ['database', 'csv'] },
+          targetKind: { type: 'string', enum: ['database', 'csv', 'image'] },
           verifyIntegrity: { type: 'boolean' },
           expectedSize: { type: 'number' },
           expectedHash: { type: 'string' }
@@ -1039,6 +1135,93 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
           path: normalizedBackupPath
         });
+      } else if (body.targetKind === 'image') {
+        // 画像バックアップのリストア（tar.gzを展開して写真ディレクトリとサムネイルディレクトリに復元）
+        const { promises: fs } = await import('fs');
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const path = await import('path');
+        const os = await import('os');
+        const execFileAsync = promisify(execFile);
+
+        // 環境変数から取得、なければデフォルト値を使用
+        const baseDir = process.env.PHOTO_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
+        const photosDir = path.join(baseDir, 'photos');
+        const thumbnailsDir = path.join(baseDir, 'thumbnails');
+
+        // 一時ディレクトリを作成してtar.gzを展開
+        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
+        const archivePath = path.join(tmpDir, 'images.tar.gz');
+
+        try {
+          // tar.gzファイルを一時ディレクトリに保存
+          await fs.writeFile(archivePath, backupData);
+
+          logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, tmpDir, photosDir, thumbnailsDir }, '[BackupRoute] Restoring image backup from tar.gz');
+
+          // tar.gzを展開
+          await execFileAsync('tar', ['-xzf', archivePath, '-C', tmpDir]);
+
+          // 展開されたディレクトリを確認
+          const extractedPhotosDir = path.join(tmpDir, 'photos');
+          const extractedThumbnailsDir = path.join(tmpDir, 'thumbnails');
+
+          // 既存のディレクトリをバックアップ（オプション）または削除
+          // 安全のため、既存ディレクトリをリネームしてバックアップ
+          const backupSuffix = `-backup-${Date.now()}`;
+          try {
+            await fs.access(photosDir);
+            await fs.rename(photosDir, `${photosDir}${backupSuffix}`);
+            logger?.info({ backupDir: `${photosDir}${backupSuffix}` }, '[BackupRoute] Backed up existing photos directory');
+          } catch {
+            // ディレクトリが存在しない場合は何もしない
+          }
+
+          try {
+            await fs.access(thumbnailsDir);
+            await fs.rename(thumbnailsDir, `${thumbnailsDir}${backupSuffix}`);
+            logger?.info({ backupDir: `${thumbnailsDir}${backupSuffix}` }, '[BackupRoute] Backed up existing thumbnails directory');
+          } catch {
+            // ディレクトリが存在しない場合は何もしない
+          }
+
+          // 展開されたディレクトリを目的の場所に移動
+          try {
+            await fs.access(extractedPhotosDir);
+            await fs.mkdir(path.dirname(photosDir), { recursive: true });
+            await fs.rename(extractedPhotosDir, photosDir);
+            logger?.info({ photosDir }, '[BackupRoute] Restored photos directory');
+          } catch (error) {
+            logger?.warn({ err: error, extractedPhotosDir }, '[BackupRoute] Photos directory not found in backup, skipping');
+          }
+
+          try {
+            await fs.access(extractedThumbnailsDir);
+            await fs.mkdir(path.dirname(thumbnailsDir), { recursive: true });
+            await fs.rename(extractedThumbnailsDir, thumbnailsDir);
+            logger?.info({ thumbnailsDir }, '[BackupRoute] Restored thumbnails directory');
+          } catch (error) {
+            logger?.warn({ err: error, extractedThumbnailsDir }, '[BackupRoute] Thumbnails directory not found in backup, skipping');
+          }
+
+          // 一時ファイルを削除
+          await fs.rm(tmpDir, { recursive: true, force: true });
+
+          logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, photosDir, thumbnailsDir }, '[BackupRoute] Image restore completed');
+          
+          // リストア履歴を完了として更新
+          await historyService.completeHistory(historyId, {
+            targetKind,
+            targetSource,
+            sizeBytes: backupData.length,
+            hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
+            path: normalizedBackupPath
+          });
+        } catch (error) {
+          // エラー時も一時ファイルを削除
+          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          throw error;
+        }
       } else {
         // 汎用的なリストア（ファイルとして保存）
         const tempPath = `/tmp/restored-${Date.now()}.backup`;

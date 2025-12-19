@@ -89,7 +89,7 @@ update-frequency: medium
 |--------|-------------|------|
 | `database` | `postgresql://postgres:...@db:5432/borrow_return` | PostgreSQLデータベース全体 |
 | `csv` | `employees` または `items` | 従業員データまたはアイテムデータをCSV形式で |
-| `image` | `photo-storage` | 写真ストレージディレクトリ（`PHOTO_STORAGE_DIR`環境変数で指定） |
+| `image` | `photo-storage` | 写真ストレージディレクトリ（`PHOTO_STORAGE_DIR`環境変数で指定）。`tar.gz`形式で保存され、リストア時に自動展開される |
 | `file` | `/path/to/file.txt` | 特定のファイル |
 | `directory` | `/path/to/directory` | ディレクトリ全体（tar.gz形式） |
 
@@ -170,7 +170,7 @@ update-frequency: medium
 |------------------|------------|--------------|
 | データベース（`pg_dump`） | `database` | `postgresql://postgres:...@db:5432/borrow_return` |
 | 環境変数ファイル（`.env`） | `file` | `/opt/RaspberryPiSystem_002/apps/api/.env` など |
-| 写真ディレクトリ（`tar`） | `image` | `photo-storage` |
+| 写真ディレクトリ（`tar.gz`） | `image` | `photo-storage`（`tar.gz`形式で保存、リストア時に自動展開） |
 | CSVデータ（従業員・アイテム） | `csv` | `employees`, `items` |
 
 **動作**:
@@ -337,7 +337,71 @@ cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/
 docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 ```
 
-### 3. Dockerボリュームのリストア
+### 3. 画像バックアップのリストア
+
+画像バックアップは`tar.gz`形式で保存されています。リストア時には`tar.gz`を展開して、写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）に復元します。
+
+**API経由でのリストア（推奨）**:
+
+管理コンソールの「バックアップ」タブから、またはAPIエンドポイント `/api/backup/restore/from-dropbox` を使用してリストアできます：
+
+```bash
+# API経由で画像バックアップをリストア
+curl -X POST https://<pi5>/api/backup/restore/from-dropbox \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -d '{
+    "backupPath": "/backups/image/2025-12-19T05-45-14-502Z/photo-storage",
+    "targetKind": "image"
+  }'
+```
+
+**手動でのリストア**:
+
+```bash
+# ラズパイ5で実行
+cd /opt/RaspberryPiSystem_002
+
+# バックアップファイルを指定
+BACKUP_FILE="/opt/backups/image/2025-12-19T05-45-14-502Z/photo-storage"
+
+# 一時ディレクトリを作成
+TMP_DIR=$(mktemp -d)
+
+# tar.gzを展開
+tar -xzf "${BACKUP_FILE}" -C "${TMP_DIR}"
+
+# 既存のディレクトリをバックアップ（安全のため）
+PHOTO_STORAGE_DIR="/opt/RaspberryPiSystem_002/storage"
+if [ -d "${PHOTO_STORAGE_DIR}/photos" ]; then
+  mv "${PHOTO_STORAGE_DIR}/photos" "${PHOTO_STORAGE_DIR}/photos-backup-$(date +%Y%m%d_%H%M%S)"
+fi
+if [ -d "${PHOTO_STORAGE_DIR}/thumbnails" ]; then
+  mv "${PHOTO_STORAGE_DIR}/thumbnails" "${PHOTO_STORAGE_DIR}/thumbnails-backup-$(date +%Y%m%d_%H%M%S)"
+fi
+
+# 展開されたディレクトリを目的の場所に移動
+if [ -d "${TMP_DIR}/photos" ]; then
+  mkdir -p "${PHOTO_STORAGE_DIR}"
+  mv "${TMP_DIR}/photos" "${PHOTO_STORAGE_DIR}/photos"
+fi
+if [ -d "${TMP_DIR}/thumbnails" ]; then
+  mkdir -p "${PHOTO_STORAGE_DIR}"
+  mv "${TMP_DIR}/thumbnails" "${PHOTO_STORAGE_DIR}/thumbnails"
+fi
+
+# 一時ディレクトリを削除
+rm -rf "${TMP_DIR}"
+
+echo "画像バックアップのリストア完了"
+```
+
+**注意事項**:
+- 画像バックアップは`tar.gz`形式で保存されます（JPEGファイルがそのまま含まれています）
+- リストア時には既存の写真ディレクトリとサムネイルディレクトリがバックアップされ、新しいデータで上書きされます
+- API経由のリストアでは、既存ディレクトリの自動バックアップが実行されます
+
+### 4. Dockerボリュームのリストア
 
 ```bash
 # Dockerボリュームをリストア
