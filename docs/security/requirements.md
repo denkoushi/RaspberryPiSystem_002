@@ -1,6 +1,6 @@
 # セキュリティ要件定義
 
-最終更新: 2025-12-14
+最終更新: 2025-12-18
 
 ## 概要
 
@@ -35,14 +35,16 @@
 - HTTPS強制設定
 - IP制限（管理画面へのアクセス）
 - fail2ban（ブルートフォース対策）
+- Docker Composeのポートマッピング削除（Dockerレベルでのポートブロック）
 
-**実装状況（2025-12-14）**:
+**実装状況（2025-12-18）**:
 - ✅ ufwを導入し、HTTP/HTTPSと信頼済みSSH経路のみ許可
 - ✅ CaddyでHTTP→HTTPSを常時リダイレクト、自己署名証明書を継続活用
 - ✅ fail2ban（SSH/Caddy HTTP）を導入し、CLFログ監視で自動遮断
 - ✅ 管理画面のIP制限を実装（Caddyの`ADMIN_ALLOW_NETS`環境変数、デフォルト: ローカルLAN/Tailscale、実機テスト完了）
 - ✅ セキュリティヘッダーを実装（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy、実機テスト完了）
 - ✅ DDoS/ブルートフォース緩和を実装（レート制限: 認証10 req/min、グローバル120 req/min、実機テスト完了）
+- ✅ **Docker Composeのポートマッピング削除（2025-12-18完了）**: PostgreSQL（5432）とAPI（8080）のポートマッピングを削除し、Docker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。詳細は [ポートセキュリティ監査レポート](./port-security-audit.md) / [ポートセキュリティ修正後の実機検証結果](./port-security-verification-results.md) を参照。
 
 **優先度**: 高
 
@@ -269,4 +271,7 @@
 - [Phase 9/10 詳細仕様書](./phase9-10-specifications.md) - Phase 9/10の詳細仕様（設定方法・動作仕様・API仕様・テスト方法）
 - [セキュリティ実装の妥当性評価](./implementation-assessment.md) - 実装評価と残タスク
 - [セキュリティ強化テスト計画](../guides/security-test-plan.md) - テスト計画の詳細
+- [ポートセキュリティ監査レポート](./port-security-audit.md) - **ポート公開状況の監査と修正内容**
+- [ポートセキュリティ修正後の動作確認手順](./port-security-verification.md) - **ポートマッピング削除後の動作確認手順**
+- [ポートセキュリティ修正後の実機検証結果](./port-security-verification-results.md) - **実機検証結果と評価**
 
