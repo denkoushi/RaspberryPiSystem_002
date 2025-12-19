@@ -104,6 +104,120 @@ const restoreRequestSchema = z.object({
 export async function registerBackupRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
+  // 内部バックアップエンドポイント（localhostからのみ、認証不要）
+  // backup.shスクリプトから使用するためのエンドポイント
+  app.post('/backup/internal', {
+    config: { rateLimit: false }
+  }, async (request, reply) => {
+    // localhostからのアクセスのみ許可
+    const remoteAddress = request.socket.remoteAddress || request.ip;
+    if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1' && !remoteAddress?.startsWith('172.')) {
+      throw new ApiError(403, 'Internal backup endpoint is only accessible from localhost');
+    }
+
+    const body = request.body as z.infer<typeof backupRequestSchema>;
+    
+    // 設定ファイルを読み込む
+    const config = await BackupConfigLoader.load();
+    
+    // ストレージプロバイダーを作成（設定ファイルから読み込む）
+    let storageProvider;
+    if (config.storage.provider === 'dropbox') {
+      const accessToken = config.storage.options?.accessToken as string;
+      if (!accessToken) {
+        throw new ApiError(400, 'Dropbox access token is required in config file');
+      }
+      
+      // OAuthサービスを作成（リフレッシュトークンがある場合）
+      let oauthService: DropboxOAuthService | undefined;
+      const refreshToken = config.storage.options?.refreshToken as string | undefined;
+      const appKey = config.storage.options?.appKey as string | undefined;
+      const appSecret = config.storage.options?.appSecret as string | undefined;
+      
+      if (refreshToken && appKey && appSecret) {
+        // リダイレクトURI（現在のホストを使用）
+        const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+        const host = request.headers.host || 'localhost:8080';
+        const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
+        
+        oauthService = new DropboxOAuthService({
+          appKey,
+          appSecret,
+          redirectUri
+        });
+      }
+      
+      // トークン更新コールバック（設定ファイルを更新）
+      const onTokenUpdate = async (newToken: string) => {
+        const updatedConfig: BackupConfig = {
+          ...config,
+          storage: {
+            ...config.storage,
+            options: {
+              ...config.storage.options,
+              accessToken: newToken
+            }
+          }
+        };
+        await BackupConfigLoader.save(updatedConfig);
+      };
+      
+      storageProvider = new DropboxStorageProvider({
+        accessToken,
+        basePath: config.storage.options?.basePath as string,
+        refreshToken,
+        oauthService,
+        onTokenUpdate: oauthService ? onTokenUpdate : undefined
+      });
+      logger?.info('[BackupRoute] Using Dropbox storage from config file (internal endpoint)');
+    } else {
+      storageProvider = new LocalStorageProvider();
+      logger?.info('[BackupRoute] Using local storage from config file (internal endpoint)');
+    }
+
+    const backupService = new BackupService(storageProvider);
+    const historyService = new BackupHistoryService();
+    
+    // バックアップターゲットを作成
+    const target = createBackupTarget(body.kind, body.source, body.metadata);
+    
+    // バックアップ履歴を作成
+    const historyId = await historyService.createHistory({
+      operationType: BackupOperationType.BACKUP,
+      targetKind: body.kind,
+      targetSource: body.source,
+      storageProvider: config.storage.provider
+    });
+
+    try {
+      // バックアップを実行
+      const result = await backupService.backup(target, {
+        label: body.metadata?.label as string
+      });
+
+      // バックアップ履歴を完了として更新
+      await historyService.completeHistory(historyId, {
+        targetKind: body.kind,
+        targetSource: body.source,
+        sizeBytes: result.sizeBytes,
+        path: result.path
+      });
+
+      return reply.status(200).send({
+        success: result.success,
+        path: result.path,
+        sizeBytes: result.sizeBytes,
+        timestamp: result.timestamp,
+        historyId
+      });
+    } catch (error) {
+      // バックアップ履歴を失敗として更新
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await historyService.failHistory(historyId, errorMessage);
+      throw error;
+    }
+  });
+
   // バックアップの実行
   app.post('/backup', {
     preHandler: [mustBeAdmin],

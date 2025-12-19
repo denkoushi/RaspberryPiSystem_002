@@ -77,6 +77,77 @@ update-frequency: medium
 |-----------|------|------------|---------|
 | **ブラウザ設定** | Chromium設定 | ❌ 不要 | 再設定可能 |
 
+## バックアップ対象の決定仕様
+
+バックアップ対象は、**バックアップAPI（`/api/backup`）**と**バックアップ設定ファイル（`backup.json`）**で管理されます。
+
+### バックアップAPIの仕様
+
+バックアップAPIは、リクエストボディで`kind`と`source`を指定してバックアップを実行します：
+
+| `kind` | `source`の例 | 説明 |
+|--------|-------------|------|
+| `database` | `postgresql://postgres:...@db:5432/borrow_return` | PostgreSQLデータベース全体 |
+| `csv` | `employees` または `items` | 従業員データまたはアイテムデータをCSV形式で |
+| `image` | `photo-storage` | 写真ストレージディレクトリ（`PHOTO_STORAGE_DIR`環境変数で指定） |
+| `file` | `/path/to/file.txt` | 特定のファイル |
+| `directory` | `/path/to/directory` | ディレクトリ全体（tar.gz形式） |
+
+### バックアップ設定ファイル（`backup.json`）
+
+設定ファイル（`/opt/RaspberryPiSystem_002/config/backup.json`）の`targets`配列で、バックアップ対象とスケジュールを定義します：
+
+```json
+{
+  "storage": {
+    "provider": "dropbox",
+    "options": {
+      "basePath": "/backups",
+      "accessToken": "...",
+      "refreshToken": "..."
+    }
+  },
+  "targets": [
+    {
+      "kind": "database",
+      "source": "postgresql://postgres:...@db:5432/borrow_return",
+      "schedule": "0 4 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "csv",
+      "source": "employees",
+      "schedule": "0 5 * * *",
+      "enabled": true
+    },
+    {
+      "kind": "image",
+      "source": "photo-storage",
+      "schedule": "0 6 * * *",
+      "enabled": true
+    }
+  ]
+}
+```
+
+**設定ファイルの詳細**: [バックアップ設定ガイド](./backup-configuration.md) を参照してください。
+
+### `backup.sh`スクリプトとの対応
+
+`backup.sh`スクリプトは、以下のバックアップ対象を処理します：
+
+| `backup.sh`の処理 | APIの`kind` | APIの`source` |
+|------------------|------------|--------------|
+| データベース（`pg_dump`） | `database` | `postgresql://postgres:...@db:5432/borrow_return` |
+| 環境変数ファイル（`.env`） | `file` | `/opt/RaspberryPiSystem_002/apps/api/.env` など |
+| 写真ディレクトリ（`tar`） | `image` | `photo-storage` |
+| CSVデータ（従業員・アイテム） | `csv` | `employees`, `items` |
+
+**動作**:
+- APIが利用可能な場合、API経由でバックアップを実行（設定ファイルのDropbox設定が自動的に使用される）
+- APIが利用できない場合、またはAPI経由のバックアップが失敗した場合、ローカルバックアップにフォールバック
+- ローカルバックアップは常に実行される（API経由のバックアップが成功しても、フォールバック用に保持）
+
 ## バックアップ手順
 
 ### 1. データベースのバックアップ
@@ -141,32 +212,36 @@ docker run --rm \
 
 ### 5. 自動バックアップスクリプト
 
-`scripts/server/backup.sh`を作成：
+`scripts/server/backup.sh`は以下の機能を提供します：
 
+**バックアップ対象**:
+- PostgreSQLデータベース
+- 環境変数ファイル（`.env`）
+- 写真ディレクトリ
+- CSVデータ（従業員・アイテム、API経由の場合）
+
+**バックアップ先**:
+- **ローカルディレクトリ**: `/opt/backups/`（常に実行）
+- **Dropbox**: 設定ファイル（`/opt/RaspberryPiSystem_002/config/backup.json`）でDropboxが有効化されている場合、API経由で自動的にDropboxにアップロード
+
+**動作**:
+1. APIが利用可能な場合、API経由でバックアップを実行（設定ファイルのDropbox設定が自動的に使用される）
+2. APIが利用できない場合、またはAPI経由のバックアップが失敗した場合、ローカルバックアップにフォールバック
+3. ローカルバックアップは常に実行される（API経由のバックアップが成功しても、フォールバック用に保持）
+
+**使用方法**:
 ```bash
-#!/bin/bash
-set -e
-
-BACKUP_DIR="/opt/backups"
-DATE=$(date +%Y%m%d_%H%M%S)
-RETENTION_DAYS=30
-
-# バックアップディレクトリを作成
-mkdir -p "${BACKUP_DIR}"
-
-# データベースバックアップ
-docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db \
-  pg_dump -U postgres borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-
-# 環境変数ファイルのバックアップ
-cp /opt/RaspberryPiSystem_002/apps/api/.env "${BACKUP_DIR}/api_env_${DATE}.env" 2>/dev/null || true
-
-# 古いバックアップを削除（30日以上前）
-find "${BACKUP_DIR}" -name "*.gz" -mtime +${RETENTION_DAYS} -delete
-find "${BACKUP_DIR}" -name "*.env" -mtime +${RETENTION_DAYS} -delete
-
-echo "バックアップ完了: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
+# Pi5上で実行
+cd /opt/RaspberryPiSystem_002
+./scripts/server/backup.sh
 ```
+
+**Dropboxへの自動アップロードを有効化する方法**:
+1. 設定ファイル（`/opt/RaspberryPiSystem_002/config/backup.json`）を作成・編集
+2. `storage.provider`を`"dropbox"`に設定
+3. Dropboxアクセストークンを設定（詳細は [バックアップ設定ガイド](./backup-configuration.md) を参照）
+
+設定ファイルが存在しない場合、ローカルバックアップのみ実行されます。
 
 ### 6. cronによる自動バックアップ
 
