@@ -31,3 +31,4 @@
       ansible.builtin.fail:
         msg: "Failed to fetch file from {{ client_host }}: {{ client_file_path }}. Error: {{ fetch_result.msg | default('Unknown error') }}"
       when: fetch_result.failed | default(true)
+      failed_when: fetch_result.failed | default(false)

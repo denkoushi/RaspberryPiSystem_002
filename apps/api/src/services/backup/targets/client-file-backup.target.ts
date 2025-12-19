@@ -95,10 +95,24 @@ export class ClientFileBackupTarget implements BackupTarget {
         }
       );
 
+      // Ansible Playbookのエラーメッセージを解析
+      const errorMessage = stderr || stdout || '';
+      const isFileNotFound = 
+        errorMessage.includes('the remote file does not exist') ||
+        errorMessage.includes('not transferring') ||
+        errorMessage.includes('does not exist');
+
       // ファイルが取得されたか確認
       try {
         await fs.access(outputFilePath);
       } catch {
+        // ファイルが存在しない場合のエラーハンドリング
+        if (isFileNotFound) {
+          throw new ApiError(
+            404,
+            `バックアップ対象のファイルが見つかりません: ${this.clientHost}:${this.remotePath}。ファイルが存在しないか、アクセス権限がありません。`
+          );
+        }
         throw new ApiError(
           500,
           `Failed to fetch file from client device. Ansible output: ${stdout}\nStderr: ${stderr}`
