@@ -17,6 +17,9 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
   const [source, setSource] = useState(initialValues?.source || '');
   const [schedule, setSchedule] = useState(initialValues?.schedule || '');
   const [enabled, setEnabled] = useState(initialValues?.enabled ?? true);
+  const kindId = 'backup-target-kind';
+  const sourceId = 'backup-target-source';
+  const scheduleId = 'backup-target-schedule';
 
   useEffect(() => {
     if (initialValues) {
@@ -61,10 +64,12 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-semibold text-slate-700 mb-1">
+        <label htmlFor={kindId} className="block text-sm font-semibold text-slate-700 mb-1">
           種類 <span className="text-red-600">*</span>
         </label>
         <select
+          id={kindId}
+          name="kind"
           className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
           value={kind}
           onChange={(e) => setKind(e.target.value as BackupTarget['kind'])}
@@ -79,10 +84,12 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-slate-700 mb-1">
+        <label htmlFor={sourceId} className="block text-sm font-semibold text-slate-700 mb-1">
           ソース <span className="text-red-600">*</span>
         </label>
         <Input
+          id={sourceId}
+          name="source"
           type="text"
           value={source}
           onChange={(e) => setSource(e.target.value)}
@@ -100,10 +107,12 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-slate-700 mb-1">
+        <label htmlFor={scheduleId} className="block text-sm font-semibold text-slate-700 mb-1">
           スケジュール（cron形式）
         </label>
         <Input
+          id={scheduleId}
+          name="schedule"
           type="text"
           value={schedule}
           onChange={(e) => setSchedule(e.target.value)}
