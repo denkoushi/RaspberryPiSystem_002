@@ -2,11 +2,14 @@ services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: borrow_return
       POSTGRES_USER: postgres
       # セキュリティ強化: 環境変数からパスワードを取得（デフォルト値は開発環境用）
       # 本番環境では強力なパスワードを環境変数で設定すること
+      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -24,9 +27,11 @@ services:
       - db
     env_file:
       - ../../apps/api/.env.example
+      - .env
     environment:
       # セキュリティ強化: 環境変数からデータベースURLを構築（パスワードは環境変数から取得）
       # 本番環境では強力なパスワードを環境変数で設定すること
+      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
