@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { api , DEFAULT_CLIENT_KEY } from '../../api/client';
+import { api, DEFAULT_CLIENT_KEY, postClientLogs } from '../../api/client';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -8,6 +8,7 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
+import type { AxiosError } from 'axios';
 
 
 interface KioskReturnPageProps {
@@ -18,7 +19,9 @@ interface KioskReturnPageProps {
 export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
   // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
   const [localClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
+  const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = providedClientKey || localClientKey || DEFAULT_CLIENT_KEY;
+  const resolvedClientId = clientId || undefined;
   // 返却一覧は全件表示（clientIdで絞らない）
   
   // propsで提供されている場合はuseActiveLoansを呼び出さない（重複リクエストを防ぐ）
@@ -35,14 +38,78 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
 
   const handleReturn = async (loanId: string) => {
     const payload: ReturnPayload = { loanId };
-    await returnMutation.mutateAsync(payload);
-    await loansQuery.refetch();
+    try {
+      await returnMutation.mutateAsync(payload);
+      await loansQuery.refetch();
+    } catch (error) {
+      const apiErr = error as Partial<AxiosError<{ message?: string }>>;
+      const apiMessage: string | undefined = apiErr.response?.data?.message;
+      const errorMessage = apiMessage || apiErr?.message || '返却に失敗しました';
+      
+      // エラーログをサーバーに送信
+      postClientLogs(
+        {
+          clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+          logs: [
+            {
+              level: 'ERROR',
+              message: `kiosk-return failed: ${errorMessage}`,
+              context: {
+                loanId,
+                error: {
+                  message: apiErr?.message,
+                  status: apiErr?.response?.status,
+                  apiMessage
+                }
+              }
+            }
+          ]
+        },
+        resolvedClientKey
+      ).catch(() => {
+        /* noop - ログ送信失敗は無視 */
+      });
+      
+      alert(`返却に失敗しました: ${errorMessage}`);
+    }
   };
 
   const handleCancel = async (loanId: string) => {
     const payload = { loanId };
-    await cancelMutation.mutateAsync(payload);
-    await loansQuery.refetch();
+    try {
+      await cancelMutation.mutateAsync(payload);
+      await loansQuery.refetch();
+    } catch (error) {
+      const apiErr = error as Partial<AxiosError<{ message?: string }>>;
+      const apiMessage: string | undefined = apiErr.response?.data?.message;
+      const errorMessage = apiMessage || apiErr?.message || '取消に失敗しました';
+      
+      // エラーログをサーバーに送信
+      postClientLogs(
+        {
+          clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+          logs: [
+            {
+              level: 'ERROR',
+              message: `kiosk-cancel failed: ${errorMessage}`,
+              context: {
+                loanId,
+                error: {
+                  message: apiErr?.message,
+                  status: apiErr?.response?.status,
+                  apiMessage
+                }
+              }
+            }
+          ]
+        },
+        resolvedClientKey
+      ).catch(() => {
+        /* noop - ログ送信失敗は無視 */
+      });
+      
+      alert(`取消に失敗しました: ${errorMessage}`);
+    }
   };
 
   const handleImageClick = async (photoUrl: string) => {

@@ -280,8 +280,34 @@ export function KioskPhotoBorrowPage() {
           
           if (retryCount >= maxRetries) {
             setIsCapturing(false);
-            setError(`写真の撮影に失敗しました: ${err.message || String(err)}`);
+            const errorMessage = `写真の撮影に失敗しました: ${err.message || String(err)}`;
+            setError(errorMessage);
             processingRef.current = false;
+            
+            // エラーログをサーバーに送信
+            postClientLogs(
+              {
+                clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+                logs: [
+                  {
+                    level: 'ERROR',
+                    message: `photo-borrow capture failed after ${maxRetries} retries: ${err.message || String(err)}`,
+                    context: {
+                      retryCount,
+                      maxRetries,
+                      error: {
+                        message: err.message,
+                        stack: err.stack
+                      }
+                    }
+                  }
+                ]
+              },
+              resolvedClientKey
+            ).catch(() => {
+              /* noop - ログ送信失敗は無視 */
+            });
+            
             return; // エラー時は処理を中断
           }
           // リトライ前に少し待機
@@ -321,6 +347,32 @@ export function KioskPhotoBorrowPage() {
           setError(message ?? '写真の撮影に失敗しました');
           // エラーログは本番環境でも出力（問題の特定に必要）
           console.error('[KioskPhotoBorrowPage] Photo borrow error:', error);
+          
+          // エラーログをサーバーに送信
+          postClientLogs(
+            {
+              clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+              logs: [
+                {
+                  level: 'ERROR',
+                  message: `photo-borrow API failed: ${message || apiErr?.message || 'Unknown error'}`,
+                  context: {
+                    employeeTagUid: currentUid,
+                    error: {
+                      message: apiErr?.message,
+                      status: apiErr?.response?.status,
+                      statusText: apiErr?.response?.statusText,
+                      apiMessage
+                    }
+                  }
+                }
+              ]
+            },
+            resolvedClientKey
+          ).catch(() => {
+            /* noop - ログ送信失敗は無視 */
+          });
+          
           // エラー時は3秒後にリセット可能にする（処理中フラグもリセット）
           // eventKeyはリセットしない（同じイベントを再度処理しないため）
           setTimeout(() => {

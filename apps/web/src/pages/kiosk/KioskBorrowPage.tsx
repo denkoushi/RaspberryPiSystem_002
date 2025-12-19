@@ -128,6 +128,31 @@ export function KioskBorrowPage() {
         };
         const message = toShortMessage(rawMessage);
 
+        // エラーログをサーバーに送信
+        postClientLogs(
+          {
+            clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+            logs: [
+              {
+                level: 'ERROR',
+                message: `kiosk-borrow failed: ${rawMessage || 'Unknown error'}`,
+                context: {
+                  payload,
+                  error: {
+                    message: apiError?.message,
+                    status: apiError?.response?.status,
+                    statusText: apiError?.response?.statusText,
+                    apiMessage
+                  }
+                }
+              }
+            ]
+          },
+          resolvedClientKey
+        ).catch(() => {
+          /* noop - ログ送信失敗は無視 */
+        });
+
         // アイテム/従業員の取り違えと思われる場合は一度だけ順序を入れ替えて再試行
         const notFoundItem = apiMessage?.includes('アイテムが登録されていません');
         const notFoundEmployee = apiMessage?.includes('従業員が登録されていません');
@@ -140,6 +165,31 @@ export function KioskBorrowPage() {
             const retryApiErr = retryError as Partial<AxiosError<{ message?: string }>>;
             const retryMsg =
               retryApiErr.response?.data?.message || retryApiErr?.message || 'エラーが発生しました (再試行失敗)';
+            
+            // 再試行失敗時のエラーログも送信
+            postClientLogs(
+              {
+                clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+                logs: [
+                  {
+                    level: 'ERROR',
+                    message: `kiosk-borrow retry failed: ${retryMsg}`,
+                    context: {
+                      payload,
+                      retryError: {
+                        message: retryApiErr?.message,
+                        status: retryApiErr?.response?.status,
+                        apiMessage: retryApiErr.response?.data?.message
+                      }
+                    }
+                  }
+                ]
+              },
+              resolvedClientKey
+            ).catch(() => {
+              /* noop - ログ送信失敗は無視 */
+            });
+            
             send({ type: 'FAIL', message: retryMsg });
             return;
           }

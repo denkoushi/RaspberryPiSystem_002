@@ -207,8 +207,37 @@ export function KioskInstrumentBorrowPage() {
       navigate(returnPath, { replace: true });
     } catch (error) {
       console.error(error);
-      setMessage('エラーが発生しました。入力値を確認してください。');
+      const apiErr = error as Partial<AxiosError<{ message?: string }>>;
+      const apiMessage: string | undefined = apiErr.response?.data?.message;
+      const errorMessage = apiMessage || apiErr?.message || 'エラーが発生しました。入力値を確認してください。';
+      setMessage(errorMessage);
       setIsNg(false);
+      
+      // エラーログをサーバーに送信
+      postClientLogs(
+        {
+          clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+          logs: [
+            {
+              level: 'ERROR',
+              message: `instrument-borrow NG failed: ${errorMessage}`,
+              context: {
+                selectedInstrumentId,
+                employeeTagUid,
+                isNg: true,
+                error: {
+                  message: apiErr?.message,
+                  status: apiErr?.response?.status,
+                  apiMessage
+                }
+              }
+            }
+          ]
+        },
+        resolvedClientKey
+      ).catch(() => {
+        /* noop - ログ送信失敗は無視 */
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -278,6 +307,39 @@ export function KioskInstrumentBorrowPage() {
       const rawMessage =
         typeof apiMessage === 'string' && apiMessage.length > 0 ? apiMessage : apiErr?.message;
       setMessage(toShortMessage(rawMessage));
+      
+      // エラーログをサーバーに送信
+      postClientLogs(
+        {
+          clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+          logs: [
+            {
+              level: 'ERROR',
+              message: `instrument-borrow failed: ${rawMessage || 'Unknown error'}`,
+              context: {
+                selectedInstrumentId,
+                employeeTagUid,
+                resolvedInstrumentTagUid,
+                payload: {
+                  employeeTagUid,
+                  instrumentTagUid: resolvedInstrumentTagUid.trim() || undefined,
+                  instrumentId: selectedInstrumentId || undefined
+                },
+                error: {
+                  message: apiErr?.message,
+                  status: apiErr?.response?.status,
+                  statusText: apiErr?.response?.statusText,
+                  apiMessage
+                }
+              }
+            }
+          ]
+        },
+        resolvedClientKey
+      ).catch(() => {
+        /* noop - ログ送信失敗は無視 */
+      });
+      
       // エラー時は自動再送を防ぐため、氏名タグをクリアして再スキャンを促す
       setEmployeeTagUid('');
     } finally {
@@ -293,7 +355,9 @@ export function KioskInstrumentBorrowPage() {
     hasInstrument,
     resolvedInstrumentTagUid,
     navigate,
-    returnPath
+    returnPath,
+    resolvedClientId,
+    resolvedClientKey
   ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
