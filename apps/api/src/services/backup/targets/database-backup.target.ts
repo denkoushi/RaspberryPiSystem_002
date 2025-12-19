@@ -13,7 +13,17 @@ const DEFAULT_DB_URL = 'postgresql://postgres:postgres@localhost:5432/borrow_ret
  * pg_dump が実行可能であることを前提とする。
  */
 export class DatabaseBackupTarget implements BackupTarget {
-  constructor(private readonly dbUrl: string = process.env.DATABASE_URL || DEFAULT_DB_URL) {}
+  private readonly dbUrl: string;
+
+  constructor(dbUrl?: string) {
+    // dbUrlが指定されていない場合、またはlocalhostを含む場合は環境変数DATABASE_URLを使用
+    // Dockerコンテナ内ではdb:5432を使用する必要があるため
+    if (!dbUrl || dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1')) {
+      this.dbUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
+    } else {
+      this.dbUrl = dbUrl;
+    }
+  }
 
   get info(): BackupTargetInfo {
     const url = new URL(this.dbUrl);
