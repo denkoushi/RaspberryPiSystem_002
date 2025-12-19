@@ -2460,6 +2460,123 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 
 ---
 
+### [KB-102] Ansibleによるクライアント端末バックアップ機能実装時のAnsibleとTailscale連携問題
+
+**EXEC_PLAN.md参照**: Phase 6: Ansibleによるクライアント端末バックアップ機能（2025-12-19）
+
+**事象**: 
+- クライアント端末（Pi4、Pi3など）のファイルをAnsible経由でバックアップする機能を実装中に、Ansible Playbookの実行が失敗する
+- エラーメッセージ: `raspberrypi4({{ kiosk_ip }})`として表示され、変数が展開されていない
+- SSH接続エラー: `Permission denied (publickey,password)`
+- ファイル不存在エラー: `the remote file does not exist, not transferring, ignored`
+
+**要因**: 
+
+1. **Ansible Playbookの`hosts`指定と変数展開の問題**:
+   - 初期実装では`hosts: localhost` + `delegate_to: "{{ client_host }}"`パターンを使用していた
+   - `hosts: localhost`で実行すると、`group_vars/all.yml`の変数（`kiosk_ip`など）が読み込まれない
+   - 結果として、`ansible_host: "{{ kiosk_ip }}"`が展開されず、`{{ kiosk_ip }}`のままになる
+   - Ansibleは`raspberrypi4({{ kiosk_ip }})`というホスト名で接続を試み、失敗する
+
+2. **SSH鍵のマウント問題**:
+   - Dockerコンテナ内からSSH接続する際に、Pi5のホスト側のSSH鍵（`/home/denkon5sd02/.ssh/id_ed25519`）がマウントされていない
+   - `docker-compose.server.yml`にSSH鍵ディレクトリのマウント設定がなかった
+   - 結果として、Dockerコンテナ内からPi4へのSSH接続が失敗する
+
+3. **Tailscale経由の接続と変数展開**:
+   - システムはTailscale経由で接続されることが多く、`group_vars/all.yml`の`network_mode`が`tailscale`に設定されている
+   - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`（例: `100.74.144.79`）に解決される必要がある
+   - `hosts: localhost`では、この変数展開が行われない
+
+4. **エラーハンドリングの不足**:
+   - Ansible Playbookのエラーメッセージを解析せず、汎用的な500エラーを返していた
+   - ファイルが存在しない場合と、SSH接続エラーの区別ができなかった
+
+**試行した対策**: 
+
+- [試行1] `hosts: localhost` + `ansible_connection: local`を追加 → **部分的に成功**（SSH接続は成功したが、変数展開の問題は解決しない）
+- [試行2] SSH鍵をマウント → **成功**（SSH接続エラーは解消）
+- [試行3] `hosts: "{{ client_host }}"`に変更 → **成功**（変数展開の問題が解決）
+
+**有効だった対策**: 
+
+1. **Ansible Playbookの`hosts`指定を変更**:
+   ```yaml
+   # 変更前
+   hosts: localhost
+   delegate_to: "{{ client_host }}"
+   
+   # 変更後
+   hosts: "{{ client_host }}"
+   # delegate_toを削除
+   ```
+   - `hosts: "{{ client_host }}"`に変更することで、Ansibleは`inventory.yml`から`raspberrypi4`を検索
+   - `inventory.yml`の`raspberrypi4`の`ansible_host: "{{ kiosk_ip }}"`が`group_vars/all.yml`の`kiosk_ip`で展開される
+   - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
+   - 結果として、Ansibleは正しいTailscale IPでPi4に接続できる
+
+2. **SSH鍵のマウント追加**:
+   ```yaml
+   # docker-compose.server.yml
+   volumes:
+     - /home/denkon5sd02/.ssh:/root/.ssh:ro
+   ```
+   - Pi5のホスト側のSSH鍵（`/home/denkon5sd02/.ssh/id_ed25519`）をDockerコンテナ内の`/root/.ssh/id_ed25519`にマウント
+   - 読み取り専用（`:ro`）でマウントし、セキュリティを確保
+
+3. **エラーハンドリングの改善**:
+   ```typescript
+   // Ansible Playbookのエラーメッセージを解析
+   const errorMessage = stderr || stdout || '';
+   const isFileNotFound = 
+     errorMessage.includes('the remote file does not exist') ||
+     errorMessage.includes('not transferring') ||
+     errorMessage.includes('does not exist');
+   
+   if (isFileNotFound) {
+     throw new ApiError(404, `バックアップ対象のファイルが見つかりません: ${this.clientHost}:${this.remotePath}`);
+   }
+   ```
+   - Ansible Playbookのエラーメッセージを解析し、「ファイルが存在しない」場合は404エラーを返す
+   - `FileBackupTarget`と同様のエラーハンドリングを実装
+
+**学んだこと**: 
+
+1. **Ansible Playbookの`hosts`指定の重要性**:
+   - `hosts: localhost`で実行すると、`group_vars/all.yml`の変数が読み込まれない
+   - `hosts: "{{ client_host }}"`のように直接ホストを指定すると、inventoryの変数が正しく展開される
+   - `delegate_to`を使う場合でも、`hosts`で直接ホストを指定する方が変数展開が確実
+
+2. **Tailscale経由の接続とAnsible**:
+   - Tailscale経由の接続でも、Ansibleのinventoryで正しくIPアドレスが解決されれば問題なく動作する
+   - `network_mode: "tailscale"`の場合、`group_vars/all.yml`の`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
+   - `hosts: "{{ client_host }}"`で実行すると、この変数展開が正しく行われる
+
+3. **Dockerコンテナ内からのSSH接続**:
+   - Dockerコンテナ内からSSH接続する場合は、SSH鍵をマウントする必要がある
+   - 読み取り専用（`:ro`）でマウントし、セキュリティを確保する
+   - SSH鍵のパーミッション（`~/.ssh`は700、`id_ed25519`は600）も重要
+
+4. **Ansible Playbookのエラーハンドリング**:
+   - Ansible Playbookのエラーメッセージを適切に解析することで、より明確なエラーハンドリングが可能
+   - 「ファイルが存在しない」場合は404エラー、「SSH接続エラー」の場合は500エラーを返すなど、エラーの種類に応じた適切なHTTPステータスコードを返す
+
+**解決状況**: ✅ **解決済み**（2025-12-19）
+
+**関連ファイル**: 
+- `infrastructure/ansible/playbooks/backup-clients.yml`
+- `apps/api/src/services/backup/targets/client-file-backup.target.ts`
+- `infrastructure/docker/docker-compose.server.yml`
+- `infrastructure/ansible/inventory.yml`
+- `infrastructure/ansible/group_vars/all.yml`
+
+**関連ドキュメント**:
+- [Ansible SSH接続アーキテクチャの説明](../guides/ansible-ssh-architecture.md)
+- [バックアップ設定ガイド](../guides/backup-configuration.md)
+- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
+
+---
+
 ### [KB-101] Pi5へのSSH接続不可問題の原因と解決
 
 **発生日時**: 2025-12-15（推定）

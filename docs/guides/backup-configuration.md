@@ -214,6 +214,21 @@ PostgreSQLデータベースをバックアップする場合：
 - AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
 - Ansible inventory（`infrastructure/ansible/inventory.yml`）にクライアント端末が登録されていること
 - Pi5からクライアント端末へのSSH接続が可能であること（パスワード認証またはSSH鍵認証）
+- SSH鍵がDockerコンテナ内にマウントされていること（`docker-compose.server.yml`で`/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント）
+- `group_vars/all.yml`の`network_mode`が正しく設定されていること（`local`または`tailscale`）
+
+**AnsibleとTailscale連携の注意事項**:
+
+- **変数展開の仕組み**:
+  - Ansible Playbookは`hosts: "{{ client_host }}"`で実行されるため、`inventory.yml`の変数が正しく展開される
+  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
+  - `network_mode: "local"`の場合、`kiosk_ip`は`local_network.raspberrypi4_ip`に解決される
+  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
+
+- **エラーハンドリング**:
+  - ファイルが存在しない場合、404エラーが返される
+  - SSH接続エラーの場合、500エラーが返される
+  - エラーメッセージには、ファイルパスとアクセス権限の可能性が記載される
 
 ### ファイルバックアップ
 

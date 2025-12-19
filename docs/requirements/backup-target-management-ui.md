@@ -465,7 +465,69 @@ export interface BackupConfig {
 - ✅ `kind: "client-file"`を追加
 - ✅ `source`にクライアント端末のホスト名とファイルパスを指定（例: `raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`）
 - ✅ Dockerfile.apiにAnsibleをインストール
-- ✅ docker-compose.server.ymlにAnsibleディレクトリをマウント
+- ✅ docker-compose.server.ymlにAnsibleディレクトリとSSH鍵ディレクトリをマウント
+
+**AnsibleとTailscale連携での問題と対策**:
+
+**背景**:
+- システムはTailscale経由で接続されることが多く、`group_vars/all.yml`の`network_mode`が`tailscale`に設定されている
+- Ansible PlaybookをDockerコンテナ内から実行する際に、変数展開やSSH接続で問題が発生した
+
+**発生した問題**:
+
+1. **Ansible Playbookの`hosts`指定と変数展開の問題**:
+   - **問題**: 初期実装では`hosts: localhost` + `delegate_to: "{{ client_host }}"`パターンを使用していた
+   - **症状**: `ansible_host`が`{{ kiosk_ip }}`のまま展開されず、`raspberrypi4({{ kiosk_ip }})`として表示される
+   - **原因**: `hosts: localhost`で実行すると、`group_vars/all.yml`の変数（`kiosk_ip`など）が読み込まれない
+   - **対策**: `hosts: "{{ client_host }}"`に変更し、直接クライアントホストを指定するように修正
+   - **結果**: `group_vars/all.yml`の変数が正しく展開され、`ansible_host`が正しいIPアドレス（Tailscale IPまたはローカルIP）に解決される
+
+2. **SSH鍵のマウント問題**:
+   - **問題**: Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない
+   - **症状**: `Permission denied (publickey,password)`エラーが発生
+   - **原因**: `docker-compose.server.yml`にSSH鍵ディレクトリのマウント設定がなかった
+   - **対策**: `/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント追加
+   - **結果**: Dockerコンテナ内からPi4へのSSH接続が成功
+
+3. **Ansible Playbookのエラーハンドリング**:
+   - **問題**: ファイルが存在しない場合のエラーメッセージが不明確
+   - **症状**: 汎用的な500エラーが返され、原因が特定しづらい
+   - **対策**: Ansible Playbookのエラーメッセージを解析し、「ファイルが存在しない」場合は404エラーを返すように修正
+   - **結果**: エラーメッセージが明確になり、デバッグが容易になった
+
+**技術的な詳細**:
+
+- **Ansible Playbookの最終的な構成**:
+  ```yaml
+  hosts: "{{ client_host }}"  # 直接クライアントホストを指定
+  gather_facts: false
+  tasks:
+    - name: Fetch file from client device
+      ansible.builtin.fetch:
+        src: "{{ client_file_path }}"
+        dest: "{{ backup_destination }}/{{ inventory_hostname }}_{{ client_file_path | basename }}"
+        flat: true
+  ```
+
+- **変数展開の仕組み**:
+  - `hosts: "{{ client_host }}"`で実行すると、Ansibleは`inventory.yml`から`raspberrypi4`を検索
+  - `inventory.yml`の`raspberrypi4`の`ansible_host: "{{ kiosk_ip }}"`が`group_vars/all.yml`の`kiosk_ip`で展開される
+  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`（例: `100.74.144.79`）に解決される
+  - 結果として、Ansibleは正しいTailscale IPでPi4に接続できる
+
+- **SSH鍵のマウント**:
+  - Pi5のホスト側: `/home/denkon5sd02/.ssh/id_ed25519`
+  - Dockerコンテナ内: `/root/.ssh/id_ed25519`
+  - マウント設定: `- /home/denkon5sd02/.ssh:/root/.ssh:ro`（読み取り専用）
+
+**学んだこと**:
+- Ansible Playbookで`hosts: localhost`を使用する場合、`group_vars/all.yml`の変数が読み込まれない
+- `hosts: "{{ client_host }}"`のように直接ホストを指定すると、inventoryの変数が正しく展開される
+- Tailscale経由の接続でも、Ansibleのinventoryで正しくIPアドレスが解決されれば問題なく動作する
+- Dockerコンテナ内からSSH接続する場合は、SSH鍵をマウントする必要がある
+- Ansible Playbookのエラーメッセージを適切に解析することで、より明確なエラーハンドリングが可能
+
+**関連ナレッジ**: [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題)
 
 ## 関連ドキュメント
 

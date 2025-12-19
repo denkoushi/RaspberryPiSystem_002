@@ -71,7 +71,14 @@ update-frequency: medium
 | **環境変数ファイル** | `clients/nfc-agent/.env` | ⚠️ **推奨** | `.env.example`をコピーして作成、Ansibleでデプロイ可能。**現在はAnsible経由のバックアップ機能を実装予定** |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
-**注意**: クライアント端末のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできません。Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装予定です。
+**注意**: クライアント端末のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできません。Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装済みです。
+
+**AnsibleとTailscale連携の詳細**:
+- Ansible Playbookは`hosts: "{{ client_host }}"`で実行され、`group_vars/all.yml`の変数（`kiosk_ip`など）が正しく展開されます
+- `network_mode: "tailscale"`の場合、Tailscale IP経由で接続されます
+- `network_mode: "local"`の場合、ローカルネットワークIP経由で接続されます
+- SSH鍵はDockerコンテナ内にマウントされ、Pi5からPi4へのSSH接続が可能です
+- 詳細は [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
 
 #### Pi3（サイネージ）にのみ存在する情報
 
