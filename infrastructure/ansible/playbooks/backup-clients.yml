@@ -1,9 +1,10 @@
 ---
 - name: Backup client device files
-  hosts: "{{ client_host }}"
+  hosts: localhost
   gather_facts: false
   vars:
     ansible_python_interpreter: /usr/bin/python3
+    ansible_connection: local
     client_host: "{{ client_host | default('') }}"
     client_file_path: "{{ client_file_path | default('') }}"
     backup_destination: "{{ backup_destination | default('/tmp') }}"
@@ -16,26 +17,17 @@
           - backup_destination != ''
         fail_msg: "client_host, client_file_path, and backup_destination are required"
         quiet: true
-      delegate_to: localhost
-      run_once: true
 
     - name: Fetch file from client device
       ansible.builtin.fetch:
         src: "{{ client_file_path }}"
-        dest: "{{ backup_destination }}/{{ inventory_hostname }}_{{ client_file_path | basename }}"
+        dest: "{{ backup_destination }}/{{ client_host }}_{{ client_file_path | basename }}"
         flat: true
+      delegate_to: "{{ client_host }}"
       register: fetch_result
       ignore_errors: true
 
     - name: Fail if file fetch failed
       ansible.builtin.fail:
-        msg: "Failed to fetch file from {{ inventory_hostname }}: {{ client_file_path }}"
+        msg: "Failed to fetch file from {{ client_host }}: {{ client_file_path }}. Error: {{ fetch_result.msg | default('Unknown error') }}"
       when: fetch_result.failed | default(true)
-      delegate_to: localhost
-      run_once: true
-
-    - name: Set output file path
-      ansible.builtin.set_fact:
-        output_file: "{{ backup_destination }}/{{ inventory_hostname }}_{{ client_file_path | basename }}"
-      delegate_to: localhost
-      run_once: true
