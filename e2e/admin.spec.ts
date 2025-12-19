@@ -95,9 +95,16 @@ test.describe('管理画面', () => {
       await page.getByLabel(/スケジュール/i).fill('0 3 * * *');
       
       // 「保存」ボタンをクリックし、APIレスポンスを待機
+      // POST /api/backup/config/targets のレスポンスを待機
       const savePromise = page.waitForResponse(
-        response => response.url().includes('/api/backup/config/targets') && response.status() === 200,
-        { timeout: 10000 }
+        response => {
+          const url = response.url();
+          return url.includes('/api/backup/config/targets') && 
+                 !url.match(/\/api\/backup\/config\/targets\/\d+/) && // PUT/DELETEのパスを除外
+                 response.request().method() === 'POST' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
       );
       await page.getByRole('button', { name: /保存/i }).click();
       await savePromise;
@@ -116,14 +123,19 @@ test.describe('管理画面', () => {
       
       const initialChecked = await firstCheckbox.isChecked();
 
-      // チェックボックスをクリック
-      await firstCheckbox.click();
-
-      // APIレスポンスを待機
-      await page.waitForResponse(
-        response => response.url().includes('/api/backup/config/targets') && response.status() === 200,
-        { timeout: 5000 }
+      // チェックボックスをクリックし、APIレスポンスを待機
+      // PUT /api/backup/config/targets/:index のレスポンスを待機
+      const updatePromise = page.waitForResponse(
+        response => {
+          const url = response.url();
+          return url.match(/\/api\/backup\/config\/targets\/\d+/) && 
+                 response.request().method() === 'PUT' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
       );
+      await firstCheckbox.click();
+      await updatePromise;
 
       // 状態が変更されたことを確認 (toBeChecked / not.toBeChecked を使用)
       if (initialChecked) {
@@ -149,10 +161,15 @@ test.describe('管理画面', () => {
         page.on('dialog', dialog => dialog.accept());
         
         // 削除ボタンをクリックし、APIレスポンスを待機
+        // DELETE /api/backup/config/targets/:index のレスポンスを待機
         const deletePromise = page.waitForResponse(
-          response => response.url().includes('/api/backup/config/targets') && 
-                      (response.status() === 200 || response.status() === 204),
-          { timeout: 10000 }
+          response => {
+            const url = response.url();
+            return url.match(/\/api\/backup\/config\/targets\/\d+/) && 
+                   response.request().method() === 'DELETE' &&
+                   response.status() === 200;
+          },
+          { timeout: 15000 }
         );
         await deleteButtons.first().click();
         await deletePromise;
