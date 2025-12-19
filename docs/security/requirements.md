@@ -274,4 +274,5 @@
 - [ポートセキュリティ監査レポート](./port-security-audit.md) - **ポート公開状況の監査と修正内容**
 - [ポートセキュリティ修正後の動作確認手順](./port-security-verification.md) - **ポートマッピング削除後の動作確認手順**
 - [ポートセキュリティ修正後の実機検証結果](./port-security-verification-results.md) - **実機検証結果と評価**
+- [標準セキュリティチェックリスト監査レポート](./standard-security-checklist-audit.md) - **IPA、OWASP、CISベンチマークに基づく監査結果**
 
