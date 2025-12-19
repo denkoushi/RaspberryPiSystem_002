@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ設定ガイド
 
-最終更新: 2025-12-14
+最終更新: 2025-12-18
 
 ## 概要
 
@@ -470,8 +470,37 @@ curl http://localhost:8080/api/backup \
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
 
+## 管理コンソールからの設定管理
+
+バックアップ設定は、管理コンソールの「バックアップ」タブ（`/admin/backup/targets`）から管理できます。
+
+### バックアップ対象の管理
+
+**機能**:
+- **一覧表示**: 現在の`targets`配列の内容を表示
+- **追加**: 新しい`target`を追加（`kind`、`source`、`schedule`、`enabled`を設定）
+- **編集**: 既存の`target`の`schedule`や`enabled`状態を編集
+- **削除**: 不要な`target`を削除
+- **有効/無効切り替え**: 各対象の`enabled`フラグをトグルスイッチで切り替え
+- **手動実行**: 特定のバックアップ対象を手動で実行
+
+**使用方法**:
+1. 管理コンソールにログイン（`https://<pi5>/admin`）
+2. 「バックアップ」タブをクリック
+3. バックアップ対象一覧が表示される
+4. 「追加」ボタンで新しい対象を追加、または既存の対象を編集・削除
+
+**設定ファイルとの連携**:
+- 管理コンソールでの変更は即座に設定ファイル（`backup.json`）に反映される
+- `backup.sh`スクリプトは設定ファイルの`targets`配列を参照してバックアップを実行する
+- 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
+
+詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [バックアップ・リストア手順](./backup-and-restore.md): 従来のスクリプトベースのバックアップ手順
 - [Dropbox連携セットアップガイド](./dropbox-setup-guide.md): Dropboxアカウントとの連携手順
 - [モニタリングガイド](./monitoring.md): バックアップの監視方法
+- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
+- [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md): 実機検証手順

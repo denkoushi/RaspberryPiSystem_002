@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2025-12-18）
 
+- **✅ バックアップ対象管理UI実装完了**: 管理コンソールの「バックアップ」タブからバックアップ対象（`targets`）を管理できる機能を実装完了。バックアップ対象の追加・編集・削除、有効/無効切り替え、手動バックアップ実行が可能。`backup.sh`スクリプトと管理コンソールの機能が整合性を保ち、設定ファイル（`backup.json`）の変更が即座に反映される。統合テスト・E2Eテストも実装済み。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) / [guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。
+
 - **✅ 標準セキュリティチェックリスト監査完了**: IPA「安全なウェブサイトの作り方」、OWASP Top 10 2021、CISベンチマークに基づく監査を実施。主要なセキュリティ対策がほぼ完了していることを確認。未実施項目（CSRF対策、PostgreSQLのSSL/TLS接続強制、パスワードポリシー強化など）と必要性を評価。詳細は [security/standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) を参照。
 
 - **✅ ポートセキュリティ強化完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。インターネット接続状態での本番運用が可能であることを確認。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) を参照。
@@ -141,7 +143,8 @@
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
 | **バックアップ設定を変更したい** | **[guides/backup-configuration.md](./guides/backup-configuration.md)** |
-| **バックアップ機能を実機検証したい** | **[guides/backup-verification.md](./guides/backup-verification.md)** |
+| **バックアップ対象を管理したい** | **[guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md)** / **[requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md)** |
+| **バックアップ機能を実機検証したい** | **[guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md)** |
 | **Dropbox OAuth 2.0を設定したい** | **[guides/dropbox-oauth-setup-guide.md](./guides/dropbox-oauth-setup-guide.md)** |
 | **Dropbox OAuth 2.0を実機検証したい** | **[guides/dropbox-oauth-verification-checklist.md](./guides/dropbox-oauth-verification-checklist.md)** |
 | **CI必須化とブランチ保護設定** | **[guides/ci-branch-protection.md](./guides/ci-branch-protection.md)** |
