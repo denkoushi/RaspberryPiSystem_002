@@ -159,26 +159,25 @@ export function BackupTargetsPage() {
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
                         onClick={() => handleRun(index)}
                         disabled={runningIndex === index || runBackup.isPending}
+                        className="text-sm"
                       >
                         {runningIndex === index ? '実行中...' : '実行'}
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
                         onClick={() => setEditingIndex(editingIndex === index ? null : index)}
                         disabled={updateTarget.isPending}
+                        className="text-sm"
                       >
                         {editingIndex === index ? 'キャンセル' : '編集'}
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
                         onClick={() => handleDelete(index)}
                         disabled={deleteTarget.isPending}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-sm text-red-600 hover:text-red-700"
                       >
                         削除
                       </Button>
