@@ -76,59 +76,24 @@ export class ClientFileBackupTarget implements BackupTarget {
     }
 
     try {
-      // Pi5上で直接Ansibleを実行するスクリプトを使用（SSH鍵の問題を回避）
       // Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない問題を回避するため、
-      // Pi5上で直接Ansibleを実行するスクリプトを呼び出す
-      const backupScriptPath = process.env.BACKUP_CLIENT_FILE_SCRIPT || '/opt/RaspberryPiSystem_002/scripts/server/backup-client-file.sh';
-      
-      // スクリプトが存在するか確認
-      try {
-        await fs.access(backupScriptPath);
-      } catch {
-        // スクリプトが存在しない場合は、従来の方法（ansible-playbook直接実行）を試す
-        // ただし、SSH鍵の問題で失敗する可能性が高い
-      }
-
-      let stdout: string;
-      let stderr: string;
-
-      // スクリプトが存在する場合はスクリプトを使用、そうでない場合は直接ansible-playbookを実行
-      if (backupScriptPath && await fs.access(backupScriptPath).then(() => true).catch(() => false)) {
-        const { stdout: scriptStdout, stderr: scriptStderr } = await execFileAsync(
-          'bash',
-          [
-            backupScriptPath,
-            this.clientHost,
-            this.remotePath,
-            backupDestination
-          ],
-          {
-            maxBuffer: 1024 * 1024 * 10, // 10MB
-            encoding: 'utf-8'
-          }
-        );
-        stdout = scriptStdout;
-        stderr = scriptStderr;
-      } else {
-        // フォールバック: ansible-playbookを直接実行（SSH鍵の問題で失敗する可能性が高い）
-        const { stdout: ansibleStdout, stderr: ansibleStderr } = await execFileAsync(
-          'ansible-playbook',
-          [
-            '-i', ansibleInventoryPath,
-            ansiblePlaybookPath,
-            '-e', `client_host=${this.clientHost}`,
-            '-e', `client_file_path=${this.remotePath}`,
-            '-e', `backup_destination=${backupDestination}`
-          ],
-          {
-            cwd: path.dirname(ansibleInventoryPath),
-            maxBuffer: 1024 * 1024 * 10, // 10MB
-            encoding: 'utf-8'
-          }
-        );
-        stdout = ansibleStdout;
-        stderr = ansibleStderr;
-      }
+      // 直接ansible-playbookを実行する（SSH鍵の問題で失敗する可能性が高いが、実際には成功している）
+      // 注意: 実際のテストでは、Ansible Playbookが成功しているため、この方法で動作している
+      const { stdout, stderr } = await execFileAsync(
+        'ansible-playbook',
+        [
+          '-i', ansibleInventoryPath,
+          ansiblePlaybookPath,
+          '-e', `client_host=${this.clientHost}`,
+          '-e', `client_file_path=${this.remotePath}`,
+          '-e', `backup_destination=${backupDestination}`
+        ],
+        {
+          cwd: path.dirname(ansibleInventoryPath),
+          maxBuffer: 1024 * 1024 * 10, // 10MB
+          encoding: 'utf-8'
+        }
+      );
 
       // ファイルが取得されたか確認
       try {
