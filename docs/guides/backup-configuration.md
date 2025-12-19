@@ -184,6 +184,37 @@ PostgreSQLデータベースをバックアップする場合：
 - 既存のディレクトリは自動的にバックアップされます（タイムスタンプ付きでリネーム）
 - API経由（`/api/backup/restore/from-dropbox`）または手動でリストア可能です
 
+### クライアント端末ファイルバックアップ
+
+クライアント端末（Pi4、Pi3など）のファイルをAnsible経由でバックアップする場合：
+
+```json
+{
+  "kind": "client-file",
+  "source": "raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env",
+  "schedule": "0 4 * * *",
+  "enabled": true
+}
+```
+
+**設定項目**:
+- `kind`: `"client-file"` を指定
+- `source`: `"hostname:/path/to/file"` 形式で指定
+  - `hostname`: Ansible inventoryに登録されているホスト名（例: `raspberrypi4`）
+  - `/path/to/file`: クライアント端末上のファイルパス（例: `/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`）
+- `schedule`: cron形式のスケジュール
+- `enabled`: `true` で有効化
+
+**動作**:
+- Ansible Playbook（`infrastructure/ansible/playbooks/backup-clients.yml`）を使用してクライアント端末からファイルを取得
+- `ansible fetch`モジュールでリモートファイルをPi5（サーバー）に取得
+- 取得したファイルをバックアップストレージ（ローカルまたはDropbox）に保存
+
+**前提条件**:
+- AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
+- Ansible inventory（`infrastructure/ansible/inventory.yml`）にクライアント端末が登録されていること
+- Pi5からクライアント端末へのSSH接続が可能であること（パスワード認証またはSSH鍵認証）
+
 ### ファイルバックアップ
 
 特定のファイルをバックアップする場合：

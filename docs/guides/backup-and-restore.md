@@ -92,8 +92,9 @@ update-frequency: medium
 | `database` | `postgresql://postgres:...@db:5432/borrow_return` | PostgreSQLデータベース全体 |
 | `csv` | `employees` または `items` | 従業員データまたはアイテムデータをCSV形式で |
 | `image` | `photo-storage` | 写真ストレージディレクトリ（`PHOTO_STORAGE_DIR`環境変数で指定）。`tar.gz`形式で保存され、リストア時に自動展開される |
-| `file` | `/path/to/file.txt` | 特定のファイル |
-| `directory` | `/path/to/directory` | ディレクトリ全体（tar.gz形式） |
+| `file` | `/path/to/file.txt` | 特定のファイル（Pi5上のファイル） |
+| `directory` | `/path/to/directory` | ディレクトリ全体（tar.gz形式、Pi5上のディレクトリ） |
+| `client-file` | `raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env` | クライアント端末のファイル（Ansible経由で取得） |
 
 ### バックアップ設定ファイル（`backup.json`）
 
