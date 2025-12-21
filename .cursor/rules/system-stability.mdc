@@ -9,7 +9,11 @@ alwaysApply: true
 
 **既存の稼働システムを壊さないことを最優先とする。新機能開発よりも既存機能の維持を優先する。**
 
+このルールは、すべての作業において最優先で適用される原則です。システムの安定性を損なう可能性がある場合は、作業を中断して影響範囲を確認してください。
+
 ## 必須手順
+
+以下の手順は、基本原則を実現するための具体的なアクションです。すべての作業で必ず実行してください。
 
 ### 1. 作業前の影響範囲確認
 
@@ -66,6 +70,8 @@ docker volume inspect <volume-name>
 - デプロイ関連: `docs/guides/deployment.md`
 - API関連: `docs/knowledge-base/api.md`
 
+**詳細な手順**: ドキュメント参照と既存コード・設定の尊重の詳細な手順については、`.cursor/rules/documentation-first.mdc`を参照してください。
+
 ### 5. 既存コード・設定の尊重
 
 - **動いているコードは変更しない**: 動いている理由を理解してから変更する
@@ -121,3 +127,5 @@ cp -r /opt/RaspberryPiSystem_002/certs /opt/RaspberryPiSystem_002/certs.backup
 - `docs/INDEX.md`: ドキュメント索引
 - `docs/knowledge-base/infrastructure.md`: インフラ関連のナレッジベース
 - `docs/guides/deployment.md`: デプロイガイド
+- `.cursor/rules/documentation-first.mdc`: ドキュメント優先ルール（ドキュメント参照の詳細手順）
+- `.cursor/rules/debug-mode.mdc`: デバッグモードと開発方針ルール（開発時のデバッグ手法）

@@ -12,4 +12,8 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 - 動いているコードは「動いている理由」を理解してから変更する
 - 独自の新ロジックを追加する前に既存実装を確認する
 
-詳細は `.cursor/rules/system-stability.mdc` と `.cursor/rules/documentation-first.mdc` を参照。
+詳細は以下のルールファイルを参照：
+- `.cursor/rules/system-stability.mdc`: 既存システム保護ルール（最優先）
+- `.cursor/rules/documentation-first.mdc`: ドキュメント優先・既存コード尊重ルール
+- `.cursor/rules/debug-mode.mdc`: デバッグモードと開発方針ルール（開発時）
+- `.cursor/rules/git-workflow.mdc`: Gitワークフロー改善ルール（Git操作時）
