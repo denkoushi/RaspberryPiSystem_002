@@ -573,6 +573,8 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          BACKUP_CONFIG_PATH: /tmp/e2e-backup.json
+          BACKUP_STORAGE_DIR: /tmp/e2e-backups
 
       - name: Upload test results
         if: always()
