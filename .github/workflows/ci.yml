@@ -167,6 +167,56 @@ jobs:
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
+      - name: Run gmail-oauth tests
+        run: |
+          cd apps/api
+          echo "Running gmail-oauth tests..."
+          pnpm test -- gmail-oauth --reporter=verbose || {
+            echo "Gmail-oauth tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          NODE_ENV: test
+
+      - name: Run gmail-api tests
+        run: |
+          cd apps/api
+          echo "Running gmail-api tests..."
+          pnpm test -- gmail-api --reporter=verbose || {
+            echo "Gmail-api tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          NODE_ENV: test
+
+      - name: Run gmail-storage tests
+        run: |
+          cd apps/api
+          echo "Running gmail-storage tests..."
+          pnpm test -- gmail-storage --reporter=verbose || {
+            echo "Gmail-storage tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          NODE_ENV: test
+
+      - name: Run imports-gmail tests
+        run: |
+          cd apps/api
+          echo "Running imports-gmail tests..."
+          pnpm test -- imports-gmail --reporter=verbose || {
+            echo "Imports-gmail tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          NODE_ENV: test
+
       - name: Run csv-import-scheduler tests
         run: |
           cd apps/api
