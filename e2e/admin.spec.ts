@@ -183,5 +183,138 @@ test.describe('管理画面', () => {
       }
     });
   });
+
+  test.describe('Gmail設定管理', () => {
+    test.beforeEach(async ({ request }) => {
+      // E2Eテスト用のbackup.jsonを準備（Gmail設定を含む）
+      const backupConfig = {
+        storage: {
+          provider: 'gmail',
+          options: {
+            clientId: 'test-client-id',
+            clientSecret: 'test-client-secret',
+            subjectPattern: '^CSV Import: (employees|items)-.*',
+            labelName: 'Pi5/Processed',
+            basePath: '/tmp/gmail-attachments'
+          }
+        },
+        targets: [],
+        csvImports: []
+      };
+
+      // backup.jsonを更新（Gmail設定を有効化）
+      const configResponse = await request.put('http://localhost:8080/api/backup/config', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: backupConfig
+      });
+
+      if (!configResponse.ok()) {
+        // 設定更新に失敗した場合はスキップ
+        test.skip();
+      }
+    });
+
+    test('Gmail OAuth認証URLを取得できる', async ({ request }) => {
+      // GET /api/backup/oauth/gmail/authorize のレスポンスを待機
+      const response = await request.get('http://localhost:8080/api/backup/oauth/gmail/authorize', {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+
+      expect(response.status()).toBe(200);
+      const body = await response.json();
+      expect(body).toHaveProperty('authorizationUrl');
+      expect(body).toHaveProperty('state');
+      expect(body.authorizationUrl).toMatch(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+      expect(body.state).toBeTruthy();
+    });
+
+    test('Gmail設定を取得できる', async ({ request }) => {
+      // GET /api/backup/config/gmail のレスポンスを待機
+      const response = await request.get('http://localhost:8080/api/backup/config/gmail', {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+
+      expect(response.status()).toBe(200);
+      const body = await response.json();
+      expect(body).toHaveProperty('provider', 'gmail');
+      expect(body).toHaveProperty('options');
+      expect(body.options).toHaveProperty('clientId');
+      expect(body.options).toHaveProperty('subjectPattern');
+      expect(body.options).toHaveProperty('labelName');
+      expect(body.options).toHaveProperty('hasAccessToken');
+      expect(body.options).toHaveProperty('hasRefreshToken');
+    });
+
+    test('Gmail設定を更新できる', async ({ request }) => {
+      // PUT /api/backup/config/gmail のレスポンスを待機
+      const updateData = {
+        subjectPattern: '^CSV Import: (employees|items)-\\d{8}$',
+        labelName: 'Pi5/Processed/Test'
+      };
+
+      const response = await request.put('http://localhost:8080/api/backup/config/gmail', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: updateData
+      });
+
+      expect(response.status()).toBe(200);
+      const body = await response.json();
+      expect(body).toHaveProperty('success', true);
+      expect(body).toHaveProperty('message', 'Gmail configuration updated successfully');
+
+      // 設定が正しく更新されたことを確認
+      const getResponse = await request.get('http://localhost:8080/api/backup/config/gmail', {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+      const getBody = await getResponse.json();
+      expect(getBody.options.subjectPattern).toBe(updateData.subjectPattern);
+      expect(getBody.options.labelName).toBe(updateData.labelName);
+    });
+
+    test('Gmail設定が無効な場合にエラーを返す', async ({ request }) => {
+      // まず、ストレージプロバイダーをlocalに変更
+      const localConfig = {
+        storage: {
+          provider: 'local',
+          options: {
+            basePath: '/tmp/test-backups'
+          }
+        },
+        targets: [],
+        csvImports: []
+      };
+
+      await request.put('http://localhost:8080/api/backup/config', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: localConfig
+      });
+
+      // Gmail設定を取得しようとするとエラーになる
+      const response = await request.get('http://localhost:8080/api/backup/config/gmail', {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+
+      expect(response.status()).toBe(400);
+      const body = await response.json();
+      expect(body.message).toContain('Gmail is not configured');
+    });
+  });
 });
 
