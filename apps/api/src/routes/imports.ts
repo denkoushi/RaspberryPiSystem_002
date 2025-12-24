@@ -11,7 +11,9 @@ import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
+import { GmailStorageProvider } from '../services/backup/storage/gmail-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
+import { GmailOAuthService } from '../services/backup/gmail-oauth.service.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -170,7 +172,7 @@ async function createDropboxStorageProviderFromConfig(
 
   let oauthService: DropboxOAuthService | undefined;
   if (refreshToken && appKey && appSecret) {
-    const redirectUri = `${protocol}://${host}/api/backup/oauth/callback`;
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/dropbox/callback`;
     oauthService = new DropboxOAuthService({
       appKey,
       appSecret,
@@ -182,6 +184,53 @@ async function createDropboxStorageProviderFromConfig(
     accessToken,
     basePath,
     refreshToken,
+    oauthService,
+    onTokenUpdate
+  });
+}
+
+async function createGmailStorageProviderFromConfig(
+  protocol: string,
+  host: string,
+  onTokenUpdate?: (token: string) => Promise<void>
+) {
+  const config = await BackupConfigLoader.load();
+  if (config.storage.provider !== 'gmail') {
+    throw new ApiError(400, '設定ファイルでGmailがストレージとして設定されていません');
+  }
+
+  const accessToken = config.storage.options?.accessToken as string | undefined;
+  const refreshToken = config.storage.options?.refreshToken as string | undefined;
+  const clientId = config.storage.options?.clientId as string | undefined;
+  const clientSecret = config.storage.options?.clientSecret as string | undefined;
+  const subjectPattern = config.storage.options?.subjectPattern as string | undefined;
+  const labelName = config.storage.options?.labelName as string | undefined;
+  const basePath = config.storage.options?.basePath as string | undefined;
+
+  if (!accessToken) {
+    throw new ApiError(400, 'Gmail access token is required in config file');
+  }
+
+  if (!subjectPattern) {
+    throw new ApiError(400, 'Gmail subject pattern is required in config file');
+  }
+
+  let oauthService: GmailOAuthService | undefined;
+  if (refreshToken && clientId && clientSecret) {
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/gmail/callback`;
+    oauthService = new GmailOAuthService({
+      clientId,
+      clientSecret,
+      redirectUri
+    });
+  }
+
+  return new GmailStorageProvider({
+    accessToken,
+    refreshToken,
+    subjectPattern,
+    labelName,
+    basePath,
     oauthService,
     onTokenUpdate
   });
@@ -864,6 +913,174 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
       
       throw new ApiError(500, 'Dropboxインポート処理に失敗しました');
+    }
+  });
+
+  // GmailからCSVを取得してインポート
+  app.post('/imports/master/from-gmail', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+    const startTime = Date.now();
+    const initialMemory = process.memoryUsage();
+    
+    try {
+      const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
+      const host = request.headers.host || 'localhost:8080';
+
+      request.log.info({}, '[Gmail Import] インポート開始');
+
+      const onTokenUpdate = async (token: string) => {
+        const latestConfig = await BackupConfigLoader.load();
+        if (latestConfig.storage.provider === 'gmail') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            accessToken: token
+          };
+          await BackupConfigLoader.save(latestConfig);
+          request.log.info({}, '[Gmail Import] アクセストークンを更新しました');
+        }
+      };
+
+      const gmailProvider = await createGmailStorageProviderFromConfig(protocol, host, onTokenUpdate);
+
+      // 件名パターンにマッチするメールのリストを取得
+      const fileInfos = await gmailProvider.list('');
+      
+      if (fileInfos.length === 0) {
+        request.log.info({}, '[Gmail Import] 該当するメールが見つかりませんでした');
+        return { summary: {}, source: 'gmail', message: '該当するメールが見つかりませんでした' };
+      }
+
+      const files: { employees?: Buffer; items?: Buffer } = {};
+      const processedMessageIds: string[] = [];
+
+      // 各メールから添付ファイルをダウンロード
+      // GmailApiClientを直接使用してメールの件名を取得
+      const { GmailApiClient } = await import('../services/backup/gmail-api.client.js');
+      const config = await BackupConfigLoader.load();
+      const gmailClient = new GmailApiClient({
+        accessToken: config.storage.options?.accessToken as string,
+        refreshToken: config.storage.options?.refreshToken as string | undefined,
+        onTokenUpdate
+      });
+
+      for (const fileInfo of fileInfos) {
+        try {
+          const [messageId] = fileInfo.path.split(':');
+          if (!messageId) {
+            continue;
+          }
+
+          request.log.info({ messageId, path: fileInfo.path }, '[Gmail Import] メールから添付ファイルをダウンロード開始');
+          
+          // メールの件名を取得
+          const message = await gmailClient.getMessage(messageId);
+          const subjectHeader = message.payload.headers.find(h => h.name.toLowerCase() === 'subject');
+          const subject = subjectHeader?.value || '';
+          
+          request.log.info({ messageId, subject }, '[Gmail Import] メール件名を取得');
+
+          // 件名からファイルタイプを判定（employeesまたはitems）
+          let fileType: 'employees' | 'items' | null = null;
+          if (subject.includes('employees-') || subject.toLowerCase().includes('employee')) {
+            fileType = 'employees';
+          } else if (subject.includes('items-') || subject.toLowerCase().includes('item')) {
+            fileType = 'items';
+          }
+
+          if (!fileType) {
+            request.log.warn({ messageId, subject }, '[Gmail Import] ファイルタイプを判定できませんでした');
+            continue;
+          }
+
+          const attachmentData = await gmailProvider.download(fileInfo.path);
+          
+          if (fileType === 'employees') {
+            files.employees = attachmentData;
+            processedMessageIds.push(messageId);
+          } else if (fileType === 'items') {
+            files.items = attachmentData;
+            processedMessageIds.push(messageId);
+          }
+
+          request.log.info({ messageId, fileType, size: attachmentData.length }, '[Gmail Import] 添付ファイルダウンロード完了');
+        } catch (error: unknown) {
+          request.log.error({ err: error, path: fileInfo.path }, '[Gmail Import] 添付ファイルダウンロード失敗');
+          // エラーが発生したメールはスキップして続行
+          continue;
+        }
+      }
+
+      if (!files.employees && !files.items) {
+        request.log.warn({}, '[Gmail Import] 有効なCSVファイルが見つかりませんでした');
+        return { summary: {}, source: 'gmail', message: '有効なCSVファイルが見つかりませんでした' };
+      }
+
+      // CSVインポート処理
+      const importStart = Date.now();
+      const { summary } = await processCsvImport(files, false, request.log);
+      const importTime = Date.now() - importStart;
+      
+      // 処理済みメールをマーク
+      for (const messageId of processedMessageIds) {
+        try {
+          await gmailProvider.markAsProcessed(messageId);
+          request.log.info({ messageId }, '[Gmail Import] メールを処理済みとしてマーク');
+        } catch (error: unknown) {
+          request.log.error({ err: error, messageId }, '[Gmail Import] メールの処理済みマークに失敗');
+          // エラーが発生しても続行
+        }
+      }
+      
+      // メモリ使用量の計測
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      const totalTime = Date.now() - startTime;
+      
+      request.log.info({
+        summary,
+        importTimeMs: importTime,
+        totalTimeMs: totalTime,
+        memoryDelta,
+        processedMessageCount: processedMessageIds.length
+      }, '[Gmail Import] インポート完了');
+      
+      return { summary, source: 'gmail', processedMessageCount: processedMessageIds.length };
+    } catch (error: unknown) {
+      const totalTime = Date.now() - startTime;
+      const finalMemory = process.memoryUsage();
+      const memoryDelta = {
+        heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+        heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+        external: finalMemory.external - initialMemory.external,
+        rss: finalMemory.rss - initialMemory.rss
+      };
+      
+      request.log.error({
+        err: error,
+        totalTimeMs: totalTime,
+        memoryDelta
+      }, '[Gmail Import] インポート失敗');
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      // ZodErrorはバリデーションエラーなので400を返す
+      if (error instanceof ZodError) {
+        const firstIssue = error.issues[0];
+        const errorMessage = firstIssue?.message || 'バリデーションエラー';
+        throw new ApiError(400, errorMessage);
+      }
+      
+      if (error instanceof Error) {
+        throw new ApiError(500, `Gmailインポート処理に失敗しました: ${error.message}`);
+      }
+      
+      throw new ApiError(500, 'Gmailインポート処理に失敗しました');
     }
   });
 
