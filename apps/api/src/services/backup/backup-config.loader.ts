@@ -36,7 +36,7 @@ export class BackupConfigLoader {
         return value;
       };
 
-      // accessToken, refreshToken, appKey, appSecretの環境変数を解決
+      // accessToken, refreshToken, appKey, appSecret, clientId, clientSecretの環境変数を解決
       if (configJson.storage?.options) {
         if (configJson.storage.options.accessToken) {
           configJson.storage.options.accessToken = resolveEnvVar(
@@ -60,6 +60,18 @@ export class BackupConfigLoader {
           configJson.storage.options.appSecret = resolveEnvVar(
             configJson.storage.options.appSecret,
             'appSecret'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.clientId) {
+          configJson.storage.options.clientId = resolveEnvVar(
+            configJson.storage.options.clientId,
+            'clientId'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.clientSecret) {
+          configJson.storage.options.clientSecret = resolveEnvVar(
+            configJson.storage.options.clientSecret,
+            'clientSecret'
           ) as string | undefined;
         }
       }

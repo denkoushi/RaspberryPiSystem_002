@@ -13,13 +13,17 @@ export const PathMappingSchema = z.object({
  */
 export const BackupConfigSchema = z.object({
   storage: z.object({
-    provider: z.enum(['local', 'dropbox']),
+    provider: z.enum(['local', 'dropbox', 'gmail']),
     options: z.object({
       basePath: z.string().optional(),
-      accessToken: z.string().optional(), // Dropbox用
-      refreshToken: z.string().optional(), // Dropbox用（リフレッシュトークン）
+      accessToken: z.string().optional(), // Dropbox/Gmail用
+      refreshToken: z.string().optional(), // Dropbox/Gmail用（リフレッシュトークン）
       appKey: z.string().optional(), // Dropbox用（OAuth 2.0 App Key）
-      appSecret: z.string().optional() // Dropbox用（OAuth 2.0 App Secret）
+      appSecret: z.string().optional(), // Dropbox用（OAuth 2.0 App Secret）
+      clientId: z.string().optional(), // Gmail用（OAuth 2.0 Client ID）
+      clientSecret: z.string().optional(), // Gmail用（OAuth 2.0 Client Secret）
+      subjectPattern: z.string().optional(), // Gmail用（件名パターン、正規表現）
+      labelName: z.string().optional() // Gmail用（処理済みラベル名）
     }).optional()
   }),
   pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング
