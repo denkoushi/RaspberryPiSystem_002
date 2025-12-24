@@ -236,7 +236,7 @@ export function SignageDisplayPage() {
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-white/5 bg-slate-950/40">
             {content.tools && content.tools.length > 0 ? (
               <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2 overflow-y-auto p-2">
-                {content.tools.map((tool) => (
+                {content.tools.map((tool: ToolItem) => (
                   <ToolCard key={tool.id} tool={tool} />
                 ))}
               </div>
@@ -252,7 +252,7 @@ export function SignageDisplayPage() {
                 <h2 className="text-lg font-semibold text-white">計測機器ステータス</h2>
               </div>
               <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-2">
-                {content.measuringInstruments.map((inst) => (
+                {content.measuringInstruments.map((inst: InstrumentItem) => (
                   <InstrumentCard key={inst.id} instrument={inst} />
                 ))}
               </div>
@@ -303,7 +303,7 @@ export function SignageDisplayPage() {
             <div className="min-h-0 flex-1 overflow-y-auto">
               {content.tools && content.tools.length > 0 ? (
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
-                  {content.tools.map((tool) => (
+                  {content.tools.map((tool: ToolItem) => (
                     <ToolCard key={tool.id} tool={tool} compact />
                   ))}
                 </div>
