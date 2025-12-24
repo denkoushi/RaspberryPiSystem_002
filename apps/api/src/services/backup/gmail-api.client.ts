@@ -1,5 +1,7 @@
 import { google } from 'googleapis';
 import { logger } from '../../lib/logger.js';
+// TODO: googleapisパッケージの証明書ピニング実装（googleapisは内部的にgaxiosを使用）
+// 証明書ピニングは環境変数やカスタムHTTPクライアントで実装可能だが、現時点では標準実装を使用
 
 /**
  * Gmail APIクライアント
@@ -39,7 +41,13 @@ export class GmailApiClient {
       }
     });
 
-    this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    // googleapisは内部的にgaxiosを使用
+    // 証明書検証はデフォルトで有効（rejectUnauthorized: true）
+    // 証明書ピニングは将来的に実装予定（googleapisのカスタムHTTPクライアント設定が必要）
+    this.gmail = google.gmail({ 
+      version: 'v1', 
+      auth: oauth2Client
+    });
   }
 
   /**
@@ -69,7 +77,12 @@ export class GmailApiClient {
         }
       });
 
-      this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      // googleapisは内部的にgaxiosを使用
+      // 証明書検証はデフォルトで有効（rejectUnauthorized: true）
+      this.gmail = google.gmail({ 
+        version: 'v1', 
+        auth: oauth2Client
+      });
 
       logger?.info('[GmailApiClient] Access token refreshed successfully');
     } catch (error) {

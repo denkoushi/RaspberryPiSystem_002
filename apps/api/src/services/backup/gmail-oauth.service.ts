@@ -1,5 +1,8 @@
 import fetch from 'node-fetch';
+import * as https from 'https';
+import * as tls from 'tls';
 import { logger } from '../../lib/logger.js';
+import { verifyGmailCertificate } from './storage/gmail-cert-pinning.js';
 
 /**
  * Gmail OAuth 2.0トークン情報
@@ -53,11 +56,35 @@ export class GmailOAuthService {
   }
 
   /**
+   * HTTPSエージェントを作成（証明書ピニング対応）
+   */
+  private createHttpsAgent(): https.Agent {
+    return new https.Agent({
+      rejectUnauthorized: true, // 証明書検証を有効化（必須）
+      keepAlive: true,
+      keepAliveMsecs: 1000,
+      maxSockets: 5,
+      timeout: 30000, // 30秒タイムアウト
+      secureProtocol: 'TLSv1_2_method', // TLS 1.2以上を強制
+      // 証明書ピニングの検証
+      checkServerIdentity: (servername: string, cert: tls.PeerCertificate) => {
+        const pinningError = verifyGmailCertificate(servername, cert);
+        if (pinningError) {
+          return pinningError;
+        }
+        // デフォルトの検証を継続
+        return tls.checkServerIdentity(servername, cert);
+      }
+    });
+  }
+
+  /**
    * 認証コードをアクセストークンとリフレッシュトークンに交換
    * @param code 認証コード
    * @returns トークン情報
    */
   async exchangeCodeForTokens(code: string): Promise<GmailTokenInfo> {
+    const httpsAgent = this.createHttpsAgent();
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -69,7 +96,9 @@ export class GmailOAuthService {
         client_secret: this.clientSecret,
         redirect_uri: this.redirectUri,
         grant_type: 'authorization_code'
-      }).toString()
+      }).toString(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      agent: httpsAgent as any
     });
 
     if (!response.ok) {
@@ -104,6 +133,7 @@ export class GmailOAuthService {
    * @returns 新しいトークン情報
    */
   async refreshAccessToken(refreshToken: string): Promise<GmailTokenInfo> {
+    const httpsAgent = this.createHttpsAgent();
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -114,7 +144,9 @@ export class GmailOAuthService {
         client_id: this.clientId,
         client_secret: this.clientSecret,
         grant_type: 'refresh_token'
-      }).toString()
+      }).toString(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      agent: httpsAgent as any
     });
 
     if (!response.ok) {
