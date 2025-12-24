@@ -202,6 +202,8 @@
 | **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
 | **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
 | **外部インシデント評価と追加対策** | **[security/implementation-assessment.md](./security/implementation-assessment.md)** |
+| **Dropbox連携のセキュリティ評価** | **[security/sharepoint-dropbox-integration-assessment.md](./security/sharepoint-dropbox-integration-assessment.md)** |
+| **Gmail連携のセキュリティ評価** | **[security/powerautomate-gmail-integration-assessment.md](./security/powerautomate-gmail-integration-assessment.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
 | **IPアドレス管理の変数化について知りたい** | **[knowledge-base/infrastructure.md#kb-069](./knowledge-base/infrastructure.md#kb-069)** |
 | **運用モード可視化について知りたい** | **[knowledge-base/infrastructure.md#kb-070](./knowledge-base/infrastructure.md#kb-070)** |

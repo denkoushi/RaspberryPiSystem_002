@@ -46,7 +46,7 @@ update-frequency: medium
 ```json
 {
   "storage": {
-    "provider": "local" | "dropbox",
+    "provider": "local" | "dropbox" | "gmail",
     "options": {
       "basePath": "/opt/RaspberryPiSystem_002/backups",
       "accessToken": "your-dropbox-access-token"
@@ -112,6 +112,51 @@ Dropboxにバックアップを保存する場合：
 
 **Dropboxアクセストークンの取得方法**:
 詳細は [Dropbox連携セットアップガイド](./dropbox-setup-guide.md) を参照してください。
+
+### Gmailストレージ
+
+Gmailに添付ファイルとしてCSVファイルを送信し、Pi5が自動的に取得する場合：
+
+```json
+{
+  "storage": {
+    "provider": "gmail",
+    "options": {
+      "clientId": "${GMAIL_CLIENT_ID}",
+      "clientSecret": "${GMAIL_CLIENT_SECRET}",
+      "accessToken": "${GMAIL_ACCESS_TOKEN}",
+      "refreshToken": "${GMAIL_REFRESH_TOKEN}",
+      "subjectPattern": "^CSV Import: (employees|items)-.*",
+      "labelName": "Pi5/Processed",
+      "basePath": "/tmp/gmail-attachments"
+    }
+  }
+}
+```
+
+**設定項目**:
+- `provider`: `"gmail"` を指定
+- `options.clientId`: Gmail OAuth 2.0クライアントID（必須、環境変数参照推奨）
+- `options.clientSecret`: Gmail OAuth 2.0クライアントシークレット（必須、環境変数参照推奨）
+- `options.accessToken`: Gmailアクセストークン（OAuth認証後に設定、環境変数参照推奨）
+- `options.refreshToken`: Gmailリフレッシュトークン（OAuth認証後に設定、環境変数参照推奨）
+- `options.subjectPattern`: メール件名の正規表現パターン（例: `^CSV Import: (employees|items)-.*`）
+- `options.labelName`: 処理済みメールに追加するラベル名（デフォルト: `Pi5/Processed`）
+- `options.basePath`: 添付ファイルの一時保存先ディレクトリ（デフォルト: `/tmp/gmail-attachments`）
+
+**Gmail OAuth認証の設定方法**:
+詳細は [Gmail添付ファイル統合ガイド](./gmail-attachment-integration.md) を参照してください。
+
+**環境変数の設定**:
+- `GMAIL_CLIENT_ID`: Gmail OAuth 2.0クライアントID
+- `GMAIL_CLIENT_SECRET`: Gmail OAuth 2.0クライアントシークレット
+- `GMAIL_ACCESS_TOKEN`: Gmailアクセストークン（OAuth認証後に設定）
+- `GMAIL_REFRESH_TOKEN`: Gmailリフレッシュトークン（OAuth認証後に設定）
+
+**注意事項**:
+- 機密情報（`clientId`、`clientSecret`、`accessToken`、`refreshToken`）は環境変数で管理することを強く推奨します
+- Ansible Vaultで暗号化して管理することを推奨します
+- `subjectPattern`はPowerAutomate側のメール件名と一致する必要があります
 
 ## バックアップ対象の設定
 
