@@ -265,10 +265,11 @@ export class SignageRenderer {
 
     const slideInfo = '';
 
+    // ファイル名をタイトルの右横、右端揃えで表示
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
-        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
-            font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+        ? `<text x="${rightX + rightWidth - rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
+            text-anchor="end" font-size="${Math.max(10, Math.round(10 * scale))}" font-weight="600" fill="rgba(255,255,255,0.6)" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
         : '';
@@ -290,7 +291,7 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            工具管理データ
+            持出中アイテム
           </text>
           ${cardsSvg}
           ${overflowBadge}
@@ -302,7 +303,7 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
           <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            PDF表示
+            ドキュメント
           </text>
           ${slideInfo}
           ${pdfContent}
@@ -475,37 +476,38 @@ export class SignageRenderer {
 
         const textStartY = y + cardPadding;
         const textX = x + textAreaX;
-        // 統一された情報の並び順: 名称、従業員名、日付+時刻（横並び）、警告
+        // 統一された情報の並び順: 名称+管理番号（同一行）、従業員名+日時（同一行、右揃え）、警告
         // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
         const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
-        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
-        const dateTimeY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
-        // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
-        const dateX = textX;
-        const timeX = textX + (borrowedDate ? Math.round(80 * scale) : 0); // 日付の右側に時刻を配置（日付がない場合は左端から）
-        const warningY = dateTimeY + Math.round(24 * scale); // date/time(14px) + 24px間隔（約1.7倍）
+        const nameY = primaryY + Math.round(14 * scale); // primaryText(9px) + 14px間隔
+        // 日付と時刻を従業員名の右横に配置（右揃え）
+        const cardRightX = x + cardWidth - cardPadding;
+        const dateTimeText = borrowedDate && borrowedTime ? `${borrowedDate} ${borrowedTime}` : (borrowedDate || borrowedTime || '');
+        const warningY = nameY + Math.round(20 * scale); // secondary(16px) + 20px間隔
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
               fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
             ${thumbnailElement}
+            <!-- アイテム名（9px）+ 管理番号（右横） -->
             <text x="${textX}" y="${primaryY}"
-              font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              font-size="${Math.max(8, Math.round(9 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
             </text>
+            <text x="${cardRightX}" y="${primaryY}"
+              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
+              ${this.escapeXml(managementText || tool.itemCode || '')}
+            </text>
+            <!-- 従業員名（左揃え）+ 日時（右揃え） -->
             <text x="${textX}" y="${nameY}"
               font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
-            <text x="${dateX}" y="${dateTimeY}"
-              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
-            </text>
-            <text x="${timeX}" y="${dateTimeY}"
-              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
-            </text>
+            ${dateTimeText ? `<text x="${cardRightX}" y="${nameY}"
+              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              ${this.escapeXml(dateTimeText)}
+            </text>` : ''}
             ${isExceeded
               ? `<text x="${textX}" y="${warningY}"
                   font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
@@ -513,10 +515,6 @@ export class SignageRenderer {
                 </text>`
               : ''
             }
-            <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
-              ${this.escapeXml(managementText || tool.itemCode || '')}
-            </text>
           </g>
         `;
       })

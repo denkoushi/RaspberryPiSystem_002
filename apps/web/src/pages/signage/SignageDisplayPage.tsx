@@ -7,8 +7,10 @@ import type { SignageContentResponse } from '../../api/client';
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 
-const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
-const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
+// 仕様: 表示領域の最大化が最重要のため、余白を最小化（outerPadding=0、innerPadding約10px相当）
+// モニター仕様: 1920x1080（Full HD、16:9アスペクト比）を基準に設計
+const screenClass = 'h-screen w-screen bg-slate-800 text-white overflow-hidden';
+const panelClass = 'rounded-lg border border-white/10 bg-slate-900/60 p-2';
 
 const renderPdfImage = (src?: string, alt?: string) => {
   if (!src) {
@@ -28,16 +30,59 @@ const renderPdfImage = (src?: string, alt?: string) => {
 
 function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean }) {
   const isInstrument = Boolean(tool.isInstrument);
+  const isRigging = Boolean(tool.isRigging);
+  const isOverdue = Boolean(tool.isOver12Hours);
   
-  // 計測機器は藍系背景、工具は従来の背景
+  // 仕様: 計測機器は藍系背景、吊具はオレンジ系背景、工具は従来の背景
   const borderClass = isInstrument
-    ? 'border-indigo-400/40 hover:border-indigo-300/60'
-    : 'border-white/5 hover:border-emerald-400/40';
-  const bgClass = isInstrument ? 'bg-indigo-900/30' : 'bg-white/5';
+    ? 'border-indigo-400/40'
+    : isRigging
+      ? 'border-orange-400/40'
+      : isOverdue
+        ? 'border-red-600'
+        : 'border-white/5';
+  const bgClass = isInstrument 
+    ? 'bg-indigo-900/30' 
+    : isRigging
+      ? 'bg-orange-900/30'
+      : 'bg-white/5';
+  
+  // 仕様: 期限超過アイテムは赤い太枠（4px以上）
+  const borderWidth = isOverdue ? 'border-4' : 'border';
+  
+  // 借出日時をフォーマット（signage rendererと同じ形式: "MM/DD HH:mm"）
+  const formatBorrowedDateTime = (borrowedAt: string | null | undefined) => {
+    if (!borrowedAt) return { date: null, time: null };
+    const date = new Date(borrowedAt);
+    if (Number.isNaN(date.getTime())) return { date: null, time: null };
+    // 日本時間（JST）でフォーマット（signage rendererと同じ）
+    const formatter = new Intl.DateTimeFormat('ja-JP', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const month = parts.find(p => p.type === 'month')?.value ?? '';
+    const day = parts.find(p => p.type === 'day')?.value ?? '';
+    const hour = parts.find(p => p.type === 'hour')?.value ?? '';
+    const minute = parts.find(p => p.type === 'minute')?.value ?? '';
+    return { date: `${month}/${day}`, time: `${hour}:${minute}` };
+  };
+  
+  const { date, time } = formatBorrowedDateTime(tool.borrowedAt);
+  
+  // 管理番号/アイテムコード（右下隅に表示）
+  const codeDisplay = isInstrument 
+    ? (tool.managementNumber ?? tool.itemCode)
+    : isRigging
+      ? (tool.managementNumber ?? tool.itemCode)
+      : tool.itemCode;
   
   return (
     <div
-      className={`group flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl border ${borderClass} ${bgClass} p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)] transition-all duration-300 hover:-translate-y-1`}
+      className={`relative flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl ${borderWidth} ${borderClass} ${bgClass} p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)]`}
     >
       <div
         className="relative overflow-hidden rounded-2xl bg-slate-900/40"
@@ -47,37 +92,49 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
           <img
             src={tool.thumbnailUrl}
             alt={tool.name}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="h-full w-full object-cover"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/30">
-            {isInstrument ? '計測機器' : '画像なし'}
+          <div className="flex h-full w-full items-center justify-center text-white/30 text-sm">
+            {isInstrument ? '計測機器' : isRigging ? '吊具' : '画像なし'}
           </div>
         )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
-      <div>
-        {isInstrument ? (
-          <>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} font-semibold uppercase tracking-[0.2em] text-indigo-200/80`}>
-              {tool.managementNumber ?? tool.itemCode}
+      <div className="space-y-0">
+        {/* 1. アイテム名（9px、太字、白）+ 管理番号/アイテムコード（右横、14px、等幅フォント、白） */}
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[9px] font-semibold text-white">
+            {tool.name}
+          </p>
+          <p className="text-sm font-mono text-white">
+            {codeDisplay}
+          </p>
+        </div>
+        
+        {/* 2. 従業員名（16px、白、左揃え）+ 日付 + 時刻（右揃え、スペース区切り、14px、白） */}
+        <div className="flex items-center justify-between gap-2">
+          {tool.employeeName && (
+            <p className="text-base text-white">
+              {tool.employeeName}
             </p>
-            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-              {tool.name}
+          )}
+          {(date || time) && (
+            <p className="text-sm text-white">
+              {date && <span>{date}</span>}
+              {date && time && <span> {time}</span>}
+              {!date && time && <span>{time}</span>}
             </p>
-          </>
-        ) : (
-          <>
-            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-              {tool.name}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
-              {tool.itemCode}
-            </p>
-          </>
+          )}
+        </div>
+        
+        {/* 3. 警告（期限超過の場合、「⚠ 期限超過」、14px、白） */}
+        {isOverdue && (
+          <p className="text-sm text-white">
+            ⚠ 期限超過
+          </p>
         )}
       </div>
     </div>
@@ -85,6 +142,7 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
 }
 
 function InstrumentCard({ instrument }: { instrument: InstrumentItem }) {
+  // 仕様: バッジの色分け（WCAG AAA準拠のコントラスト比を維持）
   const badgeClass = instrument.isOverdue
     ? 'bg-red-500/20 text-red-200'
     : instrument.isDueSoon
@@ -140,10 +198,10 @@ export function SignageDisplayPage() {
   }, [content?.pdf?.pages]);
 
   const renderStateScreen = (title: string, description?: string) => (
-  <div className={`${screenClass} flex items-center justify-center p-6`}>
+    <div className={`${screenClass} flex items-center justify-center`}>
       <div className="text-center">
-        <p className="text-2xl font-semibold text-white">{title}</p>
-        {description ? <p className="mt-2 text-base text-white/70">{description}</p> : null}
+        <p className="text-xl font-semibold text-white">{title}</p>
+        {description ? <p className="mt-2 text-sm text-white/70">{description}</p> : null}
       </div>
     </div>
   );
@@ -154,10 +212,10 @@ export function SignageDisplayPage() {
 
   if (isLoading) {
     return (
-      <div className={`${screenClass} flex flex-col items-center justify-center gap-4`}>
+      <div className={`${screenClass} flex flex-col items-center justify-center`}>
         <div className="flex items-center gap-3 text-white/70">
-          <span className="inline-flex h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white" />
-          読み込み中...
+          <span className="inline-flex h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+          <span className="text-sm">読み込み中...</span>
         </div>
       </div>
     );
@@ -169,30 +227,31 @@ export function SignageDisplayPage() {
 
   if (content.contentType === 'TOOLS') {
     return (
-      <div className={`${screenClass} px-2 py-2`}>
-        <div className="mx-auto flex h-full w-full flex-col gap-3">
-          <header>
-            <h1 className="text-3xl font-semibold text-white">工具在庫状況</h1>
+      <div className={screenClass}>
+        <div className="flex h-full w-full flex-col gap-2 p-1">
+          {/* 仕様: タイトルは1行表示、ヘッダー高さを縮小 */}
+          <header className="flex-shrink-0">
+            <h1 className="text-xl font-semibold text-white">工具在庫状況</h1>
           </header>
-          <div className="flex-1 overflow-hidden rounded-xl border border-white/5 bg-slate-950/40 p-1">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-white/5 bg-slate-950/40">
             {content.tools && content.tools.length > 0 ? (
-              <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 overflow-y-auto rounded-xl p-3">
+              <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2 overflow-y-auto p-2">
                 {content.tools.map((tool) => (
                   <ToolCard key={tool.id} tool={tool} />
                 ))}
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center text-xl text-white/60">
+              <div className="flex h-full items-center justify-center text-lg text-white/60">
                 工具データがありません
               </div>
             )}
           </div>
           {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
-            <section className={`${panelClass} mt-2`}>
-              <div className="mb-2">
-                <h2 className="text-xl font-semibold text-white">計測機器ステータス</h2>
+            <section className={`${panelClass} flex-shrink-0`}>
+              <div className="mb-1">
+                <h2 className="text-lg font-semibold text-white">計測機器ステータス</h2>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-2">
                 {content.measuringInstruments.map((inst) => (
                   <InstrumentCard key={inst.id} instrument={inst} />
                 ))}
@@ -211,8 +270,9 @@ export function SignageDisplayPage() {
 
     if (content.displayMode === 'SLIDESHOW') {
       return (
-        <div className={`${screenClass} flex items-center justify-center p-4`}>
-          <div className={`${panelClass} flex h-full w-full items-center justify-center`}>
+        <div className={screenClass}>
+          {/* 仕様: 余白を最小化、表示領域最大化 */}
+          <div className="flex h-full w-full items-center justify-center p-1">
             {renderPdfImage(pdfPages[currentPdfPage], `PDF Page ${currentPdfPage + 1}`)}
           </div>
         </div>
@@ -220,8 +280,9 @@ export function SignageDisplayPage() {
     }
 
     return (
-      <div className={`${screenClass} flex items-center justify-center p-4`}>
-        <div className={`${panelClass} flex h-full w-full items-center justify-center`}>
+      <div className={screenClass}>
+        {/* 仕様: 余白を最小化、表示領域最大化 */}
+        <div className="flex h-full w-full items-center justify-center p-1">
           {renderPdfImage(pdfPages[0], 'PDF')}
         </div>
       </div>
@@ -230,11 +291,14 @@ export function SignageDisplayPage() {
 
   if (content.contentType === 'SPLIT') {
     return (
-      <div className={`${screenClass} px-2 py-2`}>
-        <div className="mx-auto grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[3fr_2fr]">
-          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
-            <div>
-              <h2 className="text-2xl font-semibold text-white">工具管理データ</h2>
+      <div className={screenClass}>
+        {/* 仕様: 左右分割表示（工具管理データとPDFを同時表示）、余白を最小化 */}
+        {/* モニター仕様: 1920x1080（16:9）にフィットするレイアウト */}
+        <div className="grid h-full w-full grid-cols-1 gap-2 p-1 lg:grid-cols-[3fr_2fr]">
+          <section className={`flex min-h-0 flex-col gap-1 ${panelClass}`}>
+            {/* 仕様: タイトルは1行表示、フォントサイズ20px、フォントウェイト600 */}
+            <div className="flex-shrink-0">
+              <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>持出中アイテム</h2>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {content.tools && content.tools.length > 0 ? (
@@ -251,33 +315,17 @@ export function SignageDisplayPage() {
             </div>
           </section>
 
-          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
-            <div>
-              <h2 className="text-2xl font-semibold text-white">計測機器ステータス</h2>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
-                  {content.measuringInstruments.map((inst) => (
-                    <InstrumentCard key={inst.id} instrument={inst} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center text-white/60">
-                  計測機器データがありません
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
-            <div className="flex flex-col">
-              <h2 className="text-2xl font-semibold text-white">PDF表示</h2>
+          <section className={`flex min-h-0 flex-col gap-1 ${panelClass}`}>
+            {/* 仕様: 右ペインはタイトル直下からPDFを始めるため、ヘッダー高さを最小化 */}
+            {/* 仕様: タイトルは1行表示、フォントサイズ20px、フォントウェイト600 */}
+            <div className="flex-shrink-0 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>ドキュメント</h2>
               {content.pdf?.name ? (
-                <span className="text-xs text-white/60">{content.pdf.name}</span>
+                <span className="text-[10px] text-white/60">{content.pdf.name}</span>
               ) : null}
             </div>
-            <div className="flex flex-1 items-center justify-center">
+            {/* 仕様: 黒地（PDFエリア）を最優先で拡大 */}
+            <div className="flex min-h-0 flex-1 items-center justify-center">
               {content.pdf && content.pdf.pages.length > 0 ? (
                 content.displayMode === 'SLIDESHOW'
                   ? renderPdfImage(pdfPages[currentPdfPage], `PDF Page ${currentPdfPage + 1}`)
