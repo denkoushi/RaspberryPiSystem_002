@@ -11,6 +11,7 @@ import type { BackupKind } from '../services/backup/backup-types.js';
 import { ApiError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
+import { GmailOAuthService } from '../services/backup/gmail-oauth.service.js';
 import { BackupHistoryService } from '../services/backup/backup-history.service.js';
 import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
@@ -705,6 +706,165 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       logger?.error({ err: error }, '[BackupRoute] Failed to exchange code for tokens');
       throw new ApiError(500, 'Failed to exchange authorization code for tokens');
     }
+  });
+
+  // Gmail OAuth 2.0認証URL生成
+  app.get('/backup/oauth/gmail/authorize', {
+    preHandler: [mustBeAdmin]
+  }, async (request, reply) => {
+    const config = await BackupConfigLoader.load();
+    const clientId = config.storage.options?.clientId as string | undefined;
+    const clientSecret = config.storage.options?.clientSecret as string | undefined;
+
+    if (!clientId || !clientSecret) {
+      throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
+    }
+
+    // リダイレクトURI（現在のホストを使用）
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/gmail/callback`;
+
+    const oauthService = new GmailOAuthService({
+      clientId,
+      clientSecret,
+      redirectUri
+    });
+
+    // CSRF保護用のstateパラメータを生成
+    const state = crypto.randomBytes(32).toString('hex');
+    
+    const authUrl = oauthService.getAuthorizationUrl(state);
+
+    return reply.status(200).send({
+      authorizationUrl: authUrl,
+      state
+    });
+  });
+
+  // Gmail OAuth 2.0コールバック（認証コードを受け取る）
+  app.get('/backup/oauth/gmail/callback', async (request, reply) => {
+    const query = request.query as { code?: string; state?: string; error?: string };
+    
+    if (query.error) {
+      throw new ApiError(400, `OAuth error: ${query.error}`);
+    }
+
+    if (!query.code) {
+      throw new ApiError(400, 'Authorization code is required');
+    }
+
+    const config = await BackupConfigLoader.load();
+    const clientId = config.storage.options?.clientId as string | undefined;
+    const clientSecret = config.storage.options?.clientSecret as string | undefined;
+
+    if (!clientId || !clientSecret) {
+      throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
+    }
+
+    // リダイレクトURI（現在のホストを使用）
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
+    const redirectUri = `${protocol}://${host}/api/backup/oauth/gmail/callback`;
+
+    const oauthService = new GmailOAuthService({
+      clientId,
+      clientSecret,
+      redirectUri
+    });
+
+    try {
+      const tokenInfo = await oauthService.exchangeCodeForTokens(query.code);
+      
+      // 設定ファイルを更新
+      const updatedConfig: BackupConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          options: {
+            ...config.storage.options,
+            accessToken: tokenInfo.accessToken,
+            refreshToken: tokenInfo.refreshToken || config.storage.options?.refreshToken,
+            clientId,
+            clientSecret
+          }
+        }
+      };
+
+      await BackupConfigLoader.save(updatedConfig);
+
+      return reply.status(200).send({
+        success: true,
+        message: 'Tokens saved successfully',
+        hasRefreshToken: !!tokenInfo.refreshToken
+      });
+    } catch (error) {
+      logger?.error({ err: error }, '[BackupRoute] Failed to exchange code for tokens (Gmail)');
+      throw new ApiError(500, 'Failed to exchange authorization code for tokens');
+    }
+  });
+
+  // Gmail設定取得
+  app.get('/backup/config/gmail', {
+    preHandler: [mustBeAdmin]
+  }, async () => {
+    const config = await BackupConfigLoader.load();
+    if (config.storage.provider !== 'gmail') {
+      throw new ApiError(400, 'Gmail is not configured as storage provider');
+    }
+
+    return {
+      provider: config.storage.provider,
+      options: {
+        clientId: config.storage.options?.clientId,
+        subjectPattern: config.storage.options?.subjectPattern,
+        labelName: config.storage.options?.labelName,
+        basePath: config.storage.options?.basePath,
+        // accessTokenとrefreshTokenはセキュリティのため返さない
+        hasAccessToken: !!config.storage.options?.accessToken,
+        hasRefreshToken: !!config.storage.options?.refreshToken
+      }
+    };
+  });
+
+  // Gmail設定更新
+  app.put('/backup/config/gmail', {
+    preHandler: [mustBeAdmin]
+  }, async (request) => {
+    const body = z.object({
+      clientId: z.string().optional(),
+      clientSecret: z.string().optional(),
+      subjectPattern: z.string().optional(),
+      labelName: z.string().optional(),
+      basePath: z.string().optional()
+    }).parse(request.body);
+
+    const config = await BackupConfigLoader.load();
+    if (config.storage.provider !== 'gmail') {
+      throw new ApiError(400, 'Gmail is not configured as storage provider');
+    }
+
+    const updatedConfig: BackupConfig = {
+      ...config,
+      storage: {
+        ...config.storage,
+        options: {
+          ...config.storage.options,
+          ...(body.clientId !== undefined && { clientId: body.clientId }),
+          ...(body.clientSecret !== undefined && { clientSecret: body.clientSecret }),
+          ...(body.subjectPattern !== undefined && { subjectPattern: body.subjectPattern }),
+          ...(body.labelName !== undefined && { labelName: body.labelName }),
+          ...(body.basePath !== undefined && { basePath: body.basePath })
+        }
+      }
+    };
+
+    await BackupConfigLoader.save(updatedConfig);
+
+    return {
+      success: true,
+      message: 'Gmail configuration updated successfully'
+    };
   });
 
   // Dropboxからバックアップをリストア
