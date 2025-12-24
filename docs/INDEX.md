@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-21）
+
+- **✅ バックアップ対象管理UI E2Eテスト完了・CI成功**: E2Eテストの`waitForResponse`パターンを改善し、URLパターンとHTTPメソッドの確認を追加。タイムアウトを延長（5000ms/10000ms → 15000ms）。CI環境変数（`BACKUP_CONFIG_PATH`, `BACKUP_STORAGE_DIR`）を追加してパーミッションエラーを解消。全CIジョブ成功（lint-and-test, e2e-smoke, e2e-tests, docker-build）。バックアップ対象管理機能の実装が完了し、本番運用可能な状態に到達。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-19）
 
 - **✅ バックアップロジックのアーキテクチャ改善完了**: Factoryパターンとレジストリパターンを実装し、コード重複を完全に解消。新しいバックアップターゲット追加時の修正箇所が7箇所から2箇所に削減（約71%削減）。`BackupTargetFactory`と`StorageProviderFactory`を追加し、リストアロジックを各ターゲットに分離。設定ファイルによるパスマッピング管理を実装。`backup-scheduler.ts`に`client-file`ケースを追加して設定と実装の整合性を確保。リンター0エラー、ユニットテスト16/16成功。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。

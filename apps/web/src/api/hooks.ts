@@ -518,11 +518,152 @@ export function useSignageEmergencyMutation() {
   });
 }
 
+// 開発用モックデータ（デザインブラッシュアップ用）
+const mockSignageContent: SignageContentResponse = {
+  contentType: 'SPLIT',
+  displayMode: 'SINGLE',
+  pdf: {
+    id: 'pdf-1',
+    name: 'サンプルPDF.pdf',
+    pages: ['/api/signage/pdfs/pdf-1/page/1']
+  },
+  tools: [
+    {
+      id: '1',
+      name: 'ドライバーセット',
+      itemCode: 'TO0001',
+      thumbnailUrl: undefined,
+      employeeName: '山田太郎',
+      borrowedAt: '2025-12-24T08:30:00.000Z',
+      isInstrument: false,
+      isRigging: false,
+      isOver12Hours: false
+    },
+    {
+      id: '2',
+      name: 'メジャー',
+      itemCode: 'TO0002',
+      thumbnailUrl: undefined,
+      employeeName: '佐藤花子',
+      borrowedAt: '2025-12-24T09:15:00.000Z',
+      isInstrument: false,
+      isRigging: false,
+      isOver12Hours: false
+    },
+    {
+      id: '3',
+      name: 'ハンマー',
+      itemCode: 'TO0003',
+      thumbnailUrl: undefined,
+      employeeName: '鈴木一郎',
+      borrowedAt: '2025-12-23T20:00:00.000Z',
+      isInstrument: false,
+      isRigging: false,
+      isOver12Hours: true
+    },
+    {
+      id: '4',
+      name: 'ペンチ',
+      itemCode: 'TO0004',
+      thumbnailUrl: undefined,
+      employeeName: '田中次郎',
+      borrowedAt: '2025-12-24T10:00:00.000Z',
+      isInstrument: false,
+      isRigging: false,
+      isOver12Hours: false
+    },
+    {
+      id: '5',
+      name: 'デジタルノギス',
+      itemCode: 'MI0001',
+      managementNumber: 'MI0001',
+      thumbnailUrl: undefined,
+      employeeName: '山田太郎',
+      borrowedAt: '2025-12-24T08:00:00.000Z',
+      isInstrument: true,
+      isRigging: false,
+      isOver12Hours: false
+    },
+    {
+      id: '6',
+      name: 'レベルゲージ',
+      itemCode: 'MI0002',
+      managementNumber: 'MI0002',
+      thumbnailUrl: undefined,
+      employeeName: '佐藤花子',
+      borrowedAt: '2025-12-24T09:30:00.000Z',
+      isInstrument: true,
+      isRigging: false,
+      isOver12Hours: false
+    },
+    {
+      id: '7',
+      name: '安全ベルト',
+      itemCode: 'RG0001',
+      managementNumber: 'RG0001',
+      thumbnailUrl: undefined,
+      employeeName: '鈴木一郎',
+      borrowedAt: '2025-12-24T07:45:00.000Z',
+      isInstrument: false,
+      isRigging: true,
+      isOver12Hours: false
+    },
+    {
+      id: '8',
+      name: 'ワイヤーロープ',
+      itemCode: 'RG0002',
+      managementNumber: 'RG0002',
+      thumbnailUrl: undefined,
+      employeeName: '田中次郎',
+      borrowedAt: '2025-12-24T10:15:00.000Z',
+      isInstrument: false,
+      isRigging: true,
+      isOver12Hours: false
+    }
+  ],
+  measuringInstruments: [
+    {
+      id: '1',
+      name: 'デジタルノギス',
+      managementNumber: 'MI0001',
+      storageLocation: '工具庫A',
+      status: 'AVAILABLE',
+      calibrationExpiryDate: '2025-12-31T00:00:00.000Z',
+      isOverdue: false,
+      isDueSoon: false
+    },
+    {
+      id: '2',
+      name: 'レベルゲージ',
+      managementNumber: 'MI0002',
+      storageLocation: '工具庫B',
+      status: 'IN_USE',
+      calibrationExpiryDate: '2025-01-15T00:00:00.000Z',
+      isOverdue: false,
+      isDueSoon: true
+    },
+    {
+      id: '3',
+      name: '温度計',
+      managementNumber: 'MI0003',
+      storageLocation: '工具庫C',
+      status: 'AVAILABLE',
+      calibrationExpiryDate: '2024-11-30T00:00:00.000Z',
+      isOverdue: true,
+      isDueSoon: false
+    }
+  ]
+};
+
 export function useSignageContent() {
+  // 開発用: モックデータを返す（デザインブラッシュアップ用）
+  // 実機検証前にこの行を削除して元に戻すこと
+  const useMockData = import.meta.env.DEV && import.meta.env.VITE_USE_SIGNAGE_MOCK === 'true';
+  
   return useQuery({
     queryKey: ['signage-content'],
-    queryFn: getSignageContent,
-    refetchInterval: 30_000 // 30秒間隔で更新（サイネージ表示用）
+    queryFn: useMockData ? () => Promise.resolve(mockSignageContent) : getSignageContent,
+    refetchInterval: useMockData ? false : 30_000 // 30秒間隔で更新（サイネージ表示用）
   });
 }
 

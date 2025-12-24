@@ -713,6 +713,8 @@ export interface SignageContentResponse {
     employeeName?: string | null;
     borrowedAt?: string | null;
     isInstrument?: boolean;
+    isRigging?: boolean;
+    isOver12Hours?: boolean;
     managementNumber?: string | null;
   }>;
   measuringInstruments?: Array<{
