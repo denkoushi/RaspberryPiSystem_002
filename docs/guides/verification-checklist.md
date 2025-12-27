@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2025-01-XX
+最終更新: 2025-12-27
 
 ## 概要
 
@@ -228,53 +228,253 @@ docker compose -f infrastructure/docker/docker-compose.server.yml stop api
 docker compose -f infrastructure/docker/docker-compose.server.yml start api
 ```
 
-### 4. デプロイスクリプトの検証
+### 4. デプロイプロセス改善機能の検証（未実施）
 
-#### 3.1 デプロイスクリプトの実行
+**実装状況**: ✅ 実装完了（2025-12-27）  
+**実機検証状況**: ⏳ 未実施
 
-```bash
-# ラズパイ5で実行
-cd /opt/RaspberryPiSystem_002
+#### 4.1 実装内容
 
-# 現在の状態を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml ps
+**目的**: デプロイ失敗を防ぐため、デプロイ前の自動チェック機能とログ生成機能を実装
 
-# デプロイスクリプトを実行
-./scripts/server/deploy.sh
+**実装された機能**:
+1. **自動デプロイ前チェック** (`scripts/update-all-clients.sh`):
+   - Pi5への接続確認（ping/SSH）
+   - 既存Ansibleプロセスのkill（重複実行防止）
+   - `network_mode`設定の確認
+   - Pi5→Pi3/Pi4への疎通確認（ansible ping）
+   - メモリ使用状況の確認（Pi3は120MB以上必須）
+   - Pi3サイネージサービスの停止・無効化・マスク（KB-097準拠）
 
-# 期待される結果:
-# - Gitリポジトリが更新される
-# - 依存関係がインストールされる
-# - ビルドが成功する
-# - Dockerコンテナが再ビルド・再起動される
-# - データベースマイグレーションが実行される
-# - ヘルスチェックが成功する
-```
+2. **構造化ログ生成**:
+   - `logs/ansible-precheck-YYYYMMDD-HHMMSS.json`: デプロイ前チェック結果（JSON形式）
+   - `logs/ansible-precheck-YYYYMMDD-HHMMSS.jsonl`: デプロイ前チェック結果（NDJSON形式）
+   - `logs/ansible-update-YYYYMMDD-HHMMSS.log`: デプロイ実行ログ
+   - `logs/ansible-update-YYYYMMDD-HHMMSS.summary.json`: デプロイ実行サマリー
+   - `logs/ansible-diagnostics-YYYYMMDD-HHMMSS.json`: エラー時の診断情報
 
-#### 3.2 デプロイ後の動作確認
+3. **エラーハンドリング強化**:
+   - リトライ機能（`run_remotely`, `run_health_check_remotely`に1回リトライ）
+   - エラー時の診断情報自動収集
+   - 引数パース（`--skip-checks`, `--yes`, `-h/--help`）
 
-```bash
-# ラズパイ5で実行
+4. **Ansibleロール改善**:
+   - Git権限問題の自動修復（`roles/common/tasks/main.yml`）
+   - Pi3メモリ不足の早期検出（`roles/client/tasks/main.yml`）
 
-# APIヘルスチェック
-curl http://localhost:8080/api/health
+#### 4.2 実機検証手順
 
-# 認証テスト
-TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | \
-  grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
+**前提条件**:
+- MacからPi5へのSSH接続が確立されていること
+- Pi5からPi3/Pi4へのSSH接続が確立されていること
+- `network_mode`が適切に設定されていること
 
-# APIリクエストテスト
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/tools/employees
+**検証手順**:
 
-# 期待される結果:
-# - すべてのリクエストが成功する
-# - データが正しく返される
-```
+1. **デプロイスクリプトを実行**:
+   ```bash
+   # Macで実行
+   cd /Users/tsudatakashi/RaspberryPiSystem_002
+   export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+   ./scripts/update-all-clients.sh --yes feature/gmail-attachment-integration
+   ```
 
-### 5. CI/CDパイプラインの検証
+2. **自動チェックの動作確認**:
+   - スクリプト実行時に以下が自動実行されることを確認:
+     - Pi5への接続確認
+     - 既存Ansibleプロセスのkill
+     - `network_mode`確認
+     - ansible ping（Pi5→Pi3/Pi4）
+     - メモリ確認
+     - Pi3サービス停止
+
+3. **ログファイルの生成確認**:
+   ```bash
+   # Macで実行
+   ls -lt logs/ansible-precheck-*.json | head -1
+   ls -lt logs/ansible-update-*.log | head -1
+   ls -lt logs/ansible-update-*.summary.json | head -1
+   ```
+   - 各ログファイルが生成されていることを確認
+
+4. **precheckログの内容確認**:
+   ```bash
+   # Macで実行
+   cat logs/ansible-precheck-*.json | jq '.'
+   ```
+   - 各チェック項目の結果（`ok`, `fail`, `skip`）が記録されていることを確認
+   - `network_mode`, `pi5_ping`, `pi5_ssh`, `ansible_ping`, `memory`, `pi3_service_stop`の結果を確認
+
+5. **デプロイ成功の確認**:
+   - デプロイが正常に完了することを確認
+   - Pi5/Pi3/Pi4すべてが最新コミットに更新されていることを確認
+
+**期待される結果**:
+- ✅ 自動チェックが正常に動作する
+- ✅ ログファイルが正しく生成される
+- ✅ precheckログに各チェック項目の結果が記録される
+- ✅ デプロイが1回で成功する
+- ✅ エラー時は診断情報が生成される
+
+**関連ドキュメント**:
+- [デプロイメントガイド](./deployment.md)
+- [デプロイ トラブルシューティング](./deployment-troubleshooting.md)
+- [デプロイプロセス改善とドキュメント統合計画](../plans/デプロイプロセス改善とドキュメント統合計画_de416cb6.plan.md)
+
+### 5. サイネージUIブラッシュアップの検証（未実施）
+
+**実装状況**: ✅ 実装完了（2025-12-27）  
+**実機検証状況**: ⏳ 未実施（2025-12-27時点）
+
+#### 5.1 実装内容
+
+**目的**: サイネージモニタの表示領域を最大化し、既存仕様に準拠したUI改善
+
+**変更内容**:
+- SPLITモードの左ペインを3列から2列に変更
+- 左ペインのタイトルを「Items On Loan」に変更
+- 各アイテムの表示を仕様に合わせて修正（アイテム名・管理番号・従業員名・日時の位置とフォントサイズ）
+- 右ペインのタイトルを「Document」に変更し、ファイル名を右側に表示
+
+#### 5.2 実機検証手順
+
+**前提条件**:
+- Pi3サイネージクライアントが正常に動作していること
+- サイネージモニタが接続されていること
+
+**検証手順**:
+
+1. **SPLITモードでサイネージを表示**:
+   - Pi3サイネージクライアントでSPLITモードを選択
+   - サイネージ画面が表示されることを確認
+
+2. **左ペインの確認**:
+   - 左ペインが2列表示されることを確認
+   - タイトルが「Items On Loan」であることを確認
+   - 各アイテムの表示を確認:
+     - アイテム名が左揃えで、フォントサイズが半分であること
+     - 管理番号がアイテム名の右側に表示されること
+     - 従業員名が左揃えであること
+     - 日時が従業員名の右側に表示され、連続表示（空白なし）であること
+
+3. **右ペインの確認**:
+   - タイトルが「Document」であることを確認
+   - ファイル名がタイトルの右側に右揃えで表示されることを確認
+
+4. **レイアウトの確認**:
+   - サイネージモニタのアスペクト比に合わせて表示されていることを確認
+   - 表示領域が最大化されていることを確認
+
+**期待される結果**:
+- ✅ 左ペインが2列表示される
+- ✅ タイトル・各アイテムの表示が仕様通りである
+- ✅ レイアウトがサイネージモニタに最適化されている
+- ✅ 表示領域が最大化されている
+
+**関連ドキュメント**:
+- [サイネージ軽量モード計画](../modules/signage/signage-lite.md)
+
+### 6. Gmail添付ファイル連携機能の検証（未実施）
+
+**実装状況**: ✅ 実装完了（2025-12-27）  
+**実機検証状況**: ⏳ 未実施（2025-12-27時点）
+
+#### 6.1 実装内容
+
+**目的**: PowerAutomateからGmailにCSVファイルを添付ファイルとして送信し、Raspberry Pi 5が自動的にGmailから添付ファイルを取得してインポートする統合機能
+
+**実装された機能**:
+1. **Gmail OAuth 2.0認証**:
+   - 認証URL生成（`GET /api/backup/oauth/gmail/authorize`）
+   - 認証コード交換（`GET /api/backup/oauth/gmail/callback`）
+   - リフレッシュトークンによる自動アクセストークン更新
+
+2. **Gmail設定管理**:
+   - Gmail設定の取得・更新（`GET /api/backup/config/gmail`, `PUT /api/backup/config/gmail`）
+   - `backup.json`設定ファイルとの連携
+
+3. **CSVインポート**:
+   - GmailからCSVファイルを取得してインポート（`POST /api/imports/master/from-gmail`）
+   - 件名パターンによるメール検索
+   - 処理済みメールのラベル追加・既読化
+
+4. **スケジュール実行**:
+   - `backup.json`の`csvImports`設定による定期実行
+   - cron形式のスケジュール設定
+
+#### 6.2 実機検証手順
+
+**前提条件**:
+- Pi5上でシステムが正常に動作していること
+- Gmail OAuth 2.0アプリが作成済みであること（`clientId`, `clientSecret`を取得済み）
+- PowerAutomateからGmailへのメール送信が設定済みであること
+
+**検証手順**:
+
+1. **Gmail OAuth認証の設定**:
+   ```bash
+   # Pi5上で実行
+   # 1. 認証URLを取得
+   curl -X GET "http://localhost:8080/api/backup/oauth/gmail/authorize" \
+     -H "Authorization: Bearer <admin-token>"
+   
+   # 2. ブラウザで認証URLを開き、認証コードを取得
+   # 3. 認証コードを交換
+   curl -X GET "http://localhost:8080/api/backup/oauth/gmail/callback?code=<auth-code>&state=<state>" \
+     -H "Authorization: Bearer <admin-token>"
+   
+   # 4. 取得したaccessTokenとrefreshTokenをbackup.jsonに設定
+   ```
+
+2. **Gmail設定の確認**:
+   ```bash
+   # Pi5上で実行
+   curl -X GET "http://localhost:8080/api/backup/config/gmail" \
+     -H "Authorization: Bearer <admin-token>"
+   ```
+   - `clientId`, `subjectPattern`, `labelName`が正しく設定されていることを確認
+
+3. **PowerAutomateからGmailへのメール送信**:
+   - PowerAutomateでCSVファイルを添付してGmailに送信
+   - 件名が`subjectPattern`と一致することを確認（例: `CSV Import: employees-20251227`）
+
+4. **手動インポートの実行**:
+   ```bash
+   # Pi5上で実行
+   curl -X POST "http://localhost:8080/api/imports/master/from-gmail" \
+     -H "Authorization: Bearer <admin-token>" \
+     -H "Content-Type: application/json" \
+     -d '{"replaceExisting": false}'
+   ```
+   - インポートが成功することを確認
+   - 従業員・アイテムデータが正しく登録されることを確認
+
+5. **処理済みメールの確認**:
+   - Gmailでメールに`Pi5/Processed`ラベルが追加されていることを確認
+   - メールが既読になっていることを確認
+
+6. **スケジュール実行の確認**:
+   ```bash
+   # Pi5上で実行
+   # backup.jsonのcsvImports設定を確認
+   cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.csvImports'
+   ```
+   - スケジュール設定が正しいことを確認
+   - スケジュール実行時に自動的にインポートが実行されることを確認
+
+**期待される結果**:
+- ✅ Gmail OAuth認証が正常に動作する
+- ✅ Gmail設定が正しく保存・取得される
+- ✅ PowerAutomateから送信されたメールの添付ファイルが取得できる
+- ✅ CSVインポートが正常に実行される
+- ✅ 処理済みメールにラベルが追加され、既読化される
+- ✅ スケジュール実行が正常に動作する
+
+**関連ドキュメント**:
+- [Gmail添付ファイル統合ガイド](./gmail-attachment-integration.md)
+- [PowerAutomate Gmail統合ガイド](./powerautomate-gmail-integration.md)
+
+### 7. CI/CDパイプラインの検証
 
 #### 4.1 GitHub Actionsの確認
 
