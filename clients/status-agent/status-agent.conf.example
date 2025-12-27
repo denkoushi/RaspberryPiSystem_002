@@ -1,5 +1,5 @@
 # API のベースURL (必須)
-API_BASE_URL="https://raspi5.local:8080/api"
+API_BASE_URL="https://raspi5.local/api"
 
 # クライアントID (必須) - `/api/clients/status` の clientId
 CLIENT_ID="pi3-signage-01"

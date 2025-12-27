@@ -27,7 +27,10 @@ signage_ip: "{{ current_network.raspberrypi3_ip | default(local_network.raspberr
 # よく使うURLを共通変数として定義
 server_base_url: "https://{{ server_ip }}"
 kiosk_full_url: "{{ server_base_url }}/kiosk"
-api_base_url: "http://{{ server_ip }}:8080/api"
+# APIベースURL（クライアント→Pi5）はCaddy経由のHTTPSを使用する
+# - 8080直叩きはdocker-compose側のポート公開/ネットワーク条件に依存して不安定になりやすい
+# - /api は web(Caddy) → api コンテナへリバースプロキシされる前提
+api_base_url: "{{ server_base_url }}/api"
 websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
 
 # 既存の変数名との互換性を保つためのエイリアス
