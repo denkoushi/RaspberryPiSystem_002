@@ -302,7 +302,7 @@ export function SignageDisplayPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {content.tools && content.tools.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {content.tools.map((tool: ToolItem) => (
                     <ToolCard key={tool.id} tool={tool} compact />
                   ))}
