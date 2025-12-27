@@ -487,6 +487,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   }, async (request, reply) => {
     const config = request.body as BackupConfig;
     await BackupConfigLoader.save(config);
+    // スケジューラーを再読み込み（設定変更を即時反映）
+    const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
+    await getBackupScheduler().reload();
     return reply.status(200).send({ success: true });
   });
 
@@ -528,6 +531,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     config.targets.push(newTarget);
     await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み（ターゲット追加を即時反映）
+    const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
+    await getBackupScheduler().reload();
 
     logger?.info({ target: newTarget }, '[BackupRoute] Backup target added');
     return reply.status(200).send({ success: true, target: newTarget });
@@ -582,6 +589,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     await BackupConfigLoader.save(config);
 
+    // スケジューラーを再読み込み（ターゲット更新を即時反映）
+    const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
+    await getBackupScheduler().reload();
+
     logger?.info({ index: targetIndex, target: config.targets[targetIndex] }, '[BackupRoute] Backup target updated');
     return reply.status(200).send({ success: true, target: config.targets[targetIndex] });
   });
@@ -602,6 +613,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const deletedTarget = config.targets[targetIndex];
     config.targets.splice(targetIndex, 1);
     await BackupConfigLoader.save(config);
+
+    // スケジューラーを再読み込み（ターゲット削除を即時反映）
+    const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
+    await getBackupScheduler().reload();
 
     logger?.info({ index: targetIndex, target: deletedTarget }, '[BackupRoute] Backup target deleted');
     return reply.status(200).send({ success: true, target: deletedTarget });

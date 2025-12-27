@@ -212,12 +212,12 @@ sudo cat /var/log/rkhunter/rkhunter.log | grep -E "Warning|Found"
 **バックアップからの復元**:
 ```bash
 # 最新の暗号化バックアップを確認
-ls -lt /opt/RaspberryPiSystem_002/backups/ | head -5
+ls -lt /opt/backups/ | head -5
 
 # バックアップを復号・復元
 export BACKUP_DECRYPTION_KEY="your-gpg-key-id"
 bash /opt/RaspberryPiSystem_002/scripts/server/restore-encrypted.sh \
-  /opt/RaspberryPiSystem_002/backups/backup-YYYYMMDD-HHMMSS.sql.gz.gpg
+  /opt/backups/backup-YYYYMMDD-HHMMSS.sql.gz.gpg
 
 # 復元後の確認
 docker exec raspberry-pi-system-db-1 psql -U postgres -d borrow_return -c "SELECT COUNT(*) FROM \"Loan\";"

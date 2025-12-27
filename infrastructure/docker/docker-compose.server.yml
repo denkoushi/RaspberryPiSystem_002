@@ -39,6 +39,8 @@ services:
       SIGNAGE_PDF_DPI: "240"
       CAMERA_TYPE: mock
       ALERTS_DIR: /app/alerts
+      # API経由のローカルバックアップ保存先（ホストの/opt/backupsをコンテナへマウント）
+      BACKUP_STORAGE_DIR: /opt/backups
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -51,6 +53,8 @@ services:
       - signage-rendered-storage:/app/storage/signage-rendered
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/config:/app/config
+      # バックアップ保存先（ローカルストレージプロバイダー用）
+      - /opt/backups:/opt/backups
       # 環境変数ファイルのバックアップ用にマウント（読み取り専用）
       - /opt/RaspberryPiSystem_002/apps/api:/app/host/apps/api:ro
       - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro

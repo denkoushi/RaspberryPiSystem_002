@@ -2,10 +2,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 
-const getBaseDir = () => {
+const getDefaultBaseDir = (): string => {
   if (process.env.BACKUP_STORAGE_DIR) return process.env.BACKUP_STORAGE_DIR;
   if (process.env.NODE_ENV === 'test') return '/tmp/test-backups';
-  return '/opt/RaspberryPiSystem_002/backups';
+  return '/opt/backups';
 };
 
 async function ensureDir(dir: string): Promise<void> {
@@ -13,25 +13,31 @@ async function ensureDir(dir: string): Promise<void> {
 }
 
 export class LocalStorageProvider implements StorageProvider {
+  private readonly baseDir: string;
+
+  constructor(options?: { baseDir?: string }) {
+    this.baseDir = options?.baseDir || getDefaultBaseDir();
+  }
+
   async upload(file: Buffer, targetPath: string): Promise<void> {
-    const fullPath = path.join(getBaseDir(), targetPath);
+    const fullPath = path.join(this.baseDir, targetPath);
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.writeFile(fullPath, file);
   }
 
   async download(targetPath: string): Promise<Buffer> {
-    const fullPath = path.join(getBaseDir(), targetPath);
+    const fullPath = path.join(this.baseDir, targetPath);
     return fs.readFile(fullPath);
   }
 
   async delete(targetPath: string): Promise<void> {
-    const fullPath = path.join(getBaseDir(), targetPath);
+    const fullPath = path.join(this.baseDir, targetPath);
     await fs.rm(fullPath, { force: true });
   }
 
   async list(targetPath: string): Promise<FileInfo[]> {
-    const fullPath = path.join(getBaseDir(), targetPath);
+    const fullPath = path.join(this.baseDir, targetPath);
     const results: FileInfo[] = [];
 
     const walk = async (base: string, rel: string) => {

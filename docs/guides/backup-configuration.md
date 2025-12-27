@@ -48,7 +48,7 @@ update-frequency: medium
   "storage": {
     "provider": "local" | "dropbox",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups",
+      "basePath": "/opt/backups",
       "accessToken": "your-dropbox-access-token"
     }
   },
@@ -79,7 +79,7 @@ update-frequency: medium
   "storage": {
     "provider": "local",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups"
+      "basePath": "/opt/backups"
     }
   }
 }
@@ -87,7 +87,7 @@ update-frequency: medium
 
 **設定項目**:
 - `provider`: `"local"` を指定
-- `options.basePath`: バックアップファイルの保存先ディレクトリ（デフォルト: `/opt/RaspberryPiSystem_002/backups`）
+- `options.basePath`: バックアップファイルの保存先ディレクトリ（デフォルト: `/opt/backups`）
 
 ### Dropboxストレージ
 
@@ -343,8 +343,8 @@ APIレスポンスの`path`は**相対パス**で返されます：
 ```
 
 **ローカルストレージの場合**:
-- `getBaseDir()`: `/opt/RaspberryPiSystem_002/backups`（`options.basePath`の値）
-- 完全パス例: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+- `getBaseDir()`: `/opt/backups`（`options.basePath`の値）
+- 完全パス例: `/opt/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
 **Dropboxストレージの場合**:
 - `getBaseDir()`: `/backups`（`options.basePath`の値、デフォルト）
@@ -375,7 +375,7 @@ APIレスポンスの`path`は**相対パス**で返されます：
   "storage": {
     "provider": "local",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups"
+      "basePath": "/opt/backups"
     }
   },
   "targets": [
@@ -435,14 +435,14 @@ APIレスポンスの`path`は**相対パス**で返されます：
 
 ### 設定ファイルの編集
 
-設定ファイルを編集した後、APIサーバーを再起動すると新しい設定が読み込まれます：
+設定ファイルを**手動で編集**した後は、以下いずれかで新しい設定を反映します（スケジュール実行も含めて更新されます）：
 
 ```bash
 cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 ```
 
-または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）：
+または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
 
 ```bash
 curl -X PUT http://localhost:8080/api/backup/config \
@@ -450,6 +450,8 @@ curl -X PUT http://localhost:8080/api/backup/config \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
 ```
+
+**補足**: 管理コンソール（`/admin/backup/targets`）からバックアップ対象や設定を更新した場合も、同様に即時反映されます。
 
 ## APIエンドポイント
 

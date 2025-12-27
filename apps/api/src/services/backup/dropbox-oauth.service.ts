@@ -19,12 +19,12 @@ export interface DropboxTokenInfo {
 export class DropboxOAuthService {
   private readonly appKey: string;
   private readonly appSecret: string;
-  private readonly redirectUri: string;
+  private readonly redirectUri?: string;
 
   constructor(options: {
     appKey: string;
     appSecret: string;
-    redirectUri: string;
+    redirectUri?: string;
   }) {
     this.appKey = options.appKey;
     this.appSecret = options.appSecret;
@@ -37,6 +37,9 @@ export class DropboxOAuthService {
    * @returns 認証URL
    */
   getAuthorizationUrl(state?: string): string {
+    if (!this.redirectUri) {
+      throw new Error('redirectUri is required to generate Dropbox authorization URL');
+    }
     const params = new URLSearchParams({
       client_id: this.appKey,
       response_type: 'code',
@@ -57,6 +60,9 @@ export class DropboxOAuthService {
    * @returns トークン情報
    */
   async exchangeCodeForTokens(code: string): Promise<DropboxTokenInfo> {
+    if (!this.redirectUri) {
+      throw new Error('redirectUri is required to exchange Dropbox auth code for tokens');
+    }
     const response = await fetch('https://api.dropbox.com/oauth2/token', {
       method: 'POST',
       headers: {

@@ -59,7 +59,7 @@ docker compose ps
 
 **デフォルト設定**:
 - ストレージプロバイダー: `local`
-- ベースパス: `/opt/RaspberryPiSystem_002/backups`
+- ベースパス: `/opt/backups`
 
 ### 4. 手動バックアップ実行
 
@@ -94,7 +94,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 8888,佐藤 花子,04131705340289,組立,,ACTIVE
 ```
 
-**ファイルパス（改善後）**: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+**ファイルパス（改善後）**: `/opt/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
 #### 4.2 CSVバックアップ（アイテムデータ）
 
@@ -139,7 +139,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**注意**: APIレスポンスの`path`は相対パス（`backups/`プレフィックスなし）で返されます。完全なファイルパスは`LocalStorageProvider`の`getBaseDir()`（`/opt/RaspberryPiSystem_002/backups`）と結合して取得します。
+**注意**: APIレスポンスの`path`は相対パス（`backups/`プレフィックスなし）で返されます。完全なファイルパスは`LocalStorageProvider`の`getBaseDir()`（`/opt/backups`）と結合して取得します。
 
 ### 6. バックアップファイルの整合性確認
 
@@ -162,15 +162,15 @@ Authorization: Bearer <token>
 
 ### 問題1: バックアップディレクトリの二重構造 ✅ 解決済み
 
-**現象**: バックアップファイルが `/opt/RaspberryPiSystem_002/backups/backups/csv/...` に作成される（`backups`が2階層）
+**現象**: バックアップファイルが `/opt/backups/backups/csv/...` に作成される（`backups`が2階層）
 
-**原因**: `BackupService.buildPath()`が`backups/`プレフィックスを含んでいたため、`LocalStorageProvider`の`getBaseDir()`（`/opt/RaspberryPiSystem_002/backups`）と結合時に`backups/backups`になった
+**原因**: `BackupService.buildPath()`が`backups/`プレフィックスを含んでいたため、`LocalStorageProvider`の`getBaseDir()`（`/opt/backups`）と結合時に`backups/backups`になった
 
 **解決策**: `BackupService.buildPath()`から`backups/`プレフィックスを削除し、相対パス（`csv/{timestamp}/{source}.csv`）のみを返すように修正
 
 **解決後の動作**:
 - APIレスポンスの`path`: `csv/2025-12-15T00-42-04-953Z/employees.csv`
-- 実際のファイルパス: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+- 実際のファイルパス: `/opt/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
 **変更内容**:
 - `apps/api/src/services/backup/backup.service.ts`: `buildPath()`メソッドを修正

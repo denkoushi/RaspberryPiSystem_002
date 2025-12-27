@@ -102,11 +102,11 @@ curl http://localhost:8080/api/backup \
 ```bash
 # バックアップディレクトリの確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  ls -la /opt/RaspberryPiSystem_002/backups/
+  ls -la /opt/backups/
 
 # 特定のバックアップファイルの確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  ls -lah /opt/RaspberryPiSystem_002/backups/backups/csv/*/
+  ls -lah /opt/backups/csv/*/
 ```
 
 **期待結果**: 

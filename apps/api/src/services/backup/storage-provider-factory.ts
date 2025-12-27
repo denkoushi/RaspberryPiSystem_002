@@ -28,7 +28,7 @@ export class StorageProviderFactory {
     'local' | 'dropbox',
     (options: StorageProviderOptions) => StorageProvider
   > = new Map<'local' | 'dropbox', (options: StorageProviderOptions) => StorageProvider>([
-    ['local', () => new LocalStorageProvider()],
+    ['local', (options: StorageProviderOptions) => new LocalStorageProvider({ baseDir: options.basePath })],
     [
       'dropbox',
       (options: StorageProviderOptions) => {
@@ -37,7 +37,8 @@ export class StorageProviderFactory {
         }
 
         let oauthService: DropboxOAuthService | undefined;
-        if (options.refreshToken && options.appKey && options.appSecret && options.redirectUri) {
+        // リフレッシュトークンによる自動更新はredirectUri不要（token refresh APIにはredirect_uriは不要）
+        if (options.refreshToken && options.appKey && options.appSecret) {
           oauthService = new DropboxOAuthService({
             appKey: options.appKey,
             appSecret: options.appSecret,
@@ -69,6 +70,9 @@ export class StorageProviderFactory {
       provider: config.storage.provider
     };
 
+    // local/dropbox共通
+    options.basePath = config.storage.options?.basePath as string | undefined;
+
     if (config.storage.provider === 'dropbox') {
       const accessToken = config.storage.options?.accessToken as string | undefined;
       if (!accessToken) {
@@ -76,7 +80,6 @@ export class StorageProviderFactory {
       }
 
       options.accessToken = accessToken;
-      options.basePath = config.storage.options?.basePath as string | undefined;
       options.refreshToken = config.storage.options?.refreshToken as string | undefined;
       options.appKey = config.storage.options?.appKey as string | undefined;
       options.appSecret = config.storage.options?.appSecret as string | undefined;

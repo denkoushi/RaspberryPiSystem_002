@@ -178,7 +178,7 @@
 5. **バックアップファイルを確認**
    ```bash
    # Pi5上で実行
-   ls -lh /opt/RaspberryPiSystem_002/backups/
+   ls -lh /opt/backups/
    ```
    - 新しいバックアップファイルが作成されていることを確認
 
@@ -209,7 +209,7 @@
 4. **バックアップファイルを確認**
    ```bash
    # Pi5上で実行
-   ls -lh /opt/RaspberryPiSystem_002/backups/
+   ls -lh /opt/backups/
    ```
    - 追加した対象のバックアップファイルが作成されていることを確認
 

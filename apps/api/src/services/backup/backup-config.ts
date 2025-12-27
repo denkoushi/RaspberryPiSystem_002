@@ -68,7 +68,7 @@ export const defaultBackupConfig: BackupConfig = {
   storage: {
     provider: 'local',
     options: {
-      basePath: '/opt/RaspberryPiSystem_002/backups'
+      basePath: '/opt/backups'
     }
   },
   pathMappings: [
