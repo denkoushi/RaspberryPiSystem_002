@@ -371,10 +371,22 @@ check_ansible_connectivity() {
   fi
   log_info "Checking client connectivity from Pi5 (ansible ping)..."
   local out
-  out=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && ansible all -i ${INVENTORY_PATH} -m ping" 2>&1) || {
-    precheck_record "ansible_ping" "fail" "ansible ping failed"
-    log_error "${out}"
-    exit_with_error 3 "Pi5→Pi3/Pi4 の疎通（ansible ping）が失敗しました。network_modeやSSH鍵を確認してください。"
+  local exit_code=0
+  # タイムアウト120秒でansible pingを実行（Pi3の応答が遅い場合を考慮）
+  out=$(timeout 120 ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && ansible all -i ${INVENTORY_PATH} -m ping" 2>&1) || {
+    exit_code=$?
+    if [[ ${exit_code} -eq 124 ]]; then
+      # タイムアウト（124はtimeoutコマンドのタイムアウト終了コード）
+      precheck_record "ansible_ping" "fail" "ansible ping timeout (120s)"
+      log_error "ansible pingがタイムアウトしました（120秒）。Pi3/Pi4のSSHデーモンが応答していない可能性があります。"
+      log_error "出力: ${out}"
+      exit_with_error 3 "Pi5→Pi3/Pi4 の疎通（ansible ping）がタイムアウトしました。対象端末のSSHデーモン状態を確認してください（KB-096参照）。"
+    else
+      # その他のエラー
+      precheck_record "ansible_ping" "fail" "ansible ping failed (exit=${exit_code})"
+      log_error "${out}"
+      exit_with_error 3 "Pi5→Pi3/Pi4 の疎通（ansible ping）が失敗しました（終了コード: ${exit_code}）。network_modeやSSH鍵を確認してください。"
+    fi
   }
   if echo "${out}" | grep -qE "UNREACHABLE|FAILED"; then
     precheck_record "ansible_ping" "fail" "unreachable detected"
