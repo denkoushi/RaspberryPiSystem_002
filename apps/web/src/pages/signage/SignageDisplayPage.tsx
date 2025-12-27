@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useSignageContent } from '../../api/hooks';
 
@@ -169,33 +170,124 @@ function InstrumentCard({ instrument }: { instrument: InstrumentItem }) {
 }
 
 export function SignageDisplayPage() {
-  const { data: content, error, isLoading } = useSignageContent();
+  const [searchParams] = useSearchParams();
+  const forceMockSplit = searchParams.get('mock') === 'split';
   const [currentPdfPage, setCurrentPdfPage] = useState(0);
   const [pdfPages, setPdfPages] = useState<string[]>([]);
+  
+  // デザイン確認用: SPLITモードを強制表示（URLパラメータで強制表示: ?mock=split）
+  const mockSplitContent: SignageContentResponse | null = 
+    forceMockSplit
+      ? {
+          contentType: 'SPLIT',
+          displayMode: 'SINGLE',
+          tools: [
+            {
+              id: '1',
+              name: 'ドライバーセット',
+              itemCode: 'T00001',
+              thumbnailUrl: null,
+              borrowedAt: new Date().toISOString(),
+              employeeName: '山田太郎',
+              isInstrument: false,
+              isRigging: false,
+              isOver12Hours: false,
+            },
+            {
+              id: '2',
+              name: 'メジャー',
+              itemCode: 'T00002',
+              thumbnailUrl: null,
+              borrowedAt: new Date().toISOString(),
+              employeeName: '佐藤花子',
+              isInstrument: false,
+              isRigging: false,
+              isOver12Hours: false,
+            },
+            {
+              id: '3',
+              name: 'ハンマー',
+              itemCode: 'T00003',
+              thumbnailUrl: null,
+              borrowedAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+              employeeName: '鈴木一郎',
+              isInstrument: false,
+              isRigging: false,
+              isOver12Hours: true,
+            },
+            {
+              id: '4',
+              name: 'トルクレンチ',
+              itemCode: 'T00004',
+              thumbnailUrl: null,
+              borrowedAt: new Date().toISOString(),
+              employeeName: '田中次郎',
+              isInstrument: false,
+              isRigging: false,
+              isOver12Hours: false,
+            },
+            {
+              id: '5',
+              name: '計測機器1',
+              itemCode: 'M00001',
+              thumbnailUrl: null,
+              borrowedAt: new Date().toISOString(),
+              employeeName: '山本三郎',
+              isInstrument: true,
+              isRigging: false,
+              isOver12Hours: false,
+            },
+            {
+              id: '6',
+              name: '計測機器2',
+              itemCode: 'M00002',
+              thumbnailUrl: null,
+              borrowedAt: new Date().toISOString(),
+              employeeName: '中村四郎',
+              isInstrument: true,
+              isRigging: false,
+              isOver12Hours: false,
+            },
+          ],
+          pdf: {
+            id: 'pdf1',
+            name: 'サンプルPDF.pdf',
+            pages: ['/api/signage/pdfs/pdf1/page/1'],
+          },
+          measuringInstruments: [],
+        }
+      : null;
+  
+  // モックデータがある場合はAPIを呼ばない
+  const { data: content, error, isLoading } = useSignageContent();
+  
+  // モックデータを優先（デザイン確認用）
+  const displayContent = mockSplitContent || content;
 
   const pdfIntervalMs = useMemo(() => {
-    if (!content?.pdf || content.displayMode !== 'SLIDESHOW') {
+    const pdfContent = displayContent?.pdf;
+    if (!pdfContent || displayContent?.displayMode !== 'SLIDESHOW') {
       return null;
     }
-    return (content.pdf.slideInterval ?? 5) * 1000;
-  }, [content?.pdf, content?.displayMode]);
+    return (pdfContent.slideInterval ?? 5) * 1000;
+  }, [displayContent?.pdf, displayContent?.displayMode]);
 
   useEffect(() => {
-    if (pdfIntervalMs && content?.pdf?.pages?.length) {
+    if (pdfIntervalMs && displayContent?.pdf?.pages?.length) {
       const interval = setInterval(() => {
-        setCurrentPdfPage((prev) => (prev + 1) % content.pdf!.pages.length);
+        setCurrentPdfPage((prev) => (prev + 1) % displayContent.pdf!.pages.length);
       }, pdfIntervalMs);
       return () => clearInterval(interval);
     }
     return undefined;
-  }, [content?.pdf, pdfIntervalMs]);
+  }, [displayContent?.pdf, pdfIntervalMs]);
 
   useEffect(() => {
-    if (content?.pdf?.pages) {
-      setPdfPages(content.pdf.pages);
+    if (displayContent?.pdf?.pages) {
+      setPdfPages(displayContent.pdf.pages);
       setCurrentPdfPage(0);
     }
-  }, [content?.pdf?.pages]);
+  }, [displayContent?.pdf?.pages]);
 
   const renderStateScreen = (title: string, description?: string) => (
     <div className={`${screenClass} flex items-center justify-center`}>
@@ -206,11 +298,14 @@ export function SignageDisplayPage() {
     </div>
   );
 
-  if (error) {
+  // エラー時でもモックデータがあれば表示
+  // モックデータがある場合はエラーでも表示
+  if (error && !mockSplitContent) {
     return renderStateScreen('コンテンツを取得できません', 'ネットワーク状態を確認してください');
   }
 
-  if (isLoading) {
+  // モックデータがある場合はローディング中でも表示
+  if (isLoading && !mockSplitContent) {
     return (
       <div className={`${screenClass} flex flex-col items-center justify-center`}>
         <div className="flex items-center gap-3 text-white/70">
@@ -221,11 +316,63 @@ export function SignageDisplayPage() {
     );
   }
 
-  if (!content) {
+  if (!displayContent) {
     return renderStateScreen('表示できるコンテンツがありません');
   }
 
-  if (content.contentType === 'TOOLS') {
+  // SPLITモードを優先表示（デザイン確認用）
+  if (displayContent.contentType === 'SPLIT') {
+    return (
+      <div className={screenClass}>
+        {/* 仕様: 左右分割表示（工具管理データとPDFを同時表示）、余白を最小化 */}
+        {/* モニター仕様: 1920x1080（16:9）にフィットするレイアウト */}
+        <div className="grid h-full w-full grid-cols-1 gap-2 p-1 lg:grid-cols-[3fr_2fr]">
+          <section className={`flex min-h-0 flex-col gap-1 ${panelClass}`}>
+            {/* 仕様: タイトルは1行表示、フォントサイズ20px、フォントウェイト600 */}
+            <div className="flex-shrink-0">
+              <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>持出中アイテム</h2>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {displayContent.tools && displayContent.tools.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {displayContent.tools.map((tool: ToolItem) => (
+                    <ToolCard key={tool.id} tool={tool} compact />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-white/60">
+                  工具データがありません
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className={`flex min-h-0 flex-col gap-1 ${panelClass}`}>
+            {/* 仕様: 右ペインはタイトル直下からPDFを始めるため、ヘッダー高さを最小化 */}
+            {/* 仕様: タイトルは1行表示、フォントサイズ20px、フォントウェイト600 */}
+            <div className="flex-shrink-0 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>ドキュメント</h2>
+              {displayContent.pdf?.name ? (
+                <span className="text-[10px] text-white/60">{displayContent.pdf.name}</span>
+              ) : null}
+            </div>
+            {/* 仕様: 黒地（PDFエリア）を最優先で拡大 */}
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              {displayContent.pdf && displayContent.pdf.pages.length > 0 ? (
+                displayContent.displayMode === 'SLIDESHOW'
+                  ? renderPdfImage(pdfPages[currentPdfPage], `PDF Page ${currentPdfPage + 1}`)
+                  : renderPdfImage(pdfPages[0], 'PDF')
+              ) : (
+                <p className="text-white/60">PDFが設定されていません</p>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  if (displayContent.contentType === 'TOOLS') {
     return (
       <div className={screenClass}>
         <div className="flex h-full w-full flex-col gap-2 p-1">
@@ -234,9 +381,9 @@ export function SignageDisplayPage() {
             <h1 className="text-xl font-semibold text-white">工具在庫状況</h1>
           </header>
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-white/5 bg-slate-950/40">
-            {content.tools && content.tools.length > 0 ? (
+            {displayContent.tools && displayContent.tools.length > 0 ? (
               <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2 overflow-y-auto p-2">
-                {content.tools.map((tool: ToolItem) => (
+                {displayContent.tools.map((tool: ToolItem) => (
                   <ToolCard key={tool.id} tool={tool} />
                 ))}
               </div>
@@ -246,13 +393,13 @@ export function SignageDisplayPage() {
               </div>
             )}
           </div>
-          {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
+          {displayContent.measuringInstruments && displayContent.measuringInstruments.length > 0 ? (
             <section className={`${panelClass} flex-shrink-0`}>
               <div className="mb-1">
                 <h2 className="text-lg font-semibold text-white">計測機器ステータス</h2>
               </div>
               <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-2">
-                {content.measuringInstruments.map((inst: InstrumentItem) => (
+                {displayContent.measuringInstruments.map((inst: InstrumentItem) => (
                   <InstrumentCard key={inst.id} instrument={inst} />
                 ))}
               </div>
@@ -263,12 +410,12 @@ export function SignageDisplayPage() {
     );
   }
 
-  if (content.contentType === 'PDF') {
-    if (!content.pdf || content.pdf.pages.length === 0) {
+  if (displayContent.contentType === 'PDF') {
+    if (!displayContent.pdf || displayContent.pdf.pages.length === 0) {
       return renderStateScreen('PDFが設定されていません');
     }
 
-    if (content.displayMode === 'SLIDESHOW') {
+    if (displayContent.displayMode === 'SLIDESHOW') {
       return (
         <div className={screenClass}>
           {/* 仕様: 余白を最小化、表示領域最大化 */}
@@ -289,7 +436,7 @@ export function SignageDisplayPage() {
     );
   }
 
-  if (content.contentType === 'SPLIT') {
+  if (displayContent.contentType === 'SPLIT') {
     return (
       <div className={screenClass}>
         {/* 仕様: 左右分割表示（工具管理データとPDFを同時表示）、余白を最小化 */}
@@ -301,9 +448,9 @@ export function SignageDisplayPage() {
               <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>持出中アイテム</h2>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {content.tools && content.tools.length > 0 ? (
+              {displayContent.tools && displayContent.tools.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
-                  {content.tools.map((tool: ToolItem) => (
+                  {displayContent.tools.map((tool: ToolItem) => (
                     <ToolCard key={tool.id} tool={tool} compact />
                   ))}
                 </div>
@@ -320,14 +467,14 @@ export function SignageDisplayPage() {
             {/* 仕様: タイトルは1行表示、フォントサイズ20px、フォントウェイト600 */}
             <div className="flex-shrink-0 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white" style={{ fontSize: '20px', fontWeight: 600 }}>ドキュメント</h2>
-              {content.pdf?.name ? (
-                <span className="text-[10px] text-white/60">{content.pdf.name}</span>
+              {displayContent.pdf?.name ? (
+                <span className="text-[10px] text-white/60">{displayContent.pdf.name}</span>
               ) : null}
             </div>
             {/* 仕様: 黒地（PDFエリア）を最優先で拡大 */}
             <div className="flex min-h-0 flex-1 items-center justify-center">
-              {content.pdf && content.pdf.pages.length > 0 ? (
-                content.displayMode === 'SLIDESHOW'
+              {displayContent.pdf && displayContent.pdf.pages.length > 0 ? (
+                displayContent.displayMode === 'SLIDESHOW'
                   ? renderPdfImage(pdfPages[currentPdfPage], `PDF Page ${currentPdfPage + 1}`)
                   : renderPdfImage(pdfPages[0], 'PDF')
               ) : (
