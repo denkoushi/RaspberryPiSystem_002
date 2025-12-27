@@ -373,9 +373,10 @@ check_ansible_connectivity() {
   local out
   local exit_code=0
   # タイムアウト120秒でansible pingを実行（Pi3の応答が遅い場合を考慮）
-  out=$(timeout 120 ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && ansible all -i ${INVENTORY_PATH} -m ping" 2>&1) || {
+  # Macではtimeoutコマンドが使えないため、SSH経由でPi5上でtimeoutを実行
+  out=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && timeout 120 ansible all -i ${INVENTORY_PATH} -m ping" 2>&1) || {
     exit_code=$?
-    if [[ ${exit_code} -eq 124 ]]; then
+    if [[ ${exit_code} -eq 124 ]] || echo "${out}" | grep -qE "timeout|timed out|124"; then
       # タイムアウト（124はtimeoutコマンドのタイムアウト終了コード）
       precheck_record "ansible_ping" "fail" "ansible ping timeout (120s)"
       log_error "ansible pingがタイムアウトしました（120秒）。Pi3/Pi4のSSHデーモンが応答していない可能性があります。"
