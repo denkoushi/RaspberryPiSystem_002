@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-13（KB-097反映）
+最終更新: 2025-12-27（Pi3デプロイ前再起動手順追加）
 
 ## 概要
 
@@ -214,10 +214,19 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（必須）
 
-**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。メモリ逼迫やSSH接続タイムアウトを防ぐため、**まずPi3を再起動**してからサービス停止を行います（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
 
 ```bash
-# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
+# 1. Pi3を再起動（メモリ逼迫/sshd応答不良の状態から回復）
+# 注意: 再起動には約60秒かかります。再起動後、接続が復帰するまで待機してください
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo reboot'"
+echo "Pi3が再起動するまで約60秒待機します..."
+sleep 60
+
+# 2. 再起動後の接続確認
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'uptime && free -m | head -2'"
+
+# 3. Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer'"
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer'"
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
@@ -225,21 +234,23 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl ma
 # sudo権限の前提
 # signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
 
-# メモリ使用状況を確認（120MB以上空きがあることを確認）
+# 4. メモリ使用状況を確認（120MB以上空きがあることを確認）
+# 再起動後は通常、メモリが十分に空いているはずです
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
 
-# プロセスが完全に停止していることを確認
+# 5. プロセスが完全に停止していることを確認
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep signage-lite | grep -v grep'"
 # → 何も表示されないことを確認
 
-# Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
+# 6. Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
 ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
 ```
 
 **重要**: 
+- **再起動は必須です**: Pi3のメモリ逼迫やSSH接続タイムアウトを防ぐため、デプロイ前に必ずPi3を再起動してください。再起動により、メモリが完全にリセットされ、sshdを含む全プロセスがクリーンな状態になります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)、[deployment-troubleshooting.md](./deployment-troubleshooting.md#3-pi3-へ-ssh-は-ping-が通るのに接続できない)参照）
 - `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 - `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
 
@@ -629,7 +640,15 @@ NETWORK_MODE=tailscale \
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "free -m"'
    ```
 
-6. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
+6. **Pi3の再起動**（Pi3デプロイ時のみ必須）
+   - Pi3を再起動してメモリ逼迫/SSH接続タイムアウトの状態から回復
+   - 再起動には約60秒かかります
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo reboot'"
+   sleep 60  # 再起動完了まで待機
+   ```
+
+7. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
    ```bash
    # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service"'
