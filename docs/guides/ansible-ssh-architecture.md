@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Ansible SSH接続アーキテクチャの説明
 
-最終更新: 2025-12-01
+最終更新: 2025-12-27（KB-098参照追加）
 
 ## 概要
 
@@ -256,7 +256,9 @@ volumes:
 
 これにより、Dockerコンテナ内からPi4へのSSH接続が可能になります。
 
-**注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
+**注意**: 
+- クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
+- **重要**: `inventory.yml`の`ansible_ssh_common_args`に`-o RequestTTY=force`を設定してはいけません。このオプションはAnsibleのsftpファイル転送と干渉し、ansible pingがタイムアウトする原因になります。詳細は [KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト) を参照してください。
 
 ## 関連ドキュメント
 

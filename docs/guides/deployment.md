@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-27（Pi3デプロイ前再起動手順追加）
+最終更新: 2025-12-27（Pi3デプロイ前再起動手順追加、試行錯誤の詳細記録）
 
 ## 概要
 
@@ -247,7 +247,8 @@ ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f Ansibal
 ```
 
 **重要**: 
-- **再起動は必須です**: Pi3のメモリ逼迫やSSH接続タイムアウトを防ぐため、デプロイ前に必ずPi3を再起動してください。再起動により、メモリが完全にリセットされ、sshdを含む全プロセスがクリーンな状態になります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)、[deployment-troubleshooting.md](./deployment-troubleshooting.md#3-pi3-へ-ssh-は-ping-が通るのに接続できない)参照）
+- **再起動は必須です**: Pi3のメモリ逼迫やSSH接続タイムアウトを防ぐため、デプロイ前に必ずPi3を再起動してください。再起動により、メモリが完全にリセットされ、sshdを含む全プロセスがクリーンな状態になります。**再起動は「対処療法」ではなく、標準的な復旧手順**です（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)、[deployment-troubleshooting.md](./deployment-troubleshooting.md#3-pi3-へ-ssh-は-ping-が通るのに接続できない)参照）
+- **サービス停止だけでは不十分**: メモリ逼迫状態では、サービス停止だけではメモリが完全に解放されない場合があります。再起動→サービス停止→デプロイの順序で実行してください（[deployment-troubleshooting.md](./deployment-troubleshooting.md#8-pi3のメモリ不足でデプロイが失敗する)参照）
 - `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 - `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 - Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
@@ -341,8 +342,12 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 
 **トラブルシューティング**:
 - **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **ansible pingがタイムアウトする**: `inventory.yml`の`ansible_ssh_common_args`に`RequestTTY=force`が設定されていないか確認。設定されている場合は削除（[KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)、[deployment-troubleshooting.md](./deployment-troubleshooting.md#7-ansible-pingがタイムアウトするが直接sshは成功)参照）
+- **Pi3のメモリ不足**: サービス停止だけでは不十分な場合、Pi3を再起動してからサービス停止→デプロイを実行（[deployment-troubleshooting.md](./deployment-troubleshooting.md#8-pi3のメモリ不足でデプロイが失敗する)参照）
+- **Pi5のGit状態問題**: `git checkout`が失敗する場合、`git stash`でローカル変更を退避してからデプロイを再実行（[deployment-troubleshooting.md](./deployment-troubleshooting.md#9-pi5のgit状態問題でデプロイが失敗する)参照）
+- **デプロイが「中断された」ように見える**: Cursor側のSSH接続が切れても、Pi5上のAnsibleプロセスは継続実行される。Pi3のGit状態とサービス状態を確認してデプロイの成功/失敗を判断（[deployment-troubleshooting.md](./deployment-troubleshooting.md#10-デプロイが中断されたように見えるが実際は成功している)参照）
 - **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
-- **デプロイが失敗する**: ログを確認（`logs/deploy/deploy-*.jsonl`）
+- **デプロイが失敗する**: ログを確認（`logs/ansible-precheck-*.json`, `logs/ansible-update-*.log`, `logs/ansible-diagnostics-*.json`）
 - **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../knowledge-base/infrastructure.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
 
 **関連ナレッジ**: 

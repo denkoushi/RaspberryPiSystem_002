@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Ansibleベストプラクティス
 
-最終更新: 2025-12-06
+最終更新: 2025-12-27（KB-098参照追加）
 
 ## 概要
 
@@ -275,7 +275,16 @@ all:
         raspberrypi4:
           ansible_host: 192.168.128.102
           status_agent_client_id: raspberrypi4-kiosk1
+      vars:
+        # StrictHostKeyCheckingを無効化（ホストキー確認プロンプトを回避）
+        # 注意: RequestTTY=forceはAnsibleのsftpファイル転送と干渉するため削除（KB-098参照）
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 ```
+
+**⚠️ 重要な注意事項**:
+- **`RequestTTY=force`を設定してはいけません**: このオプションはAnsibleのsftpファイル転送と干渉し、ansible pingがタイムアウトする原因になります（[KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
+- **sudoのTTY要件**: sudoのTTY要件は`/etc/sudoers`の`Defaults !requiretty`で解決すべき（SSHオプションではなく）
+- **`StrictHostKeyChecking=no`のみ使用**: ホストキー確認プロンプトを回避するため、`StrictHostKeyChecking=no`のみを使用してください
 
 ### 4. テストの実施
 
@@ -352,6 +361,7 @@ src: /opt/RaspberryPiSystem_002/infrastructure/ansible/templates/template.j2
 
 ## 更新履歴
 
+- 2025-12-27: `ansible_ssh_common_args`の設定に関する重要な注意事項を追加（KB-098参照）。`RequestTTY=force`を設定してはいけない理由を明記
 - 2025-12-06: デプロイ前のリソース確保セクションを追加（KB-086参照）
 - 2025-12-01: 初版作成
 

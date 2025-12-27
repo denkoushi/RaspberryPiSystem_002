@@ -2,7 +2,7 @@
 title: デプロイ トラブルシューティング
 tags: [デプロイ, トラブルシューティング, Ansible, RaspberryPi]
 audience: [運用者, 開発者]
-last-verified: 2025-12-27
+last-verified: 2025-12-27（試行錯誤の詳細記録追加）
 related: [deployment.md, ansible-ssh-architecture.md, ../knowledge-base/infrastructure.md]
 category: guides
 update-frequency: high
@@ -118,16 +118,131 @@ update-frequency: high
 ### 7) ansible pingがタイムアウトするが、直接SSHは成功
 
 **典型ログ**:
-- `ansible all -i inventory.yml -m ping` がタイムアウト
+- `ansible all -i inventory.yml -m ping` がタイムアウト（120秒）
 - 直接 `ssh user@host` は成功
+- 直接IP指定でansible pingも成功: `ansible all -i '100.105.224.86,' -u signageras3 -m ping` → SUCCESS
 
 **原因**:
 - `inventory.yml`の`ansible_ssh_common_args`に`-o RequestTTY=force`が設定されている
 - `RequestTTY=force`はAnsibleのsftpファイル転送と干渉する
+- Ansibleは`transport = smart`を使用し、sftpを優先するため、この問題が表面化する
+- sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合し、ハングする
+
+**調査手順（デバッグモードでの検証）**:
+1. 直接IP指定でansible ping → 成功（inventory.ymlを使わない）
+2. inventory.yml経由でansible ping → タイムアウト
+3. `ansible_ssh_common_args`をオーバーライドして`RequestTTY=force`を削除 → 成功
+4. 根本原因として`RequestTTY=force`を特定
 
 **対処**:
 - `inventory.yml`から`RequestTTY=force`を削除（`StrictHostKeyChecking=no`のみ残す）
+- sudoのTTY要件は`/etc/sudoers`の`Defaults !requiretty`で解決すべき（SSHオプションではなく）
 - **KB**: [KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)
+
+**修正後のinventory.yml**:
+```yaml
+      vars:
+        # StrictHostKeyCheckingを無効化（ホストキー確認プロンプトを回避）
+        # 注意: RequestTTY=forceはAnsibleのsftpファイル転送と干渉するため削除（KB-098参照）
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+```
+
+---
+
+### 8) Pi3のメモリ不足でデプロイが失敗する
+
+**典型ログ**:
+- `Pi3の空きメモリが不足しています（available=97MB < 120MB）`
+- サービス停止を実行してもメモリが解放されない
+
+**原因**:
+- Pi3のメモリ逼迫状態が続いている
+- サービス停止だけではメモリが完全に解放されない
+- sshdを含む全プロセスがメモリを消費している
+
+**対処**:
+1. **Pi3を再起動**（メモリを完全にリセット）
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo reboot'"
+   sleep 60  # 再起動完了まで待機
+   ```
+2. **再起動後、サービス停止**（KB-097手順）
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service'"
+   ```
+3. **メモリ確認**（120MB以上を確認）
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m | awk \"NR==2 {print \\\$7}\"'"
+   ```
+4. **デプロイ実行**
+
+**学んだこと**:
+- サービス停止だけでは不十分な場合がある
+- 再起動によりメモリが完全にリセットされ、sshdを含む全プロセスがクリーンな状態になる
+- 再起動は「対処療法」ではなく、標準的な復旧手順（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+
+**KB**: [KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約), [KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)
+
+---
+
+### 9) Pi5のGit状態問題でデプロイが失敗する
+
+**典型ログ**:
+- `error: Your local changes to the following files would be overwritten by checkout: infrastructure/ansible/inventory.yml`
+- `git checkout`が失敗
+
+**原因**:
+- Pi5の`inventory.yml`にローカル変更がある（手動で修正した場合など）
+- Ansibleが`git reset --hard`を実行しようとして、ローカル変更と競合する
+
+**対処**:
+```bash
+# Pi5に接続
+ssh denkon5sd02@100.106.158.2
+
+# ローカル変更をstash
+cd /opt/RaspberryPiSystem_002
+git stash
+
+# ブランチを更新
+git checkout feature/gmail-attachment-integration
+git reset --hard origin/feature/gmail-attachment-integration
+
+# デプロイを再実行
+```
+
+**学んだこと**:
+- Pi5のリポジトリにローカル変更がある場合、デプロイ前に`git stash`または`git reset --hard`を実行する必要がある
+- `inventory.yml`などの設定ファイルは、Ansibleで管理するか、変更後にコミットする必要がある
+
+---
+
+### 10) デプロイが「中断された」ように見えるが、実際は成功している
+
+**典型ログ**:
+- Cursor側で「Command was aborted by the user」と表示
+- デプロイログが途中で止まっているように見える
+
+**原因**:
+- Cursor側のSSH接続がタイムアウトまたはユーザー操作で中断された
+- しかし、Pi5上のAnsibleプロセスは継続実行されている
+
+**確認方法**:
+```bash
+# Pi5上のAnsibleプロセスを確認
+ssh denkon5sd02@100.106.158.2 "ps aux | grep ansible | grep -v grep"
+
+# Pi3のGit状態を確認（デプロイが完了しているか）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'cd /opt/RaspberryPiSystem_002 && git log --oneline -1'"
+
+# Pi3のサービス状態を確認
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"
+```
+
+**学んだこと**:
+- Mac側のSSH接続が切れても、Pi5上のAnsibleプロセスは継続実行される（`nohup`相当）
+- デプロイの成功/失敗は、Pi5上のAnsibleプロセスの終了コードで判断する
+- Pi3のGit状態とサービス状態を確認することで、デプロイの成功/失敗を判断できる
 
 ---
 

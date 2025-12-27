@@ -2809,11 +2809,25 @@ ssh denkon5sd02@192.168.10.230
 - Ansibleのsftpファイル転送メカニズムと干渉し、ハングを引き起こす
 - sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合
 
-**調査手順**:
-1. 直接IP指定でansible ping → 成功
-2. inventory.yml経由でansible ping → タイムアウト
-3. `ansible_ssh_common_args`をオーバーライドして`RequestTTY=force`を削除 → 成功
-4. 根本原因として`RequestTTY=force`を特定
+**調査手順（デバッグモードでの詳細調査）**:
+1. **直接IP指定でansible ping**: ✅ 成功
+   ```bash
+   ansible all -i '100.105.224.86,' -u signageras3 -m ping
+   # → SUCCESS => {"ping": "pong"}
+   ```
+2. **inventory.yml経由でansible ping**: ❌ タイムアウト（120秒）
+   ```bash
+   ansible raspberrypi3 -i inventory.yml -m ping
+   # → タイムアウト（exit code 124）
+   ```
+3. **ansible-inventoryで変数展開確認**: `ansible_host: "{{ signage_ip }}"`が表示されるが、実際の実行時は正しく展開されている
+4. **ansible ping verboseモード**: 出力が途中で止まり、SSH接続試行まで到達していない
+5. **`ansible_ssh_common_args`をオーバーライド**: `RequestTTY=force`を削除 → ✅ 成功
+   ```bash
+   ansible raspberrypi3 -i inventory.yml -m ping -e 'ansible_ssh_common_args="-o StrictHostKeyChecking=no"'
+   # → SUCCESS => {"ping": "pong"}
+   ```
+6. **根本原因として`RequestTTY=force`を特定**: sftpサブシステムとの干渉を確認
 
 **有効だった対策**: 
 - ✅ **`RequestTTY=force`を削除**: `ansible_ssh_common_args`から`-o RequestTTY=force`を削除
@@ -2827,11 +2841,43 @@ ssh denkon5sd02@192.168.10.230
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 ```
 
+**試行錯誤の詳細（実機検証時の発見）**:
+
+**問題1: ansible pingタイムアウト**
+- **症状**: Pi5からPi3/Pi4へのansible pingが120秒でタイムアウト
+- **誤った仮説**: 
+  - Jinja2変数未展開（`ansible_host: "{{ signage_ip }}"`が展開されていない）
+  - Ansibleプロセス競合
+  - SSHタイムアウト設定が短すぎる
+- **正しい仮説**: `RequestTTY=force`がAnsibleのsftpファイル転送と干渉
+- **検証方法**: 
+  - 直接IP指定でansible ping → 成功（inventory.ymlを使わない）
+  - `ansible_ssh_common_args`をオーバーライドして`RequestTTY=force`を削除 → 成功
+- **解決**: `inventory.yml`から`RequestTTY=force`を削除
+
+**問題2: Pi3メモリ不足**
+- **症状**: Pi3のメモリが97MBで120MB未満、デプロイスクリプトが失敗
+- **試行**: サービス停止だけでは不十分（メモリが解放されない）
+- **解決**: Pi3を再起動→サービス停止→デプロイで成功（再起動後177MB）
+
+**問題3: Pi5のGit状態問題**
+- **症状**: `git checkout`が失敗（`Your local changes to the following files would be overwritten`）
+- **原因**: Pi5の`inventory.yml`にローカル変更（`RequestTTY=force`削除の手動修正）
+- **解決**: `git stash`でローカル変更を退避し、リポジトリをリセット
+
+**問題4: デプロイ中断の誤解**
+- **症状**: Cursor側で「Command was aborted by the user」と表示
+- **誤解**: デプロイが中断されたと判断
+- **実際**: Pi5上のAnsibleプロセスは継続実行され、デプロイは成功
+- **学び**: Mac側のSSH接続が切れても、Pi5上のAnsibleは継続実行される（`nohup`相当）
+
 **学んだこと**: 
-1. **RequestTTY=forceとsftpの非互換性**: sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合する
-2. **become/sudoのTTY要件**: sudoのTTY要件は`/etc/sudoers`の`Defaults !requiretty`で解決すべき（SSHオプションではなく）
-3. **ansible-inventoryとansible pingの違い**: ansible-inventoryは成功してもansible pingが失敗する場合、SSH接続設定を疑う
-4. **直接IP指定テストの重要性**: inventory.yml固有の問題を切り分けるために有効
+1. **RequestTTY=forceとsftpの非互換性**: sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合する。Ansibleは`transport = smart`を使用し、sftpを優先するため、この問題が表面化する
+2. **become/sudoのTTY要件**: sudoのTTY要件は`/etc/sudoers`の`Defaults !requiretty`で解決すべき（SSHオプションではなく）。`RequestTTY=force`は元々become/sudoのTTY要件を満たすために追加されたが、Ansibleのsftpと干渉する
+3. **ansible-inventoryとansible pingの違い**: ansible-inventoryは成功してもansible pingが失敗する場合、SSH接続設定（`ansible_ssh_common_args`）を疑う
+4. **直接IP指定テストの重要性**: inventory.yml固有の問題を切り分けるために有効。直接IP指定で成功する場合、inventory.ymlの設定を確認する
+5. **Pi3再起動の必要性**: メモリ逼迫状態ではサービス停止だけでは不十分。再起動によりメモリが完全にリセットされ、sshdを含む全プロセスがクリーンな状態になる
+6. **デプロイ中断の誤解**: Cursor側のSSH接続が切れても、Pi5上のAnsibleプロセスは継続実行される。デプロイの成功/失敗はPi5上のAnsibleプロセスの終了コードで判断する
 
 **解決状況**: ✅ **解決済み**（2025-12-27）
 

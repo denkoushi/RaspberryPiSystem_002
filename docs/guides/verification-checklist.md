@@ -228,10 +228,10 @@ docker compose -f infrastructure/docker/docker-compose.server.yml stop api
 docker compose -f infrastructure/docker/docker-compose.server.yml start api
 ```
 
-### 4. デプロイプロセス改善機能の検証（未実施）
+### 4. デプロイプロセス改善機能の検証
 
 **実装状況**: ✅ 実装完了（2025-12-27）  
-**実機検証状況**: ⏳ 未実施
+**実機検証状況**: ✅ **正常成功**（2025-12-27）
 
 #### 4.1 実装内容
 
@@ -315,6 +315,66 @@ docker compose -f infrastructure/docker/docker-compose.server.yml start api
 - ✅ precheckログに各チェック項目の結果が記録される
 - ✅ デプロイが1回で成功する
 - ✅ エラー時は診断情報が生成される
+
+#### 4.3 実機検証結果（2025-12-27）
+
+**検証実施日**: 2025-12-27
+
+**検証結果**: ✅ **正常成功**
+
+**検証内容**:
+
+1. **自動チェックの動作確認**: ✅ 成功
+   - 全チェック項目が正常に実行され、precheckログに記録された
+   - `pi5_ping`: ok
+   - `pi5_ssh`: ok
+   - `ansible_process_cleanup`: ok
+   - `network_mode`: ok (tailscale)
+   - `ansible_ping`: ok (全ホスト到達可能)
+   - `pi5_memory`: ok (5935MB)
+   - `pi3_memory`: ok (134MB)
+   - `pi3_service_stop`: ok
+
+2. **ログファイルの生成確認**: ✅ 成功
+   - `logs/ansible-precheck-20251227-174239.json`: 生成確認
+   - `logs/ansible-update-20251227-175910.log`: 生成確認
+   - `logs/ansible-diagnostics-*.json`: エラー時に生成確認
+
+3. **precheckログの内容確認**: ✅ 成功
+   - 全チェック項目の結果（`ok`, `fail`, `skip`）が正しく記録されている
+   - JSON形式で構造化されている
+
+4. **デプロイ成功の確認**: ✅ 成功
+   - Pi5: `a40ba0a` (最新コミット)
+   - Pi3: `a40ba0a` (最新コミット)
+   - Pi4: `a40ba0a` (最新コミット)
+   - 全デバイスが最新コミットに更新されている
+
+**検証中に発見された問題と解決**:
+
+1. **ansible pingタイムアウト問題**:
+   - **問題**: `inventory.yml`の`ansible_ssh_common_args`に`-o RequestTTY=force`が設定されており、Ansibleのsftpファイル転送と干渉
+   - **解決**: `RequestTTY=force`を削除（KB-098として記録）
+   - **結果**: ansible pingが正常に動作するようになった
+
+2. **Pi3メモリ不足問題**:
+   - **問題**: Pi3のメモリが97MBで120MB未満
+   - **解決**: 標準手順に従い、Pi3を再起動→サービス停止→デプロイ実行
+   - **結果**: 再起動後177MBとなり、デプロイが成功
+
+3. **Pi5のGit状態問題**:
+   - **問題**: Pi5の`inventory.yml`にローカル変更があり、git checkoutが失敗
+   - **解決**: `git stash`でローカル変更を退避し、リポジトリをリセット
+   - **結果**: デプロイが正常に完了
+
+**検証結論**:
+- ✅ デプロイプロセス改善機能は正常に動作している
+- ✅ 自動チェック機能により、デプロイ前の問題を早期に検出できる
+- ✅ 構造化ログにより、トラブルシューティングが容易になった
+- ✅ 標準手順（Pi3再起動→サービス停止→デプロイ）に従うことで、1回でデプロイ成功が可能
+
+**関連KB**:
+- [KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト): RequestTTY=forceによるansible pingタイムアウト
 
 **関連ドキュメント**:
 - [デプロイメントガイド](./deployment.md)
