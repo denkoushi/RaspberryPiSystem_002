@@ -82,21 +82,24 @@ export class StorageProviderFactory {
 
     if (config.storage.provider === 'dropbox') {
       const accessToken = config.storage.options?.accessToken as string | undefined;
-      if (!accessToken) {
-        throw new ApiError(400, 'Dropbox access token is required in config file');
+      // accessTokenが空の場合はlocalにフォールバック
+      if (!accessToken || accessToken.trim() === '') {
+        // ログに警告を出力してlocalにフォールバック
+        console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
+        options.provider = 'local';
+      } else {
+        options.accessToken = accessToken;
+        options.refreshToken = config.storage.options?.refreshToken as string | undefined;
+        options.appKey = config.storage.options?.appKey as string | undefined;
+        options.appSecret = config.storage.options?.appSecret as string | undefined;
+
+        // リダイレクトURIを構築
+        if (requestProtocol && requestHost) {
+          options.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
+        }
+
+        options.onTokenUpdate = onTokenUpdate;
       }
-
-      options.accessToken = accessToken;
-      options.refreshToken = config.storage.options?.refreshToken as string | undefined;
-      options.appKey = config.storage.options?.appKey as string | undefined;
-      options.appSecret = config.storage.options?.appSecret as string | undefined;
-
-      // リダイレクトURIを構築
-      if (requestProtocol && requestHost) {
-        options.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
-      }
-
-      options.onTokenUpdate = onTokenUpdate;
     }
 
     return this.create(options);
