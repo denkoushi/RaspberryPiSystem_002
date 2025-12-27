@@ -10,3 +10,5 @@
 {"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878780268,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
 {"location":"backup.ts:209","message":"runBackup called","data":{"kind":"file","source":"/opt/RaspberryPiSystem_002/apps/web/.env","hasMetadata":false},"timestamp":1766878782945,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
 {"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878783062,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"file","source":"/opt/RaspberryPiSystem_002/apps/api/.env","hasMetadata":false},"timestamp":1766879566773,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766879566932,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}

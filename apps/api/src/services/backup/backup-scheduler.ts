@@ -39,36 +39,62 @@ export class BackupScheduler {
         existingTask.stop();
       }
 
-      // 新しいタスクを作成
-      const task = cron.schedule(target.schedule, async () => {
-        try {
-          logger?.info(
-            { kind: target.kind, source: target.source },
-            '[BackupScheduler] Starting scheduled backup'
+      // スケジュールのバリデーション
+      try {
+        // node-cronのvalidate関数を使用してスケジュールを検証
+        if (!cron.validate(target.schedule)) {
+          logger?.warn(
+            { taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+            '[BackupScheduler] Invalid cron schedule, skipping task'
           );
-
-          await this.executeBackup(config, target);
-
-          logger?.info(
-            { kind: target.kind, source: target.source },
-            '[BackupScheduler] Scheduled backup completed'
-          );
-        } catch (error) {
-          logger?.error(
-            { err: error, kind: target.kind, source: target.source },
-            '[BackupScheduler] Scheduled backup failed'
-          );
+          continue;
         }
-      }, {
-        scheduled: true,
-        timezone: 'Asia/Tokyo'
-      });
+      } catch (error) {
+        logger?.error(
+          { err: error, taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+          '[BackupScheduler] Failed to validate cron schedule, skipping task'
+        );
+        continue;
+      }
 
-      this.tasks.set(taskId, task);
-      logger?.info(
-        { taskId, schedule: target.schedule },
-        '[BackupScheduler] Scheduled task registered'
-      );
+      // 新しいタスクを作成
+      try {
+        const task = cron.schedule(target.schedule, async () => {
+          try {
+            logger?.info(
+              { kind: target.kind, source: target.source },
+              '[BackupScheduler] Starting scheduled backup'
+            );
+
+            await this.executeBackup(config, target);
+
+            logger?.info(
+              { kind: target.kind, source: target.source },
+              '[BackupScheduler] Scheduled backup completed'
+            );
+          } catch (error) {
+            logger?.error(
+              { err: error, kind: target.kind, source: target.source },
+              '[BackupScheduler] Scheduled backup failed'
+            );
+          }
+        }, {
+          scheduled: true,
+          timezone: 'Asia/Tokyo'
+        });
+
+        this.tasks.set(taskId, task);
+        logger?.info(
+          { taskId, schedule: target.schedule },
+          '[BackupScheduler] Scheduled task registered'
+        );
+      } catch (error) {
+        logger?.error(
+          { err: error, taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+          '[BackupScheduler] Failed to create scheduled task'
+        );
+        // エラーが発生しても処理を続行（他のタスクに影響しない）
+      }
     }
 
     logger?.info(

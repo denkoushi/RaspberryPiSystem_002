@@ -530,13 +530,21 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       metadata?: Record<string, unknown>;
     };
 
+    // スケジュールのバリデーション
+    if (body.schedule && body.schedule.trim()) {
+      const cron = await import('node-cron');
+      if (!cron.validate(body.schedule.trim())) {
+        throw new ApiError(400, `Invalid cron schedule format: ${body.schedule}. Expected format: "分 時 日 月 曜日" (e.g., "0 4 * * *")`);
+      }
+    }
+
     const config = await BackupConfigLoader.load();
     
     // 新しいtargetを追加
     const newTarget: BackupConfig['targets'][number] = {
       kind: body.kind,
       source: body.source,
-      schedule: body.schedule,
+      schedule: body.schedule?.trim() || undefined,
       enabled: body.enabled ?? true,
       metadata: body.metadata
     };
@@ -585,6 +593,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       metadata: Record<string, unknown>;
     }>;
 
+    // スケジュールのバリデーション
+    if (body.schedule !== undefined && body.schedule.trim()) {
+      const cron = await import('node-cron');
+      if (!cron.validate(body.schedule.trim())) {
+        throw new ApiError(400, `Invalid cron schedule format: ${body.schedule}. Expected format: "分 時 日 月 曜日" (e.g., "0 4 * * *")`);
+      }
+    }
+
     const config = await BackupConfigLoader.load();
 
     if (targetIndex < 0 || targetIndex >= config.targets.length) {
@@ -595,7 +611,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const existingTarget = config.targets[targetIndex];
     const updatedTarget: BackupConfig['targets'][number] = {
       ...existingTarget,
-      ...body
+      ...body,
+      schedule: body.schedule !== undefined ? (body.schedule.trim() || undefined) : existingTarget.schedule
     };
     config.targets[targetIndex] = updatedTarget;
 
