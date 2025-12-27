@@ -66,8 +66,9 @@ services:
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
     # Caddyからは `api:8080` でアクセス可能
-    # ports:
-    #   - "8080:8080"
+    # Ansibleデプロイ時のヘルスチェック用に一時的に公開（本番環境では削除推奨）
+    ports:
+      - "127.0.0.1:8080:8080"
     logging:
       driver: "json-file"
       options:
