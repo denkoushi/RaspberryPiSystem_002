@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Ansibleエラーハンドリングガイド
 
-最終更新: 2025-12-01
+最終更新: 2025-12-27（KB-098参照追加）
 
 ## 概要
 
@@ -70,30 +70,41 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 
 ## エラーパターンと対応
 
-### パターン1: SSH接続エラー
+### パターン1: SSH接続エラー / ansible pingタイムアウト
 
 **症状**:
 ```
 raspberrypi4 | UNREACHABLE! => {"msg": "Failed to connect to the host via ssh"}
+# または
+ansible pingが120秒でタイムアウト
 ```
 
 **原因**:
 - SSH鍵認証が設定されていない
 - ネットワーク接続の問題
 - ユーザー名が間違っている
+- **`inventory.yml`の`ansible_ssh_common_args`に`RequestTTY=force`が設定されている**（[KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
 
 **対応**:
-1. SSH接続を確認:
+1. **直接SSH接続を確認**:
    ```bash
    ssh tools03@192.168.128.102
    ```
+   - 直接SSHが成功する場合、`inventory.yml`の設定を確認
 
-2. インベントリファイルを確認:
+2. **直接IP指定でansible ping**:
    ```bash
-   cat infrastructure/ansible/inventory.yml
+   ansible all -i '100.105.224.86,' -u signageras3 -m ping
    ```
+   - 直接IP指定で成功する場合、`inventory.yml`の`ansible_ssh_common_args`を確認
 
-3. Ansible接続テスト:
+3. **インベントリファイルを確認**:
+   ```bash
+   cat infrastructure/ansible/inventory.yml | grep ansible_ssh_common_args
+   ```
+   - `RequestTTY=force`が設定されている場合は削除（[KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
+
+4. **Ansible接続テスト**:
    ```bash
    ansible all -i infrastructure/ansible/inventory.yml -m ping
    ```

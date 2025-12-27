@@ -10,7 +10,7 @@ update-frequency: high
 
 # クイックスタートガイド - 一括更新とクライアント監視
 
-最終更新: 2025-12-01
+最終更新: 2025-12-27（Pi3再起動手順追加、KB-097準拠）
 
 ## 概要
 
@@ -44,8 +44,15 @@ update-frequency: high
 
 2. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ）
    ```bash
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer"'
+   # 重要: Pi3を再起動してからサービス停止を行う（標準手順）
+   # 1. Pi3を再起動
+   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo reboot'"
+   sleep 60  # 再起動完了まで待機
+   
+   # 2. サービス停止・無効化・マスク（KB-097準拠）
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service"'
    ```
+   **注意**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。詳細は [deployment.md](./deployment.md#デプロイ前の準備必須) を参照してください。
 
 **Macのターミナルで実行:**
 
@@ -182,6 +189,7 @@ curl -X GET http://192.168.10.230:8080/api/clients/status \
    ```bash
    ansible all -i infrastructure/ansible/inventory.yml -m ping
    ```
+   **注意**: ansible pingがタイムアウトする場合、`inventory.yml`の`ansible_ssh_common_args`に`RequestTTY=force`が設定されていないか確認してください。設定されている場合は削除（[KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
 
 ### 更新が失敗する場合
 
