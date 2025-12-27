@@ -89,6 +89,12 @@ pnpm dev
 - Macからログを確認
 - または、SSH経由でPi4のログファイルを確認
 
+**注意: リモートプロセスの継続実行**:
+- Mac側のSSH接続が切れても、Pi5上のAnsibleプロセスは継続実行される（`nohup`相当）
+- デプロイの成功/失敗は、Pi5上のAnsibleプロセスの終了コードで判断する
+- Cursor側で「Command was aborted by the user」と表示されても、実際のデプロイは成功している可能性がある
+- Pi3のGit状態とサービス状態を確認することで、デプロイの成功/失敗を判断できる
+
 ## 詰まったときのモード切り替え方針
 
 ### デバッグモードで解決できない場合
@@ -149,6 +155,14 @@ fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
 5. **100%の確信がある場合のみ修正**: ログの証拠に基づいて修正
 6. **修正後の検証**: 修正前後のログを比較して確認
 
+**具体例: ansible pingタイムアウトの調査（KB-098）**:
+- **仮説1**: Jinja2変数未展開（`ansible_host: "{{ signage_ip }}"`が展開されていない）
+- **仮説2**: Ansibleプロセス競合
+- **仮説3**: SSHタイムアウト設定が短すぎる
+- **仮説4**: `RequestTTY=force`がAnsibleのsftpファイル転送と干渉
+- **検証方法**: 直接IP指定でansible ping → 成功（inventory.ymlを使わない）、`ansible_ssh_common_args`をオーバーライドして`RequestTTY=force`を削除 → 成功
+- **結果**: 仮説4がCONFIRMED、`inventory.yml`から`RequestTTY=force`を削除して解決
+
 ### 3. ログファイルの管理
 
 - **実行前にログファイルをクリア**: `delete_file`ツールを使用
@@ -170,5 +184,7 @@ fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
 
 - `docs/guides/development.md`: 開発ガイド（デバッグセクション）
 - `docs/knowledge-base/frontend.md`: フロントエンド関連のナレッジベース
+- `docs/knowledge-base/infrastructure.md`: インフラ関連のナレッジベース（KB-098など）
+- `docs/guides/deployment-troubleshooting.md`: デプロイトラブルシューティング（リモートプロセスの継続実行について）
 - `.cursor/rules/system-stability.mdc`: 既存システム保護ルール
 - `.cursor/rules/documentation-first.mdc`: ドキュメント優先ルール

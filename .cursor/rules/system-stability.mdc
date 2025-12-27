@@ -24,6 +24,12 @@ alwaysApply: true
 - **設定ファイルの確認**: 変更対象の設定ファイルが他のコンポーネントに影響しないか確認
 - **関連ドキュメントの確認**: `docs/INDEX.md` から関連ドキュメントを参照
 
+**デプロイ作業の場合、追加で以下を確認**:
+- **ネットワークモード設定**: Pi5上の`group_vars/all.yml`の`network_mode`が環境に合っているか（[KB-094](../docs/knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
+- **Ansible接続確認**: `ansible all -i inventory.yml -m ping`が成功するか（[KB-098](../docs/knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
+- **Pi3デプロイの場合**: Pi3を再起動してからサービス停止を実行（[KB-096](../docs/knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)、[KB-097](../docs/knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- **Pi5のGit状態**: ローカル変更がないか確認（`git status`）
+
 ### 2. バックアップの徹底
 
 以下の操作前に必ずバックアップを取る：
@@ -67,8 +73,14 @@ docker volume inspect <volume-name>
 
 **参照すべきドキュメント例**:
 - Docker関連: `docs/knowledge-base/infrastructure.md`
-- デプロイ関連: `docs/guides/deployment.md`
+- デプロイ関連: `docs/guides/deployment.md`、`docs/guides/deployment-troubleshooting.md`
 - API関連: `docs/knowledge-base/api.md`
+- Ansible関連: `docs/guides/ansible-best-practices.md`、`docs/guides/ansible-ssh-architecture.md`、`docs/knowledge-base/infrastructure.md`（KB-098など）
+
+**最新のナレッジベース（2025-12-27時点）**:
+- **KB-098**: `ansible_ssh_common_args`の`RequestTTY=force`によるansible pingタイムアウト（[KB-098](../docs/knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)参照）
+- **KB-097**: Pi3デプロイ時の`systemctl mask --runtime`の必要性（[KB-097](../docs/knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- **KB-096**: Pi3デプロイ前の再起動の必要性（[KB-096](../docs/knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 
 **詳細な手順**: ドキュメント参照と既存コード・設定の尊重の詳細な手順については、`.cursor/rules/documentation-first.mdc`を参照してください。
 
