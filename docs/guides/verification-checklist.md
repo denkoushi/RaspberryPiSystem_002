@@ -439,10 +439,10 @@ docker compose -f infrastructure/docker/docker-compose.server.yml start api
 **検証実施日**: 2025-12-27
 
 **実施内容**:
-1. **実装の修正**: 
-   - `maxColumns: 3` → `maxColumns: 2`に変更（検証手順に準拠）
-   - タイトル: 「持出中アイテム」→「Items On Loan」
-   - タイトル: 「ドキュメント」→「Document」
+1. **実装の確認**: 
+   - `maxColumns: 3`（KB-085参照、実際のデザイン仕様）
+   - タイトル: 「持出中アイテム」（フロントエンドと一致）
+   - タイトル: 「ドキュメント」（フロントエンドと一致）
 2. **デプロイ**: Pi5に修正をデプロイ
 3. **SPLITモードスケジュール作成**: 全時間帯でSPLITモードを有効化
 4. **サイネージ画像生成**: 持出中のアイテム（トルクレンチ #1）を含むサイネージ画像を生成
@@ -452,8 +452,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml start api
 - ✅ SPLITモードのサイネージ画像が正常に生成された（184KB、6400x3600のJPEG）
 - ✅ サイネージコンテンツAPIがSPLITモードを返すことを確認
 - ✅ Pi3サイネージサービスが正常に動作し、最新画像を取得・表示
-- ✅ 左ペインが2列表示される実装に修正済み（`maxColumns: 2`）
-- ✅ タイトルが「Items On Loan」と「Document」に変更済み
+- ✅ 左ペインが3列表示される実装を確認（`maxColumns: 3`、KB-085参照）
+- ✅ タイトルが「持出中アイテム」と「ドキュメント」であることを確認（フロントエンドと一致）
 
 **確認事項**:
 - サイネージ画像の生成: ✅ 成功（184KB、6400x3600のJPEG）
