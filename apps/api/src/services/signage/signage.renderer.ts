@@ -242,7 +242,7 @@ export class SignageRenderer {
       mode: 'SPLIT',
       showThumbnails: true,
       maxRows: 3,
-      maxColumns: 3,
+      maxColumns: 2, // ブラッシュアップ: 3列から2列に変更（検証手順に準拠）
     });
 
     const overflowBadge =
@@ -291,7 +291,7 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            持出中アイテム
+            Items On Loan
           </text>
           ${cardsSvg}
           ${overflowBadge}
@@ -303,7 +303,7 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
           <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            ドキュメント
+            Document
           </text>
           ${slideInfo}
           ${pdfContent}
