@@ -90,8 +90,15 @@
     cd "{{ repo_path }}"
     git remote set-url origin {{ repo_remote | quote }}
     git fetch --all --prune --tags
-    git checkout {{ repo_version | quote }}
-    git reset --hard {{ repo_version | quote }}
+    # NOTE:
+    # - ブランチ指定の場合、ローカルブランチが古いと `git reset --hard <branch>` では更新されない
+    # - origin/<branch> が存在する場合はそれを基準にローカルブランチを更新する
+    if git show-ref --verify --quiet "refs/remotes/origin/{{ repo_version }}"; then
+      git checkout -B {{ repo_version | quote }} "origin/{{ repo_version }}"
+    else
+      git checkout {{ repo_version | quote }}
+      git reset --hard {{ repo_version | quote }}
+    fi
   args:
     executable: /bin/bash
   environment: "{{ git_environment }}"
