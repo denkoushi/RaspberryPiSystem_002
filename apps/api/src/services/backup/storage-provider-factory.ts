@@ -28,7 +28,14 @@ export class StorageProviderFactory {
     'local' | 'dropbox',
     (options: StorageProviderOptions) => StorageProvider
   > = new Map<'local' | 'dropbox', (options: StorageProviderOptions) => StorageProvider>([
-    ['local', (options: StorageProviderOptions) => new LocalStorageProvider({ baseDir: options.basePath })],
+    [
+      'local',
+      (options: StorageProviderOptions) => {
+        // 環境変数は運用/CIでの上書き手段として最優先にする
+        const envBaseDir = process.env.BACKUP_STORAGE_DIR;
+        return new LocalStorageProvider({ baseDir: envBaseDir || options.basePath });
+      }
+    ],
     [
       'dropbox',
       (options: StorageProviderOptions) => {
