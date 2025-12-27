@@ -404,12 +404,19 @@ export class SignageRenderer {
     const maxItems = columns * maxRows;
     const displayTools = tools.slice(0, maxItems);
     const overflowCount = Math.max(0, tools.length - displayTools.length);
-        const cardRadius = Math.round(12 * scale);
-        const cardPadding = Math.round(12 * scale);
-        const thumbnailSize = Math.round(96 * scale);
-        const thumbnailWidth = thumbnailSize;
-        const thumbnailHeight = thumbnailSize;
-        const thumbnailGap = Math.round(12 * scale);
+    // フロントエンド準拠: rounded-2xl = 16px
+    const cardRadius = Math.round(16 * scale);
+    // フロントエンド準拠: p-4 = 16px
+    const cardPadding = Math.round(16 * scale);
+    // フロントエンド準拠: aspectRatio '4 / 3'でカード上部に大きく表示
+    // カードの高さからテキストエリアを引いた残りを画像エリアに使用
+    const textAreaHeight = Math.round(80 * scale); // テキストエリアの高さ（概算）
+    const thumbnailAreaHeight = cardHeight - textAreaHeight - cardPadding * 2;
+    const thumbnailWidth = cardWidth - cardPadding * 2;
+    const thumbnailHeight = Math.round(thumbnailWidth * 3 / 4); // 4:3アスペクト比
+    // 実際の画像エリアに収まるように調整
+    const actualThumbnailHeight = Math.min(thumbnailHeight, thumbnailAreaHeight);
+    const thumbnailGap = Math.round(8 * scale); // フロントエンド準拠: gap-2 = 8px
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -451,57 +458,84 @@ export class SignageRenderer {
           : Math.max(2, Math.round(2 * scale)); // 通常は2px以上
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
-        let hasThumbnail = false;
 
+        // フロントエンド準拠: 画像エリアはカード上部、aspectRatio 4:3
+        const imageAreaY = y + cardPadding;
+        const imageAreaHeight = actualThumbnailHeight;
+        
         if (config.showThumbnails && tool.thumbnailUrl) {
           const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
           if (thumbnailPath) {
             const base64 = await this.encodeLocalImageAsBase64(
               thumbnailPath,
               thumbnailWidth,
-              thumbnailHeight,
+              actualThumbnailHeight,
               'cover'
             );
             if (base64) {
-              hasThumbnail = true;
-              const thumbnailX = x + cardPadding;
-              const thumbnailY = y + Math.round((cardHeight - thumbnailHeight) / 2);
+              // フロントエンド準拠: rounded-2xl = 16px角丸、bg-slate-900/40背景
               thumbnailElement = `
+                <rect x="${x + cardPadding}" y="${imageAreaY}" width="${thumbnailWidth}" height="${imageAreaHeight}"
+                  rx="${Math.round(16 * scale)}" ry="${Math.round(16 * scale)}"
+                  fill="rgba(15,23,42,0.4)" />
                 <clipPath id="${clipId}">
-                  <rect x="${thumbnailX}" y="${thumbnailY}"
-                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
+                  <rect x="${x + cardPadding}" y="${imageAreaY}"
+                    width="${thumbnailWidth}" height="${imageAreaHeight}" rx="${Math.round(16 * scale)}" ry="${Math.round(16 * scale)}" />
                 </clipPath>
-                <image x="${thumbnailX}" y="${thumbnailY}"
-                  width="${thumbnailWidth}" height="${thumbnailHeight}"
-                  href="${base64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
+                <image x="${x + cardPadding}" y="${imageAreaY}"
+                  width="${thumbnailWidth}" height="${imageAreaHeight}"
+                  href="${base64}" preserveAspectRatio="xMidYMid cover" clip-path="url(#${clipId})" />
+              `;
+            } else {
+              // 画像なしの場合のフォールバック表示（フロントエンド準拠）
+              const fallbackText = isInstrument ? '計測機器' : isRigging ? '吊具' : '画像なし';
+              thumbnailElement = `
+                <rect x="${x + cardPadding}" y="${imageAreaY}" width="${thumbnailWidth}" height="${imageAreaHeight}"
+                  rx="${Math.round(16 * scale)}" ry="${Math.round(16 * scale)}"
+                  fill="rgba(15,23,42,0.4)" />
+                <text x="${x + cardWidth / 2}" y="${imageAreaY + imageAreaHeight / 2}"
+                  text-anchor="middle" dominant-baseline="middle"
+                  font-size="${Math.round(14 * scale)}" fill="rgba(255,255,255,0.3)" font-family="sans-serif">
+                  ${this.escapeXml(fallbackText)}
+                </text>
               `;
             }
           }
+        } else {
+          // 画像URLがない場合のフォールバック表示
+          const fallbackText = isInstrument ? '計測機器' : isRigging ? '吊具' : '画像なし';
+          thumbnailElement = `
+            <rect x="${x + cardPadding}" y="${imageAreaY}" width="${thumbnailWidth}" height="${imageAreaHeight}"
+              rx="${Math.round(16 * scale)}" ry="${Math.round(16 * scale)}"
+              fill="rgba(15,23,42,0.4)" />
+            <text x="${x + cardWidth / 2}" y="${imageAreaY + imageAreaHeight / 2}"
+              text-anchor="middle" dominant-baseline="middle"
+              font-size="${Math.round(14 * scale)}" fill="rgba(255,255,255,0.3)" font-family="sans-serif">
+              ${this.escapeXml(fallbackText)}
+            </text>
+          `;
         }
 
-        // テキストエリアのX座標: サムネイルがある場合は右側、ない場合は左側から開始
-        const textAreaX = hasThumbnail
-          ? cardPadding + thumbnailSize + thumbnailGap
-          : cardPadding;
-
-        const textStartY = y + cardPadding;
+        // フロントエンド準拠: テキストエリアは画像の下、gap-2 = 8px
+        const textAreaX = cardPadding;
+        const textStartY = imageAreaY + imageAreaHeight + thumbnailGap;
         const textX = x + textAreaX;
-        // 統一された情報の並び順: 名称+管理番号（同一行）、従業員名+日時（同一行、右揃え）、警告
-        // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
-        const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
-        const nameY = primaryY + Math.round(14 * scale); // primaryText(9px) + 14px間隔
         // 日付と時刻を従業員名の右横に配置（右揃え）
         const cardRightX = x + cardWidth - cardPadding;
         const dateTimeText = borrowedDate && borrowedTime ? `${borrowedDate} ${borrowedTime}` : (borrowedDate || borrowedTime || '');
-        const warningY = nameY + Math.round(20 * scale); // secondary(16px) + 20px間隔
+        // フロントエンド準拠: space-y-0（テキスト間の余白なし）
+        const primaryY = textStartY + Math.round(9 * scale); // アイテム名の位置
+        const nameY = primaryY + Math.round(16 * scale); // 従業員名の位置（gap-2 = 8px相当）
+        const warningY = nameY + Math.round(16 * scale); // 警告の位置
+        
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
               fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
             ${thumbnailElement}
-            <!-- アイテム名（9px）+ 管理番号（右横） -->
-            <text x="${textX}" y="${primaryY}"
+            <!-- フロントエンド準拠: 1. アイテム名（9px、太字、白）+ 管理番号/アイテムコード（右横、14px、等幅フォント、白） -->
+            <text x="${x + textAreaX}" y="${primaryY}"
               font-size="${Math.max(8, Math.round(9 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
             </text>
@@ -509,8 +543,8 @@ export class SignageRenderer {
               text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
               ${this.escapeXml(managementText || tool.itemCode || '')}
             </text>
-            <!-- 従業員名（左揃え）+ 日時（右揃え） -->
-            <text x="${textX}" y="${nameY}"
+            <!-- フロントエンド準拠: 2. 従業員名（16px、白、左揃え）+ 日付 + 時刻（右揃え、スペース区切り、14px、白） -->
+            <text x="${x + textAreaX}" y="${nameY}"
               font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
@@ -518,8 +552,9 @@ export class SignageRenderer {
               text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(dateTimeText)}
             </text>` : ''}
+            <!-- フロントエンド準拠: 3. 警告（期限超過の場合、「⚠ 期限超過」、14px、白） -->
             ${isExceeded
-              ? `<text x="${textX}" y="${warningY}"
+              ? `<text x="${x + textAreaX}" y="${warningY}"
                   font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   ⚠ 期限超過
                 </text>`
