@@ -113,6 +113,24 @@ update-frequency: high
 - `scripts/update-all-clients.sh` の `generate_summary()` が改行を除去し、`|| true` で安全に動く必要があります
   - 既に修正済みのはずですが、再発した場合は差分を確認してください
 
+---
+
+### 7) ansible pingがタイムアウトするが、直接SSHは成功
+
+**典型ログ**:
+- `ansible all -i inventory.yml -m ping` がタイムアウト
+- 直接 `ssh user@host` は成功
+
+**原因**:
+- `inventory.yml`の`ansible_ssh_common_args`に`-o RequestTTY=force`が設定されている
+- `RequestTTY=force`はAnsibleのsftpファイル転送と干渉する
+
+**対処**:
+- `inventory.yml`から`RequestTTY=force`を削除（`StrictHostKeyChecking=no`のみ残す）
+- **KB**: [KB-098](../knowledge-base/infrastructure.md#kb-098-ansible_ssh_common_argsのrequestttyforceによるansible-pingタイムアウト)
+
+---
+
 ## それでも解決しない場合（調査の進め方）
 
 1. `logs/ansible-precheck-*.json` の `checks[]` で **最初にfail/warnになった項目**を特定

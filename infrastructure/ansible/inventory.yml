@@ -79,8 +79,9 @@ all:
             - /usr/bin/systemctl stop status-agent.timer
             - /usr/bin/systemctl restart status-agent.timer
       vars:
-        # 非対話実行（nohup等）でもsudo/becomeが詰まらないようTTYを強制
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o RequestTTY=force'
+        # StrictHostKeyCheckingを無効化（ホストキー確認プロンプトを回避）
+        # 注意: RequestTTY=forceはAnsibleのsftpファイル転送と干渉するため削除（KB-098参照）
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"

@@ -2791,3 +2791,51 @@ ssh denkon5sd02@192.168.10.230
 - `~/.ssh/config`（SSH設定ファイル）
 
 ---
+
+---
+
+### [KB-098] ansible_ssh_common_argsのRequestTTY=forceによるAnsible pingタイムアウト
+
+**EXEC_PLAN.md参照**: デプロイプロセス改善（2025-12-27）
+
+**事象**: 
+- Pi5からPi3/Pi4へのansible pingが120秒でタイムアウト
+- 直接SSHは成功するが、inventory.yml経由のAnsible接続は失敗
+- ansible-playbookも同様にハング
+
+**要因**: 
+- `inventory.yml`の`clients`グループに設定されていた`ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o RequestTTY=force'`が問題
+- `RequestTTY=force`はSSH経由でTTYを強制的に割り当てるオプション
+- Ansibleのsftpファイル転送メカニズムと干渉し、ハングを引き起こす
+- sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合
+
+**調査手順**:
+1. 直接IP指定でansible ping → 成功
+2. inventory.yml経由でansible ping → タイムアウト
+3. `ansible_ssh_common_args`をオーバーライドして`RequestTTY=force`を削除 → 成功
+4. 根本原因として`RequestTTY=force`を特定
+
+**有効だった対策**: 
+- ✅ **`RequestTTY=force`を削除**: `ansible_ssh_common_args`から`-o RequestTTY=force`を削除
+- ✅ **`StrictHostKeyChecking=no`のみ残す**: ホストキー確認プロンプト回避には必要
+
+**修正後のinventory.yml（clients vars）**:
+```yaml
+      vars:
+        # StrictHostKeyCheckingを無効化（ホストキー確認プロンプトを回避）
+        # 注意: RequestTTY=forceはAnsibleのsftpファイル転送と干渉するため削除（KB-098参照）
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+```
+
+**学んだこと**: 
+1. **RequestTTY=forceとsftpの非互換性**: sftpサブシステムはTTYを期待しないため、RequestTTY=forceが競合する
+2. **become/sudoのTTY要件**: sudoのTTY要件は`/etc/sudoers`の`Defaults !requiretty`で解決すべき（SSHオプションではなく）
+3. **ansible-inventoryとansible pingの違い**: ansible-inventoryは成功してもansible pingが失敗する場合、SSH接続設定を疑う
+4. **直接IP指定テストの重要性**: inventory.yml固有の問題を切り分けるために有効
+
+**解決状況**: ✅ **解決済み**（2025-12-27）
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory.yml`（ansible_ssh_common_argsの修正）
+- `docs/guides/deployment.md`（デプロイ手順）
+- `docs/guides/deployment-troubleshooting.md`（トラブルシューティング）
