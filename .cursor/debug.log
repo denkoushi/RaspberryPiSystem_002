@@ -1,0 +1,12 @@
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"database","source":"postgresql://postgres:postgres@db:5432/borrow_return","hasMetadata":false},"timestamp":1766878764801,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878765541,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"file","source":"/opt/RaspberryPiSystem_002/apps/web/.env","hasMetadata":false},"timestamp":1766878768961,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878769072,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"csv","source":"employees","hasMetadata":false},"timestamp":1766878772059,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878772167,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"csv","source":"items","hasMetadata":false},"timestamp":1766878776562,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878776658,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"image","source":"photo-storage","hasMetadata":false},"timestamp":1766878780094,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878780268,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:209","message":"runBackup called","data":{"kind":"file","source":"/opt/RaspberryPiSystem_002/apps/web/.env","hasMetadata":false},"timestamp":1766878782945,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
+{"location":"backup.ts:212","message":"runBackup success","data":{"success":true},"timestamp":1766878783062,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}

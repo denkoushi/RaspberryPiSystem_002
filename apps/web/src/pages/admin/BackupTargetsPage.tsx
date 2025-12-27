@@ -161,7 +161,7 @@ export function BackupTargetsPage() {
                         variant="ghost"
                         onClick={() => handleRun(index)}
                         disabled={runningIndex === index || runBackup.isPending}
-                        className="text-sm"
+                        className="text-sm font-semibold text-slate-700 hover:text-slate-900"
                       >
                         {runningIndex === index ? '実行中...' : '実行'}
                       </Button>
@@ -169,7 +169,7 @@ export function BackupTargetsPage() {
                         variant="ghost"
                         onClick={() => setEditingIndex(editingIndex === index ? null : index)}
                         disabled={updateTarget.isPending}
-                        className="text-sm"
+                        className="text-sm font-semibold text-slate-700 hover:text-slate-900"
                       >
                         {editingIndex === index ? 'キャンセル' : '編集'}
                       </Button>
@@ -177,7 +177,7 @@ export function BackupTargetsPage() {
                         variant="ghost"
                         onClick={() => handleDelete(index)}
                         disabled={deleteTarget.isPending}
-                        className="text-sm text-red-600 hover:text-red-700"
+                        className="text-sm font-semibold text-red-600 hover:text-red-700"
                       >
                         削除
                       </Button>

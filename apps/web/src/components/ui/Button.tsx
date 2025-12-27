@@ -15,7 +15,7 @@ export function Button({ variant = 'primary', className, children, ...rest }: Bu
           ? 'bg-emerald-500 text-white hover:bg-emerald-600'
           : variant === 'secondary'
           ? 'bg-blue-500 text-white hover:bg-blue-600'
-          : 'bg-transparent text-slate-100 hover:bg-white/10',
+          : 'bg-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900',
         className
       )}
       {...rest}
