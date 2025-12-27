@@ -219,20 +219,27 @@ export class SignageRenderer {
     pdfOptions: (SplitPdfOptions & { imageBase64?: string | null }) | undefined
   ): Promise<string> {
     const scale = WIDTH / 1920;
-    const outerPadding = 0;
-    const panelGap = Math.round(12 * scale); // ペイン間に少し余裕
+    // フロントエンド準拠: p-1 = 4px
+    const outerPadding = Math.round(4 * scale);
+    // フロントエンド準拠: gap-2 = 8px
+    const panelGap = Math.round(8 * scale);
     const gradientId = this.generateId('bg');
-    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.58);
+    // フロントエンド準拠: lg:grid-cols-[3fr_2fr] = 60%:40%
+    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.6);
     const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
     const panelHeight = HEIGHT - outerPadding * 2;
     const leftX = outerPadding;
     const rightX = leftX + leftWidth + panelGap;
-    const panelRadius = Math.round(10 * scale);
-    const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
-    const rightInnerPadding = Math.round(6 * scale);   // 右ペイン: タイトルが枠に張り付かない最小余白
-    const titleOffsetY = Math.round(22 * scale);       // 左右共通: タイトルのベースラインオフセット
-    const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
-    const rightHeaderHeight = Math.round(12 * scale);  // 右ペイン: タイトル下からPDFまでの余白をさらに圧縮して黒エリアを拡大
+    // フロントエンド準拠: rounded-lg = 8px
+    const panelRadius = Math.round(8 * scale);
+    // フロントエンド準拠: p-2 = 8px
+    const leftInnerPadding = Math.round(8 * scale);
+    const rightInnerPadding = Math.round(8 * scale);
+    // フロントエンド準拠: タイトルフォントサイズ20px + ベースライン調整
+    const titleOffsetY = Math.round(20 * scale);
+    // フロントエンド準拠: gap-1 = 4px（タイトル下の余白）
+    const leftHeaderHeight = Math.round(4 * scale);
+    const rightHeaderHeight = Math.round(4 * scale);
 
     const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
       x: leftX + leftInnerPadding,
@@ -265,7 +272,7 @@ export class SignageRenderer {
 
     const slideInfo = '';
 
-    // ファイル名をタイトルの右横、右端揃えで表示
+    // フロントエンド準拠: text-[10px] text-white/60（タイトルの右横、右端揃え）
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
         ? `<text x="${rightX + rightWidth - rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
@@ -286,9 +293,10 @@ export class SignageRenderer {
         <rect width="100%" height="100%" fill="url(#${gradientId})" />
 
         <g>
+          {/* フロントエンド準拠: rounded-lg border border-white/10 bg-slate-900/60 p-2 */}
           <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
-            fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
+            fill="rgba(15,23,42,0.6)" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             持出中アイテム
@@ -298,9 +306,10 @@ export class SignageRenderer {
         </g>
 
         <g>
+          {/* フロントエンド準拠: rounded-lg border border-white/10 bg-slate-900/60 p-2 */}
           <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
             rx="${panelRadius}" ry="${panelRadius}"
-            fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
+            fill="rgba(15,23,42,0.6)" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
           <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ドキュメント
@@ -381,7 +390,8 @@ export class SignageRenderer {
 
   private async buildToolCardGrid(tools: ToolItem[], config: ToolGridConfig): Promise<{ cardsSvg: string; overflowCount: number }> {
     const scale = WIDTH / 1920;
-    const gap = Math.round(14 * scale);
+    // フロントエンド準拠: gap-2 = 8px
+    const gap = Math.round(8 * scale);
     const desiredColumns = config.maxColumns ?? 2;
     const idealCardWidth = Math.round((config.mode === 'FULL' ? 360 : 300) * scale);
     let columns = Math.max(1, Math.floor((config.width + gap) / (idealCardWidth + gap)));
