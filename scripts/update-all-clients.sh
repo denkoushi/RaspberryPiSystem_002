@@ -43,9 +43,16 @@ generate_summary() {
   local unreachable_hosts
   local total_hosts
 
-  failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  total_hosts=$(grep -E "PLAY RECAP" -A 10 "${log_file}" | grep -E "raspberrypi[0-9]+" | wc -l | tr -d ' ' || echo "0")
+  # NOTE: set -euo pipefail is enabled; avoid `|| echo` inside pipelines (it can double-emit output).
+  failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" 2>/dev/null | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+  unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" 2>/dev/null | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+  total_hosts=$(grep -E "PLAY RECAP" -A 10 "${log_file}" 2>/dev/null | grep -E "raspberrypi[0-9]+" | wc -l | tr -d ' ' || true)
+  failed_hosts="${failed_hosts//$'\n'/}"
+  unreachable_hosts="${unreachable_hosts//$'\n'/}"
+  total_hosts="${total_hosts//$'\n'/}"
+  if [[ -z "${total_hosts}" ]]; then
+    total_hosts="0"
+  fi
   
   local failed_hosts_json="[]"
   local unreachable_hosts_json="[]"
@@ -156,7 +163,10 @@ run_remotely() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  local remote_cmd
+  # NOTE: We `cd` into infrastructure/ansible on Pi5. Use paths relative to that directory.
+  remote_cmd="cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i inventory.yml playbooks/update-clients.yml"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "${remote_cmd}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "${REMOTE_HOST}"
@@ -179,7 +189,10 @@ run_health_check_remotely() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${INVENTORY_PATH} ${HEALTH_PLAYBOOK_PATH}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  local remote_cmd
+  # NOTE: We `cd` into infrastructure/ansible on Pi5. Use paths relative to that directory.
+  remote_cmd="cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i inventory.yml playbooks/health-check.yml"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "${remote_cmd}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "${REMOTE_HOST}"
