@@ -18,7 +18,14 @@
         enabled: true
       when: service_enabled_check.rc != 0
 
-    - name: Restart {{ service_name }} on client
+    - name: Check if {{ service_name }} is a oneshot service
+      ansible.builtin.command: "systemctl show {{ service_name }} --property=Type --value"
+      register: service_type_check
+      changed_when: false
+      failed_when: false
+      when: service_name is match('.*\\.service$')
+
+    - name: Restart {{ service_name }} on client (non-oneshot services)
       ansible.builtin.systemd:
         name: "{{ service_name }}"
         state: restarted
@@ -27,17 +34,26 @@
       retries: 3
       delay: 10
       until: client_service_restart is succeeded
+      when:
+        - service_name is match('.*\\.service$')
+        - service_type_check.stdout.strip() | default('') != 'oneshot'
+
+    - name: Restart timer for oneshot service {{ service_name }}
+      ansible.builtin.systemd:
+        name: "{{ service_name | regex_replace('\\.service$', '.timer') }}"
+        state: restarted
+        daemon_reload: true
+      register: client_timer_restart
+      retries: 3
+      delay: 10
+      until: client_timer_restart is succeeded
+      when:
+        - service_name is match('.*\\.service$')
+        - service_type_check.stdout.strip() | default('') == 'oneshot'
 
     - name: Wait for {{ service_name }} to settle
       ansible.builtin.pause:
         seconds: 2
-
-    - name: Check if {{ service_name }} is a oneshot service
-      ansible.builtin.command: "systemctl show {{ service_name }} --property=Type --value"
-      register: service_type_check
-      changed_when: false
-      failed_when: false
-      when: service_name is match('.*\\.service$')
 
     - name: Verify {{ service_name }} is active (for non-oneshot services)
       ansible.builtin.command: "systemctl is-active {{ service_name }}"
