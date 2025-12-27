@@ -111,8 +111,23 @@ export class BackupTargetFactory {
     source: string,
     metadata?: Record<string, unknown>
   ): BackupTarget {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup-target-factory.ts:114',message:'createFromConfig called',data:{kind,source,hasMetadata:!!metadata,hasPathMappings:!!config.pathMappings},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     const pathMappings = config.pathMappings || this.getDefaultPathMappings();
-    return this.create(kind, source, metadata, pathMappings);
+    try {
+      const target = this.create(kind, source, metadata, pathMappings);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup-target-factory.ts:118',message:'createFromConfig success',data:{targetType:target.constructor.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      return target;
+    } catch (error: unknown) {
+      // #region agent log
+      const errorObj = error as { message?: string; name?: string };
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup-target-factory.ts:122',message:'createFromConfig error',data:{errorMessage:errorObj?.message,errorName:errorObj?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
   }
 
   /**

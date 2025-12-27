@@ -147,7 +147,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       }
     }
   }, async (request, reply) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:149',message:'POST /backup request received',data:{body:request.body,headers:{authorization:request.headers.authorization?request.headers.authorization.substring(0,20)+'...':null}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const body = request.body as z.infer<typeof backupRequestSchema>;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:151',message:'Request body parsed',data:{kind:body?.kind,source:body?.source,hasStorage:!!body?.storage,hasMetadata:!!body?.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
@@ -199,7 +205,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const historyService = new BackupHistoryService();
     
     // バックアップターゲットを作成（Factoryパターンを使用）
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:207',message:'Before BackupTargetFactory.createFromConfig',data:{kind:body.kind,source:body.source,hasMetadata:!!body.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:209',message:'After BackupTargetFactory.createFromConfig',data:{targetType:target.constructor.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
     // バックアップ履歴を作成
     const historyId = await historyService.createHistory({

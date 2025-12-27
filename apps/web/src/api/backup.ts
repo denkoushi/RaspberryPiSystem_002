@@ -207,6 +207,20 @@ export interface RunBackupResponse {
 }
 
 export async function runBackup(request: RunBackupRequest): Promise<RunBackupResponse> {
-  const { data } = await api.post<RunBackupResponse>('/backup', request);
-  return data;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:209',message:'runBackup called',data:{kind:request.kind,source:request.source,hasMetadata:!!request.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+  try {
+    const { data } = await api.post<RunBackupResponse>('/backup', request);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:212',message:'runBackup success',data:{success:data.success},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    return data;
+  } catch (error: unknown) {
+    // #region agent log
+    const errorObj = error as { message?: string; response?: { status?: number; data?: unknown } };
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:217',message:'runBackup error',data:{errorMessage:errorObj?.message,statusCode:errorObj?.response?.status,responseData:errorObj?.response?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    throw error;
+  }
 }
