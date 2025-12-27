@@ -1,11 +1,27 @@
 ---
 - name: Ensure repository parent directory exists
+  become: true
   ansible.builtin.file:
     path: "{{ repo_path }}"
     state: directory
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0755'
+
+- name: Check .git directory exists (permission healing)
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/.git"
+  register: repo_git_dir
+
+- name: Ensure .git directory ownership is correct (prevents git fetch permission errors)
+  become: true
+  ansible.builtin.file:
+    path: "{{ repo_path }}/.git"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
+  when: repo_git_dir.stat.exists
 
 - name: Generate backup timestamp
   ansible.builtin.set_fact:

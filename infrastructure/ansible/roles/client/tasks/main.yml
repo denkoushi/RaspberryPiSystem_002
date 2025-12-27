@@ -3,6 +3,33 @@
   ansible.builtin.set_fact:
     client_restart_results: "{{ client_restart_results | default([]) }}"
 
+- name: Check available memory (Pi3 guard)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    free -m | awk 'NR==2 {print $7}'
+  args:
+    executable: /bin/bash
+  register: pi3_available_mem_mb
+  changed_when: false
+  when:
+    - inventory_hostname == "raspberrypi3"
+
+- name: Fail early if Pi3 available memory is too low (prevents deployment hang)
+  ansible.builtin.fail:
+    msg: |
+      Pi3の空きメモリが不足しています（available={{ pi3_available_mem_mb.stdout | default('') }}MB）。
+      目安: available >= 120MB（KB-089/KB-096/KB-097）。
+
+      対処（例）:
+      - Pi3でsignage-liteを停止・無効化・maskしてからデプロイを再実行してください。
+        sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer
+        sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer
+        sudo systemctl mask --runtime signage-lite.service
+        free -m
+  when:
+    - inventory_hostname == "raspberrypi3"
+    - (pi3_available_mem_mb.stdout | int) < 120
+
 - name: Ensure status-agent configuration directory exists
   ansible.builtin.file:
     path: /etc

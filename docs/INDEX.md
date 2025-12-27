@@ -154,7 +154,8 @@
 
 | やりたいこと | ドキュメント |
 |-------------|-------------|
-| 本番環境にデプロイしたい | [guides/deployment.md](./guides/deployment.md) |
+| **本番環境にデプロイしたい（標準手順の入口）** | **[guides/deployment.md](./guides/deployment.md)** |
+| デプロイ失敗をトラブルシュートしたい | [guides/deployment-troubleshooting.md](./guides/deployment-troubleshooting.md) |
 | **デプロイメントモジュール（原因分析・設計・テスト計画）を確認したい** | **[architecture/deployment-modules.md](./architecture/deployment-modules.md)** |
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |

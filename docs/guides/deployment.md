@@ -36,6 +36,21 @@ update-frequency: medium
 - `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
 - どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
 
+### デプロイ手段の優先順位（結論）
+
+- **運用（Pi5 + Pi3/Pi4をまとめて更新）**: **Macから `scripts/update-all-clients.sh` を実行するのが第一選択**  
+  - 理由: 実行起点がMacに統一され、ログ収集（`logs/`）・ネットワーク設定確認（`network_mode`）・運用チェックリストとの整合が取りやすい
+- **例外（限定更新/デバッグ/緊急対応）**: **Pi5から `ansible-playbook` を直接実行**（「特定のクライアントのみ更新」）  
+  - 理由: 対象を絞った確認や、Mac側の事情（作業端末が使えない等）で「最小の更新」だけ行いたい場合に有効
+  - 注意: この方法は“便利な抜け道”ではありません。**デプロイ前チェック（network_mode / 疎通 / 既存Ansibleプロセス / メモリ / Pi3サービス停止）は同等に必要**です（後述）
+
+### ドキュメントの位置づけ（散逸防止）
+
+- **本ドキュメント（`docs/guides/deployment.md`）を標準手順の唯一の入口**とします。
+- **KB（`docs/knowledge-base/infrastructure.md`）は「成功/失敗の事例集」**です。  
+  - KB-094（`network_mode`がGit更新で戻る）、KB-095（Pi4の権限/リポジトリ遅れ）、KB-096（Pi3の時間/メモリ制約）、KB-097（Pi3の`systemctl mask`必須）は、**本ガイド側のチェックリスト/注意点に反映済み**です。
+  - 迷ったら **本ガイドの手順を優先**し、KBは根拠・詳細・復旧策として参照してください。
+
 ## 🌐 ネットワーク環境の確認（デプロイ前必須）
 
 **重要**: デプロイ前に、現在のネットワーク環境（オフィス/自宅）を確認し、Pi5上の`group_vars/all.yml`の`network_mode`を適切に設定してください。これがデプロイ成功の最重要ポイントです。
@@ -255,12 +270,32 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ブランチを指定する場合は引数として渡してください
 - **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
 
-**重要**: 
-- `scripts/update-all-clients.sh`はPi5も含めて更新します
-- デフォルトは`main`ブランチです
-- ブランチを指定する場合は引数として渡してください
-
 #### Pi5から特定のクライアントのみ更新
+
+**この方法を使う前提**:
+- **本番の“通常運用”の第一選択ではありません**（[デプロイ手段の優先順位（結論）](#デプロイ手段の優先順位結論)を参照）
+- それでも実行する場合は、**`network_mode`・疎通・既存Ansibleプロセス・メモリ・（Pi3の場合）サイネージ停止**を必ず確認してください（[デプロイ前チェック（必須）](#デプロイ前チェック必須)）
+
+**最小の事前確認（Pi5で実行）**:
+
+```bash
+# 1) network_mode（最重要）
+grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml
+
+# 2) 既存Ansibleプロセスの掃除（重複実行防止）
+pkill -9 -f ansible-playbook || true
+pkill -9 -f AnsiballZ || true
+
+# 3) Pi5→Pi3/Pi4 疎通（inventory.ymlに基づく）
+cd /opt/RaspberryPiSystem_002
+ansible all -i infrastructure/ansible/inventory.yml -m ping
+
+# 4) Pi3デプロイを含む場合: Pi3サイネージ停止（KB-089/KB-097）
+ansible raspberrypi3 -i infrastructure/ansible/inventory.yml -b -m shell -a \
+  'systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && \
+   systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && \
+   systemctl mask --runtime signage-lite.service'
+```
 
 ```bash
 # Pi5から実行
