@@ -525,6 +525,48 @@ export interface BackupConfig {
 
 **CI結果**: ✅ 成功（Run ID: `20547025578`）
 
+#### Phase 9.4: バックアップ履歴のファイル存在状態管理機能 ✅ 完了（2025-12-28）
+
+**実装内容**:
+- ✅ Prismaスキーマ: `BackupFileStatus` enum（`EXISTS` / `DELETED`）を追加
+- ✅ `BackupHistory`テーブルに`fileStatus`列を追加（デフォルト: `EXISTS`）
+- ✅ `BackupHistoryService`: `markHistoryAsDeletedByPath`と`markExcessHistoryAsDeleted`メソッドを追加
+- ✅ バックアップ削除時に履歴を削除せず、`fileStatus`を`DELETED`に更新
+- ✅ UIに「ファイル」列を追加して存在状態を表示（「存在」/「削除済」）
+- ✅ 削除済み履歴は背景色を変更して視覚的に区別（`bg-slate-50`）
+
+**技術的な詳細**:
+- ファイル削除時に`BackupHistoryService.markHistoryAsDeletedByPath`を呼び出し
+- 最大保持数を超えた場合、`markExcessHistoryAsDeleted`で古い履歴の`fileStatus`を`DELETED`に更新
+- 履歴は削除されずに保持され、過去のバックアップ実行記録を追跡可能
+
+**コミット**: `d45449a` - feat: バックアップ履歴にファイル存在状態（EXISTS/DELETED）を追加
+
+**実機検証結果**: ✅ 完了（2025-12-28）
+- 履歴ページに「ファイル」列が表示されることを確認
+- バックアップ実行後、削除されたバックアップの履歴で「ファイル」列が「削除済」に更新されることを確認
+- 最大保持数制御が正しく動作し、設定値（`maxBackups: 2`）と実際のファイル数が一致することを確認
+
+#### Phase 9.5: バックアップ履歴のストレージプロバイダー記録修正 ✅ 完了（2025-12-28）
+
+**実装内容**:
+- ✅ `StorageProviderFactory`: `createFromConfig`と`createFromTarget`にオーバーロードを追加
+- ✅ 第4引数に`returnProvider: true`を指定すると、実際に使用されたプロバイダーとストレージプロバイダーのペアを返す
+- ✅ バックアップ実行時に実際に使用されたプロバイダー（フォールバック後の値）を取得
+- ✅ 履歴作成時に実際に使用されたプロバイダーを記録
+
+**技術的な詳細**:
+- Dropboxの`accessToken`が空の場合、`local`にフォールバック
+- フォールバック後の実際のプロバイダー（`local`）を履歴に記録
+- 履歴と実際の動作が一致することで、ユーザーの混乱を防ぐ
+
+**コミット**: `abb530a` - fix: バックアップ履歴に実際に使用されたストレージプロバイダーを記録（フォールバック後の値）
+
+**実機検証結果**: ✅ 完了（2025-12-28）
+- バックアップ実行後、ストレージプロバイダーが`local`表示に切り替わることを確認
+- ログで`[StorageProviderFactory] Dropbox access token is empty, falling back to local storage`を確認
+- データベースで`storageProvider: local`が正しく記録されていることを確認
+
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 
 - ✅ 画像バックアップのリストア処理を追加

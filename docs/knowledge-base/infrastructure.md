@@ -2972,6 +2972,13 @@ ssh denkon5sd02@192.168.10.230
 - `apps/api/src/services/backup/backup-scheduler.ts`（スケジュール実行時の`fileStatus`更新）
 - `apps/web/src/pages/admin/BackupHistoryPage.tsx`（「ファイル」列の表示）
 
+**実機検証結果**（2025-12-28）:
+- ✅ 履歴ページに「ファイル」列が表示されることを確認
+- ✅ バックアップ実行後、削除されたバックアップの履歴で「ファイル」列が「削除済」に更新されることを確認
+- ✅ 最大保持数制御が正しく動作し、設定値（`maxBackups: 2`）と実際のファイル数が一致することを確認
+- ✅ データベースで`fileStatus: EXISTS`（2件）と`fileStatus: DELETED`（10件）が正しく記録されていることを確認
+- ✅ ログで`[BackupRoute] Old backup history marked as DELETED`を確認
+
 ---
 
 ## KB-095: バックアップ履歴のストレージプロバイダー記録の不整合
@@ -3003,5 +3010,11 @@ ssh denkon5sd02@192.168.10.230
 - `apps/api/src/services/backup/storage-provider-factory.ts`（オーバーロード追加）
 - `apps/api/src/routes/backup.ts`（実際に使用されたプロバイダーの取得と記録）
 - `apps/api/src/services/backup/backup-scheduler.ts`（スケジュール実行時のプロバイダー記録）
+
+**実機検証結果**（2025-12-28）:
+- ✅ バックアップ実行後、ストレージプロバイダーが`local`表示に切り替わることを確認
+- ✅ ログで`[StorageProviderFactory] Dropbox access token is empty, falling back to local storage`を確認
+- ✅ データベースで`storageProvider: local`が正しく記録されていることを確認
+- ✅ UIで「ファイル」列が表示され、`fileStatus`が正しく表示されることを確認
 
 ---
