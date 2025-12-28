@@ -79,8 +79,41 @@ export function BackupTargetsPage() {
 
   const formatSchedule = (schedule?: string) => {
     if (!schedule) return '-';
-    // cron形式を読みやすく表示（簡易版）
-    return schedule;
+    
+    // cron形式を読みやすく表示
+    const parts = schedule.trim().split(/\s+/);
+    if (parts.length !== 5) {
+      return schedule; // 不正な形式の場合はそのまま表示
+    }
+
+    const minute = parts[0];
+    const hour = parts[1];
+    const dayOfWeek = parts[4];
+
+    const hourNum = parseInt(hour, 10);
+    const minuteNum = parseInt(minute, 10);
+    if (isNaN(hourNum) || isNaN(minuteNum)) {
+      return schedule;
+    }
+
+    const time = `${hourNum.toString().padStart(2, '0')}:${minuteNum.toString().padStart(2, '0')}`;
+
+    const DAYS_OF_WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+    let dayLabel = '';
+    if (dayOfWeek === '*') {
+      dayLabel = '毎日';
+    } else {
+      const days = dayOfWeek
+        .split(',')
+        .map((d) => parseInt(d.trim(), 10))
+        .filter((d) => !isNaN(d) && d >= 0 && d <= 6)
+        .sort((a, b) => a - b)
+        .map((d) => DAYS_OF_WEEK[d])
+        .join(',');
+      dayLabel = days || '不明';
+    }
+
+    return `${time} (${dayLabel})`;
   };
 
   if (isLoading) {
