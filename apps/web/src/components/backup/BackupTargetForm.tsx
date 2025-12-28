@@ -20,6 +20,8 @@ interface BackupTargetFormProps {
   onSubmit: (target: Omit<BackupTarget, 'enabled'> & { enabled?: boolean }) => void;
   onCancel: () => void;
   isLoading?: boolean;
+  storageProvider?: 'local' | 'dropbox';
+  storagePath?: string;
 }
 
 /**
@@ -83,7 +85,7 @@ function formatCronSchedule(time: string, daysOfWeek: number[]): string {
   return `${minuteNum} ${hourNum} * * ${dayOfWeekStr}`;
 }
 
-export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading }: BackupTargetFormProps) {
+export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading, storageProvider: defaultStorageProvider = 'local', storagePath = '/opt/backups' }: BackupTargetFormProps) {
   const [kind, setKind] = useState<BackupTarget['kind']>(initialValues?.kind || 'database');
   const [source, setSource] = useState(initialValues?.source || '');
   const [enabled, setEnabled] = useState(initialValues?.enabled ?? true);
@@ -92,6 +94,21 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
   const parsedSchedule = parseCronSchedule(initialValues?.schedule);
   const [scheduleTime, setScheduleTime] = useState(parsedSchedule.time);
   const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>(parsedSchedule.daysOfWeek);
+  
+  // バックアップ先の選択（デフォルトは「システム設定を使用」）
+  const [storageProviderSelection, setStorageProviderSelection] = useState<'default' | 'local' | 'dropbox'>(
+    initialValues?.storage?.provider ?? 'default'
+  );
+  
+  const getStorageProviderLabel = (provider: 'local' | 'dropbox' | 'default') => {
+    if (provider === 'dropbox') {
+      return 'Dropbox';
+    }
+    if (provider === 'local') {
+      return 'ローカルストレージ';
+    }
+    return 'システム設定を使用';
+  };
 
   const kindId = 'backup-target-kind';
   const sourceId = 'backup-target-source';
@@ -107,6 +124,9 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
       const parsed = parseCronSchedule(initialValues.schedule);
       setScheduleTime(parsed.time);
       setScheduleDaysOfWeek(parsed.daysOfWeek);
+      
+      // 既存のストレージプロバイダー設定を反映
+      setStorageProviderSelection(initialValues.storage?.provider ?? 'default');
     }
   }, [initialValues]);
 
@@ -146,11 +166,17 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
     // UI形式からcron形式に変換
     const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
     
+    // ストレージプロバイダーの設定（デフォルトの場合はundefinedにして全体設定を使用）
+    const storage = storageProviderSelection === 'default' 
+      ? undefined 
+      : { provider: storageProviderSelection };
+    
     onSubmit({
       kind,
       source: source.trim(),
       schedule: cronSchedule,
-      enabled
+      enabled,
+      storage
     });
   };
 
@@ -196,6 +222,29 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
           {kind === 'image' && 'photo-storage（固定値）'}
           {kind === 'file' && 'バックアップ対象のファイルパス'}
           {kind === 'directory' && 'バックアップ対象のディレクトリパス'}
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="backup-target-storage" className="block text-sm font-semibold text-slate-700 mb-1">
+          バックアップ先
+        </label>
+        <select
+          id="backup-target-storage"
+          name="storageProvider"
+          className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+          value={storageProviderSelection}
+          onChange={(e) => setStorageProviderSelection(e.target.value as 'default' | 'local' | 'dropbox')}
+          disabled={isLoading}
+        >
+          <option value="default">システム設定を使用（{getStorageProviderLabel(defaultStorageProvider)}）</option>
+          <option value="local">ローカルストレージ</option>
+          <option value="dropbox">Dropbox</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-600">
+          {storageProviderSelection === 'default' && `現在のシステム設定: ${getStorageProviderLabel(defaultStorageProvider)}`}
+          {storageProviderSelection === 'local' && `保存パス: ${storagePath}`}
+          {storageProviderSelection === 'dropbox' && `保存パス: Dropbox: ${storagePath.replace('/opt/backups', '/backups')}`}
         </p>
       </div>
 

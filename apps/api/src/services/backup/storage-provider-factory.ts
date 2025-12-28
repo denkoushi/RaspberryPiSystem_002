@@ -106,6 +106,51 @@ export class StorageProviderFactory {
   }
 
   /**
+   * バックアップ対象ごとのストレージプロバイダーを作成
+   * 対象にstorage.providerが指定されている場合はそれを使用、未指定の場合は全体設定を使用
+   */
+  static createFromTarget(
+    config: BackupConfig,
+    target: BackupConfig['targets'][0],
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>
+  ): StorageProvider {
+    // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
+    const provider = target.storage?.provider ?? config.storage.provider;
+    
+    const options: StorageProviderOptions = {
+      provider
+    };
+
+    // basePathは全体設定から取得（対象ごとの設定は将来の拡張用）
+    options.basePath = config.storage.options?.basePath as string | undefined;
+
+    if (provider === 'dropbox') {
+      const accessToken = config.storage.options?.accessToken as string | undefined;
+      // accessTokenが空の場合はlocalにフォールバック
+      if (!accessToken || accessToken.trim() === '') {
+        console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
+        options.provider = 'local';
+      } else {
+        options.accessToken = accessToken;
+        options.refreshToken = config.storage.options?.refreshToken as string | undefined;
+        options.appKey = config.storage.options?.appKey as string | undefined;
+        options.appSecret = config.storage.options?.appSecret as string | undefined;
+
+        // リダイレクトURIを構築
+        if (requestProtocol && requestHost) {
+          options.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
+        }
+
+        options.onTokenUpdate = onTokenUpdate;
+      }
+    }
+
+    return this.create(options);
+  }
+
+  /**
    * ストレージプロバイダーを作成
    */
   static create(options: StorageProviderOptions): StorageProvider {

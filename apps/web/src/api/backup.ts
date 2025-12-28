@@ -133,6 +133,9 @@ export interface BackupTarget {
   source: string;
   schedule?: string;
   enabled: boolean;
+  storage?: {
+    provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（未指定時は全体設定を使用）
+  };
   metadata?: Record<string, unknown>;
 }
 

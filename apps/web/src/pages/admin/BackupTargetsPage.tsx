@@ -124,19 +124,24 @@ export function BackupTargetsPage() {
     );
   }
 
-  const getStorageProviderLabel = () => {
-    if (!config?.storage) return '不明';
-    const provider = config.storage.provider;
+  const getStorageProviderLabel = (target?: BackupTarget) => {
+    // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
+    const provider = target?.storage?.provider ?? config?.storage?.provider;
+    if (!provider) return '不明';
+    
     if (provider === 'dropbox') {
-      const hasAccessToken = !!(config.storage.options?.accessToken && config.storage.options.accessToken !== '');
+      const hasAccessToken = !!(config?.storage?.options?.accessToken && config.storage.options.accessToken !== '');
       return hasAccessToken ? 'Dropbox' : 'Dropbox（未設定・ローカルにフォールバック）';
     }
     return 'ローカルストレージ';
   };
 
-  const getStoragePath = () => {
+  const getStoragePath = (target?: BackupTarget) => {
+    // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
+    const provider = target?.storage?.provider ?? config?.storage?.provider;
     if (!config?.storage) return '-';
-    if (config.storage.provider === 'dropbox') {
+    
+    if (provider === 'dropbox') {
       const basePath = config.storage.options?.basePath || '/backups';
       return `Dropbox: ${basePath}`;
     }
@@ -167,6 +172,8 @@ export function BackupTargetsPage() {
             onSubmit={handleAdd}
             onCancel={() => setIsAdding(false)}
             isLoading={addTarget.isPending}
+            storageProvider={config?.storage?.provider || 'local'}
+            storagePath={getStoragePath()}
           />
         </div>
       )}
@@ -197,8 +204,8 @@ export function BackupTargetsPage() {
                   <td className="px-2 py-1 font-mono text-xs text-slate-700">{target.source}</td>
                   <td className="px-2 py-1 text-sm text-slate-700">
                     <div className="flex flex-col gap-1">
-                      <span className="font-semibold">{getStorageProviderLabel()}</span>
-                      <span className="font-mono text-xs text-slate-600">{getStoragePath()}</span>
+                      <span className="font-semibold">{getStorageProviderLabel(target)}</span>
+                      <span className="font-mono text-xs text-slate-600">{getStoragePath(target)}</span>
                     </div>
                   </td>
                   <td className="px-2 py-1 text-sm text-slate-700">{formatSchedule(target.schedule)}</td>
@@ -255,6 +262,8 @@ export function BackupTargetsPage() {
             onSubmit={(target) => handleEdit(editingIndex, target)}
             onCancel={() => setEditingIndex(null)}
             isLoading={updateTarget.isPending}
+            storageProvider={config?.storage?.provider || 'local'}
+            storagePath={getStoragePath()}
           />
         </div>
       )}

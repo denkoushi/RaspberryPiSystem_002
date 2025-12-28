@@ -28,6 +28,9 @@ export const BackupConfigSchema = z.object({
     source: z.string(),
     schedule: z.string().optional(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
+    storage: z.object({
+      provider: z.enum(['local', 'dropbox']).optional() // 対象ごとのストレージプロバイダー（未指定時は全体設定を使用）
+    }).optional(),
     metadata: z.record(z.unknown()).optional()
   })),
   retention: z.object({

@@ -137,6 +137,7 @@ export class BackupScheduler {
     target: BackupConfig['targets'][0]
   ): Promise<void> {
     // ストレージプロバイダーを作成（Factoryパターンを使用）
+    // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用、未指定の場合は全体設定を使用
     // Dropboxのアクセストークン更新時は設定ファイルへ書き戻す（次回以降の実行を安定化）
     const onTokenUpdate = async (newToken: string) => {
       config.storage.options = {
@@ -145,7 +146,7 @@ export class BackupScheduler {
       };
       await BackupConfigLoader.save(config);
     };
-    const storageProvider = StorageProviderFactory.createFromConfig(config, undefined, undefined, onTokenUpdate);
+    const storageProvider = StorageProviderFactory.createFromTarget(config, target, undefined, undefined, onTokenUpdate);
 
     const backupService = new BackupService(storageProvider);
 

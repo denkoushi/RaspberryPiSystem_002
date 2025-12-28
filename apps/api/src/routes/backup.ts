@@ -18,10 +18,6 @@ import crypto from 'crypto';
 const backupRequestSchema = z.object({
   kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
   source: z.string(),
-  storage: z.object({
-    provider: z.enum(['local', 'dropbox']),
-    options: z.record(z.unknown()).optional()
-  }).optional(),
   metadata: z.record(z.unknown()).optional()
 });
 
@@ -56,6 +52,11 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
     
+    // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
+    const targetConfig = config.targets.find(
+      (t) => t.kind === body.kind && t.source === body.source
+    );
+    
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
       ? request.headers['x-forwarded-proto'][0] 
@@ -79,8 +80,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       await BackupConfigLoader.save(updatedConfig);
     };
     
-    const storageProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
-    logger?.info('[BackupRoute] Using storage from config file (internal endpoint)');
+    // 対象ごとのストレージ設定が存在する場合はそれを使用、未指定の場合は全体設定を使用
+    const storageProvider = targetConfig
+      ? StorageProviderFactory.createFromTarget(config, targetConfig, protocol, host, onTokenUpdate)
+      : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+    logger?.info({
+      targetStorage: targetConfig?.storage?.provider ?? 'default',
+      defaultStorage: config.storage.provider
+    }, '[BackupRoute] Using storage from config file (internal endpoint)');
 
     const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
@@ -88,12 +95,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // バックアップターゲットを作成（Factoryパターンを使用）
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
-    // バックアップ履歴を作成
+    // バックアップ履歴を作成（対象ごとのストレージプロバイダーが指定されている場合はそれを使用）
+    const storageProviderForHistory = targetConfig?.storage?.provider ?? config.storage.provider;
     const historyId = await historyService.createHistory({
       operationType: BackupOperationType.BACKUP,
       targetKind: body.kind,
       targetSource: body.source,
-      storageProvider: config.storage.provider
+      storageProvider: storageProviderForHistory
     });
 
     try {
@@ -152,54 +160,48 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // #endregion
     const body = request.body as z.infer<typeof backupRequestSchema>;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:151',message:'Request body parsed',data:{kind:body?.kind,source:body?.source,hasStorage:!!body?.storage,hasMetadata:!!body?.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:151',message:'Request body parsed',data:{kind:body?.kind,source:body?.source,hasMetadata:!!body?.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
     
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
     
+    // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
+    const targetConfig = config.targets.find(
+      (t) => t.kind === body.kind && t.source === body.source
+    );
+    
     // ストレージプロバイダーを作成（Factoryパターンを使用）
-    let storageProvider;
-    if (body.storage) {
-      // リクエストボディでストレージが指定されている場合
-      const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-      const host = request.headers.host || 'localhost:8080';
-      storageProvider = StorageProviderFactory.create({
-        provider: body.storage.provider,
-        accessToken: body.storage.options?.accessToken as string | undefined,
-        basePath: body.storage.options?.basePath as string | undefined,
-        refreshToken: body.storage.options?.refreshToken as string | undefined,
-        appKey: body.storage.options?.appKey as string | undefined,
-        appSecret: body.storage.options?.appSecret as string | undefined,
-        redirectUri: `${protocol}://${host}/api/backup/oauth/callback`
-      });
-    } else {
-      // リクエストボディでストレージが指定されていない場合、設定ファイルから読み込む
-      const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
-        ? request.headers['x-forwarded-proto'][0] 
-        : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
-      const host = Array.isArray(request.headers.host) 
-        ? request.headers.host[0] 
-        : (request.headers.host || 'localhost:8080');
-      
-      // トークン更新コールバック（設定ファイルを更新）
-      const onTokenUpdate = async (newToken: string) => {
-        const updatedConfig: BackupConfig = {
-          ...config,
-          storage: {
-            ...config.storage,
-            options: {
-              ...config.storage.options,
-              accessToken: newToken
-            }
+    const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
+      ? request.headers['x-forwarded-proto'][0] 
+      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+    const host = Array.isArray(request.headers.host) 
+      ? request.headers.host[0] 
+      : (request.headers.host || 'localhost:8080');
+    
+    // トークン更新コールバック（設定ファイルを更新）
+    const onTokenUpdate = async (newToken: string) => {
+      const updatedConfig: BackupConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          options: {
+            ...config.storage.options,
+            accessToken: newToken
           }
-        };
-        await BackupConfigLoader.save(updatedConfig);
+        }
       };
-      
-      storageProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
-      logger?.info('[BackupRoute] Using storage from config file');
-    }
+      await BackupConfigLoader.save(updatedConfig);
+    };
+    
+    // 対象ごとのストレージ設定が存在する場合はそれを使用、未指定の場合は全体設定を使用
+    const storageProvider = targetConfig
+      ? StorageProviderFactory.createFromTarget(config, targetConfig, protocol, host, onTokenUpdate)
+      : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+    logger?.info({
+      targetStorage: targetConfig?.storage?.provider ?? 'default',
+      defaultStorage: config.storage.provider
+    }, '[BackupRoute] Using storage from config file');
 
     const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
@@ -213,12 +215,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:209',message:'After BackupTargetFactory.createFromConfig',data:{targetType:target.constructor.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     
-    // バックアップ履歴を作成
+    // バックアップ履歴を作成（対象ごとのストレージプロバイダーが指定されている場合はそれを使用）
+    const storageProviderForHistory = targetConfig?.storage?.provider ?? config.storage.provider;
     const historyId = await historyService.createHistory({
       operationType: BackupOperationType.BACKUP,
       targetKind: body.kind,
       targetSource: body.source,
-      storageProvider: body.storage?.provider || config.storage.provider
+      storageProvider: storageProviderForHistory
     });
 
     try {
@@ -516,6 +519,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           source: { type: 'string' },
           schedule: { type: 'string' },
           enabled: { type: 'boolean' },
+          storage: {
+            type: 'object',
+            properties: {
+              provider: { type: 'string', enum: ['local', 'dropbox'] }
+            }
+          },
           metadata: { type: 'object' }
         },
         required: ['kind', 'source']
@@ -527,6 +536,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       source: string;
       schedule?: string;
       enabled?: boolean;
+      storage?: {
+        provider?: 'local' | 'dropbox';
+      };
       metadata?: Record<string, unknown>;
     };
 
@@ -546,6 +558,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       source: body.source,
       schedule: body.schedule?.trim() || undefined,
       enabled: body.enabled ?? true,
+      storage: body.storage?.provider ? { provider: body.storage.provider } : undefined,
       metadata: body.metadata
     };
 
@@ -578,6 +591,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           source: { type: 'string' },
           schedule: { type: 'string' },
           enabled: { type: 'boolean' },
+          storage: {
+            type: 'object',
+            properties: {
+              provider: { type: 'string', enum: ['local', 'dropbox'] }
+            }
+          },
           metadata: { type: 'object' }
         }
       }
@@ -590,6 +609,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       source: string;
       schedule: string;
       enabled: boolean;
+      storage?: {
+        provider?: 'local' | 'dropbox';
+      };
       metadata: Record<string, unknown>;
     }>;
 
@@ -612,7 +634,11 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const updatedTarget: BackupConfig['targets'][number] = {
       ...existingTarget,
       ...body,
-      schedule: body.schedule !== undefined ? (body.schedule.trim() || undefined) : existingTarget.schedule
+      schedule: body.schedule !== undefined ? (body.schedule.trim() || undefined) : existingTarget.schedule,
+      // storage.providerが指定されている場合はそれを使用、undefinedの場合は既存の設定を維持
+      storage: body.storage?.provider !== undefined 
+        ? (body.storage.provider ? { provider: body.storage.provider } : undefined)
+        : existingTarget.storage
     };
     config.targets[targetIndex] = updatedTarget;
 
