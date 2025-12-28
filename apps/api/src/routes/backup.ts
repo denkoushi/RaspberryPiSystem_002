@@ -308,10 +308,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     }
     
     // Phase 3: バックアップ実行後にクリーンアップを実行（手動実行時も自動削除を実行）
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:310',message:'Cleanup check start',data:{hasTargetConfig:!!targetConfig,bodyKind:body.kind,bodySource:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     if (targetConfig) {
       const retention = targetConfig.retention || config.retention;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:313',message:'Retention config',data:{hasRetention:!!retention,retentionDays:retention?.days,retentionMaxBackups:retention?.maxBackups,hasTargetRetention:!!targetConfig.retention,hasGlobalRetention:!!config.retention},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       if (retention && retention.days) {
         const successfulProvider = providers.find((p, i) => results[i]?.success);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:315',message:'Successful provider',data:{successfulProvider,providersCount:providers.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         if (successfulProvider) {
           const targetWithProvider = {
             ...targetConfig,
@@ -335,14 +344,23 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             }
           }
           const prefix = `${body.kind}/${sourceForPrefix}`;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:337',message:'Prefix calculated',data:{prefix,bodyKind:body.kind,bodySource:body.source,sourceForPrefix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           
           // BackupSchedulerのcleanupOldBackupsメソッドと同じロジックを実行
           try {
             const backups = await backupService.listBackups({ prefix });
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:342',message:'Backups listed',data:{prefix,backupsCount:backups.length,backupPaths:backups.map(b=>b.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             const now = new Date();
             const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
             
             // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:346',message:'Max backups check',data:{backupsCount:backups.length,retentionMaxBackups:retention.maxBackups,shouldDelete:retention.maxBackups && backups.length > retention.maxBackups},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             if (retention.maxBackups && backups.length > retention.maxBackups) {
               // 全バックアップを日付順にソート（古い順）
               const allSortedBackups = backups.sort((a, b) => {
@@ -350,13 +368,25 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
                 return a.modifiedAt.getTime() - b.modifiedAt.getTime();
               });
               const toDelete = allSortedBackups.slice(0, backups.length - retention.maxBackups);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:352',message:'Backups to delete calculated',data:{toDeleteCount:toDelete.length,toDeletePaths:toDelete.map(b=>b.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
               for (const backup of toDelete) {
                 if (!backup.path) continue;
                 try {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:356',message:'Deleting backup',data:{backupPath:backup.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
                   await backupService.deleteBackup(backup.path);
                   logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:359',message:'Backup deleted successfully',data:{backupPath:backup.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
                 } catch (error) {
                   logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:362',message:'Backup delete failed',data:{backupPath:backup.path,errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
                 }
               }
             }
@@ -379,6 +409,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             }
           } catch (error) {
             logger?.error({ err: error, prefix }, '[BackupRoute] Failed to cleanup old backups');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:380',message:'Cleanup error',data:{errorMessage:error instanceof Error ? error.message : String(error),prefix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
             // クリーンアップエラーはバックアップ成功を妨げない
           }
         }

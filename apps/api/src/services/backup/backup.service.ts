@@ -66,7 +66,13 @@ export class BackupService implements BackupProvider {
     // LocalStorageProviderのgetBaseDir()が既に/opt/RaspberryPiSystem_002/backupsを返すため、
     // プレフィックスは空文字列または相対パスのみ
     const prefix = options?.prefix ?? '';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:65',message:'listBackups called',data:{prefix,hasPrefix:!!prefix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const entries = await this.storage.list(prefix);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:69',message:'Storage list returned',data:{prefix,entriesCount:entries.length,entryPaths:entries.map(e=>e.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const now = new Date();
 
     return entries.map((entry: FileInfo) => ({
