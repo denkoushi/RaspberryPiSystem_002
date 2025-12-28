@@ -323,7 +323,18 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           const backupService = new BackupService(storageProvider);
           
           // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
-          const prefix = `${body.kind}/${body.source}`;
+          // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）なので、
+          // 完全なURLからデータベース名を抽出する必要がある
+          let sourceForPrefix = body.source;
+          if (body.kind === 'database') {
+            try {
+              const url = new URL(body.source);
+              sourceForPrefix = url.pathname.replace(/^\//, '') || 'database';
+            } catch {
+              // URL解析に失敗した場合はそのまま使用
+            }
+          }
+          const prefix = `${body.kind}/${sourceForPrefix}`;
           
           // BackupSchedulerのcleanupOldBackupsメソッドと同じロジックを実行
           try {

@@ -208,10 +208,21 @@ export class BackupScheduler {
           storage: { provider: successfulProvider }
         };
         const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
-        const backupService = new BackupService(storageProvider);
-        // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
-        const prefix = `${target.kind}/${target.source}`;
-        await this.cleanupOldBackups(backupService, retention, prefix);
+                const backupService = new BackupService(storageProvider);
+                // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
+                // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）なので、
+                // 完全なURLからデータベース名を抽出する必要がある
+                let sourceForPrefix = target.source;
+                if (target.kind === 'database') {
+                  try {
+                    const url = new URL(target.source);
+                    sourceForPrefix = url.pathname.replace(/^\//, '') || 'database';
+                  } catch {
+                    // URL解析に失敗した場合はそのまま使用
+                  }
+                }
+                const prefix = `${target.kind}/${sourceForPrefix}`;
+                await this.cleanupOldBackups(backupService, retention, prefix);
       }
     }
   }
