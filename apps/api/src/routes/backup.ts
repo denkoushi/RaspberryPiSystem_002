@@ -107,8 +107,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           storage: { provider: requestedProvider }
         } : undefined;
         const providerResult = targetWithProvider
-          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
-          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
+          ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
+          : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
         const storageProvider = providerResult.storageProvider;
         // #region agent log
@@ -276,8 +276,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           storage: { provider: requestedProvider }
         } : undefined;
         const providerResult = targetWithProvider
-          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
-          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
+          ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
+          : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
         const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
@@ -352,8 +352,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             storage: { provider: successfulProvider }
           };
           const storageProvider = targetWithProvider
-            ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
-            : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+            ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
+            : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
           const backupService = new BackupService(storageProvider);
           
           // 対象ごとのバックアップのみをクリーンアップするため、プレフィックスとフィルタを指定
@@ -1111,7 +1111,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     };
 
     // Dropboxストレージプロバイダーを作成（Factoryパターンを使用）
-    const dropboxProvider = StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+    const dropboxProvider = await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
 
     const backupService = new BackupService(dropboxProvider);
     const historyService = new BackupHistoryService();

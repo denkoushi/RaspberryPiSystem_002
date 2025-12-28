@@ -74,28 +74,28 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>
-  ): StorageProvider;
+  ): Promise<StorageProvider>;
   static createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: false
-  ): StorageProvider;
+  ): Promise<StorageProvider>;
   static createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: true
-  ): { provider: 'local' | 'dropbox'; storageProvider: StorageProvider };
-  static createFromConfig(
+  ): Promise<{ provider: 'local' | 'dropbox'; storageProvider: StorageProvider }>;
+  static async createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: boolean
-  ): StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider } {
+  ): Promise<StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider }> {
     const options: StorageProviderOptions = {
       provider: config.storage.provider
     };
@@ -193,7 +193,7 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>
-  ): StorageProvider;
+  ): Promise<StorageProvider>;
   static createFromTarget(
     config: BackupConfig,
     target: BackupConfig['targets'][0],
@@ -201,7 +201,7 @@ export class StorageProviderFactory {
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: false
-  ): StorageProvider;
+  ): Promise<StorageProvider>;
   static createFromTarget(
     config: BackupConfig,
     target: BackupConfig['targets'][0],
@@ -209,15 +209,15 @@ export class StorageProviderFactory {
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: true
-  ): { provider: 'local' | 'dropbox'; storageProvider: StorageProvider };
-  static createFromTarget(
+  ): Promise<{ provider: 'local' | 'dropbox'; storageProvider: StorageProvider }>;
+  static async createFromTarget(
     config: BackupConfig,
     target: BackupConfig['targets'][0],
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
     returnProvider?: boolean
-  ): StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider } {
+  ): Promise<StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider }> {
     // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
     const provider = target.storage?.provider ?? config.storage.provider;
     

@@ -171,7 +171,7 @@ export class BackupScheduler {
           ...target,
           storage: { provider: requestedProvider }
         };
-        const providerResult = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate, true);
+        const providerResult = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
         const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
@@ -210,7 +210,7 @@ export class BackupScheduler {
           ...target,
           storage: { provider: successfulProvider }
         };
-        const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+        const storageProvider = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
                 const backupService = new BackupService(storageProvider);
                 // 対象ごとのバックアップのみをクリーンアップするため、prefix+フィルタを指定
                 // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
