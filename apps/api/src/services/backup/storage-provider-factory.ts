@@ -104,16 +104,25 @@ export class StorageProviderFactory {
 
     if (config.storage.provider === 'dropbox') {
       const accessToken = config.storage.options?.accessToken as string | undefined;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:105',message:'Dropbox provider check',data:{configProvider:config.storage.provider,hasAccessToken:!!accessToken,accessTokenLength:accessToken?.length||0,accessTokenPrefix:accessToken?.substring(0,10)||'empty',hasRefreshToken:!!config.storage.options?.refreshToken,hasAppKey:!!config.storage.options?.appKey,hasAppSecret:!!config.storage.options?.appSecret},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // accessTokenが空の場合はlocalにフォールバック
       if (!accessToken || accessToken.trim() === '') {
         // ログに警告を出力してlocalにフォールバック
         console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:110',message:'Fallback to local',data:{reason:'accessToken empty'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         options.provider = 'local';
       } else {
         options.accessToken = accessToken;
         options.refreshToken = config.storage.options?.refreshToken as string | undefined;
         options.appKey = config.storage.options?.appKey as string | undefined;
         options.appSecret = config.storage.options?.appSecret as string | undefined;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:118',message:'Dropbox options set',data:{hasRefreshToken:!!options.refreshToken,hasAppKey:!!options.appKey,hasAppSecret:!!options.appSecret,refreshTokenLength:options.refreshToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
 
         // リダイレクトURIを構築
         if (requestProtocol && requestHost) {

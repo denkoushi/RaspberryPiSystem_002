@@ -62,6 +62,9 @@ export class BackupConfigLoader {
             'appSecret'
           ) as string | undefined;
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup-config.loader.ts:65',message:'Config resolved',data:{provider:configJson.storage?.provider,hasAccessToken:!!configJson.storage?.options?.accessToken,accessTokenLength:configJson.storage?.options?.accessToken?.length||0,hasRefreshToken:!!configJson.storage?.options?.refreshToken,refreshTokenLength:configJson.storage?.options?.refreshToken?.length||0,hasAppKey:!!configJson.storage?.options?.appKey,hasAppSecret:!!configJson.storage?.options?.appSecret},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
       }
       
       const config = BackupConfigSchema.parse(configJson);
