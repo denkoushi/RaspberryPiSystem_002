@@ -92,7 +92,12 @@ test.describe('管理画面', () => {
       // フォームに入力
       await page.getByLabel(/種類/i).selectOption('file');
       await page.getByLabel(/ソース/i).fill('/tmp/test-backup-file.txt');
-      await page.getByLabel(/スケジュール/i).fill('0 3 * * *');
+      
+      // Phase 1: 新しいスケジュールUIに対応（時刻入力と曜日選択）
+      // 時刻入力フィールドを探す（type="time"）
+      const scheduleTimeInput = page.locator('input[type="time"]').first();
+      await expect(scheduleTimeInput).toBeVisible({ timeout: 3000 });
+      await scheduleTimeInput.fill('03:00');
       
       // 「保存」ボタンをクリックし、APIレスポンスを待機
       // POST /api/backup/config/targets のレスポンスを待機
