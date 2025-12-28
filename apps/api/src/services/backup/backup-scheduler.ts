@@ -233,17 +233,14 @@ export class BackupScheduler {
     const now = new Date();
     const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
 
-    // 日付でソート（古い順）
-    const sortedBackups = backups
-      .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
-      .sort((a, b) => {
+    // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
+    if (retention.maxBackups && backups.length > retention.maxBackups) {
+      // 全バックアップを日付順にソート（古い順）
+      const allSortedBackups = backups.sort((a, b) => {
         if (!a.modifiedAt || !b.modifiedAt) return 0;
         return a.modifiedAt.getTime() - b.modifiedAt.getTime();
       });
-
-    // 最大バックアップ数を超える場合は古いものから削除
-    if (retention.maxBackups && backups.length > retention.maxBackups) {
-      const toDelete = sortedBackups.slice(0, backups.length - retention.maxBackups);
+      const toDelete = allSortedBackups.slice(0, backups.length - retention.maxBackups);
       for (const backup of toDelete) {
         if (!backup.path) continue;
         try {
@@ -253,16 +250,22 @@ export class BackupScheduler {
           logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
         }
       }
-    } else {
-      // 保持期間を超えたバックアップを削除
-      for (const backup of sortedBackups) {
-        if (!backup.path) continue;
-        try {
-          await backupService.deleteBackup(backup.path);
-          logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
-        } catch (error) {
-          logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
-        }
+    }
+
+    // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
+    const sortedBackups = backups
+      .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
+      .sort((a, b) => {
+        if (!a.modifiedAt || !b.modifiedAt) return 0;
+        return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+      });
+    for (const backup of sortedBackups) {
+      if (!backup.path) continue;
+      try {
+        await backupService.deleteBackup(backup.path);
+        logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
+      } catch (error) {
+        logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
       }
     }
   }

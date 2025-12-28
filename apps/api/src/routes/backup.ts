@@ -307,6 +307,73 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(500, 'No successful backup result');
     }
     
+    // Phase 3: バックアップ実行後にクリーンアップを実行（手動実行時も自動削除を実行）
+    if (targetConfig) {
+      const retention = targetConfig.retention || config.retention;
+      if (retention && retention.days) {
+        const successfulProvider = providers.find((p, i) => results[i]?.success);
+        if (successfulProvider) {
+          const targetWithProvider = {
+            ...targetConfig,
+            storage: { provider: successfulProvider }
+          };
+          const storageProvider = targetWithProvider
+            ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
+            : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+          const backupService = new BackupService(storageProvider);
+          
+          // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
+          const prefix = `${body.kind}/${body.source}`;
+          
+          // BackupSchedulerのcleanupOldBackupsメソッドと同じロジックを実行
+          try {
+            const backups = await backupService.listBackups({ prefix });
+            const now = new Date();
+            const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
+            
+            // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
+            if (retention.maxBackups && backups.length > retention.maxBackups) {
+              // 全バックアップを日付順にソート（古い順）
+              const allSortedBackups = backups.sort((a, b) => {
+                if (!a.modifiedAt || !b.modifiedAt) return 0;
+                return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+              });
+              const toDelete = allSortedBackups.slice(0, backups.length - retention.maxBackups);
+              for (const backup of toDelete) {
+                if (!backup.path) continue;
+                try {
+                  await backupService.deleteBackup(backup.path);
+                  logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
+                } catch (error) {
+                  logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
+                }
+              }
+            }
+            
+            // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
+            const sortedBackups = backups
+              .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
+              .sort((a, b) => {
+                if (!a.modifiedAt || !b.modifiedAt) return 0;
+                return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+              });
+            for (const backup of sortedBackups) {
+              if (!backup.path) continue;
+              try {
+                await backupService.deleteBackup(backup.path);
+                logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
+              } catch (error) {
+                logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
+              }
+            }
+          } catch (error) {
+            logger?.error({ err: error, prefix }, '[BackupRoute] Failed to cleanup old backups');
+            // クリーンアップエラーはバックアップ成功を妨げない
+          }
+        }
+      }
+    }
+    
     return reply.status(200).send({
       success: true,
       path: successfulResult.path,

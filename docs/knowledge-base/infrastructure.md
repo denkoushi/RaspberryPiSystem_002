@@ -2649,6 +2649,80 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 
 ---
 
+### [KB-104] バックアップ対象ごとの保持期間設定と自動削除機能実装（Phase 3）
+
+**EXEC_PLAN.md参照**: Phase 9: バックアップ対象ごとの保持期間設定と自動削除機能（2025-12-28）
+
+**背景**: 
+- バックアップ対象ごとに異なる保持期間を設定したい要望があった
+- データベースは30日、写真データは7日など、対象ごとに最適な保持期間を設定したい
+- 手動での削除作業を自動化したい
+
+**実装内容**:
+
+**Phase 3: 対象ごとの保持期間設定**:
+- ✅ BackupConfigスキーマ: `BackupTarget`に`retention`フィールドを追加（`days`、`maxBackups`）
+- ✅ BackupScheduler: `cleanupOldBackups`メソッドを対象ごとの`retention`設定に対応
+- ✅ 対象ごとのバックアップのみをクリーンアップ（`prefix`でフィルタ）
+- ✅ UI: 保持期間設定欄を追加（保持日数、最大保持数の入力フィールド）
+- ✅ UI: テーブルに保持期間列を追加
+- ✅ 後方互換性: `retention`未指定時は全体設定を使用
+
+**技術的な詳細**:
+
+- **スキーマ構造**:
+  ```typescript
+  {
+    retention?: {
+      days?: number;  // 保持日数（例: 30日）
+      maxBackups?: number;  // 最大保持数（例: 10件）
+    }
+  }
+  ```
+
+- **優先順位**:
+  1. 対象ごとの`retention`設定（指定されている場合）
+  2. 全体設定（`config.retention`）
+  3. 未指定の場合はクリーンアップを実行しない
+
+- **自動削除の動作**:
+  - バックアップ実行時に自動的に期限切れバックアップを削除
+  - 対象ごとのバックアップのみをクリーンアップ（`prefix`でフィルタ）
+  - 保持日数を超えたバックアップを削除
+  - 最大保持数を超えた場合は古いものから削除
+
+- **クリーンアップの実装**:
+  ```typescript
+  // 対象ごとのバックアップのみを取得（prefixが指定されている場合）
+  const backups = await backupService.listBackups({ prefix });
+  const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
+  // 期限切れバックアップを削除
+  ```
+
+**UI変更**:
+- 保持期間設定欄を追加（保持日数、最大保持数の入力フィールド）
+- テーブルに保持期間列を追加（例: "30日 / 最大10件" または "全体設定: 30日 / 最大10件"）
+
+**学んだこと**: 
+- 対象ごとの設定を実装する際は、全体設定との優先順位を明確にする必要がある
+- バックアップのクリーンアップは対象ごとに実行するため、`prefix`でフィルタすることが重要
+- 後方互換性を保つため、未指定時は全体設定を使用する設計が有効
+
+**解決状況**: ✅ **解決済み**（2025-12-28）
+
+**関連ファイル**: 
+- `apps/api/src/services/backup/backup-config.ts`
+- `apps/api/src/services/backup/backup-scheduler.ts`
+- `apps/api/src/routes/backup.ts`
+- `apps/web/src/components/backup/BackupTargetForm.tsx`
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`
+
+**関連ドキュメント**: 
+- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+
+---
+
 ### [KB-101] Pi5へのSSH接続不可問題の原因と解決
 
 **発生日時**: 2025-12-15（推定）
