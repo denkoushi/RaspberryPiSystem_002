@@ -2937,3 +2937,71 @@ ssh denkon5sd02@192.168.10.230
 - `~/.ssh/config`（SSH設定ファイル）
 
 ---
+
+## KB-094: バックアップ履歴のファイル存在状態管理機能
+
+**問題**: バックアップファイルが削除された際、履歴レコードも削除されていたため、過去のバックアップ実行記録を追跡できなかった。
+
+**原因**: 
+- バックアップ削除時に履歴レコードも削除していた
+- ファイルの存在状態を記録する仕組みがなかった
+
+**解決策**:
+- `BackupHistory`テーブルに`fileStatus`列（`EXISTS` / `DELETED`）を追加
+- ファイル削除時に履歴を削除せず、`fileStatus`を`DELETED`に更新
+- UIに「ファイル」列を追加して存在状態を表示
+
+**実装詳細**:
+- Prismaスキーマに`BackupFileStatus` enumを追加
+- `BackupHistoryService.markHistoryAsDeletedByPath`メソッドを追加
+- `BackupHistoryService.markExcessHistoryAsDeleted`メソッドを追加（最大件数超過時の処理）
+- バックアップ削除時に`fileStatus`を`DELETED`に更新する処理を追加
+- UIに`getFileStatusColor`と`getFileStatusLabel`関数を追加
+
+**学んだこと**:
+- 履歴は削除せずに保持することで、監査やトラブルシューティングに有用
+- ファイルの存在状態を明示的に記録することで、UIと実際の状態の整合性を保つ
+- 削除済みの履歴は視覚的に区別することで、ユーザーの混乱を防ぐ
+
+**解決状況**: ✅ **解決済み**（2025-12-28）
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`BackupFileStatus` enum、`BackupHistory.fileStatus`）
+- `apps/api/src/services/backup/backup-history.service.ts`（`markHistoryAsDeletedByPath`、`markExcessHistoryAsDeleted`）
+- `apps/api/src/routes/backup.ts`（ファイル削除時の`fileStatus`更新）
+- `apps/api/src/services/backup/backup-scheduler.ts`（スケジュール実行時の`fileStatus`更新）
+- `apps/web/src/pages/admin/BackupHistoryPage.tsx`（「ファイル」列の表示）
+
+---
+
+## KB-095: バックアップ履歴のストレージプロバイダー記録の不整合
+
+**問題**: バックアップ履歴に「Dropbox」と表示されているが、実際にはDropboxのトークンが設定されておらず、`local`にフォールバックしていた。履歴と実際の動作が一致していなかった。
+
+**原因**:
+- `StorageProviderFactory`が`accessToken`が空の場合に`local`にフォールバックする処理を追加していたが、履歴には元のプロバイダー（`dropbox`）を記録していた
+- 実際に使用されたプロバイダーを取得する仕組みがなかった
+
+**解決策**:
+- `StorageProviderFactory.createFromConfig`と`createFromTarget`にオーバーロードを追加
+- 第4引数に`returnProvider: true`を指定すると、実際に使用されたプロバイダーとストレージプロバイダーのペアを返す
+- バックアップ実行時に実際に使用されたプロバイダーを取得し、履歴に記録
+
+**実装詳細**:
+- `StorageProviderFactory`にオーバーロードを追加（TypeScriptの関数オーバーロード）
+- `backup.ts`と`backup-scheduler.ts`で実際に使用されたプロバイダーを取得
+- 履歴作成時に実際に使用されたプロバイダーを記録
+
+**学んだこと**:
+- フォールバック処理がある場合、実際に使用された値を記録することが重要
+- 履歴と実際の動作が一致することで、ユーザーの混乱を防ぐ
+- オーバーロードを使用することで、既存のコードとの互換性を保ちながら新機能を追加可能
+
+**解決状況**: ✅ **解決済み**（2025-12-28）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage-provider-factory.ts`（オーバーロード追加）
+- `apps/api/src/routes/backup.ts`（実際に使用されたプロバイダーの取得と記録）
+- `apps/api/src/services/backup/backup-scheduler.ts`（スケジュール実行時のプロバイダー記録）
+
+---
