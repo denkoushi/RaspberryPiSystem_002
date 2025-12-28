@@ -209,9 +209,10 @@ export class BackupScheduler {
         };
         const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
                 const backupService = new BackupService(storageProvider);
-                // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
-                // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）なので、
-                // 完全なURLからデータベース名を抽出する必要がある
+                // 対象ごとのバックアップのみをクリーンアップするため、prefix+フィルタを指定
+                // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
+                // 実際のパスは database/<timestamp>/borrow_return となるため、prefix は kind のみとし、
+                // cleanupOldBackups 内でファイル名フィルタを行う
                 let sourceForPrefix = target.source;
                 if (target.kind === 'database') {
                   try {
@@ -221,8 +222,8 @@ export class BackupScheduler {
                     // URL解析に失敗した場合はそのまま使用
                   }
                 }
-                const prefix = `${target.kind}/${sourceForPrefix}`;
-                await this.cleanupOldBackups(backupService, retention, prefix);
+                const prefix = `${target.kind}`; // 例: "database"
+                await this.cleanupOldBackups(backupService, retention, prefix, sourceForPrefix);
       }
     }
   }
@@ -233,7 +234,8 @@ export class BackupScheduler {
   private async cleanupOldBackups(
     backupService: BackupService,
     retention: { days?: number; maxBackups?: number } | undefined,
-    prefix?: string // 対象ごとのバックアップをフィルタするためのプレフィックス
+    prefix?: string, // 対象ごとのバックアップをフィルタするためのプレフィックス
+    sourceForPrefix?: string // パス末尾で対象を特定するためのソース名（例: borrow_return）
   ): Promise<void> {
     if (!retention || !retention.days) {
       return;
@@ -241,17 +243,21 @@ export class BackupScheduler {
 
     // 対象ごとのバックアップのみを取得（prefixが指定されている場合）
     const backups = await backupService.listBackups({ prefix });
+    // ターゲットのソース名に一致するバックアップのみ対象とする
+    const targetBackups = sourceForPrefix
+      ? backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`))
+      : backups;
     const now = new Date();
     const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
 
     // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
-    if (retention.maxBackups && backups.length > retention.maxBackups) {
+    if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
       // 全バックアップを日付順にソート（古い順）
-      const allSortedBackups = backups.sort((a, b) => {
+      const allSortedBackups = targetBackups.sort((a, b) => {
         if (!a.modifiedAt || !b.modifiedAt) return 0;
         return a.modifiedAt.getTime() - b.modifiedAt.getTime();
       });
-      const toDelete = allSortedBackups.slice(0, backups.length - retention.maxBackups);
+      const toDelete = allSortedBackups.slice(0, targetBackups.length - retention.maxBackups);
       for (const backup of toDelete) {
         if (!backup.path) continue;
         try {
@@ -264,7 +270,7 @@ export class BackupScheduler {
     }
 
     // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
-    const sortedBackups = backups
+    const sortedBackups = targetBackups
       .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
       .sort((a, b) => {
         if (!a.modifiedAt || !b.modifiedAt) return 0;

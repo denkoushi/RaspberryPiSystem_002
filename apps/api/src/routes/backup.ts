@@ -337,9 +337,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
           const backupService = new BackupService(storageProvider);
           
-          // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
-          // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）なので、
-          // 完全なURLからデータベース名を抽出する必要がある
+          // 対象ごとのバックアップのみをクリーンアップするため、プレフィックスとフィルタを指定
+          // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
+          // 実際のパスは database/<timestamp>/borrow_return となるため、
+          // prefix は kind のみ（database）にして、ファイル名で対象を絞り込む
           let sourceForPrefix = body.source;
           if (body.kind === 'database') {
             try {
@@ -349,7 +350,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               // URL解析に失敗した場合はそのまま使用
             }
           }
-          const prefix = `${body.kind}/${sourceForPrefix}`;
+          const prefix = `${body.kind}`; // 例: "database"
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:337',message:'Prefix calculated',data:{prefix,bodyKind:body.kind,bodySource:body.source,sourceForPrefix},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
@@ -360,20 +361,25 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             // #region agent log
             fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:342',message:'Backups listed',data:{prefix,backupsCount:backups.length,backupPaths:backups.map(b=>b.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
             // #endregion
+            // ターゲットのソース名に一致するバックアップのみ対象とする
+            const targetBackups = backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`));
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:346',message:'Target backups filtered',data:{targetBackupsCount:targetBackups.length,targetBackupsPaths:targetBackups.map(b=>b.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             const now = new Date();
             const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
             
             // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:346',message:'Max backups check',data:{backupsCount:backups.length,retentionMaxBackups:retention.maxBackups,shouldDelete:retention.maxBackups && backups.length > retention.maxBackups},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:351',message:'Max backups check',data:{backupsCount:targetBackups.length,retentionMaxBackups:retention.maxBackups,shouldDelete:retention.maxBackups && targetBackups.length > retention.maxBackups},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
             // #endregion
-            if (retention.maxBackups && backups.length > retention.maxBackups) {
+            if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
               // 全バックアップを日付順にソート（古い順）
-              const allSortedBackups = backups.sort((a, b) => {
+              const allSortedBackups = targetBackups.sort((a, b) => {
                 if (!a.modifiedAt || !b.modifiedAt) return 0;
                 return a.modifiedAt.getTime() - b.modifiedAt.getTime();
               });
-              const toDelete = allSortedBackups.slice(0, backups.length - retention.maxBackups);
+              const toDelete = allSortedBackups.slice(0, targetBackups.length - retention.maxBackups);
               // #region agent log
               fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:352',message:'Backups to delete calculated',data:{toDeleteCount:toDelete.length,toDeletePaths:toDelete.map(b=>b.path)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
               // #endregion
@@ -398,7 +404,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             }
             
             // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
-            const sortedBackups = backups
+            const sortedBackups = targetBackups
               .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
               .sort((a, b) => {
                 if (!a.modifiedAt || !b.modifiedAt) return 0;
