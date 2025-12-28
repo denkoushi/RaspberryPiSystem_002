@@ -177,4 +177,37 @@ export class BackupHistoryService {
 
     return result.count;
   }
+
+  /**
+   * 最大件数を超える履歴を削除（古いものから削除）
+   */
+  async cleanupExcessHistory(params: {
+    targetKind: string;
+    targetSource: string;
+    maxCount: number;
+  }): Promise<number> {
+    // 対象の履歴を取得（新しい順）
+    const histories = await prisma.backupHistory.findMany({
+      where: {
+        targetKind: params.targetKind,
+        targetSource: params.targetSource,
+        status: BackupStatus.COMPLETED
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true }
+    });
+
+    // 最大件数を超えた分を削除
+    if (histories.length > params.maxCount) {
+      const idsToDelete = histories.slice(params.maxCount).map(h => h.id);
+      const result = await prisma.backupHistory.deleteMany({
+        where: {
+          id: { in: idsToDelete }
+        }
+      });
+      return result.count;
+    }
+
+    return 0;
+  }
 }

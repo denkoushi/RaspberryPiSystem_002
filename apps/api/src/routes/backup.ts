@@ -419,6 +419,22 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
                 logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
               }
             }
+            
+            // バックアップ履歴も最大件数を超えた分を削除
+            if (retention.maxBackups) {
+              try {
+                const deletedCount = await historyService.cleanupExcessHistory({
+                  targetKind: body.kind,
+                  targetSource: body.source,
+                  maxCount: retention.maxBackups
+                });
+                if (deletedCount > 0) {
+                  logger?.info({ deletedCount, targetKind: body.kind, targetSource: body.source }, '[BackupRoute] Old backup history deleted');
+                }
+              } catch (error) {
+                logger?.error({ err: error }, '[BackupRoute] Failed to cleanup old backup history');
+              }
+            }
           } catch (error) {
             logger?.error({ err: error, prefix }, '[BackupRoute] Failed to cleanup old backups');
             // #region agent log
