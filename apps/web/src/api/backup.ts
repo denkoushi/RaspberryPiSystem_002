@@ -134,7 +134,8 @@ export interface BackupTarget {
   schedule?: string;
   enabled: boolean;
   storage?: {
-    provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（未指定時は全体設定を使用）
+    provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
+    providers?: ('local' | 'dropbox')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
   };
   metadata?: Record<string, unknown>;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -95,19 +95,31 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
   const [scheduleTime, setScheduleTime] = useState(parsedSchedule.time);
   const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>(parsedSchedule.daysOfWeek);
   
-  // バックアップ先の選択（デフォルトは「システム設定を使用」）
-  const [storageProviderSelection, setStorageProviderSelection] = useState<'default' | 'local' | 'dropbox'>(
-    initialValues?.storage?.provider ?? 'default'
-  );
+  // バックアップ先の選択（Phase 2: 複数選択対応）
+  // providers配列が指定されている場合はそれを使用、providerが指定されている場合は配列に変換、未指定の場合は空配列（デフォルト）
+  const getInitialProviders = useCallback((): ('local' | 'dropbox')[] => {
+    if (initialValues?.storage?.providers && initialValues.storage.providers.length > 0) {
+      return initialValues.storage.providers;
+    }
+    if (initialValues?.storage?.provider) {
+      return [initialValues.storage.provider];
+    }
+    return []; // 空配列は「システム設定を使用」を意味する
+  }, [initialValues?.storage?.providers, initialValues?.storage?.provider]);
+  const [selectedProviders, setSelectedProviders] = useState<('local' | 'dropbox')[]>(getInitialProviders());
   
-  const getStorageProviderLabel = (provider: 'local' | 'dropbox' | 'default') => {
-    if (provider === 'dropbox') {
-      return 'Dropbox';
-    }
-    if (provider === 'local') {
-      return 'ローカルストレージ';
-    }
-    return 'システム設定を使用';
+  const getStorageProviderLabel = (provider: 'local' | 'dropbox') => {
+    return provider === 'dropbox' ? 'Dropbox' : 'ローカルストレージ';
+  };
+  
+  const toggleProvider = (provider: 'local' | 'dropbox') => {
+    setSelectedProviders((prev) => {
+      if (prev.includes(provider)) {
+        return prev.filter((p) => p !== provider);
+      } else {
+        return [...prev, provider];
+      }
+    });
   };
 
   const kindId = 'backup-target-kind';
@@ -126,9 +138,9 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
       setScheduleDaysOfWeek(parsed.daysOfWeek);
       
       // 既存のストレージプロバイダー設定を反映
-      setStorageProviderSelection(initialValues.storage?.provider ?? 'default');
+      setSelectedProviders(getInitialProviders());
     }
-  }, [initialValues]);
+  }, [initialValues, getInitialProviders]);
 
   const getSourcePlaceholder = () => {
     switch (kind) {
@@ -166,10 +178,14 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
     // UI形式からcron形式に変換
     const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
     
-    // ストレージプロバイダーの設定（デフォルトの場合はundefinedにして全体設定を使用）
-    const storage = storageProviderSelection === 'default' 
-      ? undefined 
-      : { provider: storageProviderSelection };
+    // ストレージプロバイダーの設定（Phase 2: 複数選択対応）
+    // 選択されていない場合はundefinedにして全体設定を使用
+    // 1つの場合はprovider、複数の場合はprovidersを使用
+    const storage = selectedProviders.length === 0
+      ? undefined
+      : selectedProviders.length === 1
+      ? { provider: selectedProviders[0] }
+      : { providers: selectedProviders };
     
     onSubmit({
       kind,
@@ -226,25 +242,55 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
       </div>
 
       <div>
-        <label htmlFor="backup-target-storage" className="block text-sm font-semibold text-slate-700 mb-1">
-          バックアップ先
+        <label className="block text-sm font-semibold text-slate-700 mb-1">
+          バックアップ先（複数選択可）
         </label>
-        <select
-          id="backup-target-storage"
-          name="storageProvider"
-          className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-          value={storageProviderSelection}
-          onChange={(e) => setStorageProviderSelection(e.target.value as 'default' | 'local' | 'dropbox')}
-          disabled={isLoading}
-        >
-          <option value="default">システム設定を使用（{getStorageProviderLabel(defaultStorageProvider)}）</option>
-          <option value="local">ローカルストレージ</option>
-          <option value="dropbox">Dropbox</option>
-        </select>
-        <p className="mt-1 text-xs text-slate-600">
-          {storageProviderSelection === 'default' && `現在のシステム設定: ${getStorageProviderLabel(defaultStorageProvider)}`}
-          {storageProviderSelection === 'local' && `保存パス: ${storagePath}`}
-          {storageProviderSelection === 'dropbox' && `保存パス: Dropbox: ${storagePath.replace('/opt/backups', '/backups')}`}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={selectedProviders.length === 0}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedProviders([]);
+                }
+              }}
+              disabled={isLoading}
+              className="rounded border-2 border-slate-500"
+            />
+            <span>システム設定を使用（{getStorageProviderLabel(defaultStorageProvider)}）</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={selectedProviders.includes('local')}
+              onChange={() => toggleProvider('local')}
+              disabled={isLoading || selectedProviders.length === 0}
+              className="rounded border-2 border-slate-500"
+            />
+            <span>ローカルストレージ</span>
+            {selectedProviders.includes('local') && (
+              <span className="text-xs text-slate-600 font-mono">({storagePath})</span>
+            )}
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={selectedProviders.includes('dropbox')}
+              onChange={() => toggleProvider('dropbox')}
+              disabled={isLoading || selectedProviders.length === 0}
+              className="rounded border-2 border-slate-500"
+            />
+            <span>Dropbox</span>
+            {selectedProviders.includes('dropbox') && (
+              <span className="text-xs text-slate-600 font-mono">({storagePath.replace('/opt/backups', '/backups')})</span>
+            )}
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-slate-600">
+          {selectedProviders.length === 0 && `現在のシステム設定: ${getStorageProviderLabel(defaultStorageProvider)}`}
+          {selectedProviders.length === 1 && `選択されたプロバイダー: ${getStorageProviderLabel(selectedProviders[0])}`}
+          {selectedProviders.length > 1 && `選択されたプロバイダー: ${selectedProviders.map(getStorageProviderLabel).join(', ')}（多重バックアップ）`}
         </p>
       </div>
 

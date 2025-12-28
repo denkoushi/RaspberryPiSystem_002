@@ -125,6 +125,18 @@ export function BackupTargetsPage() {
   }
 
   const getStorageProviderLabel = (target?: BackupTarget) => {
+    // Phase 2: providers配列が指定されている場合は複数表示
+    if (target?.storage?.providers && target.storage.providers.length > 0) {
+      const labels = target.storage.providers.map((p) => {
+        if (p === 'dropbox') {
+          const hasAccessToken = !!(config?.storage?.options?.accessToken && config.storage.options.accessToken !== '');
+          return hasAccessToken ? 'Dropbox' : 'Dropbox（未設定）';
+        }
+        return 'ローカル';
+      });
+      return labels.join(' + ');
+    }
+    
     // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
     const provider = target?.storage?.provider ?? config?.storage?.provider;
     if (!provider) return '不明';
@@ -137,6 +149,18 @@ export function BackupTargetsPage() {
   };
 
   const getStoragePath = (target?: BackupTarget) => {
+    // Phase 2: providers配列が指定されている場合は複数表示
+    if (target?.storage?.providers && target.storage.providers.length > 0) {
+      const paths = target.storage.providers.map((p) => {
+        if (p === 'dropbox') {
+          const basePath = config?.storage?.options?.basePath || '/backups';
+          return `Dropbox: ${basePath}`;
+        }
+        return config?.storage?.options?.basePath || '/opt/backups';
+      });
+      return paths.join(' / ');
+    }
+    
     // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
     const provider = target?.storage?.provider ?? config?.storage?.provider;
     if (!config?.storage) return '-';

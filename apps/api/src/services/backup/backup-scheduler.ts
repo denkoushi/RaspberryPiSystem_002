@@ -136,8 +136,6 @@ export class BackupScheduler {
     config: BackupConfig,
     target: BackupConfig['targets'][0]
   ): Promise<void> {
-    // ストレージプロバイダーを作成（Factoryパターンを使用）
-    // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用、未指定の場合は全体設定を使用
     // Dropboxのアクセストークン更新時は設定ファイルへ書き戻す（次回以降の実行を安定化）
     const onTokenUpdate = async (newToken: string) => {
       config.storage.options = {
@@ -146,24 +144,68 @@ export class BackupScheduler {
       };
       await BackupConfigLoader.save(config);
     };
-    const storageProvider = StorageProviderFactory.createFromTarget(config, target, undefined, undefined, onTokenUpdate);
-
-    const backupService = new BackupService(storageProvider);
 
     // バックアップターゲットを作成（Factoryパターンを使用）
     const backupTarget = BackupTargetFactory.createFromConfig(config, target.kind, target.source, target.metadata);
 
-    // バックアップを実行
-    const result = await backupService.backup(backupTarget, {
-      label: target.metadata?.label as string
-    });
-
-    if (!result.success) {
-      throw new Error(`Backup failed: ${result.error}`);
+    // ストレージプロバイダーのリストを決定（多重バックアップ対応）
+    const providers: ('local' | 'dropbox')[] = [];
+    if (target.storage?.providers && target.storage.providers.length > 0) {
+      // providers配列が指定されている場合はそれを使用
+      providers.push(...target.storage.providers);
+    } else if (target.storage?.provider) {
+      // providerが指定されている場合は単一プロバイダーとして扱う
+      providers.push(target.storage.provider);
+    } else {
+      // 未指定の場合は全体設定を使用
+      providers.push(config.storage.provider);
     }
 
-    // 保持期間を超えたバックアップを削除
-    if (config.retention) {
+    // 各プロバイダーに順次バックアップを実行（多重バックアップ）
+    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; error?: string }> = [];
+    for (const provider of providers) {
+      try {
+        // 一時的にtargetのstorage.providerを設定してストレージプロバイダーを作成
+        const targetWithProvider = {
+          ...target,
+          storage: { provider }
+        };
+        const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+        const backupService = new BackupService(storageProvider);
+
+        // バックアップを実行
+        const result = await backupService.backup(backupTarget, {
+          label: target.metadata?.label as string
+        });
+
+        if (!result.success) {
+          results.push({ provider, success: false, error: result.error });
+        } else {
+          results.push({ provider, success: true });
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ provider, success: false, error: errorMessage });
+        // エラーが発生しても次のプロバイダーに続行
+      }
+    }
+
+    // すべてのプロバイダーで失敗した場合はエラーをスロー
+    const allFailed = results.every((r) => !r.success);
+    if (allFailed) {
+      const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
+      throw new Error(`Backup failed on all providers: ${errorMessages}`);
+    }
+
+    // 成功したプロバイダーのストレージプロバイダーを使用してクリーンアップ
+    const successfulProvider = providers.find((p, i) => results[i]?.success);
+    if (successfulProvider && config.retention) {
+      const targetWithProvider = {
+        ...target,
+        storage: { provider: successfulProvider }
+      };
+      const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+      const backupService = new BackupService(storageProvider);
       await this.cleanupOldBackups(backupService, config.retention);
     }
   }

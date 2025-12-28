@@ -80,57 +80,92 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       await BackupConfigLoader.save(updatedConfig);
     };
     
-    // 対象ごとのストレージ設定が存在する場合はそれを使用、未指定の場合は全体設定を使用
-    const storageProvider = targetConfig
-      ? StorageProviderFactory.createFromTarget(config, targetConfig, protocol, host, onTokenUpdate)
-      : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
-    logger?.info({
-      targetStorage: targetConfig?.storage?.provider ?? 'default',
-      defaultStorage: config.storage.provider
-    }, '[BackupRoute] Using storage from config file (internal endpoint)');
-
-    const backupService = new BackupService(storageProvider);
-    const historyService = new BackupHistoryService();
-    
     // バックアップターゲットを作成（Factoryパターンを使用）
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
-    // バックアップ履歴を作成（対象ごとのストレージプロバイダーが指定されている場合はそれを使用）
-    const storageProviderForHistory = targetConfig?.storage?.provider ?? config.storage.provider;
-    const historyId = await historyService.createHistory({
-      operationType: BackupOperationType.BACKUP,
-      targetKind: body.kind,
-      targetSource: body.source,
-      storageProvider: storageProviderForHistory
-    });
-
-    try {
-      // バックアップを実行
-      const result = await backupService.backup(target, {
-        label: body.metadata?.label as string
-      });
-
-      // バックアップ履歴を完了として更新
-      await historyService.completeHistory(historyId, {
-        targetKind: body.kind,
-        targetSource: body.source,
-        sizeBytes: result.sizeBytes,
-        path: result.path
-      });
-
-      return reply.status(200).send({
-        success: result.success,
-        path: result.path,
-        sizeBytes: result.sizeBytes,
-        timestamp: result.timestamp,
-        historyId
-      });
-    } catch (error) {
-      // バックアップ履歴を失敗として更新
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await historyService.failHistory(historyId, errorMessage);
-      throw error;
+    // ストレージプロバイダーのリストを決定（Phase 2: 多重バックアップ対応）
+    const providers: ('local' | 'dropbox')[] = [];
+    if (targetConfig?.storage?.providers && targetConfig.storage.providers.length > 0) {
+      providers.push(...targetConfig.storage.providers);
+    } else if (targetConfig?.storage?.provider) {
+      providers.push(targetConfig.storage.provider);
+    } else {
+      providers.push(config.storage.provider);
     }
+    
+    const historyService = new BackupHistoryService();
+    
+    // 各プロバイダーに順次バックアップを実行（多重バックアップ）
+    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
+    for (const provider of providers) {
+      try {
+        const targetWithProvider = targetConfig ? {
+          ...targetConfig,
+          storage: { provider }
+        } : undefined;
+        const storageProvider = targetWithProvider
+          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
+          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+        const backupService = new BackupService(storageProvider);
+        
+        // バックアップ履歴を作成
+        const historyId = await historyService.createHistory({
+          operationType: BackupOperationType.BACKUP,
+          targetKind: body.kind,
+          targetSource: body.source,
+          storageProvider: provider
+        });
+        
+        try {
+          // バックアップを実行
+          const result = await backupService.backup(target, {
+            label: body.metadata?.label as string
+          });
+          
+          if (result.success) {
+            results.push({ provider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            await historyService.completeHistory(historyId, {
+              targetKind: body.kind,
+              targetSource: body.source,
+              sizeBytes: result.sizeBytes,
+              path: result.path
+            });
+          } else {
+            results.push({ provider, success: false, error: result.error });
+            await historyService.failHistory(historyId, result.error || 'Unknown error');
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          results.push({ provider, success: false, error: errorMessage });
+          await historyService.failHistory(historyId, errorMessage);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ provider, success: false, error: errorMessage });
+      }
+    }
+    
+    // すべてのプロバイダーで失敗した場合はエラーをスロー
+    const allFailed = results.every((r) => !r.success);
+    if (allFailed) {
+      const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
+      throw new ApiError(500, `Backup failed on all providers: ${errorMessages}`);
+    }
+    
+    // 成功した最初の結果を返す
+    const successfulResult = results.find((r) => r.success);
+    if (!successfulResult) {
+      throw new ApiError(500, 'No successful backup result');
+    }
+    
+    return reply.status(200).send({
+      success: true,
+      path: successfulResult.path,
+      sizeBytes: successfulResult.sizeBytes,
+      timestamp: new Date().toISOString(),
+      historyId: results.find((r) => r.success) ? 'multiple' : undefined,
+      providers: results.map((r) => ({ provider: r.provider, success: r.success }))
+    });
   });
 
   // バックアップの実行
@@ -194,63 +229,91 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       await BackupConfigLoader.save(updatedConfig);
     };
     
-    // 対象ごとのストレージ設定が存在する場合はそれを使用、未指定の場合は全体設定を使用
-    const storageProvider = targetConfig
-      ? StorageProviderFactory.createFromTarget(config, targetConfig, protocol, host, onTokenUpdate)
-      : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
-    logger?.info({
-      targetStorage: targetConfig?.storage?.provider ?? 'default',
-      defaultStorage: config.storage.provider
-    }, '[BackupRoute] Using storage from config file');
-
-    const backupService = new BackupService(storageProvider);
+    // バックアップターゲットを作成（Factoryパターンを使用）
+    const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
+    
+    // ストレージプロバイダーのリストを決定（Phase 2: 多重バックアップ対応）
+    const providers: ('local' | 'dropbox')[] = [];
+    if (targetConfig?.storage?.providers && targetConfig.storage.providers.length > 0) {
+      providers.push(...targetConfig.storage.providers);
+    } else if (targetConfig?.storage?.provider) {
+      providers.push(targetConfig.storage.provider);
+    } else {
+      providers.push(config.storage.provider);
+    }
+    
     const historyService = new BackupHistoryService();
     
-    // バックアップターゲットを作成（Factoryパターンを使用）
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:207',message:'Before BackupTargetFactory.createFromConfig',data:{kind:body.kind,source:body.source,hasMetadata:!!body.metadata},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:209',message:'After BackupTargetFactory.createFromConfig',data:{targetType:target.constructor.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    
-    // バックアップ履歴を作成（対象ごとのストレージプロバイダーが指定されている場合はそれを使用）
-    const storageProviderForHistory = targetConfig?.storage?.provider ?? config.storage.provider;
-    const historyId = await historyService.createHistory({
-      operationType: BackupOperationType.BACKUP,
-      targetKind: body.kind,
-      targetSource: body.source,
-      storageProvider: storageProviderForHistory
-    });
-
-    try {
-      // バックアップを実行
-      const result = await backupService.backup(target, {
-        label: body.metadata?.label as string
-      });
-
-      // バックアップ履歴を完了として更新
-      await historyService.completeHistory(historyId, {
-        targetKind: body.kind,
-        targetSource: body.source,
-        sizeBytes: result.sizeBytes,
-        path: result.path
-      });
-
-      return reply.status(200).send({
-        success: result.success,
-        path: result.path,
-        sizeBytes: result.sizeBytes,
-        timestamp: result.timestamp,
-        historyId
-      });
-    } catch (error) {
-      // バックアップ履歴を失敗として更新
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await historyService.failHistory(historyId, errorMessage);
-      throw error;
+    // 各プロバイダーに順次バックアップを実行（多重バックアップ）
+    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
+    for (const provider of providers) {
+      try {
+        const targetWithProvider = targetConfig ? {
+          ...targetConfig,
+          storage: { provider }
+        } : undefined;
+        const storageProvider = targetWithProvider
+          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
+          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+        const backupService = new BackupService(storageProvider);
+        
+        // バックアップ履歴を作成
+        const historyId = await historyService.createHistory({
+          operationType: BackupOperationType.BACKUP,
+          targetKind: body.kind,
+          targetSource: body.source,
+          storageProvider: provider
+        });
+        
+        try {
+          // バックアップを実行
+          const result = await backupService.backup(target, {
+            label: body.metadata?.label as string
+          });
+          
+          if (result.success) {
+            results.push({ provider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            await historyService.completeHistory(historyId, {
+              targetKind: body.kind,
+              targetSource: body.source,
+              sizeBytes: result.sizeBytes,
+              path: result.path
+            });
+          } else {
+            results.push({ provider, success: false, error: result.error });
+            await historyService.failHistory(historyId, result.error || 'Unknown error');
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          results.push({ provider, success: false, error: errorMessage });
+          await historyService.failHistory(historyId, errorMessage);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ provider, success: false, error: errorMessage });
+      }
     }
+    
+    // すべてのプロバイダーで失敗した場合はエラーをスロー
+    const allFailed = results.every((r) => !r.success);
+    if (allFailed) {
+      const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
+      throw new ApiError(500, `Backup failed on all providers: ${errorMessages}`);
+    }
+    
+    // 成功した最初の結果を返す
+    const successfulResult = results.find((r) => r.success);
+    if (!successfulResult) {
+      throw new ApiError(500, 'No successful backup result');
+    }
+    
+    return reply.status(200).send({
+      success: true,
+      path: successfulResult.path,
+      sizeBytes: successfulResult.sizeBytes,
+      timestamp: new Date().toISOString(),
+      providers: results.map((r) => ({ provider: r.provider, success: r.success }))
+    });
   });
 
   // バックアップ一覧の取得
@@ -522,7 +585,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           storage: {
             type: 'object',
             properties: {
-              provider: { type: 'string', enum: ['local', 'dropbox'] }
+              provider: { type: 'string', enum: ['local', 'dropbox'] },
+              providers: { type: 'array', items: { type: 'string', enum: ['local', 'dropbox'] } }
             }
           },
           metadata: { type: 'object' }
@@ -538,6 +602,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       enabled?: boolean;
       storage?: {
         provider?: 'local' | 'dropbox';
+        providers?: ('local' | 'dropbox')[];
       };
       metadata?: Record<string, unknown>;
     };
@@ -552,13 +617,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     const config = await BackupConfigLoader.load();
     
-    // 新しいtargetを追加
+    // 新しいtargetを追加（Phase 2: providers配列に対応）
+    const storage = body.storage?.providers && body.storage.providers.length > 0
+      ? { providers: body.storage.providers }
+      : body.storage?.provider
+      ? { provider: body.storage.provider }
+      : undefined;
+    
     const newTarget: BackupConfig['targets'][number] = {
       kind: body.kind,
       source: body.source,
       schedule: body.schedule?.trim() || undefined,
       enabled: body.enabled ?? true,
-      storage: body.storage?.provider ? { provider: body.storage.provider } : undefined,
+      storage,
       metadata: body.metadata
     };
 
@@ -594,7 +665,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           storage: {
             type: 'object',
             properties: {
-              provider: { type: 'string', enum: ['local', 'dropbox'] }
+              provider: { type: 'string', enum: ['local', 'dropbox'] },
+              providers: { type: 'array', items: { type: 'string', enum: ['local', 'dropbox'] } }
             }
           },
           metadata: { type: 'object' }
@@ -611,6 +683,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       enabled: boolean;
       storage?: {
         provider?: 'local' | 'dropbox';
+        providers?: ('local' | 'dropbox')[];
       };
       metadata: Record<string, unknown>;
     }>;
@@ -629,16 +702,22 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(400, `Invalid target index: ${index}`);
     }
 
-    // 既存のtargetを更新
+    // 既存のtargetを更新（Phase 2: providers配列に対応）
     const existingTarget = config.targets[targetIndex];
+    
+    // storage設定の処理（providers優先、次にprovider、最後に既存設定）
+    let storage: BackupConfig['targets'][number]['storage'] = existingTarget.storage;
+    if (body.storage?.providers !== undefined) {
+      storage = body.storage.providers.length > 0 ? { providers: body.storage.providers } : undefined;
+    } else if (body.storage?.provider !== undefined) {
+      storage = body.storage.provider ? { provider: body.storage.provider } : undefined;
+    }
+    
     const updatedTarget: BackupConfig['targets'][number] = {
       ...existingTarget,
       ...body,
       schedule: body.schedule !== undefined ? (body.schedule.trim() || undefined) : existingTarget.schedule,
-      // storage.providerが指定されている場合はそれを使用、undefinedの場合は既存の設定を維持
-      storage: body.storage?.provider !== undefined 
-        ? (body.storage.provider ? { provider: body.storage.provider } : undefined)
-        : existingTarget.storage
+      storage
     };
     config.targets[targetIndex] = updatedTarget;
 
