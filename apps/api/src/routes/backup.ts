@@ -420,19 +420,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               }
             }
             
-            // バックアップ履歴も最大件数を超えた分を削除
+            // バックアップ履歴も最大件数を超えた分のファイルステータスをDELETEDに更新
             if (retention.maxBackups) {
               try {
-                const deletedCount = await historyService.cleanupExcessHistory({
+                const markedCount = await historyService.markExcessHistoryAsDeleted({
                   targetKind: body.kind,
                   targetSource: body.source,
                   maxCount: retention.maxBackups
                 });
-                if (deletedCount > 0) {
-                  logger?.info({ deletedCount, targetKind: body.kind, targetSource: body.source }, '[BackupRoute] Old backup history deleted');
+                if (markedCount > 0) {
+                  logger?.info({ markedCount, targetKind: body.kind, targetSource: body.source }, '[BackupRoute] Old backup history marked as DELETED');
                 }
               } catch (error) {
-                logger?.error({ err: error }, '[BackupRoute] Failed to cleanup old backup history');
+                logger?.error({ err: error }, '[BackupRoute] Failed to mark old backup history as DELETED');
               }
             }
           } catch (error) {

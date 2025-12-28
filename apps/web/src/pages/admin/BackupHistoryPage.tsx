@@ -5,7 +5,7 @@ import { useBackupHistory } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
-import type { BackupOperationType, BackupStatus } from '../../api/backup';
+import type { BackupOperationType, BackupStatus, BackupFileStatus } from '../../api/backup';
 
 export function BackupHistoryPage() {
   const [page, setPage] = useState(1);
@@ -62,6 +62,28 @@ export function BackupHistoryPage() {
 
   const getOperationTypeLabel = (type: BackupOperationType) => {
     return type === 'BACKUP' ? 'バックアップ' : 'リストア';
+  };
+
+  const getFileStatusColor = (fileStatus: BackupFileStatus) => {
+    switch (fileStatus) {
+      case 'EXISTS':
+        return 'text-emerald-600';
+      case 'DELETED':
+        return 'text-slate-500';
+      default:
+        return 'text-slate-600';
+    }
+  };
+
+  const getFileStatusLabel = (fileStatus: BackupFileStatus) => {
+    switch (fileStatus) {
+      case 'EXISTS':
+        return '存在';
+      case 'DELETED':
+        return '削除済';
+      default:
+        return fileStatus;
+    }
   };
 
   const formatFileSize = (bytes?: number | null) => {
@@ -157,6 +179,7 @@ export function BackupHistoryPage() {
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">対象</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">ストレージ</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">ステータス</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">ファイル</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">サイズ</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">パス</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">エラー</th>
@@ -165,13 +188,13 @@ export function BackupHistoryPage() {
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-4 text-center text-sm text-slate-600">
+                    <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-600">
                       履歴がありません
                     </td>
                   </tr>
                 ) : (
                   history.map((item) => (
-                    <tr key={item.id} className="border-t border-slate-500">
+                    <tr key={item.id} className={`border-t border-slate-500 ${item.fileStatus === 'DELETED' ? 'bg-slate-50' : ''}`}>
                       <td className="px-2 py-1 text-sm text-slate-700">{new Date(item.startedAt).toLocaleString()}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">{getOperationTypeLabel(item.operationType)}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">
@@ -180,6 +203,9 @@ export function BackupHistoryPage() {
                       <td className="px-2 py-1 text-sm text-slate-700">{item.storageProvider}</td>
                       <td className={`px-2 py-1 text-sm font-semibold ${getStatusColor(item.status)}`}>
                         {getStatusLabel(item.status)}
+                      </td>
+                      <td className={`px-2 py-1 text-sm font-semibold ${getFileStatusColor(item.fileStatus)}`}>
+                        {getFileStatusLabel(item.fileStatus)}
                       </td>
                       <td className="px-2 py-1 text-sm text-slate-700">{formatFileSize(item.sizeBytes)}</td>
                       <td className="px-2 py-1 font-mono text-xs text-slate-700">{item.backupPath || '-'}</td>

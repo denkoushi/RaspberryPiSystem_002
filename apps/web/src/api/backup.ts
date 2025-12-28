@@ -3,6 +3,7 @@ import { api } from './client';
 // バックアップ履歴の型定義
 export type BackupOperationType = 'BACKUP' | 'RESTORE';
 export type BackupStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type BackupFileStatus = 'EXISTS' | 'DELETED';
 
 export interface BackupHistory {
   id: string;
@@ -12,6 +13,7 @@ export interface BackupHistory {
   backupPath?: string | null;
   storageProvider: string;
   status: BackupStatus;
+  fileStatus: BackupFileStatus; // ファイルの存在状態
   sizeBytes?: number | null;
   hash?: string | null;
   summary?: Record<string, unknown> | null;

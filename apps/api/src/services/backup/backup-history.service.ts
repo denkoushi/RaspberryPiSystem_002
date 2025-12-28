@@ -179,30 +179,34 @@ export class BackupHistoryService {
   }
 
   /**
-   * 最大件数を超える履歴を削除（古いものから削除）
+   * 最大件数を超える履歴のファイルステータスをDELETEDに更新（古いものから）
    */
-  async cleanupExcessHistory(params: {
+  async markExcessHistoryAsDeleted(params: {
     targetKind: string;
     targetSource: string;
     maxCount: number;
   }): Promise<number> {
-    // 対象の履歴を取得（新しい順）
+    // 対象の履歴を取得（新しい順、ファイルが存在するもののみ）
     const histories = await prisma.backupHistory.findMany({
       where: {
         targetKind: params.targetKind,
         targetSource: params.targetSource,
-        status: BackupStatus.COMPLETED
+        status: BackupStatus.COMPLETED,
+        fileStatus: 'EXISTS'
       },
       orderBy: { startedAt: 'desc' },
       select: { id: true }
     });
 
-    // 最大件数を超えた分を削除
+    // 最大件数を超えた分のファイルステータスをDELETEDに更新
     if (histories.length > params.maxCount) {
-      const idsToDelete = histories.slice(params.maxCount).map(h => h.id);
-      const result = await prisma.backupHistory.deleteMany({
+      const idsToUpdate = histories.slice(params.maxCount).map(h => h.id);
+      const result = await prisma.backupHistory.updateMany({
         where: {
-          id: { in: idsToDelete }
+          id: { in: idsToUpdate }
+        },
+        data: {
+          fileStatus: 'DELETED'
         }
       });
       return result.count;
