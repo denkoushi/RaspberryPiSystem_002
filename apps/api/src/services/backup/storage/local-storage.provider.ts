@@ -34,6 +34,19 @@ export class LocalStorageProvider implements StorageProvider {
   async delete(targetPath: string): Promise<void> {
     const fullPath = path.join(this.baseDir, targetPath);
     await fs.rm(fullPath, { force: true });
+    
+    // ファイル削除後、親ディレクトリが空なら削除を試みる
+    const parentDir = path.dirname(fullPath);
+    if (parentDir !== this.baseDir && parentDir.startsWith(this.baseDir)) {
+      try {
+        const entries = await fs.readdir(parentDir);
+        if (entries.length === 0) {
+          await fs.rmdir(parentDir);
+        }
+      } catch {
+        // ディレクトリ削除失敗は無視（権限問題など）
+      }
+    }
   }
 
   async list(targetPath: string): Promise<FileInfo[]> {
