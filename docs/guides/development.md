@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 開発ガイド
 
-最終更新: 2025-11-27
+最終更新: 2025-12-28（UI検証手順追加）
 
 ## 概要
 
@@ -166,7 +166,49 @@ Webアプリケーションは`http://localhost:5173`で起動します。
    pnpm -r test
    ```
 
-5. **コミット・プッシュ**
+6. **UI検証（デプロイ前推奨）**
+   
+   **重要**: UI変更を行った場合は、デプロイ前にCursor内のブラウザで検証することで、デプロイ時間を短縮し、効率的にUI確認ができます。
+   
+   ```bash
+   # 1. データベースを起動（ローカル開発用にポートを公開）
+   cd /path/to/RaspberryPiSystem_002
+   # docker-compose.server.ymlでdbのportsを有効化（ローカル開発時のみ）
+   docker compose -f infrastructure/docker/docker-compose.server.yml up -d db
+   
+   # 2. 環境変数を設定（必要に応じて）
+   cd apps/api
+   echo 'DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return"' >> .env
+   
+   # 3. データベースのマイグレーションとシード
+   pnpm prisma migrate deploy
+   pnpm prisma:seed
+   
+   # 4. APIサーバーを起動（別ターミナル）
+   pnpm dev
+   # APIサーバーは http://localhost:8080 で起動
+   
+   # 5. Webアプリケーションを起動（別ターミナル）
+   cd apps/web
+   echo 'VITE_API_BASE_URL="http://localhost:8080/api"' > .env.local
+   pnpm dev --host --port 5173
+   # Webアプリケーションは http://localhost:5173 で起動
+   
+   # 6. Cursor内のブラウザで確認
+   # Cursorのブラウザ機能を使用して http://localhost:5173 にアクセス
+   # ログイン（admin / admin1234）してUI変更を確認
+   ```
+   
+   **メリット**:
+   - デプロイ前にUIを確認できるため、デプロイ時間を短縮
+   - ローカル環境で高速に動作確認が可能
+   - デプロイ後の不具合を事前に発見できる
+   
+   **注意**:
+   - ローカル開発用の設定（データベースポート公開など）は本番環境とは異なる場合があります
+   - 完全な動作確認には実機検証も必要です
+
+7. **コミット・プッシュ**
    ```bash
    git add .
    git commit -m "feat: your feature description"

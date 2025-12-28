@@ -160,18 +160,6 @@ export function BackupTargetsPage() {
         </div>
       }
     >
-      <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div>
-            <span className="text-sm font-semibold text-slate-700">バックアップ先: </span>
-            <span className="text-sm text-slate-900">{getStorageProviderLabel()}</span>
-          </div>
-          <div>
-            <span className="text-sm font-semibold text-slate-700">保存パス: </span>
-            <span className="font-mono text-sm text-slate-900">{getStoragePath()}</span>
-          </div>
-        </div>
-      </div>
       {isAdding && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">新しいバックアップ対象を追加</h3>
@@ -189,6 +177,7 @@ export function BackupTargetsPage() {
             <tr className="border-b-2 border-slate-500">
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">種類</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">ソース</th>
+              <th className="px-2 py-1 text-sm font-semibold text-slate-900">バックアップ先</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">スケジュール</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">有効</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
@@ -197,7 +186,7 @@ export function BackupTargetsPage() {
           <tbody>
             {targets.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-2 py-4 text-center text-sm text-slate-600">
+                <td colSpan={6} className="px-2 py-4 text-center text-sm text-slate-600">
                   バックアップ対象がありません
                 </td>
               </tr>
@@ -206,6 +195,12 @@ export function BackupTargetsPage() {
                 <tr key={index} className="border-t border-slate-500">
                   <td className="px-2 py-1 text-sm text-slate-700">{getKindLabel(target.kind)}</td>
                   <td className="px-2 py-1 font-mono text-xs text-slate-700">{target.source}</td>
+                  <td className="px-2 py-1 text-sm text-slate-700">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold">{getStorageProviderLabel()}</span>
+                      <span className="font-mono text-xs text-slate-600">{getStoragePath()}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-1 text-sm text-slate-700">{formatSchedule(target.schedule)}</td>
                   <td className="px-2 py-1">
                     <label className="flex items-center gap-2">
