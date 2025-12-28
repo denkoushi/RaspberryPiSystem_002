@@ -97,6 +97,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
     const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:255',message:'Providers list',data:{providers,configStorageProvider:config.storage.provider,hasTargetConfig:!!targetConfig},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     for (const requestedProvider of providers) {
       try {
         const targetWithProvider = targetConfig ? {
@@ -108,6 +111,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
         const storageProvider = providerResult.storageProvider;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:267',message:'Provider result',data:{requestedProvider,actualProvider,hasTargetWithProvider:!!targetWithProvider,bodyKind:body.kind,bodySource:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         const backupService = new BackupService(storageProvider);
         
         // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
@@ -117,6 +123,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           targetSource: body.source,
           storageProvider: actualProvider
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:276',message:'History created',data:{historyId,actualProvider,operationType:'BACKUP',targetKind:body.kind,targetSource:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         
         try {
           // バックアップを実行
@@ -125,6 +134,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           });
           
           if (result.success) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:286',message:'Backup success',data:{actualProvider,path:result.path,sizeBytes:result.sizeBytes,historyId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             results.push({ provider: actualProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
             await historyService.completeHistory(historyId, {
               targetKind: body.kind,
@@ -133,6 +145,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               path: result.path
             });
           } else {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:295',message:'Backup failed',data:{actualProvider,error:result.error,historyId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             results.push({ provider: actualProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
           }

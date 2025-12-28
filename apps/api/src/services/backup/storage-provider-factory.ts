@@ -135,6 +135,9 @@ export class StorageProviderFactory {
 
     const storageProvider = this.create(options);
     const actualProvider = options.provider;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:128',message:'Provider created',data:{actualProvider,requestedProvider:config.storage.provider,returnProvider},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     if (returnProvider) {
       return { provider: actualProvider, storageProvider };
