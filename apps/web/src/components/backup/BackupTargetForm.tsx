@@ -96,7 +96,6 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading 
   const kindId = 'backup-target-kind';
   const sourceId = 'backup-target-source';
   const scheduleTimeId = 'backup-target-schedule-time';
-  const scheduleDaysId = 'backup-target-schedule-days';
 
   useEffect(() => {
     if (initialValues) {

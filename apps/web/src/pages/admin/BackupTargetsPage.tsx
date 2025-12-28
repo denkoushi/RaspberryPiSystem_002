@@ -124,6 +124,25 @@ export function BackupTargetsPage() {
     );
   }
 
+  const getStorageProviderLabel = () => {
+    if (!config?.storage) return '不明';
+    const provider = config.storage.provider;
+    if (provider === 'dropbox') {
+      const hasAccessToken = !!(config.storage.options?.accessToken && config.storage.options.accessToken !== '');
+      return hasAccessToken ? 'Dropbox' : 'Dropbox（未設定・ローカルにフォールバック）';
+    }
+    return 'ローカルストレージ';
+  };
+
+  const getStoragePath = () => {
+    if (!config?.storage) return '-';
+    if (config.storage.provider === 'dropbox') {
+      const basePath = config.storage.options?.basePath || '/backups';
+      return `Dropbox: ${basePath}`;
+    }
+    return config.storage.options?.basePath || '/opt/backups';
+  };
+
   return (
     <Card
       title="バックアップ対象管理"
@@ -141,6 +160,18 @@ export function BackupTargetsPage() {
         </div>
       }
     >
+      <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div>
+            <span className="text-sm font-semibold text-slate-700">バックアップ先: </span>
+            <span className="text-sm text-slate-900">{getStorageProviderLabel()}</span>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-700">保存パス: </span>
+            <span className="font-mono text-sm text-slate-900">{getStoragePath()}</span>
+          </div>
+        </div>
+      </div>
       {isAdding && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">新しいバックアップ対象を追加</h3>
