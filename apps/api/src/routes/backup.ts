@@ -200,11 +200,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:202',message:'Config loaded',data:{targetsCount:config.targets.length,bodyKind:body.kind,bodySource:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
     // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
     const targetConfig = config.targets.find(
       (t) => t.kind === body.kind && t.source === body.source
     );
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:207',message:'Target config found',data:{hasTargetConfig:!!targetConfig,targetConfigKind:targetConfig?.kind,targetConfigSource:targetConfig?.source,targetConfigRetention:targetConfig?.retention},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
