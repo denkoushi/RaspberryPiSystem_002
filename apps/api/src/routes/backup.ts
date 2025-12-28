@@ -589,6 +589,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               providers: { type: 'array', items: { type: 'string', enum: ['local', 'dropbox'] } }
             }
           },
+          retention: {
+            type: 'object',
+            properties: {
+              days: { type: 'number' },
+              maxBackups: { type: 'number' }
+            }
+          },
           metadata: { type: 'object' }
         },
         required: ['kind', 'source']
@@ -603,6 +610,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       storage?: {
         provider?: 'local' | 'dropbox';
         providers?: ('local' | 'dropbox')[];
+      };
+      retention?: {
+        days?: number;
+        maxBackups?: number;
       };
       metadata?: Record<string, unknown>;
     };
@@ -630,6 +641,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       schedule: body.schedule?.trim() || undefined,
       enabled: body.enabled ?? true,
       storage,
+      retention: body.retention,
       metadata: body.metadata
     };
 
@@ -685,7 +697,11 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         provider?: 'local' | 'dropbox';
         providers?: ('local' | 'dropbox')[];
       };
-      metadata: Record<string, unknown>;
+      retention?: {
+        days?: number;
+        maxBackups?: number;
+      };
+      metadata?: Record<string, unknown>;
     }>;
 
     // スケジュールのバリデーション
@@ -717,6 +733,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       ...existingTarget,
       ...body,
       schedule: body.schedule !== undefined ? (body.schedule.trim() || undefined) : existingTarget.schedule,
+      retention: body.retention !== undefined ? body.retention : existingTarget.retention,
       storage
     };
     config.targets[targetIndex] = updatedTarget;

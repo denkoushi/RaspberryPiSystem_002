@@ -172,6 +172,34 @@ export function BackupTargetsPage() {
     return config.storage.options?.basePath || '/opt/backups';
   };
 
+  const getRetentionLabel = (target?: BackupTarget) => {
+    // Phase 3: 対象ごとの保持期間設定を表示
+    if (target?.retention) {
+      const parts: string[] = [];
+      if (target.retention.days) {
+        parts.push(`${target.retention.days}日`);
+      }
+      if (target.retention.maxBackups) {
+        parts.push(`最大${target.retention.maxBackups}件`);
+      }
+      return parts.length > 0 ? parts.join(' / ') : '-';
+    }
+    
+    // 全体設定を使用する場合
+    if (config?.retention) {
+      const parts: string[] = [];
+      if (config.retention.days) {
+        parts.push(`${config.retention.days}日`);
+      }
+      if (config.retention.maxBackups) {
+        parts.push(`最大${config.retention.maxBackups}件`);
+      }
+      return parts.length > 0 ? `全体設定: ${parts.join(' / ')}` : '-';
+    }
+    
+    return '-';
+  };
+
   return (
     <Card
       title="バックアップ対象管理"
@@ -210,6 +238,7 @@ export function BackupTargetsPage() {
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">ソース</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">バックアップ先</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">スケジュール</th>
+              <th className="px-2 py-1 text-sm font-semibold text-slate-900">保持期間</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">有効</th>
               <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
             </tr>
@@ -217,7 +246,7 @@ export function BackupTargetsPage() {
           <tbody>
             {targets.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-2 py-4 text-center text-sm text-slate-600">
+                <td colSpan={7} className="px-2 py-4 text-center text-sm text-slate-600">
                   バックアップ対象がありません
                 </td>
               </tr>
@@ -233,6 +262,7 @@ export function BackupTargetsPage() {
                     </div>
                   </td>
                   <td className="px-2 py-1 text-sm text-slate-700">{formatSchedule(target.schedule)}</td>
+                  <td className="px-2 py-1 text-xs text-slate-600">{getRetentionLabel(target)}</td>
                   <td className="px-2 py-1">
                     <label className="flex items-center gap-2">
                       <input

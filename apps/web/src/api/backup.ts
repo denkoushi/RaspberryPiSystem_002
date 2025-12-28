@@ -137,6 +137,10 @@ export interface BackupTarget {
     provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
     providers?: ('local' | 'dropbox')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
   };
+  retention?: {
+    days?: number; // 保持日数（例: 30日）
+    maxBackups?: number; // 最大保持数（例: 10件）
+  }; // 対象ごとの保持期間設定（Phase 3）
   metadata?: Record<string, unknown>;
 }
 

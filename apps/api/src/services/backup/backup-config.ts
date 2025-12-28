@@ -32,6 +32,10 @@ export const BackupConfigSchema = z.object({
       provider: z.enum(['local', 'dropbox']).optional(), // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
       providers: z.array(z.enum(['local', 'dropbox'])).optional() // 対象ごとのストレージプロバイダー（複数、Phase 2）
     }).optional(),
+    retention: z.object({
+      days: z.number().optional(), // 保持日数（例: 30日）
+      maxBackups: z.number().optional() // 最大保持数（例: 10件）
+    }).optional(), // 対象ごとの保持期間設定（Phase 3）
     metadata: z.record(z.unknown()).optional()
   })),
   retention: z.object({

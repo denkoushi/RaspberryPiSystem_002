@@ -95,6 +95,10 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
   const [scheduleTime, setScheduleTime] = useState(parsedSchedule.time);
   const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>(parsedSchedule.daysOfWeek);
   
+  // 保持期間設定（Phase 3）
+  const [retentionDays, setRetentionDays] = useState<number | undefined>(initialValues?.retention?.days);
+  const [retentionMaxBackups, setRetentionMaxBackups] = useState<number | undefined>(initialValues?.retention?.maxBackups);
+  
   // バックアップ先の選択（Phase 2: 複数選択対応）
   // providers配列が指定されている場合はそれを使用、providerが指定されている場合は配列に変換、未指定の場合は空配列（デフォルト）
   const getInitialProviders = useCallback((): ('local' | 'dropbox')[] => {
@@ -139,6 +143,10 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
       
       // 既存のストレージプロバイダー設定を反映
       setSelectedProviders(getInitialProviders());
+      
+      // 既存の保持期間設定を反映（Phase 3）
+      setRetentionDays(initialValues.retention?.days);
+      setRetentionMaxBackups(initialValues.retention?.maxBackups);
     }
   }, [initialValues, getInitialProviders]);
 
@@ -187,12 +195,21 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
       ? { provider: selectedProviders[0] }
       : { providers: selectedProviders };
     
+    // 保持期間設定（Phase 3）
+    const retention = (retentionDays !== undefined || retentionMaxBackups !== undefined)
+      ? {
+          days: retentionDays,
+          maxBackups: retentionMaxBackups
+        }
+      : undefined;
+    
     onSubmit({
       kind,
       source: source.trim(),
       schedule: cronSchedule,
       enabled,
-      storage
+      storage,
+      retention
     });
   };
 
@@ -342,6 +359,52 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
                 選択された曜日: {scheduleDaysOfWeek.sort((a, b) => a - b).map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label).join(', ')}
               </p>
             )}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          保持期間設定（オプション）
+        </label>
+        <div className="space-y-2 pl-4 border-l-2 border-slate-300">
+          <div>
+            <label htmlFor="retention-days" className="block text-xs font-semibold text-slate-600 mb-1">
+              保持日数（日）
+            </label>
+            <Input
+              id="retention-days"
+              name="retentionDays"
+              type="number"
+              min="1"
+              value={retentionDays ?? ''}
+              onChange={(e) => setRetentionDays(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              disabled={isLoading}
+              placeholder="例: 30"
+              className="w-full"
+            />
+            <p className="mt-1 text-xs text-slate-600">
+              指定した日数を超えたバックアップは自動削除されます。未指定の場合は全体設定を使用します。
+            </p>
+          </div>
+          <div>
+            <label htmlFor="retention-max-backups" className="block text-xs font-semibold text-slate-600 mb-1">
+              最大保持数（件）
+            </label>
+            <Input
+              id="retention-max-backups"
+              name="retentionMaxBackups"
+              type="number"
+              min="1"
+              value={retentionMaxBackups ?? ''}
+              onChange={(e) => setRetentionMaxBackups(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+              disabled={isLoading}
+              placeholder="例: 10"
+              className="w-full"
+            />
+            <p className="mt-1 text-xs text-slate-600">
+              指定した件数を超えたバックアップは古いものから自動削除されます。未指定の場合は保持日数のみが適用されます。
+            </p>
           </div>
         </div>
       </div>

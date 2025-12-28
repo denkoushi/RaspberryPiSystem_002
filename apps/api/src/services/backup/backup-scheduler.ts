@@ -199,29 +199,37 @@ export class BackupScheduler {
 
     // 成功したプロバイダーのストレージプロバイダーを使用してクリーンアップ
     const successfulProvider = providers.find((p, i) => results[i]?.success);
-    if (successfulProvider && config.retention) {
-      const targetWithProvider = {
-        ...target,
-        storage: { provider: successfulProvider }
-      };
-      const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
-      const backupService = new BackupService(storageProvider);
-      await this.cleanupOldBackups(backupService, config.retention);
+    if (successfulProvider) {
+      // 対象ごとのretention設定を優先、未指定の場合は全体設定を使用（Phase 3）
+      const retention = target.retention || config.retention;
+      if (retention && retention.days) {
+        const targetWithProvider = {
+          ...target,
+          storage: { provider: successfulProvider }
+        };
+        const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+        const backupService = new BackupService(storageProvider);
+        // 対象ごとのバックアップのみをクリーンアップするため、prefixを指定
+        const prefix = `${target.kind}/${target.source}`;
+        await this.cleanupOldBackups(backupService, retention, prefix);
+      }
     }
   }
 
   /**
-   * 古いバックアップを削除
+   * 古いバックアップを削除（Phase 3: 対象ごとのretention設定に対応）
    */
   private async cleanupOldBackups(
     backupService: BackupService,
-    retention: BackupConfig['retention']
+    retention: { days?: number; maxBackups?: number } | undefined,
+    prefix?: string // 対象ごとのバックアップをフィルタするためのプレフィックス
   ): Promise<void> {
-    if (!retention) {
+    if (!retention || !retention.days) {
       return;
     }
 
-    const backups = await backupService.listBackups({});
+    // 対象ごとのバックアップのみを取得（prefixが指定されている場合）
+    const backups = await backupService.listBackups({ prefix });
     const now = new Date();
     const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
 
@@ -240,9 +248,9 @@ export class BackupScheduler {
         if (!backup.path) continue;
         try {
           await backupService.deleteBackup(backup.path);
-          logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
+          logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
         } catch (error) {
-          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to delete old backup');
+          logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
         }
       }
     } else {
@@ -251,9 +259,9 @@ export class BackupScheduler {
         if (!backup.path) continue;
         try {
           await backupService.deleteBackup(backup.path);
-          logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
+          logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
         } catch (error) {
-          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to delete old backup');
+          logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
         }
       }
     }

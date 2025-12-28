@@ -2577,6 +2577,78 @@ systemctl is-enabled status-agent.timer  # → enabled（これも無効化が�
 
 ---
 
+### [KB-103] バックアップ対象ごとのストレージプロバイダー指定機能実装（Phase 1-2）
+
+**EXEC_PLAN.md参照**: Phase 8: バックアップ対象ごとのストレージプロバイダー指定機能（2025-12-28）
+
+**背景**: 
+- バックアップ対象ごとに異なるストレージプロバイダー（ローカル/Dropbox）を指定したい要望があった
+- 重要な設定ファイルはローカルとDropboxの両方にバックアップしたい（多重バックアップ）
+- 大きなファイル（写真データなど）はローカルのみにバックアップしたい
+
+**実装内容**:
+
+**Phase 1: 単一プロバイダー指定**:
+- ✅ BackupConfigスキーマ: `BackupTarget`に`storage.provider`を追加（オプショナル）
+- ✅ StorageProviderFactory: `createFromTarget`メソッドを追加
+- ✅ BackupScheduler: 対象ごとのストレージプロバイダーを使用
+- ✅ UI: バックアップ先選択欄を追加（ドロップダウン）
+- ✅ 後方互換性: `storage`未指定時は全体設定を使用
+
+**Phase 2: 多重バックアップ**:
+- ✅ BackupConfigスキーマ: `BackupTarget`に`storage.providers`配列を追加
+- ✅ BackupScheduler: 複数のプロバイダーに順次バックアップを実行
+- ✅ UI: チェックボックスで複数のプロバイダーを選択可能に
+- ✅ エラーハンドリング: 1つのプロバイダーで失敗しても他のプロバイダーへのバックアップは継続
+
+**UI変更**:
+- スケジュール入力UIを改善（テキスト入力 → 時刻入力フィールド + 曜日選択ボタン）
+- バックアップ先選択をチェックボックス形式に変更（複数選択可能）
+
+**技術的な詳細**:
+
+- **スキーマ構造**:
+  ```typescript
+  {
+    storage?: {
+      provider?: 'local' | 'dropbox';  // Phase 1: 単一プロバイダー
+      providers?: ('local' | 'dropbox')[];  // Phase 2: 複数プロバイダー
+    }
+  }
+  ```
+
+- **優先順位**:
+  1. `storage.providers`が指定されている場合 → 配列を使用（多重バックアップ）
+  2. `storage.provider`が指定されている場合 → 単一プロバイダーとして扱う
+  3. 未指定の場合 → 全体設定（`config.storage.provider`）を使用
+
+- **多重バックアップの動作**:
+  - 各プロバイダーに順次バックアップを実行
+  - 1つのプロバイダーで失敗しても、他のプロバイダーへのバックアップは継続
+  - すべてのプロバイダーで失敗した場合のみエラーをスロー
+
+**学んだこと**: 
+- 後方互換性を保ちながら段階的に機能を拡張できる（Phase 1 → Phase 2）
+- UIの改善（スケジュール入力）と機能追加（ストレージプロバイダー指定）を同時に実装できる
+- E2EテストはUI変更に合わせて修正が必要（`getByLabel` → `locator`）
+
+**解決状況**: ✅ **解決済み**（2025-12-28）
+
+**関連ファイル**: 
+- `apps/api/src/services/backup/backup-config.ts`
+- `apps/api/src/services/backup/storage-provider-factory.ts`
+- `apps/api/src/services/backup/backup-scheduler.ts`
+- `apps/api/src/routes/backup.ts`
+- `apps/web/src/components/backup/BackupTargetForm.tsx`
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`
+- `e2e/admin.spec.ts`
+
+**関連ドキュメント**: 
+- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+
+---
+
 ### [KB-101] Pi5へのSSH接続不可問題の原因と解決
 
 **発生日時**: 2025-12-15（推定）

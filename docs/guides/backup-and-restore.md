@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
-最終更新: 2025-12-19
+最終更新: 2025-12-28（Phase 1-2のストレージプロバイダー指定機能を追加）
 
 ## 概要
 
@@ -107,6 +107,8 @@ update-frequency: medium
 
 設定ファイル（`/opt/RaspberryPiSystem_002/config/backup.json`）の`targets`配列で、バックアップ対象とスケジュールを定義します：
 
+**Phase 1-2（2025-12-28実装）**: バックアップ対象ごとにストレージプロバイダーを指定可能になりました。
+
 ```json
 {
   "storage": {
@@ -122,13 +124,28 @@ update-frequency: medium
       "kind": "database",
       "source": "postgresql://postgres:...@db:5432/borrow_return",
       "schedule": "0 4 * * *",
-      "enabled": true
+      "enabled": true,
+      "storage": {
+        "provider": "dropbox"
+      }
     },
     {
       "kind": "file",
       "source": "/opt/RaspberryPiSystem_002/apps/api/.env",
       "schedule": "0 4 * * *",
-      "enabled": true
+      "enabled": true,
+      "storage": {
+        "providers": ["local", "dropbox"]
+      }
+    },
+    {
+      "kind": "file",
+      "source": "/opt/RaspberryPiSystem_002/apps/api/.env",
+      "schedule": "0 4 * * *",
+      "enabled": true,
+      "storage": {
+        "provider": "local"
+      }
     },
     {
       "kind": "file",
@@ -187,6 +204,74 @@ update-frequency: medium
 - APIが利用可能な場合、API経由でバックアップを実行（設定ファイルのDropbox設定が自動的に使用される）
 - APIが利用できない場合、またはAPI経由のバックアップが失敗した場合、ローカルバックアップにフォールバック
 - ローカルバックアップは常に実行される（API経由のバックアップが成功しても、フォールバック用に保持）
+
+### バックアップ対象ごとのストレージプロバイダー指定（Phase 1-2）
+
+**Phase 1（2025-12-28実装）**: バックアップ対象ごとにストレージプロバイダーを指定できるようになりました。
+
+**設定方法**:
+- 各`target`に`storage.provider`フィールドを追加（オプショナル）
+- 未指定の場合は全体設定（`config.storage.provider`）を使用
+- 指定可能な値: `"local"` または `"dropbox"`
+
+**例**:
+```json
+{
+  "targets": [
+    {
+      "kind": "database",
+      "source": "postgresql://...",
+      "schedule": "0 4 * * *",
+      "enabled": true,
+      "storage": {
+        "provider": "dropbox"
+      }
+    },
+    {
+      "kind": "image",
+      "source": "photo-storage",
+      "schedule": "0 6 * * *",
+      "enabled": true,
+      "storage": {
+        "provider": "local"
+      }
+    }
+  ]
+}
+```
+
+**Phase 2（2025-12-28実装）**: 多重バックアップ機能を実装しました。
+
+**設定方法**:
+- 各`target`に`storage.providers`配列を追加（オプショナル）
+- 複数のプロバイダーを指定すると、各プロバイダーに順次バックアップを実行
+- `storage.provider`と`storage.providers`の両方が指定されている場合、`providers`が優先される
+
+**例**:
+```json
+{
+  "targets": [
+    {
+      "kind": "database",
+      "source": "postgresql://...",
+      "schedule": "0 4 * * *",
+      "enabled": true,
+      "storage": {
+        "providers": ["local", "dropbox"]
+      }
+    }
+  ]
+}
+```
+
+**動作**:
+- 複数のプロバイダーが指定されている場合、各プロバイダーに順次バックアップを実行
+- 1つのプロバイダーで失敗しても、他のプロバイダーへのバックアップは継続
+- すべてのプロバイダーで失敗した場合のみエラーをスロー
+
+**後方互換性**:
+- `storage`フィールドが未指定の場合は全体設定を使用（既存の動作を維持）
+- `storage.provider`が指定されている場合は単一プロバイダーとして扱う（Phase 1の動作を維持）
 
 ### 管理コンソールからのバックアップ対象管理
 
