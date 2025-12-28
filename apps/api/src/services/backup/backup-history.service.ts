@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { BackupOperationType, BackupStatus, Prisma } from '@prisma/client';
+import { BackupOperationType, BackupStatus, BackupFileStatus, Prisma } from '@prisma/client';
 
 export interface BackupSummary {
   targetKind?: string;
@@ -97,6 +97,7 @@ export class BackupHistoryService {
       backupPath: string | null;
       storageProvider: string;
       status: BackupStatus;
+      fileStatus: BackupFileStatus;
       sizeBytes: number | null;
       hash: string | null;
       summary: Prisma.JsonValue | null;
@@ -175,6 +176,22 @@ export class BackupHistoryService {
       }
     });
 
+    return result.count;
+  }
+
+  /**
+   * バックアップパスに基づいてファイルステータスをDELETEDに更新
+   */
+  async markHistoryAsDeletedByPath(backupPath: string): Promise<number> {
+    const result = await prisma.backupHistory.updateMany({
+      where: {
+        backupPath: backupPath,
+        fileStatus: 'EXISTS'
+      },
+      data: {
+        fileStatus: 'DELETED'
+      }
+    });
     return result.count;
   }
 

@@ -97,23 +97,25 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
     const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
-    for (const provider of providers) {
+    for (const requestedProvider of providers) {
       try {
         const targetWithProvider = targetConfig ? {
           ...targetConfig,
-          storage: { provider }
+          storage: { provider: requestedProvider }
         } : undefined;
-        const storageProvider = targetWithProvider
-          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
-          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+        const providerResult = targetWithProvider
+          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
+          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
+        const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
         
-        // バックアップ履歴を作成
+        // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
         const historyId = await historyService.createHistory({
           operationType: BackupOperationType.BACKUP,
           targetKind: body.kind,
           targetSource: body.source,
-          storageProvider: provider
+          storageProvider: actualProvider
         });
         
         try {
@@ -123,7 +125,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           });
           
           if (result.success) {
-            results.push({ provider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            results.push({ provider: actualProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
             await historyService.completeHistory(historyId, {
               targetKind: body.kind,
               targetSource: body.source,
@@ -131,17 +133,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               path: result.path
             });
           } else {
-            results.push({ provider, success: false, error: result.error });
+            results.push({ provider: actualProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ provider, success: false, error: errorMessage });
+          results.push({ provider: actualProvider, success: false, error: errorMessage });
           await historyService.failHistory(historyId, errorMessage);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        results.push({ provider, success: false, error: errorMessage });
+        results.push({ provider: requestedProvider, success: false, error: errorMessage });
       }
     }
     
@@ -252,23 +254,25 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
     const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
-    for (const provider of providers) {
+    for (const requestedProvider of providers) {
       try {
         const targetWithProvider = targetConfig ? {
           ...targetConfig,
-          storage: { provider }
+          storage: { provider: requestedProvider }
         } : undefined;
-        const storageProvider = targetWithProvider
-          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate)
-          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+        const providerResult = targetWithProvider
+          ? StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
+          : StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
+        const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
         
-        // バックアップ履歴を作成
+        // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
         const historyId = await historyService.createHistory({
           operationType: BackupOperationType.BACKUP,
           targetKind: body.kind,
           targetSource: body.source,
-          storageProvider: provider
+          storageProvider: actualProvider
         });
         
         try {
@@ -278,7 +282,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           });
           
           if (result.success) {
-            results.push({ provider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            results.push({ provider: actualProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
             await historyService.completeHistory(historyId, {
               targetKind: body.kind,
               targetSource: body.source,
@@ -286,17 +290,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               path: result.path
             });
           } else {
-            results.push({ provider, success: false, error: result.error });
+            results.push({ provider: actualProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ provider, success: false, error: errorMessage });
+          results.push({ provider: actualProvider, success: false, error: errorMessage });
           await historyService.failHistory(historyId, errorMessage);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        results.push({ provider, success: false, error: errorMessage });
+        results.push({ provider: requestedProvider, success: false, error: errorMessage });
       }
     }
     
@@ -390,6 +394,15 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
                   fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:356',message:'Deleting backup',data:{backupPath:backup.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                   // #endregion
                   await backupService.deleteBackup(backup.path);
+                  // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+                  try {
+                    const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+                    if (updatedCount > 0) {
+                      logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                    }
+                  } catch (error) {
+                    logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
+                  }
                   logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
                   // #region agent log
                   fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:359',message:'Backup deleted successfully',data:{backupPath:backup.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -414,6 +427,15 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               if (!backup.path) continue;
               try {
                 await backupService.deleteBackup(backup.path);
+                // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+                try {
+                  const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+                  if (updatedCount > 0) {
+                    logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                  }
+                } catch (error) {
+                  logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
+                }
                 logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
               } catch (error) {
                 logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');

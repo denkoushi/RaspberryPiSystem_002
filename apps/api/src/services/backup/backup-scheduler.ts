@@ -4,6 +4,7 @@ import { BackupConfigLoader } from './backup-config.loader.js';
 import type { BackupConfig } from './backup-config.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
 import { StorageProviderFactory } from './storage-provider-factory.js';
+import { BackupHistoryService } from './backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -163,14 +164,16 @@ export class BackupScheduler {
 
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
     const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; error?: string }> = [];
-    for (const provider of providers) {
+    for (const requestedProvider of providers) {
       try {
         // 一時的にtargetのstorage.providerを設定してストレージプロバイダーを作成
         const targetWithProvider = {
           ...target,
-          storage: { provider }
+          storage: { provider: requestedProvider }
         };
-        const storageProvider = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+        const providerResult = StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate, true);
+        const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
 
         // バックアップを実行
@@ -179,13 +182,13 @@ export class BackupScheduler {
         });
 
         if (!result.success) {
-          results.push({ provider, success: false, error: result.error });
+          results.push({ provider: actualProvider, success: false, error: result.error });
         } else {
-          results.push({ provider, success: true });
+          results.push({ provider: actualProvider, success: true });
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        results.push({ provider, success: false, error: errorMessage });
+        results.push({ provider: requestedProvider, success: false, error: errorMessage });
         // エラーが発生しても次のプロバイダーに続行
       }
     }
@@ -223,7 +226,7 @@ export class BackupScheduler {
                   }
                 }
                 const prefix = `${target.kind}`; // 例: "database"
-                await this.cleanupOldBackups(backupService, retention, prefix, sourceForPrefix);
+                await this.cleanupOldBackups(backupService, retention, prefix, sourceForPrefix, target.kind, target.source);
       }
     }
   }
@@ -235,7 +238,9 @@ export class BackupScheduler {
     backupService: BackupService,
     retention: { days?: number; maxBackups?: number } | undefined,
     prefix?: string, // 対象ごとのバックアップをフィルタするためのプレフィックス
-    sourceForPrefix?: string // パス末尾で対象を特定するためのソース名（例: borrow_return）
+    sourceForPrefix?: string, // パス末尾で対象を特定するためのソース名（例: borrow_return）
+    targetKind?: string, // ターゲットの種類
+    targetSource?: string // ターゲットのソース
   ): Promise<void> {
     if (!retention || !retention.days) {
       return;
@@ -250,6 +255,8 @@ export class BackupScheduler {
     const now = new Date();
     const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
 
+    const historyService = new BackupHistoryService();
+
     // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
     if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
       // 全バックアップを日付順にソート（古い順）
@@ -262,6 +269,15 @@ export class BackupScheduler {
         if (!backup.path) continue;
         try {
           await backupService.deleteBackup(backup.path);
+          // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+          try {
+            const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+            if (updatedCount > 0) {
+              logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+            }
+          } catch (error) {
+            logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
+          }
           logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
         } catch (error) {
           logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
@@ -280,9 +296,34 @@ export class BackupScheduler {
       if (!backup.path) continue;
       try {
         await backupService.deleteBackup(backup.path);
+        // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+        try {
+          const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+          if (updatedCount > 0) {
+            logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+          }
+        } catch (error) {
+          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
+        }
         logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
       } catch (error) {
         logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
+      }
+    }
+
+    // バックアップ履歴も最大件数を超えた分のファイルステータスをDELETEDに更新
+    if (retention.maxBackups && targetKind && targetSource) {
+      try {
+        const markedCount = await historyService.markExcessHistoryAsDeleted({
+          targetKind,
+          targetSource,
+          maxCount: retention.maxBackups
+        });
+        if (markedCount > 0) {
+          logger?.info({ markedCount, targetKind, targetSource }, '[BackupScheduler] Old backup history marked as DELETED');
+        }
+      } catch (error) {
+        logger?.error({ err: error }, '[BackupScheduler] Failed to mark old backup history as DELETED');
       }
     }
   }

@@ -66,13 +66,35 @@ export class StorageProviderFactory {
 
   /**
    * 設定ファイルからストレージプロバイダーを作成
+   * @returns 実際に使用されたプロバイダーとストレージプロバイダーのペア
    */
   static createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>
-  ): StorageProvider {
+  ): StorageProvider;
+  static createFromConfig(
+    config: BackupConfig,
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: false
+  ): StorageProvider;
+  static createFromConfig(
+    config: BackupConfig,
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: true
+  ): { provider: 'local' | 'dropbox'; storageProvider: StorageProvider };
+  static createFromConfig(
+    config: BackupConfig,
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: boolean
+  ): StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider } {
     const options: StorageProviderOptions = {
       provider: config.storage.provider
     };
@@ -102,12 +124,19 @@ export class StorageProviderFactory {
       }
     }
 
-    return this.create(options);
+    const storageProvider = this.create(options);
+    const actualProvider = options.provider;
+
+    if (returnProvider) {
+      return { provider: actualProvider, storageProvider };
+    }
+    return storageProvider;
   }
 
   /**
    * バックアップ対象ごとのストレージプロバイダーを作成
    * 対象にstorage.providerが指定されている場合はそれを使用、未指定の場合は全体設定を使用
+   * @returns 実際に使用されたプロバイダーとストレージプロバイダーのペア
    */
   static createFromTarget(
     config: BackupConfig,
@@ -115,7 +144,31 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>
-  ): StorageProvider {
+  ): StorageProvider;
+  static createFromTarget(
+    config: BackupConfig,
+    target: BackupConfig['targets'][0],
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: false
+  ): StorageProvider;
+  static createFromTarget(
+    config: BackupConfig,
+    target: BackupConfig['targets'][0],
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: true
+  ): { provider: 'local' | 'dropbox'; storageProvider: StorageProvider };
+  static createFromTarget(
+    config: BackupConfig,
+    target: BackupConfig['targets'][0],
+    requestProtocol?: string,
+    requestHost?: string,
+    onTokenUpdate?: (token: string) => Promise<void>,
+    returnProvider?: boolean
+  ): StorageProvider | { provider: 'local' | 'dropbox'; storageProvider: StorageProvider } {
     // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
     const provider = target.storage?.provider ?? config.storage.provider;
     
@@ -147,7 +200,13 @@ export class StorageProviderFactory {
       }
     }
 
-    return this.create(options);
+    const storageProvider = this.create(options);
+    const actualProvider = options.provider;
+
+    if (returnProvider) {
+      return { provider: actualProvider, storageProvider };
+    }
+    return storageProvider;
   }
 
   /**
