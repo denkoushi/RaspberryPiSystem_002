@@ -1202,7 +1202,6 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       }
       
       // ファイルが見つからない場合のエラーメッセージを改善
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('not found') || errorMessage.includes('Backup file not found')) {
         throw new ApiError(
           404,
