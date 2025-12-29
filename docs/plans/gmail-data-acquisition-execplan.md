@@ -318,10 +318,10 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [x] `apps/api/src/services/backup/gmail-api-client.ts`の作成
   - [x] `GmailApiClient`クラスの実装
   - [x] ユニットテストの実装（13テストすべて成功）
-- [ ] Milestone 3: GmailStorageProviderの実装
-  - [ ] `apps/api/src/services/backup/storage/gmail-storage.provider.ts`の作成
-  - [ ] `GmailStorageProvider`クラスの実装
-  - [ ] ユニットテストの実装
+- [x] (2025-12-29) Milestone 3: GmailStorageProviderの実装
+  - [x] `apps/api/src/services/backup/storage/gmail-storage.provider.ts`の作成
+  - [x] `GmailStorageProvider`クラスの実装
+  - [x] ユニットテストの実装（11テストすべて成功）
 - [ ] Milestone 4: StorageProviderFactoryの拡張
   - [ ] `StorageProviderOptions`インターフェースの拡張
   - [ ] `providerCreators`マップへの`'gmail'`追加
