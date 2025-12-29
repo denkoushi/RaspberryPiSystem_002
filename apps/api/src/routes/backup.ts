@@ -1096,6 +1096,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     }
 
     // リストア履歴を作成
+    logger?.info(
+      { targetKind, targetSource, normalizedBackupPath, actualBackupPath },
+      '[BackupRoute] Creating restore history (from-dropbox)'
+    );
     const historyId = await historyService.createHistory({
       operationType: BackupOperationType.RESTORE,
       targetKind,
@@ -1103,6 +1107,16 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       backupPath: normalizedBackupPath,
       storageProvider: 'dropbox'
     });
+    logger?.info({ historyId }, '[BackupRoute] Restore history created (from-dropbox)');
+
+    // Debug: 作成直後に存在確認（P2025の切り分け用）
+    try {
+      await historyService.getHistoryById(historyId);
+      logger?.info({ historyId }, '[BackupRoute] Restore history exists (from-dropbox)');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger?.error({ historyId, err: msg }, '[BackupRoute] Restore history NOT FOUND right after create (from-dropbox)');
+    }
 
     try {
       // Dropboxからバックアップファイルをダウンロード
