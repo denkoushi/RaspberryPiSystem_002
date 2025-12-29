@@ -1124,14 +1124,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
         if (!verification.valid) {
           logger?.error(
-            { errors: verification.errors, backupPath: normalizedBackupPath, originalPath: body.backupPath },
+            { errors: verification.errors, backupPath: actualBackupPath, originalPath: body.backupPath },
             '[BackupRoute] Backup integrity verification failed'
           );
           throw new ApiError(400, `Backup integrity verification failed: ${verification.errors.join(', ')}`);
         }
 
         logger?.info(
-          { fileSize: verification.fileSize, hash: verification.hash, backupPath: normalizedBackupPath },
+          { fileSize: verification.fileSize, hash: verification.hash, backupPath: actualBackupPath },
           '[BackupRoute] Backup integrity verified'
         );
       }
@@ -1141,7 +1141,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
       // ターゲットがrestoreメソッドを実装している場合はそれを使用
       if (target.restore) {
-        logger?.info({ targetKind, targetSource, backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
+        logger?.info({ targetKind, targetSource, backupPath: actualBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
         const result = await target.restore(backupData, {
           overwrite: true
         });
@@ -1152,7 +1152,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           targetSource,
           sizeBytes: backupData.length,
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-          path: normalizedBackupPath
+          path: actualBackupPath
         });
 
         return reply.status(200).send({
@@ -1167,7 +1167,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           destination: tempPath
         });
 
-        logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
+        logger?.info({ backupPath: actualBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
         
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {
@@ -1175,14 +1175,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           targetSource,
           sizeBytes: backupData.length,
           hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-          path: normalizedBackupPath
+          path: actualBackupPath
         });
       }
 
       return reply.status(200).send({
         success: true,
         message: 'Backup restored successfully',
-        backupPath: normalizedBackupPath,
+        backupPath: actualBackupPath,
         originalPath: body.backupPath,
         timestamp: new Date(),
         historyId
