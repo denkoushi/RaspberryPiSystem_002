@@ -398,14 +398,7 @@ export function CsvImportSchedulePage() {
                   <select
                     className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     value={formData.employeesPath || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === 'custom') {
-                        setFormData({ ...formData, employeesPath: '' });
-                      } else {
-                        setFormData({ ...formData, employeesPath: value });
-                      }
-                    }}
+                    onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value || undefined })}
                   >
                     <option value="">選択してください</option>
                     {GMAIL_SUBJECT_PATTERNS.employees.map((pattern) => (
@@ -413,19 +406,9 @@ export function CsvImportSchedulePage() {
                         {pattern}
                       </option>
                     ))}
-                    <option value="custom">カスタム（手動入力）</option>
                   </select>
-                  {(!formData.employeesPath || formData.employeesPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.employees.includes(formData.employeesPath as typeof GMAIL_SUBJECT_PATTERNS.employees[number])) && (
-                    <input
-                      type="text"
-                      className="mt-2 w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                      placeholder="[Pi5 CSV Import] employees"
-                      value={formData.employeesPath === 'custom' ? '' : formData.employeesPath}
-                      onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
-                    />
-                  )}
                   <p className="mt-1 text-xs text-slate-600">
-                    Gmail検索用の件名パターン（例: [Pi5 CSV Import] employees）
+                    Gmail検索用の件名パターン（PowerAutomate側の件名と一致させる必要があります）
                   </p>
                 </>
               ) : (
@@ -452,14 +435,7 @@ export function CsvImportSchedulePage() {
                   <select
                     className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     value={formData.itemsPath || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === 'custom') {
-                        setFormData({ ...formData, itemsPath: '' });
-                      } else {
-                        setFormData({ ...formData, itemsPath: value });
-                      }
-                    }}
+                    onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value || undefined })}
                   >
                     <option value="">選択してください</option>
                     {GMAIL_SUBJECT_PATTERNS.items.map((pattern) => (
@@ -467,19 +443,9 @@ export function CsvImportSchedulePage() {
                         {pattern}
                       </option>
                     ))}
-                    <option value="custom">カスタム（手動入力）</option>
                   </select>
-                  {(!formData.itemsPath || formData.itemsPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.items.includes(formData.itemsPath as typeof GMAIL_SUBJECT_PATTERNS.items[number])) && (
-                    <input
-                      type="text"
-                      className="mt-2 w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                      placeholder="[Pi5 CSV Import] items"
-                      value={formData.itemsPath === 'custom' ? '' : formData.itemsPath}
-                      onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
-                    />
-                  )}
                   <p className="mt-1 text-xs text-slate-600">
-                    Gmail検索用の件名パターン（例: [Pi5 CSV Import] items）
+                    Gmail検索用の件名パターン（PowerAutomate側の件名と一致させる必要があります）
                   </p>
                 </>
               ) : (
@@ -724,14 +690,7 @@ export function CsvImportSchedulePage() {
                               <select
                                 className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
                                 value={formData.employeesPath || ''}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === 'custom') {
-                                    setFormData({ ...formData, employeesPath: '' });
-                                  } else {
-                                    setFormData({ ...formData, employeesPath: value });
-                                  }
-                                }}
+                                onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value || undefined })}
                               >
                                 <option value="">従業員CSV選択</option>
                                 {GMAIL_SUBJECT_PATTERNS.employees.map((pattern) => (
@@ -739,28 +698,11 @@ export function CsvImportSchedulePage() {
                                     {pattern}
                                   </option>
                                 ))}
-                                <option value="custom">カスタム</option>
                               </select>
-                              {(!formData.employeesPath || formData.employeesPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.employees.includes(formData.employeesPath as typeof GMAIL_SUBJECT_PATTERNS.employees[number])) && (
-                                <input
-                                  type="text"
-                                  className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                                  placeholder="[Pi5 CSV Import] employees"
-                                  value={formData.employeesPath === 'custom' ? '' : formData.employeesPath}
-                                  onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
-                                />
-                              )}
                               <select
                                 className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
                                 value={formData.itemsPath || ''}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === 'custom') {
-                                    setFormData({ ...formData, itemsPath: '' });
-                                  } else {
-                                    setFormData({ ...formData, itemsPath: value });
-                                  }
-                                }}
+                                onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value || undefined })}
                               >
                                 <option value="">アイテムCSV選択</option>
                                 {GMAIL_SUBJECT_PATTERNS.items.map((pattern) => (
@@ -768,17 +710,7 @@ export function CsvImportSchedulePage() {
                                     {pattern}
                                   </option>
                                 ))}
-                                <option value="custom">カスタム</option>
                               </select>
-                              {(!formData.itemsPath || formData.itemsPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.items.includes(formData.itemsPath as typeof GMAIL_SUBJECT_PATTERNS.items[number])) && (
-                                <input
-                                  type="text"
-                                  className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                                  placeholder="[Pi5 CSV Import] items"
-                                  value={formData.itemsPath === 'custom' ? '' : formData.itemsPath}
-                                  onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
-                                />
-                              )}
                             </>
                           ) : (
                             <>
