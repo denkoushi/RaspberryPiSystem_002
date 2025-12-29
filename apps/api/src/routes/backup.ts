@@ -1067,7 +1067,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     const backupPathParts = normalizedBackupPath.split('/');
     const targetKind = body.targetKind || backupPathParts[0] || 'file';
-    const targetSource = backupPathParts[backupPathParts.length - 1] || normalizedBackupPath;
+    let targetSource = backupPathParts[backupPathParts.length - 1] || normalizedBackupPath;
+    
+    // CSVの場合はファイル名から拡張子を削除（employees.csv -> employees）
+    if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
+      targetSource = targetSource.replace(/\.csv$/, '');
+    }
 
     // リストア履歴を作成
     const historyId = await historyService.createHistory({
