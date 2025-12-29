@@ -20,6 +20,15 @@ export interface GmailMessage {
         attachmentId?: string;
         size?: number;
       };
+      parts?: Array<{
+        partId: string;
+        mimeType: string;
+        filename?: string;
+        body?: {
+          attachmentId?: string;
+          size?: number;
+        };
+      }>;
     }>;
     body?: {
       attachmentId?: string;
@@ -103,7 +112,7 @@ export class GmailApiClient {
    */
   async getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
     try {
-      const response = await this.gmail.users.attachments.get({
+      const response = await this.gmail.users.messages.attachments.get({
         userId: 'me',
         messageId,
         id: attachmentId
@@ -162,8 +171,9 @@ export class GmailApiClient {
     }
 
     // 添付ファイルを探す
-    const findAttachment = (parts: GmailMessage['payload']['parts']): { attachmentId: string; filename: string } | null => {
-      if (!parts) {
+    type PartsType = NonNullable<GmailMessage['payload']>['parts'];
+    const findAttachment = (parts: PartsType | undefined): { attachmentId: string; filename: string } | null => {
+      if (!parts || !Array.isArray(parts)) {
         return null;
       }
 

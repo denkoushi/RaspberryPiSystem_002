@@ -150,16 +150,20 @@ export class BackupScheduler {
     const backupTarget = BackupTargetFactory.createFromConfig(config, target.kind, target.source, target.metadata);
 
     // ストレージプロバイダーのリストを決定（多重バックアップ対応）
+    // Gmailはバックアップ用ではないため、local/dropboxのみをサポート
     const providers: ('local' | 'dropbox')[] = [];
     if (target.storage?.providers && target.storage.providers.length > 0) {
       // providers配列が指定されている場合はそれを使用
-      providers.push(...target.storage.providers);
-    } else if (target.storage?.provider) {
+      providers.push(...target.storage.providers.filter((p): p is 'local' | 'dropbox' => p === 'local' || p === 'dropbox'));
+    } else if (target.storage?.provider && (target.storage.provider === 'local' || target.storage.provider === 'dropbox')) {
       // providerが指定されている場合は単一プロバイダーとして扱う
       providers.push(target.storage.provider);
-    } else {
+    } else if (config.storage.provider === 'local' || config.storage.provider === 'dropbox') {
       // 未指定の場合は全体設定を使用
       providers.push(config.storage.provider);
+    } else {
+      // Gmailの場合はlocalにフォールバック
+      providers.push('local');
     }
 
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
@@ -181,10 +185,12 @@ export class BackupScheduler {
           label: target.metadata?.label as string
         });
 
+        // Gmailの場合はlocalにフォールバック
+        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
         if (!result.success) {
-          results.push({ provider: actualProvider, success: false, error: result.error });
+          results.push({ provider: safeProvider, success: false, error: result.error });
         } else {
-          results.push({ provider: actualProvider, success: true });
+          results.push({ provider: safeProvider, success: true });
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

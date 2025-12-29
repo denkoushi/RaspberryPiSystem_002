@@ -179,7 +179,10 @@ export class StorageProviderFactory {
         options.provider = 'local';
       } else {
         // OAuth2Clientを作成
-        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+        const redirectUriForClient = requestProtocol && requestHost 
+          ? `${requestProtocol}://${requestHost}/api/gmail/oauth/callback`
+          : undefined;
+        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUriForClient);
         
         options.accessToken = accessToken;
         options.refreshToken = refreshToken;

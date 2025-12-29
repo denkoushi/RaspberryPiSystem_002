@@ -84,13 +84,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
     // ストレージプロバイダーのリストを決定（Phase 2: 多重バックアップ対応）
+    // Gmailはバックアップ用ではないため、local/dropboxのみをサポート
     const providers: ('local' | 'dropbox')[] = [];
     if (targetConfig?.storage?.providers && targetConfig.storage.providers.length > 0) {
-      providers.push(...targetConfig.storage.providers);
-    } else if (targetConfig?.storage?.provider) {
+      providers.push(...targetConfig.storage.providers.filter((p): p is 'local' | 'dropbox' => p === 'local' || p === 'dropbox'));
+    } else if (targetConfig?.storage?.provider && (targetConfig.storage.provider === 'local' || targetConfig.storage.provider === 'dropbox')) {
       providers.push(targetConfig.storage.provider);
-    } else {
+    } else if (config.storage.provider === 'local' || config.storage.provider === 'dropbox') {
       providers.push(config.storage.provider);
+    } else {
+      // Gmailの場合はlocalにフォールバック
+      providers.push('local');
     }
     
     const historyService = new BackupHistoryService();
@@ -107,6 +111,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
           : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        // Gmailの場合はlocalにフォールバック
+        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
         const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
         
@@ -115,7 +121,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           operationType: BackupOperationType.BACKUP,
           targetKind: body.kind,
           targetSource: body.source,
-          storageProvider: actualProvider
+          storageProvider: safeProvider
         });
         
         try {
@@ -125,7 +131,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           });
           
           if (result.success) {
-            results.push({ provider: actualProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
             await historyService.completeHistory(historyId, {
               targetKind: body.kind,
               targetSource: body.source,
@@ -133,12 +139,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               path: result.path
             });
           } else {
-            results.push({ provider: actualProvider, success: false, error: result.error });
+            results.push({ provider: safeProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ provider: actualProvider, success: false, error: errorMessage });
+          results.push({ provider: safeProvider, success: false, error: errorMessage });
           await historyService.failHistory(historyId, errorMessage);
         }
       } catch (error) {
@@ -229,13 +235,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
     // ストレージプロバイダーのリストを決定（Phase 2: 多重バックアップ対応）
+    // Gmailはバックアップ用ではないため、local/dropboxのみをサポート
     const providers: ('local' | 'dropbox')[] = [];
     if (targetConfig?.storage?.providers && targetConfig.storage.providers.length > 0) {
-      providers.push(...targetConfig.storage.providers);
-    } else if (targetConfig?.storage?.provider) {
+      providers.push(...targetConfig.storage.providers.filter((p): p is 'local' | 'dropbox' => p === 'local' || p === 'dropbox'));
+    } else if (targetConfig?.storage?.provider && (targetConfig.storage.provider === 'local' || targetConfig.storage.provider === 'dropbox')) {
       providers.push(targetConfig.storage.provider);
-    } else {
+    } else if (config.storage.provider === 'local' || config.storage.provider === 'dropbox') {
       providers.push(config.storage.provider);
+    } else {
+      // Gmailの場合はlocalにフォールバック
+      providers.push('local');
     }
     
     const historyService = new BackupHistoryService();
@@ -252,6 +262,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, onTokenUpdate, true)
           : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
         const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        // Gmailの場合はlocalにフォールバック
+        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
         const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
         
@@ -260,7 +272,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           operationType: BackupOperationType.BACKUP,
           targetKind: body.kind,
           targetSource: body.source,
-          storageProvider: actualProvider
+          storageProvider: safeProvider
         });
         
         try {
@@ -270,7 +282,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           });
           
           if (result.success) {
-            results.push({ provider: actualProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+            results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
             await historyService.completeHistory(historyId, {
               targetKind: body.kind,
               targetSource: body.source,
@@ -278,12 +290,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               path: result.path
             });
           } else {
-            results.push({ provider: actualProvider, success: false, error: result.error });
+            results.push({ provider: safeProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.push({ provider: actualProvider, success: false, error: errorMessage });
+          results.push({ provider: safeProvider, success: false, error: errorMessage });
           await historyService.failHistory(historyId, errorMessage);
         }
       } catch (error) {
