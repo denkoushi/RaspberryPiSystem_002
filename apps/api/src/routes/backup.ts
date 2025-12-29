@@ -1073,6 +1073,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
       targetSource = targetSource.replace(/\.csv$/, '');
     }
+    
+    // データベースバックアップの場合は拡張子を処理
+    // 既存のバックアップファイル（拡張子なし）との互換性のため、拡張子がない場合は.sql.gzを追加
+    let actualBackupPath = normalizedBackupPath;
+    if (targetKind === 'database' && !normalizedBackupPath.endsWith('.sql.gz') && !normalizedBackupPath.endsWith('.sql')) {
+      // 拡張子がない場合は.sql.gzを追加（新しいバックアップファイル形式）
+      actualBackupPath = `${normalizedBackupPath}.sql.gz`;
+    }
 
     // リストア履歴を作成
     const historyId = await historyService.createHistory({
@@ -1085,8 +1093,25 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     try {
       // Dropboxからバックアップファイルをダウンロード
-      logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Downloading backup from Dropbox');
-      const backupData = await dropboxProvider.download(normalizedBackupPath);
+      // データベースバックアップの場合、拡張子がない場合は.sql.gzを試す
+      let backupData: Buffer;
+      try {
+        logger?.info({ backupPath: actualBackupPath, originalPath: body.backupPath }, '[BackupRoute] Downloading backup from Dropbox');
+        backupData = await dropboxProvider.download(actualBackupPath);
+      } catch (error) {
+        // データベースバックアップで拡張子付きで失敗した場合、拡張子なしで再試行（既存バックアップとの互換性）
+        if (targetKind === 'database' && actualBackupPath.endsWith('.sql.gz') && normalizedBackupPath !== actualBackupPath) {
+          logger?.info({ backupPath: normalizedBackupPath, originalPath: body.backupPath }, '[BackupRoute] Retrying download without extension for compatibility');
+          try {
+            backupData = await dropboxProvider.download(normalizedBackupPath);
+            actualBackupPath = normalizedBackupPath; // 実際に使用したパスを更新
+          } catch (retryError) {
+            throw error; // 元のエラーをスロー
+          }
+        } else {
+          throw error;
+        }
+      }
 
       // 整合性検証
       if (body.verifyIntegrity) {
