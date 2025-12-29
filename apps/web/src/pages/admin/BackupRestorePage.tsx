@@ -9,6 +9,7 @@ export function BackupRestorePage() {
   const [targetKind, setTargetKind] = useState<'database' | 'csv'>('csv');
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>('');
   const [selectedBackupPath, setSelectedBackupPath] = useState<string>('');
+  const [showExistsOnly, setShowExistsOnly] = useState(false);
   const [verifyIntegrity, setVerifyIntegrity] = useState(true);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -34,7 +35,6 @@ export function BackupRestorePage() {
     return history
       .filter((item) => item.operationType === 'BACKUP')
       .filter((item) => item.status === 'COMPLETED')
-      .filter((item) => item.fileStatus === 'EXISTS')
       .filter((item) => item.storageProvider === 'dropbox')
       .map((item) => ({
         id: item.id,
@@ -42,11 +42,22 @@ export function BackupRestorePage() {
         targetKind: item.targetKind,
         targetSource: item.targetSource,
         sizeBytes: item.sizeBytes,
+        fileStatus: item.fileStatus,
         path: toPath(item)
       }))
       .filter((item) => !!item.path)
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   }, [backupHistoryQuery.data]);
+
+  const visibleCandidates = useMemo(() => {
+    if (!showExistsOnly) return candidates;
+    return candidates.filter((c) => c.fileStatus === 'EXISTS');
+  }, [candidates, showExistsOnly]);
+
+  const selectedCandidate = useMemo(
+    () => candidates.find((c) => c.id === selectedHistoryId) ?? null,
+    [candidates, selectedHistoryId]
+  );
 
   const handleRestore = async () => {
     if (!selectedBackupPath.trim()) {
@@ -114,7 +125,7 @@ export function BackupRestorePage() {
         <div>
           <div className="mb-2 flex items-center justify-between gap-2">
             <label className="block text-sm font-semibold text-slate-700">
-              リストアするバックアップ（Dropbox / 完了 / ファイル存在）
+              リストアするバックアップ（Dropbox / 完了）
             </label>
             <Button
               variant="ghost"
@@ -127,11 +138,11 @@ export function BackupRestorePage() {
 
           {backupHistoryQuery.isLoading ? (
             <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
-          ) : candidates.length === 0 ? (
+          ) : visibleCandidates.length === 0 ? (
             <div className="rounded-md border-2 border-slate-500 bg-slate-50 p-3 text-sm text-slate-700">
               <p className="font-semibold">該当するDropboxバックアップが見つかりません。</p>
               <p className="mt-1 text-xs text-slate-600">
-                「バックアップ履歴」で storageProvider=dropbox / status=COMPLETED / file=EXISTS のバックアップがあるか確認してください。
+                「バックアップ履歴」で storageProvider=dropbox / status=COMPLETED のバックアップがあるか確認してください。
               </p>
               <div className="mt-2">
                 <Link to="/admin/backup/history">
@@ -140,30 +151,48 @@ export function BackupRestorePage() {
               </div>
             </div>
           ) : (
-            <select
-              className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-              value={selectedHistoryId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setSelectedHistoryId(id);
-                const selected = candidates.find((c) => c.id === id);
-                setSelectedBackupPath(selected?.path ?? '');
-              }}
-              disabled={isRestoring}
-            >
-              <option value="">選択してください（最新{Math.min(candidates.length, 200)}件）</option>
-              {candidates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {new Date(item.startedAt).toLocaleString()} / {item.targetKind} / {item.targetSource} / {item.path}
-                </option>
-              ))}
-            </select>
+            <>
+              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={showExistsOnly}
+                  onChange={(e) => setShowExistsOnly(e.target.checked)}
+                  disabled={isRestoring}
+                  className="rounded border-2 border-slate-500"
+                />
+                fileStatus=EXISTS のみ表示
+              </label>
+              <select
+                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+                value={selectedHistoryId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedHistoryId(id);
+                  const selected = candidates.find((c) => c.id === id);
+                  setSelectedBackupPath(selected?.path ?? '');
+                }}
+                disabled={isRestoring}
+              >
+                <option value="">選択してください（最新{Math.min(visibleCandidates.length, 200)}件）</option>
+                {visibleCandidates.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    [{item.fileStatus}] {new Date(item.startedAt).toLocaleString()} / {item.targetKind} / {item.targetSource} / {item.path}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
 
           {selectedBackupPath && (
             <div className="mt-2 rounded-md border-2 border-slate-500 bg-white p-2">
               <p className="text-xs font-semibold text-slate-700">選択中パス</p>
               <p className="mt-1 font-mono text-xs text-slate-900">{selectedBackupPath}</p>
+            </div>
+          )}
+
+          {selectedCandidate?.fileStatus === 'DELETED' && (
+            <div className="mt-2 rounded-md border-2 border-yellow-700 bg-yellow-600 p-3 text-sm font-semibold text-white shadow-lg">
+              注意: この履歴は fileStatus=DELETED です（実ファイルがDropbox上に存在しない可能性があります）。
             </div>
           )}
         </div>
