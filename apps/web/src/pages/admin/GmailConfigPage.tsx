@@ -77,14 +77,30 @@ export function GmailConfigPage() {
 
   const handleAuthorize = async () => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/GmailConfigPage.tsx:handleAuthorize',message:'oauth authorize clicked',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       const response = await authorize.mutateAsync();
       if (response.authorizationUrl) {
+        // #region agent log
+        try {
+          const parsed = new URL(response.authorizationUrl);
+          const redirectUri = parsed.searchParams.get('redirect_uri') || '';
+          const scope = parsed.searchParams.get('scope') || '';
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/GmailConfigPage.tsx:handleAuthorize',message:'oauth authorize redirecting',data:{authHost:parsed.host,authPath:parsed.pathname,redirectHost:(redirectUri?new URL(redirectUri).host:null),redirectPath:(redirectUri?new URL(redirectUri).pathname:null),scopeCount:scope?scope.split(' ').length:0,hasGmailReadonly:scope.includes('gmail.readonly'),hasGmailModify:scope.includes('gmail.modify')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        } catch {
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/GmailConfigPage.tsx:handleAuthorize',message:'oauth authorize url parse failed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        }
+        // #endregion
         // 現在のウィンドウで認証URLにリダイレクト
         window.location.href = response.authorizationUrl;
       } else {
         alert('認証URLの取得に失敗しました');
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/GmailConfigPage.tsx:handleAuthorize',message:'oauth authorize failed before redirect',data:{errorMessage:error instanceof Error?error.message:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       const errorMessage = error instanceof Error ? error.message : '認証URLの取得に失敗しました';
       alert(`エラー: ${errorMessage}`);
     }

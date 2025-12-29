@@ -279,6 +279,18 @@ export interface GmailOAuthAuthorizeResponse {
 
 export async function getGmailOAuthAuthorizeUrl(): Promise<GmailOAuthAuthorizeResponse> {
   const { data } = await api.get<GmailOAuthAuthorizeResponse>('/gmail/oauth/authorize');
+  // #region agent log
+  try {
+    const url = data?.authorizationUrl || '';
+    const parsed = url ? new URL(url) : undefined;
+    const redirectUri = parsed?.searchParams.get('redirect_uri') || '';
+    const scope = parsed?.searchParams.get('scope') || '';
+    const clientId = parsed?.searchParams.get('client_id') || '';
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/backup.ts:getGmailOAuthAuthorizeUrl',message:'gmail oauth authorize url received',data:{hasUrl:!!url,authHost:parsed?.host||null,authPath:parsed?.pathname||null,redirectHost:(redirectUri?new URL(redirectUri).host:null),redirectPath:(redirectUri?new URL(redirectUri).pathname:null),scopeCount:scope?scope.split(' ').length:0,hasGmailReadonly:scope.includes('gmail.readonly'),hasGmailModify:scope.includes('gmail.modify'),clientIdTail:clientId?clientId.slice(-10):null,stateLen:(data?.state||'').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  } catch {
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/backup.ts:getGmailOAuthAuthorizeUrl',message:'gmail oauth authorize url parse failed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  }
+  // #endregion
   return data;
 }
 
