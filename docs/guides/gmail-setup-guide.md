@@ -131,8 +131,11 @@ Macのブラウザで`https://raspberrypi.tail7312a3.ts.net`にアクセスし�
 
 5. 認証情報の保存:
    - **Client ID**をコピー（後で使用します）
-   - **Client Secret**をコピー（後で使用します）
-   - ⚠️ **重要**: Client Secretは一度しか表示されません。必ず安全な場所に保存してください
+   - **Client Secret**を取得:
+     - 方法1: 「ダウンロード」ボタンをクリックしてJSONファイルをダウンロードし、`client_secret`フィールドの値を確認
+     - 方法2: 認証情報ページでOAuth 2.0クライアントIDを選択し、「シークレットを表示」をクリック
+   - ⚠️ **重要**: Client Secretは一度しか表示されない場合があります。必ず安全な場所に保存してください
+   - 📖 **詳細**: Client Secretの取得方法は [Gmail Client Secret取得ガイド](./gmail-client-secret-extraction.md) を参照
 
 ### 2. Pi5側の設定
 
