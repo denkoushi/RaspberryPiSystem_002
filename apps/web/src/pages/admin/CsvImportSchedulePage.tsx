@@ -625,20 +625,85 @@ export function CsvImportSchedulePage() {
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
-                          <input
-                            type="text"
-                            className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                            placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] employees' : '従業員CSV'}
-                            value={formData.employeesPath}
-                            onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
-                          />
-                          <input
-                            type="text"
-                            className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                            placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] items' : 'アイテムCSV'}
-                            value={formData.itemsPath}
-                            onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
-                          />
+                          {formData.provider === 'gmail' ? (
+                            <>
+                              <select
+                                className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                value={formData.employeesPath || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === 'custom') {
+                                    setFormData({ ...formData, employeesPath: '' });
+                                  } else {
+                                    setFormData({ ...formData, employeesPath: value });
+                                  }
+                                }}
+                              >
+                                <option value="">従業員CSV選択</option>
+                                {GMAIL_SUBJECT_PATTERNS.employees.map((pattern) => (
+                                  <option key={pattern} value={pattern}>
+                                    {pattern}
+                                  </option>
+                                ))}
+                                <option value="custom">カスタム</option>
+                              </select>
+                              {(!formData.employeesPath || formData.employeesPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.employees.includes(formData.employeesPath as typeof GMAIL_SUBJECT_PATTERNS.employees[number])) && (
+                                <input
+                                  type="text"
+                                  className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                                  placeholder="[Pi5 CSV Import] employees"
+                                  value={formData.employeesPath === 'custom' ? '' : formData.employeesPath}
+                                  onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
+                                />
+                              )}
+                              <select
+                                className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                value={formData.itemsPath || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === 'custom') {
+                                    setFormData({ ...formData, itemsPath: '' });
+                                  } else {
+                                    setFormData({ ...formData, itemsPath: value });
+                                  }
+                                }}
+                              >
+                                <option value="">アイテムCSV選択</option>
+                                {GMAIL_SUBJECT_PATTERNS.items.map((pattern) => (
+                                  <option key={pattern} value={pattern}>
+                                    {pattern}
+                                  </option>
+                                ))}
+                                <option value="custom">カスタム</option>
+                              </select>
+                              {(!formData.itemsPath || formData.itemsPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.items.includes(formData.itemsPath as typeof GMAIL_SUBJECT_PATTERNS.items[number])) && (
+                                <input
+                                  type="text"
+                                  className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                                  placeholder="[Pi5 CSV Import] items"
+                                  value={formData.itemsPath === 'custom' ? '' : formData.itemsPath}
+                                  onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                                placeholder="従業員CSV"
+                                value={formData.employeesPath}
+                                onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
+                              />
+                              <input
+                                type="text"
+                                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
+                                placeholder="アイテムCSV"
+                                value={formData.itemsPath}
+                                onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
+                              />
+                            </>
+                          )}
                         </div>
                       </td>
                       <td className="px-2 py-1">
