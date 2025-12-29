@@ -212,18 +212,31 @@ export class DropboxStorageProvider implements StorageProvider {
   async download(path: string): Promise<Buffer> {
     const fullPath = this.normalizePath(path);
     
-    return await this.handleAuthError(async () => {
-      const response = await this.dbx.filesDownload({ path: fullPath });
-      
-      // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fileBinary = (response as any).fileBinary || (response as any).result?.fileBinary;
-      if (!fileBinary) {
-        throw new Error('No file binary in response');
-      }
+    try {
+      return await this.handleAuthError(async () => {
+        const response = await this.dbx.filesDownload({ path: fullPath });
+        
+        // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fileBinary = (response as any).fileBinary || (response as any).result?.fileBinary;
+        if (!fileBinary) {
+          throw new Error('No file binary in response');
+        }
 
-      return Buffer.from(fileBinary);
-    });
+        return Buffer.from(fileBinary);
+      });
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err: any = error;
+      // 409エラーまたはpath_lookupエラーの場合、詳細なメッセージを返す
+      if (err?.status === 409 || err?.error?.error?.['.tag'] === 'path_lookup' || err?.error?.error_summary?.includes('not_found')) {
+        const errorTag = err?.error?.error?.['.tag'] || 'not_found';
+        const errorSummary = err?.error?.error_summary || 'File not found';
+        logger?.error({ path: fullPath, errorTag, errorSummary }, '[DropboxStorageProvider] File not found');
+        throw new Error(`Backup file not found in Dropbox: ${fullPath}. Error: ${errorSummary}`);
+      }
+      throw error;
+    }
   }
 
   /**

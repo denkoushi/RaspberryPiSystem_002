@@ -1201,9 +1201,18 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         throw error;
       }
       
+      // ファイルが見つからない場合のエラーメッセージを改善
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found') || errorMessage.includes('Backup file not found')) {
+        throw new ApiError(
+          404,
+          `Backup file not found: ${body.backupPath}. Please check the backup path and ensure the file exists in Dropbox.`
+        );
+      }
+      
       throw new ApiError(
         500,
-        `Failed to restore backup: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to restore backup: ${errorMessage}`
       );
     }
   });
