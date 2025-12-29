@@ -7,6 +7,45 @@ import { BackupConfigLoader } from '../../services/backup/backup-config.loader.j
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { GmailOAuthService } from '../../services/backup/gmail-oauth.service.js';
 
+function safeParseAuthUrl(authUrl: string): {
+  authHost?: string;
+  authPath?: string;
+  redirectUri?: string;
+  redirectHost?: string;
+  redirectPath?: string;
+  scopeCount?: number;
+  hasGmailReadonly?: boolean;
+  hasGmailModify?: boolean;
+  responseType?: string;
+  accessType?: string;
+  prompt?: string;
+  clientIdTail?: string;
+} {
+  try {
+    const parsed = new URL(authUrl);
+    const redirectUri = parsed.searchParams.get('redirect_uri') || undefined;
+    const scope = parsed.searchParams.get('scope') || '';
+    const clientId = parsed.searchParams.get('client_id') || '';
+    const redirectParsed = redirectUri ? new URL(redirectUri) : undefined;
+    return {
+      authHost: parsed.host,
+      authPath: parsed.pathname,
+      redirectUri,
+      redirectHost: redirectParsed?.host,
+      redirectPath: redirectParsed?.pathname,
+      scopeCount: scope ? scope.split(' ').length : 0,
+      hasGmailReadonly: scope.includes('gmail.readonly'),
+      hasGmailModify: scope.includes('gmail.modify'),
+      responseType: parsed.searchParams.get('response_type') || undefined,
+      accessType: parsed.searchParams.get('access_type') || undefined,
+      prompt: parsed.searchParams.get('prompt') || undefined,
+      clientIdTail: clientId ? clientId.slice(-10) : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Gmail OAuth認証ルートを登録
  */
@@ -55,7 +94,10 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     // 認証URLを生成
     const authUrl = oauthService.getAuthorizationUrl(state);
 
-    logger?.info({ state }, '[GmailOAuthRoute] Authorization URL generated');
+    logger?.info(
+      { stateLen: state.length, ...safeParseAuthUrl(authUrl) },
+      '[GmailOAuthRoute] Authorization URL generated'
+    );
 
     return reply.status(200).send({
       authorizationUrl: authUrl,
