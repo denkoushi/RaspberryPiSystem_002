@@ -1189,7 +1189,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       });
     } catch (error) {
       logger?.error(
-        { err: error, backupPath: normalizedBackupPath, originalPath: body.backupPath },
+        { err: error, backupPath: actualBackupPath, originalPath: body.backupPath, normalizedBackupPath },
         '[BackupRoute] Failed to restore backup from Dropbox'
       );
       
