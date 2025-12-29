@@ -91,8 +91,10 @@ const gmailPathSchema = z.string()
 
 const providerImportSchema = z.object({
   provider: z.enum(['dropbox', 'gmail']).optional(),
-  employeesPath: z.string().trim().min(1).max(1000).optional(),
-  itemsPath: z.string().trim().min(1).max(1000).optional(),
+  // provider固有のバリデーション（Dropboxは.csv/1000文字/危険パスチェック等）を後段で行うため、
+  // ここでは長さ上限などを付けず、最低限の存在チェックのみにする
+  employeesPath: z.string().trim().min(1).optional(),
+  itemsPath: z.string().trim().min(1).optional(),
   replaceExisting: z.boolean().optional().default(false)
 }).refine((data) => data.employeesPath || data.itemsPath, {
   message: 'employeesPath または itemsPath のいずれかを指定してください'
