@@ -1,9 +1,10 @@
 import axios from 'axios';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import { useCsvImportSchedules, useCsvImportScheduleMutations } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
 
 import type { CsvImportSchedule } from '../../api/backup';
 
@@ -23,6 +24,77 @@ const GMAIL_SUBJECT_PATTERNS = {
   ]
 };
 
+const DAYS_OF_WEEK = [
+  { value: 0, label: '日' },
+  { value: 1, label: '月' },
+  { value: 2, label: '火' },
+  { value: 3, label: '水' },
+  { value: 4, label: '木' },
+  { value: 5, label: '金' },
+  { value: 6, label: '土' },
+];
+
+/**
+ * cron形式のスケジュールをUI形式に変換
+ * cron形式: "分 時 日 月 曜日" (例: "0 4 * * *" = 毎日4時)
+ * UI形式: { time: "04:00", daysOfWeek: [0,1,2,3,4,5,6] } (全て選択時は空配列)
+ */
+function parseCronSchedule(cronSchedule?: string): { time: string; daysOfWeek: number[] } {
+  if (!cronSchedule || !cronSchedule.trim()) {
+    return { time: '02:00', daysOfWeek: [] };
+  }
+
+  const parts = cronSchedule.trim().split(/\s+/);
+  if (parts.length !== 5) {
+    // 不正な形式の場合はデフォルト値を返す
+    return { time: '02:00', daysOfWeek: [] };
+  }
+
+  const minute = parts[0];
+  const hour = parts[1];
+  const dayOfWeek = parts[4];
+
+  // 時刻を "HH:MM" 形式に変換
+  const hourNum = parseInt(hour, 10);
+  const minuteNum = parseInt(minute, 10);
+  if (isNaN(hourNum) || isNaN(minuteNum)) {
+    return { time: '02:00', daysOfWeek: [] };
+  }
+  const time = `${hourNum.toString().padStart(2, '0')}:${minuteNum.toString().padStart(2, '0')}`;
+
+  // 曜日を配列に変換
+  let daysOfWeek: number[] = [];
+  if (dayOfWeek === '*') {
+    // 全ての曜日（空配列で表現）
+    daysOfWeek = [];
+  } else {
+    // カンマ区切りの曜日を配列に変換
+    const dayParts = dayOfWeek.split(',');
+    daysOfWeek = dayParts
+      .map((d) => parseInt(d.trim(), 10))
+      .filter((d) => !isNaN(d) && d >= 0 && d <= 6);
+  }
+
+  return { time, daysOfWeek };
+}
+
+/**
+ * UI形式からcron形式のスケジュールに変換
+ * UI形式: { time: "04:00", daysOfWeek: [1,3,5] }
+ * cron形式: "0 4 * * 1,3,5"
+ */
+function formatCronSchedule(time: string, daysOfWeek: number[]): string {
+  const [hour, minute] = time.split(':');
+  const hourNum = parseInt(hour || '2', 10);
+  const minuteNum = parseInt(minute || '0', 10);
+
+  // 曜日が空配列の場合は全ての曜日（*）を意味する
+  const dayOfWeekStr = daysOfWeek.length === 0 ? '*' : daysOfWeek.sort((a, b) => a - b).join(',');
+
+  // cron形式: "分 時 日 月 曜日"
+  return `${minuteNum} ${hourNum} * * ${dayOfWeekStr}`;
+}
+
 export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
@@ -31,6 +103,10 @@ export function CsvImportSchedulePage() {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const schedules = data?.schedules ?? [];
+
+  // スケジュールをUI形式で管理
+  const [scheduleTime, setScheduleTime] = useState('02:00');
+  const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>([]);
 
   const [formData, setFormData] = useState<Partial<CsvImportSchedule>>({
     id: '',
@@ -70,13 +146,14 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    if (!formData.schedule?.trim()) {
-      setValidationError('スケジュール（cron形式）は必須です');
-      return;
-    }
+    // UI形式からcron形式に変換
+    const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
 
     try {
-      await create.mutateAsync(formData as CsvImportSchedule);
+      await create.mutateAsync({
+        ...formData,
+        schedule: cronSchedule
+      } as CsvImportSchedule);
       setShowCreateForm(false);
       setFormData({
         id: '',
@@ -93,6 +170,8 @@ export function CsvImportSchedulePage() {
           targets: ['csv']
         }
       });
+      setScheduleTime('02:00');
+      setScheduleDaysOfWeek([]);
       refetch();
     } catch (error) {
       // エラーはmutationのisErrorで表示
@@ -107,13 +186,11 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    if (!formData.schedule?.trim()) {
-      setValidationError('スケジュール（cron形式）は必須です');
-      return;
-    }
+    // UI形式からcron形式に変換
+    const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
 
     try {
-      await update.mutateAsync({ id, schedule: formData });
+      await update.mutateAsync({ id, schedule: { ...formData, schedule: cronSchedule } });
       setEditingId(null);
       refetch();
     } catch (error) {
@@ -170,6 +247,10 @@ export function CsvImportSchedulePage() {
   const startEdit = (schedule: CsvImportSchedule) => {
     setEditingId(schedule.id);
     setFormData(schedule);
+    // 既存のスケジュールをUI形式に変換
+    const parsed = parseCronSchedule(schedule.schedule);
+    setScheduleTime(parsed.time);
+    setScheduleDaysOfWeek(parsed.daysOfWeek);
   };
 
   const cancelEdit = () => {
@@ -190,6 +271,8 @@ export function CsvImportSchedulePage() {
         targets: ['csv']
       }
     });
+    setScheduleTime('02:00');
+    setScheduleDaysOfWeek([]);
   };
 
   const handleCancelCreate = () => {
@@ -210,7 +293,17 @@ export function CsvImportSchedulePage() {
         targets: ['csv']
       }
     });
+    setScheduleTime('02:00');
+    setScheduleDaysOfWeek([]);
   };
+
+  // 新規作成フォームを開いた時にスケジュールの初期値を設定
+  useEffect(() => {
+    if (showCreateForm) {
+      setScheduleTime('02:00');
+      setScheduleDaysOfWeek([]);
+    }
+  }, [showCreateForm]);
 
   if (isLoading) {
     return <Card title="CSVインポートスケジュール"><p className="text-sm font-semibold text-slate-700">読み込み中...</p></Card>;
@@ -405,19 +498,57 @@ export function CsvImportSchedulePage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                スケジュール（cron形式） *
+              <label className="block text-sm font-semibold text-slate-700 mb-1">
+                スケジュール *
               </label>
-              <input
-                type="text"
-                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                placeholder="0 2 * * *"
-                value={formData.schedule}
-                onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-slate-600">
-                例: 0 2 * * * (毎日2時)
-              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    実行時刻
+                  </label>
+                  <Input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    実行曜日（未選択の場合は毎日）
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {DAYS_OF_WEEK.map((day) => (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() => {
+                          const currentDays = scheduleDaysOfWeek;
+                          if (currentDays.includes(day.value)) {
+                            setScheduleDaysOfWeek(currentDays.filter((d) => d !== day.value));
+                          } else {
+                            setScheduleDaysOfWeek([...currentDays, day.value]);
+                          }
+                        }}
+                        className={`rounded-md border-2 px-3 py-1 text-sm font-semibold shadow-lg transition-colors ${
+                          scheduleDaysOfWeek.includes(day.value)
+                            ? 'border-emerald-700 bg-emerald-600 text-white'
+                            : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                  {scheduleDaysOfWeek.length === 0 && (
+                    <p className="mt-1 text-xs text-slate-600">全ての曜日で実行されます</p>
+                  )}
+                  {scheduleDaysOfWeek.length > 0 && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      選択された曜日: {scheduleDaysOfWeek.sort((a, b) => a - b).map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label).join(', ')}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -554,13 +685,37 @@ export function CsvImportSchedulePage() {
                         </select>
                       </td>
                       <td className="px-2 py-1">
-                        <input
-                          type="text"
-                          className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 font-mono text-xs"
-                          placeholder="0 2 * * *"
-                          value={formData.schedule}
-                          onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-                        />
+                        <div className="space-y-2">
+                          <Input
+                            type="time"
+                            value={scheduleTime}
+                            onChange={(e) => setScheduleTime(e.target.value)}
+                            className="w-full text-xs"
+                          />
+                          <div className="flex gap-1 flex-wrap">
+                            {DAYS_OF_WEEK.map((day) => (
+                              <button
+                                key={day.value}
+                                type="button"
+                                onClick={() => {
+                                  const currentDays = scheduleDaysOfWeek;
+                                  if (currentDays.includes(day.value)) {
+                                    setScheduleDaysOfWeek(currentDays.filter((d) => d !== day.value));
+                                  } else {
+                                    setScheduleDaysOfWeek([...currentDays, day.value]);
+                                  }
+                                }}
+                                className={`rounded-md border-2 px-2 py-0.5 text-xs font-semibold transition-colors ${
+                                  scheduleDaysOfWeek.includes(day.value)
+                                    ? 'border-emerald-700 bg-emerald-600 text-white'
+                                    : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                {day.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
