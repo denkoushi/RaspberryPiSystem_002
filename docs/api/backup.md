@@ -839,9 +839,76 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 
 ---
 
+## トラブルシューティング
+
+### エラー: "Backup file not found in Dropbox"
+
+**原因**: Dropbox上に指定されたパスのバックアップファイルが存在しない、またはパスが正しくない
+
+**解決策**:
+1. バックアップ履歴ページで正しいパスを確認
+2. `basePath`を含む完全パスまたは相対パスを指定
+3. データベースバックアップの場合は、拡張子（`.sql.gz`）が含まれていることを確認
+
+**関連KB**: [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
+
+---
+
+### エラー: "Invalid CSV source: employees.csv. Must be 'employees' or 'items'"
+
+**原因**: CSVリストア時に`targetSource`がファイル名（`employees.csv`）のままになっている
+
+**解決策**: 
+- この問題は修正済みです（2025-12-29）
+- リストアAPIが自動的に拡張子を削除します
+
+**関連KB**: [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
+
+---
+
+### エラー: "従業員CSVの解析エラー: 従業員CSVの2行目でエラー: 社員コードは数字4桁である必要があります"
+
+**原因**: バックアップされたCSVデータに、現在のバリデーションルールに適合しないデータが含まれている
+
+**解決策**:
+1. バックアップファイルの内容を確認して、問題のあるデータを特定
+2. 必要に応じてバリデーションルールを調整、またはデータ形式を修正
+3. リストア機能自体は正常動作しているため、データの問題として対応
+
+**関連KB**: [KB-098](../knowledge-base/infrastructure.md#kb-098-csvリストア時のバリデーションエラー問題)
+
+---
+
+### エラー: "Dropbox storage provider is not configured"
+
+**原因**: バックアップ設定ファイルでDropboxが設定されていない
+
+**解決策**:
+1. 管理コンソール → 「バックアップ」タブ → 「バックアップ設定」
+2. ストレージプロバイダーが`dropbox`になっていることを確認
+3. Dropbox OAuth認証が完了していることを確認
+
+**関連KB**: [KB-096](../knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+
+---
+
+### エラー: "Dropbox access token is required"
+
+**原因**: Dropboxのアクセストークンが設定されていない
+
+**解決策**:
+1. `/api/backup/oauth/authorize`エンドポイントを呼び出してOAuth認証を実行
+2. または、`/api/backup/oauth/refresh`エンドポイントを呼び出してトークンをリフレッシュ
+3. `refreshToken`が設定されていれば、自動的に`accessToken`が取得されます
+
+**関連KB**: [KB-096](../knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+
+---
+
 ## 関連ドキュメント
 
 - [バックアップ設定ガイド](../guides/backup-configuration.md)
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
 - [Dropbox OAuth設定ガイド](../guides/dropbox-oauth-setup-guide.md)
+- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
