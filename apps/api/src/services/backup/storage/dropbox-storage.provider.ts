@@ -207,60 +207,157 @@ export class DropboxStorageProvider implements StorageProvider {
 
   /**
    * ファイルをダウンロードする
+   * リトライロジック: レート制限エラー（429）とネットワークエラー時に指数バックオフでリトライ
    * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async download(path: string): Promise<Buffer> {
     const fullPath = this.normalizePath(path);
-    
-    try {
-      return await this.handleAuthError(async () => {
-        const response = await this.dbx.filesDownload({ path: fullPath });
-        
-        // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fileBinary = (response as any).fileBinary || (response as any).result?.fileBinary;
-        if (!fileBinary) {
-          throw new Error('No file binary in response');
-        }
+    const maxRetries = 5;
+    let retryCount = 0;
 
-        return Buffer.from(fileBinary);
-      });
-    } catch (error: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const err: any = error;
-      // 409エラーまたはpath_lookupエラーの場合、詳細なメッセージを返す
-      if (err?.status === 409 || err?.error?.error?.['.tag'] === 'path_lookup' || err?.error?.error_summary?.includes('not_found')) {
-        const errorTag = err?.error?.error?.['.tag'] || 'not_found';
-        const errorSummary = err?.error?.error_summary || 'File not found';
-        logger?.error({ path: fullPath, errorTag, errorSummary }, '[DropboxStorageProvider] File not found');
-        throw new Error(`Backup file not found in Dropbox: ${fullPath}. Error: ${errorSummary}`);
+    while (retryCount < maxRetries) {
+      try {
+        return await this.handleAuthError(async () => {
+          const response = await this.dbx.filesDownload({ path: fullPath });
+          
+          // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fileBinary = (response as any).fileBinary || (response as any).result?.fileBinary;
+          if (!fileBinary) {
+            throw new Error('No file binary in response');
+          }
+
+          return Buffer.from(fileBinary);
+        });
+      } catch (error: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const err: any = error;
+        
+        // 409エラーまたはpath_lookupエラーの場合、詳細なメッセージを返す（リトライしない）
+        if (err?.status === 409 || err?.error?.error?.['.tag'] === 'path_lookup' || err?.error?.error_summary?.includes('not_found')) {
+          const errorTag = err?.error?.error?.['.tag'] || 'not_found';
+          const errorSummary = err?.error?.error_summary || 'File not found';
+          logger?.error({ path: fullPath, errorTag, errorSummary }, '[DropboxStorageProvider] File not found');
+          throw new Error(`Backup file not found in Dropbox: ${fullPath}. Error: ${errorSummary}`);
+        }
+        
+        // レート制限エラー（429）の場合、リトライ
+        if (err?.status === 429 || err?.error?.error?.['.tag'] === 'rate_limit') {
+          const retryAfter = this.extractRetryAfter(err);
+          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
+          
+          logger?.warn(
+            { path: fullPath, retryCount, delay, retryAfter },
+            '[DropboxStorageProvider] Rate limit hit during download, retrying'
+          );
+          
+          await this.sleep(delay);
+          retryCount++;
+          continue;
+        }
+        
+        // ネットワークエラー（タイムアウト、接続エラーなど）の場合、リトライ
+        const isNetworkError = 
+          err?.code === 'ETIMEDOUT' ||
+          err?.code === 'ECONNRESET' ||
+          err?.code === 'ENOTFOUND' ||
+          err?.code === 'ECONNREFUSED' ||
+          err?.message?.includes('timeout') ||
+          err?.message?.includes('network') ||
+          err?.message?.includes('ECONN');
+        
+        if (isNetworkError && retryCount < maxRetries - 1) {
+          const delay = this.calculateBackoffDelay(retryCount, 0);
+          
+          logger?.warn(
+            { path: fullPath, retryCount, delay, errorCode: err?.code, errorMessage: err?.message },
+            '[DropboxStorageProvider] Network error during download, retrying'
+          );
+          
+          await this.sleep(delay);
+          retryCount++;
+          continue;
+        }
+        
+        // その他のエラーは再スロー
+        logger?.error({ err, path: fullPath, retryCount }, '[DropboxStorageProvider] Download failed');
+        throw error;
       }
-      throw error;
     }
+
+    throw new Error(`Download failed after ${maxRetries} retries`);
   }
 
   /**
    * ファイルを削除する
+   * リトライロジック: レート制限エラー（429）とネットワークエラー時に指数バックオフでリトライ
    * 認証エラー（401）時はリフレッシュトークンで自動更新
    */
   async delete(path: string): Promise<void> {
     const fullPath = this.normalizePath(path);
-    
-    try {
-      await this.handleAuthError(async () => {
-        await this.dbx.filesDeleteV2({ path: fullPath });
-      });
-      logger?.info({ path: fullPath }, '[DropboxStorageProvider] File deleted');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      // ファイルが存在しない場合はエラーにしない
-      if (error?.status === 409 || error?.error?.error?.['.tag'] === 'path_lookup') {
-        logger?.warn({ path: fullPath }, '[DropboxStorageProvider] File not found, skipping delete');
+    const maxRetries = 5;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+      try {
+        await this.handleAuthError(async () => {
+          await this.dbx.filesDeleteV2({ path: fullPath });
+        });
+        logger?.info({ path: fullPath }, '[DropboxStorageProvider] File deleted');
         return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        // ファイルが存在しない場合はエラーにしない（リトライしない）
+        if (error?.status === 409 || error?.error?.error?.['.tag'] === 'path_lookup') {
+          logger?.warn({ path: fullPath }, '[DropboxStorageProvider] File not found, skipping delete');
+          return;
+        }
+        
+        // レート制限エラー（429）の場合、リトライ
+        if (error?.status === 429 || error?.error?.error?.['.tag'] === 'rate_limit') {
+          const retryAfter = this.extractRetryAfter(error);
+          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
+          
+          logger?.warn(
+            { path: fullPath, retryCount, delay, retryAfter },
+            '[DropboxStorageProvider] Rate limit hit during delete, retrying'
+          );
+          
+          await this.sleep(delay);
+          retryCount++;
+          continue;
+        }
+        
+        // ネットワークエラー（タイムアウト、接続エラーなど）の場合、リトライ
+        const isNetworkError = 
+          error?.code === 'ETIMEDOUT' ||
+          error?.code === 'ECONNRESET' ||
+          error?.code === 'ENOTFOUND' ||
+          error?.code === 'ECONNREFUSED' ||
+          error?.message?.includes('timeout') ||
+          error?.message?.includes('network') ||
+          error?.message?.includes('ECONN');
+        
+        if (isNetworkError && retryCount < maxRetries - 1) {
+          const delay = this.calculateBackoffDelay(retryCount, 0);
+          
+          logger?.warn(
+            { path: fullPath, retryCount, delay, errorCode: error?.code, errorMessage: error?.message },
+            '[DropboxStorageProvider] Network error during delete, retrying'
+          );
+          
+          await this.sleep(delay);
+          retryCount++;
+          continue;
+        }
+        
+        // その他のエラーは再スロー
+        logger?.error({ err: error, path: fullPath, retryCount }, '[DropboxStorageProvider] Delete failed');
+        throw error;
       }
-      logger?.error({ err: error, path: fullPath }, '[DropboxStorageProvider] Delete failed');
-      throw error;
     }
+
+    throw new Error(`Delete failed after ${maxRetries} retries`);
   }
 
   /**
