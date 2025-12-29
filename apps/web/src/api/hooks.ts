@@ -15,10 +15,16 @@ import {
   updateBackupTarget,
   deleteBackupTarget,
   runBackup,
+  getGmailConfig,
+  updateGmailConfig,
+  deleteGmailConfig,
+  getGmailOAuthAuthorizeUrl,
+  refreshGmailToken,
   type BackupHistoryFilters,
   type RestoreFromDropboxRequest,
   type BackupTarget,
-  type RunBackupRequest
+  type RunBackupRequest,
+  type GmailConfigUpdateRequest
 } from './backup';
 import {
   borrowItem,
@@ -708,4 +714,36 @@ export function useCsvImportScheduleMutations() {
     }
   });
   return { create, update, remove, run };
+}
+
+// Gmail設定関連のフック
+export function useGmailConfig() {
+  return useQuery({
+    queryKey: ['gmail-config'],
+    queryFn: getGmailConfig
+  });
+}
+
+export function useGmailConfigMutations() {
+  const queryClient = useQueryClient();
+  const update = useMutation({
+    mutationFn: (config: GmailConfigUpdateRequest) => updateGmailConfig(config),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteGmailConfig(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  const authorize = useMutation({
+    mutationFn: () => getGmailOAuthAuthorizeUrl(),
+    onSuccess: (data) => {
+      // 認証URLを新しいウィンドウで開く
+      window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
+    }
+  });
+  const refresh = useMutation({
+    mutationFn: () => refreshGmailToken(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  return { update, remove, authorize, refresh };
 }

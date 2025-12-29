@@ -234,3 +234,61 @@ export async function runBackup(request: RunBackupRequest): Promise<RunBackupRes
     throw error;
   }
 }
+
+// Gmail設定の型定義
+export interface GmailConfig {
+  provider?: 'gmail';
+  clientId?: string;
+  clientSecret?: string; // マスクされた値（例: "***1234"）
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+  hasAccessToken?: boolean;
+  hasRefreshToken?: boolean;
+}
+
+export interface GmailConfigUpdateRequest {
+  clientId?: string;
+  clientSecret?: string;
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+}
+
+// Gmail設定API
+export async function getGmailConfig(): Promise<GmailConfig> {
+  const { data } = await api.get<GmailConfig>('/gmail/config');
+  return data;
+}
+
+export async function updateGmailConfig(config: GmailConfigUpdateRequest): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.put<{ success: boolean; message: string }>('/gmail/config', config);
+  return data;
+}
+
+export async function deleteGmailConfig(): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.delete<{ success: boolean; message: string }>('/gmail/config');
+  return data;
+}
+
+// Gmail OAuth認証API
+export interface GmailOAuthAuthorizeResponse {
+  authorizationUrl: string;
+  state: string;
+}
+
+export async function getGmailOAuthAuthorizeUrl(): Promise<GmailOAuthAuthorizeResponse> {
+  const { data } = await api.get<GmailOAuthAuthorizeResponse>('/gmail/oauth/authorize');
+  return data;
+}
+
+export interface GmailOAuthRefreshResponse {
+  success: boolean;
+  accessToken?: string;
+  expiresIn?: number;
+}
+
+export async function refreshGmailToken(): Promise<GmailOAuthRefreshResponse> {
+  const { data } = await api.post<GmailOAuthRefreshResponse>('/gmail/oauth/refresh', {});
+  return data;
+}

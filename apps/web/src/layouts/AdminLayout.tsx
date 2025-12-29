@@ -71,6 +71,9 @@ export function AdminLayout() {
           <NavLink to="/admin/imports/schedule" className={linkClass}>
             CSVインポート
           </NavLink>
+          <NavLink to="/admin/gmail/config" className={linkClass}>
+            Gmail設定
+          </NavLink>
           <NavLink to="/admin/backup/targets" className={linkClass}>
             バックアップ
           </NavLink>
