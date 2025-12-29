@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 import { useCsvImportSchedules, useCsvImportScheduleMutations } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -11,24 +11,6 @@ export function CsvImportSchedulePage() {
   const { create, update, remove, run } = useCsvImportScheduleMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'CsvImportSchedulePage.tsx:useEffect',
-        message: 'Component mounted or showCreateForm changed',
-        data: { showCreateForm, editingId },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'A'
-      })
-    }).catch(() => {});
-  }, [showCreateForm, editingId]);
-  // #endregion
 
   const schedules = data?.schedules ?? [];
 
@@ -158,24 +140,6 @@ export function CsvImportSchedulePage() {
       {showCreateForm && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <h3 className="mb-3 text-lg font-bold text-slate-900">新規スケジュール作成</h3>
-          {/* #region agent log */}
-          {(() => {
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                location: 'CsvImportSchedulePage.tsx:render',
-                message: 'Create form is rendering',
-                data: { showCreateForm: true, formDataProvider: formData.provider },
-                timestamp: Date.now(),
-                sessionId: 'debug-session',
-                runId: 'run1',
-                hypothesisId: 'B'
-              })
-            }).catch(() => {});
-            return null;
-          })()}
-          {/* #endregion */}
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">ID *</label>
