@@ -1095,28 +1095,31 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       actualBackupPath = `${normalizedBackupPath}.sql.gz`;
     }
 
-    // リストア履歴を作成
+    // リストア履歴を作成（NOTE: databaseリストアはDB自体を上書きするため、後段で履歴が消える可能性がある）
     logger?.info(
       { targetKind, targetSource, normalizedBackupPath, actualBackupPath },
       '[BackupRoute] Creating restore history (from-dropbox)'
     );
-    const historyId = await historyService.createHistory({
+    const preHistoryId = await historyService.createHistory({
       operationType: BackupOperationType.RESTORE,
       targetKind,
       targetSource,
       backupPath: normalizedBackupPath,
       storageProvider: 'dropbox'
     });
-    logger?.info({ historyId }, '[BackupRoute] Restore history created (from-dropbox)');
+    logger?.info({ historyId: preHistoryId }, '[BackupRoute] Restore history created (from-dropbox)');
 
     // Debug: 作成直後に存在確認（P2025の切り分け用）
     try {
-      await historyService.getHistoryById(historyId);
-      logger?.info({ historyId }, '[BackupRoute] Restore history exists (from-dropbox)');
+      await historyService.getHistoryById(preHistoryId);
+      logger?.info({ historyId: preHistoryId }, '[BackupRoute] Restore history exists (from-dropbox)');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      logger?.error({ historyId, err: msg }, '[BackupRoute] Restore history NOT FOUND right after create (from-dropbox)');
+      logger?.error({ historyId: preHistoryId, err: msg }, '[BackupRoute] Restore history NOT FOUND right after create (from-dropbox)');
     }
+
+    // databaseリストアはDBを再構築するため、途中で履歴レコードが消える（P2025）ことがある
+    let databaseRestoreStarted = false;
 
     try {
       // Dropboxからバックアップファイルをダウンロード
@@ -1169,23 +1172,52 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       // ターゲットがrestoreメソッドを実装している場合はそれを使用
       if (target.restore) {
         logger?.info({ targetKind, targetSource, backupPath: actualBackupPath, originalPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
+        if (targetKind === 'database') {
+          databaseRestoreStarted = true;
+          logger?.info({ preHistoryId }, '[BackupRoute] Database restore started; preHistory may be overwritten');
+        }
         const result = await target.restore(backupData, {
           overwrite: true
         });
 
         // リストア履歴を完了として更新
-        await historyService.completeHistory(historyId, {
-          targetKind,
-          targetSource,
-          sizeBytes: backupData.length,
-          hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
-          path: actualBackupPath
-        });
+        // databaseリストアの場合、リストア処理でDBが上書きされるため、preHistoryIdが消えてupdateでP2025になり得る
+        // -> リストア完了後に新しい履歴を作成して完了として記録する
+        if (targetKind === 'database') {
+          const postHistoryId = await historyService.createHistory({
+            operationType: BackupOperationType.RESTORE,
+            targetKind,
+            targetSource,
+            backupPath: normalizedBackupPath,
+            storageProvider: 'dropbox'
+          });
+          await historyService.completeHistory(postHistoryId, {
+            targetKind,
+            targetSource,
+            sizeBytes: backupData.length,
+            hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
+            path: actualBackupPath
+          });
+
+          return reply.status(200).send({
+            success: result.success,
+            timestamp: result.timestamp,
+            historyId: postHistoryId
+          });
+        } else {
+          await historyService.completeHistory(preHistoryId, {
+            targetKind,
+            targetSource,
+            sizeBytes: backupData.length,
+            hash: body.verifyIntegrity ? (await import('../services/backup/backup-verifier.js')).BackupVerifier.calculateHash(backupData) : undefined,
+            path: actualBackupPath
+          });
+        }
 
         return reply.status(200).send({
           success: result.success,
           timestamp: result.timestamp,
-          historyId
+          historyId: preHistoryId
         });
       } else {
         // restoreメソッドが実装されていない場合は汎用的なリストア（ファイルとして保存）
@@ -1197,7 +1229,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         logger?.info({ backupPath: actualBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
         
         // リストア履歴を完了として更新
-        await historyService.completeHistory(historyId, {
+        await historyService.completeHistory(preHistoryId, {
           targetKind,
           targetSource,
           sizeBytes: backupData.length,
@@ -1212,7 +1244,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         backupPath: actualBackupPath,
         originalPath: body.backupPath,
         timestamp: new Date(),
-        historyId
+        historyId: preHistoryId
       });
     } catch (error) {
       logger?.error(
@@ -1222,7 +1254,24 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       
       // リストア履歴を失敗として更新
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await historyService.failHistory(historyId, errorMessage);
+      // databaseリストアが開始された後はDBが上書きされてpreHistoryIdが消える可能性が高い
+      if (targetKind === 'database' && databaseRestoreStarted) {
+        try {
+          const postFailHistoryId = await historyService.createHistory({
+            operationType: BackupOperationType.RESTORE,
+            targetKind,
+            targetSource,
+            backupPath: normalizedBackupPath,
+            storageProvider: 'dropbox'
+          });
+          await historyService.failHistory(postFailHistoryId, errorMessage);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          logger?.error({ err: msg }, '[BackupRoute] Failed to record post-restore failure history (database)');
+        }
+      } else {
+        await historyService.failHistory(preHistoryId, errorMessage);
+      }
       
       if (error instanceof ApiError) {
         throw error;
