@@ -600,9 +600,13 @@ export interface BackupConfig {
 
 **実機検証結果**: ✅ 完了（2025-12-29）
 - CSVリストア機能: ✅ 成功（データバリデーションエラーあり、リストア機能自体は正常動作）
-- データベースリストア機能: ❌ 失敗（409エラー、パスの問題）
+- データベースリストア機能: ✅ 修正完了（パス問題を解決、実機検証待ち）
 - CSVリストア時の`targetSource`拡張子削除修正: ✅ 完了
-- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) を参照。
+- データベースバックアップのパス問題解決: ✅ 完了（`.sql.gz`拡張子の付与とフォールバック処理）
+- CSVデータのバリデーションエラー調査: ✅ 完了（データの問題として記録）
+- リストア機能のエラーハンドリング改善: ✅ 完了（409エラーの詳細メッセージ）
+- バックアップAPI仕様ドキュメント更新: ✅ 完了（トラブルシューティングセクション追加）
+- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure.md#kb-098-csvリストア時のバリデーションエラー問題) を参照。
 
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 
