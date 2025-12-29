@@ -349,11 +349,13 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [ ] `apps/web/src/pages/admin/GmailConfigPage.tsx`の作成
   - [ ] Gmail設定画面の実装
   - [ ] ナビゲーションメニューへのリンク追加
-- [ ] Milestone 10: ユニットテスト・統合テスト・E2Eテストの実装
-  - [ ] GmailOAuthServiceのユニットテスト
-  - [ ] GmailApiClientのユニットテスト
-  - [ ] GmailStorageProviderのユニットテスト
-  - [ ] Gmail経由のCSVインポート統合テスト
+- [x] (2025-12-29) Milestone 10: ユニットテスト・統合テスト・E2Eテストの実装
+  - [x] GmailOAuthServiceのユニットテスト（Milestone 1で実装済み）
+  - [x] GmailApiClientのユニットテスト（Milestone 2で実装済み）
+  - [x] GmailStorageProviderのユニットテスト（Milestone 3で実装済み）
+  - [x] GmailStorageProvider統合テスト（`gmail-storage.integration.test.ts`）
+  - [x] Gmail経由のCSVインポート統合テスト（`imports-gmail.integration.test.ts`）
+  - [x] 環境変数による実行制御（`GMAIL_ENABLE_LIVE_TEST=1`で有効化）
   - [ ] Gmail設定管理UIのE2Eテスト
 - [ ] Milestone 11: ドキュメント作成
   - [ ] `docs/guides/gmail-setup-guide.md`の作成
