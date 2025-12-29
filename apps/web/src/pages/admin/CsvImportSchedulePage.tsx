@@ -159,24 +159,6 @@ export function CsvImportSchedulePage() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
-            {/* #region agent log */}
-            {(() => {
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'CsvImportSchedulePage.tsx:provider-field',
-                  message: 'About to render provider field',
-                  data: { formDataProvider: formData.provider },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run1',
-                  hypothesisId: 'C'
-                })
-              }).catch(() => {});
-              return null;
-            })()}
-            {/* #endregion */}
             <div>
               <label className="block text-sm text-slate-700 font-semibold mb-1">プロバイダー（オプション）</label>
               <select
