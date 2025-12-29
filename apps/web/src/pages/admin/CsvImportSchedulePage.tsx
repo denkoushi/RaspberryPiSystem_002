@@ -95,6 +95,45 @@ function formatCronSchedule(time: string, daysOfWeek: number[]): string {
   return `${minuteNum} ${hourNum} * * ${dayOfWeekStr}`;
 }
 
+/**
+ * cron形式のスケジュールを人間が読みやすい形式に変換
+ * cron形式: "0 4 * * 1,2,3" → "毎週月曜日、火曜日、水曜日の午前4時"
+ */
+function formatScheduleForDisplay(cronSchedule: string): string {
+  const parsed = parseCronSchedule(cronSchedule);
+  const { time, daysOfWeek } = parsed;
+  
+  const [hour, minute] = time.split(':');
+  const hourNum = parseInt(hour || '0', 10);
+  const minuteNum = parseInt(minute || '0', 10);
+  
+  // 時刻を日本語形式に変換（午前/午後の判定）
+  let timeStr: string;
+  if (hourNum === 0) {
+    timeStr = minuteNum === 0 ? '午前0時' : `午前0時${minuteNum}分`;
+  } else if (hourNum < 12) {
+    timeStr = minuteNum === 0 ? `午前${hourNum}時` : `午前${hourNum}時${minuteNum}分`;
+  } else if (hourNum === 12) {
+    timeStr = minuteNum === 0 ? '午後12時' : `午後12時${minuteNum}分`;
+  } else {
+    const pmHour = hourNum - 12;
+    timeStr = minuteNum === 0 ? `午後${pmHour}時` : `午後${pmHour}時${minuteNum}分`;
+  }
+  
+  // 曜日を日本語形式に変換
+  if (daysOfWeek.length === 0) {
+    return `毎日${timeStr}`;
+  }
+  
+  const dayLabels = daysOfWeek
+    .sort((a, b) => a - b)
+    .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
+    .filter(Boolean)
+    .join('、');
+  
+  return `毎週${dayLabels}の${timeStr}`;
+}
+
 export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
@@ -788,7 +827,7 @@ export function CsvImportSchedulePage() {
                           {schedule.provider ? schedule.provider.toUpperCase() : 'デフォルト'}
                         </span>
                       </td>
-                      <td className="px-2 py-1 font-mono text-xs">{schedule.schedule}</td>
+                      <td className="px-2 py-1 text-xs">{formatScheduleForDisplay(schedule.schedule)}</td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
                           {schedule.employeesPath && (
