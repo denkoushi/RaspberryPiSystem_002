@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useState } from 'react';
 
 import { useCsvImportSchedules, useCsvImportScheduleMutations } from '../../api/hooks';
@@ -7,10 +8,11 @@ import { Card } from '../../components/ui/Card';
 import type { CsvImportSchedule } from '../../api/backup';
 
 export function CsvImportSchedulePage() {
-  const { data, isLoading } = useCsvImportSchedules();
+  const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const schedules = data?.schedules ?? [];
 
@@ -30,9 +32,30 @@ export function CsvImportSchedulePage() {
     }
   });
 
+  const formatError = (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data as { message?: unknown } | undefined;
+      const message = typeof data?.message === 'string' ? data.message : undefined;
+      return message || error.message;
+    }
+    return error instanceof Error ? error.message : '操作に失敗しました';
+  };
+
   const handleCreate = async () => {
-    if (!formData.id || (!formData.employeesPath && !formData.itemsPath)) {
-      alert('IDとCSVパス（employeesPathまたはitemsPath）は必須です');
+    setValidationError(null);
+
+    if (!formData.id?.trim()) {
+      setValidationError('IDは必須です');
+      return;
+    }
+
+    if (!formData.employeesPath?.trim() && !formData.itemsPath?.trim()) {
+      setValidationError('従業員CSVパスまたはアイテムCSVパスのいずれかは必須です');
+      return;
+    }
+
+    if (!formData.schedule?.trim()) {
+      setValidationError('スケジュール（cron形式）は必須です');
       return;
     }
 
@@ -54,49 +77,77 @@ export function CsvImportSchedulePage() {
           targets: ['csv']
         }
       });
-      alert('スケジュールを作成しました');
+      refetch();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'スケジュールの作成に失敗しました';
-      alert(`エラー: ${errorMessage}`);
+      // エラーはmutationのisErrorで表示
     }
   };
 
   const handleUpdate = async (id: string) => {
+    setValidationError(null);
+
+    if (!formData.employeesPath?.trim() && !formData.itemsPath?.trim()) {
+      setValidationError('従業員CSVパスまたはアイテムCSVパスのいずれかは必須です');
+      return;
+    }
+
+    if (!formData.schedule?.trim()) {
+      setValidationError('スケジュール（cron形式）は必須です');
+      return;
+    }
+
     try {
       await update.mutateAsync({ id, schedule: formData });
       setEditingId(null);
-      alert('スケジュールを更新しました');
+      refetch();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'スケジュールの更新に失敗しました';
-      alert(`エラー: ${errorMessage}`);
+      // エラーはmutationのisErrorで表示
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('このスケジュールを削除しますか？')) {
+    const schedule = schedules.find((s) => s.id === id);
+
+    if (
+      !confirm(
+        `以下のスケジュールを削除しますか？\n\nID: ${schedule?.id}\n名前: ${schedule?.name || '-'}\nスケジュール: ${schedule?.schedule}\n\nこの操作は取り消せません。`
+      )
+    ) {
       return;
     }
 
     try {
       await remove.mutateAsync(id);
-      alert('スケジュールを削除しました');
+      refetch();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'スケジュールの削除に失敗しました';
-      alert(`エラー: ${errorMessage}`);
+      // エラーはmutationのisErrorで表示
     }
   };
 
   const handleRun = async (id: string) => {
-    if (!confirm('このスケジュールを手動実行しますか？')) {
+    const schedule = schedules.find((s) => s.id === id);
+    const scheduleName = schedule?.name || schedule?.id || 'このスケジュール';
+    const provider = schedule?.provider ? schedule.provider.toUpperCase() : 'デフォルト';
+    const paths = [
+      schedule?.employeesPath && `従業員: ${schedule.employeesPath}`,
+      schedule?.itemsPath && `アイテム: ${schedule.itemsPath}`
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    if (
+      !confirm(
+        `以下のスケジュールを手動実行しますか？\n\nID: ${schedule?.id}\n名前: ${scheduleName}\nプロバイダー: ${provider}\n${paths ? `\n${paths}` : ''}\n\nこの操作は即座に実行されます。`
+      )
+    ) {
       return;
     }
 
     try {
       await run.mutateAsync(id);
-      alert('インポートを実行しました');
+      refetch();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'インポートの実行に失敗しました';
-      alert(`エラー: ${errorMessage}`);
+      // エラーはmutationのisErrorで表示
     }
   };
 
@@ -107,6 +158,27 @@ export function CsvImportSchedulePage() {
 
   const cancelEdit = () => {
     setEditingId(null);
+    setValidationError(null);
+    setFormData({
+      id: '',
+      name: '',
+      provider: undefined,
+      employeesPath: '',
+      itemsPath: '',
+      schedule: '0 2 * * *',
+      timezone: 'Asia/Tokyo',
+      enabled: true,
+      replaceExisting: false,
+      autoBackupAfterImport: {
+        enabled: false,
+        targets: ['csv']
+      }
+    });
+  };
+
+  const handleCancelCreate = () => {
+    setShowCreateForm(false);
+    setValidationError(null);
     setFormData({
       id: '',
       name: '',
@@ -132,14 +204,42 @@ export function CsvImportSchedulePage() {
     <Card
       title="CSVインポートスケジュール"
       action={
-        <Button onClick={() => setShowCreateForm(true)} disabled={showCreateForm || editingId !== null}>
-          新規作成
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            disabled={isLoading}
+            onClick={() => refetch()}
+          >
+            一覧更新
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)} disabled={showCreateForm || editingId !== null}>
+            新規作成
+          </Button>
+        </div>
       }
     >
       {showCreateForm && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <h3 className="mb-3 text-lg font-bold text-slate-900">新規スケジュール作成</h3>
+          
+          {validationError && (
+            <div className="mb-3 rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">
+              エラー: {validationError}
+            </div>
+          )}
+
+          {create.isError && (
+            <div className="mb-3 rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">
+              エラー: {formatError(create.error)}
+            </div>
+          )}
+
+          {create.isSuccess && (
+            <div className="mb-3 rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg">
+              スケジュールを作成しました
+            </div>
+          )}
+
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">ID *</label>
@@ -291,9 +391,9 @@ export function CsvImportSchedulePage() {
             </div>
             <div className="flex gap-2">
               <Button onClick={handleCreate} disabled={create.isPending}>
-                作成
+                {create.isPending ? '作成中...' : '作成'}
               </Button>
-              <Button variant="ghost" onClick={() => setShowCreateForm(false)}>
+              <Button variant="ghost" onClick={handleCancelCreate} disabled={create.isPending}>
                 キャンセル
               </Button>
             </div>
@@ -384,21 +484,39 @@ export function CsvImportSchedulePage() {
                         {formData.autoBackupAfterImport?.enabled ? '有効' : '無効'}
                       </td>
                       <td className="px-2 py-1">
-                        <div className="flex gap-1">
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            onClick={() => handleUpdate(schedule.id)}
-                            disabled={update.isPending}
-                          >
-                            保存
-                          </Button>
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            variant="ghost"
-                            onClick={cancelEdit}
-                          >
-                            キャンセル
-                          </Button>
+                        <div className="space-y-1">
+                          {validationError && (
+                            <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">
+                              {validationError}
+                            </div>
+                          )}
+                          {update.isError && (
+                            <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">
+                              {formatError(update.error)}
+                            </div>
+                          )}
+                          {update.isSuccess && (
+                            <div className="rounded-md border border-emerald-600 bg-emerald-50 p-1 text-xs text-emerald-700">
+                              更新しました
+                            </div>
+                          )}
+                          <div className="flex gap-1">
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              onClick={() => handleUpdate(schedule.id)}
+                              disabled={update.isPending}
+                            >
+                              {update.isPending ? '保存中...' : '保存'}
+                            </Button>
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              variant="ghost"
+                              onClick={cancelEdit}
+                              disabled={update.isPending}
+                            >
+                              キャンセル
+                            </Button>
+                          </div>
                         </div>
                       </td>
                     </>
@@ -437,29 +555,47 @@ export function CsvImportSchedulePage() {
                         )}
                       </td>
                       <td className="px-2 py-1">
-                        <div className="flex gap-1">
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            onClick={() => handleRun(schedule.id)}
-                            disabled={run.isPending}
-                          >
-                            実行
-                          </Button>
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            variant="ghost"
-                            onClick={() => startEdit(schedule)}
-                          >
-                            編集
-                          </Button>
-                          <Button
-                            className="px-2 py-1 text-xs"
-                            variant="ghost"
-                            onClick={() => handleDelete(schedule.id)}
-                            disabled={remove.isPending}
-                          >
-                            削除
-                          </Button>
+                        <div className="space-y-1">
+                          {run.isError && (
+                            <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">
+                              実行エラー: {formatError(run.error)}
+                            </div>
+                          )}
+                          {run.isSuccess && (
+                            <div className="rounded-md border border-emerald-600 bg-emerald-50 p-1 text-xs text-emerald-700">
+                              実行しました
+                            </div>
+                          )}
+                          {remove.isError && (
+                            <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">
+                              削除エラー: {formatError(remove.error)}
+                            </div>
+                          )}
+                          <div className="flex gap-1">
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              onClick={() => handleRun(schedule.id)}
+                              disabled={run.isPending || remove.isPending || update.isPending}
+                            >
+                              {run.isPending ? '実行中...' : '実行'}
+                            </Button>
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              variant="ghost"
+                              onClick={() => startEdit(schedule)}
+                              disabled={run.isPending || remove.isPending || update.isPending}
+                            >
+                              編集
+                            </Button>
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              variant="ghost"
+                              onClick={() => handleDelete(schedule.id)}
+                              disabled={remove.isPending || run.isPending || update.isPending}
+                            >
+                              {remove.isPending ? '削除中...' : '削除'}
+                            </Button>
+                          </div>
                         </div>
                       </td>
                     </>
