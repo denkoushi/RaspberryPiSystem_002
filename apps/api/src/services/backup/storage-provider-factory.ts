@@ -108,15 +108,9 @@ export class StorageProviderFactory {
       const refreshToken = config.storage.options?.refreshToken as string | undefined;
       const appKey = config.storage.options?.appKey as string | undefined;
       const appSecret = config.storage.options?.appSecret as string | undefined;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:105',message:'Dropbox provider check',data:{configProvider:config.storage.provider,hasAccessToken:!!accessToken,accessTokenLength:accessToken?.length||0,accessTokenPrefix:accessToken?.substring(0,10)||'empty',hasRefreshToken:!!refreshToken,hasAppKey:!!appKey,hasAppSecret:!!appSecret},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && appKey && appSecret) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:109',message:'Attempting to refresh accessToken from refreshToken',data:{hasRefreshToken:!!refreshToken,hasAppKey:!!appKey,hasAppSecret:!!appSecret},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         try {
           const redirectUri = requestProtocol && requestHost 
             ? `${requestProtocol}://${requestHost}/api/backup/oauth/callback`
@@ -128,17 +122,11 @@ export class StorageProviderFactory {
           });
           const tokenInfo = await oauthService.refreshAccessToken(refreshToken);
           accessToken = tokenInfo.accessToken;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:119',message:'AccessToken refreshed successfully',data:{accessTokenLength:accessToken?.length||0,accessTokenPrefix:accessToken?.substring(0,10)||'empty'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           // トークン更新コールバックで設定ファイルを更新
           if (onTokenUpdate) {
             await onTokenUpdate(accessToken);
           }
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:125',message:'Failed to refresh accessToken',data:{error:error instanceof Error?error.message:'Unknown error'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh access token from refresh token, falling back to local storage');
           options.provider = 'local';
         }
@@ -148,18 +136,12 @@ export class StorageProviderFactory {
       if (!accessToken || accessToken.trim() === '') {
         // ログに警告を出力してlocalにフォールバック
         console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:133',message:'Fallback to local',data:{reason:'accessToken empty after refresh attempt'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         options.provider = 'local';
       } else {
         options.accessToken = accessToken;
         options.refreshToken = refreshToken;
         options.appKey = appKey;
         options.appSecret = appSecret;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:140',message:'Dropbox options set',data:{hasRefreshToken:!!options.refreshToken,hasAppKey:!!options.appKey,hasAppSecret:!!options.appSecret,refreshTokenLength:options.refreshToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
 
         // リダイレクトURIを構築
         if (requestProtocol && requestHost) {
@@ -172,9 +154,6 @@ export class StorageProviderFactory {
 
     const storageProvider = this.create(options);
     const actualProvider = options.provider;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:128',message:'Provider created',data:{actualProvider,requestedProvider:config.storage.provider,returnProvider},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     if (returnProvider) {
       return { provider: actualProvider, storageProvider };

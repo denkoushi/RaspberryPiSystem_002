@@ -1,6 +1,6 @@
 # バックアップ対象管理UI実装計画
 
-最終更新: 2025-12-28（Phase 3の保持期間設定機能を追加）
+最終更新: 2025-12-29（Phase 9.6のDropboxバックアップ履歴未記録問題修正を追加）
 
 ## 概要
 
@@ -566,6 +566,32 @@ export interface BackupConfig {
 - バックアップ実行後、ストレージプロバイダーが`local`表示に切り替わることを確認
 - ログで`[StorageProviderFactory] Dropbox access token is empty, falling back to local storage`を確認
 - データベースで`storageProvider: local`が正しく記録されていることを確認
+
+#### Phase 9.6: Dropboxバックアップ履歴未記録問題の修正 ✅ 完了（2025-12-29）
+
+**実装内容**:
+- ✅ `StorageProviderFactory`: `createFromConfig`と`createFromTarget`を`async`メソッドに変更
+- ✅ `accessToken`が空でも`refreshToken`がある場合、`DropboxOAuthService.refreshAccessToken()`を呼び出して新しい`accessToken`を自動取得
+- ✅ 取得した`accessToken`は`onTokenUpdate`コールバックを通じて設定ファイルに保存
+- ✅ 呼び出し元（`backup.ts`、`backup-scheduler.ts`）に`await`を追加
+
+**技術的な詳細**:
+- `refreshToken`から`accessToken`を自動取得する機能を追加
+- 非同期処理（`refreshAccessToken`）を使用するため、メソッドを`async`に変更
+- OAuth認証フローで正しい`refreshToken`を取得する必要がある（`/api/backup/oauth/authorize`エンドポイントを使用）
+
+**コミット**:
+- `e468445` - fix: refreshTokenからaccessTokenを自動取得する機能を追加（Dropboxバックアップ履歴未記録問題の修正）
+- `e503476` - fix: StorageProviderFactoryメソッドをasyncに変更してaccessToken自動リフレッシュを有効化
+
+**実機検証結果**: ✅ 完了（2025-12-29）
+- OAuth認証フローで正しい`refreshToken`を取得・保存することを確認
+- バックアップ実行後、`refreshToken`から`accessToken`が自動取得されることを確認
+- Dropboxへのアップロードが成功することを確認（ログ: `[DropboxStorageProvider] File uploaded`）
+- データベースで`storageProvider: dropbox`が正しく記録されていることを確認
+- UIで「Dropbox」と表示されることを確認
+
+**関連KB**: [KB-096](./knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 

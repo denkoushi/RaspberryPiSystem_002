@@ -3018,3 +3018,51 @@ ssh denkon5sd02@192.168.10.230
 - ✅ UIで「ファイル」列が表示され、`fileStatus`が正しく表示されることを確認
 
 ---
+
+## KB-096: Dropboxバックアップ履歴未記録問題（refreshTokenからaccessToken自動取得機能）
+
+**問題**: Dropboxバックアップが実行されても、履歴に`dropbox`として記録されず、`local`にフォールバックされていた。原因は`accessToken`が空で、`refreshToken`から自動取得する機能が実装されていなかったこと。
+
+**原因**:
+1. `DROPBOX_REFRESH_TOKEN`環境変数に**アクセストークン**（`sl.u.`で始まる）が誤って設定されていた
+2. `StorageProviderFactory`が`accessToken`が空の場合、即座に`local`にフォールバックしていた
+3. `refreshToken`から`accessToken`を自動取得する機能が実装されていなかった
+4. `createFromConfig`と`createFromTarget`が同期メソッドだったため、`await oauthService.refreshAccessToken()`が使用できなかった
+
+**解決策**:
+1. **OAuth認証フローで正しいrefresh tokenを取得**: `/api/backup/oauth/authorize`エンドポイントを使用してDropbox OAuth認証を実行し、正しい`refreshToken`を取得・保存
+2. **refreshTokenからaccessTokenを自動取得**: `StorageProviderFactory.createFromConfig`と`createFromTarget`で、`accessToken`が空でも`refreshToken`、`appKey`、`appSecret`が揃っている場合は、`DropboxOAuthService.refreshAccessToken()`を呼び出して新しい`accessToken`を取得
+3. **メソッドをasyncに変更**: `createFromConfig`と`createFromTarget`を`async`メソッドに変更し、呼び出し元（`backup.ts`、`backup-scheduler.ts`）に`await`を追加
+
+**実装詳細**:
+- `StorageProviderFactory.createFromConfig`と`createFromTarget`を`async`メソッドに変更
+- `accessToken`が空の場合、`refreshToken`から`accessToken`を自動取得する処理を追加
+- 取得した`accessToken`は`onTokenUpdate`コールバックを通じて設定ファイルに保存
+- 呼び出し元（`backup.ts`、`backup-scheduler.ts`）に`await`を追加
+
+**学んだこと**:
+- OAuth認証フローで取得したトークンは、`accessToken`と`refreshToken`の両方が必要
+- `refreshToken`は`accessToken`とは異なる形式（`sl.u.`で始まらない）
+- 非同期処理（`refreshAccessToken`）を使用する場合は、メソッドを`async`に変更する必要がある
+- 環境変数に誤った値が設定されている場合、コード側で検証・修正する仕組みがあると良い
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage-provider-factory.ts`（async化、refreshTokenからaccessToken自動取得）
+- `apps/api/src/routes/backup.ts`（await追加）
+- `apps/api/src/services/backup/backup-scheduler.ts`（await追加）
+- `apps/api/src/routes/backup.ts`（OAuth認証エンドポイント）
+
+**実機検証結果**（2025-12-29）:
+- ✅ OAuth認証フローで正しい`refreshToken`を取得・保存することを確認
+- ✅ バックアップ実行後、`refreshToken`から`accessToken`が自動取得されることを確認
+- ✅ Dropboxへのアップロードが成功することを確認（ログ: `[DropboxStorageProvider] File uploaded`）
+- ✅ データベースで`storageProvider: dropbox`が正しく記録されていることを確認
+- ✅ UIで「Dropbox」と表示されることを確認
+
+**コミット**:
+- `e468445` - fix: refreshTokenからaccessTokenを自動取得する機能を追加（Dropboxバックアップ履歴未記録問題の修正）
+- `e503476` - fix: StorageProviderFactoryメソッドをasyncに変更してaccessToken自動リフレッシュを有効化
+
+---

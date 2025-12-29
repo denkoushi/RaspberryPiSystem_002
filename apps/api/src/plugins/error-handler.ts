@@ -147,10 +147,7 @@ const buildStructuredErrorLog = (
 
 export function registerErrorHandler(app: FastifyInstance): void {
   // Fastifyのスキーマ検証エラーを処理
-  app.setSchemaErrorFormatter((errors, dataVar) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'error-handler.ts:setSchemaErrorFormatter',message:'Fastify schema validation error',data:{errors:JSON.stringify(errors),dataVar},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
+  app.setSchemaErrorFormatter((errors) => {
     return new Error(`Schema validation error: ${JSON.stringify(errors)}`);
   });
   
@@ -161,17 +158,10 @@ export function registerErrorHandler(app: FastifyInstance): void {
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
     
-    // #region agent log
-    const errorWithValidation = error as { validation?: unknown };
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'error-handler.ts:setErrorHandler',message:'Error handler called',data:{errorName:error.name,errorMessage:error.message,statusCode:(error as { statusCode?: number }).statusCode,url,hasValidation:!!errorWithValidation.validation},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     // Fastifyのスキーマ検証エラーを処理
-    if (errorWithValidation.validation) {
-      const validationErrors = errorWithValidation.validation;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'error-handler.ts:setErrorHandler',message:'Fastify schema validation error detected',data:{validationErrors:JSON.stringify(validationErrors),url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+    if (error.validation) {
+      const validationErrors = error.validation;
       request.log.warn(
         buildStructuredErrorLog(
           requestId,
