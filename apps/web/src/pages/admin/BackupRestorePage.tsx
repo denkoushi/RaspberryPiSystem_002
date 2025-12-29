@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -95,6 +96,15 @@ export function BackupRestorePage() {
     visibleCandidates.length
   ]);
 
+  const formatRestoreError = (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data as { message?: unknown } | undefined;
+      const message = typeof data?.message === 'string' ? data.message : undefined;
+      return message || error.message;
+    }
+    return error instanceof Error ? error.message : 'リストアに失敗しました';
+  };
+
   const handleRestore = async () => {
     if (!selectedBackupPath.trim()) {
       alert('リストアするバックアップを選択してください');
@@ -143,7 +153,7 @@ export function BackupRestorePage() {
       setSelectedHistoryId('');
       refetchRestoreHistory();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'リストアに失敗しました';
+      const errorMessage = formatRestoreError(error);
       alert(`リストアに失敗しました: ${errorMessage}`);
     } finally {
       setIsRestoring(false);
@@ -304,7 +314,7 @@ export function BackupRestorePage() {
 
         {restoreMutation.isError && (
           <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">
-            エラー: {restoreMutation.error instanceof Error ? restoreMutation.error.message : 'リストアに失敗しました'}
+            エラー: {formatRestoreError(restoreMutation.error)}
           </div>
         )}
 
