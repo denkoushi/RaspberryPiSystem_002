@@ -78,9 +78,10 @@ export function GmailConfigPage() {
   const handleAuthorize = async () => {
     try {
       const response = await authorize.mutateAsync();
-      if (response.authorizeUrl) {
+      const authUrl = response.authorizationUrl || response.authorizeUrl;
+      if (authUrl) {
         // 新しいウィンドウで認証URLを開く
-        window.open(response.authorizeUrl, '_blank', 'width=600,height=700');
+        window.open(authUrl, '_blank', 'width=600,height=700');
         alert('認証ウィンドウを開きました。認証完了後、このページをリロードしてください。');
       } else {
         alert('認証URLの取得に失敗しました');
