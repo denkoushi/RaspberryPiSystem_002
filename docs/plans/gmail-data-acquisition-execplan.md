@@ -332,10 +332,10 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [ ] `storage.provider`に`'gmail'`を追加
   - [ ] `storage.options`にGmail用設定項目を追加
   - [ ] `csvImports`配列の各要素に`provider`と`retryConfig`を追加
-- [ ] Milestone 6: Gmail OAuth認証エンドポイントの追加
-  - [ ] `apps/api/src/routes/gmail/oauth.ts`の作成
-  - [ ] `registerGmailOAuthRoutes`関数の実装
-  - [ ] `apps/api/src/routes/index.ts`へのルート登録
+- [x] (2025-12-29) Milestone 6: Gmail OAuth認証エンドポイントの追加
+  - [x] `apps/api/src/routes/gmail/oauth.ts`の作成
+  - [x] `registerGmailOAuthRoutes`関数の実装（認証URL生成、コールバック処理、リフレッシュ）
+  - [x] `apps/api/src/routes/index.ts`へのルート登録
 - [ ] Milestone 7: Gmail設定管理エンドポイントの追加
   - [ ] `apps/api/src/routes/gmail/config.ts`の作成
   - [ ] `registerGmailConfigRoutes`関数の実装

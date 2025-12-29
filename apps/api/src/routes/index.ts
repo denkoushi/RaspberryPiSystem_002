@@ -10,6 +10,7 @@ import { registerSignageRoutes } from './signage/index.js';
 import { registerMeasuringInstrumentRoutes } from './measuring-instruments/index.js';
 import { registerRiggingRoutes } from './rigging/index.js';
 import { registerBackupRoutes } from './backup.js';
+import { registerGmailOAuthRoutes } from './gmail/oauth.js';
 
 /**
  * すべてのルートを登録
@@ -38,6 +39,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);
       await registerBackupRoutes(subApp);
+      // Gmail OAuth認証ルート
+      registerGmailOAuthRoutes(subApp);
     },
     { prefix: '/api' },
   );
