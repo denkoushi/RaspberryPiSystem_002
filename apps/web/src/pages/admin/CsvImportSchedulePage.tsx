@@ -7,20 +7,6 @@ import { Card } from '../../components/ui/Card';
 
 import type { CsvImportSchedule } from '../../api/backup';
 
-// よく使うcronパターンの選択肢
-const CRON_PATTERNS = [
-  { value: '0 2 * * *', label: '毎日2時' },
-  { value: '0 3 * * *', label: '毎日3時' },
-  { value: '0 4 * * *', label: '毎日4時' },
-  { value: '0 0 * * *', label: '毎日0時（深夜）' },
-  { value: '0 2 * * 1', label: '毎週月曜2時' },
-  { value: '0 2 * * 0', label: '毎週日曜2時' },
-  { value: '0 2 1 * *', label: '毎月1日2時' },
-  { value: '0 */6 * * *', label: '6時間ごと' },
-  { value: '0 */12 * * *', label: '12時間ごと' },
-  { value: 'custom', label: 'カスタム（手動入力）' }
-] as const;
-
 // Gmailのよく使う件名パターン
 const GMAIL_SUBJECT_PATTERNS = {
   employees: [
@@ -43,8 +29,6 @@ export function CsvImportSchedulePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [schedulePattern, setSchedulePattern] = useState<string>('0 2 * * *');
-  const [isCustomSchedule, setIsCustomSchedule] = useState(false);
 
   const schedules = data?.schedules ?? [];
 
@@ -186,22 +170,11 @@ export function CsvImportSchedulePage() {
   const startEdit = (schedule: CsvImportSchedule) => {
     setEditingId(schedule.id);
     setFormData(schedule);
-    // スケジュールパターンを設定
-    const pattern = CRON_PATTERNS.find((p) => p.value === schedule.schedule);
-    if (pattern) {
-      setSchedulePattern(pattern.value);
-      setIsCustomSchedule(false);
-    } else {
-      setSchedulePattern('custom');
-      setIsCustomSchedule(true);
-    }
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setValidationError(null);
-    setSchedulePattern('0 2 * * *');
-    setIsCustomSchedule(false);
     setFormData({
       id: '',
       name: '',
@@ -222,8 +195,6 @@ export function CsvImportSchedulePage() {
   const handleCancelCreate = () => {
     setShowCreateForm(false);
     setValidationError(null);
-    setSchedulePattern('0 2 * * *');
-    setIsCustomSchedule(false);
     setFormData({
       id: '',
       name: '',
@@ -424,40 +395,18 @@ export function CsvImportSchedulePage() {
               )}
             </div>
             <div>
-              <label className="block text-sm text-slate-700 font-semibold mb-1">スケジュール *</label>
-              <select
-                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900 mb-2"
-                value={schedulePattern}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSchedulePattern(value);
-                  if (value === 'custom') {
-                    setIsCustomSchedule(true);
-                  } else {
-                    setIsCustomSchedule(false);
-                    setFormData({ ...formData, schedule: value });
-                  }
-                }}
-              >
-                {CRON_PATTERNS.map((pattern) => (
-                  <option key={pattern.value} value={pattern.value}>
-                    {pattern.label} ({pattern.value})
-                  </option>
-                ))}
-              </select>
-              {isCustomSchedule && (
-                <input
-                  type="text"
-                  className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
-                  placeholder="0 2 * * *"
-                  value={formData.schedule}
-                  onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-                />
-              )}
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                スケジュール（cron形式） *
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+                placeholder="0 2 * * *"
+                value={formData.schedule}
+                onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+              />
               <p className="mt-1 text-xs text-slate-600">
-                {isCustomSchedule 
-                  ? 'cron形式で入力してください（例: 0 2 * * * = 毎日2時）'
-                  : 'よく使うパターンから選択するか、カスタムで手動入力できます'}
+                例: 0 2 * * * (毎日2時)
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -593,35 +542,13 @@ export function CsvImportSchedulePage() {
                         </select>
                       </td>
                       <td className="px-2 py-1">
-                        <select
-                          className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
-                          value={schedulePattern}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setSchedulePattern(value);
-                            if (value === 'custom') {
-                              setIsCustomSchedule(true);
-                            } else {
-                              setIsCustomSchedule(false);
-                              setFormData({ ...formData, schedule: value });
-                            }
-                          }}
-                        >
-                          {CRON_PATTERNS.map((pattern) => (
-                            <option key={pattern.value} value={pattern.value}>
-                              {pattern.label}
-                            </option>
-                          ))}
-                        </select>
-                        {isCustomSchedule && (
-                          <input
-                            type="text"
-                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                            placeholder="0 2 * * *"
-                            value={formData.schedule}
-                            onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-                          />
-                        )}
+                        <input
+                          type="text"
+                          className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 font-mono text-xs"
+                          placeholder="0 2 * * *"
+                          value={formData.schedule}
+                          onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                        />
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
