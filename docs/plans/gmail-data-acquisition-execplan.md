@@ -357,9 +357,9 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [x] Gmail経由のCSVインポート統合テスト（`imports-gmail.integration.test.ts`）
   - [x] 環境変数による実行制御（`GMAIL_ENABLE_LIVE_TEST=1`で有効化）
   - [ ] Gmail設定管理UIのE2Eテスト
-- [ ] Milestone 11: ドキュメント作成
-  - [ ] `docs/guides/gmail-setup-guide.md`の作成
-  - [ ] `docs/guides/powerautomate-gmail-integration.md`の作成
+- [x] (2025-12-29) Milestone 11: ドキュメント作成
+  - [x] `docs/guides/gmail-setup-guide.md`の作成（Gmail連携セットアップガイド）
+  - [x] `docs/guides/powerautomate-gmail-integration.md`の作成（PowerAutomate側仕様）
 
 ## Surprises & Discoveries
 
