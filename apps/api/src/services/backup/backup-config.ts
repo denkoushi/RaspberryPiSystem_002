@@ -13,13 +13,20 @@ export const PathMappingSchema = z.object({
  */
 export const BackupConfigSchema = z.object({
   storage: z.object({
-    provider: z.enum(['local', 'dropbox']),
+    provider: z.enum(['local', 'dropbox', 'gmail']),
     options: z.object({
       basePath: z.string().optional(),
+      // Dropbox用設定
       accessToken: z.string().optional(), // Dropbox用
-      refreshToken: z.string().optional(), // Dropbox用（リフレッシュトークン）
+      refreshToken: z.string().optional(), // Dropbox/Gmail用（リフレッシュトークン）
       appKey: z.string().optional(), // Dropbox用（OAuth 2.0 App Key）
-      appSecret: z.string().optional() // Dropbox用（OAuth 2.0 App Secret）
+      appSecret: z.string().optional(), // Dropbox用（OAuth 2.0 App Secret）
+      // Gmail用設定
+      clientId: z.string().optional(), // Gmail用（OAuth 2.0 Client ID）
+      clientSecret: z.string().optional(), // Gmail用（OAuth 2.0 Client Secret）
+      redirectUri: z.string().optional(), // Gmail用（OAuth リダイレクトURI）
+      subjectPattern: z.string().optional(), // Gmail用（件名パターン）
+      fromEmail: z.string().optional() // Gmail用（送信者メールアドレス）
     }).optional()
   }),
   pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング
@@ -29,8 +36,8 @@ export const BackupConfigSchema = z.object({
     schedule: z.string().optional(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
     storage: z.object({
-      provider: z.enum(['local', 'dropbox']).optional(), // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
-      providers: z.array(z.enum(['local', 'dropbox'])).optional() // 対象ごとのストレージプロバイダー（複数、Phase 2）
+      provider: z.enum(['local', 'dropbox', 'gmail']).optional(), // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
+      providers: z.array(z.enum(['local', 'dropbox', 'gmail'])).optional() // 対象ごとのストレージプロバイダー（複数、Phase 2）
     }).optional(),
     retention: z.object({
       days: z.number().optional(), // 保持日数（例: 30日）
@@ -45,11 +52,17 @@ export const BackupConfigSchema = z.object({
   csvImports: z.array(z.object({
     id: z.string(), // スケジュールID（一意）
     name: z.string().optional(), // スケジュール名（表示用）
-    employeesPath: z.string().optional(), // Dropbox上の従業員CSVパス
-    itemsPath: z.string().optional(), // Dropbox上のアイテムCSVパス
+    provider: z.enum(['dropbox', 'gmail']).optional(), // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+    employeesPath: z.string().optional(), // Dropbox用: パス、Gmail用: 件名パターン
+    itemsPath: z.string().optional(), // Dropbox用: パス、Gmail用: 件名パターン
     schedule: z.string(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
     replaceExisting: z.boolean().default(false), // 既存データを置き換えるか
+    retryConfig: z.object({
+      maxRetries: z.number().default(3), // 最大リトライ回数（デフォルト: 3）
+      retryInterval: z.number().default(60), // リトライ間隔（秒、デフォルト: 60）
+      exponentialBackoff: z.boolean().default(true) // 指数バックオフ（デフォルト: true）
+    }).optional(),
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false), // 自動バックアップを有効にするか
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv']) // バックアップ対象（csv: CSVのみ、database: データベースのみ、all: すべて）
