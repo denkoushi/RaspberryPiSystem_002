@@ -188,5 +188,95 @@ test.describe('管理画面', () => {
       }
     });
   });
+
+  test.describe('Gmail設定管理', () => {
+    test('Gmail設定画面にアクセスできる', async ({ page }) => {
+      await page.getByRole('link', { name: /Gmail設定/i }).click();
+      await expect(page).toHaveURL(/\/admin\/gmail\/config/);
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /Gmail設定/i })).toBeVisible();
+    });
+
+    test('Gmail設定が未設定の場合、設定フォームが表示される', async ({ page }) => {
+      await page.goto('/admin/gmail/config');
+      await page.waitForLoadState('networkidle');
+      
+      // 設定フォームのフィールドが表示されることを確認
+      await expect(page.getByLabel(/Client ID/i)).toBeVisible({ timeout: 5000 });
+      await expect(page.getByLabel(/Client Secret/i)).toBeVisible();
+      await expect(page.getByLabel(/Subject Pattern/i)).toBeVisible();
+      await expect(page.getByLabel(/From Email/i)).toBeVisible();
+    });
+
+    test('Gmail設定を編集できる', async ({ page }) => {
+      await page.goto('/admin/gmail/config');
+      await page.waitForLoadState('networkidle');
+
+      // 編集ボタンをクリック
+      const editButton = page.getByRole('button', { name: /編集/i });
+      await expect(editButton).toBeVisible({ timeout: 5000 });
+      await editButton.click();
+
+      // フォームに入力
+      await page.getByLabel(/Client ID/i).fill('test-client-id');
+      await page.getByLabel(/Client Secret/i).fill('test-client-secret');
+      await page.getByLabel(/Subject Pattern/i).fill('CSV Import');
+      await page.getByLabel(/From Email/i).fill('test@example.com');
+
+      // 保存ボタンをクリックし、APIレスポンスを待機
+      const savePromise = page.waitForResponse(
+        response => {
+          const url = response.url();
+          return url.includes('/api/gmail/config') && 
+                 response.request().method() === 'PUT' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
+      );
+      await page.getByRole('button', { name: /保存/i }).click();
+      await savePromise;
+
+      // 設定が保存されたことを確認（編集モードが解除される）
+      await expect(page.getByRole('button', { name: /編集/i })).toBeVisible({ timeout: 5000 });
+    });
+
+    test('Gmail設定を削除できる', async ({ page }) => {
+      await page.goto('/admin/gmail/config');
+      await page.waitForLoadState('networkidle');
+
+      // 削除ボタンが表示されるまで待機
+      const deleteButton = page.getByRole('button', { name: /削除/i });
+      await expect(deleteButton).toBeVisible({ timeout: 5000 });
+
+      // 確認ダイアログを自動承認
+      page.on('dialog', dialog => dialog.accept());
+
+      // 削除ボタンをクリックし、APIレスポンスを待機
+      const deletePromise = page.waitForResponse(
+        response => {
+          const url = response.url();
+          return url.includes('/api/gmail/config') && 
+                 response.request().method() === 'DELETE' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
+      );
+      await deleteButton.click();
+      await deletePromise;
+
+      // UIが更新されるのを待機
+      await page.waitForLoadState('networkidle');
+      
+      // 設定が削除されたことを確認（フォームが再表示される）
+      await expect(page.getByLabel(/Client ID/i)).toBeVisible({ timeout: 5000 });
+    });
+
+    // 注意: OAuth認証フローのE2Eテストは実装しない
+    // 理由:
+    // 1. OAuth認証は実際のGoogle認証ページにリダイレクトするため、E2Eテストでは完全にテストできない
+    // 2. OAuth認証フローは既に`apps/api/src/routes/__tests__/gmail-oauth.integration.test.ts`で
+    //    統合テストとして実施されている
+    // 3. 実際のOAuth認証は手動で確認する必要がある
+  });
 });
 
