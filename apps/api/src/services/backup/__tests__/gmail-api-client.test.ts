@@ -6,17 +6,15 @@ import { GmailApiClient } from '../gmail-api-client.js';
 const mockGmailMessages = {
   list: vi.fn(),
   get: vi.fn(),
-  modify: vi.fn()
-};
-
-const mockGmailAttachments = {
-  get: vi.fn()
+  modify: vi.fn(),
+  attachments: {
+    get: vi.fn()
+  }
 };
 
 const mockGmail = {
   users: {
-    messages: mockGmailMessages,
-    attachments: mockGmailAttachments
+    messages: mockGmailMessages
   }
 };
 
@@ -25,8 +23,7 @@ vi.mock('googleapis', () => {
     google: {
       gmail: vi.fn(() => ({
         users: {
-          messages: mockGmailMessages,
-          attachments: mockGmailAttachments
+          messages: mockGmailMessages
         }
       }))
     }
@@ -157,13 +154,13 @@ describe('GmailApiClient', () => {
         }
       };
 
-      mockGmailAttachments.get.mockResolvedValueOnce(mockResponse);
+      mockGmailMessages.attachments.get.mockResolvedValueOnce(mockResponse);
 
       const result = await gmailClient.getAttachment(mockMessageId, mockAttachmentId);
 
       expect(result).toBeInstanceOf(Buffer);
       expect(result.toString()).toBe('test attachment data');
-      expect(mockGmailAttachments.get).toHaveBeenCalledWith({
+      expect(mockGmailMessages.attachments.get).toHaveBeenCalledWith({
         userId: 'me',
         messageId: mockMessageId,
         id: mockAttachmentId
@@ -180,7 +177,7 @@ describe('GmailApiClient', () => {
         }
       };
 
-      mockGmailAttachments.get.mockResolvedValueOnce(mockResponse);
+      mockGmailMessages.attachments.get.mockResolvedValueOnce(mockResponse);
 
       await expect(gmailClient.getAttachment(mockMessageId, mockAttachmentId)).rejects.toThrow(
         'Attachment data is empty'
@@ -192,7 +189,7 @@ describe('GmailApiClient', () => {
       const mockAttachmentId = 'invalid-att';
       const mockError = new Error('Attachment not found');
 
-      mockGmailAttachments.get.mockRejectedValueOnce(mockError);
+      mockGmailMessages.attachments.get.mockRejectedValueOnce(mockError);
 
       await expect(gmailClient.getAttachment(mockMessageId, mockAttachmentId)).rejects.toThrow(
         'Failed to get attachment'
@@ -276,7 +273,7 @@ describe('GmailApiClient', () => {
       };
 
       mockGmail.users.messages.get.mockResolvedValueOnce(mockMessageResponse);
-      mockGmail.users.attachments.get.mockResolvedValueOnce(mockAttachmentResponse);
+      mockGmail.users.messages.attachments.get.mockResolvedValueOnce(mockAttachmentResponse);
 
       const result = await gmailClient.getFirstAttachment(mockMessageId);
 
@@ -340,7 +337,7 @@ describe('GmailApiClient', () => {
       };
 
       mockGmail.users.messages.get.mockResolvedValueOnce(mockMessageResponse);
-      mockGmail.users.attachments.get.mockResolvedValueOnce(mockAttachmentResponse);
+      mockGmail.users.messages.attachments.get.mockResolvedValueOnce(mockAttachmentResponse);
 
       const result = await gmailClient.getFirstAttachment(mockMessageId);
 

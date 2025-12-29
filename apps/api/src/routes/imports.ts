@@ -12,6 +12,7 @@ import { ApiError } from '../lib/errors.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
+import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -77,6 +78,21 @@ const dropboxPathSchema = z.string()
 const dropboxImportSchema = z.object({
   employeesPath: dropboxPathSchema.optional(),
   itemsPath: dropboxPathSchema.optional(),
+  replaceExisting: z.boolean().optional().default(false)
+}).refine((data) => data.employeesPath || data.itemsPath, {
+  message: 'employeesPath または itemsPath のいずれかを指定してください'
+});
+
+// Gmail用: 件名パターン（Gmail検索クエリ）として扱うため、Dropboxのパス制約はかけない
+const gmailPathSchema = z.string()
+  .trim()
+  .min(1, 'パスは必須です')
+  .max(1000, 'パスは1000文字以内である必要があります');
+
+const providerImportSchema = z.object({
+  provider: z.enum(['dropbox', 'gmail']).optional(),
+  employeesPath: z.string().trim().min(1).max(1000).optional(),
+  itemsPath: z.string().trim().min(1).max(1000).optional(),
   replaceExisting: z.boolean().optional().default(false)
 }).refine((data) => data.employeesPath || data.itemsPath, {
   message: 'employeesPath または itemsPath のいずれかを指定してください'
@@ -723,55 +739,82 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const initialMemory = process.memoryUsage();
     
     try {
-      const body = dropboxImportSchema.parse(request.body ?? {});
-
+      const rawBody = providerImportSchema.parse(request.body ?? {});
       const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
       const host = request.headers.host || 'localhost:8080';
 
-      request.log.info({
-        employeesPath: body.employeesPath,
-        itemsPath: body.itemsPath,
-        replaceExisting: body.replaceExisting
-      }, '[Dropbox Import] インポート開始');
+      const config = await BackupConfigLoader.load();
+      const provider = rawBody.provider ?? config.storage.provider;
+      if (provider !== 'dropbox' && provider !== 'gmail') {
+        throw new ApiError(400, `このエンドポイントはdropbox/gmailのみ対応です（現在: ${provider}）`);
+      }
+
+      // providerに応じてパスをバリデーション
+      const employeesPath = rawBody.employeesPath
+        ? (provider === 'dropbox' ? dropboxPathSchema.parse(rawBody.employeesPath) : gmailPathSchema.parse(rawBody.employeesPath))
+        : undefined;
+      const itemsPath = rawBody.itemsPath
+        ? (provider === 'dropbox' ? dropboxPathSchema.parse(rawBody.itemsPath) : gmailPathSchema.parse(rawBody.itemsPath))
+        : undefined;
+
+      request.log.info(
+        {
+          provider,
+          employeesPath,
+          itemsPath,
+          replaceExisting: rawBody.replaceExisting
+        },
+        '[Master Import] インポート開始'
+      );
 
       const onTokenUpdate = async (token: string) => {
         const latestConfig = await BackupConfigLoader.load();
-        if (latestConfig.storage.provider === 'dropbox') {
+        if (latestConfig.storage.provider === provider) {
           latestConfig.storage.options = {
             ...(latestConfig.storage.options || {}),
             accessToken: token
           };
           await BackupConfigLoader.save(latestConfig);
-          request.log.info({}, '[Dropbox Import] アクセストークンを更新しました');
+          request.log.info({ provider }, '[Master Import] アクセストークンを更新しました');
         }
       };
 
-      const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+      // StorageProviderFactoryでプロバイダーを作成（dropbox/gmail両対応）
+      const providerConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          provider
+        }
+      };
+      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, true);
+      const storageProvider = created.storageProvider;
 
       const files: { employees?: Buffer; items?: Buffer } = {};
       
       // 従業員CSVのダウンロード
-      if (body.employeesPath) {
+      if (employeesPath) {
         try {
-          request.log.info({ path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード開始');
+          request.log.info({ provider, path: employeesPath }, '[Master Import] 従業員CSVダウンロード開始');
           const downloadStart = Date.now();
-          files.employees = await dropboxProvider.download(body.employeesPath);
+          files.employees = await storageProvider.download(employeesPath);
           const downloadTime = Date.now() - downloadStart;
           const fileSize = files.employees.length;
           request.log.info({
-            path: body.employeesPath,
+            provider,
+            path: employeesPath,
             size: fileSize,
             downloadTimeMs: downloadTime
-          }, '[Dropbox Import] 従業員CSVダウンロード完了');
+          }, '[Master Import] 従業員CSVダウンロード完了');
         } catch (error: unknown) {
-          request.log.error({ err: error, path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード失敗');
+          request.log.error({ err: error, provider, path: employeesPath }, '[Master Import] 従業員CSVダウンロード失敗');
           if (error instanceof Error) {
             const errorMessage = error.message.toLowerCase();
             if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
-              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${body.employeesPath}`);
+              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${employeesPath}`);
             }
             if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
-              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+              throw new ApiError(401, `${provider}認証エラー: ${error.message}`);
             }
             throw new ApiError(500, `従業員CSVのダウンロードに失敗しました: ${error.message}`);
           }
@@ -780,27 +823,28 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
       
       // アイテムCSVのダウンロード
-      if (body.itemsPath) {
+      if (itemsPath) {
         try {
-          request.log.info({ path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード開始');
+          request.log.info({ provider, path: itemsPath }, '[Master Import] アイテムCSVダウンロード開始');
           const downloadStart = Date.now();
-          files.items = await dropboxProvider.download(body.itemsPath);
+          files.items = await storageProvider.download(itemsPath);
           const downloadTime = Date.now() - downloadStart;
           const fileSize = files.items.length;
           request.log.info({
-            path: body.itemsPath,
+            provider,
+            path: itemsPath,
             size: fileSize,
             downloadTimeMs: downloadTime
-          }, '[Dropbox Import] アイテムCSVダウンロード完了');
+          }, '[Master Import] アイテムCSVダウンロード完了');
         } catch (error: unknown) {
-          request.log.error({ err: error, path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード失敗');
+          request.log.error({ err: error, provider, path: itemsPath }, '[Master Import] アイテムCSVダウンロード失敗');
           if (error instanceof Error) {
             const errorMessage = error.message.toLowerCase();
             if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
-              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${body.itemsPath}`);
+              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${itemsPath}`);
             }
             if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
-              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+              throw new ApiError(401, `${provider}認証エラー: ${error.message}`);
             }
             throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました: ${error.message}`);
           }
@@ -810,7 +854,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
       // CSVインポート処理
       const importStart = Date.now();
-      const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
+      const { summary } = await processCsvImport(files, rawBody.replaceExisting ?? false, request.log);
       const importTime = Date.now() - importStart;
       
       // メモリ使用量の計測
@@ -828,10 +872,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         importTimeMs: importTime,
         totalTimeMs: totalTime,
         memoryDelta,
-        replaceExisting: body.replaceExisting
-      }, '[Dropbox Import] インポート完了');
+        replaceExisting: rawBody.replaceExisting,
+        provider
+      }, '[Master Import] インポート完了');
       
-      return { summary, source: 'dropbox' };
+      return { summary, source: provider };
     } catch (error: unknown) {
       const totalTime = Date.now() - startTime;
       const finalMemory = process.memoryUsage();
