@@ -21,8 +21,71 @@ update-frequency: medium
 - Googleアカウント（Gmail APIを使用するためのアカウント）
 - Google Cloud Consoleへのアクセス権限
 - Pi5への管理コンソールアクセス権限（ADMINロール）
+- Pi5でHTTPSが設定されていること（Gmail APIのプライベートデータスコープ使用時は必須）
 
 ## セットアップ手順
+
+### 0. HTTPS設定の確認と証明書の準備
+
+**重要**: Gmail APIのプライベートデータスコープを使用する場合、Google Cloud Consoleは`https://`のリダイレクトURIを要求します。`http://`は使用できません。
+
+#### 0.1 TailscaleのMagicDNSドメインを確認
+
+Pi5のTailscale設定でMagicDNSが有効になっていることを確認し、Pi5のホスト名を確認します：
+
+```bash
+# Pi5にSSH接続して実行
+tailscale status
+```
+
+出力例：
+```
+100.106.158.2  raspberrypi        raspberrypi.tail7312a3.ts.net
+```
+
+この場合、FQDNは`raspberrypi.tail7312a3.ts.net`です。
+
+#### 0.2 自己署名証明書の生成（TailscaleのMagicDNSドメイン用）
+
+Pi5で以下のコマンドを実行して、TailscaleのMagicDNSドメイン用の証明書を生成します：
+
+```bash
+# SSH接続（Macのターミナルから）
+ssh denkon5sd02@100.106.158.2
+
+# 証明書ディレクトリに移動
+cd /opt/RaspberryPiSystem_002/certs
+
+# 既存の証明書をバックアップ（念のため）
+sudo cp cert.pem cert.pem.backup.$(date +%Y%m%d) 2>/dev/null || true
+sudo cp key.pem key.pem.backup.$(date +%Y%m%d) 2>/dev/null || true
+
+# TailscaleのMagicDNSドメイン用に証明書を生成
+# CNには実際のTailscale FQDNを指定（例: raspberrypi.tail7312a3.ts.net）
+sudo openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 3650 -nodes \
+  -subj "/C=JP/ST=Tokyo/L=Tokyo/O=Factory/CN=raspberrypi.tail7312a3.ts.net"
+
+# 権限設定
+sudo chmod 644 cert.pem
+sudo chmod 600 key.pem
+sudo chown $USER:$USER cert.pem key.pem
+
+# 証明書の内容を確認（CNが正しいことを確認）
+openssl x509 -in cert.pem -noout -subject
+```
+
+#### 0.3 Caddyコンテナの再起動
+
+証明書を更新したら、Caddyコンテナを再起動します：
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml restart web
+```
+
+#### 0.4 HTTPS接続の確認
+
+Macのブラウザで`https://raspberrypi.tail7312a3.ts.net`にアクセスし、自己署名証明書を信頼してください。初回のみ警告が表示されます。
 
 ### 1. Google Cloud Consoleでの設定
 
@@ -56,9 +119,14 @@ update-frequency: medium
    - アプリケーションの種類: 「ウェブアプリケーション」を選択
    - 名前: 「Pi5 Gmail Client」など
    - 承認済みのリダイレクト URI:
-     - `http://<Pi5のIPアドレス>:8080/api/gmail/oauth/callback`
-     - 例: `http://192.168.1.100:8080/api/gmail/oauth/callback`
-     - HTTPSを使用している場合: `https://<Pi5のドメイン>/api/gmail/oauth/callback`
+     - **重要**: Gmail APIのプライベートデータスコープを使用するため、`https://`が必須です
+     - TailscaleのMagicDNSドメインを使用する場合:
+       ```
+       https://<Pi5のTailscale FQDN>/api/gmail/oauth/callback
+       ```
+       - 例: `https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback`
+     - ⚠️ **注意**: ポート番号（`:8080`など）は不要です。CaddyがHTTPS（ポート443）でリバースプロキシします
+     - ⚠️ **注意**: URIに空白文字が含まれていないことを確認してください
    - 「作成」をクリック
 
 5. 認証情報の保存:
@@ -83,7 +151,12 @@ update-frequency: medium
      - 例: `powerautomate@example.com`
      - 指定しない場合はすべてのメールを検索
    - **リダイレクトURI**: Google Cloud Consoleで設定したリダイレクトURIと一致させる
-     - 例: `http://192.168.1.100:8080/api/gmail/oauth/callback`
+     - TailscaleのMagicDNSドメインを使用する場合:
+       ```
+       https://<Pi5のTailscale FQDN>/api/gmail/oauth/callback
+       ```
+       - 例: `https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback`
+     - ⚠️ **注意**: `https://`を使用し、ポート番号は不要です
 5. 「保存」をクリック
 
 #### 2.2 OAuth認証の実行
@@ -131,7 +204,9 @@ update-frequency: medium
 **原因と対処法**:
 1. **リダイレクトURIの不一致**
    - Google Cloud Consoleで設定したリダイレクトURIとPi5側の設定が一致しているか確認
-   - HTTPSを使用している場合、HTTPとHTTPSの違いに注意
+   - **重要**: Gmail APIのプライベートデータスコープを使用する場合、`https://`が必須です。`http://`は使用できません
+   - ポート番号（`:8080`など）が含まれていないか確認（Caddy経由の場合は不要）
+   - URIに空白文字が含まれていないか確認
 
 2. **テストユーザーが追加されていない**
    - Google Cloud Consoleの「OAuth同意画面」で、使用するGmailアカウントをテストユーザーとして追加
