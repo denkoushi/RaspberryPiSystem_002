@@ -598,6 +598,12 @@ export interface BackupConfig {
 - [backup.shスクリプトとの整合性確認手順](../guides/backup-script-integration-verification.md)（タスク2）
 - [Dropbox連携の追加検証手順](../guides/dropbox-integration-verification.md)（タスク3）
 
+**実機検証結果**: ✅ 完了（2025-12-29）
+- CSVリストア機能: ✅ 成功（データバリデーションエラーあり、リストア機能自体は正常動作）
+- データベースリストア機能: ❌ 失敗（409エラー、パスの問題）
+- CSVリストア時の`targetSource`拡張子削除修正: ✅ 完了
+- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) を参照。
+
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 
 - ✅ 画像バックアップのリストア処理を追加
