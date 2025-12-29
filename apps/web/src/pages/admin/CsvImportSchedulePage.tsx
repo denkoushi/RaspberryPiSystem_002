@@ -17,6 +17,7 @@ export function CsvImportSchedulePage() {
   const [formData, setFormData] = useState<Partial<CsvImportSchedule>>({
     id: '',
     name: '',
+    provider: undefined, // デフォルトは未指定（storage.providerを使用）
     employeesPath: '',
     itemsPath: '',
     schedule: '0 2 * * *',
@@ -41,6 +42,7 @@ export function CsvImportSchedulePage() {
       setFormData({
         id: '',
         name: '',
+        provider: undefined,
         employeesPath: '',
         itemsPath: '',
         schedule: '0 2 * * *',
@@ -108,6 +110,7 @@ export function CsvImportSchedulePage() {
     setFormData({
       id: '',
       name: '',
+      provider: undefined,
       employeesPath: '',
       itemsPath: '',
       schedule: '0 2 * * *',
@@ -157,24 +160,49 @@ export function CsvImportSchedulePage() {
               />
             </div>
             <div>
+              <label className="block text-sm text-slate-700 font-semibold mb-1">プロバイダー（オプション）</label>
+              <select
+                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900"
+                value={formData.provider || ''}
+                onChange={(e) => setFormData({ ...formData, provider: e.target.value === '' ? undefined : e.target.value as 'dropbox' | 'gmail' })}
+              >
+                <option value="">デフォルト（設定ファイルのstorage.providerを使用）</option>
+                <option value="dropbox">Dropbox</option>
+                <option value="gmail">Gmail</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-600">
+                Gmailの場合、employeesPath/itemsPathは件名パターン（例: [Pi5 CSV Import] employees）を指定します
+              </p>
+            </div>
+            <div>
               <label className="block text-sm text-slate-700 font-semibold mb-1">従業員CSVパス</label>
               <input
                 type="text"
                 className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
-                placeholder="/backups/csv/employees.csv"
+                placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] employees' : '/backups/csv/employees.csv'}
                 value={formData.employeesPath}
                 onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
               />
+              <p className="mt-1 text-xs text-slate-600">
+                {formData.provider === 'gmail' 
+                  ? 'Gmail検索用の件名パターン（例: [Pi5 CSV Import] employees）'
+                  : 'Dropboxのパス（例: /backups/csv/employees.csv）'}
+              </p>
             </div>
             <div>
               <label className="block text-sm text-slate-700 font-semibold mb-1">アイテムCSVパス</label>
               <input
                 type="text"
                 className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
-                placeholder="/backups/csv/items.csv"
+                placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] items' : '/backups/csv/items.csv'}
                 value={formData.itemsPath}
                 onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
               />
+              <p className="mt-1 text-xs text-slate-600">
+                {formData.provider === 'gmail' 
+                  ? 'Gmail検索用の件名パターン（例: [Pi5 CSV Import] items）'
+                  : 'Dropboxのパス（例: /backups/csv/items.csv）'}
+              </p>
             </div>
             <div>
               <label className="block text-sm text-slate-700 font-semibold mb-1">スケジュール（cron形式） *</label>
@@ -279,6 +307,7 @@ export function CsvImportSchedulePage() {
             <tr className="border-b-2 border-slate-500">
               <th className="px-2 py-1">ID</th>
               <th className="px-2 py-1">名前</th>
+              <th className="px-2 py-1">プロバイダー</th>
               <th className="px-2 py-1">スケジュール</th>
               <th className="px-2 py-1">CSVパス</th>
               <th className="px-2 py-1">状態</th>
@@ -289,7 +318,7 @@ export function CsvImportSchedulePage() {
           <tbody>
             {schedules.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-2 py-4 text-center text-slate-600">
+                <td colSpan={8} className="px-2 py-4 text-center text-slate-600">
                   スケジュールがありません
                 </td>
               </tr>
@@ -308,6 +337,17 @@ export function CsvImportSchedulePage() {
                         />
                       </td>
                       <td className="px-2 py-1">
+                        <select
+                          className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 text-xs"
+                          value={formData.provider || ''}
+                          onChange={(e) => setFormData({ ...formData, provider: e.target.value === '' ? undefined : e.target.value as 'dropbox' | 'gmail' })}
+                        >
+                          <option value="">デフォルト</option>
+                          <option value="dropbox">Dropbox</option>
+                          <option value="gmail">Gmail</option>
+                        </select>
+                      </td>
+                      <td className="px-2 py-1">
                         <input
                           type="text"
                           className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
@@ -320,14 +360,14 @@ export function CsvImportSchedulePage() {
                           <input
                             type="text"
                             className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                            placeholder="従業員CSV"
+                            placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] employees' : '従業員CSV'}
                             value={formData.employeesPath}
                             onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
                           />
                           <input
                             type="text"
                             className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                            placeholder="アイテムCSV"
+                            placeholder={formData.provider === 'gmail' ? '[Pi5 CSV Import] items' : 'アイテムCSV'}
                             value={formData.itemsPath}
                             onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
                           />
@@ -366,6 +406,11 @@ export function CsvImportSchedulePage() {
                     <>
                       <td className="px-2 py-1 font-mono text-xs">{schedule.id}</td>
                       <td className="px-2 py-1">{schedule.name || '-'}</td>
+                      <td className="px-2 py-1">
+                        <span className="text-xs font-semibold text-slate-700">
+                          {schedule.provider ? schedule.provider.toUpperCase() : 'デフォルト'}
+                        </span>
+                      </td>
                       <td className="px-2 py-1 font-mono text-xs">{schedule.schedule}</td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">

@@ -45,6 +45,7 @@ export interface BackupHistoryFilters {
 export interface CsvImportSchedule {
   id: string;
   name?: string;
+  provider?: 'dropbox' | 'gmail'; // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
   employeesPath?: string;
   itemsPath?: string;
   schedule: string;
@@ -54,6 +55,11 @@ export interface CsvImportSchedule {
   autoBackupAfterImport?: {
     enabled: boolean;
     targets: ('csv' | 'database' | 'all')[];
+  };
+  retryConfig?: {
+    maxRetries: number;
+    retryInterval: number; // 秒
+    exponentialBackoff: boolean;
   };
 }
 

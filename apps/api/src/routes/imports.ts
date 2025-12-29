@@ -928,17 +928,41 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   const csvImportScheduleSchema = z.object({
     id: z.string().min(1, 'IDは必須です'),
     name: z.string().optional(),
-    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
-    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    provider: z.enum(['dropbox', 'gmail']).optional(), // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+    employeesPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
+    itemsPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
     schedule: z.string().min(1, 'スケジュール（cron形式）は必須です'),
     enabled: z.boolean().optional().default(true),
     replaceExisting: z.boolean().optional().default(false),
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false),
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
-    }).optional().default({ enabled: false, targets: ['csv'] })
+    }).optional().default({ enabled: false, targets: ['csv'] }),
+    retryConfig: z.object({
+      maxRetries: z.number().min(0).default(3),
+      retryInterval: z.number().min(1).default(60), // 秒
+      exponentialBackoff: z.boolean().default(true)
+    }).optional()
   }).refine((data) => data.employeesPath || data.itemsPath, {
     message: 'employeesPath または itemsPath のいずれかを指定してください'
+  }).refine((data) => {
+    // Gmailの場合は.csvで終わる必要がない、Dropboxの場合は.csvで終わる必要がある
+    if (data.provider === 'gmail') {
+      return true; // Gmailの場合は件名パターンなので、.csvで終わる必要がない
+    }
+    // Dropboxの場合、またはproviderが未指定の場合（デフォルトはDropbox想定）
+    const isDropbox = data.provider === 'dropbox' || !data.provider;
+    if (isDropbox) {
+      if (data.employeesPath && !data.employeesPath.match(/\.csv$/i)) {
+        return false;
+      }
+      if (data.itemsPath && !data.itemsPath.match(/\.csv$/i)) {
+        return false;
+      }
+    }
+    return true;
+  }, {
+    message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
   });
 
   app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
@@ -955,12 +979,14 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const newSchedule = {
       id: body.id,
       name: body.name,
+      provider: body.provider, // プロバイダーを追加
       employeesPath: body.employeesPath,
       itemsPath: body.itemsPath,
       schedule: body.schedule,
       enabled: body.enabled ?? true,
       replaceExisting: body.replaceExisting ?? false,
-      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
+      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
+      retryConfig: body.retryConfig // リトライ設定を追加
     };
 
     config.csvImports = [...(config.csvImports || []), newSchedule];
@@ -979,17 +1005,41 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   const csvImportScheduleUpdateSchema = z.object({
     id: z.string().min(1).optional(),
     name: z.string().optional(),
-    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
-    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    provider: z.enum(['dropbox', 'gmail']).optional(), // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+    employeesPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
+    itemsPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
     schedule: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
     replaceExisting: z.boolean().optional(),
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false),
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional(),
+    retryConfig: z.object({
+      maxRetries: z.number().min(0).default(3),
+      retryInterval: z.number().min(1).default(60), // 秒
+      exponentialBackoff: z.boolean().default(true)
     }).optional()
   }).refine((data) => !data.employeesPath && !data.itemsPath || data.employeesPath || data.itemsPath, {
     message: 'employeesPath または itemsPath のいずれかを指定してください'
+  }).refine((data) => {
+    // Gmailの場合は.csvで終わる必要がない、Dropboxの場合は.csvで終わる必要がある
+    if (data.provider === 'gmail') {
+      return true; // Gmailの場合は件名パターンなので、.csvで終わる必要がない
+    }
+    // Dropboxの場合、またはproviderが未指定の場合（デフォルトはDropbox想定）
+    const isDropbox = data.provider === 'dropbox' || !data.provider;
+    if (isDropbox) {
+      if (data.employeesPath && !data.employeesPath.match(/\.csv$/i)) {
+        return false;
+      }
+      if (data.itemsPath && !data.itemsPath.match(/\.csv$/i)) {
+        return false;
+      }
+    }
+    return true;
+  }, {
+    message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
   });
 
   // スケジュール更新
