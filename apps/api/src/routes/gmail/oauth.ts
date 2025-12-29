@@ -20,19 +20,28 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     const config = await BackupConfigLoader.load();
     const clientId = config.storage.options?.clientId as string | undefined;
     const clientSecret = config.storage.options?.clientSecret as string | undefined;
+    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
 
     if (!clientId || !clientSecret) {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
     }
 
-    // リダイレクトURI（現在のホストを使用）
-    const protocol = Array.isArray(request.headers['x-forwarded-proto'])
-      ? request.headers['x-forwarded-proto'][0]
-      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
-    const host = Array.isArray(request.headers.host)
-      ? request.headers.host[0]
-      : (request.headers.host || 'localhost:8080');
-    const redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+    // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
+    let redirectUri: string;
+    if (configuredRedirectUri) {
+      redirectUri = configuredRedirectUri;
+      logger?.info({ redirectUri }, '[GmailOAuthRoute] Using configured redirect URI');
+    } else {
+      // フォールバック: 現在のホストから動的に生成
+      const protocol = Array.isArray(request.headers['x-forwarded-proto'])
+        ? request.headers['x-forwarded-proto'][0]
+        : (request.headers['x-forwarded-proto'] || request.protocol || 'https');
+      const host = Array.isArray(request.headers.host)
+        ? request.headers.host[0]
+        : (request.headers.host || 'localhost:8080');
+      redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+      logger?.warn({ redirectUri }, '[GmailOAuthRoute] Using dynamically generated redirect URI (consider setting redirectUri in config)');
+    }
 
     const oauthService = new GmailOAuthService({
       clientId,
@@ -77,14 +86,23 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
     }
 
-    // リダイレクトURI（現在のホストを使用）
-    const protocol = Array.isArray(request.headers['x-forwarded-proto'])
-      ? request.headers['x-forwarded-proto'][0]
-      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
-    const host = Array.isArray(request.headers.host)
-      ? request.headers.host[0]
-      : (request.headers.host || 'localhost:8080');
-    const redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+    // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
+    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+    let redirectUri: string;
+    if (configuredRedirectUri) {
+      redirectUri = configuredRedirectUri;
+      logger?.info({ redirectUri }, '[GmailOAuthRoute] Using configured redirect URI for callback');
+    } else {
+      // フォールバック: 現在のホストから動的に生成
+      const protocol = Array.isArray(request.headers['x-forwarded-proto'])
+        ? request.headers['x-forwarded-proto'][0]
+        : (request.headers['x-forwarded-proto'] || request.protocol || 'https');
+      const host = Array.isArray(request.headers.host)
+        ? request.headers.host[0]
+        : (request.headers.host || 'localhost:8080');
+      redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+      logger?.warn({ redirectUri }, '[GmailOAuthRoute] Using dynamically generated redirect URI for callback (consider setting redirectUri in config)');
+    }
 
     const oauthService = new GmailOAuthService({
       clientId,
@@ -154,13 +172,23 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
     }
 
-    const protocol = Array.isArray(request.headers['x-forwarded-proto'])
-      ? request.headers['x-forwarded-proto'][0]
-      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
-    const host = Array.isArray(request.headers.host)
-      ? request.headers.host[0]
-      : (request.headers.host || 'localhost:8080');
-    const redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+    // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
+    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+    let redirectUri: string;
+    if (configuredRedirectUri) {
+      redirectUri = configuredRedirectUri;
+      logger?.info({ redirectUri }, '[GmailOAuthRoute] Using configured redirect URI for refresh');
+    } else {
+      // フォールバック: 現在のホストから動的に生成
+      const protocol = Array.isArray(request.headers['x-forwarded-proto'])
+        ? request.headers['x-forwarded-proto'][0]
+        : (request.headers['x-forwarded-proto'] || request.protocol || 'https');
+      const host = Array.isArray(request.headers.host)
+        ? request.headers.host[0]
+        : (request.headers.host || 'localhost:8080');
+      redirectUri = `${protocol}://${host}/api/gmail/oauth/callback`;
+      logger?.warn({ redirectUri }, '[GmailOAuthRoute] Using dynamically generated redirect URI for refresh (consider setting redirectUri in config)');
+    }
 
     const oauthService = new GmailOAuthService({
       clientId,
