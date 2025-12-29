@@ -1069,6 +1069,8 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const targetKind = body.targetKind || backupPathParts[0] || 'file';
     let targetSource = backupPathParts[backupPathParts.length - 1] || normalizedBackupPath;
     
+    logger?.info({ targetKind, targetSource, backupPathParts }, '[BackupRoute] Extracted targetKind and targetSource');
+    
     // CSVの場合はファイル名から拡張子を削除（employees.csv -> employees）
     if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
       targetSource = targetSource.replace(/\.csv$/, '');
@@ -1078,8 +1080,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     if (targetKind === 'database') {
       if (targetSource.endsWith('.sql.gz')) {
         targetSource = targetSource.replace(/\.sql\.gz$/, '');
+        logger?.info({ original: backupPathParts[backupPathParts.length - 1], cleaned: targetSource }, '[BackupRoute] Removed .sql.gz extension from targetSource');
       } else if (targetSource.endsWith('.sql')) {
         targetSource = targetSource.replace(/\.sql$/, '');
+        logger?.info({ original: backupPathParts[backupPathParts.length - 1], cleaned: targetSource }, '[BackupRoute] Removed .sql extension from targetSource');
       }
     }
     
