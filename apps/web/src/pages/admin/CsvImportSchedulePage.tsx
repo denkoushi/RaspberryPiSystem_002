@@ -419,30 +419,32 @@ export function CsvImportSchedulePage() {
                 例: 0 2 * * * (毎日2時)
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="enabled"
-                checked={formData.enabled}
-                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-              />
-              <label htmlFor="enabled" className="text-sm text-slate-700 font-semibold">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  id="enabled"
+                  checked={formData.enabled}
+                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+                  className="rounded border-2 border-slate-500"
+                />
                 有効
               </label>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="replaceExisting"
-                checked={formData.replaceExisting}
-                onChange={(e) => setFormData({ ...formData, replaceExisting: e.target.checked })}
-              />
-              <label htmlFor="replaceExisting" className="text-sm text-slate-700 font-semibold">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  id="replaceExisting"
+                  checked={formData.replaceExisting}
+                  onChange={(e) => setFormData({ ...formData, replaceExisting: e.target.checked })}
+                  className="rounded border-2 border-slate-500"
+                />
                 既存データを置き換える
               </label>
             </div>
-            <div className="rounded-md border-2 border-slate-500 bg-slate-100 p-3">
-              <div className="flex items-center gap-2 mb-2">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <input
                   type="checkbox"
                   id="autoBackupEnabled"
@@ -457,11 +459,10 @@ export function CsvImportSchedulePage() {
                       }
                     })
                   }
+                  className="rounded border-2 border-slate-500"
                 />
-                <label htmlFor="autoBackupEnabled" className="text-sm text-slate-700 font-semibold">
-                  インポート後に自動バックアップを実行
-                </label>
-              </div>
+                インポート後に自動バックアップを実行
+              </label>
               {formData.autoBackupAfterImport?.enabled && (
                 <div className="ml-6 mt-2 space-y-1">
                   <p className="text-xs text-slate-600">バックアップ対象:</p>
