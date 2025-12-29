@@ -23,7 +23,22 @@ export class DatabaseBackupTarget implements BackupTarget {
     if (!dbUrl || dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1')) {
       this.dbUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
     } else {
-      this.dbUrl = dbUrl;
+      // dbUrlがデータベース接続文字列でない場合（データベース名のみの場合）、環境変数DATABASE_URLを使用
+      // データベース接続文字列はpostgresql://で始まる
+      if (!dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
+        // データベース名のみの場合は、環境変数DATABASE_URLのデータベース名部分を置き換える
+        const baseUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
+        try {
+          const url = new URL(baseUrl);
+          url.pathname = `/${dbUrl}`;
+          this.dbUrl = url.toString();
+        } catch {
+          // URL解析に失敗した場合は環境変数DATABASE_URLを使用
+          this.dbUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
+        }
+      } else {
+        this.dbUrl = dbUrl;
+      }
     }
   }
 
