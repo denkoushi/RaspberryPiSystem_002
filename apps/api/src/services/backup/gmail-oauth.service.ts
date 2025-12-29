@@ -31,7 +31,11 @@ export class GmailOAuthService {
     this.clientSecret = options.clientSecret;
     this.redirectUri = options.redirectUri;
     // デフォルトスコープ: Gmail読み取り専用
-    this.scopes = options.scopes || ['https://www.googleapis.com/auth/gmail.readonly'];
+    // デフォルトスコープ: Gmail読み取りとメール操作（アーカイブ用）
+    this.scopes = options.scopes || [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify'
+    ];
   }
 
   /**
