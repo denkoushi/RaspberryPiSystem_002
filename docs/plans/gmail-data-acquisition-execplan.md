@@ -340,10 +340,11 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [ ] `apps/api/src/routes/gmail/config.ts`の作成
   - [ ] `registerGmailConfigRoutes`関数の実装
   - [ ] `apps/api/src/routes/index.ts`へのルート登録
-- [ ] Milestone 8: CsvImportSchedulerの拡張
-  - [ ] `executeImport`メソッドの修正
-  - [ ] リトライ機能の実装
-  - [ ] 統合テストの実装
+- [x] (2025-12-29) Milestone 8: CsvImportSchedulerの拡張
+  - [x] `executeImport`メソッドの修正（StorageProviderFactoryを使用、Gmailプロバイダー対応）
+  - [x] リトライ機能の実装（指数バックオフ対応）
+  - [x] `executeAutoBackup`メソッドの修正（StorageProviderFactoryを使用）
+  - [x] 既存テストの修正（リトライ設定追加、21テストすべて成功）
 - [ ] Milestone 9: 設定管理UIの拡張
   - [ ] `apps/web/src/pages/admin/GmailConfigPage.tsx`の作成
   - [ ] Gmail設定画面の実装

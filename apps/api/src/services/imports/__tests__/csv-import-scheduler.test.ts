@@ -524,7 +524,12 @@ describe('CsvImportScheduler', () => {
             employeesPath: '/backups/csv/employees-20251216.csv',
             schedule: '0 4 * * *',
             enabled: true,
-            replaceExisting: false
+            replaceExisting: false,
+            retryConfig: {
+              maxRetries: 0, // リトライを無効化（テスト高速化）
+              retryInterval: 0,
+              exponentialBackoff: false
+            }
           }
         ]
       };
@@ -578,6 +583,11 @@ describe('CsvImportScheduler', () => {
           {
             id: 'test-consecutive-failures',
             name: 'Test Import - Consecutive Failures',
+            retryConfig: {
+              maxRetries: 0, // リトライを無効化（テスト高速化）
+              retryInterval: 0,
+              exponentialBackoff: false
+            },
             employeesPath: '/backups/csv/employees-20251216.csv',
             schedule: '* * * * *', // 毎分実行（テスト用）
             enabled: true,
@@ -671,6 +681,11 @@ describe('CsvImportScheduler', () => {
           {
             id: 'test-error-handling',
             name: 'Test Import - Error Handling',
+            retryConfig: {
+              maxRetries: 0, // リトライを無効化（テスト高速化）
+              retryInterval: 0,
+              exponentialBackoff: false
+            },
             employeesPath: '/backups/csv/employees-20251216.csv',
             schedule: '0 4 * * *',
             enabled: true,
