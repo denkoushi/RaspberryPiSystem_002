@@ -896,5 +896,5 @@ export interface BackupConfig {
 
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
 - [バックアップ設定ガイド](../guides/backup-configuration.md)
-- [バックアップAPI仕様](../api/backup.md)（作成予定）
+- [バックアップAPI仕様](../api/backup.md) ✅ 作成完了（2025-12-29）
 
