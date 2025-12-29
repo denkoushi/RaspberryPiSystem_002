@@ -256,9 +256,11 @@ export function CsvImportSchedulePage() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">ID *</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                ID *
+              </label>
               <input
                 type="text"
                 className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
@@ -267,18 +269,22 @@ export function CsvImportSchedulePage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-700 font-semibold mb-1">名前</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                名前
+              </label>
               <input
                 type="text"
-                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900"
+                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-700 font-semibold mb-1">プロバイダー（オプション）</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                プロバイダー（オプション）
+              </label>
               <select
-                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900"
+                className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                 value={formData.provider || ''}
                 onChange={(e) => setFormData({ ...formData, provider: e.target.value === '' ? undefined : e.target.value as 'dropbox' | 'gmail' })}
               >
@@ -291,11 +297,13 @@ export function CsvImportSchedulePage() {
               </p>
             </div>
             <div>
-              <label className="block text-sm text-slate-700 font-semibold mb-1">従業員CSVパス</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                従業員CSVパス
+              </label>
               {formData.provider === 'gmail' ? (
                 <>
                   <select
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900 mb-2"
+                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     value={formData.employeesPath || ''}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -317,7 +325,7 @@ export function CsvImportSchedulePage() {
                   {(!formData.employeesPath || formData.employeesPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.employees.includes(formData.employeesPath as typeof GMAIL_SUBJECT_PATTERNS.employees[number])) && (
                     <input
                       type="text"
-                      className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                      className="mt-2 w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                       placeholder="[Pi5 CSV Import] employees"
                       value={formData.employeesPath === 'custom' ? '' : formData.employeesPath}
                       onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
@@ -331,7 +339,7 @@ export function CsvImportSchedulePage() {
                 <>
                   <input
                     type="text"
-                    className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     placeholder="/backups/csv/employees.csv"
                     value={formData.employeesPath}
                     onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
@@ -343,11 +351,13 @@ export function CsvImportSchedulePage() {
               )}
             </div>
             <div>
-              <label className="block text-sm text-slate-700 font-semibold mb-1">アイテムCSVパス</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                アイテムCSVパス
+              </label>
               {formData.provider === 'gmail' ? (
                 <>
                   <select
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900 mb-2"
+                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     value={formData.itemsPath || ''}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -369,7 +379,7 @@ export function CsvImportSchedulePage() {
                   {(!formData.itemsPath || formData.itemsPath === 'custom' || !GMAIL_SUBJECT_PATTERNS.items.includes(formData.itemsPath as typeof GMAIL_SUBJECT_PATTERNS.items[number])) && (
                     <input
                       type="text"
-                      className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                      className="mt-2 w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                       placeholder="[Pi5 CSV Import] items"
                       value={formData.itemsPath === 'custom' ? '' : formData.itemsPath}
                       onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
@@ -383,7 +393,7 @@ export function CsvImportSchedulePage() {
                 <>
                   <input
                     type="text"
-                    className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-2 text-slate-900 font-mono text-sm"
+                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                     placeholder="/backups/csv/items.csv"
                     value={formData.itemsPath}
                     onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
@@ -453,8 +463,8 @@ export function CsvImportSchedulePage() {
                 </label>
               </div>
               {formData.autoBackupAfterImport?.enabled && (
-                <div className="ml-6 space-y-1">
-                  <label className="text-xs text-slate-600">バックアップ対象:</label>
+                <div className="ml-6 mt-2 space-y-1">
+                  <p className="text-xs text-slate-600">バックアップ対象:</p>
                   <div className="flex flex-wrap gap-2">
                     {(['csv', 'database', 'all'] as const).map((target) => (
                       <label key={target} className="flex items-center gap-1 text-xs text-slate-700 font-semibold">
@@ -475,6 +485,7 @@ export function CsvImportSchedulePage() {
                               }
                             });
                           }}
+                          className="rounded border-2 border-slate-500"
                         />
                         {target === 'csv' ? 'CSV' : target === 'database' ? 'データベース' : 'すべて'}
                       </label>
