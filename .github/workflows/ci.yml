@@ -167,6 +167,23 @@ jobs:
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
+      - name: Run imports-gmail tests
+        run: |
+          cd apps/api
+          echo "Running imports-gmail tests..."
+          pnpm test -- imports-gmail --reporter=verbose || {
+            echo "Imports-gmail tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          BACKUP_STORAGE_DIR: /tmp/test-backups
+          NODE_ENV: test
+
       - name: Run csv-import-scheduler tests
         run: |
           cd apps/api
