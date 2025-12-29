@@ -76,6 +76,24 @@ APIの大部分のエンドポイントは認証が必要です。JWT（JSON Web
 - `POST /api/imports/employees` - 従業員CSVインポート
 - `POST /api/imports/items` - アイテムCSVインポート
 
+### バックアップ
+
+- `POST /api/backup` - 手動バックアップ実行
+- `GET /api/backup` - バックアップ一覧取得
+- `POST /api/backup/restore` - バックアップリストア
+- `POST /api/backup/restore/from-dropbox` - Dropboxからのリストア
+- `DELETE /api/backup/*` - バックアップ削除
+- `GET /api/backup/history` - バックアップ履歴一覧取得
+- `GET /api/backup/history/:id` - バックアップ履歴詳細取得
+- `GET /api/backup/config` - バックアップ設定取得
+- `PUT /api/backup/config` - バックアップ設定更新
+- `POST /api/backup/config/targets` - バックアップ対象追加
+- `PUT /api/backup/config/targets/:index` - バックアップ対象更新
+- `DELETE /api/backup/config/targets/:index` - バックアップ対象削除
+- `GET /api/backup/oauth/authorize` - Dropbox OAuth認証URL取得
+- `GET /api/backup/oauth/callback` - Dropbox OAuthコールバック
+- `POST /api/backup/oauth/refresh` - Dropbox OAuthトークンリフレッシュ
+
 ### クライアント
 
 - `POST /api/clients/heartbeat` - クライアントデバイスのハートビート
@@ -114,4 +132,5 @@ APIは以下の形式でエラーを返します：
 - [認証API](./auth.md)
 - [ツール管理API](./tools.md)
 - [キオスクAPI](./kiosk.md)
+- [バックアップAPI](./backup.md)
 
