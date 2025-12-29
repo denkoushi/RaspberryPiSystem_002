@@ -224,7 +224,7 @@ ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite
 - デプロイ前に既存のAnsibleプロセスをkillし、重複実行を防止する
 - デプロイ完了後、サービスを再起動する
 
-**関連ナレッジ**: [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
+**関連ナレッジ**: [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
 
 ### 2. プレイブック実行前の確認
 

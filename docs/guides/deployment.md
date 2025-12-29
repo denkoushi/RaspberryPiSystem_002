@@ -75,7 +75,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 - `network_mode`が`tailscale`の場合、Tailscale IPが使われます（`tailscale status`で確認）
 - 現在のネットワーク環境に応じた設定でないと、接続エラーが発生します
 - ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
-- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
+- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
 
 詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
 
@@ -182,7 +182,7 @@ curl http://localhost:8080/api/system/health
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 
-**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../knowledge-base/infrastructure.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
+**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
 
 ```bash
 # 1. リポジトリを更新
@@ -211,7 +211,7 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（必須）
 
-**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
 
 ```bash
 # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
@@ -234,9 +234,9 @@ ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f Ansibal
 ```
 
 **重要**: 
-- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
 
@@ -303,19 +303,19 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 ```
 
 **重要**: 
-- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 **トラブルシューティング**:
-- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 - **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
 - **デプロイが失敗する**: ログを確認（`logs/deploy/deploy-*.jsonl`）
-- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../knowledge-base/infrastructure.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
+- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
 
 **関連ナレッジ**: 
-- [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
-- [KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
-- [KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
-- [KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
+- [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
+- [KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
+- [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
+- [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
 
 ## デプロイ方法（詳細）
 
@@ -574,7 +574,7 @@ NETWORK_MODE=tailscale \
    - `network_mode: "local"` → オフィスネットワーク用
    - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用
    - **現在のネットワーク環境に応じて設定を変更**（[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を参照）
-   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（[KB-094](../knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）。デプロイ後のヘルスチェック前にも再確認すること。
+   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）。デプロイ後のヘルスチェック前にも再確認すること。
 
 2. **Pi5への接続確認**
    ```bash
@@ -615,9 +615,9 @@ NETWORK_MODE=tailscale \
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ps aux | grep signage-lite | grep -v grep"'
    # → 何も表示されないことを確認
    ```
-   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 7. **ローカルIPを使う場合の事前確認**
    ```bash
    # 各端末で実IPを取得してからgroup_vars/all.ymlを更新する
@@ -663,7 +663,7 @@ NETWORK_MODE=tailscale \
    # 画像が更新されていることを確認
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
    ```
-   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 ### Tailscale IP一覧
 

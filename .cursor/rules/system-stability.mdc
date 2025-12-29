@@ -66,7 +66,10 @@ docker volume inspect <volume-name>
 - **既存のコード**: 動いているコードは「動いている理由」を理解してから変更
 
 **参照すべきドキュメント例**:
-- Docker関連: `docs/knowledge-base/infrastructure.md`
+- Docker関連: `docs/knowledge-base/infrastructure/docker-caddy.md`
+- バックアップ関連: `docs/knowledge-base/infrastructure/backup-restore.md`
+- Ansible/デプロイ関連: `docs/knowledge-base/infrastructure/ansible-deployment.md`
+- セキュリティ関連: `docs/knowledge-base/infrastructure/security.md`
 - デプロイ関連: `docs/guides/deployment.md`
 - API関連: `docs/knowledge-base/api.md`
 
@@ -125,7 +128,8 @@ cp -r /opt/RaspberryPiSystem_002/certs /opt/RaspberryPiSystem_002/certs.backup
 ## 関連ドキュメント
 
 - `docs/INDEX.md`: ドキュメント索引
-- `docs/knowledge-base/infrastructure.md`: インフラ関連のナレッジベース
+- `docs/knowledge-base/infrastructure.md`: インフラ関連のナレッジベース索引（サブカテゴリ別に分割）
+- `docs/knowledge-base/infrastructure/`: インフラ関連のサブカテゴリ別ナレッジベース
 - `docs/guides/deployment.md`: デプロイガイド
 - `.cursor/rules/documentation-first.mdc`: ドキュメント優先ルール（ドキュメント参照の詳細手順）
 - `.cursor/rules/debug-mode.mdc`: デバッグモードと開発方針ルール（開発時のデバッグ手法）

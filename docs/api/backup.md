@@ -850,7 +850,7 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 2. `basePath`を含む完全パスまたは相対パスを指定
 3. データベースバックアップの場合は、拡張子（`.sql.gz`）が含まれていることを確認
 
-**関連KB**: [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
+**関連KB**: [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
 
 ---
 
@@ -862,7 +862,7 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 - この問題は修正済みです（2025-12-29）
 - リストアAPIが自動的に拡張子を削除します
 
-**関連KB**: [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
+**関連KB**: [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題)
 
 ---
 
@@ -875,7 +875,7 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 2. 必要に応じてバリデーションルールを調整、またはデータ形式を修正
 3. リストア機能自体は正常動作しているため、データの問題として対応
 
-**関連KB**: [KB-098](../knowledge-base/infrastructure.md#kb-098-csvリストア時のバリデーションエラー問題)
+**関連KB**: [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題)
 
 ---
 
@@ -888,7 +888,7 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 2. ストレージプロバイダーが`dropbox`になっていることを確認
 3. Dropbox OAuth認証が完了していることを確認
 
-**関連KB**: [KB-096](../knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+**関連KB**: [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 ---
 
@@ -901,7 +901,7 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 2. または、`/api/backup/oauth/refresh`エンドポイントを呼び出してトークンをリフレッシュ
 3. `refreshToken`が設定されていれば、自動的に`accessToken`が取得されます
 
-**関連KB**: [KB-096](../knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+**関連KB**: [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 ---
 

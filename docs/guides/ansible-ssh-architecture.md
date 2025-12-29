@@ -256,7 +256,7 @@ volumes:
 
 これにより、Dockerコンテナ内からPi4へのSSH接続が可能になります。
 
-**注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
+**注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
 
 ## 関連ドキュメント
 
@@ -264,5 +264,5 @@ volumes:
 - [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md): MacからPi5への接続設定
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新の実行方法
 - [Ansible改善計画](../plans/ansible-improvement-plan.md): Ansibleの堅牢化・安定化計画
-- [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題): AnsibleとTailscale連携の問題と対策
+- [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題): AnsibleとTailscale連携の問題と対策
 

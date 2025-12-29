@@ -236,7 +236,7 @@ PostgreSQLデータベースをバックアップする場合：
   - Ansible Playbookは`hosts: "{{ client_host }}"`で実行されるため、`inventory.yml`の変数が正しく展開される
   - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
   - `network_mode: "local"`の場合、`kiosk_ip`は`local_network.raspberrypi4_ip`に解決される
-  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
+  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
 
 - **エラーハンドリング**:
   - ファイルが存在しない場合、404エラーが返される

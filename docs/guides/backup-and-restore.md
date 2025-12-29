@@ -78,7 +78,7 @@ update-frequency: medium
 - `network_mode: "tailscale"`の場合、Tailscale IP経由で接続されます
 - `network_mode: "local"`の場合、ローカルネットワークIP経由で接続されます
 - SSH鍵はDockerコンテナ内にマウントされ、Pi5からPi4へのSSH接続が可能です
-- 詳細は [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
+- 詳細は [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
 
 #### Pi3（サイネージ）にのみ存在する情報
 

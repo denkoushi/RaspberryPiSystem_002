@@ -1025,7 +1025,7 @@ Tailscale経由でリモートアクセスし、全検証項目を確認:
   - Pi4キオスク用: `apps/web/src/pages/kiosk/KioskReturnPage.tsx` にコメント1行追加（影響範囲→pi4_kiosk）
   - Pi3サイネージ用: `apps/web/src/pages/signage/SignageDisplayPage.tsx` にコメント1行追加（影響範囲→pi3_signage）
 - 手順
-  1. Pi3前準備: サイネージサービス停止・無効化（`systemctl stop + disable signage-lite.service signage-lite-update.timer`）、メモリ空き確認（120MB以上）、Pi5のAnsibleプロセスがないことを確認（[KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題), [KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
+  1. Pi3前準備: サイネージサービス停止・無効化（`systemctl stop + disable signage-lite.service signage-lite-update.timer`）、メモリ空き確認（120MB以上）、Pi5のAnsibleプロセスがないことを確認（[KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題), [KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
   2. 変更投入: 上記2ファイルにコメント追加（機能影響なし）
   3. 実行: `NETWORK_MODE=tailscale DEPLOY_EXECUTOR_ENABLE=1 DEPLOY_VERIFIER_ENABLE=1 ROLLBACK_ON_FAIL=1 bash scripts/deploy/deploy-all.sh`
   4. 検証: `verification-map.yml` の `kiosk_active_loans` と `signage_image` がPASSになること、Pi4/Pi3の systemd が active であること
@@ -1037,7 +1037,7 @@ Tailscale経由でリモートアクセスし、全検証項目を確認:
   - verifier が `kiosk_active_loans`・`signage_image` を PASS とし、server/キオスク/サイネージすべて `overall_status: passed`
   - ロールバック試験時は `rollback.status == "success"` が記録されること
 - 実行結果 (2025-12-07): `network_mode=tailscale` で Pi3/Pi4/Server へのデプロイが成功（Pi3: 756秒、Pi4: 121秒、Server: 45秒）、verifier も全PASS。テスト用コメントは終了後に削除済み、`network_mode` は `local` に戻し済み、Pi3サイネージサービスは再有効化済み。
-- 学んだこと: Pi3デプロイ時は`systemctl disable`で自動再起動を防止することが必須。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）。
+- 学んだこと: Pi3デプロイ時は`systemctl disable`で自動再起動を防止することが必須。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）。
 
 ---
 
@@ -1138,12 +1138,12 @@ infrastructure/ansible/
 ### 8.4 関連ナレッジベース
 
 **関連するKBエントリ**:
-- [KB-080: Pi4キオスクがTailscale URL固定で旧レイアウトのまま](../knowledge-base/infrastructure.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる)
-- [KB-081: Pi3サイネージが新デザインへ更新されない](../knowledge-base/infrastructure.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない)
-- [KB-082: SPLIT指定でもサイネージAPIがTOOLSを返す](../knowledge-base/infrastructure.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す)
-- [KB-083: サイネージカードレイアウトが崩れる](../knowledge-base/infrastructure.md#kb-083-サイネージカードレイアウトが崩れる2カラム固定サムネ比率)
-- [KB-084: サイネージSVGレンダラーでカード内テキストが正しい位置に表示されない](../knowledge-base/infrastructure.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない)
-- [KB-085: サイネージTOOLS左ペインを3列化](../knowledge-base/infrastructure.md#kb-085-サイネージtools左ペインを3列化右ペインの更新文言削除)
+- [KB-080: Pi4キオスクがTailscale URL固定で旧レイアウトのまま](../knowledge-base/infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる)
+- [KB-081: Pi3サイネージが新デザインへ更新されない](../knowledge-base/infrastructure/signage.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない)
+- [KB-082: SPLIT指定でもサイネージAPIがTOOLSを返す](../knowledge-base/infrastructure/signage.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す)
+- [KB-083: サイネージカードレイアウトが崩れる](../knowledge-base/infrastructure/signage.md#kb-083-サイネージカードレイアウトが崩れる2カラム固定サムネ比率)
+- [KB-084: サイネージSVGレンダラーでカード内テキストが正しい位置に表示されない](../knowledge-base/infrastructure/signage.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない)
+- [KB-085: サイネージTOOLS左ペインを3列化](../knowledge-base/infrastructure/signage.md#kb-085-サイネージtools左ペインを3列化右ペインの更新文言削除)
 
 **EXEC_PLAN.mdとの連動**:
 - [Phase 8: サイネージ／キオスク回帰対応](../../EXEC_PLAN.md#phase-8-デジタルサイネージ軽量モード進行中)

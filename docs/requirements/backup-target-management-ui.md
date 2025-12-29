@@ -591,7 +591,7 @@ export interface BackupConfig {
 - データベースで`storageProvider: dropbox`が正しく記録されていることを確認
 - UIで「Dropbox」と表示されることを確認
 
-**関連KB**: [KB-096](./knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+**関連KB**: [KB-096](./knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 **実機検証手順書**:
 - [バックアップリストア機能の実機検証手順](../guides/backup-restore-verification.md)（タスク1）
@@ -599,14 +599,15 @@ export interface BackupConfig {
 - [Dropbox連携の追加検証手順](../guides/dropbox-integration-verification.md)（タスク3）
 
 **実機検証結果**: ✅ 完了（2025-12-29）
-- CSVリストア機能: ✅ 成功（データバリデーションエラーあり、リストア機能自体は正常動作）
-- データベースリストア機能: ✅ 修正完了（パス問題を解決、実機検証待ち）
+- CSVリストア機能: ✅ 成功（データ形式修正後は正常動作）
+- データベースリストア機能: ✅ 成功（パス問題を解決、実機検証完了）
 - CSVリストア時の`targetSource`拡張子削除修正: ✅ 完了
-- データベースバックアップのパス問題解決: ✅ 完了（`.sql.gz`拡張子の付与とフォールバック処理）
-- CSVデータのバリデーションエラー調査: ✅ 完了（データの問題として記録）
-- リストア機能のエラーハンドリング改善: ✅ 完了（409エラーの詳細メッセージ）
+- データベースバックアップのパス問題解決: ✅ 完了（`.sql.gz`拡張子の付与とフォールバック処理、実機検証完了）
+- CSVデータのバリデーションエラー調査: ✅ 完了（データの問題として記録、社員コードを4桁形式に変更後は正常動作）
+- リストア機能のエラーハンドリング改善: ✅ 完了（APIエラーレスポンスの詳細メッセージ表示）
+- UI改善（バックアップパス選択）: ✅ 完了（手動入力からドロップダウン選択へ変更、実機検証完了）
 - バックアップAPI仕様ドキュメント更新: ✅ 完了（トラブルシューティングセクション追加）
-- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure.md#kb-098-csvリストア時のバリデーションエラー問題) を参照。
+- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題) / [KB-105](../knowledge-base/infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) を参照。
 
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 
@@ -699,7 +700,7 @@ export interface BackupConfig {
 - Dockerコンテナ内からSSH接続する場合は、SSH鍵をマウントする必要がある
 - Ansible Playbookのエラーメッセージを適切に解析することで、より明確なエラーハンドリングが可能
 
-**関連ナレッジ**: [KB-102](../knowledge-base/infrastructure.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題)
+**関連ナレッジ**: [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題)
 
 ## Phase 7: バックアップロジックのアーキテクチャ改善 ✅ 完了
 

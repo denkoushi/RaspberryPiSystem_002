@@ -105,9 +105,16 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 1. **管理コンソールでリストアを実行**
    - 「バックアップ」タブ → 「Dropboxからリストア」
-   - バックアップパスを入力（ステップ1でコピーした値）
+   - **バックアップ履歴から選択**（ドロップダウンで選択可能）
+     - `operationType: BACKUP`
+     - `status: COMPLETED`
+     - `storageProvider: dropbox`
+     - `targetKind: database`
+     - `fileStatus: EXISTS`（推奨、チェックボックスでフィルタ可能）
    - 対象種類を選択: `database`
    - 「リストア実行」ボタンをクリック
+   
+   **注意**: `fileStatus: DELETED`のバックアップを選択した場合、警告が表示されます。リストアは失敗する可能性が高いため、`fileStatus: EXISTS`のバックアップを選択することを推奨します。
 
 2. **リストア結果の確認**
    - バックアップ履歴ページで、新しいリストア履歴が作成されていることを確認

@@ -436,7 +436,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
    cat logs/ansible-update-YYYYMMDD-HHMMSS.log
    ```
 
-**関連ナレッジ**: [KB-058](../knowledge-base/infrastructure.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認)
+**関連ナレッジ**: [KB-058](../knowledge-base/infrastructure/ansible-deployment.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認)
 
 #### 問題6: クライアント状態が表示されない
 
