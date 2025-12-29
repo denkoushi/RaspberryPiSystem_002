@@ -328,27 +328,28 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
   - [x] `createFromConfig`メソッドの拡張（Gmailプロバイダーの処理を追加）
   - [x] `createFromTarget`メソッドの拡張（Gmailプロバイダーの処理を追加）
   - [x] ユニットテストの実装（7テストすべて成功）
-- [ ] Milestone 5: BackupConfigスキーマの拡張
-  - [ ] `storage.provider`に`'gmail'`を追加
-  - [ ] `storage.options`にGmail用設定項目を追加
-  - [ ] `csvImports`配列の各要素に`provider`と`retryConfig`を追加
+- [x] (2025-12-29) Milestone 5: BackupConfigスキーマの拡張
+  - [x] `storage.provider`に`'gmail'`を追加
+  - [x] `storage.options`にGmail用設定項目を追加（`clientId`, `clientSecret`, `refreshToken`, `accessToken`, `redirectUri`, `subjectPattern`, `fromEmail`）
+  - [x] `csvImports`配列の各要素に`provider`と`retryConfig`を追加
 - [x] (2025-12-29) Milestone 6: Gmail OAuth認証エンドポイントの追加
   - [x] `apps/api/src/routes/gmail/oauth.ts`の作成
   - [x] `registerGmailOAuthRoutes`関数の実装（認証URL生成、コールバック処理、リフレッシュ）
   - [x] `apps/api/src/routes/index.ts`へのルート登録
-- [ ] Milestone 7: Gmail設定管理エンドポイントの追加
-  - [ ] `apps/api/src/routes/gmail/config.ts`の作成
-  - [ ] `registerGmailConfigRoutes`関数の実装
-  - [ ] `apps/api/src/routes/index.ts`へのルート登録
+- [x] (2025-12-29) Milestone 7: Gmail設定管理エンドポイントの追加
+  - [x] `apps/api/src/routes/gmail/config.ts`の作成
+  - [x] `registerGmailConfigRoutes`関数の実装（GET, PUT, DELETE, POST /test）
+  - [x] `apps/api/src/routes/index.ts`へのルート登録
 - [x] (2025-12-29) Milestone 8: CsvImportSchedulerの拡張
   - [x] `executeImport`メソッドの修正（StorageProviderFactoryを使用、Gmailプロバイダー対応）
   - [x] リトライ機能の実装（指数バックオフ対応）
   - [x] `executeAutoBackup`メソッドの修正（StorageProviderFactoryを使用）
   - [x] 既存テストの修正（リトライ設定追加、21テストすべて成功）
-- [ ] Milestone 9: 設定管理UIの拡張
-  - [ ] `apps/web/src/pages/admin/GmailConfigPage.tsx`の作成
-  - [ ] Gmail設定画面の実装
-  - [ ] ナビゲーションメニューへのリンク追加
+- [x] (2025-12-29) Milestone 9: 設定管理UIの拡張
+  - [x] `apps/web/src/pages/admin/GmailConfigPage.tsx`の作成
+  - [x] Gmail設定画面の実装（設定表示、編集、削除、OAuth認証、トークン更新）
+  - [x] ナビゲーションメニューへのリンク追加（`AdminLayout.tsx`、`App.tsx`）
+  - [x] APIクライアント関数とReact Queryフックの追加（`apps/web/src/api/backup.ts`、`apps/web/src/api/hooks.ts`）
 - [x] (2025-12-29) Milestone 10: ユニットテスト・統合テスト・E2Eテストの実装
   - [x] GmailOAuthServiceのユニットテスト（Milestone 1で実装済み）
   - [x] GmailApiClientのユニットテスト（Milestone 2で実装済み）
@@ -363,13 +364,67 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
 
 ## Surprises & Discoveries
 
-（実装中に発見された予期しない動作、バグ、最適化、洞察を記録）
+### Gmail APIの添付ファイル取得パス
+- Gmail APIの添付ファイル取得は`gmail.users.messages.attachments.get`ではなく、`gmail.users.messages.attachments.get`を使用する必要がある。初期実装では`gmail.users.attachments.get`を使用していたが、正しいパスは`messages.attachments.get`である。
+
+### メールの添付ファイル構造
+- Gmail APIのメッセージ構造では、添付ファイルが`payload.parts`配列内にネストされている場合がある。`getFirstAttachment`メソッドでは、再帰的に`parts`を探索する必要がある。
+
+### Buttonコンポーネントのvariant型
+- `apps/web/src/components/ui/Button.tsx`の`variant`プロパティは`'primary' | 'ghost' | 'secondary'`のみをサポートしており、`'outline'`や`'destructive'`は存在しない。`GmailConfigPage.tsx`では、既存のvariantを使用するように修正した。
+
+### Dropboxインポートエンドポイントの再利用
+- `/api/imports/master/from-dropbox`エンドポイントは、Gmailプロバイダーでも使用可能に拡張した。リクエストボディに`provider: 'gmail'`を指定することで、Gmail経由でのインポートが可能。
+
+### リトライ機能の実装
+- `CsvImportScheduler`にリトライ機能を追加し、指数バックオフを実装。`retryConfig`で`maxRetries`、`retryInterval`、`exponentialBackoff`を設定可能。
 
 ## Decision Log
 
-（実装中の重要な設計決定とその理由を記録）
+### Gmailは読み取り専用として実装
+- **決定**: `GmailStorageProvider`の`upload`と`delete`メソッドは実装せず、エラーをスローする。
+- **理由**: Gmailはメール受信専用のデータソースとして使用し、バックアップ先としては使用しない。既存のDropbox連携機能とは異なり、Gmailは一方向のデータ取得のみを想定している。
+
+### 件名パターンによるメール検索
+- **決定**: Gmail APIの検索クエリで`subjectPattern`と`fromEmail`を使用してメールを検索する。
+- **理由**: PowerAutomateから送信されるメールを特定するため。件名パターンは正規表現または固定文字列として扱い、`fromEmail`はオプションとして実装。
+
+### StorageProviderFactoryによる統一的なプロバイダー作成
+- **決定**: `CsvImportScheduler`で`StorageProviderFactory.createFromConfig`を使用してプロバイダーを作成する。
+- **理由**: DropboxとGmailの両方に対応し、設定ファイルから動的にプロバイダーを選択できるようにするため。既存のDropbox専用の実装を置き換えることで、コードの重複を削減。
+
+### OAuth 2.0認証フローの実装
+- **決定**: `GmailOAuthService`を実装し、認証URL生成、コード交換、トークンリフレッシュを提供する。
+- **理由**: GoogleのOAuth 2.0認証フローに準拠し、セキュアな認証を実現するため。既存の`DropboxOAuthService`の実装パターンに従うことで、一貫性を保つ。
+
+### メールアーカイブ機能の実装
+- **決定**: CSVインポート完了後、処理済みメールをアーカイブ（INBOXラベルを削除）する。
+- **理由**: 同じメールが繰り返し処理されることを防ぐため。Gmail APIの`messages.modify`を使用して`removeLabelIds: ['INBOX']`を実行。
 
 ## Outcomes & Retrospective
 
-（実装完了後の成果と振り返りを記録）
+### 実装完了日
+2025-12-29
+
+### 実装成果
+- Gmail経由でのCSVファイル自動取得・インポート機能が完成
+- 既存のDropbox連携機能と同様のインターフェースで実装され、設定ファイルで選択可能
+- OAuth 2.0認証によるセキュアな認証フローを実装
+- 管理画面からGmail設定を管理できるUIを実装
+- リトライ機能により、一時的なネットワークエラーに対応可能
+
+### テスト結果
+- ユニットテスト: すべて成功（GmailOAuthService: 9テスト、GmailApiClient: 13テスト、GmailStorageProvider: 11テスト、StorageProviderFactory: 7テスト）
+- 統合テスト: GmailStorageProvider統合テスト、Gmail経由CSVインポート統合テストを実装
+- CI/CD: GitHub ActionsでのCIが成功（lint、ビルド、テストすべて通過）
+
+### 課題と改善点
+- E2Eテストは未実装（Gmail設定管理UIのE2Eテスト）
+- 実際のGmail APIを使用した統合テストは環境変数で制御（`GMAIL_ENABLE_LIVE_TEST=1`）
+- JPEG添付ファイルの処理は未実装（CSVファイルのみ対応）
+
+### 次のステップ
+1. E2Eテストの実装（Gmail設定管理UI）
+2. JPEG添付ファイルの処理機能の実装（PowerAutomateから送信されるJPEGファイルの処理）
+3. 実際の環境での動作確認（PowerAutomateとの連携テスト）
 
