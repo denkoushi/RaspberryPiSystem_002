@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
 /**
+ * パスマッピング設定のスキーマ
+ */
+export const PathMappingSchema = z.object({
+  hostPath: z.string(),
+  containerPath: z.string()
+});
+
+/**
  * バックアップ設定のスキーマ
  */
 export const BackupConfigSchema = z.object({
@@ -14,11 +22,20 @@ export const BackupConfigSchema = z.object({
       appSecret: z.string().optional() // Dropbox用（OAuth 2.0 App Secret）
     }).optional()
   }),
+  pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング
   targets: z.array(z.object({
-    kind: z.enum(['database', 'file', 'directory', 'csv', 'image']),
+    kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
     source: z.string(),
     schedule: z.string().optional(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),
+    storage: z.object({
+      provider: z.enum(['local', 'dropbox']).optional(), // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
+      providers: z.array(z.enum(['local', 'dropbox'])).optional() // 対象ごとのストレージプロバイダー（複数、Phase 2）
+    }).optional(),
+    retention: z.object({
+      days: z.number().optional(), // 保持日数（例: 30日）
+      maxBackups: z.number().optional() // 最大保持数（例: 10件）
+    }).optional(), // 対象ごとの保持期間設定（Phase 3）
     metadata: z.record(z.unknown()).optional()
   })),
   retention: z.object({
@@ -59,9 +76,21 @@ export const defaultBackupConfig: BackupConfig = {
   storage: {
     provider: 'local',
     options: {
-      basePath: '/opt/RaspberryPiSystem_002/backups'
+      basePath: '/opt/backups'
     }
   },
+  pathMappings: [
+    { hostPath: '/opt/RaspberryPiSystem_002/apps/api/.env', containerPath: '/app/host/apps/api/.env' },
+    { hostPath: '/opt/RaspberryPiSystem_002/apps/web/.env', containerPath: '/app/host/apps/web/.env' },
+    {
+      hostPath: '/opt/RaspberryPiSystem_002/infrastructure/docker/.env',
+      containerPath: '/app/host/infrastructure/docker/.env'
+    },
+    {
+      hostPath: '/opt/RaspberryPiSystem_002/clients/nfc-agent/.env',
+      containerPath: '/app/host/clients/nfc-agent/.env'
+    }
+  ],
   targets: [
     {
       kind: 'database',

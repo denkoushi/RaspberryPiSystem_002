@@ -163,7 +163,7 @@ export function SignageSchedulesPage() {
                 {renderMutation.isPending ? 'レンダリング中...' : '再レンダリング'}
               </Button>
               {renderStatusQuery.data && (
-                <span className="text-sm text-white/70">
+                <span className="text-sm font-semibold text-slate-700">
                   （自動更新: {renderStatusQuery.data.intervalSeconds}秒間隔）
                 </span>
               )}
@@ -173,22 +173,22 @@ export function SignageSchedulesPage() {
         }
       >
         {(isCreating || editingId) && (
-          <div className="mb-6 space-y-4 rounded-lg border border-white/10 bg-white/5 p-4">
+          <div className="mb-6 space-y-4 rounded-lg border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
             <div>
-              <label className="block text-sm text-white/70">スケジュール名</label>
+              <label className="block text-sm font-semibold text-slate-700">スケジュール名</label>
               <input
                 type="text"
                 value={formData.name || ''}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
             <div>
-              <label className="block text-sm text-white/70">コンテンツタイプ</label>
+              <label className="block text-sm font-semibold text-slate-700">コンテンツタイプ</label>
               <select
                 value={formData.contentType || 'TOOLS'}
                 onChange={(e) => setFormData({ ...formData, contentType: e.target.value as 'TOOLS' | 'PDF' | 'SPLIT' })}
-                className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               >
                 <option value="TOOLS">工具管理データ</option>
                 <option value="PDF">PDF</option>
@@ -197,11 +197,11 @@ export function SignageSchedulesPage() {
             </div>
             {(formData.contentType === 'PDF' || formData.contentType === 'SPLIT') && (
               <div>
-                <label className="block text-sm text-white/70">PDF</label>
+                <label className="block text-sm font-semibold text-slate-700">PDF</label>
                 <select
                   value={formData.pdfId || ''}
                   onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 >
                   <option value="">選択してください</option>
                   {pdfsQuery.data?.map((pdf: SignagePdf) => (
@@ -213,17 +213,17 @@ export function SignageSchedulesPage() {
               </div>
             )}
             <div>
-              <label className="block text-sm text-white/70">曜日</label>
+              <label className="block text-sm font-semibold text-slate-700">曜日</label>
               <div className="mt-1 flex gap-2">
                 {DAYS_OF_WEEK.map((day) => (
                   <button
                     key={day.value}
                     type="button"
                     onClick={() => toggleDayOfWeek(day.value)}
-                    className={`rounded-md px-3 py-1 text-sm ${
+                    className={`rounded-md border-2 px-3 py-1 text-sm font-semibold shadow-lg ${
                       formData.dayOfWeek?.includes(day.value)
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-white/5 text-white/70 hover:bg-white/10'
+                        ? 'border-emerald-700 bg-emerald-600 text-white'
+                        : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     {day.label}
@@ -233,31 +233,31 @@ export function SignageSchedulesPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-white/70">開始時刻</label>
+                <label className="block text-sm font-semibold text-slate-700">開始時刻</label>
                 <input
                   type="time"
                   value={formData.startTime || ''}
                   onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/70">終了時刻</label>
+                <label className="block text-sm font-semibold text-slate-700">終了時刻</label>
                 <input
                   type="time"
                   value={formData.endTime || ''}
                   onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm text-white/70">優先順位</label>
+              <label className="block text-sm font-semibold text-slate-700">優先順位</label>
               <input
                 type="number"
                 value={formData.priority || 0}
                 onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value, 10) })}
-                className="mt-1 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -265,9 +265,9 @@ export function SignageSchedulesPage() {
                 type="checkbox"
                 checked={formData.enabled ?? true}
                 onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="rounded border-white/10"
+                className="rounded border-2 border-slate-500"
               />
-              <label className="text-sm text-white/70">有効</label>
+              <label className="text-sm font-semibold text-slate-700">有効</label>
             </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={create.isPending || update.isPending}>
@@ -283,38 +283,38 @@ export function SignageSchedulesPage() {
         {schedulesQuery.isError ? (
           <p className="text-red-400">スケジュール一覧の取得に失敗しました</p>
         ) : schedulesQuery.isLoading ? (
-          <p>読み込み中...</p>
+          <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
         ) : schedulesQuery.data && schedulesQuery.data.length > 0 ? (
           <div className="space-y-4">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b border-white/10">
-                  <th className="px-4 py-2 text-left">名前</th>
-                  <th className="px-4 py-2 text-left">コンテンツタイプ</th>
-                  <th className="px-4 py-2 text-left">曜日</th>
-                  <th className="px-4 py-2 text-left">時間帯</th>
-                  <th className="px-4 py-2 text-left">優先順位</th>
-                  <th className="px-4 py-2 text-left">状態</th>
-                  <th className="px-4 py-2 text-left">操作</th>
+                <tr className="border-b-2 border-slate-500 bg-slate-100">
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">名前</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">コンテンツタイプ</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">曜日</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">時間帯</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">優先順位</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">状態</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {schedulesQuery.data.map((schedule: SignageSchedule) => (
-                  <tr key={schedule.id} className="border-b border-white/5">
-                    <td className="px-4 py-2">{schedule.name}</td>
-                    <td className="px-4 py-2">
+                  <tr key={schedule.id} className="border-b border-slate-500">
+                    <td className="px-4 py-2 text-sm text-slate-700">{schedule.name}</td>
+                    <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.contentType === 'TOOLS' && '工具管理データ'}
                       {schedule.contentType === 'PDF' && 'PDF'}
                       {schedule.contentType === 'SPLIT' && '分割表示'}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.dayOfWeek.map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label).join(', ')}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.startTime} - {schedule.endTime}
                     </td>
-                    <td className="px-4 py-2">{schedule.priority}</td>
-                    <td className="px-4 py-2">{schedule.enabled ? '有効' : '無効'}</td>
+                    <td className="px-4 py-2 text-sm text-slate-700">{schedule.priority}</td>
+                    <td className="px-4 py-2 text-sm text-slate-700">{schedule.enabled ? '有効' : '無効'}</td>
                     <td className="px-4 py-2">
                       <div className="flex gap-2">
                         <Button onClick={() => handleEdit(schedule)} className="px-3 py-1 text-sm">
@@ -323,7 +323,7 @@ export function SignageSchedulesPage() {
                         <Button
                           onClick={() => handleDelete(schedule.id)}
                           variant="ghost"
-                          className="px-3 py-1 text-sm text-red-400"
+                          className="px-3 py-1 text-sm font-semibold text-red-600"
                         >
                           削除
                         </Button>
@@ -335,7 +335,7 @@ export function SignageSchedulesPage() {
             </table>
           </div>
         ) : (
-          <p>スケジュールが登録されていません。</p>
+          <p className="text-sm font-semibold text-slate-700">スケジュールが登録されていません。</p>
         )}
       </Card>
     </div>

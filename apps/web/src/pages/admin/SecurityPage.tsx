@@ -100,11 +100,11 @@ export function SecurityPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="text-xl font-semibold text-white">MFA（多要素認証）設定</h2>
-        <p className="text-sm text-white/70">
+        <h2 className="text-xl font-bold text-slate-900">MFA（多要素認証）設定</h2>
+        <p className="text-sm font-semibold text-slate-700">
           管理画面ログインにワンタイムコードを追加します。TOTPアプリ（例: Google Authenticator）に登録し、バックアップコードを保管してください。
         </p>
-        <div className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <div className="flex gap-3">
             <Button onClick={handleInitiate} disabled={loading}>
               セットアップ情報を生成
@@ -116,19 +116,19 @@ export function SecurityPage() {
             )}
           </div>
           {mfaSecret ? (
-            <div className="space-y-2 text-sm text-white/80">
+            <div className="space-y-2 text-sm font-semibold text-slate-700">
               <p>
-                シークレットキー: <span className="font-mono">{mfaSecret}</span>
+                シークレットキー: <span className="font-mono text-slate-900">{mfaSecret}</span>
               </p>
               <p>
-                otpauth URL: <span className="font-mono break-all">{otpauthUrl}</span>
+                otpauth URL: <span className="font-mono break-all text-slate-900">{otpauthUrl}</span>
               </p>
               {backupCodes.length > 0 && (
                 <div>
-                  <p className="font-semibold">バックアップコード（紙などに保管）</p>
-                  <ul className="grid grid-cols-2 gap-2 text-white/80">
+                  <p className="font-bold text-slate-900">バックアップコード（紙などに保管）</p>
+                  <ul className="grid grid-cols-2 gap-2">
                     {backupCodes.map((code) => (
-                      <li key={code} className="font-mono rounded bg-slate-800 px-2 py-1">
+                      <li key={code} className="font-mono rounded border-2 border-slate-500 bg-white px-2 py-1 text-slate-900 shadow-lg">
                         {code}
                       </li>
                     ))}
@@ -136,7 +136,7 @@ export function SecurityPage() {
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <label className="text-sm text-white/70">
+                <label className="text-sm font-semibold text-slate-700">
                   認証アプリに表示された6桁コード
                   <Input
                     value={codeInput}
@@ -151,8 +151,8 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <div className="space-y-2 text-sm text-white/80">
-            <label className="text-sm text-white/70">
+          <div className="space-y-2 text-sm font-semibold text-slate-700">
+            <label className="text-sm font-semibold text-slate-700">
               MFA無効化（パスワード確認）
               <Input
                 type="password"
@@ -170,35 +170,35 @@ export function SecurityPage() {
 
       <div>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">権限変更の監査ログ</h2>
+          <h2 className="text-xl font-bold text-slate-900">権限変更の監査ログ</h2>
           <Button variant="secondary" onClick={() => void loadAuditLogs()} disabled={auditLoading}>
             再読込
           </Button>
         </div>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-white/5">
-          <table className="min-w-full text-sm text-white/80">
+        <div className="mt-4 overflow-x-auto rounded-xl border-2 border-slate-500 bg-slate-100 shadow-lg">
+          <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-white/10 text-left">
-                <th className="px-3 py-2">日時</th>
-                <th className="px-3 py-2">実行者</th>
-                <th className="px-3 py-2">対象</th>
-                <th className="px-3 py-2">変更</th>
+              <tr className="border-b-2 border-slate-500 bg-slate-200 text-left">
+                <th className="px-3 py-2 text-sm font-semibold text-slate-900">日時</th>
+                <th className="px-3 py-2 text-sm font-semibold text-slate-900">実行者</th>
+                <th className="px-3 py-2 text-sm font-semibold text-slate-900">対象</th>
+                <th className="px-3 py-2 text-sm font-semibold text-slate-900">変更</th>
               </tr>
             </thead>
             <tbody>
               {auditLogs.map((log) => (
-                <tr key={log.id} className="border-t border-white/10">
-                  <td className="px-3 py-2">{new Date(log.createdAt).toLocaleString()}</td>
-                  <td className="px-3 py-2">{log.actorUser?.username ?? log.actorUserId}</td>
-                  <td className="px-3 py-2">{log.targetUser?.username ?? log.targetUserId}</td>
-                  <td className="px-3 py-2">
-                    {log.fromRole} → <span className="font-semibold text-emerald-300">{log.toRole}</span>
+                <tr key={log.id} className="border-t border-slate-500">
+                  <td className="px-3 py-2 text-sm text-slate-700">{new Date(log.createdAt).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-sm text-slate-700">{log.actorUser?.username ?? log.actorUserId}</td>
+                  <td className="px-3 py-2 text-sm text-slate-700">{log.targetUser?.username ?? log.targetUserId}</td>
+                  <td className="px-3 py-2 text-sm text-slate-700">
+                    {log.fromRole} → <span className="font-bold text-emerald-600">{log.toRole}</span>
                   </td>
                 </tr>
               ))}
               {auditLogs.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-3 text-center text-white/60" colSpan={4}>
+                  <td className="px-3 py-3 text-center text-sm text-slate-600" colSpan={4}>
                     監査ログはありません
                   </td>
                 </tr>

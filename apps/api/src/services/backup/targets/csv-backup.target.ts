@@ -1,7 +1,9 @@
 import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../../../lib/prisma.js';
 import type { BackupTarget } from '../backup-target.interface.js';
-import type { BackupTargetInfo } from '../backup-types.js';
+import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
+import { processCsvImport } from '../../../routes/imports.js';
+import { logger } from '../../../lib/logger.js';
 
 /**
  * CSVバックアップターゲット
@@ -81,5 +83,37 @@ export class CsvBackupTarget implements BackupTarget {
     });
 
     return Buffer.from(csv, 'utf-8');
+  }
+
+  async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {
+    logger?.info({ type: this.type }, '[CsvBackupTarget] Restoring CSV from backup');
+
+    try {
+      // CSVデータをパースしてインポート処理を実行
+      const csvType = this.type;
+      const files = csvType === 'employees' ? { employees: backupData } : { items: backupData };
+
+      const logWrapper = {
+        info: (obj: unknown, msg: string) => {
+          logger?.info(obj, msg);
+        },
+        error: (obj: unknown, msg: string) => {
+          logger?.error(obj, msg);
+        }
+      };
+
+      await processCsvImport(files, options?.overwrite ?? true, logWrapper);
+
+      logger?.info({ type: this.type }, '[CsvBackupTarget] CSV restore completed');
+
+      return {
+        backupId: this.type,
+        success: true,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      logger?.error({ err: error, type: this.type }, '[CsvBackupTarget] CSV restore failed');
+      throw error;
+    }
   }
 }

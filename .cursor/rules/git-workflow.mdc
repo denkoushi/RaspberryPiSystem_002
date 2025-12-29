@@ -1,10 +1,19 @@
+---
+description: Gitワークフロー改善ルール。コミット・プッシュの精度を維持するための手順。
+alwaysApply: false
+---
+
 # Gitワークフロー改善ルール
 
 ## 基本原則
 
 **コミット・プッシュの精度を維持するため、以下の手順を必ず実行する。**
 
+**関連ルール**: `.cursor/rules/system-stability.mdc`（既存システム保護ルール）と連携して動作します。
+
 ## コミット前の確認手順
+
+以下の手順は、基本原則を実現するための具体的なアクションです。コミット・プッシュ前に必ず実行してください。
 
 ### 1. 変更ファイルの確認
 
@@ -133,3 +142,5 @@ git reset HEAD <file>
 
 - [Git公式ドキュメント](https://git-scm.com/doc)
 - [Conventional Commits](https://www.conventionalcommits.org/)
+- `.cursor/rules/system-stability.mdc`: 既存システム保護ルール（コミット前の影響範囲確認）
+- `.cursor/rules/documentation-first.mdc`: ドキュメント優先ルール（コミット前のドキュメント確認）

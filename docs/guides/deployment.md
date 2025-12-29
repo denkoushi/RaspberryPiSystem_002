@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-13（KB-097反映）
+最終更新: 2025-12-28（デプロイ前UI検証手順追加）
 
 ## 概要
 
@@ -75,7 +75,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 - `network_mode`が`tailscale`の場合、Tailscale IPが使われます（`tailscale status`で確認）
 - 現在のネットワーク環境に応じた設定でないと、接続エラーが発生します
 - ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
-- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
+- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
 
 詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
 
@@ -99,12 +99,37 @@ cd /opt/RaspberryPiSystem_002
 
 # 環境変数ファイルのサンプルをコピー
 cp infrastructure/docker/.env.example infrastructure/docker/.env
+cp apps/api/.env.example apps/api/.env 2>/dev/null || true
 
 # .envファイルを編集（必要に応じて）
 nano infrastructure/docker/.env
+nano apps/api/.env
 ```
 
-**重要**: `.env`ファイルはGitにコミットされません（`.gitignore`に含まれています）。各ラズパイで個別に設定してください。
+**重要**: 
+- `.env`ファイルはGitにコミットされません（`.gitignore`に含まれています）。各ラズパイで個別に設定してください。
+- 本番環境では、強力なパスワードを設定してください（`POSTGRES_PASSWORD`など）。パスワード生成方法: `openssl rand -base64 32`
+- ファイルのパーミッションを設定（所有者のみ読み書き可能）: `chmod 600 infrastructure/docker/.env apps/api/.env`
+
+**環境変数の管理方法**:
+- `.env.example`ファイル: リポジトリに含まれるテンプレートファイル
+- 手動でコピー: `.env.example`をコピーして`.env`を作成し、本番環境用の値を設定
+- Ansibleテンプレート: Ansibleを使用する場合、`.j2`テンプレートファイルから生成
+- バックアップ: バックアップスクリプトで`.env`ファイルを自動バックアップ
+
+詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。
+
+### デプロイ前のUI検証（推奨）
+
+**重要**: UI変更を行った場合は、デプロイ前にCursor内のブラウザで検証することで、デプロイ時間を短縮し、効率的にUI確認ができます。
+
+詳細な手順は [開発ガイド](./development.md#ui検証デプロイ前推奨) を参照してください。
+
+**簡易手順**:
+1. ローカルでデータベースとAPIサーバー、Webアプリケーションを起動
+2. Cursor内のブラウザで `http://localhost:5173` にアクセス
+3. ログインしてUI変更を確認
+4. 問題がなければデプロイを実行
 
 ### 方法1: デプロイスクリプトを使用（推奨）
 
@@ -157,7 +182,7 @@ curl http://localhost:8080/api/system/health
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 
-**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../knowledge-base/infrastructure.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
+**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
 
 ```bash
 # 1. リポジトリを更新
@@ -186,7 +211,7 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（必須）
 
-**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
 
 ```bash
 # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
@@ -209,9 +234,9 @@ ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f Ansibal
 ```
 
 **重要**: 
-- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
 
@@ -278,19 +303,19 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 ```
 
 **重要**: 
-- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 **トラブルシューティング**:
-- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 - **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
 - **デプロイが失敗する**: ログを確認（`logs/deploy/deploy-*.jsonl`）
-- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../knowledge-base/infrastructure.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
+- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
 
 **関連ナレッジ**: 
-- [KB-086](../knowledge-base/infrastructure.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
-- [KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
-- [KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
-- [KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
+- [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
+- [KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
+- [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
+- [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
 
 ## デプロイ方法（詳細）
 
@@ -549,7 +574,7 @@ NETWORK_MODE=tailscale \
    - `network_mode: "local"` → オフィスネットワーク用
    - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用
    - **現在のネットワーク環境に応じて設定を変更**（[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を参照）
-   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（[KB-094](../knowledge-base/infrastructure.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）。デプロイ後のヘルスチェック前にも再確認すること。
+   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）。デプロイ後のヘルスチェック前にも再確認すること。
 
 2. **Pi5への接続確認**
    ```bash
@@ -590,9 +615,9 @@ NETWORK_MODE=tailscale \
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ps aux | grep signage-lite | grep -v grep"'
    # → 何も表示されないことを確認
    ```
-   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
 7. **ローカルIPを使う場合の事前確認**
    ```bash
    # 各端末で実IPを取得してからgroup_vars/all.ymlを更新する
@@ -638,7 +663,7 @@ NETWORK_MODE=tailscale \
    # 画像が更新されていることを確認
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
    ```
-   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 
 ### Tailscale IP一覧
 
@@ -741,12 +766,54 @@ bash /opt/RaspberryPiSystem_002/scripts/test/security-e2e.sh
 6. **ドキュメント更新**: デプロイ手順に変更があった場合はドキュメントを更新
 7. **Tailscale使用**: リモートアクセス時は必ず`network_mode: "tailscale"`に設定
 
+## よくある質問（FAQ）
+
+### Q1: 環境変数ファイルはリモートリポジトリに含まれないのに、どうやって管理する？
+
+**A**: 以下の方法で管理します：
+
+1. **`.env.example`ファイル**: リポジトリに含まれるテンプレートファイル
+2. **手動でコピー**: `.env.example`をコピーして`.env`を作成し、本番環境用の値を設定
+3. **Ansibleテンプレート**: Ansibleを使用する場合、`.j2`テンプレートファイルから生成
+4. **バックアップ**: バックアップスクリプトで`.env`ファイルを自動バックアップ
+
+詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。
+
+### Q2: 環境変数を変更した後、どうやって反映させる？
+
+**A**: Docker Composeを再起動します：
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml down
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+```
+
+### Q3: パスワードを忘れた場合、どうすれば良い？
+
+**A**: バックアップから復元します：
+
+```bash
+# バックアップディレクトリから環境変数ファイルを確認
+ls -la /opt/backups/*.env
+
+# 最新のバックアップから復元
+cp /opt/backups/api_env_YYYYMMDD_HHMMSS.env /opt/RaspberryPiSystem_002/apps/api/.env
+cp /opt/backups/docker_env_YYYYMMDD_HHMMSS.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+
+# Docker Composeを再起動
+docker compose -f infrastructure/docker/docker-compose.server.yml down
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d
+```
+
+詳細は [バックアップ・リストアガイド](./backup-and-restore.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新とクライアント監視のクイックスタート
 - [環境構築ガイド](./environment-setup.md): ローカルネットワーク変更時の対応
 - [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md): SSH接続の構成と説明
-- [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ
-- [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順
+- [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ（環境変数の管理、新しいPi5での環境構築手順を含む）
+- [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順（デバイスごとのバックアップ対象を含む）
 - [監視・アラートガイド](./monitoring.md): システム監視とアラート設定
 

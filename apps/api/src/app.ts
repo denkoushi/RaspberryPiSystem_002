@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
+import cors from '@fastify/cors';
 import type { FastifyInstance } from 'fastify';
 import { env } from './config/env.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
@@ -18,6 +19,22 @@ export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
   registerErrorHandler(app);
   registerRequestLogger(app);
+
+  // NOTE:
+  // - 本番は基本的に同一オリジン（リバプロ経由）で運用するため、CORSは不要。
+  // - CI/E2Eでは Web(4173) → API(8080) のクロスオリジンになり、Authorization付きリクエストで
+  //   preflight(OPTIONS)が発生する。CORS未設定だとOPTIONSが404になりブラウザが本リクエストをブロックする。
+  // - そのため development/test のみ CORS を有効化する。
+  if (env.NODE_ENV !== 'production') {
+    await app.register(cors, {
+      origin: true,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      // Web側はapi clientで x-client-key をデフォルト付与するため、preflightで許可が必要
+      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key']
+    });
+  }
+
   await registerRateLimit(app);
   await registerSecurityHeaders(app);
   await app.register(multipart, {

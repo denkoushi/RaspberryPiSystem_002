@@ -10,7 +10,20 @@ update-frequency: medium
 
 # バックアップ設定ガイド
 
-最終更新: 2025-12-14
+最終更新: 2025-12-29（エラーハンドリング改善を追加）
+
+## アーキテクチャ改善（2025-12-19）
+
+バックアップロジックのモジュール化、疎結合、拡張性を向上させるため、Factoryパターンとレジストリパターンを実装しました。
+
+### 改善内容
+
+- **BackupTargetFactory**: レジストリパターンによるバックアップターゲットの動的登録
+- **StorageProviderFactory**: ストレージプロバイダー作成ロジックの共通化
+- **リストアロジックの分離**: 各ターゲットが自身のリストアロジックを実装
+- **設定ファイルによるパスマッピング管理**: `pathMappings`フィールドでDockerコンテナ内のパスマッピングを管理
+
+詳細は [requirements/backup-target-management-ui.md](../requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) を参照してください。
 
 ## 概要
 
@@ -35,7 +48,7 @@ update-frequency: medium
   "storage": {
     "provider": "local" | "dropbox",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups",
+      "basePath": "/opt/backups",
       "accessToken": "your-dropbox-access-token"
     }
   },
@@ -66,7 +79,7 @@ update-frequency: medium
   "storage": {
     "provider": "local",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups"
+      "basePath": "/opt/backups"
     }
   }
 }
@@ -74,7 +87,7 @@ update-frequency: medium
 
 **設定項目**:
 - `provider`: `"local"` を指定
-- `options.basePath`: バックアップファイルの保存先ディレクトリ（デフォルト: `/opt/RaspberryPiSystem_002/backups`）
+- `options.basePath`: バックアップファイルの保存先ディレクトリ（デフォルト: `/opt/backups`）
 
 ### Dropboxストレージ
 
@@ -174,6 +187,62 @@ PostgreSQLデータベースをバックアップする場合：
 - `enabled`: `true` で有効化
 - `metadata.label`: バックアップファイル名に使用されるラベル（オプション）
 
+**バックアップ形式**:
+- 画像バックアップは`tar.gz`形式で保存されます
+- 写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）が含まれます
+- JPEGファイルはそのまま含まれているため、リストア後に正常に使用できます
+
+**リストア処理**:
+- リストア時には`tar.gz`を自動的に展開して、写真ディレクトリとサムネイルディレクトリに復元します
+- 既存のディレクトリは自動的にバックアップされます（タイムスタンプ付きでリネーム）
+- API経由（`/api/backup/restore/from-dropbox`）または手動でリストア可能です
+
+### クライアント端末ファイルバックアップ
+
+クライアント端末（Pi4、Pi3など）のファイルをAnsible経由でバックアップする場合：
+
+```json
+{
+  "kind": "client-file",
+  "source": "raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env",
+  "schedule": "0 4 * * *",
+  "enabled": true
+}
+```
+
+**設定項目**:
+- `kind`: `"client-file"` を指定
+- `source`: `"hostname:/path/to/file"` 形式で指定
+  - `hostname`: Ansible inventoryに登録されているホスト名（例: `raspberrypi4`）
+  - `/path/to/file`: クライアント端末上のファイルパス（例: `/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`）
+- `schedule`: cron形式のスケジュール
+- `enabled`: `true` で有効化
+
+**動作**:
+- Ansible Playbook（`infrastructure/ansible/playbooks/backup-clients.yml`）を使用してクライアント端末からファイルを取得
+- `ansible fetch`モジュールでリモートファイルをPi5（サーバー）に取得
+- 取得したファイルをバックアップストレージ（ローカルまたはDropbox）に保存
+
+**前提条件**:
+- AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
+- Ansible inventory（`infrastructure/ansible/inventory.yml`）にクライアント端末が登録されていること
+- Pi5からクライアント端末へのSSH接続が可能であること（パスワード認証またはSSH鍵認証）
+- SSH鍵がDockerコンテナ内にマウントされていること（`docker-compose.server.yml`で`/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント）
+- `group_vars/all.yml`の`network_mode`が正しく設定されていること（`local`または`tailscale`）
+
+**AnsibleとTailscale連携の注意事項**:
+
+- **変数展開の仕組み**:
+  - Ansible Playbookは`hosts: "{{ client_host }}"`で実行されるため、`inventory.yml`の変数が正しく展開される
+  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
+  - `network_mode: "local"`の場合、`kiosk_ip`は`local_network.raspberrypi4_ip`に解決される
+  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
+
+- **エラーハンドリング**:
+  - ファイルが存在しない場合、404エラーが返される
+  - SSH接続エラーの場合、500エラーが返される
+  - エラーメッセージには、ファイルパスとアクセス権限の可能性が記載される
+
 ### ファイルバックアップ
 
 特定のファイルをバックアップする場合：
@@ -265,6 +334,26 @@ APIレスポンスの`path`は**相対パス**で返されます：
 
 **注意**: `backups/`プレフィックスは含まれません。これは`LocalStorageProvider`の`getBaseDir()`と結合するためです。
 
+### エラーハンドリング（2025-12-29追加）
+
+Dropboxストレージプロバイダーには、以下のエラーハンドリング機能が実装されています：
+
+**レート制限エラー（429）への対応**:
+- `upload`、`download`、`delete`メソッドでレート制限エラー（429）時に自動的にリトライ
+- `Retry-After`ヘッダーが指定されている場合はその値を使用、それ以外は指数バックオフ（2^retryCount秒、最大30秒）
+- 最大リトライ回数: 5回
+
+**ネットワークエラーへの対応**:
+- `download`、`delete`メソッドでネットワークエラー（タイムアウト、接続エラーなど）時に自動的にリトライ
+- 検出するネットワークエラー: `ETIMEDOUT`、`ECONNRESET`、`ENOTFOUND`、`ECONNREFUSED`、エラーメッセージに`timeout`、`network`、`ECONN`が含まれる場合
+- 指数バックオフによるリトライロジック（最大5回、最大30秒）
+
+**効果**:
+- レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上
+- ログ出力の改善により、リトライ時に詳細なログを出力することで、問題の特定が容易に
+
+詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください。
+
 ### 実際のファイルパス
 
 実際のファイルパスは以下のように構成されます：
@@ -274,8 +363,8 @@ APIレスポンスの`path`は**相対パス**で返されます：
 ```
 
 **ローカルストレージの場合**:
-- `getBaseDir()`: `/opt/RaspberryPiSystem_002/backups`（`options.basePath`の値）
-- 完全パス例: `/opt/RaspberryPiSystem_002/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+- `getBaseDir()`: `/opt/backups`（`options.basePath`の値）
+- 完全パス例: `/opt/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
 
 **Dropboxストレージの場合**:
 - `getBaseDir()`: `/backups`（`options.basePath`の値、デフォルト）
@@ -306,7 +395,7 @@ APIレスポンスの`path`は**相対パス**で返されます：
   "storage": {
     "provider": "local",
     "options": {
-      "basePath": "/opt/RaspberryPiSystem_002/backups"
+      "basePath": "/opt/backups"
     }
   },
   "targets": [
@@ -366,14 +455,14 @@ APIレスポンスの`path`は**相対パス**で返されます：
 
 ### 設定ファイルの編集
 
-設定ファイルを編集した後、APIサーバーを再起動すると新しい設定が読み込まれます：
+設定ファイルを**手動で編集**した後は、以下いずれかで新しい設定を反映します（スケジュール実行も含めて更新されます）：
 
 ```bash
 cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 ```
 
-または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）：
+または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
 
 ```bash
 curl -X PUT http://localhost:8080/api/backup/config \
@@ -381,6 +470,8 @@ curl -X PUT http://localhost:8080/api/backup/config \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
 ```
+
+**補足**: 管理コンソール（`/admin/backup/targets`）からバックアップ対象や設定を更新した場合も、同様に即時反映されます。
 
 ## APIエンドポイント
 
@@ -470,8 +561,39 @@ curl http://localhost:8080/api/backup \
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
 
+## 管理コンソールからの設定管理
+
+バックアップ設定は、管理コンソールの「バックアップ」タブ（`/admin/backup/targets`）から管理できます。
+
+### バックアップ対象の管理
+
+**機能**:
+- **一覧表示**: 現在の`targets`配列の内容を表示
+- **追加**: 新しい`target`を追加（`kind`、`source`、`schedule`、`enabled`を設定）
+- **編集**: 既存の`target`の`schedule`や`enabled`状態を編集
+- **削除**: 不要な`target`を削除
+- **有効/無効切り替え**: 各対象の`enabled`フラグをトグルスイッチで切り替え
+- **手動実行**: 特定のバックアップ対象を手動で実行
+
+**使用方法**:
+1. 管理コンソールにログイン（`https://<pi5>/admin`）
+2. 「バックアップ」タブをクリック
+3. バックアップ対象一覧が表示される
+4. 「追加」ボタンで新しい対象を追加、または既存の対象を編集・削除
+
+**設定ファイルとの連携**:
+- 管理コンソールでの変更は即座に設定ファイル（`backup.json`）に反映される
+- `backup.sh`スクリプトは設定ファイルの`targets`配列を参照してバックアップを実行する
+- 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
+
+詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [バックアップ・リストア手順](./backup-and-restore.md): 従来のスクリプトベースのバックアップ手順
 - [Dropbox連携セットアップガイド](./dropbox-setup-guide.md): Dropboxアカウントとの連携手順
 - [モニタリングガイド](./monitoring.md): バックアップの監視方法
+- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
+- [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md): 実機検証手順
+- [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
+- [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細

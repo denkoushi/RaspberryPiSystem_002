@@ -15,6 +15,7 @@ const BACKGROUND = '#020617';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number] & {
   isOver12Hours?: boolean;
+  isOverdue?: boolean;
 };
 
 interface ToolGridConfig {
@@ -267,7 +268,7 @@ export class SignageRenderer {
     const fileNameOverlay =
       pdfOptions?.title && pdfOptions.title.trim().length > 0
         ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
-            font-size="${Math.round(10 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ${this.escapeXml(pdfOptions.title)}
           </text>`
         : '';
@@ -323,7 +324,7 @@ export class SignageRenderer {
     const slideInfo =
       options?.slideInterval && options.displayMode === 'SLIDESHOW'
         ? `<text x="${outerPadding + panelWidth - innerPadding}" y="${outerPadding + innerPadding}"
-            text-anchor="end" font-size="${Math.round(12 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
             ${options.slideInterval}s ごとに切替
           </text>`
         : '';
@@ -392,12 +393,12 @@ export class SignageRenderer {
     const maxItems = columns * maxRows;
     const displayTools = tools.slice(0, maxItems);
     const overflowCount = Math.max(0, tools.length - displayTools.length);
-    const cardRadius = Math.round(12 * scale);
-    const cardPadding = Math.round(12 * scale);
-    const thumbnailSize = Math.round(96 * scale);
-    const thumbnailWidth = thumbnailSize;
-    const thumbnailHeight = thumbnailSize;
-    const textAreaX = cardPadding + thumbnailSize + Math.round(12 * scale);
+        const cardRadius = Math.round(12 * scale);
+        const cardPadding = Math.round(12 * scale);
+        const thumbnailSize = Math.round(96 * scale);
+        const thumbnailWidth = thumbnailSize;
+        const thumbnailHeight = thumbnailSize;
+        const thumbnailGap = Math.round(12 * scale);
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -414,19 +415,32 @@ export class SignageRenderer {
         const managementText = isInstrument || isRigging
           ? (tool.managementNumber || tool.itemCode || '')
           : (tool.itemCode || '');
+        // 提案3カラーパレット: 工場現場特化・高視認性テーマ
+        // 工具: bg-blue-500 (RGB: 59,130,246), ボーダー: border-blue-700 (RGB: 29,78,216)
+        // 計測機器: bg-purple-600 (RGB: 147,51,234), ボーダー: border-purple-800 (RGB: 107,33,168)
+        // 吊具: bg-orange-500 (RGB: 249,115,22), ボーダー: border-orange-700 (RGB: 194,65,12)
         const cardFill = isInstrument
-          ? 'rgba(35,48,94,0.90)'
+          ? 'rgba(147,51,234,1.0)' // purple-600
           : isRigging
-            ? 'rgba(255,247,204,0.90)' // 薄い黄色
-            : 'rgba(8,15,36,0.85)';
-        const cardStroke = isInstrument
-          ? 'rgba(129,140,248,0.60)'
-          : isRigging
-            ? 'rgba(255,221,128,0.80)'
-            : 'rgba(255,255,255,0.08)';
-        const codeColor = isInstrument ? '#c7d2fe' : isRigging ? '#facc15' : '#94a3b8';
+            ? 'rgba(249,115,22,1.0)' // orange-500
+            : 'rgba(59,130,246,1.0)'; // blue-500
+        // 超過アイテムの判定（isOver12Hours または isOverdue）
+        const isExceeded = tool.isOver12Hours || Boolean(tool.isOverdue);
+        
+        // 超過アイテムは赤い太枠、それ以外は通常のボーダー
+        const cardStroke = isExceeded
+          ? 'rgba(220,38,38,1.0)' // red-600 赤い太枠
+          : isInstrument
+            ? 'rgba(107,33,168,1.0)' // purple-800
+            : isRigging
+              ? 'rgba(194,65,12,1.0)' // orange-700
+              : 'rgba(29,78,216,1.0)'; // blue-700
+        const strokeWidth = isExceeded
+          ? Math.max(4, Math.round(4 * scale)) // 超過アイテムは4px以上の太枠
+          : Math.max(2, Math.round(2 * scale)); // 通常は2px以上
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
+        let hasThumbnail = false;
 
         if (config.showThumbnails && tool.thumbnailUrl) {
           const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
@@ -438,6 +452,7 @@ export class SignageRenderer {
               'cover'
             );
             if (base64) {
+              hasThumbnail = true;
               const thumbnailX = x + cardPadding;
               const thumbnailY = y + Math.round((cardHeight - thumbnailHeight) / 2);
               thumbnailElement = `
@@ -453,53 +468,53 @@ export class SignageRenderer {
           }
         }
 
+        // テキストエリアのX座標: サムネイルがある場合は右側、ない場合は左側から開始
+        const textAreaX = hasThumbnail
+          ? cardPadding + thumbnailSize + thumbnailGap
+          : cardPadding;
+
         const textStartY = y + cardPadding;
-        const managementY = textStartY + Math.round(14 * scale);
-        const primaryY = isInstrument ? managementY + Math.round(18 * scale) : textStartY + Math.round(20 * scale);
-        const nameY = primaryY + Math.round(18 * scale);
-        const dateY = nameY + Math.round(16 * scale);
-        const timeY = dateY + Math.round(16 * scale);
-        const warningY = timeY + Math.round(18 * scale);
-        
         const textX = x + textAreaX;
+        // 統一された情報の並び順: 名称、従業員名、日付+時刻（横並び）、警告
+        // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
+        const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
+        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
+        const dateTimeY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
+        // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
+        const dateX = textX;
+        const timeX = textX + (borrowedDate ? Math.round(80 * scale) : 0); // 日付の右側に時刻を配置（日付がない場合は左端から）
+        const warningY = dateTimeY + Math.round(24 * scale); // date/time(14px) + 24px間隔（約1.7倍）
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
-              fill="${cardFill}" stroke="${cardStroke}" />
+              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
             ${thumbnailElement}
-            ${isInstrument
-              ? `<text x="${textX}" y="${managementY}"
-                  font-size="${Math.round(14 * scale)}" font-weight="600" fill="#c7d2fe" font-family="sans-serif">
-                  ${this.escapeXml(managementText)}
-                </text>`
-              : ''
-            }
             <text x="${textX}" y="${primaryY}"
-              font-size="${Math.round(18 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(primaryText)}
             </text>
             <text x="${textX}" y="${nameY}"
-              font-size="${Math.round(16 * scale)}" fill="#ffffff" font-family="sans-serif">
+              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
             </text>
-            <text x="${textX}" y="${dateY}"
-              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            <text x="${dateX}" y="${dateTimeY}"
+              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
             </text>
-            <text x="${textX}" y="${timeY}"
-              font-size="${Math.round(14 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+            <text x="${timeX}" y="${dateTimeY}"
+              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
             </text>
-            ${tool.isOver12Hours
+            ${isExceeded
               ? `<text x="${textX}" y="${warningY}"
-                  font-size="${Math.round(14 * scale)}" fill="#f43f5e" font-family="sans-serif">
+                  font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   ⚠ 期限超過
                 </text>`
               : ''
             }
             <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.round(10 * scale)}" fill="${codeColor}" font-family="monospace">
+              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
               ${this.escapeXml(managementText || tool.itemCode || '')}
             </text>
           </g>

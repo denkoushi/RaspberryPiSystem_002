@@ -146,12 +146,46 @@ const buildStructuredErrorLog = (
 };
 
 export function registerErrorHandler(app: FastifyInstance): void {
+  // Fastifyのスキーマ検証エラーを処理
+  app.setSchemaErrorFormatter((errors) => {
+    return new Error(`Schema validation error: ${JSON.stringify(errors)}`);
+  });
+  
   app.setErrorHandler((error, request, reply) => {
     const requestId = request.id;
     const method = request.method;
     const url = request.url;
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
+    
+
+    // Fastifyのスキーマ検証エラーを処理
+    if (error.validation) {
+      const validationErrors = error.validation;
+      request.log.warn(
+        buildStructuredErrorLog(
+          requestId,
+          method,
+          url,
+          'SCHEMA_VALIDATION_ERROR',
+          error,
+          {
+            userId,
+            validationErrors,
+          },
+        ),
+        'Schema validation error',
+      );
+      reply
+        .status(400)
+        .send(
+          buildErrorResponse(requestId, 'リクエスト形式が不正です', {
+            errorCode: 'SCHEMA_VALIDATION_ERROR',
+            issues: validationErrors,
+          }),
+        );
+      return;
+    }
 
     if (error instanceof ApiError) {
       request.log.warn(

@@ -88,8 +88,13 @@ export class BackupService implements BackupProvider {
     const label = options?.label ? `-${options.label}` : '';
     // LocalStorageProviderのgetBaseDir()が既に/opt/RaspberryPiSystem_002/backupsを返すため、
     // ここでは相対パスのみを返す（backups/プレフィックスなし）
-    // CSVファイルには拡張子を付与
-    const extension = info.type === 'csv' ? '.csv' : '';
+    // CSVファイルには.csv拡張子、データベースバックアップには.sql.gz拡張子を付与
+    let extension = '';
+    if (info.type === 'csv') {
+      extension = '.csv';
+    } else if (info.type === 'database') {
+      extension = '.sql.gz';
+    }
     return `${info.type}/${now}${label}/${info.source}${extension}`;
   }
 }

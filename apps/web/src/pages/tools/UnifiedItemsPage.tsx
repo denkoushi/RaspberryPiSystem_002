@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useUnifiedItems } from '../../api/hooks';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { ItemTypeBadge } from '../../components/ui/ItemTypeBadge';
 
 import type { UnifiedItem } from '../../api/types';
 
@@ -44,7 +45,7 @@ export function UnifiedItemsPage() {
               className="md:max-w-xs"
             />
             <select
-              className="rounded border border-white/10 bg-slate-800 px-3 py-2 text-white md:max-w-xs"
+              className="rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900 md:max-w-xs"
               value={category}
               onChange={(e) => setCategory(e.target.value as CategoryFilter)}
             >
@@ -57,41 +58,31 @@ export function UnifiedItemsPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-white/70">読み込み中...</p>
+          <p className="text-sm text-slate-700">読み込み中...</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
+              <thead className="bg-slate-100 border-b-2 border-slate-500">
                 <tr>
-                  <th className="px-2 py-1">種類</th>
-                  <th className="px-2 py-1">名称</th>
-                  <th className="px-2 py-1">管理番号</th>
-                  <th className="px-2 py-1">カテゴリ</th>
-                  <th className="px-2 py-1">保管場所</th>
-                  <th className="px-2 py-1">ステータス</th>
-                  <th className="px-2 py-1">NFC UID</th>
+                  <th className="px-2 py-1 text-sm font-semibold">種類</th>
+                  <th className="px-2 py-1 text-sm font-semibold">名称</th>
+                  <th className="px-2 py-1 text-sm font-semibold">管理番号</th>
+                  <th className="px-2 py-1 text-sm font-semibold">カテゴリ</th>
+                  <th className="px-2 py-1 text-sm font-semibold">保管場所</th>
+                  <th className="px-2 py-1 text-sm font-semibold">ステータス</th>
+                  <th className="px-2 py-1 text-sm font-semibold">NFC UID</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.map((item) => (
-                  <tr key={`${item.type}-${item.id}`} className="border-t border-white/5">
+                  <tr key={`${item.type}-${item.id}`} className="border-t border-slate-500">
                     <td className="px-2 py-1">
-                      <span
-                        className={`inline-block rounded px-2 py-0.5 text-xs ${
-                          item.type === 'TOOL'
-                            ? 'bg-blue-500/20 text-blue-300'
-                            : item.type === 'MEASURING_INSTRUMENT'
-                              ? 'bg-purple-500/20 text-purple-300'
-                              : 'bg-amber-400/20 text-amber-200'
-                        }`}
-                      >
-                        {getTypeLabel(item.type)}
-                      </span>
+                      <ItemTypeBadge type={item.type} label={getTypeLabel(item.type)} />
                     </td>
-                    <td className="px-2 py-1 font-medium text-white">{item.name}</td>
-                    <td className="px-2 py-1 font-mono text-xs">{item.code}</td>
-                    <td className="px-2 py-1 text-white/70">{item.category ?? '-'}</td>
-                    <td className="px-2 py-1 text-white/70">{item.storageLocation ?? '-'}</td>
+                    <td className="px-2 py-1 font-bold text-base text-slate-900">{item.name}</td>
+                    <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{item.code}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.category ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.storageLocation ?? '-'}</td>
                     <td className="px-2 py-1">
                       <span
                         className={`inline-block rounded px-2 py-0.5 text-xs ${
@@ -107,14 +98,14 @@ export function UnifiedItemsPage() {
                         {getStatusLabel(item.status)}
                       </span>
                     </td>
-                    <td className="px-2 py-1 font-mono text-xs text-white/70">
+                    <td className="px-2 py-1 font-mono text-sm text-slate-700">
                       {item.nfcTagUid ?? '-'}
                     </td>
                   </tr>
                 ))}
                 {data?.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-2 py-4 text-center text-white/70">
+                    <td colSpan={7} className="px-2 py-4 text-center text-sm text-slate-700">
                       該当するアイテムがありません
                     </td>
                   </tr>

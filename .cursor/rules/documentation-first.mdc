@@ -9,7 +9,11 @@ alwaysApply: true
 
 **作業前に必ずドキュメントを参照し、既存のナレッジと実装パターンを尊重する。独自の新ロジックを追加する前に既存実装を確認する。**
 
+**関連ルール**: `.cursor/rules/system-stability.mdc`（既存システム保護ルール）と連携して動作します。
+
 ## 必須手順
+
+以下の手順は、基本原則を実現するための具体的なアクションです。すべての作業開始前に必ず実行してください。
 
 ### 1. ドキュメント参照の徹底
 
@@ -26,7 +30,14 @@ alwaysApply: true
 過去のトラブルシューティング記録を必ず確認：
 
 - **`docs/knowledge-base/index.md`**: 全ナレッジベースの索引
-- **`docs/knowledge-base/infrastructure.md`**: インフラ関連（KB-014 〜 KB-093）
+- **`docs/knowledge-base/infrastructure.md`**: インフラ関連の索引（サブカテゴリ別に分割）
+  - `infrastructure/docker-caddy.md`: Docker/Caddy関連（8件）
+  - `infrastructure/backup-restore.md`: バックアップ・リストア関連（10件）
+  - `infrastructure/ansible-deployment.md`: Ansible/デプロイ関連（7件）
+  - `infrastructure/security.md`: セキュリティ関連（8件）
+  - `infrastructure/signage.md`: サイネージ関連（10件）
+  - `infrastructure/hardware-nfc.md`: NFC/ハードウェア関連（3件）
+  - `infrastructure/miscellaneous.md`: その他（16件）
 - **`docs/knowledge-base/api.md`**: API関連
 - **`docs/knowledge-base/frontend.md`**: フロントエンド関連
 
@@ -41,6 +52,8 @@ alwaysApply: true
 - **`docs/guides/measuring-instruments-verification.md`**: 計測機器検証手順（該当機能の場合）
 
 ### 2. 既存コード・設定の尊重
+
+**関連**: `.cursor/rules/system-stability.mdc`の「5. 既存コード・設定の尊重」も参照してください。
 
 #### 2.1 動いているコードは変更しない
 
@@ -116,3 +129,5 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
 - `docs/INDEX.md`: ドキュメント索引
 - `docs/knowledge-base/index.md`: ナレッジベース索引
 - `.agent/PLANS.md`: ExecPlanの説明
+- `.cursor/rules/system-stability.mdc`: 既存システム保護ルール（システム保護の観点からドキュメント参照を強調）
+- `.cursor/rules/debug-mode.mdc`: デバッグモードと開発方針ルール（開発時のデバッグ手法）

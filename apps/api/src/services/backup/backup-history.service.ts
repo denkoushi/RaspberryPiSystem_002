@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { BackupOperationType, BackupStatus, Prisma } from '@prisma/client';
+import { BackupOperationType, BackupStatus, BackupFileStatus, Prisma } from '@prisma/client';
 
 export interface BackupSummary {
   targetKind?: string;
@@ -97,6 +97,7 @@ export class BackupHistoryService {
       backupPath: string | null;
       storageProvider: string;
       status: BackupStatus;
+      fileStatus: BackupFileStatus;
       sizeBytes: number | null;
       hash: string | null;
       summary: Prisma.JsonValue | null;
@@ -176,5 +177,58 @@ export class BackupHistoryService {
     });
 
     return result.count;
+  }
+
+  /**
+   * バックアップパスに基づいてファイルステータスをDELETEDに更新
+   */
+  async markHistoryAsDeletedByPath(backupPath: string): Promise<number> {
+    const result = await prisma.backupHistory.updateMany({
+      where: {
+        backupPath: backupPath,
+        fileStatus: 'EXISTS'
+      },
+      data: {
+        fileStatus: 'DELETED'
+      }
+    });
+    return result.count;
+  }
+
+  /**
+   * 最大件数を超える履歴のファイルステータスをDELETEDに更新（古いものから）
+   */
+  async markExcessHistoryAsDeleted(params: {
+    targetKind: string;
+    targetSource: string;
+    maxCount: number;
+  }): Promise<number> {
+    // 対象の履歴を取得（新しい順、ファイルが存在するもののみ）
+    const histories = await prisma.backupHistory.findMany({
+      where: {
+        targetKind: params.targetKind,
+        targetSource: params.targetSource,
+        status: BackupStatus.COMPLETED,
+        fileStatus: 'EXISTS'
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true }
+    });
+
+    // 最大件数を超えた分のファイルステータスをDELETEDに更新
+    if (histories.length > params.maxCount) {
+      const idsToUpdate = histories.slice(params.maxCount).map(h => h.id);
+      const result = await prisma.backupHistory.updateMany({
+        where: {
+          id: { in: idsToUpdate }
+        },
+        data: {
+          fileStatus: 'DELETED'
+        }
+      });
+      return result.count;
+    }
+
+    return 0;
   }
 }

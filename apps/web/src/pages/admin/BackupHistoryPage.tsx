@@ -5,7 +5,7 @@ import { useBackupHistory } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
-import type { BackupOperationType, BackupStatus } from '../../api/backup';
+import type { BackupOperationType, BackupStatus, BackupFileStatus } from '../../api/backup';
 
 export function BackupHistoryPage() {
   const [page, setPage] = useState(1);
@@ -33,15 +33,15 @@ export function BackupHistoryPage() {
   const getStatusColor = (status: BackupStatus) => {
     switch (status) {
       case 'COMPLETED':
-        return 'text-emerald-400';
+        return 'text-emerald-600';
       case 'FAILED':
-        return 'text-red-400';
+        return 'text-red-600';
       case 'PROCESSING':
-        return 'text-blue-400';
+        return 'text-blue-600';
       case 'PENDING':
-        return 'text-yellow-400';
+        return 'text-yellow-600';
       default:
-        return 'text-white/70';
+        return 'text-slate-600';
     }
   };
 
@@ -64,6 +64,28 @@ export function BackupHistoryPage() {
     return type === 'BACKUP' ? 'バックアップ' : 'リストア';
   };
 
+  const getFileStatusColor = (fileStatus: BackupFileStatus) => {
+    switch (fileStatus) {
+      case 'EXISTS':
+        return 'text-emerald-600';
+      case 'DELETED':
+        return 'text-slate-500';
+      default:
+        return 'text-slate-600';
+    }
+  };
+
+  const getFileStatusLabel = (fileStatus: BackupFileStatus) => {
+    switch (fileStatus) {
+      case 'EXISTS':
+        return '存在';
+      case 'DELETED':
+        return '削除済';
+      default:
+        return fileStatus;
+    }
+  };
+
   const formatFileSize = (bytes?: number | null) => {
     if (!bytes) return '-';
     if (bytes < 1024) return `${bytes} B`;
@@ -82,10 +104,10 @@ export function BackupHistoryPage() {
     >
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             操作種別
             <select
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={operationTypeFilter}
               onChange={(e) => {
                 setOperationTypeFilter(e.target.value as BackupOperationType | '');
@@ -97,10 +119,10 @@ export function BackupHistoryPage() {
               <option value="RESTORE">リストア</option>
             </select>
           </label>
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             ステータス
             <select
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as BackupStatus | '');
@@ -114,11 +136,11 @@ export function BackupHistoryPage() {
               <option value="PENDING">待機中</option>
             </select>
           </label>
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             開始日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -126,11 +148,11 @@ export function BackupHistoryPage() {
               }}
             />
           </label>
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             終了日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={endDate}
               onChange={(e) => {
                 setEndDate(e.target.value);
@@ -145,45 +167,49 @@ export function BackupHistoryPage() {
       </div>
 
       {isLoading ? (
-        <p>読み込み中...</p>
+        <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
-                <tr>
-                  <th className="px-2 py-1">日時</th>
-                  <th className="px-2 py-1">操作種別</th>
-                  <th className="px-2 py-1">対象</th>
-                  <th className="px-2 py-1">ストレージ</th>
-                  <th className="px-2 py-1">ステータス</th>
-                  <th className="px-2 py-1">サイズ</th>
-                  <th className="px-2 py-1">パス</th>
-                  <th className="px-2 py-1">エラー</th>
+              <thead className="bg-slate-100">
+                <tr className="border-b-2 border-slate-500">
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作種別</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">対象</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">ストレージ</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">ステータス</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">ファイル</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">サイズ</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">パス</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">エラー</th>
                 </tr>
               </thead>
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-2 py-4 text-center text-white/50">
+                    <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-600">
                       履歴がありません
                     </td>
                   </tr>
                 ) : (
                   history.map((item) => (
-                    <tr key={item.id} className="border-t border-white/5">
-                      <td className="px-2 py-1">{new Date(item.startedAt).toLocaleString()}</td>
-                      <td className="px-2 py-1">{getOperationTypeLabel(item.operationType)}</td>
-                      <td className="px-2 py-1">
+                    <tr key={item.id} className={`border-t border-slate-500 ${item.fileStatus === 'DELETED' ? 'bg-slate-50' : ''}`}>
+                      <td className="px-2 py-1 text-sm text-slate-700">{new Date(item.startedAt).toLocaleString()}</td>
+                      <td className="px-2 py-1 text-sm text-slate-700">{getOperationTypeLabel(item.operationType)}</td>
+                      <td className="px-2 py-1 text-sm text-slate-700">
                         {item.targetKind} ({item.targetSource})
                       </td>
-                      <td className="px-2 py-1">{item.storageProvider}</td>
-                      <td className={`px-2 py-1 ${getStatusColor(item.status)}`}>
+                      <td className="px-2 py-1 text-sm text-slate-700">{item.storageProvider}</td>
+                      <td className={`px-2 py-1 text-sm font-semibold ${getStatusColor(item.status)}`}>
                         {getStatusLabel(item.status)}
                       </td>
-                      <td className="px-2 py-1">{formatFileSize(item.sizeBytes)}</td>
-                      <td className="px-2 py-1 font-mono text-xs">{item.backupPath || '-'}</td>
-                      <td className="px-2 py-1 text-red-400 text-xs">
+                      <td className={`px-2 py-1 text-sm font-semibold ${getFileStatusColor(item.fileStatus)}`}>
+                        {getFileStatusLabel(item.fileStatus)}
+                      </td>
+                      <td className="px-2 py-1 text-sm text-slate-700">{formatFileSize(item.sizeBytes)}</td>
+                      <td className="px-2 py-1 font-mono text-xs text-slate-700">{item.backupPath || '-'}</td>
+                      <td className="px-2 py-1 text-sm font-semibold text-red-600">
                         {item.errorMessage ? (
                           <span title={item.errorMessage}>{item.errorMessage.substring(0, 50)}...</span>
                         ) : (
@@ -196,7 +222,7 @@ export function BackupHistoryPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex items-center justify-between text-sm text-white/70">
+          <div className="mt-4 flex items-center justify-between text-sm font-semibold text-slate-700">
             <Button variant="ghost" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               前へ
             </Button>

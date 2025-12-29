@@ -395,6 +395,11 @@ enum BackupStatus {
   FAILED
 }
 
+enum BackupFileStatus {
+  EXISTS   // ファイルが存在する
+  DELETED  // ファイルが削除済み（保持期間超過または最大件数超過）
+}
+
 model BackupHistory {
   id              String              @id @default(uuid())
   operationType   BackupOperationType // バックアップまたはリストア
@@ -403,6 +408,7 @@ model BackupHistory {
   backupPath      String? // バックアップファイルのパス（Dropboxまたはローカル）
   storageProvider String              @default("local") // ストレージプロバイダー（local, dropbox）
   status          BackupStatus        @default(PENDING)
+  fileStatus      BackupFileStatus    @default(EXISTS) // バックアップファイルの存在状態
   sizeBytes       Int? // バックアップファイルサイズ（バイト）
   hash            String? // バックアップファイルのハッシュ値（SHA256）
   summary         Json? // バックアップ・リストア結果サマリー
@@ -415,6 +421,7 @@ model BackupHistory {
   @@index([operationType])
   @@index([targetKind])
   @@index([status])
+  @@index([fileStatus])
   @@index([startedAt])
   @@index([completedAt])
 }

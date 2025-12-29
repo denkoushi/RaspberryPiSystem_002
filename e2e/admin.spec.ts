@@ -70,5 +70,123 @@ test.describe('管理画面', () => {
     // Cardコンポーネントの見出しを確認
     await expect(page.getByRole('heading', { name: /履歴/i })).toBeVisible();
   });
+
+  test.describe('バックアップ対象管理', () => {
+    test('バックアップ対象管理画面にアクセスできる', async ({ page }) => {
+      await page.getByRole('link', { name: /バックアップ/i }).click();
+      await expect(page).toHaveURL(/\/admin\/backup\/targets/);
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /バックアップ対象管理/i })).toBeVisible();
+    });
+
+    test('バックアップ対象を追加できる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // 「追加」ボタンをクリック
+      await page.getByRole('button', { name: /追加/i }).click();
+
+      // フォームが表示されるまで待機
+      await expect(page.getByLabel(/種類/i)).toBeVisible({ timeout: 3000 });
+
+      // フォームに入力
+      await page.getByLabel(/種類/i).selectOption('file');
+      await page.getByLabel(/ソース/i).fill('/tmp/test-backup-file.txt');
+      
+      // Phase 1: 新しいスケジュールUIに対応（時刻入力と曜日選択）
+      // 時刻入力フィールドを探す（type="time"）
+      const scheduleTimeInput = page.locator('input[type="time"]').first();
+      await expect(scheduleTimeInput).toBeVisible({ timeout: 3000 });
+      await scheduleTimeInput.fill('03:00');
+      
+      // 「保存」ボタンをクリックし、APIレスポンスを待機
+      // POST /api/backup/config/targets のレスポンスを待機
+      const savePromise = page.waitForResponse(
+        response => {
+          const url = response.url();
+          return url.includes('/api/backup/config/targets') && 
+                 !url.match(/\/api\/backup\/config\/targets\/\d+/) && // PUT/DELETEのパスを除外
+                 response.request().method() === 'POST' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
+      );
+      await page.getByRole('button', { name: /保存/i }).click();
+      await savePromise;
+
+      // 一覧に新しい対象が表示されることを確認
+      await expect(page.getByText('/tmp/test-backup-file.txt')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('バックアップ対象の有効/無効を切り替えられる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // チェックボックスが表示されるまで待機
+      const firstCheckbox = page.locator('input[type="checkbox"]').first();
+      await expect(firstCheckbox).toBeVisible({ timeout: 5000 });
+      
+      const initialChecked = await firstCheckbox.isChecked();
+
+      // チェックボックスをクリックし、APIレスポンスを待機
+      // PUT /api/backup/config/targets/:index のレスポンスを待機
+      const updatePromise = page.waitForResponse(
+        response => {
+          const url = response.url();
+          return url.match(/\/api\/backup\/config\/targets\/\d+/) && 
+                 response.request().method() === 'PUT' &&
+                 response.status() === 200;
+        },
+        { timeout: 15000 }
+      );
+      await firstCheckbox.click();
+      await updatePromise;
+
+      // 状態が変更されたことを確認 (toBeChecked / not.toBeChecked を使用)
+      if (initialChecked) {
+        await expect(firstCheckbox).not.toBeChecked({ timeout: 3000 });
+      } else {
+        await expect(firstCheckbox).toBeChecked({ timeout: 3000 });
+      }
+    });
+
+    test('バックアップ対象を削除できる', async ({ page }) => {
+      await page.goto('/admin/backup/targets');
+      await page.waitForLoadState('networkidle');
+
+      // 削除ボタンが表示されるまで待機
+      await expect(page.getByRole('button', { name: /削除/i }).first()).toBeVisible({ timeout: 5000 });
+
+      // 最初の「削除」ボタンをクリック
+      const deleteButtons = page.getByRole('button', { name: /削除/i });
+      const deleteButtonCount = await deleteButtons.count();
+      
+      if (deleteButtonCount > 0) {
+        // 確認ダイアログを自動承認
+        page.on('dialog', dialog => dialog.accept());
+        
+        // 削除ボタンをクリックし、APIレスポンスを待機
+        // DELETE /api/backup/config/targets/:index のレスポンスを待機
+        const deletePromise = page.waitForResponse(
+          response => {
+            const url = response.url();
+            return url.match(/\/api\/backup\/config\/targets\/\d+/) && 
+                   response.request().method() === 'DELETE' &&
+                   response.status() === 200;
+          },
+          { timeout: 15000 }
+        );
+        await deleteButtons.first().click();
+        await deletePromise;
+        
+        // UIが更新されるのを待機
+        await page.waitForLoadState('networkidle');
+        
+        // 削除ボタンの数が減ったことを確認
+        const newDeleteButtonCount = await page.getByRole('button', { name: /削除/i }).count();
+        expect(newDeleteButtonCount).toBeLessThan(deleteButtonCount);
+      }
+    });
+  });
 });
 

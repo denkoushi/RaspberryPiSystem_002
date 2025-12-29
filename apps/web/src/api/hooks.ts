@@ -9,8 +9,16 @@ import {
   updateCsvImportSchedule,
   deleteCsvImportSchedule,
   runCsvImportSchedule,
+  getBackupConfig,
+  updateBackupConfig,
+  addBackupTarget,
+  updateBackupTarget,
+  deleteBackupTarget,
+  runBackup,
   type BackupHistoryFilters,
-  type RestoreFromDropboxRequest
+  type RestoreFromDropboxRequest,
+  type BackupTarget,
+  type RunBackupRequest
 } from './backup';
 import {
   borrowItem,
@@ -637,6 +645,43 @@ export function useCsvImportSchedules() {
     queryKey: ['csv-import-schedules'],
     queryFn: getCsvImportSchedules
   });
+}
+
+// バックアップ設定関連のフック
+export function useBackupConfig() {
+  return useQuery({
+    queryKey: ['backup-config'],
+    queryFn: getBackupConfig
+  });
+}
+
+export function useBackupConfigMutations() {
+  const queryClient = useQueryClient();
+  const updateConfig = useMutation({
+    mutationFn: updateBackupConfig,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+  });
+  const addTarget = useMutation({
+    mutationFn: addBackupTarget,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+  });
+  const updateTarget = useMutation({
+    mutationFn: ({ index, target }: { index: number; target: Partial<BackupTarget> }) =>
+      updateBackupTarget(index, target),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+  });
+  const deleteTarget = useMutation({
+    mutationFn: (index: number) => deleteBackupTarget(index),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+  });
+  const runBackupMutation = useMutation({
+    mutationFn: (request: RunBackupRequest) => runBackup(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+    }
+  });
+  return { updateConfig, addTarget, updateTarget, deleteTarget, runBackup: runBackupMutation };
 }
 
 export function useCsvImportScheduleMutations() {

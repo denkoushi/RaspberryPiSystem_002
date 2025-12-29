@@ -7,6 +7,17 @@ import { ImportHistoryService } from '../import-history.service.js';
 // モック
 vi.mock('../../backup/backup-config.loader.js');
 vi.mock('../../../routes/imports.js');
+// BackupHistoryService（Prisma依存）をモックして、DBマイグレーション不要でユニットテスト可能にする
+const mockBackupCreateHistory = vi.fn().mockResolvedValue('test-backup-history-id');
+const mockBackupCompleteHistory = vi.fn().mockResolvedValue(undefined);
+const mockBackupFailHistory = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../backup/backup-history.service.js', () => ({
+  BackupHistoryService: vi.fn().mockImplementation(() => ({
+    createHistory: mockBackupCreateHistory,
+    completeHistory: mockBackupCompleteHistory,
+    failHistory: mockBackupFailHistory
+  }))
+}));
 vi.mock('../import-alert.service.js', () => ({
   ImportAlertService: vi.fn().mockImplementation(() => ({
     generateFailureAlert: vi.fn(),

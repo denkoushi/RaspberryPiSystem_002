@@ -6,7 +6,7 @@ import { createBorrowMachine } from './borrowMachine';
 import type { Loan } from '../../api/types';
 
 describe('borrow state machine', () => {
-  it('moves through scanning -> confirm -> success', async () => {
+  it('moves through scanning -> submitting -> success', async () => {
     const loan: Loan = {
       id: 'loan-1',
       borrowedAt: new Date().toISOString(),
@@ -42,7 +42,8 @@ describe('borrow state machine', () => {
     const machine = createBorrowMachine();
     const service = interpret(machine).start();
     service.send({ type: 'ITEM_SCANNED', uid: 'item-uid' });
-    expect(service.getSnapshot().value).toBe('waitEmployee');
+    // タグの順序は任意（この時点では収集継続）
+    expect(service.getSnapshot().value).toBe('collecting');
     service.send({ type: 'EMPLOYEE_SCANNED', uid: 'emp-uid' });
     expect(service.getSnapshot().value).toBe('submitting');
     service.send({ type: 'SUCCESS', loan });

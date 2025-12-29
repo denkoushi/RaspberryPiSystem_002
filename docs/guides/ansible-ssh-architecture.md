@@ -213,10 +213,56 @@ cd /opt/RaspberryPiSystem_002
 ansible all -i infrastructure/ansible/inventory.yml -m ping -vvv
 ```
 
+## AnsibleとTailscale連携の詳細
+
+### 変数展開の仕組み
+
+Ansible Playbookで`hosts: "{{ client_host }}"`のように直接ホストを指定すると、以下のように変数が展開されます：
+
+1. **Ansible Playbookの実行**:
+   ```yaml
+   hosts: "{{ client_host }}"  # 例: "raspberrypi4"
+   ```
+
+2. **inventory.ymlの参照**:
+   ```yaml
+   raspberrypi4:
+     ansible_host: "{{ kiosk_ip }}"  # 変数参照
+   ```
+
+3. **group_vars/all.ymlの変数解決**:
+   ```yaml
+   network_mode: "tailscale"  # または "local"
+   kiosk_ip: "{{ current_network.raspberrypi4_ip | default(local_network.raspberrypi4_ip) }}"
+   ```
+
+4. **最終的なIPアドレスの解決**:
+   - `network_mode: "tailscale"`の場合: `tailscale_network.raspberrypi4_ip`（例: `100.74.144.79`）
+   - `network_mode: "local"`の場合: `local_network.raspberrypi4_ip`（例: `192.168.10.224`）
+
+### `hosts: localhost`の問題
+
+`hosts: localhost`で実行すると、`group_vars/all.yml`の変数が読み込まれず、`ansible_host: "{{ kiosk_ip }}"`が展開されません。そのため、`hosts: "{{ client_host }}"`のように直接ホストを指定する必要があります。
+
+### Dockerコンテナ内からのSSH接続
+
+Dockerコンテナ内からSSH接続する場合は、SSH鍵をマウントする必要があります：
+
+```yaml
+# docker-compose.server.yml
+volumes:
+  - /home/denkon5sd02/.ssh:/root/.ssh:ro
+```
+
+これにより、Dockerコンテナ内からPi4へのSSH接続が可能になります。
+
+**注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
+
 ## 関連ドキュメント
 
 - [SSH鍵ベース運用ガイド](./ssh-setup.md): Pi5からPi3/4へのSSH鍵設定手順
 - [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md): MacからPi5への接続設定
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新の実行方法
 - [Ansible改善計画](../plans/ansible-improvement-plan.md): Ansibleの堅牢化・安定化計画
+- [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題): AnsibleとTailscale連携の問題と対策
 

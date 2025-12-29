@@ -294,7 +294,7 @@
    sudo systemctl restart kiosk-browser.service
    ```
 
-**ナレッジベース**: [KB-093](../knowledge-base/infrastructure.md#kb-093-計測機器apiの401エラー期限切れjwtとx-client-keyの競合)
+**ナレッジベース**: [KB-093](../knowledge-base/infrastructure/miscellaneous.md#kb-093-計測機器apiの401エラー期限切れjwtとx-client-keyの競合)
 
 ### 問題8: ドロップダウン選択時に氏名タグ自動送信されない
 

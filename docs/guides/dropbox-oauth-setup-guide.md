@@ -276,7 +276,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
      ```bash
      docker compose -f infrastructure/docker/docker-compose.server.yml restart api
      ```
-- **参考**: [KB-099](../knowledge-base/infrastructure.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)
+- **参考**: [KB-099](../knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)
 
 ## セキュリティに関する注意事項
 

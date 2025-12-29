@@ -54,20 +54,20 @@ export function HistoryPage() {
     <Card title="履歴">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             開始日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </label>
-          <label className="block text-sm text-white/70">
+          <label className="block text-sm font-semibold text-slate-700">
             終了日時
             <input
               type="datetime-local"
-              className="mt-1 rounded-md border border-white/10 bg-white/5 p-2 text-white"
+              className="mt-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
@@ -82,19 +82,19 @@ export function HistoryPage() {
       </div>
 
       {isLoading ? (
-        <p>読み込み中...</p>
+        <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-white/60">
-                <tr>
-                  <th className="px-2 py-1">日時</th>
-                  <th className="px-2 py-1">アクション</th>
-                  <th className="px-2 py-1">写真</th>
-                  <th className="px-2 py-1">アイテム</th>
-                  <th className="px-2 py-1">従業員</th>
-                  <th className="px-2 py-1">端末</th>
+              <thead className="bg-slate-200">
+                <tr className="border-b-2 border-slate-500">
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">アクション</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">写真</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">アイテム</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">従業員</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">端末</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,15 +107,15 @@ export function HistoryPage() {
                     ? tx.loan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')
                     : null;
                   return (
-                  <tr key={tx.id} className="border-t border-white/5">
-                    <td className="px-2 py-1">{new Date(tx.createdAt).toLocaleString()}</td>
-                    <td className="px-2 py-1">{tx.action}</td>
+                  <tr key={tx.id} className="border-t border-slate-500">
+                    <td className="px-2 py-1 text-sm text-slate-700">{new Date(tx.createdAt).toLocaleString()}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{tx.action}</td>
                     <td className="px-2 py-1">
                       {thumbnailUrl ? (
                         <img
                           src={thumbnailUrl}
                           alt="撮影した写真"
-                          className="h-12 w-12 rounded object-cover border border-white/10 cursor-pointer hover:opacity-80"
+                          className="h-12 w-12 rounded object-cover border-2 border-slate-500 cursor-pointer hover:opacity-80"
                           onClick={async () => {
                             // 認証付きで元画像を取得してモーダルで表示
                             if (tx.loan?.photoUrl) {
@@ -142,16 +142,16 @@ export function HistoryPage() {
                         '-'
                       )}
                     </td>
-                    <td className="px-2 py-1">{itemName}</td>
-                    <td className="px-2 py-1">{employeeName}</td>
-                    <td className="px-2 py-1">{tx.client?.name ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{itemName}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{employeeName}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{tx.client?.name ?? '-'}</td>
                   </tr>
                 );
                 })}
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex items-center justify-between text-sm text-white/70">
+          <div className="mt-4 flex items-center justify-between text-sm font-semibold text-slate-700">
             <Button variant="ghost" disabled={page <= 1 || isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               前へ
             </Button>

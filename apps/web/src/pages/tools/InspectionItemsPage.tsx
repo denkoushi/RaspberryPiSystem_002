@@ -82,7 +82,7 @@ export function InspectionItemsPage() {
     <div className="space-y-6">
       <Card title="計測機器選択">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             計測機器ID
             <Input
               value={instrumentId}
@@ -95,11 +95,11 @@ export function InspectionItemsPage() {
           </label>
           <div className="flex items-end">
             {instrument ? (
-              <p className="text-white/80">
+              <p className="text-sm font-semibold text-slate-700">
                 {instrument.name} ({instrument.managementNumber})
               </p>
             ) : (
-              <p className="text-white/50">計測機器を選択してください</p>
+              <p className="text-sm text-slate-600">計測機器を選択してください</p>
             )}
           </div>
         </div>
@@ -107,11 +107,11 @@ export function InspectionItemsPage() {
 
       <Card title="点検項目 登録 / 編集">
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             項目名
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </label>
-          <label className="text-sm text-white/70">
+          <label className="text-sm font-semibold text-slate-700">
             順序（order）
             <Input
               type="number"
@@ -120,15 +120,15 @@ export function InspectionItemsPage() {
               required
             />
           </label>
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             内容
             <Input value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} required />
           </label>
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             基準
             <Input value={form.criteria} onChange={(e) => setForm({ ...form, criteria: e.target.value })} required />
           </label>
-          <label className="text-sm text-white/70 md:col-span-2">
+          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             方法
             <Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} required />
           </label>
@@ -147,30 +147,30 @@ export function InspectionItemsPage() {
 
       <Card title="点検項目一覧">
         {!instrumentId ? (
-          <p className="text-white/60">計測機器IDを入力してください。</p>
+          <p className="text-sm text-slate-600">計測機器IDを入力してください。</p>
         ) : !items ? (
-          <p className="text-white/60">読み込み中…</p>
+          <p className="text-sm font-semibold text-slate-700">読み込み中…</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm text-white">
-              <thead className="text-left text-white/70">
-                <tr>
-                  <th className="px-2 py-1">順序</th>
-                  <th className="px-2 py-1">項目名</th>
-                  <th className="px-2 py-1">内容</th>
-                  <th className="px-2 py-1">基準</th>
-                  <th className="px-2 py-1">方法</th>
-                  <th className="px-2 py-1">操作</th>
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-200 text-left">
+                <tr className="border-b-2 border-slate-500">
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">順序</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">項目名</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">内容</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">基準</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">方法</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id} className="border-t border-white/10">
-                    <td className="px-2 py-1">{item.order}</td>
-                    <td className="px-2 py-1">{item.name}</td>
-                    <td className="px-2 py-1">{item.content}</td>
-                    <td className="px-2 py-1">{item.criteria}</td>
-                    <td className="px-2 py-1">{item.method}</td>
+                  <tr key={item.id} className="border-t border-slate-500">
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.order}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.name}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.content}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.criteria}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{item.method}</td>
                     <td className="px-2 py-1 space-x-2">
                       <Button className="px-2 py-1 text-xs" variant="secondary" onClick={() => startEdit(item)}>
                         編集

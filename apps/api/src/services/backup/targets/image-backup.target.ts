@@ -4,7 +4,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
-import type { BackupTargetInfo } from '../backup-types.js';
+import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
+import { logger } from '../../../lib/logger.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -77,6 +78,80 @@ export class ImageBackupTarget implements BackupTarget {
     } catch (error) {
       // エラー時も一時ファイルを削除
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async restore(backupData: Buffer, _options?: RestoreOptions): Promise<RestoreResult> { // eslint-disable-line @typescript-eslint/no-unused-vars
+    // 一時ディレクトリを作成してtar.gzを展開
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
+    const archivePath = path.join(tmpDir, 'images.tar.gz');
+
+    try {
+      // tar.gzファイルを一時ディレクトリに保存
+      await fs.writeFile(archivePath, backupData);
+
+      logger?.info({ tmpDir, photosDir: this.photosDir, thumbnailsDir: this.thumbnailsDir }, '[ImageBackupTarget] Restoring image backup from tar.gz');
+
+      // tar.gzを展開
+      await execFileAsync('tar', ['-xzf', archivePath, '-C', tmpDir]);
+
+      // 展開されたディレクトリを確認
+      const extractedPhotosDir = path.join(tmpDir, 'photos');
+      const extractedThumbnailsDir = path.join(tmpDir, 'thumbnails');
+
+      // 既存のディレクトリをバックアップ（オプション）または削除
+      // 安全のため、既存ディレクトリをリネームしてバックアップ
+      const backupSuffix = `-backup-${Date.now()}`;
+      try {
+        await fs.access(this.photosDir);
+        await fs.rename(this.photosDir, `${this.photosDir}${backupSuffix}`);
+        logger?.info({ backupDir: `${this.photosDir}${backupSuffix}` }, '[ImageBackupTarget] Backed up existing photos directory');
+      } catch {
+        // ディレクトリが存在しない場合は何もしない
+      }
+
+      try {
+        await fs.access(this.thumbnailsDir);
+        await fs.rename(this.thumbnailsDir, `${this.thumbnailsDir}${backupSuffix}`);
+        logger?.info({ backupDir: `${this.thumbnailsDir}${backupSuffix}` }, '[ImageBackupTarget] Backed up existing thumbnails directory');
+      } catch {
+        // ディレクトリが存在しない場合は何もしない
+      }
+
+      // 展開されたディレクトリを目的の場所に移動
+      try {
+        await fs.access(extractedPhotosDir);
+        await fs.mkdir(path.dirname(this.photosDir), { recursive: true });
+        await fs.rename(extractedPhotosDir, this.photosDir);
+        logger?.info({ photosDir: this.photosDir }, '[ImageBackupTarget] Restored photos directory');
+      } catch (error) {
+        logger?.warn({ err: error, extractedPhotosDir }, '[ImageBackupTarget] Photos directory not found in backup, skipping');
+      }
+
+      try {
+        await fs.access(extractedThumbnailsDir);
+        await fs.mkdir(path.dirname(this.thumbnailsDir), { recursive: true });
+        await fs.rename(extractedThumbnailsDir, this.thumbnailsDir);
+        logger?.info({ thumbnailsDir: this.thumbnailsDir }, '[ImageBackupTarget] Restored thumbnails directory');
+      } catch (error) {
+        logger?.warn({ err: error, extractedThumbnailsDir }, '[ImageBackupTarget] Thumbnails directory not found in backup, skipping');
+      }
+
+      // 一時ファイルを削除
+      await fs.rm(tmpDir, { recursive: true, force: true });
+
+      logger?.info({ photosDir: this.photosDir, thumbnailsDir: this.thumbnailsDir }, '[ImageBackupTarget] Image restore completed');
+
+      return {
+        backupId: 'photo-storage',
+        success: true,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      // エラー時も一時ファイルを削除
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      logger?.error({ err: error }, '[ImageBackupTarget] Image restore failed');
       throw error;
     }
   }

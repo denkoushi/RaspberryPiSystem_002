@@ -1,14 +1,10 @@
 import cron from 'node-cron';
 import { BackupService } from './backup.service.js';
-import { LocalStorageProvider } from './storage/local-storage.provider.js';
-import { DropboxStorageProvider } from './storage/dropbox-storage.provider.js';
-import { DatabaseBackupTarget } from './targets/database-backup.target.js';
-import { FileBackupTarget } from './targets/file-backup.target.js';
-import { DirectoryBackupTarget } from './targets/directory-backup.target.js';
-import { CsvBackupTarget } from './targets/csv-backup.target.js';
-import { ImageBackupTarget } from './targets/image-backup.target.js';
 import { BackupConfigLoader } from './backup-config.loader.js';
 import type { BackupConfig } from './backup-config.js';
+import { BackupTargetFactory } from './backup-target-factory.js';
+import { StorageProviderFactory } from './storage-provider-factory.js';
+import { BackupHistoryService } from './backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -44,36 +40,62 @@ export class BackupScheduler {
         existingTask.stop();
       }
 
-      // 新しいタスクを作成
-      const task = cron.schedule(target.schedule, async () => {
-        try {
-          logger?.info(
-            { kind: target.kind, source: target.source },
-            '[BackupScheduler] Starting scheduled backup'
+      // スケジュールのバリデーション
+      try {
+        // node-cronのvalidate関数を使用してスケジュールを検証
+        if (!cron.validate(target.schedule)) {
+          logger?.warn(
+            { taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+            '[BackupScheduler] Invalid cron schedule, skipping task'
           );
-
-          await this.executeBackup(config, target);
-
-          logger?.info(
-            { kind: target.kind, source: target.source },
-            '[BackupScheduler] Scheduled backup completed'
-          );
-        } catch (error) {
-          logger?.error(
-            { err: error, kind: target.kind, source: target.source },
-            '[BackupScheduler] Scheduled backup failed'
-          );
+          continue;
         }
-      }, {
-        scheduled: true,
-        timezone: 'Asia/Tokyo'
-      });
+      } catch (error) {
+        logger?.error(
+          { err: error, taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+          '[BackupScheduler] Failed to validate cron schedule, skipping task'
+        );
+        continue;
+      }
 
-      this.tasks.set(taskId, task);
-      logger?.info(
-        { taskId, schedule: target.schedule },
-        '[BackupScheduler] Scheduled task registered'
-      );
+      // 新しいタスクを作成
+      try {
+        const task = cron.schedule(target.schedule, async () => {
+          try {
+            logger?.info(
+              { kind: target.kind, source: target.source },
+              '[BackupScheduler] Starting scheduled backup'
+            );
+
+            await this.executeBackup(config, target);
+
+            logger?.info(
+              { kind: target.kind, source: target.source },
+              '[BackupScheduler] Scheduled backup completed'
+            );
+          } catch (error) {
+            logger?.error(
+              { err: error, kind: target.kind, source: target.source },
+              '[BackupScheduler] Scheduled backup failed'
+            );
+          }
+        }, {
+          scheduled: true,
+          timezone: 'Asia/Tokyo'
+        });
+
+        this.tasks.set(taskId, task);
+        logger?.info(
+          { taskId, schedule: target.schedule },
+          '[BackupScheduler] Scheduled task registered'
+        );
+      } catch (error) {
+        logger?.error(
+          { err: error, taskId, schedule: target.schedule, kind: target.kind, source: target.source },
+          '[BackupScheduler] Failed to create scheduled task'
+        );
+        // エラーが発生しても処理を続行（他のタスクに影響しない）
+      }
     }
 
     logger?.info(
@@ -115,109 +137,193 @@ export class BackupScheduler {
     config: BackupConfig,
     target: BackupConfig['targets'][0]
   ): Promise<void> {
-    // ストレージプロバイダーを作成
-    let storageProvider;
-    if (config.storage.provider === 'dropbox') {
-      const accessToken = config.storage.options?.accessToken as string;
-      if (!accessToken) {
-        throw new Error('Dropbox access token is required');
-      }
-      storageProvider = new DropboxStorageProvider({
-        accessToken,
-        basePath: config.storage.options?.basePath as string
-      });
+    // Dropboxのアクセストークン更新時は設定ファイルへ書き戻す（次回以降の実行を安定化）
+    const onTokenUpdate = async (newToken: string) => {
+      config.storage.options = {
+        ...(config.storage.options ?? {}),
+        accessToken: newToken
+      };
+      await BackupConfigLoader.save(config);
+    };
+
+    // バックアップターゲットを作成（Factoryパターンを使用）
+    const backupTarget = BackupTargetFactory.createFromConfig(config, target.kind, target.source, target.metadata);
+
+    // ストレージプロバイダーのリストを決定（多重バックアップ対応）
+    const providers: ('local' | 'dropbox')[] = [];
+    if (target.storage?.providers && target.storage.providers.length > 0) {
+      // providers配列が指定されている場合はそれを使用
+      providers.push(...target.storage.providers);
+    } else if (target.storage?.provider) {
+      // providerが指定されている場合は単一プロバイダーとして扱う
+      providers.push(target.storage.provider);
     } else {
-      storageProvider = new LocalStorageProvider();
+      // 未指定の場合は全体設定を使用
+      providers.push(config.storage.provider);
     }
 
-    const backupService = new BackupService(storageProvider);
+    // 各プロバイダーに順次バックアップを実行（多重バックアップ）
+    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; error?: string }> = [];
+    for (const requestedProvider of providers) {
+      try {
+        // 一時的にtargetのstorage.providerを設定してストレージプロバイダーを作成
+        const targetWithProvider = {
+          ...target,
+          storage: { provider: requestedProvider }
+        };
+        const providerResult = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate, true);
+        const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
+        const storageProvider = providerResult.storageProvider;
+        const backupService = new BackupService(storageProvider);
 
-    // バックアップターゲットを作成
-    let backupTarget;
-    switch (target.kind) {
-      case 'database':
-        backupTarget = new DatabaseBackupTarget(target.source);
-        break;
-      case 'file':
-        backupTarget = new FileBackupTarget(target.source);
-        break;
-      case 'directory':
-        backupTarget = new DirectoryBackupTarget(target.source);
-        break;
-      case 'csv':
-        if (target.source === 'employees' || target.source === 'items') {
-          backupTarget = new CsvBackupTarget(target.source as 'employees' | 'items', target.metadata);
+        // バックアップを実行
+        const result = await backupService.backup(backupTarget, {
+          label: target.metadata?.label as string
+        });
+
+        if (!result.success) {
+          results.push({ provider: actualProvider, success: false, error: result.error });
         } else {
-          throw new Error(`Invalid CSV source: ${target.source}`);
+          results.push({ provider: actualProvider, success: true });
         }
-        break;
-      case 'image':
-        backupTarget = new ImageBackupTarget(target.metadata);
-        break;
-      default:
-        throw new Error(`Unknown backup kind: ${target.kind}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ provider: requestedProvider, success: false, error: errorMessage });
+        // エラーが発生しても次のプロバイダーに続行
+      }
     }
 
-    // バックアップを実行
-    const result = await backupService.backup(backupTarget, {
-      label: target.metadata?.label as string
-    });
-
-    if (!result.success) {
-      throw new Error(`Backup failed: ${result.error}`);
+    // すべてのプロバイダーで失敗した場合はエラーをスロー
+    const allFailed = results.every((r) => !r.success);
+    if (allFailed) {
+      const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
+      throw new Error(`Backup failed on all providers: ${errorMessages}`);
     }
 
-    // 保持期間を超えたバックアップを削除
-    if (config.retention) {
-      await this.cleanupOldBackups(backupService, config.retention);
+    // 成功したプロバイダーのストレージプロバイダーを使用してクリーンアップ
+    const successfulProvider = providers.find((p, i) => results[i]?.success);
+    if (successfulProvider) {
+      // 対象ごとのretention設定を優先、未指定の場合は全体設定を使用（Phase 3）
+      const retention = target.retention || config.retention;
+      if (retention && retention.days) {
+        const targetWithProvider = {
+          ...target,
+          storage: { provider: successfulProvider }
+        };
+        const storageProvider = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
+                const backupService = new BackupService(storageProvider);
+                // 対象ごとのバックアップのみをクリーンアップするため、prefix+フィルタを指定
+                // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
+                // 実際のパスは database/<timestamp>/borrow_return となるため、prefix は kind のみとし、
+                // cleanupOldBackups 内でファイル名フィルタを行う
+                let sourceForPrefix = target.source;
+                if (target.kind === 'database') {
+                  try {
+                    const url = new URL(target.source);
+                    sourceForPrefix = url.pathname.replace(/^\//, '') || 'database';
+                  } catch {
+                    // URL解析に失敗した場合はそのまま使用
+                  }
+                }
+                const prefix = `${target.kind}`; // 例: "database"
+                await this.cleanupOldBackups(backupService, retention, prefix, sourceForPrefix, target.kind, target.source);
+      }
     }
   }
 
   /**
-   * 古いバックアップを削除
+   * 古いバックアップを削除（Phase 3: 対象ごとのretention設定に対応）
    */
   private async cleanupOldBackups(
     backupService: BackupService,
-    retention: BackupConfig['retention']
+    retention: { days?: number; maxBackups?: number } | undefined,
+    prefix?: string, // 対象ごとのバックアップをフィルタするためのプレフィックス
+    sourceForPrefix?: string, // パス末尾で対象を特定するためのソース名（例: borrow_return）
+    targetKind?: string, // ターゲットの種類
+    targetSource?: string // ターゲットのソース
   ): Promise<void> {
-    if (!retention) {
+    if (!retention || !retention.days) {
       return;
     }
 
-    const backups = await backupService.listBackups({});
+    // 対象ごとのバックアップのみを取得（prefixが指定されている場合）
+    const backups = await backupService.listBackups({ prefix });
+    // ターゲットのソース名に一致するバックアップのみ対象とする
+    const targetBackups = sourceForPrefix
+      ? backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`))
+      : backups;
     const now = new Date();
     const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
 
-    // 日付でソート（古い順）
-    const sortedBackups = backups
+    const historyService = new BackupHistoryService();
+
+    // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
+    if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
+      // 全バックアップを日付順にソート（古い順）
+      const allSortedBackups = targetBackups.sort((a, b) => {
+        if (!a.modifiedAt || !b.modifiedAt) return 0;
+        return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+      });
+      const toDelete = allSortedBackups.slice(0, targetBackups.length - retention.maxBackups);
+      for (const backup of toDelete) {
+        if (!backup.path) continue;
+        try {
+          await backupService.deleteBackup(backup.path);
+          // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+          try {
+            const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+            if (updatedCount > 0) {
+              logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+            }
+          } catch (error) {
+            logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
+          }
+          logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
+        } catch (error) {
+          logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
+        }
+      }
+    }
+
+    // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
+    const sortedBackups = targetBackups
       .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
       .sort((a, b) => {
         if (!a.modifiedAt || !b.modifiedAt) return 0;
         return a.modifiedAt.getTime() - b.modifiedAt.getTime();
       });
-
-    // 最大バックアップ数を超える場合は古いものから削除
-    if (retention.maxBackups && backups.length > retention.maxBackups) {
-      const toDelete = sortedBackups.slice(0, backups.length - retention.maxBackups);
-      for (const backup of toDelete) {
-        if (!backup.path) continue;
+    for (const backup of sortedBackups) {
+      if (!backup.path) continue;
+      try {
+        await backupService.deleteBackup(backup.path);
+        // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
         try {
-          await backupService.deleteBackup(backup.path);
-          logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
+          const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+          if (updatedCount > 0) {
+            logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+          }
         } catch (error) {
-          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to delete old backup');
+          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
         }
+        logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
+      } catch (error) {
+        logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
       }
-    } else {
-      // 保持期間を超えたバックアップを削除
-      for (const backup of sortedBackups) {
-        if (!backup.path) continue;
-        try {
-          await backupService.deleteBackup(backup.path);
-          logger?.info({ path: backup.path }, '[BackupScheduler] Old backup deleted');
-        } catch (error) {
-          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to delete old backup');
+    }
+
+    // バックアップ履歴も最大件数を超えた分のファイルステータスをDELETEDに更新
+    if (retention.maxBackups && targetKind && targetSource) {
+      try {
+        const markedCount = await historyService.markExcessHistoryAsDeleted({
+          targetKind,
+          targetSource,
+          maxCount: retention.maxBackups
+        });
+        if (markedCount > 0) {
+          logger?.info({ markedCount, targetKind, targetSource }, '[BackupScheduler] Old backup history marked as DELETED');
         }
+      } catch (error) {
+        logger?.error({ err: error }, '[BackupScheduler] Failed to mark old backup history as DELETED');
       }
     }
   }

@@ -2,12 +2,20 @@ services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: borrow_return
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # セキュリティ強化: 環境変数からパスワードを取得（デフォルト値は開発環境用）
+      # 本番環境では強力なパスワードを環境変数で設定すること
+      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - db-data:/var/lib/postgresql/data
+    # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
+    # APIコンテナからは `db:5432` でアクセス可能
+    # ローカル開発時のみポートを公開
     ports:
       - "5432:5432"
 
@@ -20,14 +28,20 @@ services:
       - db
     env_file:
       - ../../apps/api/.env.example
+      - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/borrow_return
+      # セキュリティ強化: 環境変数からデータベースURLを構築（パスワードは環境変数から取得）
+      # 本番環境では強力なパスワードを環境変数で設定すること
+      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
       SIGNAGE_PDF_DPI: "240"
       CAMERA_TYPE: mock
       ALERTS_DIR: /app/alerts
+      # API経由のローカルバックアップ保存先（ホストの/opt/backupsをコンテナへマウント）
+      BACKUP_STORAGE_DIR: /opt/backups
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -40,10 +54,23 @@ services:
       - signage-rendered-storage:/app/storage/signage-rendered
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/config:/app/config
+      # バックアップ保存先（ローカルストレージプロバイダー用）
+      - /opt/backups:/opt/backups
+      # 環境変数ファイルのバックアップ用にマウント（読み取り専用）
+      - /opt/RaspberryPiSystem_002/apps/api:/app/host/apps/api:ro
+      - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro
+      - /opt/RaspberryPiSystem_002/infrastructure/docker:/app/host/infrastructure/docker:ro
+      - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
+      - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
+      # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）
+      - /home/denkon5sd02/.ssh:/root/.ssh:ro
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
-    ports:
-      - "8080:8080"
+    # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
+    # Caddyからは `api:8080` でアクセス可能
+    # ports:
+    #   - "8080:8080"
     logging:
       driver: "json-file"
       options:

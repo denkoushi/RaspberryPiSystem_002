@@ -59,7 +59,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+    <div className="flex min-h-screen items-center justify-center bg-slate-800 text-white">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-md space-y-4 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl"
@@ -70,11 +70,23 @@ export function LoginPage() {
         </div>
         <label className="block">
           <span className="text-sm text-white/70">ユーザー名</span>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required />
+          <Input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+            required
+            className="border-white/20 bg-white/5 text-white placeholder-white/60"
+          />
         </label>
         <label className="block">
           <span className="text-sm text-white/70">パスワード</span>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="border-white/20 bg-white/5 text-white placeholder-white/60"
+          />
         </label>
         <label className="block">
           <span className="text-sm text-white/70">ワンタイムコード（MFA有効時）</span>
@@ -83,6 +95,7 @@ export function LoginPage() {
             onChange={(e) => setTotpCode(e.target.value)}
             placeholder="6桁コード"
             inputMode="numeric"
+            className="border-white/20 bg-white/5 text-white placeholder-white/60"
           />
         </label>
         <label className="block">
@@ -91,6 +104,7 @@ export function LoginPage() {
             value={backupCode}
             onChange={(e) => setBackupCode(e.target.value)}
             placeholder="バックアップコード"
+            className="border-white/20 bg-white/5 text-white placeholder-white/60"
           />
         </label>
         <label className="flex items-center gap-2">

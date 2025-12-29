@@ -141,11 +141,12 @@ jobs:
         run: |
           cd apps/api
           echo "Running backup service tests..."
-          pnpm test -- backup --reporter=verbose || {
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- backup --reporter=verbose || {
             echo "Backup tests failed, showing test output..."
             exit 1
           }
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
@@ -572,6 +573,8 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          BACKUP_CONFIG_PATH: /tmp/e2e-backup.json
+          BACKUP_STORAGE_DIR: /tmp/e2e-backups
 
       - name: Upload test results
         if: always()

@@ -34,7 +34,7 @@ export function KioskLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-800 text-white">
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
       <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
