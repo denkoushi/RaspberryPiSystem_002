@@ -593,6 +593,11 @@ export interface BackupConfig {
 
 **関連KB**: [KB-096](./knowledge-base/infrastructure.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
+**実機検証手順書**:
+- [バックアップリストア機能の実機検証手順](../guides/backup-restore-verification.md)（タスク1）
+- [backup.shスクリプトとの整合性確認手順](../guides/backup-script-integration-verification.md)（タスク2）
+- [Dropbox連携の追加検証手順](../guides/dropbox-integration-verification.md)（タスク3）
+
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 
 - ✅ 画像バックアップのリストア処理を追加
