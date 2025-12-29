@@ -109,14 +109,18 @@ export function GmailConfigPage() {
                   OAuth認証
                 </Button>
                 {config.hasRefreshToken && (
-                  <Button onClick={handleRefresh} disabled={refresh.isPending} variant="outline">
+                  <Button onClick={handleRefresh} disabled={refresh.isPending} variant="secondary">
                     トークン更新
                   </Button>
                 )}
-                <Button onClick={handleEdit} variant="outline">
+                <Button onClick={handleEdit} variant="secondary">
                   編集
                 </Button>
-                <Button onClick={handleDelete} disabled={remove.isPending} variant="destructive">
+                <Button
+                  onClick={handleDelete}
+                  disabled={remove.isPending}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
                   削除
                 </Button>
               </>
@@ -132,7 +136,7 @@ export function GmailConfigPage() {
             <Button onClick={handleSave} disabled={update.isPending}>
               保存
             </Button>
-            <Button onClick={handleCancel} variant="outline" disabled={update.isPending}>
+            <Button onClick={handleCancel} variant="secondary" disabled={update.isPending}>
               キャンセル
             </Button>
           </div>
