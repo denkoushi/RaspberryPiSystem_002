@@ -1074,6 +1074,15 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       targetSource = targetSource.replace(/\.csv$/, '');
     }
     
+    // データベースバックアップの場合は拡張子を削除（borrow_return.sql.gz -> borrow_return）
+    if (targetKind === 'database') {
+      if (targetSource.endsWith('.sql.gz')) {
+        targetSource = targetSource.replace(/\.sql\.gz$/, '');
+      } else if (targetSource.endsWith('.sql')) {
+        targetSource = targetSource.replace(/\.sql$/, '');
+      }
+    }
+    
     // データベースバックアップの場合は拡張子を処理
     // 既存のバックアップファイル（拡張子なし）との互換性のため、拡張子がない場合は.sql.gzを追加
     let actualBackupPath = normalizedBackupPath;
