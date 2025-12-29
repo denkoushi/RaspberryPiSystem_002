@@ -164,6 +164,8 @@ update-frequency: high
 | [KB-103](./infrastructure/backup-restore.md#kb-103-バックアップ対象ごとのストレージプロバイダー指定機能実装-phase-1-2) | バックアップ対象ごとのストレージプロバイダー指定機能実装（Phase 1-2） | ✅ 解決済み |
 | [KB-104](./infrastructure/backup-restore.md#kb-104-バックアップ対象ごとの保持期間設定と自動削除機能実装-phase-3) | バックアップ対象ごとの保持期間設定と自動削除機能実装（Phase 3） | ✅ 解決済み |
 | [KB-105](./infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) | DropboxリストアUI改善（バックアップパス手動入力からドロップダウン選択へ） | ✅ 解決済み |
+| [KB-106](./infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) | バックアップスクリプトとの整合性確認 | ✅ 解決済み |
+| [KB-107](./infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) | Dropboxストレージプロバイダーのエラーハンドリング改善 | ✅ 解決済み |
 
 ---
 

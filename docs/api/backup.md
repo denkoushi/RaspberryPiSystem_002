@@ -905,6 +905,30 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 
 ---
 
+### エラーハンドリング（2025-12-29追加）
+
+Dropboxストレージプロバイダーには、以下のエラーハンドリング機能が実装されています：
+
+**レート制限エラー（429）への対応**:
+- `upload`、`download`、`delete`メソッドでレート制限エラー（429）時に自動的にリトライ
+- `Retry-After`ヘッダーが指定されている場合はその値を使用、それ以外は指数バックオフ（2^retryCount秒、最大30秒）
+- 最大リトライ回数: 5回
+
+**ネットワークエラーへの対応**:
+- `download`、`delete`メソッドでネットワークエラー（タイムアウト、接続エラーなど）時に自動的にリトライ
+- 検出するネットワークエラー: `ETIMEDOUT`、`ECONNRESET`、`ENOTFOUND`、`ECONNREFUSED`、エラーメッセージに`timeout`、`network`、`ECONN`が含まれる場合
+- 指数バックオフによるリトライロジック（最大5回、最大30秒）
+
+**効果**:
+- レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上
+- ログ出力の改善により、リトライ時に詳細なログを出力することで、問題の特定が容易に
+
+**関連KB**: [KB-107](../knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善)
+
+**詳細**: [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
+
+---
+
 ## 関連ドキュメント
 
 - [バックアップ設定ガイド](../guides/backup-configuration.md)
@@ -912,3 +936,5 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
 - [Dropbox OAuth設定ガイド](../guides/dropbox-oauth-setup-guide.md)
 - [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
+- [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md)
+- [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)

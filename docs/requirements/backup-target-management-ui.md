@@ -601,13 +601,17 @@ export interface BackupConfig {
 **実機検証結果**: ✅ 完了（2025-12-29）
 - CSVリストア機能: ✅ 成功（データ形式修正後は正常動作）
 - データベースリストア機能: ✅ 成功（パス問題を解決、実機検証完了）
+- 画像バックアップリストア機能: ✅ 成功（`tar.gz`形式のバックアップを正常に展開・復元）
 - CSVリストア時の`targetSource`拡張子削除修正: ✅ 完了
 - データベースバックアップのパス問題解決: ✅ 完了（`.sql.gz`拡張子の付与とフォールバック処理、実機検証完了）
 - CSVデータのバリデーションエラー調査: ✅ 完了（データの問題として記録、社員コードを4桁形式に変更後は正常動作）
+- items.csvのバリデーションエラー調査: ✅ 完了（データの問題として記録、`ITEM-XXX`形式が`TOXXXX`形式に適合しない）
 - リストア機能のエラーハンドリング改善: ✅ 完了（APIエラーレスポンスの詳細メッセージ表示）
 - UI改善（バックアップパス選択）: ✅ 完了（手動入力からドロップダウン選択へ変更、実機検証完了）
+- バックアップスクリプトとの整合性確認: ✅ 完了（`/api/backup/internal`エンドポイントの動作確認、整合性確認完了）
+- Dropboxストレージプロバイダーのエラーハンドリング改善: ✅ 完了（ネットワークエラー時のリトライ機能、レート制限対応）
 - バックアップAPI仕様ドキュメント更新: ✅ 完了（トラブルシューティングセクション追加）
-- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題) / [KB-105](../knowledge-base/infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) を参照。
+- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md) / [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md) / [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題) / [KB-105](../knowledge-base/infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) / [KB-106](../knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) / [KB-107](../knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) を参照。
 
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 

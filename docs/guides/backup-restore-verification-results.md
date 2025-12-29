@@ -303,3 +303,5 @@ if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
 - [バックアップリストア機能の実機検証手順](./backup-restore-verification.md)
 - [バックアップリストア機能の実機検証実行手順](./backup-restore-verification-execution.md)
 - [バックアップAPI仕様](../api/backup.md)
+- [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md)
+- [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md)

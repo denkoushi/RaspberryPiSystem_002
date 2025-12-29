@@ -8,6 +8,14 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-29）
+
+- **✅ バックアップエラーハンドリング改善完了**: Dropboxストレージプロバイダーの`download`と`delete`メソッドに、レート制限エラー（429）とネットワークエラー時のリトライ機能を追加。指数バックオフによるリトライロジック（最大5回、最大30秒）を実装。レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上。詳細は [guides/backup-error-handling-improvements.md](./guides/backup-error-handling-improvements.md) / [knowledge-base/infrastructure/backup-restore.md#kb-107](./knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) を参照。
+
+- **✅ バックアップスクリプトとの整合性確認完了**: `scripts/server/backup.sh`スクリプトと管理コンソールのバックアップ機能の整合性を確認。`/api/backup/internal`エンドポイントが存在し、localhostからのアクセスのみ許可されていることを確認。バックアップスクリプトが使用する`kind`と`source`の組み合わせが管理コンソールと一致していることを確認。両方の方法で同じ設定ファイル（`backup.json`）が使用され、バックアップ履歴が正しく記録されることを確認。詳細は [guides/backup-script-integration-verification.md](./guides/backup-script-integration-verification.md) / [knowledge-base/infrastructure/backup-restore.md#kb-106](./knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) を参照。
+
+- **✅ 実機検証完了（画像バックアップ・items.csv）**: 画像バックアップのリストア検証を完了。`tar.gz`形式のバックアップを正常に展開・復元することを確認。items.csvのバックアップ・リストア検証も完了。バリデーションエラーはデータの問題（`ITEM-XXX`形式が`TOXXXX`形式に適合しない）であり、リストア機能自体は正常動作していることを確認。詳細は [guides/backup-restore-verification-results.md](./guides/backup-restore-verification-results.md) / [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-19）
 
 - **✅ バックアップロジックのアーキテクチャ改善完了**: Factoryパターンとレジストリパターンを実装し、コード重複を完全に解消。新しいバックアップターゲット追加時の修正箇所が7箇所から2箇所に削減（約71%削減）。`BackupTargetFactory`と`StorageProviderFactory`を追加し、リストアロジックを各ターゲットに分離。設定ファイルによるパスマッピング管理を実装。`backup-scheduler.ts`に`client-file`ケースを追加して設定と実装の整合性を確保。リンター0エラー、ユニットテスト16/16成功。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。
