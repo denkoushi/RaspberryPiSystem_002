@@ -151,8 +151,8 @@ export interface BackupTarget {
   schedule?: string;
   enabled: boolean;
   storage?: {
-    provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
-    providers?: ('local' | 'dropbox')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
+    provider?: 'local' | 'dropbox' | 'gmail'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
+    providers?: ('local' | 'dropbox' | 'gmail')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
   };
   retention?: {
     days?: number; // 保持日数（例: 30日）
