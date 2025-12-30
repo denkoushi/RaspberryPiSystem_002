@@ -347,7 +347,7 @@ describe('POST /api/imports/master', () => {
 
     expect(response.statusCode).toBe(400);
     const body = response.json();
-    expect(body.message).toContain('従業員とアイテムで同じnfcTagUidが使用されています');
+    expect(body.message).toContain('異なるタイプ間でタグUIDが重複しています');
   });
 
   it('should return 400 when no CSV files are uploaded', async () => {
