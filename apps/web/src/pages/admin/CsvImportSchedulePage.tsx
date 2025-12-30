@@ -168,6 +168,10 @@ export function CsvImportSchedulePage() {
   const handleCreate = async () => {
     setValidationError(null);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleCreate:enter',message:'create click',data:{formId:String(formData.id??''),provider:String(formData.provider??''),targetsCount:Array.isArray(formData.targets)?formData.targets.length:null,hasEmployeesPath:Boolean(formData.employeesPath&&String(formData.employeesPath).trim().length>0),hasItemsPath:Boolean(formData.itemsPath&&String(formData.itemsPath).trim().length>0)},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+
     if (!formData.id?.trim()) {
       setValidationError('IDは必須です');
       return;
@@ -221,12 +225,20 @@ export function CsvImportSchedulePage() {
       setScheduleDaysOfWeek([]);
       refetch();
     } catch (error) {
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleCreate:catch',message:'create error',data:{isAxios:Boolean(axios.isAxiosError(error)),status:axios.isAxiosError(error)?(error.response?.status??null):null,apiMessage:axios.isAxiosError(error)?(typeof (error.response?.data as any)?.message==='string'?(error.response?.data as any).message:null):null,formId:String(formData.id??'')},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       // エラーはmutationのisErrorで表示
     }
   };
 
   const handleUpdate = async (id: string) => {
     setValidationError(null);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleUpdate:enter',message:'update click',data:{pathId:String(id),formId:String(formData.id??''),editingId:String(editingId??''),targetsCount:Array.isArray(formData.targets)?formData.targets.length:null,hasEmployeesPath:Boolean(formData.employeesPath&&String(formData.employeesPath).trim().length>0),hasItemsPath:Boolean(formData.itemsPath&&String(formData.itemsPath).trim().length>0)},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     // 新形式または旧形式のいずれかが必須
     const hasTargets = formData.targets && formData.targets.length > 0;
@@ -255,16 +267,28 @@ export function CsvImportSchedulePage() {
     }
 
     try {
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleUpdate:beforeMutate',message:'update mutate',data:{pathId:String(id),payloadId:String((scheduleToSave as any)?.id??''),payloadProvider:String((scheduleToSave as any)?.provider??''),payloadTargetsCount:Array.isArray((scheduleToSave as any)?.targets)?(scheduleToSave as any).targets.length:null},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       await update.mutateAsync({ id, schedule: scheduleToSave });
       setEditingId(null);
       refetch();
     } catch (error) {
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleUpdate:catch',message:'update error',data:{pathId:String(id),formId:String(formData.id??''),isAxios:Boolean(axios.isAxiosError(error)),status:axios.isAxiosError(error)?(error.response?.status??null):null,apiMessage:axios.isAxiosError(error)?(typeof (error.response?.data as any)?.message==='string'?(error.response?.data as any).message:null):null},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // エラーはmutationのisErrorで表示
     }
   };
 
   const handleDelete = async (id: string) => {
     const schedule = schedules.find((s) => s.id === id);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleDelete:enter',message:'delete click',data:{pathId:String(id),found:Boolean(schedule),scheduleCount:Array.isArray(schedules)?schedules.length:null},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     if (
       !confirm(
@@ -276,8 +300,16 @@ export function CsvImportSchedulePage() {
 
     try {
       await remove.mutateAsync(id);
+      // 削除したスケジュールが編集中だった場合は編集状態をクリア
+      if (editingId === id) {
+        cancelEdit();
+      }
       refetch();
     } catch (error) {
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:handleDelete:catch',message:'delete error',data:{pathId:String(id),isAxios:Boolean(axios.isAxiosError(error)),status:axios.isAxiosError(error)?(error.response?.status??null):null,apiMessage:axios.isAxiosError(error)?(typeof (error.response?.data as any)?.message==='string'?(error.response?.data as any).message:null):null},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       // エラーはmutationのisErrorで表示
     }
   };
@@ -313,6 +345,10 @@ export function CsvImportSchedulePage() {
 
   const startEdit = (schedule: CsvImportSchedule) => {
     setEditingId(schedule.id);
+    // #region agent log
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/admin/CsvImportSchedulePage.tsx:startEdit',message:'start edit',data:{scheduleId:String(schedule.id),provider:String((schedule as any).provider??''),hasTargets:Boolean((schedule as any).targets&&Array.isArray((schedule as any).targets)&&((schedule as any).targets.length>0)),hasEmployeesPath:Boolean((schedule as any).employeesPath&&String((schedule as any).employeesPath).trim().length>0),hasItemsPath:Boolean((schedule as any).itemsPath&&String((schedule as any).itemsPath).trim().length>0)},timestamp:Date.now(),sessionId:'debug-session',runId:'csv-schedule-404-pre',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     // 旧形式から新形式への変換（表示用）
     const formDataToSet: Partial<CsvImportSchedule> = { ...schedule };
     if (!formDataToSet.targets && (schedule.employeesPath || schedule.itemsPath)) {
@@ -380,6 +416,23 @@ export function CsvImportSchedulePage() {
   // 新規作成フォームを開いた時にスケジュールの初期値を設定
   useEffect(() => {
     if (showCreateForm) {
+      // フォームデータを初期化（削除後に残った古いデータをクリア）
+      setFormData({
+        id: '',
+        name: '',
+        provider: undefined,
+        targets: [],
+        employeesPath: '',
+        itemsPath: '',
+        schedule: '0 2 * * *',
+        timezone: 'Asia/Tokyo',
+        enabled: true,
+        replaceExisting: false,
+        autoBackupAfterImport: {
+          enabled: false,
+          targets: ['csv']
+        }
+      });
       setScheduleTime('02:00');
       setScheduleDaysOfWeek([]);
     }
