@@ -8,6 +8,7 @@ import { registerRateLimit } from './plugins/rate-limit.js';
 import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRequestLogger } from './plugins/request-logger.js';
 import { registerRoutes } from './routes/index.js';
+import { initializeCsvImporters } from './services/imports/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
 import { SignageRenderStorage } from './lib/signage-render-storage.js';
@@ -73,6 +74,10 @@ export async function buildServer(): Promise<FastifyInstance> {
   
   // アプリケーションコンテキストにスケジューラーを保存
   app.decorate('signageRenderScheduler', scheduler);
+  
+  // CSVインポータを初期化
+  initializeCsvImporters();
+  app.log.info('CSV importers initialized');
   
   // ルートを登録
   await registerRoutes(app);

@@ -87,6 +87,57 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart web
 
 Macのブラウザで`https://raspberrypi.tail7312a3.ts.net`にアクセスし、自己署名証明書を信頼してください。初回のみ警告が表示されます。
 
+#### 0.5 OAuth認証時のコールバックURI解決設定（重要）
+
+**問題**: OAuth認証時にGoogleからコールバックURI（`https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback`）にリダイレクトされますが、Macのブラウザが`raspberrypi.tail7312a3.ts.net`を解決できない場合があります。
+
+**解決策**: Macの`/etc/hosts`ファイルに固定レコードを追加します。**この設定は一度行えば永続的に有効**です。
+
+#### 方法1: スクリプトを使用（推奨）
+
+```bash
+# Macのターミナルで実行（管理者権限が必要）
+cd /Users/tsudatakashi/RaspberryPiSystem_002
+./scripts/mac/setup-etc-hosts-for-gmail-oauth.sh 100.106.158.2 raspberrypi.tail7312a3.ts.net
+```
+
+スクリプトが以下を自動的に実行します：
+- `/etc/hosts`にエントリを追加（既存の場合は上書き確認）
+- DNS解決の確認
+
+#### 方法2: 手動で編集
+
+```bash
+# Macのターミナルで実行（管理者権限が必要）
+sudo nano /etc/hosts
+```
+
+以下の行を追加（`100.106.158.2`は実際のPi5のTailscale IPアドレスに置き換えてください）：
+
+```
+100.106.158.2 raspberrypi.tail7312a3.ts.net
+```
+
+保存して終了（`Ctrl+O` → `Enter` → `Ctrl+X`）。
+
+**確認**:
+```bash
+# DNS解決を確認
+ping -c 1 raspberrypi.tail7312a3.ts.net
+```
+
+**重要**: 
+- OAuth認証は**最初の1回だけ**実行します（refresh tokenを取得するため）
+- 以後は**自動リフレッシュ**で運用可能です（Gmailの場合、`OAuth2Client`が自動的にトークンをリフレッシュします）
+- `/etc/hosts`の設定は一度行えば永続的に有効です（Pi5のTailscale IPが変更されない限り）
+
+**Tailscale DNSをオフにしても問題ありません**:
+- Pi5側はDNS解決に依存していません（IPアドレスで動作）
+- Mac側で`/etc/hosts`に固定レコードを追加すれば、OAuth認証時のコールバックURI解決が可能です
+- OAuth認証は最初の1回だけなので、`/etc/hosts`の設定は一度行えば十分です
+
+**代替案**: Tailscale DNSをONにする方法もありますが、実運用で毎回ONにするのは非現実的なため、`/etc/hosts`の設定を推奨します。
+
 ### 1. Google Cloud Consoleでの設定
 
 #### 1.1 プロジェクトの作成
@@ -243,9 +294,15 @@ Macのブラウザで`https://raspberrypi.tail7312a3.ts.net`にアクセスし�
    - Gmail設定画面で「リフレッシュトークン: ✓ 設定済み」が表示されているか確認
    - 表示されていない場合は、OAuth認証を再実行
 
-2. **手動でトークンをリフレッシュ**
-   - Gmail設定画面で「トークン更新」ボタンをクリック
-   - これにより、リフレッシュトークンを使用して新しいアクセストークンを取得します
+2. **自動リフレッシュについて**
+   - **Gmailの場合**: `OAuth2Client`が自動的にトークンをリフレッシュします
+   - アクセストークンの有効期限（約1時間）が切れても、API呼び出し時に自動的にリフレッシュされます
+   - **手動リフレッシュは通常不要**です
+   - エラーが発生した場合のみ、Gmail設定画面で「トークン更新」ボタンをクリックして手動でリフレッシュできます
+
+3. **Dropboxとの違い**
+   - **Dropbox**: SDKに自動リフレッシュ機能がないため、エラー発生時に手動でリフレッシュが必要です
+   - **Gmail**: `OAuth2Client`が自動リフレッシュするため、手動リフレッシュは通常不要です
 
 ### CSVインポートが失敗する
 

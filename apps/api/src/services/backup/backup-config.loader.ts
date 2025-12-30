@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { BackupConfigSchema, type BackupConfig, defaultBackupConfig } from './backup-config.js';
+import { BackupConfigSchema, type BackupConfig, defaultBackupConfig, type CsvImportTarget } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -65,6 +65,33 @@ export class BackupConfigLoader {
       }
       
       const config = BackupConfigSchema.parse(configJson);
+      
+      // 旧形式（employeesPath/itemsPath）を新形式（targets）に変換
+      if (config.csvImports) {
+        for (const schedule of config.csvImports) {
+          // targetsが既に存在する場合はスキップ
+          if (schedule.targets && schedule.targets.length > 0) {
+            continue;
+          }
+          
+          // 旧形式から新形式へ変換
+          const targets: CsvImportTarget[] = [];
+          if (schedule.employeesPath) {
+            targets.push({ type: 'employees', source: schedule.employeesPath });
+          }
+          if (schedule.itemsPath) {
+            targets.push({ type: 'items', source: schedule.itemsPath });
+          }
+          
+          if (targets.length > 0) {
+            schedule.targets = targets;
+            logger?.info(
+              { scheduleId: schedule.id },
+              '[BackupConfigLoader] Converted legacy csvImports format to targets format'
+            );
+          }
+        }
+      }
       
       logger?.info({ configPath: this.configPath }, '[BackupConfigLoader] Config loaded');
       return config;

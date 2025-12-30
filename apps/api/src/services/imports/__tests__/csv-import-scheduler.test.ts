@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { CsvImportScheduler, getCsvImportScheduler } from '../csv-import-scheduler.js';
 import { BackupConfigLoader } from '../../backup/backup-config.loader.js';
-import { processCsvImport } from '../../../routes/imports.js';
+import { processCsvImportFromTargets } from '../../../routes/imports.js';
 import { ImportHistoryService } from '../import-history.service.js';
 
 // モック
 vi.mock('../../backup/backup-config.loader.js');
-vi.mock('../../../routes/imports.js');
+vi.mock('../../../routes/imports.js', () => ({
+  processCsvImportFromTargets: vi.fn()
+}));
 // BackupHistoryService（Prisma依存）をモックして、DBマイグレーション不要でユニットテスト可能にする
 const mockBackupCreateHistory = vi.fn().mockResolvedValue('test-backup-history-id');
 const mockBackupCompleteHistory = vi.fn().mockResolvedValue(undefined);
@@ -110,7 +112,9 @@ describe('CsvImportScheduler', () => {
           {
             id: 'test-1',
             name: 'Test Import',
-            employeesPath: '/backups/csv/employees.csv',
+            targets: [
+              { type: 'employees', source: '/backups/csv/employees.csv' }
+            ],
             schedule: '0 4 * * *',
             enabled: true,
             replaceExisting: false
@@ -182,7 +186,9 @@ describe('CsvImportScheduler', () => {
         csvImports: [
           {
             id: 'test-1',
-            employeesPath: '/backups/csv/employees.csv',
+            targets: [
+              { type: 'employees', source: '/backups/csv/employees.csv' }
+            ],
             schedule: '0 4 * * *',
             enabled: true,
             replaceExisting: false
@@ -224,7 +230,9 @@ describe('CsvImportScheduler', () => {
         csvImports: [
           {
             id: 'test-1',
-            employeesPath: '/backups/csv/employees.csv',
+            targets: [
+              { type: 'employees', source: '/backups/csv/employees.csv' }
+            ],
             schedule: '0 4 * * *',
             enabled: true,
             replaceExisting: false
@@ -254,7 +262,9 @@ describe('CsvImportScheduler', () => {
         csvImports: [
           {
             id: 'test-1',
-            employeesPath: '/backups/csv/employees.csv',
+            targets: [
+              { type: 'employees', source: '/backups/csv/employees.csv' }
+            ],
             schedule: '0 4 * * *',
             enabled: true,
             replaceExisting: false
@@ -263,7 +273,7 @@ describe('CsvImportScheduler', () => {
       };
 
       vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
-      vi.mocked(processCsvImport).mockResolvedValue({
+      vi.mocked(processCsvImportFromTargets).mockResolvedValue({
         summary: {
           employees: { processed: 1, created: 1, updated: 0 }
         }
@@ -272,7 +282,7 @@ describe('CsvImportScheduler', () => {
       await scheduler.start();
       await scheduler.runImport('test-1');
 
-      expect(processCsvImport).toHaveBeenCalled();
+      expect(processCsvImportFromTargets).toHaveBeenCalled();
     });
 
     it('should throw error if schedule not found', async () => {
@@ -296,7 +306,9 @@ describe('CsvImportScheduler', () => {
         csvImports: [
           {
             id: 'test-1',
-            employeesPath: '/backups/csv/employees.csv',
+            targets: [
+              { type: 'employees', source: '/backups/csv/employees.csv' }
+            ],
             schedule: '0 4 * * *',
             enabled: true,
             replaceExisting: false
@@ -305,7 +317,7 @@ describe('CsvImportScheduler', () => {
       };
 
       vi.mocked(BackupConfigLoader.load).mockResolvedValue(mockConfig as any);
-      vi.mocked(processCsvImport).mockImplementation(
+      vi.mocked(processCsvImportFromTargets).mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve({} as any), 100))
       );
 
@@ -734,7 +746,7 @@ describe('CsvImportScheduler', () => {
         download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
       } as any));
 
-      vi.mocked(processCsvImport).mockResolvedValue({
+      vi.mocked(processCsvImportFromTargets).mockResolvedValue({
         summary: {
           employees: { processed: 1, created: 1, updated: 0 }
         }
@@ -783,7 +795,7 @@ describe('CsvImportScheduler', () => {
         download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
       } as any));
 
-      vi.mocked(processCsvImport).mockResolvedValue({
+      vi.mocked(processCsvImportFromTargets).mockResolvedValue({
         summary: {
           employees: { processed: 1, created: 1, updated: 0 }
         }
@@ -830,7 +842,7 @@ describe('CsvImportScheduler', () => {
         download: vi.fn().mockResolvedValue(Buffer.from('employeeCode,displayName\n0001,Test'))
       } as any));
 
-      vi.mocked(processCsvImport).mockResolvedValue({
+      vi.mocked(processCsvImportFromTargets).mockResolvedValue({
         summary: {
           employees: { processed: 1, created: 1, updated: 0 }
         }

@@ -412,6 +412,8 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
 - OAuth 2.0認証によるセキュアな認証フローを実装
 - 管理画面からGmail設定を管理できるUIを実装
 - リトライ機能により、一時的なネットワークエラーに対応可能
+- Tailscale DNSをオフにした場合の`/etc/hosts`設定スクリプトを作成
+- Gmail OAuth認証が正常に完了（refresh token取得済み）
 
 ### テスト結果
 - ユニットテスト: すべて成功（GmailOAuthService: 9テスト、GmailApiClient: 13テスト、GmailStorageProvider: 11テスト、StorageProviderFactory: 7テスト）
@@ -424,7 +426,10 @@ Gmail連携ガイドとPowerAutomate側仕様を作成します。
 - JPEG添付ファイルの処理は未実装（CSVファイルのみ対応）
 
 ### 次のステップ
-1. E2Eテストの実装（Gmail設定管理UI）
-2. JPEG添付ファイルの処理機能の実装（PowerAutomateから送信されるJPEGファイルの処理）
-3. 実際の環境での動作確認（PowerAutomateとの連携テスト）
+1. ✅ OAuth認証完了（2025-12-29）: Gmail OAuth認証が正常に完了し、refresh tokenを取得
+2. CSVインポートスケジュールの設定: Gmailプロバイダーを使用したCSVインポートスケジュールを設定
+3. PowerAutomate側の設定: GmailにCSVファイルを添付して送信するフローを設定
+4. E2Eテストの実装（Gmail設定管理UI）
+5. JPEG添付ファイルの処理機能の実装（PowerAutomateから送信されるJPEGファイルの処理）
+6. 実際の環境での動作確認（PowerAutomateとの連携テスト）
 

@@ -9,9 +9,10 @@ import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { BackupVerifier } from '../backup/backup-verifier.js';
 import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
-import { processCsvImport } from '../../routes/imports.js';
+import { processCsvImportFromTargets } from '../../routes/imports.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
+import type { CsvImportTarget } from './csv-importer.types.js';
 
 /**
  * CSVインポートスケジューラー
@@ -103,7 +104,7 @@ export class CsvImportScheduler {
             '[CsvImportScheduler] Starting scheduled CSV import'
           );
 
-          // インポート履歴を作成
+          // インポート履歴を作成（旧形式との互換性のため）
           historyId = await this.historyService.createHistory({
             scheduleId: taskId,
             scheduleName: importSchedule.name,
@@ -324,7 +325,7 @@ export class CsvImportScheduler {
         '[CsvImportScheduler] Starting manual CSV import'
       );
 
-      // インポート履歴を作成
+      // インポート履歴を作成（旧形式との互換性のため）
       historyId = await this.historyService.createHistory({
         scheduleId: importId,
         scheduleName: importSchedule.name,
@@ -388,7 +389,7 @@ export class CsvImportScheduler {
   private async executeImport(
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0]
-  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }> {
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
     // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
     const provider = importSchedule.provider || config.storage.provider;
     
@@ -442,7 +443,7 @@ export class CsvImportScheduler {
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     provider: 'dropbox' | 'gmail'
-  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }> {
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = 'http'; // スケジューラー内ではプロトコルは不要
     const host = 'localhost:8080'; // スケジューラー内ではホストは不要
@@ -474,44 +475,41 @@ export class CsvImportScheduler {
       onTokenUpdate
     );
 
+    // ターゲットを取得（新形式優先、旧形式は変換）
+    let targets: CsvImportTarget[] = [];
+    if (importSchedule.targets && importSchedule.targets.length > 0) {
+      targets = importSchedule.targets;
+    } else {
+      // 旧形式から新形式へ変換
+      if (importSchedule.employeesPath) {
+        targets.push({ type: 'employees', source: importSchedule.employeesPath });
+      }
+      if (importSchedule.itemsPath) {
+        targets.push({ type: 'items', source: importSchedule.itemsPath });
+      }
+    }
+
+    if (targets.length === 0) {
+      throw new Error('No CSV import targets specified in import schedule');
+    }
+
     // CSVファイルをダウンロード
-    const files: { employees?: Buffer; items?: Buffer } = {};
+    const fileMap = new Map<string, Buffer>();
     
-    // パスを取得（Dropbox用: パス、Gmail用: 件名パターン）
-    const employeesPath = importSchedule.employeesPath;
-    const itemsPath = importSchedule.itemsPath;
-    
-    if (employeesPath) {
+    for (const target of targets) {
       logger?.info(
-        { path: employeesPath, provider },
-        '[CsvImportScheduler] Downloading employees CSV'
+        { type: target.type, source: target.source, provider },
+        `[CsvImportScheduler] Downloading ${target.type} CSV`
       );
-      files.employees = await storageProvider.download(employeesPath);
+      const buffer = await storageProvider.download(target.source);
+      fileMap.set(target.type, buffer);
       logger?.info(
-        { path: employeesPath, size: files.employees.length, provider },
-        '[CsvImportScheduler] Employees CSV downloaded'
+        { type: target.type, source: target.source, size: buffer.length, provider },
+        `[CsvImportScheduler] ${target.type} CSV downloaded`
       );
-    }
-
-    if (itemsPath) {
-      logger?.info(
-        { path: itemsPath, provider },
-        '[CsvImportScheduler] Downloading items CSV'
-      );
-      files.items = await storageProvider.download(itemsPath);
-      logger?.info(
-        { path: itemsPath, size: files.items.length, provider },
-        '[CsvImportScheduler] Items CSV downloaded'
-      );
-    }
-
-    // ファイルが1つもない場合はエラー
-    if (!files.employees && !files.items) {
-      throw new Error('No CSV files specified in import schedule');
     }
 
     // CSVインポートを実行
-    // loggerをprocessCsvImportの期待する形式にラップ
     const logWrapper = {
       info: (obj: unknown, msg: string) => {
         logger?.info(obj, msg);
@@ -521,8 +519,9 @@ export class CsvImportScheduler {
       }
     };
 
-    const { summary } = await processCsvImport(
-      files,
+    const { summary } = await processCsvImportFromTargets(
+      targets,
+      fileMap,
       importSchedule.replaceExisting ?? false,
       logWrapper
     );
@@ -541,7 +540,7 @@ export class CsvImportScheduler {
   private async executeAutoBackup(
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
-    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }
+    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }
   ): Promise<void> {
     const autoBackupConfig = importSchedule.autoBackupAfterImport;
     if (!autoBackupConfig?.enabled) {

@@ -1,6 +1,19 @@
 import { z } from 'zod';
 
 /**
+ * CSVインポートタイプ
+ */
+export const CsvImportTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']);
+
+/**
+ * CSVインポートターゲット（スケジュール内の1つの対象）
+ */
+export const CsvImportTargetSchema = z.object({
+  type: CsvImportTypeSchema,
+  source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
+});
+
+/**
  * パスマッピング設定のスキーマ
  */
 export const PathMappingSchema = z.object({
@@ -53,6 +66,9 @@ export const BackupConfigSchema = z.object({
     id: z.string(), // スケジュールID（一意）
     name: z.string().optional(), // スケジュール名（表示用）
     provider: z.enum(['dropbox', 'gmail']).optional(), // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+    // 新形式: targets配列（汎用化）
+    targets: z.array(CsvImportTargetSchema).optional(),
+    // 旧形式: 後方互換のため残す（読み込み時にtargetsへ変換）
     employeesPath: z.string().optional(), // Dropbox用: パス、Gmail用: 件名パターン
     itemsPath: z.string().optional(), // Dropbox用: パス、Gmail用: 件名パターン
     schedule: z.string(), // cron形式（例: "0 4 * * *"）
@@ -69,6 +85,36 @@ export const BackupConfigSchema = z.object({
     }).optional().default({ enabled: false, targets: ['csv'] }),
     metadata: z.record(z.unknown()).optional()
   })).optional().default([]),
+  // Gmail件名パターン管理（タイプ別の候補配列）
+  csvImportSubjectPatterns: z.record(
+    CsvImportTypeSchema,
+    z.array(z.string())
+  ).optional().default({
+    employees: [
+      '[Pi5 CSV Import] employees',
+      '[CSV Import] employees',
+      'CSV Import - employees',
+      '従業員CSVインポート'
+    ],
+    items: [
+      '[Pi5 CSV Import] items',
+      '[CSV Import] items',
+      'CSV Import - items',
+      'アイテムCSVインポート'
+    ],
+    measuringInstruments: [
+      '[Pi5 CSV Import] measuring-instruments',
+      '[CSV Import] measuring-instruments',
+      'CSV Import - measuring-instruments',
+      '計測機器CSVインポート'
+    ],
+    riggingGears: [
+      '[Pi5 CSV Import] rigging-gears',
+      '[CSV Import] rigging-gears',
+      'CSV Import - rigging-gears',
+      '吊具CSVインポート'
+    ]
+  }),
   csvImportHistory: z.object({
     retentionDays: z.number().default(90), // 履歴保持期間（日数）
     cleanupSchedule: z.string().optional().default('0 2 * * *') // クリーンアップ実行スケジュール（cron形式、デフォルト: 毎日2時）
@@ -135,6 +181,32 @@ export const defaultBackupConfig: BackupConfig = {
     maxBackups: 100
   },
   csvImports: [],
+  csvImportSubjectPatterns: {
+    employees: [
+      '[Pi5 CSV Import] employees',
+      '[CSV Import] employees',
+      'CSV Import - employees',
+      '従業員CSVインポート'
+    ],
+    items: [
+      '[Pi5 CSV Import] items',
+      '[CSV Import] items',
+      'CSV Import - items',
+      'アイテムCSVインポート'
+    ],
+    measuringInstruments: [
+      '[Pi5 CSV Import] measuring-instruments',
+      '[CSV Import] measuring-instruments',
+      'CSV Import - measuring-instruments',
+      '計測機器CSVインポート'
+    ],
+    riggingGears: [
+      '[Pi5 CSV Import] rigging-gears',
+      '[CSV Import] rigging-gears',
+      'CSV Import - rigging-gears',
+      '吊具CSVインポート'
+    ]
+  },
   csvImportHistory: {
     retentionDays: 90,
     cleanupSchedule: '0 2 * * *' // 毎日2時

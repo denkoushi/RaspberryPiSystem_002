@@ -1,28 +1,12 @@
 import axios from 'axios';
 import { useState, useEffect } from 'react';
 
-import { useCsvImportSchedules, useCsvImportScheduleMutations } from '../../api/hooks';
+import { useCsvImportSchedules, useCsvImportScheduleMutations, useBackupConfig, useBackupConfigMutations } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
 import type { CsvImportSchedule } from '../../api/backup';
-
-// Gmailのよく使う件名パターン
-const GMAIL_SUBJECT_PATTERNS = {
-  employees: [
-    '[Pi5 CSV Import] employees',
-    '[CSV Import] employees',
-    'CSV Import - employees',
-    '従業員CSVインポート'
-  ],
-  items: [
-    '[Pi5 CSV Import] items',
-    '[CSV Import] items',
-    'CSV Import - items',
-    'アイテムCSVインポート'
-  ]
-};
 
 const DAYS_OF_WEEK = [
   { value: 0, label: '日' },
@@ -137,9 +121,17 @@ function formatScheduleForDisplay(cronSchedule: string): string {
 export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
+  const { data: backupConfig, isLoading: isLoadingConfig } = useBackupConfig();
+  const { updateConfig } = useBackupConfigMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [editingSubjectPatterns, setEditingSubjectPatterns] = useState<{
+    employees?: string[];
+    items?: string[];
+    measuringInstruments?: string[];
+    riggingGears?: string[];
+  } | null>(null);
 
   const schedules = data?.schedules ?? [];
 
@@ -151,8 +143,9 @@ export function CsvImportSchedulePage() {
     id: '',
     name: '',
     provider: undefined, // デフォルトは未指定（storage.providerを使用）
-    employeesPath: '',
-    itemsPath: '',
+    targets: [], // 新形式
+    employeesPath: '', // 旧形式（後方互換）
+    itemsPath: '', // 旧形式（後方互換）
     schedule: '0 2 * * *',
     timezone: 'Asia/Tokyo',
     enabled: true,
@@ -180,19 +173,34 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    if (!formData.employeesPath?.trim() && !formData.itemsPath?.trim()) {
-      setValidationError('従業員CSVパスまたはアイテムCSVパスのいずれかは必須です');
+    // 新形式または旧形式のいずれかが必須
+    const hasTargets = formData.targets && formData.targets.length > 0;
+    const hasLegacyPaths = formData.employeesPath?.trim() || formData.itemsPath?.trim();
+    if (!hasTargets && !hasLegacyPaths) {
+      setValidationError('インポート対象を1つ以上指定してください');
       return;
     }
 
     // UI形式からcron形式に変換
     const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
 
+    // 新形式が存在する場合は新形式で保存し、旧形式は空にする
+    const scheduleToSave: CsvImportSchedule = {
+      ...formData,
+      schedule: cronSchedule
+    } as CsvImportSchedule;
+    
+    if (scheduleToSave.targets && scheduleToSave.targets.length > 0) {
+      // 新形式で保存する場合は旧形式をクリア
+      scheduleToSave.employeesPath = undefined;
+      scheduleToSave.itemsPath = undefined;
+    } else {
+      // 旧形式で保存する場合は新形式をクリア
+      scheduleToSave.targets = undefined;
+    }
+
     try {
-      await create.mutateAsync({
-        ...formData,
-        schedule: cronSchedule
-      } as CsvImportSchedule);
+      await create.mutateAsync(scheduleToSave);
       setShowCreateForm(false);
       setFormData({
         id: '',
@@ -220,16 +228,34 @@ export function CsvImportSchedulePage() {
   const handleUpdate = async (id: string) => {
     setValidationError(null);
 
-    if (!formData.employeesPath?.trim() && !formData.itemsPath?.trim()) {
-      setValidationError('従業員CSVパスまたはアイテムCSVパスのいずれかは必須です');
+    // 新形式または旧形式のいずれかが必須
+    const hasTargets = formData.targets && formData.targets.length > 0;
+    const hasLegacyPaths = formData.employeesPath?.trim() || formData.itemsPath?.trim();
+    if (!hasTargets && !hasLegacyPaths) {
+      setValidationError('インポート対象を1つ以上指定してください');
       return;
     }
 
     // UI形式からcron形式に変換
     const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
 
+    // 新形式が存在する場合は新形式で保存し、旧形式は空にする
+    const scheduleToSave: Partial<CsvImportSchedule> = {
+      ...formData,
+      schedule: cronSchedule
+    };
+    
+    if (scheduleToSave.targets && scheduleToSave.targets.length > 0) {
+      // 新形式で保存する場合は旧形式をクリア
+      scheduleToSave.employeesPath = undefined;
+      scheduleToSave.itemsPath = undefined;
+    } else if (scheduleToSave.employeesPath || scheduleToSave.itemsPath) {
+      // 旧形式で保存する場合は新形式をクリア
+      scheduleToSave.targets = undefined;
+    }
+
     try {
-      await update.mutateAsync({ id, schedule: { ...formData, schedule: cronSchedule } });
+      await update.mutateAsync({ id, schedule: scheduleToSave });
       setEditingId(null);
       refetch();
     } catch (error) {
@@ -260,12 +286,14 @@ export function CsvImportSchedulePage() {
     const schedule = schedules.find((s) => s.id === id);
     const scheduleName = schedule?.name || schedule?.id || 'このスケジュール';
     const provider = schedule?.provider ? schedule.provider.toUpperCase() : 'デフォルト';
-    const paths = [
-      schedule?.employeesPath && `従業員: ${schedule.employeesPath}`,
-      schedule?.itemsPath && `アイテム: ${schedule.itemsPath}`
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const paths = schedule?.targets && schedule.targets.length > 0
+      ? schedule.targets.map(t => `${t.type}: ${t.source}`).join('\n')
+      : [
+          schedule?.employeesPath && `従業員: ${schedule.employeesPath}`,
+          schedule?.itemsPath && `アイテム: ${schedule.itemsPath}`
+        ]
+          .filter(Boolean)
+          .join('\n');
 
     if (
       !confirm(
@@ -285,7 +313,18 @@ export function CsvImportSchedulePage() {
 
   const startEdit = (schedule: CsvImportSchedule) => {
     setEditingId(schedule.id);
-    setFormData(schedule);
+    // 旧形式から新形式への変換（表示用）
+    const formDataToSet: Partial<CsvImportSchedule> = { ...schedule };
+    if (!formDataToSet.targets && (schedule.employeesPath || schedule.itemsPath)) {
+      formDataToSet.targets = [];
+      if (schedule.employeesPath) {
+        formDataToSet.targets.push({ type: 'employees', source: schedule.employeesPath });
+      }
+      if (schedule.itemsPath) {
+        formDataToSet.targets.push({ type: 'items', source: schedule.itemsPath });
+      }
+    }
+    setFormData(formDataToSet);
     // 既存のスケジュールをUI形式に変換
     const parsed = parseCronSchedule(schedule.schedule);
     setScheduleTime(parsed.time);
@@ -299,6 +338,7 @@ export function CsvImportSchedulePage() {
       id: '',
       name: '',
       provider: undefined,
+      targets: [],
       employeesPath: '',
       itemsPath: '',
       schedule: '0 2 * * *',
@@ -321,6 +361,7 @@ export function CsvImportSchedulePage() {
       id: '',
       name: '',
       provider: undefined,
+      targets: [],
       employeesPath: '',
       itemsPath: '',
       schedule: '0 2 * * *',
@@ -425,82 +466,89 @@ export function CsvImportSchedulePage() {
                 <option value="gmail">Gmail</option>
               </select>
               <p className="mt-1 text-xs text-slate-600">
-                Gmailの場合、employeesPath/itemsPathは件名パターン（例: [Pi5 CSV Import] employees）を指定します
+                Gmailの場合、sourceは件名パターン（例: [Pi5 CSV Import] employees）を指定します
               </p>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                従業員CSVパス
+                インポート対象 *
               </label>
-              {formData.provider === 'gmail' ? (
-                <>
-                  <select
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                    value={formData.employeesPath || ''}
-                    onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value || undefined })}
-                  >
-                    <option value="">選択してください</option>
-                    {GMAIL_SUBJECT_PATTERNS.employees.map((pattern) => (
-                      <option key={pattern} value={pattern}>
-                        {pattern}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Gmail検索用の件名パターン（PowerAutomate側の件名と一致させる必要があります）
-                  </p>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                    placeholder="/backups/csv/employees.csv"
-                    value={formData.employeesPath}
-                    onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
-                  />
-                  <p className="mt-1 text-xs text-slate-600">
-                    Dropboxのパス（例: /backups/csv/employees.csv）
-                  </p>
-                </>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                アイテムCSVパス
-              </label>
-              {formData.provider === 'gmail' ? (
-                <>
-                  <select
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                    value={formData.itemsPath || ''}
-                    onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value || undefined })}
-                  >
-                    <option value="">選択してください</option>
-                    {GMAIL_SUBJECT_PATTERNS.items.map((pattern) => (
-                      <option key={pattern} value={pattern}>
-                        {pattern}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Gmail検索用の件名パターン（PowerAutomate側の件名と一致させる必要があります）
-                  </p>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                    placeholder="/backups/csv/items.csv"
-                    value={formData.itemsPath}
-                    onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
-                  />
-                  <p className="mt-1 text-xs text-slate-600">
-                    Dropboxのパス（例: /backups/csv/items.csv）
-                  </p>
-                </>
-              )}
+              <div className="space-y-2">
+                {(formData.targets || []).map((target, index) => (
+                  <div key={index} className="flex gap-2">
+                    <select
+                      className="flex-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+                      value={target.type}
+                      onChange={(e) => {
+                        const newTargets = [...(formData.targets || [])];
+                        newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' };
+                        setFormData({ ...formData, targets: newTargets });
+                      }}
+                    >
+                      <option value="employees">従業員</option>
+                      <option value="items">アイテム</option>
+                      <option value="measuringInstruments">計測機器</option>
+                      <option value="riggingGears">吊具</option>
+                    </select>
+                    {formData.provider === 'gmail' ? (
+                      <select
+                        className="flex-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+                        value={target.source}
+                        onChange={(e) => {
+                          const newTargets = [...(formData.targets || [])];
+                          newTargets[index] = { ...target, source: e.target.value };
+                          setFormData({ ...formData, targets: newTargets });
+                        }}
+                      >
+                        <option value="">選択してください</option>
+                        {(backupConfig?.csvImportSubjectPatterns?.[target.type] || []).map((pattern) => (
+                          <option key={pattern} value={pattern}>
+                            {pattern}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        className="flex-1"
+                        placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : '/backups/csv/...'}
+                        value={target.source}
+                        onChange={(e) => {
+                          const newTargets = [...(formData.targets || [])];
+                          newTargets[index] = { ...target, source: e.target.value };
+                          setFormData({ ...formData, targets: newTargets });
+                        }}
+                      />
+                    )}
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        const newTargets = (formData.targets || []).filter((_, i) => i !== index);
+                        setFormData({ ...formData, targets: newTargets });
+                      }}
+                      className="text-red-600"
+                    >
+                      削除
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      targets: [...(formData.targets || []), { type: 'employees', source: '' }]
+                    });
+                  }}
+                  className="text-blue-600"
+                >
+                  + 対象を追加
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-slate-600">
+                {formData.provider === 'gmail' 
+                  ? 'Gmail検索用の件名パターン（設定された候補から選択）'
+                  : 'Dropboxのパス（例: /backups/csv/employees.csv）'}
+              </p>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">
@@ -724,51 +772,75 @@ export function CsvImportSchedulePage() {
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
-                          {formData.provider === 'gmail' ? (
-                            <>
+                          {(formData.targets || []).map((target, index) => (
+                            <div key={index} className="flex gap-1">
                               <select
-                                className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
-                                value={formData.employeesPath || ''}
-                                onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value || undefined })}
+                                className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                value={target.type}
+                                onChange={(e) => {
+                                  const newTargets = [...(formData.targets || [])];
+                                  newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' };
+                                  setFormData({ ...formData, targets: newTargets });
+                                }}
                               >
-                                <option value="">従業員CSV選択</option>
-                                {GMAIL_SUBJECT_PATTERNS.employees.map((pattern) => (
-                                  <option key={pattern} value={pattern}>
-                                    {pattern}
-                                  </option>
-                                ))}
+                                <option value="employees">従業員</option>
+                                <option value="items">アイテム</option>
+                                <option value="measuringInstruments">計測機器</option>
+                                <option value="riggingGears">吊具</option>
                               </select>
-                              <select
-                                className="w-full rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
-                                value={formData.itemsPath || ''}
-                                onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value || undefined })}
+                              {formData.provider === 'gmail' ? (
+                                <select
+                                  className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                  value={target.source}
+                                  onChange={(e) => {
+                                    const newTargets = [...(formData.targets || [])];
+                                    newTargets[index] = { ...target, source: e.target.value };
+                                    setFormData({ ...formData, targets: newTargets });
+                                  }}
+                                >
+                                  <option value="">選択してください</option>
+                                  {(backupConfig?.csvImportSubjectPatterns?.[target.type] || []).map((pattern) => (
+                                    <option key={pattern} value={pattern}>
+                                      {pattern}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Input
+                                  className="flex-1 text-xs"
+                                  placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : '/backups/csv/...'}
+                                  value={target.source}
+                                  onChange={(e) => {
+                                    const newTargets = [...(formData.targets || [])];
+                                    newTargets[index] = { ...target, source: e.target.value };
+                                    setFormData({ ...formData, targets: newTargets });
+                                  }}
+                                />
+                              )}
+                              <Button
+                                variant="ghost"
+                                onClick={() => {
+                                  const newTargets = (formData.targets || []).filter((_, i) => i !== index);
+                                  setFormData({ ...formData, targets: newTargets });
+                                }}
+                                className="text-red-600 text-xs px-1 py-0.5"
                               >
-                                <option value="">アイテムCSV選択</option>
-                                {GMAIL_SUBJECT_PATTERNS.items.map((pattern) => (
-                                  <option key={pattern} value={pattern}>
-                                    {pattern}
-                                  </option>
-                                ))}
-                              </select>
-                            </>
-                          ) : (
-                            <>
-                              <input
-                                type="text"
-                                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                                placeholder="従業員CSV"
-                                value={formData.employeesPath}
-                                onChange={(e) => setFormData({ ...formData, employeesPath: e.target.value })}
-                              />
-                              <input
-                                type="text"
-                                className="w-full rounded-md border-2 border-slate-500 bg-slate-100 p-1 text-slate-900 font-mono text-xs"
-                                placeholder="アイテムCSV"
-                                value={formData.itemsPath}
-                                onChange={(e) => setFormData({ ...formData, itemsPath: e.target.value })}
-                              />
-                            </>
-                          )}
+                                削除
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                targets: [...(formData.targets || []), { type: 'employees', source: '' }]
+                              });
+                            }}
+                            className="text-blue-600 text-xs px-1 py-0.5"
+                          >
+                            + 追加
+                          </Button>
                         </div>
                       </td>
                       <td className="px-2 py-1">
@@ -830,11 +902,21 @@ export function CsvImportSchedulePage() {
                       <td className="px-2 py-1 text-xs">{formatScheduleForDisplay(schedule.schedule)}</td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
-                          {schedule.employeesPath && (
-                            <div className="text-xs font-mono">{schedule.employeesPath}</div>
-                          )}
-                          {schedule.itemsPath && (
-                            <div className="text-xs font-mono">{schedule.itemsPath}</div>
+                          {schedule.targets && schedule.targets.length > 0 ? (
+                            schedule.targets.map((target, idx) => (
+                              <div key={idx} className="text-xs font-mono">
+                                {target.type}: {target.source}
+                              </div>
+                            ))
+                          ) : (
+                            <>
+                              {schedule.employeesPath && (
+                                <div className="text-xs font-mono">employees: {schedule.employeesPath}</div>
+                              )}
+                              {schedule.itemsPath && (
+                                <div className="text-xs font-mono">items: {schedule.itemsPath}</div>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -903,6 +985,152 @@ export function CsvImportSchedulePage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Gmail件名パターン管理 */}
+      <div className="mt-8">
+        <Card
+          title="Gmail件名パターン管理"
+          action={
+            editingSubjectPatterns === null ? (
+              <Button onClick={() => setEditingSubjectPatterns({
+                employees: backupConfig?.csvImportSubjectPatterns?.employees || [],
+                items: backupConfig?.csvImportSubjectPatterns?.items || [],
+                measuringInstruments: backupConfig?.csvImportSubjectPatterns?.measuringInstruments || [],
+                riggingGears: backupConfig?.csvImportSubjectPatterns?.riggingGears || []
+              })} variant="secondary">
+                編集
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!backupConfig) return;
+                    try {
+                      await updateConfig.mutateAsync({
+                        ...backupConfig,
+                        csvImportSubjectPatterns: editingSubjectPatterns
+                      });
+                      setEditingSubjectPatterns(null);
+                      alert('件名パターンを保存しました');
+                    } catch (error) {
+                      alert(`エラー: ${formatError(error)}`);
+                    }
+                  }}
+                  disabled={updateConfig.isPending}
+                >
+                  {updateConfig.isPending ? '保存中...' : '保存'}
+                </Button>
+                <Button
+                  onClick={() => setEditingSubjectPatterns(null)}
+                  variant="secondary"
+                  disabled={updateConfig.isPending}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            )
+          }
+        >
+          {isLoadingConfig ? (
+            <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
+          ) : editingSubjectPatterns === null ? (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">従業員</h4>
+                <div className="space-y-1">
+                  {(backupConfig?.csvImportSubjectPatterns?.employees || []).map((pattern, index) => (
+                    <div key={index} className="text-sm font-mono text-slate-600">{pattern}</div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">アイテム</h4>
+                <div className="space-y-1">
+                  {(backupConfig?.csvImportSubjectPatterns?.items || []).map((pattern, index) => (
+                    <div key={index} className="text-sm font-mono text-slate-600">{pattern}</div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">計測機器</h4>
+                <div className="space-y-1">
+                  {(backupConfig?.csvImportSubjectPatterns?.measuringInstruments || []).map((pattern, index) => (
+                    <div key={index} className="text-sm font-mono text-slate-600">{pattern}</div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">吊具</h4>
+                <div className="space-y-1">
+                  {(backupConfig?.csvImportSubjectPatterns?.riggingGears || []).map((pattern, index) => (
+                    <div key={index} className="text-sm font-mono text-slate-600">{pattern}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {(['employees', 'items', 'measuringInstruments', 'riggingGears'] as const).map((type) => {
+                const typeLabels = {
+                  employees: '従業員',
+                  items: 'アイテム',
+                  measuringInstruments: '計測機器',
+                  riggingGears: '吊具'
+                };
+                const patterns = editingSubjectPatterns[type] || [];
+                return (
+                  <div key={type}>
+                    <h4 className="text-sm font-semibold text-slate-700 mb-2">{typeLabels[type]}</h4>
+                    <div className="space-y-2">
+                      {patterns.map((pattern, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={pattern}
+                            onChange={(e) => {
+                              const newPatterns = [...patterns];
+                              newPatterns[index] = e.target.value;
+                              setEditingSubjectPatterns({
+                                ...editingSubjectPatterns,
+                                [type]: newPatterns
+                              });
+                            }}
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              const newPatterns = patterns.filter((_, i) => i !== index);
+                              setEditingSubjectPatterns({
+                                ...editingSubjectPatterns,
+                                [type]: newPatterns
+                              });
+                            }}
+                            className="text-red-600"
+                          >
+                            削除
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingSubjectPatterns({
+                            ...editingSubjectPatterns,
+                            [type]: [...patterns, '']
+                          });
+                        }}
+                        className="text-blue-600"
+                      >
+                        + 追加
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
       </div>
     </Card>
   );

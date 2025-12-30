@@ -41,11 +41,20 @@ export interface BackupHistoryFilters {
   limit?: number;
 }
 
+// CSVインポートターゲットの型定義
+export interface CsvImportTarget {
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  source: string; // Dropbox用: パス、Gmail用: 件名パターン
+}
+
 // CSVインポートスケジュールの型定義
 export interface CsvImportSchedule {
   id: string;
   name?: string;
   provider?: 'dropbox' | 'gmail'; // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+  // 新形式: targets配列
+  targets?: CsvImportTarget[];
+  // 旧形式: 後方互換のため残す
   employeesPath?: string;
   itemsPath?: string;
   schedule: string;
@@ -154,13 +163,18 @@ export interface BackupTarget {
 
 export interface BackupConfig {
   storage: {
-    provider: 'local' | 'dropbox';
+    provider: 'local' | 'dropbox' | 'gmail';
     options?: {
       basePath?: string;
       accessToken?: string;
       refreshToken?: string;
       appKey?: string;
       appSecret?: string;
+      clientId?: string;
+      clientSecret?: string;
+      redirectUri?: string;
+      subjectPattern?: string;
+      fromEmail?: string;
     };
   };
   targets: BackupTarget[];
@@ -169,6 +183,12 @@ export interface BackupConfig {
     maxBackups?: number;
   };
   csvImports?: CsvImportSchedule[];
+  csvImportSubjectPatterns?: {
+    employees?: string[];
+    items?: string[];
+    measuringInstruments?: string[];
+    riggingGears?: string[];
+  };
   csvImportHistory?: {
     retentionDays?: number;
     cleanupSchedule?: string;

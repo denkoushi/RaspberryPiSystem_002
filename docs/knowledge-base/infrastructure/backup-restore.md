@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 12件  
+**件数**: 13件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -690,5 +690,50 @@ update-frequency: medium
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
 
 ---
+
+### [KB-108] Gmail OAuth認証時のTailscale DNS解決問題と`/etc/hosts`設定
+
+**EXEC_PLAN.md参照**: Gmailデータ取得機能実装（2025-12-29）
+
+**事象**: 
+- Gmail OAuth認証時にGoogleからコールバックURI（`https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback`）にリダイレクトされるが、Macのブラウザが`raspberrypi.tail7312a3.ts.net`を解決できない
+- Tailscale DNSをONにするとCursorの接続が切れる事象が過去に繰り返し発生したため、オフにしている
+
+**要因**: 
+1. **Tailscale DNSがオフ**: Mac側でTailscale DNS（MagicDNS）が無効になっている
+2. **DNS解決の失敗**: OAuth認証時のコールバックURI解決にTailscale DNSが必要
+3. **Cursor接続の問題**: Tailscale DNSをONにするとCursorの接続が切れる
+
+**試行した対策**: 
+- [試行1] Tailscale DNSをONにする → **失敗**（Cursorの接続が切れる）
+- [試行2] Google Cloud ConsoleでIPアドレスを直接指定 → **失敗**（Google Cloud Consoleは`https://`のドメイン名を要求）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. Macの`/etc/hosts`ファイルに固定レコードを追加:
+     ```
+     100.106.158.2 raspberrypi.tail7312a3.ts.net
+     ```
+  2. スクリプト（`scripts/mac/setup-etc-hosts-for-gmail-oauth.sh`）を作成して自動化
+  3. OAuth認証は最初の1回だけ実行（refresh tokenを取得するため）
+  4. 以後は自動リフレッシュで運用可能（Gmailの場合、`OAuth2Client`が自動的にトークンをリフレッシュ）
+
+**学んだこと**: 
+- **Tailscale DNSをオフにしても問題ない**: Pi5側はDNS解決に依存していない（IPアドレスで動作）
+- **`/etc/hosts`の設定は一度行えば永続的に有効**: Pi5のTailscale IPが変更されない限り
+- **OAuth認証は最初の1回だけ**: refresh tokenを取得するため。以後は自動リフレッシュで運用可能
+- **GmailとDropboxのトークンリフレッシュの違い**:
+  - **Gmail**: `OAuth2Client`が自動的にトークンをリフレッシュするため、手動リフレッシュは通常不要
+  - **Dropbox**: SDKに自動リフレッシュ機能がないため、エラー発生時に手動でリフレッシュが必要
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**:
+- `scripts/mac/setup-etc-hosts-for-gmail-oauth.sh`（`/etc/hosts`設定スクリプト）
+- `docs/guides/gmail-setup-guide.md`（Gmail連携セットアップガイド）
+
+**関連ドキュメント**:
+- [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md)
+- [Gmailデータ取得機能実装計画](../plans/gmail-data-acquisition-execplan.md)
 
 ---

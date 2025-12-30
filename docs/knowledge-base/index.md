@@ -23,11 +23,11 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 17件 | APIエラー、レート制限、認証、履歴、サイネージ |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 20件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 62件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善 |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 22件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 63件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 8件 | Docker ComposeとCaddyリバースプロキシ |
-| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 10件 | バックアップとリストア機能 |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 7件 | Ansibleとデプロイメント |
+| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 13件 | バックアップとリストア機能、Gmail連携 |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 8件 | Ansibleとデプロイメント |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 8件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 10件 | デジタルサイネージ機能 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -100,6 +100,8 @@ update-frequency: high
 | [KB-091](./frontend.md#kb-091-キオスク持出フローの改善選択-or-タグuid点検項目なしでも送信) | キオスク持出フローの改善（選択 or タグUID、点検項目なしでも送信） | ✅ 解決済み |
 | [KB-095](./frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能) | 計測機器タグスキャン時の自動遷移機能 | ✅ 解決済み |
 | [KB-096](./frontend.md#kb-096-クライアントログ取得のベストプラクティスpostclientlogsへの統一) | クライアントログ取得のベストプラクティス（postClientLogsへの統一） | ✅ 解決済み |
+| [KB-109](./frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) | CSVインポートスケジュールページのUI統一（バックアップペインと同じUI） | ✅ 解決済み |
+| [KB-111](./frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) | CSVインポートスケジュールの表示を人間が読みやすい形式に変更 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -166,6 +168,9 @@ update-frequency: high
 | [KB-105](./infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) | DropboxリストアUI改善（バックアップパス手動入力からドロップダウン選択へ） | ✅ 解決済み |
 | [KB-106](./infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) | バックアップスクリプトとの整合性確認 | ✅ 解決済み |
 | [KB-107](./infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) | Dropboxストレージプロバイダーのエラーハンドリング改善 | ✅ 解決済み |
+| [KB-108](./infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) | Gmail OAuth認証時のTailscale DNS解決問題と`/etc/hosts`設定 | ✅ 解決済み |
+| [KB-109](./frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) | CSVインポートスケジュールページのUI統一（バックアップペインと同じUI） | ✅ 解決済み |
+| [KB-110](./infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) | デプロイ時の問題（リモートにプッシュしていなかった、標準手順を無視していた） | ✅ 解決済み |
 
 ---
 
@@ -259,3 +264,6 @@ update-frequency: high
 - 2025-12-11: KB-091を追加（NFC/カメラ入力のスコープ分離: 別ページからのイベント横漏れ防止）
 - 2025-12-11: KB-094を追加（サイネージ左ペインで計測機器と工具を視覚的に識別できない）
 - 2025-12-16: KB-101を追加（Pi5へのSSH接続不可問題の原因と解決）
+- 2025-12-29: KB-109を追加（CSVインポートスケジュールページのUI統一: バックアップペインと同じUI）
+- 2025-12-29: KB-110を追加（デプロイ時の問題: リモートにプッシュしていなかった、標準手順を無視していた）
+- 2025-12-29: KB-111を追加（CSVインポートスケジュールの表示を人間が読みやすい形式に変更）

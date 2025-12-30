@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 20件  
+**件数**: 21件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -834,3 +834,143 @@ postClientLogs(
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
 - `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
 - `apps/api/src/routes/clients.ts`（`/clients/logs`エンドポイント）
+
+---
+
+### [KB-109] CSVインポートスケジュールページのUI統一（バックアップペインと同じUI）
+
+**EXEC_PLAN.md参照**: Gmailデータ取得機能実装（2025-12-29）
+
+**事象**: 
+- CSVインポートスケジュールページの日付指定UIがバックアップペインと異なり、独自のUIが使用されていた
+- ユーザーが「日付のUIはバックアップペインのUIにせよ。独自を増やすなUIを統一せよ」と要望
+- 複数回のデプロイ後も変更が反映されず、UIが統一されていなかった
+
+**要因**: 
+- 初期実装でcron形式のテキスト入力フィールドが使用されていた
+- バックアップペイン（`BackupTargetForm.tsx`）では時刻入力（`type="time"`）と曜日選択ボタンが使用されていた
+- UIの統一性が考慮されていなかった
+
+**試行した対策**: 
+- [試行1] cron形式のテキスト入力フィールドを削除し、時刻入力と曜日選択ボタンに変更 → **部分的成功**（UIは統一されたが、デプロイが反映されなかった）
+- [試行2] デプロイ標準手順を確認し、`--force-recreate --build`オプションを使用 → **成功**（UI変更が反映された）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. `CsvImportSchedulePage.tsx`のスケジュール入力UIを`BackupTargetForm.tsx`と同じUIに統一
+  2. 時刻入力: `<Input type="time" ... />`を使用
+  3. 曜日選択: 各曜日のボタンで選択可能に（動的スタイリング）
+  4. UI形式からcron形式への変換関数（`formatCronSchedule`）を実装
+  5. デプロイ標準手順（`docs/guides/deployment.md`）を遵守し、`--force-recreate --build`オプションを使用
+
+**実装のポイント**:
+```typescript
+// BackupTargetForm.tsxと同じUIパターンを使用
+const [scheduleTime, setScheduleTime] = useState('02:00');
+const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>([]);
+
+// UI形式からcron形式への変換
+const formatCronSchedule = (time: string, daysOfWeek: number[]): string => {
+  const [hours, minutes] = time.split(':').map(Number);
+  const cronDays = daysOfWeek.length === 0 ? '*' : daysOfWeek.join(',');
+  return `${minutes} ${hours} * * ${cronDays}`;
+};
+```
+
+**学んだこと**: 
+- UIの統一性はユーザー体験の向上に重要
+- 既存のUIパターン（`BackupTargetForm.tsx`）を参考にすることで、一貫性のあるUIを実現できる
+- デプロイ標準手順を遵守することで、変更が確実に反映される
+- デプロイ前に`docs/guides/deployment.md`を確認し、標準手順に従うことが重要
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**追加の改善**（2025-12-29）:
+- スケジュール表示を人間が読みやすい形式に変更（cron形式 `0 4 * * 1,2,3` → 「毎週月曜日、火曜日、水曜日の午前4時」）
+- `formatScheduleForDisplay`関数を実装し、cron形式を日本語形式に変換
+- テーブル表示から`font-mono`クラスを削除し、可読性を向上
+
+**実装のポイント（追加）**:
+```typescript
+// cron形式を人間が読みやすい形式に変換
+function formatScheduleForDisplay(cronSchedule: string): string {
+  const parsed = parseCronSchedule(cronSchedule);
+  const { time, daysOfWeek } = parsed;
+  // 時刻を日本語形式に変換（午前/午後の判定）
+  // 曜日を日本語形式に変換
+  return `毎週${dayLabels}の${timeStr}`;
+}
+```
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+- `apps/web/src/components/backup/BackupTargetForm.tsx`
+- `docs/guides/deployment.md`
+
+---
+
+### [KB-111] CSVインポートスケジュールの表示を人間が読みやすい形式に変更
+
+**発生日時**: 2025-12-29
+
+**事象**: 
+- CSVインポートスケジュールページのテーブルで、スケジュールがcron形式（`0 4 * * 1,2,3`）で表示されていた
+- ユーザーが「スケジュールの表記が人間には理解できない、記号の羅列だ」と指摘
+- 一般ユーザーにはcron形式が理解しにくい
+
+**要因**: 
+- スケジュールをcron形式のまま表示していた
+- 人間が読みやすい形式への変換機能が実装されていなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. `formatScheduleForDisplay`関数を実装し、cron形式を日本語形式に変換
+  2. 時刻を日本語形式に変換（午前/午後の判定、分が0の場合は「時」のみ表示）
+  3. 曜日を日本語形式に変換（「毎週月曜日、火曜日、水曜日」など）
+  4. テーブル表示から`font-mono`クラスを削除し、可読性を向上
+
+**実装のポイント**:
+```typescript
+/**
+ * cron形式のスケジュールを人間が読みやすい形式に変換
+ * cron形式: "0 4 * * 1,2,3" → "毎週月曜日、火曜日、水曜日の午前4時"
+ */
+function formatScheduleForDisplay(cronSchedule: string): string {
+  const parsed = parseCronSchedule(cronSchedule);
+  const { time, daysOfWeek } = parsed;
+  
+  // 時刻を日本語形式に変換（午前/午後の判定）
+  let timeStr: string;
+  if (hourNum === 0) {
+    timeStr = minuteNum === 0 ? '午前0時' : `午前0時${minuteNum}分`;
+  } else if (hourNum < 12) {
+    timeStr = minuteNum === 0 ? `午前${hourNum}時` : `午前${hourNum}時${minuteNum}分`;
+  } else if (hourNum === 12) {
+    timeStr = minuteNum === 0 ? '午後12時' : `午後12時${minuteNum}分`;
+  } else {
+    const pmHour = hourNum - 12;
+    timeStr = minuteNum === 0 ? `午後${pmHour}時` : `午後${pmHour}時${minuteNum}分`;
+  }
+  
+  // 曜日を日本語形式に変換
+  if (daysOfWeek.length === 0) {
+    return `毎日${timeStr}`;
+  }
+  const dayLabels = daysOfWeek
+    .sort((a, b) => a - b)
+    .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
+    .filter(Boolean)
+    .join('、');
+  return `毎週${dayLabels}の${timeStr}`;
+}
+```
+
+**学んだこと**: 
+- ユーザー体験の向上には、技術的な形式（cron形式）を人間が読みやすい形式に変換することが重要
+- テーブル表示では`font-mono`クラスを削除することで、可読性が向上する
+- 既存の`parseCronSchedule`関数を活用することで、コードの重複を避けられる
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`

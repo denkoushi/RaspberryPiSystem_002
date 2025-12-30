@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 7件  
+**件数**: 8件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -553,6 +553,82 @@ ssh denkon5sd02@192.168.10.230
 - `~/.ssh/known_hosts`（クライアント側）
 - `/etc/ssh/ssh_host_*_key*`（Pi5側）
 - `~/.ssh/config`（SSH設定ファイル）
+
+---
+
+### [KB-110] デプロイ時の問題（リモートにプッシュしていなかった、標準手順を無視していた）
+
+**発生日時**: 2025-12-29
+
+**症状**: 
+- UI変更をデプロイしたが、変更が反映されない
+- 複数回のデプロイ後も変更が反映されず、古いコードが残っている
+- ビルド済みファイルに古いコード（「スケジュール（cron形式）」）が含まれている
+
+**原因分析**:
+
+#### 1. コミット後にリモートにプッシュしていなかった（主原因）
+
+**状況**:
+- ローカルでコミット（`12dcd2e`）は作成済み
+- `git push`を実行していなかった
+- Pi5上で`git pull`を実行しても「Already up to date」と表示されていたが、実際には最新のコミットがリモートに存在しなかった
+
+**確認方法**:
+```bash
+# ローカルとリモートの差分を確認
+git log --oneline HEAD..origin/feature/gmail-data-acquisition
+
+# リモートの最新コミットを確認
+git log --oneline origin/feature/gmail-data-acquisition -5
+```
+
+#### 2. デプロイ標準手順を無視していた（副原因）
+
+**状況**:
+- `docs/guides/deployment.md`の標準手順（方法2）では`docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web`を1コマンドで実行すべき
+- 実際には`docker compose build web && docker compose up -d web`のように分割して実行していた
+- `--force-recreate`オプションを省略していた
+
+**標準手順**:
+```bash
+# 方法2: 手動で更新（標準手順）
+docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web
+```
+
+**試行した対策**: 
+- [試行1] ブラウザのキャッシュをクリア（Cmd+Shift+R） → **失敗**（古いコードが残っている）
+- [試行2] Dockerイメージを削除して再ビルド → **部分的成功**（リモートにプッシュしていなかったため、古いコードがビルドされた）
+- [試行3] リモートにプッシュしてから再ビルド → **成功**（最新のコードがビルドされ、変更が反映された）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. コミット後は必ず`git push`を実行する
+  2. デプロイ前に`git log origin/<branch>`でリモートの最新コミットを確認する
+  3. ローカルとリモートの差分を`git log HEAD..origin/<branch>`で確認する
+  4. デプロイ標準手順（`docs/guides/deployment.md`）を遵守し、`--force-recreate --build`オプションを使用する
+  5. デプロイ前に`docs/guides/deployment.md`を確認し、標準手順に従う
+
+**追加の修正**（2025-12-29）:
+- デプロイ標準手順を修正し、現在のブランチを使用するように変更
+- `git pull origin main` → `CURRENT_BRANCH=$(git branch --show-current) && git pull origin "$CURRENT_BRANCH"`
+- `main`ブランチにマージするのは別途指示がある場合のみ
+- `.cursor/rules/system-stability.mdc`のデプロイ実行時の必須手順も同様に修正
+
+**学んだこと**: 
+- **コミット後は必ずプッシュ**: ローカルでコミットしただけでは、リモートリポジトリには反映されない
+- **デプロイ前の確認**: デプロイ前にリモートの最新コミットを確認し、ローカルとリモートの差分を確認する
+- **標準手順の遵守**: `docs/guides/deployment.md`の標準手順を遵守することで、確実に変更が反映される
+- **デプロイ前のドキュメント確認**: デプロイ前に必ず`docs/guides/deployment.md`を確認し、標準手順に従う
+- **現在のブランチを使用**: デプロイは常に現在のブランチを使用し、`main`ブランチにマージするのは別途指示がある場合のみ
+- **比較対象の明確化**: Pi5上のコードとリモートリポジトリ（`origin/<current-branch>`）を比較し、ローカルとPi5を比較して「最新」と判断しない
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**: 
+- `docs/guides/deployment.md`
+- `.cursor/rules/system-stability.mdc`
+- `.cursor/rules/git-workflow.mdc`
 
 ---
 
