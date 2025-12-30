@@ -151,11 +151,9 @@ export class ItemCsvImporter implements CsvImporter {
             }
           }
           
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, itemCode: _ignoredItemCode, ...finalUpdateData } = updateData;
           await tx.item.update({
             where: { itemCode: row.itemCode },
-            data: finalUpdateData
+            data: updateData
           });
           result.updated += 1;
         } else {

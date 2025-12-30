@@ -1,12 +1,12 @@
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import pkg from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
 
 const { EmployeeStatus } = pkg;
-const { PrismaClientKnownRequestError } = pkg;
 
 const employeeCsvSchema = z.object({
   employeeCode: z.string().regex(/^\d{4}$/, '社員コードは数字4桁である必要があります（例: 0001）'),
@@ -157,11 +157,9 @@ export class EmployeeCsvImporter implements CsvImporter {
               }
             }
             
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { id: _ignoredId, createdAt: _ignoredCreatedAt, updatedAt: _ignoredUpdatedAt, employeeCode: _ignoredEmployeeCode, ...finalUpdateData } = updateData;
             await tx.employee.update({
               where: { employeeCode: row.employeeCode },
-              data: finalUpdateData
+              data: updateData
             });
             result.updated += 1;
           } else {

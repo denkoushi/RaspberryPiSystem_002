@@ -13,6 +13,8 @@ export const CsvImportTargetSchema = z.object({
   source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
 });
 
+export type CsvImportTarget = z.infer<typeof CsvImportTargetSchema>;
+
 /**
  * パスマッピング設定のスキーマ
  */
