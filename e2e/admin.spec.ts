@@ -235,19 +235,19 @@ test.describe('管理画面', () => {
       await page.getByLabel(/Client Secret/i).fill('test-client-secret');
       await page.getByLabel(/件名パターン|Subject Pattern/i).fill('CSV Import');
       await page.getByLabel(/送信元メールアドレス|From Email/i).fill('test@example.com');
+      await page.getByLabel(/リダイレクトURI|Redirect URI/i).fill('http://localhost:8080/api/gmail/oauth/callback');
 
       // 保存ボタンをクリックし、APIレスポンスを待機
       const savePromise = page.waitForResponse(
         response => {
           const url = response.url();
-          return url.includes('/api/gmail/config') && 
-                 response.request().method() === 'PUT' &&
-                 response.status() === 200;
+          return url.includes('/api/gmail/config') && response.request().method() === 'PUT';
         },
         { timeout: 15000 }
       );
       await page.getByRole('button', { name: /保存/i }).click();
-      await savePromise;
+      const saveResponse = await savePromise;
+      expect(saveResponse.status()).toBe(200);
 
       // 設定が保存されたことを確認（編集モードが解除される）
       await expect(page.getByRole('button', { name: /編集/i })).toBeVisible({ timeout: 5000 });
@@ -265,6 +265,7 @@ test.describe('管理画面', () => {
         await page.getByLabel(/Client Secret/i).fill('test-client-secret');
         await page.getByLabel(/件名パターン|Subject Pattern/i).fill('CSV Import');
         await page.getByLabel(/送信元メールアドレス|From Email/i).fill('test@example.com');
+        await page.getByLabel(/リダイレクトURI|Redirect URI/i).fill('http://localhost:8080/api/gmail/oauth/callback');
 
         const savePromise = page.waitForResponse(
           response => {
