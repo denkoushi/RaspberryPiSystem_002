@@ -197,31 +197,44 @@ test.describe('管理画面', () => {
       await expect(page.getByRole('heading', { name: /Gmail設定/i })).toBeVisible();
     });
 
-    test('Gmail設定が未設定の場合、設定フォームが表示される', async ({ page }) => {
+    test('Gmail設定が未設定の場合、新規設定からフォームを表示できる', async ({ page, request }) => {
+      // テストの独立性のため、事前に設定を削除（存在しない場合は無視）
+      if (authToken) {
+        await request.delete('http://localhost:8080/api/gmail/config', {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+      }
+
       await page.goto('/admin/gmail/config');
       await page.waitForLoadState('networkidle');
       
-      // 設定フォームのフィールドが表示されることを確認
+      // 未設定メッセージ＋新規設定ボタン
+      await expect(page.getByText(/Gmail設定が未設定です/i)).toBeVisible({ timeout: 5000 });
+      const newButton = page.getByRole('button', { name: /新規設定/i });
+      await expect(newButton).toBeVisible({ timeout: 5000 });
+      await newButton.click();
+
+      // 設定フォームのフィールドが表示されることを確認（ラベル関連付け済み）
       await expect(page.getByLabel(/Client ID/i)).toBeVisible({ timeout: 5000 });
       await expect(page.getByLabel(/Client Secret/i)).toBeVisible();
-      await expect(page.getByLabel(/Subject Pattern/i)).toBeVisible();
-      await expect(page.getByLabel(/From Email/i)).toBeVisible();
+      await expect(page.getByLabel(/件名パターン|Subject Pattern/i)).toBeVisible();
+      await expect(page.getByLabel(/送信元メールアドレス|From Email/i)).toBeVisible();
     });
 
     test('Gmail設定を編集できる', async ({ page }) => {
       await page.goto('/admin/gmail/config');
       await page.waitForLoadState('networkidle');
 
-      // 編集ボタンをクリック
-      const editButton = page.getByRole('button', { name: /編集/i });
+      // 未設定の場合は「新規設定」、設定済みの場合は「編集」
+      const editButton = page.getByRole('button', { name: /編集|新規設定/i });
       await expect(editButton).toBeVisible({ timeout: 5000 });
       await editButton.click();
 
       // フォームに入力
       await page.getByLabel(/Client ID/i).fill('test-client-id');
       await page.getByLabel(/Client Secret/i).fill('test-client-secret');
-      await page.getByLabel(/Subject Pattern/i).fill('CSV Import');
-      await page.getByLabel(/From Email/i).fill('test@example.com');
+      await page.getByLabel(/件名パターン|Subject Pattern/i).fill('CSV Import');
+      await page.getByLabel(/送信元メールアドレス|From Email/i).fill('test@example.com');
 
       // 保存ボタンをクリックし、APIレスポンスを待機
       const savePromise = page.waitForResponse(
@@ -243,6 +256,29 @@ test.describe('管理画面', () => {
     test('Gmail設定を削除できる', async ({ page }) => {
       await page.goto('/admin/gmail/config');
       await page.waitForLoadState('networkidle');
+
+      // 未設定の場合は一度設定を作ってから削除する（テストの独立性向上）
+      const newButton = page.getByRole('button', { name: /新規設定/i });
+      if (await newButton.count()) {
+        await newButton.click();
+        await page.getByLabel(/Client ID/i).fill('test-client-id');
+        await page.getByLabel(/Client Secret/i).fill('test-client-secret');
+        await page.getByLabel(/件名パターン|Subject Pattern/i).fill('CSV Import');
+        await page.getByLabel(/送信元メールアドレス|From Email/i).fill('test@example.com');
+
+        const savePromise = page.waitForResponse(
+          response => {
+            const url = response.url();
+            return url.includes('/api/gmail/config') &&
+                   response.request().method() === 'PUT' &&
+                   response.status() === 200;
+          },
+          { timeout: 15000 }
+        );
+        await page.getByRole('button', { name: /保存/i }).click();
+        await savePromise;
+        await page.waitForLoadState('networkidle');
+      }
 
       // 削除ボタンが表示されるまで待機
       const deleteButton = page.getByRole('button', { name: /削除/i });
@@ -267,8 +303,8 @@ test.describe('管理画面', () => {
       // UIが更新されるのを待機
       await page.waitForLoadState('networkidle');
       
-      // 設定が削除されたことを確認（フォームが再表示される）
-      await expect(page.getByLabel(/Client ID/i)).toBeVisible({ timeout: 5000 });
+      // 設定が削除されたことを確認（未設定メッセージに戻る）
+      await expect(page.getByText(/Gmail設定が未設定です/i)).toBeVisible({ timeout: 5000 });
     });
 
     // 注意: OAuth認証フローのE2Eテストは実装しない

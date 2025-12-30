@@ -22,6 +22,13 @@ export function GmailConfigPage() {
   });
   const [isEditing, setIsEditing] = useState(false);
 
+  // フォーム要素のラベル関連付け（E2E/アクセシビリティ向上）
+  const clientIdInputId = 'gmail-config-client-id';
+  const clientSecretInputId = 'gmail-config-client-secret';
+  const subjectPatternInputId = 'gmail-config-subject-pattern';
+  const fromEmailInputId = 'gmail-config-from-email';
+  const redirectUriInputId = 'gmail-config-redirect-uri';
+
   if (isLoading) {
     return <Card title="Gmail設定"><p className="text-sm font-semibold text-slate-700">読み込み中...</p></Card>;
   }
@@ -210,10 +217,11 @@ export function GmailConfigPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label htmlFor={clientIdInputId} className="block text-sm font-semibold text-slate-700 mb-1">
               Client ID <span className="text-red-500">*</span>
             </label>
             <input
+              id={clientIdInputId}
               type="text"
               className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={formData.clientId}
@@ -222,10 +230,11 @@ export function GmailConfigPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label htmlFor={clientSecretInputId} className="block text-sm font-semibold text-slate-700 mb-1">
               Client Secret <span className="text-red-500">*</span>
             </label>
             <input
+              id={clientSecretInputId}
               type="password"
               className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={formData.clientSecret}
@@ -237,10 +246,11 @@ export function GmailConfigPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label htmlFor={subjectPatternInputId} className="block text-sm font-semibold text-slate-700 mb-1">
               件名パターン（任意）
             </label>
             <input
+              id={subjectPatternInputId}
               type="text"
               className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={formData.subjectPattern}
@@ -252,10 +262,11 @@ export function GmailConfigPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label htmlFor={fromEmailInputId} className="block text-sm font-semibold text-slate-700 mb-1">
               送信元メールアドレス（任意）
             </label>
             <input
+              id={fromEmailInputId}
               type="email"
               className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={formData.fromEmail}
@@ -267,10 +278,11 @@ export function GmailConfigPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label htmlFor={redirectUriInputId} className="block text-sm font-semibold text-slate-700 mb-1">
               リダイレクトURI <span className="text-red-500">*</span>
             </label>
             <input
+              id={redirectUriInputId}
               type="url"
               className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
               value={formData.redirectUri}
