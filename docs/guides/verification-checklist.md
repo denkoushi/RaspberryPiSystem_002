@@ -441,15 +441,15 @@ cd apps/web && pnpm build && cd ../..
 **6.6.1 従業員管理画面（`/admin/tools/employees`）**
 
 **確認ポイント**:
-- [ ] 一覧表示で`displayName`が正しく表示されるか
-- [ ] 「新規作成」ボタンをクリックしてフォームを開く
-- [ ] `lastName`と`firstName`の入力フィールドが表示されるか
-- [ ] `displayName`フィールドが表示されないか（自動生成のため）
-- [ ] 既存従業員を編集して`lastName`と`firstName`が個別に表示されるか
-- [ ] 保存時に`displayName`が自動生成されるか
+- [x] 一覧表示で`displayName`が正しく表示されるか
+- [x] 「新規作成」ボタンをクリックしてフォームを開く
+- [x] `lastName`と`firstName`の入力フィールドが表示されるか
+- [x] `displayName`フィールドが表示されないか（自動生成のため）
+- [x] 既存従業員を編集して`lastName`と`firstName`が個別に表示されるか
+- [x] 保存時に`displayName`が自動生成されるか
 
-**検証日時**: _______________
-**検証結果**: ☐ 成功 ☐ 失敗（エラー内容: _______________）
+**検証日時**: 2025-12-31
+**検証結果**: ✅ 成功
 
 **6.6.2 計測機器管理画面（`/admin/tools/measuring-instruments`）**
 
