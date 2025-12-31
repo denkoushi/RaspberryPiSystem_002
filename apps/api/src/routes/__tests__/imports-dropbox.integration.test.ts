@@ -318,7 +318,7 @@ describe('POST /api/imports/master/from-dropbox', () => {
       const csvRows = ['employeeCode,lastName,firstName'];
       for (let i = 0; i < 1000; i++) {
         const code = i.toString().padStart(4, '0');
-        csvRows.push(`${code},Employee,${code}`);
+        csvRows.push(`${code},Employee,Emp${code}`);
       }
       const largeCsv = Buffer.from(csvRows.join('\n'));
       
@@ -368,7 +368,7 @@ describe('POST /api/imports/master/from-dropbox', () => {
       const csvRows = ['employeeCode,lastName,firstName'];
       for (let i = 0; i < 10000; i++) {
         const code = i.toString().padStart(4, '0');
-        csvRows.push(`${code},Employee,${code}`);
+        csvRows.push(`${code},Employee,Emp${code}`);
       }
       const veryLargeCsv = Buffer.from(csvRows.join('\n'));
       
