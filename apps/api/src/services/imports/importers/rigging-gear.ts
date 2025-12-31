@@ -64,7 +64,8 @@ function parseCsvRows(buffer: Buffer): Record<string, string>[] {
   return parse(buffer, {
     columns: true,
     skip_empty_lines: true,
-    trim: true
+    trim: true,
+    bom: true // UTF-8 BOMを自動的に処理
   }) as Record<string, string>[];
 }
 
