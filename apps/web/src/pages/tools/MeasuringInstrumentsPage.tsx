@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import {
@@ -34,6 +34,8 @@ export function MeasuringInstrumentsPage() {
   const location = useLocation();
   const isActiveRoute = location.pathname.endsWith('/measuring-instruments');
   const nfcEvent = useNfcStream(isActiveRoute);
+  // ユーザーが手動でrfidTagUidを編集したかどうかを追跡
+  const isManualEditRef = useRef(false);
 
   useEffect(() => {
     if (editingId) return;
@@ -43,13 +45,17 @@ export function MeasuringInstrumentsPage() {
   useEffect(() => {
     if (!editingId || !editingTags) return;
     const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
-    setForm((prev) => (prev.rfidTagUid ? prev : { ...prev, rfidTagUid: existingTagUid }));
+    // ユーザーが手動で編集していない場合のみ、既存のタグUIDを設定
+    if (!isManualEditRef.current) {
+      setForm((prev) => ({ ...prev, rfidTagUid: existingTagUid }));
+    }
   }, [editingId, editingTags]);
 
   // NFCスキャンでUID自動入力（このページがアクティブな場合のみ）
   useEffect(() => {
     if (nfcEvent?.uid) {
       setForm((prev) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
+      isManualEditRef.current = false; // NFCスキャンは自動入力なので、手動編集フラグをリセット
     }
   }, [nfcEvent]);
 
@@ -74,10 +80,12 @@ export function MeasuringInstrumentsPage() {
     }
     setForm(initialForm);
     setEditingId(null);
+    isManualEditRef.current = false; // 送信後に手動編集フラグをリセット
   };
 
   const startEdit = (instrument: MeasuringInstrument) => {
     setEditingId(instrument.id);
+    isManualEditRef.current = false; // 編集開始時に手動編集フラグをリセット
     setForm({
       name: instrument.name,
       managementNumber: instrument.managementNumber,
@@ -113,7 +121,10 @@ export function MeasuringInstrumentsPage() {
             NFC / RFIDタグUID
             <Input
               value={form.rfidTagUid}
-              onChange={(e) => setForm({ ...form, rfidTagUid: e.target.value })}
+              onChange={(e) => {
+                isManualEditRef.current = true; // 手動編集フラグを設定
+                setForm({ ...form, rfidTagUid: e.target.value });
+              }}
               placeholder="例: 04A1B2C3D4"
             />
           </label>
@@ -175,6 +186,7 @@ export function MeasuringInstrumentsPage() {
                 onClick={() => {
                   setEditingId(null);
                   setForm(initialForm);
+                  isManualEditRef.current = false; // 編集キャンセル時に手動編集フラグをリセット
                 }}
               >
                 編集キャンセル
