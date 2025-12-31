@@ -34,7 +34,9 @@ export function MasterImportPage() {
             <br />
             CSVはUTF-8、1行1レコード、ヘッダー必須です。
             <br />
-            <strong>従業員CSV</strong>: employeeCode（必須・数字4桁、例: 0001）, displayName（必須・氏名）, nfcTagUid（任意）, department（任意）, contact（任意）, status（任意）
+            <strong>従業員CSV</strong>: employeeCode（必須・数字4桁、例: 0001）, lastName（必須・苗字）, firstName（必須・名前）, nfcTagUid（任意）, department（任意）, contact（任意）, status（任意）
+            <br />
+            <strong>注意</strong>: displayName（氏名）はlastName + firstNameで自動生成されます。CSVには含めません。
             <br />
             <strong>工具CSV</strong>: itemCode（必須・TO + 数字4桁、例: TO0001）, name（必須・工具名）, nfcTagUid（任意）, category（任意）, storageLocation（任意）, status（任意）, notes（任意）
           </p>
