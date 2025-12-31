@@ -266,6 +266,8 @@ export function useMeasuringInstrumentMutations() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
       queryClient.invalidateQueries({ queryKey: ['measuring-instrument', vars.id] });
+      // rfidTagUid はタグテーブル側で管理されるため、タグ一覧も更新する
+      queryClient.invalidateQueries({ queryKey: ['instrument-tags', vars.id] });
     }
   });
   const remove = useMutation({
