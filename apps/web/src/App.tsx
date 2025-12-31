@@ -38,6 +38,13 @@ function App() {
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signage" element={<SignageDisplayPage />} />
+      {/* 開発用: UI確認のための一時的なルート */}
+      <Route
+        path="/preview"
+        element={<AdminLayout />}
+      >
+        <Route path="import" element={<MasterImportPage />} />
+      </Route>
       <Route element={<KioskLayout />}>
         <Route path="/kiosk" element={<KioskRedirect />} />
         <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
