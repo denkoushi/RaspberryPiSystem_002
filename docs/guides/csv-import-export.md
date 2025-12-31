@@ -11,6 +11,41 @@
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
 
+## USBメモリ経由のCSVインポート
+
+管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具の4種類に対応しています。
+
+### インポート手順
+
+1. **管理画面にアクセス**: `https://<Pi5のIP>/admin`
+2. **「一括登録」タブにアクセス**: `https://<Pi5のIP>/admin/import`
+3. **CSVファイルを選択**: 各データタイプのフォームからCSVファイルを選択
+   - 従業員CSV (`employees.csv`)
+   - 工具CSV (`items.csv`)
+   - 計測機器CSV (`measuring-instruments.csv`)
+   - 吊具CSV (`rigging-gears.csv`)
+4. **オプション設定**: 「既存データをクリアしてから取り込み」にチェックを入れるか選択
+5. **取り込み開始**: 「取り込み開始」ボタンをクリック
+
+### 各フォームの特徴
+
+- **個別アップロード**: 各データタイプを個別にアップロード可能
+- **独立した設定**: 各フォームで`replaceExisting`を個別に設定可能
+- **ファイル名表示**: 選択したファイル名が表示され、確認可能
+
+### APIエンドポイント
+
+**エンドポイント**: `POST /api/imports/master/:type`
+
+**パラメータ**:
+- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`）
+
+**リクエスト形式**: multipart form data
+- `file`: CSVファイル（必須）
+- `replaceExisting`: 既存データをクリアするか（`true` / `false`、デフォルト: `false`）
+
+**認証**: 管理者権限（`ADMIN`）が必要
+
 ## CSVインポート仕様
 
 ### 基本要件

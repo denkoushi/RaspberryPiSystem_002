@@ -1050,3 +1050,96 @@ useEffect(() => {
 
 **関連ファイル**: 
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-117] CSVインポートUIの4フォーム分割実装
+
+**日付**: 2025-12-31
+
+**事象**: 
+- USBメモリ経由のCSVインポート機能が、従業員・工具のみに対応しており、計測機器・吊具のCSVインポートがUIから実行できなかった
+- 既存の`MasterImportPage.tsx`は、従業員・工具の2つのフォームのみを表示していた
+- 検証のためには、各データタイプを個別にアップロードできるUIが必要だった
+
+**要因**: 
+- 既存の`MasterImportPage.tsx`は、従業員・工具の2つのフォームのみを実装していた
+- 計測機器・吊具のCSVインポートは、APIレベルでは実装済みだったが、UIから実行するフォームがなかった
+- 各データタイプを個別にアップロードできるUIが必要だった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-31）: 4つのフォームに分割し、各データタイプを個別にアップロードできるように改善
+  1. **共通コンポーネント作成**: `ImportForm`コンポーネントを作成し、各データタイプのフォームを共通化
+  2. **4つのフォーム表示**: 従業員・工具・計測機器・吊具の4つのフォームを個別に表示
+  3. **新APIフック追加**: `useImportMasterSingle`フックを追加し、`POST /api/imports/master/:type`エンドポイントを呼び出す
+  4. **各フォームの独立性**: 各フォームで`replaceExisting`を個別に設定可能
+  5. **ファイル選択の改善**: 各フォームでファイル名を表示し、選択したファイルを確認可能に
+
+**実装のポイント**:
+```typescript
+// ImportFormコンポーネント（共通化）
+function ImportForm({ type, label, fileName }: ImportFormProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [replaceExisting, setReplaceExisting] = useState(false);
+  const importMutation = useImportMasterSingle();
+  
+  const handleSubmit = async () => {
+    if (!file) return;
+    
+    await importMutation.mutateAsync({
+      type,
+      file,
+      replaceExisting
+    });
+  };
+  
+  return (
+    <div className="space-y-2">
+      <label>{label}</label>
+      <input
+        type="file"
+        accept=".csv"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+      />
+      {file && <p>選択ファイル: {file.name}</p>}
+      <label>
+        <input
+          type="checkbox"
+          checked={replaceExisting}
+          onChange={(e) => setReplaceExisting(e.target.checked)}
+        />
+        既存データをクリアしてから取り込み（{label}のみ）
+      </label>
+      <button onClick={handleSubmit}>取り込み開始</button>
+    </div>
+  );
+}
+
+// MasterImportPage.tsx（4つのフォームを表示）
+export function MasterImportPage() {
+  return (
+    <div className="space-y-6">
+      <Card title="USB 一括登録">
+        <ImportForm type="employees" label="従業員CSV" fileName="employees.csv" />
+        <ImportForm type="items" label="工具CSV" fileName="items.csv" />
+        <ImportForm type="measuringInstruments" label="計測機器CSV" fileName="measuring-instruments.csv" />
+        <ImportForm type="riggingGears" label="吊具CSV" fileName="rigging-gears.csv" />
+      </Card>
+    </div>
+  );
+}
+```
+
+**学んだこと**: 
+- 共通コンポーネントを作成することで、コードの重複を避けられる
+- 各データタイプを個別にアップロードできるUIにより、ユーザビリティが向上する
+- ファイル選択の改善により、ユーザーが選択したファイルを確認できる
+- 各フォームで`replaceExisting`を個別に設定できることで、柔軟性が向上する
+
+**解決状況**: ✅ **解決済み**（2025-12-31）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/MasterImportPage.tsx`
+- `apps/web/src/pages/admin/components/ImportForm.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`

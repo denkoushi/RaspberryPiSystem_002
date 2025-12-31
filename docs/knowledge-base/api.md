@@ -661,3 +661,85 @@ async runImport(importId: string): Promise<void> {
 **関連ファイル**: 
 - `apps/api/src/services/imports/csv-import-scheduler.ts`
 
+---
+
+### [KB-117] CSVインポートAPIの単一データタイプ対応エンドポイント追加
+
+**日付**: 2025-12-31
+
+**事象**: 
+- USBメモリ経由のCSVインポート機能が、従業員・工具のみに対応しており、計測機器・吊具のCSVインポートがUIから実行できなかった
+- 既存の`POST /api/imports/master`エンドポイントは複数のCSVファイル（`employeesFile`, `itemsFile`）を同時にアップロードする形式で、計測機器・吊具の個別アップロードに対応していなかった
+- 検証のためには、各データタイプを個別にアップロードできるUIが必要だった
+
+**要因**: 
+- 既存の`POST /api/imports/master`エンドポイントは、複数のCSVファイルを同時にアップロードする形式（`employeesFile`, `itemsFile`）で設計されていた
+- 計測機器・吊具のCSVインポートは、APIレベルでは実装済みだったが、UIから実行するエンドポイントがなかった
+- 各データタイプを個別にアップロードできるエンドポイントが必要だった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-31）: 単一データタイプ対応のエンドポイントを追加
+  1. **新エンドポイント追加**: `POST /api/imports/master/:type`を追加
+     - `:type`パラメータでデータタイプを指定（`employees`, `items`, `measuring-instruments`, `rigging-gears`）
+     - 単一のCSVファイル（`file`）をmultipart form dataでアップロード
+     - `replaceExisting`パラメータで既存データのクリアを制御
+  2. **既存エンドポイントとの統合**: `processCsvImportFromTargets`関数を使用して、既存のインポートロジックを再利用
+  3. **バリデーション**: `:type`パラメータが有効なデータタイプかどうかを検証
+  4. **URL形式の変換**: kebab-case（`measuring-instruments`）をcamelCase（`measuringInstruments`）に変換して内部処理
+
+**実装のポイント**:
+```typescript
+// 新エンドポイント: POST /api/imports/master/:type
+app.post('/imports/master/:type', {
+  preHandler: [mustBeAdmin],
+  config: { rateLimit: { max: 10, timeWindow: '1 minute' } }
+}, async (request, reply) => {
+  const { type } = request.params;
+  
+  // データタイプのバリデーション
+  const validTypes = ['employees', 'items', 'measuring-instruments', 'rigging-gears'];
+  if (!validTypes.includes(type)) {
+    return reply.code(400).send({ error: `Invalid type: ${type}` });
+  }
+  
+  // multipart form dataからファイルを取得
+  const data = await request.file();
+  if (!data) {
+    return reply.code(400).send({ error: 'No file provided' });
+  }
+  
+  // kebab-caseをcamelCaseに変換
+  const camelCaseType = type === 'measuring-instruments' ? 'measuringInstruments' 
+    : type === 'rigging-gears' ? 'riggingGears' 
+    : type;
+  
+  // 既存のインポートロジックを再利用
+  const target: CsvImportTarget = {
+    type: camelCaseType as CsvImportType,
+    source: data.filename || 'uploaded.csv'
+  };
+  
+  const result = await processCsvImportFromTargets(
+    [target],
+    data.buffer,
+    replaceExisting
+  );
+  
+  return reply.send(result);
+});
+```
+
+**学んだこと**: 
+- 既存のインポートロジックを再利用することで、コードの重複を避けられる
+- URL形式（kebab-case）と内部形式（camelCase）の変換を明確にすることで、APIの一貫性を保てる
+- 単一データタイプ対応のエンドポイントを追加することで、UIの柔軟性が向上する
+- 既存の`processCsvImportFromTargets`関数を活用することで、実装の一貫性を保てる
+
+**解決状況**: ✅ **解決済み**（2025-12-31）
+
+**関連ファイル**: 
+- `apps/api/src/routes/imports.ts`
+- `apps/api/src/services/imports/csv-importer-factory.ts`
+- `apps/api/src/services/imports/importers/measuring-instrument.ts`
+- `apps/api/src/services/imports/importers/rigging-gear.ts`
+

@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2025-12-31）
 
+- **✅ CSVインポートUI改善・計測機器・吊具対応完了**: USBメモリ経由のCSVインポートUIを4つのフォーム（従業員・工具・計測機器・吊具）に分割し、各データタイプを個別にアップロードできるように改善。新APIエンドポイント`POST /api/imports/master/:type`を追加し、単一データタイプ対応のインポート機能を実装。共通コンポーネント`ImportForm`を作成し、コードの重複を削減。各フォームで`replaceExisting`を個別に設定可能。CI通過確認済み。詳細は [knowledge-base/api.md#kb-117](./knowledge-base/api.md#kb-117-csvインポートapiの単一データタイプ対応エンドポイント追加) / [knowledge-base/frontend.md#kb-117](./knowledge-base/frontend.md#kb-117-csvインポートuiの4フォーム分割実装) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
 - **✅ CSVフォーマット仕様実装・従業員編集フォーム改善完了**: 従業員CSVインポートの新フォーマット（`lastName`/`firstName`）を実装し、従業員編集フォームを`lastName`と`firstName`の個別フィールドに変更。`displayName`は自動生成されるように改善。データベーススキーマに`lastName`/`firstName`フィールドを追加し、APIとフロントエンドを更新。既存データの`displayName`から`lastName`/`firstName`への分割ロジックも実装。実機検証でCSVインポート成功、`displayName`自動生成、一覧表示、編集画面の動作をすべて確認済み。詳細は [guides/verification-checklist.md#62-従業員csvインポート新フォーマット](./guides/verification-checklist.md#62-従業員csvインポート新フォーマット) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
 ### 🆕 最新アップデート（2025-12-30）
