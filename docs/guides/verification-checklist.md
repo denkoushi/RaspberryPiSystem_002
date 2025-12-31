@@ -357,21 +357,27 @@ cd apps/web && pnpm build && cd ../..
 **検証手順**:
 
 1. **CSVファイルの準備**
-   - 以下のCSVファイルを作成（UTF-8エンコーディング）:
+   - 以下のCSVファイルを作成（UTF-8エンコーディング、BOMなし）:
    ```csv
    managementNumber,name,storageLocation,department,measurementRange,calibrationExpiryDate,status,rfidTagUid
-   MI-TEST-001,テスト計測機器1,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,04C362E1330289
-   MI-TEST-002,テスト計測機器2,工具庫B,製造部,0-200mm,2026-06-30,AVAILABLE,04DE8366BC2A81
+   MI-TEST-001,テスト計測機器1,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,04TEST001001
+   MI-TEST-002,テスト計測機器2,工具庫B,製造部,0-200mm,2026-06-30,AVAILABLE,04TEST002002
    ```
+   - ファイル名は `measuring-instruments.csv` として保存
+   - 注意: `rfidTagUid`は既存データと重複しない値を使用してください
 
 2. **管理画面でCSVインポート**
-   - 管理画面からCSVファイルをアップロード
+   - 管理画面にログイン: `https://100.106.158.2/admin`
+   - 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
+   - 「計測機器CSV (measuring-instruments.csv)」セクションでCSVファイルを選択
+   - 「既存データをクリアしてから取り込み（計測機器CSVのみ）」にチェックを入れるか選択
+   - 「取り込み開始」ボタンをクリック
    - インポート結果を確認
 
 **確認ポイント**:
 - [ ] インポートが成功するか
 - [ ] `department`フィールドが正しく保存されているか
-- [ ] 管理画面の計測機器一覧で`department`が表示されるか
+- [ ] 管理画面の計測機器一覧（`/admin/tools/measuring-instruments`）で`department`が表示されるか
 - [ ] 編集画面で`department`が表示・編集できるか
 
 **検証日時**: _______________
