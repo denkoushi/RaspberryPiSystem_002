@@ -190,6 +190,8 @@ describe('EmployeeService', () => {
         data: {
           employeeCode: 'EMP001',
           displayName: 'New Employee',
+          lastName: null,
+          firstName: null,
           nfcTagUid: 'UID1',
           department: 'Dept 1',
           contact: 'contact@example.com',
@@ -264,7 +266,8 @@ describe('EmployeeService', () => {
       const mockEmployee = {
         id: 'employee-1',
         employeeCode: 'EMP001',
-        displayName: 'Updated Employee',
+        // lastName/firstNameが存在する場合、displayNameは自動生成される（displayName入力より優先）
+        displayName: 'Original Employee',
         lastName: 'Original',
         firstName: 'Employee',
         nfcTagUid: 'UID1',
@@ -285,7 +288,7 @@ describe('EmployeeService', () => {
         where: { id: 'employee-1' },
         data: {
           department: 'Updated Dept',
-          displayName: 'Updated Employee',
+          displayName: 'Original Employee',
         },
       });
     });
