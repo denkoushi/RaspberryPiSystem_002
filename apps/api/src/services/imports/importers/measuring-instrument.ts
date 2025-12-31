@@ -12,6 +12,7 @@ const measuringInstrumentCsvSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
   storageLocation: z.string().optional().nullable(),
+  department: z.string().optional().nullable(), // 管理部署
   measurementRange: z.string().optional().nullable(),
   calibrationExpiryDate: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
@@ -173,6 +174,7 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
               data: {
                 name: row.name,
                 storageLocation: row.storageLocation ?? undefined,
+                department: row.department ?? undefined,
                 measurementRange: row.measurementRange ?? undefined,
                 calibrationExpiryDate: row.calibrationExpiryDate ?? undefined,
                 status: row.status ?? MeasuringInstrumentStatus.AVAILABLE
@@ -221,6 +223,7 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
                 name: row.name,
                 managementNumber: row.managementNumber,
                 storageLocation: row.storageLocation ?? undefined,
+                department: row.department ?? undefined,
                 measurementRange: row.measurementRange ?? undefined,
                 calibrationExpiryDate: row.calibrationExpiryDate ?? undefined,
                 status: row.status ?? MeasuringInstrumentStatus.AVAILABLE

@@ -10,10 +10,10 @@ const { EmployeeStatus } = pkg;
 
 const employeeCsvSchema = z.object({
   employeeCode: z.string().regex(/^\d{4}$/, '社員コードは数字4桁である必要があります（例: 0001）'),
-  displayName: z.string().min(1, '氏名は必須です'),
+  lastName: z.string().min(1, '苗字は必須です'),
+  firstName: z.string().min(1, '名前は必須です'),
   nfcTagUid: z.string().optional(),
   department: z.string().optional(),
-  contact: z.string().optional(),
   status: z.string().optional()
 });
 
@@ -121,10 +121,13 @@ export class EmployeeCsvImporter implements CsvImporter {
     // 各行をループ処理
     await prisma.$transaction(async (tx) => {
       for (const row of employeeRows) {
+        // displayNameはlastName + firstNameから自動生成
+        const displayName = `${row.lastName}${row.firstName}`;
         const updateData = {
-          displayName: row.displayName,
+          displayName,
+          lastName: row.lastName,
+          firstName: row.firstName,
           department: row.department || null,
-          contact: row.contact || null,
           nfcTagUid: row.nfcTagUid || null,
           status: normalizeEmployeeStatus(row.status)
         };

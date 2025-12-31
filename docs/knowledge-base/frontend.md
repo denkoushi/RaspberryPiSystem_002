@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 21件  
+**件数**: 23件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -971,6 +971,82 @@ function formatScheduleForDisplay(cronSchedule: string): string {
 - 既存の`parseCronSchedule`関数を活用することで、コードの重複を避けられる
 
 **解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-116] CSVインポートスケジュールページのフォーム状態管理改善
+
+**日付**: 2025-12-30
+
+**事象**: 
+- スケジュールを削除した後、「新規作成」ボタンを押すと、削除したスケジュールのデータがフォームに残っていた
+- 編集モードから新規作成モードに切り替わったときも、編集データがフォームに残っていた
+- ログアウトして再表示すると消えていた（状態管理の問題）
+
+**要因**: 
+- `formData`が編集モードと新規作成モードで共有されていた
+- 削除後に`formData`をリセットしていなかった
+- 編集モードから新規作成モードに切り替わったときに、編集状態をクリアしていなかった
+- `useEffect`で`showCreateForm`が`true`になったときに`formData`をリセットしていたが、編集モードがアクティブな場合は先にクリアする必要があった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-30）:
+  1. **削除後のリセット**: `handleDelete`で削除したスケジュールが編集中だった場合は`cancelEdit()`を呼んで編集状態をクリア
+  2. **新規作成時のリセット**: `useEffect`で`showCreateForm`が`true`になったときに`formData`をリセット
+  3. **編集から新規作成への切り替え**: 「新規作成」ボタンの`onClick`で、編集モードがアクティブな場合は先に`cancelEdit()`を呼んで編集状態をクリアしてから`setShowCreateForm(true)`を呼ぶ
+
+**実装のポイント**:
+```typescript
+// 新規作成フォームを開いた時にスケジュールの初期値を設定
+useEffect(() => {
+  if (showCreateForm) {
+    // フォームデータを初期化（編集データや削除後に残った古いデータをクリア）
+    setFormData({
+      id: '',
+      name: '',
+      provider: undefined,
+      targets: [],
+      employeesPath: '',
+      itemsPath: '',
+      schedule: '0 2 * * *',
+      timezone: 'Asia/Tokyo',
+      enabled: true,
+      replaceExisting: false,
+      autoBackupAfterImport: {
+        enabled: false,
+        targets: ['csv']
+      }
+    });
+    setScheduleTime('02:00');
+    setScheduleDaysOfWeek([]);
+  }
+}, [showCreateForm]);
+
+// 新規作成ボタン
+<Button
+  onClick={() => {
+    // 編集モードがアクティブな場合は先にクリア
+    if (editingId !== null) {
+      cancelEdit();
+    }
+    setShowCreateForm(true);
+  }}
+  disabled={showCreateForm || editingId !== null}
+>
+  新規作成
+</Button>
+```
+
+**学んだこと**: 
+- フォーム状態管理では、モード切り替え時に必ず状態をリセットする必要がある
+- `useEffect`の依存配列を適切に設定することで、状態の同期を保つことができる
+- 部分最適ではなく、全体設計を確認してから修正することが重要
+- 編集モードと新規作成モードで状態を共有する場合は、切り替え時に必ずリセットする
+
+**解決状況**: ✅ **解決済み**（2025-12-30）
 
 **関連ファイル**: 
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`

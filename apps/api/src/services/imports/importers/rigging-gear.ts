@@ -13,6 +13,16 @@ const riggingGearCsvSchema = z.object({
   managementNumber: z.string().min(1, '管理番号は必須です'),
   storageLocation: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
+  startedAt: z.string().optional().nullable().transform((val) => {
+    if (!val || val.trim() === '') return null;
+    const date = new Date(val);
+    return isNaN(date.getTime()) ? null : date;
+  }),
+  usableYears: z.string().optional().nullable().transform((val) => {
+    if (!val || val.trim() === '') return null;
+    const num = parseInt(val, 10);
+    return isNaN(num) ? null : num;
+  }),
   maxLoadTon: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
     const num = parseFloat(val);
@@ -32,11 +42,6 @@ const riggingGearCsvSchema = z.object({
     if (!val || val.trim() === '') return null;
     const num = parseInt(val, 10);
     return isNaN(num) ? null : num;
-  }),
-  startedAt: z.string().optional().nullable().transform((val) => {
-    if (!val || val.trim() === '') return null;
-    const date = new Date(val);
-    return isNaN(date.getTime()) ? null : date;
   }),
   status: z.string().optional().transform((val) => {
     if (!val || !val.trim()) return RiggingStatus.AVAILABLE;
@@ -195,11 +200,12 @@ export class RiggingGearCsvImporter implements CsvImporter {
                 name: row.name,
                 storageLocation: row.storageLocation,
                 department: row.department,
+                startedAt: row.startedAt ?? undefined,
+                usableYears: row.usableYears ?? undefined,
                 maxLoadTon: row.maxLoadTon ?? undefined,
                 lengthMm: row.lengthMm ?? undefined,
                 widthMm: row.widthMm ?? undefined,
                 thicknessMm: row.thicknessMm ?? undefined,
-                startedAt: row.startedAt ?? undefined,
                 status: row.status ?? RiggingStatus.AVAILABLE,
                 notes: row.notes ?? undefined
               }
@@ -245,11 +251,12 @@ export class RiggingGearCsvImporter implements CsvImporter {
                 managementNumber: row.managementNumber,
                 storageLocation: row.storageLocation,
                 department: row.department,
+                startedAt: row.startedAt ?? undefined,
+                usableYears: row.usableYears ?? undefined,
                 maxLoadTon: row.maxLoadTon ?? undefined,
                 lengthMm: row.lengthMm ?? undefined,
                 widthMm: row.widthMm ?? undefined,
                 thicknessMm: row.thicknessMm ?? undefined,
-                startedAt: row.startedAt ?? undefined,
                 status: row.status ?? RiggingStatus.AVAILABLE,
                 notes: row.notes ?? undefined
               }

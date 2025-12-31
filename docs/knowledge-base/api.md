@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 18件  
+**件数**: 20件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -517,4 +517,147 @@ update-frequency: medium
 - `apps/api/src/services/signage/signage.service.ts`
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+
+---
+
+### [KB-114] CSVインポート構造改善（レジストリ・ファクトリパターン）
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- CSVインポート機能が従業員・工具のみに対応しており、計測機器・吊具のCSVインポートができなかった
+- 新しいデータタイプを追加する際に、複数箇所のコード修正が必要で拡張性が低かった
+
+**要因**: 
+- CSVインポートロジックが各データタイプごとに個別に実装されており、コードの重複があった
+- `importEmployees`と`importItems`関数が`routes/imports.ts`に直接実装されており、新しいデータタイプを追加する際に、ルート、スケジューラ、バリデーションなど複数箇所の修正が必要だった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: レジストリ・ファクトリパターンを導入し、CSVインポート機能をモジュール化
+  1. **インターフェース定義**: `CsvImporter`インターフェースを定義し、`parse`と`import`メソッドを定義
+  2. **レジストリ実装**: `CsvImporterRegistry`でインポータを管理し、データタイプに応じて適切なインポータを取得
+  3. **ファクトリ実装**: `CsvImporterFactory`でデータタイプに応じて適切なインポータを取得
+  4. **インポータ実装**: 各データタイプ（従業員・工具・計測機器・吊具）のインポータを個別ファイルに実装
+  5. **スケジュール設定の拡張**: `targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に
+  6. **後方互換性**: 旧`employeesPath`/`itemsPath`形式もサポート（`BackupConfigLoader`で自動変換）
+
+**学んだこと**: 
+- レジストリ・ファクトリパターンにより、新しいデータタイプの追加が容易になる（新しいインポータを実装してレジストリに登録するだけ）
+- コードの重複を削減し、保守性が向上する
+- 各インポータを独立してテストできるため、テストが容易になる
+- 後方互換性を確保することで、既存の設定ファイルを壊さずに移行できる
+- `replaceExisting=true`時の安全性を確保するため、参照がある個体（貸出記録、点検記録など）は削除しない仕様を実装
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/api/src/services/imports/csv-importer.types.ts`
+- `apps/api/src/services/imports/csv-importer-registry.ts`
+- `apps/api/src/services/imports/csv-importer-factory.ts`
+- `apps/api/src/services/imports/importers/employee.ts`
+- `apps/api/src/services/imports/importers/item.ts`
+- `apps/api/src/services/imports/importers/measuring-instrument.ts`
+- `apps/api/src/services/imports/importers/rigging-gear.ts`
+- `apps/api/src/services/imports/index.ts`
+- `apps/api/src/services/backup/backup-config.loader.ts`
+- `apps/api/src/routes/imports.ts`
+- `apps/api/src/services/imports/csv-import-scheduler.ts`
+
+---
+
+### [KB-115] Gmail件名パターンの設定ファイル管理
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- Gmail経由のCSVインポートで使用する件名パターンがコードにハードコードされており、変更するにはコード修正が必要だった
+- ユーザーが管理コンソールから件名パターンを編集できない
+
+**要因**: 
+- Gmail件名パターンが`GMAIL_SUBJECT_PATTERNS`定数としてコードに定義されていた
+- 設定ファイル（`backup.json`）に件名パターンを保存する仕組みがなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: 設定ファイル（`backup.json`）に件名パターンを保存する仕組みを実装
+  1. **スキーマ拡張**: `BackupConfig`スキーマに`csvImportSubjectPatterns`フィールドを追加
+  2. **デフォルト値**: 既存の`GMAIL_SUBJECT_PATTERNS`をデフォルト値として設定
+  3. **管理コンソール連携**: CSVインポートスケジュールページから件名パターンを編集できるように実装
+  4. **API連携**: `PUT /api/backup/config`エンドポイントで件名パターンを更新できるように実装
+
+**学んだこと**: 
+- 設定可能な値はコードにハードコードせず、設定ファイルに保存することで柔軟性が向上する
+- デフォルト値を設定することで、既存の動作を維持しながら新機能を追加できる
+- 管理コンソールから設定を編集できるようにすることで、ユーザビリティが向上する
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/api/src/services/backup/backup-config.ts`
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+- `apps/web/src/api/backup.ts`
+
+---
+
+### [KB-116] CSVインポート手動実行時のリトライスキップ機能
+
+**日付**: 2025-12-30
+
+**事象**: 
+- CSVインポートスケジュールの手動実行時に、Gmailに該当メールがない場合、リトライ（最大3回、指数バックオフ）が実行され、最大約7分（60秒+120秒+240秒）待機する必要があった
+- 手動実行は即座に結果を確認したいが、リトライ待機によりUIが「実行中...」のまま長時間続いていた
+- ユーザーが「ずっと待機状態が続くのか？」と不安に感じていた
+
+**要因**: 
+- 手動実行と自動実行（スケジュール実行）で同じリトライロジックを使用していた
+- 手動実行は即座に結果を確認したい用途であり、リトライは不要だった
+- 自動実行はメールがまだ届いていない可能性があるため、リトライが必要だった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-30）: 手動実行時はリトライをスキップするように変更
+  1. **`executeImport`メソッドに`skipRetry`パラメータを追加**: デフォルトは`false`（自動実行は従来通りリトライあり）
+  2. **`runImport`メソッド（手動実行）で`skipRetry: true`を指定**: リトライをスキップして即座に実行
+  3. **自動実行（スケジュール実行）は従来通り**: リトライあり（最大3回、指数バックオフ）
+
+**実装のポイント**:
+```typescript
+/**
+ * CSVインポートを実行（リトライ機能付き）
+ * @param skipRetry 手動実行の場合はtrueを指定してリトライをスキップ
+ */
+private async executeImport(
+  config: BackupConfig,
+  importSchedule: NonNullable<BackupConfig['csvImports']>[0],
+  skipRetry = false
+): Promise<ImportSummary> {
+  // プロバイダーを決定
+  const provider = importSchedule.provider || config.storage.provider;
+  
+  // 手動実行の場合はリトライをスキップして直接実行
+  if (skipRetry) {
+    return await this.executeImportAttempt(config, importSchedule, provider);
+  }
+
+  // 自動実行の場合はリトライロジックで実行
+  // ... リトライロジック ...
+}
+
+// 手動実行
+async runImport(importId: string): Promise<void> {
+  // ...
+  // 手動実行の場合はリトライをスキップ
+  const summary = await this.executeImport(config, importSchedule, true);
+  // ...
+}
+```
+
+**学んだこと**: 
+- 手動実行と自動実行では要件が異なるため、適切に分岐する必要がある
+- 手動実行は即座に結果を確認したい用途であり、リトライは不要
+- 自動実行はメールがまだ届いていない可能性があるため、リトライが必要
+- UIの待機時間を短縮することで、ユーザー体験が向上する
+
+**解決状況**: ✅ **解決済み**（2025-12-30）
+
+**関連ファイル**: 
+- `apps/api/src/services/imports/csv-import-scheduler.ts`
 
