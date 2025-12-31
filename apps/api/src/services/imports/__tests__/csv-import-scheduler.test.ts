@@ -367,8 +367,9 @@ describe('CsvImportScheduler', () => {
     it('should skip schedule with missing required fields', async () => {
       const mockConfig = {
         storage: {
-          provider: 'local' as const,
+          provider: 'dropbox' as const,
           options: {
+            accessToken: 'test-token',
             basePath: '/backups'
           }
         },
