@@ -26,6 +26,7 @@ import {
   type RunBackupRequest,
   type GmailConfigUpdateRequest
 } from './backup';
+import { importMasterSingle } from './client';
 import {
   borrowItem,
   cancelLoan,
@@ -432,6 +433,25 @@ export function useImportMaster() {
       // インポート成功後、employeesとitemsのクエリを無効化して最新データを取得
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['items'] });
+    }
+  });
+}
+
+export function useImportMasterSingle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: importMasterSingle,
+    onSuccess: (_, variables) => {
+      // インポート成功後、該当するデータタイプのクエリを無効化して最新データを取得
+      if (variables.type === 'employees') {
+        queryClient.invalidateQueries({ queryKey: ['employees'] });
+      } else if (variables.type === 'items') {
+        queryClient.invalidateQueries({ queryKey: ['items'] });
+      } else if (variables.type === 'measuringInstruments') {
+        queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
+      } else if (variables.type === 'riggingGears') {
+        queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+      }
     }
   });
 }

@@ -639,6 +639,32 @@ export async function importMaster(payload: ImportMasterPayload) {
   return data;
 }
 
+interface ImportMasterSinglePayload {
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  file: File;
+  replaceExisting?: boolean;
+}
+
+export async function importMasterSingle(payload: ImportMasterSinglePayload) {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('replaceExisting', String(payload.replaceExisting ?? false));
+
+  // キャメルケースをケバブケースに変換
+  const typeMap: Record<string, string> = {
+    'employees': 'employees',
+    'items': 'items',
+    'measuringInstruments': 'measuring-instruments',
+    'riggingGears': 'rigging-gears'
+  };
+  const urlType = typeMap[payload.type] || payload.type;
+
+  const { data } = await api.post<{ summary: Record<string, ImportSummary> }>(`/imports/master/${urlType}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data;
+}
+
 export interface SystemInfo {
   cpuTemp: number | null;
   cpuLoad: number;

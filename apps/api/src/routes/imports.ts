@@ -13,7 +13,7 @@ import { DropboxStorageProvider } from '../services/backup/storage/dropbox-stora
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
-import type { CsvImportTarget, ImportSummary } from '../services/imports/csv-importer.types.js';
+import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -749,6 +749,85 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            false;
 
     const { summary } = await processCsvImport(files, replaceExisting, request.log);
+    return { summary };
+  });
+
+  // 単一データタイプのCSVインポート（計測機器・吊具対応）
+  app.post('/imports/master/:type', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request, reply) => {
+    const typeParam = (request.params as { type?: string }).type;
+    
+    // URLパス（ケバブケース）をキャメルケースに変換
+    const typeMap: Record<string, CsvImportType> = {
+      'employees': 'employees',
+      'items': 'items',
+      'measuring-instruments': 'measuringInstruments',
+      'rigging-gears': 'riggingGears'
+    };
+    
+    if (!typeParam || !typeMap[typeParam]) {
+      const validTypes = Object.keys(typeMap).join(', ');
+      throw new ApiError(400, `無効なデータタイプです。許可されているタイプ: ${validTypes}`);
+    }
+    
+    const type = typeMap[typeParam];
+    
+    // マルチパートリクエストの検証とファイル取得
+    let fileBuffer: Buffer | undefined;
+    const fieldValues: Record<string, string> = {};
+    
+    try {
+      if (!request.isMultipart()) {
+        throw new ApiError(400, 'マルチパートフォームデータが必要です。Content-Type: multipart/form-dataを指定してください。');
+      }
+
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'file') {
+            fileBuffer = await readFile(part);
+          }
+        } else {
+          fieldValues[part.fieldname] = String(part.value);
+        }
+      }
+    } catch (error) {
+      request.log.error({ err: error }, 'マルチパート処理エラー');
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      if (error instanceof Error) {
+        const errorMessage = error.message.toLowerCase();
+        if (errorMessage.includes('multipart') || errorMessage.includes('content-type')) {
+          throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
+        }
+        throw new ApiError(400, `リクエスト処理エラー: ${error.message}`);
+      }
+      
+      throw new ApiError(400, 'リクエストの処理に失敗しました');
+    }
+
+    if (!fileBuffer) {
+      throw new ApiError(400, 'CSVファイルがアップロードされていません。fieldname="file"でファイルをアップロードしてください。');
+    }
+
+    // replaceExistingフラグの解析
+    const parsedFields = fieldSchema.parse(fieldValues);
+    const rawReplaceExisting = parsedFields.replaceExisting;
+    const replaceExisting = rawReplaceExisting === true || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === 'true') || 
+                           (typeof rawReplaceExisting === 'number' && rawReplaceExisting === 1) || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
+                           false;
+
+    // 新形式のtargets配列で処理
+    const targets: CsvImportTarget[] = [{ type, source: `${type}.csv` }];
+    const fileMap = new Map<string, Buffer>();
+    fileMap.set(type, fileBuffer);
+
+    const { summary } = await processCsvImportFromTargets(targets, fileMap, replaceExisting, request.log);
+    
     return { summary };
   });
 

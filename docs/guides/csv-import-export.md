@@ -538,6 +538,10 @@ CSVインポート機能は、拡張性と保守性を向上させるため、�
 - 将来のモジュール（ドキュメント管理、物流管理など）用のマスターデータインポート機能
 - 新しいデータタイプの追加は、`CsvImporter`インターフェースを実装してレジストリに登録するだけで対応可能
 
+## 実機検証
+
+CSVフォーマット仕様実装の実機検証手順は、[検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)を参照してください。
+
 ## 関連ドキュメント
 
 - [デプロイメントガイド](./deployment.md)
@@ -545,4 +549,5 @@ CSVインポート機能は、拡張性と保守性を向上させるため、�
 - [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
 - [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-003-p2002エラーnfctaguidの重複が発生する)
+- [検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)
 
