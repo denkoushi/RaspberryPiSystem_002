@@ -416,7 +416,7 @@ export function CsvImportSchedulePage() {
   // 新規作成フォームを開いた時にスケジュールの初期値を設定
   useEffect(() => {
     if (showCreateForm) {
-      // フォームデータを初期化（削除後に残った古いデータをクリア）
+      // フォームデータを初期化（編集データや削除後に残った古いデータをクリア）
       setFormData({
         id: '',
         name: '',
@@ -454,7 +454,16 @@ export function CsvImportSchedulePage() {
           >
             一覧更新
           </Button>
-          <Button onClick={() => setShowCreateForm(true)} disabled={showCreateForm || editingId !== null}>
+          <Button
+            onClick={() => {
+              // 編集モードがアクティブな場合は先にクリア
+              if (editingId !== null) {
+                cancelEdit();
+              }
+              setShowCreateForm(true);
+            }}
+            disabled={showCreateForm || editingId !== null}
+          >
             新規作成
           </Button>
         </div>
