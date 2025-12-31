@@ -28,7 +28,7 @@ vi.mock('../../services/backup/backup-config.loader.js', () => {
 const mockDownload = vi.fn(async (path: string): Promise<Buffer> => {
   if (path.includes('employees') || path.toLowerCase().includes('employee')) {
     const emp = (Date.now() % 10000).toString().padStart(4, '0');
-    return Buffer.from(`employeeCode,displayName\n${emp},Emp-${emp}`);
+    return Buffer.from(`employeeCode,lastName,firstName\n${emp},Emp,${emp}`);
   }
   if (path.includes('items') || path.toLowerCase().includes('item')) {
     const item = `TO${(Date.now() % 10000).toString().padStart(4, '0')}`;

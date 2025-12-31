@@ -25,7 +25,7 @@ vi.mock('../../services/backup/backup-config.loader.js', () => {
 const mockDownload = vi.fn(async (path: string): Promise<Buffer> => {
   if (path.includes('employees')) {
     const emp = (Date.now() % 10000).toString().padStart(4, '0');
-    return Buffer.from(`employeeCode,displayName\n${emp},Emp-${emp}`);
+    return Buffer.from(`employeeCode,lastName,firstName\n${emp},Emp,${emp}`);
   }
   if (path.includes('items')) {
     const item = `TO${(Date.now() % 10000).toString().padStart(4, '0')}`;
@@ -315,7 +315,7 @@ describe('POST /api/imports/master/from-dropbox', () => {
 
     it('should handle large CSV files (1000 rows)', async () => {
       // 1000行のCSVを生成
-      const csvRows = ['employeeCode,displayName'];
+      const csvRows = ['employeeCode,lastName,firstName'];
       for (let i = 0; i < 1000; i++) {
         const code = i.toString().padStart(4, '0');
         csvRows.push(`${code},Employee-${code}`);
@@ -365,7 +365,7 @@ describe('POST /api/imports/master/from-dropbox', () => {
       }
 
       // 1万行のCSVを生成
-      const csvRows = ['employeeCode,displayName'];
+      const csvRows = ['employeeCode,lastName,firstName'];
       for (let i = 0; i < 10000; i++) {
         const code = i.toString().padStart(4, '0');
         csvRows.push(`${code},Employee-${code}`);
