@@ -333,7 +333,8 @@ export class CsvImportScheduler {
         itemsPath: importSchedule.itemsPath
       });
 
-      const summary = await this.executeImport(config, importSchedule);
+      // 手動実行の場合はリトライをスキップ
+      const summary = await this.executeImport(config, importSchedule, true);
 
       // インポート履歴を完了として更新
       if (historyId) {
@@ -385,16 +386,23 @@ export class CsvImportScheduler {
 
   /**
    * CSVインポートを実行（リトライ機能付き）
+   * @param skipRetry 手動実行の場合はtrueを指定してリトライをスキップ
    */
   private async executeImport(
     config: BackupConfig,
-    importSchedule: NonNullable<BackupConfig['csvImports']>[0]
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0],
+    skipRetry = false
   ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
     // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
     const provider = importSchedule.provider || config.storage.provider;
     
     if (provider !== 'dropbox' && provider !== 'gmail') {
       throw new Error(`CSV import requires Dropbox or Gmail storage provider, but got: ${provider}`);
+    }
+
+    // 手動実行の場合はリトライをスキップして直接実行
+    if (skipRetry) {
+      return await this.executeImportAttempt(config, importSchedule, provider);
     }
 
     // リトライ設定
