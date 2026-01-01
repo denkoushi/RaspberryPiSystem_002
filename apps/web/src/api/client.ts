@@ -397,6 +397,9 @@ export async function createMeasuringInstrument(input: MeasuringInstrumentInput)
 }
 
 export async function updateMeasuringInstrument(id: string, input: MeasuringInstrumentInput) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:updateMeasuringInstrument',message:'PUT /measuring-instruments/:id',data:{runId:'run1',hypothesisId:'E',idTail:id.slice(-6),rfidTagUid:input?.rfidTagUid===undefined?'__undefined__':(input?.rfidTagUid===null?'__null__':(input?.rfidTagUid===''?'__empty__':String(input?.rfidTagUid).slice(-4)))},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
   const { data } = await api.put<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`, input);
   return data.instrument;
 }
@@ -435,9 +438,15 @@ export async function deleteInspectionItem(itemId: string) {
 
 // RFIDタグ API
 export async function getInstrumentTags(measuringInstrumentId: string) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:getInstrumentTags',message:'GET /measuring-instruments/:id/tags (start)',data:{runId:'run1',hypothesisId:'F',idTail:measuringInstrumentId.slice(-6)},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
   const { data } = await api.get<{ tags: MeasuringInstrumentTag[] }>(
     `/measuring-instruments/${measuringInstrumentId}/tags`
   );
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:getInstrumentTags',message:'GET /measuring-instruments/:id/tags (done)',data:{runId:'run1',hypothesisId:'F',idTail:measuringInstrumentId.slice(-6),count:(data.tags||[]).length,uidTails:(data.tags||[]).slice(0,5).map(t=>String(t.rfidTagUid||'').slice(-4))},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+  // #endregion
   return data.tags;
 }
 

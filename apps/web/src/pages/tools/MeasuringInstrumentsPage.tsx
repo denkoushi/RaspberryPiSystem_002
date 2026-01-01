@@ -45,6 +45,9 @@ export function MeasuringInstrumentsPage() {
   useEffect(() => {
     if (!editingId || !editingTags) return;
     const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MeasuringInstrumentsPage.tsx:useEffect(editingTags)',message:'editingTags arrived',data:{runId:'run1',hypothesisId:'A',editingIdTail:editingId.slice(-6),manual:isManualEditRef.current,tagsCount:editingTags.length,firstUidTail:(existingTagUid||'').slice(-4),allUidTails:editingTags.slice(0,5).map(t=>String(t.rfidTagUid||'').slice(-4))},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+    // #endregion
     // ユーザーが手動で編集していない場合のみ、既存のタグUIDを設定
     if (!isManualEditRef.current) {
       setForm((prev) => ({ ...prev, rfidTagUid: existingTagUid }));
@@ -73,11 +76,17 @@ export function MeasuringInstrumentsPage() {
       // 空文字は削除、非空はtrim、未入力は無変更
       rfidTagUid: rawTag === '' ? '' : normalizedTagUid || undefined
     };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MeasuringInstrumentsPage.tsx:handleSubmit',message:'submit measuring-instrument update',data:{runId:'run1',hypothesisId:'B',editing:!!editingId,editingIdTail:editingId?editingId.slice(-6):null,rawTail:rawTag.slice(-4),normTail:normalizedTagUid.slice(-4),payloadTag:payload.rfidTagUid===undefined?'__undefined__':(payload.rfidTagUid===''?'__empty__':String(payload.rfidTagUid).slice(-4))},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+    // #endregion
     if (editingId) {
       await update.mutateAsync({ id: editingId, payload });
     } else {
       await create.mutateAsync(payload);
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MeasuringInstrumentsPage.tsx:handleSubmit',message:'mutation completed',data:{runId:'run1',hypothesisId:'C',editing:!!editingId,editingIdTail:editingId?editingId.slice(-6):null},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+    // #endregion
     setForm(initialForm);
     setEditingId(null);
     isManualEditRef.current = false; // 送信後に手動編集フラグをリセット
@@ -123,6 +132,9 @@ export function MeasuringInstrumentsPage() {
               value={form.rfidTagUid}
               onChange={(e) => {
                 isManualEditRef.current = true; // 手動編集フラグを設定
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MeasuringInstrumentsPage.tsx:onChange(rfidTagUid)',message:'manual edit uid',data:{runId:'run1',hypothesisId:'D',valueTail:e.target.value.slice(-4)},timestamp:Date.now(),sessionId:'debug-session'})}).catch(()=>{});
+                // #endregion
                 setForm({ ...form, rfidTagUid: e.target.value });
               }}
               placeholder="例: 04A1B2C3D4"
