@@ -119,10 +119,11 @@ export class MeasuringInstrumentService {
             if (existing && existing.measuringInstrumentId !== id) {
               throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
             }
-            await tx.measuringInstrumentTag.upsert({
-              where: { rfidTagUid: tagUid },
-              update: { measuringInstrumentId: id },
-              create: { measuringInstrumentId: id, rfidTagUid: tagUid }
+            // 計測機器に複数タグが紐づくと、UI側で「どれが最新か」が不定になり、
+            // UIDの手動編集が反映されないように見えるため、更新時は常に1つに正規化する。
+            await tx.measuringInstrumentTag.deleteMany({ where: { measuringInstrumentId: id } });
+            await tx.measuringInstrumentTag.create({
+              data: { measuringInstrumentId: id, rfidTagUid: tagUid }
             });
           } else {
             // 空文字指定ならタグを削除
