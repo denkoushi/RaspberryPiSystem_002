@@ -1326,3 +1326,84 @@ export function MasterImportPage() {
 - `apps/web/src/pages/admin/components/ImportForm.tsx`
 - `apps/web/src/api/client.ts`
 - `apps/web/src/api/hooks.ts`
+
+---
+
+### [KB-125] キオスクお問い合わせフォームのデザイン変更
+
+**日付**: 2026-01-03
+
+**事象**:
+- キオスクUIのお問い合わせフォームのデザインを改善する必要があった
+- 送信者を社員名簿から選択できるようにしたい
+- 「よくある困りごと」を削除し、依頼内容をドロップダウンで選択できるようにしたい
+- 打合せ日時の選択フィールドを追加したい
+
+**要因**:
+- **根本原因**: 既存のフォームは「よくある困りごと」の選択式ボタンと詳細テキストエリアのみで、送信者情報や打合せ日時が含まれていなかった
+- ユーザーからの要望で、より実用的なフォームデザインが必要だった
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-03）:
+  1. **送信者ドロップダウン**: `useKioskEmployees()`フックを使用して社員名簿から選択可能に
+  2. **依頼内容ドロップダウン**: 「よくある困りごと」を削除し、「現場まで来てください。」を選択式に変更
+  3. **打合せ日時フィールド**: 日付（`type="date"`）と時刻（`type="time"`）の入力欄を追加
+  4. **デフォルト日時**: `useEffect`を使用して、モーダルが開かれた時点の日時をデフォルト値として設定
+  5. **詳細フィールド**: 既存の詳細（任意）テキストエリアを維持
+
+**実装のポイント**:
+```typescript
+// apps/web/src/components/kiosk/KioskSupportModal.tsx
+export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
+  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
+  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(clientKey || DEFAULT_CLIENT_KEY);
+  
+  const [selectedSender, setSelectedSender] = useState<string>('');
+  const [requestType, setRequestType] = useState<string>('');
+  const [meetingDate, setMeetingDate] = useState<string>('');
+  const [meetingTime, setMeetingTime] = useState<string>('');
+  const [message, setMessage] = useState('');
+
+  // モーダルが開かれたときに日時をデフォルト値に設定
+  useEffect(() => {
+    if (isOpen) {
+      setMeetingDate(getDefaultDate());
+      setMeetingTime(getDefaultTime());
+    }
+  }, [isOpen]);
+
+  const handleSubmit = async (e: FormEvent) => {
+    // メッセージを組み立て
+    const selectedEmployee = employees?.find((emp: { id: string; displayName: string; department: string | null }) => emp.id === selectedSender);
+    const senderName = selectedEmployee?.displayName || '不明';
+    const requestTypeLabel = requestTypes.find((rt) => rt.value === requestType)?.label || '';
+    
+    let userMessage = `送信者: ${senderName}\n依頼内容: ${requestTypeLabel}`;
+    
+    if (meetingDate && meetingTime) {
+      userMessage += `\n打合せ日時: ${meetingDate} ${meetingTime}`;
+    }
+    
+    if (message.trim()) {
+      userMessage += `\n詳細: ${message.trim()}`;
+    }
+
+    await postKioskSupport({ message: userMessage, page: location.pathname }, clientKey || DEFAULT_CLIENT_KEY);
+  };
+}
+```
+
+**学んだこと**:
+- `useEffect`を使用して、モーダルが開かれた時点の日時をデフォルト値として設定することで、ユーザーの入力負担を軽減できる
+- キオスク専用のエンドポイント（`/api/kiosk/employees`）を使用することで、認証エラーを回避できる
+- フォームの各フィールドを必須/任意で適切に設定することで、ユーザビリティが向上する
+
+**解決状況**: ✅ **解決済み**（2026-01-03）
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/api/src/routes/kiosk.ts`
+
+---

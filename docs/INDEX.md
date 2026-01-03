@@ -20,6 +20,8 @@
 
 ### 🆕 最新アップデート（2026-01-03）
 
+- **✅ キオスクお問い合わせフォームのデザイン変更・実機検証完了**: キオスクUIのお問い合わせフォームを改善し、実機検証を完了。送信者を社員名簿から選択するドロップダウンに変更し、依頼内容を「現場まで来てください。」のドロップダウンに変更。打合せ日時の選択フィールド（日付・時刻）を追加し、デフォルト値として現在の日時を設定。キオスク専用の従業員リスト取得エンドポイント（`/api/kiosk/employees`）を追加し、`x-client-key`認証のみでアクセス可能に。実機検証でフォームの各フィールドが正常に動作することを確認済み。詳細は [knowledge-base/api.md#kb-125](./knowledge-base/api.md#kb-125-キオスク専用従業員リスト取得エンドポイント追加) / [knowledge-base/frontend.md#kb-125](./knowledge-base/frontend.md#kb-125-キオスクお問い合わせフォームのデザイン変更) / [guides/verification-checklist.md#69-キオスクサポート機能slack通知](./guides/verification-checklist.md#69-キオスクサポート機能slack通知) を参照。
+
 - **✅ キオスクSlackサポート機能実装・実機検証完了**: キオスクUIから管理者への問い合わせ機能（Slack通知）を実装し、実機検証を完了。キオスク画面ヘッダーに「お問い合わせ」ボタンを追加し、モーダルから問い合わせ内容を送信可能に。Slack Incoming Webhookを使用して通知を送信し、同時に既存のクライアントログとして保存。レート制限（1分に3件）とセキュリティ対策（Webhook URLの秘匿、タイムアウト処理）を実装。実機検証でSlack通知送信、ClientLog記録、APIログの正常動作をすべて確認済み。詳細は [knowledge-base/api.md#kb-124](./knowledge-base/api.md#kb-124-キオスクslackサポート機能の実装と実機検証完了) / [guides/verification-checklist.md#69-キオスクサポート機能slack通知](./guides/verification-checklist.md#69-キオスクサポート機能slack通知) / [guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md) を参照。
 
 - **✅ Gmail経由CSV取り込み（手動実行）の実機検証完了**: Gmail経由でのCSVファイル自動取り込み機能の手動実行での実機検証を完了。Gmail検索・取得処理、CSVインポート処理、エラーハンドリングがすべて正常に動作することを確認。`GmailStorageProvider`が仕様通りに動作し、メールのアーカイブ処理も正常に機能。PowerAutomate設定後、スケジュール実行でのE2E検証を実施予定。詳細は [knowledge-base/api.md#kb-123](./knowledge-base/api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了) / [guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証](./guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証) を参照。

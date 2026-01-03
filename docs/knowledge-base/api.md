@@ -965,3 +965,77 @@ if (rfidTagUid !== undefined) {
 
 ---
 
+### [KB-125] キオスク専用従業員リスト取得エンドポイント追加
+
+**日付**: 2026-01-03
+
+**事象**:
+- キオスクUIのお問い合わせフォームで、送信者を社員名簿から選択する機能を実装する必要があった
+- 既存の`/api/tools/employees`エンドポイントはJWT認証が必要で、キオスク画面から`x-client-key`のみではアクセスできない
+- E2Eテストで`/api/tools/employees`へのリクエストが401エラー（認証トークンが必要）を返していた
+
+**要因**:
+- **根本原因**: `/api/tools/employees`エンドポイントは`authorizeRoles('ADMIN', 'MANAGER', 'VIEWER')`を使用しており、JWT認証が必要
+- キオスク画面からは`x-client-key`のみでアクセスするため、認証エラーが発生していた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-03）: キオスク専用の従業員リスト取得エンドポイント`GET /api/kiosk/employees`を追加
+  - `x-client-key`認証のみでアクセス可能
+  - クライアントデバイスの存在確認を認証として使用
+  - アクティブな従業員のみを取得（基本情報のみ: `id`, `displayName`, `department`）
+  - セキュリティを考慮し、機密情報（`employeeCode`, `contact`など）は返さない
+
+**実装のポイント**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
+  const rawClientKey = request.headers['x-client-key'];
+  const clientKey = normalizeClientKey(rawClientKey);
+  
+  if (!clientKey) {
+    throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
+  }
+
+  // クライアントデバイスの存在確認（認証として使用）
+  const clientDevice = await prisma.clientDevice.findUnique({
+    where: { apiKey: clientKey }
+  });
+
+  if (!clientDevice) {
+    throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
+  }
+
+  // アクティブな従業員のみを取得（基本情報のみ）
+  const employees = await prisma.employee.findMany({
+    where: {
+      status: 'ACTIVE'
+    },
+    select: {
+      id: true,
+      displayName: true,
+      department: true
+    },
+    orderBy: {
+      displayName: 'asc'
+    }
+  });
+
+  return { employees };
+});
+```
+
+**学んだこと**:
+- キオスク画面からアクセスするエンドポイントは、`x-client-key`認証のみでアクセス可能にする必要がある
+- セキュリティを考慮し、必要最小限の情報のみを返す（機密情報は除外）
+- 既存のエンドポイントを変更するのではなく、専用のエンドポイントを追加することで、既存機能への影響を避けられる
+
+**解決状況**: ✅ **解決済み**（2026-01-03）
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`
+
+---
+
