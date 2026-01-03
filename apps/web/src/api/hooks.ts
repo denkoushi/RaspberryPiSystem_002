@@ -389,7 +389,7 @@ export function useKioskConfig() {
     queryKey: ['kiosk-config'],
     queryFn: getKioskConfig,
     staleTime: 0, // キャッシュを無効化して常に最新データを取得（設定変更時に即座に反映されるように）
-    refetchInterval: 5000, // 5秒ごとにポーリング（設定変更時に即座に反映されるように）
+    refetchInterval: 60000, // 60秒ごとにポーリング（温度表示用、Pi3/Pi4のリソースを浪費しない）
     refetchOnWindowFocus: true // ウィンドウフォーカス時にリフェッチ（設定変更時に即座に反映されるように）
   });
 }

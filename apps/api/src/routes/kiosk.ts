@@ -118,6 +118,11 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     
     app.log.info({ clientKey, rawClientKey, headers: request.headers }, 'Kiosk config request');
     let defaultMode: 'PHOTO' | 'TAG' = 'TAG'; // デフォルトはTAG
+    let clientStatus: {
+      temperature: number | null;
+      cpuUsage: number;
+      lastSeen: Date;
+    } | null = null;
 
     if (clientKey) {
       const client = await prisma.clientDevice.findUnique({
@@ -127,14 +132,30 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       if (client?.defaultMode) {
         defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
       }
+
+      // statusClientId で ClientStatus を取得（自端末の温度・CPU負荷を返す）
+      const statusClientId = (client as { statusClientId?: string | null } | null)?.statusClientId;
+      if (statusClientId) {
+        const status = await prisma.clientStatus.findUnique({
+          where: { clientId: statusClientId }
+        });
+        if (status) {
+          clientStatus = {
+            temperature: status.temperature,
+            cpuUsage: status.cpuUsage,
+            lastSeen: status.lastSeen
+          };
+        }
+      }
     }
 
-    app.log.info({ defaultMode, clientKey }, 'Returning kiosk config');
+    app.log.info({ defaultMode, clientKey, hasClientStatus: !!clientStatus }, 'Returning kiosk config');
     return {
       theme: 'factory-dark',
       greeting: 'タグを順番にかざしてください',
       idleTimeoutMs: 30000,
-      defaultMode
+      defaultMode,
+      clientStatus
     };
   });
 

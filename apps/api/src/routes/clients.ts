@@ -144,11 +144,15 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       where: { apiKey: clientKey },
       update: {
         name: metrics.hostname,
+        // @ts-expect-error - statusClientId is added via migration but Prisma types may not be updated yet
+        statusClientId: metrics.clientId, // x-client-key と status-agent の clientId を紐づけ
         lastSeenAt: now
       },
       create: {
         name: metrics.hostname,
         apiKey: clientKey,
+        // @ts-expect-error - statusClientId is added via migration but Prisma types may not be updated yet
+        statusClientId: metrics.clientId, // x-client-key と status-agent の clientId を紐づけ
         lastSeenAt: now
       }
     });

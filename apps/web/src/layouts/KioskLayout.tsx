@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
-import { useSystemInfo } from '../api/hooks';
+import { useKioskConfig } from '../api/hooks';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { Input } from '../components/ui/Input';
@@ -13,7 +13,7 @@ const navLink = 'rounded-md px-4 py-2 text-white hover:bg-white/10 transition-co
 export function KioskLayout() {
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
-  const { data: systemInfo } = useSystemInfo();
+  const { data: kioskConfig } = useKioskConfig();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
 
@@ -68,22 +68,22 @@ export function KioskLayout() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* CPU温度・負荷モニター */}
-            {systemInfo && (
+            {/* CPU温度・負荷モニター（自端末のClientStatusから取得） */}
+            {kioskConfig?.clientStatus && (
               <div className="flex items-center gap-3 text-xs">
-                {systemInfo.cpuTemp !== null && (
+                {kioskConfig.clientStatus.temperature !== null && (
                   <div className="flex items-center gap-1">
                     <span className="text-white/70">CPU温度:</span>
                     <span
                       className={`font-semibold ${
-                        systemInfo.cpuTemp >= 70
+                        kioskConfig.clientStatus.temperature >= 70
                           ? 'text-red-400'
-                          : systemInfo.cpuTemp >= 60
+                          : kioskConfig.clientStatus.temperature >= 60
                           ? 'text-yellow-400'
                           : 'text-emerald-400'
                       }`}
                     >
-                      {systemInfo.cpuTemp.toFixed(1)}°C
+                      {kioskConfig.clientStatus.temperature.toFixed(1)}°C
                     </span>
                   </div>
                 )}
@@ -91,14 +91,14 @@ export function KioskLayout() {
                   <span className="text-white/70">CPU負荷:</span>
                   <span
                     className={`font-semibold ${
-                      systemInfo.cpuLoad >= 80
+                      kioskConfig.clientStatus.cpuUsage >= 80
                         ? 'text-red-400'
-                        : systemInfo.cpuLoad >= 60
+                        : kioskConfig.clientStatus.cpuUsage >= 60
                         ? 'text-yellow-400'
                         : 'text-emerald-400'
                     }`}
                   >
-                    {systemInfo.cpuLoad.toFixed(1)}%
+                    {kioskConfig.clientStatus.cpuUsage.toFixed(1)}%
                   </span>
                 </div>
               </div>
