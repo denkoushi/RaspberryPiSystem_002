@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 8件  
+**件数**: 9件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -668,5 +668,70 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 - `docs/guides/deployment.md`
 
 ---
+
+### [KB-129] Pi5サーバー側のstatus-agent設定ファイルが古い設定のまま
+
+**日付**: 2026-01-03
+
+**事象**: 
+- Pi5サーバー側の`status-agent.service`が失敗（`status-agent.service: Main process exited, code=exited, status=2/INVALIDARGUMENT`）
+- 管理コンソールのクライアントタブでPi5のステータスが表示されない（データが12時間以上更新されていない）
+- `status-agent.conf`の`API_BASE_URL`が`http://localhost:8080/api`に設定されていたが、Pi5のホストからはDocker内部ネットワークの`localhost:8080`にアクセスできない
+
+**要因**: 
+- Pi5サーバー側の`status-agent.conf`が古い設定のまま（`http://localhost:8080/api`）
+- Pi5のAPIコンテナは8080を外部公開していない（Docker内部ネットワークでのみアクセス可能）
+- 外部アクセスはCaddy経由（HTTPS 443）で行う必要がある
+- Pi5サーバー側のstatus-agent設定がAnsibleで管理されていない（手動設定が必要）← **根本原因**
+
+**有効だった対策**: 
+- ✅ **一時的な解決**（2026-01-03）:
+  1. Pi5の`/etc/raspi-status-agent.conf`を直接修正
+  2. `API_BASE_URL`を`https://100.106.158.2/api`に変更（Caddy経由のHTTPS）
+  3. `TLS_SKIP_VERIFY=1`を設定し、自己署名証明書を許可
+  4. `LOCATION`を「ラズパイ5 - サーバー」に設定
+  5. 手動実行で動作確認後、`status-agent.service`を再起動
+
+- ✅ **根本的な解決**（2026-01-04）:
+  1. Pi5に`status_agent_client_id`、`status_agent_client_key`などのホスト変数を追加（`inventory.yml`）
+  2. Pi5用vaultに`vault_status_agent_client_key`を追加（`host_vars/raspberrypi5/vault.yml`）
+  3. serverロールに`status-agent.yml`タスクを追加（設定ファイル配布、systemdユニット配布、タイマー有効化）
+  4. `main.yml`から`status-agent.yml`をインポート
+  5. Ansible実行時に自動的に設定ファイルが更新されるように改善
+
+**学んだこと**:
+- Pi5サーバー側のstatus-agent設定はAnsibleで管理されていないため、手動設定が必要だった（**根本原因**）
+- Pi5のホストからはDocker内部ネットワークの`localhost:8080`にアクセスできない
+- サーバー側もクライアント側と同様に、Caddy経由（HTTPS 443）でAPIにアクセスする必要がある
+- 管理コンソールでクライアントステータスが表示されない場合は、データベースとstatus-agentの両方を確認する必要がある
+- **Ansible管理化により、設定のドリフトを防止し、自動更新が可能になった**
+
+**解決状況**: ✅ **解決済み**（2026-01-04: Ansible管理化完了）
+
+**関連ファイル**:
+- `/etc/raspi-status-agent.conf`（Pi5サーバー側）
+- `infrastructure/ansible/inventory.yml`（Pi5のstatus-agent変数定義）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`（Pi5用vault、`vault_status_agent_client_key`）
+- `infrastructure/ansible/roles/server/tasks/status-agent.yml`（status-agent設定配布タスク）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（status-agent.ymlのインポート）
+- `infrastructure/ansible/templates/status-agent.conf.j2`（設定ファイルテンプレート）
+- `docs/guides/status-agent.md`
+- `docs/knowledge-base/infrastructure/ansible-deployment.md`（KB-128）
+
+**確認コマンド**:
+```bash
+# Pi5サーバー側のstatus-agent設定を確認
+cat /etc/raspi-status-agent.conf
+
+# status-agent.serviceの状態を確認
+sudo systemctl status status-agent.service
+
+# status-agent.serviceのログを確認
+sudo journalctl -u status-agent.service -n 20
+
+# 手動実行で動作確認
+cd /opt/RaspberryPiSystem_002/clients/status-agent
+STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf ./status-agent.py
+```
 
 ---

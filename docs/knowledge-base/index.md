@@ -182,6 +182,8 @@ update-frequency: high
 | [KB-108](./infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) | Gmail OAuth認証時のTailscale DNS解決問題と`/etc/hosts`設定 | ✅ 解決済み |
 | [KB-109](./frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) | CSVインポートスケジュールページのUI統一（バックアップペインと同じUI） | ✅ 解決済み |
 | [KB-110](./infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) | デプロイ時の問題（リモートにプッシュしていなかった、標準手順を無視していた） | ✅ 解決済み |
+| [KB-128](./infrastructure/ansible-deployment.md#kb-128-apiエンドポイントのhttps化caddy経由) | APIエンドポイントのHTTPS化（Caddy経由） | ✅ 解決済み |
+| [KB-129](./infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま) | Pi5サーバー側のstatus-agent設定ファイルが古い設定のまま | ✅ 解決済み |
 
 ---
 
@@ -283,3 +285,4 @@ update-frequency: high
 - 2026-01-03: KB-126を追加（キオスクUIで自端末の温度表示機能追加）
 - 2026-01-03: KB-127を追加（サイネージUIで自端末の温度表示機能追加とデザイン変更）
 - 2026-01-03: KB-128を追加（APIエンドポイントのHTTPS化（Caddy経由））
+- 2026-01-03: KB-129を追加（Pi5サーバー側のstatus-agent設定ファイルが古い設定のまま）

@@ -28,7 +28,7 @@ sudo nano /etc/raspi-status-agent.conf
 
 | 変数 | 意味 |
 | --- | --- |
-| `API_BASE_URL` | 例: `https://raspi5.local:8080/api` |
+| `API_BASE_URL` | 例: `https://100.106.158.2/api`（Caddy経由のHTTPS。ポート8080は外部公開されていない） |
 | `CLIENT_ID` | クライアントを一意に特定するID |
 | `CLIENT_KEY` | サーバーに登録済みのクライアントキー |
 
@@ -90,6 +90,8 @@ journalctl -u status-agent.service -n 20
 | TLS 証明書エラー | 一時的に `TLS_SKIP_VERIFY=1` を設定（社内ネットワーク限定） |
 | CPU 温度が `null` | `TEMPERATURE_FILE` で thermal パスを明示 |
 | systemd が失敗する | `journalctl -u status-agent.service -xe` で詳細を確認 |
+| `INVALIDARGUMENT` エラー | `API_BASE_URL` が正しく設定されているか確認（`http://localhost:8080/api`は使用不可。`https://<Pi5のIP>/api`を使用） |
+| サーバー側（Pi5）でstatus-agentが動作しない | Pi5のホストからはDocker内部ネットワークの`localhost:8080`にアクセスできないため、Caddy経由（HTTPS 443）でAPIにアクセスする必要がある（[KB-129](../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照） |
 
 ---
 
