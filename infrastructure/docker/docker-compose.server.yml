@@ -46,6 +46,7 @@ services:
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
