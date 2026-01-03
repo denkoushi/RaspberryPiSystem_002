@@ -4,7 +4,8 @@ import { useLocation } from 'react-router-dom';
 import {
   useMeasuringInstruments,
   useMeasuringInstrumentMutations,
-  useInstrumentTags
+  useInstrumentTags,
+  useDepartments
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -19,6 +20,7 @@ const initialForm = {
   name: '',
   managementNumber: '',
   storageLocation: '',
+  department: '',
   measurementRange: '',
   calibrationExpiryDate: '',
   status: 'AVAILABLE' as MeasuringInstrumentStatus,
@@ -28,6 +30,8 @@ const initialForm = {
 export function MeasuringInstrumentsPage() {
   const { data, isLoading } = useMeasuringInstruments();
   const { create, update, remove } = useMeasuringInstrumentMutations();
+  const { data: departmentsData } = useDepartments();
+  const departments = departmentsData?.departments ?? [];
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const { data: editingTags } = useInstrumentTags(editingId || undefined);
@@ -67,6 +71,7 @@ export function MeasuringInstrumentsPage() {
       name: form.name,
       managementNumber: form.managementNumber,
       storageLocation: form.storageLocation || undefined,
+      department: form.department || undefined,
       measurementRange: form.measurementRange || undefined,
       calibrationExpiryDate: form.calibrationExpiryDate ? new Date(form.calibrationExpiryDate).toISOString() : undefined,
       status: form.status,
@@ -90,6 +95,7 @@ export function MeasuringInstrumentsPage() {
       name: instrument.name,
       managementNumber: instrument.managementNumber,
       storageLocation: instrument.storageLocation ?? '',
+      department: instrument.department ?? '',
       measurementRange: instrument.measurementRange ?? '',
       calibrationExpiryDate: instrument.calibrationExpiryDate
         ? instrument.calibrationExpiryDate.slice(0, 10)
@@ -143,6 +149,21 @@ export function MeasuringInstrumentsPage() {
               onChange={(e) => setForm({ ...form, storageLocation: e.target.value })}
               placeholder="例: 棚A-1"
             />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            部署
+            <select
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            >
+              <option value="">選択してください</option>
+              {departments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm font-semibold text-slate-700">
             測定範囲
@@ -207,6 +228,7 @@ export function MeasuringInstrumentsPage() {
                   <th className="px-2 py-1 text-sm font-semibold">名称</th>
                   <th className="px-2 py-1 text-sm font-semibold">管理番号</th>
                   <th className="px-2 py-1 text-sm font-semibold">保管場所</th>
+                  <th className="px-2 py-1 text-sm font-semibold">部署</th>
                   <th className="px-2 py-1 text-sm font-semibold">測定範囲</th>
                   <th className="px-2 py-1 text-sm font-semibold">校正期限</th>
                   <th className="px-2 py-1 text-sm font-semibold">ステータス</th>
@@ -219,6 +241,7 @@ export function MeasuringInstrumentsPage() {
                     <td className="px-2 py-1 font-bold text-base text-slate-900">{instrument.name}</td>
                     <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{instrument.managementNumber}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.storageLocation ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{instrument.department ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.measurementRange ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">
                       {instrument.calibrationExpiryDate

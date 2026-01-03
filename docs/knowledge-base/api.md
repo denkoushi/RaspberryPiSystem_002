@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2025-11-30
+last-verified: 2025-01-XX
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 20件  
+**件数**: 21件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -742,4 +742,49 @@ app.post('/imports/master/:type', {
 - `apps/api/src/services/imports/csv-importer-factory.ts`
 - `apps/api/src/services/imports/importers/measuring-instrument.ts`
 - `apps/api/src/services/imports/importers/rigging-gear.ts`
+
+---
+
+### [KB-118] 計測機器UID編集時の複数タグ問題の修正
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器のUIDを手動編集しても、保存後に変更が反映されないように見える
+- UIでは`editingTags[0]`（先頭のタグ）を表示するため、複数のタグが紐づいている場合、古いUIDが表示され続ける
+
+**要因**: 
+- **根本原因**: 1つの計測機器に複数の`MeasuringInstrumentTag`が紐づいていた
+- APIの`update`メソッドが新しいタグを追加するだけで、既存タグを削除していなかった
+- UIは`editingTags[0]`を表示するため、更新後も古いUIDが表示され続ける
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: `MeasuringInstrumentService.update`メソッドで、`rfidTagUid`が提供された場合は、既存タグをすべて削除してから新しいタグを1つ作成するように修正
+- これにより、1つの計測機器には常に最大1つのタグのみが紐づくようになり、UIの表示と一致する
+
+**実装のポイント**:
+```typescript
+if (rfidTagUid !== undefined) {
+  if (tagUid) {
+    // 既存タグをすべて削除してから新しいタグを1つ作成
+    await tx.measuringInstrumentTag.deleteMany({ where: { measuringInstrumentId: id } });
+    await tx.measuringInstrumentTag.create({
+      data: { measuringInstrumentId: id, rfidTagUid: tagUid }
+    });
+  } else {
+    // 空文字指定ならタグを削除
+    await tx.measuringInstrumentTag.deleteMany({ where: { measuringInstrumentId: id } });
+  }
+}
+```
+
+**学んだこと**: 
+- 1対多の関係でUIが1つの値のみを表示する場合、データベース側でも1対1の関係を保つ必要がある
+- 更新時に既存レコードを削除してから新しいレコードを作成することで、データの正規化を保つことができる
+- デバッグモードでランタイム証拠を収集することで、根本原因を正確に特定できる
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/api/src/services/measuring-instruments/measuring-instrument.service.ts`
 

@@ -147,6 +147,11 @@ export async function getRoleAuditLogs(limit = 100) {
   return data.logs;
 }
 
+export async function getDepartments(): Promise<{ departments: string[] }> {
+  const response = await api.get<{ departments: string[] }>('/tools/departments');
+  return response.data;
+}
+
 export async function getEmployees() {
   const { data } = await api.get<{ employees: Employee[] }>('/tools/employees');
   return data.employees;

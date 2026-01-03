@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - フロントエンド関連
 tags: [トラブルシューティング, フロントエンド, React, XState]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-01-XX
 related: [index.md, ../modules/tools/README.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 23件  
+**件数**: 25件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1050,6 +1050,112 @@ useEffect(() => {
 
 **関連ファイル**: 
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-119] 計測機器UID編集時の手動編集フラグ管理
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器のUIDを手動編集しても、`useEffect`が`editingTags`の変更を検知してフォームを上書きしてしまう
+- ユーザーがキーボードで入力した値が、APIから取得したタグ情報で上書きされる
+
+**要因**: 
+- **根本原因**: `useEffect`が`editingTags`の変更を検知すると、ユーザーの手動編集を無視してフォームを更新していた
+- 手動編集とAPIからの自動更新を区別する仕組みがなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: `useRef`を使用して手動編集フラグ（`isManualEditRef`）を追加し、手動編集時は`useEffect`でフォームを更新しないように修正
+- 編集開始時、NFCスキャン時、送信後、編集キャンセル時にフラグをリセット
+
+**実装のポイント**:
+```typescript
+const isManualEditRef = useRef(false);
+
+useEffect(() => {
+  if (!editingId || !editingTags) return;
+  const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
+  // ユーザーが手動で編集していない場合のみ、既存のタグUIDを設定
+  if (!isManualEditRef.current) {
+    setForm((prev) => ({ ...prev, rfidTagUid: existingTagUid }));
+  }
+}, [editingId, editingTags]);
+
+<Input
+  value={form.rfidTagUid}
+  onChange={(e) => {
+    isManualEditRef.current = true; // 手動編集フラグを設定
+    setForm({ ...form, rfidTagUid: e.target.value });
+  }}
+/>
+```
+
+**学んだこと**: 
+- フォームの自動更新と手動編集を区別するには、フラグを使用する必要がある
+- `useRef`を使用することで、再レンダリングをトリガーせずにフラグを管理できる
+- 編集開始時、NFCスキャン時、送信後、編集キャンセル時にフラグをリセットすることで、適切なタイミングで自動更新を有効化できる
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`
+
+---
+
+### [KB-120] 吊具管理画面のレイアウト改善（一覧表と編集フォームの重なり解消）
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 吊具管理画面で一覧表と編集フォームが横並びで重なって見づらい
+- グリッドレイアウト（`lg:grid-cols-[3.5fr,1fr]`）で一覧表と編集フォームが横並びになっていたが、画面サイズによっては被ってしまう
+
+**要因**: 
+- **根本原因**: 編集フォームが一覧表と同じCard内に横並びで配置されていた
+- グリッドレイアウトの比率が適切でなく、一覧表の幅が広すぎた
+- 編集フォームが右側に配置されていたが、一覧表の横スクロールと重なって見づらかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: 編集フォームを別のCardとして分離し、一覧表の下に縦配置に変更
+- 編集フォーム内のフィールドを2列のグリッドレイアウト（`md:grid-cols-2`）に変更し、より使いやすく改善
+
+**実装のポイント**:
+```typescript
+// 修正前: 横並びレイアウト
+<div className="grid gap-4 lg:grid-cols-[3.5fr,1fr]">
+  <div className="overflow-x-auto">
+    {/* 一覧表 */}
+  </div>
+  <div className="rounded-md border border-slate-500 bg-white p-4">
+    {/* 編集フォーム */}
+  </div>
+</div>
+
+// 修正後: 縦配置レイアウト
+<Card title="吊具マスター">
+  <div className="overflow-x-auto">
+    {/* 一覧表 */}
+  </div>
+</Card>
+
+<Card title={isEditing ? '吊具編集' : '吊具登録'}>
+  <div className="grid gap-4 md:grid-cols-2">
+    {/* 編集フォーム（2列グリッド） */}
+  </div>
+</Card>
+```
+
+**学んだこと**: 
+- 一覧表と編集フォームを別のCardとして分離することで、レイアウトの柔軟性が向上する
+- 縦配置にすることで、画面サイズに関わらず重ならずに表示できる
+- 編集フォーム内のフィールドを2列のグリッドレイアウトにすることで、より多くの情報を効率的に表示できる
+- 他のページ（従業員管理、工具管理）と同様のパターンに統一することで、UIの一貫性が保たれる
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/RiggingGearsPage.tsx`
 
 ---
 

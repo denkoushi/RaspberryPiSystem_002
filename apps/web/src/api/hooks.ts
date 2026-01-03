@@ -41,6 +41,7 @@ import {
   getClientStatuses,
   getClientAlerts,
   acknowledgeAlert,
+  getDepartments,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -112,6 +113,13 @@ import type {
   RiggingInspectionRecord,
   RiggingInspectionResult
 } from './types';
+
+export function useDepartments() {
+  return useQuery({
+    queryKey: ['departments'],
+    queryFn: getDepartments
+  });
+}
 
 export function useEmployees() {
   return useQuery({

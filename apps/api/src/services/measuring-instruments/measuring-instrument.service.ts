@@ -7,6 +7,7 @@ export interface MeasuringInstrumentCreateInput {
   name: string;
   managementNumber: string;
   storageLocation?: string | null;
+  department?: string | null;
   measurementRange?: string | null;
   calibrationExpiryDate?: Date | null;
   status?: MeasuringInstrumentStatus;
@@ -17,6 +18,7 @@ export interface MeasuringInstrumentUpdateInput {
   name?: string;
   managementNumber?: string;
   storageLocation?: string | null;
+  department?: string | null;
   measurementRange?: string | null;
   calibrationExpiryDate?: Date | null;
   status?: MeasuringInstrumentStatus;
@@ -72,6 +74,7 @@ export class MeasuringInstrumentService {
             name: data.name,
             managementNumber: data.managementNumber,
             storageLocation: data.storageLocation ?? undefined,
+            department: data.department ?? undefined,
             measurementRange: data.measurementRange ?? undefined,
             calibrationExpiryDate: data.calibrationExpiryDate ?? undefined,
             status: data.status ?? 'AVAILABLE'

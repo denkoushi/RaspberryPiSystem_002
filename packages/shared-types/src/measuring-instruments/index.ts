@@ -6,6 +6,7 @@ export interface MeasuringInstrument {
   name: string;
   managementNumber: string;
   storageLocation?: string | null;
+  department?: string | null;
   measurementRange?: string | null;
   calibrationExpiryDate?: string | null;
   status: MeasuringInstrumentStatus;

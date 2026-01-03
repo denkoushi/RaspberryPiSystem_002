@@ -7,6 +7,7 @@ export const instrumentBaseSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
   storageLocation: z.string().optional().nullable(),
+  department: z.string().optional().nullable(),
   measurementRange: z.string().optional().nullable(),
   calibrationExpiryDate: z.coerce.date().optional().nullable(),
   status: z.nativeEnum(MeasuringInstrumentStatus).optional(),
