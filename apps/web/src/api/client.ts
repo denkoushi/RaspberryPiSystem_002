@@ -157,6 +157,14 @@ export async function getEmployees() {
   return data.employees;
 }
 
+// キオスク専用の従業員リスト取得（x-client-key認証）
+export async function getKioskEmployees(clientKey?: string) {
+  const { data } = await api.get<{ employees: Array<{ id: string; displayName: string; department: string | null }> }>('/kiosk/employees', {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.employees;
+}
+
 export async function createEmployee(input: Partial<Employee>) {
   const { data } = await api.post<{ employee: Employee }>('/tools/employees', input);
   return data.employee;

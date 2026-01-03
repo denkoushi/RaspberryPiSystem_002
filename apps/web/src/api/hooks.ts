@@ -128,6 +128,17 @@ export function useEmployees() {
   });
 }
 
+export function useKioskEmployees(clientKey?: string) {
+  return useQuery({
+    queryKey: ['kiosk-employees', clientKey],
+    queryFn: async () => {
+      const { getKioskEmployees } = await import('./client');
+      return getKioskEmployees(clientKey);
+    },
+    enabled: !!clientKey
+  });
+}
+
 export function useEmployeeMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({

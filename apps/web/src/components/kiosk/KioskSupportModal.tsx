@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, postKioskSupport } from '../../api/client';
-import { useEmployees } from '../../api/hooks';
+import { useKioskEmployees } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -19,7 +19,7 @@ const requestTypes = [
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const location = useLocation();
-  const { data: employees, isLoading: isLoadingEmployees } = useEmployees();
+  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(clientKey || DEFAULT_CLIENT_KEY);
   
   // デフォルト日時を現在の日時に設定
   const getDefaultDate = () => {
@@ -65,7 +65,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
     setIsSubmitting(true);
     try {
       // メッセージを組み立て
-      const selectedEmployee = employees?.find((emp) => emp.id === selectedSender);
+      const selectedEmployee = employees?.find((emp: { id: string; displayName: string; department: string | null }) => emp.id === selectedSender);
       const senderName = selectedEmployee?.displayName || '不明';
       const requestTypeLabel = requestTypes.find((rt) => rt.value === requestType)?.label || '';
       
@@ -132,7 +132,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
               required
             >
               <option value="">選択してください</option>
-              {employees?.map((employee) => (
+              {employees?.map((employee: { id: string; displayName: string; department: string | null }) => (
                 <option key={employee.id} value={employee.id}>
                   {employee.displayName} {employee.department ? `(${employee.department})` : ''}
                 </option>

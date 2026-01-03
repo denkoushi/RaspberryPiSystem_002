@@ -63,6 +63,42 @@ function checkRateLimit(clientKey: string): boolean {
 }
 
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
+  // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
+  app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
+    const rawClientKey = request.headers['x-client-key'];
+    const clientKey = normalizeClientKey(rawClientKey);
+    
+    if (!clientKey) {
+      throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
+    }
+
+    // クライアントデバイスの存在確認（認証として使用）
+    const clientDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+
+    if (!clientDevice) {
+      throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
+    }
+
+    // アクティブな従業員のみを取得（基本情報のみ）
+    const employees = await prisma.employee.findMany({
+      where: {
+        status: 'ACTIVE'
+      },
+      select: {
+        id: true,
+        displayName: true,
+        department: true
+      },
+      orderBy: {
+        displayName: 'asc'
+      }
+    });
+
+    return { employees };
+  });
+
   app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {
     // クライアントキーからクライアント端末を特定
     const rawClientKey = request.headers['x-client-key'];
