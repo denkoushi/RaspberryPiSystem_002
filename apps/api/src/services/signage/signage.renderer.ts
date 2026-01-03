@@ -6,6 +6,7 @@ import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
+import { prisma } from '../../lib/prisma.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -37,6 +38,7 @@ interface PdfRenderOptions {
 
 interface SplitPdfOptions extends PdfRenderOptions {
   pageUrl?: string | null;
+  metricsText?: string | null;
 }
 
 export class SignageRenderer {
@@ -109,7 +111,7 @@ export class SignageRenderer {
   }
 
   private async renderTools(tools: ToolItem[]): Promise<Buffer> {
-    const metricsText = await this.getSystemMetricsText();
+    const metricsText = await this.getClientSystemMetricsText();
     const enrichedTools: ToolItem[] = tools.map((tool) => ({
       ...tool,
       isOver12Hours: this.isOver12Hours(tool.borrowedAt),
@@ -132,9 +134,11 @@ export class SignageRenderer {
       pdfImageBase64 = await this.encodePdfPageAsBase64(pdfOptions.pageUrl, Math.round(WIDTH * 0.35), Math.round(HEIGHT * 0.7));
     }
 
+    const metricsText = await this.getClientSystemMetricsText();
     const svg = await this.buildSplitScreenSvg(enrichedTools, {
       ...pdfOptions,
       imageBase64: pdfImageBase64,
+      metricsText,
     });
 
     return await sharp(Buffer.from(svg), { density: 240 })
@@ -253,6 +257,13 @@ export class SignageRenderer {
           </text>`
         : '';
 
+    const metricsElement = pdfOptions?.metricsText
+      ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + leftInnerPadding}"
+          text-anchor="end" font-size="${Math.round(18 * scale)}" fill="#cbd5f5" font-family="sans-serif">
+          ${this.escapeXml(pdfOptions.metricsText)}
+        </text>`
+      : '';
+
     const pdfContent = pdfOptions?.imageBase64
       ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + rightHeaderHeight}"
           width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - rightHeaderHeight}"
@@ -290,8 +301,9 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            工具管理データ
+            持出中アイテム
           </text>
+          ${metricsElement}
           ${cardsSvg}
           ${overflowBadge}
         </g>
@@ -704,6 +716,52 @@ export class SignageRenderer {
     return diffHours > 12;
   }
 
+  /**
+   * Pi3のサイネージ端末の温度・CPU負荷を取得（ClientStatusから）
+   * Pi3のClientDeviceを特定して、そのstatusClientIdでClientStatusを取得
+   */
+  private async getClientSystemMetricsText(): Promise<string | null> {
+    try {
+      // Pi3のサイネージ端末を特定（apiKeyが'client-key-raspberrypi3-signage1'のもの）
+      const pi3Client = await prisma.clientDevice.findUnique({
+        where: { apiKey: 'client-key-raspberrypi3-signage1' }
+      }) as { statusClientId?: string | null } | null;
+
+      if (!pi3Client || !pi3Client.statusClientId) {
+        // Pi3のClientDeviceが見つからない、またはstatusClientIdが設定されていない場合は
+        // Pi5サーバー自身の温度を表示（フォールバック）
+        return await this.getSystemMetricsText();
+      }
+
+      // ClientStatusからPi3の温度・CPU負荷を取得
+      const clientStatus = await prisma.clientStatus.findUnique({
+        where: { clientId: pi3Client.statusClientId }
+      });
+
+      if (!clientStatus) {
+        // ClientStatusが見つからない場合はPi5サーバー自身の温度を表示（フォールバック）
+        return await this.getSystemMetricsText();
+      }
+
+      const cpuText = clientStatus.cpuUsage !== null ? `CPU ${clientStatus.cpuUsage.toFixed(0)}%` : null;
+      const temperature = clientStatus.temperature !== null ? `${clientStatus.temperature.toFixed(1)}°C` : null;
+
+      if (!cpuText && !temperature) {
+        return null;
+      }
+
+      return [cpuText, temperature ? `Temp ${temperature}` : null].filter(Boolean).join('  ');
+    } catch (error) {
+      logger.warn({ err: error }, 'Failed to get client system metrics, falling back to server metrics');
+      // エラー時はPi5サーバー自身の温度を表示（フォールバック）
+      return await this.getSystemMetricsText();
+    }
+  }
+
+  /**
+   * Pi5サーバー自身の温度・CPU負荷を取得（/sys/class/thermal/thermal_zone0/tempから）
+   * フォールバック用
+   */
   private async getSystemMetricsText(): Promise<string | null> {
     try {
       const [cpuPercent, tempRaw] = await Promise.all([
