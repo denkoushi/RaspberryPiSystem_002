@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 23件  
+**件数**: 24件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -885,6 +885,83 @@ if (rfidTagUid !== undefined) {
 - `apps/api/src/services/backup/gmail-api-client.ts`
 - `apps/api/src/services/imports/csv-importer-factory.ts`
 - `docs/guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証`
+
+---
+
+### [KB-124] キオスクSlackサポート機能の実装と実機検証完了
+
+**日付**: 2026-01-03
+
+**事象**: 
+- キオスクUIから管理者への問い合わせ機能が必要だった
+- ユーザーがキオスク端末で問題に遭遇した際に、管理者に直接連絡できる仕組みがなかった
+
+**実装内容**: 
+- ✅ **実装完了**（2026-01-03）:
+  1. **APIエンドポイント**: `POST /api/kiosk/support`を追加
+     - `x-client-key`ヘッダーによる認証
+     - レート制限（1分に3件まで、端末単位）
+     - メッセージのバリデーション（Zodスキーマ）
+     - ClientLogへの記録（`[SUPPORT]`プレフィックス付き）
+  2. **Slack通知サービス**: `sendSlackNotification`関数を実装
+     - Slack Incoming Webhookを使用
+     - 環境変数`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`からWebhook URLを取得
+     - 5秒タイムアウト処理
+     - エラー時もユーザー体験を優先（エラーを再スローしない）
+  3. **フロントエンドUI**: 
+     - キオスクレイアウトのヘッダーに「お問い合わせ」ボタンを追加
+     - `KioskSupportModal`コンポーネントを作成
+     - 「よくある困りごと」の選択機能
+     - 詳細メッセージの入力機能（最大500文字）
+  4. **環境変数設定**: `docker-compose.server.yml`に`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`を追加
+
+**実機検証結果**: 
+- ✅ **すべて正常に動作**（2026-01-03）:
+  1. **UI動作**: 
+     - ヘッダーの「お問い合わせ」ボタンが表示され、クリックでモーダルが開く
+     - 「よくある困りごと」の選択が機能
+     - メッセージ送信後、モーダルが閉じる
+  2. **Slack通知**: 
+     - `#general`チャンネルに通知が正常に届く
+     - 通知内容: クライアントID、端末名、場所、画面、メッセージ、Request IDが含まれる
+  3. **ClientLog記録**: 
+     - データベースに`[SUPPORT]`プレフィックス付きで記録される
+     - `kind: 'kiosk-support'`として分類される
+     - コンテキスト情報（page、userMessage、clientName、location）が保存される
+  4. **APIログ**: 
+     - エラーなし、正常に処理（ステータスコード200、レスポンス時間77.77ms）
+     - SlackWebhookの送信成功ログが記録される
+
+**実装のポイント**:
+- **セキュリティ**: 
+  - Webhook URLをログに出力しない（sanitizedUrlを使用）
+  - クライアントキーによる認証
+  - レート制限による不正利用防止
+- **ユーザー体験**: 
+  - Slack通知失敗時もAPIは200を返す（エラーはログに記録）
+  - モーダルは送信後自動で閉じる
+  - 「よくある困りごと」で素早く選択可能
+- **エラーハンドリング**: 
+  - タイムアウト処理（5秒）
+  - ネットワークエラー時の適切なログ記録
+  - Webhook URL未設定時は警告ログのみ（通知はスキップ）
+
+**学んだこと**: 
+- Slack Incoming Webhookはシンプルで実装が容易
+- 環境変数による設定管理が重要（`.env`ファイルに保存）
+- ユーザー体験を優先し、エラー時も静かに失敗する設計が適切
+- レート制限は端末単位（`x-client-key`）で適用することで、複数端末からの同時送信に対応
+
+**解決状況**: ✅ **実装・実機検証完了**（2026-01-03）
+
+**関連ファイル**: 
+- `apps/api/src/routes/kiosk.ts`
+- `apps/api/src/services/notifications/slack-webhook.ts`
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`
+- `apps/web/src/layouts/KioskLayout.tsx`
+- `infrastructure/docker/docker-compose.server.yml`
+- `docs/guides/verification-checklist.md#69-キオスクサポート機能slack通知`
+- `docs/guides/slack-webhook-setup.md`
 
 ---
 

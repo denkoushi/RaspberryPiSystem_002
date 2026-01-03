@@ -5,15 +5,22 @@
 本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具）を一括インポートできます：
 
 1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具の4種類に対応）✅ **実機検証完了**
-2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）
-3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート
-4. **Gmail経由（スケジュール実行）**: 設定したスケジュールに従って自動的にGmailからCSVを取得してインポート ⚠️ **実装完了済み（2025-12-29）だが実機検証未完了**
+2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）✅ **実装・検証完了**
+3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート ✅ **実装・検証完了**
+4. **Gmail経由（スケジュール実行）**: 設定したスケジュールに従って自動的にGmailからCSVを取得してインポート ✅ **実装完了（2025-12-29）** ⚠️ **スケジュール実行のE2E検証は未完了（手動実行は検証済み）**
 
 **検証状況**:
 - ✅ USBメモリ経由: 実機検証完了（従業員・計測機器・吊具のCSVインポートを確認済み）
+- ✅ Dropbox経由（手動実行・スケジュール実行）: 実装・検証完了
+- ✅ Gmail経由（手動実行）: 実装・検証完了（2026-01-03）
 - ⚠️ Gmail経由（スケジュール実行）: 実装完了済みだが、PowerAutomate→Gmail→Pi5→CSVインポートのE2Eフロー全体の実機検証は未完了
   - 実装詳細: [docs/plans/gmail-data-acquisition-execplan.md](../plans/gmail-data-acquisition-execplan.md)
   - 検証手順: [docs/guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証](./verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証)
+
+**実装アーキテクチャ**:
+- ✅ **CSV Import Scalingプラン完了（2025-12-29）**: CSVインポート機能をレジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。新しいデータタイプの追加が容易になり、コードの重複を削減。スケジュール設定を`targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に。後方互換性を確保（旧`employeesPath`/`itemsPath`形式もサポート）。Gmail件名パターンを管理コンソールから編集できる機能を実装し、設定ファイル（`backup.json`）に保存されるように変更。
+  - プランファイル: `.cursor/plans/csv_import_scaling_ccfbf0e7.plan.md`（全To-do完了済み）
+  - 詳細: [docs/knowledge-base/frontend.md#kb-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) / [docs/knowledge-base/frontend.md#kb-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) / [docs/knowledge-base/api.md#kb-114](./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [docs/knowledge-base/api.md#kb-115](./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
 

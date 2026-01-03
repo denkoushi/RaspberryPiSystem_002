@@ -1,7 +1,8 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, postKioskSupport } from '../../api/client';
+import { useEmployees } from '../../api/hooks';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -11,35 +12,72 @@ interface KioskSupportModalProps {
   onClose: () => void;
 }
 
-const commonIssues = [
-  { id: 'tag-not-read', label: 'タグが読み取れない' },
-  { id: 'error-message', label: 'エラーメッセージが表示される' },
-  { id: 'how-to-use', label: '操作方法がわからない' },
-  { id: 'other', label: 'その他' }
+const requestTypes = [
+  { value: 'visit', label: '現場まで来てください。' }
 ];
 
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const location = useLocation();
-  const [selectedIssue, setSelectedIssue] = useState<string>('');
+  const { data: employees, isLoading: isLoadingEmployees } = useEmployees();
+  
+  // デフォルト日時を現在の日時に設定
+  const getDefaultDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getDefaultTime = () => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const [selectedSender, setSelectedSender] = useState<string>('');
+  const [requestType, setRequestType] = useState<string>('');
+  const [meetingDate, setMeetingDate] = useState<string>('');
+  const [meetingTime, setMeetingTime] = useState<string>('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // モーダルが開かれたときに日時をデフォルト値に設定
+  useEffect(() => {
+    if (isOpen) {
+      setMeetingDate(getDefaultDate());
+      setMeetingTime(getDefaultTime());
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedIssue && !message.trim()) {
+    
+    // 送信者と依頼タイプは必須
+    if (!selectedSender || !requestType) {
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const userMessage = selectedIssue && message.trim()
-        ? `${commonIssues.find((i) => i.id === selectedIssue)?.label}: ${message}`
-        : selectedIssue
-        ? commonIssues.find((i) => i.id === selectedIssue)?.label || ''
-        : message.trim();
+      // メッセージを組み立て
+      const selectedEmployee = employees?.find((emp) => emp.id === selectedSender);
+      const senderName = selectedEmployee?.displayName || '不明';
+      const requestTypeLabel = requestTypes.find((rt) => rt.value === requestType)?.label || '';
+      
+      let userMessage = `送信者: ${senderName}\n依頼内容: ${requestTypeLabel}`;
+      
+      if (meetingDate && meetingTime) {
+        userMessage += `\n打合せ日時: ${meetingDate} ${meetingTime}`;
+      }
+      
+      if (message.trim()) {
+        userMessage += `\n詳細: ${message.trim()}`;
+      }
 
       await postKioskSupport(
         {
@@ -50,7 +88,10 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
       );
 
       // 成功後、フォームをリセットして閉じる
-      setSelectedIssue('');
+      setSelectedSender('');
+      setRequestType('');
+      setMeetingDate('');
+      setMeetingTime('');
       setMessage('');
       onClose();
     } catch (error) {
@@ -77,29 +118,81 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* 送信者選択 */}
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
-              よくある困りごと
+            <label htmlFor="sender" className="mb-2 block text-sm font-semibold text-slate-700">
+              送信者 <span className="text-red-500">*</span>
             </label>
-            <div className="space-y-2">
-              {commonIssues.map((issue) => (
-                <button
-                  key={issue.id}
-                  type="button"
-                  onClick={() => setSelectedIssue(issue.id)}
-                  className={`w-full rounded-md border-2 px-3 py-2 text-left text-sm transition-colors ${
-                    selectedIssue === issue.id
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
-                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-                  }`}
-                  disabled={isSubmitting}
-                >
-                  {issue.label}
-                </button>
+            <select
+              id="sender"
+              value={selectedSender}
+              onChange={(e) => setSelectedSender(e.target.value)}
+              className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+              disabled={isSubmitting || isLoadingEmployees}
+              required
+            >
+              <option value="">選択してください</option>
+              {employees?.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.displayName} {employee.department ? `(${employee.department})` : ''}
+                </option>
               ))}
+            </select>
+          </div>
+
+          {/* 依頼内容選択 */}
+          <div>
+            <label htmlFor="request-type" className="mb-2 block text-sm font-semibold text-slate-700">
+              依頼内容 <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="request-type"
+              value={requestType}
+              onChange={(e) => setRequestType(e.target.value)}
+              className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+              disabled={isSubmitting}
+              required
+            >
+              <option value="">選択してください</option>
+              {requestTypes.map((rt) => (
+                <option key={rt.value} value={rt.value}>
+                  {rt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 打合せ日時 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="meeting-date" className="mb-2 block text-sm font-semibold text-slate-700">
+                打合せ日
+              </label>
+              <input
+                id="meeting-date"
+                type="date"
+                value={meetingDate}
+                onChange={(e) => setMeetingDate(e.target.value)}
+                className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label htmlFor="meeting-time" className="mb-2 block text-sm font-semibold text-slate-700">
+                打合せ時刻
+              </label>
+              <input
+                id="meeting-time"
+                type="time"
+                value={meetingTime}
+                onChange={(e) => setMeetingTime(e.target.value)}
+                className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+                disabled={isSubmitting}
+              />
             </div>
           </div>
 
+          {/* 詳細（任意） */}
           <div>
             <label htmlFor="support-message" className="mb-2 block text-sm font-semibold text-slate-700">
               詳細（任意）
@@ -129,7 +222,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || (!selectedIssue && !message.trim())}
+              disabled={isSubmitting || !selectedSender || !requestType}
               className="flex-1"
             >
               {isSubmitting ? '送信中...' : '送信'}
