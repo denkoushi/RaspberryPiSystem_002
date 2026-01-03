@@ -230,16 +230,19 @@ model RiggingInspectionRecord {
 }
 
 model ClientDevice {
-  id           String        @id @default(uuid())
-  name         String
-  location     String?
-  apiKey       String        @unique
-  defaultMode  String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  lastSeenAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  loans        Loan[]
-  transactions Transaction[]
+  id            String        @id @default(uuid())
+  name          String
+  location      String?
+  apiKey        String        @unique
+  statusClientId String?      // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
+  defaultMode   String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  lastSeenAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  loans         Loan[]
+  transactions  Transaction[]
+
+  @@index([statusClientId])
 }
 
 model ClientStatus {

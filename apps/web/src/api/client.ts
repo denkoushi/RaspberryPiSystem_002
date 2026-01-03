@@ -503,9 +503,21 @@ export async function returnMeasuringInstrument(payload: MeasuringInstrumentRetu
   return data.loan;
 }
 
-export async function getKioskConfig() {
+export interface KioskConfig {
+  theme: string;
+  greeting: string;
+  idleTimeoutMs: number;
+  defaultMode?: 'PHOTO' | 'TAG';
+  clientStatus?: {
+    temperature: number | null;
+    cpuUsage: number;
+    lastSeen: string; // ISO date string
+  } | null;
+}
+
+export async function getKioskConfig(): Promise<KioskConfig> {
   const key = resolveClientKey();
-  const { data } = await api.get<{ theme: string; greeting: string; idleTimeoutMs: number; defaultMode?: 'PHOTO' | 'TAG' }>('/kiosk/config', {
+  const { data } = await api.get<KioskConfig>('/kiosk/config', {
     headers: { 'x-client-key': key }
   });
   return data;

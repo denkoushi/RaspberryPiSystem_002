@@ -20,16 +20,16 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 24件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート |
+| API関連 | [api.md](./api.md) | 25件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 22件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 63件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 65件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 8件 | Docker ComposeとCaddyリバースプロキシ |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 13件 | バックアップとリストア機能、Gmail連携 |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 8件 | Ansibleとデプロイメント |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 9件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化 |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 8件 | セキュリティ対策と監視 |
-| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 10件 | デジタルサイネージ機能 |
+| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 11件 | デジタルサイネージ機能、温度表示、デザイン変更 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 16件 | その他のインフラ関連 |
 
@@ -68,6 +68,7 @@ update-frequency: high
 | [KB-123](./api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了) | Gmail経由CSV取り込み（手動実行）の実機検証完了 | ✅ 解決済み |
 | [KB-124](./api.md#kb-124-キオスクslackサポート機能の実装と実機検証完了) | キオスクSlackサポート機能の実装と実機検証完了 | ✅ 解決済み |
 | [KB-125](./api.md#kb-125-キオスク専用従業員リスト取得エンドポイント追加) | キオスク専用従業員リスト取得エンドポイント追加 | ✅ 解決済み |
+| [KB-126](./api.md#kb-126-キオスクuiで自端末の温度表示機能追加) | キオスクUIで自端末の温度表示機能追加 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -219,9 +220,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 85件 |
+| ✅ 解決済み | 88件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **90件** |
+| **合計** | **93件** |
 
 ---
 
@@ -279,4 +280,6 @@ update-frequency: high
 - 2025-12-29: KB-111を追加（CSVインポートスケジュールの表示を人間が読みやすい形式に変更）
 - 2026-01-03: KB-124を追加（キオスクSlackサポート機能の実装と実機検証完了）
 - 2026-01-03: KB-125を追加（キオスク専用従業員リスト取得エンドポイント追加、キオスクお問い合わせフォームのデザイン変更）
-- 2026-01-03: KB-125を追加（キオスク専用従業員リスト取得エンドポイント追加、キオスクお問い合わせフォームのデザイン変更）
+- 2026-01-03: KB-126を追加（キオスクUIで自端末の温度表示機能追加）
+- 2026-01-03: KB-127を追加（サイネージUIで自端末の温度表示機能追加とデザイン変更）
+- 2026-01-03: KB-128を追加（APIエンドポイントのHTTPS化（Caddy経由））

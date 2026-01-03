@@ -27,7 +27,9 @@ signage_ip: "{{ current_network.raspberrypi3_ip | default(local_network.raspberr
 # よく使うURLを共通変数として定義
 server_base_url: "https://{{ server_ip }}"
 kiosk_full_url: "{{ server_base_url }}/kiosk"
-api_base_url: "http://{{ server_ip }}:8080/api"
+# ベストプラクティス: APIはDocker内部ネットワーク上でのみ8080を待ち受け、外部アクセスはCaddy(443)経由で行う
+# クライアント（Pi3/Pi4）のエージェントは https://<Pi5>/api を使用する
+api_base_url: "{{ server_base_url }}/api"
 websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
 
 # 既存の変数名との互換性を保つためのエイリアス

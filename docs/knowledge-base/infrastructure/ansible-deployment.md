@@ -632,4 +632,41 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 
 ---
 
+### [KB-128] APIエンドポイントのHTTPS化（Caddy経由）
+
+**EXEC_PLAN.md参照**: デプロイ標準手順のブラッシュアップ（2026-01-03）
+
+**事象**: 
+- Pi4の`status-agent.service`が再起動時に失敗（`failed to send status: <urlopen error [Errno -2] Name or service not known>`）
+- `status-agent.conf`の`API_BASE_URL`が`http://100.106.158.2:8080/api`に設定されていたが、Pi5のAPIコンテナは8080を外部公開していない
+
+**要因**: 
+- `group_vars/all.yml`の`api_base_url`が`http://{{ server_ip }}:8080/api`に設定されていた
+- Pi5のAPIコンテナは8080を外部公開していない（Docker内部ネットワークでのみアクセス可能）
+- 外部アクセスはCaddy経由（HTTPS 443）で行う必要がある
+- Ansible設定と実装の不整合があった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-03）:
+  1. `group_vars/all.yml`の`api_base_url`を`http://{{ server_ip }}:8080/api`から`https://{{ server_ip }}/api`に変更
+  2. `status-agent.conf.j2`で`TLS_SKIP_VERIFY=1`を設定し、自己署名証明書を許可
+  3. クライアント（Pi3/Pi4）のエージェントがCaddy経由（HTTPS 443）でAPIにアクセスするように統一
+  4. デプロイドキュメントを更新し、ポート8080は外部公開されていないことを明記
+
+**学んだこと**:
+- APIコンテナは8080を外部公開していない（Docker内部ネットワークでのみアクセス可能）
+- 外部アクセスはCaddy経由（HTTPS 443）で行う必要がある
+- Ansible設定と実装の整合性を保つことが重要
+- セキュリティ強度は向上（HTTPS化、8080非公開の維持）
+
+**解決状況**: ✅ **解決済み**（2026-01-03）
+
+**関連ファイル**:
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/templates/status-agent.conf.j2`
+- `infrastructure/docker/docker-compose.server.yml`
+- `docs/guides/deployment.md`
+
+---
+
 ---

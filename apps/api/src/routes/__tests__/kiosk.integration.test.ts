@@ -179,3 +179,119 @@ describe('POST /api/kiosk/support', () => {
   });
 });
 
+describe('GET /api/kiosk/config', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let clientKey: string;
+  let statusClientId: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    await prisma.clientLog.deleteMany();
+    await prisma.clientStatus.deleteMany();
+    await prisma.clientDevice.deleteMany();
+    
+    const client = await createTestClientDevice();
+    clientKey = client.apiKey;
+    statusClientId = `pi-status-${Date.now()}`;
+
+    // ClientDeviceにstatusClientIdを設定
+    await prisma.clientDevice.update({
+      where: { id: client.id },
+      data: { statusClientId }
+    });
+
+    // ClientStatusを作成
+    await prisma.clientStatus.create({
+      data: {
+        clientId: statusClientId,
+        hostname: 'pi-kiosk-test',
+        ipAddress: '192.168.0.100',
+        cpuUsage: 45.5,
+        memoryUsage: 60.0,
+        diskUsage: 70.0,
+        temperature: 55.5,
+        lastSeen: new Date()
+      }
+    });
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return kiosk config with clientStatus when statusClientId is set', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.theme).toBe('factory-dark');
+    expect(body.greeting).toBe('タグを順番にかざしてください');
+    expect(body.idleTimeoutMs).toBe(30000);
+    expect(body.clientStatus).toBeDefined();
+    expect(body.clientStatus.temperature).toBeCloseTo(55.5);
+    expect(body.clientStatus.cpuUsage).toBeCloseTo(45.5);
+    expect(body.clientStatus.lastSeen).toBeDefined();
+  });
+
+  it('should return kiosk config without clientStatus when statusClientId is not set', async () => {
+    // statusClientIdを削除
+    const client = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (client) {
+      await prisma.clientDevice.update({
+        where: { id: client.id },
+        data: { statusClientId: null }
+      });
+    }
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.theme).toBe('factory-dark');
+    expect(body.clientStatus).toBeNull();
+  });
+
+  it('should return kiosk config without clientStatus when ClientStatus does not exist', async () => {
+    // ClientStatusを削除
+    await prisma.clientStatus.delete({
+      where: { clientId: statusClientId }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.theme).toBe('factory-dark');
+    expect(body.clientStatus).toBeNull();
+  });
+});
+

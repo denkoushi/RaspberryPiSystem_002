@@ -47,6 +47,55 @@ update-frequency: medium
 
 ---
 
+### [KB-127] サイネージUIで自端末の温度表示機能追加とデザイン変更
+
+**EXEC_PLAN.md参照**: 温度表示ロジックの調査と実装（2026-01-03）
+
+**事象**: 
+- Pi3のサイネージUIに温度表示がない
+- サイネージ左ペインのタイトルが以前のデザインと差異がある（「工具管理データ」→「持出中アイテム」）
+
+**要因**: 
+- `signage.renderer.ts`の`getSystemMetricsText()`がPi5の`/sys/class/thermal/thermal_zone0/temp`を読み取っていた
+- サイネージレンダラーは`x-client-key`を受け取っていないため、Pi3を特定する方法がなかった
+- 左ペインのタイトルが「工具管理データ」に変更されていた
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-03）:
+  1. `getClientSystemMetricsText()`を実装し、Pi3の`ClientDevice`を特定（`apiKey: 'client-key-raspberrypi3-signage1'`）
+  2. `ClientDevice.statusClientId`から`ClientStatus`を取得し、Pi3の温度を取得
+  3. `buildSplitScreenSvg`と`buildToolsScreenSvg`に温度表示を追加
+  4. フォールバック: Pi3の`ClientDevice`が見つからない場合はPi5の温度を表示
+  5. 左ペインのタイトルを「工具管理データ」→「持出中アイテム」に変更
+  6. Pi3側の処理は一切変更不要（サーバー側のみの変更）
+
+**学んだこと**:
+- サイネージ画像はPi5側のサーバーでレンダリングされるため、Pi3へのデプロイは不要
+- `ClientDevice.statusClientId`を使用することで、`x-client-key`なしでもPi3を特定できる
+- サーバー側レンダリングの利点: Pi3のリソースを消費せずに機能を追加できる
+
+**解決状況**: ✅ **解決済み**（2026-01-03）
+
+**正常化作業の追記**（2026-01-03）:
+- Pi5のTSソース（`apps/api/src/services/signage/signage.renderer.ts`）が旧い実装（「工具管理データ」）のままだった
+- 正しい実装（「持出中アイテム」＋`getClientSystemMetricsText()`）をPi5に反映
+- APIコンテナを`--no-cache`で再ビルドし、`--force-recreate`で再作成して正常化完了
+- Pi3のサイネージ画面で「持出中アイテム」タイトルと温度表示（`CPU xx% Temp yy.y°C`）が正常に表示されることを確認
+
+**学んだこと（追加）**:
+- Pi5のリポジトリとコンテナの`dist`が不一致になることがある（TSソースが旧いまま、コンテナは以前のビルドで新実装が含まれていた）
+- デプロイ時は必ずTSソースを最新化し、`--no-cache`で再ビルドすることで確実に反映できる
+- DEBUG MODEのNDJSONログで、repo/コンテナの不一致を検出できる（`hasTitleString: false`だが`distHasTitle: true`など）
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/api/src/lib/prisma.ts`
+- `docs/investigation/temperature-display-investigation.md`
+- `docs/guides/deployment.md`
+- `scripts/debug/signage-normalize-debug.mjs`（DEBUG MODE用の診断スクリプト）
+
+---
+
 ---
 
 ### [KB-081] Pi3サイネージのPDF/TOOLS画面が新デザインへ更新されない

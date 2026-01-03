@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 24件  
+**件数**: 25件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1036,6 +1036,44 @@ app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) =>
 - `apps/web/src/api/client.ts`
 - `apps/web/src/api/hooks.ts`
 - `apps/web/src/components/kiosk/KioskSupportModal.tsx`
+
+---
+
+### [KB-126] キオスクUIで自端末の温度表示機能追加
+
+**EXEC_PLAN.md参照**: 温度表示ロジックの調査と実装（2026-01-03）
+
+**事象**: 
+- Pi4のキオスクUIで管理コンソールと同じ温度（Pi5の温度）が表示されていた
+- ユーザー要望: キオスクUIで自端末（Pi4）の温度を表示したい
+
+**要因**: 
+- `KioskLayout.tsx`で`useSystemInfo()`を使用しており、`GET /api/system/system-info`がPi5の温度を返していた
+- `x-client-key`と`status-agent`の`clientId`が紐づいていなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-03）:
+  1. `ClientDevice.statusClientId`フィールドを追加し、`x-client-key`と`status-agent`の`clientId`を紐づけ
+  2. `POST /api/clients/status`で`status-agent`が送信する際に`ClientDevice.statusClientId`を更新
+  3. `GET /api/kiosk/config`エンドポイントを拡張し、`ClientDevice.statusClientId`から`ClientStatus`を取得して`clientStatus`を返却
+  4. `KioskLayout.tsx`で`kioskConfig?.clientStatus`を使用して自端末の温度を表示
+  5. 実機検証完了（Pi4のキオスクUIで自端末の温度が正しく表示されることを確認）
+
+**学んだこと**:
+- `x-client-key`と`status-agent`の`clientId`を紐づけることで、キオスクUIから自端末の`ClientStatus`を取得できる
+- `ClientDevice.statusClientId`フィールドを追加することで、`x-client-key`から該当端末の`ClientStatus`を特定できる
+- 既存の`GET /api/kiosk/config`エンドポイントを拡張することで、新規エンドポイントを追加せずに機能を実装できる
+
+**解決状況**: ✅ **解決済み**（2026-01-03）
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`
+- `apps/api/src/routes/clients.ts`
+- `apps/api/prisma/schema.prisma`
+- `apps/web/src/layouts/KioskLayout.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `docs/investigation/temperature-display-investigation.md`
 
 ---
 

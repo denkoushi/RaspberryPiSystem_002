@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2025-12-28（デプロイ前UI検証手順追加）
+最終更新: 2026-01-03（APIエンドポイントHTTPS化、Pi3サイネージデザイン変更）
 
 ## 概要
 
@@ -193,6 +193,11 @@ curl http://localhost:8080/api/system/health
 
 **重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
 
+**重要（2026-01-03更新）**: 
+- Pi4の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
+- ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
+- `status-agent.conf`の`API_BASE_URL`は自動的に`https://<Pi5>/api`に設定されます（Ansibleが`group_vars/all.yml`の`api_base_url`を使用）
+
 ```bash
 # 1. リポジトリを更新
 cd /opt/RaspberryPiSystem_002
@@ -217,6 +222,12 @@ curl http://localhost:7071/api/agent/status
 ## ラズパイ3（サイネージ）の更新
 
 **重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ前にサイネージサービスを停止する必要があります。
+
+**重要（2026-01-03更新）**: 
+- Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます
+- Pi3へのデプロイは不要です（サーバー側レンダリングのため）
+- Pi3の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
+- ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 
 ### デプロイ前の準備（必須）
 
@@ -436,8 +447,15 @@ web:
   build:
     args:
       VITE_AGENT_WS_URL: ws://100.74.144.79:7071/stream  # Pi4のTailscale IP（推奨）
-      VITE_API_BASE_URL: http://100.106.158.2:8080/api   # Pi5のTailscale IP（推奨）
+      VITE_API_BASE_URL: /api   # 相対パス（推奨、IPアドレス変更に対応）
+      # または絶対URL（HTTPS経由、Caddy経由）
+      # VITE_API_BASE_URL: https://100.106.158.2/api   # Pi5のTailscale IP（推奨）
 ```
+
+**重要（2026-01-03更新）**: 
+- `VITE_API_BASE_URL`は相対パス（`/api`）に設定することを推奨します（IPアドレス変更に対応）
+- ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
+- 外部アクセスはCaddy経由（HTTPS 443）で行います
 
 ### 3. Webコンテナを再ビルド・再起動
 
@@ -638,23 +656,50 @@ NETWORK_MODE=tailscale \
 
 ### デプロイ後確認
 
+**重要（2026-01-03更新）**: ポート8080は外部公開されていません。外部アクセスはCaddy経由（HTTPS 443）で行います。
+
 1. **サーバーAPIヘルスチェック**
    ```bash
-   curl http://100.106.158.2:8080/api/system/health
+   # HTTPS経由（Caddy経由、推奨）
+   curl -k https://100.106.158.2/api/system/health
+   # → 200 OK を確認
+   
+   # またはDocker内部ネットワーク経由（Pi5上で実行）
+   curl http://localhost:8080/api/system/health
    # → 200 OK を確認
    ```
 
 2. **キオスク用API確認**
    ```bash
-   curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://100.106.158.2:8080/api/tools/loans/active
+   # HTTPS経由（Caddy経由、推奨）
+   curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/api/tools/loans/active
+   # → 200 OK を確認
+   
+   # またはDocker内部ネットワーク経由（Pi5上で実行）
+   curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://localhost:8080/api/tools/loans/active
    # → 200 OK を確認
    ```
 
 3. **サイネージ用API確認**
    ```bash
-   curl http://100.106.158.2:8080/api/signage/content
+   # HTTPS経由（Caddy経由、推奨）
+   curl -k https://100.106.158.2/api/signage/content
+   # → 200 OK を確認
+   
+   # またはDocker内部ネットワーク経由（Pi5上で実行）
+   curl http://localhost:8080/api/signage/content
    # → 200 OK を確認
    ```
+
+4. **Pi3サイネージデザイン変更の確認**（Pi5デプロイ後）
+   ```bash
+   # Pi5側のサイネージレンダラーが更新されていることを確認
+   # Pi3のサイネージ画像を確認（左ペインタイトルが「持出中アイテム」、温度表示が追加されている）
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
+   # → 画像ファイルが更新されていることを確認（タイムスタンプが最新）
+   ```
+   
+   **注意**: Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます。Pi3へのデプロイは不要です（サーバー側レンダリングのため）。
 
 4. **Pi4 systemdサービス確認**
    ```bash

@@ -160,6 +160,60 @@ describe('クライアントテレメトリーAPI', () => {
     expect(logRecords).toHaveLength(2);
   });
 
+  it('POST /api/clients/status updates ClientDevice.statusClientId', async () => {
+    const statusClientId = `pi-status-${Date.now()}`;
+    const payload = {
+      clientId: statusClientId,
+      hostname: 'pi-kiosk-02',
+      ipAddress: '192.168.0.31',
+      cpuUsage: 30.0,
+      memoryUsage: 50.0,
+      diskUsage: 60.0,
+      temperature: 50.0
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    // ClientDeviceのstatusClientIdが更新されていることを確認
+    const clientDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    expect(clientDevice).toBeTruthy();
+    expect(clientDevice?.statusClientId).toBe(statusClientId);
+
+    // 再度送信して、statusClientIdが更新されることを確認
+    const newStatusClientId = `pi-status-updated-${Date.now()}`;
+    const updatedPayload = {
+      ...payload,
+      clientId: newStatusClientId
+    };
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload: updatedPayload
+    });
+
+    const updatedClientDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    expect(updatedClientDevice?.statusClientId).toBe(newStatusClientId);
+  });
+
   it('GET /api/clients/status requires auth and returns latest logs', async () => {
     const clientId = `pi-${Date.now()}`;
     await app.inject({

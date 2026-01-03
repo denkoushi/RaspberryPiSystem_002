@@ -1,11 +1,28 @@
 import type { FastifyInstance } from 'fastify';
 import { RiggingStatus } from '@prisma/client';
 import { authorizeRoles } from '../../../lib/auth.js';
+import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { ItemService } from '../../../services/tools/item.service.js';
 import { MeasuringInstrumentService } from '../../../services/measuring-instruments/measuring-instrument.service.js';
 import { RiggingGearService } from '../../../services/rigging/rigging-gear.service.js';
 import { unifiedQuerySchema } from './schemas.js';
+
+const normalizeClientKey = (rawKey: unknown): string | undefined => {
+  if (typeof rawKey === 'string') {
+    try {
+      const parsed = JSON.parse(rawKey);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // noop
+    }
+    return rawKey;
+  }
+  if (Array.isArray(rawKey) && rawKey.length > 0 && typeof rawKey[0] === 'string') {
+    return rawKey[0];
+  }
+  return undefined;
+};
 
 export interface UnifiedItem {
   id: string;
@@ -26,7 +43,27 @@ export function registerUnifiedListRoute(app: FastifyInstance): void {
   const instrumentService = new MeasuringInstrumentService();
   const riggingService = new RiggingGearService();
 
-  app.get('/unified', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
+  app.get(
+    '/unified',
+    {
+      config: { rateLimit: false },
+      preHandler: async (request, reply) => {
+        // キオスクはJWTを持たないため、x-client-keyがあればデバイス認証として許可する
+        const clientKey = normalizeClientKey(request.headers['x-client-key']);
+        if (clientKey) {
+          const clientDevice = await prisma.clientDevice.findUnique({
+            where: { apiKey: clientKey },
+            select: { id: true }
+          });
+          if (!clientDevice) {
+            throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
+          }
+          return;
+        }
+        await canView(request, reply);
+      }
+    },
+    async (request) => {
     const query = unifiedQuerySchema.parse(request.query);
 
     const results: UnifiedItem[] = [];
@@ -134,5 +171,6 @@ export function registerUnifiedListRoute(app: FastifyInstance): void {
     results.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
     return { items: results };
-  });
+    }
+  );
 }

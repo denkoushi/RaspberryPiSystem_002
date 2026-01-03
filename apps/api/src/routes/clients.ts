@@ -144,11 +144,13 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       where: { apiKey: clientKey },
       update: {
         name: metrics.hostname,
+        statusClientId: metrics.clientId, // x-client-key と status-agent の clientId を紐づけ
         lastSeenAt: now
       },
       create: {
         name: metrics.hostname,
         apiKey: clientKey,
+        statusClientId: metrics.clientId, // x-client-key と status-agent の clientId を紐づけ
         lastSeenAt: now
       }
     });
