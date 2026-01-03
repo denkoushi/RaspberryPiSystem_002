@@ -16,10 +16,10 @@ export function registerDepartmentsRoute(app: FastifyInstance): void {
         department: true
       },
       where: {
-        department: {
-          not: null,
-          not: ''
-        }
+        AND: [
+          { department: { not: null } },
+          { department: { not: '' } }
+        ]
       }
     });
 
