@@ -44,7 +44,6 @@ export function KioskLayout() {
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
-              <h1 className="text-xl font-semibold">キオスク端末</h1>
             </div>
             {/* ステーション設定（小さく） */}
             <div className="flex items-center gap-2 text-xs">
@@ -138,6 +137,13 @@ export function KioskLayout() {
                 >
                   管理コンソール
                 </Link>
+                <button
+                  onClick={() => setShowSupportModal(true)}
+                  className={`${navLink} bg-blue-600 hover:bg-blue-700`}
+                  aria-label="お問い合わせ"
+                >
+                  お問い合わせ
+                </button>
               </nav>
             </div>
           </div>
@@ -146,14 +152,6 @@ export function KioskLayout() {
       <main className="flex h-[calc(100vh-5rem)] flex-col gap-4 px-4 py-4">
         <Outlet />
       </main>
-      {/* お問い合わせボタン */}
-      <button
-        onClick={() => setShowSupportModal(true)}
-        className="fixed bottom-6 right-6 rounded-full bg-blue-600 px-6 py-3 text-white shadow-lg transition-colors hover:bg-blue-700"
-        aria-label="お問い合わせ"
-      >
-        お問い合わせ
-      </button>
       <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />
     </div>
   );
