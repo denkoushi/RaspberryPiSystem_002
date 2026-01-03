@@ -47,6 +47,7 @@ export function KioskLayout() {
             </div>
             {/* ステーション設定（小さく） */}
             <div className="flex items-center gap-2 text-xs">
+              <span className="text-white/70">キオスク端末</span>
               <label className="flex items-center gap-1 text-white/70">
                 APIキー:
                 <Input
