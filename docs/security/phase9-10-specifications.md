@@ -1,6 +1,6 @@
 # Phase 9/10 セキュリティ機能詳細仕様書
 
-最終更新: 2025-12-14
+最終更新: 2026-01-03
 
 ## 概要
 
@@ -117,6 +117,17 @@ WEBHOOK_URL='https://httpbin.org/post' bash scripts/generate-alert.sh test 'Test
 - ✅ Webhook URL未設定時はファイルアラートのみ生成されることを確認
 - ✅ Webhook URL設定時（`https://httpbin.org/post`）にWebhook送信が成功することを確認
 - ✅ `security-monitor.sh`から`generate-alert.sh`が正しく呼び出されることを確認
+
+#### セキュリティ上の注意（運用ルール）
+
+- **Webhook URLは機密情報**:
+  - Webhook URLは、完全なURLだけでなく **部分文字列（先頭/末尾の一部）もログに出力しない**。
+  - ログに残す必要がある場合は、`requestId` 等の相関IDのみとする。
+- **目的**:
+  - ログ（APIログ、監視ログ、CIログ等）からWebhook URLが復元・推測されるリスクを避ける。
+- **実装例**:
+  - `apps/api/src/services/notifications/slack-webhook.ts` では、Webhook URLの部分文字列をログに出力しないように実装する。
+  - ログメッセージは `"Webhook URL is set"` のような汎用的な表現を使用する。
 
 ---
 
@@ -275,6 +286,44 @@ done
 **実機テスト結果（2025-12-14）**:
 - ✅ セキュリティログファイルが存在し、正常に記録されていることを確認
 - ⚠️ ログローテーション設定は次回デプロイ時に適用予定
+
+---
+
+### 7. リクエストログの機密情報取り扱い（運用ルール）
+
+#### 概要
+APIリクエストログにおいて、機密情報（`x-client-key`、Webhook URL等）を適切に秘匿する運用ルールを定義します。
+
+#### 実装詳細
+
+**対象となる機密情報**:
+- `x-client-key`: キオスク端末の認証キー（機密情報）
+- `Authorization` ヘッダー: JWTトークン（既に`[REDACTED]`として処理済み）
+- Webhook URL: 外部通知サービスのWebhook URL（部分文字列も含めて秘匿）
+
+**運用ルール**:
+
+1. **`x-client-key`のログ出力**:
+   - `x-client-key` は機密情報として扱い、ログには出力しない。
+   - 必要に応じて `[REDACTED]` またはハッシュ化した値のみをログに記録する。
+   - **実装例**: `apps/api/src/plugins/request-logger.ts` で `x-client-key` を `[REDACTED]` に置換する。
+
+2. **Webhook URLのログ出力**:
+   - Webhook URLは、完全なURLだけでなく **部分文字列（先頭/末尾の一部）もログに出力しない**。
+   - ログに残す必要がある場合は、`requestId` 等の相関IDのみとする。
+   - **実装例**: `apps/api/src/services/notifications/slack-webhook.ts` では、ログメッセージを `"Webhook URL is set"` のような汎用的な表現に変更する。
+
+3. **目的**:
+   - ログ（APIログ、監視ログ、CIログ等）から機密情報が復元・推測されるリスクを避ける。
+   - ログの漏洩時にも、機密情報が含まれないようにする。
+
+**実装ファイル**:
+- `apps/api/src/plugins/request-logger.ts`: リクエストログの機密情報秘匿処理
+- `apps/api/src/services/notifications/slack-webhook.ts`: Webhook送信時のログ出力
+
+**優先度**: 🟡 中優先度（将来の実装時に考慮）
+
+**関連要件**: [セキュリティ要件定義](./requirements.md)の「2.6 キオスクAPIの個人情報最小化・列挙耐性（将来要件）」を参照
 
 ---
 
