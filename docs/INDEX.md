@@ -18,6 +18,10 @@
 
 - **✅ CSVインポート実機検証完了・UI改善**: CSVインポートスケジュールページのフォーム状態管理を改善し、削除後や編集から新規作成への切り替え時にフォームが正しくリセットされるように修正。手動実行時のリトライスキップ機能を実装し、即座に結果を確認できるように改善（自動実行は従来通りリトライあり）。実機検証でターゲット追加機能、データタイプ選択、プロバイダー選択、Gmail件名パターン管理、スケジュールCRUD、削除機能、手動実行、スケジュール表示の人間可読形式をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-116](./knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [knowledge-base/api.md#kb-116](./knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
+### 🆕 最新アップデート（2026-01-04）
+
+- **✅ Pi5サーバー側のstatus-agent設定をAnsible管理化完了**: Pi5サーバー側のstatus-agent設定が手動設定のままで、設定のドリフトが発生していた問題を解決。Pi5に`status_agent_client_id`、`status_agent_client_key`などのホスト変数を追加（`inventory.yml`）。Pi5用vaultに`vault_status_agent_client_key`を追加（`host_vars/raspberrypi5/vault.yml`）。serverロールに`status-agent.yml`タスクを追加（設定ファイル配布、systemdユニット配布、タイマー有効化）。`main.yml`から`status-agent.yml`をインポート。Ansible実行時に自動的に設定ファイルが更新されるように改善。設定のドリフトを防止し、自動更新が可能になった。実機検証完了（設定ファイルが正しく生成、systemdサービスが正常動作、データベースに最新データが記録されることを確認）。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-129](./knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま) / [guides/status-agent.md](./guides/status-agent.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-03）
 
 - **✅ Pi3サイネージ正常化作業完了**: Pi3のサイネージ画面が旧デザイン（「工具管理データ」タイトル、温度表示なし）のままだった問題を解決。Pi5のTSソース（`signage.renderer.ts`）が旧い実装のままだったため、正しい実装（「持出中アイテム」＋`getClientSystemMetricsText()`）を反映し、APIコンテナを`--no-cache`で再ビルドして正常化完了。DEBUG MODEのNDJSONログでrepo/コンテナの不一致を検出し、修正前後のログ比較で正常化を確認。Pi3のサイネージ画面で「持出中アイテム」タイトルと温度表示（`CPU xx% Temp yy.y°C`）が正常に表示されることを確認済み。詳細は [knowledge-base/infrastructure/signage.md#kb-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) / [investigation/temperature-display-investigation.md](./investigation/temperature-display-investigation.md) を参照。
