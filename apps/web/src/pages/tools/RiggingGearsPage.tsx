@@ -152,147 +152,148 @@ export function RiggingGearsPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[3.5fr,1fr]">
-          <div className="overflow-x-auto">
-            {isLoading ? (
-              <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
-            ) : (
-              <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
-                <thead className="bg-slate-100">
-                  <tr className="border-b-2 border-slate-500">
-                    <th className="w-40 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">名称</th>
-                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">管理番号</th>
-                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">保管場所</th>
-                    <th className="w-28 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">部署</th>
-                    <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">荷重(t)</th>
-                    <th className="w-44 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">長さ/幅/厚み(mm)</th>
-                    <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">RFIDタグUID</th>
-                    <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">状態</th>
-                    <th className="w-48 px-2 py-1 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">操作</th>
+        <div className="overflow-x-auto">
+          {isLoading ? (
+            <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
+          ) : (
+            <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
+              <thead className="bg-slate-100">
+                <tr className="border-b-2 border-slate-500">
+                  <th className="w-40 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">名称</th>
+                  <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">管理番号</th>
+                  <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">保管場所</th>
+                  <th className="w-28 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">部署</th>
+                  <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">荷重(t)</th>
+                  <th className="w-44 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">長さ/幅/厚み(mm)</th>
+                  <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">RFIDタグUID</th>
+                  <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">状態</th>
+                  <th className="w-48 px-2 py-1 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {riggings?.map((gear) => (
+                  <tr key={gear.id} className="border-t border-slate-500">
+                    <td className="px-2 py-1 font-bold text-base text-slate-900 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
+                      {gear.name}
+                    </td>
+                    <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.managementNumber}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
+                      {gear.storageLocation ?? '-'}
+                    </td>
+                    <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.department ?? '-'}>
+                      {gear.department ?? '-'}
+                    </td>
+                    <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.maxLoadTon ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">
+                      {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
+                    </td>
+                    <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.tags?.[0]?.rfidTagUid ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.status}</td>
+                    <td className="px-2 py-1 text-right whitespace-nowrap">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleEdit(gear)}>
+                          編集
+                        </Button>
+                        <Button variant="ghost" className="h-8 px-2 text-xs" onClick={() => setSelectedForInspection(gear.id)}>
+                          点検
+                        </Button>
+                        <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleDelete(gear.id)}>
+                          削除
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {riggings?.map((gear) => (
-                    <tr key={gear.id} className="border-t border-slate-500">
-                      <td className="px-2 py-1 font-bold text-base text-slate-900 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.name}>
-                        {gear.name}
-                      </td>
-                      <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.managementNumber}</td>
-                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
-                        {gear.storageLocation ?? '-'}
-                      </td>
-                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.department ?? '-'}>
-                        {gear.department ?? '-'}
-                      </td>
-                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.maxLoadTon ?? '-'}</td>
-                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">
-                        {gear.lengthMm ?? '-'} / {gear.widthMm ?? '-'} / {gear.thicknessMm ?? '-'}
-                      </td>
-                      <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.tags?.[0]?.rfidTagUid ?? '-'}</td>
-                      <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap">{gear.status}</td>
-                      <td className="px-2 py-1 text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleEdit(gear)}>
-                            編集
-                          </Button>
-                          <Button variant="ghost" className="h-8 px-2 text-xs" onClick={() => setSelectedForInspection(gear.id)}>
-                            点検
-                          </Button>
-                          <Button variant="secondary" className="h-8 px-2 text-xs" onClick={() => handleDelete(gear.id)}>
-                            削除
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {riggings?.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-700">
-                        該当する吊具がありません
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="rounded-md border border-slate-500 bg-white p-4">
-            <h3 className="text-lg font-semibold">{isEditing ? '吊具編集' : '吊具登録'}</h3>
-            <div className="mt-3 flex flex-col gap-2">
-              <Input
-                value={form.name ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="名称（必須）"
-              />
-              <Input
-                value={form.managementNumber ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, managementNumber: e.target.value }))}
-                placeholder="管理番号（必須）"
-              />
-              <Input
-                value={form.storageLocation ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, storageLocation: e.target.value }))}
-                placeholder="保管場所"
-              />
-              <Input
-                value={form.department ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-                placeholder="部署"
-              />
-              <Input
-                value={form.maxLoadTon ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, maxLoadTon: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="最大使用荷重(t)"
-                type="number"
-              />
-              <Input
-                value={form.lengthMm ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, lengthMm: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="長さ(mm)"
-                type="number"
-              />
-              <Input
-                value={form.widthMm ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, widthMm: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="幅(mm)"
-                type="number"
-              />
-              <Input
-                value={form.thicknessMm ?? ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, thicknessMm: e.target.value ? Number(e.target.value) : null }))
-                }
-                placeholder="厚み(mm)"
-                type="number"
-              />
-              <Input
-                value={form.startedAt ? String(form.startedAt).substring(0, 10) : ''}
-                onChange={(e) => setForm((f) => ({ ...f, startedAt: e.target.value || null }))}
-                placeholder="使用開始日"
-                type="date"
-              />
-              <Input
-                value={form.rfidTagUid ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, rfidTagUid: e.target.value || undefined }))}
-                placeholder="RFIDタグUID（任意・上書き登録）"
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleSubmit}>{isEditing ? '更新' : '登録'}</Button>
-                {isEditing && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setEditingId(null);
-                      setForm({ name: '', managementNumber: '' });
-                    }}
-                  >
-                    キャンセル
-                  </Button>
+                ))}
+                {riggings?.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-700">
+                      該当する吊具がありません
+                    </td>
+                  </tr>
                 )}
-              </div>
-            </div>
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Card>
+
+      <Card title={isEditing ? '吊具編集' : '吊具登録'}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Input
+              value={form.name ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="名称（必須）"
+            />
+            <Input
+              value={form.managementNumber ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, managementNumber: e.target.value }))}
+              placeholder="管理番号（必須）"
+            />
+            <Input
+              value={form.storageLocation ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, storageLocation: e.target.value }))}
+              placeholder="保管場所"
+            />
+            <Input
+              value={form.department ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+              placeholder="部署"
+            />
+            <Input
+              value={form.maxLoadTon ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, maxLoadTon: e.target.value ? Number(e.target.value) : null }))}
+              placeholder="最大使用荷重(t)"
+              type="number"
+            />
           </div>
+          <div className="flex flex-col gap-2">
+            <Input
+              value={form.lengthMm ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, lengthMm: e.target.value ? Number(e.target.value) : null }))}
+              placeholder="長さ(mm)"
+              type="number"
+            />
+            <Input
+              value={form.widthMm ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, widthMm: e.target.value ? Number(e.target.value) : null }))}
+              placeholder="幅(mm)"
+              type="number"
+            />
+            <Input
+              value={form.thicknessMm ?? ''}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, thicknessMm: e.target.value ? Number(e.target.value) : null }))
+              }
+              placeholder="厚み(mm)"
+              type="number"
+            />
+            <Input
+              value={form.startedAt ? String(form.startedAt).substring(0, 10) : ''}
+              onChange={(e) => setForm((f) => ({ ...f, startedAt: e.target.value || null }))}
+              placeholder="使用開始日"
+              type="date"
+            />
+            <Input
+              value={form.rfidTagUid ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, rfidTagUid: e.target.value || undefined }))}
+              placeholder="RFIDタグUID（任意・上書き登録）"
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button onClick={handleSubmit}>{isEditing ? '更新' : '登録'}</Button>
+          {isEditing && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setEditingId(null);
+                setForm({ name: '', managementNumber: '' });
+              }}
+            >
+              キャンセル
+            </Button>
+          )}
         </div>
       </Card>
 
