@@ -20,7 +20,7 @@ interface BackupTargetFormProps {
   onSubmit: (target: Omit<BackupTarget, 'enabled'> & { enabled?: boolean }) => void;
   onCancel: () => void;
   isLoading?: boolean;
-  storageProvider?: 'local' | 'dropbox';
+  storageProvider?: 'local' | 'dropbox' | 'gmail';
   storagePath?: string;
 }
 
@@ -101,7 +101,7 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
   
   // バックアップ先の選択（Phase 2: 複数選択対応）
   // providers配列が指定されている場合はそれを使用、providerが指定されている場合は配列に変換、未指定の場合は空配列（デフォルト）
-  const getInitialProviders = useCallback((): ('local' | 'dropbox')[] => {
+  const getInitialProviders = useCallback((): ('local' | 'dropbox' | 'gmail')[] => {
     if (initialValues?.storage?.providers && initialValues.storage.providers.length > 0) {
       return initialValues.storage.providers;
     }
@@ -110,13 +110,20 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
     }
     return []; // 空配列は「システム設定を使用」を意味する
   }, [initialValues?.storage?.providers, initialValues?.storage?.provider]);
-  const [selectedProviders, setSelectedProviders] = useState<('local' | 'dropbox')[]>(getInitialProviders());
+  const [selectedProviders, setSelectedProviders] = useState<('local' | 'dropbox' | 'gmail')[]>(getInitialProviders());
   
-  const getStorageProviderLabel = (provider: 'local' | 'dropbox') => {
-    return provider === 'dropbox' ? 'Dropbox' : 'ローカルストレージ';
+  const getStorageProviderLabel = (provider: 'local' | 'dropbox' | 'gmail') => {
+    switch (provider) {
+      case 'dropbox':
+        return 'Dropbox';
+      case 'gmail':
+        return 'Gmail';
+      default:
+        return 'ローカルストレージ';
+    }
   };
   
-  const toggleProvider = (provider: 'local' | 'dropbox') => {
+  const toggleProvider = (provider: 'local' | 'dropbox' | 'gmail') => {
     setSelectedProviders((prev) => {
       if (prev.includes(provider)) {
         return prev.filter((p) => p !== provider);
@@ -302,6 +309,16 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
             {selectedProviders.includes('dropbox') && (
               <span className="text-xs text-slate-600 font-mono">({storagePath.replace('/opt/backups', '/backups')})</span>
             )}
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={selectedProviders.includes('gmail')}
+              onChange={() => toggleProvider('gmail')}
+              disabled={isLoading || selectedProviders.length === 0}
+              className="rounded border-2 border-slate-500"
+            />
+            <span>Gmail</span>
           </label>
         </div>
         <p className="mt-2 text-xs text-slate-600">

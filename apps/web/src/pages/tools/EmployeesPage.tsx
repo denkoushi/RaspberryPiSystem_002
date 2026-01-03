@@ -12,7 +12,8 @@ import type { Employee } from '../../api/types';
 
 const initialForm = {
   employeeCode: '',
-  displayName: '',
+  lastName: '',
+  firstName: '',
   department: '',
   nfcTagUid: ''
 };
@@ -41,7 +42,8 @@ export function EmployeesPage() {
           id: editingId,
           payload: {
             employeeCode: form.employeeCode,
-            displayName: form.displayName,
+            lastName: form.lastName,
+            firstName: form.firstName,
             department: form.department || undefined,
             nfcTagUid: form.nfcTagUid || undefined
           }
@@ -49,7 +51,8 @@ export function EmployeesPage() {
       } else {
         await create.mutateAsync({
           employeeCode: form.employeeCode,
-          displayName: form.displayName,
+          lastName: form.lastName,
+          firstName: form.firstName,
           department: form.department || undefined,
           nfcTagUid: form.nfcTagUid || undefined
         });
@@ -64,9 +67,26 @@ export function EmployeesPage() {
 
   const startEdit = (emp: Employee) => {
     setEditingId(emp.id);
+    // lastName/firstNameが存在する場合はそれを使用、ない場合はdisplayNameから分割を試みる
+    let lastName = emp.lastName ?? '';
+    let firstName = emp.firstName ?? '';
+    
+    if (!lastName && !firstName && emp.displayName) {
+      // displayNameから分割を試みる（スペースで分割）
+      const parts = emp.displayName.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        lastName = parts[0];
+        firstName = parts.slice(1).join(' ');
+      } else if (parts.length === 1) {
+        // 分割できない場合はlastNameに設定
+        lastName = parts[0];
+      }
+    }
+    
     setForm({
       employeeCode: emp.employeeCode,
-      displayName: emp.displayName,
+      lastName,
+      firstName,
       department: emp.department ?? '',
       nfcTagUid: emp.nfcTagUid ?? ''
     });
@@ -125,8 +145,12 @@ export function EmployeesPage() {
             <Input value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} required />
           </label>
           <label className="text-sm font-semibold text-slate-700">
-            氏名
-            <Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />
+            苗字
+            <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            名前
+            <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required />
           </label>
           <label className="text-sm font-semibold text-slate-700">
             部署

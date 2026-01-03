@@ -146,10 +146,18 @@ cd /opt/RaspberryPiSystem_002
 
 ### 方法2: 手動で更新
 
+**⚠️ 重要**: デプロイ前に必ず以下を確認してください：
+1. **リモートにプッシュ済みか確認**: `git log origin/<branch>`でリモートの最新コミットを確認
+2. **ローカルとリモートの差分確認**: `git log HEAD..origin/<branch>`で差分を確認
+3. **標準手順の遵守**: 以下の標準手順を必ず遵守してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)参照）
+
+**重要**: デプロイは常に現在のブランチを使用します。`main`ブランチにマージするのは別途指示がある場合のみです。
+
 ```bash
-# 1. リポジトリを更新
+# 1. リポジトリを更新（現在のブランチを使用）
 cd /opt/RaspberryPiSystem_002
-git pull origin main
+CURRENT_BRANCH=$(git branch --show-current)
+git pull origin "$CURRENT_BRANCH"
 
 # 2. IPアドレスが変わった場合は.envファイルを更新
 # （初回のみ）環境変数ファイルを作成
@@ -176,6 +184,7 @@ curl http://localhost:8080/api/system/health
 ```
 
 **重要**: 
+- **標準手順の遵守**: `--force-recreate --build`を1コマンドで実行してください。分割して実行すると、変更が反映されない可能性があります（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)参照）。
 - `docker compose restart`では新しいイメージが使われません。コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
 - `VITE_API_BASE_URL`は相対パス（`/api`）に設定されているため、再起動後もIPアドレスが変わっても問題ありません。
 - `VITE_AGENT_WS_URL`は環境変数ファイル（`.env`）で管理できるため、IPアドレスが変わった場合は`.env`ファイルを更新してからWebコンテナを再ビルドしてください。

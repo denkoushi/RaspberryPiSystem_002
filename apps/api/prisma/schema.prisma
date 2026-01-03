@@ -75,6 +75,8 @@ model Employee {
   id                       String                    @id @default(uuid())
   employeeCode             String                    @unique
   displayName              String
+  lastName                 String?                   // 苗字（CSVインポート用）
+  firstName                String?                   // 名前（CSVインポート用）
   nfcTagUid                String?                   @unique
   department               String?
   contact                  String?
@@ -107,6 +109,7 @@ model MeasuringInstrument {
   name                  String
   managementNumber      String                    @unique
   storageLocation       String?
+  department            String?                   // 管理部署（CSVインポート用）
   measurementRange      String?
   calibrationExpiryDate DateTime?
   status                MeasuringInstrumentStatus @default(AVAILABLE)
@@ -185,6 +188,7 @@ model RiggingGear {
   widthMm           Int?
   thicknessMm       Int?
   startedAt         DateTime?
+  usableYears       Int?                      // 使用可能年数（CSVインポート用）
   status            RiggingStatus             @default(AVAILABLE)
   notes             String?
   createdAt         DateTime                  @default(now())

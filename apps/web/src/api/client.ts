@@ -147,6 +147,11 @@ export async function getRoleAuditLogs(limit = 100) {
   return data.logs;
 }
 
+export async function getDepartments(): Promise<{ departments: string[] }> {
+  const response = await api.get<{ departments: string[] }>('/tools/departments');
+  return response.data;
+}
+
 export async function getEmployees() {
   const { data } = await api.get<{ employees: Employee[] }>('/tools/employees');
   return data.employees;
@@ -578,6 +583,17 @@ export async function postClientLogs(
   return data;
 }
 
+// キオスクサポートメッセージを送信
+export async function postKioskSupport(
+  payload: { message: string; page: string },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ requestId: string }>('/kiosk/support', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
 export interface FileAlert {
   id: string;
   type: string;
@@ -634,6 +650,32 @@ export async function importMaster(payload: ImportMasterPayload) {
   formData.append('replaceExisting', String(payload.replaceExisting ?? false));
 
   const { data } = await api.post<{ summary: ImportSummary }>('/imports/master', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data;
+}
+
+interface ImportMasterSinglePayload {
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  file: File;
+  replaceExisting?: boolean;
+}
+
+export async function importMasterSingle(payload: ImportMasterSinglePayload) {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('replaceExisting', String(payload.replaceExisting ?? false));
+
+  // キャメルケースをケバブケースに変換
+  const typeMap: Record<string, string> = {
+    'employees': 'employees',
+    'items': 'items',
+    'measuringInstruments': 'measuring-instruments',
+    'riggingGears': 'rigging-gears'
+  };
+  const urlType = typeMap[payload.type] || payload.type;
+
+  const { data } = await api.post<{ summary: Record<string, ImportSummary> }>(`/imports/master/${urlType}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
   return data;

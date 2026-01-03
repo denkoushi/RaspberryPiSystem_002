@@ -1,0 +1,216 @@
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import { logger } from '../../lib/logger.js';
+
+/**
+ * Gmailメッセージ情報
+ */
+export interface GmailMessage {
+  id: string;
+  threadId: string;
+  labelIds: string[];
+  snippet: string;
+  payload?: {
+    headers?: Array<{ name: string; value: string }>;
+    parts?: Array<{
+      partId: string;
+      mimeType: string;
+      filename?: string;
+      body?: {
+        attachmentId?: string;
+        size?: number;
+      };
+      parts?: Array<{
+        partId: string;
+        mimeType: string;
+        filename?: string;
+        body?: {
+          attachmentId?: string;
+          size?: number;
+        };
+      }>;
+    }>;
+    body?: {
+      attachmentId?: string;
+      size?: number;
+    };
+  };
+}
+
+/**
+ * Gmail APIクライアント
+ * Gmail APIを使用してメール検索、添付ファイル取得、メールアーカイブを行う
+ */
+export class GmailApiClient {
+  private gmail: ReturnType<typeof google.gmail>;
+  private oauth2Client: OAuth2Client;
+
+  constructor(oauth2Client: OAuth2Client) {
+    this.oauth2Client = oauth2Client;
+    this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  }
+
+  /**
+   * メールを検索
+   * @param query Gmail検索クエリ（例: "subject:CSV Import"）
+   * @returns メッセージIDの配列
+   */
+  async searchMessages(query: string): Promise<string[]> {
+    try {
+      const response = await this.gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: 10 // 最大10件まで取得
+      });
+
+      const messages = response.data.messages || [];
+      return messages.map(msg => msg.id || '').filter(id => id !== '');
+    } catch (error) {
+      logger?.error(
+        { err: error, query },
+        '[GmailApiClient] Failed to search messages'
+      );
+      throw new Error(`Failed to search messages: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * メール詳細を取得
+   * @param messageId メッセージID
+   * @returns メッセージ情報
+   */
+  async getMessage(messageId: string): Promise<GmailMessage> {
+    try {
+      const response = await this.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'full'
+      });
+
+      const message = response.data;
+      return {
+        id: message.id || '',
+        threadId: message.threadId || '',
+        labelIds: message.labelIds || [],
+        snippet: message.snippet || '',
+        payload: message.payload as GmailMessage['payload']
+      };
+    } catch (error) {
+      logger?.error(
+        { err: error, messageId },
+        '[GmailApiClient] Failed to get message'
+      );
+      throw new Error(`Failed to get message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 添付ファイルを取得
+   * @param messageId メッセージID
+   * @param attachmentId 添付ファイルID
+   * @returns 添付ファイルのBuffer
+   */
+  async getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
+    try {
+      const response = await this.gmail.users.messages.attachments.get({
+        userId: 'me',
+        messageId,
+        id: attachmentId
+      });
+
+      const attachment = response.data;
+      if (!attachment.data) {
+        throw new Error('Attachment data is empty');
+      }
+
+      // Base64デコード
+      return Buffer.from(attachment.data, 'base64');
+    } catch (error) {
+      logger?.error(
+        { err: error, messageId, attachmentId },
+        '[GmailApiClient] Failed to get attachment'
+      );
+      throw new Error(`Failed to get attachment: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * メールをアーカイブ（INBOXラベルを削除）
+   * @param messageId メッセージID
+   */
+  async archiveMessage(messageId: string): Promise<void> {
+    try {
+      await this.gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          removeLabelIds: ['INBOX']
+        }
+      });
+
+      logger?.info({ messageId }, '[GmailApiClient] Message archived');
+    } catch (error) {
+      logger?.error(
+        { err: error, messageId },
+        '[GmailApiClient] Failed to archive message'
+      );
+      throw new Error(`Failed to archive message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * メールから最初の添付ファイルを取得
+   * @param messageId メッセージID
+   * @returns 添付ファイルのBufferとファイル名
+   */
+  async getFirstAttachment(messageId: string): Promise<{ buffer: Buffer; filename: string } | null> {
+    const message = await this.getMessage(messageId);
+    
+    if (!message.payload) {
+      return null;
+    }
+
+    // 添付ファイルを探す
+    type PartsType = NonNullable<GmailMessage['payload']>['parts'];
+    const findAttachment = (parts: PartsType | undefined): { attachmentId: string; filename: string } | null => {
+      if (!parts || !Array.isArray(parts)) {
+        return null;
+      }
+
+      for (const part of parts) {
+        if (part.body?.attachmentId) {
+          return {
+            attachmentId: part.body.attachmentId,
+            filename: part.filename || 'attachment'
+          };
+        }
+        if (part.parts) {
+          const nested = findAttachment(part.parts);
+          if (nested) {
+            return nested;
+          }
+        }
+      }
+      return null;
+    };
+
+    // メール本文に直接添付ファイルがある場合
+    if (message.payload.body?.attachmentId) {
+      const buffer = await this.getAttachment(messageId, message.payload.body.attachmentId);
+      const filename = 'attachment';
+      return { buffer, filename };
+    }
+
+    // パーツから添付ファイルを探す
+    if (message.payload.parts) {
+      const attachment = findAttachment(message.payload.parts);
+      if (attachment) {
+        const buffer = await this.getAttachment(messageId, attachment.attachmentId);
+        return { buffer, filename: attachment.filename };
+      }
+    }
+
+    return null;
+  }
+}
+

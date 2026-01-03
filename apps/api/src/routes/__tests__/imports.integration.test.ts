@@ -81,7 +81,7 @@ describe('POST /api/imports/master', () => {
   it('should return 401 without authentication', async () => {
     const formData = new FormData();
     const emp = String(generateTestId(1)).padStart(4, '0');
-    const csvContent = `employeeCode,displayName\n${emp},Test Employee`;
+    const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -106,7 +106,7 @@ describe('POST /api/imports/master', () => {
     // nfcTagUidも一意にするため、タイムスタンプとカウンターを使用
     const uniqueTag1 = `TAG${Date.now()}${testCounter}001`;
     const uniqueTag2 = `TAG${Date.now()}${testCounter}002`;
-    const csvContent = `employeeCode,displayName,nfcTagUid,department,contact,status\n${emp1},Test Employee 1,${uniqueTag1},Dept1,Contact1,ACTIVE\n${emp2},Test Employee 2,${uniqueTag2},Dept2,Contact2,ACTIVE`;
+    const csvContent = `employeeCode,lastName,firstName,nfcTagUid,department,status\n${emp1},Test,Employee1,${uniqueTag1},Dept1,ACTIVE\n${emp2},Test,Employee2,${uniqueTag2},Dept2,ACTIVE`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -174,7 +174,7 @@ describe('POST /api/imports/master', () => {
     const formData = new FormData();
     const emp = String(generateTestId(30)).padStart(4, '0');
     const item = `TO${String(generateTestId(31)).padStart(4, '0')}`;
-    const employeesCsv = `employeeCode,displayName\n${emp},Test Employee 3`;
+    const employeesCsv = `employeeCode,lastName,firstName\n${emp},Test,Employee3`;
     const itemsCsv = `itemCode,name\n${item},Test Item 3`;
     formData.append('employees', Buffer.from(employeesCsv), {
       filename: 'employees.csv',
@@ -212,7 +212,7 @@ describe('POST /api/imports/master', () => {
     await createTestEmployee({ employeeCode: empCode, displayName: 'Original Name' });
 
     const formData = new FormData();
-    const csvContent = `employeeCode,displayName\n${empCode},Updated Name`;
+    const csvContent = `employeeCode,lastName,firstName\n${empCode},Updated,Name`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -239,7 +239,7 @@ describe('POST /api/imports/master', () => {
 
   it('should return 400 for invalid employeeCode format', async () => {
     const formData = new FormData();
-    const csvContent = 'employeeCode,displayName\nINVALID,Test Employee';
+    const csvContent = 'employeeCode,lastName,firstName\nINVALID,Test,Employee';
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -293,7 +293,7 @@ describe('POST /api/imports/master', () => {
     const emp2 = String(generateTestId(51)).padStart(4, '0');
     // 意図的に同じnfcTagUidを使用して重複エラーをテスト
     const duplicateTag = `DUPLICATE_TAG_${Date.now()}`;
-    const csvContent = `employeeCode,displayName,nfcTagUid\n${emp1},Test Employee 1,${duplicateTag}\n${emp2},Test Employee 2,${duplicateTag}`;
+    const csvContent = `employeeCode,lastName,firstName,nfcTagUid\n${emp1},Test,Employee1,${duplicateTag}\n${emp2},Test,Employee2,${duplicateTag}`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -322,7 +322,7 @@ describe('POST /api/imports/master', () => {
     const item = `TO${String(generateTestId(61)).padStart(4, '0')}`;
     // 意図的に同じnfcTagUidを使用して重複エラーをテスト
     const sharedTag = `SHARED_TAG_${Date.now()}`;
-    const employeesCsv = `employeeCode,displayName,nfcTagUid\n${emp},Test Employee,${sharedTag}`;
+    const employeesCsv = `employeeCode,lastName,firstName,nfcTagUid\n${emp},Test,Employee,${sharedTag}`;
     const itemsCsv = `itemCode,name,nfcTagUid\n${item},Test Item,${sharedTag}`;
     formData.append('employees', Buffer.from(employeesCsv), {
       filename: 'employees.csv',
@@ -347,7 +347,7 @@ describe('POST /api/imports/master', () => {
 
     expect(response.statusCode).toBe(400);
     const body = response.json();
-    expect(body.message).toContain('従業員とアイテムで同じnfcTagUidが使用されています');
+    expect(body.message).toContain('異なるタイプ間でタグUIDが重複しています');
   });
 
   it('should return 400 when no CSV files are uploaded', async () => {
@@ -377,7 +377,7 @@ describe('POST /api/imports/master', () => {
     await createTestEmployee({ employeeCode: empOld, displayName: 'Original Employee' });
 
     const formData = new FormData();
-    const csvContent = `employeeCode,displayName\n${empNew},New Employee`;
+    const csvContent = `employeeCode,lastName,firstName\n${empNew},New,Employee`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
       contentType: 'text/csv',
@@ -401,5 +401,220 @@ describe('POST /api/imports/master', () => {
     expect(body.summary.employees.processed).toBe(1);
     expect(body.summary.employees.created).toBe(1);
     // 既存の従業員は削除され、新しい従業員が作成される
+  });
+});
+
+describe('POST /api/imports/master/:type', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let testCounter = 0;
+
+  function generateTestId(offset: number): number {
+    testCounter++;
+    const timestamp = Date.now() % 10000;
+    const base = 1000 + ((timestamp + testCounter * 100 + offset) % 9000);
+    return base;
+  }
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return 401 without authentication', async () => {
+    const formData = new FormData();
+    const emp = String(generateTestId(1)).padStart(4, '0');
+    const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'employees.csv',
+      contentType: 'text/csv',
+    });
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/employees',
+      payload: buffer,
+      headers,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('should import employees CSV successfully', async () => {
+    const formData = new FormData();
+    const emp = String(generateTestId(2)).padStart(4, '0');
+    const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'employees.csv',
+      contentType: 'text/csv',
+    });
+    formData.append('replaceExisting', 'false');
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/employees',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.summary).toHaveProperty('employees');
+    expect(body.summary.employees.processed).toBe(1);
+    expect(body.summary.employees.created).toBe(1);
+  });
+
+  it('should import items CSV successfully', async () => {
+    const formData = new FormData();
+    const itemCode = `TO${String(generateTestId(3)).padStart(4, '0')}`;
+    const csvContent = `itemCode,name\n${itemCode},Test Item`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'items.csv',
+      contentType: 'text/csv',
+    });
+    formData.append('replaceExisting', 'false');
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/items',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.summary).toHaveProperty('items');
+    expect(body.summary.items.processed).toBe(1);
+    expect(body.summary.items.created).toBe(1);
+  });
+
+  it('should import measuring instruments CSV successfully', async () => {
+    const formData = new FormData();
+    const mgmtNum = `MI-TEST-${generateTestId(4)}`;
+    const csvContent = `managementNumber,name,department\n${mgmtNum},Test Instrument,品質管理部`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'measuring-instruments.csv',
+      contentType: 'text/csv',
+    });
+    formData.append('replaceExisting', 'false');
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/measuring-instruments',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.summary).toHaveProperty('measuringInstruments');
+    expect(body.summary.measuringInstruments.processed).toBe(1);
+    expect(body.summary.measuringInstruments.created).toBe(1);
+  });
+
+  it('should import rigging gears CSV successfully', async () => {
+    const formData = new FormData();
+    const mgmtNum = `RG-TEST-${generateTestId(5)}`;
+    const csvContent = `managementNumber,name,usableYears\n${mgmtNum},Test Rigging,10`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'rigging-gears.csv',
+      contentType: 'text/csv',
+    });
+    formData.append('replaceExisting', 'false');
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/rigging-gears',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.summary).toHaveProperty('riggingGears');
+    expect(body.summary.riggingGears.processed).toBe(1);
+    expect(body.summary.riggingGears.created).toBe(1);
+  });
+
+  it('should return 400 for invalid type', async () => {
+    const formData = new FormData();
+    const csvContent = `employeeCode,lastName,firstName\n0001,Test,Employee`;
+    formData.append('file', Buffer.from(csvContent), {
+      filename: 'employees.csv',
+      contentType: 'text/csv',
+    });
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/invalidType',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('無効なデータタイプ');
+  });
+
+  it('should return 400 when file is missing', async () => {
+    const formData = new FormData();
+    formData.append('replaceExisting', 'false');
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master/employees',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(adminToken),
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.message).toContain('CSVファイルがアップロードされていません');
   });
 });

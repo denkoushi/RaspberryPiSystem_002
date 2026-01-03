@@ -15,11 +15,18 @@ import {
   updateBackupTarget,
   deleteBackupTarget,
   runBackup,
+  getGmailConfig,
+  updateGmailConfig,
+  deleteGmailConfig,
+  getGmailOAuthAuthorizeUrl,
+  refreshGmailToken,
   type BackupHistoryFilters,
   type RestoreFromDropboxRequest,
   type BackupTarget,
-  type RunBackupRequest
+  type RunBackupRequest,
+  type GmailConfigUpdateRequest
 } from './backup';
+import { importMasterSingle } from './client';
 import {
   borrowItem,
   cancelLoan,
@@ -34,6 +41,7 @@ import {
   getClientStatuses,
   getClientAlerts,
   acknowledgeAlert,
+  getDepartments,
   getEmployees,
   getItems,
   getKioskConfig,
@@ -105,6 +113,13 @@ import type {
   RiggingInspectionRecord,
   RiggingInspectionResult
 } from './types';
+
+export function useDepartments() {
+  return useQuery({
+    queryKey: ['departments'],
+    queryFn: getDepartments
+  });
+}
 
 export function useEmployees() {
   return useQuery({
@@ -259,6 +274,8 @@ export function useMeasuringInstrumentMutations() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
       queryClient.invalidateQueries({ queryKey: ['measuring-instrument', vars.id] });
+      // rfidTagUid はタグテーブル側で管理されるため、タグ一覧も更新する
+      queryClient.invalidateQueries({ queryKey: ['instrument-tags', vars.id] });
     }
   });
   const remove = useMutation({
@@ -426,6 +443,25 @@ export function useImportMaster() {
       // インポート成功後、employeesとitemsのクエリを無効化して最新データを取得
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['items'] });
+    }
+  });
+}
+
+export function useImportMasterSingle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: importMasterSingle,
+    onSuccess: (_, variables) => {
+      // インポート成功後、該当するデータタイプのクエリを無効化して最新データを取得
+      if (variables.type === 'employees') {
+        queryClient.invalidateQueries({ queryKey: ['employees'] });
+      } else if (variables.type === 'items') {
+        queryClient.invalidateQueries({ queryKey: ['items'] });
+      } else if (variables.type === 'measuringInstruments') {
+        queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
+      } else if (variables.type === 'riggingGears') {
+        queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+      }
     }
   });
 }
@@ -708,4 +744,36 @@ export function useCsvImportScheduleMutations() {
     }
   });
   return { create, update, remove, run };
+}
+
+// Gmail設定関連のフック
+export function useGmailConfig() {
+  return useQuery({
+    queryKey: ['gmail-config'],
+    queryFn: getGmailConfig
+  });
+}
+
+export function useGmailConfigMutations() {
+  const queryClient = useQueryClient();
+  const update = useMutation({
+    mutationFn: (config: GmailConfigUpdateRequest) => updateGmailConfig(config),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteGmailConfig(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  const authorize = useMutation({
+    mutationFn: () => getGmailOAuthAuthorizeUrl(),
+    onSuccess: (data) => {
+      // 認証URLを新しいウィンドウで開く
+      window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
+    }
+  });
+  const refresh = useMutation({
+    mutationFn: () => refreshGmailToken(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+  });
+  return { update, remove, authorize, refresh };
 }

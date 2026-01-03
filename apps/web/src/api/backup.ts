@@ -41,10 +41,20 @@ export interface BackupHistoryFilters {
   limit?: number;
 }
 
+// CSVインポートターゲットの型定義
+export interface CsvImportTarget {
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  source: string; // Dropbox用: パス、Gmail用: 件名パターン
+}
+
 // CSVインポートスケジュールの型定義
 export interface CsvImportSchedule {
   id: string;
   name?: string;
+  provider?: 'dropbox' | 'gmail'; // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+  // 新形式: targets配列
+  targets?: CsvImportTarget[];
+  // 旧形式: 後方互換のため残す
   employeesPath?: string;
   itemsPath?: string;
   schedule: string;
@@ -54,6 +64,11 @@ export interface CsvImportSchedule {
   autoBackupAfterImport?: {
     enabled: boolean;
     targets: ('csv' | 'database' | 'all')[];
+  };
+  retryConfig?: {
+    maxRetries: number;
+    retryInterval: number; // 秒
+    exponentialBackoff: boolean;
   };
 }
 
@@ -136,8 +151,8 @@ export interface BackupTarget {
   schedule?: string;
   enabled: boolean;
   storage?: {
-    provider?: 'local' | 'dropbox'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
-    providers?: ('local' | 'dropbox')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
+    provider?: 'local' | 'dropbox' | 'gmail'; // 対象ごとのストレージプロバイダー（単一、後方互換性のため残す）
+    providers?: ('local' | 'dropbox' | 'gmail')[]; // 対象ごとのストレージプロバイダー（複数、Phase 2）
   };
   retention?: {
     days?: number; // 保持日数（例: 30日）
@@ -148,13 +163,18 @@ export interface BackupTarget {
 
 export interface BackupConfig {
   storage: {
-    provider: 'local' | 'dropbox';
+    provider: 'local' | 'dropbox' | 'gmail';
     options?: {
       basePath?: string;
       accessToken?: string;
       refreshToken?: string;
       appKey?: string;
       appSecret?: string;
+      clientId?: string;
+      clientSecret?: string;
+      redirectUri?: string;
+      subjectPattern?: string;
+      fromEmail?: string;
     };
   };
   targets: BackupTarget[];
@@ -163,6 +183,12 @@ export interface BackupConfig {
     maxBackups?: number;
   };
   csvImports?: CsvImportSchedule[];
+  csvImportSubjectPatterns?: {
+    employees?: string[];
+    items?: string[];
+    measuringInstruments?: string[];
+    riggingGears?: string[];
+  };
   csvImportHistory?: {
     retentionDays?: number;
     cleanupSchedule?: string;
@@ -233,4 +259,62 @@ export async function runBackup(request: RunBackupRequest): Promise<RunBackupRes
     // #endregion
     throw error;
   }
+}
+
+// Gmail設定の型定義
+export interface GmailConfig {
+  provider?: 'gmail';
+  clientId?: string;
+  clientSecret?: string; // マスクされた値（例: "***1234"）
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+  hasAccessToken?: boolean;
+  hasRefreshToken?: boolean;
+}
+
+export interface GmailConfigUpdateRequest {
+  clientId?: string;
+  clientSecret?: string;
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+}
+
+// Gmail設定API
+export async function getGmailConfig(): Promise<GmailConfig> {
+  const { data } = await api.get<GmailConfig>('/gmail/config');
+  return data;
+}
+
+export async function updateGmailConfig(config: GmailConfigUpdateRequest): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.put<{ success: boolean; message: string }>('/gmail/config', config);
+  return data;
+}
+
+export async function deleteGmailConfig(): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.delete<{ success: boolean; message: string }>('/gmail/config');
+  return data;
+}
+
+// Gmail OAuth認証API
+export interface GmailOAuthAuthorizeResponse {
+  authorizationUrl: string;
+  state: string;
+}
+
+export async function getGmailOAuthAuthorizeUrl(): Promise<GmailOAuthAuthorizeResponse> {
+  const { data } = await api.get<GmailOAuthAuthorizeResponse>('/gmail/oauth/authorize');
+  return data;
+}
+
+export interface GmailOAuthRefreshResponse {
+  success: boolean;
+  accessToken?: string;
+  expiresIn?: number;
+}
+
+export async function refreshGmailToken(): Promise<GmailOAuthRefreshResponse> {
+  const { data } = await api.post<GmailOAuthRefreshResponse>('/gmail/oauth/refresh', {});
+  return data;
 }

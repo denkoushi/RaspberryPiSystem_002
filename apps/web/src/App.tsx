@@ -10,6 +10,7 @@ import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
 import { CsvImportSchedulePage } from './pages/admin/CsvImportSchedulePage';
 import { DashboardPage } from './pages/admin/DashboardPage';
+import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { MasterImportPage } from './pages/admin/MasterImportPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
@@ -37,6 +38,13 @@ function App() {
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signage" element={<SignageDisplayPage />} />
+      {/* 開発用: UI確認のための一時的なルート */}
+      <Route
+        path="/preview"
+        element={<AdminLayout />}
+      >
+        <Route path="import" element={<MasterImportPage />} />
+      </Route>
       <Route element={<KioskLayout />}>
         <Route path="/kiosk" element={<KioskRedirect />} />
         <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
@@ -74,6 +82,9 @@ function App() {
         </Route>
         <Route path="imports">
           <Route path="schedule" element={<CsvImportSchedulePage />} />
+        </Route>
+        <Route path="gmail">
+          <Route path="config" element={<GmailConfigPage />} />
         </Route>
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />

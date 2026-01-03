@@ -112,7 +112,7 @@ describe('CSV Import Schedule API', () => {
   });
 
   describe('POST /api/imports/schedule', () => {
-    it('should create new schedule', async () => {
+    it('should create new schedule with legacy format (employeesPath)', async () => {
       const response = await app.inject({
         method: 'POST',
         url: '/api/imports/schedule',
@@ -133,6 +133,60 @@ describe('CSV Import Schedule API', () => {
       const json = response.json() as { schedule: { id: string; name: string } };
       expect(json.schedule.id).toBe('test-schedule-1');
       expect(json.schedule.name).toBe('Test Schedule');
+    });
+
+    it('should create new schedule with targets format', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/imports/schedule',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          id: 'test-schedule-targets',
+          name: 'Test Schedule with Targets',
+          targets: [
+            { type: 'employees', source: '/backups/csv/employees.csv' },
+            { type: 'items', source: '/backups/csv/items.csv' }
+          ],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as { schedule: { id: string; targets: unknown[] } };
+      expect(json.schedule.id).toBe('test-schedule-targets');
+      expect(Array.isArray(json.schedule.targets)).toBe(true);
+      expect((json.schedule.targets as Array<{ type: string }>).length).toBe(2);
+    });
+
+    it('should create new schedule with measuring instruments and rigging gears', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/imports/schedule',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          id: 'test-schedule-new-types',
+          name: 'Test Schedule with New Types',
+          targets: [
+            { type: 'measuringInstruments', source: '/backups/csv/measuring-instruments.csv' },
+            { type: 'riggingGears', source: '/backups/csv/rigging-gears.csv' }
+          ],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as { schedule: { id: string; targets: unknown[] } };
+      expect(json.schedule.id).toBe('test-schedule-new-types');
+      expect(Array.isArray(json.schedule.targets)).toBe(true);
+      expect((json.schedule.targets as Array<{ type: string }>).length).toBe(2);
     });
 
     it('should return 409 for duplicate ID', async () => {
@@ -183,7 +237,7 @@ describe('CSV Import Schedule API', () => {
       expect(response.statusCode).toBe(400);
     });
 
-    it('should return 400 when neither employeesPath nor itemsPath provided', async () => {
+    it('should return 400 when neither targets nor legacy paths provided', async () => {
       const response = await app.inject({
         method: 'POST',
         url: '/api/imports/schedule',

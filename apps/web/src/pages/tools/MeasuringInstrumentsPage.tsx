@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import {
   useMeasuringInstruments,
   useMeasuringInstrumentMutations,
-  useInstrumentTags
+  useInstrumentTags,
+  useDepartments
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -19,6 +20,7 @@ const initialForm = {
   name: '',
   managementNumber: '',
   storageLocation: '',
+  department: '',
   measurementRange: '',
   calibrationExpiryDate: '',
   status: 'AVAILABLE' as MeasuringInstrumentStatus,
@@ -28,12 +30,16 @@ const initialForm = {
 export function MeasuringInstrumentsPage() {
   const { data, isLoading } = useMeasuringInstruments();
   const { create, update, remove } = useMeasuringInstrumentMutations();
+  const { data: departmentsData } = useDepartments();
+  const departments = departmentsData?.departments ?? [];
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const { data: editingTags } = useInstrumentTags(editingId || undefined);
   const location = useLocation();
   const isActiveRoute = location.pathname.endsWith('/measuring-instruments');
   const nfcEvent = useNfcStream(isActiveRoute);
+  // ユーザーが手動でrfidTagUidを編集したかどうかを追跡
+  const isManualEditRef = useRef(false);
 
   useEffect(() => {
     if (editingId) return;
@@ -43,13 +49,17 @@ export function MeasuringInstrumentsPage() {
   useEffect(() => {
     if (!editingId || !editingTags) return;
     const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
-    setForm((prev) => (prev.rfidTagUid ? prev : { ...prev, rfidTagUid: existingTagUid }));
+    // ユーザーが手動で編集していない場合のみ、既存のタグUIDを設定
+    if (!isManualEditRef.current) {
+      setForm((prev) => ({ ...prev, rfidTagUid: existingTagUid }));
+    }
   }, [editingId, editingTags]);
 
   // NFCスキャンでUID自動入力（このページがアクティブな場合のみ）
   useEffect(() => {
     if (nfcEvent?.uid) {
       setForm((prev) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
+      isManualEditRef.current = false; // NFCスキャンは自動入力なので、手動編集フラグをリセット
     }
   }, [nfcEvent]);
 
@@ -61,6 +71,7 @@ export function MeasuringInstrumentsPage() {
       name: form.name,
       managementNumber: form.managementNumber,
       storageLocation: form.storageLocation || undefined,
+      department: form.department || undefined,
       measurementRange: form.measurementRange || undefined,
       calibrationExpiryDate: form.calibrationExpiryDate ? new Date(form.calibrationExpiryDate).toISOString() : undefined,
       status: form.status,
@@ -74,14 +85,17 @@ export function MeasuringInstrumentsPage() {
     }
     setForm(initialForm);
     setEditingId(null);
+    isManualEditRef.current = false; // 送信後に手動編集フラグをリセット
   };
 
   const startEdit = (instrument: MeasuringInstrument) => {
     setEditingId(instrument.id);
+    isManualEditRef.current = false; // 編集開始時に手動編集フラグをリセット
     setForm({
       name: instrument.name,
       managementNumber: instrument.managementNumber,
       storageLocation: instrument.storageLocation ?? '',
+      department: instrument.department ?? '',
       measurementRange: instrument.measurementRange ?? '',
       calibrationExpiryDate: instrument.calibrationExpiryDate
         ? instrument.calibrationExpiryDate.slice(0, 10)
@@ -113,7 +127,10 @@ export function MeasuringInstrumentsPage() {
             NFC / RFIDタグUID
             <Input
               value={form.rfidTagUid}
-              onChange={(e) => setForm({ ...form, rfidTagUid: e.target.value })}
+              onChange={(e) => {
+                isManualEditRef.current = true; // 手動編集フラグを設定
+                setForm({ ...form, rfidTagUid: e.target.value });
+              }}
               placeholder="例: 04A1B2C3D4"
             />
           </label>
@@ -132,6 +149,21 @@ export function MeasuringInstrumentsPage() {
               onChange={(e) => setForm({ ...form, storageLocation: e.target.value })}
               placeholder="例: 棚A-1"
             />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            部署
+            <select
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            >
+              <option value="">選択してください</option>
+              {departments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm font-semibold text-slate-700">
             測定範囲
@@ -175,6 +207,7 @@ export function MeasuringInstrumentsPage() {
                 onClick={() => {
                   setEditingId(null);
                   setForm(initialForm);
+                  isManualEditRef.current = false; // 編集キャンセル時に手動編集フラグをリセット
                 }}
               >
                 編集キャンセル
@@ -195,6 +228,7 @@ export function MeasuringInstrumentsPage() {
                   <th className="px-2 py-1 text-sm font-semibold">名称</th>
                   <th className="px-2 py-1 text-sm font-semibold">管理番号</th>
                   <th className="px-2 py-1 text-sm font-semibold">保管場所</th>
+                  <th className="px-2 py-1 text-sm font-semibold">部署</th>
                   <th className="px-2 py-1 text-sm font-semibold">測定範囲</th>
                   <th className="px-2 py-1 text-sm font-semibold">校正期限</th>
                   <th className="px-2 py-1 text-sm font-semibold">ステータス</th>
@@ -207,6 +241,7 @@ export function MeasuringInstrumentsPage() {
                     <td className="px-2 py-1 font-bold text-base text-slate-900">{instrument.name}</td>
                     <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{instrument.managementNumber}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.storageLocation ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{instrument.department ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.measurementRange ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">
                       {instrument.calibrationExpiryDate

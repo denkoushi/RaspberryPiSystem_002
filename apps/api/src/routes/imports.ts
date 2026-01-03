@@ -7,11 +7,13 @@ import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../lib/auth.js';
-import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
+import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
+import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
+import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -77,6 +79,23 @@ const dropboxPathSchema = z.string()
 const dropboxImportSchema = z.object({
   employeesPath: dropboxPathSchema.optional(),
   itemsPath: dropboxPathSchema.optional(),
+  replaceExisting: z.boolean().optional().default(false)
+}).refine((data) => data.employeesPath || data.itemsPath, {
+  message: 'employeesPath または itemsPath のいずれかを指定してください'
+});
+
+// Gmail用: 件名パターン（Gmail検索クエリ）として扱うため、Dropboxのパス制約はかけない
+const gmailPathSchema = z.string()
+  .trim()
+  .min(1, 'パスは必須です')
+  .max(1000, 'パスは1000文字以内である必要があります');
+
+const providerImportSchema = z.object({
+  provider: z.enum(['dropbox', 'gmail']).optional(),
+  // provider固有のバリデーション（Dropboxは.csv/1000文字/危険パスチェック等）を後段で行うため、
+  // ここでは長さ上限などを付けず、最低限の存在チェックのみにする
+  employeesPath: z.string().trim().min(1).optional(),
+  itemsPath: z.string().trim().min(1).optional(),
   replaceExisting: z.boolean().optional().default(false)
 }).refine((data) => data.employeesPath || data.itemsPath, {
   message: 'employeesPath または itemsPath のいずれかを指定してください'
@@ -187,79 +206,73 @@ async function createDropboxStorageProviderFromConfig(
   });
 }
 
-export async function processCsvImport(
-  files: { employees?: Buffer; items?: Buffer },
+/**
+ * CSVインポート処理（新形式: targets配列ベース）
+ */
+export async function processCsvImportFromTargets(
+  targets: CsvImportTarget[],
+  files: Map<string, Buffer>,
   replaceExisting: boolean,
   log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
-) {
-  if (!files.employees && !files.items) {
-  throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
+): Promise<{ summary: Record<string, ImportSummary> }> {
+  if (targets.length === 0) {
+    throw new ApiError(400, 'インポート対象が指定されていません');
   }
 
-  let employeeRows: EmployeeCsvRow[] = [];
-  let itemRows: ItemCsvRow[] = [];
+  // すべてのタイプのタグUIDを収集して重複チェック
+  const tagUidMap = new Map<string, { type: string; identifier: string }[]>();
+  
+  // 各ターゲットをパース
+  const parsedData = new Map<string, unknown[]>();
+  for (const target of targets) {
+    const buffer = files.get(target.type);
+    if (!buffer) {
+      continue; // ファイルが存在しない場合はスキップ
+    }
 
-  if (files.employees) {
-    try {
-      const parsedRows = parseCsvRows(files.employees);
-      employeeRows = parsedRows.map((row, index) => {
-        try {
-          return employeeCsvSchema.parse(row);
-        } catch (error) {
-          throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+    const importer = CsvImporterFactory.create(target.type);
+    const rows = await importer.parse(buffer);
+    parsedData.set(target.type, rows);
+
+    // タグUIDを収集
+    for (const row of rows) {
+      const tagUid = (row as any).nfcTagUid || (row as any).rfidTagUid;
+      if (tagUid && tagUid.trim()) {
+        const uid = tagUid.trim();
+        if (!tagUidMap.has(uid)) {
+          tagUidMap.set(uid, []);
         }
-      });
-    } catch (error) {
-      throw new ApiError(400, `従業員CSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
+        const identifier = (row as any).employeeCode || (row as any).itemCode || (row as any).managementNumber || '不明';
+        tagUidMap.get(uid)!.push({ type: target.type, identifier });
+      }
     }
   }
 
-  if (files.items) {
-    try {
-      const parsedRows = parseCsvRows(files.items);
-      itemRows = parsedRows.map((row, index) => {
-        try {
-          return itemCsvSchema.parse(row);
-        } catch (error) {
-          throw new ApiError(400, `アイテムCSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    } catch (error) {
-      throw new ApiError(400, `アイテムCSVの解析エラー: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  const employeeNfcTagUids = new Set(
-    employeeRows
-      .map(row => row.nfcTagUid?.trim())
-      .filter((uid): uid is string => Boolean(uid))
-  );
-  const itemNfcTagUids = new Set(
-    itemRows
-      .map(row => row.nfcTagUid?.trim())
-      .filter((uid): uid is string => Boolean(uid))
-  );
-  const crossDuplicateNfcTagUids = Array.from(employeeNfcTagUids).filter(uid => itemNfcTagUids.has(uid));
-  if (crossDuplicateNfcTagUids.length > 0) {
-    const errorMessage = `従業員とアイテムで同じnfcTagUidが使用されています: ${crossDuplicateNfcTagUids.map(uid => `"${uid}"`).join(', ')}。従業員とアイテムで同じnfcTagUidは使用できません。`;
-    log.error({ crossDuplicateNfcTagUids }, '従業員とアイテム間でnfcTagUidが重複');
+  // タイプ間のタグUID重複チェック
+  const crossDuplicateTagUids = Array.from(tagUidMap.entries())
+    .filter(([_, entries]) => entries.length > 1 && new Set(entries.map(e => e.type)).size > 1)
+    .map(([uid, entries]) => ({ uid, entries }));
+  
+  if (crossDuplicateTagUids.length > 0) {
+    const errorMessage = `異なるタイプ間でタグUIDが重複しています: ${crossDuplicateTagUids.map(({ uid, entries }) => `"${uid}" (${entries.map(e => `${e.type}:${e.identifier}`).join(', ')})`).join('; ')}。異なるタイプ間で同じタグUIDは使用できません。`;
+    log.error({ crossDuplicateTagUids }, 'タイプ間でタグUIDが重複');
     throw new ApiError(400, errorMessage);
   }
 
-  const summary: Record<string, ImportResult> = {};
+  const summary: Record<string, ImportSummary> = {};
 
   try {
-    await prisma.$transaction(async (tx) => {
-      if (employeeRows.length > 0) {
-        summary.employees = await importEmployees(tx, employeeRows, replaceExisting, log);
+    // 各タイプを順次インポート（トランザクションは各インポータ内で処理）
+    for (const target of targets) {
+      const rows = parsedData.get(target.type);
+      if (!rows || rows.length === 0) {
+        continue;
       }
-      if (itemRows.length > 0) {
-        summary.items = await importItems(tx, itemRows, replaceExisting);
-      }
-    }, {
-      timeout: 30000,
-      isolationLevel: 'ReadCommitted'
-    });
+
+      const importer = CsvImporterFactory.create(target.type);
+      const result = await importer.import(rows, replaceExisting, log);
+      summary[target.type] = result;
+    }
   } catch (error) {
     log.error({ 
       err: error,
@@ -275,17 +288,11 @@ export async function processCsvImport(
         const modelName = (error.meta as any)?.model_name || '不明なモデル';
         throw new ApiError(
           400,
-          `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`,
+          `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録や点検記録があるデータは削除できません。`,
           { code: error.code, ...error.meta }
         );
       }
       throw new ApiError(400, `データベースエラー: ${error.code} - ${error.message}`, { code: error.code, ...error.meta });
-    }
-    
-    if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'P2003') {
-      const fieldName = ((error as any).meta as any)?.field_name || '不明なフィールド';
-      const modelName = ((error as any).meta as any)?.model_name || '不明なモデル';
-      throw new ApiError(400, `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録がある従業員やアイテムは削除できません。`);
     }
     
     if (error instanceof ApiError) {
@@ -296,6 +303,34 @@ export async function processCsvImport(
   }
 
   return { summary };
+}
+
+/**
+ * CSVインポート処理（旧形式: employees/itemsファイルベース、後方互換性のため残す）
+ */
+export async function processCsvImport(
+  files: { employees?: Buffer; items?: Buffer },
+  replaceExisting: boolean,
+  log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
+) {
+  // 旧形式を新形式に変換
+  const targets: CsvImportTarget[] = [];
+  const fileMap = new Map<string, Buffer>();
+  
+  if (files.employees) {
+    targets.push({ type: 'employees', source: 'employees.csv' });
+    fileMap.set('employees', files.employees);
+  }
+  if (files.items) {
+    targets.push({ type: 'items', source: 'items.csv' });
+    fileMap.set('items', files.items);
+  }
+
+  if (targets.length === 0) {
+    throw new ApiError(400, 'employees.csv もしくは items.csv をアップロードしてください');
+  }
+
+  return processCsvImportFromTargets(targets, fileMap, replaceExisting, log);
 }
 
 
@@ -717,61 +752,167 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return { summary };
   });
 
+  // 単一データタイプのCSVインポート（計測機器・吊具対応）
+  app.post('/imports/master/:type', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request, reply) => {
+    const typeParam = (request.params as { type?: string }).type;
+    
+    // URLパス（ケバブケース）をキャメルケースに変換
+    const typeMap: Record<string, CsvImportType> = {
+      'employees': 'employees',
+      'items': 'items',
+      'measuring-instruments': 'measuringInstruments',
+      'rigging-gears': 'riggingGears'
+    };
+    
+    if (!typeParam || !typeMap[typeParam]) {
+      const validTypes = Object.keys(typeMap).join(', ');
+      throw new ApiError(400, `無効なデータタイプです。許可されているタイプ: ${validTypes}`);
+    }
+    
+    const type = typeMap[typeParam];
+    
+    // マルチパートリクエストの検証とファイル取得
+    let fileBuffer: Buffer | undefined;
+    const fieldValues: Record<string, string> = {};
+    
+    try {
+      if (!request.isMultipart()) {
+        throw new ApiError(400, 'マルチパートフォームデータが必要です。Content-Type: multipart/form-dataを指定してください。');
+      }
+
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'file') {
+            fileBuffer = await readFile(part);
+          }
+        } else {
+          fieldValues[part.fieldname] = String(part.value);
+        }
+      }
+    } catch (error) {
+      request.log.error({ err: error }, 'マルチパート処理エラー');
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      if (error instanceof Error) {
+        const errorMessage = error.message.toLowerCase();
+        if (errorMessage.includes('multipart') || errorMessage.includes('content-type')) {
+          throw new ApiError(400, `ファイルアップロードエラー: ${error.message}`);
+        }
+        throw new ApiError(400, `リクエスト処理エラー: ${error.message}`);
+      }
+      
+      throw new ApiError(400, 'リクエストの処理に失敗しました');
+    }
+
+    if (!fileBuffer) {
+      throw new ApiError(400, 'CSVファイルがアップロードされていません。fieldname="file"でファイルをアップロードしてください。');
+    }
+
+    // replaceExistingフラグの解析
+    const parsedFields = fieldSchema.parse(fieldValues);
+    const rawReplaceExisting = parsedFields.replaceExisting;
+    const replaceExisting = rawReplaceExisting === true || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === 'true') || 
+                           (typeof rawReplaceExisting === 'number' && rawReplaceExisting === 1) || 
+                           (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
+                           false;
+
+    // 新形式のtargets配列で処理
+    const targets: CsvImportTarget[] = [{ type, source: `${type}.csv` }];
+    const fileMap = new Map<string, Buffer>();
+    fileMap.set(type, fileBuffer);
+
+    const { summary } = await processCsvImportFromTargets(targets, fileMap, replaceExisting, request.log);
+    
+    return { summary };
+  });
+
   // DropboxからCSVを取得してインポート
   app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
     const startTime = Date.now();
     const initialMemory = process.memoryUsage();
     
     try {
-      const body = dropboxImportSchema.parse(request.body ?? {});
-
+      const rawBody = providerImportSchema.parse(request.body ?? {});
       const protocol = (request.headers['x-forwarded-proto'] as string | undefined) || request.protocol || 'http';
       const host = request.headers.host || 'localhost:8080';
 
-      request.log.info({
-        employeesPath: body.employeesPath,
-        itemsPath: body.itemsPath,
-        replaceExisting: body.replaceExisting
-      }, '[Dropbox Import] インポート開始');
+      const config = await BackupConfigLoader.load();
+      const provider = rawBody.provider ?? config.storage.provider;
+      if (provider !== 'dropbox' && provider !== 'gmail') {
+        throw new ApiError(400, `このエンドポイントはdropbox/gmailのみ対応です（現在: ${provider}）`);
+      }
+
+      // providerに応じてパスをバリデーション
+      const employeesPath = rawBody.employeesPath
+        ? (provider === 'dropbox' ? dropboxPathSchema.parse(rawBody.employeesPath) : gmailPathSchema.parse(rawBody.employeesPath))
+        : undefined;
+      const itemsPath = rawBody.itemsPath
+        ? (provider === 'dropbox' ? dropboxPathSchema.parse(rawBody.itemsPath) : gmailPathSchema.parse(rawBody.itemsPath))
+        : undefined;
+
+      request.log.info(
+        {
+          provider,
+          employeesPath,
+          itemsPath,
+          replaceExisting: rawBody.replaceExisting
+        },
+        '[Master Import] インポート開始'
+      );
 
       const onTokenUpdate = async (token: string) => {
         const latestConfig = await BackupConfigLoader.load();
-        if (latestConfig.storage.provider === 'dropbox') {
+        if (latestConfig.storage.provider === provider) {
           latestConfig.storage.options = {
             ...(latestConfig.storage.options || {}),
             accessToken: token
           };
           await BackupConfigLoader.save(latestConfig);
-          request.log.info({}, '[Dropbox Import] アクセストークンを更新しました');
+          request.log.info({ provider }, '[Master Import] アクセストークンを更新しました');
         }
       };
 
-      const dropboxProvider = await createDropboxStorageProviderFromConfig(protocol, host, onTokenUpdate);
+      // StorageProviderFactoryでプロバイダーを作成（dropbox/gmail両対応）
+      const providerConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          provider
+        }
+      };
+      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, true);
+      const storageProvider = created.storageProvider;
 
       const files: { employees?: Buffer; items?: Buffer } = {};
       
       // 従業員CSVのダウンロード
-      if (body.employeesPath) {
+      if (employeesPath) {
         try {
-          request.log.info({ path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード開始');
+          request.log.info({ provider, path: employeesPath }, '[Master Import] 従業員CSVダウンロード開始');
           const downloadStart = Date.now();
-          files.employees = await dropboxProvider.download(body.employeesPath);
+          files.employees = await storageProvider.download(employeesPath);
           const downloadTime = Date.now() - downloadStart;
           const fileSize = files.employees.length;
           request.log.info({
-            path: body.employeesPath,
+            provider,
+            path: employeesPath,
             size: fileSize,
             downloadTimeMs: downloadTime
-          }, '[Dropbox Import] 従業員CSVダウンロード完了');
+          }, '[Master Import] 従業員CSVダウンロード完了');
         } catch (error: unknown) {
-          request.log.error({ err: error, path: body.employeesPath }, '[Dropbox Import] 従業員CSVダウンロード失敗');
+          request.log.error({ err: error, provider, path: employeesPath }, '[Master Import] 従業員CSVダウンロード失敗');
           if (error instanceof Error) {
             const errorMessage = error.message.toLowerCase();
             if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
-              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${body.employeesPath}`);
+              throw new ApiError(404, `従業員CSVファイルが見つかりません: ${employeesPath}`);
             }
             if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
-              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+              throw new ApiError(401, `${provider}認証エラー: ${error.message}`);
             }
             throw new ApiError(500, `従業員CSVのダウンロードに失敗しました: ${error.message}`);
           }
@@ -780,27 +921,28 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
       
       // アイテムCSVのダウンロード
-      if (body.itemsPath) {
+      if (itemsPath) {
         try {
-          request.log.info({ path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード開始');
+          request.log.info({ provider, path: itemsPath }, '[Master Import] アイテムCSVダウンロード開始');
           const downloadStart = Date.now();
-          files.items = await dropboxProvider.download(body.itemsPath);
+          files.items = await storageProvider.download(itemsPath);
           const downloadTime = Date.now() - downloadStart;
           const fileSize = files.items.length;
           request.log.info({
-            path: body.itemsPath,
+            provider,
+            path: itemsPath,
             size: fileSize,
             downloadTimeMs: downloadTime
-          }, '[Dropbox Import] アイテムCSVダウンロード完了');
+          }, '[Master Import] アイテムCSVダウンロード完了');
         } catch (error: unknown) {
-          request.log.error({ err: error, path: body.itemsPath }, '[Dropbox Import] アイテムCSVダウンロード失敗');
+          request.log.error({ err: error, provider, path: itemsPath }, '[Master Import] アイテムCSVダウンロード失敗');
           if (error instanceof Error) {
             const errorMessage = error.message.toLowerCase();
             if (errorMessage.includes('not_found') || errorMessage.includes('not found')) {
-              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${body.itemsPath}`);
+              throw new ApiError(404, `アイテムCSVファイルが見つかりません: ${itemsPath}`);
             }
             if (errorMessage.includes('unauthorized') || errorMessage.includes('expired')) {
-              throw new ApiError(401, `Dropbox認証エラー: ${error.message}`);
+              throw new ApiError(401, `${provider}認証エラー: ${error.message}`);
             }
             throw new ApiError(500, `アイテムCSVのダウンロードに失敗しました: ${error.message}`);
           }
@@ -810,7 +952,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
       // CSVインポート処理
       const importStart = Date.now();
-      const { summary } = await processCsvImport(files, body.replaceExisting ?? false, request.log);
+      const { summary } = await processCsvImport(files, rawBody.replaceExisting ?? false, request.log);
       const importTime = Date.now() - importStart;
       
       // メモリ使用量の計測
@@ -828,10 +970,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         importTimeMs: importTime,
         totalTimeMs: totalTime,
         memoryDelta,
-        replaceExisting: body.replaceExisting
-      }, '[Dropbox Import] インポート完了');
+        replaceExisting: rawBody.replaceExisting,
+        provider
+      }, '[Master Import] インポート完了');
       
-      return { summary, source: 'dropbox' };
+      return { summary, source: provider };
     } catch (error: unknown) {
       const totalTime = Date.now() - startTime;
       const finalMemory = process.memoryUsage();
@@ -878,20 +1021,62 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // スケジュール追加
+  const csvImportTargetSchema = z.object({
+    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']),
+    source: z.string().min(1, 'sourceは必須です')
+  });
+
   const csvImportScheduleSchema = z.object({
     id: z.string().min(1, 'IDは必須です'),
     name: z.string().optional(),
-    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
-    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    provider: z.enum(['dropbox', 'gmail']).optional(), // プロバイダーを選択可能に（オプション、デフォルト: storage.provider）
+    // 新形式: targets配列
+    targets: z.array(csvImportTargetSchema).optional(),
+    // 旧形式: 後方互換のため残す
+    employeesPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
+    itemsPath: z.string().optional(), // Gmailの場合は件名パターン、Dropboxの場合はパス
     schedule: z.string().min(1, 'スケジュール（cron形式）は必須です'),
     enabled: z.boolean().optional().default(true),
     replaceExisting: z.boolean().optional().default(false),
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false),
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
-    }).optional().default({ enabled: false, targets: ['csv'] })
-  }).refine((data) => data.employeesPath || data.itemsPath, {
-    message: 'employeesPath または itemsPath のいずれかを指定してください'
+    }).optional().default({ enabled: false, targets: ['csv'] }),
+    retryConfig: z.object({
+      maxRetries: z.number().min(0).default(3),
+      retryInterval: z.number().min(1).default(60), // 秒
+      exponentialBackoff: z.boolean().default(true)
+    }).optional()
+  }).refine((data) => {
+    // 新形式または旧形式のいずれかが必須
+    if (data.targets && data.targets.length > 0) {
+      return true;
+    }
+    return data.employeesPath || data.itemsPath;
+  }, {
+    message: 'targets または employeesPath/itemsPath のいずれかを指定してください'
+  }).refine((data) => {
+    // 新形式の場合はバリデーション不要（各インポータで処理）
+    if (data.targets && data.targets.length > 0) {
+      return true;
+    }
+    // 旧形式のバリデーション
+    // Gmailの場合は.csvで終わる必要がない、Dropboxの場合は.csvで終わる必要がある
+    if (data.provider === 'gmail') {
+      return true;
+    }
+    const isDropbox = data.provider === 'dropbox' || !data.provider;
+    if (isDropbox) {
+      if (data.employeesPath && !data.employeesPath.match(/\.csv$/i)) {
+        return false;
+      }
+      if (data.itemsPath && !data.itemsPath.match(/\.csv$/i)) {
+        return false;
+      }
+    }
+    return true;
+  }, {
+    message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
   });
 
   app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
@@ -908,12 +1093,15 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const newSchedule = {
       id: body.id,
       name: body.name,
-      employeesPath: body.employeesPath,
-      itemsPath: body.itemsPath,
+      provider: body.provider,
+      targets: body.targets, // 新形式
+      employeesPath: body.employeesPath, // 旧形式（後方互換）
+      itemsPath: body.itemsPath, // 旧形式（後方互換）
       schedule: body.schedule,
       enabled: body.enabled ?? true,
       replaceExisting: body.replaceExisting ?? false,
-      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] }
+      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
+      retryConfig: body.retryConfig
     };
 
     config.csvImports = [...(config.csvImports || []), newSchedule];
@@ -932,17 +1120,57 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   const csvImportScheduleUpdateSchema = z.object({
     id: z.string().min(1).optional(),
     name: z.string().optional(),
-    employeesPath: z.string().regex(/\.csv$/i, 'employeesPathは.csvで終わる必要があります').optional(),
-    itemsPath: z.string().regex(/\.csv$/i, 'itemsPathは.csvで終わる必要があります').optional(),
+    provider: z.enum(['dropbox', 'gmail']).optional(),
+    // 新形式: targets配列
+    targets: z.array(csvImportTargetSchema).optional(),
+    // 旧形式: 後方互換のため残す
+    employeesPath: z.string().optional(),
+    itemsPath: z.string().optional(),
     schedule: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
     replaceExisting: z.boolean().optional(),
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false),
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv'])
+    }).optional(),
+    retryConfig: z.object({
+      maxRetries: z.number().min(0).default(3),
+      retryInterval: z.number().min(1).default(60),
+      exponentialBackoff: z.boolean().default(true)
     }).optional()
-  }).refine((data) => !data.employeesPath && !data.itemsPath || data.employeesPath || data.itemsPath, {
-    message: 'employeesPath または itemsPath のいずれかを指定してください'
+  }).refine((data) => {
+    // 更新時は既存の値が保持されるため、新形式または旧形式のいずれかが存在すればOK
+    if (data.targets && data.targets.length > 0) {
+      return true;
+    }
+    if (data.employeesPath || data.itemsPath) {
+      return true;
+    }
+    // どちらも指定されていない場合は、既存の値が保持されるためOK
+    return true;
+  }, {
+    message: 'targets または employeesPath/itemsPath のいずれかを指定してください'
+  }).refine((data) => {
+    // 新形式の場合はバリデーション不要
+    if (data.targets && data.targets.length > 0) {
+      return true;
+    }
+    // 旧形式のバリデーション
+    if (data.provider === 'gmail') {
+      return true;
+    }
+    const isDropbox = data.provider === 'dropbox' || !data.provider;
+    if (isDropbox) {
+      if (data.employeesPath && !data.employeesPath.match(/\.csv$/i)) {
+        return false;
+      }
+      if (data.itemsPath && !data.itemsPath.match(/\.csv$/i)) {
+        return false;
+      }
+    }
+    return true;
+  }, {
+    message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
   });
 
   // スケジュール更新

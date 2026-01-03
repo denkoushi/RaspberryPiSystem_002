@@ -1,9 +1,7 @@
 import cron, { validate } from 'node-cron';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
-import { DropboxStorageProvider } from '../backup/storage/dropbox-storage.provider.js';
-import { DropboxOAuthService } from '../backup/dropbox-oauth.service.js';
-import { LocalStorageProvider } from '../backup/storage/local-storage.provider.js';
+import { StorageProviderFactory } from '../backup/storage-provider-factory.js';
 import { BackupService } from '../backup/backup.service.js';
 import { CsvBackupTarget } from '../backup/targets/csv-backup.target.js';
 import { DatabaseBackupTarget } from '../backup/targets/database-backup.target.js';
@@ -11,9 +9,10 @@ import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { BackupVerifier } from '../backup/backup-verifier.js';
 import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
-import { processCsvImport } from '../../routes/imports.js';
+import { processCsvImportFromTargets } from '../../routes/imports.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
+import type { CsvImportTarget } from './csv-importer.types.js';
 
 /**
  * CSVインポートスケジューラー
@@ -105,7 +104,7 @@ export class CsvImportScheduler {
             '[CsvImportScheduler] Starting scheduled CSV import'
           );
 
-          // インポート履歴を作成
+          // インポート履歴を作成（旧形式との互換性のため）
           historyId = await this.historyService.createHistory({
             scheduleId: taskId,
             scheduleName: importSchedule.name,
@@ -326,7 +325,7 @@ export class CsvImportScheduler {
         '[CsvImportScheduler] Starting manual CSV import'
       );
 
-      // インポート履歴を作成
+      // インポート履歴を作成（旧形式との互換性のため）
       historyId = await this.historyService.createHistory({
         scheduleId: importId,
         scheduleName: importSchedule.name,
@@ -334,7 +333,8 @@ export class CsvImportScheduler {
         itemsPath: importSchedule.itemsPath
       });
 
-      const summary = await this.executeImport(config, importSchedule);
+      // 手動実行の場合はリトライをスキップ
+      const summary = await this.executeImport(config, importSchedule, true);
 
       // インポート履歴を完了として更新
       if (historyId) {
@@ -385,93 +385,139 @@ export class CsvImportScheduler {
   }
 
   /**
-   * CSVインポートを実行
+   * CSVインポートを実行（リトライ機能付き）
+   * @param skipRetry 手動実行の場合はtrueを指定してリトライをスキップ
    */
   private async executeImport(
     config: BackupConfig,
-    importSchedule: NonNullable<BackupConfig['csvImports']>[0]
-  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }> {
-    // Dropboxストレージプロバイダーを作成
-    if (config.storage.provider !== 'dropbox') {
-      throw new Error('CSV import from Dropbox requires Dropbox storage provider');
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0],
+    skipRetry = false
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
+    // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
+    const provider = importSchedule.provider || config.storage.provider;
+    
+    if (provider !== 'dropbox' && provider !== 'gmail') {
+      throw new Error(`CSV import requires Dropbox or Gmail storage provider, but got: ${provider}`);
     }
 
-    const accessToken = config.storage.options?.accessToken as string | undefined;
-    const refreshToken = config.storage.options?.refreshToken as string | undefined;
-    const appKey = config.storage.options?.appKey as string | undefined;
-    const appSecret = config.storage.options?.appSecret as string | undefined;
-    const basePath = config.storage.options?.basePath as string | undefined;
-
-    if (!accessToken) {
-      throw new Error('Dropbox access token is required');
+    // 手動実行の場合はリトライをスキップして直接実行
+    if (skipRetry) {
+      return await this.executeImportAttempt(config, importSchedule, provider);
     }
 
-    // OAuthサービスを作成（トークン更新用）
-    let oauthService: DropboxOAuthService | undefined;
-    if (refreshToken && appKey && appSecret) {
-      // スケジューラー実行時はリダイレクトURIは不要だが、型の都合で設定
-      oauthService = new DropboxOAuthService({
-        appKey,
-        appSecret,
-        redirectUri: 'http://localhost:8080/api/backup/oauth/callback'
-      });
+    // リトライ設定
+    const retryConfig = importSchedule.retryConfig || {
+      maxRetries: 3,
+      retryInterval: 60,
+      exponentialBackoff: true
+    };
+
+    // リトライロジックでインポートを実行
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+      try {
+        return await this.executeImportAttempt(config, importSchedule, provider);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        if (attempt < retryConfig.maxRetries) {
+          const delay = retryConfig.exponentialBackoff
+            ? retryConfig.retryInterval * Math.pow(2, attempt)
+            : retryConfig.retryInterval;
+          
+          logger?.warn(
+            { 
+              attempt: attempt + 1, 
+              maxRetries: retryConfig.maxRetries,
+              delay,
+              error: lastError.message
+            },
+            '[CsvImportScheduler] Import attempt failed, retrying'
+          );
+          
+          await new Promise(resolve => setTimeout(resolve, delay * 1000));
+        }
+      }
     }
 
+    // すべてのリトライが失敗した場合
+    throw new Error(`CSV import failed after ${retryConfig.maxRetries + 1} attempts: ${lastError?.message}`);
+  }
+
+  /**
+   * CSVインポートの1回の試行を実行
+   */
+  private async executeImportAttempt(
+    config: BackupConfig,
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0],
+    provider: 'dropbox' | 'gmail'
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const protocol = 'http'; // スケジューラー内ではプロトコルは不要
+    const host = 'localhost:8080'; // スケジューラー内ではホストは不要
+    
     // トークン更新コールバック
     const onTokenUpdate = async (token: string) => {
       const latestConfig = await BackupConfigLoader.load();
-      if (latestConfig.storage.provider === 'dropbox') {
+      if (latestConfig.storage.provider === provider) {
         latestConfig.storage.options = {
           ...(latestConfig.storage.options || {}),
           accessToken: token
         };
         await BackupConfigLoader.save(latestConfig);
-        logger?.info({}, '[CsvImportScheduler] Access token updated');
+        logger?.info({ provider }, '[CsvImportScheduler] Access token updated');
       }
     };
 
-    const dropboxProvider = new DropboxStorageProvider({
-      accessToken,
-      basePath,
-      refreshToken,
-      oauthService,
+    // StorageProviderFactoryを使用してプロバイダーを作成
+    const storageProvider = await StorageProviderFactory.createFromConfig(
+      {
+        ...config,
+        storage: {
+          ...config.storage,
+          provider
+        }
+      },
+      protocol,
+      host,
       onTokenUpdate
-    });
+    );
+
+    // ターゲットを取得（新形式優先、旧形式は変換）
+    let targets: CsvImportTarget[] = [];
+    if (importSchedule.targets && importSchedule.targets.length > 0) {
+      targets = importSchedule.targets;
+    } else {
+      // 旧形式から新形式へ変換
+      if (importSchedule.employeesPath) {
+        targets.push({ type: 'employees', source: importSchedule.employeesPath });
+      }
+      if (importSchedule.itemsPath) {
+        targets.push({ type: 'items', source: importSchedule.itemsPath });
+      }
+    }
+
+    if (targets.length === 0) {
+      throw new Error('No CSV import targets specified in import schedule');
+    }
 
     // CSVファイルをダウンロード
-    const files: { employees?: Buffer; items?: Buffer } = {};
+    const fileMap = new Map<string, Buffer>();
     
-    if (importSchedule.employeesPath) {
+    for (const target of targets) {
       logger?.info(
-        { path: importSchedule.employeesPath },
-        '[CsvImportScheduler] Downloading employees CSV'
+        { type: target.type, source: target.source, provider },
+        `[CsvImportScheduler] Downloading ${target.type} CSV`
       );
-      files.employees = await dropboxProvider.download(importSchedule.employeesPath);
+      const buffer = await storageProvider.download(target.source);
+      fileMap.set(target.type, buffer);
       logger?.info(
-        { path: importSchedule.employeesPath, size: files.employees.length },
-        '[CsvImportScheduler] Employees CSV downloaded'
+        { type: target.type, source: target.source, size: buffer.length, provider },
+        `[CsvImportScheduler] ${target.type} CSV downloaded`
       );
-    }
-
-    if (importSchedule.itemsPath) {
-      logger?.info(
-        { path: importSchedule.itemsPath },
-        '[CsvImportScheduler] Downloading items CSV'
-      );
-      files.items = await dropboxProvider.download(importSchedule.itemsPath);
-      logger?.info(
-        { path: importSchedule.itemsPath, size: files.items.length },
-        '[CsvImportScheduler] Items CSV downloaded'
-      );
-    }
-
-    // ファイルが1つもない場合はエラー
-    if (!files.employees && !files.items) {
-      throw new Error('No CSV files specified in import schedule');
     }
 
     // CSVインポートを実行
-    // loggerをprocessCsvImportの期待する形式にラップ
     const logWrapper = {
       info: (obj: unknown, msg: string) => {
         logger?.info(obj, msg);
@@ -481,8 +527,9 @@ export class CsvImportScheduler {
       }
     };
 
-    const { summary } = await processCsvImport(
-      files,
+    const { summary } = await processCsvImportFromTargets(
+      targets,
+      fileMap,
       importSchedule.replaceExisting ?? false,
       logWrapper
     );
@@ -501,7 +548,7 @@ export class CsvImportScheduler {
   private async executeAutoBackup(
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
-    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number } }
+    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }
   ): Promise<void> {
     const autoBackupConfig = importSchedule.autoBackupAfterImport;
     if (!autoBackupConfig?.enabled) {
@@ -513,55 +560,33 @@ export class CsvImportScheduler {
       '[CsvImportScheduler] Starting auto backup after import'
     );
 
-    // ストレージプロバイダーを作成
-    let storageProvider;
-    if (config.storage.provider === 'dropbox') {
-      const accessToken = config.storage.options?.accessToken as string | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
-      const appKey = config.storage.options?.appKey as string | undefined;
-      const appSecret = config.storage.options?.appSecret as string | undefined;
-      const basePath = config.storage.options?.basePath as string | undefined;
-
-      if (!accessToken) {
-        throw new Error('Dropbox access token is required for auto backup');
+    // ストレージプロバイダーを作成（Factoryパターンを使用）
+    const protocol = 'http';
+    const host = 'localhost:8080';
+    
+    // トークン更新コールバック
+    const onTokenUpdate = async (token: string) => {
+      const latestConfig = await BackupConfigLoader.load();
+      const currentProvider = latestConfig.storage.provider;
+      if (currentProvider === 'dropbox' || currentProvider === 'gmail') {
+        latestConfig.storage.options = {
+          ...(latestConfig.storage.options || {}),
+          accessToken: token
+        };
+        await BackupConfigLoader.save(latestConfig);
+        logger?.info({ provider: currentProvider }, '[CsvImportScheduler] Access token updated during auto backup');
       }
+    };
 
-      // OAuthサービスを作成（トークン更新用）
-      let oauthService: DropboxOAuthService | undefined;
-      if (refreshToken && appKey && appSecret) {
-        oauthService = new DropboxOAuthService({
-          appKey,
-          appSecret,
-          redirectUri: 'http://localhost:8080/api/backup/oauth/callback'
-        });
-      }
-
-      // トークン更新コールバック
-      const onTokenUpdate = async (token: string) => {
-        const latestConfig = await BackupConfigLoader.load();
-        if (latestConfig.storage.provider === 'dropbox') {
-          latestConfig.storage.options = {
-            ...(latestConfig.storage.options || {}),
-            accessToken: token
-          };
-          await BackupConfigLoader.save(latestConfig);
-          logger?.info({}, '[CsvImportScheduler] Access token updated during auto backup');
-        }
-      };
-
-      storageProvider = new DropboxStorageProvider({
-        accessToken,
-        basePath,
-        refreshToken,
-        oauthService,
-        onTokenUpdate
-      });
-    } else {
-      storageProvider = new LocalStorageProvider();
-    }
+    const storageProvider = await StorageProviderFactory.createFromConfig(
+      config,
+      protocol,
+      host,
+      onTokenUpdate
+    );
 
     const backupService = new BackupService(storageProvider);
-    const storageProviderName = config.storage.provider === 'dropbox' ? 'dropbox' : 'local';
+    const storageProviderName = config.storage.provider;
 
     // バックアップ対象に基づいてバックアップを実行
     const backupResults = [];

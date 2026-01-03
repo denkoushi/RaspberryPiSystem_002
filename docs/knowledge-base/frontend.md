@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - フロントエンド関連
 tags: [トラブルシューティング, フロントエンド, React, XState]
 audience: [開発者]
-last-verified: 2025-11-27
+last-verified: 2025-01-03
 related: [index.md, ../modules/tools/README.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 20件  
+**件数**: 26件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -834,3 +834,495 @@ postClientLogs(
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`
 - `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
 - `apps/api/src/routes/clients.ts`（`/clients/logs`エンドポイント）
+
+---
+
+### [KB-109] CSVインポートスケジュールページのUI統一（バックアップペインと同じUI）
+
+**EXEC_PLAN.md参照**: Gmailデータ取得機能実装（2025-12-29）
+
+**事象**: 
+- CSVインポートスケジュールページの日付指定UIがバックアップペインと異なり、独自のUIが使用されていた
+- ユーザーが「日付のUIはバックアップペインのUIにせよ。独自を増やすなUIを統一せよ」と要望
+- 複数回のデプロイ後も変更が反映されず、UIが統一されていなかった
+
+**要因**: 
+- 初期実装でcron形式のテキスト入力フィールドが使用されていた
+- バックアップペイン（`BackupTargetForm.tsx`）では時刻入力（`type="time"`）と曜日選択ボタンが使用されていた
+- UIの統一性が考慮されていなかった
+
+**試行した対策**: 
+- [試行1] cron形式のテキスト入力フィールドを削除し、時刻入力と曜日選択ボタンに変更 → **部分的成功**（UIは統一されたが、デプロイが反映されなかった）
+- [試行2] デプロイ標準手順を確認し、`--force-recreate --build`オプションを使用 → **成功**（UI変更が反映された）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. `CsvImportSchedulePage.tsx`のスケジュール入力UIを`BackupTargetForm.tsx`と同じUIに統一
+  2. 時刻入力: `<Input type="time" ... />`を使用
+  3. 曜日選択: 各曜日のボタンで選択可能に（動的スタイリング）
+  4. UI形式からcron形式への変換関数（`formatCronSchedule`）を実装
+  5. デプロイ標準手順（`docs/guides/deployment.md`）を遵守し、`--force-recreate --build`オプションを使用
+
+**実装のポイント**:
+```typescript
+// BackupTargetForm.tsxと同じUIパターンを使用
+const [scheduleTime, setScheduleTime] = useState('02:00');
+const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>([]);
+
+// UI形式からcron形式への変換
+const formatCronSchedule = (time: string, daysOfWeek: number[]): string => {
+  const [hours, minutes] = time.split(':').map(Number);
+  const cronDays = daysOfWeek.length === 0 ? '*' : daysOfWeek.join(',');
+  return `${minutes} ${hours} * * ${cronDays}`;
+};
+```
+
+**学んだこと**: 
+- UIの統一性はユーザー体験の向上に重要
+- 既存のUIパターン（`BackupTargetForm.tsx`）を参考にすることで、一貫性のあるUIを実現できる
+- デプロイ標準手順を遵守することで、変更が確実に反映される
+- デプロイ前に`docs/guides/deployment.md`を確認し、標準手順に従うことが重要
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**追加の改善**（2025-12-29）:
+- スケジュール表示を人間が読みやすい形式に変更（cron形式 `0 4 * * 1,2,3` → 「毎週月曜日、火曜日、水曜日の午前4時」）
+- `formatScheduleForDisplay`関数を実装し、cron形式を日本語形式に変換
+- テーブル表示から`font-mono`クラスを削除し、可読性を向上
+
+**実装のポイント（追加）**:
+```typescript
+// cron形式を人間が読みやすい形式に変換
+function formatScheduleForDisplay(cronSchedule: string): string {
+  const parsed = parseCronSchedule(cronSchedule);
+  const { time, daysOfWeek } = parsed;
+  // 時刻を日本語形式に変換（午前/午後の判定）
+  // 曜日を日本語形式に変換
+  return `毎週${dayLabels}の${timeStr}`;
+}
+```
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+- `apps/web/src/components/backup/BackupTargetForm.tsx`
+- `docs/guides/deployment.md`
+
+---
+
+### [KB-111] CSVインポートスケジュールの表示を人間が読みやすい形式に変更
+
+**発生日時**: 2025-12-29
+
+**事象**: 
+- CSVインポートスケジュールページのテーブルで、スケジュールがcron形式（`0 4 * * 1,2,3`）で表示されていた
+- ユーザーが「スケジュールの表記が人間には理解できない、記号の羅列だ」と指摘
+- 一般ユーザーにはcron形式が理解しにくい
+
+**要因**: 
+- スケジュールをcron形式のまま表示していた
+- 人間が読みやすい形式への変換機能が実装されていなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-29）:
+  1. `formatScheduleForDisplay`関数を実装し、cron形式を日本語形式に変換
+  2. 時刻を日本語形式に変換（午前/午後の判定、分が0の場合は「時」のみ表示）
+  3. 曜日を日本語形式に変換（「毎週月曜日、火曜日、水曜日」など）
+  4. テーブル表示から`font-mono`クラスを削除し、可読性を向上
+
+**実装のポイント**:
+```typescript
+/**
+ * cron形式のスケジュールを人間が読みやすい形式に変換
+ * cron形式: "0 4 * * 1,2,3" → "毎週月曜日、火曜日、水曜日の午前4時"
+ */
+function formatScheduleForDisplay(cronSchedule: string): string {
+  const parsed = parseCronSchedule(cronSchedule);
+  const { time, daysOfWeek } = parsed;
+  
+  // 時刻を日本語形式に変換（午前/午後の判定）
+  let timeStr: string;
+  if (hourNum === 0) {
+    timeStr = minuteNum === 0 ? '午前0時' : `午前0時${minuteNum}分`;
+  } else if (hourNum < 12) {
+    timeStr = minuteNum === 0 ? `午前${hourNum}時` : `午前${hourNum}時${minuteNum}分`;
+  } else if (hourNum === 12) {
+    timeStr = minuteNum === 0 ? '午後12時' : `午後12時${minuteNum}分`;
+  } else {
+    const pmHour = hourNum - 12;
+    timeStr = minuteNum === 0 ? `午後${pmHour}時` : `午後${pmHour}時${minuteNum}分`;
+  }
+  
+  // 曜日を日本語形式に変換
+  if (daysOfWeek.length === 0) {
+    return `毎日${timeStr}`;
+  }
+  const dayLabels = daysOfWeek
+    .sort((a, b) => a - b)
+    .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
+    .filter(Boolean)
+    .join('、');
+  return `毎週${dayLabels}の${timeStr}`;
+}
+```
+
+**学んだこと**: 
+- ユーザー体験の向上には、技術的な形式（cron形式）を人間が読みやすい形式に変換することが重要
+- テーブル表示では`font-mono`クラスを削除することで、可読性が向上する
+- 既存の`parseCronSchedule`関数を活用することで、コードの重複を避けられる
+
+**解決状況**: ✅ **解決済み**（2025-12-29）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-116] CSVインポートスケジュールページのフォーム状態管理改善
+
+**日付**: 2025-12-30
+
+**事象**: 
+- スケジュールを削除した後、「新規作成」ボタンを押すと、削除したスケジュールのデータがフォームに残っていた
+- 編集モードから新規作成モードに切り替わったときも、編集データがフォームに残っていた
+- ログアウトして再表示すると消えていた（状態管理の問題）
+
+**要因**: 
+- `formData`が編集モードと新規作成モードで共有されていた
+- 削除後に`formData`をリセットしていなかった
+- 編集モードから新規作成モードに切り替わったときに、編集状態をクリアしていなかった
+- `useEffect`で`showCreateForm`が`true`になったときに`formData`をリセットしていたが、編集モードがアクティブな場合は先にクリアする必要があった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-30）:
+  1. **削除後のリセット**: `handleDelete`で削除したスケジュールが編集中だった場合は`cancelEdit()`を呼んで編集状態をクリア
+  2. **新規作成時のリセット**: `useEffect`で`showCreateForm`が`true`になったときに`formData`をリセット
+  3. **編集から新規作成への切り替え**: 「新規作成」ボタンの`onClick`で、編集モードがアクティブな場合は先に`cancelEdit()`を呼んで編集状態をクリアしてから`setShowCreateForm(true)`を呼ぶ
+
+**実装のポイント**:
+```typescript
+// 新規作成フォームを開いた時にスケジュールの初期値を設定
+useEffect(() => {
+  if (showCreateForm) {
+    // フォームデータを初期化（編集データや削除後に残った古いデータをクリア）
+    setFormData({
+      id: '',
+      name: '',
+      provider: undefined,
+      targets: [],
+      employeesPath: '',
+      itemsPath: '',
+      schedule: '0 2 * * *',
+      timezone: 'Asia/Tokyo',
+      enabled: true,
+      replaceExisting: false,
+      autoBackupAfterImport: {
+        enabled: false,
+        targets: ['csv']
+      }
+    });
+    setScheduleTime('02:00');
+    setScheduleDaysOfWeek([]);
+  }
+}, [showCreateForm]);
+
+// 新規作成ボタン
+<Button
+  onClick={() => {
+    // 編集モードがアクティブな場合は先にクリア
+    if (editingId !== null) {
+      cancelEdit();
+    }
+    setShowCreateForm(true);
+  }}
+  disabled={showCreateForm || editingId !== null}
+>
+  新規作成
+</Button>
+```
+
+**学んだこと**: 
+- フォーム状態管理では、モード切り替え時に必ず状態をリセットする必要がある
+- `useEffect`の依存配列を適切に設定することで、状態の同期を保つことができる
+- 部分最適ではなく、全体設計を確認してから修正することが重要
+- 編集モードと新規作成モードで状態を共有する場合は、切り替え時に必ずリセットする
+
+**解決状況**: ✅ **解決済み**（2025-12-30）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-119] 計測機器UID編集時の手動編集フラグ管理
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器のUIDを手動編集しても、`useEffect`が`editingTags`の変更を検知してフォームを上書きしてしまう
+- ユーザーがキーボードで入力した値が、APIから取得したタグ情報で上書きされる
+
+**要因**: 
+- **根本原因**: `useEffect`が`editingTags`の変更を検知すると、ユーザーの手動編集を無視してフォームを更新していた
+- 手動編集とAPIからの自動更新を区別する仕組みがなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: `useRef`を使用して手動編集フラグ（`isManualEditRef`）を追加し、手動編集時は`useEffect`でフォームを更新しないように修正
+- 編集開始時、NFCスキャン時、送信後、編集キャンセル時にフラグをリセット
+
+**実装のポイント**:
+```typescript
+const isManualEditRef = useRef(false);
+
+useEffect(() => {
+  if (!editingId || !editingTags) return;
+  const existingTagUid = editingTags[0]?.rfidTagUid ?? '';
+  // ユーザーが手動で編集していない場合のみ、既存のタグUIDを設定
+  if (!isManualEditRef.current) {
+    setForm((prev) => ({ ...prev, rfidTagUid: existingTagUid }));
+  }
+}, [editingId, editingTags]);
+
+<Input
+  value={form.rfidTagUid}
+  onChange={(e) => {
+    isManualEditRef.current = true; // 手動編集フラグを設定
+    setForm({ ...form, rfidTagUid: e.target.value });
+  }}
+/>
+```
+
+**学んだこと**: 
+- フォームの自動更新と手動編集を区別するには、フラグを使用する必要がある
+- `useRef`を使用することで、再レンダリングをトリガーせずにフラグを管理できる
+- 編集開始時、NFCスキャン時、送信後、編集キャンセル時にフラグをリセットすることで、適切なタイミングで自動更新を有効化できる
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`
+
+---
+
+### [KB-120] 吊具管理画面のレイアウト改善（一覧表と編集フォームの重なり解消）
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 吊具管理画面で一覧表と編集フォームが横並びで重なって見づらい
+- グリッドレイアウト（`lg:grid-cols-[3.5fr,1fr]`）で一覧表と編集フォームが横並びになっていたが、画面サイズによっては被ってしまう
+
+**要因**: 
+- **根本原因**: 編集フォームが一覧表と同じCard内に横並びで配置されていた
+- グリッドレイアウトの比率が適切でなく、一覧表の幅が広すぎた
+- 編集フォームが右側に配置されていたが、一覧表の横スクロールと重なって見づらかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: 編集フォームを別のCardとして分離し、一覧表の下に縦配置に変更
+- 編集フォーム内のフィールドを2列のグリッドレイアウト（`md:grid-cols-2`）に変更し、より使いやすく改善
+
+**実装のポイント**:
+```typescript
+// 修正前: 横並びレイアウト
+<div className="grid gap-4 lg:grid-cols-[3.5fr,1fr]">
+  <div className="overflow-x-auto">
+    {/* 一覧表 */}
+  </div>
+  <div className="rounded-md border border-slate-500 bg-white p-4">
+    {/* 編集フォーム */}
+  </div>
+</div>
+
+// 修正後: 縦配置レイアウト
+<Card title="吊具マスター">
+  <div className="overflow-x-auto">
+    {/* 一覧表 */}
+  </div>
+</Card>
+
+<Card title={isEditing ? '吊具編集' : '吊具登録'}>
+  <div className="grid gap-4 md:grid-cols-2">
+    {/* 編集フォーム（2列グリッド） */}
+  </div>
+</Card>
+```
+
+**学んだこと**: 
+- 一覧表と編集フォームを別のCardとして分離することで、レイアウトの柔軟性が向上する
+- 縦配置にすることで、画面サイズに関わらず重ならずに表示できる
+- 編集フォーム内のフィールドを2列のグリッドレイアウトにすることで、より多くの情報を効率的に表示できる
+- 他のページ（従業員管理、工具管理）と同様のパターンに統一することで、UIの一貫性が保たれる
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/RiggingGearsPage.tsx`
+
+---
+
+### [KB-122] 計測機器管理画面にdepartment表示・編集機能を追加
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器管理画面に`department`列が表示されていない
+- `department`フィールドの編集機能がない
+- DBには`department`フィールドが存在するが、UIで表示・編集できない
+
+**要因**: 
+- **根本原因**: 
+  - Web共有型`MeasuringInstrument`に`department`フィールドがなかった
+  - APIの計測機器作成/更新スキーマに`department`がなかった
+  - APIサービスのcreate/update入力に`department`がなかった
+  - フロントエンドの一覧表とフォームに`department`がなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: 
+  - API: 計測機器create/updateに`department`フィールドを追加
+  - API: `/api/tools/departments`エンドポイントを追加（従業員マスターから部署一覧を取得）
+  - shared-types: `MeasuringInstrument`に`department`フィールドを追加
+  - Web: 計測機器管理画面に部署列と選択式編集（ドロップダウン）を追加
+
+**実装のポイント**:
+```typescript
+// API: 部署一覧取得エンドポイント
+app.get('/departments', { preHandler: canView }, async () => {
+  const employees = await prisma.employee.findMany({
+    select: { department: true },
+    where: {
+      AND: [
+        { department: { not: null } },
+        { department: { not: '' } }
+      ]
+    }
+  });
+  const departmentSet = new Set<string>();
+  employees.forEach((emp) => {
+    if (emp.department && emp.department.trim() !== '') {
+      departmentSet.add(emp.department);
+    }
+  });
+  return { departments: Array.from(departmentSet).sort() };
+});
+
+// Web: 部署選択フィールド
+const { data: departmentsData } = useDepartments();
+const departments = departmentsData?.departments ?? [];
+
+<select
+  value={form.department}
+  onChange={(e) => setForm({ ...form, department: e.target.value })}
+>
+  <option value="">選択してください</option>
+  {departments.map((dept) => (
+    <option key={dept} value={dept}>{dept}</option>
+  ))}
+</select>
+```
+
+**学んだこと**: 
+- 既存のCRUDパターンに従って最小限の変更で実装できる
+- 部署候補は従業員マスターから動的に取得することで、データの一貫性を保つことができる
+- 選択式フィールドは`useDepartments`フックを使用して候補を取得し、ドロップダウンで表示する
+- Prismaの`where`句で複数の条件を指定する場合は`AND`条件を使用する必要がある
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/api/src/routes/tools/departments.ts`
+- `packages/shared-types/src/measuring-instruments/index.ts`
+
+---
+
+### [KB-117] CSVインポートUIの4フォーム分割実装
+
+**日付**: 2025-12-31
+
+**事象**: 
+- USBメモリ経由のCSVインポート機能が、従業員・工具のみに対応しており、計測機器・吊具のCSVインポートがUIから実行できなかった
+- 既存の`MasterImportPage.tsx`は、従業員・工具の2つのフォームのみを表示していた
+- 検証のためには、各データタイプを個別にアップロードできるUIが必要だった
+
+**要因**: 
+- 既存の`MasterImportPage.tsx`は、従業員・工具の2つのフォームのみを実装していた
+- 計測機器・吊具のCSVインポートは、APIレベルでは実装済みだったが、UIから実行するフォームがなかった
+- 各データタイプを個別にアップロードできるUIが必要だった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-12-31）: 4つのフォームに分割し、各データタイプを個別にアップロードできるように改善
+  1. **共通コンポーネント作成**: `ImportForm`コンポーネントを作成し、各データタイプのフォームを共通化
+  2. **4つのフォーム表示**: 従業員・工具・計測機器・吊具の4つのフォームを個別に表示
+  3. **新APIフック追加**: `useImportMasterSingle`フックを追加し、`POST /api/imports/master/:type`エンドポイントを呼び出す
+  4. **各フォームの独立性**: 各フォームで`replaceExisting`を個別に設定可能
+  5. **ファイル選択の改善**: 各フォームでファイル名を表示し、選択したファイルを確認可能に
+
+**実装のポイント**:
+```typescript
+// ImportFormコンポーネント（共通化）
+function ImportForm({ type, label, fileName }: ImportFormProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [replaceExisting, setReplaceExisting] = useState(false);
+  const importMutation = useImportMasterSingle();
+  
+  const handleSubmit = async () => {
+    if (!file) return;
+    
+    await importMutation.mutateAsync({
+      type,
+      file,
+      replaceExisting
+    });
+  };
+  
+  return (
+    <div className="space-y-2">
+      <label>{label}</label>
+      <input
+        type="file"
+        accept=".csv"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+      />
+      {file && <p>選択ファイル: {file.name}</p>}
+      <label>
+        <input
+          type="checkbox"
+          checked={replaceExisting}
+          onChange={(e) => setReplaceExisting(e.target.checked)}
+        />
+        既存データをクリアしてから取り込み（{label}のみ）
+      </label>
+      <button onClick={handleSubmit}>取り込み開始</button>
+    </div>
+  );
+}
+
+// MasterImportPage.tsx（4つのフォームを表示）
+export function MasterImportPage() {
+  return (
+    <div className="space-y-6">
+      <Card title="USB 一括登録">
+        <ImportForm type="employees" label="従業員CSV" fileName="employees.csv" />
+        <ImportForm type="items" label="工具CSV" fileName="items.csv" />
+        <ImportForm type="measuringInstruments" label="計測機器CSV" fileName="measuring-instruments.csv" />
+        <ImportForm type="riggingGears" label="吊具CSV" fileName="rigging-gears.csv" />
+      </Card>
+    </div>
+  );
+}
+```
+
+**学んだこと**: 
+- 共通コンポーネントを作成することで、コードの重複を避けられる
+- 各データタイプを個別にアップロードできるUIにより、ユーザビリティが向上する
+- ファイル選択の改善により、ユーザーが選択したファイルを確認できる
+- 各フォームで`replaceExisting`を個別に設定できることで、柔軟性が向上する
+
+**解決状況**: ✅ **解決済み**（2025-12-31）
+
+**関連ファイル**: 
+- `apps/web/src/pages/admin/MasterImportPage.tsx`
+- `apps/web/src/pages/admin/components/ImportForm.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`

@@ -2,13 +2,55 @@
 
 ## 概要
 
-本システムでは、以下の方法でマスターデータ（従業員・工具）を一括インポートできます：
+本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具）を一括インポートできます：
 
-1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード
+1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具の4種類に対応）✅ **実機検証完了**
 2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）
 3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート
+4. **Gmail経由（スケジュール実行）**: 設定したスケジュールに従って自動的にGmailからCSVを取得してインポート ⚠️ **実装完了済み（2025-12-29）だが実機検証未完了**
+
+**検証状況**:
+- ✅ USBメモリ経由: 実機検証完了（従業員・計測機器・吊具のCSVインポートを確認済み）
+- ⚠️ Gmail経由（スケジュール実行）: 実装完了済みだが、PowerAutomate→Gmail→Pi5→CSVインポートのE2Eフロー全体の実機検証は未完了
+  - 実装詳細: [docs/plans/gmail-data-acquisition-execplan.md](../plans/gmail-data-acquisition-execplan.md)
+  - 検証手順: [docs/guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証](./verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証)
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
+
+## USBメモリ経由のCSVインポート
+
+管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具の4種類に対応しています。
+
+### インポート手順
+
+1. **管理画面にアクセス**: `https://<Pi5のIP>/admin`
+2. **「一括登録」タブにアクセス**: `https://<Pi5のIP>/admin/import`
+3. **CSVファイルを選択**: 各データタイプのフォームからCSVファイルを選択
+   - 従業員CSV (`employees.csv`)
+   - 工具CSV (`items.csv`)
+   - 計測機器CSV (`measuring-instruments.csv`)
+   - 吊具CSV (`rigging-gears.csv`)
+4. **オプション設定**: 「既存データをクリアしてから取り込み」にチェックを入れるか選択
+5. **取り込み開始**: 「取り込み開始」ボタンをクリック
+
+### 各フォームの特徴
+
+- **個別アップロード**: 各データタイプを個別にアップロード可能
+- **独立した設定**: 各フォームで`replaceExisting`を個別に設定可能
+- **ファイル名表示**: 選択したファイル名が表示され、確認可能
+
+### APIエンドポイント
+
+**エンドポイント**: `POST /api/imports/master/:type`
+
+**パラメータ**:
+- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`）
+
+**リクエスト形式**: multipart form data
+- `file`: CSVファイル（必須）
+- `replaceExisting`: 既存データをクリアするか（`true` / `false`、デフォルト: `false`）
+
+**認証**: 管理者権限（`ADMIN`）が必要
 
 ## CSVインポート仕様
 
@@ -25,33 +67,37 @@
 
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
-| `employeeCode` | 数字4桁 | 社員コード（一意） | `0001`, `0123` |
-| `displayName` | 文字列 | 氏名 | `山田 太郎` |
+| `employeeCode` | 数字4桁 | 社員コード（一意、写真番号に対応） | `0001`, `0123` |
+| `lastName` | 文字列 | 苗字 | `山田` |
+| `firstName` | 文字列 | 名前 | `太郎` |
 
 #### 任意項目
 
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
+| `department` | 文字列 | 所属部署 | `製造部` |
 | `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
-| `department` | 文字列 | 部署名 | `製造部` |
-| `contact` | 文字列 | 連絡先 | `内線1234` |
-| `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE`） | `ACTIVE` |
+| `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE` / `SUSPENDED`、未指定時は`ACTIVE`） | `ACTIVE` |
+
+**注意**: `displayName`（氏名）は`lastName + firstName`で自動生成されます。CSVには含めません。
 
 #### CSV例
 
 ```csv
-employeeCode,displayName,nfcTagUid,department,contact,status
-0001,山田 太郎,04C362E1330289,製造部,内線1234,ACTIVE
-0002,佐藤 花子,,品質管理部,内線5678,ACTIVE
-0003,鈴木 一郎,04DE8366BC2A81,製造部,,INACTIVE
+employeeCode,lastName,firstName,department,nfcTagUid,status
+0001,山田,太郎,製造部,04C362E1330289,ACTIVE
+0002,佐藤,花子,品質管理部,,ACTIVE
+0003,鈴木,一郎,製造部,04DE8366BC2A81,INACTIVE
 ```
 
 #### バリデーションルール
 
 - `employeeCode`: 数字4桁のみ（`/^\d{4}$/`）
-- `displayName`: 1文字以上
-- `nfcTagUid`: 既存の従業員・工具で使用されていないこと
+- `lastName`: 1文字以上（必須）
+- `firstName`: 1文字以上（必須）
+- `nfcTagUid`: 既存の従業員・工具・計測機器・吊具で使用されていないこと
 - CSV内で`nfcTagUid`が重複していないこと
+- 他のマスターデータCSV間で`nfcTagUid`が重複していないこと
 
 ### 工具CSV（items.csv）
 
@@ -89,27 +135,112 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 - CSV内で`nfcTagUid`が重複していないこと
 - 従業員CSVと工具CSV間で`nfcTagUid`が重複していないこと
 
+### 計測機器CSV（measuring-instruments.csv）
+
+#### 必須項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `managementNumber` | 文字列 | 管理番号（一意） | `MI-001`, `MI-123` |
+| `name` | 文字列 | 名称 | `てこ式ダイヤルゲージ` |
+
+#### 任意項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `storageLocation` | 文字列 | 保管場所 | `工具庫A` |
+| `department` | 文字列 | 管理部署 | `品質管理部` |
+| `measurementRange` | 文字列 | 測定範囲 | `0-100mm` |
+| `calibrationExpiryDate` | 日付（YYYY-MM-DD） | 校正期限 | `2025-12-31` |
+| `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+
+#### CSV例
+
+```csv
+managementNumber,name,storageLocation,department,measurementRange,calibrationExpiryDate,status,rfidTagUid
+MI-001,てこ式ダイヤルゲージ,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,04C362E1330289
+MI-002,ノギス,工具庫B,品質管理部,0-150mm,2025-06-30,AVAILABLE,
+MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE,04DE8366BC2A81
+```
+
+#### バリデーションルール
+
+- `managementNumber`: 1文字以上（一意）
+- `name`: 1文字以上
+- `rfidTagUid`: 既存の従業員・工具・計測機器・吊具で使用されていないこと
+- CSV内で`rfidTagUid`が重複していないこと
+- 他のマスターデータCSV間で`rfidTagUid`が重複していないこと
+
+### 吊具CSV（rigging-gears.csv）
+
+#### 必須項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `managementNumber` | 文字列 | 管理番号（一意） | `RG-001`, `RG-123` |
+| `name` | 文字列 | 名称 | `ワイヤーロープ 10t` |
+
+#### 任意項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `storageLocation` | 文字列 | 保管場所 | `工具庫A` |
+| `department` | 文字列 | 管理部署 | `製造部` |
+| `startedAt` | 日付（YYYY-MM-DD） | 使用開始日 | `2020-01-01` |
+| `usableYears` | 数値 | 使用可能年数 | `10` |
+| `maxLoadTon` | 数値 | 定格荷重（t） | `10` |
+| `lengthMm` | 数値 | 長さ（mm） | `5000` |
+| `widthMm` | 数値 | 幅（mm） | `100` |
+| `thicknessMm` | 数値 | 厚さ（mm） | `20` |
+| `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
+| `notes` | 文字列 | 備考 | `定期点検必要` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+
+#### CSV例
+
+```csv
+managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
+RG-001,ワイヤーロープ 10t,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,04C362E1330289
+RG-002,チェーンブロック 5t,工具庫B,製造部,2019-06-01,15,5,3000,80,15,AVAILABLE,定期点検必要,
+RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,04DE8366BC2A81
+```
+
+#### バリデーションルール
+
+- `managementNumber`: 1文字以上（一意）
+- `name`: 1文字以上
+- `rfidTagUid`: 既存の従業員・工具・計測機器・吊具で使用されていないこと
+- CSV内で`rfidTagUid`が重複していないこと
+- 他のマスターデータCSV間で`rfidTagUid`が重複していないこと
+
 ## インポート処理の動作
 
 ### 通常インポート（`replaceExisting: false`）
 
 - 既存データは削除されません
-- `employeeCode` / `itemCode`が一致する場合: 既存レコードを更新
-- `employeeCode` / `itemCode`が一致しない場合: 新規レコードを作成
+- `employeeCode` / `itemCode` / `managementNumber`が一致する場合: 既存レコードを更新
+- 一致しない場合: 新規レコードを作成
 
 ### 全削除してからインポート（`replaceExisting: true`）
 
-- 選択したCSVの種類（従業員または工具）の既存データを削除してからインポート
-- **注意**: 貸出記録（Loan）が存在する従業員・工具は削除されません（外部キー制約のため）
+- 選択したCSVの種類（従業員・工具・計測機器・吊具）の既存データを削除してからインポート
+- **安全性**: 参照がある個体（貸出記録、点検記録など）は削除されません
+  - 従業員: 貸出記録（Loan）が存在する場合は削除されない
+  - 工具: 貸出記録（Loan）が存在する場合は削除されない
+  - 計測機器: 貸出記録（Loan）または点検記録（InspectionRecord）が存在する場合は削除されない
+  - 吊具: 貸出記録（Loan）が存在する場合は削除されない
 
 ## エラーメッセージ
 
 ### バリデーションエラー
 
 - `社員コードは数字4桁である必要があります（例: 0001）`: `employeeCode`の形式が不正
+- `苗字は必須です`: `lastName`が空
+- `名前は必須です`: `firstName`が空
 - `管理番号はTO + 数字4桁である必要があります（例: TO0001）`: `itemCode`の形式が不正
-- `氏名は必須です`: `displayName`が空
-- `工具名は必須です`: `name`が空
+- `名称は必須です`: `name`が空（計測機器・吊具）
+- `管理番号は必須です`: `managementNumber`が空（計測機器・吊具）
 
 ### 重複エラー
 
@@ -162,9 +293,34 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 
 ### スケジュール実行
 
-設定ファイル（`backup.json`）でスケジュールを設定すると、自動的にDropboxからCSVを取得してインポートします。
+設定ファイル（`backup.json`）でスケジュールを設定すると、自動的にDropboxまたはGmailからCSVを取得してインポートします。
 
-**設定例**:
+#### Dropbox経由のスケジュール実行
+
+**設定例（新形式）**:
+```json
+{
+  "csvImports": [
+    {
+      "id": "daily-import",
+      "name": "毎日のCSVインポート",
+      "provider": "dropbox",
+      "schedule": "0 2 * * *",
+      "timezone": "Asia/Tokyo",
+      "targets": [
+        { "type": "employees", "source": "/backups/csv/employees-YYYYMMDD.csv" },
+        { "type": "items", "source": "/backups/csv/items-YYYYMMDD.csv" },
+        { "type": "measuringInstruments", "source": "/backups/csv/measuring-instruments-YYYYMMDD.csv" },
+        { "type": "riggingGears", "source": "/backups/csv/rigging-gears-YYYYMMDD.csv" }
+      ],
+      "replaceExisting": false,
+      "enabled": true
+    }
+  ]
+}
+```
+
+**設定例（旧形式・後方互換）**:
 ```json
 {
   "csvImports": [
@@ -174,6 +330,7 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
       "schedule": "0 2 * * *",
       "timezone": "Asia/Tokyo",
       "employeesPath": "/backups/csv/employees-YYYYMMDD.csv",
+      "itemsPath": "/backups/csv/items-YYYYMMDD.csv",
       "replaceExisting": false,
       "enabled": true
     }
@@ -181,7 +338,84 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 }
 ```
 
-**詳細**: [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
+**注意**: 旧形式（`employeesPath`/`itemsPath`）もサポートされていますが、新形式（`targets`）の使用を推奨します。
+
+#### Gmail経由のスケジュール実行
+
+GmailからCSVファイルを自動取得してインポートできます。PowerAutomateなどからGmailにCSVファイルを送信し、設定した件名パターンに一致するメールの添付ファイルを自動的にインポートします。
+
+**設定例**:
+```json
+{
+  "csvImports": [
+    {
+      "id": "gmail-daily-import",
+      "name": "Gmail経由の毎日CSVインポート",
+      "provider": "gmail",
+      "schedule": "0 4 * * 1,2,3",
+      "timezone": "Asia/Tokyo",
+      "targets": [
+        { "type": "employees", "source": "[Pi5 CSV Import] employees" },
+        { "type": "items", "source": "[Pi5 CSV Import] items" },
+        { "type": "measuringInstruments", "source": "[Pi5 CSV Import] measuring-instruments" },
+        { "type": "riggingGears", "source": "[Pi5 CSV Import] rigging-gears" }
+      ],
+      "replaceExisting": false,
+      "enabled": true
+    }
+  ],
+  "csvImportSubjectPatterns": {
+    "employees": [
+      "[Pi5 CSV Import] employees",
+      "[CSV Import] employees",
+      "CSV Import - employees",
+      "従業員CSVインポート"
+    ],
+    "items": [
+      "[Pi5 CSV Import] items",
+      "[CSV Import] items",
+      "CSV Import - items",
+      "アイテムCSVインポート"
+    ],
+    "measuringInstruments": [
+      "[Pi5 CSV Import] measuring-instruments",
+      "[CSV Import] measuring-instruments",
+      "CSV Import - measuring-instruments",
+      "計測機器CSVインポート"
+    ],
+    "riggingGears": [
+      "[Pi5 CSV Import] rigging-gears",
+      "[CSV Import] rigging-gears",
+      "CSV Import - rigging-gears",
+      "吊具CSVインポート"
+    ]
+  }
+}
+```
+
+**Gmail件名パターンの管理**:
+- 管理コンソールの「CSVインポートスケジュール」ページから、Gmail件名パターンを編集できます
+- 件名パターンは`backup.json`の`csvImportSubjectPatterns`に保存されます
+- Gmailプロバイダーを使用する場合、`targets`の`source`フィールドは件名パターンから選択します
+
+**詳細**: 
+- [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
+- [Gmail設定ガイド](./gmail-setup-guide.md)
+
+#### スケジュールの手動実行
+
+スケジュールに設定されたインポートを手動で実行できます。管理コンソールの「CSVインポートスケジュール」ページから、各スケジュールの「実行」ボタンをクリックして実行できます。
+
+**APIエンドポイント**: `POST /api/imports/schedule/:id/run`
+
+**動作**:
+- 手動実行時は**リトライをスキップ**し、即座に結果を返します
+- Gmailプロバイダーの場合、該当メールがない場合は即座にエラーを返します（リトライなし）
+- 自動実行（スケジュール実行）の場合は、リトライ機能が有効です（最大3回、指数バックオフ）
+
+**注意**: 
+- 手動実行は即座に結果を確認したい用途のため、リトライは実行されません
+- 自動実行はメールがまだ届いていない可能性があるため、リトライ機能が有効です
 
 ### インポート履歴
 
@@ -204,10 +438,14 @@ CSVインポート成功時に自動的にバックアップを実行できま�
 {
   "csvImports": [
     {
-      "id": "daily-employees-import",
-      "name": "毎日の従業員CSVインポート",
+      "id": "daily-import",
+      "name": "毎日のCSVインポート",
+      "provider": "dropbox",
       "schedule": "0 2 * * *",
-      "employeesPath": "/backups/csv/employees-YYYYMMDD.csv",
+      "targets": [
+        { "type": "employees", "source": "/backups/csv/employees-YYYYMMDD.csv" },
+        { "type": "items", "source": "/backups/csv/items-YYYYMMDD.csv" }
+      ],
       "enabled": true,
       "autoBackupAfterImport": {
         "enabled": true,
@@ -219,7 +457,7 @@ CSVインポート成功時に自動的にバックアップを実行できま�
 ```
 
 **バックアップ対象**:
-- `csv`: CSVデータのみ（employees, items）
+- `csv`: CSVデータのみ（employees, items, measuringInstruments, riggingGears）
 - `database`: データベース全体
 - `all`: CSV + データベース
 
@@ -301,16 +539,49 @@ Dropboxからバックアップをダウンロードしてリストアできま�
 }
 ```
 
+## CSVインポート構造の改善
+
+### レジストリ・ファクトリパターンの導入
+
+CSVインポート機能は、拡張性と保守性を向上させるため、レジストリ・ファクトリパターンを採用しています。
+
+**アーキテクチャ**:
+- `CsvImporter`インターフェース: 各データタイプ（従業員・工具・計測機器・吊具）のインポータが実装する共通インターフェース
+- `CsvImporterRegistry`: すべてのインポータを管理するレジストリ
+- `CsvImporterFactory`: データタイプに応じて適切なインポータを取得するファクトリ
+
+**メリット**:
+- 新しいデータタイプの追加が容易（新しいインポータを実装してレジストリに登録するだけ）
+- コードの重複を削減（共通ロジックをインターフェースに集約）
+- テストが容易（各インポータを独立してテスト可能）
+
+**実装ファイル**:
+- `apps/api/src/services/imports/csv-importer.types.ts`: 型定義
+- `apps/api/src/services/imports/csv-importer-registry.ts`: レジストリ実装
+- `apps/api/src/services/imports/csv-importer-factory.ts`: ファクトリ実装
+- `apps/api/src/services/imports/importers/`: 各データタイプのインポータ実装
+
+### 後方互換性
+
+旧形式（`employeesPath`/`itemsPath`）のスケジュール設定も引き続きサポートされています。設定ファイルを読み込む際に、自動的に新形式（`targets`）に変換されます。
+
 ## 将来の拡張予定
 
 ### マスターデータエクスポート
 
 - 従業員マスタのCSVエクスポート機能
 - 工具マスタのCSVエクスポート機能
+- 計測機器マスタのCSVエクスポート機能
+- 吊具マスタのCSVエクスポート機能
 
 ### その他のマスターデータインポート
 
 - 将来のモジュール（ドキュメント管理、物流管理など）用のマスターデータインポート機能
+- 新しいデータタイプの追加は、`CsvImporter`インターフェースを実装してレジストリに登録するだけで対応可能
+
+## 実機検証
+
+CSVフォーマット仕様実装の実機検証手順は、[検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)を参照してください。
 
 ## 関連ドキュメント
 
@@ -319,4 +590,5 @@ Dropboxからバックアップをダウンロードしてリストアできま�
 - [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
 - [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-003-p2002エラーnfctaguidの重複が発生する)
+- [検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)
 

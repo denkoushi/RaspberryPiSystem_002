@@ -8,6 +8,38 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2025-12-31）
+
+- **✅ CSVインポートUI改善・計測機器・吊具対応完了**: USBメモリ経由のCSVインポートUIを4つのフォーム（従業員・工具・計測機器・吊具）に分割し、各データタイプを個別にアップロードできるように改善。新APIエンドポイント`POST /api/imports/master/:type`を追加し、単一データタイプ対応のインポート機能を実装。共通コンポーネント`ImportForm`を作成し、コードの重複を削減。各フォームで`replaceExisting`を個別に設定可能。CI通過確認済み。詳細は [knowledge-base/api.md#kb-117](./knowledge-base/api.md#kb-117-csvインポートapiの単一データタイプ対応エンドポイント追加) / [knowledge-base/frontend.md#kb-117](./knowledge-base/frontend.md#kb-117-csvインポートuiの4フォーム分割実装) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
+- **✅ CSVフォーマット仕様実装・従業員編集フォーム改善完了**: 従業員CSVインポートの新フォーマット（`lastName`/`firstName`）を実装し、従業員編集フォームを`lastName`と`firstName`の個別フィールドに変更。`displayName`は自動生成されるように改善。データベーススキーマに`lastName`/`firstName`フィールドを追加し、APIとフロントエンドを更新。既存データの`displayName`から`lastName`/`firstName`への分割ロジックも実装。実機検証でCSVインポート成功、`displayName`自動生成、一覧表示、編集画面の動作をすべて確認済み。詳細は [guides/verification-checklist.md#62-従業員csvインポート新フォーマット](./guides/verification-checklist.md#62-従業員csvインポート新フォーマット) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
+### 🆕 最新アップデート（2025-12-30）
+
+- **✅ CSVインポート実機検証完了・UI改善**: CSVインポートスケジュールページのフォーム状態管理を改善し、削除後や編集から新規作成への切り替え時にフォームが正しくリセットされるように修正。手動実行時のリトライスキップ機能を実装し、即座に結果を確認できるように改善（自動実行は従来通りリトライあり）。実機検証でターゲット追加機能、データタイプ選択、プロバイダー選択、Gmail件名パターン管理、スケジュールCRUD、削除機能、手動実行、スケジュール表示の人間可読形式をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-116](./knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [knowledge-base/api.md#kb-116](./knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
+### 🆕 最新アップデート（2026-01-03）
+
+- **✅ キオスクSlackサポート機能実装完了**: キオスクUIから管理者への問い合わせ機能（Slack通知）を実装。キオスク画面右下に「お問い合わせ」ボタンを追加し、モーダルから問い合わせ内容を送信可能に。Slack Incoming Webhookを使用して通知を送信し、同時に既存のクライアントログとして保存。レート制限（1分に3件）とセキュリティ対策（Webhook URLの秘匿、タイムアウト処理）を実装。実機検証待ち。詳細は [guides/verification-checklist.md#69-キオスクサポート機能slack通知](./guides/verification-checklist.md#69-キオスクサポート機能slack通知) を参照。
+
+- **✅ Gmail経由CSV取り込み（手動実行）の実機検証完了**: Gmail経由でのCSVファイル自動取り込み機能の手動実行での実機検証を完了。Gmail検索・取得処理、CSVインポート処理、エラーハンドリングがすべて正常に動作することを確認。`GmailStorageProvider`が仕様通りに動作し、メールのアーカイブ処理も正常に機能。PowerAutomate設定後、スケジュール実行でのE2E検証を実施予定。詳細は [knowledge-base/api.md#kb-123](./knowledge-base/api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了) / [guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証](./guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証) を参照。
+
+- **✅ 計測機器管理画面の部署表示・編集機能の実機検証完了**: 計測機器管理画面に`department`列と選択式編集機能を追加し、実機検証を完了。一覧表への部署列表示、新規作成フォームでの部署選択フィールド表示、部署候補の動的取得、部署の保存・更新がすべて正常に動作することを確認。詳細は [knowledge-base/api.md#kb-121](./knowledge-base/api.md#kb-121-部署一覧取得エンドポイント追加とprisma-where句の重複プロパティエラー修正) / [knowledge-base/frontend.md#kb-122](./knowledge-base/frontend.md#kb-122-計測機器管理画面にdepartment表示編集機能を追加) / [guides/verification-checklist.md#662-計測機器管理画面](./guides/verification-checklist.md#662-計測機器管理画面admintoolsmeasuring-instruments) を参照。
+
+### 🆕 最新アップデート（2025-01-XX）
+
+- **✅ 吊具CSVインポート検証完了・レイアウト改善**: 吊具CSVインポート（新フィールド`usableYears`）の検証を完了し、すべて正常に動作することを確認。吊具管理画面のレイアウトを改善し、一覧表と編集フォームが重ならないように修正。編集フォームを別のCardとして分離し、縦配置に変更。編集フォーム内のフィールドを2列のグリッドレイアウトに変更し、より使いやすく改善。実機検証でCSVインポート成功、`usableYears`フィールドの保存・表示・編集をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-120](./knowledge-base/frontend.md#kb-120-吊具管理画面のレイアウト改善一覧表と編集フォームの重なり解消) / [guides/verification-checklist.md#64-吊具csvインポート新フィールド](./guides/verification-checklist.md#64-吊具csvインポート新フィールド) / [guides/verification-checklist.md#663-吊具管理画面](./guides/verification-checklist.md#663-吊具管理画面admintoolsrigging-gears) を参照。
+
+- **✅ 計測機器UID編集時のバグ修正完了**: 計測機器のUIDを手動編集しても反映されない問題を修正。根本原因は1つの計測機器に複数の`MeasuringInstrumentTag`が紐づいていたこと。APIの`update`メソッドで既存タグをすべて削除してから新しいタグを1つ作成するように修正し、1対1の関係を保つように改善。フロントエンドでは`useRef`を使用して手動編集フラグを追加し、ユーザーの手動編集を`useEffect`の自動更新で上書きしないように修正。デバッグモードでランタイム証拠を収集し、根本原因を正確に特定。実機検証でUID編集が正常に反映されることを確認済み。詳細は [knowledge-base/api.md#kb-118](./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) / [knowledge-base/frontend.md#kb-119](./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) / [guides/verification-checklist.md#63-計測機器csvインポート新フィールド](./guides/verification-checklist.md#63-計測機器csvインポート新フィールド) を参照。
+
+- **✅ CSVインポート構造改善と計測機器・吊具対応完了**: CSVインポート機能をレジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。新しいデータタイプの追加が容易になり、コードの重複を削減。スケジュール設定を`targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に。後方互換性を確保（旧`employeesPath`/`itemsPath`形式もサポート）。`replaceExisting=true`時の安全性を確保（参照がある個体は削除しない）。Gmail件名パターンを管理コンソールから編集できる機能を実装し、設定ファイル（`backup.json`）に保存されるように変更。詳細は [guides/csv-import-export.md](./guides/csv-import-export.md) / [knowledge-base/frontend.md#kb-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) / [knowledge-base/frontend.md#kb-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) / [knowledge-base/api.md#kb-114](./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [knowledge-base/api.md#kb-115](./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理) を参照。
+
+### 🆕 最新アップデート（2025-12-29）
+
+- **✅ CSVインポートスケジュールページのUI統一・表示改善完了**: CSVインポートスケジュールページの日付指定UIをバックアップペイン（`BackupTargetForm.tsx`）と同じUIに統一。時刻入力（`type="time"`）と曜日選択ボタンを使用し、UI形式からcron形式への変換関数を実装。スケジュール表示を人間が読みやすい形式に変更（cron形式 `0 4 * * 1,2,3` → 「毎週月曜日、火曜日、水曜日の午前4時」）。デプロイ標準手順の遵守を徹底し、現在のブランチを使用するように修正。詳細は [knowledge-base/frontend.md#kb-109](./knowledge-base/frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) / [knowledge-base/frontend.md#kb-111](./knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) / [knowledge-base/infrastructure/ansible-deployment.md#kb-110](./knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) / [guides/deployment.md](./guides/deployment.md) を参照。
+
+- **✅ Gmailデータ取得機能実装完了**: PowerAutomateからGmail経由でCSVファイルやJPEGファイルをPi5に送信し、自動的にインポートする機能を実装完了。OAuth 2.0認証によるセキュアな認証フローを実装し、管理画面からGmail設定を管理できるUIを実装。Tailscale DNSをオフにした場合の`/etc/hosts`設定スクリプトを作成し、Gmail OAuth認証が正常に完了（refresh token取得済み）。GmailとDropboxのトークンリフレッシュの違いを明確化（Gmailは自動リフレッシュ、Dropboxは手動リフレッシュ）。詳細は [plans/gmail-data-acquisition-execplan.md](./plans/gmail-data-acquisition-execplan.md) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) / [knowledge-base/infrastructure/backup-restore.md#kb-108](./knowledge-base/infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) を参照。
+
 ### 🆕 最新アップデート（2025-12-29）
 
 - **✅ バックアップエラーハンドリング改善完了**: Dropboxストレージプロバイダーの`download`と`delete`メソッドに、レート制限エラー（429）とネットワークエラー時のリトライ機能を追加。指数バックオフによるリトライロジック（最大5回、最大30秒）を実装。レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上。詳細は [guides/backup-error-handling-improvements.md](./guides/backup-error-handling-improvements.md) / [knowledge-base/infrastructure/backup-restore.md#kb-107](./knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) を参照。
@@ -192,6 +224,7 @@
 |-------------|-------------|
 | 計測機器キオスク実機検証 | [guides/measuring-instruments-verification.md](./guides/measuring-instruments-verification.md) |
 | 機能を検証したい | [guides/verification-checklist.md](./guides/verification-checklist.md) |
+| **CSVフォーマット仕様実装を検証したい** | **[guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31](./guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)** |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
 | デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./guides/stability-improvement-test.md) |

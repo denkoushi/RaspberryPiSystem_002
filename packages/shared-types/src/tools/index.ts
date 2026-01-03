@@ -8,6 +8,8 @@ export interface Employee {
   id: string;
   employeeCode: string;
   displayName: string;
+  lastName?: string | null;
+  firstName?: string | null;
   nfcTagUid?: string | null;
   department?: string | null;
   contact?: string | null;

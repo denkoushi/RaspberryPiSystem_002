@@ -190,6 +190,8 @@ describe('EmployeeService', () => {
         data: {
           employeeCode: 'EMP001',
           displayName: 'New Employee',
+          lastName: null,
+          firstName: null,
           nfcTagUid: 'UID1',
           department: 'Dept 1',
           contact: 'contact@example.com',
@@ -211,6 +213,8 @@ describe('EmployeeService', () => {
         id: 'employee-1',
         employeeCode: 'EMP001',
         displayName: 'New Employee',
+        lastName: null,
+        firstName: null,
         nfcTagUid: null,
         department: null,
         contact: null,
@@ -227,6 +231,8 @@ describe('EmployeeService', () => {
         data: {
           employeeCode: 'EMP001',
           displayName: 'New Employee',
+          lastName: null,
+          firstName: null,
           nfcTagUid: undefined,
           department: undefined,
           contact: undefined,
@@ -243,10 +249,27 @@ describe('EmployeeService', () => {
         department: 'Updated Dept',
       };
 
+      const existingEmployee = {
+        id: 'employee-1',
+        employeeCode: 'EMP001',
+        displayName: 'Original Employee',
+        lastName: 'Original',
+        firstName: 'Employee',
+        nfcTagUid: 'UID1',
+        department: 'Original Dept',
+        contact: null,
+        status: EmployeeStatus.ACTIVE,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
       const mockEmployee = {
         id: 'employee-1',
         employeeCode: 'EMP001',
-        displayName: 'Updated Employee',
+        // lastName/firstNameが存在する場合、displayNameは自動生成される（displayName入力より優先）
+        displayName: 'Original Employee',
+        lastName: 'Original',
+        firstName: 'Employee',
         nfcTagUid: 'UID1',
         department: 'Updated Dept',
         contact: null,
@@ -255,6 +278,7 @@ describe('EmployeeService', () => {
         updatedAt: new Date(),
       };
 
+      vi.mocked(prisma.employee.findUnique).mockResolvedValue(existingEmployee as any);
       vi.mocked(prisma.employee.update).mockResolvedValue(mockEmployee as any);
 
       const result = await employeeService.update('employee-1', input);
@@ -262,7 +286,10 @@ describe('EmployeeService', () => {
       expect(result).toEqual(mockEmployee);
       expect(prisma.employee.update).toHaveBeenCalledWith({
         where: { id: 'employee-1' },
-        data: input,
+        data: {
+          department: 'Updated Dept',
+          displayName: 'Original Employee',
+        },
       });
     });
   });
