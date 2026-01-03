@@ -20,7 +20,8 @@ const envSchema = z.object({
   SIGNAGE_RENDER_HEIGHT: z.coerce.number().min(480).max(4320).default(1080),
   SIGNAGE_TIMEZONE: z.string().default('Asia/Tokyo'),
   NETWORK_MODE: z.enum(['local', 'maintenance']).default('local'),
-  NETWORK_STATUS_OVERRIDE: z.enum(['internet_connected', 'local_network_only']).optional()
+  NETWORK_STATUS_OVERRIDE: z.enum(['internet_connected', 'local_network_only']).optional(),
+  SLACK_KIOSK_SUPPORT_WEBHOOK_URL: z.string().url().optional()
 });
 
 export const env = envSchema.parse(process.env);

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2025-01-XX
+last-verified: 2025-01-03
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 21件  
+**件数**: 23件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -787,4 +787,104 @@ if (rfidTagUid !== undefined) {
 
 **関連ファイル**: 
 - `apps/api/src/services/measuring-instruments/measuring-instrument.service.ts`
+
+---
+
+### [KB-121] 部署一覧取得エンドポイント追加とPrisma where句の重複プロパティエラー修正
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器管理画面に`department`フィールドの表示・編集機能を追加するため、部署候補を取得するエンドポイントが必要だった
+- CIでTypeScriptビルドエラーが発生: `src/routes/tools/departments.ts(21,11): error TS1117: An object literal cannot have multiple properties with the same name.`
+
+**要因**: 
+- **根本原因**: Prismaの`where`句で`department`オブジェクトに`not`プロパティが2回指定されていた
+  ```typescript
+  where: {
+    department: {
+      not: null,
+      not: ''  // 重複エラー
+    }
+  }
+  ```
+- TypeScriptでは同じオブジェクトリテラル内に同じプロパティ名を複数持つことができない
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: `AND`条件を使用して`null`と空文字の両方を除外するように修正
+  ```typescript
+  where: {
+    AND: [
+      { department: { not: null } },
+      { department: { not: '' } }
+    ]
+  }
+  ```
+
+**実装のポイント**:
+- `/api/tools/departments`エンドポイントを追加
+- 従業員マスターの`department`フィールドから重複を除いた部署一覧を返す
+- `null`と空文字を除外し、重複を除去してソートした配列を返す
+
+**学んだこと**: 
+- Prismaの`where`句で複数の条件を指定する場合は`AND`条件を使用する
+- TypeScriptのオブジェクトリテラルでは同じプロパティ名を複数持つことができない
+- CIでのビルドエラーは、ローカルのlintチェックでは検出されない場合がある（TypeScriptの型チェックは`pnpm build`で実行される）
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/api/src/routes/tools/departments.ts`
+- `apps/api/src/routes/tools/index.ts`
+
+---
+
+### [KB-123] Gmail経由CSV取り込み（手動実行）の実機検証完了
+
+**日付**: 2026-01-03
+
+**事象**: 
+- Gmail経由でのCSVファイル自動取り込み（スケジュール実行）機能の実装は完了していたが、実機検証が未実施だった
+- PowerAutomateからの自動送信設定前に、手動実行での動作確認が必要だった
+
+**検証内容**: 
+- 手動実行（`POST /api/imports/schedule/verify-run-001/run`）でGmailからのCSV取得とインポート処理を検証
+- 検証対象: 吊具CSV（`rigging_tools.csv`, 363バイト）
+- Gmail検索クエリ: `subject:"吊具CSVインポート" is:unread`
+
+**検証結果**: 
+- ✅ **すべて正常に動作**（2026-01-03）:
+  1. **Gmail検索・取得処理**: 
+     - Gmail検索クエリが正常に動作し、メッセージを検出（messageId: `19b82b531643e99d`）
+     - 添付ファイルのダウンロード成功（`rigging_tools.csv`, 363バイト）
+     - メールのアーカイブ処理成功（処理済みメールとしてマーク）
+  2. **CSVインポート処理**: 
+     - CSVインポート処理が完了（`riggingGears: processed=2, created=2, updated=0`）
+     - データベースに2件の吊具データが正しく保存されていることを確認
+  3. **エラーチェック**: 
+     - APIログにGmail CSVインポート処理関連のエラーなし
+     - 認証トークン関連のエラーは想定内（クライアントアプリからの認証エラー）
+
+**実装のポイント**:
+- `GmailStorageProvider`が仕様通りに動作:
+  1. Gmail検索クエリの構築（件名パターンと未読メール条件）
+  2. 添付ファイルの取得（最初のメールから添付ファイルを取得）
+  3. メールのアーカイブ（処理済みメールとしてアーカイブ）
+  4. CSVインポート処理（データタイプに応じたインポート処理）
+  5. エラーハンドリング（認証エラー時の自動リフレッシュ機能）
+
+**学んだこと**: 
+- 手動実行ではインポート履歴（`ImportJob`テーブル）にレコードが作成されない（スケジュール実行時のみ作成される仕様）
+- Gmail OAuth認証が正常に動作し、アクセストークンの自動リフレッシュも機能している
+- PowerAutomate設定後、スケジュール実行でのE2E検証が必要
+
+**解決状況**: ✅ **実機検証完了**（2026-01-03）
+
+**関連ファイル**: 
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`
+- `apps/api/src/services/backup/gmail-api-client.ts`
+- `apps/api/src/services/imports/csv-importer-factory.ts`
+- `docs/guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証`
+
+---
 

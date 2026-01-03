@@ -583,6 +583,17 @@ export async function postClientLogs(
   return data;
 }
 
+// キオスクサポートメッセージを送信
+export async function postKioskSupport(
+  payload: { message: string; page: string },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ requestId: string }>('/kiosk/support', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
 export interface FileAlert {
   id: string;
   type: string;

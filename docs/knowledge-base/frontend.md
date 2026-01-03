@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - フロントエンド関連
 tags: [トラブルシューティング, フロントエンド, React, XState]
 audience: [開発者]
-last-verified: 2025-01-XX
+last-verified: 2025-01-03
 related: [index.md, ../modules/tools/README.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 25件  
+**件数**: 26件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1156,6 +1156,83 @@ useEffect(() => {
 
 **関連ファイル**: 
 - `apps/web/src/pages/tools/RiggingGearsPage.tsx`
+
+---
+
+### [KB-122] 計測機器管理画面にdepartment表示・編集機能を追加
+
+**日付**: 2025-01-XX
+
+**事象**: 
+- 計測機器管理画面に`department`列が表示されていない
+- `department`フィールドの編集機能がない
+- DBには`department`フィールドが存在するが、UIで表示・編集できない
+
+**要因**: 
+- **根本原因**: 
+  - Web共有型`MeasuringInstrument`に`department`フィールドがなかった
+  - APIの計測機器作成/更新スキーマに`department`がなかった
+  - APIサービスのcreate/update入力に`department`がなかった
+  - フロントエンドの一覧表とフォームに`department`がなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2025-01-XX）: 
+  - API: 計測機器create/updateに`department`フィールドを追加
+  - API: `/api/tools/departments`エンドポイントを追加（従業員マスターから部署一覧を取得）
+  - shared-types: `MeasuringInstrument`に`department`フィールドを追加
+  - Web: 計測機器管理画面に部署列と選択式編集（ドロップダウン）を追加
+
+**実装のポイント**:
+```typescript
+// API: 部署一覧取得エンドポイント
+app.get('/departments', { preHandler: canView }, async () => {
+  const employees = await prisma.employee.findMany({
+    select: { department: true },
+    where: {
+      AND: [
+        { department: { not: null } },
+        { department: { not: '' } }
+      ]
+    }
+  });
+  const departmentSet = new Set<string>();
+  employees.forEach((emp) => {
+    if (emp.department && emp.department.trim() !== '') {
+      departmentSet.add(emp.department);
+    }
+  });
+  return { departments: Array.from(departmentSet).sort() };
+});
+
+// Web: 部署選択フィールド
+const { data: departmentsData } = useDepartments();
+const departments = departmentsData?.departments ?? [];
+
+<select
+  value={form.department}
+  onChange={(e) => setForm({ ...form, department: e.target.value })}
+>
+  <option value="">選択してください</option>
+  {departments.map((dept) => (
+    <option key={dept} value={dept}>{dept}</option>
+  ))}
+</select>
+```
+
+**学んだこと**: 
+- 既存のCRUDパターンに従って最小限の変更で実装できる
+- 部署候補は従業員マスターから動的に取得することで、データの一貫性を保つことができる
+- 選択式フィールドは`useDepartments`フックを使用して候補を取得し、ドロップダウンで表示する
+- Prismaの`where`句で複数の条件を指定する場合は`AND`条件を使用する必要がある
+
+**解決状況**: ✅ **解決済み**（2025-01-XX）
+
+**関連ファイル**: 
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/api/src/routes/tools/departments.ts`
+- `packages/shared-types/src/measuring-instruments/index.ts`
 
 ---
 

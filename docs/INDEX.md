@@ -18,6 +18,14 @@
 
 - **✅ CSVインポート実機検証完了・UI改善**: CSVインポートスケジュールページのフォーム状態管理を改善し、削除後や編集から新規作成への切り替え時にフォームが正しくリセットされるように修正。手動実行時のリトライスキップ機能を実装し、即座に結果を確認できるように改善（自動実行は従来通りリトライあり）。実機検証でターゲット追加機能、データタイプ選択、プロバイダー選択、Gmail件名パターン管理、スケジュールCRUD、削除機能、手動実行、スケジュール表示の人間可読形式をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-116](./knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [knowledge-base/api.md#kb-116](./knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
+### 🆕 最新アップデート（2026-01-03）
+
+- **✅ キオスクSlackサポート機能実装完了**: キオスクUIから管理者への問い合わせ機能（Slack通知）を実装。キオスク画面右下に「お問い合わせ」ボタンを追加し、モーダルから問い合わせ内容を送信可能に。Slack Incoming Webhookを使用して通知を送信し、同時に既存のクライアントログとして保存。レート制限（1分に3件）とセキュリティ対策（Webhook URLの秘匿、タイムアウト処理）を実装。実機検証待ち。詳細は [guides/verification-checklist.md#69-キオスクサポート機能slack通知](./guides/verification-checklist.md#69-キオスクサポート機能slack通知) を参照。
+
+- **✅ Gmail経由CSV取り込み（手動実行）の実機検証完了**: Gmail経由でのCSVファイル自動取り込み機能の手動実行での実機検証を完了。Gmail検索・取得処理、CSVインポート処理、エラーハンドリングがすべて正常に動作することを確認。`GmailStorageProvider`が仕様通りに動作し、メールのアーカイブ処理も正常に機能。PowerAutomate設定後、スケジュール実行でのE2E検証を実施予定。詳細は [knowledge-base/api.md#kb-123](./knowledge-base/api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了) / [guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証](./guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証) を参照。
+
+- **✅ 計測機器管理画面の部署表示・編集機能の実機検証完了**: 計測機器管理画面に`department`列と選択式編集機能を追加し、実機検証を完了。一覧表への部署列表示、新規作成フォームでの部署選択フィールド表示、部署候補の動的取得、部署の保存・更新がすべて正常に動作することを確認。詳細は [knowledge-base/api.md#kb-121](./knowledge-base/api.md#kb-121-部署一覧取得エンドポイント追加とprisma-where句の重複プロパティエラー修正) / [knowledge-base/frontend.md#kb-122](./knowledge-base/frontend.md#kb-122-計測機器管理画面にdepartment表示編集機能を追加) / [guides/verification-checklist.md#662-計測機器管理画面](./guides/verification-checklist.md#662-計測機器管理画面admintoolsmeasuring-instruments) を参照。
+
 ### 🆕 最新アップデート（2025-01-XX）
 
 - **✅ 吊具CSVインポート検証完了・レイアウト改善**: 吊具CSVインポート（新フィールド`usableYears`）の検証を完了し、すべて正常に動作することを確認。吊具管理画面のレイアウトを改善し、一覧表と編集フォームが重ならないように修正。編集フォームを別のCardとして分離し、縦配置に変更。編集フォーム内のフィールドを2列のグリッドレイアウトに変更し、より使いやすく改善。実機検証でCSVインポート成功、`usableYears`フィールドの保存・表示・編集をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-120](./knowledge-base/frontend.md#kb-120-吊具管理画面のレイアウト改善一覧表と編集フォームの重なり解消) / [guides/verification-checklist.md#64-吊具csvインポート新フィールド](./guides/verification-checklist.md#64-吊具csvインポート新フィールド) / [guides/verification-checklist.md#663-吊具管理画面](./guides/verification-checklist.md#663-吊具管理画面admintoolsrigging-gears) を参照。

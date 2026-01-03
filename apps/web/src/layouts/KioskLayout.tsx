@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
 import { useSystemInfo } from '../api/hooks';
+import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { Input } from '../components/ui/Input';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -14,6 +15,7 @@ export function KioskLayout() {
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
   const { data: systemInfo } = useSystemInfo();
   const location = useLocation();
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -144,6 +146,15 @@ export function KioskLayout() {
       <main className="flex h-[calc(100vh-5rem)] flex-col gap-4 px-4 py-4">
         <Outlet />
       </main>
+      {/* お問い合わせボタン */}
+      <button
+        onClick={() => setShowSupportModal(true)}
+        className="fixed bottom-6 right-6 rounded-full bg-blue-600 px-6 py-3 text-white shadow-lg transition-colors hover:bg-blue-700"
+        aria-label="お問い合わせ"
+      >
+        お問い合わせ
+      </button>
+      <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />
     </div>
   );
 }
