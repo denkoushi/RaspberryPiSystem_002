@@ -1,0 +1,56 @@
+---
+# status-agent設定ファイルとsystemdユニットの配布（Pi5サーバー側）
+
+- name: Ensure status-agent configuration directory exists
+  ansible.builtin.file:
+    path: /etc
+    state: directory
+
+- name: Create status-agent configuration file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: status_agent_client_id is defined
+  register: status_agent_config_result
+
+- name: Copy status-agent systemd service file
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/clients/status-agent/status-agent.service"
+    dest: /etc/systemd/system/status-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+    remote_src: true
+  when: status_agent_client_id is defined
+  register: status_agent_service_result
+
+- name: Copy status-agent systemd timer file
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/clients/status-agent/status-agent.timer"
+    dest: /etc/systemd/system/status-agent.timer
+    owner: root
+    group: root
+    mode: '0644'
+    remote_src: true
+  when: status_agent_client_id is defined
+  register: status_agent_timer_result
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - status_agent_client_id is defined
+    - (status_agent_service_result.changed | default(false)) or (status_agent_timer_result.changed | default(false))
+
+- name: Enable and start status-agent timer
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    enabled: true
+    state: "{{ 'restarted' if (status_agent_config_result.changed | default(false)) or (status_agent_service_result.changed | default(false)) or (status_agent_timer_result.changed | default(false)) else 'started' }}"
+    daemon_reload: true
+  when: status_agent_client_id is defined
+  register: status_agent_timer_enable_result
+

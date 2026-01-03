@@ -193,3 +193,6 @@
   until:
     - api_health_result.status == 200
     - (api_health_result.json.status | default('')) == 'ok'
+
+- name: Apply status-agent configuration and systemd units
+  ansible.builtin.import_tasks: status-agent.yml
