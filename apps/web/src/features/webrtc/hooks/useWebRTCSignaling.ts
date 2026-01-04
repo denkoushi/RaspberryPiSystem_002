@@ -100,8 +100,13 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       return;
     }
 
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      return; // 既に接続済み
+    // 既に接続済みまたは接続試行中の場合は重複接続を防ぐ
+    const currentState = socketRef.current?.readyState;
+    if (currentState === WebSocket.OPEN || currentState === WebSocket.CONNECTING) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:103',message:'connect skipped: already connected or connecting',data:{readyState:currentState},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return;
     }
 
     setIsConnecting(true);
@@ -118,7 +123,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
       socket.onopen = () => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:105',message:'WebSocket onopen',data:{readyState:socket.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:119',message:'WebSocket onopen',data:{readyState:socket.readyState,url:wsUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         setIsConnected(true);
         setIsConnecting(false);
@@ -213,21 +218,26 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
       socket.onerror = (error) => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:197',message:'WebSocket onerror',data:{readyState:socket.readyState,errorType:error?.type || 'unknown',errorTarget:error?.target ? 'present' : 'missing'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:214',message:'WebSocket onerror',data:{readyState:socket.readyState,errorType:error?.type || 'unknown',errorTarget:error?.target ? 'present' : 'missing',url:wsUrl,protocol:protocol},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         console.error('WebRTC signaling WebSocket error:', error);
         setIsConnected(false);
         setIsConnecting(false);
-        onError?.(new Error('WebSocket connection error'));
+        // onErrorはrate-limitされているため、ここでは呼ばない（oncloseで呼ばれる）
       };
 
       socket.onclose = (event) => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:204',message:'WebSocket onclose',data:{code:event.code,reason:event.reason,wasClean:event.wasClean,reconnectAttempts:reconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:224',message:'WebSocket onclose',data:{code:event.code,reason:event.reason,wasClean:event.wasClean,reconnectAttempts:reconnectAttemptsRef.current,url:wsUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
         setIsConnected(false);
         setIsConnecting(false);
         console.log('WebRTC signaling disconnected');
+
+        // 異常終了（code 1006）の場合はエラーを通知
+        if (event.code === 1006 && !event.wasClean) {
+          onError?.(new Error(`WebSocket connection closed abnormally (code: ${event.code})`));
+        }
 
         // 再接続（最大10回、指数バックオフ）
         if (enabled && reconnectAttemptsRef.current < 10) {
@@ -283,7 +293,8 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     return () => {
       disconnect();
     };
-  }, [enabled, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]); // connect/disconnectは依存配列から除外（再作成による無限ループを防ぐ）
 
   return {
     isConnected,
