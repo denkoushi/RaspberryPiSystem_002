@@ -1,0 +1,345 @@
+/**
+ * WebRTCシグナリングサーバー
+ * WebSocket経由でSDP offer/answer、ICE candidateを中継
+ */
+
+import type { FastifyInstance } from 'fastify';
+import { prisma } from '../../lib/prisma.js';
+import { ApiError } from '../../lib/errors.js';
+import { callStore } from './call-store.js';
+import type { SignalingMessage } from './types.js';
+
+const normalizeClientKey = (rawKey: unknown): string | undefined => {
+  if (typeof rawKey === 'string') {
+    try {
+      const parsed = JSON.parse(rawKey);
+      if (typeof parsed === 'string') {
+        return parsed;
+      }
+    } catch {
+      // noop
+    }
+    return rawKey;
+  }
+  if (Array.isArray(rawKey) && rawKey.length > 0 && typeof rawKey[0] === 'string') {
+    return rawKey[0];
+  }
+  return undefined;
+};
+
+/**
+ * クライアントデバイスの存在確認とclientId取得
+ */
+async function validateClient(clientKey: string): Promise<{ id: string; clientId: string | null }> {
+  const client = await prisma.clientDevice.findUnique({
+    where: { apiKey: clientKey },
+    select: { id: true, statusClientId: true }
+  });
+
+  if (!client) {
+    throw new ApiError(401, 'Invalid client key', undefined, 'INVALID_CLIENT_KEY');
+  }
+
+  return {
+    id: client.id,
+    clientId: client.statusClientId || null
+  };
+}
+
+/**
+ * クライアントIDからクライアント情報を取得
+ */
+async function getClientByClientId(clientId: string): Promise<{ id: string; name: string; location: string | null } | null> {
+  const client = await prisma.clientDevice.findFirst({
+    where: { statusClientId: clientId },
+    select: { id: true, name: true, location: true }
+  });
+
+  return client;
+}
+
+export function registerWebRTCSignaling(app: FastifyInstance): void {
+  // クライアント接続管理（clientId -> WebSocket）
+  const clientConnections = new Map<string, WebSocket>();
+
+  app.get('/webrtc/signaling', { websocket: true }, async (connection, req) => {
+    // クライアントキーを取得（x-client-keyヘッダーまたはクエリパラメータ）
+    const rawClientKey = req.headers['x-client-key'] || (req.query as { clientKey?: string }).clientKey;
+    const clientKey = normalizeClientKey(rawClientKey);
+
+    if (!clientKey) {
+      await connection.socket.close(1008, 'Client key required');
+      return;
+    }
+
+    // クライアントの存在確認
+    let clientInfo: { id: string; clientId: string | null };
+    try {
+      clientInfo = await validateClient(clientKey);
+    } catch (error) {
+      await connection.socket.close(1008, 'Invalid client key');
+      return;
+    }
+
+    // clientIdが設定されていない場合はエラー
+    if (!clientInfo.clientId) {
+      await connection.socket.close(1008, 'Client ID not configured. Please set statusClientId.');
+      return;
+    }
+
+    const clientId = clientInfo.clientId;
+
+    // 既存の接続があれば閉じる（重複接続防止）
+    const existingConnection = clientConnections.get(clientId);
+    if (existingConnection && existingConnection.readyState === WebSocket.OPEN) {
+      existingConnection.close(1000, 'Replaced by new connection');
+    }
+
+    clientConnections.set(clientId, connection.socket);
+    app.log.info({ clientId }, 'WebRTC signaling client connected');
+
+    // メッセージ受信処理
+    connection.socket.on('message', async (message: Buffer) => {
+      try {
+        const data: SignalingMessage = JSON.parse(message.toString());
+
+        // メッセージタイプに応じて処理
+        switch (data.type) {
+          case 'invite': {
+            // 発信: 相手に着信通知を送信
+            if (!data.to) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Missing "to" field' }
+              }));
+              return;
+            }
+
+            // 相手の存在確認
+            const callee = await getClientByClientId(data.to);
+            if (!callee) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: `Client ${data.to} not found` }
+              }));
+              return;
+            }
+
+            // 既存のコールをチェック（相手が既に通話中の場合）
+            const existingCall = callStore.getCallByClientId(data.to);
+            if (existingCall && existingCall.state === 'in_call') {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Callee is already in a call' }
+              }));
+              return;
+            }
+
+            // コールIDを生成
+            const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            callStore.createCall(callId, clientId, data.to);
+
+            // 発信者を参加者に追加
+            callStore.addParticipant(callId, {
+              clientId,
+              socket: connection.socket,
+              joinedAt: Date.now()
+            });
+
+            // 相手に着信通知を送信
+            const calleeSocket = clientConnections.get(data.to);
+            if (calleeSocket && calleeSocket.readyState === WebSocket.OPEN) {
+              await calleeSocket.send(JSON.stringify({
+                type: 'incoming',
+                callId,
+                from: clientId,
+                to: data.to,
+                payload: {
+                  callerName: (await getClientByClientId(clientId))?.name || clientId,
+                  callerLocation: (await getClientByClientId(clientId))?.location || null
+                },
+                timestamp: Date.now()
+              }));
+            } else {
+              // 相手が接続していない場合はエラー
+              callStore.deleteCall(callId);
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Callee is not connected' }
+              }));
+            }
+            break;
+          }
+
+          case 'accept': {
+            // 受話: コール状態を更新し、発信者に通知
+            if (!data.callId) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Missing "callId" field' }
+              }));
+              return;
+            }
+
+            const call = callStore.getCall(data.callId);
+            if (!call) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Call not found' }
+              }));
+              return;
+            }
+
+            // 受話者はcall.toと一致する必要がある
+            if (call.to !== clientId) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Unauthorized' }
+              }));
+              return;
+            }
+
+            // 受話者を参加者に追加
+            callStore.addParticipant(data.callId, {
+              clientId,
+              socket: connection.socket,
+              joinedAt: Date.now()
+            });
+
+            // コール状態を更新
+            callStore.updateCallState(data.callId, 'in_call');
+
+            // 発信者に受話通知を送信
+            const callerSocket = clientConnections.get(call.from);
+            if (callerSocket && callerSocket.readyState === WebSocket.OPEN) {
+              await callerSocket.send(JSON.stringify({
+                type: 'accept',
+                callId: data.callId,
+                from: clientId,
+                to: call.from,
+                timestamp: Date.now()
+              }));
+            }
+            break;
+          }
+
+          case 'reject':
+          case 'cancel':
+          case 'hangup': {
+            // 拒否/キャンセル/切断: コールを終了し、相手に通知
+            if (!data.callId) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Missing "callId" field' }
+              }));
+              return;
+            }
+
+            const call = callStore.getCall(data.callId);
+            if (!call) {
+              // コールが既に削除されている場合は無視
+              return;
+            }
+
+            // 相手のclientIdを特定
+            const otherClientId = call.from === clientId ? call.to : call.from;
+            const otherSocket = clientConnections.get(otherClientId);
+
+            // 相手に通知
+            if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
+              await otherSocket.send(JSON.stringify({
+                type: data.type,
+                callId: data.callId,
+                from: clientId,
+                to: otherClientId,
+                timestamp: Date.now()
+              }));
+            }
+
+            // コールを削除
+            callStore.deleteCall(data.callId);
+            break;
+          }
+
+          case 'offer':
+          case 'answer':
+          case 'ice-candidate': {
+            // WebRTCシグナリングメッセージ: 相手に転送
+            if (!data.callId) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Missing "callId" field' }
+              }));
+              return;
+            }
+
+            const call = callStore.getCall(data.callId);
+            if (!call) {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Call not found' }
+              }));
+              return;
+            }
+
+            // 相手のclientIdを特定
+            const otherClientId = call.from === clientId ? call.to : call.from;
+            const otherSocket = clientConnections.get(otherClientId);
+
+            if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
+              await otherSocket.send(JSON.stringify({
+                ...data,
+                from: clientId,
+                to: otherClientId
+              }));
+            } else {
+              await connection.socket.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'Other participant not connected' }
+              }));
+            }
+            break;
+          }
+
+          default:
+            await connection.socket.send(JSON.stringify({
+              type: 'error',
+              payload: { message: `Unknown message type: ${data.type}` }
+            }));
+        }
+      } catch (error) {
+        app.log.error({ err: error }, 'Failed to process signaling message');
+        await connection.socket.send(JSON.stringify({
+          type: 'error',
+          payload: { message: error instanceof Error ? error.message : 'Failed to process message' }
+        }));
+      }
+    });
+
+    // 切断処理
+    connection.socket.on('close', async () => {
+      clientConnections.delete(clientId);
+      app.log.info({ clientId }, 'WebRTC signaling client disconnected');
+
+      // このクライアントが参加しているコールを終了
+      const call = callStore.getCallByClientId(clientId);
+      if (call) {
+        const otherClientId = call.from === clientId ? call.to : call.from;
+        const otherSocket = clientConnections.get(otherClientId);
+
+        if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
+          await otherSocket.send(JSON.stringify({
+            type: 'hangup',
+            callId: call.callId,
+            from: clientId,
+            to: otherClientId,
+            timestamp: Date.now()
+          }));
+        }
+
+        callStore.deleteCall(call.callId);
+      }
+    });
+  });
+}
+

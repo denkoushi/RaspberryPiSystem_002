@@ -12,6 +12,7 @@ import { registerRiggingRoutes } from './rigging/index.js';
 import { registerBackupRoutes } from './backup.js';
 import { registerGmailOAuthRoutes } from './gmail/oauth.js';
 import { registerGmailConfigRoutes } from './gmail/config.js';
+import { registerWebRTCRoutes } from './webrtc/index.js';
 
 /**
  * すべてのルートを登録
@@ -44,6 +45,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerGmailOAuthRoutes(subApp);
       // Gmail設定管理ルート
       registerGmailConfigRoutes(subApp);
+      // WebRTCシグナリングルート
+      await registerWebRTCRoutes(subApp);
     },
     { prefix: '/api' },
   );
