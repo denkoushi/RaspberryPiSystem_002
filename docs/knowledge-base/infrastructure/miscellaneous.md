@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - その他
 
 **カテゴリ**: インフラ関連 > その他  
-**件数**: 16件  
+**件数**: 17件  
 **索引**: [index.md](../index.md)
 
 その他のインフラ関連トラブルシューティング情報
@@ -698,6 +698,65 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
 **関連ファイル**: 
 - `apps/api/src/routes/measuring-instruments/index.ts`（`allowView`, `allowWrite`関数）
 - `apps/api/src/lib/auth.ts`（`authorizeRoles`関数）
+
+---
+
+### [KB-130] Pi5のストレージ使用量が異常に高い問題（Docker Build Cacheとsignage-rendered履歴画像の削除）
+
+**EXEC_PLAN.md参照**: ストレージ管理（2026-01-04）
+
+**事象**: 
+- Pi5のストレージ使用量が管理コンソールで27%（約270GB）と表示される
+- 開発段階で1TBストレージの27%を使用するのは異常に高い
+- `/var/lib/containerd`が224GBと最も大きい
+- `/opt/RaspberryPiSystem_002/storage/signage-rendered`が15GBと大きい
+
+**要因**: 
+1. **Docker Build Cacheの蓄積**: `docker builder du`で確認すると237.2GBのreclaimable build cacheが存在
+2. **signage-renderedの履歴画像の蓄積**: `signage_*.jpg`ファイルが13,519件（約6.2GB）蓄積されていたが、実際に使用されているのは`current.jpg`のみ
+
+**調査手順**:
+1. `df -hT`でディスク使用量を確認
+2. `sudo du -sh /`でトップレベルのディレクトリサイズを確認
+3. `/var/lib/containerd`を詳細調査（`docker system df`でDockerの使用量を確認）
+4. `/opt/RaspberryPiSystem_002/storage/signage-rendered`を調査（`find -mtime +7`で7日超のファイルを確認）
+5. `apps/api/src/lib/signage-render-storage.ts`と`apps/api/src/routes/signage/render.ts`を確認し、`current.jpg`のみが使用されていることを確認
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-04）:
+  1. **signage-renderedの履歴画像削除**:
+     - 7日超の`signage_*.jpg`ファイルを`_quarantine`ディレクトリに隔離
+     - `current.jpg`が正常に存在し、`/api/signage/current-image`がHTTP 200を返すことを確認
+     - 隔離ファイルを削除（6.2GB削減、15GB→8.1GB）
+  2. **Docker Build Cache削除**:
+     - `docker builder prune -a --force`でbuild cacheを削除（237.2GB→0B）
+     - 稼働コンテナが正常に動作することを確認（docker-web-1, docker-api-1, docker-db-1）
+
+**結果**:
+- ディスク使用量: 249GB（27%）→23GB（3%）（約226GB削減）
+- containerdディレクトリ: 224GB→3.7GB（約220GB削減）
+- signage-renderedディレクトリ: 15GB→8.1GB（約6.9GB削減）
+- Docker Build Cache: 237.2GB→0B（完全削除）
+
+**学んだこと**: 
+- Docker Build Cacheは開発中に大量に蓄積されるため、定期的に`docker builder prune`で削除する必要がある
+- signage-renderedの履歴画像は`current.jpg`のみが使用されているため、古いファイルは定期的に削除すべき
+- 削除前には必ず隔離→動作確認→削除の手順を踏むことで、システム破壊を防止できる
+- `docker builder prune`は稼働中のコンテナには影響しない（build cacheのみを削除）
+
+**解決状況**: ✅ **解決済み**（2026-01-04）
+
+**関連ファイル**: 
+- `apps/api/src/lib/signage-render-storage.ts`（signage画像の保存・読み込み）
+- `apps/api/src/routes/signage/render.ts`（`/current-image`エンドポイント）
+- `infrastructure/docker/docker-compose.server.yml`（signage-renderedストレージのマウント設定）
+
+**推奨対策**:
+- **ストレージ保存ポリシー（10年運用対応）**:
+  1. **signage-renderedの履歴画像は保持しない**: `current.jpg`のみが運用上必要。`signage_*.jpg`は生成されないようにコードを修正済み（環境変数`SIGNAGE_RENDER_KEEP_HISTORY=1`で有効化可能だが、デフォルトは無効）。もし生成された場合は自動メンテナンスで削除される。
+  2. **Docker Build Cacheの自動削除**: 月1回、`docker builder prune -a --force`でbuild cacheを削除（systemd timerで自動化済み）。
+  3. **ストレージ使用量の監視**: 管理コンソールでストレージ使用量を監視し、70%で警告、80%でアラート、90%でクリティカルアラートを生成（`monitor.sh`で自動検知、ファイルベースアラート経由で管理コンソールに表示）。
+  4. **自動メンテナンス**: `storage-maintenance.sh`がsystemd timerで毎日実行され、signage履歴画像の削除と月1回のbuild cache削除を自動実行。失敗時は`storage-maintenance-failed`アラートを生成。
 
 ---
 

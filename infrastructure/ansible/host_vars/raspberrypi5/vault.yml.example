@@ -4,4 +4,5 @@
 
 vault_api_jwt_access_secret: "change-me-access"
 vault_api_jwt_refresh_secret: "change-me-refresh"
+vault_status_agent_client_key: "client-key-raspberrypi5-server"
 

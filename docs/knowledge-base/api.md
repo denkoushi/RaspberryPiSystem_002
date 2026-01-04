@@ -1077,3 +1077,58 @@ app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) =>
 
 ---
 
+### [KB-131] APIコンテナがSLACK_KIOSK_SUPPORT_WEBHOOK_URL環境変数の空文字で再起動ループする問題
+
+**日付**: 2026-01-04
+
+**事象**:
+- APIコンテナ（`docker-api-1`）が再起動を繰り返し、正常に起動しない
+- `docker logs docker-api-1`で確認すると、Zodバリデーションエラーが発生している
+- エラーメッセージ: `ZodError: [{"validation":"url","code":"invalid_string","message":"Invalid url","path":["SLACK_KIOSK_SUPPORT_WEBHOOK_URL"]}]`
+
+**要因**:
+- **根本原因**: `docker-compose.server.yml`で`SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}`と設定されており、環境変数が未設定の場合でも**空文字が環境変数として注入**される
+- `apps/api/src/config/env.ts`で`SLACK_KIOSK_SUPPORT_WEBHOOK_URL: z.string().url().optional()`と定義されているが、Zodの`optional()`は`undefined`を許可するが**空文字は許可しない**ため、バリデーションエラーが発生していた
+- 環境変数が空文字の場合、`z.string().url()`が空文字をURLとして検証しようとして失敗し、プロセスが起動時にクラッシュして再起動ループに陥っていた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-04）: `apps/api/src/config/env.ts`で`z.preprocess`を使用して、空文字を`undefined`に変換してからURL検証するように修正
+  ```typescript
+  // NOTE:
+  // docker-compose.server.yml では `${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}` により
+  // 未設定時でも空文字が注入されるため、空文字は undefined として扱う。
+  SLACK_KIOSK_SUPPORT_WEBHOOK_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  )
+  ```
+- これにより、環境変数が未設定または空文字の場合、`undefined`として扱われ、`optional()`により検証がスキップされる
+
+**実機検証結果**:
+- ✅ **すべて正常に動作**（2026-01-04）:
+  1. **APIコンテナ**: `docker-api-1`が正常に起動し、再起動ループが停止
+  2. **ヘルスチェック**: `https://100.106.158.2/api/system/health`がHTTP 200を返す
+  3. **サイネージ画像**: `https://100.106.158.2/api/signage/current-image`が正常に取得できる（約419KB）
+  4. **ストレージメンテナンス**: `storage-maintenance.timer`が有効化され、次回実行予定が設定されている
+
+**学んだこと**:
+- Docker Composeの`${VAR:-}`構文は、環境変数が未設定の場合でも**空文字を注入**するため、Zodの`optional()`だけでは対応できない
+- `z.preprocess`を使用して、空文字を`undefined`に変換してから検証することで、環境変数の未設定と空文字を区別できる
+- 環境変数のバリデーションでは、空文字と`undefined`の違いを考慮する必要がある
+- APIコンテナの再起動ループは、起動時のバリデーションエラーが原因であることが多い
+- `docker-compose.server.yml`で`${VAR:-}`構文を使用する場合、空文字が注入されることを考慮してバリデーションロジックを設計する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-04）
+
+**関連ファイル**:
+- `apps/api/src/config/env.ts`（環境変数のバリデーション）
+- `infrastructure/docker/docker-compose.server.yml`（環境変数の設定）
+
+**推奨対策**:
+- 環境変数が`optional`の場合、`z.preprocess`で空文字を`undefined`に変換してから検証する
+- Docker Composeの`${VAR:-}`構文を使用する場合、空文字が注入されることを考慮する
+- 起動時のバリデーションエラーは、コンテナの再起動ループを引き起こすため、早期に発見・修正する
+- 環境変数のバリデーションでは、`z.string().url().optional()`ではなく、`z.preprocess`で空文字を`undefined`に変換してから検証するパターンを推奨
+
+---
+

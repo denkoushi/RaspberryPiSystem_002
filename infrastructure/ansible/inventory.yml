@@ -17,6 +17,12 @@ all:
           web_ws_base_url: "/ws"
           web_agent_ws_url: "{{ websocket_agent_url }}"
           # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
+          # status-agent設定
+          status_agent_client_id: raspberrypi5-server
+          status_agent_location: "ラズパイ5 - サーバー"
+          status_agent_tls_skip_verify: "1"
+          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi5-server') }}"
+          status_agent_api_base_url: "{{ api_base_url }}"
     clients:
       hosts:
         raspberrypi4:

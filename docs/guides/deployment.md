@@ -188,6 +188,8 @@ curl http://localhost:8080/api/system/health
 - `docker compose restart`では新しいイメージが使われません。コードを変更したら、必ず`--force-recreate`オプションを使用してコンテナを再作成してください。
 - `VITE_API_BASE_URL`は相対パス（`/api`）に設定されているため、再起動後もIPアドレスが変わっても問題ありません。
 - `VITE_AGENT_WS_URL`は環境変数ファイル（`.env`）で管理できるため、IPアドレスが変わった場合は`.env`ファイルを更新してからWebコンテナを再ビルドしてください。
+- **Pi5のstatus-agent設定**: Pi5サーバー側のstatus-agent設定はAnsibleで管理されています（[KB-129](../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照）。`inventory.yml`の`status_agent_*`変数と`host_vars/raspberrypi5/vault.yml`の`vault_status_agent_client_key`が設定されていれば、Ansible実行時に自動的に設定ファイルが更新されます。
+- **環境変数の空文字問題**: `docker-compose.server.yml`で`${VAR:-}`構文を使用する場合、環境変数が未設定でも空文字が注入されるため、Zodバリデーションで`z.preprocess`を使用して空文字を`undefined`に変換する必要があります（[KB-131](../knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題)参照）。APIコンテナが再起動ループに陥る場合は、環境変数のバリデーションエラーを確認してください。
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 

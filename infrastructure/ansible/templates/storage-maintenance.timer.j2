@@ -1,0 +1,12 @@
+[Unit]
+Description=Run storage maintenance daily
+
+[Timer]
+OnCalendar=daily
+# 毎日午前3時に実行（システム負荷が低い時間帯）
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
