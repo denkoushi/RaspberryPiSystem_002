@@ -47,6 +47,8 @@ services:
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
+      # WebRTC機能の有効/無効（trueで有効化）
+      WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
