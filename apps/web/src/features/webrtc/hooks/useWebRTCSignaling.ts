@@ -76,14 +76,26 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   const isPlayingRingtoneRef = useRef(false);
 
   const connect = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:78',message:'connect called',data:{enabled,hasWindow:typeof window !== 'undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (!enabled || typeof window === 'undefined') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:81',message:'connect early return',data:{enabled,hasWindow:typeof window !== 'undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return;
     }
 
     const clientKey = resolveClientKey();
     const clientId = resolveClientId();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:87',message:'clientKey/clientId resolved',data:{hasClientKey:!!clientKey,hasClientId:!!clientId,clientKeyLength:clientKey?.length || 0,clientIdLength:clientId?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     if (!clientKey || !clientId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:90',message:'clientKey or clientId missing',data:{hasClientKey:!!clientKey,hasClientId:!!clientId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       console.warn('WebRTC signaling: clientKey or clientId not found');
       return;
     }
@@ -99,9 +111,15 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       // HTTPSの場合はwss://、HTTPの場合はws://に自動変換
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/webrtc/signaling?clientKey=${encodeURIComponent(clientKey)}`;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:102',message:'WebSocket URL constructed',data:{protocol,host:window.location.host,wsUrl,protocolFromWindow:window.location.protocol},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:105',message:'WebSocket onopen',data:{readyState:socket.readyState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
@@ -194,13 +212,19 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       };
 
       socket.onerror = (error) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:197',message:'WebSocket onerror',data:{readyState:socket.readyState,errorType:error?.type,errorMessage:error?.message || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         console.error('WebRTC signaling WebSocket error:', error);
         setIsConnected(false);
         setIsConnecting(false);
         onError?.(new Error('WebSocket connection error'));
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:204',message:'WebSocket onclose',data:{code:event.code,reason:event.reason,wasClean:event.wasClean,reconnectAttempts:reconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         setIsConnected(false);
         setIsConnecting(false);
         console.log('WebRTC signaling disconnected');
@@ -217,6 +241,9 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
       socketRef.current = socket;
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:221',message:'WebSocket creation error',data:{errorMessage:error instanceof Error ? error.message : String(error),errorStack:error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       setIsConnecting(false);
       onError?.(error instanceof Error ? error : new Error('Failed to create WebSocket'));
     }

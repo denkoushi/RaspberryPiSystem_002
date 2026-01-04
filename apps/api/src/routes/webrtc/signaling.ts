@@ -67,15 +67,19 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
   // クライアント接続管理（clientId -> WebSocket）
   const clientConnections = new Map<string, WebSocketLike>();
 
+  app.log.info('Registering WebRTC signaling WebSocket route: /webrtc/signaling');
   app.get('/webrtc/signaling', { websocket: true }, async (connection, req) => {
+    app.log.info({ url: req.url, headers: req.headers }, 'WebRTC signaling WebSocket connection attempt');
     const socket = connection.socket as unknown as WebSocketLike;
 
     // クライアントキーを取得（x-client-keyヘッダーまたはクエリパラメータ）
     const headerClientKey = (req.headers as Record<string, unknown>)['x-client-key'];
     const rawClientKey = headerClientKey || (req.query as { clientKey?: string }).clientKey;
     const clientKey = normalizeClientKey(rawClientKey);
+    app.log.info({ hasHeaderKey: !!headerClientKey, hasQueryKey: !!(req.query as { clientKey?: string }).clientKey, hasClientKey: !!clientKey }, 'WebRTC signaling client key resolution');
 
     if (!clientKey) {
+      app.log.warn('WebRTC signaling: Client key required but not found');
       socket.close(1008, 'Client key required');
       return;
     }

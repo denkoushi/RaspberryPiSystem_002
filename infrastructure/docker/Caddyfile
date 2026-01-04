@@ -11,7 +11,11 @@
     path /api/*
     path /ws/*
   }
-  reverse_proxy @api api:8080
+  reverse_proxy @api api:8080 {
+    # WebSocketアップグレードを有効化
+    header_up Connection "Upgrade"
+    header_up Upgrade "websocket"
+  }
 
   # 管理画面へのIP制限（Tailscale / ローカルLAN をデフォルト許可）
   # 環境変数 ADMIN_ALLOW_NETS で上書き可能（空白区切りのCIDRリスト）
