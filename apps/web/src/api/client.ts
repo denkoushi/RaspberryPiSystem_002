@@ -575,6 +575,21 @@ export async function getClientStatuses() {
   return data.clients;
 }
 
+export interface KioskCallTarget {
+  clientId: string;
+  hostname: string;
+  ipAddress: string;
+  lastSeen: string;
+  stale: boolean;
+  name: string;
+  location: string | null;
+}
+
+export async function getKioskCallTargets() {
+  const { data } = await api.get<{ selfClientId: string | null; targets: KioskCallTarget[] }>('/kiosk/call/targets');
+  return data;
+}
+
 export async function getClientLogs(filters?: {
   clientId?: string;
   level?: ClientLogLevel;

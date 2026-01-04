@@ -159,6 +159,68 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /**
+   * キオスク通話向けの発信先一覧
+   * - x-client-key 認証のみ（管理ユーザーのJWTは不要）
+   * - ClientStatus(clientId) と ClientDevice(statusClientId) を突き合わせて location を付与
+   */
+  app.get('/kiosk/call/targets', { config: { rateLimit: false } }, async (request) => {
+    const clientKey = normalizeClientKey(request.headers['x-client-key']);
+    if (!clientKey) {
+      throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
+    }
+
+    const selfDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (!selfDevice) {
+      throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
+    }
+
+    const statuses = await prisma.clientStatus.findMany({
+      orderBy: { hostname: 'asc' }
+    });
+    const statusClientIds = statuses.map((s) => s.clientId);
+
+    const deviceByStatusId = new Map<string, { name: string; location: string | null }>();
+    if (statusClientIds.length > 0) {
+      const devices = await prisma.clientDevice.findMany({
+        where: { statusClientId: { in: statusClientIds } },
+        select: { statusClientId: true, name: true, location: true }
+      });
+      for (const d of devices) {
+        if (d.statusClientId) {
+          deviceByStatusId.set(d.statusClientId, { name: d.name, location: d.location ?? null });
+        }
+      }
+    }
+
+    // 既存の /clients/status と同じ閾値（12時間）
+    const staleThresholdMs = 1000 * 60 * 60 * 12;
+    const now = Date.now();
+    const selfClientId = selfDevice.statusClientId ?? null;
+
+    return {
+      selfClientId,
+      targets: statuses
+        .map((status) => {
+          const lastSeen = status.lastSeen ?? status.updatedAt;
+          const stale = now - lastSeen.getTime() > staleThresholdMs;
+          const device = deviceByStatusId.get(status.clientId);
+          return {
+            clientId: status.clientId,
+            hostname: status.hostname,
+            ipAddress: status.ipAddress,
+            lastSeen,
+            stale,
+            name: device?.name ?? status.hostname,
+            location: device?.location ?? null
+          };
+        })
+        .filter((t) => t.clientId !== selfClientId)
+    };
+  });
+
   app.post('/kiosk/support', { config: { rateLimit: false } }, async (request) => {
     const rawClientKey = request.headers['x-client-key'];
     const clientKey = normalizeClientKey(rawClientKey);

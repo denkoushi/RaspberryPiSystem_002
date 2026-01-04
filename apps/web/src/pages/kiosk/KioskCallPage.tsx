@@ -5,18 +5,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useClientStatuses, useClients } from '../../api/hooks';
+import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useWebRTC } from '../../features/webrtc/hooks/useWebRTC';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
-
-import type { ClientDevice } from '../../api/client';
 
 export function KioskCallPage() {
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const statusQuery = useClientStatuses();
-  const clientsQuery = useClients();
+  const callTargetsQuery = useKioskCallTargets();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
@@ -71,33 +66,17 @@ export function KioskCallPage() {
     }
   }, [callState, incomingCallInfo]);
 
-  // クライアント一覧を取得（location優先でソート）
+  // 発信先一覧（location優先でソート）
   const availableClients = useMemo(() => {
-    const statuses = statusQuery.data || [];
-    const clients = clientsQuery.data || [];
-    
-    // ClientStatus.clientId -> ClientDevice のマッピングを作成
-    // ClientDevice.statusClientId === ClientStatus.clientId でマッチング
-    const clientMap = new Map<string, ClientDevice>();
-    clients.forEach((client) => {
-      // Prismaから返されるClientDeviceにはstatusClientIdが含まれる
-      const statusClientId = (client as ClientDevice & { statusClientId?: string | null }).statusClientId;
-      if (statusClientId) {
-        clientMap.set(statusClientId, client);
-      }
-    });
-
-    return statuses
-      .filter((status) => status.clientId !== clientId && !status.stale) // 自分自身とオフライン端末を除外
-      .map((status) => {
-        const clientDevice = clientMap.get(status.clientId);
-        return {
-          clientId: status.clientId,
-          name: status.hostname,
-          location: clientDevice?.location || null,
-          ipAddress: status.ipAddress
-        };
-      })
+    const targets = callTargetsQuery.data?.targets ?? [];
+    return targets
+      .filter((t) => !t.stale)
+      .map((t) => ({
+        clientId: t.clientId,
+        name: t.name || t.hostname,
+        location: t.location,
+        ipAddress: t.ipAddress
+      }))
       .sort((a, b) => {
         // location優先でソート（locationがnullの場合は後ろに）
         if (a.location && !b.location) return -1;
@@ -107,7 +86,7 @@ export function KioskCallPage() {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [statusQuery.data, clientsQuery.data, clientId]);
+  }, [callTargetsQuery.data]);
 
   const handleCall = async (to: string) => {
     try {
