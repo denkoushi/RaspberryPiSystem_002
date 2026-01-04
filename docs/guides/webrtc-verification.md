@@ -117,22 +117,66 @@ localStorage.setItem('kiosk-client-id', 'mac-kiosk-1')
 
 ### 3. Pi4でのキオスク通話画面の確認
 
-#### 3.1 Pi4のキオスクブラウザを起動
+**重要**: Pi4でも通話画面を開いておく必要があります。WebRTC通話は双方向の接続が必要で、発信先もWebSocketシグナリングに接続している必要があります。
+
+#### 3.1 Pi4のキオスクブラウザで通話画面を開く
+
+Pi4のキオスクブラウザは通常 `/kiosk` にアクセスしていますが、通話画面（`/kiosk/call`）にアクセスする必要があります。
+
+**方法1: キオスク画面から通話タブをクリック**
+
+1. Pi4のキオスクブラウザで現在の画面を確認
+2. 画面上部のナビゲーションで「通話」タブをクリック
+3. 通話画面（`/kiosk/call`）が表示されることを確認
+
+**方法2: 直接URLを入力（キオスクブラウザがフルスクリーンでない場合）**
+
+1. Pi4のキオスクブラウザでアドレスバーに `https://100.106.158.2/kiosk/call` を入力
+2. Enterキーを押してアクセス
+
+**方法3: キオスクブラウザを一時的に終了して手動起動**
 
 ```bash
-# Pi4で実行（SSH接続できない場合は直接Pi4で実行）
-# キオスクブラウザが自動起動している場合は、そのまま使用
+# Pi4で実行（VNC接続または直接Pi4で実行）
+# キオスクブラウザを一時停止
+sudo systemctl stop kiosk-browser.service
+
+# Chromiumを手動で起動（通話画面を開く）
+chromium-browser --app="https://100.106.158.2/kiosk/call" \
+  --start-maximized \
+  --noerrdialogs \
+  --disable-session-crashed-bubble \
+  --autoplay-policy=no-user-gesture-required \
+  --disable-translate \
+  --overscroll-history-navigation=0 \
+  --use-fake-ui-for-media-stream \
+  --allow-insecure-localhost \
+  --ignore-certificate-errors \
+  --unsafely-treat-insecure-origin-as-secure=https://100.106.158.2
 ```
 
-#### 3.2 通話画面へのアクセス
+**注意**: 方法3を使用した場合、検証後に元のキオスクブラウザを再起動してください：
+```bash
+sudo systemctl start kiosk-browser.service
+```
 
-1. Pi4のキオスクブラウザで `https://100.106.158.2/kiosk/call` にアクセス
-2. または、キオスク画面の「通話」タブをクリック
+#### 3.2 WebSocket接続の確認
 
-#### 3.3 WebSocket接続の確認
-
-1. Pi4のブラウザで開発者ツールを開く（可能な場合）
+1. Pi4のブラウザで開発者ツールを開く（可能な場合、F12キー）
 2. Consoleタブで `WebRTC signaling connected` が表示されることを確認
+3. 画面上部に「接続済み」と表示されることを確認
+
+#### 3.3 クライアントキーとIDの確認
+
+Pi4のキオスクブラウザでは、通常以下のクライアントキーとIDが設定されています：
+- `kiosk-client-key`: `client-key-raspberrypi4-kiosk1`
+- `kiosk-client-id`: `raspberrypi4-kiosk1`（または設定された値）
+
+開発者ツールのConsoleで確認：
+```javascript
+localStorage.getItem('kiosk-client-key')
+localStorage.getItem('kiosk-client-id')
+```
 
 ### 4. 通話機能の実機検証
 
