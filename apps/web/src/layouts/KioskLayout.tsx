@@ -39,9 +39,10 @@ export function KioskLayout() {
     <div className="min-h-screen bg-slate-800 text-white">
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
-      <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-2">
-          <div className="flex items-center gap-4">
+      <header className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3">
+          {/* 上段: タイトルとステーション設定 */}
+          <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
             </div>
@@ -68,10 +69,11 @@ export function KioskLayout() {
               </label>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          {/* 下段: CPU情報とナビゲーション */}
+          <div className="flex items-center justify-between gap-4">
             {/* CPU温度・負荷モニター（自端末のClientStatusから取得） */}
             {kioskConfig?.clientStatus && (
-              <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-3 text-xs shrink-0">
                 {kioskConfig.clientStatus.temperature !== null && (
                   <div className="flex items-center gap-1">
                     <span className="text-white/70">CPU温度:</span>
@@ -104,53 +106,58 @@ export function KioskLayout() {
                 </div>
               </div>
             )}
-            <div className="overflow-x-auto whitespace-nowrap">
-              <nav className="flex items-center gap-3 pr-2">
-                <NavLink
-                  to="/kiosk"
-                  className={() => {
-                    // 持出タブ: /kiosk, /kiosk/tag, /kiosk/photo でアクティブ
-                    const isBorrowActive =
-                      location.pathname === '/kiosk' ||
-                      location.pathname === '/kiosk/tag' ||
-                      location.pathname === '/kiosk/photo';
-                    return isBorrowActive ? `${navLink} bg-emerald-500` : navLink;
-                  }}
-                >
-                  持出
-                </NavLink>
-                <NavLink
-                  to="/kiosk/instruments/borrow"
-                  className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
-                >
-                  計測機器 持出
-                </NavLink>
-                <NavLink
-                  to="/kiosk/rigging/borrow"
-                  className={({ isActive }) => (isActive ? `${navLink} bg-amber-400 text-slate-900` : navLink)}
-                >
-                  吊具 持出
-                </NavLink>
-                <Link
-                  to="/login"
-                  state={{ from: { pathname: '/admin' }, forceLogin: true }}
-                  className={`${navLink} bg-blue-600 hover:bg-blue-700`}
-                >
-                  管理コンソール
-                </Link>
-                <button
-                  onClick={() => setShowSupportModal(true)}
-                  className={`${navLink} bg-blue-600 hover:bg-blue-700`}
-                  aria-label="お問い合わせ"
-                >
-                  お問い合わせ
-                </button>
-              </nav>
-            </div>
+            {/* ナビゲーション（折り返し可能、横スクロールなし） */}
+            <nav className="flex items-center gap-2 flex-wrap justify-end min-w-0 flex-1">
+              <NavLink
+                to="/kiosk"
+                className={() => {
+                  // 持出タブ: /kiosk, /kiosk/tag, /kiosk/photo でアクティブ
+                  const isBorrowActive =
+                    location.pathname === '/kiosk' ||
+                    location.pathname === '/kiosk/tag' ||
+                    location.pathname === '/kiosk/photo';
+                  return isBorrowActive ? `${navLink} bg-emerald-500` : navLink;
+                }}
+              >
+                持出
+              </NavLink>
+              <NavLink
+                to="/kiosk/instruments/borrow"
+                className={({ isActive }) => (isActive ? `${navLink} bg-emerald-500` : navLink)}
+              >
+                計測機器 持出
+              </NavLink>
+              <NavLink
+                to="/kiosk/rigging/borrow"
+                className={({ isActive }) => (isActive ? `${navLink} bg-amber-400 text-slate-900` : navLink)}
+              >
+                吊具 持出
+              </NavLink>
+              <NavLink
+                to="/kiosk/call"
+                className={({ isActive }) => (isActive ? `${navLink} bg-purple-600` : navLink)}
+              >
+                📞 通話
+              </NavLink>
+              <Link
+                to="/login"
+                state={{ from: { pathname: '/admin' }, forceLogin: true }}
+                className={`${navLink} bg-blue-600 hover:bg-blue-700`}
+              >
+                管理コンソール
+              </Link>
+              <button
+                onClick={() => setShowSupportModal(true)}
+                className={`${navLink} bg-blue-600 hover:bg-blue-700`}
+                aria-label="お問い合わせ"
+              >
+                お問い合わせ
+              </button>
+            </nav>
           </div>
         </div>
       </header>
-      <main className="flex h-[calc(100vh-5rem)] flex-col gap-4 px-4 py-4">
+      <main className="flex h-[calc(100vh-7rem)] flex-col gap-4 px-4 py-4">
         <Outlet />
       </main>
       <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />
