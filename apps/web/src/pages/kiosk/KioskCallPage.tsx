@@ -20,6 +20,7 @@ export function KioskCallPage() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
+  const lastAlertAtRef = useRef<number>(0);
 
   const {
     callState,
@@ -52,7 +53,12 @@ export function KioskCallPage() {
     },
     onError: (error) => {
       console.error('WebRTC error:', error);
-      alert(`エラーが発生しました: ${error.message}`);
+      // alert連打で操作不能にならないように、短時間の重複表示を抑制する
+      const now = Date.now();
+      if (now - lastAlertAtRef.current > 3000) {
+        lastAlertAtRef.current = now;
+        alert(`エラーが発生しました: ${error.message}`);
+      }
     }
   });
 

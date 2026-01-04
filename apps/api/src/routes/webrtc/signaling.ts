@@ -73,7 +73,28 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
   app.log.info('Registering WebRTC signaling WebSocket route: /signaling');
   app.get('/signaling', { websocket: true }, async (connection, req) => {
     app.log.info({ url: req.url, headers: req.headers }, 'WebRTC signaling WebSocket connection attempt');
-    const socket = connection.socket as unknown as WebSocketLike;
+    // @fastify/websocket の connection 形状が環境差分で異なる可能性があるため、
+    // `connection.socket` が無い場合は `connection` 自体をソケットとして扱う（実測でconnection.socketがundefinedのケースあり）。
+    const maybeSocket = (connection as unknown as { socket?: unknown }).socket ?? connection;
+    const socket = maybeSocket as unknown as WebSocketLike;
+    app.log.info(
+      {
+        hasConnectionSocket: Boolean((connection as unknown as { socket?: unknown }).socket),
+        socketHasOn: typeof (socket as unknown as { on?: unknown }).on === 'function',
+        socketHasSend: typeof (socket as unknown as { send?: unknown }).send === 'function',
+        socketHasClose: typeof (socket as unknown as { close?: unknown }).close === 'function'
+      },
+      'WebRTC signaling socket shape'
+    );
+
+    if (
+      typeof (socket as unknown as { on?: unknown }).on !== 'function' ||
+      typeof (socket as unknown as { send?: unknown }).send !== 'function' ||
+      typeof (socket as unknown as { close?: unknown }).close !== 'function'
+    ) {
+      app.log.error('WebRTC signaling: invalid websocket object (missing on/send/close)');
+      return;
+    }
 
     // クライアントキーを取得（x-client-keyヘッダーまたはクエリパラメータ）
     const headerClientKey = (req.headers as Record<string, unknown>)['x-client-key'];
