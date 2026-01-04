@@ -92,7 +92,7 @@ localStorage.getItem('kiosk-client-id')
 
 2. 設定されていない場合、以下を実行：
 ```javascript
-localStorage.setItem('kiosk-client-key', 'client-key-raspberrypi4-kiosk1')
+localStorage.setItem('kiosk-client-key', 'client-key-mac-kiosk1')
 localStorage.setItem('kiosk-client-id', 'mac-kiosk-1')
 ```
 
