@@ -615,7 +615,37 @@ find /opt/backups/ -name "*.sql.gz" -mtime +90 -delete
 find /opt/backups/ -name "*.env" -mtime +90 -delete
 ```
 
-#### 3. ログファイルのローテーション
+#### 3. ストレージメンテナンス（自動実行中）
+
+**注意**: ストレージメンテナンスは`storage-maintenance.service`（systemd timer）で毎日自動実行されています。手動実行は不要ですが、実行結果を確認する場合は以下を実行してください。
+
+```bash
+# ラズパイ5で実行
+# ストレージメンテナンスサービスの状態確認
+systemctl status storage-maintenance.service
+systemctl status storage-maintenance.timer
+
+# 最新の実行ログを確認
+journalctl -u storage-maintenance.service -n 50
+
+# 手動実行（必要に応じて）
+/opt/RaspberryPiSystem_002/scripts/server/storage-maintenance.sh
+```
+
+**確認項目**:
+- ディスク使用量の確認: `df -h /`
+- Docker Build Cacheの確認: `docker builder du`
+- signage-renderedディレクトリの確認: `ls -lh /opt/RaspberryPiSystem_002/storage/signage-rendered/`
+- アラートの確認: 管理コンソールのダッシュボードで`storage-maintenance-failed`アラートがないことを確認
+
+**ストレージメンテナンスの内容**:
+1. **signage-renderedの履歴画像削除**: `signage_*.jpg`ファイルを削除（`current.jpg`は保持）
+2. **Docker Build Cache削除**: 月初（1日）のみ、`docker builder prune -a --force`を実行
+3. **失敗時のアラート生成**: メンテナンスが失敗した場合、`storage-maintenance-failed`アラートを生成
+
+詳細は [KB-130](../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
+
+#### 4. ログファイルのローテーション
 
 ```bash
 # ラズパイ5で実行

@@ -79,11 +79,42 @@ check_docker_containers() {
 
 check_disk_usage() {
   local usage=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+  local alert_generated=false
+  
+  # 段階的な閾値で監視（10年運用対応）
   if [ "${usage}" -gt 90 ]; then
     log "ERROR: Disk usage is above 90%: ${usage}%"
+    # アラートを生成（重複生成を避けるため、既存のアラートをチェック）
+    if [ -f "${PROJECT_DIR}/scripts/generate-alert.sh" ]; then
+      # 過去1時間以内に同じアラートが生成されていないか確認
+      local recent_alerts=$(find "${PROJECT_DIR}/alerts" -name "alert-*.json" -mmin -60 2>/dev/null | \
+        xargs grep -l "storage-usage-high" 2>/dev/null | wc -l || echo "0")
+      if [ "${recent_alerts}" -eq 0 ]; then
+        "${PROJECT_DIR}/scripts/generate-alert.sh" \
+          "storage-usage-high" \
+          "ディスク使用量が90%を超えています（クリティカル）" \
+          "現在の使用量: ${usage}%。ストレージメンテナンスを確認してください。"
+        alert_generated=true
+      fi
+    fi
     return 1
   elif [ "${usage}" -gt 80 ]; then
-    log "WARNING: Disk usage is above 80%: ${usage}%"
+    log "ALERT: Disk usage is above 80%: ${usage}%"
+    # アラートを生成（重複生成を避けるため、既存のアラートをチェック）
+    if [ -f "${PROJECT_DIR}/scripts/generate-alert.sh" ]; then
+      local recent_alerts=$(find "${PROJECT_DIR}/alerts" -name "alert-*.json" -mmin -60 2>/dev/null | \
+        xargs grep -l "storage-usage-high" 2>/dev/null | wc -l || echo "0")
+      if [ "${recent_alerts}" -eq 0 ]; then
+        "${PROJECT_DIR}/scripts/generate-alert.sh" \
+          "storage-usage-high" \
+          "ディスク使用量が80%を超えています（アラート）" \
+          "現在の使用量: ${usage}%。ストレージメンテナンスを確認してください。"
+        alert_generated=true
+      fi
+    fi
+    return 0
+  elif [ "${usage}" -gt 70 ]; then
+    log "WARNING: Disk usage is above 70%: ${usage}%"
     return 0
   fi
 

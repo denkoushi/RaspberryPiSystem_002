@@ -53,3 +53,36 @@
     state: started
   when: security_monitor_enabled | default(false)
 
+# Storage maintenance (ストレージメンテナンス)
+- name: Deploy storage maintenance service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/storage-maintenance.service.j2"
+    dest: /etc/systemd/system/storage-maintenance.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    project_root: "{{ repo_path }}"
+  register: storage_maintenance_service_unit
+
+- name: Deploy storage maintenance timer
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/storage-maintenance.timer.j2"
+    dest: /etc/systemd/system/storage-maintenance.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: storage_maintenance_timer_unit
+
+- name: Reload systemd daemon if storage maintenance units changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - (storage_maintenance_service_unit is changed) or (storage_maintenance_timer_unit is changed)
+
+- name: Enable and start storage maintenance timer
+  ansible.builtin.systemd:
+    name: storage-maintenance.timer
+    enabled: true
+    state: started
+

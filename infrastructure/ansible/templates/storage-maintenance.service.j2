@@ -1,0 +1,11 @@
+[Unit]
+Description=Storage maintenance (signage history cleanup and Docker build cache pruning)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart={{ project_root }}/scripts/server/storage-maintenance.sh
+StandardOutput=journal
+StandardError=journal
+

@@ -32,7 +32,14 @@ update-frequency: medium
 
 **検出条件**:
 - Ansible更新スクリプトが失敗した場合
+- ストレージ使用量が80%または90%を超えた場合（`storage-usage-high`）
+- ストレージメンテナンスが失敗した場合（`storage-maintenance-failed`）
 - 手動でアラートファイルを生成した場合
+
+**アラートタイプ**:
+- `ansible-update-failed`: Ansible更新スクリプトの失敗
+- `storage-usage-high`: ディスク使用量が閾値を超えた場合（`monitor.sh`が生成）
+- `storage-maintenance-failed`: ストレージメンテナンススクリプトの失敗（`storage-maintenance.sh`が生成）
 
 **表示場所**:
 - 管理画面のダッシュボード（`/admin`）
