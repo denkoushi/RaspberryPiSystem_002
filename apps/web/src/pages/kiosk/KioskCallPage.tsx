@@ -207,9 +207,9 @@ export function KioskCallPage() {
         /* 発信先一覧 */
         <Card className="flex-1">
           <div className="space-y-2">
-            {statusQuery.isLoading ? (
+            {callTargetsQuery.isLoading ? (
               <p className="text-center text-slate-600">読み込み中...</p>
-            ) : statusQuery.isError ? (
+            ) : callTargetsQuery.isError ? (
               <p className="text-center text-red-600">エラーが発生しました</p>
             ) : availableClients.length === 0 ? (
               <p className="text-center text-slate-600">発信可能な端末がありません</p>
