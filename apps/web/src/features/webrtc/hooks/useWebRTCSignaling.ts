@@ -213,7 +213,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
       socket.onerror = (error) => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:197',message:'WebSocket onerror',data:{readyState:socket.readyState,errorType:error?.type,errorMessage:error?.message || 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:197',message:'WebSocket onerror',data:{readyState:socket.readyState,errorType:error?.type || 'unknown',errorTarget:error?.target ? 'present' : 'missing'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         console.error('WebRTC signaling WebSocket error:', error);
         setIsConnected(false);
