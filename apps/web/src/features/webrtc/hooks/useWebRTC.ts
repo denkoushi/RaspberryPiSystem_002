@@ -30,6 +30,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const isNegotiatingRef = useRef(false);
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
 
   // WebRTC設定（Pi4向けに最適化）
   const getRTCConfiguration = useCallback((): RTCConfiguration => {
@@ -70,9 +71,20 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     // 接続状態の監視
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      if (state === 'connected' || state === 'completed') {
+      if (state === 'connected') {
         setCallState('connected');
       } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        setCallState('ended');
+        cleanup();
+      }
+    };
+
+    // ICE接続状態の監視（'completed' は iceConnectionState に存在する）
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      if (iceState === 'connected' || iceState === 'completed') {
+        setCallState('connected');
+      } else if (iceState === 'disconnected' || iceState === 'failed' || iceState === 'closed') {
         setCallState('ended');
         cleanup();
       }
@@ -302,7 +314,18 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       // ビデオトラックを追加
       const videoTrack = videoStream.getVideoTracks()[0];
       if (videoTrack && peerConnectionRef.current) {
-        peerConnectionRef.current.addTrack(videoTrack, videoStream);
+        // 既存のvideo senderがあれば先に外す（保険）
+        if (videoSenderRef.current) {
+          try {
+            peerConnectionRef.current.removeTrack(videoSenderRef.current);
+          } catch {
+            // ignore
+          }
+          videoSenderRef.current = null;
+        }
+
+        // addTrackはRTCRtpSenderを返すので保持（disableVideoでremoveTrackする）
+        videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, videoStream);
         
         // 既存の音声ストリームにビデオトラックを追加
         if (localStreamRef.current) {
@@ -336,10 +359,24 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       return;
     }
 
-    // ビデオトラックを停止
-    localStreamRef.current?.getVideoTracks().forEach(track => {
+    // addTrackで返したsenderをremoveTrackする（removeTrackはRTCRtpSenderを要求）
+    if (videoSenderRef.current) {
+      try {
+        peerConnectionRef.current.removeTrack(videoSenderRef.current);
+      } catch {
+        // ignore
+      }
+      videoSenderRef.current = null;
+    }
+
+    // ローカルストリームからビデオトラックを外して停止
+    localStreamRef.current?.getVideoTracks().forEach((track) => {
+      try {
+        localStreamRef.current?.removeTrack(track);
+      } catch {
+        // ignore
+      }
       track.stop();
-      peerConnectionRef.current?.removeTrack(track);
     });
 
     setIsVideoEnabled(false);
