@@ -21,6 +21,8 @@
 - Pi4、Pi3、Macは同一ローカルネットワーク（`192.168.10.0/24`）またはTailscale経由で接続
 - `network_mode: "tailscale"`が設定されていること
 
+**注意**: status-agentはローカルLANのIPアドレスを使用します（TailscaleのIPアドレスは使用しません）。発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです。
+
 ### クライアントキー設定
 
 各端末で以下のクライアントキーが設定されていること：
@@ -28,7 +30,7 @@
 - Pi4: `client-key-raspberrypi4-kiosk1`
 - Pi3: `client-key-raspberrypi3-signage1`
 - Pi5: `client-key-raspberrypi5-server`
-- Mac: ブラウザのlocalStorageに`kiosk-client-key`を設定（Pi4と同じキーまたは別のキー）
+- Mac: `client-key-mac-kiosk1`（ブラウザのlocalStorageに設定）
 
 ### WebRTC機能の有効化確認
 
@@ -61,11 +63,13 @@ curl -k https://100.106.158.2/api/system/health
 # Pi4のクライアントキーで確認
 curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/api/kiosk/call/targets
 
-# Pi3のクライアントキーで確認
-curl -k -H 'x-client-key: client-key-raspberrypi3-signage1' https://100.106.158.2/api/kiosk/call/targets
+# Macのクライアントキーで確認
+curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk/call/targets
 ```
 
 期待される結果: `{"selfClientId":"...","targets":[...]}` 形式のJSONが返る
+
+**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
 
 #### 1.3 WebRTCシグナリングエンドポイントの確認
 
@@ -92,11 +96,18 @@ localStorage.getItem('kiosk-client-id')
 
 2. 設定されていない場合、以下を実行：
 ```javascript
-localStorage.setItem('kiosk-client-key', 'client-key-mac-kiosk1')
-localStorage.setItem('kiosk-client-id', 'mac-kiosk-1')
+localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
+localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 ```
 
+**重要**: `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用してください。
+
 3. ページをリロード（Cmd+R）
+
+4. 発信先一覧にPi4が表示されることを確認：
+   - `raspberrypi4-kiosk1`（IP: `192.168.10.224`）が表示されること
+   - `raspberrypi3-signage1`（IP: `192.168.10.109`）が表示されること
+   - `raspberrypi5-server`（IP: `192.168.10.230`）が表示されること
 
 #### 2.3 WebSocket接続の確認
 
@@ -115,6 +126,8 @@ localStorage.setItem('kiosk-client-id', 'mac-kiosk-1')
 
 2. 各発信先に「📞 発信」ボタンが表示されること
 
+**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
+
 ### 3. Pi4でのキオスク通話画面の確認
 
 **重要**: Pi4でも通話画面を開いておく必要があります。WebRTC通話は双方向の接続が必要で、発信先もWebSocketシグナリングに接続している必要があります。
@@ -123,11 +136,12 @@ localStorage.setItem('kiosk-client-id', 'mac-kiosk-1')
 
 Pi4のキオスクブラウザは通常 `/kiosk` にアクセスしていますが、通話画面（`/kiosk/call`）にアクセスする必要があります。
 
-**方法1: キオスク画面から通話タブをクリック**
+**方法1: キオスク画面のナビゲーションから（推奨）**
 
 1. Pi4のキオスクブラウザで現在の画面を確認
-2. 画面上部のナビゲーションで「通話」タブをクリック
+2. 画面上部のナビゲーションで「📞 通話」タブをクリック
 3. 通話画面（`/kiosk/call`）が表示されることを確認
+4. 画面上部に「接続済み」と表示されることを確認
 
 **方法2: 直接URLを入力（キオスクブラウザがフルスクリーンでない場合）**
 
@@ -284,16 +298,40 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 1. **APIエンドポイントの確認**:
 ```bash
-curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/api/kiosk/call/targets
+curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk/call/targets
 ```
 
 2. **クライアントキーの確認**:
    - ブラウザのlocalStorageに`kiosk-client-key`が設定されていること
    - 設定されているキーがデータベースに存在すること
+   - `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用すること
 
 3. **status-agentの動作確認**:
    - 各端末のstatus-agentが正常に動作していること
    - `ClientStatus`テーブルに最新データが記録されていること
+
+### 発信先一覧にPi4が表示されない
+
+1. **MacのlocalStorage設定を確認**:
+```javascript
+// ブラウザの開発者ツールで実行
+localStorage.getItem('kiosk-client-key')
+localStorage.getItem('kiosk-client-id')
+```
+
+2. **正しい形式で設定**:
+```javascript
+// useLocalStorageフックはJSON形式で保存するため、JSON.stringify()を使用
+localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
+localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
+```
+
+3. **ページをリロード**:
+   - 設定後、ページをリロード（Cmd+R）して反映を確認
+
+4. **APIレスポンスの確認**:
+   - ブラウザの開発者ツールのNetworkタブで`/api/kiosk/call/targets`のレスポンスを確認
+   - Pi4が`targets`配列に含まれていることを確認
 
 ### 通話が開始されない
 
@@ -309,6 +347,24 @@ curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/
    - STUN/TURNサーバーが使用されている場合、ポートが開放されていること
    - 現在の実装ではSTUN/TURNサーバーは使用していない（同一LAN内での通話）
 
+## IPアドレスについて
+
+### ローカルLANのIPアドレスとTailscaleのIPアドレス
+
+- **status-agent**: ローカルLANのIPアドレスを使用します（例: `192.168.10.224`）
+- **発信先一覧**: ローカルLANのIPアドレスが表示されます
+- **TailscaleのIPアドレス**: 現在は使用していません（将来的にサポートする可能性あり）
+
+### IPアドレスの取得方法
+
+status-agentは以下の方法でIPアドレスを取得します：
+
+1. `8.8.8.8`に接続してローカルIPアドレスを取得
+2. 失敗した場合は`hostname -I`で取得
+3. それも失敗した場合は`127.0.0.1`を返す
+
+この方法により、ローカルLANのIPアドレスが取得されます。TailscaleのIPアドレスを取得するには、別の方法が必要です。
+
 ## 検証チェックリスト
 
 - [ ] Pi5サーバーのヘルスチェックが正常
@@ -316,7 +372,7 @@ curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/
 - [ ] WebRTCシグナリングルートが登録されている
 - [ ] Macでキオスク通話画面が表示される
 - [ ] MacでWebSocket接続が確立される
-- [ ] Macで発信先一覧が表示される
+- [ ] Macで発信先一覧が表示される（Pi4、Pi3、Pi5が含まれる）
 - [ ] Pi4でキオスク通話画面が表示される
 - [ ] Pi4でWebSocket接続が確立される
 - [ ] MacからPi4への発信が成功する
@@ -332,4 +388,3 @@ curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/
 - [デプロイメントガイド](./deployment.md)
 - [検証チェックリスト](./verification-checklist.md)
 - [WebRTC実装のナレッジベース](../knowledge-base/api.md#webrtc)
-
