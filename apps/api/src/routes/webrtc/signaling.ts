@@ -4,10 +4,13 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { callStore } from './call-store.js';
-import type { SignalingMessage } from './types.js';
+import type { SignalingMessage, WebSocketLike } from './types.js';
+
+const WS_OPEN = 1;
 
 const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
@@ -49,7 +52,9 @@ async function validateClient(clientKey: string): Promise<{ id: string; clientId
 /**
  * クライアントIDからクライアント情報を取得
  */
-async function getClientByClientId(clientId: string): Promise<{ id: string; name: string; location: string | null } | null> {
+async function getClientByClientId(
+  clientId: string
+): Promise<{ id: string; name: string; location: string | null } | null> {
   const client = await prisma.clientDevice.findFirst({
     where: { statusClientId: clientId },
     select: { id: true, name: true, location: true }
@@ -60,15 +65,18 @@ async function getClientByClientId(clientId: string): Promise<{ id: string; name
 
 export function registerWebRTCSignaling(app: FastifyInstance): void {
   // クライアント接続管理（clientId -> WebSocket）
-  const clientConnections = new Map<string, WebSocket>();
+  const clientConnections = new Map<string, WebSocketLike>();
 
   app.get('/webrtc/signaling', { websocket: true }, async (connection, req) => {
+    const socket = connection.socket as unknown as WebSocketLike;
+
     // クライアントキーを取得（x-client-keyヘッダーまたはクエリパラメータ）
-    const rawClientKey = req.headers['x-client-key'] || (req.query as { clientKey?: string }).clientKey;
+    const headerClientKey = (req.headers as Record<string, unknown>)['x-client-key'];
+    const rawClientKey = headerClientKey || (req.query as { clientKey?: string }).clientKey;
     const clientKey = normalizeClientKey(rawClientKey);
 
     if (!clientKey) {
-      await connection.socket.close(1008, 'Client key required');
+      socket.close(1008, 'Client key required');
       return;
     }
 
@@ -76,14 +84,14 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     let clientInfo: { id: string; clientId: string | null };
     try {
       clientInfo = await validateClient(clientKey);
-    } catch (error) {
-      await connection.socket.close(1008, 'Invalid client key');
+    } catch {
+      socket.close(1008, 'Invalid client key');
       return;
     }
 
     // clientIdが設定されていない場合はエラー
     if (!clientInfo.clientId) {
-      await connection.socket.close(1008, 'Client ID not configured. Please set statusClientId.');
+      socket.close(1008, 'Client ID not configured. Please set statusClientId.');
       return;
     }
 
@@ -91,15 +99,15 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
 
     // 既存の接続があれば閉じる（重複接続防止）
     const existingConnection = clientConnections.get(clientId);
-    if (existingConnection && existingConnection.readyState === WebSocket.OPEN) {
+    if (existingConnection && existingConnection.readyState === WS_OPEN) {
       existingConnection.close(1000, 'Replaced by new connection');
     }
 
-    clientConnections.set(clientId, connection.socket);
+    clientConnections.set(clientId, socket);
     app.log.info({ clientId }, 'WebRTC signaling client connected');
 
     // メッセージ受信処理
-    connection.socket.on('message', async (message: Buffer) => {
+    socket.on('message', async (message: Buffer) => {
       try {
         const data: SignalingMessage = JSON.parse(message.toString());
 
@@ -108,30 +116,36 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
           case 'invite': {
             // 発信: 相手に着信通知を送信
             if (!data.to) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Missing "to" field' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Missing "to" field' }
+                })
+              );
               return;
             }
 
             // 相手の存在確認
             const callee = await getClientByClientId(data.to);
             if (!callee) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: `Client ${data.to} not found` }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: `Client ${data.to} not found` }
+                })
+              );
               return;
             }
 
             // 既存のコールをチェック（相手が既に通話中の場合）
             const existingCall = callStore.getCallByClientId(data.to);
             if (existingCall && existingCall.state === 'in_call') {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Callee is already in a call' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Callee is already in a call' }
+                })
+              );
               return;
             }
 
@@ -142,31 +156,36 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             // 発信者を参加者に追加
             callStore.addParticipant(callId, {
               clientId,
-              socket: connection.socket,
+              socket,
               joinedAt: Date.now()
             });
 
             // 相手に着信通知を送信
             const calleeSocket = clientConnections.get(data.to);
-            if (calleeSocket && calleeSocket.readyState === WebSocket.OPEN) {
-              await calleeSocket.send(JSON.stringify({
-                type: 'incoming',
-                callId,
-                from: clientId,
-                to: data.to,
-                payload: {
-                  callerName: (await getClientByClientId(clientId))?.name || clientId,
-                  callerLocation: (await getClientByClientId(clientId))?.location || null
-                },
-                timestamp: Date.now()
-              }));
+            if (calleeSocket && calleeSocket.readyState === WS_OPEN) {
+              const caller = await getClientByClientId(clientId);
+              calleeSocket.send(
+                JSON.stringify({
+                  type: 'incoming',
+                  callId,
+                  from: clientId,
+                  to: data.to,
+                  payload: {
+                    callerName: caller?.name || clientId,
+                    callerLocation: caller?.location || null
+                  },
+                  timestamp: Date.now()
+                })
+              );
             } else {
               // 相手が接続していない場合はエラー
               callStore.deleteCall(callId);
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Callee is not connected' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Callee is not connected' }
+                })
+              );
             }
             break;
           }
@@ -174,35 +193,41 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
           case 'accept': {
             // 受話: コール状態を更新し、発信者に通知
             if (!data.callId) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Missing "callId" field' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Missing "callId" field' }
+                })
+              );
               return;
             }
 
             const call = callStore.getCall(data.callId);
             if (!call) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Call not found' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Call not found' }
+                })
+              );
               return;
             }
 
             // 受話者はcall.toと一致する必要がある
             if (call.to !== clientId) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Unauthorized' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Unauthorized' }
+                })
+              );
               return;
             }
 
             // 受話者を参加者に追加
             callStore.addParticipant(data.callId, {
               clientId,
-              socket: connection.socket,
+              socket,
               joinedAt: Date.now()
             });
 
@@ -211,14 +236,16 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
 
             // 発信者に受話通知を送信
             const callerSocket = clientConnections.get(call.from);
-            if (callerSocket && callerSocket.readyState === WebSocket.OPEN) {
-              await callerSocket.send(JSON.stringify({
-                type: 'accept',
-                callId: data.callId,
-                from: clientId,
-                to: call.from,
-                timestamp: Date.now()
-              }));
+            if (callerSocket && callerSocket.readyState === WS_OPEN) {
+              callerSocket.send(
+                JSON.stringify({
+                  type: 'accept',
+                  callId: data.callId,
+                  from: clientId,
+                  to: call.from,
+                  timestamp: Date.now()
+                })
+              );
             }
             break;
           }
@@ -228,10 +255,12 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
           case 'hangup': {
             // 拒否/キャンセル/切断: コールを終了し、相手に通知
             if (!data.callId) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Missing "callId" field' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Missing "callId" field' }
+                })
+              );
               return;
             }
 
@@ -246,14 +275,16 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             const otherSocket = clientConnections.get(otherClientId);
 
             // 相手に通知
-            if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
-              await otherSocket.send(JSON.stringify({
-                type: data.type,
-                callId: data.callId,
-                from: clientId,
-                to: otherClientId,
-                timestamp: Date.now()
-              }));
+            if (otherSocket && otherSocket.readyState === WS_OPEN) {
+              otherSocket.send(
+                JSON.stringify({
+                  type: data.type,
+                  callId: data.callId,
+                  from: clientId,
+                  to: otherClientId,
+                  timestamp: Date.now()
+                })
+              );
             }
 
             // コールを削除
@@ -266,19 +297,23 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
           case 'ice-candidate': {
             // WebRTCシグナリングメッセージ: 相手に転送
             if (!data.callId) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Missing "callId" field' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Missing "callId" field' }
+                })
+              );
               return;
             }
 
             const call = callStore.getCall(data.callId);
             if (!call) {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Call not found' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Call not found' }
+                })
+              );
               return;
             }
 
@@ -286,38 +321,46 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             const otherClientId = call.from === clientId ? call.to : call.from;
             const otherSocket = clientConnections.get(otherClientId);
 
-            if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
-              await otherSocket.send(JSON.stringify({
-                ...data,
-                from: clientId,
-                to: otherClientId
-              }));
+            if (otherSocket && otherSocket.readyState === WS_OPEN) {
+              otherSocket.send(
+                JSON.stringify({
+                  ...data,
+                  from: clientId,
+                  to: otherClientId
+                })
+              );
             } else {
-              await connection.socket.send(JSON.stringify({
-                type: 'error',
-                payload: { message: 'Other participant not connected' }
-              }));
+              socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  payload: { message: 'Other participant not connected' }
+                })
+              );
             }
             break;
           }
 
           default:
-            await connection.socket.send(JSON.stringify({
-              type: 'error',
-              payload: { message: `Unknown message type: ${data.type}` }
-            }));
+            socket.send(
+              JSON.stringify({
+                type: 'error',
+                payload: { message: `Unknown message type: ${data.type}` }
+              })
+            );
         }
       } catch (error) {
         app.log.error({ err: error }, 'Failed to process signaling message');
-        await connection.socket.send(JSON.stringify({
-          type: 'error',
-          payload: { message: error instanceof Error ? error.message : 'Failed to process message' }
-        }));
+        socket.send(
+          JSON.stringify({
+            type: 'error',
+            payload: { message: error instanceof Error ? error.message : 'Failed to process message' }
+          })
+        );
       }
     });
 
     // 切断処理
-    connection.socket.on('close', async () => {
+    socket.on('close', async () => {
       clientConnections.delete(clientId);
       app.log.info({ clientId }, 'WebRTC signaling client disconnected');
 
@@ -327,14 +370,16 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
         const otherClientId = call.from === clientId ? call.to : call.from;
         const otherSocket = clientConnections.get(otherClientId);
 
-        if (otherSocket && otherSocket.readyState === WebSocket.OPEN) {
-          await otherSocket.send(JSON.stringify({
-            type: 'hangup',
-            callId: call.callId,
-            from: clientId,
-            to: otherClientId,
-            timestamp: Date.now()
-          }));
+        if (otherSocket && otherSocket.readyState === WS_OPEN) {
+          otherSocket.send(
+            JSON.stringify({
+              type: 'hangup',
+              callId: call.callId,
+              from: clientId,
+              to: otherClientId,
+              timestamp: Date.now()
+            })
+          );
         }
 
         callStore.deleteCall(call.callId);
@@ -342,4 +387,3 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     });
   });
 }
-

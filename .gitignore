@@ -41,6 +41,7 @@ clients/nfc-agent/.venv/
 .DS_Store
 .idea/
 .vscode/
+.cursor/debug.log
 
 # Docker
 *.pid
