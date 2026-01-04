@@ -67,8 +67,11 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
   // クライアント接続管理（clientId -> WebSocket）
   const clientConnections = new Map<string, WebSocketLike>();
 
-  app.log.info('Registering WebRTC signaling WebSocket route: /webrtc/signaling');
-  app.get('/webrtc/signaling', { websocket: true }, async (connection, req) => {
+  // NOTE:
+  // - `registerWebRTCRoutes()` が prefix `/webrtc` でサブアプリを登録しているため、
+  //   ここでは `/signaling` のみを定義する（`/webrtc/...` を重ねると二重になる）。
+  app.log.info('Registering WebRTC signaling WebSocket route: /signaling');
+  app.get('/signaling', { websocket: true }, async (connection, req) => {
     app.log.info({ url: req.url, headers: req.headers }, 'WebRTC signaling WebSocket connection attempt');
     const socket = connection.socket as unknown as WebSocketLike;
 
