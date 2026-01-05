@@ -367,6 +367,21 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             const otherClientId = call.from === clientId ? call.to : call.from;
             const otherSocket = clientConnections.get(otherClientId);
 
+            app.log.info(
+              {
+                type: data.type,
+                callId: data.callId,
+                from: clientId,
+                callFrom: call.from,
+                callTo: call.to,
+                otherClientId,
+                selfEqualsOther: otherClientId === clientId,
+                hasOtherSocket: Boolean(otherSocket),
+                otherReadyState: otherSocket?.readyState ?? null
+              },
+              'WebRTC signaling relay'
+            );
+
             if (otherSocket && otherSocket.readyState === WS_OPEN) {
               otherSocket.send(
                 JSON.stringify({
