@@ -72,27 +72,35 @@ Webhook URLを取得したら、Pi5側の環境変数に設定します。
    ssh denkon5sd02@100.106.158.2
    ```
 
-2. **`.env`ファイルを編集**
+2. **（重要）この`.env`はAnsibleで管理される**
+
+`/opt/RaspberryPiSystem_002/infrastructure/docker/.env` は **Ansibleテンプレートで再生成**されます。  
+ローカルLAN変更などでSERVER_IPを更新すると、`.env`が再生成され、手動で追記した設定が消える可能性があります。
+
+永続化するには **Ansibleのvault変数**として設定してください。
+
+3. **Ansibleのvault変数を編集（推奨）**
    ```bash
-   cd /opt/RaspberryPiSystem_002/infrastructure/docker
-   nano .env
+   cd /opt/RaspberryPiSystem_002/infrastructure/ansible/host_vars/raspberrypi5
+   nano vault.yml
    ```
 
-3. **環境変数を追加**
+4. **環境変数を追加**
    ```bash
-   SLACK_KIOSK_SUPPORT_WEBHOOK_URL=取得したWebhookURLをここに貼り付け
+   vault_slack_kiosk_support_webhook_url=取得したWebhookURLをここに貼り付け
    ```
    （取得したWebhook URLをそのまま貼り付けてください）
 
-4. **保存して終了**
-   - `Ctrl+O` → `Enter` → `Ctrl+X`
+5. **設定を反映（.env再生成）**
+   - `infrastructure/ansible/templates/docker.env.j2` により `.env` が生成されます
+   - 反映方法は運用手順に従ってください（例: 設定反映プレイブックの実行）
 
-5. **APIコンテナを再起動**
+6. **APIコンテナを再作成**
    ```bash
    docker compose -f docker-compose.server.yml up -d --force-recreate api
    ```
 
-6. **環境変数の確認**
+7. **環境変数の確認**
    ```bash
    docker compose -f docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
    ```

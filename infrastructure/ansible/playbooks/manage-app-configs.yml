@@ -103,6 +103,36 @@
         mode: '0755'
       when: '"server" in group_names'
 
+    - name: Stat existing Docker Compose .env
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/infrastructure/docker/.env"
+      register: docker_env_stat
+      when: '"server" in group_names'
+
+    - name: Read existing Docker Compose .env (for preserving manual values)
+      ansible.builtin.slurp:
+        path: "{{ repo_path }}/infrastructure/docker/.env"
+      register: docker_env_slurp
+      when:
+        - '"server" in group_names'
+        - docker_env_stat.stat.exists | default(false)
+      no_log: true
+
+    - name: Extract existing SLACK_KIOSK_SUPPORT_WEBHOOK_URL from Docker Compose .env
+      ansible.builtin.set_fact:
+        existing_slack_kiosk_support_webhook_url: >-
+          {{
+            (
+              (docker_env_slurp.content | b64decode)
+              | regex_search('^SLACK_KIOSK_SUPPORT_WEBHOOK_URL=(.*)$', '\\1', multiline=True)
+            )
+            | default('')
+          }}
+      when:
+        - '"server" in group_names'
+        - docker_env_stat.stat.exists | default(false)
+      no_log: true
+
     - name: Deploy Docker Compose environment variables
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/docker.env.j2"

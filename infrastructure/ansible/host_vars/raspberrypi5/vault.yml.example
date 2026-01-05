@@ -1,3 +1,11 @@
+vault_api_jwt_access_secret: "change-me-in-production"
+vault_api_jwt_refresh_secret: "change-me-in-production"
+vault_status_agent_client_key: "client-key-raspberrypi5-server"
+
+# キオスクお問い合わせ（Slack通知）
+# 形式: https://hooks.slack.com/services/...
+vault_slack_kiosk_support_webhook_url: ""
+
 # このファイルは `ansible-vault encrypt` で暗号化した `vault.yml` のサンプルです。
 # 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
 # したあとに ansible-vault で暗号化してください。
