@@ -132,7 +132,8 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     }
 
     clientConnections.set(clientId, socket);
-    app.log.info({ clientId }, 'WebRTC signaling client connected');
+    const connectionStartTime = Date.now();
+    app.log.info({ clientId, connectionStartTime }, 'WebRTC signaling client connected');
 
     // メッセージ受信処理
     socket.on('message', async (message: Buffer) => {
@@ -422,8 +423,10 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
 
     // 切断処理
     socket.on('close', async () => {
+      const disconnectTime = Date.now();
+      const connectionDuration = disconnectTime - connectionStartTime;
       clientConnections.delete(clientId);
-      app.log.info({ clientId }, 'WebRTC signaling client disconnected');
+      app.log.info({ clientId, connectionStartTime, disconnectTime, connectionDuration }, 'WebRTC signaling client disconnected');
 
       // このクライアントが参加しているコールを終了
       const call = callStore.getCallByClientId(clientId);

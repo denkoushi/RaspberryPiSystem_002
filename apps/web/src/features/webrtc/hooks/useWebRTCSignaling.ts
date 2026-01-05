@@ -74,6 +74,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const isPlayingRingtoneRef = useRef(false);
+  const connectionStartTimeRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     if (!enabled || typeof window === 'undefined') {
@@ -107,6 +108,10 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
+        connectionStartTimeRef.current = Date.now();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onopen',message:'WebSocket connected',data:{timestamp:connectionStartTimeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
         console.log('WebRTC signaling connected');
       };
 
@@ -205,6 +210,12 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       socket.onclose = (event) => {
         setIsConnected(false);
         setIsConnecting(false);
+        const disconnectTime = Date.now();
+        const connectionDuration = connectionStartTimeRef.current ? disconnectTime - connectionStartTimeRef.current : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onclose',message:'WebSocket disconnected',data:{code:event.code,wasClean:event.wasClean,reason:event.reason,connectionDuration,connectionStartTime:connectionStartTimeRef.current,disconnectTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        connectionStartTimeRef.current = null;
         console.log('WebRTC signaling disconnected');
 
         // 異常終了（code 1006）の場合はエラーを通知

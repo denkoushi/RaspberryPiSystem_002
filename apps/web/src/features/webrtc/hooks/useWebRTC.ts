@@ -41,6 +41,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const isNegotiatingRef = useRef(false);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const pcConnectionStartTimeRef = useRef<number | null>(null);
+  const pcIceConnectionStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     onLocalStreamRef.current = onLocalStream;
@@ -89,9 +91,21 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     // 接続状態の監視
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
+      const now = Date.now();
       if (state === 'connected') {
+        if (!pcConnectionStartTimeRef.current) {
+          pcConnectionStartTimeRef.current = now;
+        }
         setCallState('connected');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onconnectionstatechange',message:'RTCPeerConnection state changed',data:{state,connectionDuration:pcConnectionStartTimeRef.current ? now - pcConnectionStartTimeRef.current : null},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
       } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        const connectionDuration = pcConnectionStartTimeRef.current ? now - pcConnectionStartTimeRef.current : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onconnectionstatechange',message:'RTCPeerConnection disconnected',data:{state,connectionDuration,connectionStartTime:pcConnectionStartTimeRef.current},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        pcConnectionStartTimeRef.current = null;
         setCallState('ended');
         cleanup();
       }
@@ -100,9 +114,21 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     // ICE接続状態の監視（'completed' は iceConnectionState に存在する）
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
+      const now = Date.now();
       if (iceState === 'connected' || iceState === 'completed') {
+        if (!pcIceConnectionStartTimeRef.current) {
+          pcIceConnectionStartTimeRef.current = now;
+        }
         setCallState('connected');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:oniceconnectionstatechange',message:'ICE connection state changed',data:{iceState,connectionDuration:pcIceConnectionStartTimeRef.current ? now - pcIceConnectionStartTimeRef.current : null},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
       } else if (iceState === 'disconnected' || iceState === 'failed' || iceState === 'closed') {
+        const connectionDuration = pcIceConnectionStartTimeRef.current ? now - pcIceConnectionStartTimeRef.current : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:oniceconnectionstatechange',message:'ICE connection disconnected',data:{iceState,connectionDuration,connectionStartTime:pcIceConnectionStartTimeRef.current},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        pcIceConnectionStartTimeRef.current = null;
         setCallState('ended');
         cleanup();
       }
@@ -122,6 +148,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     localStreamRef.current = null;
     stopMediaStream(remoteStreamRef.current);
     remoteStreamRef.current = null;
+    pcConnectionStartTimeRef.current = null;
+    pcIceConnectionStartTimeRef.current = null;
     setCurrentCallId(null);
     setIsVideoEnabled(false);
     setIncomingCallInfo(null);
