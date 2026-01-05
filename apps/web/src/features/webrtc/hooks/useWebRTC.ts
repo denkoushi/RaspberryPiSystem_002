@@ -257,19 +257,34 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:startCall',message:'startCall begin',data:{callId,withVideo},timestamp:Date.now(),sessionId:'debug-session',runId:'run-start',hypothesisId:'M1'})}).catch(()=>{});
       // #endregion
-      // ローカルストリームを取得
-      const stream = withVideo ? await getAudioVideoStream() : await getAudioStream();
-      localStreamRef.current = stream;
-      onLocalStreamRef.current?.(stream);
-
       // RTCPeerConnectionを作成
       const pc = createPeerConnection();
       peerConnectionRef.current = pc;
 
-      // ローカルストリームを追加
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
+      // ローカルストリームを取得（失敗しても受信専用で継続できるようにする）
+      let stream: MediaStream | null = null;
+      try {
+        stream = withVideo ? await getAudioVideoStream() : await getAudioStream();
+        localStreamRef.current = stream;
+        onLocalStreamRef.current?.(stream);
+
+        // ローカルストリームを追加
+        stream.getTracks().forEach((track) => {
+          pc.addTrack(track, stream!);
+        });
+      } catch (e) {
+        const err = e as { name?: string; message?: string };
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:startCall',message:'local audio unavailable; continue recvonly',data:{callId,withVideo,errorName:err?.name||null,errorMessage:err?.message||String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-start',hypothesisId:'M2'})}).catch(()=>{});
+        // #endregion
+
+        // 発信側がマイク無しでも、音声を受信できるようにトランシーバを追加（m-lineを生成）
+        try {
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+        } catch {
+          // ignore（古いブラウザ等）
+        }
+      }
 
       // Offerを作成
       const offer = await pc.createOffer();
