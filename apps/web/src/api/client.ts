@@ -78,6 +78,22 @@ export function setClientKeyHeader(key?: string) {
 // 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
+  // URL パラメータでクライアント識別を上書きできるようにする（現場での切り分け用）
+  // - 例: /kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
+  // NOTE: 値そのもの（キー/ID）はログに出さない（秘匿情報扱い）
+  const params = new URLSearchParams(window.location.search);
+  const urlClientKey = params.get('clientKey') ?? undefined;
+  const urlClientId = params.get('clientId') ?? undefined;
+  if (urlClientKey && urlClientKey.length > 0) {
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(urlClientKey));
+  }
+  if (urlClientId && urlClientId.length > 0) {
+    window.localStorage.setItem('kiosk-client-id', JSON.stringify(urlClientId));
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/client.ts:init',message:'URL override applied (clientKey/clientId)',data:{hasUrlClientKey:Boolean(urlClientKey),urlClientKeyLen:urlClientKey?.length??0,hasUrlClientId:Boolean(urlClientId),urlClientIdLen:urlClientId?.length??0},timestamp:Date.now(),sessionId:'debug-session',runId:'run-init',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+
   const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
   let parsedKey: string | undefined;
   
