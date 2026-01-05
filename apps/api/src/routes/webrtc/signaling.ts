@@ -153,6 +153,16 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
               return;
             }
 
+            app.log.info(
+              {
+                from: clientId,
+                to: data.to,
+                connectedClientCount: clientConnections.size,
+                connectedClientIds: Array.from(clientConnections.keys()),
+              },
+              'WebRTC signaling invite received'
+            );
+
             // 相手の存在確認
             const callee = await getClientByClientId(data.to);
             if (!callee) {
@@ -190,6 +200,14 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
 
             // 相手に着信通知を送信
             const calleeSocket = clientConnections.get(data.to);
+            app.log.info(
+              {
+                to: data.to,
+                hasCalleeSocket: Boolean(calleeSocket),
+                calleeReadyState: calleeSocket?.readyState ?? null,
+              },
+              'WebRTC signaling invite callee socket lookup'
+            );
             if (calleeSocket && calleeSocket.readyState === WS_OPEN) {
               const caller = await getClientByClientId(clientId);
               calleeSocket.send(
