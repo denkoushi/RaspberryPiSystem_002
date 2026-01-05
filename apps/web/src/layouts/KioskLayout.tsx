@@ -22,14 +22,8 @@ export function KioskLayout() {
     if (!clientKey || clientKey === 'client-demo-key') {
       setClientKey(DEFAULT_CLIENT_KEY);
       setClientKeyHeader(DEFAULT_CLIENT_KEY);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/layouts/KioskLayout.tsx:useEffect',message:'kiosk clientKey normalized to default',data:{hadClientKey:Boolean(clientKey),clientKeyLen:clientKey?.length??0,usedDefault:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run-kiosk-layout',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     } else {
       setClientKeyHeader(clientKey);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/layouts/KioskLayout.tsx:useEffect',message:'kiosk clientKey applied (non-default)',data:{hadClientKey:Boolean(clientKey),clientKeyLen:clientKey?.length??0,usedDefault:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run-kiosk-layout',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     }
   }, [clientKey, setClientKey]);
 

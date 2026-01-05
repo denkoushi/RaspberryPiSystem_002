@@ -24,6 +24,8 @@
 
 ### 🆕 最新アップデート（2026-01-04）
 
+- **✅ WebRTC通話（音声）実機検証・安定化**: キオスク通話（`/kiosk/call`）でPi4↔Macの音声通話の実機検証を実施。WebSocketシグナリング、offer/answer/ICE交換、接続維持を確認。マイク権限周りの切断問題に対して、マイク未接続端末でも受信専用（recvonly）で接続を継続するフォールバックを追加。手順は [guides/webrtc-verification.md](./guides/webrtc-verification.md) を参照。
+
 - **✅ Pi5ストレージ経時劣化対策（10年運用対応）完了**: Pi5のストレージ使用量が27%（約270GB）と異常に高い問題を調査・解決。Docker Build Cache（237.2GB）とsignage-renderedの履歴画像（約6.2GB）を削除し、ディスク使用量を249GB→23GB（約226GB削減、27%→3%）に改善。さらに、10年運用を見据えた自動メンテナンス機能を実装。`storage-maintenance.sh`スクリプトを追加し、systemd timerで毎日実行（signage履歴画像削除、月1回build cache削除）。`monitor.sh`のディスク閾値を段階化（50%警告、70%警告、80%アラート、90%クリティカル）。`signage-render-storage.ts`を修正し、履歴画像をデフォルトで生成しないように変更（`SIGNAGE_RENDER_KEEP_HISTORY=1`で有効化可能）。Ansibleで`storage-maintenance.service/timer`を管理化。実機検証完了（APIコンテナ正常動作、storage-maintenance.timer有効化、ストレージ使用量3%維持を確認）。詳細は [knowledge-base/infrastructure/miscellaneous.md#kb-130](./knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [knowledge-base/api.md#kb-131](./knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題) / [guides/operation-manual.md](./guides/operation-manual.md) を参照。
 
 - **✅ APIコンテナ再起動ループ問題修正完了**: APIコンテナが`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`環境変数の空文字でZodバリデーションエラーを起こし、再起動ループに陥っていた問題を修正。`docker-compose.server.yml`の`${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}`により未設定時でも空文字が注入されるため、`z.preprocess`で空文字を`undefined`に変換してからURL検証するように変更。実機検証完了（APIコンテナが正常起動、ヘルスチェック200、サイネージ画像取得正常を確認）。詳細は [knowledge-base/api.md#kb-131](./knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題) を参照。
