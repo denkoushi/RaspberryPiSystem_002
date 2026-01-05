@@ -129,6 +129,9 @@ export function KioskCallPage() {
     disableVideo();
   };
 
+  const hasLocalVideo = Boolean(localStream && localStream.getVideoTracks().length > 0);
+  const hasRemoteVideo = Boolean(remoteStream && remoteStream.getVideoTracks().length > 0);
+
   return (
     <div className="flex h-screen flex-col bg-slate-100 p-4">
       {/* ヘッダー */}
@@ -146,7 +149,7 @@ export function KioskCallPage() {
             <div className="grid grid-cols-2 gap-4 w-full max-w-4xl">
               {/* リモートビデオ */}
               <div className="relative aspect-video rounded-lg bg-black">
-                {isVideoEnabled && remoteStream ? (
+                {hasRemoteVideo ? (
                   <video
                     ref={remoteVideoRef}
                     autoPlay
@@ -164,7 +167,7 @@ export function KioskCallPage() {
               </div>
 
               {/* ローカルビデオ */}
-              {isVideoEnabled && localStream ? (
+              {hasLocalVideo ? (
                 <div className="relative aspect-video rounded-lg bg-black">
                   <video
                     ref={localVideoRef}

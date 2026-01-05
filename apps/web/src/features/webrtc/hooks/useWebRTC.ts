@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getAudioStream, getAudioVideoStream, stopMediaStream } from '../utils/media';
+import { getAudioStream, getAudioVideoStream, getVideoStream, stopMediaStream } from '../utils/media';
 
 import { useWebRTCSignaling } from './useWebRTCSignaling';
 
@@ -65,9 +65,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
     // リモートストリームの受信
     pc.ontrack = (event) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:ontrack',message:'remote track received',data:{hasStreams:!!event.streams,streamCount:event.streams?.length||0,hasTracks:!!event.track,kind:event.track?.kind||null,enabled:event.track?.enabled||null,muted:event.track?.muted||null,readyState:event.track?.readyState||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-track',hypothesisId:'V3'})}).catch(()=>{});
+      // #endregion
       if (event.streams && event.streams[0]) {
-        remoteStreamRef.current = event.streams[0];
-        onRemoteStreamRef.current?.(event.streams[0]);
+        const stream = event.streams[0];
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:ontrack',message:'remote stream set',data:{audioTracks:stream.getAudioTracks().length,videoTracks:stream.getVideoTracks().length,videoTrackIds:stream.getVideoTracks().map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-track',hypothesisId:'V3'})}).catch(()=>{});
+        // #endregion
+        remoteStreamRef.current = stream;
+        onRemoteStreamRef.current?.(stream);
       }
     };
 
@@ -346,10 +353,34 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     }
 
     try {
-      // ビデオストリームを取得
-      const videoStream = await getAudioVideoStream();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo begin',data:{callId:currentCallId,hasPc:!!peerConnectionRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
+      // #endregion
       
-      // 既存の音声ストリームを停止
+      // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
+      let videoStream: MediaStream | null = null;
+      try {
+        // まずビデオのみを試す（マイク無し端末対応）
+        videoStream = await getVideoStream();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'getVideoStream success',data:{callId:currentCallId,videoTracks:videoStream.getVideoTracks().length,audioTracks:videoStream.getAudioTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
+        // #endregion
+      } catch (videoError) {
+        const err = videoError as { name?: string; message?: string };
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'getVideoStream failed',data:{callId:currentCallId,errorName:err?.name||null,errorMessage:err?.message||String(videoError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
+        // #endregion
+        // ここで audio+video にフォールバックすると「マイク無し端末」で audio が原因で失敗し、
+        // エラーが分かりづらくなる（"Could not start audio source" など）。
+        // enableVideo ではビデオのみを要求する。
+        throw videoError;
+      }
+
+      if (!videoStream) {
+        throw new Error('ビデオストリームの取得に失敗しました');
+      }
+      
+      // 既存のビデオトラックを停止
       if (localStreamRef.current) {
         localStreamRef.current.getVideoTracks().forEach(track => track.stop());
       }
@@ -369,6 +400,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
         // addTrackはRTCRtpSenderを返すので保持（disableVideoでremoveTrackする）
         videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, videoStream);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'video track added to PC',data:{callId:currentCallId,hasVideoSender:!!videoSenderRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V2'})}).catch(()=>{});
+        // #endregion
         
         // 既存の音声ストリームにビデオトラックを追加
         if (localStreamRef.current) {
@@ -382,6 +416,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         isNegotiatingRef.current = true;
         const offer = await peerConnectionRef.current.createOffer();
         await peerConnectionRef.current.setLocalDescription(offer);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'offer created and sent',data:{callId:currentCallId},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V2'})}).catch(()=>{});
+        // #endregion
 
         signaling.sendMessage({
           type: 'offer',
@@ -392,6 +429,10 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         setIsVideoEnabled(true);
       }
     } catch (error) {
+      const err = error as { name?: string; message?: string };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo failed',data:{callId:currentCallId,errorName:err?.name||null,errorMessage:err?.message||String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
+      // #endregion
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to enable video'));
     }
   }, [peerConnectionRef, currentCallId, isVideoEnabled, signaling]);
