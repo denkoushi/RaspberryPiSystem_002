@@ -224,6 +224,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
           return;
         }
         await pc.setRemoteDescription(answer);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer applied',data:{callId:message.callId,signalingState:pc.signalingState,remoteType:pc.remoteDescription?.type||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
+        // #endregion
       } catch (error) {
         onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
       }
