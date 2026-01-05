@@ -406,11 +406,14 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
 
   // クリーンアップ（アンマウント時のみ）
+  // cleanupはuseCallback([])で安定しているが、useEffect依存に含めると
+  // React StrictMode等で二重実行される可能性があるため、依存配列は空にする
   useEffect(() => {
     return () => {
       cleanup();
     };
-  }, [cleanup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // デバッグログ：状態遷移の観測（cleanupは呼ばない）
   useEffect(() => {
