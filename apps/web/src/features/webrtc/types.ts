@@ -3,7 +3,7 @@
  */
 
 export interface SignalingMessage {
-  type: 'invite' | 'incoming' | 'accept' | 'reject' | 'cancel' | 'hangup' | 'offer' | 'answer' | 'ice-candidate' | 'error';
+  type: 'invite' | 'incoming' | 'accept' | 'reject' | 'cancel' | 'hangup' | 'offer' | 'answer' | 'ice-candidate' | 'error' | 'ping' | 'pong';
   callId?: string;
   from?: string;
   to?: string;

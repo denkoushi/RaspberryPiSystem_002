@@ -140,6 +140,14 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
       try {
         const data: SignalingMessage = JSON.parse(message.toString());
 
+        // Keepalive pingメッセージの処理（pongを返す）
+        if (data.type === 'ping') {
+          if (socket.readyState === WS_OPEN) {
+            socket.send(JSON.stringify({ type: 'pong', timestamp: data.payload?.timestamp || Date.now() }));
+          }
+          return;
+        }
+
         // メッセージタイプに応じて処理
         switch (data.type) {
           case 'invite': {

@@ -75,6 +75,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   const reconnectAttemptsRef = useRef(0);
   const isPlayingRingtoneRef = useRef(false);
   const connectionStartTimeRef = useRef<number | null>(null);
+  const keepaliveIntervalRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     if (!enabled || typeof window === 'undefined') {
@@ -113,6 +114,17 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onopen',message:'WebSocket connected',data:{timestamp:connectionStartTimeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
         // #endregion
         console.log('WebRTC signaling connected');
+        
+        // Keepalive: 30秒ごとにpingメッセージを送信（5分タイムアウトを防ぐ）
+        keepaliveIntervalRef.current = window.setInterval(() => {
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+            try {
+              socketRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+            } catch (error) {
+              console.error('Failed to send keepalive ping:', error);
+            }
+          }
+        }, 30000); // 30秒
       };
 
       socket.onmessage = (event) => {
@@ -216,6 +228,13 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onclose',message:'WebSocket disconnected',data:{code:event.code,wasClean:event.wasClean,reason:event.reason,connectionDuration,connectionStartTime:connectionStartTimeRef.current,disconnectTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
         // #endregion
         connectionStartTimeRef.current = null;
+        
+        // Keepalive intervalをクリア
+        if (keepaliveIntervalRef.current) {
+          clearInterval(keepaliveIntervalRef.current);
+          keepaliveIntervalRef.current = null;
+        }
+        
         console.log('WebRTC signaling disconnected');
 
         // 異常終了（code 1006）の場合はエラーを通知
@@ -244,6 +263,10 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+    if (keepaliveIntervalRef.current) {
+      clearInterval(keepaliveIntervalRef.current);
+      keepaliveIntervalRef.current = null;
     }
     reconnectAttemptsRef.current = 0;
 

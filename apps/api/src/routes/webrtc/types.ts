@@ -11,7 +11,7 @@ export interface WebSocketLike {
 }
 
 export interface SignalingMessage {
-  type: 'invite' | 'incoming' | 'accept' | 'reject' | 'cancel' | 'hangup' | 'offer' | 'answer' | 'ice-candidate' | 'error';
+  type: 'invite' | 'incoming' | 'accept' | 'reject' | 'cancel' | 'hangup' | 'offer' | 'answer' | 'ice-candidate' | 'error' | 'ping' | 'pong';
   callId?: string; // コール識別子（invite時に生成）
   from?: string; // 発信者のclientId
   to?: string; // 受信者のclientId
