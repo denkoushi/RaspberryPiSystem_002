@@ -287,7 +287,7 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
               disabled={isLoading}
               className="rounded border-2 border-slate-500"
             />
-            <span>システム設定を使用（{getStorageProviderLabel(defaultStorageProvider === 'gmail' ? 'local' : defaultStorageProvider)}）</span>
+            <span>システム設定を使用（{getStorageProviderLabel(defaultStorageProvider)}）</span>
           </label>
           <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input
@@ -317,7 +317,7 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
           </label>
         </div>
         <p className="mt-2 text-xs text-slate-600">
-          {selectedProviders.length === 0 && `現在のシステム設定: ${getStorageProviderLabel(defaultStorageProvider === 'gmail' ? 'local' : defaultStorageProvider)}`}
+          {selectedProviders.length === 0 && `現在のシステム設定: ${getStorageProviderLabel(defaultStorageProvider)}`}
           {selectedProviders.length === 1 && `選択されたプロバイダー: ${getStorageProviderLabel(selectedProviders[0])}`}
           {selectedProviders.length > 1 && `選択されたプロバイダー: ${selectedProviders.map(getStorageProviderLabel).join(', ')}（多重バックアップ）`}
         </p>

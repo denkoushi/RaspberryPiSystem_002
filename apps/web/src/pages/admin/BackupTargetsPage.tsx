@@ -226,7 +226,7 @@ export function BackupTargetsPage() {
             onSubmit={handleAdd}
             onCancel={() => setIsAdding(false)}
             isLoading={addTarget.isPending}
-            storageProvider={config?.storage?.provider || 'local'}
+            storageProvider={(config?.storage?.provider === 'gmail' ? 'local' : config?.storage?.provider) || 'local'}
             storagePath={getStoragePath()}
           />
         </div>
@@ -318,7 +318,7 @@ export function BackupTargetsPage() {
             onSubmit={(target) => handleEdit(editingIndex, target)}
             onCancel={() => setEditingIndex(null)}
             isLoading={updateTarget.isPending}
-            storageProvider={config?.storage?.provider || 'local'}
+            storageProvider={(config?.storage?.provider === 'gmail' ? 'local' : config?.storage?.provider) || 'local'}
             storagePath={getStoragePath()}
           />
         </div>
