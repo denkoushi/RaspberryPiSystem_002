@@ -49,11 +49,17 @@ const resolveClientKey = () => {
   try {
     const parsed = JSON.parse(savedKey);
     if (typeof parsed === 'string' && parsed.length > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/client.ts:resolveClientKey',message:'resolveClientKey: parsed JSON key',data:{hasSavedKey:true,savedKeyLen:savedKey.length,parsedLen:parsed.length,isDefault:parsed===DEFAULT_CLIENT_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'run-key',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return parsed;
     }
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/client.ts:resolveClientKey',message:'resolveClientKey: raw key fallback',data:{hasSavedKey:true,savedKeyLen:savedKey.length,isDefault:savedKey===DEFAULT_CLIENT_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'run-key',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return savedKey || DEFAULT_CLIENT_KEY;
 };
 
@@ -94,6 +100,9 @@ if (typeof window !== 'undefined') {
   // useLocalStorageと同じ形式（JSON.stringify）で保存して互換性を保つ
   window.localStorage.setItem('kiosk-client-key', JSON.stringify(normalizedKey));
   setClientKeyHeader(normalizedKey);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/client.ts:init',message:'kiosk-client-key normalized and applied',data:{savedKeyPresent:!!savedKey,savedKeyLen:savedKey?.length??0,parsedKeyPresent:!!parsedKey,isDefault:normalizedKey===DEFAULT_CLIENT_KEY,apiBase,wsBase,href:window.location.href},timestamp:Date.now(),sessionId:'debug-session',runId:'run-init',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
 }
 
 // すべてのリクエストで client-key を付与
@@ -103,6 +112,10 @@ api.interceptors.request.use((config) => {
   if (!config.headers['x-client-key']) {
     config.headers['x-client-key'] = key;
   }
+  // #region agent log
+  // Do not log key value (treat as secret). Only log whether default is used and request path.
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/api/client.ts:axios',message:'axios request with x-client-key',data:{method:config.method,url:config.url,baseURL:config.baseURL,hasHeader:Boolean(config.headers&&config.headers['x-client-key']),isDefault:key===DEFAULT_CLIENT_KEY},timestamp:Date.now(),sessionId:'debug-session',runId:'run-req',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return config;
 });
 

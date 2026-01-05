@@ -69,6 +69,9 @@ export function KioskCallPage() {
   // 発信先一覧（location優先でソート）
   const availableClients = useMemo(() => {
     const targets = callTargetsQuery.data?.targets ?? [];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/KioskCallPage.tsx:availableClients',message:'call targets computed',data:{hasData:Boolean(callTargetsQuery.data),selfClientId:callTargetsQuery.data?.selfClientId??null,targetCount:targets.length,targetClientIds:targets.map(t=>t.clientId),targetIps:targets.map(t=>t.ipAddress)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-targets',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return targets
       .filter((t) => !t.stale)
       .map((t) => ({
