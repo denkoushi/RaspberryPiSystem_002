@@ -59,6 +59,9 @@ export function KioskCallPage() {
 
   // 着信時にモーダルを表示
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:incomingEffect',message:'incoming effect evaluated',data:{callState,hasIncoming:!!incomingCallInfo},timestamp:Date.now(),sessionId:'debug-session',runId:'run-ui',hypothesisId:'G3'})}).catch(()=>{});
+    // #endregion
     if (callState === 'incoming' && incomingCallInfo) {
       setShowIncomingModal(true);
     } else {

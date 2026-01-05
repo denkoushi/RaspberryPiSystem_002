@@ -26,6 +26,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [incomingCallInfo, setIncomingCallInfo] = useState<{ callId: string; from: string; callerName?: string; callerLocation?: string | null } | null>(null);
 
+  // デバッグログ用：最新stateを参照するためのref（Hook依存関係の警告回避）
+  const callStateRef = useRef<CallState>('idle');
+  const currentCallIdRef = useRef<string | null>(null);
+  const hasIncomingRef = useRef(false);
+
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -96,6 +101,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
   // クリーンアップ
   const cleanup = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:cleanup',message:'cleanup called',data:{callState:callStateRef.current,currentCallId:currentCallIdRef.current,hasIncoming:hasIncomingRef.current,hasPc:!!peerConnectionRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'G1'})}).catch(()=>{});
+    // #endregion
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -116,6 +124,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const signaling = useWebRTCSignaling({
     enabled,
     onIncomingCall: (callId, from, payload) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onIncomingCall',message:'onIncomingCall invoked',data:{callId,from,payloadHas:!!payload,prevCallState:callState,prevHasIncoming:!!incomingCallInfo,prevCallId:currentCallId},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'G2'})}).catch(()=>{});
+      // #endregion
       setIncomingCallInfo({
         callId,
         from,
@@ -383,12 +394,22 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   }, [peerConnectionRef, isVideoEnabled]);
 
 
-  // クリーンアップ
+  // クリーンアップ（アンマウント時のみ）
   useEffect(() => {
     return () => {
       cleanup();
     };
   }, [cleanup]);
+
+  // デバッグログ：状態遷移の観測（cleanupは呼ばない）
+  useEffect(() => {
+    callStateRef.current = callState;
+    currentCallIdRef.current = currentCallId;
+    hasIncomingRef.current = Boolean(incomingCallInfo);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:state',message:'state snapshot',data:{callState,currentCallId,hasIncoming:!!incomingCallInfo},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'G3'})}).catch(()=>{});
+    // #endregion
+  }, [callState, currentCallId, incomingCallInfo]);
 
   return {
     callState,
