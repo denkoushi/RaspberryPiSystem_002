@@ -175,10 +175,26 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
 
       try {
+        const pc = peerConnectionRef.current;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onOffer',message:'onOffer received',data:{callId:message.callId,signalingState:pc.signalingState,iceConnectionState:pc.iceConnectionState,connectionState:pc.connectionState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N1'})}).catch(()=>{});
+        // #endregion
         const offer = message.payload as RTCSessionDescriptionInit;
-        await peerConnectionRef.current.setRemoteDescription(offer);
-        const answer = await peerConnectionRef.current.createAnswer();
-        await peerConnectionRef.current.setLocalDescription(answer);
+        // offer衝突(glare)対策: こちらがhave-local-offer等で不安定な場合はrollbackしてから受理する
+        if (pc.signalingState !== 'stable') {
+          try {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onOffer',message:'onOffer: rollback local description (glare)',data:{callId:message.callId,signalingStateBefore:pc.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N1'})}).catch(()=>{});
+            // #endregion
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await pc.setLocalDescription({ type: 'rollback' } as any);
+          } catch {
+            // ignore: rollback非対応環境もある
+          }
+        }
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
         signaling.sendMessage({
           type: 'answer',
           callId: currentCallIdRef.current!,
@@ -195,8 +211,19 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
 
       try {
+        const pc = peerConnectionRef.current;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer received',data:{callId:message.callId,signalingState:pc.signalingState,localType:pc.localDescription?.type||null,remoteType:pc.remoteDescription?.type||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
+        // #endregion
         const answer = message.payload as RTCSessionDescriptionInit;
-        await peerConnectionRef.current.setRemoteDescription(answer);
+        // Answerは「自分がofferを出している」状態でのみ適用する（それ以外は衝突/順序違い）
+        if (pc.signalingState !== 'have-local-offer') {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer ignored: wrong signalingState',data:{callId:message.callId,signalingState:pc.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
+          // #endregion
+          return;
+        }
+        await pc.setRemoteDescription(answer);
       } catch (error) {
         onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
       }
@@ -356,6 +383,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo begin',data:{callId:currentCallId,hasPc:!!peerConnectionRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
       // #endregion
+
+      const pcForVideo = peerConnectionRef.current;
+      // 再ネゴシエーション中は新しいofferを作らない（状態崩壊の原因）
+      if (pcForVideo.signalingState !== 'stable') {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo skipped: signalingState not stable',data:{callId:currentCallId,signalingState:pcForVideo.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N3'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
       
       // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
       let videoStream: MediaStream | null = null;
