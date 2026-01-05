@@ -230,6 +230,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   // 通話開始（音声のみ）
   const startCall = useCallback(async (callId: string, withVideo: boolean = false) => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:startCall',message:'startCall begin',data:{callId,withVideo},timestamp:Date.now(),sessionId:'debug-session',runId:'run-start',hypothesisId:'M1'})}).catch(()=>{});
+      // #endregion
       // ローカルストリームを取得
       const stream = withVideo ? await getAudioVideoStream() : await getAudioStream();
       localStreamRef.current = stream;
@@ -258,6 +261,10 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       setCallState('connecting');
       setIsVideoEnabled(withVideo);
     } catch (error) {
+      const err = error as { name?: string; message?: string };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:startCall',message:'startCall failed -> cleanup',data:{callId,withVideo,errorName:err?.name||null,errorMessage:err?.message||String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-start',hypothesisId:'M1'})}).catch(()=>{});
+      // #endregion
       cleanup();
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start call'));
     }
