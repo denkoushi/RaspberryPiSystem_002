@@ -145,7 +145,7 @@
         mode: '0600'
       when: '"server" in group_names'
       register: docker_env_result
-      notify: restart docker
+      notify: restart docker compose services
 
     - name: Validate API .env syntax
       ansible.builtin.shell: |
