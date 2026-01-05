@@ -132,14 +132,26 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       };
 
       socket.onmessage = (event) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onmessage',message:'WebSocket onmessage received',data:{eventDataLen:event.data?.length||0,eventDataPreview:String(event.data).slice(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-msg',hypothesisId:'F1'})}).catch(()=>{});
+        // #endregion
         try {
           const message: SignalingMessage = JSON.parse(event.data);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onmessage:parsed',message:'message parsed',data:{type:message.type,callId:message.callId,from:message.from,to:message.to},timestamp:Date.now(),sessionId:'debug-session',runId:'run-msg',hypothesisId:'F1'})}).catch(()=>{});
+          // #endregion
 
           switch (message.type) {
             case 'incoming': {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:case-incoming',message:'incoming case matched',data:{callId:message.callId,from:message.from,hasOnIncomingCall:typeof onIncomingCall === 'function'},timestamp:Date.now(),sessionId:'debug-session',runId:'run-msg',hypothesisId:'F2'})}).catch(()=>{});
+              // #endregion
               // 着信通知
               if (message.callId && message.from) {
                 const payload = message.payload as IncomingCallPayload | undefined;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:before-onIncomingCall',message:'about to call onIncomingCall',data:{callId:message.callId,from:message.from,payloadHas:!!payload},timestamp:Date.now(),sessionId:'debug-session',runId:'run-msg',hypothesisId:'F2'})}).catch(()=>{});
+                // #endregion
                 onIncomingCall?.(message.callId, message.from, payload);
 
                 // 呼び出し音を再生（重複再生を防ぐ）
