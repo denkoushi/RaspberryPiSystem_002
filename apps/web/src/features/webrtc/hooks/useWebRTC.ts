@@ -65,14 +65,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
     // リモートストリームの受信
     pc.ontrack = (event) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:ontrack',message:'remote track received',data:{hasStreams:!!event.streams,streamCount:event.streams?.length||0,hasTracks:!!event.track,kind:event.track?.kind||null,enabled:event.track?.enabled||null,muted:event.track?.muted||null,readyState:event.track?.readyState||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-track',hypothesisId:'V3'})}).catch(()=>{});
-      // #endregion
       if (event.streams && event.streams[0]) {
         const stream = event.streams[0];
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:ontrack',message:'remote stream set',data:{audioTracks:stream.getAudioTracks().length,videoTracks:stream.getVideoTracks().length,videoTrackIds:stream.getVideoTracks().map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-track',hypothesisId:'V3'})}).catch(()=>{});
-        // #endregion
         remoteStreamRef.current = stream;
         onRemoteStreamRef.current?.(stream);
       }
@@ -176,16 +170,10 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
       try {
         const pc = peerConnectionRef.current;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onOffer',message:'onOffer received',data:{callId:message.callId,signalingState:pc.signalingState,iceConnectionState:pc.iceConnectionState,connectionState:pc.connectionState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N1'})}).catch(()=>{});
-        // #endregion
         const offer = message.payload as RTCSessionDescriptionInit;
         // offer衝突(glare)対策: こちらがhave-local-offer等で不安定な場合はrollbackしてから受理する
         if (pc.signalingState !== 'stable') {
           try {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onOffer',message:'onOffer: rollback local description (glare)',data:{callId:message.callId,signalingStateBefore:pc.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N1'})}).catch(()=>{});
-            // #endregion
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await pc.setLocalDescription({ type: 'rollback' } as any);
           } catch {
@@ -212,21 +200,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
       try {
         const pc = peerConnectionRef.current;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer received',data:{callId:message.callId,signalingState:pc.signalingState,localType:pc.localDescription?.type||null,remoteType:pc.remoteDescription?.type||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
-        // #endregion
         const answer = message.payload as RTCSessionDescriptionInit;
         // Answerは「自分がofferを出している」状態でのみ適用する（それ以外は衝突/順序違い）
         if (pc.signalingState !== 'have-local-offer') {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer ignored: wrong signalingState',data:{callId:message.callId,signalingState:pc.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
-          // #endregion
           return;
         }
         await pc.setRemoteDescription(answer);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onAnswer',message:'onAnswer applied',data:{callId:message.callId,signalingState:pc.signalingState,remoteType:pc.remoteDescription?.type||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N2'})}).catch(()=>{});
-        // #endregion
       } catch (error) {
         onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
       }
@@ -383,39 +362,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     }
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo begin',data:{callId:currentCallId,hasPc:!!peerConnectionRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-      // #endregion
-
       const pcForVideo = peerConnectionRef.current;
       // 再ネゴシエーション中は新しいofferを作らない（状態崩壊の原因）
       if (pcForVideo.signalingState !== 'stable') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo skipped: signalingState not stable',data:{callId:currentCallId,signalingState:pcForVideo.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run-negotiation',hypothesisId:'N3'})}).catch(()=>{});
-        // #endregion
         return;
       }
       
       // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
-      let videoStream: MediaStream | null = null;
-      try {
-        // まずビデオのみを試す（マイク無し端末対応）
-        videoStream = await getVideoStream();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'getVideoStream success',data:{callId:currentCallId,videoTracks:videoStream.getVideoTracks().length,audioTracks:videoStream.getAudioTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-        // #endregion
-      } catch (videoError) {
-        const err = videoError as { name?: string; message?: string };
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'getVideoStream failed',data:{callId:currentCallId,errorName:err?.name||null,errorMessage:err?.message||String(videoError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-        // #endregion
-        // ここで audio+video にフォールバックすると「マイク無し端末」で audio が原因で失敗し、
-        // エラーが分かりづらくなる（"Could not start audio source" など）。
-        // enableVideo ではビデオのみを要求する。
-        throw videoError;
-      }
+      const videoStream = await getVideoStream();
 
-      if (!videoStream) {
+      if (!videoStream || videoStream.getVideoTracks().length === 0) {
         throw new Error('ビデオストリームの取得に失敗しました');
       }
       
@@ -439,9 +395,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
         // addTrackはRTCRtpSenderを返すので保持（disableVideoでremoveTrackする）
         videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, videoStream);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'video track added to PC',data:{callId:currentCallId,hasVideoSender:!!videoSenderRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V2'})}).catch(()=>{});
-        // #endregion
         
         // 既存の音声ストリームにビデオトラックを追加
         if (localStreamRef.current) {
@@ -455,9 +408,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         isNegotiatingRef.current = true;
         const offer = await peerConnectionRef.current.createOffer();
         await peerConnectionRef.current.setLocalDescription(offer);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'offer created and sent',data:{callId:currentCallId},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V2'})}).catch(()=>{});
-        // #endregion
 
         signaling.sendMessage({
           type: 'offer',
@@ -468,10 +418,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         setIsVideoEnabled(true);
       }
     } catch (error) {
-      const err = error as { name?: string; message?: string };
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo failed',data:{callId:currentCallId,errorName:err?.name||null,errorMessage:err?.message||String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-      // #endregion
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to enable video'));
     }
   }, [peerConnectionRef, currentCallId, isVideoEnabled, signaling]);

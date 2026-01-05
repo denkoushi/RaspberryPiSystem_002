@@ -42,19 +42,9 @@ export async function getVideoStream(deviceId?: string): Promise<MediaStream> {
   };
 
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'media.ts:getVideoStream',message:'getUserMedia(video-only) start',data:{hasMediaDevices:!!navigator.mediaDevices,hasGetUserMedia:!!navigator.mediaDevices.getUserMedia,hasDeviceId:Boolean(deviceId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-    // #endregion
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'media.ts:getVideoStream',message:'getUserMedia(video-only) success',data:{videoTracks:stream.getVideoTracks().length,audioTracks:stream.getAudioTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-    // #endregion
     return stream;
   } catch (error) {
-    const err = error as { name?: string; message?: string };
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'media.ts:getVideoStream',message:'getUserMedia(video-only) failed',data:{errorName:err?.name||null,errorMessage:err?.message||String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video',hypothesisId:'V1'})}).catch(()=>{});
-    // #endregion
     throw new Error(`カメラへのアクセスに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
