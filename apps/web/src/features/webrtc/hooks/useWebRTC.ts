@@ -31,11 +31,22 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const currentCallIdRef = useRef<string | null>(null);
   const hasIncomingRef = useRef(false);
 
+  // 外部コールバックはref化して、useCallback依存で関数同一性が変わらないようにする
+  const onLocalStreamRef = useRef<UseWebRTCOptions['onLocalStream']>(onLocalStream);
+  const onRemoteStreamRef = useRef<UseWebRTCOptions['onRemoteStream']>(onRemoteStream);
+  const onErrorRef = useRef<UseWebRTCOptions['onError']>(onError);
+
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const isNegotiatingRef = useRef(false);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
+
+  useEffect(() => {
+    onLocalStreamRef.current = onLocalStream;
+    onRemoteStreamRef.current = onRemoteStream;
+    onErrorRef.current = onError;
+  }, [onLocalStream, onRemoteStream, onError]);
 
   // WebRTC設定（Pi4向けに最適化）
   const getRTCConfiguration = useCallback((): RTCConfiguration => {
@@ -56,7 +67,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     pc.ontrack = (event) => {
       if (event.streams && event.streams[0]) {
         remoteStreamRef.current = event.streams[0];
-        onRemoteStream?.(event.streams[0]);
+        onRemoteStreamRef.current?.(event.streams[0]);
       }
     };
 
@@ -116,16 +127,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setIsVideoEnabled(false);
     setIncomingCallInfo(null);
     setCallState('idle');
-    onLocalStream?.(null);
-    onRemoteStream?.(null);
-  }, [onLocalStream, onRemoteStream]);
+    onLocalStreamRef.current?.(null);
+    onRemoteStreamRef.current?.(null);
+  }, []);
 
   // シグナリングフック
   const signaling = useWebRTCSignaling({
     enabled,
     onIncomingCall: (callId, from, payload) => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onIncomingCall',message:'onIncomingCall invoked',data:{callId,from,payloadHas:!!payload,prevCallState:callState,prevHasIncoming:!!incomingCallInfo,prevCallId:currentCallId},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'G2'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onIncomingCall',message:'onIncomingCall invoked',data:{callId,from,payloadHas:!!payload,prevCallState:callStateRef.current,prevHasIncoming:hasIncomingRef.current,prevCallId:currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'G2'})}).catch(()=>{});
       // #endregion
       setIncomingCallInfo({
         callId,
@@ -173,7 +184,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
           payload: answer
         });
       } catch (error) {
-        onError?.(error instanceof Error ? error : new Error('Failed to handle offer'));
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle offer'));
       }
     },
     onAnswer: async (message) => {
@@ -186,7 +197,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         const answer = message.payload as RTCSessionDescriptionInit;
         await peerConnectionRef.current.setRemoteDescription(answer);
       } catch (error) {
-        onError?.(error instanceof Error ? error : new Error('Failed to handle answer'));
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
       }
     },
     onIceCandidate: async (message) => {
@@ -199,11 +210,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         const candidate = message.payload as RTCIceCandidateInit;
         await peerConnectionRef.current.addIceCandidate(candidate);
       } catch (error) {
-        onError?.(error instanceof Error ? error : new Error('Failed to add ICE candidate'));
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to add ICE candidate'));
       }
     },
     onError: (error) => {
-      onError?.(error);
+      onErrorRef.current?.(error);
     }
   });
 
@@ -213,7 +224,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       // ローカルストリームを取得
       const stream = withVideo ? await getAudioVideoStream() : await getAudioStream();
       localStreamRef.current = stream;
-      onLocalStream?.(stream);
+      onLocalStreamRef.current?.(stream);
 
       // RTCPeerConnectionを作成
       const pc = createPeerConnection();
@@ -239,9 +250,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       setIsVideoEnabled(withVideo);
     } catch (error) {
       cleanup();
-      onError?.(error instanceof Error ? error : new Error('Failed to start call'));
+      onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start call'));
     }
-  }, [createPeerConnection, signaling, onLocalStream, onError, cleanup]);
+  }, [createPeerConnection, signaling, cleanup]);
 
   // 発信
   const call = useCallback(async (to: string) => {
@@ -344,7 +355,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         } else {
           localStreamRef.current = videoStream;
         }
-        onLocalStream?.(localStreamRef.current);
+        onLocalStreamRef.current?.(localStreamRef.current);
 
         // 再ネゴシエーション
         isNegotiatingRef.current = true;
@@ -360,9 +371,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         setIsVideoEnabled(true);
       }
     } catch (error) {
-      onError?.(error instanceof Error ? error : new Error('Failed to enable video'));
+      onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to enable video'));
     }
-  }, [peerConnectionRef, currentCallId, isVideoEnabled, signaling, onLocalStream, onError]);
+  }, [peerConnectionRef, currentCallId, isVideoEnabled, signaling]);
 
   // ビデオを無効化
   const disableVideo = useCallback(() => {
