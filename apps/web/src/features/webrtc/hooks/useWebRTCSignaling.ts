@@ -119,9 +119,16 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         keepaliveIntervalRef.current = window.setInterval(() => {
           if (socketRef.current?.readyState === WebSocket.OPEN) {
             try {
-              socketRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+              const pingMessage = { type: 'ping', timestamp: Date.now() };
+              socketRef.current.send(JSON.stringify(pingMessage));
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:keepalive',message:'keepalive ping sent',data:{timestamp:pingMessage.timestamp},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
+              // #endregion
             } catch (error) {
               console.error('Failed to send keepalive ping:', error);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:keepalive',message:'keepalive ping failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
+              // #endregion
             }
           }
         }, 30000); // 30秒
@@ -193,6 +200,14 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
             case 'ice-candidate': {
               onIceCandidate?.(message);
+              break;
+            }
+
+            case 'pong': {
+              // Keepalive pong応答（ログのみ）
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onmessage',message:'keepalive pong received',data:{timestamp:message.timestamp},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
+              // #endregion
               break;
             }
 
