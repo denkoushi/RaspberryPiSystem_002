@@ -152,16 +152,25 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       await startCall(callId, false); // 音声のみで開始
     },
     onCallRejected: (callId) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onCallRejected',message:'onCallRejected invoked',data:{callId,currentCallId:currentCallIdRef.current,willCleanup:callId===currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       if (callId === currentCallId) {
         cleanup();
       }
     },
     onCallCancelled: (callId) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onCallCancelled',message:'onCallCancelled invoked',data:{callId,currentCallId:currentCallIdRef.current,willCleanup:callId===currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       if (callId === currentCallId) {
         cleanup();
       }
     },
     onCallHangup: (callId) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onCallHangup',message:'onCallHangup invoked',data:{callId,currentCallId:currentCallIdRef.current,willCleanup:callId===currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-webrtc',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       if (callId === currentCallId) {
         cleanup();
       }
