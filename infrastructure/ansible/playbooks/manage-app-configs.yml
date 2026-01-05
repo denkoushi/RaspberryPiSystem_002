@@ -123,8 +123,11 @@
         existing_slack_kiosk_support_webhook_url: >-
           {{
             (
-              (docker_env_slurp.content | b64decode)
-              | regex_search('^SLACK_KIOSK_SUPPORT_WEBHOOK_URL=(.*)$', '\\1', multiline=True)
+              (
+                (docker_env_slurp.content | b64decode)
+                | regex_findall('^SLACK_KIOSK_SUPPORT_WEBHOOK_URL=(.*)$', multiline=True)
+              )
+              | first
             )
             | default('')
           }}
