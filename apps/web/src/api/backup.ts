@@ -146,7 +146,7 @@ export async function runCsvImportSchedule(id: string): Promise<{ message: strin
 
 // バックアップ設定の型定義
 export interface BackupTarget {
-  kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
   source: string;
   schedule?: string;
   enabled: boolean;
@@ -229,7 +229,7 @@ export async function deleteBackupTarget(index: number): Promise<{ success: bool
 
 // 手動バックアップ実行API
 export interface RunBackupRequest {
-  kind: 'database' | 'file' | 'directory' | 'csv' | 'image';
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
   source: string;
   metadata?: Record<string, unknown>;
 }
@@ -240,6 +240,24 @@ export interface RunBackupResponse {
   sizeBytes?: number;
   timestamp: string;
   historyId?: string;
+}
+
+// Dropbox purge API
+export interface PurgeDropboxRequest {
+  confirmText: string;
+}
+
+export interface PurgeDropboxResponse {
+  success: boolean;
+  deletedCount: number;
+  failedCount: number;
+  totalCount: number;
+  errors?: string[];
+}
+
+export async function purgeDropboxBackups(request: PurgeDropboxRequest): Promise<PurgeDropboxResponse> {
+  const { data } = await api.post<PurgeDropboxResponse>('/backup/dropbox/purge', request);
+  return data;
 }
 
 export async function runBackup(request: RunBackupRequest): Promise<RunBackupResponse> {

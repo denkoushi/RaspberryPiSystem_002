@@ -72,6 +72,8 @@ export function BackupTargetsPage() {
         return 'ファイル';
       case 'directory':
         return 'ディレクトリ';
+      case 'client-file':
+        return 'クライアントファイル';
       default:
         return kind;
     }

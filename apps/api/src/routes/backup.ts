@@ -1360,4 +1360,105 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       throw new ApiError(500, 'Failed to refresh access token');
     }
   });
+
+  // Dropbox /backups 配下の全削除（メンテナンス用、強い確認必須）
+  app.post('/backup/dropbox/purge', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          confirmText: { type: 'string' }
+        },
+        required: ['confirmText']
+      }
+    }
+  }, async (request, reply) => {
+    const body = request.body as { confirmText: string };
+    
+    // 強い確認: 正確な確認テキストを要求
+    const REQUIRED_CONFIRM_TEXT = 'DELETE_ALL_UNDER_/backups';
+    if (body.confirmText !== REQUIRED_CONFIRM_TEXT) {
+      throw new ApiError(400, `Invalid confirmation text. Must be exactly: ${REQUIRED_CONFIRM_TEXT}`);
+    }
+
+    const config = await BackupConfigLoader.load();
+    
+    // Dropboxプロバイダーが設定されているか確認
+    if (config.storage.provider !== 'dropbox') {
+      throw new ApiError(400, 'Dropbox storage provider is not configured');
+    }
+
+    const basePath = (config.storage.options?.basePath as string | undefined) || '/backups';
+    
+    // basePathが/backupsでない場合は安全のため拒否
+    if (basePath !== '/backups') {
+      throw new ApiError(400, `Unexpected basePath: ${basePath}. Only /backups is allowed for purge operation.`);
+    }
+
+    const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
+      ? request.headers['x-forwarded-proto'][0] 
+      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+    const host = Array.isArray(request.headers.host) 
+      ? request.headers.host[0] 
+      : (request.headers.host || 'localhost:8080');
+    
+    // トークン更新コールバック
+    const onTokenUpdate = async (newToken: string) => {
+      const updatedConfig: BackupConfig = {
+        ...config,
+        storage: {
+          ...config.storage,
+          options: {
+            ...config.storage.options,
+            accessToken: newToken
+          }
+        }
+      };
+      await BackupConfigLoader.save(updatedConfig);
+    };
+
+    try {
+      // Dropboxストレージプロバイダーを作成
+      const dropboxProvider = await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+      const backupService = new BackupService(dropboxProvider);
+      
+      // まず一覧を取得して確認
+      logger?.info({ basePath }, '[BackupRoute] Listing Dropbox backups before purge');
+      const backups = await backupService.listBackups({ prefix: '' });
+      
+      logger?.info({ count: backups.length, basePath }, '[BackupRoute] Found backups to delete');
+      
+      // 各バックアップを削除
+      let deletedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+      
+      for (const backup of backups) {
+        if (!backup.path) continue;
+        try {
+          await backupService.deleteBackup(backup.path);
+          deletedCount++;
+          logger?.info({ path: backup.path }, '[BackupRoute] Deleted backup');
+        } catch (error) {
+          failedCount++;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`${backup.path}: ${errorMessage}`);
+          logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to delete backup');
+        }
+      }
+      
+      return reply.status(200).send({
+        success: true,
+        deletedCount,
+        failedCount,
+        totalCount: backups.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger?.error({ err: error }, '[BackupRoute] Failed to purge Dropbox backups');
+      throw new ApiError(500, `Failed to purge Dropbox backups: ${errorMessage}`);
+    }
+  });
 }
