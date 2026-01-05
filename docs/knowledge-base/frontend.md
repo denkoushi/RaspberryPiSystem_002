@@ -1407,3 +1407,241 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
 - `apps/api/src/routes/kiosk.ts`
 
 ---
+
+### [KB-136] WebRTC useWebRTCフックのcleanup関数が早期実行される問題
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- 着信通知を受信して`callState`を`'incoming'`に設定しても、即座に`cleanup()`が呼ばれて`'idle'`に戻る
+- 結果として着信モーダルが表示されない
+- ログで`incoming effect evaluated`→`cleanup called`の連続発生を確認
+
+**要因**: 
+- `useWebRTC`フックに渡す`onLocalStream`、`onRemoteStream`、`onError`コールバックが`KioskCallPage.tsx`内のインライン関数
+- これらのインライン関数は毎回再生成されるため、`useCallback`の依存配列が変化
+- 結果として`cleanup`関数が再生成され、`useEffect([cleanup])`が再実行
+- `useEffect`のクリーンアップ関数として古い`cleanup`が呼ばれ、状態がリセット
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: コールバックを`useRef`で保持し、`cleanup`を安定化
+```typescript
+// useWebRTC.ts
+const onLocalStreamRef = useRef(onLocalStream);
+const onRemoteStreamRef = useRef(onRemoteStream);
+const onErrorRef = useRef(onError);
+
+useEffect(() => {
+  onLocalStreamRef.current = onLocalStream;
+  onRemoteStreamRef.current = onRemoteStream;
+  onErrorRef.current = onError;
+}, [onLocalStream, onRemoteStream, onError]);
+
+const cleanup = useCallback(() => {
+  // cleanup logic - 安定した参照を使用
+}, []); // 空の依存配列
+
+useEffect(() => {
+  return () => cleanup();
+}, []); // アンマウント時のみ実行
+```
+
+**学んだこと**:
+- `useEffect`の依存配列に含まれる関数が毎回再生成されると、意図しないクリーンアップが発生する
+- コールバック関数は`useRef`で保持し、安定した参照を維持する
+- `cleanup`関数は`useCallback([], [])`で安定化し、アンマウント時のみ実行されるようにする
+- デバッグログで状態変化のタイミングを追跡することが重要
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTC.ts`
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`
+
+---
+
+### [KB-137] マイク未接続端末でのrecvonlyフォールバック実装
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- Pi4（マイク未接続）で通話を受話すると「Could not start audio source」エラーが発生
+- `getUserMedia(audio)`が`NotAllowedError`または`NotFoundError`で失敗
+- 通話が即座に切断される
+
+**要因**: 
+- `getUserMedia`失敗時に即座に`cleanup()`を呼んで通話を終了する実装だった
+- マイクが物理的に存在しない端末では音声取得が常に失敗
+- 受信専用（recvonly）でも通話を継続できるはずだった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: `getUserMedia`失敗時にrecvonlyモードで継続
+```typescript
+// useWebRTC.ts - startCall/accept内
+try {
+  const stream = await getAudioStream();
+  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  onLocalStreamRef.current?.(stream);
+} catch (error) {
+  // マイク取得失敗時はrecvonly（受信専用）で継続
+  console.warn('Microphone unavailable, continuing in recvonly mode:', error);
+  // cleanup()を呼ばず、ローカルストリームなしで継続
+}
+```
+
+**学んだこと**:
+- マイク/カメラがない端末でも通話を受信できるようにする（受信専用モード）
+- `getUserMedia`失敗は致命的エラーではなく、gracefulにハンドリングする
+- エラー時のフォールバック動作を明確に定義する
+- 実機検証で様々なハードウェア構成をテストすることが重要
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTC.ts`
+- `apps/web/src/features/webrtc/utils/media.ts`
+
+---
+
+### [KB-138] ビデオ通話時のDOM要素へのsrcObjectバインディング問題
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- ビデオを有効化してもMac側で黒い画面が表示される
+- カメラのLEDは点灯しているが映像が表示されない
+- `video.play()`のログが出力されない
+
+**要因**: 
+- `<video>`要素を条件付きレンダリング（`isVideoEnabled && localStream`）していた
+- `onLocalStream`コールバックでMediaStreamを受け取った時点では、まだ`<video>`要素がDOMに存在しない
+- `srcObject`を設定しようとしても対象要素がない
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: `useEffect`でストリームとDOM要素の両方が存在する時に`srcObject`を設定
+```typescript
+// KioskCallPage.tsx
+const [localStreamForUi, setLocalStreamForUi] = useState<MediaStream | null>(null);
+const localVideoRef = useRef<HTMLVideoElement>(null);
+
+// onLocalStreamコールバックでstateを更新
+const handleLocalStream = (stream: MediaStream) => {
+  setLocalStreamForUi(stream);
+};
+
+// useEffectでsrcObjectをバインド
+useEffect(() => {
+  if (localStreamForUi && localVideoRef.current) {
+    localVideoRef.current.srcObject = localStreamForUi;
+    localVideoRef.current.play().catch(console.warn);
+  }
+}, [localStreamForUi]);
+```
+
+**学んだこと**:
+- 条件付きレンダリングとMediaStreamの組み合わせは注意が必要
+- `srcObject`の設定は、DOM要素が存在するタイミングで行う
+- `useEffect`を使用してストリームとDOM要素の両方が利用可能な時にバインドする
+- `video.play()`は必ず呼び出し、autoplay policyに対応する
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`
+
+---
+
+### [KB-139] WebRTCシグナリングのWebSocket接続管理（重複接続防止）
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- コンソールログに`connect called`が連続で出力される
+- 複数のWebSocket接続が同時に試行される
+- 接続成功後も再接続が繰り返される
+
+**要因**: 
+- `useEffect`の依存配列に`connect`関数が含まれていた
+- `connect`関数は毎レンダリングで再生成される（依存する状態が変化するため）
+- 結果として`useEffect`が連続実行され、複数の接続試行が発生
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: 接続状態チェックと`isConnecting`フラグを追加
+```typescript
+// useWebRTCSignaling.ts
+const [isConnecting, setIsConnecting] = useState(false);
+
+const connect = useCallback(() => {
+  // 既に接続済みまたは接続試行中なら何もしない
+  const currentState = socketRef.current?.readyState;
+  if (currentState === WebSocket.OPEN || currentState === WebSocket.CONNECTING) {
+    return;
+  }
+  setIsConnecting(true);
+  // ...
+}, [...]);
+
+useEffect(() => {
+  if (enabled) connect();
+  else disconnect();
+  return () => disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [enabled]); // connect/disconnectを依存配列から除外
+```
+
+**学んだこと**:
+- `useEffect`の依存配列から関数を除外する場合は、その影響を理解した上で`eslint-disable`コメントを付ける
+- WebSocket接続状態（`readyState`）をチェックして重複接続を防止する
+- `isConnecting`状態を使用して接続試行中の重複を防ぐ
+- 無限ループを防ぐため、依存関係を慎重に設計する
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
+
+---
+
+### [KB-140] useLocalStorageとの互換性のためのJSON.stringify対応
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- Macで発信先一覧にPi4が表示されない
+- APIへのリクエストで`x-client-key`がPi4のキーになっている
+- `localStorage`に設定したMac用のクライアントキーが正しく読み取れない
+
+**要因**: 
+- `useLocalStorage`フックは値をJSON形式で保存する（`JSON.stringify`）
+- 手動で`localStorage.setItem`した値がJSON形式でない場合、`useLocalStorage`が正しく読み取れない
+- `resolveClientKey()`関数がJSON.parseに失敗してフォールバック値を返す
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: `JSON.stringify`を使用して保存するよう手順を更新
+```javascript
+// ブラウザのコンソールで実行
+localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
+localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
+```
+- `resolveClientKey`関数で両形式（JSON/生文字列）をサポート
+
+**追加対策**: 
+- デバッグ用にURLクエリパラメータでクライアントキーを上書きできる機能を追加
+```
+https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
+```
+
+**学んだこと**:
+- `useLocalStorage`フックはJSON形式で保存するため、手動設定時も`JSON.stringify`を使用する
+- 既存データとの互換性のため、読み取り時は両形式をサポートする
+- デバッグ用にURLパラメータで設定を上書きできると便利
+- ドキュメントに正しい設定手順を明記する
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/api/client.ts`
+- `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
+- `docs/guides/webrtc-verification.md`
+
+---

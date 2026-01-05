@@ -218,11 +218,29 @@ localStorage.getItem('kiosk-client-id')
    - マイク・カメラの許可を確認
    - 通話が開始されること
 
-4. **通話中の確認**:
-   - Mac側とPi4側の両方で、ローカルビデオとリモートビデオが表示されること
+4. **通話中の確認（音声のみ）**:
+   - Mac側とPi4側の両方で、音声通話が開始されること
    - 音声が聞こえること（マイク・スピーカーが接続されている場合）
-   - 「📹 ビデオを無効化」ボタンでビデオを切替できること
+   - 画面上に「音声通話中」と表示されること（ビデオは表示されない）
    - 「📞 切断」ボタンで通話を終了できること
+
+5. **ビデオ通話への切替（Mac側から）**:
+   - Mac側で「📹 ビデオを有効化」ボタンをクリック
+   - カメラの許可を確認（ブラウザの許可ダイアログ）
+   - Mac側でローカルビデオ（自分のカメラ映像）が表示されること
+   - Pi4側でリモートビデオ（Macのカメラ映像）が表示されること
+   - Mac側で「📹 ビデオを無効化」ボタンをクリック
+   - ビデオが切れて音声のみに戻ること
+
+6. **ビデオ通話への切替（Pi4側から）**:
+   - Pi4側で「📹 ビデオを有効化」ボタンをクリック
+   - カメラの許可を確認（ブラウザの許可ダイアログ、Pi4にカメラが接続されている場合）
+   - Pi4側でローカルビデオ（自分のカメラ映像）が表示されること
+   - Mac側でリモートビデオ（Pi4のカメラ映像）が表示されること
+   - Pi4側で「📹 ビデオを無効化」ボタンをクリック
+   - ビデオが切れて音声のみに戻ること
+
+**注意**: Pi4にカメラが接続されていない場合、ビデオ有効化時にエラーが発生する可能性があります。その場合は音声通話のみで継続されます。
 
 #### 4.2 Pi4からMacへの発信
 
@@ -291,6 +309,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl st
 1. **Caddy設定の確認**:
    - `infrastructure/docker/Caddyfile.local`でWebSocketプロキシ設定を確認
    - `/api/webrtc/signaling`へのリクエストが正しくプロキシされているか確認
+   - **重要**: WebSocketアップグレードヘッダーは`/api/webrtc/signaling`のみに適用すること（[KB-141](../knowledge-base/infrastructure/docker-caddy.md#kb-141)参照）
 
 2. **APIログの確認**:
 ```bash
@@ -298,8 +317,15 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 ```
 
 3. **ブラウザのコンソールログ確認**:
-   - `WebSocket onopen` が表示されること
+   - `WebRTC signaling connected` が表示されること
    - `WebSocket onerror` が表示されないこと
+
+4. **Route not found エラーの場合**:
+   - `Route GET:/api/webrtc/webrtc/signaling not found`のようなダブルプレフィックスがないか確認（[KB-132](../knowledge-base/api.md#kb-132)参照）
+
+5. **TypeError: Cannot read properties of undefined エラーの場合**:
+   - `@fastify/websocket`の`connection.socket`がundefinedになる場合がある（[KB-133](../knowledge-base/api.md#kb-133)参照）
+   - `connection`オブジェクト自体がWebSocketの場合に対応しているか確認
 
 ### 発信先一覧が表示されない
 
@@ -340,11 +366,18 @@ localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
    - ブラウザの開発者ツールのNetworkタブで`/api/kiosk/call/targets`のレスポンスを確認
    - Pi4が`targets`配列に含まれていることを確認
 
-### 通話が開始されない
+5. **デバッグ用URLパラメータ**:
+   - クライアントキーの問題を切り分けるため、URLパラメータで一時的に上書き可能
+```
+https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
+```
+
+### 通話が開始されない / 着信モーダルが表示されない
 
 1. **マイク・カメラの許可確認**:
    - ブラウザの設定でマイク・カメラの許可が確認されていること
    - 他のアプリケーションがマイク・カメラを使用していないこと
+   - macOSの場合: システム設定 → プライバシーとセキュリティ → マイク/カメラでChromeを許可
 
 2. **WebRTC接続の確認**:
    - ブラウザの開発者ツールで`RTCPeerConnection`の状態を確認
@@ -353,6 +386,58 @@ localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 3. **ファイアウォール設定の確認**:
    - STUN/TURNサーバーが使用されている場合、ポートが開放されていること
    - 現在の実装ではSTUN/TURNサーバーは使用していない（同一LAN内での通話）
+
+4. **着信モーダルが表示されない場合**:
+   - コンソールログで`cleanup called`が`incoming`の直後に発生していないか確認
+   - 発生している場合は`useWebRTC`フックのコールバック安定化を確認（[KB-136](../knowledge-base/frontend.md#kb-136)参照）
+
+### マイク未接続端末で「Could not start audio source」エラー
+
+1. **原因**: マイクが物理的に接続されていない端末で`getUserMedia(audio)`が失敗
+
+2. **対処**: 
+   - 現在の実装では**recvonly（受信専用）モードで通話を継続**するフォールバックあり
+   - エラーダイアログが表示されず通話が維持されることを確認
+
+3. **詳細**: [KB-137](../knowledge-base/frontend.md#kb-137)参照
+
+### ビデオを有効化しても黒い画面が表示される
+
+1. **カメラの許可確認**: カメラのLEDが点灯しているか確認
+
+2. **DOM要素へのバインディング**:
+   - ビデオ要素が条件付きレンダリングされている場合、`srcObject`のバインドタイミングに注意
+   - `useEffect`でストリームとDOM要素の両方が存在する時にバインドする
+   - 詳細: [KB-138](../knowledge-base/frontend.md#kb-138)参照
+
+3. **古いJavaScriptが残っている場合**:
+   - `docker compose build --no-cache web`でキャッシュを無効化してビルド
+
+### 通話が約5分で切断される
+
+1. **原因**: ネットワーク機器（ルーター、プロキシ等）がアイドル状態のWebSocket接続をタイムアウト
+
+2. **対処**: 
+   - WebSocket keepalive機能（30秒間隔のping/pong）が実装済み
+   - keepaliveが動作していない場合は、デプロイが最新かどうか確認
+
+3. **ログで確認**:
+```bash
+# APIログでping/pongを確認
+ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
+```
+
+4. **詳細**: [KB-134](../knowledge-base/api.md#kb-134)参照
+
+### 「Callee is not connected」エラー
+
+1. **原因**: 発信先のクライアントがWebSocketシグナリングサーバーに接続していない
+
+2. **確認事項**:
+   - 発信先（Pi4など）で通話画面（`/kiosk/call`）を開いているか
+   - 発信先でWebSocket接続が確立されているか（コンソールで`WebRTC signaling connected`を確認）
+
+3. **対処**: 発信先でも通話画面を開いてWebSocket接続を確立する
 
 ## IPアドレスについて
 
@@ -374,24 +459,97 @@ status-agentは以下の方法でIPアドレスを取得します：
 
 ## 検証チェックリスト
 
+### 基本接続
+
 - [ ] Pi5サーバーのヘルスチェックが正常
 - [ ] 発信先一覧APIが正常に動作
 - [ ] WebRTCシグナリングルートが登録されている
+
+### キオスク画面
+
 - [ ] Macでキオスク通話画面が表示される
 - [ ] MacでWebSocket接続が確立される
 - [ ] Macで発信先一覧が表示される（Pi4、Pi3、Pi5が含まれる）
 - [ ] Pi4でキオスク通話画面が表示される
 - [ ] Pi4でWebSocket接続が確立される
+
+### 音声通話
+
 - [ ] MacからPi4への発信が成功する
 - [ ] Pi4からMacへの発信が成功する
 - [ ] 通話中に音声が聞こえる（マイク・スピーカー接続時）
-- [ ] 通話中にビデオが表示される（カメラ接続時）
-- [ ] ビデオの有効化/無効化が動作する
+- [ ] マイク無し端末（Pi4）でも受話できる（recvonlyモード）
 - [ ] 通話の切断が正常に動作する
+- [ ] 60秒以上の通話維持ができる
+
+### ビデオ通話
+
+- [ ] Macのみビデオ有効化が動作する
+- [ ] Pi4のみビデオ有効化が動作する
+- [ ] 両デバイスでビデオ有効化が動作する
+- [ ] ビデオの無効化が動作する
+- [ ] 60秒以上のビデオ通話維持ができる
+
+### 長時間接続・安定性
+
+- [ ] 5分以上の通話維持ができる（keepalive動作確認）
 - [ ] WebSocket接続エラー時の自動再接続が動作する
+- [ ] ネットワーク切断後の再接続が動作する
+
+## 実装過程で得た知見
+
+### 1. WebSocket接続の安定性
+
+- **keepalive実装が必須**: ネットワーク機器は5分程度でアイドル接続を切断する
+- **30秒間隔のping/pong**で問題解決
+- `code: 1006`はネットワークレベルの異常終了（アプリケーションエラーではない）
+
+### 2. Reactフックの依存関係管理
+
+- **コールバック関数は`useRef`で保持**: インライン関数を依存配列に含めると無限ループの原因に
+- **`cleanup`関数は空の依存配列で安定化**: アンマウント時のみ実行されるようにする
+- **`eslint-disable`コメントは慎重に**: 影響を理解した上で使用
+
+### 3. ハードウェア差異への対応
+
+- **マイク/カメラがない端末でも動作させる**: `getUserMedia`失敗時のフォールバックが重要
+- **recvonlyモード**: 受信専用で通話を継続できる
+- **カメラ制約は緩めに**: `getVideoStream()`で制約なしにすると互換性向上
+
+### 4. Caddyリバースプロキシ設定
+
+- **WebSocketヘッダーは特定パスのみ**: すべてのAPIに適用すると壊れる
+- **`handle`ディレクティブの順序が重要**: 具体的なパスを先に定義
+
+### 5. Fastify WebSocket
+
+- **`connection.socket`が`undefined`の場合がある**: `connection`自体がWebSocketオブジェクトの可能性
+- **防御的コーディング**: メソッド存在確認でライブラリ差分を吸収
+
+### 6. localStorage互換性
+
+- **`useLocalStorage`はJSON形式で保存**: 手動設定時も`JSON.stringify()`を使用
+- **デバッグ用URLパラメータ**: クライアント識別の問題切り分けに有効
+
+### 7. 条件付きレンダリングとMediaStream
+
+- **`srcObject`は要素存在時に設定**: `useEffect`で両方が利用可能な時にバインド
+- **`video.play()`は必ず呼び出す**: autoplay policyへの対応
 
 ## 関連ドキュメント
 
 - [デプロイメントガイド](./deployment.md)
 - [検証チェックリスト](./verification-checklist.md)
-- [WebRTC実装のナレッジベース](../knowledge-base/api.md#webrtc)
+
+### ナレッジベース（WebRTC関連）
+
+- [KB-132: WebRTCシグナリングルートのダブルプレフィックス問題](../knowledge-base/api.md#kb-132)
+- [KB-133: @fastify/websocketのconnection.socket問題](../knowledge-base/api.md#kb-133)
+- [KB-134: WebSocket keepalive対策](../knowledge-base/api.md#kb-134)
+- [KB-135: キオスク通話候補取得APIエンドポイント](../knowledge-base/api.md#kb-135)
+- [KB-136: useWebRTCのcleanup早期実行問題](../knowledge-base/frontend.md#kb-136)
+- [KB-137: マイク未接続端末でのrecvonlyフォールバック](../knowledge-base/frontend.md#kb-137)
+- [KB-138: ビデオ通話時のsrcObjectバインディング問題](../knowledge-base/frontend.md#kb-138)
+- [KB-139: WebSocket接続管理（重複接続防止）](../knowledge-base/frontend.md#kb-139)
+- [KB-140: useLocalStorageとの互換性](../knowledge-base/frontend.md#kb-140)
+- [KB-141: CaddyのWebSocketアップグレードヘッダー問題](../knowledge-base/infrastructure/docker-caddy.md#kb-141)

@@ -22,6 +22,10 @@
 
 - **✅ CI YAML責務分離リファクタ完了**: GitHub Actions CIワークフローを品質レビューに適した構成に改善。巨大な`lint-and-test`ジョブを`static-quality`、`api-tests`、`scripts-verification`、`security`に分割し、失敗原因の特定を容易に。PostgreSQLを`services:`化し、ポート衝突と後片付けの問題を解消。共通基盤を整備（`runs-on: ubuntu-24.04`固定、`concurrency`追加、`defaults.run.shell: bash -euo pipefail`設定）。成果物を標準化（Vitest JUnit/JSON/coverage、Trivy SARIF、Playwright reportをartifact化）。`pnpm audit`をnon-blocking化し、失敗してもCIを落とさず結果をログ/レポートとして残す方針に変更。詳細は [knowledge-base/ci-cd.md#kb-027](./knowledge-base/ci-cd.md#kb-027-ci-yaml責務分離リファクタ品質レビュー強化) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
+### 🆕 最新アップデート（2026-01-05）
+
+- **✅ WebRTCビデオ通話機能 実装・実機検証完了**: キオスク通話（`/kiosk/call`）でPi4↔Macの音声通話・ビデオ通話の実機検証を完了し、機能が完成。**音声通話**：双方向発信/受話、マイク無し端末でのrecvonlyモード対応、60秒以上の通話維持を確認。**ビデオ通話**：片側のみビデオON、両側ビデオON、ビデオON/OFFの切り替えを確認。**長時間接続**：WebSocket keepalive（30秒ping/pong）により5分以上の通話を安定維持。実装過程で発生した問題と解決策をナレッジベースに詳細記録（KB-132〜141）。詳細は [guides/webrtc-verification.md](./guides/webrtc-verification.md) / [knowledge-base/api.md#kb-132](./knowledge-base/api.md#kb-132-webrtcシグナリングルートのダブルプレフィックス問題) / [knowledge-base/frontend.md#kb-136](./knowledge-base/frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題) / [knowledge-base/infrastructure/docker-caddy.md#kb-141](./knowledge-base/infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) を参照。
+
 ### 🆕 最新アップデート（2026-01-04）
 
 - **✅ WebRTC通話（音声）実機検証・安定化**: キオスク通話（`/kiosk/call`）でPi4↔Macの音声通話の実機検証を実施。WebSocketシグナリング、offer/answer/ICE交換、接続維持を確認。マイク権限周りの切断問題に対して、マイク未接続端末でも受信専用（recvonly）で接続を継続するフォールバックを追加。手順は [guides/webrtc-verification.md](./guides/webrtc-verification.md) を参照。
