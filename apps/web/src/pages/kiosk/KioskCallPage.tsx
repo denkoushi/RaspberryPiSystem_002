@@ -35,6 +35,23 @@ export function KioskCallPage() {
     onLocalStream: (stream) => {
       if (localVideoRef.current && stream) {
         localVideoRef.current.srcObject = stream;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onLocalStream',message:'local video srcObject set',data:{hasStream:true,audioTracks:stream.getAudioTracks().length,videoTracks:stream.getVideoTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+        // #endregion
+        // autoplayがブロックされる環境があるため、明示的にplayを試す
+        void localVideoRef.current
+          .play()
+          .then(() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onLocalStream',message:'local video play() success',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+            // #endregion
+          })
+          .catch((e) => {
+            const err = e as { name?: string; message?: string };
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onLocalStream',message:'local video play() failed',data:{errorName:err?.name||null,errorMessage:err?.message||String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+            // #endregion
+          });
       } else if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
       }
@@ -42,6 +59,22 @@ export function KioskCallPage() {
     onRemoteStream: (stream) => {
       if (remoteVideoRef.current && stream) {
         remoteVideoRef.current.srcObject = stream;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onRemoteStream',message:'remote video srcObject set',data:{hasStream:true,audioTracks:stream.getAudioTracks().length,videoTracks:stream.getVideoTracks().length,remoteVideoMuted:remoteVideoRef.current?.muted??null},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+        // #endregion
+        void remoteVideoRef.current
+          .play()
+          .then(() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onRemoteStream',message:'remote video play() success',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+            // #endregion
+          })
+          .catch((e) => {
+            const err = e as { name?: string; message?: string };
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:onRemoteStream',message:'remote video play() failed',data:{errorName:err?.name||null,errorMessage:err?.message||String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+            // #endregion
+          });
       } else if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
       }
