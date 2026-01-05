@@ -1132,3 +1132,166 @@ app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) =>
 
 ---
 
+### [KB-132] WebRTCシグナリングルートのダブルプレフィックス問題
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- WebRTCシグナリングエンドポイント`/api/webrtc/signaling`にアクセスすると`Route GET:/api/webrtc/webrtc/signaling not found`エラーが発生
+- クライアント側で即座に「WebSocket connection error」ダイアログが表示
+
+**要因**: 
+- `apps/api/src/routes/webrtc/index.ts`で`prefix: '/webrtc'`を設定
+- `apps/api/src/routes/webrtc/signaling.ts`で`/webrtc/signaling`と定義
+- 結果として`/webrtc/webrtc/signaling`のダブルプレフィックスが発生
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: `signaling.ts`のルート定義を`/webrtc/signaling`から`/signaling`に変更
+- プレフィックスが親ルーターで設定されている場合、子ルートではプレフィックスを含めない
+
+**学んだこと**:
+- Fastifyのサブルーター（`fastify.register`）でprefixを設定する場合、子ルートはプレフィックスを重複して含めない
+- APIログの`Route GET:/xxx not found`メッセージから、実際にルーティングされたパスを確認できる
+- `curl`でエンドポイントを直接テストしてルーティングを確認することが有効
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/api/src/routes/webrtc/index.ts`
+- `apps/api/src/routes/webrtc/signaling.ts`
+
+---
+
+### [KB-133] @fastify/websocketのconnection.socketがundefinedになる問題
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- WebSocket接続時に`TypeError: Cannot read properties of undefined (reading 'on')`が発生
+- APIログで接続試行は確認できるが、即座にエラーで切断
+- クライアント側で連続的に「WebSocket connection error」アラートが表示
+
+**要因**: 
+- `@fastify/websocket`のバージョンや環境によって、コールバック引数の形状が異なる
+- 一部の環境では`connection.socket`が存在せず、`connection`自体がWebSocketオブジェクト
+- 型定義と実際の動作が一致しない場合がある
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: WebSocketオブジェクト取得を堅牢化
+```typescript
+const maybeSocket = (connection as unknown as { socket?: unknown }).socket ?? connection;
+const socket = maybeSocket as unknown as WebSocketLike;
+```
+- `socket.on`、`socket.send`、`socket.close`メソッドの存在確認を追加
+- 存在しない場合は早期リターン
+
+**学んだこと**:
+- `@fastify/websocket`の`connection`引数は環境によって形状が異なる可能性がある
+- 型定義に頼らず、実際のオブジェクト形状をログで確認することが重要
+- 防御的コーディング（メソッド存在確認）でライブラリの動作差分を吸収する
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/api/src/routes/webrtc/signaling.ts`
+- `apps/api/src/routes/webrtc/types.ts`（`WebSocketLike`インターフェース）
+
+---
+
+### [KB-134] WebSocket接続の5分タイムアウト問題とkeepalive対策
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- WebRTC通話が約5分（319〜331秒）で自動的に切断される
+- WebSocket `onclose`イベントで`code: 1006`（異常終了）が記録される
+- RTCPeerConnection自体は正常に接続・維持されている
+
+**要因**: 
+- ネットワーク機器（ルーター、プロキシ、ロードバランサー等）がアイドル状態のWebSocket接続をタイムアウトで切断
+- 一般的なネットワーク機器のアイドルタイムアウトは5分程度
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: WebSocket keepalive機能を実装
+- **クライアント側**（`useWebRTCSignaling.ts`）: 30秒ごとに`{ type: 'ping', timestamp: Date.now() }`を送信
+- **サーバー側**（`signaling.ts`）: `ping`受信時に`{ type: 'pong', timestamp: ... }`を返送
+- `SignalingMessage`型に`ping`と`pong`を追加
+
+**実装詳細**:
+```typescript
+// クライアント側: 30秒間隔でping送信
+keepaliveIntervalRef.current = window.setInterval(() => {
+  if (socketRef.current?.readyState === WebSocket.OPEN) {
+    socketRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+  }
+}, 30000);
+
+// サーバー側: pingを受信したらpongを返送
+if (data.type === 'ping') {
+  socket.send(JSON.stringify({ type: 'pong', timestamp: data.payload?.timestamp || Date.now() }));
+  return;
+}
+```
+
+**学んだこと**:
+- WebSocket接続はネットワーク機器によってアイドルタイムアウトで切断される可能性がある
+- 30秒間隔のkeepaliveで5分タイムアウトを回避できる
+- `code: 1006`はネットワークレベルの異常終了を示す（アプリケーションエラーではない）
+- keepaliveはPing Pong両方向で実装し、通信パスの健全性を確認する
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
+- `apps/api/src/routes/webrtc/signaling.ts`
+- `apps/web/src/features/webrtc/types.ts`
+- `apps/api/src/routes/webrtc/types.ts`
+
+---
+
+### [KB-135] キオスク通話候補取得用APIエンドポイント追加
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- キオスク画面で通話可能な端末一覧を表示しようとすると401 Unauthorizedエラー
+- 既存の`/api/clients`と`/api/clients/status`は管理者認証が必要
+
+**要因**: 
+- キオスクからはJWT認証ではなく`x-client-key`認証のみでアクセス
+- 管理者向けAPIエンドポイントをキオスクから直接呼び出そうとしていた
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: キオスク専用の通話候補取得エンドポイントを追加
+- `GET /api/kiosk/call/targets`: `x-client-key`認証で通話可能なクライアント一覧を返す
+- 自分自身を除外、staleなクライアントを除外
+- `ClientDevice`情報（`location`等）を付加して返却
+
+**実装詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+app.get('/kiosk/call/targets', async (request, reply) => {
+  const clientKey = await allowClientKey(request);
+  const selfClient = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+  const statuses = await prisma.clientStatus.findMany({
+    where: { stale: false, clientId: { not: selfClient?.statusClientId } }
+  });
+  // ...
+});
+```
+
+**学んだこと**:
+- キオスク向けAPIは`x-client-key`認証で設計する
+- 既存の管理者向けAPIを流用せず、キオスク専用のエンドポイントを作成する
+- 自端末を除外するロジックを含めることで、不正な自己発信を防止
+- `stale`フラグでオフライン端末を除外し、発信可能な端末のみを返す
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`
+- `apps/web/src/api/client.ts`（`getKioskCallTargets`関数）
+- `apps/web/src/api/hooks.ts`（`useKioskCallTargets`フック）
+
+---
+

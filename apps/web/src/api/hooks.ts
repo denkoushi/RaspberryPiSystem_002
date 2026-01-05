@@ -45,6 +45,7 @@ import {
   getEmployees,
   getItems,
   getKioskConfig,
+  getKioskCallTargets,
   getSystemInfo,
   getTransactions,
   importMaster,
@@ -417,6 +418,14 @@ export function useClientStatuses() {
   return useQuery({
     queryKey: ['client-status'],
     queryFn: getClientStatuses,
+    refetchInterval: 60_000
+  });
+}
+
+export function useKioskCallTargets() {
+  return useQuery({
+    queryKey: ['kiosk-call-targets'],
+    queryFn: getKioskCallTargets,
     refetchInterval: 60_000
   });
 }

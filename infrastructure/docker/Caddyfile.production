@@ -19,7 +19,13 @@
     path /api/*
     path /ws/*
   }
-  reverse_proxy @api api:8080
+  # APIプロキシ（通常HTTP）。WebSocketはCaddyが自動的にUpgradeを処理するため、
+  # ここでUpgradeヘッダーを強制注入しない（通常HTTPが壊れるため）。
+  reverse_proxy @api api:8080 {
+    transport http {
+      versions 1.1
+    }
+  }
 
   # 管理画面へのIP制限（Tailscale / ローカルLAN をデフォルト許可）
   # 環境変数 ADMIN_ALLOW_NETS で上書き可能（空白区切りのCIDRリスト）

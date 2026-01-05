@@ -72,6 +72,19 @@ export function setClientKeyHeader(key?: string) {
 // 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
+  // URL パラメータでクライアント識別を上書きできるようにする（現場での切り分け用）
+  // - 例: /kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
+  // NOTE: 値そのもの（キー/ID）はログに出さない（秘匿情報扱い）
+  const params = new URLSearchParams(window.location.search);
+  const urlClientKey = params.get('clientKey') ?? undefined;
+  const urlClientId = params.get('clientId') ?? undefined;
+  if (urlClientKey && urlClientKey.length > 0) {
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(urlClientKey));
+  }
+  if (urlClientId && urlClientId.length > 0) {
+    window.localStorage.setItem('kiosk-client-id', JSON.stringify(urlClientId));
+  }
+
   const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
   let parsedKey: string | undefined;
   
@@ -573,6 +586,21 @@ export interface ClientStatusEntry {
 export async function getClientStatuses() {
   const { data } = await api.get<{ requestId: string; clients: ClientStatusEntry[] }>('/clients/status');
   return data.clients;
+}
+
+export interface KioskCallTarget {
+  clientId: string;
+  hostname: string;
+  ipAddress: string;
+  lastSeen: string;
+  stale: boolean;
+  name: string;
+  location: string | null;
+}
+
+export async function getKioskCallTargets() {
+  const { data } = await api.get<{ selfClientId: string | null; targets: KioskCallTarget[] }>('/kiosk/call/targets');
+  return data;
 }
 
 export async function getClientLogs(filters?: {

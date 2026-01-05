@@ -16,7 +16,13 @@
   @api {
     path /api/*
   }
-  reverse_proxy @api api:8080
+  # APIプロキシ（通常HTTP）。WebSocketはCaddyが自動的にUpgradeを処理するため、
+  # ここでUpgradeヘッダーを強制注入しない（通常HTTPが壊れるため）。
+  reverse_proxy @api api:8080 {
+    transport http {
+      versions 1.1
+    }
+  }
 
   # WebSocketプロキシ（NFCエージェント用）
   # 環境変数 NFC_AGENT_HOST でIPアドレスを設定可能（デフォルト: 192.168.128.102）

@@ -309,4 +309,56 @@ Docker ComposeとCaddyリバースプロキシに関するトラブルシュー�
 
 ---
 
+### [KB-141] CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題
+
+**EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
+
+**事象**: 
+- `/api/system/health`等の通常のHTTP APIリクエストが`400 Bad Request`を返す
+- エラーメッセージ: `Missing or invalid Sec-WebSocket-Key header`
+- `curl`でのテストで同様のエラーを確認
+
+**要因**: 
+- Caddyfileの`@api`リバースプロキシブロックに以下のヘッダー設定が含まれていた：
+```
+header_up Connection "Upgrade"
+header_up Upgrade "websocket"
+```
+- この設定により、すべての`/api/*`リクエストがWebSocketアップグレードリクエストとして扱われた
+- APIサーバーはHTTPリクエストを期待しているが、WebSocketハンドシェイクとして処理しようとしてエラー
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-05）: WebSocketアップグレードヘッダーを`/api/webrtc/signaling`専用に限定
+```caddyfile
+# WebRTCシグナリング専用のWebSocketプロキシ
+handle /api/webrtc/signaling {
+    reverse_proxy api:8080 {
+        header_up Connection "Upgrade"
+        header_up Upgrade "websocket"
+    }
+}
+
+# 通常のAPIリクエスト（WebSocketヘッダーなし）
+@api {
+    path /api/*
+}
+handle @api {
+    reverse_proxy api:8080
+}
+```
+
+**学んだこと**:
+- WebSocketアップグレードヘッダーは、WebSocketエンドポイントのみに適用する
+- 汎用的なAPIプロキシ設定にWebSocketヘッダーを含めると、すべてのAPIが壊れる
+- Caddyの`handle`ディレクティブの順序が重要（より具体的なパスを先に定義）
+- `curl`でエンドポイントをテストして問題を特定できる
+
+**解決状況**: ✅ **解決済み**（2026-01-05）
+
+**関連ファイル**:
+- `infrastructure/docker/Caddyfile`
+- `infrastructure/docker/Caddyfile.production`
+- `infrastructure/docker/Caddyfile.local.template`
+- `infrastructure/docker/Caddyfile.local`
+
 ---

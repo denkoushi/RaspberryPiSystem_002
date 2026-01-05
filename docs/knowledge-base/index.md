@@ -20,12 +20,12 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 26件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション |
+| API関連 | [api.md](./api.md) | 30件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 22件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 65件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示 |
-| ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 8件 | Docker ComposeとCaddyリバースプロキシ |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 27件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 66件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ |
+| ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 13件 | バックアップとリストア機能、Gmail連携 |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 9件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化 |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 8件 | セキュリティ対策と監視 |
@@ -69,6 +69,10 @@ update-frequency: high
 | [KB-124](./api.md#kb-124-キオスクslackサポート機能の実装と実機検証完了) | キオスクSlackサポート機能の実装と実機検証完了 | ✅ 解決済み |
 | [KB-125](./api.md#kb-125-キオスク専用従業員リスト取得エンドポイント追加) | キオスク専用従業員リスト取得エンドポイント追加 | ✅ 解決済み |
 | [KB-126](./api.md#kb-126-キオスクuiで自端末の温度表示機能追加) | キオスクUIで自端末の温度表示機能追加 | ✅ 解決済み |
+| [KB-132](./api.md#kb-132-webrtcシグナリングルートのダブルプレフィックス問題) | WebRTCシグナリングルートのダブルプレフィックス問題 | ✅ 解決済み |
+| [KB-133](./api.md#kb-133-fastifywebsocketのconnectionsocketがundefinedになる問題) | @fastify/websocketのconnection.socketがundefinedになる問題 | ✅ 解決済み |
+| [KB-134](./api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策) | WebSocket接続の5分タイムアウト問題とkeepalive対策 | ✅ 解決済み |
+| [KB-135](./api.md#kb-135-キオスク通話候補取得用apiエンドポイント追加) | キオスク通話候補取得用APIエンドポイント追加 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -113,6 +117,11 @@ update-frequency: high
 | [KB-109](./frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) | CSVインポートスケジュールページのUI統一（バックアップペインと同じUI） | ✅ 解決済み |
 | [KB-111](./frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) | CSVインポートスケジュールの表示を人間が読みやすい形式に変更 | ✅ 解決済み |
 | [KB-125](./frontend.md#kb-125-キオスクお問い合わせフォームのデザイン変更) | キオスクお問い合わせフォームのデザイン変更 | ✅ 解決済み |
+| [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題) | WebRTC useWebRTCフックのcleanup関数が早期実行される問題 | ✅ 解決済み |
+| [KB-137](./frontend.md#kb-137-マイク未接続端末でのrecvonlyフォールバック実装) | マイク未接続端末でのrecvonlyフォールバック実装 | ✅ 解決済み |
+| [KB-138](./frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題) | ビデオ通話時のDOM要素へのsrcObjectバインディング問題 | ✅ 解決済み |
+| [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止) | WebRTCシグナリングのWebSocket接続管理（重複接続防止） | ✅ 解決済み |
+| [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -184,6 +193,7 @@ update-frequency: high
 | [KB-110](./infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) | デプロイ時の問題（リモートにプッシュしていなかった、標準手順を無視していた） | ✅ 解決済み |
 | [KB-128](./infrastructure/ansible-deployment.md#kb-128-apiエンドポイントのhttps化caddy経由) | APIエンドポイントのHTTPS化（Caddy経由） | ✅ 解決済み |
 | [KB-129](./infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま) | Pi5サーバー側のstatus-agent設定ファイルが古い設定のまま | ✅ 解決済み |
+| [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
 
@@ -222,9 +232,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 88件 |
+| ✅ 解決済み | 98件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **93件** |
+| **合計** | **103件** |
 
 ---
 
@@ -288,3 +298,4 @@ update-frequency: high
 - 2026-01-04: KB-129を更新（Pi5サーバー側のstatus-agent設定のAnsible管理化実装完了を反映）
 - 2026-01-04: KB-130を追加（Pi5のストレージ使用量が異常に高い問題（Docker Build Cacheとsignage-rendered履歴画像の削除））
 - 2026-01-04: KB-131を追加（APIコンテナがSLACK_KIOSK_SUPPORT_WEBHOOK_URL環境変数の空文字で再起動ループする問題）
+- 2026-01-05: KB-132〜KB-141を追加（WebRTCビデオ通話機能の実装過程で発生した問題と解決策: シグナリングルート問題、@fastify/websocket問題、keepalive対策、cleanup早期実行、recvonlyフォールバック、srcObjectバインディング、WebSocket接続管理、localStorage互換性、CaddyのWebSocketヘッダー問題）

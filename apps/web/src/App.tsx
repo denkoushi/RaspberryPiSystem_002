@@ -17,6 +17,7 @@ import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
+import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
@@ -51,6 +52,7 @@ function App() {
         <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
         <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
         <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
+        <Route path="/kiosk/call" element={<KioskCallPage />} />
       </Route>
       <Route
         path="/admin"
