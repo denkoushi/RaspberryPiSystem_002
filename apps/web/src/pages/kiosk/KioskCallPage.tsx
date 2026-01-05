@@ -16,12 +16,12 @@ export function KioskCallPage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
   const lastAlertAtRef = useRef<number>(0);
+  const [localStreamForUi, setLocalStreamForUi] = useState<MediaStream | null>(null);
+  const [remoteStreamForUi, setRemoteStreamForUi] = useState<MediaStream | null>(null);
 
   const {
     callState,
     incomingCallInfo,
-    localStream,
-    remoteStream,
     isVideoEnabled,
     call,
     accept,
@@ -33,6 +33,7 @@ export function KioskCallPage() {
   } = useWebRTC({
     enabled: true,
     onLocalStream: (stream) => {
+      setLocalStreamForUi(stream);
       if (localVideoRef.current && stream) {
         localVideoRef.current.srcObject = stream;
         // #region agent log
@@ -57,6 +58,7 @@ export function KioskCallPage() {
       }
     },
     onRemoteStream: (stream) => {
+      setRemoteStreamForUi(stream);
       if (remoteVideoRef.current && stream) {
         remoteVideoRef.current.srcObject = stream;
         // #region agent log
@@ -98,6 +100,33 @@ export function KioskCallPage() {
       setShowIncomingModal(false);
     }
   }, [callState, incomingCallInfo]);
+
+  // video要素が「後から」マウントされるケース（条件レンダリング）に備えて、ストリームを再バインドする
+  useEffect(() => {
+    const stream = localStreamForUi;
+    const el = localVideoRef.current;
+    if (!el || !stream || stream.getVideoTracks().length === 0) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:bindLocalVideoEffect',message:'local video srcObject set (effect)',data:{videoTracks:stream.getVideoTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+      // #endregion
+    }
+    void el.play().catch(() => {});
+  }, [localStreamForUi, isVideoEnabled, callState]);
+
+  useEffect(() => {
+    const stream = remoteStreamForUi;
+    const el = remoteVideoRef.current;
+    if (!el || !stream || stream.getVideoTracks().length === 0) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:bindRemoteVideoEffect',message:'remote video srcObject set (effect)',data:{videoTracks:stream.getVideoTracks().length},timestamp:Date.now(),sessionId:'debug-session',runId:'run-video-play',hypothesisId:'V4'})}).catch(()=>{});
+      // #endregion
+    }
+    void el.play().catch(() => {});
+  }, [remoteStreamForUi, isVideoEnabled, callState]);
 
   // 発信先一覧（location優先でソート）
   const availableClients = useMemo(() => {
@@ -162,8 +191,8 @@ export function KioskCallPage() {
     disableVideo();
   };
 
-  const hasLocalVideo = Boolean(localStream && localStream.getVideoTracks().length > 0);
-  const hasRemoteVideo = Boolean(remoteStream && remoteStream.getVideoTracks().length > 0);
+  const hasLocalVideo = Boolean(localStreamForUi && localStreamForUi.getVideoTracks().length > 0);
+  const hasRemoteVideo = Boolean(remoteStreamForUi && remoteStreamForUi.getVideoTracks().length > 0);
 
   return (
     <div className="flex h-screen flex-col bg-slate-100 p-4">
