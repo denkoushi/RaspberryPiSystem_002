@@ -110,25 +110,15 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
         connectionStartTimeRef.current = Date.now();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onopen',message:'WebSocket connected',data:{timestamp:connectionStartTimeRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
         console.log('WebRTC signaling connected');
         
         // Keepalive: 30秒ごとにpingメッセージを送信（5分タイムアウトを防ぐ）
         keepaliveIntervalRef.current = window.setInterval(() => {
           if (socketRef.current?.readyState === WebSocket.OPEN) {
             try {
-              const pingMessage = { type: 'ping', timestamp: Date.now() };
-              socketRef.current.send(JSON.stringify(pingMessage));
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:keepalive',message:'keepalive ping sent',data:{timestamp:pingMessage.timestamp},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
-              // #endregion
+              socketRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
             } catch (error) {
               console.error('Failed to send keepalive ping:', error);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:keepalive',message:'keepalive ping failed',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
-              // #endregion
             }
           }
         }, 30000); // 30秒
@@ -204,10 +194,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
             }
 
             case 'pong': {
-              // Keepalive pong応答（ログのみ）
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onmessage',message:'keepalive pong received',data:{timestamp:message.timestamp},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
-              // #endregion
+              // Keepalive pong応答（何もしない）
               break;
             }
 
@@ -237,11 +224,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       socket.onclose = (event) => {
         setIsConnected(false);
         setIsConnecting(false);
-        const disconnectTime = Date.now();
-        const connectionDuration = connectionStartTimeRef.current ? disconnectTime - connectionStartTimeRef.current : null;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:onclose',message:'WebSocket disconnected',data:{code:event.code,wasClean:event.wasClean,reason:event.reason,connectionDuration,connectionStartTime:connectionStartTimeRef.current,disconnectTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
         connectionStartTimeRef.current = null;
         
         // Keepalive intervalをクリア

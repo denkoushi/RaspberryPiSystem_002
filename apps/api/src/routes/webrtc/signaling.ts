@@ -144,9 +144,7 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
         if (data.type === 'ping') {
           if (socket.readyState === WS_OPEN) {
             const pingPayload = data.payload as { timestamp?: number } | undefined;
-            const pongMessage = { type: 'pong', timestamp: pingPayload?.timestamp || Date.now() };
-            socket.send(JSON.stringify(pongMessage));
-            app.log.info({ clientId, pingTimestamp: pingPayload?.timestamp }, 'WebRTC signaling keepalive ping received, pong sent');
+            socket.send(JSON.stringify({ type: 'pong', timestamp: pingPayload?.timestamp || Date.now() }));
           }
           return;
         }
