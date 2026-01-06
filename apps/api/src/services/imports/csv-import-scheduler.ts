@@ -459,14 +459,13 @@ export class CsvImportScheduler {
     // トークン更新コールバック
     const onTokenUpdate = async (token: string) => {
       const latestConfig = await BackupConfigLoader.load();
-      if (latestConfig.storage.provider === provider) {
-        latestConfig.storage.options = {
-          ...(latestConfig.storage.options || {}),
-          accessToken: token
-        };
-        await BackupConfigLoader.save(latestConfig);
-        logger?.info({ provider }, '[CsvImportScheduler] Access token updated');
-      }
+      // NOTE: global provider(dropbox)運用でも、CSV import provider(gmail)のトークン更新を保存できるようにする
+      latestConfig.storage.options = {
+        ...(latestConfig.storage.options || {}),
+        ...(provider === 'gmail' ? { gmailAccessToken: token } : { accessToken: token })
+      } as NonNullable<BackupConfig['storage']['options']> & { gmailAccessToken?: string };
+      await BackupConfigLoader.save(latestConfig);
+      logger?.info({ provider }, '[CsvImportScheduler] Access token updated');
     };
 
     // StorageProviderFactoryを使用してプロバイダーを作成

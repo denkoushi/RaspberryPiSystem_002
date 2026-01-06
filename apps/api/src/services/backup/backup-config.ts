@@ -41,7 +41,10 @@ export const BackupConfigSchema = z.object({
       clientSecret: z.string().optional(), // Gmail用（OAuth 2.0 Client Secret）
       redirectUri: z.string().optional(), // Gmail用（OAuth リダイレクトURI）
       subjectPattern: z.string().optional(), // Gmail用（件名パターン）
-      fromEmail: z.string().optional() // Gmail用（送信者メールアドレス）
+      fromEmail: z.string().optional(), // Gmail用（送信者メールアドレス）
+      // NOTE: dropbox と gmail の token フィールド衝突を避けるための分離キー（後方互換: accessToken/refreshToken も許容）
+      gmailAccessToken: z.string().optional(),
+      gmailRefreshToken: z.string().optional()
     }).optional()
   }),
   pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング

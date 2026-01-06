@@ -79,6 +79,10 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     }
 
     const config = await BackupConfigLoader.load();
+    const opts = config.storage.options as (NonNullable<BackupConfig['storage']['options']> & {
+      gmailAccessToken?: string;
+      gmailRefreshToken?: string;
+    }) | undefined;
     const clientId = config.storage.options?.clientId as string | undefined;
     const clientSecret = config.storage.options?.clientSecret as string | undefined;
 
@@ -129,8 +133,9 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
           ...config.storage,
           options: {
             ...config.storage.options,
-            accessToken: tokenInfo.accessToken,
-            refreshToken: tokenInfo.refreshToken || config.storage.options?.refreshToken,
+            // NOTE: Dropbox用トークンと衝突しないよう分離キーへ保存
+            gmailAccessToken: tokenInfo.accessToken,
+            gmailRefreshToken: tokenInfo.refreshToken || opts?.gmailRefreshToken,
             clientId,
             clientSecret
           }
@@ -160,7 +165,11 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     preHandler: [mustBeAdmin]
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
-    const refreshToken = config.storage.options?.refreshToken as string | undefined;
+    const opts = config.storage.options as (NonNullable<BackupConfig['storage']['options']> & {
+      gmailAccessToken?: string;
+      gmailRefreshToken?: string;
+    }) | undefined;
+    const refreshToken = opts?.gmailRefreshToken;
     const clientId = config.storage.options?.clientId as string | undefined;
     const clientSecret = config.storage.options?.clientSecret as string | undefined;
 
@@ -214,8 +223,9 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
           ...config.storage,
           options: {
             ...config.storage.options,
-            accessToken: tokenInfo.accessToken,
-            refreshToken: tokenInfo.refreshToken || refreshToken,
+            // NOTE: Dropbox用トークンと衝突しないよう分離キーへ保存
+            gmailAccessToken: tokenInfo.accessToken,
+            gmailRefreshToken: tokenInfo.refreshToken || refreshToken,
             clientId,
             clientSecret
           }

@@ -143,8 +143,13 @@ export class StorageProviderFactory {
     options.basePath = config.storage.options?.basePath as string | undefined;
 
     if (config.storage.provider === 'gmail') {
-      let accessToken = config.storage.options?.accessToken as string | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
+      // 後方互換: gmailAccessToken/gmailRefreshToken を優先し、無ければ accessToken/refreshToken を参照
+      let accessToken =
+        (config.storage.options?.gmailAccessToken as string | undefined) ??
+        (config.storage.options?.accessToken as string | undefined);
+      const refreshToken =
+        (config.storage.options?.gmailRefreshToken as string | undefined) ??
+        (config.storage.options?.refreshToken as string | undefined);
       const clientId = config.storage.options?.clientId as string | undefined;
       const clientSecret = config.storage.options?.clientSecret as string | undefined;
       const subjectPattern = config.storage.options?.subjectPattern as string | undefined;
@@ -304,8 +309,13 @@ export class StorageProviderFactory {
     options.basePath = config.storage.options?.basePath as string | undefined;
 
     if (provider === 'gmail') {
-      let accessToken = config.storage.options?.accessToken as string | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
+      // 後方互換: gmailAccessToken/gmailRefreshToken を優先し、無ければ accessToken/refreshToken を参照
+      let accessToken =
+        (config.storage.options?.gmailAccessToken as string | undefined) ??
+        (config.storage.options?.accessToken as string | undefined);
+      const refreshToken =
+        (config.storage.options?.gmailRefreshToken as string | undefined) ??
+        (config.storage.options?.refreshToken as string | undefined);
       const clientId = config.storage.options?.clientId as string | undefined;
       const clientSecret = config.storage.options?.clientSecret as string | undefined;
       const subjectPattern = config.storage.options?.subjectPattern as string | undefined;

@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
@@ -25,20 +24,70 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     preHandler: [mustBeAdmin]
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
+    const opts = config.storage.options as (NonNullable<BackupConfig['storage']['options']> & {
+      gmailAccessToken?: string;
+      gmailRefreshToken?: string;
+    }) | undefined;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'gmail+dropbox-pre',
+        hypothesisId: 'G1',
+        location: 'apps/api/src/routes/gmail/config.ts:GET /gmail/config',
+        message: 'Loaded backup config for GmailConfig GET',
+        data: {
+          storageProvider: config.storage.provider,
+          hasClientId: !!opts?.clientId,
+          hasClientSecret: !!opts?.clientSecret,
+          hasAccessToken: !!opts?.gmailAccessToken,
+          hasRefreshToken: !!opts?.gmailRefreshToken,
+          hasRedirectUri: !!opts?.redirectUri
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     
     // Gmail設定のみを抽出（機密情報はマスク）
     const gmailConfig = {
-      provider: config.storage.provider === 'gmail' ? 'gmail' : undefined,
-      clientId: config.storage.options?.clientId as string | undefined,
-      clientSecret: config.storage.options?.clientSecret 
-        ? '***' + (config.storage.options.clientSecret as string).slice(-4) // 最後の4文字のみ表示
+      // NOTE: Gmail設定はCSVインポート用に保持され得るため、storage.providerに依存しない
+      provider: opts?.clientId ? 'gmail' : undefined,
+      clientId: opts?.clientId as string | undefined,
+      clientSecret: opts?.clientSecret
+        ? '***' + String(opts.clientSecret).slice(-4) // 最後の4文字のみ表示
         : undefined,
-      subjectPattern: config.storage.options?.subjectPattern as string | undefined,
-      fromEmail: config.storage.options?.fromEmail as string | undefined,
-      redirectUri: config.storage.options?.redirectUri as string | undefined,
-      hasAccessToken: !!(config.storage.options?.accessToken as string | undefined),
-      hasRefreshToken: !!(config.storage.options?.refreshToken as string | undefined)
+      subjectPattern: opts?.subjectPattern as string | undefined,
+      fromEmail: opts?.fromEmail as string | undefined,
+      redirectUri: opts?.redirectUri as string | undefined,
+      hasAccessToken: !!opts?.gmailAccessToken,
+      hasRefreshToken: !!opts?.gmailRefreshToken
     };
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'gmail+dropbox-pre',
+        hypothesisId: 'G1',
+        location: 'apps/api/src/routes/gmail/config.ts:GET /gmail/config',
+        message: 'Computed GmailConfig response',
+        data: {
+          providerField: gmailConfig.provider,
+          hasClientId: !!gmailConfig.clientId,
+          hasClientSecretMasked: !!gmailConfig.clientSecret,
+          hasAccessToken: gmailConfig.hasAccessToken,
+          hasRefreshToken: gmailConfig.hasRefreshToken,
+          hasRedirectUri: !!gmailConfig.redirectUri
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
 
     return reply.status(200).send(gmailConfig);
   });
@@ -62,13 +111,36 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     const body = gmailConfigUpdateSchema.parse(request.body);
     
     const config = await BackupConfigLoader.load();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'gmail+dropbox-pre',
+        hypothesisId: 'G2',
+        location: 'apps/api/src/routes/gmail/config.ts:PUT /gmail/config',
+        message: 'Updating GmailConfig (masked)',
+        data: {
+          prevStorageProvider: config.storage.provider,
+          hasClientId: !!body.clientId,
+          hasClientSecret: !!body.clientSecret,
+          hasSubjectPattern: body.subjectPattern !== undefined,
+          hasFromEmail: body.fromEmail !== undefined,
+          hasRedirectUri: !!body.redirectUri
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     
     // Gmail設定を更新
     const updatedConfig: BackupConfig = {
       ...config,
       storage: {
         ...config.storage,
-        provider: 'gmail', // Gmail設定を更新する場合はプロバイダーをgmailに設定
+        // NOTE: Gmail設定の更新は、バックアップ先（dropbox/local）の切替とは独立に扱う
+        provider: config.storage.provider,
         options: {
           ...config.storage.options,
           ...(body.clientId !== undefined && { clientId: body.clientId }),
@@ -105,16 +177,12 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     preHandler: [mustBeAdmin]
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
-    
-    if (config.storage.provider !== 'gmail') {
-      throw new ApiError(400, 'Gmail is not currently configured as the storage provider');
-    }
 
     // Gmail設定を削除し、localにフォールバック
     const updatedConfig: BackupConfig = {
       ...config,
       storage: {
-        provider: 'local',
+        provider: config.storage.provider,
         options: {
           ...config.storage.options,
           // Gmail固有の設定を削除
@@ -123,9 +191,9 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
           subjectPattern: undefined,
           fromEmail: undefined,
           redirectUri: undefined,
-          // アクセストークンとリフレッシュトークンも削除
-          accessToken: undefined,
-          refreshToken: undefined
+          // Gmailトークンを削除（Dropbox用トークンは保持する）
+          gmailAccessToken: undefined,
+          gmailRefreshToken: undefined
         }
       }
     };
