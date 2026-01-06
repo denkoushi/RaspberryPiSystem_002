@@ -9,6 +9,10 @@
 
 ## Progress
 
+- [x] (2026-01-06) **バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [docs/knowledge-base/frontend.md#kb-149](./docs/knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
+
+- [x] (2026-01-06) **外部連携運用台帳ドキュメント作成完了（P2実装）**: Dropbox/Gmail/Slackなどの外部サービス連携の設定・運用情報を一元管理する運用台帳ドキュメントを作成。各外部サービスの設定場所（Ansible Vault、backup.json、環境変数）、設定手順へのリンク、運用時の注意事項、トラブルシューティング情報、設定の永続化方法、ヘルスチェック方法をまとめ。既存のセットアップガイドやナレッジベースへの参照を整理し、運用者が外部連携の設定・運用を効率的に管理できるように改善。詳細は [docs/guides/external-integration-ledger.md](./docs/guides/external-integration-ledger.md) を参照。
+
 - [x] (2026-01-06) **バックアップ設定の衝突・ドリフト検出の自動化（P1実装）完了**: `backup.json`の新旧構造間の設定値の衝突や、環境変数と設定ファイル間のドリフトを自動検出する機能を実装。`BackupConfigLoader.checkHealth()`メソッドと`GET /api/backup/config/health`エンドポイントを追加し、管理コンソールUIに統合。衝突検出（旧キーと新構造の両方に値がある場合）、ドリフト検出（環境変数と設定ファイルの値の不一致）、欠落チェック（必須設定の欠落）を実装。実機検証でヘルスチェックエンドポイントが正常に動作し、UI表示が成功することを確認。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-148](./docs/knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装) / [docs/api/backup.md](./docs/api/backup.md) を参照。
 
 - [x] (2026-01-06) **backup.jsonのprovider別名前空間化（構造的再発防止策）実装・実機検証完了**: `backup.json`の`storage.options`をprovider別名前空間（`options.dropbox.*`, `options.gmail.*`）へ移行し、Dropbox/Gmailトークン衝突を構造的に再発不能に。後方互換性を維持し、旧キーから新構造への自動正規化を実装。ネスト対応の`${ENV}`解決、OAuthコールバック/refresh/onTokenUpdateの統一、Gmail設定APIの新構造対応を実装。実機検証で旧構造の後方互換性、新構造への保存、Dropboxバックアップ、Gmail OAuth更新がすべて正常に動作することを確認。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-147](./docs/knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策) / [docs/api/backup.md](./docs/api/backup.md) / [docs/guides/gmail-setup-guide.md](./docs/guides/gmail-setup-guide.md) を参照。
