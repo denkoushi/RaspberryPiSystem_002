@@ -926,7 +926,15 @@ update-frequency: medium
 - **段階的移行**: 後方互換を維持しながら新構造へ移行することで、既存運用を壊さずに改善できる
 - **自動正規化**: ロード時の正規化により、旧構造でも新構造でも動作する柔軟性を実現
 
-**解決状況**: ✅ **解決済み**（2026-01-06）
+**解決状況**: ✅ **解決済み**（2026-01-06: 実装完了、2026-01-06: 実機検証完了）
+
+**実機検証結果**（2026-01-06）:
+- ✅ **旧構造の後方互換性**: 既存の`backup.json`（旧キー: `accessToken`, `gmailAccessToken`など）が正常に読み込まれ、新構造（`options.dropbox.*`, `options.gmail.*`）へ自動正規化されることを確認
+- ✅ **新構造への保存**: Gmail OAuth更新（`POST /api/gmail/oauth/refresh`）が`options.gmail.*`に保存され、`[BackupConfigLoader] Config saved`ログが記録されることを確認
+- ✅ **Dropboxバックアップ**: 手動バックアップ（`POST /api/backup`）が正常に動作し、Dropboxへのファイルアップロード（`[DropboxStorageProvider] File uploaded`）が成功することを確認
+- ✅ **自動正規化の動作**: APIログに`[BackupConfigLoader] Normalized Dropbox config from legacy keys to options.dropbox`と`[BackupConfigLoader] Normalized Gmail config from legacy keys to options.gmail`が記録され、正規化が正常に動作することを確認
+- ✅ **backup.jsonの構造**: 実機検証後、`backup.json`に新構造（`options.dropbox.*`に`appKey`, `appSecret`, `accessToken`, `refreshToken`、`options.gmail.*`に`clientId`, `clientSecret`, `redirectUri`, `accessToken`, `refreshToken`など）が正しく保存されていることを確認
+- ✅ **Gmail設定API**: `GET /api/gmail/config`が新構造を優先して読み取り、旧構造も後方互換で読み取れることを確認
 
 **関連ファイル**:
 - `apps/api/src/services/backup/backup-config.ts`（Zodスキーマ拡張、provider別名前空間追加）

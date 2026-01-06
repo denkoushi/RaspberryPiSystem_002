@@ -683,6 +683,15 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(200).send(config);
   });
 
+  // 設定の健全性チェック（衝突・ドリフト検出）
+  app.get('/backup/config/health', {
+    preHandler: [mustBeAdmin]
+  }, async (request, reply) => {
+    const health = await BackupConfigLoader.checkHealth();
+    const statusCode = health.status === 'error' ? 500 : health.status === 'warning' ? 200 : 200;
+    return reply.status(statusCode).send(health);
+  });
+
   // 設定の更新
   app.put('/backup/config', {
     preHandler: [mustBeAdmin],
