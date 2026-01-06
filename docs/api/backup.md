@@ -22,7 +22,7 @@
 
 ```json
 {
-  "kind": "database" | "file" | "directory" | "csv" | "image" | "client-file",
+  "kind": "database" | "file" | "directory" | "csv" | "image" | "client-file" | "client-directory",
   "source": "postgresql://postgres:postgres@db:5432/borrow_return",
   "metadata": {
     "label": "手動バックアップ"
@@ -34,11 +34,12 @@
 
 - `kind` (必須): バックアップ対象の種類
   - `database`: データベース
-  - `file`: 単一ファイル
-  - `directory`: ディレクトリ
+  - `file`: 単一ファイル（Pi5上のローカルファイル）
+  - `directory`: ディレクトリ（Pi5上のローカルディレクトリ）
   - `csv`: CSVデータ（`employees`、`items`など）
   - `image`: 画像データ（写真・サムネイル）
-  - `client-file`: クライアント端末のファイル（Ansible経由）
+  - `client-file`: クライアント端末のファイル（Ansible経由、Pi3/Pi4など）
+  - `client-directory`: クライアント端末のディレクトリ（Ansible経由、Pi3/Pi4など）
 - `source` (必須): バックアップ対象のソース
   - `database`: データベース接続文字列（例: `postgresql://postgres:postgres@db:5432/borrow_return`）
   - `file`: ファイルパス（例: `/opt/RaspberryPiSystem_002/apps/api/.env`）
@@ -761,7 +762,17 @@ CSVデータのバックアップ。データベースからCSV形式でエク�
 
 クライアント端末（Pi3、Pi4など）のファイルのバックアップ。Ansibleを使用してファイルを取得します。
 
-**source例**: `/opt/RaspberryPiSystem_002/clients/status-agent/status-agent.service`
+**source例**: `raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`
+
+**注意**: Pi5自身のファイルには使用しないでください。Pi5自身のファイルは`file` kindを使用します。
+
+### client-directory
+
+クライアント端末（Pi3、Pi4など）のディレクトリのバックアップ。Ansibleを使用してディレクトリを`tar.gz`形式でアーカイブして取得します。
+
+**source例**: `raspberrypi3:/var/lib/tailscale`、`raspberrypi4:/home/tools03/.ssh`
+
+**注意**: Pi5自身のディレクトリには使用しないでください。Pi5自身のディレクトリは`directory` kindを使用します。
 
 ---
 

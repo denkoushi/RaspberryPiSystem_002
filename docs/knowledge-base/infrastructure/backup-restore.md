@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 13件  
+**件数**: 14件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -735,5 +735,100 @@ update-frequency: medium
 **関連ドキュメント**:
 - [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md)
 - [Gmailデータ取得機能実装計画](../plans/gmail-data-acquisition-execplan.md)
+
+---
+
+## KB-144: バックアップ手動実行時の500エラー（client-directory kind追加とbackup.json正規化）
+
+**問題**: 手動バックアップ実行時に一部の対象で500エラーが発生していた。特に以下の2つの問題があった：
+1. Pi5自身のファイルを`client-file`として登録していた（`raspberrypi5:/opt/.../.env`）
+2. Pi3/Pi4のディレクトリを`directory`として登録していた（`raspberrypi3:/etc/tailscale`）
+
+**原因**:
+1. **Pi5自身のファイルを`client-file`で登録**:
+   - `client-file`はAnsible経由で*リモート*クライアント端末のファイルを取得するためのkind
+   - Pi5自身をクライアントとして扱うと、Ansibleが自分自身から自分自身へ接続しようとして失敗する
+   - エラーメッセージ: `Command failed: ansible-playbook ... Failed to backup client file`
+
+2. **Pi3/Pi4のディレクトリを`directory`で登録**:
+   - `directory`はPi5上の*ローカル*ディレクトリを`tar`コマンドでアーカイブするためのkind
+   - リモートパス（`raspberrypi3:/etc/tailscale`）を`tar`コマンドに渡すと、存在しないパスとしてエラーになる
+   - エラーメッセージ: `tar: raspberrypi3:/etc/tailscale: Cannot open: No such file or directory`
+
+3. **Tailscaleパスの誤り**:
+   - `/etc/tailscale`は存在しないパス
+   - 正しいパスは`/var/lib/tailscale`（Tailscaleの状態ファイルは`/var/lib/tailscale/tailscaled.state`）
+
+**解決策**:
+1. **`client-directory` kindを追加**:
+   - クライアント端末のディレクトリをAnsible経由でアーカイブ→取得するための新しいkindを追加
+   - `infrastructure/ansible/playbooks/backup-client-directory.yml`を作成
+   - `apps/api/src/services/backup/targets/client-directory-backup.target.ts`を実装
+   - API/UI/Ansibleに`client-directory`を追加
+
+2. **`backup.json`の正規化**:
+   - Pi5自身のファイル: `client-file` → `file`に変更（コンテナ内パスに変換、例: `/app/config/backup.json`）
+   - Pi5自身のディレクトリ: `directory`のまま（コンテナ内パスに変換、例: `/app/host/certs`）
+   - Pi3/Pi4のディレクトリ: `directory` → `client-directory`に変更（例: `raspberrypi3:/var/lib/tailscale`）
+
+3. **Tailscaleパスの修正**:
+   - `/etc/tailscale`（存在しない）→ `/var/lib/tailscale`（実在）に修正
+
+4. **Docker Composeのマウント追加**:
+   - Pi5の証明書バックアップ用に`/opt/RaspberryPiSystem_002/certs:/app/host/certs:ro`を追加
+   - APIコンテナから証明書ディレクトリにアクセス可能に
+
+**実装詳細**:
+- **API変更**:
+  - `apps/api/src/routes/backup.ts`: `client-directory`を`kind` enumに追加
+  - `apps/api/src/services/backup/backup-types.ts`: `BackupKind`に`client-directory`を追加
+  - `apps/api/src/services/backup/backup-config.ts`: Zodスキーマに`client-directory`を追加
+  - `apps/api/src/services/backup/backup-target-factory.ts`: `ClientDirectoryBackupTarget`を追加
+  - `apps/api/src/services/backup/targets/client-directory-backup.target.ts`: **新規作成**
+
+- **Ansible変更**:
+  - `infrastructure/ansible/playbooks/backup-client-directory.yml`: **新規作成**
+    - クライアント端末のディレクトリを`tar.gz`でアーカイブ
+    - Ansibleの`fetch`モジュールでPi5に取得
+
+- **UI変更**:
+  - `apps/web/src/api/backup.ts`: `BackupTarget.kind`と`RunBackupRequest.kind`に`client-directory`を追加
+  - `apps/web/src/components/backup/BackupTargetForm.tsx`: `client-directory`をkind選択に追加
+  - `apps/web/src/pages/admin/BackupTargetsPage.tsx`: `getKindLabel`に`client-directory`を追加
+
+- **Docker Compose変更**:
+  - `infrastructure/docker/docker-compose.server.yml`: APIサービスに`/opt/RaspberryPiSystem_002/certs:/app/host/certs:ro`を追加
+
+**学んだこと**:
+- `client-file`と`client-directory`は*リモート*クライアント端末専用。Pi5自身のファイルには使用しない
+- `file`と`directory`はPi5上の*ローカル*ファイル/ディレクトリ専用。リモートパスには使用しない
+- バックアップ対象のkindとsourceの組み合わせを正しく理解することが重要
+- Tailscaleの設定ファイルは`/var/lib/tailscale`に存在する（`/etc/tailscale`ではない）
+- Dockerコンテナ内からホストのファイルにアクセスする場合は、適切なマウント設定が必要
+
+**解決状況**: ✅ **解決済み**（2026-01-06）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/targets/client-directory-backup.target.ts`（新規作成）
+- `infrastructure/ansible/playbooks/backup-client-directory.yml`（新規作成）
+- `apps/api/src/routes/backup.ts`（`client-directory`追加）
+- `apps/api/src/services/backup/backup-types.ts`（`BackupKind`に`client-directory`追加）
+- `apps/api/src/services/backup/backup-config.ts`（Zodスキーマに`client-directory`追加）
+- `apps/api/src/services/backup/backup-target-factory.ts`（`ClientDirectoryBackupTarget`追加）
+- `apps/web/src/api/backup.ts`（`client-directory`追加）
+- `apps/web/src/components/backup/BackupTargetForm.tsx`（`client-directory`追加）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（`client-directory`ラベル追加）
+- `infrastructure/docker/docker-compose.server.yml`（証明書マウント追加）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（正規化）
+
+**実機検証結果**（2026-01-06）:
+- ✅ `client-directory raspberrypi3:/var/lib/tailscale` 成功
+- ✅ `client-directory raspberrypi4:/var/lib/tailscale` 成功
+- ✅ `directory /app/host/certs` 成功
+- ✅ `file /app/config/backup.json` 成功
+- ✅ その他のバックアップ対象もすべて成功
+
+**コミット**:
+- `73853b6` - fix(backup): remove debug instrumentation logs after successful verification
 
 ---

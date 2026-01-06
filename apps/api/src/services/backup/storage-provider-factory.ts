@@ -361,15 +361,9 @@ export class StorageProviderFactory {
       const appKey = config.storage.options?.appKey as string | undefined;
       const appSecret = config.storage.options?.appSecret as string | undefined;
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:365',message:'Dropbox token check',data:{hasAccessToken:!!accessToken,hasRefreshToken:!!refreshToken,hasAppKey:!!appKey,hasAppSecret:!!appSecret},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && appKey && appSecret) {
         try {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:367',message:'Refreshing Dropbox token',data:{hasRefreshToken:!!refreshToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           const redirectUri = requestProtocol && requestHost 
             ? `${requestProtocol}://${requestHost}/api/backup/oauth/callback`
             : undefined;
@@ -380,17 +374,11 @@ export class StorageProviderFactory {
           });
           const tokenInfo = await oauthService.refreshAccessToken(refreshToken);
           accessToken = tokenInfo.accessToken;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:377',message:'Dropbox token refreshed',data:{hasNewAccessToken:!!accessToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           // トークン更新コールバックで設定ファイルを更新
           if (onTokenUpdate) {
             await onTokenUpdate(accessToken);
           }
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:382',message:'Dropbox token refresh failed',data:{error:error instanceof Error?error.message:'Unknown',errorName:error instanceof Error?error.name:'Unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh access token from refresh token, falling back to local storage');
           options.provider = 'local';
         }
@@ -398,15 +386,9 @@ export class StorageProviderFactory {
       
       // accessTokenが空の場合はlocalにフォールバック
       if (!accessToken || accessToken.trim() === '') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:389',message:'Dropbox access token empty, falling back to local',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
         options.provider = 'local';
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storage-provider-factory.ts:392',message:'Dropbox provider configured',data:{hasAccessToken:!!accessToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         options.accessToken = accessToken;
         options.refreshToken = refreshToken;
         options.appKey = appKey;

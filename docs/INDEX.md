@@ -24,6 +24,8 @@
 
 ### 🆕 最新アップデート（2026-01-06）
 
+- **✅ バックアップ手動実行時の500エラー修正・client-directory kind追加完了**: 手動バックアップ実行時に一部の対象で500エラーが発生していた問題を解決。Pi5自身のファイルを`client-file`として登録していた問題と、Pi3/Pi4のディレクトリを`directory`として登録していた問題を修正。`client-directory` kindを追加し、クライアント端末のディレクトリをAnsible経由でバックアップ可能に。`backup.json`を正規化し、Pi5自身のファイルは`file`/`directory`、Pi3/Pi4のディレクトリは`client-directory`に統一。Tailscaleパスを`/etc/tailscale`から`/var/lib/tailscale`に修正。Docker Composeに証明書マウントを追加。実機検証で全バックアップ対象が正常に動作することを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-144](./knowledge-base/infrastructure/backup-restore.md#kb-144-バックアップ手動実行時の500エラーclient-directory-kind追加とbackupjson正規化) / [api/backup.md](./api/backup.md) を参照。
+
 - **✅ Dropbox設定の恒久対策とbackup.json保護機能追加・実機検証完了**: Ansibleで`.env`再生成時にDropbox設定が消失する問題を解決。KB-142でSlack Webhook URLの恒久対策を実施したが、同様の問題がDropbox設定でも発生したため、AnsibleテンプレートにDropbox環境変数を追加し、vaultで管理するように改善。さらに、`backup.json`の存在保証と健全性チェック機能を追加し、ファイル消失時に設定が失われる問題を防止。実機検証でAnsible再実行後もSlack/Dropbox設定が維持され、システムが正常に動作することを確認。CI失敗の修正（`slack-webhook.ts`のデバッグログ削除）も完了。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-143](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) / [guides/deployment.md](./guides/deployment.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-05）
