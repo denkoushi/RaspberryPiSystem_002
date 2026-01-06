@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createAuthHeader, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -331,6 +331,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
+  let clientDevice: Awaited<ReturnType<typeof createTestClientDevice>>;
 
   beforeAll(async () => {
     app = await buildServer();
@@ -342,6 +343,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   beforeEach(async () => {
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
+    clientDevice = await createTestClientDevice('client-key-raspberrypi3-signage1');
   });
 
   afterAll(async () => {
@@ -384,7 +386,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
       method: 'GET',
       url: '/api/signage/current-image',
       headers: {
-        'x-client-key': 'client-key-raspberrypi3-signage1',
+        'x-client-key': clientDevice.apiKey,
       },
     });
 
