@@ -24,6 +24,8 @@
 
 ### 🆕 最新アップデート（2026-01-06）
 
+- **✅ バックアップ設定の衝突・ドリフト検出の自動化（P1実装）完了**: `backup.json`の新旧構造間の設定値の衝突や、環境変数と設定ファイル間のドリフトを自動検出する機能を実装。`BackupConfigLoader.checkHealth()`メソッドと`GET /api/backup/config/health`エンドポイントを追加し、管理コンソールUIに統合。衝突検出（旧キーと新構造の両方に値がある場合）、ドリフト検出（環境変数と設定ファイルの値の不一致）、欠落チェック（必須設定の欠落）を実装。実機検証でヘルスチェックエンドポイントが正常に動作し、UI表示が成功することを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-148](./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装) / [api/backup.md](./api/backup.md) を参照。
+
 - **✅ backup.jsonのprovider別名前空間化（構造的再発防止策）実装・実機検証完了**: `backup.json`の`storage.options`をprovider別名前空間（`options.dropbox.*`, `options.gmail.*`）へ移行し、Dropbox/Gmailトークン衝突を構造的に再発不能に。後方互換性を維持し、旧キーから新構造への自動正規化を実装。ネスト対応の`${ENV}`解決、OAuthコールバック/refresh/onTokenUpdateの統一、Gmail設定APIの新構造対応を実装。実機検証で旧構造の後方互換性、新構造への保存、Dropboxバックアップ、Gmail OAuth更新がすべて正常に動作することを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-147](./knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策) / [api/backup.md](./api/backup.md) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) を参照。
 
 - **✅ バックアップ手動実行時の500エラー修正・client-directory kind追加完了**: 手動バックアップ実行時に一部の対象で500エラーが発生していた問題を解決。Pi5自身のファイルを`client-file`として登録していた問題と、Pi3/Pi4のディレクトリを`directory`として登録していた問題を修正。`client-directory` kindを追加し、クライアント端末のディレクトリをAnsible経由でバックアップ可能に。`backup.json`を正規化し、Pi5自身のファイルは`file`/`directory`、Pi3/Pi4のディレクトリは`client-directory`に統一。Tailscaleパスを`/etc/tailscale`から`/var/lib/tailscale`に修正。Docker Composeに証明書マウントを追加。実機検証で全バックアップ対象が正常に動作することを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-144](./knowledge-base/infrastructure/backup-restore.md#kb-144-バックアップ手動実行時の500エラーclient-directory-kind追加とbackupjson正規化) / [api/backup.md](./api/backup.md) を参照。

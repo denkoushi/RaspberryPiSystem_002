@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useBackupConfig, useBackupConfigMutations } from '../../api/hooks';
+import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth } from '../../api/hooks';
 import { BackupTargetForm } from '../../components/backup/BackupTargetForm';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -10,6 +10,7 @@ import type { BackupTarget } from '../../api/backup';
 
 export function BackupTargetsPage() {
   const { data: config, isLoading } = useBackupConfig();
+  const { data: health, isLoading: isHealthLoading } = useBackupConfigHealth();
   const { addTarget, updateTarget, deleteTarget, runBackup } = useBackupConfigMutations();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -204,6 +205,28 @@ export function BackupTargetsPage() {
     return '-';
   };
 
+  const getStatusColor = (status: 'healthy' | 'warning' | 'error') => {
+    switch (status) {
+      case 'healthy':
+        return 'bg-green-100 text-green-800 border-green-300';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'error':
+        return 'bg-red-100 text-red-800 border-red-300';
+    }
+  };
+
+  const getStatusLabel = (status: 'healthy' | 'warning' | 'error') => {
+    switch (status) {
+      case 'healthy':
+        return '正常';
+      case 'warning':
+        return '警告';
+      case 'error':
+        return 'エラー';
+    }
+  };
+
   return (
     <Card
       title="バックアップ対象管理"
@@ -221,6 +244,31 @@ export function BackupTargetsPage() {
         </div>
       }
     >
+      {/* ヘルスチェック結果の表示 */}
+      {!isHealthLoading && health && health.issues.length > 0 && (
+        <div className={`mb-4 rounded-md border-2 p-4 ${getStatusColor(health.status)}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-semibold">設定の健全性: {getStatusLabel(health.status)}</span>
+            <span className="text-xs">({health.issues.length}件の問題を検出)</span>
+          </div>
+          <div className="space-y-2">
+            {health.issues.map((issue, index) => (
+              <div key={index} className="text-sm">
+                <div className="font-semibold">{issue.severity === 'error' ? '❌' : '⚠️'} {issue.message}</div>
+                {issue.details && (
+                  <div className="ml-4 mt-1 text-xs opacity-80">
+                    {Object.entries(issue.details).map(([key, value]) => (
+                      <div key={key}>
+                        <span className="font-mono">{key}</span>: {String(value)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {isAdding && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">新しいバックアップ対象を追加</h3>

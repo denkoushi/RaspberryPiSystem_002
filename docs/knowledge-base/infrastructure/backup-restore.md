@@ -938,12 +938,61 @@ update-frequency: medium
 
 **関連ファイル**:
 - `apps/api/src/services/backup/backup-config.ts`（Zodスキーマ拡張、provider別名前空間追加）
-- `apps/api/src/services/backup/backup-config.loader.ts`（ネスト対応の${ENV}解決、旧キー→新構造への正規化）
+- `apps/api/src/services/backup/backup-config.loader.ts`（ネスト対応の${ENV}解決、旧キー→新構造への正規化、ヘルスチェック機能）
 - `apps/api/src/services/backup/storage-provider-factory.ts`（新構造優先、旧キーは後方互換）
-- `apps/api/src/routes/backup.ts`（Dropbox OAuthコールバック/refresh、onTokenUpdate）
+- `apps/api/src/routes/backup.ts`（Dropbox OAuthコールバック/refresh、onTokenUpdate、ヘルスチェックエンドポイント）
 - `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthコールバック/refresh）
 - `apps/api/src/routes/gmail/config.ts`（Gmail設定API、新構造で読み書き）
 - `apps/api/src/services/imports/csv-import-scheduler.ts`（CSVインポート後の自動バックアップ、onTokenUpdate）
 - `apps/api/src/routes/imports.ts`（マスターインポート、onTokenUpdate）
 - `apps/api/src/services/backup/backup-scheduler.ts`（スケジュールバックアップ、onTokenUpdate）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（ヘルスチェック結果のUI表示）
+- `apps/web/src/api/backup.ts`（ヘルスチェックAPIクライアント）
+- `apps/web/src/api/hooks.ts`（useBackupConfigHealthフック）
+
+---
+
+## KB-148: バックアップ設定の衝突・ドリフト検出の自動化（P1実装）
+
+**EXEC_PLAN.md参照**: P1: 衝突・ドリフト検出の自動化（2026-01-06）
+
+**目的**:
+- `backup.json`の新旧構造間の設定値の衝突や、環境変数と設定ファイル間のドリフトを自動検出する
+- 管理コンソールUIで視覚的に確認可能にする
+
+**実装内容**:
+- ✅ **解決済み**（2026-01-06）: 以下の対策を実装し、設定の整合性を自動的に検証可能にした。
+  1. **BackupConfigLoader.checkHealth()メソッド**: 衝突・ドリフト・欠落を検出するメソッドを追加
+     - **衝突検出**: 旧キー（`accessToken`など）と新構造（`options.dropbox.accessToken`など）の両方に異なる値が設定されている場合を検出
+     - **ドリフト検出**: 環境変数参照（`${VAR}`）と直接値の両方が設定されている場合を検出
+     - **欠落チェック**: 必須設定（`appKey`, `appSecret`, `clientId`, `clientSecret`など）が設定されていない場合を検出
+  2. **GET /api/backup/config/healthエンドポイント**: 健全性ステータス（`healthy`/`warning`/`error`）と検出された問題の詳細情報を返却
+  3. **管理コンソールUI統合**: `BackupTargetsPage`にヘルスチェック結果を表示するUIを追加
+     - ステータスに応じた色分け表示（正常: 緑、警告: 黄、エラー: 赤）
+     - 検出された問題の詳細情報を表示
+     - 1分ごとに自動更新
+
+**検出項目**:
+- **衝突検出**: 旧キーと新構造の両方に値がある場合の警告
+- **ドリフト検出**: 環境変数と設定ファイルの値の不一致検出
+- **欠落チェック**: 必須設定の欠落チェック
+
+**学んだこと**:
+- **設定の整合性検証**: 自動検出により、設定の不整合を早期に発見できる
+- **UI統合**: 管理コンソールに統合することで、運用者が視覚的に確認可能になる
+- **自動更新**: React Queryの`refetchInterval`により、定期的に最新の状態を確認できる
+
+**解決状況**: ✅ **解決済み**（2026-01-06: 実装完了、2026-01-06: 実機検証完了）
+
+**実機検証結果**（2026-01-06）:
+- ✅ **ヘルスチェックエンドポイント**: `GET /api/backup/config/health`が正常に動作し、衝突検出が成功することを確認
+- ✅ **UI表示**: 管理コンソールのバックアップ設定ページにヘルスチェック結果が表示されることを確認
+- ✅ **自動更新**: 1分ごとに自動更新されることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.loader.ts`（checkHealth()メソッド）
+- `apps/api/src/routes/backup.ts`（GET /api/backup/config/healthエンドポイント）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（ヘルスチェック結果のUI表示）
+- `apps/web/src/api/backup.ts`（getBackupConfigHealth APIクライアント）
+- `apps/web/src/api/hooks.ts`（useBackupConfigHealthフック）
 
