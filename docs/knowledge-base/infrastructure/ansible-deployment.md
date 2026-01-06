@@ -816,6 +816,8 @@ ansible-vault view infrastructure/ansible/host_vars/raspberrypi5/vault.yml | gre
 **Gmail関連設定とCSVインポート機能の確認結果**:
 - **Gmail関連設定**: `backup.json`（設定ファイル）で管理されているため、Ansibleの`.env`再生成の影響を受けない ✅
 - **CSVインポート機能**: 設定ファイル（`backup.json`）で管理されているため、Ansibleの`.env`再生成の影響を受けない ✅
+- **⚠️ 注意**: `backup.json`が新規作成された場合、Gmail設定（`clientId`、`clientSecret`、`refreshToken`）が失われる可能性がある
+- **対策**: Ansibleの健全性チェックにGmail設定チェックを追加（2026-01-06）
 
 ---
 
@@ -908,6 +910,76 @@ PY
 **今後の推奨事項**:
 - **新しい環境変数の追加時**: Ansible管理化を検討（テンプレートに追加、inventoryに変数を追加、vaultに機密情報を追加）
 - **設定ファイルの管理**: `backup.json`のようにAPIが書き換える設定ファイルは、Ansibleで上書きせず、存在保証と健全性チェックに留める
+
+---
+
+### [KB-145] backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加
+
+**EXEC_PLAN.md参照**: Gmail設定消失の調査と対策（2026-01-06）
+
+**事象**:
+- KB-143で`backup.json`の存在保証と健全性チェックを追加したが、Gmail設定のチェックが含まれていなかった
+- `backup.json`が新規作成された場合、Gmail設定（`clientId`、`clientSecret`、`refreshToken`）が失われる
+- 調査の結果、`backup.json`の`storage.options`にGmail設定が存在しないことを確認
+
+**要因**:
+- **健全性チェックの不足**: `infrastructure/ansible/playbooks/manage-app-configs.yml`の健全性チェックがDropbox設定のみをチェックしていた
+- **`backup.json`新規作成時の設定不足**: 最小限の設定（`storage.provider: "local"`のみ）で作成されるため、Gmail設定が含まれない
+- **設定ファイルの管理方針**: `backup.json`はAPIがトークン更新で書き換えるため、Ansibleで常時テンプレ再生成するのではなく、存在保証と健全性チェックに留める方針
+
+**試行した対策**:
+- [試行1] `backup.json`の内容確認 → **成功**（Gmail設定の消失を確認）
+- [試行2] Ansibleの健全性チェックにGmail設定チェックを追加 → **成功**（恒久対策）
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-06）: 以下の対策を実施
+  1. **Ansible健全性チェックの拡張**: `infrastructure/ansible/playbooks/manage-app-configs.yml`の健全性チェックにGmail設定チェックを追加
+  2. **Gmail設定の検証**: `storage.provider=gmail`なのに必要な設定（`clientId`、`clientSecret`、`refreshToken`）が空の場合に警告を出力
+
+**学んだこと**:
+- **DropboxとGmailの同様の問題**: KB-143でDropbox設定の健全性チェックを追加したが、Gmail設定のチェックが漏れていた
+- **設定ファイルの管理方針の一貫性**: `backup.json`のようなAPIが書き換える設定ファイルは、存在保証と健全性チェックに留める方針を維持
+- **健全性チェックの重要性**: 設定ファイルが新規作成された場合でも、必要な設定が揃っているかを検証することで、問題を早期に発見できる
+
+**解決状況**: ✅ **解決済み**（2026-01-06: 健全性チェック追加完了）
+
+**関連ファイル**:
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`（Ansible playbook）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（バックアップ設定ファイル）
+- `docs/guides/gmail-setup-guide.md`（Gmail連携セットアップガイド）
+
+**確認コマンド**:
+```bash
+# backup.jsonのGmail設定確認
+cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.storage.options | {clientId, clientSecret, refreshToken}'
+
+# backup.jsonの健全性チェック（Gmail運用なのに必要な設定が空の場合に警告）
+python3 - <<'PY'
+import json
+from pathlib import Path
+config = json.loads(Path('/opt/RaspberryPiSystem_002/config/backup.json').read_text())
+storage = config.get('storage', {})
+if storage.get('provider') == 'gmail':
+    opts = storage.get('options', {})
+    missing = [k for k in ['clientId', 'clientSecret', 'refreshToken'] if not opts.get(k)]
+    if missing:
+        print(f"WARNING: Missing Gmail settings: {', '.join(missing)}")
+        print("Please configure Gmail OAuth via management console or API:")
+        print("  GET /api/gmail/oauth/authorize -> follow redirect -> /api/gmail/oauth/callback")
+PY
+```
+
+**Gmail設定の復旧手順**:
+1. Google Cloud ConsoleでOAuth 2.0クライアントIDを作成（既存の場合は確認）
+2. `clientId`と`clientSecret`を取得（`docs/guides/gmail-client-secret-extraction.md`を参照）
+3. 管理コンソールのGmail設定画面で設定を追加
+4. OAuth認証フローを実行して`refreshToken`を取得
+5. `backup.json`に設定が反映されていることを確認
+
+**注意事項**:
+- Gmail設定は`backup.json`で管理されているため、Ansibleの`.env`再生成の影響を受けない
+- ただし、`backup.json`が新規作成された場合、Gmail設定が失われる可能性がある
+- 健全性チェックにより、問題を早期に発見できるようになった
 - **定期的な確認**: Ansible実行後、重要な設定（Slack、Dropbox等）が維持されていることを確認
 
 ---
