@@ -79,10 +79,16 @@
 4. バックアップ履歴に記録（実際に使用されたプロバイダーを記録）
 5. バックアップ実行後、保持期間設定に基づいて古いバックアップを自動削除
 
-**注意（トークンの分離）**:
+**注意（トークンの分離・provider別名前空間）**:
 - `backup.json` の `storage.options` にはDropboxとGmailのOAuth設定が保存され得ますが、**トークンは衝突しないよう分離**されています：
-  - **Dropbox**: `accessToken` / `refreshToken` / `appKey` / `appSecret`
-  - **Gmail**: `gmailAccessToken` / `gmailRefreshToken` / `clientId` / `clientSecret` / `redirectUri` など
+  - **新構造（推奨）**: provider別名前空間を使用
+    - **Dropbox**: `storage.options.dropbox.*` (`accessToken`, `refreshToken`, `appKey`, `appSecret`)
+    - **Gmail**: `storage.options.gmail.*` (`accessToken`, `refreshToken`, `clientId`, `clientSecret`, `redirectUri`, `subjectPattern`, `fromEmail`)
+  - **旧構造（後方互換）**: フラットなキーも読み取り可能（書き込みは新構造へ自動移行）
+    - **Dropbox**: `storage.options.accessToken` / `refreshToken` / `appKey` / `appSecret`
+    - **Gmail**: `storage.options.gmailAccessToken` / `gmailRefreshToken` / `clientId` / `clientSecret` / `redirectUri` など
+- OAuthコールバック/refresh/onTokenUpdate は全て新構造（`options.dropbox.*`, `options.gmail.*`）へ保存されます
+- 既存の `backup.json` は後方互換で動作しますが、新規設定は自動的に新構造へ保存されます
 
 ---
 

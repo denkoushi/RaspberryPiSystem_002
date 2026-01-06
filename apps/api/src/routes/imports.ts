@@ -868,10 +868,23 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       const onTokenUpdate = async (token: string) => {
         const latestConfig = await BackupConfigLoader.load();
         // NOTE: global provider(dropbox)運用でも、import provider(gmail)のトークン更新を保存できるようにする
-        latestConfig.storage.options = {
-          ...(latestConfig.storage.options || {}),
-          ...(provider === 'gmail' ? { gmailAccessToken: token } : { accessToken: token })
-        } as NonNullable<import('../services/backup/backup-config.js').BackupConfig['storage']['options']> & { gmailAccessToken?: string };
+        if (provider === 'gmail') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            gmail: {
+              ...latestConfig.storage.options?.gmail,
+              accessToken: token
+            }
+          };
+        } else if (provider === 'dropbox') {
+          latestConfig.storage.options = {
+            ...(latestConfig.storage.options || {}),
+            dropbox: {
+              ...latestConfig.storage.options?.dropbox,
+              accessToken: token
+            }
+          };
+        }
         await BackupConfigLoader.save(latestConfig);
         request.log.info({ provider }, '[Master Import] アクセストークンを更新しました');
       };

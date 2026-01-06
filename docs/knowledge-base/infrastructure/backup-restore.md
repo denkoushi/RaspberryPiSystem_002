@@ -867,3 +867,75 @@ update-frequency: medium
 - `apps/api/src/services/imports/csv-import-scheduler.ts`（自動バックアップ時のトークン更新先）
 - `/opt/RaspberryPiSystem_002/config/backup.json`（分離後のキー反映）
 
+---
+
+## KB-147: backup.jsonのprovider別名前空間化（構造的再発防止策）
+
+**EXEC_PLAN.md参照**: P0: Token Config Decouple（2026-01-06）
+
+**事象**:
+- KB-146で `gmailAccessToken/gmailRefreshToken` を導入したが、**フラットにキーが増え続ける**と再び衝突・運用ミスが起きやすい
+- 将来providerが増えるたびに「分離キー」を追加する運用では、スケーラビリティ・保守性が低下する
+
+**要因**:
+- `backup.json` の `storage.options` がフラットな構造で、provider間でキーが衝突しやすい
+- 旧構造では `accessToken/refreshToken` がDropbox/Gmailで共有され得て、OAuth更新で他方を上書きする事故が起きた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-06）: `backup.json` の `storage.options` を **provider別名前空間**へ移行
+  1. **新構造**: `storage.options.dropbox.*` / `storage.options.gmail.*` を追加（推奨）
+  2. **後方互換**: 旧キー（`accessToken/refreshToken/appKey/appSecret`、`gmailAccessToken/gmailRefreshToken`）は読み取り可能にし、書き込みは新構造へ寄せる
+  3. **自動正規化**: `BackupConfigLoader` でロード時に旧キー → 新構造へ正規化（メモリ上のみ、自動保存はしない）
+  4. **ネスト対応の環境変数解決**: `${ENV}` 参照を深いオブジェクト（`options.dropbox.*`, `options.gmail.*`）でも解決可能に
+  5. **トークン更新コールバックの統一**: OAuthコールバック/refresh/onTokenUpdate は全てprovider別名前空間へ保存
+
+**新構造の例**:
+```json
+{
+  "storage": {
+    "provider": "dropbox",
+    "options": {
+      "basePath": "/backups",
+      "dropbox": {
+        "appKey": "${DROPBOX_APP_KEY}",
+        "appSecret": "${DROPBOX_APP_SECRET}",
+        "accessToken": "${DROPBOX_ACCESS_TOKEN}",
+        "refreshToken": "${DROPBOX_REFRESH_TOKEN}"
+      },
+      "gmail": {
+        "clientId": "...",
+        "clientSecret": "...",
+        "redirectUri": "...",
+        "accessToken": "...",
+        "refreshToken": "...",
+        "subjectPattern": "...",
+        "fromEmail": "..."
+      }
+    }
+  }
+}
+```
+
+**移行方針**:
+- **既存運用**: 旧キーは読み取り可能（後方互換）なので、既存の `backup.json` はそのまま動作する
+- **新規設定**: OAuthコールバック/refresh/管理コンソールでの保存は新構造（`options.dropbox.*`, `options.gmail.*`）へ自動的に保存される
+- **手動移行**: 必要に応じて `backup.json` を手動で新構造へ移行可能（必須ではない）
+
+**学んだこと**:
+- **設定スキーマの疎結合化**: provider間で状態を共有しない構造（名前空間分離）により、将来providerが増えても衝突しない
+- **段階的移行**: 後方互換を維持しながら新構造へ移行することで、既存運用を壊さずに改善できる
+- **自動正規化**: ロード時の正規化により、旧構造でも新構造でも動作する柔軟性を実現
+
+**解決状況**: ✅ **解決済み**（2026-01-06）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.ts`（Zodスキーマ拡張、provider別名前空間追加）
+- `apps/api/src/services/backup/backup-config.loader.ts`（ネスト対応の${ENV}解決、旧キー→新構造への正規化）
+- `apps/api/src/services/backup/storage-provider-factory.ts`（新構造優先、旧キーは後方互換）
+- `apps/api/src/routes/backup.ts`（Dropbox OAuthコールバック/refresh、onTokenUpdate）
+- `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthコールバック/refresh）
+- `apps/api/src/routes/gmail/config.ts`（Gmail設定API、新構造で読み書き）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（CSVインポート後の自動バックアップ、onTokenUpdate）
+- `apps/api/src/routes/imports.ts`（マスターインポート、onTokenUpdate）
+- `apps/api/src/services/backup/backup-scheduler.ts`（スケジュールバックアップ、onTokenUpdate）
+

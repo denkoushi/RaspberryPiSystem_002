@@ -18,7 +18,7 @@ export class BackupConfigLoader {
       const configContent = await fs.readFile(this.configPath, 'utf-8');
       const configJson = JSON.parse(configContent);
       
-      // 環境変数の参照を解決（${VAR_NAME}形式）
+      // 環境変数の参照を解決（${VAR_NAME}形式、再帰的に深いオブジェクトを走査）
       const resolveEnvVar = (value: unknown, key: string): unknown => {
         if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
           const envVarName = value.slice(2, -1);
@@ -36,47 +36,68 @@ export class BackupConfigLoader {
         return value;
       };
 
-      // accessToken, refreshToken, appKey, appSecret, gmailAccessToken, gmailRefreshToken の環境変数を解決
+      // 再帰的にオブジェクトを走査して${VAR}を解決（ネスト対応）
+      const resolveEnvVarsRecursive = (obj: unknown, path: string = ''): unknown => {
+        if (obj === null || obj === undefined) {
+          return obj;
+        }
+        if (typeof obj === 'string') {
+          return resolveEnvVar(obj, path);
+        }
+        if (Array.isArray(obj)) {
+          return obj.map((item, index) => resolveEnvVarsRecursive(item, `${path}[${index}]`));
+        }
+        if (typeof obj === 'object') {
+          const resolved: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            resolved[key] = resolveEnvVarsRecursive(value, currentPath);
+          }
+          return resolved;
+        }
+        return obj;
+      };
+
+      // storage.options全体を再帰的に解決（ネスト対応）
       if (configJson.storage?.options) {
-        if (configJson.storage.options.accessToken) {
-          configJson.storage.options.accessToken = resolveEnvVar(
-            configJson.storage.options.accessToken,
-            'accessToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.refreshToken) {
-          configJson.storage.options.refreshToken = resolveEnvVar(
-            configJson.storage.options.refreshToken,
-            'refreshToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.gmailAccessToken) {
-          configJson.storage.options.gmailAccessToken = resolveEnvVar(
-            configJson.storage.options.gmailAccessToken,
-            'gmailAccessToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.gmailRefreshToken) {
-          configJson.storage.options.gmailRefreshToken = resolveEnvVar(
-            configJson.storage.options.gmailRefreshToken,
-            'gmailRefreshToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.appKey) {
-          configJson.storage.options.appKey = resolveEnvVar(
-            configJson.storage.options.appKey,
-            'appKey'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.appSecret) {
-          configJson.storage.options.appSecret = resolveEnvVar(
-            configJson.storage.options.appSecret,
-            'appSecret'
-          ) as string | undefined;
-        }
+        configJson.storage.options = resolveEnvVarsRecursive(configJson.storage.options, 'storage.options') as typeof configJson.storage.options;
       }
       
       const config = BackupConfigSchema.parse(configJson);
+      
+      // 旧キー → 新構造への正規化（メモリ上のみ、自動保存はしない）
+      if (config.storage.options) {
+        const opts = config.storage.options;
+        
+        // Dropbox: 旧キー → options.dropbox へ正規化
+        if (!opts.dropbox && (opts.accessToken || opts.refreshToken || opts.appKey || opts.appSecret)) {
+          opts.dropbox = {
+            appKey: opts.appKey as string | undefined,
+            appSecret: opts.appSecret as string | undefined,
+            accessToken: opts.accessToken as string | undefined,
+            refreshToken: opts.refreshToken as string | undefined
+          };
+          logger?.info('[BackupConfigLoader] Normalized Dropbox config from legacy keys to options.dropbox');
+        }
+        
+        // Gmail: 旧キー → options.gmail へ正規化
+        if (!opts.gmail && (
+          opts.gmailAccessToken || opts.gmailRefreshToken || 
+          opts.clientId || opts.clientSecret || opts.redirectUri || 
+          opts.subjectPattern || opts.fromEmail
+        )) {
+          opts.gmail = {
+            clientId: opts.clientId as string | undefined,
+            clientSecret: opts.clientSecret as string | undefined,
+            redirectUri: opts.redirectUri as string | undefined,
+            accessToken: (opts.gmailAccessToken ?? opts.accessToken) as string | undefined,
+            refreshToken: (opts.gmailRefreshToken ?? opts.refreshToken) as string | undefined,
+            subjectPattern: opts.subjectPattern as string | undefined,
+            fromEmail: opts.fromEmail as string | undefined
+          };
+          logger?.info('[BackupConfigLoader] Normalized Gmail config from legacy keys to options.gmail');
+        }
+      }
       
       // 旧形式（employeesPath/itemsPath）を新形式（targets）に変換
       if (config.csvImports) {

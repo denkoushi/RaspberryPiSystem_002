@@ -126,18 +126,22 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
         '[GmailOAuthRoute] Tokens exchanged successfully'
       );
 
-      // 設定ファイルを更新
+      // 設定ファイルを更新（新構造: options.gmail.* へ保存）
       const updatedConfig: BackupConfig = {
         ...config,
         storage: {
           ...config.storage,
           options: {
             ...config.storage.options,
-            // NOTE: Dropbox用トークンと衝突しないよう分離キーへ保存
-            gmailAccessToken: tokenInfo.accessToken,
-            gmailRefreshToken: tokenInfo.refreshToken || opts?.gmailRefreshToken,
-            clientId,
-            clientSecret
+            gmail: {
+              clientId,
+              clientSecret,
+              redirectUri,
+              accessToken: tokenInfo.accessToken,
+              refreshToken: tokenInfo.refreshToken || opts?.gmailRefreshToken || opts?.gmail?.refreshToken,
+              subjectPattern: config.storage.options?.gmail?.subjectPattern || config.storage.options?.subjectPattern,
+              fromEmail: config.storage.options?.gmail?.fromEmail || config.storage.options?.fromEmail
+            }
           }
         }
       };
@@ -216,18 +220,22 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
         '[GmailOAuthRoute] Access token refreshed successfully'
       );
 
-      // 設定ファイルを更新
+      // 設定ファイルを更新（新構造: options.gmail.* へ保存）
       const updatedConfig: BackupConfig = {
         ...config,
         storage: {
           ...config.storage,
           options: {
             ...config.storage.options,
-            // NOTE: Dropbox用トークンと衝突しないよう分離キーへ保存
-            gmailAccessToken: tokenInfo.accessToken,
-            gmailRefreshToken: tokenInfo.refreshToken || refreshToken,
-            clientId,
-            clientSecret
+            gmail: {
+              clientId,
+              clientSecret,
+              redirectUri,
+              accessToken: tokenInfo.accessToken,
+              refreshToken: tokenInfo.refreshToken || refreshToken || config.storage.options?.gmail?.refreshToken,
+              subjectPattern: config.storage.options?.gmail?.subjectPattern || config.storage.options?.subjectPattern,
+              fromEmail: config.storage.options?.gmail?.fromEmail || config.storage.options?.fromEmail
+            }
           }
         }
       };

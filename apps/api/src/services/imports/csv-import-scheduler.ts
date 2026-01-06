@@ -456,14 +456,27 @@ export class CsvImportScheduler {
     const protocol = 'http'; // スケジューラー内ではプロトコルは不要
     const host = 'localhost:8080'; // スケジューラー内ではホストは不要
     
-    // トークン更新コールバック
+    // トークン更新コールバック（provider別名前空間へ保存）
     const onTokenUpdate = async (token: string) => {
       const latestConfig = await BackupConfigLoader.load();
       // NOTE: global provider(dropbox)運用でも、CSV import provider(gmail)のトークン更新を保存できるようにする
-      latestConfig.storage.options = {
-        ...(latestConfig.storage.options || {}),
-        ...(provider === 'gmail' ? { gmailAccessToken: token } : { accessToken: token })
-      } as NonNullable<BackupConfig['storage']['options']> & { gmailAccessToken?: string };
+      if (provider === 'gmail') {
+        latestConfig.storage.options = {
+          ...(latestConfig.storage.options || {}),
+          gmail: {
+            ...latestConfig.storage.options?.gmail,
+            accessToken: token
+          }
+        };
+      } else if (provider === 'dropbox') {
+        latestConfig.storage.options = {
+          ...(latestConfig.storage.options || {}),
+          dropbox: {
+            ...latestConfig.storage.options?.dropbox,
+            accessToken: token
+          }
+        };
+      }
       await BackupConfigLoader.save(latestConfig);
       logger?.info({ provider }, '[CsvImportScheduler] Access token updated');
     };
@@ -563,14 +576,27 @@ export class CsvImportScheduler {
     const protocol = 'http';
     const host = 'localhost:8080';
     
-    // トークン更新コールバック
+    // トークン更新コールバック（provider別名前空間へ保存）
     const onTokenUpdate = async (token: string) => {
       const latestConfig = await BackupConfigLoader.load();
       const currentProvider = latestConfig.storage.provider;
-      if (currentProvider === 'dropbox' || currentProvider === 'gmail') {
+      if (currentProvider === 'gmail') {
         latestConfig.storage.options = {
           ...(latestConfig.storage.options || {}),
-          ...(currentProvider === 'gmail' ? { gmailAccessToken: token } : { accessToken: token })
+          gmail: {
+            ...latestConfig.storage.options?.gmail,
+            accessToken: token
+          }
+        };
+        await BackupConfigLoader.save(latestConfig);
+        logger?.info({ provider: currentProvider }, '[CsvImportScheduler] Access token updated during auto backup');
+      } else if (currentProvider === 'dropbox') {
+        latestConfig.storage.options = {
+          ...(latestConfig.storage.options || {}),
+          dropbox: {
+            ...latestConfig.storage.options?.dropbox,
+            accessToken: token
+          }
         };
         await BackupConfigLoader.save(latestConfig);
         logger?.info({ provider: currentProvider }, '[CsvImportScheduler] Access token updated during auto backup');
