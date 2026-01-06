@@ -735,3 +735,170 @@ STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf ./status-agent.py
 ```
 
 ---
+
+### [KB-142] Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）
+
+**EXEC_PLAN.md参照**: Slack通知機能の恒久対策（2026-01-05）
+
+**事象**:
+- オフィス環境移行時にローカルLANが変更され、Ansibleで`.env`ファイルを再生成した
+- 再生成後、キオスクのお問い合わせボタンからSlack通知が送信されなくなった
+- APIログに`[SlackWebhook] SLACK_KIOSK_SUPPORT_WEBHOOK_URL is not set, skipping notification`が記録された
+- APIコンテナの環境変数を確認すると、`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`が空だった
+
+**要因**:
+- **Ansibleテンプレートの不足**: `infrastructure/ansible/templates/docker.env.j2`に`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`が含まれていなかった
+- **`.env`ファイルの再生成**: Ansibleで`.env`を再生成する際、テンプレートに含まれていない環境変数は削除される
+- **手動設定の消失**: 手動で`.env`に追加した設定が、Ansible実行時に上書きされて消失した
+
+**試行した対策**:
+- [試行1] APIログを確認して環境変数が空であることを確認 → **成功**（問題の特定）
+- [試行2] `.env`ファイルを確認して`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`が存在しないことを確認 → **成功**（根本原因の特定）
+- [試行3] Ansibleテンプレート（`docker.env.j2`）を確認して変数が含まれていないことを確認 → **成功**（根本原因の確定）
+- [試行4] Ansibleテンプレートに`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`を追加 → **成功**（恒久対策の実装）
+- [試行5] Ansible inventoryに`slack_kiosk_support_webhook_url`変数を追加 → **成功**（vault変数との連携）
+- [試行6] Ansible vaultに`vault_slack_kiosk_support_webhook_url`を追加 → **成功**（機密情報の管理）
+- [試行7] Ansibleタスクの`regex_search`エラーを修正（`regex_findall`と`first`フィルタを使用） → **成功**（エラーハンドリングの改善）
+- [試行8] Ansible handlerの参照エラーを修正（`restart docker compose services`ハンドラを追加） → **成功**（コンテナ再起動の自動化）
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-05）: 以下の対策を組み合わせて解決
+  1. **Ansibleテンプレートの更新**: `infrastructure/ansible/templates/docker.env.j2`に`SLACK_KIOSK_SUPPORT_WEBHOOK_URL={{ slack_kiosk_support_webhook_url }}`を追加
+  2. **Ansible inventoryの更新**: `infrastructure/ansible/inventory.yml`に`slack_kiosk_support_webhook_url: "{{ vault_slack_kiosk_support_webhook_url | default('') }}"`を追加
+  3. **Ansible vaultの設定**: `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`に`vault_slack_kiosk_support_webhook_url`を追加
+  4. **エラーハンドリングの改善**: `regex_findall`と`first`フィルタを使用して、`.env`に該当行が存在しない場合でもエラーにならないように修正
+  5. **コンテナ再起動の自動化**: Ansible handlerを追加して、`.env`変更時に自動的にAPIコンテナを再起動
+
+**学んだこと**:
+- **Ansible管理化の重要性**: `.env`ファイルがAnsibleで再生成される場合、すべての環境変数をテンプレートに含める必要がある
+- **機密情報の管理**: Webhook URLなどの機密情報はAnsible Vaultで管理し、テンプレートで参照する
+- **既存設定の保護**: Ansibleテンプレートで`existing_*`変数を使用して、既存の設定を保護する仕組みがある
+- **エラーハンドリング**: `.env`に該当行が存在しない場合でもエラーにならないよう、`regex_findall`と`first`フィルタを使用する
+- **コンテナ再起動の自動化**: `.env`変更時に自動的にコンテナを再起動するため、Ansible handlerを使用する
+- **同様の問題の予防**: Dropbox関連の環境変数（`DROPBOX_ACCESS_TOKEN`、`DROPBOX_APP_KEY`、`DROPBOX_APP_SECRET`、`DROPBOX_REFRESH_TOKEN`）も同様の問題が発生する可能性がある
+
+**解決状況**: ✅ **解決済み**（2026-01-05: Ansible管理化完了）
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/docker.env.j2`（Ansibleテンプレート）
+- `infrastructure/ansible/inventory.yml`（Ansible inventory）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`（Ansible vault）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（Ansibleタスク）
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`（Ansible playbook）
+- `infrastructure/docker/docker-compose.server.yml`（Docker Compose設定）
+- `docs/guides/slack-webhook-setup.md`（設定ガイド）
+
+**確認コマンド**:
+```bash
+# .envファイルの確認
+cat /opt/RaspberryPiSystem_002/infrastructure/docker/.env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
+
+# APIコンテナの環境変数の確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
+
+# Ansible vaultの確認（暗号化されているため、ansible-vaultで復号化が必要）
+ansible-vault view infrastructure/ansible/host_vars/raspberrypi5/vault.yml | grep vault_slack_kiosk_support_webhook_url
+```
+
+**同様の問題が発生する可能性がある環境変数**:
+- `DROPBOX_ACCESS_TOKEN`
+- `DROPBOX_APP_KEY`
+- `DROPBOX_APP_SECRET`
+- `DROPBOX_REFRESH_TOKEN`
+
+**推奨対策**:
+- これらの環境変数もAnsible管理化することを推奨（`docker.env.j2`に追加、inventoryに変数を追加、vaultに機密情報を追加）
+- **注意**: Dropbox設定は`backup.json`（設定ファイル）でも管理されているため、環境変数が空でも動作する可能性がある
+- ただし、`docker-compose.server.yml`で環境変数として定義されているため、環境変数が空だと問題が発生する可能性がある
+- **緊急度**: 低（`backup.json`で管理されているため、環境変数が空でも動作する可能性が高い）
+- **推奨**: 念のため、Ansible管理化を推奨するが、`backup.json`で管理されているため、緊急度は低い
+
+**Gmail関連設定とCSVインポート機能の確認結果**:
+- **Gmail関連設定**: `backup.json`（設定ファイル）で管理されているため、Ansibleの`.env`再生成の影響を受けない ✅
+- **CSVインポート機能**: 設定ファイル（`backup.json`）で管理されているため、Ansibleの`.env`再生成の影響を受けない ✅
+
+---
+
+### [KB-143] Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策
+
+**EXEC_PLAN.md参照**: Dropbox/Slack設定の恒久化（2026-01-06）
+
+**事象**:
+- KB-142でSlack Webhook URLの恒久対策を実施したが、同様の問題がDropbox設定でも発生
+- Ansible実行（特にIP変更やLAN切替）で`.env`が再生成されると、Dropbox環境変数（`DROPBOX_APP_KEY`、`DROPBOX_APP_SECRET`、`DROPBOX_REFRESH_TOKEN`、`DROPBOX_ACCESS_TOKEN`）が消失
+- さらに、`/opt/RaspberryPiSystem_002/config/backup.json`が何らかの理由で削除・再作成されると、Dropbox設定（`appKey`、`appSecret`、`refreshToken`、`accessToken`）が失われ、デフォルトの`local`プロバイダーに戻る
+
+**要因**:
+- **Ansibleテンプレートの不足**: `infrastructure/ansible/templates/docker.env.j2`にDropbox環境変数が含まれていなかった（KB-142と同様）
+- **`.env`ファイルの再生成**: Ansibleで`.env`を再生成する際、テンプレートに含まれていない環境変数は削除される
+- **`backup.json`の管理不足**: `backup.json`がAnsibleで管理されておらず、ファイルが削除・再作成されると設定が失われる
+- **デフォルト設定の問題**: `BackupConfigLoader.load()`が`backup.json`を見つけられない場合、`defaultBackupConfig`（`storage.provider: 'local'`）を使用するため、Dropbox設定が失われる
+
+**試行した対策**:
+- [試行1] `backup.json`の存在確認と内容確認 → **成功**（問題の特定）
+- [試行2] Dropbox App ConsoleからApp Key/Secretを取得して`backup.json`を復旧 → **成功**（一時的な復旧）
+- [試行3] OAuth認証フローで`refreshToken`を再取得 → **成功**（完全な復旧）
+- [試行4] AnsibleテンプレートにDropbox環境変数を追加 → **成功**（`.env`再生成問題の恒久対策）
+- [試行5] Ansible inventoryにDropbox変数を追加 → **成功**（vault変数との連携）
+- [試行6] Ansible vaultにDropbox機密情報を追加 → **成功**（機密情報の管理）
+- [試行7] `backup.json`の存在保証と健全性チェックを追加 → **成功**（ファイル消失問題の恒久対策）
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-06）: 以下の対策を組み合わせて解決
+  1. **Ansibleテンプレートの更新**: `infrastructure/ansible/templates/docker.env.j2`にDropbox環境変数を追加
+  2. **Ansible inventoryの更新**: `infrastructure/ansible/inventory.yml`にDropbox変数を追加（vaultから参照）
+  3. **Ansible vaultの設定**: `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`にDropbox機密情報を追加
+  4. **既存値の保護**: `infrastructure/ansible/roles/server/tasks/main.yml`で既存のDropbox環境変数を抽出して保護
+  5. **`backup.json`の存在保証**: `infrastructure/ansible/playbooks/manage-app-configs.yml`で`backup.json`の存在チェックと、存在しない場合の最小骨格作成を追加
+  6. **`backup.json`の健全性チェック**: `storage.provider=dropbox`なのに必要な設定（`appKey`、`appSecret`、`refreshToken`）が空の場合に警告を出力
+
+**学んだこと**:
+- **Slackと同様の再発パターン**: KB-142でSlack Webhook URLの恒久対策を実施したが、Dropbox設定でも同様の問題が発生した
+- **環境変数と設定ファイルの二重管理**: Dropbox設定は環境変数（`.env`）と設定ファイル（`backup.json`）の両方で管理されているため、両方の管理が必要
+- **`backup.json`の管理方針**: `backup.json`はAPIがトークン更新で書き換えるため、Ansibleで常時テンプレ再生成するのではなく、存在保証と健全性チェックに留める
+- **デフォルト設定のリスク**: `backup.json`が存在しない場合、デフォルトで`local`プロバイダーが使用されるため、ファイル消失時にDropbox設定が失われる
+
+**解決状況**: ✅ **解決済み**（2026-01-06: Ansible管理化と`backup.json`保護完了）
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/docker.env.j2`（Ansibleテンプレート）
+- `infrastructure/ansible/inventory.yml`（Ansible inventory）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`（Ansible vault）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml.example`（Ansible vault例）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（Ansibleタスク）
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`（Ansible playbook）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（バックアップ設定ファイル）
+- `apps/api/src/services/backup/backup-config.loader.ts`（設定ローダー）
+- `docs/guides/dropbox-oauth-setup-guide.md`（設定ガイド）
+
+**確認コマンド**:
+```bash
+# .envファイルの確認
+cat /opt/RaspberryPiSystem_002/infrastructure/docker/.env | grep DROPBOX
+
+# APIコンテナの環境変数の確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api env | grep DROPBOX
+
+# backup.jsonの確認
+cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.storage'
+
+# backup.jsonの健全性チェック（Dropbox運用なのに必要な設定が空の場合に警告）
+python3 - <<'PY'
+import json
+from pathlib import Path
+config = json.loads(Path('/opt/RaspberryPiSystem_002/config/backup.json').read_text())
+storage = config.get('storage', {})
+if storage.get('provider') == 'dropbox':
+    opts = storage.get('options', {})
+    missing = [k for k in ['appKey', 'appSecret', 'refreshToken'] if not opts.get(k)]
+    if missing:
+        print(f"WARNING: Missing Dropbox settings: {', '.join(missing)}")
+PY
+```
+
+**今後の推奨事項**:
+- **新しい環境変数の追加時**: Ansible管理化を検討（テンプレートに追加、inventoryに変数を追加、vaultに機密情報を追加）
+- **設定ファイルの管理**: `backup.json`のようにAPIが書き換える設定ファイルは、Ansibleで上書きせず、存在保証と健全性チェックに留める
+- **定期的な確認**: Ansible実行後、重要な設定（Slack、Dropbox等）が維持されていることを確認
+
+---

@@ -114,7 +114,14 @@ nano apps/api/.env
 **環境変数の管理方法**:
 - `.env.example`ファイル: リポジトリに含まれるテンプレートファイル
 - 手動でコピー: `.env.example`をコピーして`.env`を作成し、本番環境用の値を設定
-- Ansibleテンプレート: Ansibleを使用する場合、`.j2`テンプレートファイルから生成
+- **Ansibleテンプレート**: Ansibleを使用する場合、`infrastructure/ansible/templates/docker.env.j2`から`.env`が再生成されます
+  - ⚠️ **重要**: Ansibleで`.env`を再生成すると、テンプレートに含まれていない環境変数は削除されます
+  - **永続化する方法**: 環境変数をAnsible管理化する（テンプレートに追加、inventoryに変数を追加、vaultに機密情報を追加）
+  - **例**: 
+    - `SLACK_KIOSK_SUPPORT_WEBHOOK_URL`はAnsible管理化済み（[KB-142](../knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時に環境変数が消失する問題slack-webhook-url)参照）
+    - `DROPBOX_APP_KEY`、`DROPBOX_APP_SECRET`、`DROPBOX_REFRESH_TOKEN`、`DROPBOX_ACCESS_TOKEN`はAnsible管理化済み（[KB-143](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)参照）
+  - **推奨**: 新しい環境変数を追加する場合は、Ansible管理化を検討してください
+- **設定ファイルの管理**: `backup.json`などの設定ファイルは、APIが書き換える可能性があるため、Ansibleで上書きせず、存在保証と健全性チェックに留める（[KB-143](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)参照）
 - バックアップ: バックアップスクリプトで`.env`ファイルを自動バックアップ
 
 詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。

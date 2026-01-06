@@ -88,6 +88,70 @@
   when: docker_env_stat.stat.exists | default(false)
   no_log: true
 
+- name: Extract existing DROPBOX_APP_KEY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_dropbox_app_key: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^DROPBOX_APP_KEY=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing DROPBOX_APP_SECRET from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_dropbox_app_secret: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^DROPBOX_APP_SECRET=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing DROPBOX_REFRESH_TOKEN from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_dropbox_refresh_token: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^DROPBOX_REFRESH_TOKEN=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing DROPBOX_ACCESS_TOKEN from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_dropbox_access_token: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^DROPBOX_ACCESS_TOKEN=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
 - name: Deploy Docker Compose environment variables
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/docker.env.j2"

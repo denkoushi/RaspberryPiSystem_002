@@ -11,6 +11,12 @@ all:
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           slack_kiosk_support_webhook_url: "{{ vault_slack_kiosk_support_webhook_url | default('') }}"
+          # Dropbox OAuth 2.0設定
+          # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
+          dropbox_app_key: "{{ vault_dropbox_app_key | default('') }}"
+          dropbox_app_secret: "{{ vault_dropbox_app_secret | default('') }}"
+          dropbox_refresh_token: "{{ vault_dropbox_refresh_token | default('') }}"
+          dropbox_access_token: "{{ vault_dropbox_access_token | default('') }}"
           # API環境変数
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"

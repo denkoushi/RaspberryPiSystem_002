@@ -79,6 +79,10 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
         userMessage += `\n詳細: ${message.trim()}`;
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskSupportModal.tsx:82',message:'postKioskSupport called',data:{hasClientKey:!!clientKey,clientKeyLength:clientKey?.length||0,messageLength:userMessage.length,page:location.pathname},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+
       await postKioskSupport(
         {
           message: userMessage,
@@ -86,6 +90,10 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
         },
         clientKey || DEFAULT_CLIENT_KEY
       );
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskSupportModal.tsx:89',message:'postKioskSupport resolved',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
 
       // 成功後、フォームをリセットして閉じる
       setSelectedSender('');
@@ -95,6 +103,9 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
       setMessage('');
       onClose();
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskSupportModal.tsx:98',message:'postKioskSupport error',data:{errorName:error instanceof Error?error.name:'unknown',errorMessage:error instanceof Error?error.message:String(error),isAxiosError:error && typeof error==='object'&&'isAxiosError' in error,axiosStatus:error && typeof error==='object'&&'response' in error&&error.response&&typeof error.response==='object'&&'status' in error.response?error.response.status:undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       console.error('Failed to send support message:', error);
       // エラー時もモーダルを閉じる（ユーザー体験優先）
       onClose();

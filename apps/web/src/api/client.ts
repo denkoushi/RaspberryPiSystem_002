@@ -636,10 +636,23 @@ export async function postKioskSupport(
   payload: { message: string; page: string },
   clientKey?: string
 ) {
-  const { data } = await api.post<{ requestId: string }>('/kiosk/support', payload, {
-    headers: clientKey ? { 'x-client-key': clientKey } : undefined
-  });
-  return data;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:639',message:'postKioskSupport API call',data:{hasClientKey:!!clientKey,clientKeyLength:clientKey?.length||0,messageLength:payload.message.length,page:payload.page},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+  try {
+    const { data } = await api.post<{ requestId: string }>('/kiosk/support', payload, {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:643',message:'postKioskSupport API success',data:{requestId:data.requestId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    return data;
+  } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client.ts:646',message:'postKioskSupport API error',data:{errorName:error instanceof Error?error.name:'unknown',errorMessage:error instanceof Error?error.message:String(error),isAxiosError:axios.isAxiosError(error),axiosStatus:axios.isAxiosError(error)?error.response?.status:undefined,axiosStatusText:axios.isAxiosError(error)?error.response?.statusText:undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    throw error;
+  }
 }
 
 export interface FileAlert {

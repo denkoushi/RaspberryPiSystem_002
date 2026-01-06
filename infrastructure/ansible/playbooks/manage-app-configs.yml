@@ -210,6 +210,151 @@
         - docker_env_result.changed | default(false)
       changed_when: false
 
+    # backup.jsonの存在保証と健全性チェック（サーバーのみ）
+    - name: Ensure backup.json config directory exists
+      ansible.builtin.file:
+        path: "{{ repo_path }}/config"
+        state: directory
+        mode: '0755'
+      when: '"server" in group_names'
+
+    - name: Stat existing backup.json
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/config/backup.json"
+      register: backup_json_stat
+      when: '"server" in group_names'
+
+    - name: Check backup.json health (if exists)
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+        path = Path("{{ repo_path }}/config/backup.json")
+        try:
+            config = json.loads(path.read_text())
+            storage = config.get('storage', {})
+            provider = storage.get('provider', 'local')
+            options = storage.get('options', {})
+            
+            # Dropbox運用なのに必要な設定が空の場合、警告を出す
+            if provider == 'dropbox':
+                missing = []
+                if not options.get('appKey'):
+                    missing.append('appKey')
+                if not options.get('appSecret'):
+                    missing.append('appSecret')
+                if not options.get('refreshToken'):
+                    missing.append('refreshToken')
+                
+                if missing:
+                    print(f"WARNING: backup.json uses dropbox provider but missing: {', '.join(missing)}")
+                    print("Please configure Dropbox OAuth via management console or API:")
+                    print("  GET /api/backup/oauth/authorize -> follow redirect -> /api/backup/oauth/callback")
+                    sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: backup.json is not valid JSON: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"ERROR: Failed to check backup.json: {e}")
+            sys.exit(1)
+        PY
+      when:
+        - '"server" in group_names'
+        - backup_json_stat.stat.exists | default(false)
+      changed_when: false
+      failed_when: false
+      register: backup_json_health_check
+
+    - name: Create minimal backup.json if missing
+      ansible.builtin.copy:
+        content: |
+          {
+            "storage": {
+              "provider": "local",
+              "options": {
+                "basePath": "/opt/backups"
+              }
+            },
+            "pathMappings": [
+              {
+                "hostPath": "/opt/RaspberryPiSystem_002/apps/api/.env",
+                "containerPath": "/app/host/apps/api/.env"
+              },
+              {
+                "hostPath": "/opt/RaspberryPiSystem_002/apps/web/.env",
+                "containerPath": "/app/host/apps/web/.env"
+              },
+              {
+                "hostPath": "/opt/RaspberryPiSystem_002/infrastructure/docker/.env",
+                "containerPath": "/app/host/infrastructure/docker/.env"
+              },
+              {
+                "hostPath": "/opt/RaspberryPiSystem_002/clients/nfc-agent/.env",
+                "containerPath": "/app/host/clients/nfc-agent/.env"
+              }
+            ],
+            "targets": [],
+            "retention": {
+              "days": 30,
+              "maxBackups": 100
+            },
+            "csvImports": [],
+            "csvImportSubjectPatterns": {
+              "employees": [
+                "[Pi5 CSV Import] employees",
+                "[CSV Import] employees",
+                "CSV Import - employees",
+                "従業員CSVインポート"
+              ],
+              "items": [
+                "[Pi5 CSV Import] items",
+                "[CSV Import] items",
+                "CSV Import - items",
+                "アイテムCSVインポート"
+              ],
+              "measuringInstruments": [
+                "[Pi5 CSV Import] measuring-instruments",
+                "[CSV Import] measuring-instruments",
+                "CSV Import - measuring-instruments",
+                "計測機器CSVインポート"
+              ],
+              "riggingGears": [
+                "[Pi5 CSV Import] rigging-gears",
+                "[CSV Import] rigging-gears",
+                "CSV Import - rigging-gears",
+                "吊具CSVインポート"
+              ]
+            },
+            "csvImportHistory": {
+              "retentionDays": 90,
+              "cleanupSchedule": "0 2 * * *"
+            },
+            "restoreFromDropbox": {
+              "enabled": false,
+              "verifyIntegrity": true
+            }
+          }
+        dest: "{{ repo_path }}/config/backup.json"
+        owner: root
+        group: root
+        mode: '0644'
+      when:
+        - '"server" in group_names'
+        - not (backup_json_stat.stat.exists | default(false))
+      register: backup_json_created
+
+    - name: Warn about backup.json creation
+      ansible.builtin.debug:
+        msg: |
+          backup.json was missing and has been created with minimal configuration.
+          To configure Dropbox OAuth, use the management console or API:
+            GET /api/backup/oauth/authorize -> follow redirect -> /api/backup/oauth/callback
+          See docs/guides/dropbox-oauth-setup-guide.md for details.
+      when:
+        - '"server" in group_names'
+        - backup_json_created.changed | default(false)
+
     - name: Validate NFC agent .env syntax
       ansible.builtin.shell: |
         python3 - <<'PY'

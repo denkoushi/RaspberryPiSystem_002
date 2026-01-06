@@ -6,6 +6,17 @@ vault_status_agent_client_key: "client-key-raspberrypi5-server"
 # 形式: https://hooks.slack.com/services/...
 vault_slack_kiosk_support_webhook_url: ""
 
+# Dropbox OAuth 2.0設定
+# NOTE: Dropbox App Console (https://www.dropbox.com/developers/apps) で取得
+# App Key: Dropbox App ConsoleのSettingsタブから取得
+# App Secret: Dropbox App ConsoleのSettingsタブから取得（Showボタンで表示）
+# Refresh Token: OAuth認証フローで取得（/api/backup/oauth/authorize → /callback）
+# Access Token: Refresh Tokenから自動更新されるため、通常は空でOK（必要に応じて設定）
+vault_dropbox_app_key: ""
+vault_dropbox_app_secret: ""
+vault_dropbox_refresh_token: ""
+vault_dropbox_access_token: ""
+
 # このファイルは `ansible-vault encrypt` で暗号化した `vault.yml` のサンプルです。
 # 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
 # したあとに ansible-vault で暗号化してください。
