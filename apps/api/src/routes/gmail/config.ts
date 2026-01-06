@@ -28,28 +28,6 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
       gmailAccessToken?: string;
       gmailRefreshToken?: string;
     }) | undefined;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'gmail+dropbox-pre',
-        hypothesisId: 'G1',
-        location: 'apps/api/src/routes/gmail/config.ts:GET /gmail/config',
-        message: 'Loaded backup config for GmailConfig GET',
-        data: {
-          storageProvider: config.storage.provider,
-          hasClientId: !!opts?.clientId,
-          hasClientSecret: !!opts?.clientSecret,
-          hasAccessToken: !!opts?.gmailAccessToken,
-          hasRefreshToken: !!opts?.gmailRefreshToken,
-          hasRedirectUri: !!opts?.redirectUri
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     
     // Gmail設定のみを抽出（機密情報はマスク）
     const gmailConfig = {
@@ -65,29 +43,6 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
       hasAccessToken: !!opts?.gmailAccessToken,
       hasRefreshToken: !!opts?.gmailRefreshToken
     };
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'gmail+dropbox-pre',
-        hypothesisId: 'G1',
-        location: 'apps/api/src/routes/gmail/config.ts:GET /gmail/config',
-        message: 'Computed GmailConfig response',
-        data: {
-          providerField: gmailConfig.provider,
-          hasClientId: !!gmailConfig.clientId,
-          hasClientSecretMasked: !!gmailConfig.clientSecret,
-          hasAccessToken: gmailConfig.hasAccessToken,
-          hasRefreshToken: gmailConfig.hasRefreshToken,
-          hasRedirectUri: !!gmailConfig.redirectUri
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
 
     return reply.status(200).send(gmailConfig);
   });
@@ -111,28 +66,6 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     const body = gmailConfigUpdateSchema.parse(request.body);
     
     const config = await BackupConfigLoader.load();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'gmail+dropbox-pre',
-        hypothesisId: 'G2',
-        location: 'apps/api/src/routes/gmail/config.ts:PUT /gmail/config',
-        message: 'Updating GmailConfig (masked)',
-        data: {
-          prevStorageProvider: config.storage.provider,
-          hasClientId: !!body.clientId,
-          hasClientSecret: !!body.clientSecret,
-          hasSubjectPattern: body.subjectPattern !== undefined,
-          hasFromEmail: body.fromEmail !== undefined,
-          hasRedirectUri: !!body.redirectUri
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     
     // Gmail設定を更新
     const updatedConfig: BackupConfig = {

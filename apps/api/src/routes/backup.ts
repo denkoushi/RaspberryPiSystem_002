@@ -207,28 +207,6 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const targetConfig = config.targets.find(
       (t) => t.kind === body.kind && t.source === body.source
     );
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'gmail+dropbox-pre',
-        hypothesisId: 'D1',
-        location: 'apps/api/src/routes/backup.ts:POST /backup',
-        message: 'Manual backup requested',
-        data: {
-          kind: body.kind,
-          source: body.source,
-          globalProvider: config.storage.provider,
-          targetFound: !!targetConfig,
-          targetProvider: targetConfig?.storage?.provider,
-          targetProvidersCount: targetConfig?.storage?.providers?.length ?? 0
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
@@ -311,80 +289,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               sizeBytes: result.sizeBytes,
               path: result.path
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionId: 'debug-session',
-                runId: 'gmail+dropbox-pre',
-                hypothesisId: 'D2',
-                location: 'apps/api/src/routes/backup.ts:POST /backup',
-                message: 'Backup succeeded for provider',
-                data: {
-                  requestedProvider,
-                  actualProvider: safeProvider,
-                  kind: body.kind,
-                  source: body.source,
-                  sizeBytes: result.sizeBytes
-                },
-                timestamp: Date.now()
-              })
-            }).catch(() => {});
-            // #endregion
           } else {
             results.push({ provider: safeProvider, success: false, error: result.error });
             await historyService.failHistory(historyId, result.error || 'Unknown error');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionId: 'debug-session',
-                runId: 'gmail+dropbox-pre',
-                hypothesisId: 'D3',
-                location: 'apps/api/src/routes/backup.ts:POST /backup',
-                message: 'Backup returned success=false',
-                data: {
-                  requestedProvider,
-                  actualProvider: safeProvider,
-                  kind: body.kind,
-                  source: body.source,
-                  errorPresent: !!result.error
-                },
-                timestamp: Date.now()
-              })
-            }).catch(() => {});
-            // #endregion
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           results.push({ provider: safeProvider, success: false, error: errorMessage });
           await historyService.failHistory(historyId, errorMessage);
-          // #region agent log
-          const msg = error instanceof Error ? error.message : String(error);
-          const looksSensitive = /\bsl\.u\./.test(msg) || /\bya29\./.test(msg) || /\b1\/\/0/.test(msg);
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'debug-session',
-              runId: 'gmail+dropbox-pre',
-              hypothesisId: 'D4',
-              location: 'apps/api/src/routes/backup.ts:POST /backup',
-              message: 'Backup threw exception',
-              data: {
-                requestedProvider,
-                actualProvider: safeProvider,
-                kind: body.kind,
-                source: body.source,
-                errorName: error instanceof Error ? error.name : typeof error,
-                messageRedacted: looksSensitive
-              },
-              timestamp: Date.now()
-            })
-          }).catch(() => {});
-          // #endregion
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
