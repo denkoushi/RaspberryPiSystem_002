@@ -6,6 +6,7 @@ import { DirectoryBackupTarget } from './targets/directory-backup.target.js';
 import { CsvBackupTarget } from './targets/csv-backup.target.js';
 import { ImageBackupTarget } from './targets/image-backup.target.js';
 import { ClientFileBackupTarget } from './targets/client-file-backup.target.js';
+import { ClientDirectoryBackupTarget } from './targets/client-directory-backup.target.js';
 import { ApiError } from '../../lib/errors.js';
 import type { BackupConfig } from './backup-config.js';
 
@@ -47,7 +48,8 @@ export class BackupTargetFactory {
       }
     ],
     ['image', (_source: string, metadata?: Record<string, unknown>) => new ImageBackupTarget(metadata)],
-    ['client-file', (source: string) => new ClientFileBackupTarget(source)]
+    ['client-file', (source: string) => new ClientFileBackupTarget(source)],
+    ['client-directory', (source: string) => new ClientDirectoryBackupTarget(source)]
   ]);
 
   /**

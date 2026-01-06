@@ -64,6 +64,8 @@ services:
       - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro
       - /opt/RaspberryPiSystem_002/infrastructure/docker:/app/host/infrastructure/docker:ro
       - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      # 証明書ファイルのバックアップ用にマウント（読み取り専用）
+      - /opt/RaspberryPiSystem_002/certs:/app/host/certs:ro
       # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
       - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
       # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）

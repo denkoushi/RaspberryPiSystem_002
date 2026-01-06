@@ -46,7 +46,7 @@ export const BackupConfigSchema = z.object({
   }),
   pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング
   targets: z.array(z.object({
-    kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file']),
+    kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file', 'client-directory']),
     source: z.string(),
     schedule: z.string().optional(), // cron形式（例: "0 4 * * *"）
     enabled: z.boolean().default(true),

@@ -1,4 +1,11 @@
-export type BackupKind = 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
+export type BackupKind =
+  | 'database'
+  | 'file'
+  | 'directory'
+  | 'csv'
+  | 'image'
+  | 'client-file'
+  | 'client-directory';
 
 export interface BackupTargetInfo {
   type: BackupKind;

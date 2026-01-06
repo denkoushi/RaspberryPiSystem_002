@@ -146,7 +146,7 @@ export async function runCsvImportSchedule(id: string): Promise<{ message: strin
 
 // バックアップ設定の型定義
 export interface BackupTarget {
-  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
   source: string;
   schedule?: string;
   enabled: boolean;
@@ -229,7 +229,7 @@ export async function deleteBackupTarget(index: number): Promise<{ success: bool
 
 // 手動バックアップ実行API
 export interface RunBackupRequest {
-  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file';
+  kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
   source: string;
   metadata?: Record<string, unknown>;
 }

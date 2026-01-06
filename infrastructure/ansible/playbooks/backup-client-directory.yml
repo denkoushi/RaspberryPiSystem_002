@@ -1,0 +1,61 @@
+---
+- name: Backup client device directory (archive + fetch)
+  hosts: "{{ client_host }}"
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    client_host: "{{ client_host | default('') }}"
+    client_dir_path: "{{ client_dir_path | default('') }}"
+    backup_destination: "{{ backup_destination | default('/tmp') }}"
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - client_host != ''
+          - client_dir_path != ''
+          - backup_destination != ''
+        fail_msg: "client_host, client_dir_path, and backup_destination are required"
+        quiet: true
+      delegate_to: localhost
+      run_once: true
+
+    - name: Archive directory on client
+      become: true
+      ansible.builtin.archive:
+        path: "{{ client_dir_path }}"
+        dest: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+        format: gz
+      register: archive_result
+      ignore_errors: true
+
+    - name: Fail if archive failed
+      ansible.builtin.fail:
+        msg: "Failed to archive directory on {{ inventory_hostname }}: {{ client_dir_path }}. Error: {{ archive_result.msg | default('Unknown error') }}"
+      when: archive_result.failed | default(true)
+      delegate_to: localhost
+      run_once: true
+
+    - name: Fetch archive from client
+      become: true
+      ansible.builtin.fetch:
+        src: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+        dest: "{{ backup_destination }}/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+        flat: true
+      register: fetch_result
+      ignore_errors: true
+
+    - name: Fail if fetch failed
+      ansible.builtin.fail:
+        msg: "Failed to fetch archive from {{ inventory_hostname }}: {{ client_dir_path }}. Error: {{ fetch_result.msg | default('Unknown error') }}"
+      when: fetch_result.failed | default(true)
+      delegate_to: localhost
+      run_once: true
+
+    - name: Cleanup archive on client
+      become: true
+      ansible.builtin.file:
+        path: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+        state: absent
+      ignore_errors: true
+
+

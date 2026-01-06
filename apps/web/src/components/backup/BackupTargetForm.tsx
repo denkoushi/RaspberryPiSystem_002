@@ -173,6 +173,10 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
         return '/path/to/file.txt';
       case 'directory':
         return '/path/to/directory';
+      case 'client-file':
+        return 'raspberrypi4:/path/to/file.txt';
+      case 'client-directory':
+        return 'raspberrypi4:/path/to/directory';
       default:
         return '';
     }
@@ -244,6 +248,7 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
           <option value="file">ファイル</option>
           <option value="directory">ディレクトリ</option>
           <option value="client-file">クライアントファイル</option>
+          <option value="client-directory">クライアントディレクトリ</option>
         </select>
       </div>
 
@@ -267,6 +272,8 @@ export function BackupTargetForm({ initialValues, onSubmit, onCancel, isLoading,
           {kind === 'image' && 'photo-storage（固定値）'}
           {kind === 'file' && 'バックアップ対象のファイルパス'}
           {kind === 'directory' && 'バックアップ対象のディレクトリパス'}
+          {kind === 'client-file' && 'hostname:/path/to/file（Ansible経由で取得）'}
+          {kind === 'client-directory' && 'hostname:/path/to/directory（Ansibleでtar.gz化して取得）'}
         </p>
       </div>
 
