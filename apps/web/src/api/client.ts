@@ -755,11 +755,29 @@ export async function getNetworkModeStatus() {
 }
 
 // デジタルサイネージ関連の型定義
+export interface SignageSlotConfig {
+  pdfId?: string;
+  displayMode?: 'SLIDESHOW' | 'SINGLE';
+  slideInterval?: number | null;
+}
+
+export interface SignageSlot {
+  position: 'FULL' | 'LEFT' | 'RIGHT';
+  kind: 'pdf' | 'loans' | 'csv_dashboard';
+  config: SignageSlotConfig | Record<string, never>;
+}
+
+export interface SignageLayoutConfig {
+  layout: 'FULL' | 'SPLIT';
+  slots: SignageSlot[];
+}
+
 export interface SignageSchedule {
   id: string;
   name: string;
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId: string | null;
+  layoutConfig: SignageLayoutConfig | null;
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -833,6 +851,7 @@ export async function createSignageSchedule(payload: {
   name: string;
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId?: string | null;
+  layoutConfig?: SignageLayoutConfig | null;
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -847,6 +866,7 @@ export async function updateSignageSchedule(id: string, payload: Partial<{
   name: string;
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId?: string | null;
+  layoutConfig?: SignageLayoutConfig | null;
   dayOfWeek: number[];
   startTime: string;
   endTime: string;

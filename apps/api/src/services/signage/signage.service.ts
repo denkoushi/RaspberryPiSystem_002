@@ -3,16 +3,24 @@ import type { SignageSchedule } from '@prisma/client';
 
 type ScheduleSummary = Pick<
   SignageSchedule,
-  'id' | 'name' | 'contentType' | 'pdfId' | 'dayOfWeek' | 'startTime' | 'endTime' | 'priority' | 'enabled'
+  'id' | 'name' | 'contentType' | 'pdfId' | 'layoutConfig' | 'dayOfWeek' | 'startTime' | 'endTime' | 'priority' | 'enabled'
 >;
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
+import type {
+  SignageLayoutConfig,
+  SignageLayoutConfigJson,
+  SignageSlot,
+  PdfSlotConfig,
+  LoansSlotConfig,
+} from './signage-layout.types.js';
 
 export interface SignageScheduleInput {
   name: string;
   contentType: SignageContentType;
   pdfId?: string | null;
+  layoutConfig?: SignageLayoutConfigJson;
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -33,6 +41,7 @@ export interface SignageEmergencyInput {
   message?: string | null;
   contentType?: SignageContentType | null;
   pdfId?: string | null;
+  layoutConfig?: SignageLayoutConfigJson;
   enabled?: boolean;
   expiresAt?: Date | null;
 }
@@ -50,6 +59,7 @@ const WEEKDAY_MAP: Record<string, number> = {
 export interface SignageContentResponse {
   contentType: SignageContentType;
   displayMode: SignageDisplayMode;
+  layoutConfig?: SignageLayoutConfig; // 新形式のレイアウト設定（優先）
   tools?: Array<{
     id: string;
     itemCode: string;
@@ -92,6 +102,7 @@ export class SignageService {
         name: true,
         contentType: true,
         pdfId: true,
+        layoutConfig: true,
         dayOfWeek: true,
         startTime: true,
         endTime: true,
@@ -100,6 +111,84 @@ export class SignageService {
       },
     });
     return schedules;
+  }
+
+  /**
+   * 旧形式（contentType/pdfId）から新形式（layoutConfig）への変換
+   */
+  private convertLegacyToLayoutConfig(
+    contentType: SignageContentType,
+    pdfId: string | null,
+    pdf?: { id: string; displayMode: SignageDisplayMode; slideInterval: number | null } | null
+  ): SignageLayoutConfig {
+    if (contentType === SignageContentType.TOOLS) {
+      return {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'loans',
+            config: {} as LoansSlotConfig,
+          },
+        ],
+      };
+    }
+
+    if (contentType === SignageContentType.PDF && pdfId && pdf) {
+      return {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'pdf',
+            config: {
+              pdfId,
+              displayMode: pdf.displayMode === SignageDisplayMode.SLIDESHOW ? 'SLIDESHOW' : 'SINGLE',
+              slideInterval: pdf.slideInterval,
+            } as PdfSlotConfig,
+          },
+        ],
+      };
+    }
+
+    if (contentType === SignageContentType.SPLIT) {
+      const slots: SignageSlot[] = [
+        {
+          position: 'LEFT',
+          kind: 'loans',
+          config: {} as LoansSlotConfig,
+        },
+      ];
+
+      if (pdfId && pdf) {
+        slots.push({
+          position: 'RIGHT',
+          kind: 'pdf',
+          config: {
+            pdfId,
+            displayMode: pdf.displayMode === SignageDisplayMode.SLIDESHOW ? 'SLIDESHOW' : 'SINGLE',
+            slideInterval: pdf.slideInterval,
+          } as PdfSlotConfig,
+        });
+      }
+
+      return {
+        layout: 'SPLIT',
+        slots,
+      };
+    }
+
+    // フォールバック: TOOLS
+    return {
+      layout: 'FULL',
+      slots: [
+        {
+          position: 'FULL',
+          kind: 'loans',
+          config: {} as LoansSlotConfig,
+        },
+      ],
+    };
   }
 
   /**
@@ -127,32 +216,87 @@ export class SignageService {
     if (emergency) {
       logger.info({ emergencyId: emergency.id }, 'Emergency display active');
       
-      if (emergency.contentType === SignageContentType.TOOLS) {
-        const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
-        return {
-          contentType: SignageContentType.TOOLS,
-          displayMode: SignageDisplayMode.SINGLE,
-          tools,
-          measuringInstruments,
-        };
-      } else if (emergency.contentType === SignageContentType.PDF && emergency.pdf) {
-        return {
-          contentType: SignageContentType.PDF,
-          displayMode: emergency.pdf.displayMode,
-          pdf: {
-            id: emergency.pdf.id,
-            name: emergency.pdf.name,
-            pages: await this.getPdfPages(emergency.pdf.id),
-          },
-        };
-      } else if (emergency.message) {
-        // メッセージのみの緊急表示（将来的に実装）
-        return {
-          contentType: SignageContentType.TOOLS,
-          displayMode: SignageDisplayMode.SINGLE,
-          tools: [],
-        };
+      // layoutConfigを優先し、nullの場合は旧形式から変換
+      let layoutConfig: SignageLayoutConfig;
+      if (emergency.layoutConfig && typeof emergency.layoutConfig === 'object') {
+        layoutConfig = emergency.layoutConfig as unknown as SignageLayoutConfig;
+      } else {
+        // 旧形式から変換
+        const contentType = emergency.contentType || SignageContentType.TOOLS;
+        const pdf = emergency.pdf
+          ? {
+              id: emergency.pdf.id,
+              displayMode: emergency.pdf.displayMode,
+              slideInterval: emergency.pdf.slideInterval,
+            }
+          : null;
+        layoutConfig = this.convertLegacyToLayoutConfig(contentType, emergency.pdfId, pdf);
       }
+
+      // layoutConfigに基づいてレスポンスを構築
+      const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
+      
+      // PDFスロットの情報を収集
+      const pdfSlots = layoutConfig.slots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
+      const pdfDataMap = new Map<string, { id: string; name: string; pages: string[]; slideInterval: number | null }>();
+
+      for (const slot of pdfSlots) {
+        const pdfId = slot.config.pdfId;
+        if (!pdfDataMap.has(pdfId)) {
+          const pdfRecord = await prisma.signagePdf.findUnique({
+            where: { id: pdfId },
+          });
+          if (pdfRecord && pdfRecord.enabled) {
+            const pages = await this.getPdfPages(pdfId);
+            pdfDataMap.set(pdfId, {
+              id: pdfRecord.id,
+              name: pdfRecord.name,
+              pages,
+              slideInterval: pdfRecord.slideInterval,
+            });
+          }
+        }
+      }
+
+      // 後方互換のため、contentTypeとdisplayModeを決定
+      let contentType: SignageContentType;
+      let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
+
+      if (layoutConfig.layout === 'FULL') {
+        if (layoutConfig.slots.some((s) => s.kind === 'pdf')) {
+          contentType = SignageContentType.PDF;
+          const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
+          if (pdfSlot) {
+            displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
+          }
+        } else {
+          contentType = SignageContentType.TOOLS;
+        }
+      } else {
+        contentType = SignageContentType.SPLIT;
+        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+        if (pdfSlot) {
+          displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
+        }
+      }
+
+      // PDF情報を取得（後方互換のため）
+      let pdfPayload: SignageContentResponse['pdf'] = null;
+      if (contentType === SignageContentType.PDF || contentType === SignageContentType.SPLIT) {
+        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+        if (pdfSlot) {
+          pdfPayload = pdfDataMap.get(pdfSlot.config.pdfId) || null;
+        }
+      }
+
+      return {
+        contentType,
+        displayMode,
+        layoutConfig, // 新形式を追加
+        tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
+        measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
+        pdf: pdfPayload,
+      };
     }
 
     // スケジュールから適切なコンテンツを取得
@@ -408,75 +552,92 @@ export class SignageService {
   }
 
   private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
-    if (schedule.contentType === SignageContentType.TOOLS) {
-      const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
-      return {
-        contentType: SignageContentType.TOOLS,
-        displayMode: SignageDisplayMode.SINGLE,
-        tools,
-        measuringInstruments,
-      };
-    }
+    // layoutConfigを優先し、nullの場合は旧形式から変換
+    let layoutConfig: SignageLayoutConfig;
+    let pdf: { id: string; displayMode: SignageDisplayMode; slideInterval: number | null } | null = null;
 
-    if (schedule.contentType === SignageContentType.PDF) {
-      if (!schedule.pdfId) {
-        return null;
-      }
-      const pdf = await prisma.signagePdf.findUnique({
-        where: { id: schedule.pdfId },
-      });
-      if (!pdf || !pdf.enabled) {
-        return null;
-      }
-      return {
-        contentType: SignageContentType.PDF,
-        displayMode: pdf.displayMode,
-        pdf: {
-          id: pdf.id,
-          name: pdf.name,
-          pages: await this.getPdfPages(pdf.id),
-          slideInterval: pdf.slideInterval,
-        },
-      };
-    }
-
-    if (schedule.contentType === SignageContentType.SPLIT) {
-      const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
-      let pdfPayload: SignageContentResponse['pdf'] = null;
-      let pdfDisplayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
-
+    if (schedule.layoutConfig && typeof schedule.layoutConfig === 'object') {
+      // 新形式（layoutConfig）を使用
+      layoutConfig = schedule.layoutConfig as unknown as SignageLayoutConfig;
+    } else {
+      // 旧形式から変換（PDF情報が必要な場合は取得）
       if (schedule.pdfId) {
-        const pdf = await prisma.signagePdf.findUnique({
+        pdf = await prisma.signagePdf.findUnique({
           where: { id: schedule.pdfId },
+          select: {
+            id: true,
+            displayMode: true,
+            slideInterval: true,
+          },
         });
-        if (pdf && pdf.enabled) {
-          pdfDisplayMode = pdf.displayMode;
-          const pages = await this.getPdfPages(pdf.id);
-          if (pages.length === 0) {
-            logger.warn(
-              { scheduleId: schedule.id, pdfId: pdf.id, pdfName: pdf.name, pdfFilePath: pdf.filePath },
-              'SPLITモードのスケジュールでPDFページが空です。PDFファイルが存在するか確認してください。'
-            );
-          }
-          pdfPayload = {
-            id: pdf.id,
-            name: pdf.name,
+      }
+      layoutConfig = this.convertLegacyToLayoutConfig(schedule.contentType, schedule.pdfId, pdf);
+    }
+
+    // layoutConfigに基づいてレスポンスを構築
+    const [tools, measuringInstruments] = await Promise.all([this.getToolsData(), this.getMeasuringInstrumentData()]);
+    
+    // PDFスロットの情報を収集
+    const pdfSlots = layoutConfig.slots.filter((slot) => slot.kind === 'pdf') as Array<SignageSlot & { config: PdfSlotConfig }>;
+    const pdfDataMap = new Map<string, { id: string; name: string; pages: string[]; slideInterval: number | null }>();
+
+    for (const slot of pdfSlots) {
+      const pdfId = slot.config.pdfId;
+      if (!pdfDataMap.has(pdfId)) {
+        const pdfRecord = await prisma.signagePdf.findUnique({
+          where: { id: pdfId },
+        });
+        if (pdfRecord && pdfRecord.enabled) {
+          const pages = await this.getPdfPages(pdfId);
+          pdfDataMap.set(pdfId, {
+            id: pdfRecord.id,
+            name: pdfRecord.name,
             pages,
-            slideInterval: pdf.slideInterval,
-          };
+            slideInterval: pdfRecord.slideInterval,
+          });
         }
       }
-
-      return {
-        contentType: SignageContentType.SPLIT,
-        displayMode: pdfPayload ? pdfDisplayMode : SignageDisplayMode.SINGLE,
-        tools,
-        measuringInstruments,
-        pdf: pdfPayload,
-      };
     }
 
-    return null;
+    // 後方互換のため、contentTypeとdisplayModeを決定
+    let contentType: SignageContentType;
+    let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
+
+    if (layoutConfig.layout === 'FULL') {
+      if (layoutConfig.slots.some((s) => s.kind === 'pdf')) {
+        contentType = SignageContentType.PDF;
+        const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig };
+        if (pdfSlot) {
+          displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
+        }
+      } else {
+        contentType = SignageContentType.TOOLS;
+      }
+    } else {
+      contentType = SignageContentType.SPLIT;
+      const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+      if (pdfSlot) {
+        displayMode = pdfSlot.config.displayMode === 'SLIDESHOW' ? SignageDisplayMode.SLIDESHOW : SignageDisplayMode.SINGLE;
+      }
+    }
+
+    // PDF情報を取得（後方互換のため）
+    let pdfPayload: SignageContentResponse['pdf'] = null;
+    if (contentType === SignageContentType.PDF || contentType === SignageContentType.SPLIT) {
+      const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf') as SignageSlot & { config: PdfSlotConfig } | undefined;
+      if (pdfSlot) {
+        pdfPayload = pdfDataMap.get(pdfSlot.config.pdfId) || null;
+      }
+    }
+
+    return {
+      contentType,
+      displayMode,
+      layoutConfig, // 新形式を追加
+      tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
+      measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
+      pdf: pdfPayload,
+    };
   }
 
   /**
@@ -487,6 +648,7 @@ export class SignageService {
     name: string;
     contentType: SignageContentType;
     pdfId: string | null;
+    layoutConfig: SignageLayoutConfigJson;
     dayOfWeek: number[];
     startTime: string;
     endTime: string;
@@ -498,6 +660,8 @@ export class SignageService {
         name: input.name,
         contentType: input.contentType,
         pdfId: input.pdfId ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        layoutConfig: (input.layoutConfig ?? null) as any,
         dayOfWeek: input.dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -505,7 +669,10 @@ export class SignageService {
         enabled: input.enabled ?? true,
       },
     });
-    return schedule;
+    return {
+      ...schedule,
+      layoutConfig: schedule.layoutConfig as SignageLayoutConfigJson,
+    };
   }
 
   /**
@@ -516,6 +683,7 @@ export class SignageService {
     name: string;
     contentType: SignageContentType;
     pdfId: string | null;
+    layoutConfig: SignageLayoutConfigJson;
     dayOfWeek: number[];
     startTime: string;
     endTime: string;
@@ -528,6 +696,10 @@ export class SignageService {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.contentType !== undefined && { contentType: input.contentType }),
         ...(input.pdfId !== undefined && { pdfId: input.pdfId ?? null }),
+        ...(input.layoutConfig !== undefined && {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          layoutConfig: (input.layoutConfig ?? null) as any,
+        }),
         ...(input.dayOfWeek !== undefined && { dayOfWeek: input.dayOfWeek }),
         ...(input.startTime !== undefined && { startTime: input.startTime }),
         ...(input.endTime !== undefined && { endTime: input.endTime }),
@@ -535,7 +707,10 @@ export class SignageService {
         ...(input.enabled !== undefined && { enabled: input.enabled }),
       },
     });
-    return schedule;
+    return {
+      ...schedule,
+      layoutConfig: schedule.layoutConfig as SignageLayoutConfigJson,
+    };
   }
 
   /**
@@ -695,6 +870,8 @@ export class SignageService {
         message: input.message ?? null,
         contentType: input.contentType ?? null,
         pdfId: input.pdfId ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        layoutConfig: (input.layoutConfig ?? null) as any,
         enabled: input.enabled ?? true,
         expiresAt: input.expiresAt ?? null,
       },

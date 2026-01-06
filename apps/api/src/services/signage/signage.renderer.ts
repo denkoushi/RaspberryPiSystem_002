@@ -7,6 +7,9 @@ import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
+import type {
+  PdfSlotConfig,
+} from './signage-layout.types.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -61,6 +64,12 @@ export class SignageRenderer {
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
+    // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
+    if (content.layoutConfig) {
+      return await this.renderWithLayoutConfig(content);
+    }
+
+    // 後方互換: 旧形式（contentType）から処理
     if (content.contentType === 'PDF' && content.pdf?.pages?.length) {
       const pdfPageIndex = this.getCurrentPdfPageIndex(
         content.pdf.pages.length,
@@ -93,6 +102,85 @@ export class SignageRenderer {
         slideInterval: content.pdf?.slideInterval ?? null,
         displayMode: content.displayMode,
       });
+    }
+
+    return await this.renderMessage('表示するコンテンツがありません');
+  }
+
+  /**
+   * layoutConfigに基づいてレンダリング（新形式）
+   */
+  private async renderWithLayoutConfig(content: SignageContentResponse): Promise<Buffer> {
+    if (!content.layoutConfig) {
+      return await this.renderMessage('レイアウト設定がありません');
+    }
+
+    const layoutConfig = content.layoutConfig;
+
+    if (layoutConfig.layout === 'FULL') {
+      // 全体表示: 最初のスロットを全体に表示
+      const slot = layoutConfig.slots[0];
+      if (!slot) {
+        return await this.renderMessage('表示するコンテンツがありません');
+      }
+
+      if (slot.kind === 'pdf') {
+        const pdfConfig = slot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (!pdf || !pdf.pages?.length) {
+          return await this.renderMessage('PDFが見つかりません');
+        }
+        const pdfPageIndex = this.getCurrentPdfPageIndex(
+          pdf.pages.length,
+          pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+          pdfConfig.slideInterval || null,
+          pdf.id
+        );
+        return await this.renderPdfImage(pdf.pages[pdfPageIndex], {
+          title: pdf.name,
+          slideInterval: pdfConfig.slideInterval ?? null,
+          displayMode: pdfConfig.displayMode,
+        });
+      } else if (slot.kind === 'loans') {
+        return await this.renderTools(content.tools ?? []);
+      }
+    } else if (layoutConfig.layout === 'SPLIT') {
+      // 左右分割表示
+      const leftSlot = layoutConfig.slots.find((s) => s.position === 'LEFT');
+      const rightSlot = layoutConfig.slots.find((s) => s.position === 'RIGHT');
+
+      let tools: ToolItem[] = [];
+      let pdfOptions: SplitPdfOptions | undefined;
+
+      // 左スロット: 持出一覧
+      if (leftSlot?.kind === 'loans') {
+        tools = (content.tools ?? []).map((tool) => ({
+          ...tool,
+          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
+        }));
+      }
+
+      // 右スロット: PDF
+      if (rightSlot?.kind === 'pdf') {
+        const pdfConfig = rightSlot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (pdf && pdf.pages?.length) {
+          const pdfPageIndex = this.getCurrentPdfPageIndex(
+            pdf.pages.length,
+            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+            pdfConfig.slideInterval || null,
+            pdf.id
+          );
+          pdfOptions = {
+            pageUrl: pdf.pages[pdfPageIndex],
+            title: pdf.name,
+            slideInterval: pdfConfig.slideInterval ?? null,
+            displayMode: pdfConfig.displayMode,
+          };
+        }
+      }
+
+      return await this.renderSplit(tools, pdfOptions);
     }
 
     return await this.renderMessage('表示するコンテンツがありません');

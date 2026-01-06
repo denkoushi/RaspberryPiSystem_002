@@ -439,6 +439,7 @@ model SignageSchedule {
   contentType SignageContentType
   pdfId       String?
   pdf         SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig Json?             // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
   dayOfWeek   Int[]
   startTime   String
   endTime     String
@@ -473,6 +474,7 @@ model SignageEmergency {
   contentType SignageContentType?
   pdfId       String?
   pdf         SignagePdf?         @relation("EmergencyPdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig Json?              // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
   enabled     Boolean             @default(false)
   expiresAt   DateTime?
   createdAt   DateTime            @default(now())
