@@ -1,6 +1,6 @@
 # バックアップAPI
 
-最終更新: 2025-12-29
+最終更新: 2026-01-06
 
 ## 概要
 
@@ -78,6 +78,11 @@
 3. 各プロバイダーに順次バックアップを実行
 4. バックアップ履歴に記録（実際に使用されたプロバイダーを記録）
 5. バックアップ実行後、保持期間設定に基づいて古いバックアップを自動削除
+
+**注意（トークンの分離）**:
+- `backup.json` の `storage.options` にはDropboxとGmailのOAuth設定が保存され得ますが、**トークンは衝突しないよう分離**されています：
+  - **Dropbox**: `accessToken` / `refreshToken` / `appKey` / `appSecret`
+  - **Gmail**: `gmailAccessToken` / `gmailRefreshToken` / `clientId` / `clientSecret` / `redirectUri` など
 
 ---
 

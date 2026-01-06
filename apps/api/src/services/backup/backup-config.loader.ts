@@ -36,7 +36,7 @@ export class BackupConfigLoader {
         return value;
       };
 
-      // accessToken, refreshToken, appKey, appSecretの環境変数を解決
+      // accessToken, refreshToken, appKey, appSecret, gmailAccessToken, gmailRefreshToken の環境変数を解決
       if (configJson.storage?.options) {
         if (configJson.storage.options.accessToken) {
           configJson.storage.options.accessToken = resolveEnvVar(
@@ -48,6 +48,18 @@ export class BackupConfigLoader {
           configJson.storage.options.refreshToken = resolveEnvVar(
             configJson.storage.options.refreshToken,
             'refreshToken'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.gmailAccessToken) {
+          configJson.storage.options.gmailAccessToken = resolveEnvVar(
+            configJson.storage.options.gmailAccessToken,
+            'gmailAccessToken'
+          ) as string | undefined;
+        }
+        if (configJson.storage.options.gmailRefreshToken) {
+          configJson.storage.options.gmailRefreshToken = resolveEnvVar(
+            configJson.storage.options.gmailRefreshToken,
+            'gmailRefreshToken'
           ) as string | undefined;
         }
         if (configJson.storage.options.appKey) {

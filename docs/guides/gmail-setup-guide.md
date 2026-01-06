@@ -2,7 +2,7 @@
 title: Gmail連携セットアップガイド
 tags: [Gmail, OAuth, 設定, PowerAutomate]
 audience: [運用者, 開発者]
-last-verified: 2025-12-29
+last-verified: 2026-01-06
 related: [powerautomate-gmail-integration.md, csv-import-export.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Gmail連携セットアップガイド
 
-最終更新: 2025-12-29
+最終更新: 2026-01-06
 
 ## 概要
 
@@ -130,6 +130,12 @@ ping -c 1 raspberrypi.tail7312a3.ts.net
 - OAuth認証は**最初の1回だけ**実行します（refresh tokenを取得するため）
 - 以後は**自動リフレッシュ**で運用可能です（Gmailの場合、`OAuth2Client`が自動的にトークンをリフレッシュします）
 - `/etc/hosts`の設定は一度行えば永続的に有効です（Pi5のTailscale IPが変更されない限り）
+
+**重要（2026-01-06追記）**:
+- GmailのOAuthトークンは `backup.json` に保存されますが、**Dropboxのトークンと衝突しないよう**以下のキーに分離して保持します：
+  - `storage.options.gmailAccessToken`
+  - `storage.options.gmailRefreshToken`
+  - （Dropboxは `storage.options.accessToken` / `storage.options.refreshToken` を使用）
 
 **Tailscale DNSをオフにしても問題ありません**:
 - Pi5側はDNS解決に依存していません（IPアドレスで動作）

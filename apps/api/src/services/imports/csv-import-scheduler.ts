@@ -570,7 +570,7 @@ export class CsvImportScheduler {
       if (currentProvider === 'dropbox' || currentProvider === 'gmail') {
         latestConfig.storage.options = {
           ...(latestConfig.storage.options || {}),
-          accessToken: token
+          ...(currentProvider === 'gmail' ? { gmailAccessToken: token } : { accessToken: token })
         };
         await BackupConfigLoader.save(latestConfig);
         logger?.info({ provider: currentProvider }, '[CsvImportScheduler] Access token updated during auto backup');

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - バックアップ・リストア関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2025-12-29
+last-verified: 2026-01-06
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 14件  
+**件数**: 15件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -832,3 +832,38 @@ update-frequency: medium
 - `73853b6` - fix(backup): remove debug instrumentation logs after successful verification
 
 ---
+
+## KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する（トークン分離で恒久対策）
+
+**EXEC_PLAN.md参照**: Gmail設定復旧＋Dropbox手動バックアップ再失敗の調査（2026-01-06）
+
+**事象**:
+- Gmail OAuthを実施/更新した後、**Dropboxへの手動バックアップが大量に失敗**する
+- APIログに `refresh token is malformed` / `invalid_grant` 相当のエラーが出る（Dropbox側）
+
+**要因**:
+- `backup.json` の `storage.options` が **DropboxとGmailで同じ `accessToken` / `refreshToken` フィールドを共有**しており、
+  Gmail OAuthで保存したトークンが **Dropbox用トークンを上書き**していた
+- これは **疎結合・モジュール化の方針（provider間で状態を共有しない）に反する設計**で、設定ファイル1つの“便利な共通フィールド”が副作用の温床になった
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-06）:
+  1. **Gmail用トークンを分離**: `storage.options.gmailAccessToken` / `storage.options.gmailRefreshToken` を新設し、Gmailはそちらへ保存する
+  2. **Gmail設定の有効判定をstorage.providerから分離**: `GET /api/gmail/config` は `clientId` の存在で「設定済み」を判定（バックアップ先のprovider切替と独立）
+  3. **自動処理のトークン更新も分離**: CSVインポート後の自動バックアップ等で、Gmailの場合は `gmailAccessToken` に更新を書き込む
+  4. `BackupConfigLoader` で `gmailAccessToken/gmailRefreshToken` の `${ENV}` 参照解決にも対応（将来の運用ドリフトに備える）
+
+**学んだこと**:
+- 外部サービス連携（Dropbox/Gmail/Slack等）は「**設定・トークン・状態を別名前空間で管理**」しないと、運用で必ず衝突する
+- “共通フィールド”は拡張性を上げるように見えて、実際は**スケール（連携追加）時に事故率を上げる**。最初からprovider別の構造（例: `options.dropbox.*`, `options.gmail.*`）に寄せるのが安全
+
+**解決状況**: ✅ **解決済み**（2026-01-06）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.ts`（Gmail用トークンの分離）
+- `apps/api/src/services/backup/storage-provider-factory.ts`（provider別トークンの参照）
+- `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthトークン保存先）
+- `apps/api/src/routes/gmail/config.ts`（Gmail設定の「設定済み」判定）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（自動バックアップ時のトークン更新先）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（分離後のキー反映）
+
