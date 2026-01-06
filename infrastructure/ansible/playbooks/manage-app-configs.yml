@@ -252,6 +252,23 @@
                     print("Please configure Dropbox OAuth via management console or API:")
                     print("  GET /api/backup/oauth/authorize -> follow redirect -> /api/backup/oauth/callback")
                     sys.exit(1)
+            
+            # Gmail運用なのに必要な設定が空の場合、警告を出す
+            if provider == 'gmail':
+                missing = []
+                if not options.get('clientId'):
+                    missing.append('clientId')
+                if not options.get('clientSecret'):
+                    missing.append('clientSecret')
+                if not options.get('refreshToken'):
+                    missing.append('refreshToken')
+                
+                if missing:
+                    print(f"WARNING: backup.json uses gmail provider but missing: {', '.join(missing)}")
+                    print("Please configure Gmail OAuth via management console or API:")
+                    print("  GET /api/gmail/oauth/authorize -> follow redirect -> /api/gmail/oauth/callback")
+                    print("See docs/guides/gmail-setup-guide.md for details")
+                    sys.exit(1)
         except json.JSONDecodeError as e:
             print(f"ERROR: backup.json is not valid JSON: {e}")
             sys.exit(1)
