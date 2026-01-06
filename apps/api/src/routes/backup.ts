@@ -200,25 +200,13 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   }, async (request, reply) => {
     const body = request.body as z.infer<typeof backupRequestSchema>;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:201',message:'POST /backup entry',data:{kind:body.kind,source:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:205',message:'Config loaded',data:{storageProvider:config.storage.provider,hasAccessToken:!!config.storage.options?.accessToken,hasRefreshToken:!!config.storage.options?.refreshToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
     const targetConfig = config.targets.find(
       (t) => t.kind === body.kind && t.source === body.source
     );
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:209',message:'Target config found',data:{found:!!targetConfig,targetStorageProvider:targetConfig?.storage?.provider},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto']) 
@@ -244,21 +232,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     };
     
     // バックアップターゲットを作成（Factoryパターンを使用）
-    let target: ReturnType<typeof BackupTargetFactory.createFromConfig>;
-    try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:235',message:'Creating backup target',data:{kind:body.kind,source:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:237',message:'Backup target created',data:{targetType:target.info.type,targetSource:target.info.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-    } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.ts:239',message:'Backup target creation failed',data:{error:error instanceof Error?error.message:'Unknown',kind:body.kind,source:body.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      throw error;
-    }
+    const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
     
     // ストレージプロバイダーのリストを決定（Phase 2: 多重バックアップ対応）
     // Gmailはバックアップ用ではないため、local/dropboxのみをサポート

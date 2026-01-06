@@ -16,11 +16,31 @@ export class BackupService implements BackupProvider {
   constructor(private readonly storage: StorageProvider) {}
 
   async backup(target: BackupTarget, options?: BackupOptions): Promise<BackupResult> {
-    const data = await target.createBackup();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:18',message:'BackupService.backup start',data:{targetType:target.info.type,targetSource:target.info.source},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    let data: Buffer;
+    try {
+      data = await target.createBackup();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:22',message:'Backup data created',data:{dataSize:data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+    } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:25',message:'Backup data creation failed',data:{error:error instanceof Error?error.message:'Unknown',errorName:error instanceof Error?error.name:'Unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
     const key = this.buildPath(target.info, options);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:29',message:'Uploading backup',data:{key,dataSize:data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     try {
       await this.storage.upload(data, key);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:33',message:'Backup upload success',data:{key,sizeBytes:data.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return {
         target: target.info,
         success: true,
@@ -29,6 +49,9 @@ export class BackupService implements BackupProvider {
         timestamp: new Date()
       };
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backup.service.ts:42',message:'Backup upload error',data:{error:error instanceof Error?error.message:'Unknown',errorName:error instanceof Error?error.name:'Unknown',key},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return {
         target: target.info,
         success: false,

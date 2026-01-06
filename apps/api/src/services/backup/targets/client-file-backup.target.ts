@@ -76,6 +76,9 @@ export class ClientFileBackupTarget implements BackupTarget {
     }
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client-file-backup.target.ts:82',message:'Executing ansible-playbook',data:{clientHost:this.clientHost,remotePath:this.remotePath,ansibleInventoryPath,ansiblePlaybookPath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない問題を回避するため、
       // 直接ansible-playbookを実行する（SSH鍵の問題で失敗する可能性が高いが、実際には成功している）
       // 注意: 実際のテストでは、Ansible Playbookが成功しているため、この方法で動作している
@@ -94,6 +97,9 @@ export class ClientFileBackupTarget implements BackupTarget {
           encoding: 'utf-8'
         }
       );
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'client-file-backup.target.ts:98',message:'Ansible playbook completed',data:{clientHost:this.clientHost,stdoutLength:stdout.length,stderrLength:stderr.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       // Ansible Playbookのエラーメッセージを解析
       const errorMessage = stderr || stdout || '';

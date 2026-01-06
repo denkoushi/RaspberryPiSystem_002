@@ -896,6 +896,15 @@ if storage.get('provider') == 'dropbox':
 PY
 ```
 
+**実機検証結果**（2026-01-06）:
+- ✅ **デプロイ実行**: 標準手順に従ってデプロイを実行し、APIとWebコンテナを正常に再ビルド・再起動
+- ✅ **Ansible再実行後の設定維持確認**: `manage-app-configs.yml`を実行後、以下の設定が維持されていることを確認
+  - `SLACK_KIOSK_SUPPORT_WEBHOOK_URL`: `.env`ファイルとAPIコンテナ内の環境変数に正しく設定されている
+  - `DROPBOX_*`環境変数: `.env`ファイルには空文字列が設定されているが、`backup.json`に設定があるため、APIは`backup.json`から読み込んでいる
+  - `backup.json`: 存在し、`storage.provider: dropbox`が設定されている
+- ✅ **動作確認**: APIコンテナは正常に起動し、Docker Composeサービスはすべて正常に動作
+- ✅ **検証結果**: Ansible再実行後もSlack/Dropbox設定が維持され、システムは正常に動作していることを確認
+
 **今後の推奨事項**:
 - **新しい環境変数の追加時**: Ansible管理化を検討（テンプレートに追加、inventoryに変数を追加、vaultに機密情報を追加）
 - **設定ファイルの管理**: `backup.json`のようにAPIが書き換える設定ファイルは、Ansibleで上書きせず、存在保証と健全性チェックに留める
