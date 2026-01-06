@@ -18,7 +18,7 @@ export class BackupConfigLoader {
       const configContent = await fs.readFile(this.configPath, 'utf-8');
       const configJson = JSON.parse(configContent);
       
-      // 環境変数の参照を解決（${VAR_NAME}形式）
+      // 環境変数の参照を解決（${VAR_NAME}形式、再帰的に深いオブジェクトを走査）
       const resolveEnvVar = (value: unknown, key: string): unknown => {
         if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
           const envVarName = value.slice(2, -1);
@@ -36,47 +36,68 @@ export class BackupConfigLoader {
         return value;
       };
 
-      // accessToken, refreshToken, appKey, appSecret, gmailAccessToken, gmailRefreshToken の環境変数を解決
+      // 再帰的にオブジェクトを走査して${VAR}を解決（ネスト対応）
+      const resolveEnvVarsRecursive = (obj: unknown, path: string = ''): unknown => {
+        if (obj === null || obj === undefined) {
+          return obj;
+        }
+        if (typeof obj === 'string') {
+          return resolveEnvVar(obj, path);
+        }
+        if (Array.isArray(obj)) {
+          return obj.map((item, index) => resolveEnvVarsRecursive(item, `${path}[${index}]`));
+        }
+        if (typeof obj === 'object') {
+          const resolved: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            resolved[key] = resolveEnvVarsRecursive(value, currentPath);
+          }
+          return resolved;
+        }
+        return obj;
+      };
+
+      // storage.options全体を再帰的に解決（ネスト対応）
       if (configJson.storage?.options) {
-        if (configJson.storage.options.accessToken) {
-          configJson.storage.options.accessToken = resolveEnvVar(
-            configJson.storage.options.accessToken,
-            'accessToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.refreshToken) {
-          configJson.storage.options.refreshToken = resolveEnvVar(
-            configJson.storage.options.refreshToken,
-            'refreshToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.gmailAccessToken) {
-          configJson.storage.options.gmailAccessToken = resolveEnvVar(
-            configJson.storage.options.gmailAccessToken,
-            'gmailAccessToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.gmailRefreshToken) {
-          configJson.storage.options.gmailRefreshToken = resolveEnvVar(
-            configJson.storage.options.gmailRefreshToken,
-            'gmailRefreshToken'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.appKey) {
-          configJson.storage.options.appKey = resolveEnvVar(
-            configJson.storage.options.appKey,
-            'appKey'
-          ) as string | undefined;
-        }
-        if (configJson.storage.options.appSecret) {
-          configJson.storage.options.appSecret = resolveEnvVar(
-            configJson.storage.options.appSecret,
-            'appSecret'
-          ) as string | undefined;
-        }
+        configJson.storage.options = resolveEnvVarsRecursive(configJson.storage.options, 'storage.options') as typeof configJson.storage.options;
       }
       
       const config = BackupConfigSchema.parse(configJson);
+      
+      // 旧キー → 新構造への正規化（メモリ上のみ、自動保存はしない）
+      if (config.storage.options) {
+        const opts = config.storage.options;
+        
+        // Dropbox: 旧キー → options.dropbox へ正規化
+        if (!opts.dropbox && (opts.accessToken || opts.refreshToken || opts.appKey || opts.appSecret)) {
+          opts.dropbox = {
+            appKey: opts.appKey as string | undefined,
+            appSecret: opts.appSecret as string | undefined,
+            accessToken: opts.accessToken as string | undefined,
+            refreshToken: opts.refreshToken as string | undefined
+          };
+          logger?.info('[BackupConfigLoader] Normalized Dropbox config from legacy keys to options.dropbox');
+        }
+        
+        // Gmail: 旧キー → options.gmail へ正規化
+        if (!opts.gmail && (
+          opts.gmailAccessToken || opts.gmailRefreshToken || 
+          opts.clientId || opts.clientSecret || opts.redirectUri || 
+          opts.subjectPattern || opts.fromEmail
+        )) {
+          opts.gmail = {
+            clientId: opts.clientId as string | undefined,
+            clientSecret: opts.clientSecret as string | undefined,
+            redirectUri: opts.redirectUri as string | undefined,
+            accessToken: (opts.gmailAccessToken ?? opts.accessToken) as string | undefined,
+            refreshToken: (opts.gmailRefreshToken ?? opts.refreshToken) as string | undefined,
+            subjectPattern: opts.subjectPattern as string | undefined,
+            fromEmail: opts.fromEmail as string | undefined
+          };
+          logger?.info('[BackupConfigLoader] Normalized Gmail config from legacy keys to options.gmail');
+        }
+      }
       
       // 旧形式（employeesPath/itemsPath）を新形式（targets）に変換
       if (config.csvImports) {
@@ -160,5 +181,274 @@ export class BackupConfigLoader {
    */
   static setConfigPath(path: string): void {
     this.configPath = path;
+  }
+
+  /**
+   * 設定の健全性をチェック（衝突・ドリフト検出）
+   */
+  static async checkHealth(): Promise<{
+    status: 'healthy' | 'warning' | 'error';
+    issues: Array<{
+      type: 'collision' | 'drift' | 'missing';
+      severity: 'warning' | 'error';
+      message: string;
+      details?: Record<string, unknown>;
+    }>;
+  }> {
+    const issues: Array<{
+      type: 'collision' | 'drift' | 'missing';
+      severity: 'warning' | 'error';
+      message: string;
+      details?: Record<string, unknown>;
+    }> = [];
+
+    try {
+      // 設定ファイルを読み込む（環境変数解決前の生データも必要）
+      const configContent = await fs.readFile(this.configPath, 'utf-8');
+      const configJson = JSON.parse(configContent);
+      const config = await this.load();
+
+      const opts = config.storage.options;
+      if (!opts) {
+        return { status: 'healthy', issues: [] };
+      }
+
+      // 1. 衝突検出: 旧キーと新構造の両方に値がある場合
+      // Dropbox
+      if (opts.dropbox) {
+        const dropbox = opts.dropbox;
+        if (dropbox.accessToken && opts.accessToken && dropbox.accessToken !== opts.accessToken) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Dropbox accessToken: 旧キーと新構造（options.dropbox.accessToken）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.accessToken',
+              newKey: 'storage.options.dropbox.accessToken',
+              legacyValue: opts.accessToken.substring(0, 20) + '...',
+              newValue: dropbox.accessToken.substring(0, 20) + '...'
+            }
+          });
+        }
+        if (dropbox.refreshToken && opts.refreshToken && dropbox.refreshToken !== opts.refreshToken) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Dropbox refreshToken: 旧キーと新構造（options.dropbox.refreshToken）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.refreshToken',
+              newKey: 'storage.options.dropbox.refreshToken'
+            }
+          });
+        }
+        if (dropbox.appKey && opts.appKey && dropbox.appKey !== opts.appKey) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Dropbox appKey: 旧キーと新構造（options.dropbox.appKey）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.appKey',
+              newKey: 'storage.options.dropbox.appKey'
+            }
+          });
+        }
+        if (dropbox.appSecret && opts.appSecret && dropbox.appSecret !== opts.appSecret) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Dropbox appSecret: 旧キーと新構造（options.dropbox.appSecret）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.appSecret',
+              newKey: 'storage.options.dropbox.appSecret'
+            }
+          });
+        }
+      }
+
+      // Gmail
+      if (opts.gmail) {
+        const gmail = opts.gmail;
+        if (gmail.accessToken && opts.gmailAccessToken && gmail.accessToken !== opts.gmailAccessToken) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Gmail accessToken: 旧キー（gmailAccessToken）と新構造（options.gmail.accessToken）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.gmailAccessToken',
+              newKey: 'storage.options.gmail.accessToken'
+            }
+          });
+        }
+        if (gmail.refreshToken && opts.gmailRefreshToken && gmail.refreshToken !== opts.gmailRefreshToken) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Gmail refreshToken: 旧キー（gmailRefreshToken）と新構造（options.gmail.refreshToken）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.gmailRefreshToken',
+              newKey: 'storage.options.gmail.refreshToken'
+            }
+          });
+        }
+        if (gmail.clientId && opts.clientId && gmail.clientId !== opts.clientId) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Gmail clientId: 旧キーと新構造（options.gmail.clientId）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.clientId',
+              newKey: 'storage.options.gmail.clientId'
+            }
+          });
+        }
+        if (gmail.clientSecret && opts.clientSecret && gmail.clientSecret !== opts.clientSecret) {
+          issues.push({
+            type: 'collision',
+            severity: 'warning',
+            message: 'Gmail clientSecret: 旧キーと新構造（options.gmail.clientSecret）の両方に異なる値が設定されています',
+            details: {
+              legacyKey: 'storage.options.clientSecret',
+              newKey: 'storage.options.gmail.clientSecret'
+            }
+          });
+        }
+      }
+
+      // 2. ドリフト検出: 環境変数と設定ファイルの値の不一致
+      const checkEnvVarDrift = (configValue: unknown, envVarName: string, key: string): void => {
+        if (typeof configValue === 'string' && configValue.startsWith('${') && configValue.endsWith('}')) {
+          const resolvedEnvVarName = configValue.slice(2, -1);
+          const envValue = process.env[resolvedEnvVarName];
+          if (envValue) {
+            // 環境変数が設定されているが、設定ファイルに直接値も設定されている場合
+            const directValue = this.getNestedValue(configJson, key);
+            if (directValue && typeof directValue === 'string' && !directValue.startsWith('${')) {
+              issues.push({
+                type: 'drift',
+                severity: 'warning',
+                message: `${key}: 環境変数参照（${resolvedEnvVarName}）と直接値の両方が設定されています`,
+                details: {
+                  envVarName: resolvedEnvVarName,
+                  envValue: envValue.substring(0, 20) + '...',
+                  directValue: directValue.substring(0, 20) + '...'
+                }
+              });
+            }
+          }
+        }
+      };
+
+      // Dropbox環境変数のドリフトチェック
+      if (opts.dropbox) {
+        if (opts.dropbox.appKey) {
+          checkEnvVarDrift(opts.dropbox.appKey, 'DROPBOX_APP_KEY', 'storage.options.dropbox.appKey');
+        }
+        if (opts.dropbox.appSecret) {
+          checkEnvVarDrift(opts.dropbox.appSecret, 'DROPBOX_APP_SECRET', 'storage.options.dropbox.appSecret');
+        }
+        if (opts.dropbox.accessToken) {
+          checkEnvVarDrift(opts.dropbox.accessToken, 'DROPBOX_ACCESS_TOKEN', 'storage.options.dropbox.accessToken');
+        }
+        if (opts.dropbox.refreshToken) {
+          checkEnvVarDrift(opts.dropbox.refreshToken, 'DROPBOX_REFRESH_TOKEN', 'storage.options.dropbox.refreshToken');
+        }
+      }
+
+      // Gmail環境変数のドリフトチェック
+      if (opts.gmail) {
+        if (opts.gmail.clientId) {
+          checkEnvVarDrift(opts.gmail.clientId, 'GMAIL_CLIENT_ID', 'storage.options.gmail.clientId');
+        }
+        if (opts.gmail.clientSecret) {
+          checkEnvVarDrift(opts.gmail.clientSecret, 'GMAIL_CLIENT_SECRET', 'storage.options.gmail.clientSecret');
+        }
+      }
+
+      // 3. 必須設定の欠落チェック
+      if (config.storage.provider === 'dropbox' && opts.dropbox) {
+        if (!opts.dropbox.appKey && !process.env.DROPBOX_APP_KEY) {
+          issues.push({
+            type: 'missing',
+            severity: 'error',
+            message: 'Dropbox appKeyが設定されていません（storage.options.dropbox.appKey または DROPBOX_APP_KEY環境変数）',
+            details: { provider: 'dropbox', requiredField: 'appKey' }
+          });
+        }
+        if (!opts.dropbox.appSecret && !process.env.DROPBOX_APP_SECRET) {
+          issues.push({
+            type: 'missing',
+            severity: 'error',
+            message: 'Dropbox appSecretが設定されていません（storage.options.dropbox.appSecret または DROPBOX_APP_SECRET環境変数）',
+            details: { provider: 'dropbox', requiredField: 'appSecret' }
+          });
+        }
+      }
+
+      if (config.storage.provider === 'gmail' && opts.gmail) {
+        if (!opts.gmail.clientId && !process.env.GMAIL_CLIENT_ID) {
+          issues.push({
+            type: 'missing',
+            severity: 'error',
+            message: 'Gmail clientIdが設定されていません（storage.options.gmail.clientId または GMAIL_CLIENT_ID環境変数）',
+            details: { provider: 'gmail', requiredField: 'clientId' }
+          });
+        }
+        if (!opts.gmail.clientSecret && !process.env.GMAIL_CLIENT_SECRET) {
+          issues.push({
+            type: 'missing',
+            severity: 'error',
+            message: 'Gmail clientSecretが設定されていません（storage.options.gmail.clientSecret または GMAIL_CLIENT_SECRET環境変数）',
+            details: { provider: 'gmail', requiredField: 'clientSecret' }
+          });
+        }
+      }
+
+      // ステータス判定
+      const hasError = issues.some(issue => issue.severity === 'error');
+      const hasWarning = issues.some(issue => issue.severity === 'warning');
+      const status = hasError ? 'error' : hasWarning ? 'warning' : 'healthy';
+
+      return { status, issues };
+    } catch (error) {
+      // ファイルが存在しない場合はエラー
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return {
+          status: 'error',
+          issues: [{
+            type: 'missing',
+            severity: 'error',
+            message: `設定ファイルが見つかりません: ${this.configPath}`,
+            details: { configPath: this.configPath }
+          }]
+        };
+      }
+
+      // パースエラーの場合
+      return {
+        status: 'error',
+        issues: [{
+          type: 'missing',
+          severity: 'error',
+          message: `設定ファイルの読み込みに失敗しました: ${(error as Error).message}`,
+          details: { configPath: this.configPath, error: (error as Error).message }
+        }]
+      };
+    }
+  }
+
+  /**
+   * ネストされたオブジェクトから値を取得（ヘルパー）
+   */
+  private static getNestedValue(obj: unknown, path: string): unknown {
+    const keys = path.split('.');
+    let current: unknown = obj;
+    for (const key of keys) {
+      if (current && typeof current === 'object' && key in current) {
+        current = (current as Record<string, unknown>)[key];
+      } else {
+        return undefined;
+      }
+    }
+    return current;
   }
 }

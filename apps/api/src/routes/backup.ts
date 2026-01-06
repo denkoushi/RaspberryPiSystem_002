@@ -216,15 +216,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       ? request.headers.host[0] 
       : (request.headers.host || 'localhost:8080');
     
-    // トークン更新コールバック（設定ファイルを更新）
+    // トークン更新コールバック（Dropbox専用: options.dropbox.accessToken へ保存）
     const onTokenUpdate = async (newToken: string) => {
+      const latestConfig = await BackupConfigLoader.load();
       const updatedConfig: BackupConfig = {
-        ...config,
+        ...latestConfig,
         storage: {
-          ...config.storage,
+          ...latestConfig.storage,
           options: {
-            ...config.storage.options,
-            accessToken: newToken
+            ...latestConfig.storage.options,
+            dropbox: {
+              ...latestConfig.storage.options?.dropbox,
+              accessToken: newToken
+            }
           }
         }
       };
@@ -679,6 +683,15 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(200).send(config);
   });
 
+  // 設定の健全性チェック（衝突・ドリフト検出）
+  app.get('/backup/config/health', {
+    preHandler: [mustBeAdmin]
+  }, async (request, reply) => {
+    const health = await BackupConfigLoader.checkHealth();
+    const statusCode = health.status === 'error' ? 500 : health.status === 'warning' ? 200 : 200;
+    return reply.status(statusCode).send(health);
+  });
+
   // 設定の更新
   app.put('/backup/config', {
     preHandler: [mustBeAdmin],
@@ -970,17 +983,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     try {
       const tokenInfo = await oauthService.exchangeCodeForTokens(query.code);
       
-      // 設定ファイルを更新
+      // 設定ファイルを更新（新構造: options.dropbox.* へ保存）
       const updatedConfig: BackupConfig = {
         ...config,
         storage: {
           ...config.storage,
           options: {
             ...config.storage.options,
-            accessToken: tokenInfo.accessToken,
-            refreshToken: tokenInfo.refreshToken || config.storage.options?.refreshToken,
-            appKey,
-            appSecret
+            dropbox: {
+              appKey,
+              appSecret,
+              accessToken: tokenInfo.accessToken,
+              refreshToken: tokenInfo.refreshToken || config.storage.options?.dropbox?.refreshToken || config.storage.options?.refreshToken
+            }
           }
         }
       };
@@ -1334,17 +1349,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     try {
       const tokenInfo = await oauthService.refreshAccessToken(refreshToken);
       
-      // 設定ファイルを更新
+      // 設定ファイルを更新（新構造: options.dropbox.* へ保存）
       const updatedConfig: BackupConfig = {
         ...config,
         storage: {
           ...config.storage,
           options: {
             ...config.storage.options,
-            accessToken: tokenInfo.accessToken,
-            refreshToken: tokenInfo.refreshToken || refreshToken,
-            appKey,
-            appSecret
+            dropbox: {
+              appKey,
+              appSecret,
+              accessToken: tokenInfo.accessToken,
+              refreshToken: tokenInfo.refreshToken || refreshToken || config.storage.options?.dropbox?.refreshToken
+            }
           }
         }
       };
@@ -1403,15 +1420,19 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       ? request.headers.host[0] 
       : (request.headers.host || 'localhost:8080');
     
-    // トークン更新コールバック
+    // トークン更新コールバック（Dropbox専用: options.dropbox.accessToken へ保存）
     const onTokenUpdate = async (newToken: string) => {
+      const latestConfig = await BackupConfigLoader.load();
       const updatedConfig: BackupConfig = {
-        ...config,
+        ...latestConfig,
         storage: {
-          ...config.storage,
+          ...latestConfig.storage,
           options: {
-            ...config.storage.options,
-            accessToken: newToken
+            ...latestConfig.storage.options,
+            dropbox: {
+              ...latestConfig.storage.options?.dropbox,
+              accessToken: newToken
+            }
           }
         }
       };

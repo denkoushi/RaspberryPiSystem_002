@@ -93,6 +93,80 @@ export function BackupHistoryPage() {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const getTargetPurpose = (kind: string, source: string): string => {
+    // ファイル系
+    if (kind === 'file') {
+      if (source.includes('backup.json')) {
+        return 'バックアップ設定（Gmail/Dropboxトークン）';
+      }
+      if (source.includes('vault.yml')) {
+        return 'Ansible設定（Dropbox認証情報）';
+      }
+      if (source.includes('.env')) {
+        if (source.includes('api')) return 'API環境変数';
+        if (source.includes('web')) return 'Web環境変数';
+        if (source.includes('docker')) return 'Docker環境変数';
+        if (source.includes('nfc-agent')) return 'NFCエージェント環境変数';
+        return '環境変数設定';
+      }
+      if (source.includes('certs')) {
+        return '証明書ファイル';
+      }
+      return '設定ファイル';
+    }
+
+    // ディレクトリ系
+    if (kind === 'directory') {
+      if (source.includes('certs')) {
+        return '証明書ディレクトリ';
+      }
+      if (source.includes('pdfs')) {
+        return 'PDFファイル';
+      }
+      if (source.includes('tailscale')) {
+        return 'Tailscale設定';
+      }
+      if (source.includes('ssh')) {
+        return 'SSH鍵';
+      }
+      return 'ディレクトリ';
+    }
+
+    // データベース
+    if (kind === 'database') {
+      return 'データベース（全データ）';
+    }
+
+    // CSV
+    if (kind === 'csv') {
+      if (source === 'employees') return '従業員データ（CSV）';
+      if (source === 'items') return 'アイテムデータ（CSV）';
+      if (source === 'measuringInstruments') return '計測機器データ（CSV）';
+      if (source === 'riggingGears') return '吊具データ（CSV）';
+      return 'CSVデータ';
+    }
+
+    // 画像
+    if (kind === 'image') {
+      if (source === 'photo-storage') return '写真・サムネイル';
+      return '画像データ';
+    }
+
+    // クライアントファイル
+    if (kind === 'client-file') {
+      if (source.includes('nfc-agent')) return 'NFCエージェント設定（Pi4/Pi3）';
+      return 'クライアント設定ファイル';
+    }
+
+    // クライアントディレクトリ
+    if (kind === 'client-directory') {
+      if (source.includes('tailscale')) return 'Tailscale設定（Pi4/Pi3）';
+      return 'クライアント設定ディレクトリ';
+    }
+
+    return `${kind} (${source})`;
+  };
+
   return (
     <Card
       title="バックアップ履歴"
@@ -177,6 +251,7 @@ export function BackupHistoryPage() {
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">日時</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作種別</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">対象</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">用途</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">ストレージ</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">ステータス</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">ファイル</th>
@@ -188,7 +263,7 @@ export function BackupHistoryPage() {
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-600">
+                    <td colSpan={10} className="px-2 py-4 text-center text-sm text-slate-600">
                       履歴がありません
                     </td>
                   </tr>
@@ -200,6 +275,7 @@ export function BackupHistoryPage() {
                       <td className="px-2 py-1 text-sm text-slate-700">
                         {item.targetKind} ({item.targetSource})
                       </td>
+                      <td className="px-2 py-1 text-sm text-slate-700">{getTargetPurpose(item.targetKind, item.targetSource)}</td>
                       <td className="px-2 py-1 text-sm text-slate-700">{item.storageProvider}</td>
                       <td className={`px-2 py-1 text-sm font-semibold ${getStatusColor(item.status)}`}>
                         {getStatusLabel(item.status)}

@@ -143,17 +143,31 @@ export class StorageProviderFactory {
     options.basePath = config.storage.options?.basePath as string | undefined;
 
     if (config.storage.provider === 'gmail') {
-      // 後方互換: gmailAccessToken/gmailRefreshToken を優先し、無ければ accessToken/refreshToken を参照
+      // 新構造優先: options.gmail.* → 後方互換: gmailAccessToken/gmailRefreshToken → 旧: accessToken/refreshToken
+      const gmailOpts = config.storage.options?.gmail as { accessToken?: string; refreshToken?: string; clientId?: string; clientSecret?: string; redirectUri?: string; subjectPattern?: string; fromEmail?: string } | undefined;
       let accessToken =
+        gmailOpts?.accessToken ??
         (config.storage.options?.gmailAccessToken as string | undefined) ??
         (config.storage.options?.accessToken as string | undefined);
       const refreshToken =
+        gmailOpts?.refreshToken ??
         (config.storage.options?.gmailRefreshToken as string | undefined) ??
         (config.storage.options?.refreshToken as string | undefined);
-      const clientId = config.storage.options?.clientId as string | undefined;
-      const clientSecret = config.storage.options?.clientSecret as string | undefined;
-      const subjectPattern = config.storage.options?.subjectPattern as string | undefined;
-      const fromEmail = config.storage.options?.fromEmail as string | undefined;
+      const clientId =
+        gmailOpts?.clientId ??
+        (config.storage.options?.clientId as string | undefined);
+      const clientSecret =
+        gmailOpts?.clientSecret ??
+        (config.storage.options?.clientSecret as string | undefined);
+      const redirectUri =
+        gmailOpts?.redirectUri ??
+        (config.storage.options?.redirectUri as string | undefined);
+      const subjectPattern =
+        gmailOpts?.subjectPattern ??
+        (config.storage.options?.subjectPattern as string | undefined);
+      const fromEmail =
+        gmailOpts?.fromEmail ??
+        (config.storage.options?.fromEmail as string | undefined);
 
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && clientId && clientSecret) {
@@ -183,10 +197,10 @@ export class StorageProviderFactory {
         logger?.warn('[StorageProviderFactory] Gmail access token is empty, falling back to local storage');
         options.provider = 'local';
       } else {
-        // OAuth2Clientを作成
-        const redirectUriForClient = requestProtocol && requestHost 
+        // OAuth2Clientを作成（設定ファイルのredirectUriを優先、なければ動的生成）
+        const redirectUriForClient = redirectUri ?? (requestProtocol && requestHost 
           ? `${requestProtocol}://${requestHost}/api/gmail/oauth/callback`
-          : undefined;
+          : undefined);
         const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUriForClient);
         
         options.accessToken = accessToken;
@@ -205,10 +219,20 @@ export class StorageProviderFactory {
         options.onTokenUpdate = onTokenUpdate;
       }
     } else if (config.storage.provider === 'dropbox') {
-      let accessToken = config.storage.options?.accessToken as string | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
-      const appKey = config.storage.options?.appKey as string | undefined;
-      const appSecret = config.storage.options?.appSecret as string | undefined;
+      // 新構造優先: options.dropbox.* → 後方互換: 旧 options.*
+      const dropboxOpts = config.storage.options?.dropbox as { accessToken?: string; refreshToken?: string; appKey?: string; appSecret?: string } | undefined;
+      let accessToken =
+        dropboxOpts?.accessToken ??
+        (config.storage.options?.accessToken as string | undefined);
+      const refreshToken =
+        dropboxOpts?.refreshToken ??
+        (config.storage.options?.refreshToken as string | undefined);
+      const appKey =
+        dropboxOpts?.appKey ??
+        (config.storage.options?.appKey as string | undefined);
+      const appSecret =
+        dropboxOpts?.appSecret ??
+        (config.storage.options?.appSecret as string | undefined);
       
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && appKey && appSecret) {
@@ -309,17 +333,31 @@ export class StorageProviderFactory {
     options.basePath = config.storage.options?.basePath as string | undefined;
 
     if (provider === 'gmail') {
-      // 後方互換: gmailAccessToken/gmailRefreshToken を優先し、無ければ accessToken/refreshToken を参照
+      // 新構造優先: options.gmail.* → 後方互換: gmailAccessToken/gmailRefreshToken → 旧: accessToken/refreshToken
+      const gmailOpts = config.storage.options?.gmail as { accessToken?: string; refreshToken?: string; clientId?: string; clientSecret?: string; redirectUri?: string; subjectPattern?: string; fromEmail?: string } | undefined;
       let accessToken =
+        gmailOpts?.accessToken ??
         (config.storage.options?.gmailAccessToken as string | undefined) ??
         (config.storage.options?.accessToken as string | undefined);
       const refreshToken =
+        gmailOpts?.refreshToken ??
         (config.storage.options?.gmailRefreshToken as string | undefined) ??
         (config.storage.options?.refreshToken as string | undefined);
-      const clientId = config.storage.options?.clientId as string | undefined;
-      const clientSecret = config.storage.options?.clientSecret as string | undefined;
-      const subjectPattern = config.storage.options?.subjectPattern as string | undefined;
-      const fromEmail = config.storage.options?.fromEmail as string | undefined;
+      const clientId =
+        gmailOpts?.clientId ??
+        (config.storage.options?.clientId as string | undefined);
+      const clientSecret =
+        gmailOpts?.clientSecret ??
+        (config.storage.options?.clientSecret as string | undefined);
+      const redirectUri =
+        gmailOpts?.redirectUri ??
+        (config.storage.options?.redirectUri as string | undefined);
+      const subjectPattern =
+        gmailOpts?.subjectPattern ??
+        (config.storage.options?.subjectPattern as string | undefined);
+      const fromEmail =
+        gmailOpts?.fromEmail ??
+        (config.storage.options?.fromEmail as string | undefined);
 
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && clientId && clientSecret) {
@@ -349,11 +387,11 @@ export class StorageProviderFactory {
         logger?.warn('[StorageProviderFactory] Gmail access token is empty, falling back to local storage');
         options.provider = 'local';
       } else {
-        // OAuth2Clientを作成
-        const redirectUri = requestProtocol && requestHost 
+        // OAuth2Clientを作成（設定ファイルのredirectUriを優先、なければ動的生成）
+        const redirectUriForClient = redirectUri ?? (requestProtocol && requestHost 
           ? `${requestProtocol}://${requestHost}/api/gmail/oauth/callback`
-          : undefined;
-        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+          : undefined);
+        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUriForClient);
         
         options.accessToken = accessToken;
         options.refreshToken = refreshToken;
@@ -366,10 +404,20 @@ export class StorageProviderFactory {
         options.onTokenUpdate = onTokenUpdate;
       }
     } else if (provider === 'dropbox') {
-      let accessToken = config.storage.options?.accessToken as string | undefined;
-      const refreshToken = config.storage.options?.refreshToken as string | undefined;
-      const appKey = config.storage.options?.appKey as string | undefined;
-      const appSecret = config.storage.options?.appSecret as string | undefined;
+      // 新構造優先: options.dropbox.* → 後方互換: 旧 options.*
+      const dropboxOpts = config.storage.options?.dropbox as { accessToken?: string; refreshToken?: string; appKey?: string; appSecret?: string } | undefined;
+      let accessToken =
+        dropboxOpts?.accessToken ??
+        (config.storage.options?.accessToken as string | undefined);
+      const refreshToken =
+        dropboxOpts?.refreshToken ??
+        (config.storage.options?.refreshToken as string | undefined);
+      const appKey =
+        dropboxOpts?.appKey ??
+        (config.storage.options?.appKey as string | undefined);
+      const appSecret =
+        dropboxOpts?.appSecret ??
+        (config.storage.options?.appSecret as string | undefined);
       
       // accessTokenが空でもrefreshTokenがある場合は、refreshTokenからaccessTokenを取得
       if ((!accessToken || accessToken.trim() === '') && refreshToken && appKey && appSecret) {

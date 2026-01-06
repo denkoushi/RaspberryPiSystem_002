@@ -15,6 +15,7 @@ import {
   updateBackupTarget,
   deleteBackupTarget,
   runBackup,
+  getBackupConfigHealth,
   getGmailConfig,
   updateGmailConfig,
   deleteGmailConfig,
@@ -711,24 +712,44 @@ export function useBackupConfig() {
   });
 }
 
+export function useBackupConfigHealth() {
+  return useQuery({
+    queryKey: ['backup-config-health'],
+    queryFn: getBackupConfigHealth,
+    refetchInterval: 60000 // 1分ごとに自動更新
+  });
+}
+
 export function useBackupConfigMutations() {
   const queryClient = useQueryClient();
   const updateConfig = useMutation({
     mutationFn: updateBackupConfig,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+    }
   });
   const addTarget = useMutation({
     mutationFn: addBackupTarget,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+    }
   });
   const updateTarget = useMutation({
     mutationFn: ({ index, target }: { index: number; target: Partial<BackupTarget> }) =>
       updateBackupTarget(index, target),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+    }
   });
   const deleteTarget = useMutation({
     mutationFn: (index: number) => deleteBackupTarget(index),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backup-config'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+    }
   });
   const runBackupMutation = useMutation({
     mutationFn: (request: RunBackupRequest) => runBackup(request),

@@ -132,10 +132,19 @@ ping -c 1 raspberrypi.tail7312a3.ts.net
 - `/etc/hosts`の設定は一度行えば永続的に有効です（Pi5のTailscale IPが変更されない限り）
 
 **重要（2026-01-06追記）**:
-- GmailのOAuthトークンは `backup.json` に保存されますが、**Dropboxのトークンと衝突しないよう**以下のキーに分離して保持します：
-  - `storage.options.gmailAccessToken`
-  - `storage.options.gmailRefreshToken`
-  - （Dropboxは `storage.options.accessToken` / `storage.options.refreshToken` を使用）
+- GmailのOAuthトークンは `backup.json` に保存されますが、**Dropboxのトークンと衝突しないよう**provider別名前空間で分離して保持します：
+  - **新構造（推奨）**: `storage.options.gmail.*` 名前空間を使用
+    - `storage.options.gmail.accessToken`
+    - `storage.options.gmail.refreshToken`
+    - `storage.options.gmail.clientId`
+    - `storage.options.gmail.clientSecret`
+    - `storage.options.gmail.redirectUri`
+    - `storage.options.gmail.subjectPattern`
+    - `storage.options.gmail.fromEmail`
+  - **旧構造（後方互換）**: フラットなキーも読み取り可能（書き込みは新構造へ自動移行）
+    - `storage.options.gmailAccessToken` / `storage.options.gmailRefreshToken`
+    - `storage.options.clientId` / `storage.options.clientSecret` / `storage.options.redirectUri` など
+  - （Dropboxは `storage.options.dropbox.*` 名前空間を使用）
 
 **Tailscale DNSをオフにしても問題ありません**:
 - Pi5側はDNS解決に依存していません（IPアドレスで動作）

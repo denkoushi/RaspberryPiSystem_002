@@ -322,3 +322,21 @@ export async function refreshGmailToken(): Promise<GmailOAuthRefreshResponse> {
   const { data } = await api.post<GmailOAuthRefreshResponse>('/gmail/oauth/refresh', {});
   return data;
 }
+
+// バックアップ設定の健全性チェックAPI
+export interface BackupConfigHealthIssue {
+  type: 'collision' | 'drift' | 'missing';
+  severity: 'warning' | 'error';
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface BackupConfigHealth {
+  status: 'healthy' | 'warning' | 'error';
+  issues: BackupConfigHealthIssue[];
+}
+
+export async function getBackupConfigHealth(): Promise<BackupConfigHealth> {
+  const { data } = await api.get<BackupConfigHealth>('/backup/config/health');
+  return data;
+}

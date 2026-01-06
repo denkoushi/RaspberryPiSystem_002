@@ -31,20 +31,37 @@ export const BackupConfigSchema = z.object({
     provider: z.enum(['local', 'dropbox', 'gmail']),
     options: z.object({
       basePath: z.string().optional(),
-      // Dropbox用設定
-      accessToken: z.string().optional(), // Dropbox用
-      refreshToken: z.string().optional(), // Dropbox/Gmail用（リフレッシュトークン）
-      appKey: z.string().optional(), // Dropbox用（OAuth 2.0 App Key）
-      appSecret: z.string().optional(), // Dropbox用（OAuth 2.0 App Secret）
-      // Gmail用設定
-      clientId: z.string().optional(), // Gmail用（OAuth 2.0 Client ID）
-      clientSecret: z.string().optional(), // Gmail用（OAuth 2.0 Client Secret）
-      redirectUri: z.string().optional(), // Gmail用（OAuth リダイレクトURI）
-      subjectPattern: z.string().optional(), // Gmail用（件名パターン）
-      fromEmail: z.string().optional(), // Gmail用（送信者メールアドレス）
-      // NOTE: dropbox と gmail の token フィールド衝突を避けるための分離キー（後方互換: accessToken/refreshToken も許容）
-      gmailAccessToken: z.string().optional(),
-      gmailRefreshToken: z.string().optional()
+      // 新構造: provider別名前空間（推奨）
+      dropbox: z.object({
+        appKey: z.string().optional(),
+        appSecret: z.string().optional(),
+        accessToken: z.string().optional(),
+        refreshToken: z.string().optional()
+      }).optional(),
+      gmail: z.object({
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(),
+        redirectUri: z.string().optional(),
+        accessToken: z.string().optional(),
+        refreshToken: z.string().optional(),
+        subjectPattern: z.string().optional(),
+        fromEmail: z.string().optional()
+      }).optional(),
+      // 旧構造: 後方互換のため残す（deprecated、読み取りのみ）
+      // Dropbox用設定（旧）
+      accessToken: z.string().optional(), // Dropbox用（deprecated: options.dropbox.accessToken を使用）
+      refreshToken: z.string().optional(), // Dropbox用（deprecated: options.dropbox.refreshToken を使用）
+      appKey: z.string().optional(), // Dropbox用（deprecated: options.dropbox.appKey を使用）
+      appSecret: z.string().optional(), // Dropbox用（deprecated: options.dropbox.appSecret を使用）
+      // Gmail用設定（旧）
+      clientId: z.string().optional(), // Gmail用（deprecated: options.gmail.clientId を使用）
+      clientSecret: z.string().optional(), // Gmail用（deprecated: options.gmail.clientSecret を使用）
+      redirectUri: z.string().optional(), // Gmail用（deprecated: options.gmail.redirectUri を使用）
+      subjectPattern: z.string().optional(), // Gmail用（deprecated: options.gmail.subjectPattern を使用）
+      fromEmail: z.string().optional(), // Gmail用（deprecated: options.gmail.fromEmail を使用）
+      // NOTE: dropbox と gmail の token フィールド衝突を避けるための分離キー（暫定対処、deprecated: options.gmail.* を使用）
+      gmailAccessToken: z.string().optional(), // deprecated: options.gmail.accessToken を使用
+      gmailRefreshToken: z.string().optional() // deprecated: options.gmail.refreshToken を使用
     }).optional()
   }),
   pathMappings: z.array(PathMappingSchema).optional(), // Dockerコンテナ内のパスマッピング

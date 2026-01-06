@@ -138,12 +138,17 @@ export class BackupScheduler {
     target: BackupConfig['targets'][0]
   ): Promise<void> {
     // Dropboxのアクセストークン更新時は設定ファイルへ書き戻す（次回以降の実行を安定化）
+    // Dropbox専用: options.dropbox.accessToken へ保存
     const onTokenUpdate = async (newToken: string) => {
-      config.storage.options = {
-        ...(config.storage.options ?? {}),
-        accessToken: newToken
+      const latestConfig = await BackupConfigLoader.load();
+      latestConfig.storage.options = {
+        ...(latestConfig.storage.options ?? {}),
+        dropbox: {
+          ...latestConfig.storage.options?.dropbox,
+          accessToken: newToken
+        }
       };
-      await BackupConfigLoader.save(config);
+      await BackupConfigLoader.save(latestConfig);
     };
 
     // バックアップターゲットを作成（Factoryパターンを使用）

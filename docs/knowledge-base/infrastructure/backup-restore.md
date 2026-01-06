@@ -867,3 +867,132 @@ update-frequency: medium
 - `apps/api/src/services/imports/csv-import-scheduler.ts`（自動バックアップ時のトークン更新先）
 - `/opt/RaspberryPiSystem_002/config/backup.json`（分離後のキー反映）
 
+---
+
+## KB-147: backup.jsonのprovider別名前空間化（構造的再発防止策）
+
+**EXEC_PLAN.md参照**: P0: Token Config Decouple（2026-01-06）
+
+**事象**:
+- KB-146で `gmailAccessToken/gmailRefreshToken` を導入したが、**フラットにキーが増え続ける**と再び衝突・運用ミスが起きやすい
+- 将来providerが増えるたびに「分離キー」を追加する運用では、スケーラビリティ・保守性が低下する
+
+**要因**:
+- `backup.json` の `storage.options` がフラットな構造で、provider間でキーが衝突しやすい
+- 旧構造では `accessToken/refreshToken` がDropbox/Gmailで共有され得て、OAuth更新で他方を上書きする事故が起きた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-06）: `backup.json` の `storage.options` を **provider別名前空間**へ移行
+  1. **新構造**: `storage.options.dropbox.*` / `storage.options.gmail.*` を追加（推奨）
+  2. **後方互換**: 旧キー（`accessToken/refreshToken/appKey/appSecret`、`gmailAccessToken/gmailRefreshToken`）は読み取り可能にし、書き込みは新構造へ寄せる
+  3. **自動正規化**: `BackupConfigLoader` でロード時に旧キー → 新構造へ正規化（メモリ上のみ、自動保存はしない）
+  4. **ネスト対応の環境変数解決**: `${ENV}` 参照を深いオブジェクト（`options.dropbox.*`, `options.gmail.*`）でも解決可能に
+  5. **トークン更新コールバックの統一**: OAuthコールバック/refresh/onTokenUpdate は全てprovider別名前空間へ保存
+
+**新構造の例**:
+```json
+{
+  "storage": {
+    "provider": "dropbox",
+    "options": {
+      "basePath": "/backups",
+      "dropbox": {
+        "appKey": "${DROPBOX_APP_KEY}",
+        "appSecret": "${DROPBOX_APP_SECRET}",
+        "accessToken": "${DROPBOX_ACCESS_TOKEN}",
+        "refreshToken": "${DROPBOX_REFRESH_TOKEN}"
+      },
+      "gmail": {
+        "clientId": "...",
+        "clientSecret": "...",
+        "redirectUri": "...",
+        "accessToken": "...",
+        "refreshToken": "...",
+        "subjectPattern": "...",
+        "fromEmail": "..."
+      }
+    }
+  }
+}
+```
+
+**移行方針**:
+- **既存運用**: 旧キーは読み取り可能（後方互換）なので、既存の `backup.json` はそのまま動作する
+- **新規設定**: OAuthコールバック/refresh/管理コンソールでの保存は新構造（`options.dropbox.*`, `options.gmail.*`）へ自動的に保存される
+- **手動移行**: 必要に応じて `backup.json` を手動で新構造へ移行可能（必須ではない）
+
+**学んだこと**:
+- **設定スキーマの疎結合化**: provider間で状態を共有しない構造（名前空間分離）により、将来providerが増えても衝突しない
+- **段階的移行**: 後方互換を維持しながら新構造へ移行することで、既存運用を壊さずに改善できる
+- **自動正規化**: ロード時の正規化により、旧構造でも新構造でも動作する柔軟性を実現
+
+**解決状況**: ✅ **解決済み**（2026-01-06: 実装完了、2026-01-06: 実機検証完了）
+
+**実機検証結果**（2026-01-06）:
+- ✅ **旧構造の後方互換性**: 既存の`backup.json`（旧キー: `accessToken`, `gmailAccessToken`など）が正常に読み込まれ、新構造（`options.dropbox.*`, `options.gmail.*`）へ自動正規化されることを確認
+- ✅ **新構造への保存**: Gmail OAuth更新（`POST /api/gmail/oauth/refresh`）が`options.gmail.*`に保存され、`[BackupConfigLoader] Config saved`ログが記録されることを確認
+- ✅ **Dropboxバックアップ**: 手動バックアップ（`POST /api/backup`）が正常に動作し、Dropboxへのファイルアップロード（`[DropboxStorageProvider] File uploaded`）が成功することを確認
+- ✅ **自動正規化の動作**: APIログに`[BackupConfigLoader] Normalized Dropbox config from legacy keys to options.dropbox`と`[BackupConfigLoader] Normalized Gmail config from legacy keys to options.gmail`が記録され、正規化が正常に動作することを確認
+- ✅ **backup.jsonの構造**: 実機検証後、`backup.json`に新構造（`options.dropbox.*`に`appKey`, `appSecret`, `accessToken`, `refreshToken`、`options.gmail.*`に`clientId`, `clientSecret`, `redirectUri`, `accessToken`, `refreshToken`など）が正しく保存されていることを確認
+- ✅ **Gmail設定API**: `GET /api/gmail/config`が新構造を優先して読み取り、旧構造も後方互換で読み取れることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.ts`（Zodスキーマ拡張、provider別名前空間追加）
+- `apps/api/src/services/backup/backup-config.loader.ts`（ネスト対応の${ENV}解決、旧キー→新構造への正規化、ヘルスチェック機能）
+- `apps/api/src/services/backup/storage-provider-factory.ts`（新構造優先、旧キーは後方互換）
+- `apps/api/src/routes/backup.ts`（Dropbox OAuthコールバック/refresh、onTokenUpdate、ヘルスチェックエンドポイント）
+- `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthコールバック/refresh）
+- `apps/api/src/routes/gmail/config.ts`（Gmail設定API、新構造で読み書き）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（CSVインポート後の自動バックアップ、onTokenUpdate）
+- `apps/api/src/routes/imports.ts`（マスターインポート、onTokenUpdate）
+- `apps/api/src/services/backup/backup-scheduler.ts`（スケジュールバックアップ、onTokenUpdate）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（ヘルスチェック結果のUI表示）
+- `apps/web/src/api/backup.ts`（ヘルスチェックAPIクライアント）
+- `apps/web/src/api/hooks.ts`（useBackupConfigHealthフック）
+
+---
+
+## KB-148: バックアップ設定の衝突・ドリフト検出の自動化（P1実装）
+
+**EXEC_PLAN.md参照**: P1: 衝突・ドリフト検出の自動化（2026-01-06）
+
+**目的**:
+- `backup.json`の新旧構造間の設定値の衝突や、環境変数と設定ファイル間のドリフトを自動検出する
+- 管理コンソールUIで視覚的に確認可能にする
+
+**実装内容**:
+- ✅ **解決済み**（2026-01-06）: 以下の対策を実装し、設定の整合性を自動的に検証可能にした。
+  1. **BackupConfigLoader.checkHealth()メソッド**: 衝突・ドリフト・欠落を検出するメソッドを追加
+     - **衝突検出**: 旧キー（`accessToken`など）と新構造（`options.dropbox.accessToken`など）の両方に異なる値が設定されている場合を検出
+     - **ドリフト検出**: 環境変数参照（`${VAR}`）と直接値の両方が設定されている場合を検出
+     - **欠落チェック**: 必須設定（`appKey`, `appSecret`, `clientId`, `clientSecret`など）が設定されていない場合を検出
+  2. **GET /api/backup/config/healthエンドポイント**: 健全性ステータス（`healthy`/`warning`/`error`）と検出された問題の詳細情報を返却
+  3. **管理コンソールUI統合**: `BackupTargetsPage`にヘルスチェック結果を表示するUIを追加
+     - ステータスに応じた色分け表示（正常: 緑、警告: 黄、エラー: 赤）
+     - 検出された問題の詳細情報を表示
+     - 1分ごとに自動更新
+
+**検出項目**:
+- **衝突検出**: 旧キーと新構造の両方に値がある場合の警告
+- **ドリフト検出**: 環境変数と設定ファイルの値の不一致検出
+- **欠落チェック**: 必須設定の欠落チェック
+
+**学んだこと**:
+- **設定の整合性検証**: 自動検出により、設定の不整合を早期に発見できる
+- **UI統合**: 管理コンソールに統合することで、運用者が視覚的に確認可能になる
+- **自動更新**: React Queryの`refetchInterval`により、定期的に最新の状態を確認できる
+
+**解決状況**: ✅ **解決済み**（2026-01-06: 実装完了、2026-01-06: 実機検証完了）
+
+**実機検証結果**（2026-01-06）:
+- ✅ **ヘルスチェックエンドポイント**: `GET /api/backup/config/health`が正常に動作し、衝突検出が成功することを確認
+- ✅ **UI表示**: 管理コンソールのバックアップ設定ページにヘルスチェック結果が表示されることを確認
+- ✅ **自動更新**: 1分ごとに自動更新されることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.loader.ts`（checkHealth()メソッド）
+- `apps/api/src/routes/backup.ts`（GET /api/backup/config/healthエンドポイント）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（ヘルスチェック結果のUI表示）
+- `apps/web/src/api/backup.ts`（getBackupConfigHealth APIクライアント）
+- `apps/web/src/api/hooks.ts`（useBackupConfigHealthフック）
+
