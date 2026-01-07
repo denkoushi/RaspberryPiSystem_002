@@ -56,22 +56,22 @@ export class SignageRenderer {
   }> {
     const renderStartTime = Date.now();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:53',message:'renderCurrentContent started',data:{renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', renderStartTime }, 'renderCurrentContent started');
     // #endregion
     const content = await this.signageService.getContent();
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, layoutConfig: content.layoutConfig }, 'renderCurrentContent got content');
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:57',message:'Content retrieved',data:{contentType:content.contentType,hasLayoutConfig:content.layoutConfig!=null,pdfId:content.pdf?.id,pdfPages:content.pdf?.pages?.length,displayMode:content.displayMode,slideInterval:content.pdf?.slideInterval},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:57', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, pdfId: content.pdf?.id, pdfPages: content.pdf?.pages?.length, displayMode: content.displayMode, slideInterval: content.pdf?.slideInterval }, 'Content retrieved');
     // #endregion
     const buffer = await this.renderContent(content);
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:58', hypothesisId: 'E', bufferSize: buffer.length }, 'renderContent completed');
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:61',message:'Content rendered',data:{bufferSize:buffer.length,renderDuration:Date.now()-renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:61', hypothesisId: 'E', bufferSize: buffer.length, renderDuration: Date.now() - renderStartTime }, 'Content rendered');
     // #endregion
     const result = await SignageRenderStorage.saveRenderedImage(buffer);
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:59', hypothesisId: 'C', filename: result.filename }, 'Image saved');
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:65',message:'Image saved',data:{filename:result.filename,totalDuration:Date.now()-renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:65', hypothesisId: 'E', filename: result.filename, totalDuration: Date.now() - renderStartTime }, 'Image saved (total)');
     // #endregion
     return {
       renderedAt: new Date(),
@@ -161,7 +161,7 @@ export class SignageRenderer {
         // #region agent log
         const pageUrl = pdf.pages[pdfPageIndex];
         const pageNumber = pdfPageIndex + 1;
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:161',message:'Rendering PDF page',data:{pdfId:pdf.id,pdfPageIndex,pageNumber,totalPages:pdf.pages.length,pageUrl:pageUrl.substring(0,50)+'...'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+        logger.info({ location: 'signage.renderer.ts:161', hypothesisId: 'F', pdfId: pdf.id, pdfPageIndex, pageNumber, totalPages: pdf.pages.length, pageUrl: pageUrl.substring(0, 50) + '...' }, 'Rendering PDF page');
         // #endregion
         return await this.renderPdfImage(pageUrl, {
           title: pdf.name,
@@ -247,12 +247,12 @@ export class SignageRenderer {
     const renderStartTime = Date.now();
     // #region agent log
     const pageUrlShort = pageUrl.substring(0, 50) + '...';
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:246',message:'renderPdfImage started',data:{pageUrl:pageUrlShort,renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:246', hypothesisId: 'F', pageUrl: pageUrlShort, renderStartTime }, 'renderPdfImage started');
     // #endregion
     const imageBase64 = await this.encodePdfPageAsBase64(pageUrl, Math.round(WIDTH * 0.7), Math.round(HEIGHT * 0.75));
     // #region agent log
     const encodeTime = Date.now() - renderStartTime;
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:249',message:'PDF page encoded',data:{pageUrl:pageUrlShort,encodeTime,hasImageBase64:!!imageBase64},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:249', hypothesisId: 'F', pageUrl: pageUrlShort, encodeTime, hasImageBase64: !!imageBase64 }, 'PDF page encoded');
     // #endregion
     if (!imageBase64) {
       return await this.renderMessage('PDFページが見つかりません');
@@ -264,7 +264,7 @@ export class SignageRenderer {
       .toBuffer();
     // #region agent log
     const totalRenderTime = Date.now() - renderStartTime;
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:255',message:'renderPdfImage completed',data:{pageUrl:pageUrlShort,bufferSize:buffer.length,totalRenderTime,encodeTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:255', hypothesisId: 'F', pageUrl: pageUrlShort, bufferSize: buffer.length, totalRenderTime, encodeTime }, 'renderPdfImage completed');
     // #endregion
     return buffer;
   }
@@ -775,7 +775,7 @@ export class SignageRenderer {
     pdfId?: string
   ): number {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:745',message:'getCurrentPdfPageIndex called',data:{totalPages,displayMode,slideInterval,pdfId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:745', hypothesisId: 'A', totalPages, displayMode, slideInterval, pdfId }, 'getCurrentPdfPageIndex called');
     // #endregion
     if (totalPages === 0) {
       if (pdfId) {
@@ -790,7 +790,7 @@ export class SignageRenderer {
       const state = this.pdfSlideState.get(pdfId);
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:761',message:'State retrieved',data:{pdfId,hasState:!!state,state:state?{lastIndex:state.lastIndex,lastRenderedAt:state.lastRenderedAt,elapsed:now-state.lastRenderedAt}:null,now,slideIntervalMs},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:761', hypothesisId: 'C', pdfId, hasState: !!state, state: state ? { lastIndex: state.lastIndex, lastRenderedAt: state.lastRenderedAt, elapsed: now - state.lastRenderedAt } : null, now, slideIntervalMs }, 'State retrieved');
       // #endregion
 
       if (!state) {
@@ -803,7 +803,7 @@ export class SignageRenderer {
           reason: 'initialized state',
         }, 'PDF slide show page index calculated');
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:772',message:'State initialized',data:{pdfId,lastIndex:0,lastRenderedAt:now},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+        logger.info({ location: 'signage.renderer.ts:772', hypothesisId: 'A', pdfId, lastIndex: 0, lastRenderedAt: now }, 'State initialized');
         // #endregion
         return 0;
       }
@@ -811,7 +811,7 @@ export class SignageRenderer {
       const elapsed = now - state.lastRenderedAt;
       let steps = Math.floor(elapsed / slideIntervalMs);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:776',message:'Steps calculated (before adjustment)',data:{pdfId,elapsed,slideIntervalMs,stepsBeforeAdjust:steps,lastIndex:state.lastIndex,totalPages},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:776', hypothesisId: 'B', pdfId, elapsed, slideIntervalMs, stepsBeforeAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (before adjustment)');
       // #endregion
       if (steps <= 0) {
         steps = 1;
@@ -822,16 +822,16 @@ export class SignageRenderer {
         }
       }
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:784',message:'Steps calculated (after adjustment)',data:{pdfId,stepsAfterAdjust:steps,lastIndex:state.lastIndex,totalPages},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:784', hypothesisId: 'B', pdfId, stepsAfterAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (after adjustment)');
       // #endregion
 
       const nextIndex = (state.lastIndex + steps) % totalPages;
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:786',message:'Next index calculated',data:{pdfId,lastIndex:state.lastIndex,steps,nextIndex,totalPages,expectedSequence:Array.from({length:totalPages},(_,i)=>(state.lastIndex+i+1)%totalPages).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:786', hypothesisId: 'D', pdfId, lastIndex: state.lastIndex, steps, nextIndex, totalPages, expectedSequence: Array.from({ length: totalPages }, (_, i) => (state.lastIndex + i + 1) % totalPages).slice(0, 5) }, 'Next index calculated');
       // #endregion
       this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:787',message:'State updated',data:{pdfId,lastIndex:nextIndex,lastRenderedAt:now},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:787', hypothesisId: 'C', pdfId, lastIndex: nextIndex, lastRenderedAt: now }, 'State updated');
       // #endregion
 
       logger.info({

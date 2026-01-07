@@ -48,7 +48,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
     const fetchStartTime = Date.now();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:48',message:'Pi3 image fetch started',data:{fetchStartTime,clientKey:request.headers['x-client-key']},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    logger.info({ location: 'signage/render.ts:48', hypothesisId: 'G', fetchStartTime, clientKey: request.headers['x-client-key'] }, 'Pi3 image fetch started');
     // #endregion
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
@@ -65,7 +65,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     let imageBuffer = await SignageRenderStorage.readCurrentImage();
     // #region agent log
     const readTime = Date.now() - fetchStartTime;
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:61',message:'Image read from storage',data:{hasImage:!!imageBuffer,imageSize:imageBuffer?.length,readTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    logger.info({ location: 'signage/render.ts:61', hypothesisId: 'G', hasImage: !!imageBuffer, imageSize: imageBuffer?.length, readTime }, 'Image read from storage');
     // #endregion
     if (!imageBuffer) {
       // 画像が存在しない場合はデフォルトメッセージを生成
@@ -79,7 +79,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
 
     // #region agent log
     const totalFetchTime = Date.now() - fetchStartTime;
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:72',message:'Pi3 image fetch completed',data:{imageSize:imageBuffer.length,totalFetchTime,readTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    logger.info({ location: 'signage/render.ts:72', hypothesisId: 'G', imageSize: imageBuffer.length, totalFetchTime, readTime }, 'Pi3 image fetch completed');
     // #endregion
     return reply.send(imageBuffer);
   });
