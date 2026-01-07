@@ -515,4 +515,65 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-150] サイネージレイアウトとコンテンツの疎結合化実装完了
+
+**EXEC_PLAN.md参照**: サイネージ表示領域の疎結合化（2026-01-06）
+
+**事象**: 
+- サイネージのレイアウト（全体/左右）と各エリアのコンテンツ（PDF/持出一覧/将来のCSV可視化）が密結合しており、新しい可視化を追加する際に巨大な`if`分岐の改修が必要だった
+- `SPLIT`レイアウトは左=TOOLS / 右=PDF固定で、柔軟なコンテンツ配置ができなかった
+
+**要因**: 
+- サーバー側レンダラーが`contentType`に強く依存し、`SPLIT`は左=TOOLS / 右=PDF固定になっていた
+- スケジュール返却も`SignageContentType`のif分岐で固定され、新コンテンツ追加のたびに`SignageService`/`SignageRenderer`の両方を改修する必要があった
+
+**実施した対策**: 
+- ✅ **データベーススキーマ拡張**: `SignageSchedule`と`SignageEmergency`に`layoutConfig Json?`フィールドを追加
+- ✅ **レイアウト設定の型定義**: `SignageLayoutConfig`型を定義し、`layout: FULL | SPLIT`と`slots`配列で柔軟なコンテンツ配置を実現
+- ✅ **レガシー形式からの変換**: `convertLegacyToLayoutConfig()`メソッドを実装し、既存の`contentType`/`pdfId`を新形式へ自動変換（後方互換性を維持）
+- ✅ **レンダラーの疎結合化**: `renderWithLayoutConfig()`メソッドを実装し、レイアウトごとのキャンバス割当とslotごとのSVG生成を分離
+- ✅ **管理コンソールUI拡張**: スケジュール編集画面でレイアウト（全体/左右）と各スロットのコンテンツ種別（PDF/持出一覧）を選択可能に
+- ✅ **統合テスト追加**: `layoutConfig`の各組み合わせで`/api/signage/current-image`が正常に動作することを確認
+
+**学んだこと**:
+1. **Prisma Client再生成の重要性**: データベースマイグレーション適用後、APIコンテナ内で`pnpm prisma generate`を実行してPrisma Clientを再生成する必要がある。マイグレーションだけでは不十分で、コンテナ再起動も必要
+2. **後方互換性の維持**: 既存の`contentType`/`pdfId`形式を新形式へ自動変換することで、既存スケジュールを壊さずに新機能を追加できる
+3. **疎結合化の効果**: レイアウトとコンテンツを分離することで、新しいコンテンツ種別（CSV可視化など）を追加する際のコード変更を最小限に抑えられる
+4. **デプロイスクリプトの動作**: `scripts/server/deploy.sh`はマイグレーション後にPrisma Clientを再生成するが、コンテナ内のPrisma Clientが古い場合は手動で再生成が必要
+
+**解決状況**: ✅ **解決済み**（2026-01-06）
+
+**実機検証で発見された問題と修正**（2026-01-07）:
+1. **SPLITレイアウトで左PDF・右工具管理が機能しない**: `renderWithLayoutConfig()`が左PDF・右工具管理の組み合わせに対応していなかった。`swapSides`パラメータを追加して左右を入れ替えて表示するように修正。
+2. **タイトルがハードコードされている**: `buildSplitScreenSvg()`で「持出中アイテム」「PDF表示」が固定されていた。PDF名を動的に表示するように修正。
+3. **タイトルとアイテムが被る**: `leftHeaderHeight`を48pxから60pxに増やして、タイトルとカードの間隔を拡大。
+4. **PDF表示の重複タイトル**: `fileNameOverlay`がタイトルと重複していた。`fileNameOverlay`を削除し、タイトルのみを表示するように修正。
+5. **スケジュールの優先順位ロジック**: マッチしたスケジュールを優先順位順にソートしてから処理するように改善。優先順位が高いスケジュールが優先されることを確認。
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-07）
+- FULLレイアウト + loansスロット: ✅ 正常
+- FULLレイアウト + pdfスロット: ✅ 正常
+- SPLITレイアウト + 左loans/右pdf: ✅ 正常
+- SPLITレイアウト + 左pdf/右loans: ✅ 正常
+- タイトルとアイテムの重なり: ✅ 解消
+- PDF表示の重複タイトル: ✅ 解消
+- スケジュールの優先順位ロジック: ✅ 正常動作
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`layoutConfig`フィールド追加）
+- `apps/api/prisma/migrations/20260106155657_add_signage_layout_config/migration.sql`
+- `apps/api/src/services/signage/signage-layout.types.ts`
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+- `docs/guides/signage-layout-config-verification-results.md`
+- `apps/api/src/services/signage/signage-layout.types.ts`（型定義）
+- `apps/api/src/services/signage/signage.service.ts`（レガシー変換ロジック）
+- `apps/api/src/services/signage/signage.renderer.ts`（疎結合化されたレンダラー）
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`（UI拡張）
+- `docs/guides/deployment.md`（Prisma Client再生成の注意事項）
+- `.cursor/plans/signage-layout-decoupling.plan.md`（実装計画）
+
+---
+
 ---
