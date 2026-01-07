@@ -813,14 +813,21 @@ export class SignageRenderer {
       // #region agent log
       logger.info({ location: 'signage.renderer.ts:776', hypothesisId: 'B', pdfId, elapsed, slideIntervalMs, stepsBeforeAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (before adjustment)');
       // #endregion
+      
+      // 修正: slideInterval未満の場合はページを進めない（steps=0で同じページを維持）
+      // slideInterval以上経過した場合は1ページ進める（steps=1以上）
+      // totalPagesを超えるstepsは循環させる
       if (steps <= 0) {
-        steps = 1;
-      } else {
-        steps = steps % totalPages;
-        if (steps === 0) {
-          steps = 1;
-        }
+        // slideInterval未満: 同じページを維持
+        // #region agent log
+        logger.info({ location: 'signage.renderer.ts:782', hypothesisId: 'B', pdfId, steps: 0, reason: 'elapsed < slideInterval, keeping same page' }, 'Same page maintained');
+        // #endregion
+        return state.lastIndex;
       }
+      
+      // 複数ページ分経過した場合は1ページずつ進める（飛ばさない）
+      steps = 1;
+      
       // #region agent log
       logger.info({ location: 'signage.renderer.ts:784', hypothesisId: 'B', pdfId, stepsAfterAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (after adjustment)');
       // #endregion
