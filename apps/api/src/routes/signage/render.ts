@@ -6,7 +6,6 @@ import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { ApiError } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
-import { logger } from '../../lib/logger.js';
 
 export function registerRenderRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
@@ -47,10 +46,6 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   });
 
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
-    const fetchStartTime = Date.now();
-    // #region agent log
-    logger.info({ location: 'signage/render.ts:48', hypothesisId: 'G', fetchStartTime, clientKey: request.headers['x-client-key'] }, 'Pi3 image fetch started');
-    // #endregion
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
       await canView(request, reply);
@@ -64,10 +59,6 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     }
 
     let imageBuffer = await SignageRenderStorage.readCurrentImage();
-    // #region agent log
-    const readTime = Date.now() - fetchStartTime;
-    logger.info({ location: 'signage/render.ts:61', hypothesisId: 'G', hasImage: !!imageBuffer, imageSize: imageBuffer?.length, readTime }, 'Image read from storage');
-    // #endregion
     if (!imageBuffer) {
       // 画像が存在しない場合はデフォルトメッセージを生成
       imageBuffer = await renderer.renderMessage('表示するコンテンツがありません');
@@ -78,10 +69,6 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       .header('Cache-Control', 'no-store')
       .header('Content-Length', imageBuffer.length);
 
-    // #region agent log
-    const totalFetchTime = Date.now() - fetchStartTime;
-    logger.info({ location: 'signage/render.ts:72', hypothesisId: 'G', imageSize: imageBuffer.length, totalFetchTime, readTime }, 'Pi3 image fetch completed');
-    // #endregion
     return reply.send(imageBuffer);
   });
 }

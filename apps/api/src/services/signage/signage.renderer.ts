@@ -54,25 +54,10 @@ export class SignageRenderer {
     renderedAt: Date;
     filename: string;
   }> {
-    const renderStartTime = Date.now();
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', renderStartTime }, 'renderCurrentContent started');
-    // #endregion
     const content = await this.signageService.getContent();
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, layoutConfig: content.layoutConfig }, 'renderCurrentContent got content');
-    logger.info({ location: 'signage.renderer.ts:57', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, pdfId: content.pdf?.id, pdfPages: content.pdf?.pages?.length, displayMode: content.displayMode, slideInterval: content.pdf?.slideInterval }, 'Content retrieved');
-    // #endregion
     const buffer = await this.renderContent(content);
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:58', hypothesisId: 'E', bufferSize: buffer.length }, 'renderContent completed');
-    logger.info({ location: 'signage.renderer.ts:61', hypothesisId: 'E', bufferSize: buffer.length, renderDuration: Date.now() - renderStartTime }, 'Content rendered');
-    // #endregion
     const result = await SignageRenderStorage.saveRenderedImage(buffer);
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:59', hypothesisId: 'C', filename: result.filename }, 'Image saved');
-    logger.info({ location: 'signage.renderer.ts:65', hypothesisId: 'E', filename: result.filename, totalDuration: Date.now() - renderStartTime }, 'Image saved (total)');
-    // #endregion
+    logger.info({ location: 'signage.renderer.ts:59', filename: result.filename }, 'Image saved');
     return {
       renderedAt: new Date(),
       filename: result.filename
@@ -244,29 +229,15 @@ export class SignageRenderer {
   }
 
   private async renderPdfImage(pageUrl: string, options?: PdfRenderOptions): Promise<Buffer> {
-    const renderStartTime = Date.now();
-    // #region agent log
-    const pageUrlShort = pageUrl.substring(0, 50) + '...';
-    logger.info({ location: 'signage.renderer.ts:246', hypothesisId: 'F', pageUrl: pageUrlShort, renderStartTime }, 'renderPdfImage started');
-    // #endregion
     const imageBase64 = await this.encodePdfPageAsBase64(pageUrl, Math.round(WIDTH * 0.7), Math.round(HEIGHT * 0.75));
-    // #region agent log
-    const encodeTime = Date.now() - renderStartTime;
-    logger.info({ location: 'signage.renderer.ts:249', hypothesisId: 'F', pageUrl: pageUrlShort, encodeTime, hasImageBase64: !!imageBase64 }, 'PDF page encoded');
-    // #endregion
     if (!imageBase64) {
       return await this.renderMessage('PDFページが見つかりません');
     }
 
     const svg = this.buildPdfScreenSvg(imageBase64, options);
-    const buffer = await sharp(Buffer.from(svg), { density: 220 })
+    return await sharp(Buffer.from(svg), { density: 220 })
       .jpeg({ quality: 92, mozjpeg: true })
       .toBuffer();
-    // #region agent log
-    const totalRenderTime = Date.now() - renderStartTime;
-    logger.info({ location: 'signage.renderer.ts:255', hypothesisId: 'F', pageUrl: pageUrlShort, bufferSize: buffer.length, totalRenderTime, encodeTime }, 'renderPdfImage completed');
-    // #endregion
-    return buffer;
   }
 
   private async renderTools(tools: ToolItem[]): Promise<Buffer> {
@@ -774,9 +745,6 @@ export class SignageRenderer {
     slideInterval: number | null,
     pdfId?: string
   ): number {
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:745', hypothesisId: 'A', totalPages, displayMode, slideInterval, pdfId }, 'getCurrentPdfPageIndex called');
-    // #endregion
     if (totalPages === 0) {
       if (pdfId) {
         this.pdfSlideState.delete(pdfId);
@@ -789,10 +757,6 @@ export class SignageRenderer {
       const slideIntervalMs = slideInterval * 1000;
       const state = this.pdfSlideState.get(pdfId);
 
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:761', hypothesisId: 'C', pdfId, hasState: !!state, state: state ? { lastIndex: state.lastIndex, lastRenderedAt: state.lastRenderedAt, elapsed: now - state.lastRenderedAt } : null, now, slideIntervalMs }, 'State retrieved');
-      // #endregion
-
       if (!state) {
         this.pdfSlideState.set(pdfId, { lastIndex: 0, lastRenderedAt: now });
         logger.info({
@@ -802,44 +766,21 @@ export class SignageRenderer {
           lastIndex: 0,
           reason: 'initialized state',
         }, 'PDF slide show page index calculated');
-        // #region agent log
-        logger.info({ location: 'signage.renderer.ts:772', hypothesisId: 'A', pdfId, lastIndex: 0, lastRenderedAt: now }, 'State initialized');
-        // #endregion
         return 0;
       }
 
       const elapsed = now - state.lastRenderedAt;
-      let steps = Math.floor(elapsed / slideIntervalMs);
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:776', hypothesisId: 'B', pdfId, elapsed, slideIntervalMs, stepsBeforeAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (before adjustment)');
-      // #endregion
+      const steps = Math.floor(elapsed / slideIntervalMs);
       
-      // 修正: slideInterval未満の場合はページを進めない（steps=0で同じページを維持）
-      // slideInterval以上経過した場合は1ページ進める（steps=1以上）
-      // totalPagesを超えるstepsは循環させる
+      // 修正: slideInterval未満の場合はページを進めない（同じページを維持）
+      // slideInterval以上経過した場合は1ページ進める（飛ばさない）
       if (steps <= 0) {
-        // slideInterval未満: 同じページを維持
-        // #region agent log
-        logger.info({ location: 'signage.renderer.ts:782', hypothesisId: 'B', pdfId, steps: 0, reason: 'elapsed < slideInterval, keeping same page' }, 'Same page maintained');
-        // #endregion
         return state.lastIndex;
       }
       
-      // 複数ページ分経過した場合は1ページずつ進める（飛ばさない）
-      steps = 1;
-      
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:784', hypothesisId: 'B', pdfId, stepsAfterAdjust: steps, lastIndex: state.lastIndex, totalPages }, 'Steps calculated (after adjustment)');
-      // #endregion
-
-      const nextIndex = (state.lastIndex + steps) % totalPages;
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:786', hypothesisId: 'D', pdfId, lastIndex: state.lastIndex, steps, nextIndex, totalPages, expectedSequence: Array.from({ length: totalPages }, (_, i) => (state.lastIndex + i + 1) % totalPages).slice(0, 5) }, 'Next index calculated');
-      // #endregion
+      // 複数ページ分経過した場合でも1ページずつ進める（飛ばさない）
+      const nextIndex = (state.lastIndex + 1) % totalPages;
       this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:787', hypothesisId: 'C', pdfId, lastIndex: nextIndex, lastRenderedAt: now }, 'State updated');
-      // #endregion
 
       logger.info({
         pdfId,
