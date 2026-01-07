@@ -24,6 +24,8 @@
 
 ### 🆕 最新アップデート（2026-01-07）
 
+- **✅ backup.jsonの破壊的上書きを防ぐセーフガード実装・実機検証完了**: `backup.json`がフォールバック設定（デフォルト設定）で上書きされ、Gmail設定や多数のバックアップターゲットが消失する問題を解決。フォールバック検知マーカー（`FALLBACK_MARKER`）の保持（`{...config}`によるスプレッドクローンを廃止）、フォールバック保存の拒否（本番パスのみ）、破壊的上書き防止ガード（targets数が50%以上減る保存を拒否）を実装。詳細ログ（ファイル読み込み時のサイズ・要約情報、保存時の検証結果）を追加。CI通過・デプロイ完了・実機検証完了を確認。Gmail設定のトークン更新とバックアップ実行後も、ファイルサイズ（9358 bytes）、ターゲット数（17）、Gmail/Dropbox設定が維持されることを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-151](./knowledge-base/infrastructure/backup-restore.md#kb-151-backupjsonの破壊的上書きを防ぐセーフガード実装) を参照。
+
 - **✅ サイネージレイアウト設定の実機検証完了・UI改善**: サイネージレイアウトとコンテンツの疎結合化実装の実機検証を完了。SPLITレイアウトで左PDF・右工具管理の組み合わせに対応し、タイトルを動的に表示するように改善。タイトルとアイテムの重なりを解消し、PDF表示の重複タイトルを削除。スケジュールの優先順位ロジックを改善し、優先順位が高いスケジュールが優先されることを確認。実機検証で発見された問題（Pi3のサイネージサービス更新タイマーが停止していた）も解決。すべてのレイアウトパターン（FULL/SPLIT、左PDF右工具管理、左工具管理右PDF）が正常に動作することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) / [guides/signage-layout-config-verification-results.md](./guides/signage-layout-config-verification-results.md) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-06）

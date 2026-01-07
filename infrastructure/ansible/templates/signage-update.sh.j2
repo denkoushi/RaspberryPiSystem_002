@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVER_URL="{{ signage_server_url | default('https://192.168.128.131') }}"
+CLIENT_KEY="{{ signage_client_key | default('') }}"
+IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
+CACHE_DIR="/run/signage"
+CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
+TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
+{% if signage_allow_insecure_tls | default(true) %}
+CURL_OPTIONS="-s -f -k"
+{% else %}
+CURL_OPTIONS="-s -f"
+{% endif %}
+
+# 画像を取得（失敗時は既存画像を保持）
+if curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" \
+  -o "${TEMP_IMAGE}" \
+  --max-time 10 \
+  --connect-timeout 5 \
+  "${IMAGE_URL}" 2>/dev/null; then
+  # 取得成功時のみ更新（原子更新）
+  if [[ -s "${TEMP_IMAGE}" ]]; then
+    mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"
+    echo "$(date): Image updated successfully"
+  else
+    echo "$(date): Downloaded file is empty, keeping cached version"
+    rm -f "${TEMP_IMAGE}"
+  fi
+else
+  # ネットワーク遮断時は既存画像を保持（エラーでも終了しない）
+  if [[ -f "${CURRENT_IMAGE}" ]]; then
+    echo "$(date): Network unavailable, using cached image ($(stat -c %y "${CURRENT_IMAGE}" | cut -d. -f1))"
+  else
+    echo "$(date): Network unavailable and no cached image available"
+  fi
+  rm -f "${TEMP_IMAGE}"
+fi
+

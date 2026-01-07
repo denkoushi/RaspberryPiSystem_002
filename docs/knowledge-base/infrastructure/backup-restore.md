@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 15件  
+**件数**: 16件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -995,4 +995,62 @@ update-frequency: medium
 - `apps/web/src/pages/admin/BackupTargetsPage.tsx`（ヘルスチェック結果のUI表示）
 - `apps/web/src/api/backup.ts`（getBackupConfigHealth APIクライアント）
 - `apps/web/src/api/hooks.ts`（useBackupConfigHealthフック）
+
+---
+
+## KB-151: backup.jsonの破壊的上書きを防ぐセーフガード実装
+
+**問題**: `backup.json`がフォールバック設定（デフォルト設定）で上書きされ、Gmail設定や多数のバックアップターゲットが消失する問題が再発した。
+
+**原因**:
+1. **フォールバック検知マーカーの消失**: `BackupConfigLoader.load()`がフォールバック設定を返した際に`FALLBACK_MARKER`（Symbol）を付与していたが、APIルートで`{...config}`によるスプレッドクローンを作成すると、Symbolプロパティが失われていた
+2. **フォールバック設定の保存**: マーカーが失われた状態で`BackupConfigLoader.save()`を呼び出すと、フォールバック設定が有効な設定として保存され、実際の`backup.json`を上書きしてしまう
+3. **破壊的上書きの検知不足**: targets数が急激に減る（例: 17件→4件）場合の検知が不十分だった
+
+**解決策**:
+1. **フォールバック検知マーカーの保持**: APIルート（`gmail/oauth.ts`, `gmail/config.ts`, `backup.ts`）で`{...config}`によるスプレッドクローンを廃止し、`BackupConfigLoader.load()`で取得したconfigオブジェクトを直接更新するように変更。これにより`FALLBACK_MARKER`が保持される
+2. **フォールバック保存の拒否**: `BackupConfigLoader.save()`で、本番パス（`/app/config/backup.json`）の場合のみ、`FALLBACK_MARKER`が付与されている設定の保存を明示的に拒否
+3. **破壊的上書き防止ガード**: `BackupConfigLoader.save()`で、前回読み込んだ設定（`lastLoadedConfig`）と比較し、targets数が50%以上減る保存を拒否する「アンチワイプガード」を追加
+4. **詳細ログの追加**: ファイル読み込み時にサイズ・要約情報（targets数、Gmail/Dropbox設定の有無）をログ出力し、保存時の検証結果もログ出力
+
+**実装詳細**:
+- **フォールバック検知マーカーの保持**:
+  - `apps/api/src/routes/gmail/oauth.ts`: `updatedConfig = {...config}`を廃止し、`config`オブジェクトを直接更新
+  - `apps/api/src/routes/gmail/config.ts`: 同様に`config`オブジェクトを直接更新
+  - `apps/api/src/routes/backup.ts`: `onTokenUpdate`コールバック内で`{...config}`を廃止し、`BackupConfigLoader.load()`で最新を読み直してから更新
+- **フォールバック保存の拒否**:
+  - `BackupConfigLoader.save()`で、本番パス（`/app/config/backup.json`）の場合のみ、`FALLBACK_MARKER`が付与されている設定の保存を拒否
+  - テスト環境（`/tmp/test-backup.json`など）ではこのチェックをスキップ
+- **破壊的上書き防止ガード**:
+  - `BackupConfigLoader.save()`で、`lastLoadedConfig`と比較し、`config.targets.length < lastLoadedConfig.targets.length * 0.5`の場合に保存を拒否
+  - 本番パスの場合のみ有効（テスト環境ではスキップ）
+- **詳細ログの追加**:
+  - `BackupConfigLoader.load()`: ファイル読み込み時に`bytes`（ファイルサイズ）と`summary`（targets数、Gmail/Dropbox設定の有無）をログ出力
+  - `BackupConfigLoader.save()`: 保存時に`targets`数と検証結果をログ出力
+
+**学んだこと**:
+- **Symbolプロパティの保持**: JavaScriptの`{...obj}`によるスプレッドクローンは、Symbolプロパティを失う可能性がある。内部状態を保持する必要がある場合は、元のオブジェクトを直接更新する
+- **フォールバック検知の重要性**: フォールバック設定が有効な設定として保存されると、実際の設定が失われる。マーカーによる検知と保存拒否が重要
+- **段階的な保護**: 複数の保護レイヤー（フォールバック検知、破壊的上書き防止、詳細ログ）を組み合わせることで、設定消失を防ぐ
+- **テスト環境との分離**: 本番環境でのみ保護を有効化し、テスト環境では柔軟に動作するようにする
+
+**解決状況**: ✅ **解決済み**（2026-01-07: 実装完了、2026-01-07: CI通過、2026-01-07: デプロイ完了）
+
+**実機検証結果**（2026-01-07）:
+- ✅ **CI通過**: GitHub ActionsのCIが正常に通過し、テスト環境での動作を確認
+- ✅ **デプロイ完了**: Pi5にデプロイし、APIコンテナが正常に起動することを確認
+- ✅ **ログ出力**: `[BackupConfigLoader] Raw config file read`と`[BackupConfigLoader] Config loaded`が正常に出力され、ファイルサイズ（9358 bytes）と要約情報（targetsLen: 17、Gmail/Dropbox設定の有無）が記録されることを確認
+- ✅ **再現手順の実行完了**: Gmail設定のトークン更新とバックアップ実行を実施し、以下の結果を確認
+  - **ファイルサイズ**: 9358 bytes（検証前後で変化なし）
+  - **ターゲット数**: 17（検証前後で変化なし）
+  - **Gmail設定**: 維持されている（`hasAccessToken: true`, `hasRefreshToken: true`）
+  - **Dropbox設定**: 維持されている（`hasAccessToken: true`, `hasRefreshToken: true`）
+  - **APIログ**: `[BackupConfigLoader] Config saved`が正常に記録され、`incomingSummary`に`targetsLen: 17`が記録されていることを確認（破壊的上書きが発生していない）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.loader.ts`（`FALLBACK_MARKER`、`save()`の保護ロジック、詳細ログ）
+- `apps/api/src/routes/gmail/oauth.ts`（`config`オブジェクトの直接更新）
+- `apps/api/src/routes/gmail/config.ts`（`config`オブジェクトの直接更新）
+- `apps/api/src/routes/backup.ts`（`onTokenUpdate`コールバック内での`config`オブジェクトの直接更新）
+- `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（テスト環境での`backup.json`事前作成）
 

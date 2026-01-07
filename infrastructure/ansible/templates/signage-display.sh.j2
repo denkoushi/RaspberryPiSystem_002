@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY=:0
+export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
+
+CACHE_DIR="/run/signage"
+CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
+UPDATE_SCRIPT="/usr/local/bin/signage-update.sh"
+STOP_SCRIPT="/usr/local/bin/signage-stop.sh"
+MAX_RETRIES=12  # 最大60秒待機（5秒×12回）
+
+# 画面の自動オフを無効化
+xset s off
+xset -dpms
+xset s noblank
+
+# 初回画像取得（存在しない場合は即時取得を試行）
+if [[ ! -s "${CURRENT_IMAGE}" ]]; then
+  echo "$(date): No cached image found, attempting initial download..."
+  "${UPDATE_SCRIPT}" || true
+fi
+
+# 画像が存在するまで待機（ネットワーク遮断時は既存画像があれば即座に表示）
+retry_count=0
+while [[ ! -s "${CURRENT_IMAGE}" ]] && [[ ${retry_count} -lt ${MAX_RETRIES} ]]; do
+  echo "$(date): Waiting for image download (attempt $((retry_count + 1))/${MAX_RETRIES})..."
+  "${UPDATE_SCRIPT}" || true
+  sleep 5
+  retry_count=$((retry_count + 1))
+done
+
+# 画像が存在しない場合でも、エラーで終了せずに既存画像を表示（ネットワーク遮断時のフォールバック）
+if [[ ! -s "${CURRENT_IMAGE}" ]]; then
+  echo "$(date): WARNING: No image available after ${MAX_RETRIES} attempts. Display will show cached image if available."
+  # 既存の画像ファイルがあれば表示（サイズが0でも）
+  if [[ -f "${CURRENT_IMAGE}" ]]; then
+    echo "$(date): Using existing cached image file"
+  else
+    echo "$(date): ERROR: No image file available. Service will restart to retry."
+    exit 1
+  fi
+fi
+
+# fehでフルスクリーン表示（ファイル変更を自動検知してリロード）
+# ネットワーク遮断時でも、既存画像を表示し続ける
+# qキーでサービスを停止（標準的な終了キー）
+exec feh \
+  --fullscreen \
+  --auto-reload \
+  --no-menus \
+  --hide-pointer \
+  --quiet \
+  --action "q;${STOP_SCRIPT}" \
+  "${CURRENT_IMAGE}"
+

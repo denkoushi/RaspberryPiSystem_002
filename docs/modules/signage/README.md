@@ -61,8 +61,10 @@
 - **方式**: ポーリング方式（定期的にAPIからデータを取得）
 - **更新間隔**: 30秒間隔（`signage-lite-update.timer`で制御）
 - **オフライン時**: エラーメッセージのみ表示（キャッシュ表示なし）
-- **画像更新**: `signage-lite-update.timer`が30秒ごとに`/api/signage/current-image`から画像を取得し、`/var/cache/signage/current.jpg`を更新
+- **画像更新**: `signage-lite-update.timer`が30秒ごとに`/api/signage/current-image`から画像を取得し、`/run/signage/current.jpg`（tmpfs）を更新
   - **注意**: タイマーが停止していると画像が更新されないため、デプロイ後やサービス再起動後はタイマーの状態を確認すること（`systemctl is-active signage-lite-update.timer`）
+  - **tmpfs化**: 画像キャッシュは `/run/signage`（tmpfs）に配置され、SDカードへの書込みを削減（再起動後は消える）
+  - **自動復旧**: `signage-lite-watchdog.timer`が1分間隔で画像更新を監視し、停止を検知した場合は自動復旧を試行
 
 ### 設定画面
 
@@ -430,10 +432,42 @@ model SignageEmergency {
 
 詳細は [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
 
+## Pi3クライアントの安定化施策（2026-01-08実装完了）
+
+### SDカードへの書込み削減（最優先）
+
+- **tmpfs化**: 画像キャッシュを `/run/signage`（tmpfs）に配置し、30秒ごとのJPEG更新によるSDカードへの書込みをほぼゼロ化
+- **効果**: SDカードの寿命延長、破損リスクの低減、システム安定性の向上
+- **実装**: systemd-tmpfiles（`/etc/tmpfiles.d/signage-lite.conf`）で再起動後も確実に作成
+
+### 自動復旧機能
+
+- **watchdog**: `signage-lite-watchdog.timer`が1分間隔で画像更新を監視
+  - 2分以上更新されていない場合、`signage-lite-update.service`を実行
+  - 復旧しない場合は`signage-lite.service`を再起動
+- **日次再起動**: `signage-daily-reboot.timer`が毎日深夜3時に自動再起動
+  - メモリリークや累積エラーのリセット
+  - 再起動後は`signage-lite.service`が自動起動（`enabled=true`保証）
+
+### サービス堅牢化
+
+- **DISPLAY準備待ち**: `ExecStartPre`でX11が利用可能になるまで待機（最大30秒）
+- **暴走防止**: `StartLimitIntervalSec/StartLimitBurst`で連続失敗時の制御
+- **enabled状態の収束**: Ansibleデプロイ時に必ず`enabled=true`を保証（サービス無効化ドリフトの防止）
+
+### 運用上の注意
+
+- **再起動後の画像**: tmpfsのため再起動後は画像が消える。初回起動時にサーバーから取得する（ネットワーク未接続時は表示できない）
+- **watchdogの確認**: `systemctl status signage-lite-watchdog.timer`で動作確認
+- **日次再起動の確認**: `systemctl status signage-daily-reboot.timer`で動作確認
+
+詳細は [signage-lite.md](./signage-lite.md) を参照してください。
+
 ## 関連ドキュメント
 
 - [システム要件定義](../requirements/system-requirements.md)
 - [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) - カラーテーマ要件の詳細
 - [アーキテクチャ概要](../architecture/overview.md)
 - [開発ガイド](../guides/development.md)
+- [signage-lite.md](./signage-lite.md) - Pi3軽量サイネージの詳細仕様と安定化施策
 

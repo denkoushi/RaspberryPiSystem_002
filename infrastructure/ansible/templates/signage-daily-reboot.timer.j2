@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily reboot timer for Pi3 signage stability
+After=network-online.target
+
+[Timer]
+# 毎日3時（深夜）に再起動
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

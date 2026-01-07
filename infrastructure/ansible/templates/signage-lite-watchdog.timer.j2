@@ -1,0 +1,11 @@
+[Unit]
+Description=Signage image update watchdog timer
+After=network-online.target
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
+

@@ -16,6 +16,24 @@ update-frequency: high
 - 既存の `/signage`（React + Chromium）構成は、1GB未満のメモリ環境では CPU / メモリ負荷が高く、Chromium の警告ダイアログも表示される。
 - ラズパイ 5 で PDF を JPEG に変換する処理は完了したが、クライアントは依然としてブラウザ描画を行っているため、軽量とは言えない。
 
+## 設計方針（安定化施策）
+
+### SDカードへの書込み削減（最優先）
+- **画像キャッシュをtmpfs（RAM）に配置**: `/run/signage` を使用することで、30秒ごとのJPEG更新によるSDカードへの書込みをほぼゼロ化
+- **効果**: SDカードの寿命延長、破損リスクの低減、システム安定性の向上
+- **実装**: systemd-tmpfilesで `/run/signage` ディレクトリを自動作成（再起動後も確実に作成される）
+
+### 自動復旧機能
+- **watchdog**: 画像更新が停止した場合（2分以上更新されていない）を検知し、自動的に復旧を試行
+  - 1. `signage-lite-update.service` を手動実行
+  - 2. 復旧しない場合は `signage-lite.service` を再起動
+- **日次再起動**: 毎日深夜3時に自動再起動し、メモリリークや累積エラーのリセット
+
+### サービス堅牢化
+- **DISPLAY準備待ち**: `ExecStartPre` でX11が利用可能になるまで待機（最大30秒）
+- **暴走防止**: `StartLimitIntervalSec/StartLimitBurst` で連続失敗時の制御
+- **enabled状態の収束**: Ansibleデプロイ時に必ず `enabled=true` を保証（サービス無効化ドリフトの防止）
+
 ## 目的
 
 1. **低スペック端末でも安定稼働する軽量表示経路**を提供する。
@@ -111,11 +129,13 @@ sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアン�
 
 ### トラブルシューティング
 
-- **画像が表示されない**: `/var/cache/signage/current.jpg` が存在するか確認
+- **画像が表示されない**: `/run/signage/current.jpg` が存在するか確認（tmpfsのため再起動後は空）
 - **初回ダウンロードで `feh: No loadable images specified` が出る**: `signage-lite` サービス再起動前に `/usr/local/bin/signage-update.sh` を実行してキャッシュを生成
 - **ネットワークエラー**: サーバーURLとクライアントキーが正しいか確認
 - **自己署名証明書で失敗する**: `SIGNAGE_ALLOW_INSECURE_TLS=true` のまま実行するか、端末にルート証明書をインポート
 - **X11エラー**: `export DISPLAY=:0` が設定されているか確認
+- **画像更新が停止している**: `systemctl status signage-lite-watchdog.timer` でwatchdogが動作しているか確認。手動復旧: `systemctl start signage-lite-update.service`
+- **サービスが無効化されている**: `systemctl is-enabled signage-lite.service` で確認。`enabled` でない場合は `systemctl enable signage-lite.service` で再有効化
 
 ### 運用メモ（自動/手動レンダリング）
 
@@ -133,6 +153,15 @@ sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアン�
 - **ストレージ使用量の監視**: ディスク使用量が80%または90%を超えた場合、`monitor.sh`が`storage-usage-high`アラートを生成し、管理コンソールに表示されます。
 
 詳細は [KB-130](../../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
+
+### Pi3クライアント側のストレージ（tmpfs化）
+
+**画像キャッシュはtmpfs（RAM）に配置**:
+
+- **キャッシュディレクトリ**: `/run/signage`（tmpfs、再起動で消える）
+- **効果**: SDカードへの書込みをほぼゼロ化（30秒ごとのJPEG更新による書込みを削減）
+- **自動作成**: systemd-tmpfiles（`/etc/tmpfiles.d/signage-lite.conf`）で再起動後も確実に作成
+- **注意**: 再起動後は画像が消えるため、初回起動時にサーバーから取得する（ネットワーク未接続時は表示できない）
 
 ## 解像度設定
 
@@ -225,6 +254,14 @@ api:
 curl -s -H 'x-client-key: client-key-raspberrypi3-signage1' \
   http://localhost:8080/api/signage/content | jq '.tools[] | {name, isInstrument, managementNumber}'
 ```
+
+## 安定化施策（実装済み）
+
+- [x] **tmpfs化**: 画像キャッシュを `/run/signage`（tmpfs）に移行し、SDカードへの書込みを削減 ✅
+- [x] **watchdog**: 画像更新停止を検知して自動復旧 ✅
+- [x] **日次再起動**: 毎日深夜3時に自動再起動 ✅
+- [x] **サービス堅牢化**: DISPLAY準備待ち、StartLimit追加 ✅
+- [x] **enabled状態の収束**: Ansibleデプロイ時に必ず有効化を保証 ✅
 
 ## 今後のタスク
 

@@ -119,12 +119,15 @@ sudo systemctl start signage-lite-update.service
 
 **確認方法**:
 ```bash
-# 画像ファイルの更新日時を確認
-ls -lh /var/cache/signage/current.jpg
-stat -c "%y" /var/cache/signage/current.jpg
+# 画像ファイルの更新日時を確認（tmpfs: /run/signage）
+ls -lh /run/signage/current.jpg
+stat -c "%y" /run/signage/current.jpg
 ```
 
-**注意**: `signage-lite-update.timer`は30秒ごとに画像を更新します。タイマーが停止していると、Pi3は古い画像を表示し続けます。
+**注意**: 
+- `signage-lite-update.timer`は30秒ごとに画像を更新します。タイマーが停止していると、Pi3は古い画像を表示し続けます。
+- 画像キャッシュは `/run/signage`（tmpfs）に配置されており、再起動後は消えます（SDカードへの書込みを削減するため）。
+- 画像更新が停止した場合、`signage-lite-watchdog.timer`が自動的に復旧を試行します（1分間隔で監視）。
 
 ```bash
 # サーバーへの接続確認

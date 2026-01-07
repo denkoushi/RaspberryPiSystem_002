@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 画像更新停止を検知して自己修復するwatchdogスクリプト
+CACHE_DIR="/run/signage"
+CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
+STALE_THRESHOLD_SECONDS=120  # 2分以上更新されていない場合は停止とみなす
+
+# 画像ファイルが存在しない場合は問題なし（初回起動時など）
+if [[ ! -f "${CURRENT_IMAGE}" ]]; then
+  exit 0
+fi
+
+# ファイルの更新時刻を取得
+LAST_MODIFIED=$(stat -c %Y "${CURRENT_IMAGE}" 2>/dev/null || echo 0)
+CURRENT_TIME=$(date +%s)
+AGE_SECONDS=$((CURRENT_TIME - LAST_MODIFIED))
+
+# 閾値を超えている場合は更新停止と判断
+if [[ ${AGE_SECONDS} -gt ${STALE_THRESHOLD_SECONDS} ]]; then
+  echo "$(date): WARNING: Image update stalled (age: ${AGE_SECONDS}s). Attempting recovery..."
+  
+  # 1. まず update.service を手動実行
+  systemctl start signage-lite-update.service || true
+  sleep 5
+  
+  # 2. まだ古い場合は service を再起動
+  LAST_MODIFIED_AFTER=$(stat -c %Y "${CURRENT_IMAGE}" 2>/dev/null || echo 0)
+  AGE_AFTER=$((CURRENT_TIME - LAST_MODIFIED_AFTER))
+  if [[ ${AGE_AFTER} -gt ${STALE_THRESHOLD_SECONDS} ]]; then
+    echo "$(date): Recovery failed, restarting signage-lite.service..."
+    systemctl restart signage-lite.service || true
+  else
+    echo "$(date): Recovery successful (update.service worked)"
+  fi
+else
+  # 正常動作中
+  echo "$(date): Image update healthy (age: ${AGE_SECONDS}s)"
+fi
+
+exit 0
+

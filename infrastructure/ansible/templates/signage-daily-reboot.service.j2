@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily reboot for Pi3 signage stability
+# 他のサービスが停止してから再起動
+After=signage-lite.service signage-lite-update.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot
+StandardOutput=journal
+StandardError=journal
+
