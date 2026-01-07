@@ -10,6 +10,10 @@ export class BackupConfigLoader {
   private static configPath = process.env.BACKUP_CONFIG_PATH || 
     '/app/config/backup.json';
 
+  // load() がフォールバック（ENOENT/パース失敗等）で返したconfigかどうかを、保存時に検知するためのマーカー
+  // NOTE: enumerable=false のためJSON.stringifyやZod parseには影響しない
+  private static readonly FALLBACK_MARKER = Symbol('BackupConfigLoader.FALLBACK_CONFIG');
+
   /**
    * 設定ファイルを読み込む
    */
@@ -135,7 +139,13 @@ export class BackupConfigLoader {
           { configPath: this.configPath },
           '[BackupConfigLoader] Config file not found, using default config'
         );
-        return defaultBackupConfig;
+        const fallback = { ...defaultBackupConfig } as BackupConfig;
+        try {
+          Object.defineProperty(fallback, this.FALLBACK_MARKER, { value: { reason: 'ENOENT', at: Date.now() }, enumerable: false });
+        } catch {
+          // noop
+        }
+        return fallback;
       }
       
       // パースエラーの場合もデフォルト設定を使用
@@ -143,7 +153,14 @@ export class BackupConfigLoader {
         { err: error, configPath: this.configPath },
         '[BackupConfigLoader] Failed to load config, using default config'
       );
-      return defaultBackupConfig;
+      const fallback = { ...defaultBackupConfig } as BackupConfig;
+      try {
+        const message = error instanceof Error ? error.message : String(error);
+        Object.defineProperty(fallback, this.FALLBACK_MARKER, { value: { reason: 'PARSE_OR_VALIDATE_ERROR', message, at: Date.now() }, enumerable: false });
+      } catch {
+        // noop
+      }
+      return fallback;
     }
   }
 
@@ -152,6 +169,17 @@ export class BackupConfigLoader {
    */
   static async save(config: BackupConfig): Promise<void> {
     try {
+      // load()がフォールバック（=危険なデフォルト返却）だった場合、そのまま保存すると設定が消える。
+      // ここで保存を拒否して「消失」を防ぐ（復旧は別手順で行う）。
+      const marker = (config as unknown as Record<string | symbol, unknown>)[this.FALLBACK_MARKER];
+      if (marker) {
+        logger?.error(
+          { configPath: this.configPath, marker },
+          '[BackupConfigLoader] Refusing to save fallback config to avoid destructive overwrite'
+        );
+        throw new Error('Refusing to save fallback backup config (would overwrite real config)');
+      }
+
       // ディレクトリが存在しない場合は作成
       const configDir = path.dirname(this.configPath);
       await fs.mkdir(configDir, { recursive: true });
@@ -159,12 +187,13 @@ export class BackupConfigLoader {
       // 設定を検証
       const validatedConfig = BackupConfigSchema.parse(config);
       
-      // JSONファイルとして保存
-      await fs.writeFile(
-        this.configPath,
-        JSON.stringify(validatedConfig, null, 2),
-        'utf-8'
-      );
+      // JSONファイルとして保存（atomic write）
+      // NOTE: 直接writeFileすると、同時readでJSONが壊れた状態を読んでしまい、load()がフォールバック→保存で上書き、が起き得る。
+      // tmpへ書いてrenameすることで、読み取り側は常に「完全なJSON」を読む。
+      const tmpPath = `${this.configPath}.tmp.${process.pid}.${Date.now()}`;
+      const payload = JSON.stringify(validatedConfig, null, 2);
+      await fs.writeFile(tmpPath, payload, 'utf-8');
+      await fs.rename(tmpPath, this.configPath);
       
       logger?.info({ configPath: this.configPath }, '[BackupConfigLoader] Config saved');
     } catch (error) {
