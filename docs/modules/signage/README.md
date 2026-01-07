@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2025-12-18（カード表示仕様統一、日付時刻横並び配置、管理画面PDF管理エリア視認性改善）
+最終更新: 2026-01-07（レイアウトとコンテンツの疎結合化実装完了、実機検証完了、UI改善）
 
 ## 概要
 
@@ -19,9 +19,13 @@
 - **スケジュール自動切り替え**: 曜日・時間帯に基づいて自動的に表示内容を切り替え
 - **手動切り替え**: 管理画面から手動で表示内容を切り替え
 - **表示パターン**:
-  - 工具管理データのみ
-  - PDFのみ
-  - 左右分割表示（工具管理データとPDFを同時表示）
+  - **全体表示（FULL）**: 
+    - 工具管理データのみ
+    - PDFのみ
+  - **左右分割表示（SPLIT）**: 
+    - 左に工具管理データ、右にPDF
+    - 左にPDF、右に工具管理データ
+    - 各スロットのコンテンツは管理コンソールで自由に選択可能
 
 ### PDF表示
 
@@ -33,7 +37,10 @@
 
 - **設定項目**: 曜日、時間帯、優先順位を自由に設定可能
 - **適用範囲**: PDFと工具管理データの両方にスケジュール設定が可能
-- **優先順位**: 複数のスケジュールが重複した場合、手動で設定した優先順位に従う
+- **優先順位**: 複数のスケジュールが重複した場合、優先順位が高い（数値が大きい）スケジュールが優先される
+  - 優先順位は数値が大きいほど優先度が高い（例: 優先順位20 > 優先順位10）
+  - 複数のスケジュールが同時にマッチする場合、優先順位が最も高いものが選択される
+  - 優先順位が同じ場合は、データベースの順序に依存
 
 ### 緊急表示機能
 
@@ -181,8 +188,9 @@
 model SignageSchedule {
   id          String   @id @default(uuid())
   name        String   // スケジュール名
-  contentType String   // "tools" | "pdf" | "split"
+  contentType String   // "tools" | "pdf" | "split"（レガシー形式、後方互換性のため維持）
   pdfId       String?  @relation("SchedulePdf", fields: [pdfId], references: [id])
+  layoutConfig Json?   // レイアウト設定（新形式、nullの場合はcontentType/pdfIdから変換）
   pdf         SignagePdf? @relation("SchedulePdf")
   dayOfWeek   Int[]    // 0=日曜日, 1=月曜日, ..., 6=土曜日
   startTime   String   // "HH:mm"形式
@@ -193,6 +201,29 @@ model SignageSchedule {
   updatedAt   DateTime @updatedAt
 }
 ```
+
+**layoutConfigの構造**（新形式）:
+```typescript
+{
+  layout: "FULL" | "SPLIT",
+  slots: [
+    {
+      position: "FULL" | "LEFT" | "RIGHT",
+      kind: "pdf" | "loans" | "csv_dashboard" | "message",
+      config: {
+        // kind="pdf"の場合
+        pdfId: string,
+        displayMode: "SLIDESHOW" | "SINGLE",
+        slideInterval: number | null
+        // kind="loans"の場合
+        // config: {}（現時点では特別な設定なし）
+      }
+    }
+  ]
+}
+```
+
+**後方互換性**: `layoutConfig`が`null`の場合は、既存の`contentType`/`pdfId`から自動的に新形式へ変換されます。
 
 ### SignagePdf（PDFファイル）
 
@@ -217,8 +248,9 @@ model SignagePdf {
 model SignageEmergency {
   id          String   @id @default(uuid())
   message     String   // 緊急メッセージ
-  contentType String?  // "message" | "pdf" | "tools"
+  contentType String?  // "message" | "pdf" | "tools"（レガシー形式、後方互換性のため維持）
   pdfId       String?  @relation("EmergencyPdf", fields: [pdfId], references: [id])
+  layoutConfig Json?   // レイアウト設定（新形式、nullの場合はcontentType/pdfIdから変換）
   pdf         SignagePdf? @relation("EmergencyPdf")
   enabled     Boolean  @default(false)
   expiresAt   DateTime? // 有効期限
@@ -226,6 +258,8 @@ model SignageEmergency {
   updatedAt   DateTime @updatedAt
 }
 ```
+
+**layoutConfigの構造**: `SignageSchedule`と同じ構造です。
 
 ## API仕様
 
@@ -253,9 +287,11 @@ model SignageEmergency {
 
 ### GET /api/signage/content
 
-現在時刻に基づいて表示すべきコンテンツを取得
+現在時刻に基づいて表示すべきコンテンツを取得します。
+`layoutConfig`が設定されている場合は、その内容が優先されます。
+複数のスケジュールがマッチする場合、優先順位が高い（数値が大きい）スケジュールが選択されます。
 
-**レスポンス**:
+**レスポンス**（レガシー形式）:
 ```json
 {
   "contentType": "tools",
@@ -279,6 +315,41 @@ model SignageEmergency {
   }
 }
 ```
+
+**レスポンス**（新形式、layoutConfig使用時）:
+```json
+{
+  "contentType": "SPLIT",
+  "displayMode": "SLIDESHOW",
+  "layoutConfig": {
+    "layout": "SPLIT",
+    "slots": [
+      {
+        "position": "LEFT",
+        "kind": "loans",
+        "config": {}
+      },
+      {
+        "position": "RIGHT",
+        "kind": "pdf",
+        "config": {
+          "pdfId": "uuid",
+          "displayMode": "SLIDESHOW",
+          "slideInterval": 30
+        }
+      }
+    ]
+  },
+  "tools": [...],
+  "pdf": {
+    "id": "uuid",
+    "name": "PDF名",
+    "pages": ["/api/signage/pdfs/uuid/page/1", ...]
+  }
+}
+```
+
+**後方互換性**: `layoutConfig`が`null`の場合は、既存の`contentType`/`pdfId`から自動的に新形式へ変換されます。
 
 ### GET /api/signage/emergency
 

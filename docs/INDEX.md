@@ -22,7 +22,13 @@
 
 - **✅ CI YAML責務分離リファクタ完了**: GitHub Actions CIワークフローを品質レビューに適した構成に改善。巨大な`lint-and-test`ジョブを`static-quality`、`api-tests`、`scripts-verification`、`security`に分割し、失敗原因の特定を容易に。PostgreSQLを`services:`化し、ポート衝突と後片付けの問題を解消。共通基盤を整備（`runs-on: ubuntu-24.04`固定、`concurrency`追加、`defaults.run.shell: bash -euo pipefail`設定）。成果物を標準化（Vitest JUnit/JSON/coverage、Trivy SARIF、Playwright reportをartifact化）。`pnpm audit`をnon-blocking化し、失敗してもCIを落とさず結果をログ/レポートとして残す方針に変更。詳細は [knowledge-base/ci-cd.md#kb-027](./knowledge-base/ci-cd.md#kb-027-ci-yaml責務分離リファクタ品質レビュー強化) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
+### 🆕 最新アップデート（2026-01-07）
+
+- **✅ サイネージレイアウト設定の実機検証完了・UI改善**: サイネージレイアウトとコンテンツの疎結合化実装の実機検証を完了。SPLITレイアウトで左PDF・右工具管理の組み合わせに対応し、タイトルを動的に表示するように改善。タイトルとアイテムの重なりを解消し、PDF表示の重複タイトルを削除。スケジュールの優先順位ロジックを改善し、優先順位が高いスケジュールが優先されることを確認。実機検証で発見された問題（Pi3のサイネージサービス更新タイマーが停止していた）も解決。すべてのレイアウトパターン（FULL/SPLIT、左PDF右工具管理、左工具管理右PDF）が正常に動作することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) / [guides/signage-layout-config-verification-results.md](./guides/signage-layout-config-verification-results.md) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-06）
+
+- **✅ サイネージレイアウトとコンテンツの疎結合化実装完了**: サイネージのレイアウト（全体/左右）と各エリアのコンテンツ（PDF/持出一覧/将来のCSV可視化）を分離し、新しい可視化を追加する際のコード変更を最小限に抑えられる構造を実現。`SignageSchedule`と`SignageEmergency`に`layoutConfig Json?`フィールドを追加し、レイアウトごとのキャンバス割当とslotごとのSVG生成を分離。既存の`contentType`/`pdfId`形式を新形式へ自動変換する機能を実装し、後方互換性を維持。管理コンソールUIでレイアウト（全体/左右）と各スロットのコンテンツ種別（PDF/持出一覧）を選択可能に。デプロイ時にPrisma Client再生成が必要な場合があることをナレッジベースに記録。詳細は [knowledge-base/infrastructure/signage.md#kb-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) / [modules/signage/README.md](./modules/signage/README.md) / [guides/deployment.md](./guides/deployment.md) を参照。
 
 - **✅ バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [knowledge-base/frontend.md#kb-149](./knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
 
@@ -244,6 +250,7 @@
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
 | デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
 | デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
+| **サイネージレイアウト設定の実機検証を実施したい** | **[guides/signage-layout-config-verification.md](./guides/signage-layout-config-verification.md)** |
 | クライアント端末を一括更新したい | [plans/production-deployment-management-plan.md](./plans/production-deployment-management-plan.md#phase-1-一括更新システムssh--ansible) |
 | Ansibleの堅牢化・安定化を実施したい | [plans/ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) |
 | Ansibleで管理すべき設定ファイルを確認したい | [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) |
