@@ -158,7 +158,12 @@ export class SignageRenderer {
           pdfConfig.slideInterval || null,
           pdf.id
         );
-        return await this.renderPdfImage(pdf.pages[pdfPageIndex], {
+        // #region agent log
+        const pageUrl = pdf.pages[pdfPageIndex];
+        const pageNumber = pdfPageIndex + 1;
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:161',message:'Rendering PDF page',data:{pdfId:pdf.id,pdfPageIndex,pageNumber,totalPages:pdf.pages.length,pageUrl:pageUrl.substring(0,50)+'...'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        return await this.renderPdfImage(pageUrl, {
           title: pdf.name,
           slideInterval: pdfConfig.slideInterval ?? null,
           displayMode: pdfConfig.displayMode,
@@ -239,15 +244,29 @@ export class SignageRenderer {
   }
 
   private async renderPdfImage(pageUrl: string, options?: PdfRenderOptions): Promise<Buffer> {
+    const renderStartTime = Date.now();
+    // #region agent log
+    const pageUrlShort = pageUrl.substring(0, 50) + '...';
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:246',message:'renderPdfImage started',data:{pageUrl:pageUrlShort,renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     const imageBase64 = await this.encodePdfPageAsBase64(pageUrl, Math.round(WIDTH * 0.7), Math.round(HEIGHT * 0.75));
+    // #region agent log
+    const encodeTime = Date.now() - renderStartTime;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:249',message:'PDF page encoded',data:{pageUrl:pageUrlShort,encodeTime,hasImageBase64:!!imageBase64},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     if (!imageBase64) {
       return await this.renderMessage('PDFページが見つかりません');
     }
 
     const svg = this.buildPdfScreenSvg(imageBase64, options);
-    return await sharp(Buffer.from(svg), { density: 220 })
+    const buffer = await sharp(Buffer.from(svg), { density: 220 })
       .jpeg({ quality: 92, mozjpeg: true })
       .toBuffer();
+    // #region agent log
+    const totalRenderTime = Date.now() - renderStartTime;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:255',message:'renderPdfImage completed',data:{pageUrl:pageUrlShort,bufferSize:buffer.length,totalRenderTime,encodeTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    return buffer;
   }
 
   private async renderTools(tools: ToolItem[]): Promise<Buffer> {

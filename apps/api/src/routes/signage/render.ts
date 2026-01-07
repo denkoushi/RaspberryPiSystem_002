@@ -46,6 +46,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   });
 
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
+    const fetchStartTime = Date.now();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:48',message:'Pi3 image fetch started',data:{fetchStartTime,clientKey:request.headers['x-client-key']},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
       await canView(request, reply);
@@ -59,6 +63,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     }
 
     let imageBuffer = await SignageRenderStorage.readCurrentImage();
+    // #region agent log
+    const readTime = Date.now() - fetchStartTime;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:61',message:'Image read from storage',data:{hasImage:!!imageBuffer,imageSize:imageBuffer?.length,readTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
     if (!imageBuffer) {
       // 画像が存在しない場合はデフォルトメッセージを生成
       imageBuffer = await renderer.renderMessage('表示するコンテンツがありません');
@@ -69,6 +77,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       .header('Cache-Control', 'no-store')
       .header('Content-Length', imageBuffer.length);
 
+    // #region agent log
+    const totalFetchTime = Date.now() - fetchStartTime;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage/render.ts:72',message:'Pi3 image fetch completed',data:{imageSize:imageBuffer.length,totalFetchTime,readTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
     return reply.send(imageBuffer);
   });
 }
