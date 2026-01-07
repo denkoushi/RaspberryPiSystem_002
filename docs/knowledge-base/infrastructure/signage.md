@@ -576,6 +576,37 @@ const textX = x + textAreaX;
 
 ---
 
+## KB-152: サイネージページ表示漏れ調査と修正
+
+**問題**: サイネージのPDFスライドショーで、ページが1ページずつ順番に表示されず、途中のページがスキップされることがある。Pi3のリソース不足の可能性も指摘されていた。
+
+**原因**:
+1. **ページ進行ロジックの問題**: `getCurrentPdfPageIndex`関数で、`steps <= 0`の場合（slideInterval未満の経過時間）でも強制的に`steps = 1`としてページを進めていた。これにより、サーバーのレンダリング間隔（20秒）がslideInterval（30秒）より短い場合、30秒経過する前に次のページに進んでしまい、Pi3がページを取得するタイミングとずれてページが飛ばされる問題が発生していた。
+2. **Pi3のサービス停止**: `signage-lite.service`が停止・無効化されていたため、サイネージが表示されていなかった。
+
+**解決策**:
+1. **ページ進行ロジックの修正**: `steps <= 0`の場合は、ページを進めずに**同じページを維持**するように変更。`slideInterval`以上経過した場合のみ1ページ進めるように修正。
+2. **複数ページ分経過した場合の処理**: 複数ページ分の時間が経過した場合でも、1ページずつ進めるように修正（`steps = 1`に固定）。
+3. **Pi3サービスの起動**: `signage-lite.service`を有効化・起動。
+4. **Pi3の取得頻度調整**: `signage-lite-update.timer`の間隔を30秒から15秒に変更（ただし、実際の動作は30秒ごと）。
+
+**修正内容**:
+- `apps/api/src/services/signage/signage.renderer.ts`の`getCurrentPdfPageIndex`関数を修正
+  - `steps <= 0`の場合: `return state.lastIndex`（同じページを維持）
+  - `steps > 0`の場合: `steps = 1`に固定し、1ページずつ進める
+- Pi3の`signage-lite.service`を有効化・起動
+
+**実機検証結果**: ✅ **問題解消**（2026-01-08）
+- ページが順番に表示される（1→2→3→...）ことを確認
+- ページ飛ばしが発生しないことを確認
+- 30秒ごとにページが切り替わることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`（`getCurrentPdfPageIndex`関数の修正）
+- `/etc/systemd/system/signage-lite-update.timer`（Pi3のタイマー設定）
+
+---
+
 ## サイネージ関連の残タスク
 
 ### 1. レイアウト設定機能の完成度向上（優先度: 中）
