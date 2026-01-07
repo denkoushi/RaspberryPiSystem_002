@@ -310,18 +310,29 @@ export class SignageService {
     logger.info({ location: 'signage.service.ts:303', hypothesisId: 'A', scheduleCount: schedules.length, schedules: schedules.map(s => ({ id: s.id, name: s.name, priority: s.priority, enabled: s.enabled, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, hasLayoutConfig: s.layoutConfig != null })) }, 'Checking schedules');
     // #endregion
     
+    const matchedSchedules: Array<{ schedule: ScheduleSummary; priority: number }> = [];
     for (const schedule of schedules) {
       const matches = this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime);
       // #region agent log
-      logger.info({ location: 'signage.service.ts:306', hypothesisId: 'A', scheduleId: schedule.id, scheduleName: schedule.name, matches, currentDayOfWeek, currentTime, dayOfWeek: schedule.dayOfWeek, startTime: schedule.startTime, endTime: schedule.endTime }, 'Schedule window check');
+      logger.info({ location: 'signage.service.ts:306', hypothesisId: 'A', scheduleId: schedule.id, scheduleName: schedule.name, matches, priority: schedule.priority, currentDayOfWeek, currentTime, dayOfWeek: schedule.dayOfWeek, startTime: schedule.startTime, endTime: schedule.endTime }, 'Schedule window check');
       // #endregion
       if (!matches) {
         continue;
       }
+      matchedSchedules.push({ schedule, priority: schedule.priority });
+    }
 
+    // マッチしたスケジュールを優先順位順にソート（高い順）
+    matchedSchedules.sort((a, b) => b.priority - a.priority);
+    // #region agent log
+    logger.info({ location: 'signage.service.ts:320', hypothesisId: 'A', matchedCount: matchedSchedules.length, matchedSchedules: matchedSchedules.map(m => ({ id: m.schedule.id, name: m.schedule.name, priority: m.priority })) }, 'Matched schedules sorted by priority');
+    // #endregion
+
+    // 優先順位が最も高いスケジュールを使用
+    for (const { schedule } of matchedSchedules) {
       const response = await this.buildScheduleResponse(schedule);
       // #region agent log
-      logger.info({ location: 'signage.service.ts:310', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, responseContentType: response?.contentType, responseLayoutConfig: response?.layoutConfig }, 'Schedule response built');
+      logger.info({ location: 'signage.service.ts:327', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, priority: schedule.priority, responseContentType: response?.contentType, responseLayoutConfig: response?.layoutConfig }, 'Schedule response built');
       // #endregion
       if (response) {
         return response;

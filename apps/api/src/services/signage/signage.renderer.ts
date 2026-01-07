@@ -164,19 +164,43 @@ export class SignageRenderer {
       const leftSlot = layoutConfig.slots.find((s) => s.position === 'LEFT');
       const rightSlot = layoutConfig.slots.find((s) => s.position === 'RIGHT');
 
-      let tools: ToolItem[] = [];
-      let pdfOptions: SplitPdfOptions | undefined;
+      let leftTools: ToolItem[] = [];
+      let rightTools: ToolItem[] = [];
+      let leftPdfOptions: SplitPdfOptions | undefined;
+      let rightPdfOptions: SplitPdfOptions | undefined;
 
-      // 左スロット: 持出一覧
+      // 左スロットの処理
       if (leftSlot?.kind === 'loans') {
-        tools = (content.tools ?? []).map((tool) => ({
+        leftTools = (content.tools ?? []).map((tool) => ({
           ...tool,
           isOver12Hours: this.isOver12Hours(tool.borrowedAt),
         }));
+      } else if (leftSlot?.kind === 'pdf') {
+        const pdfConfig = leftSlot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (pdf && pdf.pages?.length) {
+          const pdfPageIndex = this.getCurrentPdfPageIndex(
+            pdf.pages.length,
+            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+            pdfConfig.slideInterval || null,
+            pdf.id
+          );
+          leftPdfOptions = {
+            pageUrl: pdf.pages[pdfPageIndex],
+            title: pdf.name,
+            slideInterval: pdfConfig.slideInterval ?? null,
+            displayMode: pdfConfig.displayMode,
+          };
+        }
       }
 
-      // 右スロット: PDF
-      if (rightSlot?.kind === 'pdf') {
+      // 右スロットの処理
+      if (rightSlot?.kind === 'loans') {
+        rightTools = (content.tools ?? []).map((tool) => ({
+          ...tool,
+          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
+        }));
+      } else if (rightSlot?.kind === 'pdf') {
         const pdfConfig = rightSlot.config as PdfSlotConfig;
         const pdf = content.pdf;
         if (pdf && pdf.pages?.length) {
@@ -186,7 +210,7 @@ export class SignageRenderer {
             pdfConfig.slideInterval || null,
             pdf.id
           );
-          pdfOptions = {
+          rightPdfOptions = {
             pageUrl: pdf.pages[pdfPageIndex],
             title: pdf.name,
             slideInterval: pdfConfig.slideInterval ?? null,
@@ -195,7 +219,13 @@ export class SignageRenderer {
         }
       }
 
-      return await this.renderSplit(tools, pdfOptions);
+      // 左がPDF、右が工具管理の場合は順序を入れ替えて呼び出す
+      if (leftSlot?.kind === 'pdf' && rightSlot?.kind === 'loans') {
+        return await this.renderSplit(rightTools, leftPdfOptions, true);
+      } else {
+        // 左が工具管理、右がPDFの通常ケース
+        return await this.renderSplit(leftTools, rightPdfOptions, false);
+      }
     }
 
     return await this.renderMessage('表示するコンテンツがありません');
@@ -226,7 +256,7 @@ export class SignageRenderer {
       .toBuffer();
   }
 
-  private async renderSplit(tools: ToolItem[], pdfOptions?: SplitPdfOptions): Promise<Buffer> {
+  private async renderSplit(tools: ToolItem[], pdfOptions?: SplitPdfOptions, swapSides = false): Promise<Buffer> {
     const enrichedTools: ToolItem[] = tools.map((tool) => ({
       ...tool,
       isOver12Hours: this.isOver12Hours(tool.borrowedAt),
@@ -242,7 +272,7 @@ export class SignageRenderer {
       ...pdfOptions,
       imageBase64: pdfImageBase64,
       metricsText,
-    });
+    }, swapSides);
 
     return await sharp(Buffer.from(svg), { density: 240 })
       .jpeg({ quality: 92, mozjpeg: true })
@@ -323,7 +353,8 @@ export class SignageRenderer {
 
   private async buildSplitScreenSvg(
     tools: ToolItem[],
-    pdfOptions: (SplitPdfOptions & { imageBase64?: string | null }) | undefined
+    pdfOptions: (SplitPdfOptions & { imageBase64?: string | null }) | undefined,
+    swapSides = false
   ): Promise<string> {
     const scale = WIDTH / 1920;
     const outerPadding = 0;
@@ -341,38 +372,50 @@ export class SignageRenderer {
     const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
     const rightHeaderHeight = Math.round(12 * scale);  // 右ペイン: タイトル下からPDFまでの余白をさらに圧縮して黒エリアを拡大
 
-    const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
-      x: leftX + leftInnerPadding,
-      y: outerPadding + leftInnerPadding + leftHeaderHeight,
-      width: leftWidth - leftInnerPadding * 2,
-      height: panelHeight - leftInnerPadding * 2 - leftHeaderHeight,
-      mode: 'SPLIT',
-      showThumbnails: true,
-      maxRows: 3,
-      maxColumns: 3,
-    });
+    // swapSidesがtrueの場合、左右を入れ替える
+    const actualLeftTools = swapSides ? [] : tools;
+    const actualRightTools = swapSides ? tools : [];
+    const actualLeftPdfOptions = swapSides ? pdfOptions : undefined;
+    const actualRightPdfOptions = swapSides ? undefined : pdfOptions;
+
+    const leftTitle = swapSides ? (pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
+    const rightTitle = swapSides ? '持出中アイテム' : (pdfOptions?.title ?? 'PDF表示');
+
+    const { cardsSvg, overflowCount } = await this.buildToolCardGrid(
+      swapSides ? actualRightTools : actualLeftTools,
+      {
+        x: swapSides ? rightX + rightInnerPadding : leftX + leftInnerPadding,
+        y: outerPadding + (swapSides ? rightInnerPadding + rightHeaderHeight : leftInnerPadding + leftHeaderHeight),
+        width: (swapSides ? rightWidth : leftWidth) - (swapSides ? rightInnerPadding : leftInnerPadding) * 2,
+        height: panelHeight - (swapSides ? rightInnerPadding : leftInnerPadding) * 2 - (swapSides ? rightHeaderHeight : leftHeaderHeight),
+        mode: 'SPLIT',
+        showThumbnails: true,
+        maxRows: 3,
+        maxColumns: 3,
+      }
+    );
 
     const overflowBadge =
       overflowCount > 0
-        ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + panelHeight - leftInnerPadding}"
+        ? `<text x="${swapSides ? rightX + rightWidth - rightInnerPadding : leftX + leftWidth - leftInnerPadding}" y="${outerPadding + panelHeight - (swapSides ? rightInnerPadding : leftInnerPadding)}"
             text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
 
     const metricsElement = pdfOptions?.metricsText
-      ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + leftInnerPadding}"
+      ? `<text x="${swapSides ? rightX + rightWidth - rightInnerPadding : leftX + leftWidth - leftInnerPadding}" y="${outerPadding + (swapSides ? rightInnerPadding : leftInnerPadding)}"
           text-anchor="end" font-size="${Math.round(18 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(pdfOptions.metricsText)}
         </text>`
       : '';
 
-    const pdfContent = pdfOptions?.imageBase64
-      ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + rightHeaderHeight}"
-          width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - rightHeaderHeight}"
+    const pdfContent = (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.imageBase64
+      ? `<image x="${swapSides ? leftX + leftInnerPadding : rightX + rightInnerPadding}" y="${outerPadding + (swapSides ? leftInnerPadding + leftHeaderHeight : rightInnerPadding + rightHeaderHeight)}"
+          width="${(swapSides ? leftWidth : rightWidth) - (swapSides ? leftInnerPadding : rightInnerPadding) * 2}" height="${panelHeight - (swapSides ? leftInnerPadding : rightInnerPadding) * 2 - (swapSides ? leftHeaderHeight : rightHeaderHeight)}"
           preserveAspectRatio="xMidYMid meet"
-          href="${pdfOptions.imageBase64}" />`
-      : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
+          href="${(swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.imageBase64}" />`
+      : swapSides ? '' : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
           text-anchor="middle" font-size="${Math.round(32 * scale)}" fill="#e2e8f0" font-family="sans-serif">
           PDFが設定されていません
         </text>`;
@@ -380,10 +423,10 @@ export class SignageRenderer {
     const slideInfo = '';
 
     const fileNameOverlay =
-      pdfOptions?.title && pdfOptions.title.trim().length > 0
-        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
+      (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title && (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title?.trim().length
+        ? `<text x="${swapSides ? leftX + leftInnerPadding + Math.round(4 * scale) : rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + (swapSides ? leftInnerPadding + titleOffsetY + Math.round(12 * scale) : rightInnerPadding + titleOffsetY + Math.round(12 * scale))}"
             font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            ${this.escapeXml(pdfOptions.title)}
+            ${this.escapeXml((swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title ?? '')}
           </text>`
         : '';
 
@@ -404,11 +447,11 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            持出中アイテム
+            ${this.escapeXml(leftTitle)}
           </text>
-          ${metricsElement}
-          ${cardsSvg}
-          ${overflowBadge}
+          ${swapSides ? '' : metricsElement}
+          ${swapSides ? pdfContent : cardsSvg}
+          ${swapSides ? fileNameOverlay : overflowBadge}
         </g>
 
         <g>
@@ -417,11 +460,11 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
           <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            PDF表示
+            ${this.escapeXml(rightTitle)}
           </text>
-          ${slideInfo}
-          ${pdfContent}
-          ${fileNameOverlay}
+          ${swapSides ? slideInfo : ''}
+          ${swapSides ? cardsSvg : pdfContent}
+          ${swapSides ? overflowBadge : fileNameOverlay}
         </g>
       </svg>
     `;
