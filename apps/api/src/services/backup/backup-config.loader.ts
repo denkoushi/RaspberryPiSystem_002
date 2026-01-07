@@ -171,13 +171,17 @@ export class BackupConfigLoader {
     try {
       // load()がフォールバック（=危険なデフォルト返却）だった場合、そのまま保存すると設定が消える。
       // ここで保存を拒否して「消失」を防ぐ（復旧は別手順で行う）。
-      // ただし、テスト環境（NODE_ENV=test）ではこのチェックをスキップする（テストで設定ファイルが存在しない場合があるため）
-      if (process.env.NODE_ENV !== 'test') {
+      // NOTE:
+      // - 本番は /app/config/backup.json をボリューム共有しており、ここでの上書き事故が致命的
+      // - CI/E2Eでは BACKUP_CONFIG_PATH を /tmp/... に向けて初期化するケースがあるため、テスト用途のパスでは拒否しない
+      const isProductionConfigPath =
+        this.configPath === '/app/config/backup.json' || this.configPath.startsWith('/app/config/');
+      if (isProductionConfigPath) {
         const marker = (config as unknown as Record<string | symbol, unknown>)[this.FALLBACK_MARKER];
         if (marker) {
           logger?.error(
             { configPath: this.configPath, marker },
-            '[BackupConfigLoader] Refusing to save fallback config to avoid destructive overwrite'
+            '[BackupConfigLoader] Refusing to save fallback config to avoid destructive overwrite',
           );
           throw new Error('Refusing to save fallback backup config (would overwrite real config)');
         }
