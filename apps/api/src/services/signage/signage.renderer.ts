@@ -369,7 +369,7 @@ export class SignageRenderer {
     const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
     const rightInnerPadding = Math.round(6 * scale);   // 右ペイン: タイトルが枠に張り付かない最小余白
     const titleOffsetY = Math.round(22 * scale);       // 左右共通: タイトルのベースラインオフセット
-    const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
+    const leftHeaderHeight = Math.round(60 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔（タイトルと被らないように）
     const rightHeaderHeight = Math.round(12 * scale);  // 右ペイン: タイトル下からPDFまでの余白をさらに圧縮して黒エリアを拡大
 
     // swapSidesがtrueの場合、左右を入れ替える
@@ -422,14 +422,6 @@ export class SignageRenderer {
 
     const slideInfo = '';
 
-    const fileNameOverlay =
-      (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title && (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title?.trim().length
-        ? `<text x="${swapSides ? leftX + leftInnerPadding + Math.round(4 * scale) : rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + (swapSides ? leftInnerPadding + titleOffsetY + Math.round(12 * scale) : rightInnerPadding + titleOffsetY + Math.round(12 * scale))}"
-            font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            ${this.escapeXml((swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.title ?? '')}
-          </text>`
-        : '';
-
     return `
       <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -451,7 +443,7 @@ export class SignageRenderer {
           </text>
           ${swapSides ? '' : metricsElement}
           ${swapSides ? pdfContent : cardsSvg}
-          ${swapSides ? fileNameOverlay : overflowBadge}
+          ${overflowBadge}
         </g>
 
         <g>
@@ -464,7 +456,7 @@ export class SignageRenderer {
           </text>
           ${swapSides ? slideInfo : ''}
           ${swapSides ? cardsSvg : pdfContent}
-          ${swapSides ? overflowBadge : fileNameOverlay}
+          ${overflowBadge}
         </g>
       </svg>
     `;
