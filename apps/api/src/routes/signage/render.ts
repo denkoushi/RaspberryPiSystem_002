@@ -6,6 +6,7 @@ import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { ApiError } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
+import { logger } from '../../lib/logger.js';
 
 export function registerRenderRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
