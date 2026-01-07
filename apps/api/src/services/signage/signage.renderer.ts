@@ -56,15 +56,15 @@ export class SignageRenderer {
   }> {
     const content = await this.signageService.getContent();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:53',message:'renderCurrentContent got content',data:{contentType:content.contentType,hasLayoutConfig:content.layoutConfig!=null,layoutConfig:content.layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, layoutConfig: content.layoutConfig }, 'renderCurrentContent got content');
     // #endregion
     const buffer = await this.renderContent(content);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:58',message:'renderContent completed',data:{bufferSize:buffer.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:58', hypothesisId: 'E', bufferSize: buffer.length }, 'renderContent completed');
     // #endregion
     const result = await SignageRenderStorage.saveRenderedImage(buffer);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:59',message:'Image saved',data:{filename:result.filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:59', hypothesisId: 'C', filename: result.filename }, 'Image saved');
     // #endregion
     return {
       renderedAt: new Date(),
@@ -74,12 +74,12 @@ export class SignageRenderer {
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:66',message:'renderContent called',data:{hasLayoutConfig:content.layoutConfig!=null,contentType:content.contentType,layoutConfig:content.layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    logger.info({ location: 'signage.renderer.ts:66', hypothesisId: 'E', hasLayoutConfig: content.layoutConfig != null, contentType: content.contentType, layoutConfig: content.layoutConfig }, 'renderContent called');
     // #endregion
     // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
     if (content.layoutConfig) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:68',message:'Rendering with layoutConfig',data:{layoutConfig:content.layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      logger.info({ location: 'signage.renderer.ts:68', hypothesisId: 'E', layoutConfig: content.layoutConfig }, 'Rendering with layoutConfig');
       // #endregion
       return await this.renderWithLayoutConfig(content);
     }

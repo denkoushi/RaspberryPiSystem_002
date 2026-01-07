@@ -199,7 +199,7 @@ export class SignageService {
     const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:197',message:'getContent called',data:{currentDayOfWeek,currentTime:currentTime,now:now.toISOString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    logger.info({ location: 'signage.service.ts:197', hypothesisId: 'A', currentDayOfWeek, currentTime, now: now.toISOString() }, 'getContent called');
     // #endregion
 
     // 緊急表示を最優先で確認
@@ -307,13 +307,13 @@ export class SignageService {
     const schedules = await this.getSchedules();
     
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:303',message:'Checking schedules',data:{scheduleCount:schedules.length,schedules:schedules.map(s=>({id:s.id,name:s.name,priority:s.priority,enabled:s.enabled,dayOfWeek:s.dayOfWeek,startTime:s.startTime,endTime:s.endTime,hasLayoutConfig:s.layoutConfig!=null}))},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    logger.info({ location: 'signage.service.ts:303', hypothesisId: 'A', scheduleCount: schedules.length, schedules: schedules.map(s => ({ id: s.id, name: s.name, priority: s.priority, enabled: s.enabled, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, hasLayoutConfig: s.layoutConfig != null })) }, 'Checking schedules');
     // #endregion
     
     for (const schedule of schedules) {
       const matches = this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:306',message:'Schedule window check',data:{scheduleId:schedule.id,scheduleName:schedule.name,matches,currentDayOfWeek,currentTime,dayOfWeek:schedule.dayOfWeek,startTime:schedule.startTime,endTime:schedule.endTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      logger.info({ location: 'signage.service.ts:306', hypothesisId: 'A', scheduleId: schedule.id, scheduleName: schedule.name, matches, currentDayOfWeek, currentTime, dayOfWeek: schedule.dayOfWeek, startTime: schedule.startTime, endTime: schedule.endTime }, 'Schedule window check');
       // #endregion
       if (!matches) {
         continue;
@@ -321,7 +321,7 @@ export class SignageService {
 
       const response = await this.buildScheduleResponse(schedule);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:310',message:'Schedule response built',data:{scheduleId:schedule.id,scheduleName:schedule.name,responseContentType:response?.contentType,responseLayoutConfig:response?.layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      logger.info({ location: 'signage.service.ts:310', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, responseContentType: response?.contentType, responseLayoutConfig: response?.layoutConfig }, 'Schedule response built');
       // #endregion
       if (response) {
         return response;
@@ -568,7 +568,7 @@ export class SignageService {
 
   private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:554',message:'buildScheduleResponse called',data:{scheduleId:schedule.id,scheduleName:schedule.name,hasLayoutConfig:schedule.layoutConfig!=null,layoutConfigType:typeof schedule.layoutConfig,contentType:schedule.contentType},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    logger.info({ location: 'signage.service.ts:554', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, hasLayoutConfig: schedule.layoutConfig != null, layoutConfigType: typeof schedule.layoutConfig, contentType: schedule.contentType }, 'buildScheduleResponse called');
     // #endregion
     // layoutConfigを優先し、nullの場合は旧形式から変換
     let layoutConfig: SignageLayoutConfig;
@@ -578,7 +578,7 @@ export class SignageService {
       // 新形式（layoutConfig）を使用
       layoutConfig = schedule.layoutConfig as unknown as SignageLayoutConfig;
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:561',message:'Using new layoutConfig format',data:{scheduleId:schedule.id,layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      logger.info({ location: 'signage.service.ts:561', hypothesisId: 'B', scheduleId: schedule.id, layoutConfig }, 'Using new layoutConfig format');
       // #endregion
     } else {
       // 旧形式から変換（PDF情報が必要な場合は取得）
@@ -594,7 +594,7 @@ export class SignageService {
       }
       layoutConfig = this.convertLegacyToLayoutConfig(schedule.contentType, schedule.pdfId, pdf);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.service.ts:574',message:'Converted from legacy format',data:{scheduleId:schedule.id,layoutConfig},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      logger.info({ location: 'signage.service.ts:574', hypothesisId: 'B', scheduleId: schedule.id, layoutConfig }, 'Converted from legacy format');
       // #endregion
     }
 
