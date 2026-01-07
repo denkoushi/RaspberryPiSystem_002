@@ -53,6 +53,17 @@ describe('CSV Import Schedule API', () => {
     adminToken = admin.token;
     viewerToken = viewer.token;
 
+    // テスト用の設定ファイルを事前に作成（フォールバックを避けるため）
+    if (!fs.existsSync(testConfigPath)) {
+      const initialConfig = {
+        storage: { provider: 'local' as const, options: {} },
+        targets: [],
+        csvImports: [],
+        retention: { days: 30, maxItems: 100 }
+      };
+      fs.writeFileSync(testConfigPath, JSON.stringify(initialConfig, null, 2), 'utf-8');
+    }
+
     // テスト用の設定をリセット
     const config = await BackupConfigLoader.load();
     config.csvImports = [];
