@@ -59,8 +59,10 @@
 ### データ取得
 
 - **方式**: ポーリング方式（定期的にAPIからデータを取得）
-- **更新間隔**: 30秒〜1分間隔（設定可能）
+- **更新間隔**: 30秒間隔（`signage-lite-update.timer`で制御）
 - **オフライン時**: エラーメッセージのみ表示（キャッシュ表示なし）
+- **画像更新**: `signage-lite-update.timer`が30秒ごとに`/api/signage/current-image`から画像を取得し、`/var/cache/signage/current.jpg`を更新
+  - **注意**: タイマーが停止していると画像が更新されないため、デプロイ後やサービス再起動後はタイマーの状態を確認すること（`systemctl is-active signage-lite-update.timer`）
 
 ### 設定画面
 
