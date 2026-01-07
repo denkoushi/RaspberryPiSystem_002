@@ -15,6 +15,13 @@ import { BackupHistoryService } from '../services/backup/backup-history.service.
 import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
 
+type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
+  accessToken?: string;
+  refreshToken?: string;
+  appKey?: string;
+  appSecret?: string;
+};
+
 const backupRequestSchema = z.object({
   kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file', 'client-directory']),
   source: z.string(),
@@ -67,17 +74,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // トークン更新コールバック（設定ファイルを更新）
     const onTokenUpdate = async (newToken: string) => {
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            accessToken: newToken
-          }
-        }
-      };
-      await BackupConfigLoader.save(updatedConfig);
+      // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、最新を読み直して更新する
+      const latest = await BackupConfigLoader.load();
+      (latest.storage.options ??= {});
+      const legacyOpts = latest.storage.options as LegacyStorageOptions;
+      legacyOpts.accessToken = newToken;
+      // 新構造も更新
+      legacyOpts.dropbox = { ...(legacyOpts.dropbox ?? {}), accessToken: newToken };
+      await BackupConfigLoader.save(latest);
     };
     
     // バックアップターゲットを作成（Factoryパターンを使用）
@@ -219,20 +223,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // トークン更新コールバック（Dropbox専用: options.dropbox.accessToken へ保存）
     const onTokenUpdate = async (newToken: string) => {
       const latestConfig = await BackupConfigLoader.load();
-      const updatedConfig: BackupConfig = {
-        ...latestConfig,
-        storage: {
-          ...latestConfig.storage,
-          options: {
-            ...latestConfig.storage.options,
-            dropbox: {
-              ...latestConfig.storage.options?.dropbox,
-              accessToken: newToken
-            }
-          }
-        }
-      };
-      await BackupConfigLoader.save(updatedConfig);
+      (latestConfig.storage.options ??= {});
+      const opts = latestConfig.storage.options as NonNullable<BackupConfig['storage']['options']>;
+      opts.dropbox = { ...(opts.dropbox ?? {}), accessToken: newToken };
+      await BackupConfigLoader.save(latestConfig);
     };
     
     // バックアップターゲットを作成（Factoryパターンを使用）
@@ -984,23 +978,22 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       const tokenInfo = await oauthService.exchangeCodeForTokens(query.code);
       
       // 設定ファイルを更新（新構造: options.dropbox.* へ保存）
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            dropbox: {
-              appKey,
-              appSecret,
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken || config.storage.options?.dropbox?.refreshToken || config.storage.options?.refreshToken
-            }
-          }
-        }
+      // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+      (config.storage.options ??= {});
+      const opts = config.storage.options as LegacyStorageOptions;
+      opts.dropbox = {
+        appKey,
+        appSecret,
+        accessToken: tokenInfo.accessToken,
+        refreshToken: tokenInfo.refreshToken || opts.dropbox?.refreshToken || opts.refreshToken,
       };
+      // 後方互換（旧キー）も更新しておく
+      opts.accessToken = tokenInfo.accessToken;
+      if (tokenInfo.refreshToken) {
+        opts.refreshToken = tokenInfo.refreshToken;
+      }
 
-      await BackupConfigLoader.save(updatedConfig);
+      await BackupConfigLoader.save(config);
 
       return reply.status(200).send({
         success: true,
@@ -1061,17 +1054,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     
     // トークン更新コールバック
     const onTokenUpdate = async (newToken: string) => {
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            accessToken: newToken
-          }
-        }
-      };
-      await BackupConfigLoader.save(updatedConfig);
+      const latest = await BackupConfigLoader.load();
+      (latest.storage.options ??= {});
+      // 旧キー（現行実装が参照している可能性あり）
+      const legacyOpts = latest.storage.options as LegacyStorageOptions;
+      legacyOpts.accessToken = newToken;
+      // 新構造も更新
+      legacyOpts.dropbox = { ...(legacyOpts.dropbox ?? {}), accessToken: newToken };
+      await BackupConfigLoader.save(latest);
     };
 
     // Dropboxストレージプロバイダーを作成（Factoryパターンを使用）
@@ -1350,23 +1340,22 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       const tokenInfo = await oauthService.refreshAccessToken(refreshToken);
       
       // 設定ファイルを更新（新構造: options.dropbox.* へ保存）
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            dropbox: {
-              appKey,
-              appSecret,
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken || refreshToken || config.storage.options?.dropbox?.refreshToken
-            }
-          }
-        }
+      // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+      (config.storage.options ??= {});
+      const opts = config.storage.options as LegacyStorageOptions;
+      opts.dropbox = {
+        appKey,
+        appSecret,
+        accessToken: tokenInfo.accessToken,
+        refreshToken: tokenInfo.refreshToken || refreshToken || opts.dropbox?.refreshToken,
       };
+      // 後方互換（旧キー）も更新しておく
+      opts.accessToken = tokenInfo.accessToken;
+      if (tokenInfo.refreshToken) {
+        opts.refreshToken = tokenInfo.refreshToken;
+      }
 
-      await BackupConfigLoader.save(updatedConfig);
+      await BackupConfigLoader.save(config);
 
       return reply.status(200).send({
         success: true,
@@ -1423,20 +1412,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // トークン更新コールバック（Dropbox専用: options.dropbox.accessToken へ保存）
     const onTokenUpdate = async (newToken: string) => {
       const latestConfig = await BackupConfigLoader.load();
-      const updatedConfig: BackupConfig = {
-        ...latestConfig,
-        storage: {
-          ...latestConfig.storage,
-          options: {
-            ...latestConfig.storage.options,
-            dropbox: {
-              ...latestConfig.storage.options?.dropbox,
-              accessToken: newToken
-            }
-          }
-        }
-      };
-      await BackupConfigLoader.save(updatedConfig);
+      (latestConfig.storage.options ??= {});
+      const opts = latestConfig.storage.options as LegacyStorageOptions;
+      opts.dropbox = { ...(opts.dropbox ?? {}), accessToken: newToken };
+      // 後方互換（旧キー）も更新しておく
+      opts.accessToken = newToken;
+      await BackupConfigLoader.save(latestConfig);
     };
 
     try {
