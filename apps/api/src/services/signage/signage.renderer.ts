@@ -54,17 +54,24 @@ export class SignageRenderer {
     renderedAt: Date;
     filename: string;
   }> {
+    const renderStartTime = Date.now();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:53',message:'renderCurrentContent started',data:{renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     const content = await this.signageService.getContent();
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:53', hypothesisId: 'E', contentType: content.contentType, hasLayoutConfig: content.layoutConfig != null, layoutConfig: content.layoutConfig }, 'renderCurrentContent got content');
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:57',message:'Content retrieved',data:{contentType:content.contentType,hasLayoutConfig:content.layoutConfig!=null,pdfId:content.pdf?.id,pdfPages:content.pdf?.pages?.length,displayMode:content.displayMode,slideInterval:content.pdf?.slideInterval},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     const buffer = await this.renderContent(content);
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:58', hypothesisId: 'E', bufferSize: buffer.length }, 'renderContent completed');
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:61',message:'Content rendered',data:{bufferSize:buffer.length,renderDuration:Date.now()-renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     const result = await SignageRenderStorage.saveRenderedImage(buffer);
     // #region agent log
     logger.info({ location: 'signage.renderer.ts:59', hypothesisId: 'C', filename: result.filename }, 'Image saved');
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:65',message:'Image saved',data:{filename:result.filename,totalDuration:Date.now()-renderStartTime},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     return {
       renderedAt: new Date(),
@@ -748,6 +755,9 @@ export class SignageRenderer {
     slideInterval: number | null,
     pdfId?: string
   ): number {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:745',message:'getCurrentPdfPageIndex called',data:{totalPages,displayMode,slideInterval,pdfId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (totalPages === 0) {
       if (pdfId) {
         this.pdfSlideState.delete(pdfId);
@@ -760,6 +770,10 @@ export class SignageRenderer {
       const slideIntervalMs = slideInterval * 1000;
       const state = this.pdfSlideState.get(pdfId);
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:761',message:'State retrieved',data:{pdfId,hasState:!!state,state:state?{lastIndex:state.lastIndex,lastRenderedAt:state.lastRenderedAt,elapsed:now-state.lastRenderedAt}:null,now,slideIntervalMs},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+
       if (!state) {
         this.pdfSlideState.set(pdfId, { lastIndex: 0, lastRenderedAt: now });
         logger.info({
@@ -769,11 +783,17 @@ export class SignageRenderer {
           lastIndex: 0,
           reason: 'initialized state',
         }, 'PDF slide show page index calculated');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:772',message:'State initialized',data:{pdfId,lastIndex:0,lastRenderedAt:now},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return 0;
       }
 
       const elapsed = now - state.lastRenderedAt;
       let steps = Math.floor(elapsed / slideIntervalMs);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:776',message:'Steps calculated (before adjustment)',data:{pdfId,elapsed,slideIntervalMs,stepsBeforeAdjust:steps,lastIndex:state.lastIndex,totalPages},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       if (steps <= 0) {
         steps = 1;
       } else {
@@ -782,9 +802,18 @@ export class SignageRenderer {
           steps = 1;
         }
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:784',message:'Steps calculated (after adjustment)',data:{pdfId,stepsAfterAdjust:steps,lastIndex:state.lastIndex,totalPages},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       const nextIndex = (state.lastIndex + steps) % totalPages;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:786',message:'Next index calculated',data:{pdfId,lastIndex:state.lastIndex,steps,nextIndex,totalPages,expectedSequence:Array.from({length:totalPages},(_,i)=>(state.lastIndex+i+1)%totalPages).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signage.renderer.ts:787',message:'State updated',data:{pdfId,lastIndex:nextIndex,lastRenderedAt:now},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
 
       logger.info({
         pdfId,
