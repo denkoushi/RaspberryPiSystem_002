@@ -180,6 +180,11 @@ update-frequency: high
 | [KB-088](./infrastructure/signage.md#kb-088-prisma-p3009-signage-migrations-既存型が残存し-migrate-deploy-失敗) | Prisma P3009 (Signage migrations) 既存型が残存し migrate deploy 失敗 | ✅ 解決済み |
 | [KB-089](./infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング) | Pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング | ✅ 解決済み |
 | [KB-092](./infrastructure/miscellaneous.md#kb-092-pi4キオスクのgpuクラッシュ問題) | Pi4キオスクのGPUクラッシュ問題 | 🔄 一時的解決 |
+| [KB-127](./infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) | サイネージUIで自端末の温度表示機能追加とデザイン変更 | ✅ 解決済み |
+| [KB-150](./infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) | サイネージレイアウトとコンテンツの疎結合化実装完了 | ✅ 解決済み |
+| [KB-152](./infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) | サイネージページ表示漏れ調査と修正 | ✅ 解決済み |
+| [KB-153](./infrastructure/signage.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) | Pi3デプロイ失敗（signageロールのテンプレートディレクトリ不足） | ✅ 解決済み |
+| [KB-154](./infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) | SPLITモードで左右別PDF表示に対応 | ✅ 解決済み |
 | [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
@@ -236,9 +241,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 99件 |
+| ✅ 解決済み | 104件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **104件** |
+| **合計** | **109件** |
 
 ---
 
@@ -303,5 +308,6 @@ update-frequency: high
 - 2026-01-04: KB-130を追加（Pi5のストレージ使用量が異常に高い問題（Docker Build Cacheとsignage-rendered履歴画像の削除））
 - 2026-01-04: KB-131を追加（APIコンテナがSLACK_KIOSK_SUPPORT_WEBHOOK_URL環境変数の空文字で再起動ループする問題）
 - 2026-01-05: KB-132〜KB-141を追加（WebRTCビデオ通話機能の実装過程で発生した問題と解決策: シグナリングルート問題、@fastify/websocket問題、keepalive対策、cleanup早期実行、recvonlyフォールバック、srcObjectバインディング、WebSocket接続管理、localStorage互換性、CaddyのWebSocketヘッダー問題）
+- 2026-01-08: KB-150、KB-152、KB-153、KB-154を追加（サイネージレイアウトとコンテンツの疎結合化実装完了、サイネージページ表示漏れ調査と修正、Pi3デプロイ失敗（signageロールのテンプレートディレクトリ不足）、SPLITモードで左右別PDF表示に対応）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）

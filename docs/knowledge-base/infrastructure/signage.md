@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2025-12-29
+last-verified: 2026-01-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 10件  
+**件数**: 11件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -646,6 +646,50 @@ const textX = x + textAreaX;
 - **新しいロール作成時**: `templates/`ディレクトリを最初から作成する
 - **テンプレートファイル追加時**: ロール専用のテンプレートは必ず`roles/<role-name>/templates/`に配置する
 - **デプロイ前の確認**: デプロイ前にロール構造を確認し、必要なディレクトリが存在することを確認する
+
+---
+
+### [KB-154] SPLITモードで左右別PDF表示に対応
+
+**実装日時**: 2026-01-08
+
+**事象**: 
+- SPLITモードで左右ともPDFを表示したいが、現状は左=工具管理/右=PDFまたは左=PDF/右=工具管理の組み合わせのみ対応
+- 左右別PDF表示の場合、左ペインが真っ黒でタイトルが「持出中アイテム」とハードコードされていた
+
+**要因**: 
+- `SignageContentResponse`に`pdf`フィールドしかなく、複数PDFを参照できない
+- レンダラーが左右ともPDFの場合の処理を実装していなかった
+- Web側の`SignageDisplayPage`が`layoutConfig`準拠の2ペインSPLIT描画に対応していなかった
+
+**実施した対策**: 
+- ✅ **API拡張**: `SignageContentResponse`に`pdfsById`フィールドを追加し、複数PDFを辞書形式で提供可能に
+- ✅ **レンダラー拡張**: `renderSplitWithPanes`メソッドを追加し、左右ともPDFの場合に対応
+- ✅ **レンダラー修正**: `renderWithLayoutConfig`で左右ともPDFの場合に`renderSplitWithPanes`を呼び出すように修正
+- ✅ **Web側実装**: `SignageDisplayPage`を`layoutConfig`準拠の2ペインSPLIT描画に更新し、左右それぞれのスロットに応じてPDFまたは工具を描画
+- ✅ **型定義追加**: `client.ts`に`layoutConfig`と`pdfsById`の型定義を追加
+- ✅ **テスト追加**: 左右別pdfIdのテストケースを追加し、`pdfsById`の内容を検証
+
+**学んだこと**:
+1. **複数PDF参照の必要性**: SPLITレイアウトで左右別PDFを表示するには、APIレスポンスに複数PDFの情報を含める必要がある
+2. **レンダラーの疎結合化**: `renderSplitWithPanes`を追加することで、左右のペインの種類（PDF/工具）に応じて柔軟に描画できる
+3. **後方互換性の維持**: `pdf`フィールドは先頭PDFスロット（LEFT）のPDF情報を返すことで、既存コードとの互換性を維持
+4. **Web側の動的描画**: `layoutConfig`に基づいて動的にペインを描画することで、柔軟なレイアウトに対応可能
+
+**解決状況**: ✅ **解決済み**（2026-01-08）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-08）
+- SPLITレイアウト + 左pdf/右pdf: ✅ 正常
+- 左右それぞれのPDFが独立してスライドショー表示されることを確認
+- タイトルがPDF名から動的に生成されることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.service.ts`（`pdfsById`フィールド追加）
+- `apps/api/src/services/signage/signage.renderer.ts`（`renderSplitWithPanes`メソッド追加）
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`（`layoutConfig`準拠の2ペインSPLIT描画）
+- `apps/web/src/api/client.ts`（型定義追加）
+- `apps/api/src/routes/__tests__/signage.integration.test.ts`（テストケース追加）
+- `docs/modules/signage/README.md`（仕様更新）
 
 ---
 

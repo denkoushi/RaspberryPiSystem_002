@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-01-07（レイアウトとコンテンツの疎結合化実装完了、実機検証完了、UI改善）
+最終更新: 2026-01-08（SPLITモードで左右別PDF表示に対応、layoutConfig準拠の実装完了）
 
 ## 概要
 
@@ -25,6 +25,7 @@
   - **左右分割表示（SPLIT）**: 
     - 左に工具管理データ、右にPDF
     - 左にPDF、右に工具管理データ
+    - 左にPDF、右にPDF（左右別PDF表示）
     - 各スロットのコンテンツは管理コンソールで自由に選択可能
 
 ### PDF表示
@@ -349,9 +350,19 @@ model SignageEmergency {
     "id": "uuid",
     "name": "PDF名",
     "pages": ["/api/signage/pdfs/uuid/page/1", ...]
+  },
+  "pdfsById": {
+    "uuid": {
+      "id": "uuid",
+      "name": "PDF名",
+      "pages": ["/api/signage/pdfs/uuid/page/1", ...],
+      "slideInterval": 30
+    }
   }
 }
 ```
+
+**注意**: `pdfsById`フィールドは、SPLITレイアウトで複数のPDFスロットが存在する場合に、各PDFの情報を辞書形式で提供します。左右別PDF表示の場合、`pdfsById`には左右両方のPDF情報が含まれます。`pdf`フィールドは後方互換性のため、先頭PDFスロット（LEFT）のPDF情報を返します。
 
 **後方互換性**: `layoutConfig`が`null`の場合は、既存の`contentType`/`pdfId`から自動的に新形式へ変換されます。
 
