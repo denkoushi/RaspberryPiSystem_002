@@ -1,0 +1,11 @@
+[Unit]
+Description=Update signage image periodically
+After=network-online.target
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{ signage_update_interval | default(30) }}s
+
+[Install]
+WantedBy=timers.target
+
