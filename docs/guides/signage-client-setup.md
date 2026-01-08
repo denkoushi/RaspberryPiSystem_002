@@ -98,6 +98,37 @@ xset q
 - ファイアウォール設定を確認
 - サイネージURLが正しいか確認
 
+### サイネージ画像が更新されない
+
+**症状**: Pi3のサイネージ画面が古い画像のまま更新されない
+
+**原因**: `signage-lite-update.timer`が停止している可能性があります
+
+**解決方法**:
+```bash
+# Pi3で実行
+sudo systemctl start signage-lite-update.timer
+sudo systemctl enable signage-lite-update.timer
+
+# タイマーの状態を確認
+systemctl is-active signage-lite-update.timer
+
+# 手動で画像更新を実行（確認用）
+sudo systemctl start signage-lite-update.service
+```
+
+**確認方法**:
+```bash
+# 画像ファイルの更新日時を確認（tmpfs: /run/signage）
+ls -lh /run/signage/current.jpg
+stat -c "%y" /run/signage/current.jpg
+```
+
+**注意**: 
+- `signage-lite-update.timer`は30秒ごとに画像を更新します。タイマーが停止していると、Pi3は古い画像を表示し続けます。
+- 画像キャッシュは `/run/signage`（tmpfs）に配置されており、再起動後は消えます（SDカードへの書込みを削減するため）。
+- 画像更新が停止した場合、`signage-lite-watchdog.timer`が自動的に復旧を試行します（1分間隔で監視）。
+
 ```bash
 # サーバーへの接続確認
 curl -k https://192.168.10.230/api/system/health

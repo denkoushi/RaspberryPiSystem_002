@@ -10,7 +10,7 @@ fi
 SERVER_URL="$1"
 CLIENT_KEY="$2"
 IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
-CACHE_DIR="/var/cache/signage"
+CACHE_DIR="/run/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_INTERVAL="${SIGNAGE_UPDATE_INTERVAL:-30}" # デフォルト30秒
 ALLOW_INSECURE_TLS="${SIGNAGE_ALLOW_INSECURE_TLS:-true}"
@@ -69,9 +69,16 @@ if [[ ${#REQUIRED_PACKAGES[@]} -gt 0 ]]; then
   apt-get install -y "${REQUIRED_PACKAGES[@]}"
 fi
 
-# キャッシュディレクトリの作成
+# キャッシュディレクトリの作成（tmpfs: /run/signage）
+# systemd-tmpfilesで作成されるが、手動セットアップ時も確実に作成
 mkdir -p "$CACHE_DIR"
 chown "$KIOSK_USER:$KIOSK_USER" "$CACHE_DIR"
+
+# tmpfiles設定をインストール（再起動後も確実に作成されるように）
+cat > /etc/tmpfiles.d/signage-lite.conf <<EOF
+d /run/signage 0755 $KIOSK_USER $KIOSK_USER -
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf
 
 # 画像更新スクリプトの作成
 cat >"$UPDATE_SCRIPT" <<EOFSCRIPT
@@ -206,6 +213,10 @@ Type=simple
 User=$KIOSK_USER
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/$KIOSK_USER/.Xauthority
+
+# DISPLAYが利用可能になるまで待機（最大30秒）
+ExecStartPre=/bin/bash -c 'for i in {1..30}; do [ -n "\$DISPLAY" ] && xset q >/dev/null 2>&1 && break || sleep 1; done'
+
 # 画像表示（内部で画像取得を試行）
 ExecStart=$DISPLAY_SCRIPT
 
@@ -213,6 +224,12 @@ ExecStart=$DISPLAY_SCRIPT
 # 既存画像があれば表示し続ける
 Restart=always
 RestartSec=10
+
+# 暴走防止: 5分間に5回以上失敗した場合は10分間停止
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StartLimitAction=none
+
 StandardOutput=journal
 StandardError=journal
 

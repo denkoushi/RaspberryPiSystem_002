@@ -5,6 +5,16 @@ import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 
+type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
+  clientId?: string;
+  clientSecret?: string;
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+  gmailAccessToken?: string;
+  gmailRefreshToken?: string;
+};
+
 const gmailConfigUpdateSchema = z.object({
   clientId: z.string().optional(),
   clientSecret: z.string().optional(),
@@ -75,32 +85,23 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     const config = await BackupConfigLoader.load();
     
     // Gmail設定を更新（新構造: options.gmail.* へ保存）
-    const updatedConfig: BackupConfig = {
-      ...config,
-      storage: {
-        ...config.storage,
-        // NOTE: Gmail設定の更新は、バックアップ先（dropbox/local）の切替とは独立に扱う
-        provider: config.storage.provider,
-        options: {
-          ...config.storage.options,
-          gmail: {
-            ...config.storage.options?.gmail,
-            ...(body.clientId !== undefined && { clientId: body.clientId }),
-            ...(body.clientSecret !== undefined && { clientSecret: body.clientSecret }),
-            ...(body.subjectPattern !== undefined && { subjectPattern: body.subjectPattern }),
-            ...(body.fromEmail !== undefined && { 
-              fromEmail: body.fromEmail === '' ? undefined : body.fromEmail 
-            }),
-            ...(body.redirectUri !== undefined && { redirectUri: body.redirectUri }),
-            // 既存のトークンは保持
-            accessToken: config.storage.options?.gmail?.accessToken ?? config.storage.options?.gmailAccessToken,
-            refreshToken: config.storage.options?.gmail?.refreshToken ?? config.storage.options?.gmailRefreshToken
-          }
-        }
-      }
+    // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+    (config.storage.options ??= {});
+    const legacyOpts = config.storage.options as LegacyStorageOptions;
+    const currentGmail = legacyOpts.gmail ?? {};
+    legacyOpts.gmail = {
+      ...currentGmail,
+      ...(body.clientId !== undefined && { clientId: body.clientId }),
+      ...(body.clientSecret !== undefined && { clientSecret: body.clientSecret }),
+      ...(body.subjectPattern !== undefined && { subjectPattern: body.subjectPattern }),
+      ...(body.fromEmail !== undefined && { fromEmail: body.fromEmail === '' ? undefined : body.fromEmail }),
+      ...(body.redirectUri !== undefined && { redirectUri: body.redirectUri }),
+      // 既存のトークンは保持（後方互換: 旧キーも読む）
+      accessToken: currentGmail.accessToken ?? legacyOpts.gmailAccessToken,
+      refreshToken: currentGmail.refreshToken ?? legacyOpts.gmailRefreshToken,
     };
 
-    await BackupConfigLoader.save(updatedConfig);
+    await BackupConfigLoader.save(config);
 
     logger?.info(
       { 
@@ -124,27 +125,21 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
 
-    // Gmail設定を削除し、localにフォールバック（新構造: options.gmail を削除）
-    const updatedConfig: BackupConfig = {
-      ...config,
-      storage: {
-        provider: config.storage.provider,
-        options: {
-          ...config.storage.options,
-          gmail: undefined,
-          // 旧構造のGmail設定も削除（後方互換のため）
-          clientId: undefined,
-          clientSecret: undefined,
-          subjectPattern: undefined,
-          fromEmail: undefined,
-          redirectUri: undefined,
-          gmailAccessToken: undefined,
-          gmailRefreshToken: undefined
-        }
-      }
-    };
+    // Gmail設定を削除（新構造: options.gmail を削除）
+    // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+    (config.storage.options ??= {});
+    const legacyOpts = config.storage.options as LegacyStorageOptions;
+    legacyOpts.gmail = undefined;
+    // 旧構造のGmail設定も削除（後方互換のため）
+    legacyOpts.clientId = undefined;
+    legacyOpts.clientSecret = undefined;
+    legacyOpts.subjectPattern = undefined;
+    legacyOpts.fromEmail = undefined;
+    legacyOpts.redirectUri = undefined;
+    legacyOpts.gmailAccessToken = undefined;
+    legacyOpts.gmailRefreshToken = undefined;
 
-    await BackupConfigLoader.save(updatedConfig);
+    await BackupConfigLoader.save(config);
 
     logger?.info('[GmailConfigRoute] Gmail configuration removed, fallback to local storage');
 

@@ -122,6 +122,7 @@ nano apps/api/.env
     - `DROPBOX_APP_KEY`、`DROPBOX_APP_SECRET`、`DROPBOX_REFRESH_TOKEN`、`DROPBOX_ACCESS_TOKEN`はAnsible管理化済み（[KB-143](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)参照）
   - **推奨**: 新しい環境変数を追加する場合は、Ansible管理化を検討してください
 - **設定ファイルの管理**: `backup.json`などの設定ファイルは、APIが書き換える可能性があるため、Ansibleで上書きせず、存在保証と健全性チェックに留める（[KB-143](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)参照）
+- **backup.jsonの保護機能**: `backup.json`の破壊的上書きを防ぐため、フォールバック設定の保存拒否と破壊的上書き防止ガードが実装されている（[KB-151](../knowledge-base/infrastructure/backup-restore.md#kb-151-backupjsonの破壊的上書きを防ぐセーフガード実装)参照）。設定ファイルが急激に縮小する（targets数が50%以上減る）場合や、フォールバック設定が保存されようとする場合、保存が拒否される。
 - バックアップ: バックアップスクリプトで`.env`ファイルを自動バックアップ
 
 詳細は [本番環境セットアップガイド](./production-setup.md#環境変数の管理) を参照してください。
@@ -197,6 +198,14 @@ curl http://localhost:8080/api/system/health
 - `VITE_AGENT_WS_URL`は環境変数ファイル（`.env`）で管理できるため、IPアドレスが変わった場合は`.env`ファイルを更新してからWebコンテナを再ビルドしてください。
 - **Pi5のstatus-agent設定**: Pi5サーバー側のstatus-agent設定はAnsibleで管理されています（[KB-129](../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照）。`inventory.yml`の`status_agent_*`変数と`host_vars/raspberrypi5/vault.yml`の`vault_status_agent_client_key`が設定されていれば、Ansible実行時に自動的に設定ファイルが更新されます。
 - **環境変数の空文字問題**: `docker-compose.server.yml`で`${VAR:-}`構文を使用する場合、環境変数が未設定でも空文字が注入されるため、Zodバリデーションで`z.preprocess`を使用して空文字を`undefined`に変換する必要があります（[KB-131](../knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題)参照）。APIコンテナが再起動ループに陥る場合は、環境変数のバリデーションエラーを確認してください。
+- **Prisma Client再生成の注意**: データベースマイグレーション適用後、APIコンテナ内でPrisma Clientを再生成する必要がある場合があります。マイグレーションが適用されても、コンテナ内のPrisma Clientが古いスキーマを参照している場合は、以下のコマンドで再生成してください（[KB-150](../knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了)参照）:
+  ```bash
+  # APIコンテナ内でPrisma Clientを再生成
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma generate
+  
+  # APIコンテナを再起動
+  docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+  ```
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 
@@ -238,34 +247,37 @@ curl http://localhost:7071/api/agent/status
 - Pi3の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 
-### デプロイ前の準備（必須）
+### デプロイ前の準備（自動化済み）
 
-**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**✅ 自動化**: Pi3デプロイ時のプレフライトチェックは**自動的に実行**されます（2026-01-08実装）。以下の手順を手動で実行する必要はありません。
 
+**自動実行されるプレフライトチェック**:
+1. **コントロールノード側（Pi5上）**: Ansibleロールのテンプレートファイル存在確認（`roles/signage/templates/`）
+2. **Pi3側**: 
+   - サービス停止・無効化（`signage-lite.service`, `signage-lite-update.timer`, `signage-lite-watchdog.timer`, `signage-daily-reboot.timer`, `status-agent.timer`）
+   - サービスmask（`signage-lite.service`の自動再起動防止）
+   - 残存AnsiballZプロセスの掃除（120秒以上経過したもの）
+   - メモリ閾値チェック（利用可能メモリ >= 120MB）
+
+**プレフライトチェックが失敗した場合**:
+- メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
+- テンプレートファイル不足: デプロイ開始前にfail-fastし、エラーメッセージにファイル配置場所が表示されます
+
+**手動実行が必要な場合（プレフライトチェック失敗時）**:
 ```bash
-# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer'"
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer'"
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
+# メモリ不足の場合のみ、手動でサービスを停止
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
 
-# sudo権限の前提
-# signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
+# 数秒待ってからメモリを確認
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -m'"
 
-# メモリ使用状況を確認（120MB以上空きがあることを確認）
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
-
-# プロセスが完全に停止していることを確認
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep signage-lite | grep -v grep'"
-# → 何も表示されないことを確認
-
-# Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
-ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
+# メモリが120MB以上になったら、再度デプロイを実行
 ```
 
 **重要**: 
-- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- プレフライトチェックにより、デプロイは**手順遵守に依存せず**、自動的に安全な状態で実行されます
 - Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
 

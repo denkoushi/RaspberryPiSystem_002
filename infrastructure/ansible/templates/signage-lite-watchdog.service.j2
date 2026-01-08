@@ -1,0 +1,11 @@
+[Unit]
+Description=Signage image update watchdog (self-repair)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+ExecStart=/usr/local/bin/signage-lite-watchdog.sh
+StandardOutput=journal
+StandardError=journal
+

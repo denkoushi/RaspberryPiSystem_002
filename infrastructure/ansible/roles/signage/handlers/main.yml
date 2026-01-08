@@ -1,0 +1,9 @@
+---
+- name: systemd-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: systemd-tmpfiles
+  ansible.builtin.command:
+    cmd: systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf
+

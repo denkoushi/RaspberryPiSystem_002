@@ -1,0 +1,14 @@
+[Unit]
+Description=Update signage image
+# ネットワーク接続を待たない（オフライン時でもエラーで終了しない）
+# After=network-online.target を削除
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+ExecStart=/usr/local/bin/signage-update.sh
+# ネットワーク遮断時でもエラーで終了しない（既存画像を保持）
+SuccessExitStatus=0
+StandardOutput=journal
+StandardError=journal
+

@@ -1,9 +1,32 @@
 import { z } from 'zod';
 
+// layoutConfigのスキーマ定義
+const slotConfigSchema = z.union([
+  z.object({
+    pdfId: z.string().uuid(),
+    displayMode: z.enum(['SLIDESHOW', 'SINGLE']),
+    slideInterval: z.number().int().positive().optional().nullable(),
+  }),
+  z.object({}), // loans用（空オブジェクト）
+  z.object({}), // csv_dashboard用（将来の拡張）
+]);
+
+const slotSchema = z.object({
+  position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+  kind: z.enum(['pdf', 'loans', 'csv_dashboard']),
+  config: slotConfigSchema,
+});
+
+const layoutConfigSchema = z.object({
+  layout: z.enum(['FULL', 'SPLIT']),
+  slots: z.array(slotSchema).min(1),
+}).optional().nullable();
+
 export const scheduleSchema = z.object({
   name: z.string().min(1),
   contentType: z.enum(['TOOLS', 'PDF', 'SPLIT']),
   pdfId: z.string().uuid().optional().nullable(),
+  layoutConfig: layoutConfigSchema,
   dayOfWeek: z.array(z.number().int().min(0).max(6)),
   startTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
   endTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
@@ -36,6 +59,7 @@ export const emergencySchema = z.object({
   message: z.string().optional().nullable(),
   contentType: z.enum(['TOOLS', 'PDF', 'SPLIT']).optional().nullable(),
   pdfId: z.string().uuid().optional().nullable(),
+  layoutConfig: layoutConfigSchema,
   enabled: z.boolean().optional(),
   expiresAt: z.coerce.date().optional().nullable(),
 });

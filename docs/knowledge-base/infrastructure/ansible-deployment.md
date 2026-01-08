@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 9件  
+**件数**: 10件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -910,6 +910,114 @@ PY
 **今後の推奨事項**:
 - **新しい環境変数の追加時**: Ansible管理化を検討（テンプレートに追加、inventoryに変数を追加、vaultに機密情報を追加）
 - **設定ファイルの管理**: `backup.json`のようにAPIが書き換える設定ファイルは、Ansibleで上書きせず、存在保証と健全性チェックに留める
+
+---
+
+### [KB-153] Pi3デプロイ失敗（signageロールのテンプレートディレクトリ不足）
+
+**発生日時**: 2026-01-08
+
+**事象**: 
+- Pi3へのAnsibleデプロイが失敗し、ロールバックが実行された
+- エラーメッセージ: `[ERROR]: Task failed: Could not find or access 'signage-lite.tmpfiles.conf.j2'`
+- `signage`ロールのタスクでテンプレートファイルが見つからない
+
+**要因**: 
+- **`signage`ロールに`templates/`ディレクトリが存在しない**: `infrastructure/ansible/roles/signage/`に`templates/`ディレクトリがなく、Ansibleがテンプレートファイルを探せなかった
+- **テンプレートファイルの配置場所**: テンプレートファイルは`infrastructure/ansible/templates/`に存在していたが、Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照する
+- **ロール構造の不整合**: 新しいテンプレートファイル（`signage-lite.tmpfiles.conf.j2`、`signage-lite-watchdog.sh.j2`など）を追加した際に、ロール内の`templates/`ディレクトリに配置していなかった
+
+**試行した対策**: 
+- [試行1] デプロイログを確認してエラー原因を特定 → **成功**（テンプレートファイルが見つからないことを確認）
+- [試行2] Pi5上の`roles/signage/`ディレクトリ構造を確認 → **成功**（`templates/`ディレクトリが存在しないことを確認）
+- [試行3] ローカルの`infrastructure/ansible/templates/`にテンプレートファイルが存在することを確認 → **成功**（ファイルは存在していた）
+- [試行4] `roles/signage/templates/`ディレクトリを作成し、テンプレートファイルをコピー → **成功**（デプロイが成功）
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-08）: 以下の対策を実施
+  1. **`signage`ロールに`templates/`ディレクトリを作成**: `infrastructure/ansible/roles/signage/templates/`ディレクトリを作成
+  2. **テンプレートファイルのコピー**: `infrastructure/ansible/templates/signage-*.j2`を`infrastructure/ansible/roles/signage/templates/`にコピー
+  3. **Gitコミット・プッシュ**: 変更をコミットしてリモートリポジトリにプッシュ
+  4. **Pi5でリポジトリ更新**: Pi5上で`git pull`を実行してテンプレートファイルを取得
+  5. **標準手順でデプロイ**: デプロイ前の準備（サービス停止・無効化・マスク）を実行してからデプロイを再実行
+
+**学んだこと**:
+- **Ansibleロールのテンプレート配置**: Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照するため、ロール専用のテンプレートファイルは必ず`roles/<role-name>/templates/`に配置する必要がある
+- **ロール構造の一貫性**: 新しいロールを作成する際は、`templates/`ディレクトリを最初から作成しておく
+
+---
+
+### [KB-154] Pi3デプロイ安定化の十分条件実装（プレフライトチェック自動化）
+
+**発生日時**: 2026-01-08
+
+**背景**: 
+- Pi3デプロイ時に手動でサービス停止・無効化・mask、メモリ確認などの手順を実行する必要があった
+- 手順を忘れるとデプロイが失敗し、システムが不安定になる可能性があった
+- KB-153で発見されたロール構造の問題も、デプロイ開始前に検出できれば回避可能だった
+
+**実装内容**: 
+- **コントロールノード側プレフライト**: `deploy.yml`の`pre_tasks`に、Ansibleロールのテンプレートファイル存在チェックを追加（`delegate_to: localhost`, `run_once: true`）
+- **Pi3側プレフライト**: `preflight-pi3-signage.yml`タスクファイルを新規作成し、以下の処理を自動実行：
+  - サービス停止・無効化（`signage-lite.service`, `signage-lite-update.timer`, `signage-lite-watchdog.timer`, `signage-daily-reboot.timer`, `status-agent.timer`）
+  - サービスmask（`signage-lite.service`の自動再起動防止）
+  - 残存AnsiballZプロセスの掃除（120秒以上経過したもののみ`kill -9`）
+  - メモリ閾値チェック（利用可能メモリ >= 120MB、未満の場合はfail-fast）
+- **デプロイ後のunmask**: `signage`ロールで`masked: false`を明示し、その後に`enabled: true`と`state: started`を実行する順序を保証
+
+**実装ファイル**:
+- `infrastructure/ansible/playbooks/deploy.yml`: コントロールノード側プレフライトチェック追加
+- `infrastructure/ansible/tasks/preflight-pi3-signage.yml`: Pi3側プレフライトタスク（新規）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`: unmaskの明示
+
+**検証結果**:
+- ✅ コントロールノード側のロール構造チェック: 正常動作（テンプレートファイルの存在確認）
+- ✅ Pi3側のプレフライトチェック: 正常動作（サービス停止・無効化、メモリ閾値チェック、fail-fast確認）
+- ✅ メモリ不足時のfail-fast: 正常動作（104MB < 120MBでデプロイが中断され、エラーメッセージに手動停止手順が表示）
+
+**標準手順ドキュメントの更新**:
+- `docs/guides/deployment.md`の「デプロイ前の準備（必須）」セクションを「デプロイ前の準備（自動化済み）」に変更
+- プレフライトチェックが自動実行されることを明記
+- プレフライトチェックが失敗した場合の手動対処手順を記載
+
+**学んだこと**:
+- **手順の自動化**: 手動で実行していた手順をAnsibleのプレフライトチェックとして自動化することで、手順遵守に依存しない運用が可能になる
+- **fail-fastの重要性**: 条件を満たせない場合は、システムを壊さずに中断（fail-fast）し、次に取るべき行動をログで明示することが重要
+- **標準手順との関係**: 標準手順の一部を自動化しても、標準手順ドキュメントを更新し、自動化されたことを明記する必要がある
+- **プレフライトチェックの設計**: コントロールノード側とターゲット側の両方でプレフライトチェックを実装することで、デプロイ開始前に問題を検出できる
+
+**関連ファイル**:
+- `infrastructure/ansible/playbooks/deploy.yml`
+- `infrastructure/ansible/tasks/preflight-pi3-signage.yml`
+- `infrastructure/ansible/roles/signage/tasks/main.yml`
+- `docs/guides/deployment.md`
+- **デプロイ標準手順の遵守**: デプロイ前の準備（サービス停止・無効化・マスク）を必ず実行することで、デプロイ失敗のリスクを低減できる
+- **エラーログの詳細確認**: デプロイが失敗した場合は、ログの詳細を確認して根本原因を特定する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-08: テンプレートディレクトリ作成とファイルコピー完了）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/signage/templates/`（新規作成）
+- `infrastructure/ansible/templates/signage-*.j2`（コピー元）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`（テンプレート参照タスク）
+- `docs/guides/deployment.md`（デプロイ標準手順）
+
+**確認コマンド**:
+```bash
+# signageロールのテンプレートディレクトリの確認
+ls -la infrastructure/ansible/roles/signage/templates/
+
+# テンプレートファイルの存在確認
+ls -la infrastructure/ansible/roles/signage/templates/signage-*.j2
+
+# Pi5上での確認
+ssh denkon5sd02@100.106.158.2 "ls -la /opt/RaspberryPiSystem_002/infrastructure/ansible/roles/signage/templates/"
+```
+
+**再発防止策**:
+- **新しいロール作成時**: `templates/`ディレクトリを最初から作成する
+- **テンプレートファイル追加時**: ロール専用のテンプレートは必ず`roles/<role-name>/templates/`に配置する
+- **デプロイ前の確認**: デプロイ前にロール構造を確認し、必要なディレクトリが存在することを確認する
 
 ---
 

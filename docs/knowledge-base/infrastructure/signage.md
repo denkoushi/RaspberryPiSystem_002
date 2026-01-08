@@ -515,4 +515,160 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-150] サイネージレイアウトとコンテンツの疎結合化実装完了
+
+**EXEC_PLAN.md参照**: サイネージ表示領域の疎結合化（2026-01-06）
+
+**事象**: 
+- サイネージのレイアウト（全体/左右）と各エリアのコンテンツ（PDF/持出一覧/将来のCSV可視化）が密結合しており、新しい可視化を追加する際に巨大な`if`分岐の改修が必要だった
+- `SPLIT`レイアウトは左=TOOLS / 右=PDF固定で、柔軟なコンテンツ配置ができなかった
+
+**要因**: 
+- サーバー側レンダラーが`contentType`に強く依存し、`SPLIT`は左=TOOLS / 右=PDF固定になっていた
+- スケジュール返却も`SignageContentType`のif分岐で固定され、新コンテンツ追加のたびに`SignageService`/`SignageRenderer`の両方を改修する必要があった
+
+**実施した対策**: 
+- ✅ **データベーススキーマ拡張**: `SignageSchedule`と`SignageEmergency`に`layoutConfig Json?`フィールドを追加
+- ✅ **レイアウト設定の型定義**: `SignageLayoutConfig`型を定義し、`layout: FULL | SPLIT`と`slots`配列で柔軟なコンテンツ配置を実現
+- ✅ **レガシー形式からの変換**: `convertLegacyToLayoutConfig()`メソッドを実装し、既存の`contentType`/`pdfId`を新形式へ自動変換（後方互換性を維持）
+- ✅ **レンダラーの疎結合化**: `renderWithLayoutConfig()`メソッドを実装し、レイアウトごとのキャンバス割当とslotごとのSVG生成を分離
+- ✅ **管理コンソールUI拡張**: スケジュール編集画面でレイアウト（全体/左右）と各スロットのコンテンツ種別（PDF/持出一覧）を選択可能に
+- ✅ **統合テスト追加**: `layoutConfig`の各組み合わせで`/api/signage/current-image`が正常に動作することを確認
+
+**学んだこと**:
+1. **Prisma Client再生成の重要性**: データベースマイグレーション適用後、APIコンテナ内で`pnpm prisma generate`を実行してPrisma Clientを再生成する必要がある。マイグレーションだけでは不十分で、コンテナ再起動も必要
+2. **後方互換性の維持**: 既存の`contentType`/`pdfId`形式を新形式へ自動変換することで、既存スケジュールを壊さずに新機能を追加できる
+3. **疎結合化の効果**: レイアウトとコンテンツを分離することで、新しいコンテンツ種別（CSV可視化など）を追加する際のコード変更を最小限に抑えられる
+4. **デプロイスクリプトの動作**: `scripts/server/deploy.sh`はマイグレーション後にPrisma Clientを再生成するが、コンテナ内のPrisma Clientが古い場合は手動で再生成が必要
+
+**解決状況**: ✅ **解決済み**（2026-01-06）
+
+**実機検証で発見された問題と修正**（2026-01-07）:
+1. **SPLITレイアウトで左PDF・右工具管理が機能しない**: `renderWithLayoutConfig()`が左PDF・右工具管理の組み合わせに対応していなかった。`swapSides`パラメータを追加して左右を入れ替えて表示するように修正。
+2. **タイトルがハードコードされている**: `buildSplitScreenSvg()`で「持出中アイテム」「PDF表示」が固定されていた。PDF名を動的に表示するように修正。
+3. **タイトルとアイテムが被る**: `leftHeaderHeight`を48pxから60pxに増やして、タイトルとカードの間隔を拡大。
+4. **PDF表示の重複タイトル**: `fileNameOverlay`がタイトルと重複していた。`fileNameOverlay`を削除し、タイトルのみを表示するように修正。
+5. **スケジュールの優先順位ロジック**: マッチしたスケジュールを優先順位順にソートしてから処理するように改善。優先順位が高いスケジュールが優先されることを確認。
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-07）
+- FULLレイアウト + loansスロット: ✅ 正常
+- FULLレイアウト + pdfスロット: ✅ 正常
+- SPLITレイアウト + 左loans/右pdf: ✅ 正常
+- SPLITレイアウト + 左pdf/右loans: ✅ 正常
+- タイトルとアイテムの重なり: ✅ 解消
+- PDF表示の重複タイトル: ✅ 解消
+- スケジュールの優先順位ロジック: ✅ 正常動作
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`layoutConfig`フィールド追加）
+- `apps/api/prisma/migrations/20260106155657_add_signage_layout_config/migration.sql`
+- `apps/api/src/services/signage/signage-layout.types.ts`
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+- `docs/guides/signage-layout-config-verification-results.md`
+- `apps/api/src/services/signage/signage-layout.types.ts`（型定義）
+- `apps/api/src/services/signage/signage.service.ts`（レガシー変換ロジック）
+- `apps/api/src/services/signage/signage.renderer.ts`（疎結合化されたレンダラー）
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`（UI拡張）
+- `docs/guides/deployment.md`（Prisma Client再生成の注意事項）
+- `.cursor/plans/signage-layout-decoupling.plan.md`（実装計画）
+
+---
+
+## KB-152: サイネージページ表示漏れ調査と修正
+
+**問題**: サイネージのPDFスライドショーで、ページが1ページずつ順番に表示されず、途中のページがスキップされることがある。Pi3のリソース不足の可能性も指摘されていた。
+
+**原因**:
+1. **ページ進行ロジックの問題**: `getCurrentPdfPageIndex`関数で、`steps <= 0`の場合（slideInterval未満の経過時間）でも強制的に`steps = 1`としてページを進めていた。これにより、サーバーのレンダリング間隔（20秒）がslideInterval（30秒）より短い場合、30秒経過する前に次のページに進んでしまい、Pi3がページを取得するタイミングとずれてページが飛ばされる問題が発生していた。
+2. **Pi3のサービス停止**: `signage-lite.service`が停止・無効化されていたため、サイネージが表示されていなかった。
+
+**解決策**:
+1. **ページ進行ロジックの修正**: `steps <= 0`の場合は、ページを進めずに**同じページを維持**するように変更。`slideInterval`以上経過した場合のみ1ページ進めるように修正。
+2. **複数ページ分経過した場合の処理**: 複数ページ分の時間が経過した場合でも、1ページずつ進めるように修正（`steps = 1`に固定）。
+3. **Pi3サービスの起動**: `signage-lite.service`を有効化・起動。
+4. **Pi3の取得頻度調整**: `signage-lite-update.timer`の間隔を30秒から15秒に変更（ただし、実際の動作は30秒ごと）。
+
+**修正内容**:
+- `apps/api/src/services/signage/signage.renderer.ts`の`getCurrentPdfPageIndex`関数を修正
+  - `steps <= 0`の場合: `return state.lastIndex`（同じページを維持）
+  - `steps > 0`の場合: `steps = 1`に固定し、1ページずつ進める
+- Pi3の`signage-lite.service`を有効化・起動
+
+**実機検証結果**: ✅ **問題解消**（2026-01-08）
+- ページが順番に表示される（1→2→3→...）ことを確認
+- ページ飛ばしが発生しないことを確認
+- 30秒ごとにページが切り替わることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`（`getCurrentPdfPageIndex`関数の修正）
+- `/etc/systemd/system/signage-lite-update.timer`（Pi3のタイマー設定）
+
+---
+
+### [KB-153] Pi3デプロイ失敗（signageロールのテンプレートディレクトリ不足）
+
+**発生日時**: 2026-01-08
+
+**事象**: 
+- Pi3へのAnsibleデプロイが失敗し、ロールバックが実行された
+- `signage`ロールのタスクで`signage-lite.tmpfiles.conf.j2`が見つからないエラーが発生
+- デプロイ標準手順を遵守していたにもかかわらず、デプロイが失敗した
+
+**要因**: 
+- **`signage`ロールに`templates/`ディレクトリが存在しない**: `infrastructure/ansible/roles/signage/`に`templates/`ディレクトリがなく、Ansibleがテンプレートファイルを探せなかった
+- **テンプレートファイルの配置場所の不一致**: テンプレートファイルは`infrastructure/ansible/templates/`に存在していたが、Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照する
+- **ロール構造の不整合**: Pi3サイネージ安定化施策で新しいテンプレートファイルを追加した際に、ロール内の`templates/`ディレクトリに配置していなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-08）:
+  1. **`signage`ロールに`templates/`ディレクトリを作成**: `infrastructure/ansible/roles/signage/templates/`ディレクトリを作成
+  2. **テンプレートファイルのコピー**: `infrastructure/ansible/templates/signage-*.j2`を`infrastructure/ansible/roles/signage/templates/`にコピー
+  3. **Gitコミット・プッシュ**: 変更をコミットしてリモートリポジトリにプッシュ
+  4. **Pi5でリポジトリ更新**: Pi5上で`git pull`を実行してテンプレートファイルを取得
+  5. **標準手順でデプロイ**: デプロイ前の準備（サービス停止・無効化・マスク）を実行してからデプロイを再実行
+
+**学んだこと**:
+- **Ansibleロールのテンプレート配置**: Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照するため、ロール専用のテンプレートファイルは必ず`roles/<role-name>/templates/`に配置する必要がある
+- **デプロイ標準手順の遵守**: デプロイ前の準備を実行していても、ロール構造の問題でデプロイが失敗する可能性がある
+- **エラーログの詳細確認**: デプロイが失敗した場合は、ログの詳細を確認して根本原因を特定する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-08: テンプレートディレクトリ作成とファイルコピー完了、デプロイ成功）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/signage/templates/`（新規作成）
+- `infrastructure/ansible/templates/signage-*.j2`（コピー元）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`（テンプレート参照タスク）
+- `docs/knowledge-base/infrastructure/ansible-deployment.md`（KB-153の詳細）
+
+**再発防止策**:
+- **新しいロール作成時**: `templates/`ディレクトリを最初から作成する
+- **テンプレートファイル追加時**: ロール専用のテンプレートは必ず`roles/<role-name>/templates/`に配置する
+- **デプロイ前の確認**: デプロイ前にロール構造を確認し、必要なディレクトリが存在することを確認する
+
+---
+
+## サイネージ関連の残タスク
+
+### 1. レイアウト設定機能の完成度向上（優先度: 中）
+
+- **緊急表示（SignageEmergency）のlayoutConfig対応**: 管理コンソールUIで緊急表示のレイアウト設定を選択可能にする（`SignageEmergency`モデルに`layoutConfig`フィールドは追加済み）
+- **スケジュールの一括編集機能**: 複数のスケジュールを選択して一括で有効/無効化、一括でレイアウト設定を変更
+- **スケジュールのコピー機能**: 既存スケジュールをコピーして新規作成（レイアウト設定も含めてコピー）
+- **スケジュールのプレビュー機能**: 管理コンソールでレイアウト設定のプレビューを表示（実際の表示イメージを確認可能に）
+
+### 2. CSV可視化機能の要件定義と実装（優先度: 低）
+
+- **CSV可視化の要件定義**: CSVデータソースの定義方法、可視化の種類（グラフ、テーブルなど）、スケジュール設定との連携方法
+- **CSV可視化スロット（`slot.kind=csv_dashboard`）の実装**: CSVデータの取得・処理ロジック、可視化のレンダリングロジック、管理コンソールUI拡張
+
+### 3. サイネージのパフォーマンス最適化（優先度: 低）
+
+- **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング
+- **レンダリング時間の最適化**: SVG生成の最適化、JPEG変換の最適化
+- **エラーハンドリングの改善**: エラー時のフォールバック表示、エラーログの詳細化
+
+---
+
 ---

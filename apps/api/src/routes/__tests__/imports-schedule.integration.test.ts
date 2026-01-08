@@ -41,6 +41,15 @@ describe('CSV Import Schedule API', () => {
     process.env.BACKUP_CONFIG_PATH = testConfigPath;
     process.env.PROJECT_ROOT = process.cwd();
 
+    // テスト用の設定ファイルを事前に作成（フォールバックを避けるため）
+    const initialConfig = {
+      storage: { provider: 'local' as const, options: {} },
+      targets: [],
+      csvImports: [],
+      retention: { days: 30, maxItems: 100 }
+    };
+    fs.writeFileSync(testConfigPath, JSON.stringify(initialConfig, null, 2), 'utf-8');
+
     app = await buildServer();
     closeServer = async () => {
       await app.close();

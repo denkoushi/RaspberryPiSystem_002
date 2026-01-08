@@ -1,0 +1,4 @@
+# systemd-tmpfiles設定: /run/signage ディレクトリの作成
+# Pi3の画像キャッシュをtmpfs（RAM）に配置してSDカードへの書込みを削減
+d /run/signage 0755 {{ ansible_user }} {{ ansible_user }} -
+

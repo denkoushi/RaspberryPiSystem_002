@@ -8,6 +8,20 @@
         enabled: false
       register: signage_timer_stopped
 
+    - name: Stop and disable signage-lite watchdog timer
+      ansible.builtin.systemd:
+        name: signage-lite-watchdog.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable signage-daily-reboot timer
+      ansible.builtin.systemd:
+        name: signage-daily-reboot.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
     - name: Disable signage-lite service to prevent auto-restart
       ansible.builtin.systemd:
         name: signage-lite.service
@@ -35,28 +49,143 @@
   changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
   failed_when: false
 
-- name: Update signage-update.sh server URL
-  ansible.builtin.replace:
-    path: /usr/local/bin/signage-update.sh
-    regexp: 'SERVER_URL=https?://[0-9.]+'
-    replace: "SERVER_URL={{ signage_server_url }}"
-    backup: true
-  when:
-    - signage_server_url is defined
+- name: Install tmpfiles configuration for /run/signage
+  ansible.builtin.template:
+    src: signage-lite.tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/signage-lite.conf
+    mode: '0644'
+  notify: systemd-tmpfiles
 
-- name: Re-enable signage-lite service before restart
+- name: Ensure /run/signage directory exists (via tmpfiles)
+  ansible.builtin.command:
+    cmd: systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf
+    creates: /run/signage
+  changed_when: true
+
+- name: Deploy signage-update.sh script
+  ansible.builtin.template:
+    src: signage-update.sh.j2
+    dest: /usr/local/bin/signage-update.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Deploy signage-display.sh script
+  ansible.builtin.template:
+    src: signage-display.sh.j2
+    dest: /usr/local/bin/signage-display.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Deploy signage-stop.sh script
+  ansible.builtin.template:
+    src: signage-stop.sh.j2
+    dest: /usr/local/bin/signage-stop.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Deploy signage-lite-watchdog.sh script
+  ansible.builtin.template:
+    src: signage-lite-watchdog.sh.j2
+    dest: /usr/local/bin/signage-lite-watchdog.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Deploy signage-lite.service
+  ansible.builtin.template:
+    src: signage-lite.service.j2
+    dest: /etc/systemd/system/signage-lite.service
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-lite-update.service
+  ansible.builtin.template:
+    src: signage-lite-update.service.j2
+    dest: /etc/systemd/system/signage-lite-update.service
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-lite-update.timer
+  ansible.builtin.template:
+    src: signage-lite-update.timer.j2
+    dest: /etc/systemd/system/signage-lite-update.timer
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-lite-watchdog.service
+  ansible.builtin.template:
+    src: signage-lite-watchdog.service.j2
+    dest: /etc/systemd/system/signage-lite-watchdog.service
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-lite-watchdog.timer
+  ansible.builtin.template:
+    src: signage-lite-watchdog.timer.j2
+    dest: /etc/systemd/system/signage-lite-watchdog.timer
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-daily-reboot.service
+  ansible.builtin.template:
+    src: signage-daily-reboot.service.j2
+    dest: /etc/systemd/system/signage-daily-reboot.service
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Deploy signage-daily-reboot.timer
+  ansible.builtin.template:
+    src: signage-daily-reboot.timer.j2
+    dest: /etc/systemd/system/signage-daily-reboot.timer
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Ensure systemd units are reloaded
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Unmask signage-lite service (ensure it can be started after preflight mask)
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    masked: false
+  ignore_errors: true
+
+- name: Re-enable signage-lite service (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite.service
     enabled: true
 
-- name: Re-enable signage-lite update timer before restart
+- name: Re-enable signage-lite update timer (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite-update.timer
+    enabled: true
+
+- name: Re-enable signage-lite watchdog timer (ensure enabled state convergence)
+  ansible.builtin.systemd:
+    name: signage-lite-watchdog.timer
+    enabled: true
+
+- name: Re-enable signage-daily-reboot timer (ensure enabled state convergence)
+  ansible.builtin.systemd:
+    name: signage-daily-reboot.timer
     enabled: true
 
 - name: Start signage-lite update timer
   ansible.builtin.systemd:
     name: signage-lite-update.timer
+    state: started
+
+- name: Start signage-lite watchdog timer
+  ansible.builtin.systemd:
+    name: signage-lite-watchdog.timer
+    state: started
+
+- name: Start signage-daily-reboot timer
+  ansible.builtin.systemd:
+    name: signage-daily-reboot.timer
     state: started
 
 - name: Start signage-lite service

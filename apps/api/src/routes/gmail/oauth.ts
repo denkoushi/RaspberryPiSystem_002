@@ -7,6 +7,14 @@ import { BackupConfigLoader } from '../../services/backup/backup-config.loader.j
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { GmailOAuthService } from '../../services/backup/gmail-oauth.service.js';
 
+type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
+  subjectPattern?: string;
+  fromEmail?: string;
+  redirectUri?: string;
+  gmailAccessToken?: string;
+  gmailRefreshToken?: string;
+};
+
 /**
  * Gmail OAuth認証ルートを登録
  */
@@ -127,26 +135,20 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       );
 
       // 設定ファイルを更新（新構造: options.gmail.* へ保存）
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            gmail: {
-              clientId,
-              clientSecret,
-              redirectUri,
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken || opts?.gmailRefreshToken || opts?.gmail?.refreshToken,
-              subjectPattern: config.storage.options?.gmail?.subjectPattern || config.storage.options?.subjectPattern,
-              fromEmail: config.storage.options?.gmail?.fromEmail || config.storage.options?.fromEmail
-            }
-          }
-        }
+      // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+      (config.storage.options ??= {});
+      const legacyOpts = config.storage.options as LegacyStorageOptions;
+      (legacyOpts as NonNullable<BackupConfig['storage']['options']>).gmail = {
+        clientId,
+        clientSecret,
+        redirectUri,
+        accessToken: tokenInfo.accessToken,
+        refreshToken: tokenInfo.refreshToken || opts?.gmailRefreshToken || opts?.gmail?.refreshToken,
+        subjectPattern: legacyOpts.gmail?.subjectPattern || legacyOpts.subjectPattern,
+        fromEmail: legacyOpts.gmail?.fromEmail || legacyOpts.fromEmail
       };
 
-      await BackupConfigLoader.save(updatedConfig);
+      await BackupConfigLoader.save(config);
 
       logger?.info('[GmailOAuthRoute] Config file updated with new tokens');
 
@@ -221,26 +223,20 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       );
 
       // 設定ファイルを更新（新構造: options.gmail.* へ保存）
-      const updatedConfig: BackupConfig = {
-        ...config,
-        storage: {
-          ...config.storage,
-          options: {
-            ...config.storage.options,
-            gmail: {
-              clientId,
-              clientSecret,
-              redirectUri,
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken || refreshToken || config.storage.options?.gmail?.refreshToken,
-              subjectPattern: config.storage.options?.gmail?.subjectPattern || config.storage.options?.subjectPattern,
-              fromEmail: config.storage.options?.gmail?.fromEmail || config.storage.options?.fromEmail
-            }
-          }
-        }
+      // NOTE: {...config} で新オブジェクトを作るとフォールバック検知マーカーが落ち得るため、元のconfigを更新する
+      (config.storage.options ??= {});
+      const legacyOpts = config.storage.options as LegacyStorageOptions;
+      (legacyOpts as NonNullable<BackupConfig['storage']['options']>).gmail = {
+        clientId,
+        clientSecret,
+        redirectUri,
+        accessToken: tokenInfo.accessToken,
+        refreshToken: tokenInfo.refreshToken || refreshToken || config.storage.options?.gmail?.refreshToken,
+        subjectPattern: legacyOpts.gmail?.subjectPattern || legacyOpts.subjectPattern,
+        fromEmail: legacyOpts.gmail?.fromEmail || legacyOpts.fromEmail
       };
 
-      await BackupConfigLoader.save(updatedConfig);
+      await BackupConfigLoader.save(config);
 
       logger?.info('[GmailOAuthRoute] Config file updated with refreshed token');
 

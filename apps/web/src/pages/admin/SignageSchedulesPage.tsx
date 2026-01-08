@@ -11,7 +11,7 @@ import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
-import type { SignageSchedule, SignagePdf } from '../../api/client';
+import type { SignageSchedule, SignagePdf, SignageLayoutConfig, SignageSlot } from '../../api/client';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: '日' },
@@ -35,19 +35,37 @@ export function SignageSchedulesPage() {
     name: '',
     contentType: 'TOOLS',
     pdfId: null,
+    layoutConfig: null,
     dayOfWeek: [],
     startTime: '09:00',
     endTime: '18:00',
     priority: 0,
     enabled: true,
   });
+  const [useNewLayout, setUseNewLayout] = useState(false); // 新形式を使用するか
+  const [layoutType, setLayoutType] = useState<'FULL' | 'SPLIT'>('FULL'); // レイアウトタイプ
+  const [leftSlotKind, setLeftSlotKind] = useState<'loans' | 'pdf'>('loans'); // 左スロットの種類
+  const [rightSlotKind, setRightSlotKind] = useState<'loans' | 'pdf'>('pdf'); // 右スロットの種類
+  const [leftPdfId, setLeftPdfId] = useState<string | null>(null); // 左スロットのPDF（kind='pdf'の場合）
+  const [rightPdfId, setRightPdfId] = useState<string | null>(null); // 右スロットのPDF（kind='pdf'の場合）
+  const [fullSlotKind, setFullSlotKind] = useState<'loans' | 'pdf'>('loans'); // 全体スロットの種類
+  const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
 
   const handleCreate = () => {
     setIsCreating(true);
+    setUseNewLayout(false);
+    setLayoutType('FULL');
+    setFullSlotKind('loans');
+    setLeftSlotKind('loans');
+    setRightSlotKind('pdf');
+    setFullPdfId(null);
+    setLeftPdfId(null);
+    setRightPdfId(null);
     setFormData({
       name: '',
       contentType: 'TOOLS',
       pdfId: null,
+      layoutConfig: null,
       dayOfWeek: [],
       startTime: '09:00',
       endTime: '18:00',
@@ -58,10 +76,65 @@ export function SignageSchedulesPage() {
 
   const handleEdit = (schedule: SignageSchedule) => {
     setEditingId(schedule.id);
+    const hasLayoutConfig = schedule.layoutConfig !== null && schedule.layoutConfig !== undefined;
+    setUseNewLayout(hasLayoutConfig);
+    
+    if (hasLayoutConfig && schedule.layoutConfig) {
+      const config = schedule.layoutConfig;
+      setLayoutType(config.layout);
+      
+      if (config.layout === 'FULL') {
+        const slot = config.slots[0];
+        if (slot) {
+          setFullSlotKind(slot.kind === 'pdf' ? 'pdf' : 'loans');
+          if (slot.kind === 'pdf' && 'pdfId' in slot.config) {
+            setFullPdfId(slot.config.pdfId ?? null);
+          } else {
+            setFullPdfId(null);
+          }
+        }
+      } else {
+        const leftSlot = config.slots.find((s) => s.position === 'LEFT');
+        const rightSlot = config.slots.find((s) => s.position === 'RIGHT');
+        if (leftSlot) {
+          setLeftSlotKind(leftSlot.kind === 'pdf' ? 'pdf' : 'loans');
+          if (leftSlot.kind === 'pdf' && 'pdfId' in leftSlot.config) {
+            setLeftPdfId(leftSlot.config.pdfId ?? null);
+          } else {
+            setLeftPdfId(null);
+          }
+        }
+        if (rightSlot) {
+          setRightSlotKind(rightSlot.kind === 'pdf' ? 'pdf' : 'loans');
+          if (rightSlot.kind === 'pdf' && 'pdfId' in rightSlot.config) {
+            setRightPdfId(rightSlot.config.pdfId ?? null);
+          } else {
+            setRightPdfId(null);
+          }
+        }
+      }
+    } else {
+      // 旧形式から初期値を設定
+      if (schedule.contentType === 'TOOLS') {
+        setLayoutType('FULL');
+        setFullSlotKind('loans');
+      } else if (schedule.contentType === 'PDF') {
+        setLayoutType('FULL');
+        setFullSlotKind('pdf');
+        setFullPdfId(schedule.pdfId);
+      } else {
+        setLayoutType('SPLIT');
+        setLeftSlotKind('loans');
+        setRightSlotKind('pdf');
+        setRightPdfId(schedule.pdfId);
+      }
+    }
+    
     setFormData({
       name: schedule.name,
       contentType: schedule.contentType,
       pdfId: schedule.pdfId,
+      layoutConfig: schedule.layoutConfig,
       dayOfWeek: schedule.dayOfWeek,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
@@ -70,13 +143,123 @@ export function SignageSchedulesPage() {
     });
   };
 
+  const buildLayoutConfig = (): SignageLayoutConfig | null => {
+    if (!useNewLayout) {
+      return null; // 旧形式を使用
+    }
+
+    if (layoutType === 'FULL') {
+      if (fullSlotKind === 'pdf' && fullPdfId) {
+        const pdf = pdfsQuery.data?.find((p) => p.id === fullPdfId);
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'pdf',
+              config: {
+                pdfId: fullPdfId,
+                displayMode: pdf?.displayMode || 'SINGLE',
+                slideInterval: pdf?.slideInterval || null,
+              },
+            },
+          ],
+        };
+      } else {
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'loans',
+              config: {},
+            },
+          ],
+        };
+      }
+    } else {
+      // SPLIT
+      const slots: SignageSlot[] = [];
+      
+      // 左スロット
+      if (leftSlotKind === 'pdf' && leftPdfId) {
+        const pdf = pdfsQuery.data?.find((p) => p.id === leftPdfId);
+        slots.push({
+          position: 'LEFT',
+          kind: 'pdf',
+          config: {
+            pdfId: leftPdfId,
+            displayMode: pdf?.displayMode || 'SINGLE',
+            slideInterval: pdf?.slideInterval || null,
+          },
+        });
+      } else {
+        slots.push({
+          position: 'LEFT',
+          kind: 'loans',
+          config: {},
+        });
+      }
+      
+      // 右スロット
+      if (rightSlotKind === 'pdf' && rightPdfId) {
+        const pdf = pdfsQuery.data?.find((p) => p.id === rightPdfId);
+        slots.push({
+          position: 'RIGHT',
+          kind: 'pdf',
+          config: {
+            pdfId: rightPdfId,
+            displayMode: pdf?.displayMode || 'SINGLE',
+            slideInterval: pdf?.slideInterval || null,
+          },
+        });
+      } else {
+        slots.push({
+          position: 'RIGHT',
+          kind: 'loans',
+          config: {},
+        });
+      }
+      
+      return {
+        layout: 'SPLIT',
+        slots,
+      };
+    }
+  };
+
   const handleSave = async () => {
     try {
+      const layoutConfig = buildLayoutConfig();
+      
+      // 後方互換のため、contentTypeとpdfIdも設定（layoutConfigがない場合に使用）
+      let contentType = formData.contentType!;
+      let pdfId = formData.pdfId ?? null;
+      
+      if (layoutConfig) {
+        // 新形式を使用する場合、contentTypeとpdfIdをlayoutConfigから推論
+        if (layoutConfig.layout === 'FULL') {
+          const slot = layoutConfig.slots[0];
+          if (slot.kind === 'pdf') {
+            contentType = 'PDF';
+            pdfId = (slot.config as { pdfId: string }).pdfId;
+          } else {
+            contentType = 'TOOLS';
+            pdfId = null;
+          }
+        } else {
+          contentType = 'SPLIT';
+          const pdfSlot = layoutConfig.slots.find((s) => s.kind === 'pdf');
+          pdfId = pdfSlot ? (pdfSlot.config as { pdfId: string }).pdfId : null;
+        }
+      }
+      
       if (isCreating) {
         await create.mutateAsync({
           name: formData.name!,
-          contentType: formData.contentType!,
-          pdfId: formData.pdfId ?? null,
+          contentType,
+          pdfId,
+          layoutConfig,
           dayOfWeek: formData.dayOfWeek!,
           startTime: formData.startTime!,
           endTime: formData.endTime!,
@@ -87,14 +270,30 @@ export function SignageSchedulesPage() {
       } else if (editingId) {
         await update.mutateAsync({
           id: editingId,
-          payload: formData,
+          payload: {
+            ...formData,
+            contentType,
+            pdfId,
+            layoutConfig,
+          },
         });
         setEditingId(null);
       }
+      
+      // フォームをリセット
+      setUseNewLayout(false);
+      setLayoutType('FULL');
+      setFullSlotKind('loans');
+      setLeftSlotKind('loans');
+      setRightSlotKind('pdf');
+      setFullPdfId(null);
+      setLeftPdfId(null);
+      setRightPdfId(null);
       setFormData({
         name: '',
         contentType: 'TOOLS',
         pdfId: null,
+        layoutConfig: null,
         dayOfWeek: [],
         startTime: '09:00',
         endTime: '18:00',
@@ -109,10 +308,19 @@ export function SignageSchedulesPage() {
   const handleCancel = () => {
     setIsCreating(false);
     setEditingId(null);
+    setUseNewLayout(false);
+    setLayoutType('FULL');
+    setFullSlotKind('loans');
+    setLeftSlotKind('loans');
+    setRightSlotKind('pdf');
+    setFullPdfId(null);
+    setLeftPdfId(null);
+    setRightPdfId(null);
     setFormData({
       name: '',
       contentType: 'TOOLS',
       pdfId: null,
+      layoutConfig: null,
       dayOfWeek: [],
       startTime: '09:00',
       endTime: '18:00',
@@ -183,34 +391,169 @@ export function SignageSchedulesPage() {
                 className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700">コンテンツタイプ</label>
-              <select
-                value={formData.contentType || 'TOOLS'}
-                onChange={(e) => setFormData({ ...formData, contentType: e.target.value as 'TOOLS' | 'PDF' | 'SPLIT' })}
-                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-              >
-                <option value="TOOLS">工具管理データ</option>
-                <option value="PDF">PDF</option>
-                <option value="SPLIT">分割表示（工具+PDF）</option>
-              </select>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={useNewLayout}
+                onChange={(e) => setUseNewLayout(e.target.checked)}
+                className="rounded border-2 border-slate-500"
+              />
+              <label className="text-sm font-semibold text-slate-700">新形式レイアウトを使用（全体/左右を自由に設定）</label>
             </div>
-            {(formData.contentType === 'PDF' || formData.contentType === 'SPLIT') && (
-              <div>
-                <label className="block text-sm font-semibold text-slate-700">PDF</label>
-                <select
-                  value={formData.pdfId || ''}
-                  onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
-                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                >
-                  <option value="">選択してください</option>
-                  {pdfsQuery.data?.map((pdf: SignagePdf) => (
-                    <option key={pdf.id} value={pdf.id}>
-                      {pdf.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+
+            {useNewLayout ? (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700">レイアウト</label>
+                  <select
+                    value={layoutType}
+                    onChange={(e) => setLayoutType(e.target.value as 'FULL' | 'SPLIT')}
+                    className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  >
+                    <option value="FULL">全体表示</option>
+                    <option value="SPLIT">左右分割</option>
+                  </select>
+                </div>
+
+                {layoutType === 'FULL' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">表示コンテンツ</label>
+                      <select
+                        value={fullSlotKind}
+                        onChange={(e) => {
+                          setFullSlotKind(e.target.value as 'loans' | 'pdf');
+                          if (e.target.value === 'loans') {
+                            setFullPdfId(null);
+                          }
+                        }}
+                        className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                      >
+                        <option value="loans">持出一覧</option>
+                        <option value="pdf">PDF</option>
+                      </select>
+                    </div>
+                    {fullSlotKind === 'pdf' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">PDF</label>
+                        <select
+                          value={fullPdfId || ''}
+                          onChange={(e) => setFullPdfId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {pdfsQuery.data?.map((pdf: SignagePdf) => (
+                            <option key={pdf.id} value={pdf.id}>
+                              {pdf.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">左側の表示コンテンツ</label>
+                      <select
+                        value={leftSlotKind}
+                        onChange={(e) => {
+                          setLeftSlotKind(e.target.value as 'loans' | 'pdf');
+                          if (e.target.value === 'loans') {
+                            setLeftPdfId(null);
+                          }
+                        }}
+                        className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                      >
+                        <option value="loans">持出一覧</option>
+                        <option value="pdf">PDF</option>
+                      </select>
+                    </div>
+                    {leftSlotKind === 'pdf' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">左側のPDF</label>
+                        <select
+                          value={leftPdfId || ''}
+                          onChange={(e) => setLeftPdfId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {pdfsQuery.data?.map((pdf: SignagePdf) => (
+                            <option key={pdf.id} value={pdf.id}>
+                              {pdf.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">右側の表示コンテンツ</label>
+                      <select
+                        value={rightSlotKind}
+                        onChange={(e) => {
+                          setRightSlotKind(e.target.value as 'loans' | 'pdf');
+                          if (e.target.value === 'loans') {
+                            setRightPdfId(null);
+                          }
+                        }}
+                        className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                      >
+                        <option value="loans">持出一覧</option>
+                        <option value="pdf">PDF</option>
+                      </select>
+                    </div>
+                    {rightSlotKind === 'pdf' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">右側のPDF</label>
+                        <select
+                          value={rightPdfId || ''}
+                          onChange={(e) => setRightPdfId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {pdfsQuery.data?.map((pdf: SignagePdf) => (
+                            <option key={pdf.id} value={pdf.id}>
+                              {pdf.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700">コンテンツタイプ（旧形式）</label>
+                  <select
+                    value={formData.contentType || 'TOOLS'}
+                    onChange={(e) => setFormData({ ...formData, contentType: e.target.value as 'TOOLS' | 'PDF' | 'SPLIT' })}
+                    className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  >
+                    <option value="TOOLS">工具管理データ</option>
+                    <option value="PDF">PDF</option>
+                    <option value="SPLIT">分割表示（工具+PDF）</option>
+                  </select>
+                </div>
+                {(formData.contentType === 'PDF' || formData.contentType === 'SPLIT') && (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700">PDF</label>
+                    <select
+                      value={formData.pdfId || ''}
+                      onChange={(e) => setFormData({ ...formData, pdfId: e.target.value || null })}
+                      className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    >
+                      <option value="">選択してください</option>
+                      {pdfsQuery.data?.map((pdf: SignagePdf) => (
+                        <option key={pdf.id} value={pdf.id}>
+                          {pdf.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
             )}
             <div>
               <label className="block text-sm font-semibold text-slate-700">曜日</label>

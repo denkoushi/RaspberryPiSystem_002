@@ -7,6 +7,9 @@ import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
+import type {
+  PdfSlotConfig,
+} from './signage-layout.types.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -54,6 +57,7 @@ export class SignageRenderer {
     const content = await this.signageService.getContent();
     const buffer = await this.renderContent(content);
     const result = await SignageRenderStorage.saveRenderedImage(buffer);
+    logger.info({ location: 'signage.renderer.ts:59', filename: result.filename }, 'Image saved');
     return {
       renderedAt: new Date(),
       filename: result.filename
@@ -61,6 +65,18 @@ export class SignageRenderer {
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
+    // #region agent log
+    logger.info({ location: 'signage.renderer.ts:66', hypothesisId: 'E', hasLayoutConfig: content.layoutConfig != null, contentType: content.contentType, layoutConfig: content.layoutConfig }, 'renderContent called');
+    // #endregion
+    // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
+    if (content.layoutConfig) {
+      // #region agent log
+      logger.info({ location: 'signage.renderer.ts:68', hypothesisId: 'E', layoutConfig: content.layoutConfig }, 'Rendering with layoutConfig');
+      // #endregion
+      return await this.renderWithLayoutConfig(content);
+    }
+
+    // 後方互換: 旧形式（contentType）から処理
     if (content.contentType === 'PDF' && content.pdf?.pages?.length) {
       const pdfPageIndex = this.getCurrentPdfPageIndex(
         content.pdf.pages.length,
@@ -98,6 +114,120 @@ export class SignageRenderer {
     return await this.renderMessage('表示するコンテンツがありません');
   }
 
+  /**
+   * layoutConfigに基づいてレンダリング（新形式）
+   */
+  private async renderWithLayoutConfig(content: SignageContentResponse): Promise<Buffer> {
+    if (!content.layoutConfig) {
+      return await this.renderMessage('レイアウト設定がありません');
+    }
+
+    const layoutConfig = content.layoutConfig;
+
+    if (layoutConfig.layout === 'FULL') {
+      // 全体表示: 最初のスロットを全体に表示
+      const slot = layoutConfig.slots[0];
+      if (!slot) {
+        return await this.renderMessage('表示するコンテンツがありません');
+      }
+
+      if (slot.kind === 'pdf') {
+        const pdfConfig = slot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (!pdf || !pdf.pages?.length) {
+          return await this.renderMessage('PDFが見つかりません');
+        }
+        const pdfPageIndex = this.getCurrentPdfPageIndex(
+          pdf.pages.length,
+          pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+          pdfConfig.slideInterval || null,
+          pdf.id
+        );
+        // #region agent log
+        const pageUrl = pdf.pages[pdfPageIndex];
+        const pageNumber = pdfPageIndex + 1;
+        logger.info({ location: 'signage.renderer.ts:161', hypothesisId: 'F', pdfId: pdf.id, pdfPageIndex, pageNumber, totalPages: pdf.pages.length, pageUrl: pageUrl.substring(0, 50) + '...' }, 'Rendering PDF page');
+        // #endregion
+        return await this.renderPdfImage(pageUrl, {
+          title: pdf.name,
+          slideInterval: pdfConfig.slideInterval ?? null,
+          displayMode: pdfConfig.displayMode,
+        });
+      } else if (slot.kind === 'loans') {
+        return await this.renderTools(content.tools ?? []);
+      }
+    } else if (layoutConfig.layout === 'SPLIT') {
+      // 左右分割表示
+      const leftSlot = layoutConfig.slots.find((s) => s.position === 'LEFT');
+      const rightSlot = layoutConfig.slots.find((s) => s.position === 'RIGHT');
+
+      let leftTools: ToolItem[] = [];
+      let rightTools: ToolItem[] = [];
+      let leftPdfOptions: SplitPdfOptions | undefined;
+      let rightPdfOptions: SplitPdfOptions | undefined;
+
+      // 左スロットの処理
+      if (leftSlot?.kind === 'loans') {
+        leftTools = (content.tools ?? []).map((tool) => ({
+          ...tool,
+          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
+        }));
+      } else if (leftSlot?.kind === 'pdf') {
+        const pdfConfig = leftSlot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (pdf && pdf.pages?.length) {
+          const pdfPageIndex = this.getCurrentPdfPageIndex(
+            pdf.pages.length,
+            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+            pdfConfig.slideInterval || null,
+            pdf.id
+          );
+          leftPdfOptions = {
+            pageUrl: pdf.pages[pdfPageIndex],
+            title: pdf.name,
+            slideInterval: pdfConfig.slideInterval ?? null,
+            displayMode: pdfConfig.displayMode,
+          };
+        }
+      }
+
+      // 右スロットの処理
+      if (rightSlot?.kind === 'loans') {
+        rightTools = (content.tools ?? []).map((tool) => ({
+          ...tool,
+          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
+        }));
+      } else if (rightSlot?.kind === 'pdf') {
+        const pdfConfig = rightSlot.config as PdfSlotConfig;
+        const pdf = content.pdf;
+        if (pdf && pdf.pages?.length) {
+          const pdfPageIndex = this.getCurrentPdfPageIndex(
+            pdf.pages.length,
+            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
+            pdfConfig.slideInterval || null,
+            pdf.id
+          );
+          rightPdfOptions = {
+            pageUrl: pdf.pages[pdfPageIndex],
+            title: pdf.name,
+            slideInterval: pdfConfig.slideInterval ?? null,
+            displayMode: pdfConfig.displayMode,
+          };
+        }
+      }
+
+      // 左がPDF、右が工具管理の場合は順序を入れ替えて呼び出す
+      if (leftSlot?.kind === 'pdf' && rightSlot?.kind === 'loans') {
+        return await this.renderSplit(rightTools, leftPdfOptions, true);
+      } else {
+        // 左が工具管理、右がPDFの通常ケース
+        return await this.renderSplit(leftTools, rightPdfOptions, false);
+      }
+    }
+
+    return await this.renderMessage('表示するコンテンツがありません');
+  }
+
   private async renderPdfImage(pageUrl: string, options?: PdfRenderOptions): Promise<Buffer> {
     const imageBase64 = await this.encodePdfPageAsBase64(pageUrl, Math.round(WIDTH * 0.7), Math.round(HEIGHT * 0.75));
     if (!imageBase64) {
@@ -123,7 +253,7 @@ export class SignageRenderer {
       .toBuffer();
   }
 
-  private async renderSplit(tools: ToolItem[], pdfOptions?: SplitPdfOptions): Promise<Buffer> {
+  private async renderSplit(tools: ToolItem[], pdfOptions?: SplitPdfOptions, swapSides = false): Promise<Buffer> {
     const enrichedTools: ToolItem[] = tools.map((tool) => ({
       ...tool,
       isOver12Hours: this.isOver12Hours(tool.borrowedAt),
@@ -139,7 +269,7 @@ export class SignageRenderer {
       ...pdfOptions,
       imageBase64: pdfImageBase64,
       metricsText,
-    });
+    }, swapSides);
 
     return await sharp(Buffer.from(svg), { density: 240 })
       .jpeg({ quality: 92, mozjpeg: true })
@@ -220,7 +350,8 @@ export class SignageRenderer {
 
   private async buildSplitScreenSvg(
     tools: ToolItem[],
-    pdfOptions: (SplitPdfOptions & { imageBase64?: string | null }) | undefined
+    pdfOptions: (SplitPdfOptions & { imageBase64?: string | null }) | undefined,
+    swapSides = false
   ): Promise<string> {
     const scale = WIDTH / 1920;
     const outerPadding = 0;
@@ -235,54 +366,58 @@ export class SignageRenderer {
     const leftInnerPadding = Math.round(20 * scale);   // 左ペイン: タイトルとカードに十分な余白
     const rightInnerPadding = Math.round(6 * scale);   // 右ペイン: タイトルが枠に張り付かない最小余白
     const titleOffsetY = Math.round(22 * scale);       // 左右共通: タイトルのベースラインオフセット
-    const leftHeaderHeight = Math.round(48 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔
+    const leftHeaderHeight = Math.round(60 * scale);   // 左ペイン: タイトル下からカードまで大きめの間隔（タイトルと被らないように）
     const rightHeaderHeight = Math.round(12 * scale);  // 右ペイン: タイトル下からPDFまでの余白をさらに圧縮して黒エリアを拡大
 
-    const { cardsSvg, overflowCount } = await this.buildToolCardGrid(tools, {
-      x: leftX + leftInnerPadding,
-      y: outerPadding + leftInnerPadding + leftHeaderHeight,
-      width: leftWidth - leftInnerPadding * 2,
-      height: panelHeight - leftInnerPadding * 2 - leftHeaderHeight,
-      mode: 'SPLIT',
-      showThumbnails: true,
-      maxRows: 3,
-      maxColumns: 3,
-    });
+    // swapSidesがtrueの場合、左右を入れ替える
+    const actualLeftTools = swapSides ? [] : tools;
+    const actualRightTools = swapSides ? tools : [];
+    const actualLeftPdfOptions = swapSides ? pdfOptions : undefined;
+    const actualRightPdfOptions = swapSides ? undefined : pdfOptions;
+
+    const leftTitle = swapSides ? (pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
+    const rightTitle = swapSides ? '持出中アイテム' : (pdfOptions?.title ?? 'PDF表示');
+
+    const { cardsSvg, overflowCount } = await this.buildToolCardGrid(
+      swapSides ? actualRightTools : actualLeftTools,
+      {
+        x: swapSides ? rightX + rightInnerPadding : leftX + leftInnerPadding,
+        y: outerPadding + (swapSides ? rightInnerPadding + rightHeaderHeight : leftInnerPadding + leftHeaderHeight),
+        width: (swapSides ? rightWidth : leftWidth) - (swapSides ? rightInnerPadding : leftInnerPadding) * 2,
+        height: panelHeight - (swapSides ? rightInnerPadding : leftInnerPadding) * 2 - (swapSides ? rightHeaderHeight : leftHeaderHeight),
+        mode: 'SPLIT',
+        showThumbnails: true,
+        maxRows: 3,
+        maxColumns: 3,
+      }
+    );
 
     const overflowBadge =
       overflowCount > 0
-        ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + panelHeight - leftInnerPadding}"
+        ? `<text x="${swapSides ? rightX + rightWidth - rightInnerPadding : leftX + leftWidth - leftInnerPadding}" y="${outerPadding + panelHeight - (swapSides ? rightInnerPadding : leftInnerPadding)}"
             text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>`
         : '';
 
     const metricsElement = pdfOptions?.metricsText
-      ? `<text x="${leftX + leftWidth - leftInnerPadding}" y="${outerPadding + leftInnerPadding}"
+      ? `<text x="${swapSides ? rightX + rightWidth - rightInnerPadding : leftX + leftWidth - leftInnerPadding}" y="${outerPadding + (swapSides ? rightInnerPadding : leftInnerPadding)}"
           text-anchor="end" font-size="${Math.round(18 * scale)}" fill="#cbd5f5" font-family="sans-serif">
           ${this.escapeXml(pdfOptions.metricsText)}
         </text>`
       : '';
 
-    const pdfContent = pdfOptions?.imageBase64
-      ? `<image x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + rightHeaderHeight}"
-          width="${rightWidth - rightInnerPadding * 2}" height="${panelHeight - rightInnerPadding * 2 - rightHeaderHeight}"
+    const pdfContent = (swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.imageBase64
+      ? `<image x="${swapSides ? leftX + leftInnerPadding : rightX + rightInnerPadding}" y="${outerPadding + (swapSides ? leftInnerPadding + leftHeaderHeight : rightInnerPadding + rightHeaderHeight)}"
+          width="${(swapSides ? leftWidth : rightWidth) - (swapSides ? leftInnerPadding : rightInnerPadding) * 2}" height="${panelHeight - (swapSides ? leftInnerPadding : rightInnerPadding) * 2 - (swapSides ? leftHeaderHeight : rightHeaderHeight)}"
           preserveAspectRatio="xMidYMid meet"
-          href="${pdfOptions.imageBase64}" />`
-      : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
+          href="${(swapSides ? actualLeftPdfOptions : actualRightPdfOptions)?.imageBase64}" />`
+      : swapSides ? '' : `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
           text-anchor="middle" font-size="${Math.round(32 * scale)}" fill="#e2e8f0" font-family="sans-serif">
           PDFが設定されていません
         </text>`;
 
     const slideInfo = '';
-
-    const fileNameOverlay =
-      pdfOptions?.title && pdfOptions.title.trim().length > 0
-        ? `<text x="${rightX + rightInnerPadding + Math.round(4 * scale)}" y="${outerPadding + rightInnerPadding + titleOffsetY + Math.round(12 * scale)}"
-            font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            ${this.escapeXml(pdfOptions.title)}
-          </text>`
-        : '';
 
     return `
       <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
@@ -301,10 +436,10 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
           <text x="${leftX + leftInnerPadding}" y="${outerPadding + leftInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            持出中アイテム
+            ${this.escapeXml(leftTitle)}
           </text>
-          ${metricsElement}
-          ${cardsSvg}
+          ${swapSides ? '' : metricsElement}
+          ${swapSides ? pdfContent : cardsSvg}
           ${overflowBadge}
         </g>
 
@@ -314,11 +449,11 @@ export class SignageRenderer {
             fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
           <text x="${rightX + rightInnerPadding}" y="${outerPadding + rightInnerPadding + titleOffsetY}"
             font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-            PDF表示
+            ${this.escapeXml(rightTitle)}
           </text>
-          ${slideInfo}
-          ${pdfContent}
-          ${fileNameOverlay}
+          ${swapSides ? slideInfo : ''}
+          ${swapSides ? cardsSvg : pdfContent}
+          ${overflowBadge}
         </g>
       </svg>
     `;
@@ -635,17 +770,16 @@ export class SignageRenderer {
       }
 
       const elapsed = now - state.lastRenderedAt;
-      let steps = Math.floor(elapsed / slideIntervalMs);
+      const steps = Math.floor(elapsed / slideIntervalMs);
+      
+      // 修正: slideInterval未満の場合はページを進めない（同じページを維持）
+      // slideInterval以上経過した場合は1ページ進める（飛ばさない）
       if (steps <= 0) {
-        steps = 1;
-      } else {
-        steps = steps % totalPages;
-        if (steps === 0) {
-          steps = 1;
-        }
+        return state.lastIndex;
       }
-
-      const nextIndex = (state.lastIndex + steps) % totalPages;
+      
+      // 複数ページ分経過した場合でも1ページずつ進める（飛ばさない）
+      const nextIndex = (state.lastIndex + 1) % totalPages;
       this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
 
       logger.info({
