@@ -267,7 +267,10 @@ export class CsvDashboardService {
     startDate.setHours(0, 0, 0, 0);
     // Asia/Tokyo (UTC+9) を考慮してUTCに変換
     const startDateUtc = new Date(startDate.getTime() - 9 * 60 * 60 * 1000);
-    const endDateUtc = new Date(now.getTime() - 9 * 60 * 60 * 1000);
+    // 終了日時はJSTの現在日の23:59:59をUTCに変換
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+    const endDateUtc = new Date(endDate.getTime() - 9 * 60 * 60 * 1000);
 
     // 期間内の行データを取得
     const rows = await prisma.csvDashboardRow.findMany({
