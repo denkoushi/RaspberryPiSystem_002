@@ -7,6 +7,7 @@ import type { SignageContentResponse, SignageSlot, SignageSlotConfig } from '../
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 type PdfSlotConfig = SignageSlotConfig & { pdfId: string };
+type CsvDashboardSlotConfig = SignageSlotConfig & { csvDashboardId: string };
 
 const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
 const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
@@ -169,6 +170,57 @@ export function SignageDisplayPage() {
   }
 
   if (content.contentType === 'TOOLS') {
+    // layoutConfig準拠のFULL描画
+    if (content.layoutConfig && content.layoutConfig.layout === 'FULL') {
+      const slot = content.layoutConfig.slots[0];
+      if (slot?.kind === 'csv_dashboard') {
+        const csvDashboardConfig = slot.config as CsvDashboardSlotConfig;
+        const csvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
+        
+        if (!csvDashboard) {
+          return renderStateScreen('CSVダッシュボードが設定されていません');
+        }
+
+        return (
+          <div className={`${screenClass} px-2 py-2`}>
+            <div className="mx-auto flex h-full w-full flex-col gap-3">
+              <header>
+                <h1 className="text-3xl font-semibold text-white">{csvDashboard.name}</h1>
+                {csvDashboard.totalPages > 1 ? (
+                  <p className="text-sm text-white/60">
+                    ページ {csvDashboard.pageNumber} / {csvDashboard.totalPages}
+                  </p>
+                ) : null}
+              </header>
+              <div className="flex-1 overflow-hidden rounded-xl border border-white/5 bg-slate-950/40 p-1">
+                {csvDashboard.rows.length > 0 ? (
+                  <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-3 overflow-y-auto rounded-xl p-3">
+                    {csvDashboard.rows.map((row, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-white/10 bg-white/5 p-4"
+                      >
+                        {Object.entries(row).map(([key, value]) => (
+                          <div key={key} className="mb-2 flex gap-2">
+                            <span className="font-semibold text-white/80">{key}:</span>
+                            <span className="text-white/60">{String(value ?? '')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xl text-white/60">
+                    データがありません
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+
     return (
       <div className={`${screenClass} px-2 py-2`}>
         <div className="mx-auto flex h-full w-full flex-col gap-3">
@@ -295,6 +347,58 @@ export function SignageDisplayPage() {
                     : renderPdfImage(pages[0], 'PDF')
                 ) : (
                   <p className="text-white/60">PDFが設定されていません</p>
+                )}
+              </div>
+            </section>
+          );
+        } else if (slot.kind === 'csv_dashboard') {
+          const csvDashboardConfig = slot.config as CsvDashboardSlotConfig;
+          const csvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
+          
+          if (!csvDashboard) {
+            return (
+              <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">CSVダッシュボード</h2>
+                </div>
+                <div className="flex flex-1 items-center justify-center">
+                  <p className="text-white/60">CSVダッシュボードが設定されていません</p>
+                </div>
+              </section>
+            );
+          }
+
+          return (
+            <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-semibold text-white">{csvDashboard.name}</h2>
+                {csvDashboard.totalPages > 1 ? (
+                  <span className="text-xs text-white/60">
+                    ページ {csvDashboard.pageNumber} / {csvDashboard.totalPages}
+                  </span>
+                ) : null}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {csvDashboard.rows.length > 0 ? (
+                  <div className="space-y-2">
+                    {csvDashboard.rows.map((row, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg border border-white/10 bg-white/5 p-3"
+                      >
+                        {Object.entries(row).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <span className="font-semibold text-white/80">{key}:</span>
+                            <span className="text-white/60">{String(value ?? '')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-white/60">
+                    データがありません
+                  </div>
                 )}
               </div>
             </section>

@@ -75,8 +75,8 @@ model Employee {
   id                       String                    @id @default(uuid())
   employeeCode             String                    @unique
   displayName              String
-  lastName                 String?                   // 苗字（CSVインポート用）
-  firstName                String?                   // 名前（CSVインポート用）
+  lastName                 String? // 苗字（CSVインポート用）
+  firstName                String? // 名前（CSVインポート用）
   nfcTagUid                String?                   @unique
   department               String?
   contact                  String?
@@ -109,7 +109,7 @@ model MeasuringInstrument {
   name                  String
   managementNumber      String                    @unique
   storageLocation       String?
-  department            String?                   // 管理部署（CSVインポート用）
+  department            String? // 管理部署（CSVインポート用）
   measurementRange      String?
   calibrationExpiryDate DateTime?
   status                MeasuringInstrumentStatus @default(AVAILABLE)
@@ -188,7 +188,7 @@ model RiggingGear {
   widthMm           Int?
   thicknessMm       Int?
   startedAt         DateTime?
-  usableYears       Int?                      // 使用可能年数（CSVインポート用）
+  usableYears       Int? // 使用可能年数（CSVインポート用）
   status            RiggingStatus             @default(AVAILABLE)
   notes             String?
   createdAt         DateTime                  @default(now())
@@ -230,17 +230,17 @@ model RiggingInspectionRecord {
 }
 
 model ClientDevice {
-  id            String        @id @default(uuid())
-  name          String
-  location      String?
-  apiKey        String        @unique
-  statusClientId String?      // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
-  defaultMode   String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  lastSeenAt    DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  loans         Loan[]
-  transactions  Transaction[]
+  id             String        @id @default(uuid())
+  name           String
+  location       String?
+  apiKey         String        @unique
+  statusClientId String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
+  defaultMode    String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  lastSeenAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  loans          Loan[]
+  transactions   Transaction[]
 
   @@index([statusClientId])
 }
@@ -403,8 +403,8 @@ enum BackupStatus {
 }
 
 enum BackupFileStatus {
-  EXISTS   // ファイルが存在する
-  DELETED  // ファイルが削除済み（保持期間超過または最大件数超過）
+  EXISTS // ファイルが存在する
+  DELETED // ファイルが削除済み（保持期間超過または最大件数超過）
 }
 
 model BackupHistory {
@@ -434,19 +434,19 @@ model BackupHistory {
 }
 
 model SignageSchedule {
-  id          String             @id @default(uuid())
-  name        String
-  contentType SignageContentType
-  pdfId       String?
-  pdf         SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
-  layoutConfig Json?             // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
-  dayOfWeek   Int[]
-  startTime   String
-  endTime     String
-  priority    Int
-  enabled     Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id           String             @id @default(uuid())
+  name         String
+  contentType  SignageContentType
+  pdfId        String?
+  pdf          SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
+  dayOfWeek    Int[]
+  startTime    String
+  endTime      String
+  priority     Int
+  enabled      Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@index([enabled])
   @@index([priority])
@@ -469,17 +469,85 @@ model SignagePdf {
 }
 
 model SignageEmergency {
-  id          String              @id @default(uuid())
-  message     String?
-  contentType SignageContentType?
-  pdfId       String?
-  pdf         SignagePdf?         @relation("EmergencyPdf", fields: [pdfId], references: [id], onDelete: SetNull)
-  layoutConfig Json?              // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
-  enabled     Boolean             @default(false)
-  expiresAt   DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id           String              @id @default(uuid())
+  message      String?
+  contentType  SignageContentType?
+  pdfId        String?
+  pdf          SignagePdf?         @relation("EmergencyPdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
+  enabled      Boolean             @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([enabled])
   @@index([expiresAt])
+}
+
+enum CsvDashboardIngestMode {
+  APPEND // 追加（重複無視）
+  DEDUP // 重複除去
+}
+
+enum CsvDashboardTemplateType {
+  TABLE // テーブル形式
+  CARD_GRID // カードグリッド形式
+}
+
+model CsvDashboard {
+  id                String                   @id @default(uuid())
+  name              String // ダッシュボード名
+  description       String? // 説明
+  columnDefinitions Json // 列定義（列名マッピング、順序、型、表示名など）
+  dateColumnName    String? // 日付列の内部名（表示期間フィルタ用）
+  displayPeriodDays Int                      @default(1) // 表示期間（日数、デフォルトは当日のみ）
+  emptyMessage      String? // 0件時のメッセージ
+  ingestMode        CsvDashboardIngestMode   @default(APPEND) // 取り込み方式
+  dedupKeyColumns   String[]                 @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
+  gmailScheduleId   String? // Gmail取得スケジュールID（オプション、将来の拡張用）
+  templateType      CsvDashboardTemplateType @default(TABLE) // 可視化テンプレート種別
+  templateConfig    Json // テンプレート設定（行数、フォントサイズ、表示列など）
+  csvFilePath       String? // 最新のCSVファイルパス（原本保存先）
+  enabled           Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  ingestRuns        CsvDashboardIngestRun[]
+  rows              CsvDashboardRow[]
+
+  @@index([enabled])
+  @@index([gmailScheduleId])
+}
+
+model CsvDashboardIngestRun {
+  id             String       @id @default(uuid())
+  csvDashboardId String
+  csvDashboard   CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  status         ImportStatus @default(PENDING)
+  messageId      String? // GmailメッセージID
+  messageSubject String? // Gmail件名
+  csvFilePath    String? // 取り込んだCSVファイルパス
+  rowsProcessed  Int          @default(0) // 処理行数
+  rowsAdded      Int          @default(0) // 追加行数（dedup時は重複除外後の数）
+  rowsSkipped    Int          @default(0) // スキップ行数（重複など）
+  errorMessage   String? // エラーメッセージ
+  startedAt      DateTime     @default(now())
+  completedAt    DateTime?
+
+  @@index([csvDashboardId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model CsvDashboardRow {
+  id             String       @id @default(uuid())
+  csvDashboardId String
+  csvDashboard   CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  occurredAt     DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
+  dataHash       String? // データのハッシュ（重複除去用、dedup時のみ使用）
+  rowData        Json // 正規化された行データ（列マッピング適用後）
+  createdAt      DateTime     @default(now())
+
+  @@index([csvDashboardId])
+  @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
+  @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
 }

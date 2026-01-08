@@ -14,7 +14,9 @@ import type {
   SignageSlot,
   PdfSlotConfig,
   LoansSlotConfig,
+  CsvDashboardSlotConfig,
 } from './signage-layout.types.js';
+import { CsvDashboardService } from '../csv-dashboard/index.js';
 
 export interface SignageScheduleInput {
   name: string;
@@ -93,6 +95,13 @@ export interface SignageContentResponse {
     pages: string[];
     slideInterval: number | null;
   }>; // 複数PDFを参照するための辞書（左右別PDF対応）
+  csvDashboardsById?: Record<string, {
+    id: string;
+    name: string;
+    pageNumber: number;
+    totalPages: number;
+    rows: Array<Record<string, unknown>>;
+  }>; // CSVダッシュボードデータ（複数対応）
 }
 
 export class SignageService {
@@ -268,6 +277,34 @@ export class SignageService {
         }
       }
 
+      // CSVダッシュボードスロットの情報を収集
+      const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
+      const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
+      const csvDashboardService = new CsvDashboardService();
+
+      for (const slot of csvDashboardSlots) {
+        const csvDashboardId = slot.config.csvDashboardId;
+        if (!csvDashboardDataMap.has(csvDashboardId)) {
+          const dashboard = await prisma.csvDashboard.findUnique({
+            where: { id: csvDashboardId },
+          });
+          if (dashboard && dashboard.enabled) {
+            const pageData = await csvDashboardService.getPageData(
+              csvDashboardId,
+              1,
+              dashboard.displayPeriodDays
+            );
+            csvDashboardDataMap.set(csvDashboardId, {
+              id: dashboard.id,
+              name: dashboard.name,
+              pageNumber: pageData.pageNumber,
+              totalPages: pageData.totalPages,
+              rows: pageData.rows,
+            });
+          }
+        }
+      }
+
       // 後方互換のため、contentTypeとdisplayModeを決定
       let contentType: SignageContentType;
       let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
@@ -305,6 +342,12 @@ export class SignageService {
         pdfsById[pdfId] = pdfData;
       }
 
+      // csvDashboardsByIdを構築（複数CSVダッシュボード対応）
+      const csvDashboardsById: Record<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }> = {};
+      for (const [csvDashboardId, csvDashboardData] of csvDashboardDataMap.entries()) {
+        csvDashboardsById[csvDashboardId] = csvDashboardData;
+      }
+
       return {
         contentType,
         displayMode,
@@ -313,6 +356,7 @@ export class SignageService {
         measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
         pdf: pdfPayload,
         pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
+        csvDashboardsById: Object.keys(csvDashboardsById).length > 0 ? csvDashboardsById : undefined,
       };
     }
 
@@ -647,6 +691,36 @@ export class SignageService {
       }
     }
 
+    // CSVダッシュボードスロットの情報を収集
+    const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
+    const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
+    const csvDashboardService = new CsvDashboardService();
+
+    for (const slot of csvDashboardSlots) {
+      const csvDashboardId = slot.config.csvDashboardId;
+      if (!csvDashboardDataMap.has(csvDashboardId)) {
+        const dashboard = await prisma.csvDashboard.findUnique({
+          where: { id: csvDashboardId },
+        });
+        if (dashboard && dashboard.enabled) {
+          // 現在のページ番号を取得（簡易実装として1ページ目を取得）
+          // 実際の実装では、レンダリングごとにページ番号を進める必要がある
+          const pageData = await csvDashboardService.getPageData(
+            csvDashboardId,
+            1, // ページ番号（将来はレンダリングごとに進める）
+            dashboard.displayPeriodDays
+          );
+          csvDashboardDataMap.set(csvDashboardId, {
+            id: dashboard.id,
+            name: dashboard.name,
+            pageNumber: pageData.pageNumber,
+            totalPages: pageData.totalPages,
+            rows: pageData.rows,
+          });
+        }
+      }
+    }
+
     // 後方互換のため、contentTypeとdisplayModeを決定
     let contentType: SignageContentType;
     let displayMode: SignageDisplayMode = SignageDisplayMode.SINGLE;
@@ -684,6 +758,12 @@ export class SignageService {
       pdfsById[pdfId] = pdfData;
     }
 
+    // csvDashboardsByIdを構築（複数CSVダッシュボード対応）
+    const csvDashboardsById: Record<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }> = {};
+    for (const [csvDashboardId, csvDashboardData] of csvDashboardDataMap.entries()) {
+      csvDashboardsById[csvDashboardId] = csvDashboardData;
+    }
+
     return {
       contentType,
       displayMode,
@@ -692,6 +772,7 @@ export class SignageService {
       measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
       pdf: pdfPayload,
       pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
+      csvDashboardsById: Object.keys(csvDashboardsById).length > 0 ? csvDashboardsById : undefined,
     };
   }
 
