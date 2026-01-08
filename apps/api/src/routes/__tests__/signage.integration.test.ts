@@ -262,6 +262,45 @@ describe('POST /api/signage/schedules with layoutConfig', () => {
     expect(body.schedule.layoutConfig.layout).toBe('FULL');
   });
 
+  it('should preserve csvDashboardId in csv_dashboard slot config', async () => {
+    const csvDashboardId = 'e6e8f754-442e-48e6-b5dc-517856229231';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule FULL CSV Dashboard',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'csv_dashboard',
+              config: {
+                csvDashboardId,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('schedule');
+    expect(body.schedule.layoutConfig).toBeDefined();
+    expect(body.schedule.layoutConfig.layout).toBe('FULL');
+    expect(body.schedule.layoutConfig.slots).toHaveLength(1);
+    expect(body.schedule.layoutConfig.slots[0].kind).toBe('csv_dashboard');
+    expect(body.schedule.layoutConfig.slots[0].config?.csvDashboardId).toBe(csvDashboardId);
+  });
+
   it('should create a schedule with SPLIT layout (left: loans, right: pdf)', async () => {
     // まずPDFを作成
     const pdfResponse = await app.inject({
