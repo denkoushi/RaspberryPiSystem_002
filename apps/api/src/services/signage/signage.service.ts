@@ -292,7 +292,7 @@ export class SignageService {
             const pageData = await csvDashboardService.getPageData(
               csvDashboardId,
               1,
-              dashboard.displayPeriodDays
+              dashboard.displayPeriodDays ?? 1
             );
             csvDashboardDataMap.set(csvDashboardId, {
               id: dashboard.id,
