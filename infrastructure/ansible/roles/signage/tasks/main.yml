@@ -147,6 +147,12 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
+- name: Unmask signage-lite service (ensure it can be started after preflight mask)
+  ansible.builtin.systemd:
+    name: signage-lite.service
+    masked: false
+  ignore_errors: true
+
 - name: Re-enable signage-lite service (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite.service

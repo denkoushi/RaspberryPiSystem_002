@@ -26,7 +26,79 @@
       ansible.builtin.import_role:
         name: common
 
+    # Preflight: Check Ansible role structure before deployment (fail-fast on controller)
+    # Check if any client host has manage_signage_lite enabled
+    - name: Check if any client has manage_signage_lite enabled
+      ansible.builtin.set_fact:
+        has_signage_clients: "{{ groups.clients | default([]) | map('extract', hostvars) | selectattr('manage_signage_lite', 'defined') | selectattr('manage_signage_lite', 'equalto', true) | list | length > 0 }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Verify signage role templates directory exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/signage/templates"
+      register: signage_templates_dir
+      delegate_to: localhost
+      run_once: true
+      when: has_signage_clients | default(false)
+
+    - name: Fail if signage role templates directory is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: signage role templates directory not found at {{ playbook_dir }}/../roles/signage/templates.
+          This will cause deployment failure on Pi3. Please ensure all template files are in the correct location.
+          See KB-153 for details.
+      when:
+        - has_signage_clients | default(false)
+        - not signage_templates_dir.stat.exists | default(false)
+      delegate_to: localhost
+      run_once: true
+
+    - name: Verify required signage role template files exist
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/signage/templates/{{ item }}"
+      register: signage_template_files
+      delegate_to: localhost
+      run_once: true
+      loop:
+        - signage-lite.tmpfiles.conf.j2
+        - signage-update.sh.j2
+        - signage-display.sh.j2
+        - signage-stop.sh.j2
+        - signage-lite-watchdog.sh.j2
+        - signage-lite.service.j2
+        - signage-lite-update.service.j2
+        - signage-lite-update.timer.j2
+        - signage-lite-watchdog.service.j2
+        - signage-lite-watchdog.timer.j2
+        - signage-daily-reboot.service.j2
+        - signage-daily-reboot.timer.j2
+      when:
+        - has_signage_clients | default(false)
+        - signage_templates_dir.stat.exists | default(false)
+
+    - name: Fail if required signage role template files are missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: Required signage role template file missing: {{ item.item }}.
+          This will cause deployment failure on Pi3. Please ensure all template files are in {{ playbook_dir }}/../roles/signage/templates/.
+          See KB-153 for details.
+      when:
+        - has_signage_clients | default(false)
+        - signage_templates_dir.stat.exists | default(false)
+        - not item.stat.exists | default(false)
+      loop: "{{ signage_template_files.results | default([]) }}"
+      delegate_to: localhost
+      run_once: true
+
   tasks:
+    # Preflight: Pi3 signage-specific preflight checks (stop services, check memory, cleanup)
+    - name: Run Pi3 signage preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-pi3-signage.yml"
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+
     - name: Execute deployment with automatic rollback
       block:
         - name: Apply server-specific deployment tasks

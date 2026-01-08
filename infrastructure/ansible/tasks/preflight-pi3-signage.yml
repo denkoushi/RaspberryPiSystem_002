@@ -1,0 +1,100 @@
+---
+# Preflight tasks for Pi3 signage deployment
+# These tasks ensure Pi3 is in a safe state before deployment:
+# - Stop and disable services/timers to free memory
+# - Mask services to prevent auto-restart
+# - Clean up stale Ansible processes
+# - Verify sufficient memory is available
+
+- name: Preflight checks for Pi3 signage deployment
+  block:
+    - name: Stop and disable signage-lite update timer
+      ansible.builtin.systemd:
+        name: signage-lite-update.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable signage-lite watchdog timer
+      ansible.builtin.systemd:
+        name: signage-lite-watchdog.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable signage-daily-reboot timer
+      ansible.builtin.systemd:
+        name: signage-daily-reboot.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable status-agent timer
+      ansible.builtin.systemd:
+        name: status-agent.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop signage-lite service
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        state: stopped
+      ignore_errors: true
+
+    - name: Disable signage-lite service
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        enabled: false
+      ignore_errors: true
+
+    - name: Mask signage-lite service (runtime only, prevents auto-restart)
+      ansible.builtin.systemd:
+        name: signage-lite.service
+        masked: true
+      ignore_errors: true
+
+    - name: Wait for services to fully stop
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Clean up stale Ansible processes (AnsiballZ older than 120 seconds)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        ps aux | grep -E 'AnsiballZ_.*\.py' | grep -v grep | while read line; do
+          pid=$(echo "$line" | awk '{print $2}')
+          etimes=$(ps -o etimes= -p "$pid" 2>/dev/null || echo "0")
+          if [ "$etimes" -gt 120 ]; then
+            echo "Killing stale Ansible process: PID=$pid, etimes=${etimes}s"
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+        done
+      register: cleanup_result
+      changed_when: cleanup_result.stdout | length > 0
+      failed_when: false
+
+    - name: Check available memory
+      ansible.builtin.shell: free -m | awk '/^Mem:/ {print $7}'
+      register: available_memory_mb_raw
+      changed_when: false
+
+    - name: Extract available memory value
+      ansible.builtin.set_fact:
+        available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
+
+    - name: Fail if insufficient memory available
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: Insufficient memory available on {{ inventory_hostname }}.
+          Available: {{ available_memory_mb }}MB (required: >= 120MB)
+          
+          To free memory, manually stop the following services:
+          - sudo systemctl stop signage-lite.service
+          - sudo systemctl stop signage-lite-update.timer
+          - sudo systemctl stop signage-lite-watchdog.timer
+          - sudo systemctl stop signage-daily-reboot.timer
+          - sudo systemctl stop status-agent.timer
+          
+          Then wait a few seconds and retry deployment.
+      when: available_memory_mb | default(0) < 120
+
