@@ -708,7 +708,7 @@ export class SignageService {
           const pageData = await csvDashboardService.getPageData(
             csvDashboardId,
             1, // ページ番号（将来はレンダリングごとに進める）
-            dashboard.displayPeriodDays
+            dashboard.displayPeriodDays ?? 1
           );
           csvDashboardDataMap.set(csvDashboardId, {
             id: dashboard.id,
