@@ -260,17 +260,21 @@ export class CsvDashboardService {
     const dashboard = await this.findById(dashboardId);
     const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
 
-    // 表示期間の開始日時を計算（Asia/Tokyo）
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - (displayPeriodDays - 1));
-    startDate.setHours(0, 0, 0, 0);
-    // Asia/Tokyo (UTC+9) を考慮してUTCに変換
-    const startDateUtc = new Date(startDate.getTime() - 9 * 60 * 60 * 1000);
-    // 終了日時はJSTの現在日の23:59:59をUTCに変換
-    const endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
-    const endDateUtc = new Date(endDate.getTime() - 9 * 60 * 60 * 1000);
+    // 表示期間の開始日時を計算（Asia/Tokyo = UTC+9）
+    // サーバーはUTC環境で動作しているため、JSTの「今日」を計算するにはUTC+9を考慮
+    const nowUtc = new Date();
+    const jstOffset = 9 * 60 * 60 * 1000; // JST = UTC + 9時間
+    
+    // JSTでの「今日の0:00」をUTCで表現 → UTC 前日15:00
+    const nowJst = new Date(nowUtc.getTime() + jstOffset);
+    const startOfTodayJst = new Date(nowJst);
+    startOfTodayJst.setHours(0, 0, 0, 0);
+    const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffset - (displayPeriodDays - 1) * 24 * 60 * 60 * 1000);
+    
+    // JSTでの「今日の23:59:59」をUTCで表現 → UTC 翌日14:59:59
+    const endOfTodayJst = new Date(nowJst);
+    endOfTodayJst.setHours(23, 59, 59, 999);
+    const endDateUtc = new Date(endOfTodayJst.getTime() - jstOffset);
 
     // 期間内の行データを取得
     const rows = await prisma.csvDashboardRow.findMany({
