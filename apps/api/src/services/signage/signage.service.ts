@@ -87,6 +87,12 @@ export interface SignageContentResponse {
     pages: string[];
     slideInterval?: number | null;
   } | null;
+  pdfsById?: Record<string, {
+    id: string;
+    name: string;
+    pages: string[];
+    slideInterval: number | null;
+  }>; // 複数PDFを参照するための辞書（左右別PDF対応）
 }
 
 export class SignageService {
@@ -293,6 +299,12 @@ export class SignageService {
         }
       }
 
+      // pdfsByIdを構築（複数PDF対応）
+      const pdfsById: Record<string, { id: string; name: string; pages: string[]; slideInterval: number | null }> = {};
+      for (const [pdfId, pdfData] of pdfDataMap.entries()) {
+        pdfsById[pdfId] = pdfData;
+      }
+
       return {
         contentType,
         displayMode,
@@ -300,6 +312,7 @@ export class SignageService {
         tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
         measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
         pdf: pdfPayload,
+        pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
       };
     }
 
@@ -665,6 +678,12 @@ export class SignageService {
       }
     }
 
+    // pdfsByIdを構築（複数PDF対応）
+    const pdfsById: Record<string, { id: string; name: string; pages: string[]; slideInterval: number | null }> = {};
+    for (const [pdfId, pdfData] of pdfDataMap.entries()) {
+      pdfsById[pdfId] = pdfData;
+    }
+
     return {
       contentType,
       displayMode,
@@ -672,6 +691,7 @@ export class SignageService {
       tools: layoutConfig.slots.some((s) => s.kind === 'loans') ? tools : undefined,
       measuringInstruments: layoutConfig.slots.some((s) => s.kind === 'loans') ? measuringInstruments : undefined,
       pdf: pdfPayload,
+      pdfsById: Object.keys(pdfsById).length > 0 ? pdfsById : undefined,
     };
   }
 
