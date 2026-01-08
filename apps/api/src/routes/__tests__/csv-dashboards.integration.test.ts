@@ -59,13 +59,15 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              csvHeaderCandidates: ['日付', 'Date'],
+              dataType: 'date',
               order: 0,
             },
             {
               internalName: 'value',
               displayName: '値',
-              dataType: 'NUMBER',
+              csvHeaderCandidates: ['値', 'Value'],
+              dataType: 'number',
               order: 1,
             },
           ],
@@ -120,7 +122,7 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              dataType: 'date',
               order: 0,
             },
           ],
@@ -143,8 +145,9 @@ describe('CSV Dashboards API', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(Array.isArray(body)).toBe(true);
-      expect(body.length).toBeGreaterThan(0);
+      expect(body).toHaveProperty('dashboards');
+      expect(Array.isArray(body.dashboards)).toBe(true);
+      expect(body.dashboards.length).toBeGreaterThan(0);
     });
   });
 
@@ -157,7 +160,7 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              dataType: 'date',
               order: 0,
             },
           ],
@@ -180,14 +183,15 @@ describe('CSV Dashboards API', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.id).toBe(dashboard.id);
-      expect(body.name).toBe('Dashboard 1');
+      expect(body).toHaveProperty('dashboard');
+      expect(body.dashboard.id).toBe(dashboard.id);
+      expect(body.dashboard.name).toBe('Dashboard 1');
     });
 
     it('should return 404 for non-existent dashboard', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/api/csv-dashboards/non-existent-id',
+        url: '/api/csv-dashboards/00000000-0000-0000-0000-000000000000',
         headers: {
           ...createAuthHeader(adminToken),
         },
@@ -206,7 +210,7 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              dataType: 'date',
               order: 0,
             },
           ],
@@ -231,7 +235,8 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              csvHeaderCandidates: ['日付', 'Date'],
+              dataType: 'date',
               order: 0,
             },
           ],
@@ -246,7 +251,8 @@ describe('CSV Dashboards API', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.name).toBe('Updated Dashboard');
+      expect(body).toHaveProperty('dashboard');
+      expect(body.dashboard.name).toBe('Updated Dashboard');
     });
   });
 
@@ -259,7 +265,7 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              dataType: 'date',
               order: 0,
             },
           ],
@@ -299,13 +305,13 @@ describe('CSV Dashboards API', () => {
             {
               internalName: 'date',
               displayName: '日付',
-              dataType: 'DATE',
+              dataType: 'date',
               order: 0,
             },
             {
               internalName: 'value',
               displayName: '値',
-              dataType: 'NUMBER',
+              dataType: 'number',
               order: 1,
             },
           ],
@@ -334,11 +340,12 @@ describe('CSV Dashboards API', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body).toHaveProperty('headers');
-      expect(body).toHaveProperty('sampleRows');
-      expect(body).toHaveProperty('detectedTypes');
-      expect(body.headers).toContain('date');
-      expect(body.headers).toContain('value');
+      expect(body).toHaveProperty('preview');
+      expect(body.preview).toHaveProperty('headers');
+      expect(body.preview).toHaveProperty('sampleRows');
+      expect(body.preview).toHaveProperty('detectedTypes');
+      expect(body.preview.headers).toContain('date');
+      expect(body.preview.headers).toContain('value');
     });
   });
 });

@@ -416,7 +416,7 @@ describe('GET /api/signage/content with CSV dashboard', () => {
     // テストデータをクリーンアップ
     await prisma.csvDashboardRow.deleteMany({});
     await prisma.csvDashboardIngestRun.deleteMany({});
-    await prisma.csvDashboardColumn.deleteMany({});
+    
     await prisma.csvDashboard.deleteMany({});
 
     // 既存のスケジュールを削除
@@ -438,7 +438,7 @@ describe('GET /api/signage/content with CSV dashboard', () => {
     // テストデータをクリーンアップ
     await prisma.csvDashboardRow.deleteMany({});
     await prisma.csvDashboardIngestRun.deleteMany({});
-    await prisma.csvDashboardColumn.deleteMany({});
+    
     await prisma.csvDashboard.deleteMany({});
 
     if (closeServer) {
@@ -458,13 +458,15 @@ describe('GET /api/signage/content with CSV dashboard', () => {
           {
             internalName: 'date',
             displayName: '日付',
-            dataType: 'DATE',
+            csvHeaderCandidates: ['日付', 'Date'],
+            dataType: 'date',
             order: 0,
           },
           {
             internalName: 'value',
             displayName: '値',
-            dataType: 'NUMBER',
+            csvHeaderCandidates: ['値', 'Value'],
+            dataType: 'number',
             order: 1,
           },
         ],
@@ -563,7 +565,8 @@ describe('GET /api/signage/content with CSV dashboard', () => {
           {
             internalName: 'date',
             displayName: '日付',
-            dataType: 'DATE',
+            csvHeaderCandidates: ['日付', 'Date'],
+            dataType: 'date',
             order: 0,
           },
         ],
