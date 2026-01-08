@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useSignageContent } from '../../api/hooks';
 
-import type { SignageContentResponse } from '../../api/client';
+import type { SignageContentResponse, SignageSlot, SignageSlotConfig } from '../../api/client';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
+type PdfSlotConfig = SignageSlotConfig & { pdfId: string };
 
 const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
 const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
@@ -229,6 +230,91 @@ export function SignageDisplayPage() {
   }
 
   if (content.contentType === 'SPLIT') {
+    // layoutConfig準拠の2ペインSPLIT描画
+    if (content.layoutConfig && content.layoutConfig.layout === 'SPLIT') {
+      const leftSlot = content.layoutConfig.slots.find((s: SignageSlot) => s.position === 'LEFT');
+      const rightSlot = content.layoutConfig.slots.find((s: SignageSlot) => s.position === 'RIGHT');
+
+      const renderPane = (
+        slot: SignageSlot | undefined,
+        position: 'LEFT' | 'RIGHT'
+      ) => {
+        if (!slot) {
+          return null;
+        }
+
+        if (slot.kind === 'loans') {
+          return (
+            <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+              <div>
+                <h2 className="text-2xl font-semibold text-white">持出中アイテム</h2>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {content.tools && content.tools.length > 0 ? (
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
+                    {content.tools.map((tool) => (
+                      <ToolCard key={tool.id} tool={tool} compact />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-white/60">
+                    工具データがありません
+                  </div>
+                )}
+                {content.measuringInstruments && content.measuringInstruments.length > 0 ? (
+                  <div className="mt-4">
+                    <h3 className="text-lg font-semibold text-white mb-2">計測機器ステータス</h3>
+                    <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
+                      {content.measuringInstruments.map((inst) => (
+                        <InstrumentCard key={inst.id} instrument={inst} />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          );
+        } else if (slot.kind === 'pdf') {
+          const pdfConfig = slot.config as PdfSlotConfig;
+          const pdf = content.pdfsById?.[pdfConfig.pdfId];
+          const pages = pdf?.pages ?? [];
+          const isSlideshow = pdfConfig.displayMode === 'SLIDESHOW';
+
+          return (
+            <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-semibold text-white">{pdf?.name ?? 'PDF表示'}</h2>
+                {isSlideshow && pdfConfig.slideInterval ? (
+                  <span className="text-xs text-white/60">{pdfConfig.slideInterval}s ごとに切替</span>
+                ) : null}
+              </div>
+              <div className="flex flex-1 items-center justify-center">
+                {pdf && pages.length > 0 ? (
+                  isSlideshow
+                    ? renderPdfImage(pages[currentPdfPage % pages.length], `PDF Page ${(currentPdfPage % pages.length) + 1}`)
+                    : renderPdfImage(pages[0], 'PDF')
+                ) : (
+                  <p className="text-white/60">PDFが設定されていません</p>
+                )}
+              </div>
+            </section>
+          );
+        }
+
+        return null;
+      };
+
+      return (
+        <div className={`${screenClass} px-2 py-2`}>
+          <div className="mx-auto grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]">
+            {renderPane(leftSlot, 'LEFT')}
+            {renderPane(rightSlot, 'RIGHT')}
+          </div>
+        </div>
+      );
+    }
+
+    // 後方互換: 旧形式の固定3ペイン表示
     return (
       <div className={`${screenClass} px-2 py-2`}>
         <div className="mx-auto grid h-full w-full grid-cols-1 gap-3 lg:grid-cols-[3fr_2fr]">

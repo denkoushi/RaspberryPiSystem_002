@@ -763,7 +763,7 @@ export interface SignageSlotConfig {
 
 export interface SignageSlot {
   position: 'FULL' | 'LEFT' | 'RIGHT';
-  kind: 'pdf' | 'loans' | 'csv_dashboard';
+  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
 
@@ -813,6 +813,7 @@ export interface SignageEmergency {
 export interface SignageContentResponse {
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   displayMode: 'SLIDESHOW' | 'SINGLE';
+  layoutConfig?: SignageLayoutConfig;
   tools?: Array<{
     id: string;
     itemCode: string;
@@ -839,6 +840,12 @@ export interface SignageContentResponse {
     pages: string[];
     slideInterval?: number | null;
   } | null;
+  pdfsById?: Record<string, {
+    id: string;
+    name: string;
+    pages: string[];
+    slideInterval: number | null;
+  }>;
 }
 
 // デジタルサイネージ関連のAPI関数

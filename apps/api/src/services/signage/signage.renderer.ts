@@ -174,7 +174,8 @@ export class SignageRenderer {
         }));
       } else if (leftSlot?.kind === 'pdf') {
         const pdfConfig = leftSlot.config as PdfSlotConfig;
-        const pdf = content.pdf;
+        // pdfsById優先、なければ後方互換のpdf
+        const pdf = content.pdfsById?.[pdfConfig.pdfId] ?? content.pdf;
         if (pdf && pdf.pages?.length) {
           const pdfPageIndex = this.getCurrentPdfPageIndex(
             pdf.pages.length,
@@ -199,7 +200,8 @@ export class SignageRenderer {
         }));
       } else if (rightSlot?.kind === 'pdf') {
         const pdfConfig = rightSlot.config as PdfSlotConfig;
-        const pdf = content.pdf;
+        // pdfsById優先、なければ後方互換のpdf
+        const pdf = content.pdfsById?.[pdfConfig.pdfId] ?? content.pdf;
         if (pdf && pdf.pages?.length) {
           const pdfPageIndex = this.getCurrentPdfPageIndex(
             pdf.pages.length,
@@ -214,6 +216,14 @@ export class SignageRenderer {
             displayMode: pdfConfig.displayMode,
           };
         }
+      }
+
+      // 左右ともPDFの場合
+      if (leftSlot?.kind === 'pdf' && rightSlot?.kind === 'pdf') {
+        return await this.renderSplitWithPanes(
+          { kind: 'pdf', pdfOptions: leftPdfOptions },
+          { kind: 'pdf', pdfOptions: rightPdfOptions }
+        );
       }
 
       // 左がPDF、右が工具管理の場合は順序を入れ替えて呼び出す
@@ -454,6 +464,172 @@ export class SignageRenderer {
           ${swapSides ? slideInfo : ''}
           ${swapSides ? cardsSvg : pdfContent}
           ${overflowBadge}
+        </g>
+      </svg>
+    `;
+  }
+
+  /**
+   * 左右ともにPDFまたは工具を描画できる汎用SPLITレンダリング
+   */
+  private async renderSplitWithPanes(
+    leftPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
+    rightPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions }
+  ): Promise<Buffer> {
+    // 左右のPDF画像を事前にBase64エンコード
+    let leftImageBase64: string | null = null;
+    let rightImageBase64: string | null = null;
+
+    if (leftPane.kind === 'pdf' && leftPane.pdfOptions?.pageUrl) {
+      leftImageBase64 = await this.encodePdfPageAsBase64(
+        leftPane.pdfOptions.pageUrl,
+        Math.round(WIDTH * 0.45),
+        Math.round(HEIGHT * 0.85)
+      );
+    }
+
+    if (rightPane.kind === 'pdf' && rightPane.pdfOptions?.pageUrl) {
+      rightImageBase64 = await this.encodePdfPageAsBase64(
+        rightPane.pdfOptions.pageUrl,
+        Math.round(WIDTH * 0.45),
+        Math.round(HEIGHT * 0.85)
+      );
+    }
+
+    const svg = await this.buildSplitWithPanesSvg(
+      leftPane,
+      rightPane,
+      leftImageBase64,
+      rightImageBase64
+    );
+
+    return await sharp(Buffer.from(svg))
+      .resize(WIDTH, HEIGHT)
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  }
+
+  /**
+   * 左右ペインのSVGを生成
+   */
+  private async buildSplitWithPanesSvg(
+    leftPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
+    rightPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
+    leftImageBase64: string | null,
+    rightImageBase64: string | null
+  ): Promise<string> {
+    const scale = WIDTH / 1920;
+    const outerPadding = 0;
+    const panelGap = Math.round(12 * scale);
+    const gradientId = this.generateId('bg');
+    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.5);
+    const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
+    const panelHeight = HEIGHT - outerPadding * 2;
+    const leftX = outerPadding;
+    const rightX = leftX + leftWidth + panelGap;
+    const panelRadius = Math.round(10 * scale);
+    const innerPadding = Math.round(12 * scale);
+    const titleOffsetY = Math.round(22 * scale);
+    const headerHeight = Math.round(40 * scale);
+
+    const leftTitle = leftPane.kind === 'pdf' ? (leftPane.pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
+    const rightTitle = rightPane.kind === 'pdf' ? (rightPane.pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
+
+    // 左ペインのコンテンツ
+    let leftContent = '';
+    if (leftPane.kind === 'pdf' && leftImageBase64) {
+      leftContent = `<image x="${leftX + innerPadding}" y="${outerPadding + innerPadding + headerHeight}"
+        width="${leftWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - headerHeight}"
+        preserveAspectRatio="xMidYMid meet"
+        href="${leftImageBase64}" />`;
+    } else if (leftPane.kind === 'pdf') {
+      leftContent = `<text x="${leftX + leftWidth / 2}" y="${outerPadding + panelHeight / 2}"
+        text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
+        PDFが設定されていません
+      </text>`;
+    } else if (leftPane.kind === 'loans') {
+      const { cardsSvg, overflowCount } = await this.buildToolCardGrid(leftPane.tools ?? [], {
+        x: leftX + innerPadding,
+        y: outerPadding + innerPadding + headerHeight,
+        width: leftWidth - innerPadding * 2,
+        height: panelHeight - innerPadding * 2 - headerHeight,
+        mode: 'SPLIT',
+        showThumbnails: true,
+        maxRows: 3,
+        maxColumns: 3,
+      });
+      leftContent = cardsSvg;
+      if (overflowCount > 0) {
+        leftContent += `<text x="${leftX + leftWidth - innerPadding}" y="${outerPadding + panelHeight - innerPadding}"
+          text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
+          さらに ${overflowCount} 件
+        </text>`;
+      }
+    }
+
+    // 右ペインのコンテンツ
+    let rightContent = '';
+    if (rightPane.kind === 'pdf' && rightImageBase64) {
+      rightContent = `<image x="${rightX + innerPadding}" y="${outerPadding + innerPadding + headerHeight}"
+        width="${rightWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - headerHeight}"
+        preserveAspectRatio="xMidYMid meet"
+        href="${rightImageBase64}" />`;
+    } else if (rightPane.kind === 'pdf') {
+      rightContent = `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
+        text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
+        PDFが設定されていません
+      </text>`;
+    } else if (rightPane.kind === 'loans') {
+      const { cardsSvg, overflowCount } = await this.buildToolCardGrid(rightPane.tools ?? [], {
+        x: rightX + innerPadding,
+        y: outerPadding + innerPadding + headerHeight,
+        width: rightWidth - innerPadding * 2,
+        height: panelHeight - innerPadding * 2 - headerHeight,
+        mode: 'SPLIT',
+        showThumbnails: true,
+        maxRows: 3,
+        maxColumns: 3,
+      });
+      rightContent = cardsSvg;
+      if (overflowCount > 0) {
+        rightContent += `<text x="${rightX + rightWidth - innerPadding}" y="${outerPadding + panelHeight - innerPadding}"
+          text-anchor="end" font-size="${Math.round(16 * scale)}" fill="#fcd34d" font-family="sans-serif">
+          さらに ${overflowCount} 件
+        </text>`;
+      }
+    }
+
+    return `
+      <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#020617"/>
+            <stop offset="50%" stop-color="#0d162c"/>
+            <stop offset="100%" stop-color="#020617"/>
+          </linearGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#${gradientId})" />
+
+        <g>
+          <rect x="${leftX}" y="${outerPadding}" width="${leftWidth}" height="${panelHeight}"
+            rx="${panelRadius}" ry="${panelRadius}"
+            fill="rgba(15,23,42,0.55)" stroke="rgba(255,255,255,0.08)" />
+          <text x="${leftX + innerPadding}" y="${outerPadding + innerPadding + titleOffsetY}"
+            font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+            ${this.escapeXml(leftTitle)}
+          </text>
+          ${leftContent}
+        </g>
+
+        <g>
+          <rect x="${rightX}" y="${outerPadding}" width="${rightWidth}" height="${panelHeight}"
+            rx="${panelRadius}" ry="${panelRadius}"
+            fill="rgba(15,23,42,0.50)" stroke="rgba(255,255,255,0.08)" />
+          <text x="${rightX + innerPadding}" y="${outerPadding + innerPadding + titleOffsetY}"
+            font-size="${Math.round(20 * scale)}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+            ${this.escapeXml(rightTitle)}
+          </text>
+          ${rightContent}
         </g>
       </svg>
     `;
