@@ -84,9 +84,10 @@ describe('CSV Dashboards API', () => {
 
       expect(response.statusCode).toBe(201);
       const body = response.json();
-      expect(body).toHaveProperty('id');
-      expect(body.name).toBe('Test Dashboard');
-      expect(body.templateType).toBe('TABLE');
+      expect(body).toHaveProperty('dashboard');
+      expect(body.dashboard).toHaveProperty('id');
+      expect(body.dashboard.name).toBe('Test Dashboard');
+      expect(body.dashboard.templateType).toBe('TABLE');
     });
 
     it('should reject invalid column definitions', async () => {

@@ -33,9 +33,10 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
   });
 
   // POST /api/csv-dashboards - CSVダッシュボード作成
-  app.post('/csv-dashboards', { preHandler: canManage }, async (request) => {
+  app.post('/csv-dashboards', { preHandler: canManage }, async (request, reply) => {
     const body = csvDashboardCreateSchema.parse(request.body);
     const dashboard = await csvDashboardService.create(body);
+    reply.code(201);
     return { dashboard };
   });
 

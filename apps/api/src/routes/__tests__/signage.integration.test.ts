@@ -482,7 +482,7 @@ describe('GET /api/signage/content with CSV dashboard', () => {
     });
 
     expect(dashboardResponse.statusCode).toBe(201);
-    const dashboardId = dashboardResponse.json().id;
+    const dashboardId = dashboardResponse.json().dashboard.id;
 
     // テストデータを追加（当日分）
     const now = new Date();
@@ -582,7 +582,7 @@ describe('GET /api/signage/content with CSV dashboard', () => {
     });
 
     expect(dashboardResponse.statusCode).toBe(201);
-    const dashboardId = dashboardResponse.json().id;
+    const dashboardId = dashboardResponse.json().dashboard.id;
 
     // スケジュールを作成（左: loans, 右: csv_dashboard）
     const scheduleResponse = await app.inject({
