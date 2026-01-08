@@ -247,34 +247,37 @@ curl http://localhost:7071/api/agent/status
 - Pi3の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 
-### デプロイ前の準備（必須）
+### デプロイ前の準備（自動化済み）
 
-**⚠️ 重要**: Pi3デプロイ時は、以下の手順を**必ず**実行してください。`systemctl disable`だけでは不十分で、`systemctl mask --runtime`も必要です（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**✅ 自動化**: Pi3デプロイ時のプレフライトチェックは**自動的に実行**されます（2026-01-08実装）。以下の手順を手動で実行する必要はありません。
 
+**自動実行されるプレフライトチェック**:
+1. **コントロールノード側（Pi5上）**: Ansibleロールのテンプレートファイル存在確認（`roles/signage/templates/`）
+2. **Pi3側**: 
+   - サービス停止・無効化（`signage-lite.service`, `signage-lite-update.timer`, `signage-lite-watchdog.timer`, `signage-daily-reboot.timer`, `status-agent.timer`）
+   - サービスmask（`signage-lite.service`の自動再起動防止）
+   - 残存AnsiballZプロセスの掃除（120秒以上経過したもの）
+   - メモリ閾値チェック（利用可能メモリ >= 120MB）
+
+**プレフライトチェックが失敗した場合**:
+- メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
+- テンプレートファイル不足: デプロイ開始前にfail-fastし、エラーメッセージにファイル配置場所が表示されます
+
+**手動実行が必要な場合（プレフライトチェック失敗時）**:
 ```bash
-# Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer'"
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer'"
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
+# メモリ不足の場合のみ、手動でサービスを停止
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
 
-# sudo権限の前提
-# signageras3は systemctl (signage-lite/status-agent) をパスワードなしで実行できること
+# 数秒待ってからメモリを確認
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -m'"
 
-# メモリ使用状況を確認（120MB以上空きがあることを確認）
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
-
-# プロセスが完全に停止していることを確認
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep signage-lite | grep -v grep'"
-# → 何も表示されないことを確認
-
-# Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
-ssh denkon5sd02@100.106.158.2 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
+# メモリが120MB以上になったら、再度デプロイを実行
 ```
 
 **重要**: 
-- `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に`signage-lite.service`が自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-- `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- プレフライトチェックにより、デプロイは**手順遵守に依存せず**、自動的に安全な状態で実行されます
 - Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
 

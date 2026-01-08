@@ -22,6 +22,12 @@
 
 - **✅ CI YAML責務分離リファクタ完了**: GitHub Actions CIワークフローを品質レビューに適した構成に改善。巨大な`lint-and-test`ジョブを`static-quality`、`api-tests`、`scripts-verification`、`security`に分割し、失敗原因の特定を容易に。PostgreSQLを`services:`化し、ポート衝突と後片付けの問題を解消。共通基盤を整備（`runs-on: ubuntu-24.04`固定、`concurrency`追加、`defaults.run.shell: bash -euo pipefail`設定）。成果物を標準化（Vitest JUnit/JSON/coverage、Trivy SARIF、Playwright reportをartifact化）。`pnpm audit`をnon-blocking化し、失敗してもCIを落とさず結果をログ/レポートとして残す方針に変更。詳細は [knowledge-base/ci-cd.md#kb-027](./knowledge-base/ci-cd.md#kb-027-ci-yaml責務分離リファクタ品質レビュー強化) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
+### 🆕 最新アップデート（2026-01-08）
+
+- **✅ Pi3デプロイ安定化の十分条件実装完了**: Pi3デプロイ時のプレフライトチェックを自動化し、手順遵守に依存しない運用を実現。コントロールノード側でAnsibleロールのテンプレートファイル存在チェックを実装し、Pi3側でサービス停止・無効化・mask、残存AnsiballZ掃除、メモリ閾値チェック（>= 120MB）を自動実行。条件を満たせない場合はfail-fastし、エラーメッセージに手動対処手順を表示。標準手順ドキュメントを更新し、プレフライトチェックが自動実行されることを明記。実機検証でコントロールノード側のロール構造チェックとPi3側のプレフライトチェックが正常に動作し、メモリ不足時にfail-fastすることを確認。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-154](./knowledge-base/infrastructure/ansible-deployment.md#kb-154-pi3デプロイ安定化の十分条件実装プレフライトチェック自動化) / [guides/deployment.md](./guides/deployment.md) を参照。
+
+- **✅ Pi3サイネージ安定化施策実装・デプロイ完了**: Pi3サイネージの安定稼働を向上させるため、SDカードへの高頻度書込み削減（tmpfs化）、systemdサービス堅牢化、画像更新停止の自己修復（Watchdog）、深夜の日次再起動、Ansibleによる設定の収束を実装。デプロイ時に`signage`ロールのテンプレートディレクトリ不足で失敗した問題を解決し、テンプレートファイルを`roles/signage/templates/`に配置してデプロイ成功。すべてのサービス（signage-lite.service、signage-lite-update.timer、signage-lite-watchdog.timer、signage-daily-reboot.timer、status-agent.timer）が正常に起動することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-153](./knowledge-base/infrastructure/signage.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [knowledge-base/infrastructure/ansible-deployment.md#kb-153](./knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-07）
 
 - **✅ backup.jsonの破壊的上書きを防ぐセーフガード実装・実機検証完了**: `backup.json`がフォールバック設定（デフォルト設定）で上書きされ、Gmail設定や多数のバックアップターゲットが消失する問題を解決。フォールバック検知マーカー（`FALLBACK_MARKER`）の保持（`{...config}`によるスプレッドクローンを廃止）、フォールバック保存の拒否（本番パスのみ）、破壊的上書き防止ガード（targets数が50%以上減る保存を拒否）を実装。詳細ログ（ファイル読み込み時のサイズ・要約情報、保存時の検証結果）を追加。CI通過・デプロイ完了・実機検証完了を確認。Gmail設定のトークン更新とバックアップ実行後も、ファイルサイズ（9358 bytes）、ターゲット数（17）、Gmail/Dropbox設定が維持されることを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-151](./knowledge-base/infrastructure/backup-restore.md#kb-151-backupjsonの破壊的上書きを防ぐセーフガード実装) を参照。

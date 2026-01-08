@@ -607,6 +607,48 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-153] Pi3デプロイ失敗（signageロールのテンプレートディレクトリ不足）
+
+**発生日時**: 2026-01-08
+
+**事象**: 
+- Pi3へのAnsibleデプロイが失敗し、ロールバックが実行された
+- `signage`ロールのタスクで`signage-lite.tmpfiles.conf.j2`が見つからないエラーが発生
+- デプロイ標準手順を遵守していたにもかかわらず、デプロイが失敗した
+
+**要因**: 
+- **`signage`ロールに`templates/`ディレクトリが存在しない**: `infrastructure/ansible/roles/signage/`に`templates/`ディレクトリがなく、Ansibleがテンプレートファイルを探せなかった
+- **テンプレートファイルの配置場所の不一致**: テンプレートファイルは`infrastructure/ansible/templates/`に存在していたが、Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照する
+- **ロール構造の不整合**: Pi3サイネージ安定化施策で新しいテンプレートファイルを追加した際に、ロール内の`templates/`ディレクトリに配置していなかった
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-08）:
+  1. **`signage`ロールに`templates/`ディレクトリを作成**: `infrastructure/ansible/roles/signage/templates/`ディレクトリを作成
+  2. **テンプレートファイルのコピー**: `infrastructure/ansible/templates/signage-*.j2`を`infrastructure/ansible/roles/signage/templates/`にコピー
+  3. **Gitコミット・プッシュ**: 変更をコミットしてリモートリポジトリにプッシュ
+  4. **Pi5でリポジトリ更新**: Pi5上で`git pull`を実行してテンプレートファイルを取得
+  5. **標準手順でデプロイ**: デプロイ前の準備（サービス停止・無効化・マスク）を実行してからデプロイを再実行
+
+**学んだこと**:
+- **Ansibleロールのテンプレート配置**: Ansibleロールはデフォルトで`roles/<role-name>/templates/`を参照するため、ロール専用のテンプレートファイルは必ず`roles/<role-name>/templates/`に配置する必要がある
+- **デプロイ標準手順の遵守**: デプロイ前の準備を実行していても、ロール構造の問題でデプロイが失敗する可能性がある
+- **エラーログの詳細確認**: デプロイが失敗した場合は、ログの詳細を確認して根本原因を特定する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-08: テンプレートディレクトリ作成とファイルコピー完了、デプロイ成功）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/signage/templates/`（新規作成）
+- `infrastructure/ansible/templates/signage-*.j2`（コピー元）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`（テンプレート参照タスク）
+- `docs/knowledge-base/infrastructure/ansible-deployment.md`（KB-153の詳細）
+
+**再発防止策**:
+- **新しいロール作成時**: `templates/`ディレクトリを最初から作成する
+- **テンプレートファイル追加時**: ロール専用のテンプレートは必ず`roles/<role-name>/templates/`に配置する
+- **デプロイ前の確認**: デプロイ前にロール構造を確認し、必要なディレクトリが存在することを確認する
+
+---
+
 ## サイネージ関連の残タスク
 
 ### 1. レイアウト設定機能の完成度向上（優先度: 中）

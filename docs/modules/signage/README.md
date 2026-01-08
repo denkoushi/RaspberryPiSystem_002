@@ -461,7 +461,29 @@ model SignageEmergency {
 - **watchdogの確認**: `systemctl status signage-lite-watchdog.timer`で動作確認
 - **日次再起動の確認**: `systemctl status signage-daily-reboot.timer`で動作確認
 
-詳細は [signage-lite.md](./signage-lite.md) を参照してください。
+### デプロイ時の注意事項
+
+- **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
+- **デプロイ標準手順の遵守**: Pi3デプロイ時は、必ずデプロイ前の準備（サービス停止・無効化・マスク）を実行してください（[デプロイガイド](../guides/deployment.md#デプロイ前の準備必須)参照）
+
+詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../guides/deployment.md) / [KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
+
+## 残タスク（後日実装予定）
+
+### 1. プレフライトチェックの改善（優先度: 中）
+- **サービス停止後のメモリ再チェック**: 現在は停止直後にメモリをチェックしているが、解放まで数秒かかる可能性がある。停止後に数秒待ってから再チェックする
+- **メモリ閾値の調整**: 現在120MBだが、サービス停止後の解放を考慮して100MBに下げるか、再チェックロジックを追加する
+
+### 2. 他のクライアントへのプレフライトチェック拡張（優先度: 低）
+- **Pi4（キオスク）へのプレフライトチェック追加**: Pi4でも同様のメモリ制約やサービス停止が必要な場合に対応
+
+### 3. プレフライトチェックのログ改善（優先度: 低）
+- **より詳細なログ出力**: プレフライトチェックの各ステップで詳細ログを出力し、問題発生時の原因特定を容易にする
+
+### 4. サイネージ機能の拡張（優先度: 低）
+- **レイアウト設定機能の完成度向上**: 緊急表示layoutConfig対応、スケジュール一括編集/コピー/プレビュー等
+- **CSV可視化機能の要件定義と実装**: `slot.kind=csv_dashboard`の実装
+- **サイネージのパフォーマンス最適化**: キャッシュ改善、レンダリング最適化、エラーハンドリング改善
 
 ## 関連ドキュメント
 
