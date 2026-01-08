@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { CsvDashboardService } from '../../services/csv-dashboard/index.js';
+import { CsvDashboardIngestor } from '../../services/csv-dashboard/csv-dashboard-ingestor.js';
+import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import {
   csvDashboardCreateSchema,
   csvDashboardUpdateSchema,
@@ -70,10 +72,25 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
     const csvContent = await data.toBuffer();
     const csvText = csvContent.toString('utf-8');
 
-    // CSVプレビュー解析
-    const preview = await csvDashboardService.previewCsv(csvText);
+    // CSVファイルを保存
+    const csvFilePath = await CsvDashboardStorage.saveRawCsv(params.id, csvContent);
 
-    return { preview };
+    // CSVデータを取り込む
+    const ingestor = new CsvDashboardIngestor();
+    const result = await ingestor.ingestFromGmail(
+      params.id,
+      csvText,
+      undefined, // messageId (手動アップロードの場合は未指定)
+      data.filename || 'manual-upload.csv',
+      csvFilePath
+    );
+
+    return {
+      success: true,
+      rowsProcessed: result.rowsProcessed,
+      rowsAdded: result.rowsAdded,
+      rowsSkipped: result.rowsSkipped,
+    };
   });
 
   // POST /api/csv-dashboards/:id/preview-parse - CSVプレビュー解析（CSVテキストを直接送信）
