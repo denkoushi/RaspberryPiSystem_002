@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { NetworkModeBadge } from '../components/NetworkModeBadge';
 import { Button } from '../components/ui/Button';
@@ -9,6 +9,60 @@ const linkClass =
 
 export function AdminLayout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'apps/web/src/layouts/AdminLayout.tsx:AdminLayout',
+      message: 'AdminLayout rendered',
+      data: { pathname: location.pathname, username: user?.username ?? null },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'apps/web/src/layouts/AdminLayout.tsx:AdminLayout',
+      message: 'Admin nav items (hardcoded)',
+      data: {
+        navItems: [
+          { to: '/admin', label: 'ダッシュボード' },
+          { to: '/admin/tools/employees', label: '従業員' },
+          { to: '/admin/tools/items', label: 'アイテム' },
+          { to: '/admin/tools/unified', label: '統合一覧' },
+          { to: '/admin/tools/measuring-instruments', label: '計測機器' },
+          { to: '/admin/tools/inspection-items', label: '点検項目' },
+          { to: '/admin/tools/instrument-tags', label: 'RFIDタグ' },
+          { to: '/admin/tools/inspection-records', label: '点検記録' },
+          { to: '/admin/tools/rigging-gears', label: '吊具' },
+          { to: '/admin/tools/history', label: '履歴' },
+          { to: '/admin/clients', label: 'クライアント端末' },
+          { to: '/admin/import', label: '一括登録' },
+          { to: '/admin/imports/schedule', label: 'CSVインポート' },
+          { to: '/admin/gmail/config', label: 'Gmail設定' },
+          { to: '/admin/backup/targets', label: 'バックアップ' },
+          { to: '/admin/signage/schedules', label: 'サイネージ' },
+          { to: '/admin/security', label: 'セキュリティ' },
+        ],
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   return (
     <div className="min-h-screen bg-slate-800 text-white">
       <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
@@ -70,6 +124,9 @@ export function AdminLayout() {
           </NavLink>
           <NavLink to="/admin/imports/schedule" className={linkClass}>
             CSVインポート
+          </NavLink>
+          <NavLink to="/admin/csv-dashboards" className={linkClass}>
+            CSVダッシュボード
           </NavLink>
           <NavLink to="/admin/gmail/config" className={linkClass}>
             Gmail設定

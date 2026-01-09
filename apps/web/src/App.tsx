@@ -8,6 +8,7 @@ import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
+import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
 import { CsvImportSchedulePage } from './pages/admin/CsvImportSchedulePage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
@@ -85,6 +86,7 @@ function App() {
         <Route path="imports">
           <Route path="schedule" element={<CsvImportSchedulePage />} />
         </Route>
+        <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
         </Route>

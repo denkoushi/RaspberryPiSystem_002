@@ -1000,6 +1000,23 @@ export async function getCsvDashboard(id: string) {
   return data.dashboard;
 }
 
+export async function updateCsvDashboard(
+  id: string,
+  payload: Partial<Pick<CsvDashboard, 'name' | 'description' | 'columnDefinitions' | 'dateColumnName' | 'displayPeriodDays' | 'emptyMessage' | 'ingestMode' | 'dedupKeyColumns' | 'gmailScheduleId' | 'templateType' | 'templateConfig' | 'enabled'>>
+) {
+  const { data } = await api.put<{ dashboard: CsvDashboard }>(`/csv-dashboards/${id}`, payload);
+  return data.dashboard;
+}
+
+export async function uploadCsvToDashboard(id: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post<{ preview: unknown; ingestResult: unknown }>(`/csv-dashboards/${id}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
 export interface SignageRenderResult {
   renderedAt: string;
   filename: string;
