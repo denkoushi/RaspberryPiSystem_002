@@ -595,8 +595,13 @@ export function SignageSchedulesPage() {
                       <select
                         value={rightSlotKind}
                         onChange={(e) => {
-                          setRightSlotKind(e.target.value as 'loans' | 'pdf');
+                          setRightSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard');
                           if (e.target.value === 'loans') {
+                            setRightPdfId(null);
+                            setRightCsvDashboardId(null);
+                          } else if (e.target.value === 'pdf') {
+                            setRightCsvDashboardId(null);
+                          } else if (e.target.value === 'csv_dashboard') {
                             setRightPdfId(null);
                           }
                         }}
@@ -604,6 +609,7 @@ export function SignageSchedulesPage() {
                       >
                         <option value="loans">持出一覧</option>
                         <option value="pdf">PDF</option>
+                        <option value="csv_dashboard">CSVダッシュボード</option>
                       </select>
                     </div>
                     {rightSlotKind === 'pdf' && (
@@ -618,6 +624,23 @@ export function SignageSchedulesPage() {
                           {pdfsQuery.data?.map((pdf: SignagePdf) => (
                             <option key={pdf.id} value={pdf.id}>
                               {pdf.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {rightSlotKind === 'csv_dashboard' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">右側のCSVダッシュボード</label>
+                        <select
+                          value={rightCsvDashboardId || ''}
+                          onChange={(e) => setRightCsvDashboardId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {csvDashboardsQuery.data?.map((dashboard: CsvDashboard) => (
+                            <option key={dashboard.id} value={dashboard.id}>
+                              {dashboard.name}
                             </option>
                           ))}
                         </select>
