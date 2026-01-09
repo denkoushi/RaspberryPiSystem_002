@@ -95,7 +95,87 @@ journalctl -u status-agent.service -n 20
 
 ---
 
-## 7. 参考
+## 7. macOS 向けセットアップ
+
+macOS では Linux 専用の `/proc` ファイルシステムが存在しないため、専用の `status-agent-macos.py` を使用します。
+
+### 7.1 設定ファイルの作成
+
+```bash
+cat > ~/.status-agent.conf << 'EOF'
+# macOS status-agent configuration
+API_BASE_URL=https://100.106.158.2/api
+CLIENT_ID=mac-kiosk-1
+CLIENT_KEY=<サーバーに登録済みのクライアントキー>
+TLS_SKIP_VERIFY=1
+LOCATION=開発環境
+REQUEST_TIMEOUT=10
+EOF
+```
+
+**注意**: `CLIENT_ID` と `CLIENT_KEY` はデータベースの `ClientDevice` テーブルに登録されている値と一致させてください。
+
+### 7.2 手動テスト
+
+```bash
+cd /path/to/RaspberryPiSystem_002/clients/status-agent
+STATUS_AGENT_CONFIG=~/.status-agent.conf python3 status-agent-macos.py --dry-run
+```
+
+`--dry-run` を外すと実際に API へ送信します。
+
+### 7.3 launchd への登録（1分間隔で自動実行）
+
+```bash
+cat > ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.raspberrypisystem.status-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/path/to/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>STATUS_AGENT_CONFIG</key>
+        <string>/Users/<username>/.status-agent.conf</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/status-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/status-agent.err</string>
+</dict>
+</plist>
+EOF
+```
+
+**注意**: パスを実際の環境に合わせて変更してください。
+
+### 7.4 launchd エージェントの起動
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
+launchctl list | grep status-agent
+```
+
+### 7.5 launchd エージェントの停止・削除
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
+rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
+```
+
+---
+
+## 8. 参考
 
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
 - API 側の受け皿: `apps/api/src/routes/clients.ts`
