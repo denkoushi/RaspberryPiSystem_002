@@ -18,12 +18,15 @@ export class BackupConfigLoader {
    * 設定ファイルを読み込む
    */
   static async load(): Promise<BackupConfig> {
+    const configPath = process.env.BACKUP_CONFIG_PATH || this.configPath || '/app/config/backup.json';
+    // envが変わった場合（テスト等）に追従できるように、都度反映
+    this.configPath = configPath;
     try {
-      const configContent = await fs.readFile(this.configPath, 'utf-8');
+      const configContent = await fs.readFile(configPath, 'utf-8');
       // #region agent log
       // NOTE: 機密情報は出さない（サイズ・経路・概況のみ）
       logger?.info(
-        { configPath: this.configPath, bytes: Buffer.byteLength(configContent, 'utf-8') },
+        { configPath, bytes: Buffer.byteLength(configContent, 'utf-8') },
         '[BackupConfigLoader] Raw config file read'
       );
       // #endregion
@@ -139,7 +142,7 @@ export class BackupConfigLoader {
       
       // #region agent log
       logger?.info(
-        { configPath: this.configPath, summary: this.summarizeConfig(config) },
+        { configPath, summary: this.summarizeConfig(config) },
         '[BackupConfigLoader] Config loaded'
       );
       // #endregion
@@ -148,7 +151,7 @@ export class BackupConfigLoader {
       // ファイルが存在しない場合はデフォルト設定を使用
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         logger?.warn(
-          { configPath: this.configPath },
+          { configPath },
           '[BackupConfigLoader] Config file not found, using default config'
         );
         const fallback = { ...defaultBackupConfig } as BackupConfig;
@@ -159,7 +162,7 @@ export class BackupConfigLoader {
         }
         // #region agent log
         logger?.warn(
-          { configPath: this.configPath, reason: 'ENOENT', summary: this.summarizeConfig(fallback) },
+          { configPath, reason: 'ENOENT', summary: this.summarizeConfig(fallback) },
           '[BackupConfigLoader] Returning fallback config'
         );
         // #endregion
@@ -168,7 +171,7 @@ export class BackupConfigLoader {
       
       // パースエラーの場合もデフォルト設定を使用
       logger?.error(
-        { err: error, configPath: this.configPath },
+        { err: error, configPath },
         '[BackupConfigLoader] Failed to load config, using default config'
       );
       const fallback = { ...defaultBackupConfig } as BackupConfig;
@@ -181,7 +184,7 @@ export class BackupConfigLoader {
       // #region agent log
       logger?.error(
         {
-          configPath: this.configPath,
+          configPath,
           reason: 'PARSE_OR_VALIDATE_ERROR',
           message: error instanceof Error ? error.message : String(error),
           summary: this.summarizeConfig(fallback),
@@ -197,6 +200,8 @@ export class BackupConfigLoader {
    * 設定ファイルを保存する
    */
   static async save(config: BackupConfig): Promise<void> {
+    const configPath = process.env.BACKUP_CONFIG_PATH || this.configPath || '/app/config/backup.json';
+    this.configPath = configPath;
     try {
       const incomingSummary = this.summarizeConfig(config);
       const caller = (() => {
@@ -212,10 +217,10 @@ export class BackupConfigLoader {
 
       // 本番の保護: 現在のファイルと比較して「急激な縮小/欠落」がある保存は拒否
       const isProductionConfigPath =
-        this.configPath === '/app/config/backup.json' || this.configPath.startsWith('/app/config/');
+        configPath === '/app/config/backup.json' || configPath.startsWith('/app/config/');
       if (isProductionConfigPath) {
         try {
-          const currentRaw = await fs.readFile(this.configPath, 'utf-8');
+          const currentRaw = await fs.readFile(configPath, 'utf-8');
           const currentJson = JSON.parse(currentRaw);
           const currentParsed = BackupConfigSchema.safeParse(currentJson);
           if (currentParsed.success) {
@@ -233,7 +238,7 @@ export class BackupConfigLoader {
             if (looksLikeDestructiveShrink || looksLikeGmailWipe) {
               logger?.error(
                 {
-                  configPath: this.configPath,
+                  configPath,
                   currentSummary,
                   incomingSummary,
                   caller,
@@ -248,7 +253,7 @@ export class BackupConfigLoader {
           // ここで無条件に許すと“フォールバック保存”で全消しになり得るため、
           // マーカー検知で防ぐ（下で判定）。ここではログのみ。
           logger?.warn(
-            { configPath: this.configPath, err: e instanceof Error ? e.message : String(e), incomingSummary, caller },
+            { configPath, err: e instanceof Error ? e.message : String(e), incomingSummary, caller },
             '[BackupConfigLoader] Could not compare current config before save'
           );
         }
@@ -260,7 +265,7 @@ export class BackupConfigLoader {
         const marker = (config as unknown as Record<string | symbol, unknown>)[this.FALLBACK_MARKER];
         if (marker) {
           logger?.error(
-            { configPath: this.configPath, marker, incomingSummary, caller },
+            { configPath, marker, incomingSummary, caller },
             '[BackupConfigLoader] Refusing to save fallback config to avoid destructive overwrite',
           );
           throw new Error('Refusing to save fallback backup config (would overwrite real config)');
@@ -268,7 +273,7 @@ export class BackupConfigLoader {
       }
 
       // ディレクトリが存在しない場合は作成
-      const configDir = path.dirname(this.configPath);
+      const configDir = path.dirname(configPath);
       await fs.mkdir(configDir, { recursive: true });
       
       // 設定を検証
@@ -277,18 +282,18 @@ export class BackupConfigLoader {
       // JSONファイルとして保存（atomic write）
       // NOTE: 直接writeFileすると、同時readでJSONが壊れた状態を読んでしまい、load()がフォールバック→保存で上書き、が起き得る。
       // tmpへ書いてrenameすることで、読み取り側は常に「完全なJSON」を読む。
-      const tmpPath = `${this.configPath}.tmp.${process.pid}.${Date.now()}`;
+      const tmpPath = `${configPath}.tmp.${process.pid}.${Date.now()}`;
       const payload = JSON.stringify(validatedConfig, null, 2);
       await fs.writeFile(tmpPath, payload, 'utf-8');
-      await fs.rename(tmpPath, this.configPath);
+      await fs.rename(tmpPath, configPath);
       
       logger?.info(
-        { configPath: this.configPath, bytes: Buffer.byteLength(payload, 'utf-8'), incomingSummary },
+        { configPath, bytes: Buffer.byteLength(payload, 'utf-8'), incomingSummary },
         '[BackupConfigLoader] Config saved'
       );
     } catch (error) {
       logger?.error(
-        { err: error, configPath: this.configPath },
+        { err: error, configPath },
         '[BackupConfigLoader] Failed to save config'
       );
       throw error;
@@ -314,6 +319,8 @@ export class BackupConfigLoader {
       details?: Record<string, unknown>;
     }>;
   }> {
+    const configPath = process.env.BACKUP_CONFIG_PATH || this.configPath || '/app/config/backup.json';
+    this.configPath = configPath;
     const issues: Array<{
       type: 'collision' | 'drift' | 'missing';
       severity: 'warning' | 'error';
@@ -323,7 +330,7 @@ export class BackupConfigLoader {
 
     try {
       // 設定ファイルを読み込む（環境変数解決前の生データも必要）
-      const configContent = await fs.readFile(this.configPath, 'utf-8');
+      const configContent = await fs.readFile(configPath, 'utf-8');
       const configJson = JSON.parse(configContent);
       const config = await this.load();
 
@@ -536,8 +543,8 @@ export class BackupConfigLoader {
           issues: [{
             type: 'missing',
             severity: 'error',
-            message: `設定ファイルが見つかりません: ${this.configPath}`,
-            details: { configPath: this.configPath }
+            message: `設定ファイルが見つかりません: ${configPath}`,
+            details: { configPath }
           }]
         };
       }
@@ -549,7 +556,7 @@ export class BackupConfigLoader {
           type: 'missing',
           severity: 'error',
           message: `設定ファイルの読み込みに失敗しました: ${(error as Error).message}`,
-          details: { configPath: this.configPath, error: (error as Error).message }
+          details: { configPath, error: (error as Error).message }
         }]
       };
     }
