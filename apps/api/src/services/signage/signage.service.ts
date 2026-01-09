@@ -8,6 +8,7 @@ type ScheduleSummary = Pick<
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
+import { env } from '../../config/env.js';
 import type {
   SignageLayoutConfig,
   SignageLayoutConfigJson,
@@ -385,7 +386,38 @@ export class SignageService {
     logger.info({ location: 'signage.service.ts:320', hypothesisId: 'A', matchedCount: matchedSchedules.length, matchedSchedules: matchedSchedules.map(m => ({ id: m.schedule.id, name: m.schedule.name, priority: m.priority })) }, 'Matched schedules sorted by priority');
     // #endregion
 
-    // 優先順位が最も高いスケジュールを使用
+    // 複数のスケジュールがある場合は順番に切り替える
+    if (matchedSchedules.length > 1) {
+      const switchInterval = env.SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS;
+      const currentSecond = Math.floor(Date.now() / 1000);
+      const totalCycleSeconds = matchedSchedules.length * switchInterval;
+      const scheduleIndex = Math.floor((currentSecond % totalCycleSeconds) / switchInterval);
+      
+      if (scheduleIndex < matchedSchedules.length) {
+        const { schedule } = matchedSchedules[scheduleIndex];
+        const response = await this.buildScheduleResponse(schedule);
+        // #region agent log
+        logger.info({ 
+          location: 'signage.service.ts:330', 
+          hypothesisId: 'C', 
+          scheduleId: schedule.id, 
+          scheduleName: schedule.name, 
+          priority: schedule.priority,
+          scheduleIndex,
+          totalSchedules: matchedSchedules.length,
+          switchInterval,
+          currentSecond,
+          responseContentType: response?.contentType, 
+          responseLayoutConfig: response?.layoutConfig 
+        }, 'Schedule response built (rotating)');
+        // #endregion
+        if (response) {
+          return response;
+        }
+      }
+    }
+
+    // 単一スケジュールまたはフォールバック: 優先順位が最も高いスケジュールを使用
     for (const { schedule } of matchedSchedules) {
       const response = await this.buildScheduleResponse(schedule);
       // #region agent log

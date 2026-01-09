@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-01-08（SPLITモードで左右別PDF表示に対応、layoutConfig準拠の実装完了）
+最終更新: 2026-01-09（複数スケジュールの順番切り替え機能を実装）
 
 ## 概要
 
@@ -55,10 +55,12 @@
 
 - **設定項目**: 曜日、時間帯、優先順位を自由に設定可能
 - **適用範囲**: PDFと工具管理データの両方にスケジュール設定が可能
-- **優先順位**: 複数のスケジュールが重複した場合、優先順位が高い（数値が大きい）スケジュールが優先される
-  - 優先順位は数値が大きいほど優先度が高い（例: 優先順位20 > 優先順位10）
-  - 複数のスケジュールが同時にマッチする場合、優先順位が最も高いものが選択される
+- **優先順位**: 複数のスケジュールが重複した場合、優先順位順に順番に切り替えて表示される（2026-01-09実装）
+  - 優先順位は数値が大きいほど優先度が高い（例: 優先順位100 > 優先順位10）
+  - 複数のスケジュールが同時にマッチする場合、優先順位順（高い順）にソートされ、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示される
+  - 切り替え間隔は環境変数`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`で設定可能（デフォルト: 30秒）
   - 優先順位が同じ場合は、データベースの順序に依存
+  - 例: 優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合、30秒ごとに交互に表示される
 
 ### 緊急表示機能
 
@@ -313,7 +315,7 @@ model SignageEmergency {
 
 現在時刻に基づいて表示すべきコンテンツを取得します。
 `layoutConfig`が設定されている場合は、その内容が優先されます。
-複数のスケジュールがマッチする場合、優先順位が高い（数値が大きい）スケジュールが選択されます。
+複数のスケジュールがマッチする場合、優先順位順（高い順）にソートされ、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示されます。切り替え間隔は環境変数`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`で設定可能です（2026-01-09実装）。
 
 **レスポンス**（レガシー形式）:
 ```json
@@ -485,6 +487,12 @@ model SignageEmergency {
 - **暴走防止**: `StartLimitIntervalSec/StartLimitBurst`で連続失敗時の制御
 - **enabled状態の収束**: Ansibleデプロイ時に必ず`enabled=true`を保証（サービス無効化ドリフトの防止）
 
+### 画像更新方式の改善（2026-01-09追加）
+
+- **inode維持による安定化**: `signage-update.sh`が既存`current.jpg`がある場合は**上書き更新（inode維持）**を使用（`cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"`）
+- **効果**: `feh --auto-reload(inotify)`が確実にファイル変更を検知し、画面更新が安定する
+- **理由**: `mv`による置換（inode変更）には`feh --auto-reload`が追従できない場合があるため、上書き更新（inode維持）により確実に検知可能に
+
 ### 運用上の注意
 
 - **再起動後の画像**: tmpfsのため再起動後は画像が消える。初回起動時にサーバーから取得する（ネットワーク未接続時は表示できない）
@@ -496,7 +504,7 @@ model SignageEmergency {
 - **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
 - **デプロイ標準手順の遵守**: Pi3デプロイ時は、必ずデプロイ前の準備（サービス停止・無効化・マスク）を実行してください（[デプロイガイド](../guides/deployment.md#デプロイ前の準備必須)参照）
 
-詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../guides/deployment.md) / [KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
+詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../guides/deployment.md) / [KB-152](../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
 
 ## 残タスク（後日実装予定）
 
