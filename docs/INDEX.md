@@ -18,11 +18,17 @@
 
 - **✅ CSVインポート実機検証完了・UI改善**: CSVインポートスケジュールページのフォーム状態管理を改善し、削除後や編集から新規作成への切り替え時にフォームが正しくリセットされるように修正。手動実行時のリトライスキップ機能を実装し、即座に結果を確認できるように改善（自動実行は従来通りリトライあり）。実機検証でターゲット追加機能、データタイプ選択、プロバイダー選択、Gmail件名パターン管理、スケジュールCRUD、削除機能、手動実行、スケジュール表示の人間可読形式をすべて確認済み。詳細は [knowledge-base/frontend.md#kb-116](./knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [knowledge-base/api.md#kb-116](./knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
+### 🆕 最新アップデート（2026-01-09）
+
+- **✅ CSVダッシュボード機能の実機検証・修正完了**: CSVダッシュボード可視化機能の実機検証を実施し、4つの問題を発見・修正。スキーマ修正で`csvDashboardId`が保持されるように改善、手動アップロードでデータ取り込みを実行するように修正、日付フィルタリングでJST/UTCの変換を正しく計算するように修正、`displayPeriodDays`のnullチェックを追加。実機検証でCSVダッシュボードのデータが正しく表示されることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-XX）
 
 - **✅ CI YAML責務分離リファクタ完了**: GitHub Actions CIワークフローを品質レビューに適した構成に改善。巨大な`lint-and-test`ジョブを`static-quality`、`api-tests`、`scripts-verification`、`security`に分割し、失敗原因の特定を容易に。PostgreSQLを`services:`化し、ポート衝突と後片付けの問題を解消。共通基盤を整備（`runs-on: ubuntu-24.04`固定、`concurrency`追加、`defaults.run.shell: bash -euo pipefail`設定）。成果物を標準化（Vitest JUnit/JSON/coverage、Trivy SARIF、Playwright reportをartifact化）。`pnpm audit`をnon-blocking化し、失敗してもCIを落とさず結果をログ/レポートとして残す方針に変更。詳細は [knowledge-base/ci-cd.md#kb-027](./knowledge-base/ci-cd.md#kb-027-ci-yaml責務分離リファクタ品質レビュー強化) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-08）
+
+- **✅ CSVダッシュボード可視化機能実装完了**: Gmail経由でPowerAutomateから送信されたCSVファイルをサイネージで可視化表示する機能を実装。`slot.kind=csv_dashboard`の実装が完了し、FULL/SPLITレイアウトでCSVダッシュボードを表示可能に。データ構造定義、可視化テンプレート（テーブル/カードグリッド）、表示期間フィルタ、データ保持期間管理を実装。管理コンソールUIでCSVダッシュボードを選択可能に。CI通過・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
 - **✅ SPLITモードで左右別PDF表示に対応完了**: SPLITレイアウトで左右ともPDFを表示できる機能を実装。`SignageContentResponse`に`pdfsById`フィールドを追加し、複数PDFを辞書形式で提供可能に。レンダラーに`renderSplitWithPanes`メソッドを追加し、左右ともPDFの場合に対応。Web側の`SignageDisplayPage`を`layoutConfig`準拠の2ペインSPLIT描画に更新し、左右それぞれのスロットに応じてPDFまたは工具を描画。左右それぞれのPDFが独立してスライドショー表示されることを実機検証で確認。CI通過・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-154](./knowledge-base/infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
@@ -289,6 +295,7 @@
 | **CSVフォーマット仕様実装を検証したい** | **[guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31](./guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)** |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
 | デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
+| **CSVダッシュボード可視化機能を検証したい** | **[guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md)** |
 | システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./guides/stability-improvement-test.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
