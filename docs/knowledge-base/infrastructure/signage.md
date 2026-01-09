@@ -693,6 +693,73 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-155] CSVダッシュボード可視化機能実装完了
+
+**実装日時**: 2026-01-08
+
+**事象**: 
+- Gmail経由でPowerAutomateから送信されたCSVファイルをサイネージで可視化表示する機能を実装
+- `slot.kind=csv_dashboard`の実装が完了し、FULL/SPLITレイアウトでCSVダッシュボードを表示可能に
+
+**実装内容**: 
+- ✅ **データベーススキーマ**: `CsvDashboard`, `CsvDashboardIngestRun`, `CsvDashboardRow`テーブルを追加
+- ✅ **CSVダッシュボード管理API**: CRUD操作、CSVアップロード、プレビュー解析エンドポイントを実装
+- ✅ **Gmail連携**: 既存の`CsvImportScheduler`を拡張し、CSVダッシュボード用の取り込み処理を追加
+- ✅ **データ取り込み**: `CsvDashboardIngestor`でCSV解析、重複除去/追加モード、日付列処理を実装
+- ✅ **可視化レンダリング**: `CsvDashboardTemplateRenderer`でテーブル形式・カードグリッド形式のSVG生成を実装
+- ✅ **サイネージ統合**: `SignageService`と`SignageRenderer`を拡張し、CSVダッシュボードをサイネージコンテンツとして表示可能に
+- ✅ **管理コンソールUI**: `SignageSchedulesPage`にCSVダッシュボード選択UIを追加
+- ✅ **データ保持期間管理**: 前年分保持、2年前削除、当年前月削除の自動クリーンアップを実装
+- ✅ **ストレージ管理**: CSV原本ファイルの保存と保持期間管理を実装
+
+**学んだこと**:
+1. **環境変数の重要性**: `CSV_DASHBOARD_STORAGE_DIR`をデプロイ前に設定しないと、保存先が不明確になる
+2. **Ansibleテンプレート管理**: 環境変数は`infrastructure/ansible/templates/docker.env.j2`に追加しないと、Ansible再実行時に消える
+3. **DBマイグレーション**: 新テーブル追加のみのマイグレーションは安全だが、デプロイ前のバックアップは必須
+4. **疎結合設計**: `layoutConfig`の設計により、新しいコンテンツ種別（CSVダッシュボード）を既存コードへの影響を最小限に追加可能
+
+**解決状況**: ✅ **実装完了**（2026-01-08: CI通過、デプロイ完了）
+
+**実機検証で発見された問題と修正**（2026-01-09）:
+1. **CSVダッシュボードスロットの`csvDashboardId`が保持されない**: `routes/signage/schemas.ts`の`slotConfigSchema`で`csv_dashboard`用の設定が空オブジェクト（`z.object({})`）になっており、`csvDashboardId`がバリデーションで捨てられていた。専用スキーマを定義し、`csvDashboardId`を必須フィールドとして検証するように修正。すべてのスロット設定スキーマに`.strict()`を追加してキー消失を防止。
+2. **手動アップロードでデータが取り込まれない**: `/api/csv-dashboards/:id/upload`エンドポイントがプレビューのみを返しており、実際のデータ取り込みを実行していなかった。`CsvDashboardIngestor.ingestFromGmail`を呼び出すように修正し、CSVファイルを保存してからデータを取り込むように変更。
+3. **日付フィルタリングでデータが取得されない**: `getPageData`メソッドの日付計算でJST/UTCの変換が逆になっており、当日のデータが取得できなかった。サーバーがUTC環境で動作することを前提に、JSTの「今日の0:00」と「今日の23:59:59」をUTCに正しく変換するように修正。
+4. **`displayPeriodDays`が`null`の場合のデフォルト値**: `buildScheduleResponse`と緊急情報のレスポンス構築で`displayPeriodDays`が`null`の場合のデフォルト値（`1`）が設定されていなかった。`?? 1`を追加してデフォルト値を設定。
+
+**修正内容の詳細**:
+- **スキーマ修正**: `apps/api/src/routes/signage/schemas.ts`で`csv_dashboard`用の`slotConfigSchema`を専用化し、`csvDashboardId`を必須フィールドとして定義。すべてのスロット設定スキーマに`.strict()`を追加。
+- **手動アップロード修正**: `apps/api/src/routes/csv-dashboards/index.ts`の`/upload`エンドポイントを修正し、`CsvDashboardStorage.saveRawCsv`でCSVファイルを保存してから`CsvDashboardIngestor.ingestFromGmail`でデータを取り込むように変更。
+- **日付フィルタリング修正**: `apps/api/src/services/csv-dashboard/csv-dashboard.service.ts`の`getPageData`メソッドを修正し、JSTの「今日の0:00」と「今日の23:59:59」をUTCに正しく変換するように変更。
+- **nullチェック追加**: `apps/api/src/services/signage/signage.service.ts`の`buildScheduleResponse`と緊急情報のレスポンス構築で`displayPeriodDays ?? 1`を追加。
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-09）
+- CSVダッシュボードスロットの`csvDashboardId`が正しく保持されることを確認
+- 手動アップロードでデータが取り込まれることを確認（`rowsAdded: 3`）
+- サイネージAPIレスポンスで`csvDashboardsById`にデータが含まれることを確認（`rowsCount: 6`）
+- 日付フィルタリングが正しく動作し、当日のデータのみが表示されることを確認
+- SPLITレイアウトで左にCSVダッシュボード・右にPDFが正常動作することを確認
+- SPLITレイアウトで左にPDF・右にCSVダッシュボードが正常動作することを確認（UI修正後）
+
+**実機検証で発見された問題と修正**（2026-01-09追加）:
+1. **右スロットのCSVダッシュボード選択UIが未実装**: `SignageSchedulesPage.tsx`の右スロットドロップダウンに`csv_dashboard`オプションがなく、CSVダッシュボード選択UIも実装されていなかった。左スロットと同じ実装を追加して修正。
+
+**デプロイ時の注意事項**:
+- **環境変数設定**: `CSV_DASHBOARD_STORAGE_DIR=/app/storage/csv-dashboards`を`infrastructure/docker/.env`に追加（デプロイ前に実施）
+- **Ansibleテンプレート更新**: `infrastructure/ansible/templates/docker.env.j2`に`CSV_DASHBOARD_STORAGE_DIR`を追加（Ansible使用時）
+- **DBマイグレーション**: マイグレーション`20260108145517_add_csv_dashboard_models`が自動適用される
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`CsvDashboard`, `CsvDashboardIngestRun`, `CsvDashboardRow`モデル）
+- `apps/api/src/services/csv-dashboard/`（サービス層）
+- `apps/api/src/routes/csv-dashboards/`（APIルート）
+- `apps/api/src/routes/signage/schemas.ts`（スキーマ修正）
+- `apps/api/src/services/signage/signage.service.ts`（サイネージサービス拡張、nullチェック追加）
+- `apps/api/src/services/signage/signage.renderer.ts`（サイネージレンダラー拡張）
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`（管理コンソールUI拡張）
+- `docs/modules/signage/README.md`（仕様更新）
+
+---
+
 ## サイネージ関連の残タスク
 
 ### 1. レイアウト設定機能の完成度向上（優先度: 中）
@@ -702,12 +769,7 @@ const textX = x + textAreaX;
 - **スケジュールのコピー機能**: 既存スケジュールをコピーして新規作成（レイアウト設定も含めてコピー）
 - **スケジュールのプレビュー機能**: 管理コンソールでレイアウト設定のプレビューを表示（実際の表示イメージを確認可能に）
 
-### 2. CSV可視化機能の要件定義と実装（優先度: 低）
-
-- **CSV可視化の要件定義**: CSVデータソースの定義方法、可視化の種類（グラフ、テーブルなど）、スケジュール設定との連携方法
-- **CSV可視化スロット（`slot.kind=csv_dashboard`）の実装**: CSVデータの取得・処理ロジック、可視化のレンダリングロジック、管理コンソールUI拡張
-
-### 3. サイネージのパフォーマンス最適化（優先度: 低）
+### 2. サイネージのパフォーマンス最適化（優先度: 低）
 
 - **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング
 - **レンダリング時間の最適化**: SVG生成の最適化、JPEG変換の最適化
