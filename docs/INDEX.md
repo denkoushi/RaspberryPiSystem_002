@@ -20,6 +20,14 @@
 
 ### 🆕 最新アップデート（2026-01-09）
 
+- **✅ 複数スケジュールの順番切り替え機能実装完了**: 複数のスケジュールが同時にマッチする場合、優先順位順（高い順）にソートされ、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示する機能を実装。環境変数`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`で切り替え間隔を設定可能。優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合、30秒ごとに交互に表示される。CI成功・デプロイ完了・実機検証完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-156](./knowledge-base/infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+
+- **✅ Pi3サイネージの画像更新方式改善完了**: Pi3サイネージの「1ページずつ表示されない」問題の再発要因を特定し、画像更新方式を改善。`signage-update.sh`が`mv`で置換していたため、更新のたびに`current.jpg`のinodeが変わり、`feh --auto-reload(inotify)`が追従できない問題を解決。既存`current.jpg`がある場合は上書き更新（inode維持）に変更し、画面更新が安定するように改善。Ansibleテンプレートも同様に修正。詳細は [knowledge-base/infrastructure/signage.md#kb-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) を参照。
+
+- **✅ CSVダッシュボード機能の検証9完了**: CSVダッシュボード可視化機能の検証9（表示期間フィルタ）を実施し、表示期間フィルタ（`displayPeriodDays: 1`）が正しく動作することを確認。当日分（8行）のみが表示され、前日分（2行）は除外されている。JSTの「今日の0:00」から「今日の23:59:59」をUTCに正しく変換してフィルタリングしていることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+
+- **✅ CSVダッシュボード機能のCI修正・デプロイ完了**: CSVダッシュボード可視化機能のCI修正とデプロイを完了。E2Eテストのstrict mode violation（「ダッシュボード」リンクが「CSVダッシュボード」リンクと重複マッチ）を修正し、`@remix-run/router`の脆弱性対応（1.23.2へ強制）を実施。GitHub Actions CIが成功し、Pi5へのデプロイも正常に完了。管理コンソールの「CSVダッシュボード」タブが表示され、機能が利用可能な状態に到達。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+
 - **✅ CSVダッシュボード機能の実機検証・修正完了**: CSVダッシュボード可視化機能の実機検証を実施し、4つの問題を発見・修正。スキーマ修正で`csvDashboardId`が保持されるように改善、手動アップロードでデータ取り込みを実行するように修正、日付フィルタリングでJST/UTCの変換を正しく計算するように修正、`displayPeriodDays`のnullチェックを追加。実機検証でCSVダッシュボードのデータが正しく表示されることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-XX）
