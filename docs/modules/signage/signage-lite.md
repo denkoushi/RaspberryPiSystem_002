@@ -163,6 +163,17 @@ sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアン�
 - **自動作成**: systemd-tmpfiles（`/etc/tmpfiles.d/signage-lite.conf`）で再起動後も確実に作成
 - **注意**: 再起動後は画像が消えるため、初回起動時にサーバーから取得する（ネットワーク未接続時は表示できない）
 
+### 画像更新方式（inode維持による安定化）
+
+**重要**: `signage-update.sh`は、既存`current.jpg`がある場合は**上書き更新（inode維持）**を使用します：
+
+- **初回**: `mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"`（inode変更）
+- **2回目以降**: `cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"`（inode維持、上書き更新）
+
+**理由**: `feh --auto-reload`はinotifyでファイル変更を監視しますが、`mv`による置換（inode変更）には追従できない場合があります。上書き更新（inode維持）により、`feh --auto-reload`が確実にファイル変更を検知し、画面更新が安定します。
+
+詳細は [KB-152](../../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) を参照してください。
+
 ## 解像度設定
 
 50インチなどの大型モニタで近くから見る場合、文字のボケを防ぐため4K解像度（3840x2160）を推奨します。

@@ -1,6 +1,6 @@
 # CSVダッシュボード可視化機能の実機検証手順
 
-最終更新: 2026-01-08
+最終更新: 2026-01-09
 
 ## 検証前の準備
 
@@ -196,19 +196,51 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 - ✅ データが`CsvDashboardRow`テーブルに取り込まれる
 - ✅ `CsvDashboardIngestRun`テーブルに履歴が記録される
 
-### ✅ 検証9: 表示期間フィルタ
+### ✅ 検証9: 表示期間フィルタ（完了）
+
+**実施日時**: 2026-01-09
 
 **目的**: 表示期間フィルタが正しく動作することを確認
 
 **手順**:
-1. CSVダッシュボードの編集画面を開く
-2. **表示期間**: 「当日分のみ」に設定
-3. 当日のデータと前日のデータを含むCSVをアップロード
-4. サイネージ画面を確認
+1. 管理コンソールで「CSVダッシュボード」タブを開く
+2. CSVダッシュボードの編集画面を開く
+3. **表示期間（日数）**: `1`（当日分のみ）に設定して保存
+4. 当日のデータと前日のデータを含むCSVをアップロード
+5. サイネージ画面を確認
 
 **期待される結果**:
 - ✅ 当日分のデータのみが表示される
 - ✅ 前日のデータは表示されない
+
+**確認コマンド**:
+```bash
+# APIレスポンスでrowsを確認（当日分のみが含まれることを確認）
+curl -k https://100.106.158.2/api/signage/content | jq '.csvDashboardsById."<dashboard-id>".rows | map({date: .date, name: .name})'
+
+# データベースで日付フィルタリングを確認
+ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api psql postgresql://postgres:postgres@db:5432/borrow_return -c \"SELECT COUNT(*) as total_rows, COUNT(CASE WHEN \\\"occurredAt\\\" >= '2026-01-08 15:00:00'::timestamp AND \\\"occurredAt\\\" <= '2026-01-09 14:59:59'::timestamp THEN 1 END) as today_rows, COUNT(CASE WHEN \\\"occurredAt\\\" < '2026-01-08 15:00:00'::timestamp THEN 1 END) as yesterday_rows FROM \\\"CsvDashboardRow\\\" WHERE \\\"csvDashboardId\\\" = '<dashboard-id>';\""
+```
+
+**検証結果**（2026-01-09）:
+- ✅ **データベースのデータ**: 全10行（当日分8行、前日分2行）
+- ✅ **サイネージAPIのレスポンス**: `rows`の長さが8行（当日分のみ）
+- ✅ **表示期間フィルタの動作**: 当日分（`2026/1/9`）のみが表示され、前日分（`2026/1/8`）は除外されている
+- ✅ **日付計算の正確性**: JSTの「今日の0:00」から「今日の23:59:59」をUTCに正しく変換（UTC `2026-01-08 15:00:00` 〜 `2026-01-09 14:59:59`）
+
+**検証で使用したテストデータ**:
+```csv
+date,name,value
+2026/1/9 8:13,項目A（当日）,100
+2026/1/9 9:15,項目B（当日）,200
+2026/1/8 10:20,項目C（前日）,300
+2026/1/8 14:30,項目D（前日）,400
+```
+
+**検証結果の詳細**:
+- サイネージAPIの`rows`に含まれているデータはすべて`2026/1/9`の日付（当日分）
+- 前日分のデータ（`2026/1/8`）は含まれていない
+- 表示期間フィルタ（`displayPeriodDays: 1`）が正しく動作していることを確認
 
 ### ✅ 検証10: データ保持期間の自動削除
 
