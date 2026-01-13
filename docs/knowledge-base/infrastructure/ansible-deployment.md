@@ -1091,3 +1091,75 @@ PY
 - **定期的な確認**: Ansible実行後、重要な設定（Slack、Dropbox等）が維持されていることを確認
 
 ---
+
+### [KB-157] Pi3のstatus-agent.timerが無効化されていた問題
+
+**EXEC_PLAN.md参照**: status-agent問題の診断と修正（2026-01-09）
+
+**事象**:
+- 管理コンソールでPi3のステータスが表示されない（`lastSeen`が古い）
+- Pi3の`status-agent.timer`が`disabled`状態になっていた
+- `status-agent.service`が`failed`状態になっていた
+- Macのステータスも表示されない（`status-agent`が未設定）
+
+**要因**:
+- **Ansibleデプロイ中断の影響**: 過去のAnsibleデプロイが中断された際、プレフライトチェックで`status-agent.service`を停止したが、デプロイが完了しなかったため、タイマーが再有効化されなかった可能性
+- **Macのstatus-agent未設定**: MacにはLinux用の`status-agent.py`が存在していたが、macOSでは動作しない（Linux専用のコマンドを使用）
+- **launchd設定の未作成**: macOSでは`launchd`を使用して定期実行する必要があるが、設定ファイルが存在しなかった
+
+**調査手順**:
+1. データベースで`ClientDevice`の`lastSeen`を確認（Pi3とMacが古い）
+2. Pi3で`systemctl status status-agent.timer`を確認（`disabled`状態）
+3. Pi3で`systemctl status status-agent.service`を確認（`failed`状態）
+4. Macで`status-agent`の設定ファイルとスクリプトの存在を確認（Linux用スクリプトのみ存在）
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-09）:
+  1. **Pi3のstatus-agent.timer再有効化**:
+     - `sudo systemctl enable --now status-agent.timer`でタイマーを有効化・起動
+     - `systemctl status status-agent.timer`で正常動作を確認
+  2. **Mac用status-agentの実装**:
+     - `clients/status-agent/status-agent-macos.py`を作成（macOS用のコマンドを使用）
+     - `~/.status-agent.conf`を作成し、`CLIENT_KEY`を設定
+     - `~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist`を作成し、`launchd`で定期実行を設定
+     - `launchctl load`でサービスを有効化
+  3. **ドキュメント更新**:
+     - `docs/guides/status-agent.md`にmacOS向けセットアップ手順を追加
+
+**学んだこと**:
+- **Ansibleデプロイ中断の影響**: プレフライトチェックでサービスを停止した後、デプロイが中断されると、サービスが再起動されない可能性がある
+- **macOSとLinuxの違い**: macOSでは`systemd`ではなく`launchd`を使用するため、別の設定方法が必要
+- **status-agentのプラットフォーム対応**: Linux用とmacOS用で別のスクリプトが必要（コマンドやAPIの違い）
+- **定期確認の重要性**: クライアント端末のステータスが表示されない場合は、`status-agent`の状態を確認する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-09: Pi3のタイマー再有効化、Mac用status-agent実装完了）
+
+**関連ファイル**:
+- `clients/status-agent/status-agent-macos.py`（macOS用status-agentスクリプト）
+- `~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist`（macOS用launchd設定）
+- `~/.status-agent.conf`（macOS用設定ファイル）
+- `docs/guides/status-agent.md`（status-agentセットアップガイド）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`（Pi3のstatus-agent設定）
+
+**確認コマンド**:
+```bash
+# Pi3のstatus-agent状態確認
+ssh signageras3@100.105.224.86 "systemctl status status-agent.timer"
+ssh signageras3@100.105.224.86 "systemctl status status-agent.service"
+
+# Macのstatus-agent状態確認
+launchctl list | grep status-agent
+cat ~/.status-agent.conf
+```
+
+**再発防止策**:
+- **Ansibleデプロイの完全性**: デプロイが中断された場合は、手動でサービスを再起動する必要がある
+- **プレフライトチェック後の確認**: デプロイ完了後、停止したサービスが再起動されていることを確認する
+- **定期ヘルスチェック**: クライアント端末のステータスが定期的に更新されていることを確認する（管理コンソールの「クライアント端末」タブで確認）
+
+**注意事項**:
+- Pi3の`status-agent.timer`が無効化されていた原因は、過去のAnsibleデプロイ中断の可能性が高い
+- デプロイが中断された場合は、手動でサービスを再起動する必要がある
+- Macのstatus-agentは、Linux用スクリプトでは動作しないため、macOS専用のスクリプトが必要
+
+---

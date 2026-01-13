@@ -25,10 +25,10 @@ export interface LoansSlotConfig {
 }
 
 /**
- * CSV可視化スロットの設定（将来の拡張用）
+ * CSV可視化スロットの設定
  */
 export interface CsvDashboardSlotConfig {
-  // 将来の拡張用
+  csvDashboardId: string;
 }
 
 /**

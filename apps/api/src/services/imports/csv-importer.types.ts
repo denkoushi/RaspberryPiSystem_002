@@ -1,14 +1,14 @@
 /**
  * CSVインポートタイプ
  */
-export type CsvImportType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+export type CsvImportType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards';
 
 /**
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export interface CsvImportTarget {
   type: CsvImportType;
-  source: string; // Dropbox用: パス、Gmail用: 件名パターン
+  source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
 /**

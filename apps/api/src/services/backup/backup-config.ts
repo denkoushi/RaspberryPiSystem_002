@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * CSVインポートタイプ
  */
-export const CsvImportTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']);
+export const CsvImportTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'csvDashboards']);
 
 /**
  * CSVインポートターゲット（スケジュール内の1つの対象）

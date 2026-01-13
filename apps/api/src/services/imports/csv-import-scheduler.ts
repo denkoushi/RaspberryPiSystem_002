@@ -13,6 +13,10 @@ import { processCsvImportFromTargets } from '../../routes/imports.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 import type { CsvImportTarget } from './csv-importer.types.js';
+import { CsvDashboardIngestor } from '../csv-dashboard/csv-dashboard-ingestor.js';
+import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
+import { prisma } from '../../lib/prisma.js';
+import { CsvDashboardService } from '../csv-dashboard/csv-dashboard.service.js';
 
 /**
  * CSVインポートスケジューラー
@@ -20,6 +24,7 @@ import type { CsvImportTarget } from './csv-importer.types.js';
 export class CsvImportScheduler {
   private tasks: Map<string, cron.ScheduledTask> = new Map();
   private cleanupTask: cron.ScheduledTask | null = null;
+  private csvDashboardRetentionTask: cron.ScheduledTask | null = null;
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
@@ -50,6 +55,8 @@ export class CsvImportScheduler {
       logger?.info('[CsvImportScheduler] No CSV import schedules configured');
       // クリーンアップJobのみ開始
       await this.startCleanupJob(config);
+      // CSVダッシュボードレテンション削除Jobを開始
+      await this.startCsvDashboardRetentionJob();
       return;
     }
 
@@ -195,6 +202,9 @@ export class CsvImportScheduler {
 
     // 履歴クリーンアップJobを開始
     await this.startCleanupJob(config);
+    
+    // CSVダッシュボードレテンション削除Jobを開始
+    await this.startCsvDashboardRetentionJob();
   }
 
   /**
@@ -264,6 +274,70 @@ export class CsvImportScheduler {
   }
 
   /**
+   * CSVダッシュボードレテンション削除Jobを開始
+   */
+  private async startCsvDashboardRetentionJob(): Promise<void> {
+    // 既存のレテンション削除タスクがあれば停止
+    if (this.csvDashboardRetentionTask) {
+      this.csvDashboardRetentionTask.stop();
+      this.csvDashboardRetentionTask = null;
+    }
+
+    // デフォルトスケジュール: 毎月1日の2時（前月分を削除）
+    const retentionSchedule = '0 2 1 * *';
+
+    // cron形式のバリデーション
+    try {
+      if (!validate(retentionSchedule)) {
+        logger?.warn(
+          { schedule: retentionSchedule },
+          '[CsvImportScheduler] Invalid CSV dashboard retention schedule format, skipping'
+        );
+        return;
+      }
+    } catch (error) {
+      logger?.warn(
+        { err: error, schedule: retentionSchedule },
+        '[CsvImportScheduler] Invalid CSV dashboard retention schedule format, skipping'
+      );
+      return;
+    }
+
+    // レテンション削除タスクを作成
+    this.csvDashboardRetentionTask = cron.schedule(retentionSchedule, async () => {
+      try {
+        logger?.info(
+          '[CsvImportScheduler] Starting CSV dashboard retention cleanup'
+        );
+
+        const csvDashboardService = new CsvDashboardService();
+        const { deletedRows, deletedIngestRuns } = await csvDashboardService.cleanupOldData();
+
+        // CSVファイルのレテンション削除も実行
+        const { deletedCount, deletedSize } = await CsvDashboardStorage.cleanupOldFiles();
+
+        logger?.info(
+          { deletedRows, deletedIngestRuns, deletedFiles: deletedCount, deletedSize },
+          '[CsvImportScheduler] CSV dashboard retention cleanup completed'
+        );
+      } catch (error) {
+        logger?.error(
+          { err: error },
+          '[CsvImportScheduler] CSV dashboard retention cleanup failed'
+        );
+      }
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Tokyo'
+    });
+
+    logger?.info(
+      { schedule: retentionSchedule },
+      '[CsvImportScheduler] CSV dashboard retention job registered'
+    );
+  }
+
+  /**
    * スケジューラーを停止
    */
   stop(): void {
@@ -281,6 +355,13 @@ export class CsvImportScheduler {
       this.cleanupTask.stop();
       this.cleanupTask = null;
       logger?.info('[CsvImportScheduler] Cleanup task stopped');
+    }
+
+    // CSVダッシュボードレテンション削除タスクを停止
+    if (this.csvDashboardRetentionTask) {
+      this.csvDashboardRetentionTask.stop();
+      this.csvDashboardRetentionTask = null;
+      logger?.info('[CsvImportScheduler] CSV dashboard retention task stopped');
     }
 
     this.tasks.clear();
@@ -392,7 +473,7 @@ export class CsvImportScheduler {
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     skipRetry = false
-  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number }; csvDashboards?: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> }> {
     // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
     const provider = importSchedule.provider || config.storage.provider;
     
@@ -451,7 +532,7 @@ export class CsvImportScheduler {
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     provider: 'dropbox' | 'gmail'
-  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }> {
+  ): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number }; csvDashboards?: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> }> {
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = 'http'; // スケジューラー内ではプロトコルは不要
     const host = 'localhost:8080'; // スケジューラー内ではホストは不要
@@ -513,45 +594,149 @@ export class CsvImportScheduler {
       throw new Error('No CSV import targets specified in import schedule');
     }
 
+    // CSVダッシュボード用のターゲットと通常のインポート用のターゲットを分離
+    const csvDashboardTargets = targets.filter((t) => t.type === 'csvDashboards');
+    const importTargets = targets.filter((t) => t.type !== 'csvDashboards');
+
     // CSVファイルをダウンロード
     const fileMap = new Map<string, Buffer>();
-    
-    for (const target of targets) {
-      logger?.info(
-        { type: target.type, source: target.source, provider },
-        `[CsvImportScheduler] Downloading ${target.type} CSV`
-      );
-      const buffer = await storageProvider.download(target.source);
-      fileMap.set(target.type, buffer);
-      logger?.info(
-        { type: target.type, source: target.source, size: buffer.length, provider },
-        `[CsvImportScheduler] ${target.type} CSV downloaded`
-      );
+    const csvDashboardResults: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> = {};
+
+    // CSVダッシュボード用の処理
+    if (csvDashboardTargets.length > 0) {
+      const ingestor = new CsvDashboardIngestor();
+      
+      // GmailStorageProviderの場合はメタデータ付きダウンロードを使用
+      const isGmailProvider = provider === 'gmail';
+      
+      for (const target of csvDashboardTargets) {
+        // sourceはCSVダッシュボードID
+        const dashboardId = target.source;
+        
+        // CSVダッシュボードの設定を取得（Gmail件名パターンを取得するため）
+        const dashboard = await prisma.csvDashboard.findUnique({
+          where: { id: dashboardId },
+        });
+        
+        if (!dashboard) {
+          logger?.warn(
+            { dashboardId },
+            '[CsvImportScheduler] CSV dashboard not found, skipping'
+          );
+          continue;
+        }
+        
+        if (!dashboard.enabled) {
+          logger?.warn(
+            { dashboardId },
+            '[CsvImportScheduler] CSV dashboard is disabled, skipping'
+          );
+          continue;
+        }
+        
+        // Gmail件名パターンを取得
+        // 簡易実装として、CSVダッシュボードのgmailScheduleIdが設定されている場合は、
+        // そのスケジュールの件名パターンを使用する
+        // 実際の実装では、CSVダッシュボードの設定にGmail件名パターンを直接保存するか、
+        // スケジュール設定から取得する必要がある
+        // 暫定実装として、target.sourceをGmail件名パターンとして使用（将来の拡張用）
+        const gmailSubjectPattern = dashboard.gmailScheduleId 
+          ? target.source // スケジュールIDが設定されている場合は、sourceを件名パターンとして使用
+          : target.source; // それ以外の場合もsourceを件名パターンとして使用
+        
+        logger?.info(
+          { dashboardId, gmailSubjectPattern, provider },
+          '[CsvImportScheduler] Processing CSV dashboard ingestion'
+        );
+
+        let buffer: Buffer;
+        let messageId: string | undefined;
+        let messageSubject: string | undefined;
+
+        if (isGmailProvider && 'downloadWithMetadata' in storageProvider) {
+          // GmailStorageProviderの場合はメタデータ付きダウンロードを使用
+          const gmailProvider = storageProvider as {
+            downloadWithMetadata: (path: string) => Promise<{
+              buffer: Buffer;
+              messageId: string;
+              messageSubject: string;
+            }>;
+          };
+          const result = await gmailProvider.downloadWithMetadata(gmailSubjectPattern);
+          buffer = result.buffer;
+          messageId = result.messageId;
+          messageSubject = result.messageSubject;
+        } else {
+          // DropboxStorageProviderの場合は通常のダウンロードを使用
+          buffer = await storageProvider.download(gmailSubjectPattern);
+        }
+
+        const csvContent = buffer.toString('utf-8');
+
+        // CSVファイルを原本として保存
+        const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
+
+        // 取り込み処理を実行
+        const result = await ingestor.ingestFromGmail(
+          dashboardId,
+          csvContent,
+          messageId,
+          messageSubject,
+          csvFilePath
+        );
+
+        csvDashboardResults[dashboardId] = result;
+
+        logger?.info(
+          { dashboardId, result },
+          '[CsvImportScheduler] CSV dashboard ingestion completed'
+        );
+      }
     }
 
-    // CSVインポートを実行
-    const logWrapper = {
-      info: (obj: unknown, msg: string) => {
-        logger?.info(obj, msg);
-      },
-      error: (obj: unknown, msg: string) => {
-        logger?.error(obj, msg);
+    // 通常のCSVインポート処理
+    if (importTargets.length > 0) {
+      for (const target of importTargets) {
+        logger?.info(
+          { type: target.type, source: target.source, provider },
+          `[CsvImportScheduler] Downloading ${target.type} CSV`
+        );
+        const buffer = await storageProvider.download(target.source);
+        fileMap.set(target.type, buffer);
+        logger?.info(
+          { type: target.type, source: target.source, size: buffer.length, provider },
+          `[CsvImportScheduler] ${target.type} CSV downloaded`
+        );
       }
-    };
 
-    const { summary } = await processCsvImportFromTargets(
-      targets,
-      fileMap,
-      importSchedule.replaceExisting ?? false,
-      logWrapper
-    );
+      // CSVインポートを実行
+      const logWrapper = {
+        info: (obj: unknown, msg: string) => {
+          logger?.info(obj, msg);
+        },
+        error: (obj: unknown, msg: string) => {
+          logger?.error(obj, msg);
+        }
+      };
 
-    logger?.info(
-      { taskId: importSchedule.id, summary },
-      '[CsvImportScheduler] CSV import completed'
-    );
+      const { summary } = await processCsvImportFromTargets(
+        importTargets,
+        fileMap,
+        importSchedule.replaceExisting ?? false,
+        logWrapper
+      );
 
-    return summary;
+      logger?.info(
+        { taskId: importSchedule.id, summary },
+        '[CsvImportScheduler] CSV import completed'
+      );
+
+      // CSVダッシュボードの結果も含めて返す
+      return { ...summary, csvDashboards: csvDashboardResults };
+    }
+
+    // CSVダッシュボードのみの場合
+    return { csvDashboards: csvDashboardResults };
   }
 
   /**
@@ -560,7 +745,7 @@ export class CsvImportScheduler {
   private async executeAutoBackup(
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
-    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number } }
+    importSummary: { employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number }; csvDashboards?: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> }
   ): Promise<void> {
     const autoBackupConfig = importSchedule.autoBackupAfterImport;
     if (!autoBackupConfig?.enabled) {

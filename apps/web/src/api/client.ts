@@ -757,6 +757,7 @@ export async function getNetworkModeStatus() {
 // デジタルサイネージ関連の型定義
 export interface SignageSlotConfig {
   pdfId?: string;
+  csvDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
 }
@@ -845,6 +846,13 @@ export interface SignageContentResponse {
     name: string;
     pages: string[];
     slideInterval: number | null;
+  }>;
+  csvDashboardsById?: Record<string, {
+    id: string;
+    name: string;
+    pageNumber: number;
+    totalPages: number;
+    rows: Array<Record<string, unknown>>;
   }>;
 }
 
@@ -945,6 +953,67 @@ export async function setSignageEmergency(payload: {
 
 export async function getSignageContent() {
   const { data } = await api.get<SignageContentResponse>('/signage/content');
+  return data;
+}
+
+// CSVダッシュボード関連の型定義
+export interface CsvDashboard {
+  id: string;
+  name: string;
+  description: string | null;
+  columnDefinitions: Array<{
+    internalName: string;
+    displayName: string;
+    csvHeaderCandidates: string[];
+    dataType: 'string' | 'number' | 'date' | 'boolean';
+    order: number;
+    required?: boolean;
+  }>;
+  dateColumnName: string | null;
+  displayPeriodDays: number;
+  emptyMessage: string | null;
+  ingestMode: 'APPEND' | 'DEDUP';
+  dedupKeyColumns: string[];
+  gmailScheduleId: string | null;
+  templateType: 'TABLE' | 'CARD_GRID';
+  templateConfig: Record<string, unknown>;
+  csvFilePath: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getCsvDashboards(filters?: { enabled?: boolean; search?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.enabled !== undefined) {
+    params.append('enabled', String(filters.enabled));
+  }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
+  const { data } = await api.get<{ dashboards: CsvDashboard[] }>(`/csv-dashboards?${params.toString()}`);
+  return data.dashboards;
+}
+
+export async function getCsvDashboard(id: string) {
+  const { data } = await api.get<{ dashboard: CsvDashboard }>(`/csv-dashboards/${id}`);
+  return data.dashboard;
+}
+
+export async function updateCsvDashboard(
+  id: string,
+  payload: Partial<Pick<CsvDashboard, 'name' | 'description' | 'columnDefinitions' | 'dateColumnName' | 'displayPeriodDays' | 'emptyMessage' | 'ingestMode' | 'dedupKeyColumns' | 'gmailScheduleId' | 'templateType' | 'templateConfig' | 'enabled'>>
+) {
+  const { data } = await api.put<{ dashboard: CsvDashboard }>(`/csv-dashboards/${id}`, payload);
+  return data.dashboard;
+}
+
+export async function uploadCsvToDashboard(id: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post<{ preview: unknown; ingestResult: unknown }>(`/csv-dashboards/${id}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return data;
 }
 

@@ -583,27 +583,39 @@ const textX = x + textAreaX;
 **原因**:
 1. **ページ進行ロジックの問題**: `getCurrentPdfPageIndex`関数で、`steps <= 0`の場合（slideInterval未満の経過時間）でも強制的に`steps = 1`としてページを進めていた。これにより、サーバーのレンダリング間隔（20秒）がslideInterval（30秒）より短い場合、30秒経過する前に次のページに進んでしまい、Pi3がページを取得するタイミングとずれてページが飛ばされる問題が発生していた。
 2. **Pi3のサービス停止**: `signage-lite.service`が停止・無効化されていたため、サイネージが表示されていなかった。
+3. **Pi3の更新タイマーの精度不足（再発要因1）**: `signage-lite-update.timer`は`OnUnitActiveSec=30s`でも、systemd timerのデフォルト`AccuracySec=1min`の影響で実行が「1分単位に丸め/揺れ」ることがある。結果としてPi3の`/api/signage/current-image`取得が30秒おきにならず、サーバー側（30秒ごとにレンダリング/ページ進行）を取りこぼして「1ページずつ見えない（見かけ上ページが飛ぶ）」が発生する。
+4. **Pi3の画像更新方式の問題（再発要因2、2026-01-09発見）**: `signage-update.sh`が`mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"`で画像を置換していたため、**更新のたびに`current.jpg`のinodeが変わる**。`feh --auto-reload`はinotifyでファイル変更を監視するが、inode変更には追従できない場合があり、**画面が更新されない/飛んで見える**ことがある。
 
 **解決策**:
 1. **ページ進行ロジックの修正**: `steps <= 0`の場合は、ページを進めずに**同じページを維持**するように変更。`slideInterval`以上経過した場合のみ1ページ進めるように修正。
 2. **複数ページ分経過した場合の処理**: 複数ページ分の時間が経過した場合でも、1ページずつ進めるように修正（`steps = 1`に固定）。
 3. **Pi3サービスの起動**: `signage-lite.service`を有効化・起動。
-4. **Pi3の取得頻度調整**: `signage-lite-update.timer`の間隔を30秒から15秒に変更（ただし、実際の動作は30秒ごと）。
+4. **Pi3更新タイマーの精度改善（2026-01-09 追記）**: `signage-lite-update.timer`に`AccuracySec=1s`と`RandomizedDelaySec=0`を設定（unit直編集より安全なdrop-in推奨: `/etc/systemd/system/signage-lite-update.timer.d/override.conf`）。これによりPi3の画像取得が30秒前後に安定し、ページ取りこぼしが抑制される。
+5. **Pi3画像更新方式の改善（2026-01-09 追記）**: `signage-update.sh`を修正し、既存`current.jpg`がある場合は**上書き更新（inode維持）**に変更（`cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"`）。初回のみ`mv`を使用。これにより`feh --auto-reload(inotify)`が確実にファイル変更を検知し、画面更新が安定する。
 
 **修正内容**:
 - `apps/api/src/services/signage/signage.renderer.ts`の`getCurrentPdfPageIndex`関数を修正
   - `steps <= 0`の場合: `return state.lastIndex`（同じページを維持）
   - `steps > 0`の場合: `steps = 1`に固定し、1ページずつ進める
 - Pi3の`signage-lite.service`を有効化・起動
+- Pi3の`signage-lite-update.timer`の精度を改善（`AccuracySec=1s`, `RandomizedDelaySec=0`）
+- Pi3の`signage-update.sh`を修正（2026-01-09）
+  - 既存`current.jpg`がある場合: `cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"`（上書き更新、inode維持）
+  - 初回のみ: `mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"`（inode変更は初回のみ）
+- Ansibleテンプレートも同様に修正（`infrastructure/ansible/**/signage-update.sh.j2`）
 
-**実機検証結果**: ✅ **問題解消**（2026-01-08）
+**実機検証結果**: ✅ **問題解消**（2026-01-08、再発対策完了: 2026-01-09）
 - ページが順番に表示される（1→2→3→...）ことを確認
 - ページ飛ばしが発生しないことを確認
 - 30秒ごとにページが切り替わることを確認
+- 画像更新方式の改善により、`feh --auto-reload`が確実にファイル変更を検知することを確認（2026-01-09）
 
 **関連ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`（`getCurrentPdfPageIndex`関数の修正）
 - `/etc/systemd/system/signage-lite-update.timer`（Pi3のタイマー設定）
+- `/usr/local/bin/signage-update.sh`（Pi3の画像更新スクリプト、2026-01-09修正）
+- `infrastructure/ansible/templates/signage-update.sh.j2`（Ansibleテンプレート、2026-01-09修正）
+- `infrastructure/ansible/roles/signage/templates/signage-update.sh.j2`（Ansibleロールテンプレート、2026-01-09修正）
 
 ---
 
@@ -693,6 +705,92 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-155] CSVダッシュボード可視化機能実装完了
+
+**実装日時**: 2026-01-08
+
+**事象**: 
+- Gmail経由でPowerAutomateから送信されたCSVファイルをサイネージで可視化表示する機能を実装
+- `slot.kind=csv_dashboard`の実装が完了し、FULL/SPLITレイアウトでCSVダッシュボードを表示可能に
+
+**実装内容**: 
+- ✅ **データベーススキーマ**: `CsvDashboard`, `CsvDashboardIngestRun`, `CsvDashboardRow`テーブルを追加
+- ✅ **CSVダッシュボード管理API**: CRUD操作、CSVアップロード、プレビュー解析エンドポイントを実装
+- ✅ **Gmail連携**: 既存の`CsvImportScheduler`を拡張し、CSVダッシュボード用の取り込み処理を追加
+- ✅ **データ取り込み**: `CsvDashboardIngestor`でCSV解析、重複除去/追加モード、日付列処理を実装
+- ✅ **可視化レンダリング**: `CsvDashboardTemplateRenderer`でテーブル形式・カードグリッド形式のSVG生成を実装
+- ✅ **サイネージ統合**: `SignageService`と`SignageRenderer`を拡張し、CSVダッシュボードをサイネージコンテンツとして表示可能に
+- ✅ **管理コンソールUI**: `SignageSchedulesPage`にCSVダッシュボード選択UIを追加
+- ✅ **データ保持期間管理**: 前年分保持、2年前削除、当年前月削除の自動クリーンアップを実装
+- ✅ **ストレージ管理**: CSV原本ファイルの保存と保持期間管理を実装
+
+**学んだこと**:
+1. **環境変数の重要性**: `CSV_DASHBOARD_STORAGE_DIR`をデプロイ前に設定しないと、保存先が不明確になる
+2. **Ansibleテンプレート管理**: 環境変数は`infrastructure/ansible/templates/docker.env.j2`に追加しないと、Ansible再実行時に消える
+3. **DBマイグレーション**: 新テーブル追加のみのマイグレーションは安全だが、デプロイ前のバックアップは必須
+4. **疎結合設計**: `layoutConfig`の設計により、新しいコンテンツ種別（CSVダッシュボード）を既存コードへの影響を最小限に追加可能
+
+**解決状況**: ✅ **実装完了・CI修正・デプロイ完了**（2026-01-08: 実装完了、2026-01-09: CI修正・デプロイ完了）
+
+**実機検証で発見された問題と修正**（2026-01-09）:
+1. **CSVダッシュボードスロットの`csvDashboardId`が保持されない**: `routes/signage/schemas.ts`の`slotConfigSchema`で`csv_dashboard`用の設定が空オブジェクト（`z.object({})`）になっており、`csvDashboardId`がバリデーションで捨てられていた。専用スキーマを定義し、`csvDashboardId`を必須フィールドとして検証するように修正。すべてのスロット設定スキーマに`.strict()`を追加してキー消失を防止。
+2. **手動アップロードでデータが取り込まれない**: `/api/csv-dashboards/:id/upload`エンドポイントがプレビューのみを返しており、実際のデータ取り込みを実行していなかった。`CsvDashboardIngestor.ingestFromGmail`を呼び出すように修正し、CSVファイルを保存してからデータを取り込むように変更。
+3. **日付フィルタリングでデータが取得されない**: `getPageData`メソッドの日付計算でJST/UTCの変換が逆になっており、当日のデータが取得できなかった。サーバーがUTC環境で動作することを前提に、JSTの「今日の0:00」と「今日の23:59:59」をUTCに正しく変換するように修正。
+4. **`displayPeriodDays`が`null`の場合のデフォルト値**: `buildScheduleResponse`と緊急情報のレスポンス構築で`displayPeriodDays`が`null`の場合のデフォルト値（`1`）が設定されていなかった。`?? 1`を追加してデフォルト値を設定。
+
+**修正内容の詳細**:
+- **スキーマ修正**: `apps/api/src/routes/signage/schemas.ts`で`csv_dashboard`用の`slotConfigSchema`を専用化し、`csvDashboardId`を必須フィールドとして定義。すべてのスロット設定スキーマに`.strict()`を追加。
+- **手動アップロード修正**: `apps/api/src/routes/csv-dashboards/index.ts`の`/upload`エンドポイントを修正し、`CsvDashboardStorage.saveRawCsv`でCSVファイルを保存してから`CsvDashboardIngestor.ingestFromGmail`でデータを取り込むように変更。
+- **日付フィルタリング修正**: `apps/api/src/services/csv-dashboard/csv-dashboard.service.ts`の`getPageData`メソッドを修正し、JSTの「今日の0:00」と「今日の23:59:59」をUTCに正しく変換するように変更。
+- **nullチェック追加**: `apps/api/src/services/signage/signage.service.ts`の`buildScheduleResponse`と緊急情報のレスポンス構築で`displayPeriodDays ?? 1`を追加。
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-09）
+- CSVダッシュボードスロットの`csvDashboardId`が正しく保持されることを確認
+- 手動アップロードでデータが取り込まれることを確認（`rowsAdded: 3`）
+- サイネージAPIレスポンスで`csvDashboardsById`にデータが含まれることを確認（`rowsCount: 6`）
+- 日付フィルタリングが正しく動作し、当日のデータのみが表示されることを確認
+- SPLITレイアウトで左にCSVダッシュボード・右にPDFが正常動作することを確認
+- SPLITレイアウトで左にPDF・右にCSVダッシュボードが正常動作することを確認（UI修正後）
+
+**実機検証で発見された問題と修正**（2026-01-09追加）:
+1. **右スロットのCSVダッシュボード選択UIが未実装**: `SignageSchedulesPage.tsx`の右スロットドロップダウンに`csv_dashboard`オプションがなく、CSVダッシュボード選択UIも実装されていなかった。左スロットと同じ実装を追加して修正。
+2. **管理コンソールに「CSVダッシュボード」タブが未実装**: 管理コンソールのナビゲーションメニューに「CSVダッシュボード」タブがなく、CSVダッシュボード管理ページにアクセスできなかった。`CsvDashboardsPage.tsx`を実装し、`App.tsx`にルートを追加、`AdminLayout.tsx`にナビゲーションリンクを追加して修正。
+
+**検証9: 表示期間フィルタの検証結果**（2026-01-09）:
+- ✅ **データベースのデータ**: 全10行（当日分8行、前日分2行）
+- ✅ **サイネージAPIのレスポンス**: `rows`の長さが8行（当日分のみ）
+- ✅ **表示期間フィルタの動作**: 当日分（`2026/1/9`）のみが表示され、前日分（`2026/1/8`）は除外されている
+- ✅ **日付計算の正確性**: JSTの「今日の0:00」から「今日の23:59:59」をUTCに正しく変換（UTC `2026-01-08 15:00:00` 〜 `2026-01-09 14:59:59`）
+- ✅ **検証方法**: テスト用CSVファイル（当日分2行、前日分2行）をアップロードし、サイネージAPIで当日分のみが返されることを確認
+
+**CI修正とデプロイ完了**（2026-01-09）:
+1. **E2Eテストのstrict mode violation修正**: `e2e/admin.spec.ts`で「ダッシュボード」リンクのセレクタが「CSVダッシュボード」リンクと重複マッチしていた問題を修正。`{ name: /ダッシュボード/i }`から`{ name: 'ダッシュボード', exact: true }`に変更して完全一致で検索するように修正。
+2. **セキュリティ脆弱性対応**: `@remix-run/router@1.23.1`の脆弱性（XSS via Open Redirects）に対応し、`package.json`の`overrides`で`1.23.2`を強制。`pnpm-lock.yaml`も更新してCIの`pnpm audit --audit-level=high`が通過するように修正。
+3. **GitHub Actions CI成功**: すべてのCIテスト（lint、API tests、Web tests、E2E tests）が通過し、CIが成功。
+4. **デプロイ完了**: Pi5上で`feature/csv-dashboard-visualization`ブランチを`git pull`し、API/Webコンテナを`--force-recreate --build`で再ビルド・再起動。データベースマイグレーション実行（保留なし）、ヘルスチェック成功（API/Web共に正常動作）を確認。
+
+**デプロイ時の注意事項**:
+- **環境変数設定**: `CSV_DASHBOARD_STORAGE_DIR=/app/storage/csv-dashboards`を`infrastructure/docker/.env`に追加（デプロイ前に実施）
+- **Ansibleテンプレート更新**: `infrastructure/ansible/templates/docker.env.j2`に`CSV_DASHBOARD_STORAGE_DIR`を追加（Ansible使用時）
+- **DBマイグレーション**: マイグレーション`20260108145517_add_csv_dashboard_models`が自動適用される
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`CsvDashboard`, `CsvDashboardIngestRun`, `CsvDashboardRow`モデル）
+- `apps/api/src/services/csv-dashboard/`（サービス層）
+- `apps/api/src/routes/csv-dashboards/`（APIルート）
+- `apps/api/src/routes/signage/schemas.ts`（スキーマ修正）
+- `apps/api/src/services/signage/signage.service.ts`（サイネージサービス拡張、nullチェック追加）
+- `apps/api/src/services/signage/signage.renderer.ts`（サイネージレンダラー拡張）
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`（管理コンソールUI拡張）
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`（CSVダッシュボード管理ページ）
+- `apps/web/src/App.tsx`（ルート追加）
+- `apps/web/src/layouts/AdminLayout.tsx`（ナビゲーションリンク追加）
+- `e2e/admin.spec.ts`（E2Eテスト修正）
+- `package.json`（セキュリティ脆弱性対応）
+- `docs/modules/signage/README.md`（仕様更新）
+
+---
+
 ## サイネージ関連の残タスク
 
 ### 1. レイアウト設定機能の完成度向上（優先度: 中）
@@ -702,12 +800,60 @@ const textX = x + textAreaX;
 - **スケジュールのコピー機能**: 既存スケジュールをコピーして新規作成（レイアウト設定も含めてコピー）
 - **スケジュールのプレビュー機能**: 管理コンソールでレイアウト設定のプレビューを表示（実際の表示イメージを確認可能に）
 
-### 2. CSV可視化機能の要件定義と実装（優先度: 低）
+### [KB-156] 複数スケジュールの順番切り替え機能実装
 
-- **CSV可視化の要件定義**: CSVデータソースの定義方法、可視化の種類（グラフ、テーブルなど）、スケジュール設定との連携方法
-- **CSV可視化スロット（`slot.kind=csv_dashboard`）の実装**: CSVデータの取得・処理ロジック、可視化のレンダリングロジック、管理コンソールUI拡張
+**実装日時**: 2026-01-09
 
-### 3. サイネージのパフォーマンス最適化（優先度: 低）
+**事象**: 
+- 複数のスケジュールが同時にマッチする場合、優先順位が最も高いスケジュールのみが表示され、他のスケジュールが表示されない
+- 優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合、優先順位100のみが表示され、優先順位10は表示されない
+
+**要因**: 
+- `signage.service.ts`の`getContent`メソッドで、マッチしたスケジュールを優先順位順にソートした後、最初の1つだけを返して終了していた
+- 順番に切り替えるロジックが実装されていなかった
+
+**実施した対策**: 
+- ✅ **環境変数の追加**: `SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`を追加（デフォルト: 30秒）
+- ✅ **順番切り替えロジックの実装**: 複数のスケジュールがマッチする場合、優先順位順（高い順）にソートし、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示
+- ✅ **切り替え間隔の計算**: 現在時刻から切り替え間隔を計算し、どのスケジュールを表示するか決定
+- ✅ **ドキュメント更新**: 優先順位の動作説明を更新し、複数スケジュールの順番切り替え機能を明記
+
+**実装内容の詳細**:
+- **環境変数**: `apps/api/src/config/env.ts`に`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`を追加（デフォルト: 30秒、範囲: 10-3600秒）
+- **切り替えロジック**: `apps/api/src/services/signage/signage.service.ts`の`getContent`メソッドを修正
+  - 複数のスケジュールがマッチする場合（`matchedSchedules.length > 1`）、現在時刻から切り替え間隔を計算
+  - `currentSecond % (matchedSchedules.length * switchInterval) / switchInterval`でスケジュールインデックスを決定
+  - 優先順位順（高い順）にソートされたスケジュール配列から、計算されたインデックスのスケジュールを選択
+- **ログ出力**: 切り替えロジック実行時に`Schedule response built (rotating)`ログを出力し、`scheduleIndex`、`totalSchedules`、`switchInterval`を記録
+
+**動作仕様**:
+- 優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合:
+  - 0-29秒: 優先順位100（分割表示）
+  - 30-59秒: 優先順位10（全画面表示）
+  - 60-89秒: 優先順位100（分割表示）
+  - 90-119秒: 優先順位10（全画面表示）
+  - ...（繰り返し）
+
+**学んだこと**:
+1. **優先順位の意味**: 優先順位は「表示優先度（高いものだけ表示）」ではなく、「表示順序（高い順に順番に表示）」として実装する必要がある
+2. **時間ベースの切り替え**: 現在時刻から切り替え間隔を計算することで、サーバー側で確実に切り替えを制御できる
+3. **環境変数による設定**: 切り替え間隔を環境変数で設定可能にすることで、運用時の調整が容易になる
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-01-09）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-09）
+- 優先順位100と優先順位10のスケジュールが同時にマッチする時間帯で、30秒ごとに交互に表示されることを確認
+- ログに`Schedule response built (rotating)`が出力され、`scheduleIndex`が切り替わることを確認
+- 優先順位100のスケジュールが正常に動作することを確認
+
+**関連ファイル**:
+- `apps/api/src/config/env.ts`（環境変数追加）
+- `apps/api/src/services/signage/signage.service.ts`（順番切り替えロジック実装）
+- `docs/modules/signage/README.md`（仕様更新）
+
+---
+
+### 2. サイネージのパフォーマンス最適化（優先度: 低）
 
 - **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング
 - **レンダリング時間の最適化**: SVG生成の最適化、JPEG変換の最適化

@@ -288,5 +288,82 @@ export class GmailStorageProvider implements StorageProvider {
   async delete(_path: string): Promise<void> {
     throw new Error('GmailStorageProvider does not support delete. Gmail is read-only.');
   }
+
+  /**
+   * Gmailからファイルを取得（CSVダッシュボード用：メッセージIDと件名も返す）
+   * @param path 件名パターン（Gmail用）
+   * @returns ファイルのBuffer、メッセージID、件名
+   */
+  async downloadWithMetadata(path: string): Promise<{
+    buffer: Buffer;
+    messageId: string;
+    messageSubject: string;
+  }> {
+    return this.handleAuthError(async () => {
+      // 検索クエリを構築
+      const query = this.buildSearchQuery(path);
+
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages (with metadata)'
+      );
+
+      // メールを検索
+      const messageIds = await this.gmailClient.searchMessages(query);
+
+      if (messageIds.length === 0) {
+        throw new Error(`No messages found matching query: ${query}`);
+      }
+
+      // 最初のメールから添付ファイルとメタデータを取得
+      const firstMessageId = messageIds[0];
+      logger?.info(
+        { messageId: firstMessageId, query },
+        '[GmailStorageProvider] Found message, getting attachment and metadata'
+      );
+
+      // メッセージ情報を取得（件名を取得するため）
+      const message = await this.gmailClient.getMessage(firstMessageId);
+      const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+      const messageSubject = subjectHeader?.value || 'No Subject';
+
+      const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
+
+      if (!attachment) {
+        throw new Error(`No attachment found in message: ${firstMessageId}`);
+      }
+
+      logger?.info(
+        {
+          messageId: firstMessageId,
+          messageSubject,
+          filename: attachment.filename,
+          size: attachment.buffer.length,
+        },
+        '[GmailStorageProvider] Attachment downloaded successfully (with metadata)'
+      );
+
+      // メールをアーカイブ（処理済みとしてマーク）
+      try {
+        await this.gmailClient.archiveMessage(firstMessageId);
+        logger?.info(
+          { messageId: firstMessageId },
+          '[GmailStorageProvider] Message archived'
+        );
+      } catch (archiveError) {
+        // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
+        logger?.warn(
+          { err: archiveError, messageId: firstMessageId },
+          '[GmailStorageProvider] Failed to archive message'
+        );
+      }
+
+      return {
+        buffer: attachment.buffer,
+        messageId: firstMessageId,
+        messageSubject,
+      };
+    });
+  }
 }
 

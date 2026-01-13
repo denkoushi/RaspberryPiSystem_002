@@ -1,15 +1,24 @@
 import { z } from 'zod';
 
 // layoutConfigのスキーマ定義
-const slotConfigSchema = z.union([
-  z.object({
+const pdfSlotConfigSchema = z
+  .object({
     pdfId: z.string().uuid(),
     displayMode: z.enum(['SLIDESHOW', 'SINGLE']),
     slideInterval: z.number().int().positive().optional().nullable(),
-  }),
-  z.object({}), // loans用（空オブジェクト）
-  z.object({}), // csv_dashboard用（将来の拡張）
-]);
+  })
+  .strict();
+
+// 空オブジェクトは「何でも通してキーを捨てる」挙動を避けるため strict にする
+const loansSlotConfigSchema = z.object({}).strict();
+
+const csvDashboardSlotConfigSchema = z
+  .object({
+    csvDashboardId: z.string().uuid(),
+  })
+  .strict();
+
+const slotConfigSchema = z.union([pdfSlotConfigSchema, loansSlotConfigSchema, csvDashboardSlotConfigSchema]);
 
 const slotSchema = z.object({
   position: z.enum(['FULL', 'LEFT', 'RIGHT']),

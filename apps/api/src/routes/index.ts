@@ -13,6 +13,7 @@ import { registerBackupRoutes } from './backup.js';
 import { registerGmailOAuthRoutes } from './gmail/oauth.js';
 import { registerGmailConfigRoutes } from './gmail/config.js';
 import { registerWebRTCRoutes } from './webrtc/index.js';
+import { registerCsvDashboardRoutes } from './csv-dashboards/index.js';
 
 /**
  * すべてのルートを登録
@@ -47,6 +48,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerGmailConfigRoutes(subApp);
       // WebRTCシグナリングルート
       await registerWebRTCRoutes(subApp);
+      // CSVダッシュボード管理ルート
+      registerCsvDashboardRoutes(subApp);
     },
     { prefix: '/api' },
   );

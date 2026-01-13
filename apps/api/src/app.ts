@@ -13,6 +13,7 @@ import { initializeCsvImporters } from './services/imports/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
 import { SignageRenderStorage } from './lib/signage-render-storage.js';
+import { CsvDashboardStorage } from './lib/csv-dashboard-storage.js';
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
@@ -67,6 +68,13 @@ export async function buildServer(): Promise<FastifyInstance> {
     app.log.info('Signage render storage initialized');
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize signage render storage (may not be critical)');
+  }
+
+  try {
+    await CsvDashboardStorage.initialize();
+    app.log.info('CSV dashboard storage initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize CSV dashboard storage (may not be critical)');
   }
   
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）

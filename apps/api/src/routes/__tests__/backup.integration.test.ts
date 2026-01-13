@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { createAuthHeader, createTestUser } from './helpers.js';
+import { promises as fs } from 'fs';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -12,8 +13,28 @@ describe('Backup API integration', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let authHeader: Record<string, string>;
   let testUser: { user: Awaited<ReturnType<typeof createTestUser>>['user']; token: string; password: string };
+  let testConfigPath: string | null = null;
 
   beforeEach(async () => {
+    // BackupConfigLoader は初期化時に /app/config/backup.json を参照するケースがあるため、
+    // テストでは必ず書き込み可能なパスへ向ける（ローカル環境差分で500になり得る）
+    testConfigPath = `/tmp/backup-config.test.${Date.now()}.${Math.random().toString(36).slice(2)}.json`;
+    process.env.BACKUP_CONFIG_PATH = testConfigPath;
+    await fs.writeFile(
+      testConfigPath,
+      JSON.stringify(
+        {
+          storage: { provider: 'local', options: {} },
+          targets: [],
+          csvImports: [],
+          retention: { days: 30, maxItems: 100 },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+
     app = await buildServer();
     
     // テスト用の管理者ユーザーを作成
@@ -31,6 +52,14 @@ describe('Backup API integration', () => {
       await prisma.user.delete({ where: { id: testUser.id } });
     }
     await app.close();
+    if (testConfigPath) {
+      try {
+        await fs.unlink(testConfigPath);
+      } catch {
+        // noop
+      }
+      testConfigPath = null;
+    }
   });
 
   it('should backup employees CSV', async () => {

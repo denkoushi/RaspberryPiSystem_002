@@ -9,7 +9,10 @@ import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import type {
   PdfSlotConfig,
+  CsvDashboardSlotConfig,
 } from './signage-layout.types.js';
+import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
+import { CsvDashboardService } from '../csv-dashboard/index.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -46,7 +49,10 @@ interface SplitPdfOptions extends PdfRenderOptions {
 
 export class SignageRenderer {
   private readonly pdfSlideState = new Map<string, { lastIndex: number; lastRenderedAt: number }>();
+  private readonly csvDashboardPageState = new Map<string, { lastPageNumber: number; lastRenderedAt: number }>();
   private lastCpuSample: { idle: number; total: number } | null = null;
+  private readonly csvDashboardTemplateRenderer = new CsvDashboardTemplateRenderer();
+  private readonly csvDashboardService = new CsvDashboardService();
 
   constructor(private readonly signageService: SignageService) {}
 
@@ -155,6 +161,13 @@ export class SignageRenderer {
         });
       } else if (slot.kind === 'loans') {
         return await this.renderTools(content.tools ?? []);
+      } else if (slot.kind === 'csv_dashboard') {
+        const csvDashboardConfig = slot.config as CsvDashboardSlotConfig;
+        const csvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
+        if (!csvDashboard) {
+          return await this.renderMessage('CSVダッシュボードが見つかりません');
+        }
+        return await this.renderCsvDashboard(csvDashboardConfig.csvDashboardId, csvDashboard);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // 左右分割表示
@@ -224,6 +237,55 @@ export class SignageRenderer {
           { kind: 'pdf', pdfOptions: leftPdfOptions },
           { kind: 'pdf', pdfOptions: rightPdfOptions }
         );
+      }
+
+      // CSVダッシュボードスロットの処理
+      let leftCsvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | undefined;
+      let rightCsvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | undefined;
+
+      if (leftSlot?.kind === 'csv_dashboard') {
+        const csvDashboardConfig = leftSlot.config as CsvDashboardSlotConfig;
+        leftCsvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
+      }
+      if (rightSlot?.kind === 'csv_dashboard') {
+        const csvDashboardConfig = rightSlot.config as CsvDashboardSlotConfig;
+        rightCsvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
+      }
+
+      // 左右ともCSVダッシュボードの場合
+      if (leftSlot?.kind === 'csv_dashboard' && rightSlot?.kind === 'csv_dashboard') {
+        return await this.renderSplitWithPanes(
+          { kind: 'csv_dashboard', csvDashboard: leftCsvDashboard },
+          { kind: 'csv_dashboard', csvDashboard: rightCsvDashboard }
+        );
+      }
+
+      // CSVダッシュボードとPDF/工具管理の組み合わせ
+      if (leftSlot?.kind === 'csv_dashboard' && leftCsvDashboard) {
+        if (rightSlot?.kind === 'pdf' && rightPdfOptions) {
+          return await this.renderSplitWithPanes(
+            { kind: 'csv_dashboard', csvDashboard: leftCsvDashboard },
+            { kind: 'pdf', pdfOptions: rightPdfOptions }
+          );
+        } else if (rightSlot?.kind === 'loans' && rightTools.length > 0) {
+          return await this.renderSplitWithPanes(
+            { kind: 'csv_dashboard', csvDashboard: leftCsvDashboard },
+            { kind: 'loans', tools: rightTools }
+          );
+        }
+      }
+      if (rightSlot?.kind === 'csv_dashboard' && rightCsvDashboard) {
+        if (leftSlot?.kind === 'pdf' && leftPdfOptions) {
+          return await this.renderSplitWithPanes(
+            { kind: 'pdf', pdfOptions: leftPdfOptions },
+            { kind: 'csv_dashboard', csvDashboard: rightCsvDashboard }
+          );
+        } else if (leftSlot?.kind === 'loans' && leftTools.length > 0) {
+          return await this.renderSplitWithPanes(
+            { kind: 'loans', tools: leftTools },
+            { kind: 'csv_dashboard', csvDashboard: rightCsvDashboard }
+          );
+        }
       }
 
       // 左がPDF、右が工具管理の場合は順序を入れ替えて呼び出す
@@ -470,13 +532,72 @@ export class SignageRenderer {
   }
 
   /**
-   * 左右ともにPDFまたは工具を描画できる汎用SPLITレンダリング
+   * CSVダッシュボードをレンダリング
+   */
+  private async renderCsvDashboard(
+    dashboardId: string,
+    csvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }
+  ): Promise<Buffer> {
+    const dashboard = await prisma.csvDashboard.findUnique({
+      where: { id: dashboardId },
+    });
+
+    if (!dashboard || !dashboard.enabled) {
+      return await this.renderMessage('CSVダッシュボードが見つかりません');
+    }
+
+    // Prisma Json型からColumnDefinition[]へ変換（必須フィールドは取得済み）
+    const columnDefinitions = dashboard.columnDefinitions as unknown as Array<{
+      internalName: string;
+      displayName: string;
+      dataType: string;
+      csvHeaderCandidates?: string[];
+      order?: number;
+    }>;
+
+    let svg: string;
+    if (dashboard.templateType === 'TABLE') {
+      const templateConfig = dashboard.templateConfig as {
+        rowsPerPage: number;
+        fontSize: number;
+        displayColumns: string[];
+      };
+      svg = this.csvDashboardTemplateRenderer.renderTable(
+        csvDashboard.rows,
+        columnDefinitions,
+        templateConfig,
+        dashboard.name,
+        dashboard.emptyMessage
+      );
+    } else {
+      const templateConfig = dashboard.templateConfig as {
+        cardsPerPage: number;
+        fontSize: number;
+        displayFields: string[];
+      };
+      svg = this.csvDashboardTemplateRenderer.renderCardGrid(
+        csvDashboard.rows,
+        columnDefinitions,
+        templateConfig,
+        dashboard.name,
+        dashboard.emptyMessage
+      );
+    }
+
+    return await sharp(Buffer.from(svg))
+      .resize(WIDTH, HEIGHT)
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  }
+
+  /**
+   * 左右ともにPDF、工具、またはCSVダッシュボードを描画できる汎用SPLITレンダリング
    */
   private async renderSplitWithPanes(
-    leftPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
-    rightPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions }
+    leftPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } },
+    rightPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } }
   ): Promise<Buffer> {
-    // 左右のPDF画像を事前にBase64エンコード
+    // 左右のPDF画像またはCSVダッシュボード画像を事前にBase64エンコード
     let leftImageBase64: string | null = null;
     let rightImageBase64: string | null = null;
 
@@ -486,6 +607,10 @@ export class SignageRenderer {
         Math.round(WIDTH * 0.45),
         Math.round(HEIGHT * 0.85)
       );
+    } else if (leftPane.kind === 'csv_dashboard' && leftPane.csvDashboard) {
+      // CSVダッシュボードをレンダリングしてBase64エンコード
+      const csvDashboardBuffer = await this.renderCsvDashboard(leftPane.csvDashboard.id, leftPane.csvDashboard);
+      leftImageBase64 = `data:image/jpeg;base64,${csvDashboardBuffer.toString('base64')}`;
     }
 
     if (rightPane.kind === 'pdf' && rightPane.pdfOptions?.pageUrl) {
@@ -494,6 +619,10 @@ export class SignageRenderer {
         Math.round(WIDTH * 0.45),
         Math.round(HEIGHT * 0.85)
       );
+    } else if (rightPane.kind === 'csv_dashboard' && rightPane.csvDashboard) {
+      // CSVダッシュボードをレンダリングしてBase64エンコード
+      const csvDashboardBuffer = await this.renderCsvDashboard(rightPane.csvDashboard.id, rightPane.csvDashboard);
+      rightImageBase64 = `data:image/jpeg;base64,${csvDashboardBuffer.toString('base64')}`;
     }
 
     const svg = await this.buildSplitWithPanesSvg(
@@ -513,8 +642,8 @@ export class SignageRenderer {
    * 左右ペインのSVGを生成
    */
   private async buildSplitWithPanesSvg(
-    leftPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
-    rightPane: { kind: 'pdf' | 'loans'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions },
+    leftPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } },
+    rightPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } },
     leftImageBase64: string | null,
     rightImageBase64: string | null
   ): Promise<string> {
@@ -532,8 +661,16 @@ export class SignageRenderer {
     const titleOffsetY = Math.round(22 * scale);
     const headerHeight = Math.round(40 * scale);
 
-    const leftTitle = leftPane.kind === 'pdf' ? (leftPane.pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
-    const rightTitle = rightPane.kind === 'pdf' ? (rightPane.pdfOptions?.title ?? 'PDF表示') : '持出中アイテム';
+    const leftTitle = leftPane.kind === 'pdf' 
+      ? (leftPane.pdfOptions?.title ?? 'PDF表示') 
+      : leftPane.kind === 'csv_dashboard'
+      ? (leftPane.csvDashboard?.name ?? 'CSVダッシュボード')
+      : '持出中アイテム';
+    const rightTitle = rightPane.kind === 'pdf' 
+      ? (rightPane.pdfOptions?.title ?? 'PDF表示') 
+      : rightPane.kind === 'csv_dashboard'
+      ? (rightPane.csvDashboard?.name ?? 'CSVダッシュボード')
+      : '持出中アイテム';
 
     // 左ペインのコンテンツ
     let leftContent = '';
@@ -546,6 +683,16 @@ export class SignageRenderer {
       leftContent = `<text x="${leftX + leftWidth / 2}" y="${outerPadding + panelHeight / 2}"
         text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
         PDFが設定されていません
+      </text>`;
+    } else if (leftPane.kind === 'csv_dashboard' && leftImageBase64) {
+      leftContent = `<image x="${leftX + innerPadding}" y="${outerPadding + innerPadding + headerHeight}"
+        width="${leftWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - headerHeight}"
+        preserveAspectRatio="xMidYMid meet"
+        href="${leftImageBase64}" />`;
+    } else if (leftPane.kind === 'csv_dashboard') {
+      leftContent = `<text x="${leftX + leftWidth / 2}" y="${outerPadding + panelHeight / 2}"
+        text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
+        CSVダッシュボードが設定されていません
       </text>`;
     } else if (leftPane.kind === 'loans') {
       const { cardsSvg, overflowCount } = await this.buildToolCardGrid(leftPane.tools ?? [], {
@@ -578,6 +725,16 @@ export class SignageRenderer {
       rightContent = `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
         text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
         PDFが設定されていません
+      </text>`;
+    } else if (rightPane.kind === 'csv_dashboard' && rightImageBase64) {
+      rightContent = `<image x="${rightX + innerPadding}" y="${outerPadding + innerPadding + headerHeight}"
+        width="${rightWidth - innerPadding * 2}" height="${panelHeight - innerPadding * 2 - headerHeight}"
+        preserveAspectRatio="xMidYMid meet"
+        href="${rightImageBase64}" />`;
+    } else if (rightPane.kind === 'csv_dashboard') {
+      rightContent = `<text x="${rightX + rightWidth / 2}" y="${outerPadding + panelHeight / 2}"
+        text-anchor="middle" font-size="${Math.round(24 * scale)}" fill="#e2e8f0" font-family="sans-serif">
+        CSVダッシュボードが設定されていません
       </text>`;
     } else if (rightPane.kind === 'loans') {
       const { cardsSvg, overflowCount } = await this.buildToolCardGrid(rightPane.tools ?? [], {

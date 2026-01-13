@@ -21,7 +21,16 @@ if curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" \
   "${IMAGE_URL}" 2>/dev/null; then
   # 取得成功時のみ更新（原子更新）
   if [[ -s "${TEMP_IMAGE}" ]]; then
-    mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"
+    # feh --auto-reload(inotify) が「mvによる置換inode変更」に追従できず、
+    # 画面が更新されない/飛んで見えることがあるため、既存ファイルがある場合は上書き更新にする。
+    # - 初回: current.jpgが無いのでmv（作成）
+    # - 2回目以降: catで上書き（inode維持）
+    if [[ -f "${CURRENT_IMAGE}" ]]; then
+      cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"
+      rm -f "${TEMP_IMAGE}"
+    else
+      mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"
+    fi
     echo "$(date): Image updated successfully"
   else
     echo "$(date): Downloaded file is empty, keeping cached version"

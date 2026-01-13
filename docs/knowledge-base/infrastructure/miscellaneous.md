@@ -760,4 +760,87 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
 
 ---
 
+### [KB-158] Macのstatus-agent未設定問題とmacOS対応
+
+**EXEC_PLAN.md参照**: status-agent問題の診断と修正（2026-01-09）
+
+**事象**:
+- 管理コンソールでMacのステータスが表示されない（`lastSeen`が古い）
+- MacにはLinux用の`status-agent.py`が存在していたが、macOSでは動作しない
+- `launchd`設定ファイルが存在しなかった
+
+**要因**:
+- **プラットフォームの違い**: macOSでは`systemd`ではなく`launchd`を使用するため、Linux用のスクリプトでは動作しない
+- **コマンドの違い**: macOSでは`ps`、`vm_stat`、`df`などのコマンドの出力形式がLinuxと異なる
+- **設定ファイルの未作成**: macOS用の`launchd`設定ファイル（`.plist`）が存在しなかった
+
+**調査手順**:
+1. データベースで`ClientDevice`の`lastSeen`を確認（Macが古い）
+2. Macで`status-agent.py`の存在を確認（Linux用スクリプトのみ存在）
+3. Macで`status-agent`の設定ファイルを確認（存在しない）
+4. Macで`launchd`設定ファイルを確認（存在しない）
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-09）:
+  1. **macOS用status-agentスクリプトの作成**:
+     - `clients/status-agent/status-agent-macos.py`を作成
+     - macOS用のコマンド（`ps`、`vm_stat`、`df`、`sysctl`）を使用してシステムメトリクスを取得
+     - `platform.system()`でプラットフォームを判定し、macOS専用の処理を実装
+  2. **macOS用設定ファイルの作成**:
+     - `~/.status-agent.conf`を作成し、`API_BASE_URL`、`CLIENT_ID`、`CLIENT_KEY`、`LOCATION`を設定
+     - `CLIENT_KEY`は管理コンソールで確認した値を設定
+  3. **launchd設定ファイルの作成**:
+     - `~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist`を作成
+     - `StartInterval`を60秒に設定し、1分ごとに実行
+     - `StandardOutPath`と`StandardErrorPath`を設定し、ログを記録
+  4. **launchdサービスの有効化**:
+     - `launchctl load ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist`でサービスを有効化
+     - `launchctl list | grep status-agent`でサービスが起動していることを確認
+  5. **ドキュメント更新**:
+     - `docs/guides/status-agent.md`にmacOS向けセットアップ手順を追加
+
+**学んだこと**:
+- **プラットフォームの違い**: macOSとLinuxでは、システムメトリクス取得のコマンドや出力形式が異なる
+- **launchdとsystemdの違い**: macOSでは`systemd`ではなく`launchd`を使用するため、別の設定方法が必要
+- **status-agentのプラットフォーム対応**: Linux用とmacOS用で別のスクリプトが必要（コマンドやAPIの違い）
+- **設定ファイルの管理**: macOSでは`~/.status-agent.conf`と`~/Library/LaunchAgents/`に設定ファイルを配置する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-01-09: macOS用status-agent実装完了）
+
+**関連ファイル**:
+- `clients/status-agent/status-agent-macos.py`（macOS用status-agentスクリプト）
+- `~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist`（macOS用launchd設定）
+- `~/.status-agent.conf`（macOS用設定ファイル）
+- `docs/guides/status-agent.md`（status-agentセットアップガイド）
+
+**確認コマンド**:
+```bash
+# Macのstatus-agent状態確認
+launchctl list | grep status-agent
+cat ~/.status-agent.conf
+tail -f ~/Library/Logs/com.raspberrypisystem.status-agent.log
+
+# status-agentの手動実行（テスト）
+python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
+```
+
+**macOS用status-agentの実装詳細**:
+- **CPU使用率**: `ps`コマンドで全プロセスのCPU使用率を合計
+- **メモリ使用率**: `vm_stat`コマンドでメモリ統計を取得し、使用率を計算
+- **ディスク使用率**: `df`コマンドでディスク使用量を取得
+- **温度**: macOSではCPU温度を直接取得できないため、`None`を返す
+- **稼働時間**: `sysctl -n kern.boottime`で起動時刻を取得し、現在時刻との差分を計算
+
+**再発防止策**:
+- **プラットフォーム判定**: `platform.system()`でプラットフォームを判定し、適切なスクリプトを実行する
+- **設定ファイルの管理**: macOS用の設定ファイルを`docs/guides/status-agent.md`に記載し、セットアップ手順を明確化
+- **定期確認**: クライアント端末のステータスが定期的に更新されていることを確認する（管理コンソールの「クライアント端末」タブで確認）
+
+**注意事項**:
+- macOSではCPU温度を直接取得できないため、`temperature`フィールドは`None`になる
+- `launchd`の設定ファイルは`~/Library/LaunchAgents/`に配置する必要がある（ユーザー固有の設定）
+- システム全体の設定は`/Library/LaunchAgents/`または`/Library/LaunchDaemons/`に配置する（管理者権限が必要）
+
+---
+
 ---

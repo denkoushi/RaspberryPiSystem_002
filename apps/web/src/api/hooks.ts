@@ -70,6 +70,7 @@ import {
   getSignageEmergency,
   setSignageEmergency,
   getSignageContent,
+  getCsvDashboards,
   type SignageSchedule,
   type SignagePdf,
   type ClientLogLevel,
@@ -599,6 +600,13 @@ export function useSignageRenderMutation() {
       // レンダリング成功後、ステータスを更新
       queryClient.invalidateQueries({ queryKey: ['signage-render-status'] });
     }
+  });
+}
+
+export function useCsvDashboards(filters?: { enabled?: boolean; search?: string }) {
+  return useQuery({
+    queryKey: ['csv-dashboards', filters],
+    queryFn: () => getCsvDashboards(filters)
   });
 }
 

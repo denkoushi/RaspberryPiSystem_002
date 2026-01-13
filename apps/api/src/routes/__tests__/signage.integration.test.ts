@@ -262,6 +262,45 @@ describe('POST /api/signage/schedules with layoutConfig', () => {
     expect(body.schedule.layoutConfig.layout).toBe('FULL');
   });
 
+  it('should preserve csvDashboardId in csv_dashboard slot config', async () => {
+    const csvDashboardId = 'e6e8f754-442e-48e6-b5dc-517856229231';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule FULL CSV Dashboard',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'csv_dashboard',
+              config: {
+                csvDashboardId,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty('schedule');
+    expect(body.schedule.layoutConfig).toBeDefined();
+    expect(body.schedule.layoutConfig.layout).toBe('FULL');
+    expect(body.schedule.layoutConfig.slots).toHaveLength(1);
+    expect(body.schedule.layoutConfig.slots[0].kind).toBe('csv_dashboard');
+    expect(body.schedule.layoutConfig.slots[0].config?.csvDashboardId).toBe(csvDashboardId);
+  });
+
   it('should create a schedule with SPLIT layout (left: loans, right: pdf)', async () => {
     // まずPDFを作成
     const pdfResponse = await app.inject({
@@ -396,3 +435,145 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   });
 });
 
+describe('GET /api/signage/content with SPLIT layout (left: pdf, right: pdf)', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const { token } = await createTestUser('ADMIN');
+    adminToken = token;
+  });
+
+  beforeEach(async () => {
+    // 既存のスケジュールを削除
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules',
+    });
+    const { schedules } = listResponse.json();
+    for (const schedule of schedules) {
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/signage/schedules/${schedule.id}`,
+        headers: createAuthHeader(adminToken),
+      });
+    }
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return content with pdfsById containing both PDFs', async () => {
+    // テスト用PDFを2つ作成
+    const pdfLeftResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/pdfs',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test PDF Left',
+        originalFilename: 'test-left.pdf',
+        storagePath: '/tmp/test-left.pdf',
+        pageCount: 2,
+      },
+    });
+
+    const pdfRightResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/pdfs',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test PDF Right',
+        originalFilename: 'test-right.pdf',
+        storagePath: '/tmp/test-right.pdf',
+        pageCount: 1,
+      },
+    });
+
+    // PDFが作成できなかった場合はスキップ（テスト環境依存）
+    if (pdfLeftResponse.statusCode !== 200 || pdfRightResponse.statusCode !== 200) {
+      console.log('Skipping test: PDF creation not available in this environment');
+      return;
+    }
+
+    const pdfLeftId = pdfLeftResponse.json().pdf?.id;
+    const pdfRightId = pdfRightResponse.json().pdf?.id;
+
+    if (!pdfLeftId || !pdfRightId) {
+      console.log('Skipping test: PDF IDs not returned');
+      return;
+    }
+
+    // SPLITレイアウトで左右PDFのスケジュールを作成
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Split PDF Test',
+        contentType: 'SPLIT',
+        layoutConfig: {
+          layout: 'SPLIT',
+          slots: [
+            {
+              position: 'LEFT',
+              kind: 'pdf',
+              config: {
+                pdfId: pdfLeftId,
+                displayMode: 'SINGLE',
+              },
+            },
+            {
+              position: 'RIGHT',
+              kind: 'pdf',
+              config: {
+                pdfId: pdfRightId,
+                displayMode: 'SLIDESHOW',
+                slideInterval: 10,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    // コンテンツを取得
+    const contentResponse = await app.inject({
+      method: 'GET',
+      url: '/api/signage/content',
+    });
+
+    expect(contentResponse.statusCode).toBe(200);
+    const contentBody = contentResponse.json();
+
+    // layoutConfigが正しく返されることを確認
+    expect(contentBody.layoutConfig).toBeDefined();
+    expect(contentBody.layoutConfig.layout).toBe('SPLIT');
+    expect(contentBody.layoutConfig.slots).toHaveLength(2);
+
+    // pdfsByIdが正しく返されることを確認
+    expect(contentBody.pdfsById).toBeDefined();
+    expect(contentBody.pdfsById[pdfLeftId]).toBeDefined();
+    expect(contentBody.pdfsById[pdfRightId]).toBeDefined();
+    expect(contentBody.pdfsById[pdfLeftId].name).toBe('Test PDF Left');
+    expect(contentBody.pdfsById[pdfRightId].name).toBe('Test PDF Right');
+
+    // 後方互換: pdfフィールドは先頭PDFスロット（LEFT）のPDFを返す
+    expect(contentBody.pdf).toBeDefined();
+    expect(contentBody.pdf.id).toBe(pdfLeftId);
+  });
+});
