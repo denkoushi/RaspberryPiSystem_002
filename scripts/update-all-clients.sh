@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 使用方法: ./scripts/update-all-clients.sh [ブランチ名]
-# デフォルト: mainブランチ
+# 使用方法: ./scripts/update-all-clients.sh <ブランチ名> <inventoryパス>
+# 例:
+#   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+#   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+#
+# ⚠️ 安全のため inventory は必須（誤デプロイ防止）
 # 環境変数 ANSIBLE_REPO_VERSION でも指定可能（引数より優先度低い）
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INVENTORY_PATH="infrastructure/ansible/inventory.yml"
+INVENTORY_PATH="${2:-}"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
 HEALTH_PLAYBOOK_PATH="infrastructure/ansible/playbooks/health-check.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -24,6 +28,34 @@ REPO_VERSION="${1:-${ANSIBLE_REPO_VERSION:-main}}"
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 
 mkdir -p "${LOG_DIR}"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  ./scripts/update-all-clients.sh <branch> <inventory_path>
+
+Examples:
+  # 第2工場（既存）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+  # トークプラザ（新拠点）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+USAGE
+}
+
+if [[ -z "${INVENTORY_PATH}" ]]; then
+  usage
+  exit 2
+fi
+
+if [[ ! -f "${PROJECT_ROOT}/${INVENTORY_PATH}" ]]; then
+  echo "[ERROR] inventory not found: ${INVENTORY_PATH}" >&2
+  usage
+  exit 2
+fi
+
+echo "[INFO] Target inventory: ${INVENTORY_PATH}"
+echo "[INFO] Repo version: ${REPO_VERSION}"
 
 # エラーコードを返す関数
 exit_with_error() {
@@ -43,9 +75,10 @@ generate_summary() {
   local unreachable_hosts
   local total_hosts
 
-  failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" | grep -oE "raspberrypi[0-9]+" | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  total_hosts=$(grep -E "PLAY RECAP" -A 10 "${log_file}" | grep -E "raspberrypi[0-9]+" | wc -l | tr -d ' ' || echo "0")
+  # PLAY RECAP行からホスト名を抽出（拠点追加でraspberrypi固定にしない）
+  failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
+  unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
+  total_hosts=$(grep -E "PLAY RECAP" -A 50 "${log_file}" | awk '/: ok=/{print $1}' | tr -d ':' | sort -u | wc -l | tr -d ' ' || echo "0")
   
   local failed_hosts_json="[]"
   local unreachable_hosts_json="[]"

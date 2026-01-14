@@ -29,7 +29,7 @@ update-frequency: medium
 | 用途 | スクリプト | 実行場所 | ブランチ指定 |
 |------|-----------|---------|------------|
 | **開発時（Pi5のみ）** | `scripts/server/deploy.sh` | Pi5上で直接実行 | ✅ 可能（引数で指定） |
-| **運用時（全デバイス）** | `scripts/update-all-clients.sh` | Macから実行 | ✅ 可能（引数で指定、デフォルトは`main`） |
+| **運用時（全デバイス）** | `scripts/update-all-clients.sh` | Macから実行 | ✅ 可能（ブランチ指定 + inventory指定が必要） |
 
 **⚠️ 注意**: 
 - Pi5のデプロイには`scripts/server/deploy.sh`を使用してください
@@ -296,11 +296,14 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
-# mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
-./scripts/update-all-clients.sh main
+# mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（第2工場）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 
-# 特定のブランチで全デバイスを更新
-./scripts/update-all-clients.sh feature/rigging-management
+# mainブランチで全デバイスを更新（トークプラザ）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+
+# 特定のブランチで全デバイスを更新（第2工場）
+./scripts/update-all-clients.sh feature/rigging-management infrastructure/ansible/inventory.yml
 ```
 
 **重要**: 
