@@ -1163,3 +1163,136 @@ cat ~/.status-agent.conf
 - Macのstatus-agentは、Linux用スクリプトでは動作しないため、macOS専用のスクリプトが必要
 
 ---
+
+### [KB-159] トークプラザ工場へのマルチサイト対応実装（inventory分離・プレフィックス命名規則）
+
+**実装日**: 2026-01-14
+
+**事象**: 
+- トークプラザ工場（別拠点）に同一システムを導入する必要があった
+- 既存の第2工場と設定が混在しないようにする必要があった
+- 将来のデータベース統合時にクライアントIDやAPIキーのコンフリクトを回避する必要があった
+
+**要因**: 
+- **inventoryの一元管理**: 既存の`inventory.yml`は第2工場専用で、新拠点の設定を追加すると混在する
+- **クライアントIDの名前空間**: クライアントIDが重複すると、将来のDB統合時にコンフリクトが発生する
+- **外部連携の分離**: Slack/Dropbox/Gmailの資格情報を拠点ごとに分離する必要がある
+- **デプロイの安全性**: 誤って別拠点にデプロイするリスクを防ぐ必要がある
+
+**実装内容**:
+1. **inventoryファイルの分離**:
+   - `infrastructure/ansible/inventory-talkplaza.yml`を作成（トークプラザ工場専用）
+   - 第2工場は`inventory.yml`のまま維持
+   - 各inventoryでホスト名とクライアントIDにプレフィックスを付与（`talkplaza-`）
+
+2. **group_varsの分離**:
+   - `infrastructure/ansible/group_vars/talkplaza.yml`を作成
+   - DNS運用前提でホスト名を定義（`pi5.talkplaza.local`など）
+   - `network_mode: "local"`を設定（拠点間接続なし）
+
+3. **host_varsの分離**:
+   - `infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml`
+   - `infrastructure/ansible/host_vars/talkplaza-pi4/vault.yml`
+   - `infrastructure/ansible/host_vars/talkplaza-signage01/vault.yml`
+   - 各ホストのシークレットを`talkplaza-`プレフィックスで管理
+
+4. **プレフィックス命名規則**:
+   - クライアントID: `talkplaza-pi5-server`, `talkplaza-pi4-kiosk01`, `talkplaza-signage01`
+   - APIキー: `client-key-talkplaza-pi5-server`など
+   - ホスト名: `pi5.talkplaza.local`, `pi4.talkplaza.local`, `signage01.talkplaza.local`
+
+5. **デプロイスクリプトの改善**:
+   - `scripts/update-all-clients.sh`でinventory引数を必須化（誤デプロイ防止）
+   - デプロイ前にinventoryパスを表示し、確認プロンプトを追加
+
+**学んだこと**:
+- **inventory分離の重要性**: 各拠点の設定を完全に分離することで、設定の混在を防止できる
+- **プレフィックス命名規則**: クライアントIDやAPIキーにプレフィックスを付与することで、将来のDB統合時のコンフリクトを回避できる
+- **デプロイの安全性**: inventory引数を必須化することで、誤デプロイのリスクを大幅に削減できる
+- **スケーラビリティ**: 新拠点の追加は設定ファイルの追加のみで対応可能（コード変更不要）
+
+**解決状況**: ✅ **実装完了**（2026-01-14）
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用inventory）
+- `infrastructure/ansible/group_vars/talkplaza.yml`（トークプラザ工場用group_vars）
+- `infrastructure/ansible/host_vars/talkplaza-*/vault.yml`（各ホストのシークレット）
+- `scripts/update-all-clients.sh`（デプロイスクリプト）
+- `docs/guides/talkplaza-rollout.md`（トークプラザ工場導入ガイド）
+
+**確認コマンド**:
+```bash
+# トークプラザ工場へのデプロイ
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+
+# 第2工場へのデプロイ
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+```
+
+**再発防止策**:
+- **inventory引数の必須化**: デプロイスクリプトでinventory引数を必須にし、誤デプロイを防止
+- **プレフィックス命名規則**: すべてのクライアントIDとAPIキーにプレフィックスを付与
+- **設定の完全分離**: 各拠点の設定を完全に分離し、混在を防止
+
+**注意事項**:
+- 第1工場への導入時も同様の手順で対応可能
+- 将来のDB統合時は、コード体系の非重複運用とCSVフォーマットの統一が必要
+- データモデルに「site」属性は追加しない（名前で判別する運用）
+
+---
+
+### [KB-160] デプロイスクリプトのinventory引数必須化（誤デプロイ防止）
+
+**実装日**: 2026-01-14
+
+**事象**: 
+- `scripts/update-all-clients.sh`でinventory引数が省略可能だったため、誤って別拠点にデプロイするリスクがあった
+- デフォルトの`inventory.yml`が使用され、意図しないデプロイが発生する可能性があった
+
+**要因**: 
+- **inventory引数のオプション化**: 第2引数が省略可能で、デフォルト値が設定されていなかった
+- **確認プロンプトの未実装**: デプロイ前にinventoryパスを確認する仕組みがなかった
+
+**実装内容**:
+1. **inventory引数の必須化**:
+   - `INVENTORY_PATH="${2:-}"`から`INVENTORY_PATH="${2}"`に変更（デフォルト値なし）
+   - inventory引数が空の場合はエラーで終了
+
+2. **確認プロンプトの追加**:
+   - デプロイ前にinventoryパスを表示
+   - 実行前に確認メッセージを表示
+
+3. **usage関数の改善**:
+   - 使用例を追加（第2工場とトークプラザ工場の例）
+   - エラーメッセージにusageを表示
+
+**学んだこと**:
+- **デプロイの安全性**: inventory引数を必須化することで、誤デプロイのリスクを大幅に削減できる
+- **確認プロンプトの重要性**: デプロイ前にinventoryパスを表示することで、ユーザーが意図したデプロイ先を確認できる
+- **マルチサイト対応**: 複数拠点を管理する場合、デプロイ先の明確化が重要
+
+**解決状況**: ✅ **実装完了**（2026-01-14）
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（デプロイスクリプト）
+- `docs/guides/deployment.md`（デプロイガイド）
+
+**確認コマンド**:
+```bash
+# inventory引数なし（エラー）
+./scripts/update-all-clients.sh main
+# → [ERROR] inventory not found: 
+
+# inventory引数あり（成功）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+```
+
+**再発防止策**:
+- **inventory引数の必須化**: デプロイスクリプトでinventory引数を必須にし、誤デプロイを防止
+- **確認プロンプト**: デプロイ前にinventoryパスを表示し、ユーザーが確認できるようにする
+
+**注意事項**:
+- 既存のデプロイ手順を更新する必要がある
+- デプロイ指示時にinventory引数を明示する必要がある
+
+---

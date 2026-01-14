@@ -189,7 +189,13 @@ run_remotely() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  # Pi5上でcdした後は相対パスを使用
+  # inventory.yml -> inventory.yml (infrastructure/ansible/からの相対パス)
+  # playbooks/update-clients.yml -> playbooks/update-clients.yml
+  local inventory_basename=$(basename "${INVENTORY_PATH}")
+  local playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  local playbook_relative="playbooks/${playbook_basename}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${inventory_basename} ${playbook_relative}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "${REMOTE_HOST}"
@@ -212,7 +218,11 @@ run_health_check_remotely() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${INVENTORY_PATH} ${HEALTH_PLAYBOOK_PATH}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  # Pi5上でcdした後は相対パスを使用
+  local inventory_basename=$(basename "${INVENTORY_PATH}")
+  local health_playbook_basename=$(basename "${HEALTH_PLAYBOOK_PATH}")
+  local health_playbook_relative="playbooks/${health_playbook_basename}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${inventory_basename} ${health_playbook_relative}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "${REMOTE_HOST}"
