@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 10件  
+**件数**: 16件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -1238,6 +1238,56 @@ cat ~/.status-agent.conf
 - 第1工場への導入時も同様の手順で対応可能
 - 将来のDB統合時は、コード体系の非重複運用とCSVフォーマットの統一が必要
 - データモデルに「site」属性は追加しない（名前で判別する運用）
+
+---
+
+### [KB-162] デプロイスクリプトのinventory/playbookパス相対パス修正（Pi5上での実行時）
+
+**実装日**: 2026-01-14
+
+**事象**: 
+- `scripts/update-all-clients.sh`でPi5上でデプロイを実行する際、inventoryパスとplaybookパスが重複してエラーが発生した
+- `run_remotely`関数で`cd /opt/RaspberryPiSystem_002/infrastructure/ansible`した後、絶対パスを使用していたため、パスが重複していた
+
+**要因**: 
+- **パスの重複**: `run_remotely`関数で`cd`した後も、元の絶対パス（`infrastructure/ansible/inventory.yml`）を使用していたため、`/opt/RaspberryPiSystem_002/infrastructure/ansible/infrastructure/ansible/inventory.yml`のように重複していた
+- **相対パスの未使用**: `cd`した後は相対パスを使用する必要があるが、実装されていなかった
+
+**実装内容**:
+1. **inventoryパスの相対パス化**:
+   - `basename "${INVENTORY_PATH}"`でファイル名のみを取得（`inventory.yml`）
+   - `cd`後の相対パスとして使用
+
+2. **playbookパスの相対パス化**:
+   - `basename "${PLAYBOOK_PATH}"`でファイル名のみを取得（`update-clients.yml`）
+   - `playbooks/${playbook_basename}`として相対パスを構築
+
+3. **health-check playbookの同様の修正**:
+   - `run_health_check_remotely`関数でも同様の修正を実施
+
+**学んだこと**:
+- **SSH経由での実行時のパス**: `cd`した後は相対パスを使用する必要がある
+- **パスの重複回避**: `basename`を使用してファイル名のみを取得し、相対パスを構築する
+- **デバッグの重要性**: エラーメッセージからパスの重複を特定し、修正できた
+
+**解決状況**: ✅ **実装完了**（2026-01-14）
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（`run_remotely`、`run_health_check_remotely`関数の修正）
+
+**確認コマンド**:
+```bash
+# デプロイ実行（正常に動作することを確認）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+```
+
+**再発防止策**:
+- **相対パスの使用**: `cd`した後は相対パスを使用する
+- **basenameの活用**: ファイル名のみを取得して相対パスを構築
+
+**注意事項**:
+- ローカル実行時（`run_locally`）は変更不要（元のパスがそのまま使用可能）
+- Pi5上での実行時（`run_remotely`）のみ修正が必要
 
 ---
 
