@@ -62,9 +62,13 @@ export class StorageProviderFactory {
           });
         }
 
+        const envBasePathRaw = process.env.DROPBOX_BASE_PATH;
+        const envBasePath = typeof envBasePathRaw === 'string' ? envBasePathRaw.trim() : undefined;
+
         return new DropboxStorageProvider({
           accessToken: options.accessToken,
-          basePath: options.basePath,
+          // 運用上の上書き手段（拠点別にDropbox保存先を分離する用途）
+          basePath: envBasePath ? envBasePath : options.basePath,
           refreshToken: options.refreshToken,
           oauthService,
           onTokenUpdate: options.onTokenUpdate
