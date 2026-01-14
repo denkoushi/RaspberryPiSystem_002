@@ -1,0 +1,8 @@
+# トークプラザ工場（Pi4キオスク）用 vault（※本番ではansible-vaultで暗号化推奨）
+
+# status-agent（Pi4）
+vault_talkplaza_pi4_status_agent_client_key: "client-key-talkplaza-pi4-kiosk01"
+
+# NFC agent（Pi4）
+vault_talkplaza_nfc_agent_client_secret: "client-key-talkplaza-pi4-kiosk01"
+

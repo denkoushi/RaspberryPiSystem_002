@@ -1,0 +1,18 @@
+# トークプラザ工場（Pi5サーバー）用 vault（※本番ではansible-vaultで暗号化推奨）
+
+# JWT（トークプラザ用に分離）
+vault_talkplaza_api_jwt_access_secret: "change-me-talkplaza-access"
+vault_talkplaza_api_jwt_refresh_secret: "change-me-talkplaza-refresh"
+
+# status-agent（Pi5）
+vault_talkplaza_pi5_status_agent_client_key: "client-key-talkplaza-pi5-server"
+
+# Slack（トークプラザ用Webhookを設定）
+vault_talkplaza_slack_kiosk_support_webhook_url: ""
+
+# Dropbox OAuth 2.0（トークプラザ用に分離）
+vault_talkplaza_dropbox_app_key: ""
+vault_talkplaza_dropbox_app_secret: ""
+vault_talkplaza_dropbox_refresh_token: ""
+vault_talkplaza_dropbox_access_token: ""
+

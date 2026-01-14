@@ -1,0 +1,21 @@
+# トークプラザ工場（別拠点）用のグループ変数
+# - Ansible inventory: inventory-talkplaza.yml の `talkplaza` グループに適用される
+# - DNS運用前提: ここではIPではなくホスト名を使用する
+
+# 当面はローカル運用（拠点間接続なし）
+network_mode: "local"
+
+# server_ip/kiosk_ip/signage_ip は `group_vars/all.yml` で server_base_url/api_base_url 等の算出に使われるため、
+# ここでホスト名に上書きする（IPである必要はない）
+server_ip: "pi5.talkplaza.local"
+kiosk_ip: "pi4.talkplaza.local"
+signage_ip: "signage01.talkplaza.local"
+
+# 管理画面・APIの基準URL（ホスト名統一）
+server_base_url: "https://{{ server_ip }}"
+kiosk_full_url: "{{ server_base_url }}/kiosk"
+api_base_url: "{{ server_base_url }}/api"
+websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
+
+# セキュリティ: トークプラザ工場の管理画面許可CIDRは、運用開始後に `infrastructure/docker/.env` の
+# ADMIN_ALLOW_NETS で拠点LANのCIDRへ調整すること（拠点ごとに異なるためここでは固定しない）

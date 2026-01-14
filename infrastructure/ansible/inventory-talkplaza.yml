@@ -1,0 +1,102 @@
+all:
+  children:
+    talkplaza:
+      children:
+        server:
+          hosts:
+            talkplaza-pi5:
+              # Pi5（トークプラザ工場）: DNS運用前提
+              ansible_host: "{{ server_ip }}"
+              ansible_user: denkon5sd02
+              ansible_connection: local  # Pi5上でローカル実行（現行運用と同様）
+              ansible_python_interpreter: /usr/bin/python3
+              tailscale_enabled: false
+              # キオスクお問い合わせ（Slack通知）
+              slack_kiosk_support_webhook_url: "{{ vault_talkplaza_slack_kiosk_support_webhook_url | default('') }}"
+              # Dropbox OAuth 2.0設定（トークプラザ用に分離）
+              dropbox_app_key: "{{ vault_talkplaza_dropbox_app_key | default('') }}"
+              dropbox_app_secret: "{{ vault_talkplaza_dropbox_app_secret | default('') }}"
+              dropbox_refresh_token: "{{ vault_talkplaza_dropbox_refresh_token | default('') }}"
+              dropbox_access_token: "{{ vault_talkplaza_dropbox_access_token | default('') }}"
+              # Dropbox保存先のベースパス（Dropbox側のパス、拠点別に分離）
+              dropbox_base_path: "/backups/talkplaza"
+              # API環境変数
+              api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
+              api_jwt_access_secret: "{{ vault_talkplaza_api_jwt_access_secret | default('change-me-in-production') }}"
+              api_jwt_refresh_secret: "{{ vault_talkplaza_api_jwt_refresh_secret | default('change-me-in-production') }}"
+              # Web環境変数
+              web_api_base_url: "/api"
+              web_ws_base_url: "/ws"
+              web_agent_ws_url: "{{ websocket_agent_url }}"
+              # status-agent設定
+              status_agent_client_id: talkplaza-pi5-server
+              status_agent_location: "トークプラザ - Pi5サーバー"
+              status_agent_tls_skip_verify: "1"
+              status_agent_client_key: "{{ vault_talkplaza_pi5_status_agent_client_key | default('client-key-talkplaza-pi5-server') }}"
+              status_agent_api_base_url: "{{ api_base_url }}"
+        clients:
+          hosts:
+            talkplaza-pi4:
+              # Pi4（トークプラザ工場）: キオスク
+              ansible_host: "{{ kiosk_ip }}"
+              ansible_user: tools03
+              tailscale_enabled: false
+              status_agent_client_id: talkplaza-pi4-kiosk01
+              status_agent_client_key: "{{ vault_talkplaza_pi4_status_agent_client_key | default('client-key-talkplaza-pi4-kiosk01') }}"
+              status_agent_location: "トークプラザ - Pi4キオスク01"
+              kiosk_url: "{{ kiosk_full_url }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              # NFCエージェント環境変数
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "talkplaza-pi4-kiosk01"
+              nfc_agent_client_secret: "{{ vault_talkplaza_nfc_agent_client_secret | default('client-key-talkplaza-pi4-kiosk01') }}"
+            talkplaza-signage01:
+              # サイネージ端末（Pi3 / Zero2W）: DNS運用前提
+              ansible_host: "{{ signage_ip }}"
+              ansible_user: signageras3
+              tailscale_enabled: false
+              status_agent_client_id: talkplaza-signage01
+              status_agent_client_key: "{{ vault_talkplaza_signage01_status_agent_client_key | default('client-key-talkplaza-signage01') }}"
+              status_agent_location: "トークプラザ - サイネージ01"
+              signage_server_url: "{{ server_base_url }}"
+              signage_client_key: "{{ vault_talkplaza_signage01_client_key | default('client-key-talkplaza-signage01') }}"
+              manage_signage_lite: true
+              # ローカルDNS（.local）＋Caddy内部CA想定のため、TLS検証をスキップ（curl -k）
+              signage_allow_insecure_tls: true
+              services_to_restart:
+                - signage-lite.service
+                - signage-lite-update.timer
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start signage-lite.service
+                - /usr/bin/systemctl stop signage-lite.service
+                - /usr/bin/systemctl restart signage-lite.service
+                - /usr/bin/systemctl start signage-lite-update.timer
+                - /usr/bin/systemctl stop signage-lite-update.timer
+                - /usr/bin/systemctl restart signage-lite-update.timer
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+      vars:
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3
+        status_agent_api_base_url: "{{ api_base_url }}"
+        status_agent_tls_skip_verify: "1"

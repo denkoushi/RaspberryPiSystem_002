@@ -1,0 +1,8 @@
+# トークプラザ工場（サイネージ01: Pi3/Zero2W）用 vault（※本番ではansible-vaultで暗号化推奨）
+
+# status-agent（サイネージ）
+vault_talkplaza_signage01_status_agent_client_key: "client-key-talkplaza-signage01"
+
+# signage-lite（x-client-key）
+vault_talkplaza_signage01_client_key: "client-key-talkplaza-signage01"
+
