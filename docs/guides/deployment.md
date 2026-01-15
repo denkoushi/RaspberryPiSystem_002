@@ -89,6 +89,49 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 
 ## ラズパイ5（サーバー）の更新
 
+### デプロイ前チェックリスト
+
+**重要**: デプロイ実行前に、以下を必ず確認・実行してください：
+
+- [ ] **リモートリポジトリとの比較**: Pi5上のコードとリモートリポジトリ（`origin/main`）を比較し、差分を確認
+  ```bash
+  # Pi5上で実行
+  ssh denkon5sd02@raspberrypi.local
+  cd /opt/RaspberryPiSystem_002
+  git fetch origin
+  git diff HEAD origin/main
+  ```
+- [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
+  ```bash
+  # Pi5上でbackup.jsonをバックアップ
+  ssh denkon5sd02@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
+  ```
+- [ ] **ネットワーク環境の確認**: `group_vars/all.yml`の`network_mode`が現在のネットワーク環境と一致しているか確認
+  ```bash
+  # Pi5上のnetwork_modeを確認
+  ssh denkon5sd02@raspberrypi.local "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+  ```
+- [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
+
+### デプロイ後チェックリスト
+
+**重要**: デプロイ実行後、以下を必ず確認してください：
+
+- [ ] **設定ファイルの確認**: `backup.json`が正しく保持されているか確認
+  ```bash
+  # Pi5上でbackup.jsonの存在とサイズを確認
+  ssh denkon5sd02@raspberrypi.local "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"
+  ```
+- [ ] **APIヘルスチェック**: APIが正常に起動しているか確認
+  ```bash
+  # APIヘルスチェック
+  curl -k https://raspberrypi.local/api/health
+  ```
+- [ ] **管理コンソールの確認**: 管理コンソールで設定（Gmail、Dropbox）が正しく表示されているか確認
+  - バックアップタブでGmail設定とDropbox設定が表示されているか
+  - バックアップ履歴が継続して記録されているか
+  - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
+
 ### 初回セットアップ: 環境変数ファイルの作成
 
 再起動後もIPアドレスが変わっても自動的に対応できるように、環境変数ファイルを作成します：
@@ -156,9 +199,10 @@ cd /opt/RaspberryPiSystem_002
 ### 方法2: 手動で更新
 
 **⚠️ 重要**: デプロイ前に必ず以下を確認してください：
-1. **リモートにプッシュ済みか確認**: `git log origin/<branch>`でリモートの最新コミットを確認
-2. **ローカルとリモートの差分確認**: `git log HEAD..origin/<branch>`で差分を確認
-3. **標準手順の遵守**: 以下の標準手順を必ず遵守してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)参照）
+1. **デプロイ前チェックリスト**: 上記の「デプロイ前チェックリスト」を必ず確認・実行してください
+2. **リモートにプッシュ済みか確認**: `git log origin/<branch>`でリモートの最新コミットを確認
+3. **ローカルとリモートの差分確認**: `git log HEAD..origin/<branch>`で差分を確認
+4. **標準手順の遵守**: 以下の標準手順を必ず遵守してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)参照）
 
 **重要**: デプロイは常に現在のブランチを使用します。`main`ブランチにマージするのは別途指示がある場合のみです。
 
@@ -190,6 +234,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 
 # 4. 動作確認
 curl http://localhost:8080/api/system/health
+
+# 5. デプロイ後チェックリスト: 上記の「デプロイ後チェックリスト」を必ず確認してください
 ```
 
 **重要**: 

@@ -1075,37 +1075,42 @@ update-frequency: medium
 - Ansibleの`manage-app-configs.yml`に「backup.jsonが存在しない場合に最小限の設定で作成する」処理があるが、それはGmail設定やDropbox設定を含まない最小限の設定
 
 **修正内容**:
-`infrastructure/ansible/roles/common/tasks/main.yml` の `git clean` 除外リストに `config/` を追加
+1. `.gitignore`に`config/`を追加（根本的解決策の一部）
+2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean` 除外リストに `config/` を追加（二重保護）
 
 **復旧手順**:
-1. 管理コンソールでGmail設定を再設定（OAuth認証経由）
-2. Dropbox設定を再設定（OAuth認証経由）
-3. CSVインポートスケジュールを再設定
+1. Dropboxから`backup.json`を復元（[KB-165](#kb-165-dropboxからのbackupjson復元方法)参照）
+2. 管理コンソールでGmail設定を再設定（OAuth認証経由）（[KB-166](#kb-166-gmail-oauth設定の復元方法)参照）
+3. Dropbox設定を再設定（OAuth認証経由）
+4. CSVインポートスケジュールを再設定
 
 **学んだこと**:
-- ファイル削除とファイル上書きは別の問題: 上書き防止対策だけでは、ファイル削除を防げない
-- git cleanの除外リストは網羅的に: 運用で生成される全ての設定ファイル・データディレクトリを除外リストに含める必要がある
-- ログ調査の重要性: 既存のpinoロガー + docker logs + journalctl で十分な証拠が得られる
-- ドキュメント参照の徹底: 既存のナレッジベースを参照することで、過去の対策の限界を理解できる
+- **ファイル削除とファイル上書きは別の問題**: 上書き防止対策だけでは、ファイル削除を防げない
+- **git cleanの除外リストは網羅的に**: 運用で生成される全ての設定ファイル・データディレクトリを除外リストに含める必要がある
+- **ログ調査の重要性**: 既存のpinoロガー + docker logs + journalctl で十分な証拠が得られる
+- **ドキュメント参照の徹底**: 既存のナレッジベースを参照することで、過去の対策の限界を理解できる
 
 **解決状況**: ✅ **修正完了**（2026-01-15）
 
 **関連ファイル**:
 - `infrastructure/ansible/roles/common/tasks/main.yml`（git cleanの除外リスト修正）
+- `.gitignore`（`config/`を追加）
 - `apps/api/src/services/backup/backup-config.loader.ts`（フォールバック検知ロジック）
 - `infrastructure/ansible/playbooks/manage-app-configs.yml`（backup.json作成ロジック）
 
 **関連ナレッジ**:
 - KB-151: backup.jsonの破壊的上書きを防ぐセーフガード実装（上書き防止）
 - 本KB-163: git cleanによる削除防止（削除防止）
+- KB-164: git clean設計の根本的改善（`.gitignore`による一元管理）
 
 **再発防止策**:
-- git cleanの除外リストにconfig/を追加済み
-- 今後、新しい運用データディレクトリを追加する際は、必ずgit cleanの除外リストにも追加する
+- `.gitignore`に`config/`を追加済み（`git clean -fd`は`.gitignore`で無視されているファイルを削除しない）
+- `git clean`の除外リストに`config/`を追加済み（二重保護）
+- 今後、新しい運用データディレクトリを追加する際は、必ず`.gitignore`にも追加する
 
 ---
 
-### [KB-164] git clean設計の根本的改善（-fd → -fdX）
+### [KB-164] git clean設計の根本的改善（.gitignoreによる一元管理）
 
 **発生日**: 2026-01-15
 
@@ -1130,37 +1135,341 @@ git clean -fd \
 
 **改善した設計（変更後）**:
 ```bash
-git clean -fdX
+git clean -fd \
+  -e storage/ -e 'storage/**' \
+  -e certs/ -e 'certs/**' \
+  -e alerts/ -e 'alerts/**' \
+  -e logs/ -e 'logs/**' \
+  -e config/ -e 'config/**'
 ```
-- `-X` オプション: `.gitignore` で無視されているファイルのみを削除
-- `.gitignore` だけで一元管理
-- 除外リストのメンテナンスが不要
+- **重要**: `git clean -fd`は`.gitignore`で無視されているファイルを削除しない
+- `.gitignore`に`config/`を追加することで、`git clean -fd`は`config/`を削除しない
+- 除外リスト（`-e config/`）は二重保護として残す（冗長だが安全）
 
-**-X オプションの動作**:
-| ファイルの状態 | -fd | -fdX |
-|----------------|-----|------|
+**git cleanの動作**:
+| ファイルの状態 | `git clean -fd` | `git clean -fdX` |
+|----------------|-----------------|------------------|
 | 追跡されている | 削除しない | 削除しない |
-| .gitignore で無視 | 削除する | 削除する |
+| .gitignore で無視 | **削除しない** | **削除する** |
 | 追跡されていない（.gitignoreに無い） | 削除する | 削除しない |
 
 **修正内容**:
-1. `.gitignore` に `config/` を追加
-2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean -fd` を `git clean -fdX` に変更
+1. `.gitignore` に `config/` を追加（根本的解決策）
+2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean -fd` の除外リストに `config/` を追加（二重保護）
 
 **学んだこと**:
-- 対処療法（除外リストへの追加）ではなく、根本的な設計改善（一元管理）を行うべき
-- `.gitignore` と `git clean` の除外リストの二重メンテナンスは脆弱な設計
-- `git clean -fdX` を使うことで、`.gitignore` だけで運用データを保護できる
+- **`.gitignore`による一元管理**: `.gitignore`に追加することで、`git clean -fd`は自動的に保護される
+- **二重保護の重要性**: 除外リストも残すことで、`.gitignore`の設定漏れがあっても保護される
+- **`git clean -fdX`は誤り**: `-X`オプションは`.gitignore`で無視されているファイルを削除するため、逆効果になる
 
 **解決状況**: ✅ **設計改善完了**（2026-01-15）
 
 **関連ファイル**:
 - `.gitignore`（`config/` を追加）
-- `infrastructure/ansible/roles/common/tasks/main.yml`（`git clean -fdX` に変更）
+- `infrastructure/ansible/roles/common/tasks/main.yml`（`git clean -fd` の除外リストに `config/` を追加）
 
 **関連ナレッジ**:
 - KB-151: backup.jsonの破壊的上書きを防ぐセーフガード実装（上書き防止）
-- KB-163: git cleanによる削除防止（除外リスト追加 - 対処療法）
-- 本KB-164: git clean設計の根本的改善（-fd → -fdX）
+- KB-163: git cleanによる削除防止（削除防止）
+- 本KB-164: git clean設計の根本的改善（`.gitignore`による一元管理）
+
+**再発防止策**:
+- `.gitignore`に`config/`を追加済み（`git clean -fd`は`.gitignore`で無視されているファイルを削除しない）
+- 除外リストも追加済み（二重保護）
+- 今後、新しい運用データディレクトリを追加する際は、必ず`.gitignore`にも追加する
+
+---
+
+### [KB-161] Dropbox basePathの分離対応（拠点別フォルダ分離）
+
+**実装日**: 2026-01-14
+
+**事象**: 
+- トークプラザ工場への導入時に、Dropboxバックアップの保存先を拠点別に分離する必要があった
+- 既存の第2工場とトークプラザ工場のバックアップが混在しないようにする必要があった
+
+**要因**: 
+- **basePathの未対応**: `StorageProviderFactory`で`basePath`が`DropboxStorageProvider`に渡されていなかった
+- **環境変数の未実装**: Ansibleテンプレートに`DROPBOX_BASE_PATH`が含まれていなかった
+
+**実装内容**:
+1. **StorageProviderFactoryの修正**:
+   - `createFromConfig`メソッドで`options.basePath`を`DropboxStorageProvider`に渡すように修正
+   - 環境変数`DROPBOX_BASE_PATH`を優先的に使用（運用上の上書き手段）
+
+2. **Ansibleテンプレートの更新**:
+   - `infrastructure/ansible/templates/docker.env.j2`に`DROPBOX_BASE_PATH`変数を追加
+   - トークプラザ工場では`DROPBOX_BASE_PATH=/backups/talkplaza`を設定
+
+3. **DropboxStorageProviderの対応**:
+   - `basePath`が指定されている場合、そのパスを使用
+   - 環境変数`DROPBOX_BASE_PATH`が設定されている場合、それを優先
+
+**学んだこと**:
+- **拠点別フォルダ分離**: Dropboxの`basePath`を拠点ごとに設定することで、バックアップを分離できる
+- **環境変数の優先順位**: 運用上の上書き手段として環境変数を優先することで、柔軟な運用が可能
+- **マルチサイト対応**: 外部連携サービス（Dropbox）の設定も拠点ごとに分離する必要がある
+
+**解決状況**: ✅ **実装完了**（2026-01-14）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage-provider-factory.ts`（`basePath`の渡し方修正）
+- `infrastructure/ansible/templates/docker.env.j2`（`DROPBOX_BASE_PATH`変数追加）
+- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用設定）
+
+**確認コマンド**:
+```bash
+# トークプラザ工場のDropbox basePath確認
+grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+# → DROPBOX_BASE_PATH=/backups/talkplaza
+
+# 第2工場のDropbox basePath確認（デフォルト）
+grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+# → （未設定の場合はデフォルトパスを使用）
+```
+
+**再発防止策**:
+- **basePathの分離**: 各拠点で`DROPBOX_BASE_PATH`を設定し、バックアップを分離
+- **環境変数の優先**: 運用上の上書き手段として環境変数を優先
+
+**注意事項**:
+- `DROPBOX_BASE_PATH`が空文字の場合はデフォルトパスにフォールバックするため、設定漏れに注意
+- 第1工場への導入時も同様に`DROPBOX_BASE_PATH=/backups/factory1`を設定する
+
+---
+
+### [KB-165] Dropboxからのbackup.json復元方法
+
+**発生日**: 2026-01-15
+
+**事象**: 
+- KB-163により`backup.json`が削除され、Gmail設定とDropboxバックアップ対象リストが失われた
+- Dropboxには過去のバックアップが保存されていたため、そこから復元する必要があった
+
+**復元手順**:
+1. **Dropbox APIを使用してバックアップファイルを検索**:
+   - 管理コンソールのバックアップタブから、最新の`backup.json`バックアップを特定
+   - または、Dropbox APIを使用してバックアップファイルを検索
+
+2. **バックアップファイルをダウンロード**:
+   - 管理コンソールのバックアップタブから手動でダウンロード
+   - または、Dropbox APIを使用してバックアップファイルをダウンロード
+
+3. **backup.jsonを復元**:
+   ```bash
+   # Pi5上でbackup.jsonを復元
+   ssh denkon5sd02@raspberrypi.local
+   sudo nano /opt/RaspberryPiSystem_002/config/backup.json
+   # ダウンロードしたバックアップの内容を貼り付け
+   ```
+
+4. **APIを再起動**:
+   ```bash
+   # Dockerコンテナを再起動して設定を読み込み
+   cd /opt/RaspberryPiSystem_002
+   docker compose restart api
+   ```
+
+**学んだこと**:
+- **Dropboxバックアップの重要性**: 定期的なバックアップが設定ファイルの復元に不可欠
+- **バックアップファイルの命名規則**: タイムスタンプ付きのファイル名で、最新のバックアップを特定しやすい
+- **復元の優先順位**: Gmail設定とDropbox設定は手動で再設定が必要な場合がある
+
+**解決状況**: ✅ **復元完了**（2026-01-15）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage-provider-factory.ts`（Dropbox API呼び出し）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（復元対象ファイル）
+
+**関連ナレッジ**:
+- KB-163: git cleanによるbackup.json削除問題（再発）
+- KB-164: git clean設計の根本的改善（-fd → -fdX）
+
+**再発防止策**:
+- KB-164の設計改善により、`git clean`による削除を防止
+- 定期的なDropboxバックアップを継続（スケジュール設定済み）
+
+---
+
+### [KB-166] Gmail OAuth設定の復元方法
+
+**発生日**: 2026-01-15
+
+**事象**: 
+- KB-163により`backup.json`が削除され、Gmail設定（`clientId`, `clientSecret`, `redirectUri`）が失われた
+- Dropboxバックアップから`backup.json`を復元したが、Gmail設定は含まれていなかった
+
+**復元手順**:
+1. **client_secret.jsonファイルを取得**:
+   - Google Cloud ConsoleからGmail APIの認証情報をダウンロード
+   - `client_secret.json`ファイルを取得
+
+2. **backup.jsonにGmail設定を追加**:
+   ```json
+   {
+     "storage": {
+       "options": {
+         "gmail": {
+           "clientId": "993241073118-xxx.apps.googleusercontent.com",
+           "clientSecret": "GOCSPX-xxx",
+           "redirectUri": "https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback"
+         }
+       }
+     }
+   }
+   ```
+
+3. **APIを再起動**:
+   ```bash
+   docker compose restart api
+   ```
+
+4. **OAuth認証を実行**:
+   - 管理コンソールの「バックアップ」タブ → 「Gmail設定」セクション
+   - 「OAuth認証」ボタンをクリック
+   - Googleアカウントでログインして認証を完了
+   - 認証後、`accessToken`と`refreshToken`が`backup.json`に自動保存される
+
+**学んだこと**:
+- **OAuth認証フローの重要性**: `clientId`と`clientSecret`だけでは不十分で、OAuth認証フローを実行してトークンを取得する必要がある
+- **設定の段階的復元**: `backup.json`の復元 → Gmail設定の追加 → OAuth認証の実行という段階的な手順が必要
+- **トークンの自動保存**: OAuth認証完了後、APIが自動的に`accessToken`と`refreshToken`を`backup.json`に保存する
+
+**解決状況**: ✅ **復元完了**（2026-01-15）
+
+**関連ファイル**:
+- `apps/api/src/routes/gmail/oauth.ts`（OAuth認証フロー）
+- `apps/api/src/routes/gmail/config.ts`（Gmail設定管理）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（Gmail設定保存先）
+
+**関連ナレッジ**:
+- KB-163: git cleanによるbackup.json削除問題（再発）
+- KB-165: Dropboxからのbackup.json復元方法
+
+**再発防止策**:
+- KB-164の設計改善により、`git clean`による削除を防止
+- Gmail設定も`backup.json`に含まれるため、定期的なDropboxバックアップで保護される
+
+---
+
+### [KB-167] Gmail OAuthルートの新構造対応修正
+
+**発生日**: 2026-01-15
+
+**事象**: 
+- KB-166でGmail設定を復元し、OAuth認証を実行しようとしたが、`400 Bad Request`エラーが発生
+- APIログに「Gmail Client ID and Client Secret are required in config file」というエラーが記録された
+- `backup.json`には`clientId`と`clientSecret`が存在していたが、APIが読み取れていなかった
+
+**根本原因**:
+- `apps/api/src/routes/gmail/oauth.ts`が旧構造（`config.storage.options.clientId`）を参照していた
+- 新構造（`config.storage.options.gmail.clientId`）に対応していなかった
+
+**修正内容**:
+`apps/api/src/routes/gmail/oauth.ts`の以下の3つのエンドポイントを修正:
+
+1. **`/gmail/oauth/authorize`**:
+   ```typescript
+   // 変更前
+   const clientId = config.storage.options?.clientId as string | undefined;
+   const clientSecret = config.storage.options?.clientSecret as string | undefined;
+   const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+
+   // 変更後（新構造を優先、旧構造にフォールバック）
+   const clientId = config.storage.options?.gmail?.clientId || config.storage.options?.clientId;
+   const clientSecret = config.storage.options?.gmail?.clientSecret || config.storage.options?.clientSecret;
+   const configuredRedirectUri = config.storage.options?.gmail?.redirectUri || config.storage.options?.redirectUri;
+   ```
+
+2. **`/gmail/oauth/callback`**: 同様の修正を適用
+
+3. **`/gmail/oauth/refresh`**: 同様の修正を適用
+
+**学んだこと**:
+- **後方互換性の重要性**: 旧構造へのフォールバックを実装することで、既存の設定でも動作する
+- **設定構造の移行**: 新構造への移行は段階的に行い、旧構造との互換性を維持する必要がある
+- **エラーメッセージの重要性**: 明確なエラーメッセージにより、問題の原因を特定しやすい
+
+**解決状況**: ✅ **修正完了**（2026-01-15）
+
+**関連ファイル**:
+- `apps/api/src/routes/gmail/oauth.ts`（OAuth認証フロー修正）
+- `/opt/RaspberryPiSystem_002/config/backup.json`（Gmail設定保存先）
+
+**関連ナレッジ**:
+- KB-166: Gmail OAuth設定の復元方法
+- KB-148: backup.jsonの衝突・ドリフト検出の自動化（新構造の導入）
+
+**再発防止策**:
+- 新構造への移行を完了し、旧構造へのフォールバックを実装済み
+- 今後は新構造（`options.gmail.*`）のみを使用する
+
+---
+
+### [KB-168] 旧キーと新構造の衝突問題と解決方法
+
+**発生日**: 2026-01-15
+
+**事象**: 
+- Gmail OAuth認証完了後、管理コンソールのバックアップタブで黄色背景の警告が表示された
+- 警告内容: 「設定ファイルに旧形式のキーが検出されました。新形式への移行を推奨します」
+
+**根本原因**:
+- `backup.json`の`storage.options`直下に旧キー（`accessToken`, `refreshToken`, `appKey`, `appSecret`）が残っていた
+- 新構造（`options.dropbox.*`, `options.gmail.*`）と旧構造が混在していた
+- KB-148のヘルスチェック機能が旧キーの存在を検出し、警告を表示していた
+
+**解決方法**:
+`backup.json`から旧キーを削除し、新構造のみに統一:
+
+```json
+{
+  "storage": {
+    "options": {
+      // ❌ 削除: 旧キー（直下に配置）
+      // "accessToken": "...",
+      // "refreshToken": "...",
+      // "appKey": "...",
+      // "appSecret": "...",
+      
+      // ✅ 保持: 新構造（名前空間化）
+      "dropbox": {
+        "appKey": "...",
+        "appSecret": "...",
+        "accessToken": "...",
+        "refreshToken": "..."
+      },
+      "gmail": {
+        "clientId": "...",
+        "clientSecret": "...",
+        "redirectUri": "...",
+        "accessToken": "...",
+        "refreshToken": "..."
+      }
+    }
+  }
+}
+```
+
+**学んだこと**:
+- **設定構造の統一**: 旧構造と新構造の混在は、設定の複雑さと混乱を招く
+- **ヘルスチェック機能の重要性**: KB-148のヘルスチェック機能により、設定の問題を早期に検出できる
+- **段階的な移行**: 新構造への移行は段階的に行い、旧構造を完全に削除する必要がある
+
+**解決状況**: ✅ **解決完了**（2026-01-15）
+
+**関連ファイル**:
+- `/opt/RaspberryPiSystem_002/config/backup.json`（設定ファイル）
+- `apps/api/src/routes/backup/health.ts`（ヘルスチェック機能）
+
+**関連ナレッジ**:
+- KB-148: backup.jsonの衝突・ドリフト検出の自動化（新構造の導入）
+- KB-166: Gmail OAuth設定の復元方法
+- KB-167: Gmail OAuthルートの新構造対応修正
+
+**再発防止策**:
+- 新構造への移行を完了し、旧構造のキーを削除済み
+- 今後は新構造（`options.dropbox.*`, `options.gmail.*`）のみを使用する
+- ヘルスチェック機能により、設定の問題を早期に検出できる
 
 ---

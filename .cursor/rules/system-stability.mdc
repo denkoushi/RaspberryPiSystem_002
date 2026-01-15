@@ -103,7 +103,12 @@ docker volume inspect <volume-name>
 **デプロイ実行前の必須確認：**
 1. **リモートリポジトリとの比較**: Pi5上のコードとリモートリポジトリ（`origin/main`）を比較し、差分を確認する
 2. **標準手順の確認**: `docs/guides/deployment.md`の標準デプロイ手順を必ず確認する
-3. **実行手順の完全遵守**: 標準手順に記載されている全ステップを順番通りに実行する
+3. **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップする（[KB-163](../docs/knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
+   ```bash
+   # Pi5上でbackup.jsonをバックアップ
+   ssh denkon5sd02@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
+   ```
+4. **実行手順の完全遵守**: 標準手順に記載されている全ステップを順番通りに実行する
 
 **デプロイ実行時の必須手順（Pi5の場合）：**
 1. **現在のブランチを確認し、`git pull origin <current-branch>`を必ず最初に実行**: コードが最新に見えても、リモートリポジトリとの比較のために必ず実行する（`main`ブランチにマージするのは別途指示がある場合のみ）
@@ -118,6 +123,7 @@ docker volume inspect <volume-name>
 - Pi5のデプロイ: `docs/guides/deployment.md`の「ラズパイ5（サーバー）の更新」セクション
 - デプロイスクリプト使用時: `docs/guides/deployment.md`の「方法1: デプロイスクリプトを使用（推奨）」
 - 手動デプロイ時: `docs/guides/deployment.md`の「方法2: 手動で更新」
+- **設定ファイル保護**: `docs/knowledge-base/infrastructure/backup-restore.md`のKB-163、KB-164、KB-165を参照
 
 ### 7. エラー発生時の対応
 

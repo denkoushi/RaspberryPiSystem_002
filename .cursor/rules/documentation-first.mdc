@@ -32,12 +32,12 @@ alwaysApply: true
 - **`docs/knowledge-base/index.md`**: 全ナレッジベースの索引
 - **`docs/knowledge-base/infrastructure.md`**: インフラ関連の索引（サブカテゴリ別に分割）
   - `infrastructure/docker-caddy.md`: Docker/Caddy関連（8件）
-  - `infrastructure/backup-restore.md`: バックアップ・リストア関連（10件）
-  - `infrastructure/ansible-deployment.md`: Ansible/デプロイ関連（7件）
+  - `infrastructure/backup-restore.md`: バックアップ・リストア関連（22件）**⚠️ デプロイ時の設定ファイル保護に関するKB-163、KB-164、KB-165を必ず確認**
+  - `infrastructure/ansible-deployment.md`: Ansible/デプロイ関連（16件）**⚠️ デプロイ標準手順に関するKB-110、KB-143を必ず確認**
   - `infrastructure/security.md`: セキュリティ関連（8件）
-  - `infrastructure/signage.md`: サイネージ関連（10件）
+  - `infrastructure/signage.md`: サイネージ関連（13件）
   - `infrastructure/hardware-nfc.md`: NFC/ハードウェア関連（3件）
-  - `infrastructure/miscellaneous.md`: その他（16件）
+  - `infrastructure/miscellaneous.md`: その他（18件）
 - **`docs/knowledge-base/api.md`**: API関連
 - **`docs/knowledge-base/frontend.md`**: フロントエンド関連
 
