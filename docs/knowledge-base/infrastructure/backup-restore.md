@@ -1054,3 +1054,113 @@ update-frequency: medium
 - `apps/api/src/routes/backup.ts`（`onTokenUpdate`コールバック内での`config`オブジェクトの直接更新）
 - `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（テスト環境での`backup.json`事前作成）
 
+---
+
+### [KB-163] git cleanによるbackup.json削除問題（再発）
+
+**発生日**: 2026-01-15
+
+**事象**: 
+- デプロイ後に管理コンソールでGmailのCSV取り込み設定が消えていた
+- Dropboxバックアップの実行履歴が毎日記録されていなかった
+
+**根本原因**:
+- `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean -fd` コマンドで `config/` ディレクトリが除外リストに含まれていなかった
+- デプロイ時に `git clean -fd` が実行され、`config/backup.json` が削除されていた
+- `config/` ディレクトリは追跡対象外（untracked）であるため、`git clean` で削除される
+
+**なぜKB-151の対策で防げなかったか**:
+- KB-151の対策は「フォールバック設定の保存を拒否する」ことで上書きを防ぐものだった
+- しかし、`git clean`によるファイル自体の削除は防げない
+- Ansibleの`manage-app-configs.yml`に「backup.jsonが存在しない場合に最小限の設定で作成する」処理があるが、それはGmail設定やDropbox設定を含まない最小限の設定
+
+**修正内容**:
+`infrastructure/ansible/roles/common/tasks/main.yml` の `git clean` 除外リストに `config/` を追加
+
+**復旧手順**:
+1. 管理コンソールでGmail設定を再設定（OAuth認証経由）
+2. Dropbox設定を再設定（OAuth認証経由）
+3. CSVインポートスケジュールを再設定
+
+**学んだこと**:
+- ファイル削除とファイル上書きは別の問題: 上書き防止対策だけでは、ファイル削除を防げない
+- git cleanの除外リストは網羅的に: 運用で生成される全ての設定ファイル・データディレクトリを除外リストに含める必要がある
+- ログ調査の重要性: 既存のpinoロガー + docker logs + journalctl で十分な証拠が得られる
+- ドキュメント参照の徹底: 既存のナレッジベースを参照することで、過去の対策の限界を理解できる
+
+**解決状況**: ✅ **修正完了**（2026-01-15）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/common/tasks/main.yml`（git cleanの除外リスト修正）
+- `apps/api/src/services/backup/backup-config.loader.ts`（フォールバック検知ロジック）
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`（backup.json作成ロジック）
+
+**関連ナレッジ**:
+- KB-151: backup.jsonの破壊的上書きを防ぐセーフガード実装（上書き防止）
+- 本KB-163: git cleanによる削除防止（削除防止）
+
+**再発防止策**:
+- git cleanの除外リストにconfig/を追加済み
+- 今後、新しい運用データディレクトリを追加する際は、必ずgit cleanの除外リストにも追加する
+
+---
+
+### [KB-164] git clean設計の根本的改善（-fd → -fdX）
+
+**発生日**: 2026-01-15
+
+**事象**: 
+KB-163（git cleanによるbackup.json削除問題）の根本原因分析により、設計上の問題を特定
+
+**根本原因**:
+1. `.gitignore` に `config/` が漏れていた（単純なミス）
+2. `git clean -fd` の除外リストを手動でメンテナンスする設計が脆弱（二重メンテナンスが必要）
+
+**問題のある設計（変更前）**:
+```bash
+git clean -fd \
+  -e storage/ -e 'storage/**' \
+  -e certs/ -e 'certs/**' \
+  -e alerts/ -e 'alerts/**' \
+  -e logs/ -e 'logs/**' \
+  -e config/ -e 'config/**'
+```
+- 新しい運用データディレクトリを追加するたびに、`.gitignore` と除外リストの2箇所を更新する必要がある
+- 漏れが発生しやすい
+
+**改善した設計（変更後）**:
+```bash
+git clean -fdX
+```
+- `-X` オプション: `.gitignore` で無視されているファイルのみを削除
+- `.gitignore` だけで一元管理
+- 除外リストのメンテナンスが不要
+
+**-X オプションの動作**:
+| ファイルの状態 | -fd | -fdX |
+|----------------|-----|------|
+| 追跡されている | 削除しない | 削除しない |
+| .gitignore で無視 | 削除する | 削除する |
+| 追跡されていない（.gitignoreに無い） | 削除する | 削除しない |
+
+**修正内容**:
+1. `.gitignore` に `config/` を追加
+2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean -fd` を `git clean -fdX` に変更
+
+**学んだこと**:
+- 対処療法（除外リストへの追加）ではなく、根本的な設計改善（一元管理）を行うべき
+- `.gitignore` と `git clean` の除外リストの二重メンテナンスは脆弱な設計
+- `git clean -fdX` を使うことで、`.gitignore` だけで運用データを保護できる
+
+**解決状況**: ✅ **設計改善完了**（2026-01-15）
+
+**関連ファイル**:
+- `.gitignore`（`config/` を追加）
+- `infrastructure/ansible/roles/common/tasks/main.yml`（`git clean -fdX` に変更）
+
+**関連ナレッジ**:
+- KB-151: backup.jsonの破壊的上書きを防ぐセーフガード実装（上書き防止）
+- KB-163: git cleanによる削除防止（除外リスト追加 - 対処療法）
+- 本KB-164: git clean設計の根本的改善（-fd → -fdX）
+
+---

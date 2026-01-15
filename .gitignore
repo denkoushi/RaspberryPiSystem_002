@@ -31,6 +31,9 @@ alerts/
 # SSL certificates
 certs/
 
+# Runtime configuration (backup.json, etc.)
+config/
+
 # Python
 __pycache__/
 *.pyc
