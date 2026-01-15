@@ -59,19 +59,29 @@
     - '"server" not in group_names'
     - item.stat.exists
 
-- name: Clean gitignored files before checkout
-  # -X オプション: .gitignore で無視されているファイルのみを削除
-  # これにより、運用データ（config/, certs/, logs/, alerts/, storage/）は
-  # .gitignore に含まれているため削除されない
-  # ビルド成果物（dist/, node_modules/）は削除される
-  ansible.builtin.shell: |
-    set -euo pipefail
-    cd {{ repo_path }} && git clean -fdX
-  args:
-    executable: /bin/bash
-  register: git_clean_result
-  changed_when: git_clean_result.stdout | length > 0
-  failed_when: false
+- name: Clean untracked files before checkout (excluding protected directories)
+  # 追跡されていないファイルを削除するが、運用データディレクトリは除外
+  # 除外リストは .gitignore と同期させること
+  block:
+    - name: Run git clean with protected directories
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }} && git clean -fd \
+          -e storage/ -e 'storage/**' \
+          -e certs/ -e 'certs/**' \
+          -e alerts/ -e 'alerts/**' \
+          -e logs/ -e 'logs/**' \
+          -e config/ -e 'config/**'
+      args:
+        executable: /bin/bash
+      register: git_clean_result
+      changed_when: git_clean_result.stdout | length > 0
+  rescue:
+    - name: Warn when git clean failed
+      ansible.builtin.debug:
+        msg: >
+          git clean failed on {{ inventory_hostname }} ({{ git_clean_result.stderr | default('no stderr') }}).
+          Continuing because protected directories might not exist.
 
 - name: Sync repository to desired state (with retries)
   ansible.builtin.shell: |
