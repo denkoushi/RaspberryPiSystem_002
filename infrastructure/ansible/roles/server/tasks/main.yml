@@ -279,6 +279,7 @@
     method: GET
     status_code: 200
     return_content: true
+    validate_certs: false  # 自己署名証明書対応
   register: api_health_result
   retries: 8
   delay: 5
