@@ -1,5 +1,3 @@
 ---
 repo_path: /opt/RaspberryPiSystem_002
-# APIヘルスチェックURL: Caddy経由（HTTPS 443）でアクセス
-# 注意: APIはDocker内部ネットワークの8080のみで待ち受け、外部アクセスはCaddy経由のみ
-api_healthcheck_url: "{{ api_base_url }}/system/health"
+# api_healthcheck_urlはgroup_vars/all.ymlで定義（リポジトリ更新前に変数が読み込まれるため）

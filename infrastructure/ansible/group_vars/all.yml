@@ -32,6 +32,11 @@ kiosk_full_url: "{{ server_base_url }}/kiosk"
 api_base_url: "{{ server_base_url }}/api"
 websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
 
+# APIヘルスチェックURL: Caddy経由（HTTPS 443）でアクセス
+# 注意: APIはDocker内部ネットワークの8080のみで待ち受け、外部アクセスはCaddy経由のみ
+# group_vars/all.ymlに配置することで、リポジトリ更新前に変数が読み込まれる（Ansibleの変数読み込みタイミング問題を回避）
+api_healthcheck_url: "{{ api_base_url }}/system/health"
+
 # 既存の変数名との互換性を保つためのエイリアス
 status_agent_api_base_url: "{{ api_base_url }}"
 nfc_agent_api_base_url: "{{ api_base_url }}"
