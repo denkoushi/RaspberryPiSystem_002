@@ -1077,6 +1077,7 @@ update-frequency: medium
 **修正内容**:
 1. `.gitignore`に`config/`を追加（根本的解決策の一部）
 2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean` 除外リストに `config/` を追加（二重保護）
+3. **Ansibleデプロイから`git clean`を削除（根本対策）**
 
 **復旧手順**:
 1. Dropboxから`backup.json`を復元（[KB-165](#kb-165-dropboxからのbackupjson復元方法)参照）
@@ -1104,8 +1105,8 @@ update-frequency: medium
 - KB-164: git clean設計の根本的改善（`.gitignore`による一元管理）
 
 **再発防止策**:
-- `.gitignore`に`config/`を追加済み（`git clean -fd`は`.gitignore`で無視されているファイルを削除しない）
-- `git clean`の除外リストに`config/`を追加済み（二重保護）
+- **Ansibleデプロイから`git clean`を削除済み**（運用データ削除の発生源を排除）
+- `.gitignore`に`config/`を追加済み（ローカル作業時の保護）
 - 今後、新しい運用データディレクトリを追加する際は、必ず`.gitignore`にも追加する
 
 ---
@@ -1134,17 +1135,9 @@ git clean -fd \
 - 漏れが発生しやすい
 
 **改善した設計（変更後）**:
-```bash
-git clean -fd \
-  -e storage/ -e 'storage/**' \
-  -e certs/ -e 'certs/**' \
-  -e alerts/ -e 'alerts/**' \
-  -e logs/ -e 'logs/**' \
-  -e config/ -e 'config/**'
-```
-- **重要**: `git clean -fd`は`.gitignore`で無視されているファイルを削除しない
-- `.gitignore`に`config/`を追加することで、`git clean -fd`は`config/`を削除しない
-- 除外リスト（`-e config/`）は二重保護として残す（冗長だが安全）
+- **運用（Ansibleデプロイ）では`git clean`を実行しない**方針に変更
+- `git reset --hard`のみで追跡ファイルを収束させ、運用データは保持する
+- `.gitignore`はローカル作業時の保護として維持する
 
 **git cleanの動作**:
 | ファイルの状態 | `git clean -fd` | `git clean -fdX` |
@@ -1154,8 +1147,8 @@ git clean -fd \
 | 追跡されていない（.gitignoreに無い） | 削除する | 削除しない |
 
 **修正内容**:
-1. `.gitignore` に `config/` を追加（根本的解決策）
-2. `infrastructure/ansible/roles/common/tasks/main.yml` の `git clean -fd` の除外リストに `config/` を追加（二重保護）
+1. `.gitignore` に `config/` を追加（ローカル作業時の保護）
+2. **Ansibleデプロイから`git clean`を削除**
 
 **学んだこと**:
 - **`.gitignore`による一元管理**: `.gitignore`に追加することで、`git clean -fd`は自動的に保護される
@@ -1174,8 +1167,8 @@ git clean -fd \
 - 本KB-164: git clean設計の根本的改善（`.gitignore`による一元管理）
 
 **再発防止策**:
-- `.gitignore`に`config/`を追加済み（`git clean -fd`は`.gitignore`で無視されているファイルを削除しない）
-- 除外リストも追加済み（二重保護）
+- **Ansibleデプロイから`git clean`を削除済み**
+- `.gitignore`に`config/`を追加済み（ローカル作業時の保護）
 - 今後、新しい運用データディレクトリを追加する際は、必ず`.gitignore`にも追加する
 
 ---

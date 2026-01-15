@@ -65,6 +65,9 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **解決状況**: ✅ **解決済み**（2025-12-01）
 
+**追記（2026-01-15）**:
+- 運用デプロイでは`git clean`を使用しない方針に変更（運用データ削除の発生源を排除）
+
 **関連ファイル**: 
 - `infrastructure/ansible/inventory.yml`（インベントリファイル）
 - `infrastructure/ansible/playbooks/update-clients.yml`（更新プレイブック）

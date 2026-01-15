@@ -16,6 +16,11 @@ update-frequency: medium
 
 本ドキュメントでは、`git clean`コマンドの安全な使用方法を説明します。
 
+## 本プロジェクトでの方針
+
+**運用（Ansibleデプロイ）では`git clean`を使用しない**方針です。  
+理由: 運用データ（`config/backup.json`など）が削除されるリスクが高く、除外リストの更新が1デプロイ遅延で反映されるため、根本対策として`git clean`を排除しています。
+
 ## `git clean`のリスク
 
 ### 削除されるファイル
@@ -71,7 +76,9 @@ git clean -fd \
 
 ### 3. Ansibleプレイブックでの使用
 
-**推奨実装**:
+**注意**: 本プロジェクトの運用デプロイでは`git clean`を実行しません（過去の参考例）。
+
+**参考実装**:
 ```yaml
 - name: Clean untracked files before checkout (excluding protected directories)
   ansible.builtin.shell: |
