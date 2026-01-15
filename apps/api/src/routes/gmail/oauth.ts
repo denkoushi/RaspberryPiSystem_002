@@ -26,9 +26,13 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     preHandler: [mustBeAdmin]
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
-    const clientId = config.storage.options?.clientId as string | undefined;
-    const clientSecret = config.storage.options?.clientSecret as string | undefined;
-    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+    // 新構造（options.gmail.*）を優先、なければ旧構造（options.clientId等）をフォールバック
+    const clientId = (config.storage.options?.gmail?.clientId as string | undefined) 
+      || (config.storage.options?.clientId as string | undefined);
+    const clientSecret = (config.storage.options?.gmail?.clientSecret as string | undefined)
+      || (config.storage.options?.clientSecret as string | undefined);
+    const configuredRedirectUri = (config.storage.options?.gmail?.redirectUri as string | undefined)
+      || (config.storage.options?.redirectUri as string | undefined);
 
     if (!clientId || !clientSecret) {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
@@ -91,15 +95,19 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       gmailAccessToken?: string;
       gmailRefreshToken?: string;
     }) | undefined;
-    const clientId = config.storage.options?.clientId as string | undefined;
-    const clientSecret = config.storage.options?.clientSecret as string | undefined;
+    // 新構造（options.gmail.*）を優先、なければ旧構造（options.clientId等）をフォールバック
+    const clientId = (config.storage.options?.gmail?.clientId as string | undefined)
+      || (config.storage.options?.clientId as string | undefined);
+    const clientSecret = (config.storage.options?.gmail?.clientSecret as string | undefined)
+      || (config.storage.options?.clientSecret as string | undefined);
 
     if (!clientId || !clientSecret) {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
     }
 
     // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
-    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+    const configuredRedirectUri = (config.storage.options?.gmail?.redirectUri as string | undefined)
+      || (config.storage.options?.redirectUri as string | undefined);
     let redirectUri: string;
     if (configuredRedirectUri) {
       redirectUri = configuredRedirectUri;
@@ -175,9 +183,13 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       gmailAccessToken?: string;
       gmailRefreshToken?: string;
     }) | undefined;
-    const refreshToken = opts?.gmailRefreshToken;
-    const clientId = config.storage.options?.clientId as string | undefined;
-    const clientSecret = config.storage.options?.clientSecret as string | undefined;
+    // 新構造（options.gmail.*）を優先、なければ旧構造（options.gmailRefreshToken等）をフォールバック
+    const refreshToken = (config.storage.options?.gmail?.refreshToken as string | undefined)
+      || opts?.gmailRefreshToken;
+    const clientId = (config.storage.options?.gmail?.clientId as string | undefined)
+      || (config.storage.options?.clientId as string | undefined);
+    const clientSecret = (config.storage.options?.gmail?.clientSecret as string | undefined)
+      || (config.storage.options?.clientSecret as string | undefined);
 
     if (!refreshToken) {
       throw new ApiError(400, 'Refresh token is required in config file');
@@ -188,7 +200,8 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     }
 
     // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
-    const configuredRedirectUri = config.storage.options?.redirectUri as string | undefined;
+    const configuredRedirectUri = (config.storage.options?.gmail?.redirectUri as string | undefined)
+      || (config.storage.options?.redirectUri as string | undefined);
     let redirectUri: string;
     if (configuredRedirectUri) {
       redirectUri = configuredRedirectUri;
