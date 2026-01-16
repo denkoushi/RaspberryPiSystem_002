@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-08
+last-verified: 2026-01-16
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -850,6 +850,57 @@ const textX = x + textAreaX;
 - `apps/api/src/config/env.ts`（環境変数追加）
 - `apps/api/src/services/signage/signage.service.ts`（順番切り替えロジック実装）
 - `docs/modules/signage/README.md`（仕様更新）
+
+---
+
+### [KB-169] Pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動
+
+**実装日時**: 2026-01-16
+
+**事象**: 
+- Pi3デプロイがメモリ不足で完了しない、または極端に遅い
+- aptパッケージインストールやAnsibleタスクでswapが発生し、デプロイが数十分かかる
+- デプロイ完了後に`signage-lite.service`が起動できない（lightdmが停止されているため）
+
+**要因**: 
+- Pi3はメモリが非常に限られている（総メモリ416MB、利用可能120MB程度）
+- `lightdm`（GUIディスプレイマネージャー）が約100MBのメモリを消費
+- `signage-lite.service`は`After=graphical.target`と`DISPLAY=:0`を必要とし、lightdmが停止していると起動できない
+- clientロールの`services_to_restart`に`signage-lite.service`が含まれており、デプロイ中にサービス再起動を試みて失敗
+
+**実施した対策**: 
+- ✅ **preflight: lightdm停止**: `infrastructure/ansible/tasks/preflight-pi3-signage.yml`にlightdm停止タスクを追加。約100MBのメモリを確保（利用可能メモリ120MB→220MB）
+- ✅ **signageロール: サービス起動スキップ**: lightdm停止時は`signage-lite.service`と関連タイマーの起動をスキップ（`when: lightdm_stopped is not defined or lightdm_stopped is not changed`）
+- ✅ **clientロール: signage関連サービス除外**: lightdm停止時は`services_to_restart`からsignage関連サービスをフィルタリング（`services_to_restart_filtered`）
+- ✅ **post_tasks: Pi3再起動**: デプロイ完了後にPi3を再起動（`ansible.builtin.reboot`）し、lightdmとsignage-lite.serviceを自動復活
+- ✅ **再起動後の確認**: Pi3再起動後に`signage-lite.service`がactiveになることを確認するタスクを追加
+
+**実装の詳細**:
+1. **preflight**: `systemctl stop lightdm`でGUIを停止し、約100MBのメモリを確保
+2. **signageロール**: `lightdm_stopped.changed`が`true`の場合、サービス起動タスクをスキップ
+3. **clientロール**: `services_to_restart`から`signage-lite.*`にマッチするサービスを除外した`services_to_restart_filtered`を使用
+4. **post_tasks**: `ansible.builtin.reboot`でPi3を再起動（タイムアウト120秒）
+5. **確認タスク**: 30回のループで`systemctl is-active signage-lite.service`を確認（合計60秒待機）
+
+**学んだこと**:
+1. **lightdm停止の効果**: lightdm停止で約100MBのメモリを確保でき、デプロイが安定して完了する
+2. **再起動による復活**: デプロイ後の再起動でlightdmとsignage-liteが正しい順序で自動起動する
+3. **サービス依存関係**: `signage-lite.service`はlightdm（graphical.target）に依存しており、GUI環境なしでは起動できない
+4. **Ansibleの変数スコープ**: preflightで設定した`lightdm_stopped`変数は後続のロールでも参照可能
+
+**解決状況**: ✅ **解決済み**（2026-01-16）
+
+**実機検証結果**: ✅ **デプロイ成功**（2026-01-16）
+- `PLAY RECAP`: ok=101, changed=22, failed=0
+- `signage-lite.service`: active
+- 所要時間: 約10分
+
+**関連ファイル**:
+- `infrastructure/ansible/tasks/preflight-pi3-signage.yml`（lightdm停止タスク追加）
+- `infrastructure/ansible/playbooks/deploy.yml`（post_tasksにPi3再起動タスク追加）
+- `infrastructure/ansible/roles/signage/tasks/main.yml`（lightdm停止時のサービス起動スキップ）
+- `infrastructure/ansible/roles/client/tasks/main.yml`（signage関連サービスのフィルタリング）
+- `docs/guides/deployment.md`（Pi3デプロイ手順の自動化を反映）
 
 ---
 

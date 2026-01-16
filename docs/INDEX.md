@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-16）
+
+- **✅ Pi3デプロイ信頼性向上（lightdm停止・自動再起動）**: Pi3デプロイがメモリ不足で完了しない問題を根本解決。プレフライトチェックでlightdm（GUIディスプレイマネージャー）を停止し約100MBのメモリを確保。デプロイ完了後はPi3を自動再起動してGUIとサイネージサービスを復活。signageロール・clientロールでlightdm停止時はサービス起動をスキップし、デプロイエラーを回避。デプロイ成功（ok=101, changed=22, failed=0）、所要時間約10分を実機検証で確認。詳細は [knowledge-base/infrastructure/signage.md#kb-169](./knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動) / [guides/deployment.md](./guides/deployment.md) を参照。
+
 ### 🆕 最新アップデート（2025-12-31）
 
 - **✅ CSVインポートUI改善・計測機器・吊具対応完了**: USBメモリ経由のCSVインポートUIを4つのフォーム（従業員・工具・計測機器・吊具）に分割し、各データタイプを個別にアップロードできるように改善。新APIエンドポイント`POST /api/imports/master/:type`を追加し、単一データタイプ対応のインポート機能を実装。共通コンポーネント`ImportForm`を作成し、コードの重複を削減。各フォームで`replaceExisting`を個別に設定可能。CI通過確認済み。詳細は [knowledge-base/api.md#kb-117](./knowledge-base/api.md#kb-117-csvインポートapiの単一データタイプ対応エンドポイント追加) / [knowledge-base/frontend.md#kb-117](./knowledge-base/frontend.md#kb-117-csvインポートuiの4フォーム分割実装) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。

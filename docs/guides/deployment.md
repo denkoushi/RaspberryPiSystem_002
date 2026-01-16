@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-03（APIエンドポイントHTTPS化、Pi3サイネージデザイン変更）
+最終更新: 2026-01-16（Pi3デプロイ時のlightdm停止・自動再起動対応）
 
 ## 概要
 
@@ -296,15 +296,20 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（自動化済み）
 
-**✅ 自動化**: Pi3デプロイ時のプレフライトチェックは**自動的に実行**されます（2026-01-08実装）。以下の手順を手動で実行する必要はありません。
+**✅ 自動化**: Pi3デプロイ時のプレフライトチェックと再起動は**自動的に実行**されます（2026-01-16更新）。以下の手順を手動で実行する必要はありません。
 
 **自動実行されるプレフライトチェック**:
 1. **コントロールノード側（Pi5上）**: Ansibleロールのテンプレートファイル存在確認（`roles/signage/templates/`）
 2. **Pi3側**: 
    - サービス停止・無効化（`signage-lite.service`, `signage-lite-update.timer`, `signage-lite-watchdog.timer`, `signage-daily-reboot.timer`, `status-agent.timer`）
    - サービスmask（`signage-lite.service`の自動再起動防止）
+   - **lightdm停止**（GUIを停止して約100MBのメモリを確保）（[KB-169](../knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動)参照）
    - 残存AnsiballZプロセスの掃除（120秒以上経過したもの）
    - メモリ閾値チェック（利用可能メモリ >= 120MB）
+
+**デプロイ完了後の自動処理（post_tasks）**:
+- **Pi3自動再起動**: lightdmを停止した場合、デプロイ完了後にPi3を自動的に再起動し、GUI（lightdm）とサイネージサービス（signage-lite.service）を復活させます
+- **サイネージサービス確認**: 再起動後、`signage-lite.service`がactiveになるまで最大60秒待機し、結果をログ出力します
 
 **プレフライトチェックが失敗した場合**:
 - メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
@@ -394,7 +399,8 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 ```
 
 **重要**: 
-- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+- デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません
+- デプロイ前のプレフライトチェックで、Ansibleが自動的にサービスを停止・無効化・ランタイムマスクします（[KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)、[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
 
 **トラブルシューティング**:
 - **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
@@ -406,7 +412,6 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 - [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
 - [KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
 - [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
-- [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性): Pi3デプロイ時のsignage-liteサービス自動再起動の完全防止（systemctl maskの必要性）
 
 ## デプロイ方法（詳細）
 
