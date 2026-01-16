@@ -147,11 +147,12 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
-- name: Unmask signage-lite service (ensure it can be started after preflight mask)
-  ansible.builtin.systemd:
-    name: signage-lite.service
-    masked: false
-  ignore_errors: true
+- name: Unmask signage-lite service (ensure it can be started after preflight runtime mask)
+  ansible.builtin.shell: systemctl unmask signage-lite.service
+  register: unmask_result
+  changed_when: unmask_result.rc == 0
+  failed_when: false
+  # Note: systemctl unmask removes both runtime and persistent masks
 
 - name: Re-enable signage-lite service (ensure enabled state convergence)
   ansible.builtin.systemd:
@@ -173,10 +174,46 @@
     name: signage-daily-reboot.timer
     enabled: true
 
+# region agent log
+- name: Log before starting signage timers
+  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+  delegate_to: localhost
+  changed_when: false
+  vars:
+    log_payload:
+      sessionId: "debug-session"
+      runId: "signage"
+      hypothesisId: "H3"
+      location: "infrastructure/ansible/roles/signage/tasks/main.yml"
+      message: "before_start_signage_timers"
+      data:
+        host: "{{ inventory_hostname }}"
+        note: "about_to_start_signage-lite_update_timer"
+      timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+# endregion
+
 - name: Start signage-lite update timer
   ansible.builtin.systemd:
     name: signage-lite-update.timer
     state: started
+
+# region agent log
+- name: Log after starting signage update timer
+  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug.log"
+  delegate_to: localhost
+  changed_when: false
+  vars:
+    log_payload:
+      sessionId: "debug-session"
+      runId: "signage"
+      hypothesisId: "H3"
+      location: "infrastructure/ansible/roles/signage/tasks/main.yml"
+      message: "after_start_signage_update_timer"
+      data:
+        host: "{{ inventory_hostname }}"
+        note: "signage-lite-update.timer started task completed"
+      timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+# endregion
 
 - name: Start signage-lite watchdog timer
   ansible.builtin.systemd:

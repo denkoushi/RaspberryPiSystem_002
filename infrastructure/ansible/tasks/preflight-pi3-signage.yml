@@ -49,10 +49,54 @@
       ignore_errors: true
 
     - name: Mask signage-lite service (runtime only, prevents auto-restart)
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        masked: true
-      ignore_errors: true
+      ansible.builtin.shell: systemctl mask --runtime signage-lite.service
+      register: mask_result
+      changed_when: mask_result.rc == 0
+      failed_when: false
+      # Note: --runtime mask does not conflict with existing service files
+      # It creates a runtime-only symlink that prevents auto-restart during deployment
+    # region agent log
+    - name: Capture signage-lite unit file state after mask attempt
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [ -e /etc/systemd/system/signage-lite.service ]; then
+          if [ -L /etc/systemd/system/signage-lite.service ]; then
+            echo "symlink:$(readlink -f /etc/systemd/system/signage-lite.service)"
+          else
+            echo "file"
+          fi
+        else
+          echo "missing"
+        fi
+      register: signage_unit_state
+      changed_when: false
+
+    - name: Capture signage-lite systemd states
+      ansible.builtin.shell: |
+        set -euo pipefail
+        echo "enabled=$(systemctl is-enabled signage-lite.service 2>/dev/null || true)"
+        echo "active=$(systemctl is-active signage-lite.service 2>/dev/null || true)"
+        echo "update_enabled=$(systemctl is-enabled signage-lite-update.timer 2>/dev/null || true)"
+      register: signage_systemd_state
+      changed_when: false
+
+    - name: Log preflight systemd state
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+      delegate_to: localhost
+      changed_when: false
+      vars:
+        log_payload:
+          sessionId: "debug-session"
+          runId: "preflight"
+          hypothesisId: "H1"
+          location: "infrastructure/ansible/tasks/preflight-pi3-signage.yml"
+          message: "preflight_systemd_state"
+          data:
+            host: "{{ inventory_hostname }}"
+            unit_file_state: "{{ signage_unit_state.stdout | default('') }}"
+            systemd_state: "{{ signage_systemd_state.stdout | default('') }}"
+          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+    # endregion
 
     - name: Wait for services to fully stop
       ansible.builtin.pause:
@@ -81,6 +125,24 @@
     - name: Extract available memory value
       ansible.builtin.set_fact:
         available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
+    # region agent log
+    - name: Log preflight memory snapshot
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+      delegate_to: localhost
+      changed_when: false
+      vars:
+        log_payload:
+          sessionId: "debug-session"
+          runId: "preflight"
+          hypothesisId: "H2"
+          location: "infrastructure/ansible/tasks/preflight-pi3-signage.yml"
+          message: "preflight_memory_snapshot"
+          data:
+            host: "{{ inventory_hostname }}"
+            available_memory_mb: "{{ available_memory_mb | default(0) }}"
+            raw_memory_stdout: "{{ available_memory_mb_raw.stdout | default('') }}"
+          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+    # endregion
 
     - name: Fail if insufficient memory available
       ansible.builtin.fail:
