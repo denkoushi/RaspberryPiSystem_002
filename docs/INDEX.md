@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-01-16）
 
+- **✅ デバイスタイプ汎用化による将来クライアント拡張対応**: `preflight-pi3-signage.yml`を`preflight-signage.yml`に汎用化し、Pi3以外のサイネージ端末（Pi Zero 2Wなど）にも対応可能に。`group_vars/all.yml`に`device_type_defaults`を追加し、デバイスタイプごとの設定（メモリ要件、lightdm停止要否、サービス停止リスト）を一元管理。inventoryファイルに`device_type`変数を追加（Pi3: `pi3`, Pi Zero 2W: `pi_zero_2w`）。`device_type`未指定時は`default`設定を使用し、後方互換性を維持。新しいデバイスタイプ追加時の手順をドキュメント化。CI成功・構文チェック完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-170](./knowledge-base/infrastructure/signage.md#kb-170-デバイスタイプ汎用化による将来クライアント拡張対応) / [guides/deployment.md](./guides/deployment.md#新しいサイネージ端末デバイスタイプの追加手順) を参照。
+
 - **✅ Pi3デプロイ信頼性向上（lightdm停止・自動再起動）**: Pi3デプロイがメモリ不足で完了しない問題を根本解決。プレフライトチェックでlightdm（GUIディスプレイマネージャー）を停止し約100MBのメモリを確保。デプロイ完了後はPi3を自動再起動してGUIとサイネージサービスを復活。signageロール・clientロールでlightdm停止時はサービス起動をスキップし、デプロイエラーを回避。デプロイ成功（ok=101, changed=22, failed=0）、所要時間約10分を実機検証で確認。詳細は [knowledge-base/infrastructure/signage.md#kb-169](./knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動) / [guides/deployment.md](./guides/deployment.md) を参照。
 
 ### 🆕 最新アップデート（2025-12-31）

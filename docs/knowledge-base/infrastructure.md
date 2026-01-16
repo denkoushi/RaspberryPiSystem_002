@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - インフラ関連
 
 **カテゴリ**: インフラ関連  
-**件数**: 62件（サブカテゴリ別に分割）  
+**件数**: 63件（サブカテゴリ別に分割）  
 **索引**: [index.md](./index.md)
 
 > **重要**: このファイルは索引ファイルです。各KBは機能別にサブカテゴリファイルに分割されています。
@@ -26,7 +26,7 @@ update-frequency: medium
 | **バックアップ・リストア関連** | [backup-restore.md](./infrastructure/backup-restore.md) | 10件 | バックアップとリストア機能に関するトラブルシューティング情報 |
 | **Ansible/デプロイ関連** | [ansible-deployment.md](./infrastructure/ansible-deployment.md) | 9件 | Ansibleとデプロイメントに関するトラブルシューティング情報 |
 | **セキュリティ関連** | [security.md](./infrastructure/security.md) | 8件 | セキュリティ対策と監視に関するトラブルシューティング情報 |
-| **サイネージ関連** | [signage.md](./infrastructure/signage.md) | 11件 | デジタルサイネージ機能に関するトラブルシューティング情報 |
+| **サイネージ関連** | [signage.md](./infrastructure/signage.md) | 12件 | デジタルサイネージ機能に関するトラブルシューティング情報 |
 | **NFC/ハードウェア関連** | [hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェアに関するトラブルシューティング情報 |
 | **その他** | [miscellaneous.md](./infrastructure/miscellaneous.md) | 16件 | その他のインフラ関連トラブルシューティング情報 |
 
