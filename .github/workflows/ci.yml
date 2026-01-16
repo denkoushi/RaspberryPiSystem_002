@@ -313,8 +313,9 @@ jobs:
           # Create temporary ansible.cfg without vault_password_file for syntax check
           # (vault decryption not needed for syntax validation)
           cp ansible.cfg /tmp/ansible.cfg.backup || true
-          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI syntax check)/' ansible.cfg > /tmp/ansible.cfg.ci
-          export ANSIBLE_CONFIG=/tmp/ansible.cfg.ci
+          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI syntax check)/' ansible.cfg > /tmp/ansible-ci.cfg
+          export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
+          export ANSIBLE_ROLES_PATH="$(pwd)/roles"
           
           # Test all playbooks
           # Note: backup-clients.yml and backup-client-directory.yml require runtime variables
@@ -371,8 +372,9 @@ jobs:
           # Create temporary ansible.cfg without vault_password_file for dry-run check
           # (vault decryption not needed for dry-run validation)
           cp ansible.cfg /tmp/ansible.cfg.backup || true
-          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI dry-run check)/' ansible.cfg > /tmp/ansible.cfg.ci
-          export ANSIBLE_CONFIG=/tmp/ansible.cfg.ci
+          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI dry-run check)/' ansible.cfg > /tmp/ansible-ci.cfg
+          export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
+          export ANSIBLE_ROLES_PATH="$(pwd)/roles"
           
           # Dry-run check for deploy.yml (most critical playbook)
           # Note: This will skip tasks that require actual host connection, but will validate
