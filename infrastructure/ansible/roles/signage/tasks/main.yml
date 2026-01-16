@@ -200,9 +200,10 @@
 
 # region agent log
 - name: Log after starting signage update timer
-  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug.log"
+  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ lookup('env', 'HOME') }}/.cursor/debug.log 2>/dev/null || true"
   delegate_to: localhost
   changed_when: false
+  ignore_errors: true
   vars:
     log_payload:
       sessionId: "debug-session"
