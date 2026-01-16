@@ -1,8 +1,15 @@
 ---
+- name: Check if curl is already installed
+  ansible.builtin.command: which curl
+  register: curl_check
+  failed_when: false
+  changed_when: false
+
 - name: Ensure curl is installed (required for Tailscale install script)
   ansible.builtin.package:
     name: curl
     state: present
+  when: curl_check.rc != 0
 
 - name: Install Tailscale package
   ansible.builtin.shell: |
