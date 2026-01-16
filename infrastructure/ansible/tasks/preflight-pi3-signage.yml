@@ -55,6 +55,15 @@
       failed_when: false
       # Note: --runtime mask does not conflict with existing service files
       # It creates a runtime-only symlink that prevents auto-restart during deployment
+
+    # Pi3はメモリが非常に限られているため(416MB)、デプロイ中はlightdmを停止して
+    # 約100MBのメモリを確保する。デプロイ完了後にPi3を再起動してGUIを復活させる。
+    - name: Stop lightdm to free memory for deployment (Pi3 only)
+      ansible.builtin.systemd:
+        name: lightdm
+        state: stopped
+      register: lightdm_stopped
+      ignore_errors: true
     # region agent log
     - name: Capture signage-lite unit file state after mask attempt
       ansible.builtin.shell: |

@@ -150,6 +150,45 @@
       when: '"server" not in group_names'
 
   post_tasks:
+    # Pi3はデプロイ中にlightdmを停止してメモリを確保しているため、
+    # デプロイ完了後に再起動してGUI（lightdm + signage-lite）を復活させる
+    - name: Reboot Pi3 after deployment to restore GUI and signage
+      ansible.builtin.reboot:
+        reboot_timeout: 120
+        msg: "Rebooting after deployment to restore lightdm and signage services"
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Wait for Pi3 signage service to become active after reboot
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if systemctl is-active signage-lite.service >/dev/null 2>&1; then
+            echo "signage-lite.service is active"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "signage-lite.service did not become active within 60 seconds"
+        exit 1
+      register: signage_check
+      failed_when: false
+      changed_when: false
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Report signage service status after reboot
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ signage_check.stdout | default('signage check skipped') }}"
+      when:
+        - signage_check is defined
+        - signage_check.stdout is defined
+
     - name: Collect failed hosts summary
       ansible.builtin.debug:
         msg: "Failed hosts: {{ ansible_failed_hosts | default([]) | join(', ') }}"
