@@ -82,9 +82,21 @@
     services_to_restart: "{{ client_default_services_to_restart }}"
   when: services_to_restart is not defined
 
+# lightdm停止時（Pi3デプロイ時）はsignage関連サービスの再起動をスキップ
+# これらはpost_tasksでの再起動後に自動起動する
+- name: Filter out signage services when lightdm is stopped
+  ansible.builtin.set_fact:
+    services_to_restart_filtered: "{{ services_to_restart | reject('match', 'signage-lite.*') | list }}"
+  when: lightdm_stopped is defined and lightdm_stopped is changed
+
+- name: Use original services list when lightdm is not stopped
+  ansible.builtin.set_fact:
+    services_to_restart_filtered: "{{ services_to_restart }}"
+  when: lightdm_stopped is not defined or lightdm_stopped is not changed
+
 - name: Restart required services (clients) with retry
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
-  loop: "{{ services_to_restart }}"
+  loop: "{{ services_to_restart_filtered }}"
   loop_control:
     loop_var: service_name
 
@@ -99,7 +111,7 @@
     fi
   args:
     executable: /bin/bash
-  loop: "{{ services_to_restart | select('match', '\\.service$') | list }}"
+  loop: "{{ services_to_restart_filtered | select('match', '\\.service$') | list }}"
   loop_control:
     label: "{{ item }}"
   register: client_service_health
