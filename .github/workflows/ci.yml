@@ -310,6 +310,12 @@ jobs:
             exit 0
           fi
           
+          # Install required Ansible collections
+          echo "Installing Ansible collections..."
+          ansible-galaxy collection install community.general || {
+            echo "Warning: Failed to install community.general collection, but continuing..."
+          }
+          
           # Create temporary ansible.cfg without vault_password_file for syntax check
           # (vault decryption not needed for syntax validation)
           cp ansible.cfg /tmp/ansible.cfg.backup || true
@@ -368,6 +374,12 @@ jobs:
             echo "ansible-playbook not found, skipping Ansible dry-run"
             exit 0
           fi
+          
+          # Install required Ansible collections (if not already installed)
+          echo "Installing Ansible collections..."
+          ansible-galaxy collection install community.general || {
+            echo "Warning: Failed to install community.general collection, but continuing..."
+          }
           
           # Create temporary ansible.cfg without vault_password_file for dry-run check
           # (vault decryption not needed for dry-run validation)
