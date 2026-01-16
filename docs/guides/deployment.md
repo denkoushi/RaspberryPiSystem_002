@@ -294,18 +294,23 @@ curl http://localhost:7071/api/agent/status
 - Pi3の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 
+**重要（2026-01-16更新）**: 
+- デバイスタイプ汎用化により、Pi3以外のサイネージ端末（Pi Zero 2Wなど）にも対応可能になりました
+- デバイスタイプごとの設定は`group_vars/all.yml`の`device_type_defaults`で管理されています
+- 新しいデバイスタイプを追加する場合は、`device_type_defaults`に設定を追加し、inventoryファイルに`device_type`を指定してください
+
 ### デプロイ前の準備（自動化済み）
 
-**✅ 自動化**: Pi3デプロイ時のプレフライトチェックと再起動は**自動的に実行**されます（2026-01-16更新）。以下の手順を手動で実行する必要はありません。
+**✅ 自動化**: サイネージ端末デプロイ時のプレフライトチェックと再起動は**自動的に実行**されます（2026-01-16更新）。以下の手順を手動で実行する必要はありません。
 
 **自動実行されるプレフライトチェック**:
 1. **コントロールノード側（Pi5上）**: Ansibleロールのテンプレートファイル存在確認（`roles/signage/templates/`）
-2. **Pi3側**: 
+2. **サイネージ端末側（デバイスタイプごとに設定）**: 
    - サービス停止・無効化（`signage-lite.service`, `signage-lite-update.timer`, `signage-lite-watchdog.timer`, `signage-daily-reboot.timer`, `status-agent.timer`）
    - サービスmask（`signage-lite.service`の自動再起動防止）
-   - **lightdm停止**（GUIを停止して約100MBのメモリを確保）（[KB-169](../knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動)参照）
+   - **lightdm停止**（デバイスタイプに応じて。Pi3/Pi Zero 2WではGUIを停止して約100MBのメモリを確保）（[KB-169](../knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動)参照）
    - 残存AnsiballZプロセスの掃除（120秒以上経過したもの）
-   - メモリ閾値チェック（利用可能メモリ >= 120MB）
+   - メモリ閾値チェック（デバイスタイプごとの設定値、デフォルト: >= 120MB）
 
 **デプロイ完了後の自動処理（post_tasks）**:
 - **Pi3自動再起動**: lightdmを停止した場合、デプロイ完了後にPi3を自動的に再起動し、GUI（lightdm）とサイネージサービス（signage-lite.service）を復活させます
@@ -937,6 +942,108 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d
 ```
 
 詳細は [バックアップ・リストアガイド](./backup-and-restore.md) を参照してください。
+
+## 新しいサイネージ端末（デバイスタイプ）の追加手順
+
+**重要（2026-01-16更新）**: デバイスタイプ汎用化により、Pi3以外のサイネージ端末（Pi Zero 2Wなど）にも対応可能になりました。
+
+### 手順概要
+
+新しいサイネージ端末を追加する際は、以下の手順を実行してください：
+
+1. **デバイスタイプ設定の追加**（`group_vars/all.yml`）
+2. **inventoryファイルへの追加**（`inventory.yml`または`inventory-talkplaza.yml`）
+3. **ネットワーク設定の追加**（`group_vars/all.yml`、必要に応じて）
+4. **動作確認**
+
+### 1. デバイスタイプ設定の追加
+
+`infrastructure/ansible/group_vars/all.yml`の`device_type_defaults`に新しいデバイスタイプを追加します：
+
+```yaml
+device_type_defaults:
+  # 新しいデバイスタイプの例（Pi Zero 2W）
+  pi_zero_2w:
+    memory_required_mb: 120  # デプロイに必要な最小メモリ（MB）
+    stop_lightdm: true       # lightdm停止が必要か（GUIが必要な場合true）
+    services_to_stop:        # デプロイ前に停止するサービスリスト
+      - signage-lite.service
+      - signage-lite-update.timer
+      - signage-lite-watchdog.timer
+      - signage-daily-reboot.timer
+      - status-agent.timer
+```
+
+**設定項目の説明**:
+- `memory_required_mb`: デプロイに必要な最小メモリ（MB）。デバイスのメモリ容量に応じて設定してください。
+- `stop_lightdm`: `true`の場合、デプロイ前にlightdm（GUI）を停止してメモリを確保します。デプロイ完了後に自動的に再起動されます。
+- `services_to_stop`: デプロイ前に停止するサービスリスト。デバイスごとに必要なサービスを指定してください。
+
+### 2. inventoryファイルへの追加
+
+`infrastructure/ansible/inventory.yml`（第2工場）または`infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場）に新しいホストを追加します：
+
+```yaml
+raspberrypi-zero2w-signage01:
+  ansible_host: "{{ signage_ip_02 }}"  # または直接IPアドレス
+  ansible_user: signageras3
+  device_type: "pi_zero_2w"  # デバイスタイプを指定
+  manage_signage_lite: true
+  status_agent_client_id: raspberrypi-zero2w-signage01
+  status_agent_location: "ラズパイZero2W - サイネージ01"
+  signage_server_url: "{{ server_base_url }}"
+  signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi-zero2w-signage01') }}"
+  services_to_restart:
+    - signage-lite.service
+    - signage-lite-update.timer
+    - status-agent.service
+    - status-agent.timer
+  # ... その他の設定
+```
+
+**重要**: `device_type`変数を必ず指定してください。未指定の場合は`default`設定が使用されます。
+
+### 3. ネットワーク設定の追加（必要に応じて）
+
+新しいデバイスのIPアドレスを`group_vars/all.yml`に追加します：
+
+```yaml
+local_network:
+  raspberrypi_zero2w_signage01_ip: "192.168.10.225"
+
+tailscale_network:
+  raspberrypi_zero2w_signage01_ip: "100.105.224.87"
+```
+
+### 4. 動作確認
+
+```bash
+# 構文チェック
+cd /Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible
+ansible-playbook --syntax-check playbooks/deploy.yml -i inventory.yml
+
+# 接続テスト
+ansible-playbook playbooks/ping.yml -i inventory.yml --limit raspberrypi-zero2w-signage01
+
+# デプロイテスト（必要に応じて）
+ansible-playbook playbooks/deploy.yml -i inventory.yml --limit raspberrypi-zero2w-signage01
+```
+
+### 既存デバイスタイプの確認
+
+現在サポートされているデバイスタイプ：
+
+- **pi3**: Raspberry Pi 3（メモリ416MB、lightdm停止が必要）
+- **pi_zero_2w**: Raspberry Pi Zero 2W（メモリ512MB、lightdm停止が必要）
+- **default**: デフォルト設定（device_type未指定時）
+
+### トラブルシューティング
+
+- **デバイスタイプが見つからない**: `device_type_defaults`に設定が追加されているか確認してください。
+- **メモリ不足エラー**: `memory_required_mb`の値を調整するか、`stop_lightdm: true`を設定してください。
+- **サービスが起動しない**: `services_to_stop`に必要なサービスが含まれているか確認してください。
+
+詳細は [KB-169](../knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動) を参照してください。
 
 ## 関連ドキュメント
 

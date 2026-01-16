@@ -160,3 +160,37 @@ security_monitor_enabled: true
 security_monitor_state_dir: "/var/lib/security-monitor"
 security_monitor_fail2ban_log: "/var/log/fail2ban.log"
 security_monitor_timer_oncalendar: "*:0/15"
+
+# デバイスタイプごとのデフォルト設定（preflightチェック用）
+# 新しいデバイスタイプを追加する場合は、この設定に追加してください
+device_type_defaults:
+  # Pi3: メモリ416MB、lightdm停止が必要
+  pi3:
+    memory_required_mb: 120
+    stop_lightdm: true
+    services_to_stop:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - signage-lite-watchdog.timer
+      - signage-daily-reboot.timer
+      - status-agent.timer
+  # Pi Zero 2W: メモリ512MB、lightdm停止が必要（Pi3と同様の設定）
+  pi_zero_2w:
+    memory_required_mb: 120
+    stop_lightdm: true
+    services_to_stop:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - signage-lite-watchdog.timer
+      - signage-daily-reboot.timer
+      - status-agent.timer
+  # デフォルト設定（device_type未指定時）
+  default:
+    memory_required_mb: 120
+    stop_lightdm: false
+    services_to_stop:
+      - signage-lite.service
+      - signage-lite-update.timer
+      - signage-lite-watchdog.timer
+      - signage-daily-reboot.timer
+      - status-agent.timer

@@ -1,0 +1,159 @@
+---
+# Preflight tasks for signage deployment (device-type agnostic)
+# These tasks ensure signage device is in a safe state before deployment:
+# - Stop and disable services/timers to free memory
+# - Mask services to prevent auto-restart
+# - Clean up stale Ansible processes
+# - Verify sufficient memory is available
+#
+# Device-specific settings are loaded from device_type_defaults based on device_type variable.
+# If device_type is not set, 'default' configuration is used.
+
+- name: Determine device type and load defaults
+  ansible.builtin.set_fact:
+    device_type: "{{ device_type | default('default') }}"
+    device_config: "{{ device_type_defaults[device_type] | default(device_type_defaults['default']) }}"
+    memory_required_mb: "{{ device_config.memory_required_mb }}"
+    stop_lightdm: "{{ device_config.stop_lightdm }}"
+    services_to_stop: "{{ device_config.services_to_stop }}"
+
+- name: Preflight checks for signage deployment
+  block:
+    - name: Stop and disable signage services and timers
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: "{{ services_to_stop }}"
+      ignore_errors: true
+
+    - name: Mask signage-lite service (runtime only, prevents auto-restart)
+      ansible.builtin.shell: systemctl mask --runtime signage-lite.service
+      register: mask_result
+      changed_when: mask_result.rc == 0
+      failed_when: false
+      # Note: --runtime mask does not conflict with existing service files
+      # It creates a runtime-only symlink that prevents auto-restart during deployment
+
+    # lightdm停止はデバイスタイプごとに条件分岐
+    # Pi3やPi Zero 2Wなど、メモリが限られているデバイスではlightdmを停止して
+    # 約100MBのメモリを確保する。デプロイ完了後に再起動してGUIを復活させる。
+    - name: Stop lightdm to free memory for deployment
+      ansible.builtin.systemd:
+        name: lightdm
+        state: stopped
+      register: lightdm_stopped
+      ignore_errors: true
+      when: stop_lightdm | default(false)
+
+    # region agent log
+    - name: Capture signage-lite unit file state after mask attempt
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [ -e /etc/systemd/system/signage-lite.service ]; then
+          if [ -L /etc/systemd/system/signage-lite.service ]; then
+            echo "symlink:$(readlink -f /etc/systemd/system/signage-lite.service)"
+          else
+            echo "file"
+          fi
+        else
+          echo "missing"
+        fi
+      register: signage_unit_state
+      changed_when: false
+
+    - name: Capture signage-lite systemd states
+      ansible.builtin.shell: |
+        set -euo pipefail
+        echo "enabled=$(systemctl is-enabled signage-lite.service 2>/dev/null || true)"
+        echo "active=$(systemctl is-active signage-lite.service 2>/dev/null || true)"
+        echo "update_enabled=$(systemctl is-enabled signage-lite-update.timer 2>/dev/null || true)"
+      register: signage_systemd_state
+      changed_when: false
+
+    - name: Log preflight systemd state
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /tmp/debug.log 2>/dev/null || true"
+      delegate_to: localhost
+      changed_when: false
+      ignore_errors: true
+      vars:
+        log_payload:
+          sessionId: "debug-session"
+          runId: "preflight"
+          hypothesisId: "H1"
+          location: "infrastructure/ansible/tasks/preflight-signage.yml"
+          message: "preflight_systemd_state"
+          data:
+            host: "{{ inventory_hostname }}"
+            device_type: "{{ device_type }}"
+            unit_file_state: "{{ signage_unit_state.stdout | default('') }}"
+            systemd_state: "{{ signage_systemd_state.stdout | default('') }}"
+          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+    # endregion
+
+    - name: Wait for services to fully stop
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Clean up stale Ansible processes (AnsiballZ older than 120 seconds)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        ps aux | grep -E 'AnsiballZ_.*\.py' | grep -v grep | while read line; do
+          pid=$(echo "$line" | awk '{print $2}')
+          etimes=$(ps -o etimes= -p "$pid" 2>/dev/null || echo "0")
+          if [ "$etimes" -gt 120 ]; then
+            echo "Killing stale Ansible process: PID=$pid, etimes=${etimes}s"
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+        done
+      register: cleanup_result
+      changed_when: cleanup_result.stdout | length > 0
+      failed_when: false
+
+    - name: Check available memory
+      ansible.builtin.shell: free -m | awk '/^Mem:/ {print $7}'
+      register: available_memory_mb_raw
+      changed_when: false
+
+    - name: Extract available memory value
+      ansible.builtin.set_fact:
+        available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
+    # region agent log
+    - name: Log preflight memory snapshot
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /tmp/debug.log 2>/dev/null || true"
+      delegate_to: localhost
+      changed_when: false
+      ignore_errors: true
+      vars:
+        log_payload:
+          sessionId: "debug-session"
+          runId: "preflight"
+          hypothesisId: "H2"
+          location: "infrastructure/ansible/tasks/preflight-signage.yml"
+          message: "preflight_memory_snapshot"
+          data:
+            host: "{{ inventory_hostname }}"
+            device_type: "{{ device_type }}"
+            available_memory_mb: "{{ available_memory_mb | default(0) }}"
+            memory_required_mb: "{{ memory_required_mb }}"
+            raw_memory_stdout: "{{ available_memory_mb_raw.stdout | default('') }}"
+          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
+    # endregion
+
+    - name: Fail if insufficient memory available
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: Insufficient memory available on {{ inventory_hostname }}.
+          Available: {{ available_memory_mb }}MB (required: >= {{ memory_required_mb }}MB)
+          Device type: {{ device_type }}
+          
+          To free memory, manually stop the following services:
+          {% for service in services_to_stop %}
+          - sudo systemctl stop {{ service }}
+          {% endfor %}
+          {% if stop_lightdm %}
+          - sudo systemctl stop lightdm
+          {% endif %}
+          
+          Then wait a few seconds and retry deployment.
+      when: available_memory_mb | default(0) < memory_required_mb

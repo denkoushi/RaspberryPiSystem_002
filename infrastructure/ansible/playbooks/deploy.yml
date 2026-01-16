@@ -92,9 +92,11 @@
       run_once: true
 
   tasks:
-    # Preflight: Pi3 signage-specific preflight checks (stop services, check memory, cleanup)
-    - name: Run Pi3 signage preflight checks
-      ansible.builtin.include_tasks: "../tasks/preflight-pi3-signage.yml"
+    # Preflight: signage-specific preflight checks (device-type agnostic)
+    # Stops services, checks memory, cleans up stale processes
+    # Device-specific settings are loaded from device_type_defaults based on device_type variable
+    - name: Run signage preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-signage.yml"
       when:
         - '"server" not in group_names'
         - manage_signage_lite | default(false) | bool

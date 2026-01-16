@@ -67,6 +67,8 @@ all:
           ansible_host: "{{ signage_ip }}"
           ansible_user: signageras3
           tailscale_enabled: true
+          # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
+          device_type: "pi3"
           status_agent_client_id: raspberrypi3-signage1
           status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
           status_agent_location: "ラズパイ3 - サイネージ1"

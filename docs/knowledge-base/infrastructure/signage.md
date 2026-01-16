@@ -904,6 +904,57 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-170] デバイスタイプ汎用化による将来クライアント拡張対応
+
+**実装日時**: 2026-01-16
+
+**事象**: 
+- `preflight-pi3-signage.yml`がPi3専用でハードコードされており、Pi Zero 2Wなど新しいデバイスタイプに対応できない
+- 新しいデバイスタイプを追加する際、preflightタスクファイルを複製・修正する必要があり、保守性が低い
+
+**要因**: 
+- preflightタスクがPi3専用の設定（メモリ要件120MB、lightdm停止、サービス停止リスト）でハードコードされていた
+- デバイスタイプごとの設定を管理する仕組みがなかった
+
+**実施した対策**: 
+- ✅ **デバイスタイプ設定の追加**: `group_vars/all.yml`に`device_type_defaults`を追加し、デバイスタイプごとの設定（メモリ要件、lightdm停止要否、サービス停止リスト）を定義
+- ✅ **preflightタスクの汎用化**: `preflight-pi3-signage.yml`を`preflight-signage.yml`に汎用化し、`device_type`変数から設定を読み込むように変更
+- ✅ **inventoryへのdevice_type追加**: `inventory.yml`と`inventory-talkplaza.yml`に`device_type`変数を追加（Pi3: `pi3`, Pi Zero 2W: `pi_zero_2w`）
+- ✅ **後方互換性の維持**: `device_type`未指定時は`default`設定を使用し、既存のPi3デプロイに影響を与えない
+
+**実装の詳細**:
+1. **device_type_defaults**: `group_vars/all.yml`にデバイスタイプごとの設定を定義
+   - `pi3`: メモリ120MB、lightdm停止あり
+   - `pi_zero_2w`: メモリ120MB、lightdm停止あり
+   - `default`: メモリ120MB、lightdm停止なし（後方互換性）
+2. **preflight-signage.yml**: デバイスタイプ非依存のpreflightタスク
+   - `device_type`変数から設定を読み込み
+   - `device_type_defaults[device_type]`から設定を取得（未指定時は`default`）
+   - サービス停止リストを動的に生成
+   - lightdm停止を条件分岐化
+   - メモリ要件を変数化
+3. **inventory更新**: 既存ホストに`device_type`を追加
+   - `raspberrypi3`: `device_type: "pi3"`
+   - `talkplaza-signage01`: `device_type: "pi_zero_2w"`（コメントでPi3/Zero2W混在を明記）
+
+**学んだこと**:
+1. **設定の一元管理**: デバイスタイプごとの設定を`device_type_defaults`で一元管理することで、新しいデバイスタイプの追加が容易になる
+2. **後方互換性**: `device_type`未指定時のフォールバック（`default`）により、既存の運用に影響を与えない
+3. **疎結合**: preflightタスクをデバイスタイプ非依存にすることで、ロール間の依存関係を最小化
+
+**解決状況**: ✅ **解決済み**（2026-01-16）
+
+**関連ファイル**:
+- `infrastructure/ansible/group_vars/all.yml`（device_type_defaults追加）
+- `infrastructure/ansible/tasks/preflight-signage.yml`（新規作成、汎用化）
+- `infrastructure/ansible/tasks/preflight-pi3-signage.yml`（削除）
+- `infrastructure/ansible/playbooks/deploy.yml`（preflight呼び出し更新）
+- `infrastructure/ansible/inventory.yml`（device_type追加）
+- `infrastructure/ansible/inventory-talkplaza.yml`（device_type追加）
+- `docs/guides/deployment.md`（デバイスタイプ追加手順を追加）
+
+---
+
 ### 2. サイネージのパフォーマンス最適化（優先度: 低）
 
 - **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング

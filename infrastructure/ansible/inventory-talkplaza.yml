@@ -66,6 +66,9 @@ all:
               nfc_agent_client_secret: "{{ vault_talkplaza_nfc_agent_client_secret | default('client-key-talkplaza-pi4-kiosk01') }}"
             talkplaza-signage01:
               # サイネージ端末（Pi3 / Zero2W）: DNS運用前提
+              # デバイスタイプ: Pi Zero 2W（メモリ512MB、lightdm停止が必要）
+              # 注意: 実際のデバイスに応じて device_type を "pi3" または "pi_zero_2w" に設定してください
+              device_type: "pi_zero_2w"
               ansible_host: "{{ signage_ip }}"
               ansible_user: signageras3
               tailscale_enabled: false
