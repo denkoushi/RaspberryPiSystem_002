@@ -81,9 +81,10 @@
       changed_when: false
 
     - name: Log preflight systemd state
-      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ lookup('env', 'HOME') }}/.cursor/debug.log 2>/dev/null || true"
       delegate_to: localhost
       changed_when: false
+      ignore_errors: true
       vars:
         log_payload:
           sessionId: "debug-session"
@@ -127,9 +128,10 @@
         available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
     # region agent log
     - name: Log preflight memory snapshot
-      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ lookup('env', 'HOME') }}/.cursor/debug.log 2>/dev/null || true"
       delegate_to: localhost
       changed_when: false
+      ignore_errors: true
       vars:
         log_payload:
           sessionId: "debug-session"

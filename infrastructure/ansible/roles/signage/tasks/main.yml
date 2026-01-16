@@ -176,9 +176,10 @@
 
 # region agent log
 - name: Log before starting signage timers
-  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ ansible_env.HOME }}/.cursor/debug.log 2>/dev/null || true"
+  ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> {{ lookup('env', 'HOME') }}/.cursor/debug.log 2>/dev/null || true"
   delegate_to: localhost
   changed_when: false
+  ignore_errors: true
   vars:
     log_payload:
       sessionId: "debug-session"
