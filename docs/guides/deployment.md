@@ -286,7 +286,7 @@ curl http://localhost:7071/api/agent/status
 
 ## ラズパイ3（サイネージ）の更新
 
-**重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ前にサイネージサービスを停止する必要があります。
+**重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ時にサイネージ関連サービスを停止してメモリを確保する必要があります。**この停止処理はプレフライトチェックで自動実行**されます。
 
 **重要（2026-01-03更新）**: 
 - Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます
@@ -322,8 +322,14 @@ curl http://localhost:7071/api/agent/status
 
 **手動実行が必要な場合（プレフライトチェック失敗時）**:
 ```bash
-# メモリ不足の場合のみ、手動でサービスを停止
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
+# メモリ不足の場合のみ、手動でサービスを停止・無効化（自動再起動防止）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
+
+# さらに自動再起動を完全に防ぐ（ランタイムマスク）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
+
+# デバイスタイプによりGUI(lightdm)を停止してメモリを確保（Pi3 / Pi Zero 2W等）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop lightdm || true'"
 
 # 数秒待ってからメモリを確認
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -m'"
@@ -714,19 +720,7 @@ NETWORK_MODE=tailscale \
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "free -m"'
    ```
 
-6. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
-   ```bash
-   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service"'
-   
-   # プロセスが完全に停止していることを確認
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ps aux | grep signage-lite | grep -v grep"'
-   # → 何も表示されないことを確認
-   ```
-   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
-7. **ローカルIPを使う場合の事前確認**
+6. **ローカルIPを使う場合の事前確認**
    ```bash
    # 各端末で実IPを取得してからgroup_vars/all.ymlを更新する
    ssh denkon5sd02@100.106.158.2 "hostname -I"
@@ -782,13 +776,13 @@ NETWORK_MODE=tailscale \
    
    **注意**: Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます。Pi3へのデプロイは不要です（サーバー側レンダリングのため）。
 
-4. **Pi4 systemdサービス確認**
+5. **Pi4 systemdサービス確認**
    ```bash
    ssh denkon5sd02@100.106.158.2 'ssh tools03@100.74.144.79 "systemctl is-active kiosk-browser.service status-agent.timer"'
    # → active を確認
    ```
 
-5. **Pi3サイネージサービスの確認**（デプロイ前に停止した場合）
+6. **Pi3サイネージサービスの確認**
    ```bash
    # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
    # サービスが正常に動作していることを確認

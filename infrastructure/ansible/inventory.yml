@@ -7,6 +7,7 @@ all:
           ansible_user: denkon5sd02
           ansible_connection: local  # ローカル実行のため
           ansible_python_interpreter: /usr/bin/python3
+          ansible_command_timeout: 900
           tailscale_enabled: true
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
@@ -38,6 +39,7 @@ all:
           ansible_host: "{{ kiosk_ip }}"
           ansible_user: tools03
           tailscale_enabled: true
+          ansible_command_timeout: 600
           status_agent_client_id: raspberrypi4-kiosk1
           status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
           status_agent_location: "ラズパイ4 - キオスク1"
@@ -67,6 +69,7 @@ all:
           ansible_host: "{{ signage_ip }}"
           ansible_user: signageras3
           tailscale_enabled: true
+          ansible_command_timeout: 1800
           # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
           device_type: "pi3"
           status_agent_client_id: raspberrypi3-signage1

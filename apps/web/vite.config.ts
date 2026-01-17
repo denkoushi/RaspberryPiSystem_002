@@ -18,5 +18,23 @@ export default defineConfig({
         ws: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: [
+            'react',
+            'react-dom',
+            'react-router-dom',
+            '@tanstack/react-query',
+            '@xstate/react',
+            'xstate',
+            'axios',
+            'clsx'
+          ]
+        }
+      }
+    }
   }
 });

@@ -101,6 +101,9 @@
         - '"server" not in group_names'
         - manage_signage_lite | default(false) | bool
 
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
     - name: Execute deployment with automatic rollback
       block:
         - name: Apply server-specific deployment tasks

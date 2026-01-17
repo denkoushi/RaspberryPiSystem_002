@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 27件  
+**件数**: 28件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1688,5 +1688,47 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 **関連ファイル**:
 - `apps/web/src/pages/admin/BackupHistoryPage.tsx`（getTargetPurpose関数、用途列の追加）
+
+---
+
+### [KB-171] WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）
+
+**実装日時**: 2026-01-16
+
+**事象**: 
+- ビデオ通話機能が動作しない（Pi4とMacで確認）
+- WebSocket接続が確立されない
+- シグナリングサーバーへの接続が試行されない
+
+**要因**: 
+- `KioskCallPage.tsx`で`clientKey`と`clientId`が設定されていなかった
+- `useWebRTCSignaling`フックの`connect()`関数は`localStorage`から`clientKey`と`clientId`を取得するが、`KioskCallPage.tsx`で`useLocalStorage`を呼んでいなかったため、`localStorage`に値が保存されない
+- `connect()`内で`clientKey`または`clientId`が空のため、93行目で早期リターンし、WebSocket接続が試行されない
+
+**実施した対策**: 
+- ✅ **`KioskCallPage.tsx`に`useLocalStorage`を追加**: `clientKey`と`clientId`を`localStorage`から取得して保持し、シグナリング接続の前提条件を満たすように修正
+- ✅ **`resolveClientKey`関数の改善**: `apps/web/src/api/client.ts`の`resolveClientKey`関数で`DEFAULT_CLIENT_KEY`をフォールバックとして使用するように修正
+
+**実装の詳細**:
+1. **`KioskCallPage.tsx`の修正**: `useLocalStorage`フックを追加し、`clientKey`と`clientId`を取得
+   ```typescript
+   // clientKeyとclientIdをlocalStorageから取得（WebRTCシグナリングに必要）
+   const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
+   const [clientId] = useLocalStorage('kiosk-client-id', '');
+   ```
+2. **`resolveClientKey`関数の改善**: `localStorage`に値がない場合や空文字の場合、`DEFAULT_CLIENT_KEY`を返すように修正
+
+**学んだこと**:
+1. **WebRTCシグナリングに必要な設定**: WebRTCシグナリングには`clientKey`と`clientId`が必要で、これらは`localStorage`に保存される必要がある
+2. **既存ページとの整合性**: `KioskBorrowPage.tsx`や`KioskReturnPage.tsx`では設定されていたが、`KioskCallPage.tsx`では設定漏れがあった
+3. **新しいページ追加時の注意**: 新しいページを追加する際は、必要な設定（`clientKey`、`clientId`など）を確認する必要がある
+4. **デバッグログの活用**: デバッグログを追加することで、WebSocket接続が試行されない原因を特定できた
+
+**解決状況**: ✅ **解決済み**（2026-01-16）
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`（useLocalStorage追加）
+- `apps/web/src/api/client.ts`（resolveClientKey関数の改善）
+- `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`（connect関数）
 
 ---

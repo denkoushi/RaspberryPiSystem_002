@@ -235,7 +235,9 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # Tailscale経由の場合（推奨）
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 # ローカルネットワークの場合: export RASPI_SERVER_HOST="denkon5sd02@<pi5のIP>"
-./scripts/update-all-clients.sh
+# inventory指定が必須（誤デプロイ防止）
+# 第2工場（既存）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 ```
 
 **期待される結果**:

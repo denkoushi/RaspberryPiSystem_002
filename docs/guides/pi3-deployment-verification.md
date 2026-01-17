@@ -158,9 +158,12 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep -E 
 
 **対応**:
 1. Pi3上でメモリ状態を確認: `free -m`
-2. サービスを手動で停止: `sudo systemctl stop signage-lite.service signage-lite-update.timer`
-3. 数秒待機後、メモリ状態を再確認
-4. メモリが120MB以上確保されたら、デプロイを再実行
+2. サービスを手動で停止: `sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer`
+3. サービス/タイマーを無効化（自動再起動防止）: `sudo systemctl disable signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer`
+4. さらに自動再起動を完全に防ぐ（ランタイムマスク）: `sudo systemctl mask --runtime signage-lite.service`
+5. GUI(lightdm)を停止してメモリを確保（Pi3等）: `sudo systemctl stop lightdm || true`
+6. 数秒待機後、メモリ状態を再確認
+7. メモリが120MB以上確保されたら、デプロイを再実行
 
 ### デプロイが特定のタスクで停止した場合
 

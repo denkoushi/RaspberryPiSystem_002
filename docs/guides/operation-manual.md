@@ -143,8 +143,12 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # 環境変数を設定
 export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 
-# 一括更新スクリプトを実行
-./scripts/update-all-clients.sh
+# 一括更新スクリプトを実行（inventory指定が必須）
+# 第2工場（既存）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# トークプラザ（新拠点）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
 ```
 
 **実行結果の確認:**

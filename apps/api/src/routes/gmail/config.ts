@@ -4,6 +4,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
+import { writeDebugLog } from '../../lib/debug-log.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   clientId?: string;
@@ -46,7 +47,7 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     const accessToken = gmailOpts?.accessToken ?? opts?.gmailAccessToken as string | undefined;
     const refreshToken = gmailOpts?.refreshToken ?? opts?.gmailRefreshToken as string | undefined;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'gmail/config.ts:get',message:'gmail config fetched',data:{hasClientId:!!clientId,hasSubjectPattern:!!subjectPattern,hasFromEmail:!!fromEmail,hasAccessToken:!!accessToken,hasRefreshToken:!!refreshToken},timestamp:Date.now()})}).catch(()=>{});
+    await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'gmail/config.ts:get',message:'gmail config fetched',data:{hasClientId:!!clientId,hasSubjectPattern:!!subjectPattern,hasFromEmail:!!fromEmail,hasAccessToken:!!accessToken,hasRefreshToken:!!refreshToken},timestamp:Date.now()});
     // #endregion
     
     // Gmail設定のみを抽出（機密情報はマスク）

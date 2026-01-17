@@ -130,7 +130,12 @@ curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/ackn
 
 ```bash
 # 更新スクリプトを実行
-./scripts/update-all-clients.sh
+# inventory指定が必須（誤デプロイ防止）
+# 第2工場（既存）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# トークプラザ（新拠点）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
 
 # 失敗した場合、自動的にアラートファイルが生成される
 # alerts/alert-YYYYMMDD-HHMMSS.json

@@ -161,7 +161,8 @@ EOF
 
 # Ansible更新スクリプトを実行（失敗するはず）
 export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
-./scripts/update-all-clients.sh
+# inventory指定が必須（誤デプロイ防止）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 
 # アラートファイルが生成されたか確認（Raspberry Pi 5で）
 ssh denkon5sd02@192.168.128.131 "ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5"

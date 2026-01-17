@@ -43,7 +43,7 @@ cd "${repo_root}"
 # --- Lockfile to prevent concurrent deploys ---
 # ロックファイルはプロジェクトディレクトリ内に配置（ユーザー権限で実行可能）
 LOCK_FILE="${DEPLOY_LOCK_FILE:-${repo_root}/logs/deploy/.deployment.lock}"
-LOCK_TIMEOUT_SECONDS="${DEPLOY_LOCK_TIMEOUT_SECONDS:-1800}" # 30 minutes default
+LOCK_TIMEOUT_SECONDS="${DEPLOY_LOCK_TIMEOUT_SECONDS:-2400}" # 40 minutes default (align with update-all-clients)
 lock_dir="$(dirname "$LOCK_FILE")"
 mkdir -p "$lock_dir"
 
