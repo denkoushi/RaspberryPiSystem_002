@@ -3,9 +3,11 @@ description: 旧ルール互換メモ（ドキュメント保守ルールは新�
 alwaysApply: false
 ---
 
-# documentation-maintenance（Deprecated / 閉架）
+# documentation-maintenance（Deprecated / 閉架 / アーカイブ）
 
 ⚠️ **閉架扱い: 通常は参照しないでください。** このファイルは互換のために残していますが、内容は新しい汎用ルールへ移行済みです。
+
+**移動元**: `.cursor/rules/documentation-maintenance.mdc`（2025-01-XXに`docs/archive/rules/`へ移動）
 
 - 参照先:
   - `.cursor/rules/30-docs-maintenance.mdc`

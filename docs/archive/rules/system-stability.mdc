@@ -1,0 +1,16 @@
+---
+description: 旧ルール互換メモ（汎用コアへ移行済み）。⚠️ 閉架: 通常は参照不要。
+alwaysApply: false
+---
+
+# system-stability（Deprecated / 閉架 / アーカイブ）
+
+⚠️ **閉架扱い: 通常は参照しないでください。** このファイルは互換のために残していますが、内容は汎用ルールへ移行済みです。
+
+**移動元**: `.cursor/rules/system-stability.mdc`（2025-01-XXに`docs/archive/rules/`へ移動）
+
+- 主要な参照先:
+  - `.cursor/rules/00-core-safety.mdc`
+  - `.cursor/rules/01-core-docs-and-knowledge.mdc`
+  - `.cursor/rules/02-core-architecture.mdc`
+  - `.cursor/rules/10-quality-ci-and-tests.mdc`
