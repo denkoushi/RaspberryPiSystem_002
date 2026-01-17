@@ -131,7 +131,7 @@ describe('useWebRTC', () => {
       ...global.navigator,
       mediaDevices: {
         getUserMedia: vi.fn().mockResolvedValue(
-          new MockMediaStream([new MockMediaStreamTrack('audio')])
+          new MockMediaStream([new MockMediaStreamTrack('audio') as unknown as MediaStreamTrack])
         ),
       } as unknown as MediaDevices,
     };
