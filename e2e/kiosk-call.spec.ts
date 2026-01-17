@@ -7,8 +7,8 @@ test.describe('キオスク通話画面', () => {
   });
 
   test('通話ページが表示され、ヘッダーと接続状態が表示される', async ({ page }) => {
-    // ヘッダーが表示される
-    await expect(page.getByText(/通話/i)).toBeVisible();
+    // ヘッダーが表示される（見出し要素を指定）
+    await expect(page.getByRole('heading', { name: /通話/i })).toBeVisible();
     
     // 接続状態が表示される（接続中または接続待機中）
     const connectionStatus = page.getByText(/接続中|接続待機中/i);
