@@ -6,7 +6,7 @@
     "allowJs": false,
     "rootDir": "src",
     "outDir": "dist",
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vite/client"]
   },
   "include": ["src"],
   "references": [
