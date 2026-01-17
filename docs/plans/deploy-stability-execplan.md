@@ -17,16 +17,19 @@ After this change, deployments run from `scripts/update-all-clients.sh` become s
 - [x] (2026-01-17 00:52Z) Set per-host command timeouts in `infrastructure/ansible/inventory.yml` (Pi3 30m / Pi4 10m / Pi5 15m).
 - [x] (2026-01-17 00:58Z) Added start/success/failure/per-host Slack notifications in `scripts/update-all-clients.sh`.
 - [x] (2026-01-17 01:02Z) Aligned `scripts/deploy/deploy-all.sh` lock timeout with update-all-clients.
-- [ ] (2026-01-17 01:10Z) Ran local Docker build; `web` build failed with TypeScript errors (see Surprises).
+- [x] (2026-01-17 01:10Z) Ran local Docker build; `web` build failed with TypeScript errors (see Surprises).
 - [x] (2026-01-17 01:12Z) `ansible-playbook deploy.yml --syntax-check` succeeded with `ANSIBLE_ROLES_PATH` set.
-- [ ] Run local Docker build verification and trigger GitHub Actions CI on the feature branch.
-- [ ] Record outcomes and update Decision Log.
+- [x] (2026-01-17 01:15Z) Fixed TypeScript errors in `useWebRTC.ts` (missing `useMemo` import, invalid `handlers` option type).
+- [x] (2026-01-17 01:20Z) Ran local Docker build verification; `api` and `web` builds succeeded.
+- [x] (2026-01-17 01:25Z) Triggered GitHub Actions CI on feature branch `feat/deploy-stability-20260117`; all jobs passed (lint-and-test, e2e-smoke, e2e-tests, docker-build).
+- [x] (2026-01-17 01:30Z) Recorded outcomes and updated Decision Log.
 
 ## Surprises & Discoveries
 
 - Docker build (`docker compose -f infrastructure/docker/docker-compose.server.yml build api web`) exceeded the initial timeout; rerun with a longer timeout if needed.
 - `ansible-playbook ... --syntax-check` failed without `ANSIBLE_ROLES_PATH`. Use `ANSIBLE_ROLES_PATH=infrastructure/ansible/roles` when validating locally.
-- Docker build failed in `apps/web` due to TypeScript errors in `useWebRTC.ts` (missing `useMemo` import, invalid `handlers` option type).
+- Docker build failed in `apps/web` due to TypeScript errors in `useWebRTC.ts` (missing `useMemo` import, invalid `handlers` option type). **RESOLVED**: Fixed by importing `useMemo`, spreading `handlers` object into `useWebRTCSignaling`, and resolving circular dependency with `useRef`.
+- Vite build showed chunk size warnings (>500kB). **RESOLVED**: Added `manualChunks` configuration to split vendor libraries.
 
 ## Decision Log
 
@@ -50,9 +53,57 @@ After this change, deployments run from `scripts/update-all-clients.sh` become s
   Rationale: Keeps noise low while surfacing failures quickly.  
   Date/Author: 2026-02-01 / GPT-5.2 Codex.
 
+- Decision: TypeScript errors in `useWebRTC.ts` were fixed by importing `useMemo`, spreading `handlers` object into `useWebRTCSignaling`, and using `useRef` to resolve circular dependency between `handlers` and `startCall`.  
+  Rationale: Maintains existing API contract while fixing compilation errors. The `useRef` pattern matches existing code patterns in `KioskBorrowPage.tsx`.  
+  Date/Author: 2026-01-17 / Composer.
+
+- Decision: Vite build chunk size warnings were resolved by adding `manualChunks` configuration to split vendor libraries (react, react-dom, react-router-dom, @tanstack/react-query, @xstate/react, xstate, axios, clsx).  
+  Rationale: Reduces initial bundle size and improves load performance without changing functionality.  
+  Date/Author: 2026-01-17 / Composer.
+
 ## Outcomes & Retrospective
 
-- Pending. This section will be updated after implementation and verification.
+### Implementation Summary
+
+All planned features were successfully implemented and verified:
+
+1. **Deployment Stability Features**:
+   - ✅ Pi5-side lock file with stale lock cleanup
+   - ✅ Preflight reachability checks (Pi5 + inventory hosts)
+   - ✅ Resource guard tasks (memory < 120MB, disk >= 90%)
+   - ✅ Environment-only retries (3 attempts, 30s delay for unreachable hosts)
+   - ✅ Per-host command timeouts (Pi3 30m / Pi4 10m / Pi5 15m)
+   - ✅ Comprehensive Slack notifications (start/success/failure/per-host failure)
+   - ✅ `deploy-all.sh` alignment with `update-all-clients.sh`
+
+2. **TypeScript Error Fixes**:
+   - ✅ Fixed `useWebRTC.ts` compilation errors
+   - ✅ Fixed `hooks.ts` dynamic import warning
+   - ✅ Fixed Vite chunk size warnings
+
+3. **Verification**:
+   - ✅ Local Docker build: `api` and `web` images built successfully
+   - ✅ Ansible syntax check: Passed with `ANSIBLE_ROLES_PATH` set
+   - ✅ GitHub Actions CI: All jobs passed (lint-and-test, e2e-smoke, e2e-tests, docker-build)
+   - ✅ Lint: `pnpm lint --max-warnings=0` passed
+   - ✅ TypeScript: Build succeeded
+
+### Lessons Learned
+
+- **Ansible validation**: Always set `ANSIBLE_ROLES_PATH` when running syntax checks locally.
+- **Docker build timeouts**: Large builds may require extended timeouts (600s+).
+- **TypeScript circular dependencies**: Use `useRef` to break circular dependencies between hooks and callbacks.
+- **Vite chunk optimization**: Large vendor libraries should be split into separate chunks to avoid size warnings.
+
+### Known Limitations
+
+- WebRTC-related unit tests are not yet implemented (recommended for regression prevention).
+- E2E tests for `KioskCallPage` are not yet implemented (recommended for critical flow verification).
+
+### Next Steps (Optional)
+
+- Add unit tests for `useWebRTC` and `useWebRTCSignaling` hooks.
+- Add E2E tests for `KioskCallPage` (call initiation, incoming call handling, video toggle).
 
 ## Context and Orientation
 
