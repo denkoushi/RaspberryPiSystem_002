@@ -13,9 +13,10 @@
     available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
 
 - name: Check disk usage on /opt (%)
-  ansible.builtin.shell: df -P /opt | awk 'NR==2 {gsub(/%/,\"\",$5); print $5}'
+  ansible.builtin.shell: df -P /opt | tail -n +2 | awk '{gsub(/%/,\"\",$5); print $5}'
   register: disk_used_pct_raw
   changed_when: false
+  failed_when: disk_used_pct_raw.stdout | trim == ''
 
 - name: Extract disk usage value
   ansible.builtin.set_fact:
