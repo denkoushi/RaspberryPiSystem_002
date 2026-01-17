@@ -69,10 +69,10 @@ describe('useWebRTCSignaling', () => {
     });
 
     // WebSocketをモック
-    global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
     // fetchをモック（デバッグログ用）
-    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {

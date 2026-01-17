@@ -10,7 +10,6 @@ set -euo pipefail
 # 環境変数 ANSIBLE_REPO_VERSION でも指定可能（引数より優先度低い）
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INVENTORY_PATH="${2:-}"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
 HEALTH_PLAYBOOK_PATH="infrastructure/ansible/playbooks/health-check.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -26,8 +25,31 @@ HISTORY_FILE="${LOG_DIR}/ansible-history.jsonl"
 REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE:-/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock}"
 REMOTE_LOCK_TIMEOUT_SECONDS="${REMOTE_LOCK_TIMEOUT_SECONDS:-2400}"
 
-# ブランチ指定: 引数 > 環境変数 > デフォルト(main)
-REPO_VERSION="${1:-${ANSIBLE_REPO_VERSION:-main}}"
+# 引数解析
+LIMIT_HOSTS=""
+INVENTORY_PATH=""
+REPO_VERSION=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --limit)
+      LIMIT_HOSTS="$2"
+      shift 2
+      ;;
+    *)
+      if [[ -z "${REPO_VERSION}" ]]; then
+        REPO_VERSION="$1"
+      elif [[ -z "${INVENTORY_PATH}" ]]; then
+        INVENTORY_PATH="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+# デフォルト値の設定
+REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-main}}"
+
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 
 mkdir -p "${LOG_DIR}"
@@ -35,7 +57,7 @@ mkdir -p "${LOG_DIR}"
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path>
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>]
 
 Examples:
   # 第2工場（既存）
@@ -43,6 +65,9 @@ Examples:
 
   # トークプラザ（新拠点）
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+
+  # Pi3を除外してデプロイ
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
 USAGE
 }
 
@@ -59,6 +84,9 @@ fi
 
 echo "[INFO] Target inventory: ${INVENTORY_PATH}"
 echo "[INFO] Repo version: ${REPO_VERSION}"
+if [[ -n "${LIMIT_HOSTS}" ]]; then
+  echo "[INFO] Limit hosts: ${LIMIT_HOSTS}"
+fi
 
 # エラーコードを返す関数
 exit_with_error() {
@@ -218,6 +246,7 @@ check_network_mode() {
 }
 
 run_preflight_remotely() {
+  local limit_hosts="${1:-}"
   local exit_code=0
   local start_time
   start_time=$(date +%s)
@@ -229,7 +258,11 @@ run_preflight_remotely() {
 
   local inventory_basename
   inventory_basename=$(basename "${INVENTORY_PATH}")
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} all -m ping" \
+  local limit_arg=""
+  if [[ -n "${limit_hosts}" ]]; then
+    limit_arg="--limit ${limit_hosts}"
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} all -m ping ${limit_arg}" \
     | tee "${PREFLIGHT_LOG_FILE}" || exit_code=$?
 
   local duration=$(( $(date +%s) - start_time ))
@@ -336,7 +369,7 @@ retry_unreachable_hosts() {
       # Either success or non-retriable failure
       LOG_FILE="${RUN_LOG_FILE}"
       SUMMARY_FILE="${RUN_SUMMARY_FILE}"
-      if python3 - <<'PY' "${SUMMARY_FILE}" >/dev/null 2>&1; then
+      if python3 - <<'PY' "${SUMMARY_FILE}" >/dev/null 2>&1
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as fh:
     summary = json.load(fh)
@@ -393,8 +426,8 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   check_network_mode
   acquire_remote_lock
   trap 'release_remote_lock' EXIT
-  run_preflight_remotely
-  if ! run_remotely; then
+  run_preflight_remotely "${LIMIT_HOSTS}"
+  if ! run_remotely "${LIMIT_HOSTS}"; then
     retry_hosts=$(get_retry_hosts_if_unreachable_only "${SUMMARY_FILE}")
     if [[ -n "${retry_hosts}" ]]; then
       if ! retry_unreachable_hosts "${retry_hosts}"; then

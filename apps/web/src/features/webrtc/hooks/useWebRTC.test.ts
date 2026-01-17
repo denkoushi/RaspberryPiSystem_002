@@ -123,12 +123,12 @@ class MockRTCPeerConnection {
 describe('useWebRTC', () => {
   beforeEach(() => {
     // MediaStream APIをモック
-    global.MediaStream = MockMediaStream as unknown as typeof MediaStream;
-    global.RTCPeerConnection = MockRTCPeerConnection as unknown as typeof RTCPeerConnection;
+    globalThis.MediaStream = MockMediaStream as unknown as typeof MediaStream;
+    globalThis.RTCPeerConnection = MockRTCPeerConnection as unknown as typeof RTCPeerConnection;
 
     // getUserMediaをモック
-    global.navigator = {
-      ...global.navigator,
+    globalThis.navigator = {
+      ...globalThis.navigator,
       mediaDevices: {
         getUserMedia: vi.fn().mockResolvedValue(
           new MockMediaStream([new MockMediaStreamTrack('audio') as unknown as MediaStreamTrack])
@@ -137,7 +137,7 @@ describe('useWebRTC', () => {
     };
 
     // fetchをモック（デバッグログ用）
-    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -205,7 +205,7 @@ describe('useWebRTC', () => {
 
     // getUserMediaが呼ばれることを確認（実装に依存）
     await waitFor(() => {
-      expect(global.navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
+      expect(globalThis.navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
     }, { timeout: 1000 });
 
     // コールバックが呼ばれることを確認（実装に依存）
