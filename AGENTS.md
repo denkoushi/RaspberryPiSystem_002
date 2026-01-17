@@ -1,19 +1,23 @@
-# ExecPlans
- 
-When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+# AI Agent Entry Point
 
-## 基本原則
+このリポジトリにおけるAIエージェントの基本方針は、`.cursor/rules/` に集約する。
 
-**既存の稼働システムを壊さないことを最優先とする。**
+## ExecPlan（複雑な作業の必須手順）
 
-- 作業前に必ず `docs/INDEX.md` から関連ドキュメントを参照する
-- 既存のナレッジベース（KB-xxx）を確認し、過去のトラブルシューティング記録を尊重する
-- 段階的に進め、各ステップで動作確認を行う
-- 動いているコードは「動いている理由」を理解してから変更する
-- 独自の新ロジックを追加する前に既存実装を確認する
+複雑な機能追加・大きなリファクタは、`.agent/PLANS.md` に従って ExecPlan を作成し、設計→実装→検証の順で進める。
 
-詳細は以下のルールファイルを参照：
-- `.cursor/rules/system-stability.mdc`: 既存システム保護ルール（最優先）
-- `.cursor/rules/documentation-first.mdc`: ドキュメント優先・既存コード尊重ルール
-- `.cursor/rules/debug-mode.mdc`: デバッグモードと開発方針ルール（開発時）
-- `.cursor/rules/git-workflow.mdc`: Gitワークフロー改善ルール（Git操作時）
+## 参照するルール（`.cursor/rules/`）
+
+### Always（常時適用）
+
+- `.cursor/rules/00-core-safety.mdc`: 安全最優先（破壊的操作の抑止、最小変更、実行境界）
+- `.cursor/rules/01-core-docs-and-knowledge.mdc`: ナレッジ/ドキュメントの構造化（KB/ADR/Runbook/索引）
+- `.cursor/rules/02-core-architecture.mdc`: 疎結合・モジュール化・互換性維持
+
+### Auto Attached / Agent Requested（必要時のみ）
+
+- `.cursor/rules/10-quality-ci-and-tests.mdc`: CI/テストによる品質担保
+- `.cursor/rules/11-debugging-playbook.mdc`: 仮説駆動デバッグ
+- `.cursor/rules/20-git-workflow.mdc`: Git安全運用（明示依頼がある時のみ実行）
+- `.cursor/rules/30-docs-maintenance.mdc`: ドキュメント肥大化対策
+- `.cursor/rules/33-frontend-ui-quality.mdc`: UI品質（UI Skillsを条件付き採用）

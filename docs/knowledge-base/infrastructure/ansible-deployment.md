@@ -616,7 +616,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 - デプロイ標準手順を修正し、現在のブランチを使用するように変更
 - `git pull origin main` → `CURRENT_BRANCH=$(git branch --show-current) && git pull origin "$CURRENT_BRANCH"`
 - `main`ブランチにマージするのは別途指示がある場合のみ
-- `.cursor/rules/system-stability.mdc`のデプロイ実行時の必須手順も同様に修正
+- AIルールも更新し、汎用コア（`.cursor/rules/00-core-safety.mdc`）へ集約
 
 **学んだこと**: 
 - **コミット後は必ずプッシュ**: ローカルでコミットしただけでは、リモートリポジトリには反映されない
@@ -630,8 +630,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 
 **関連ファイル**: 
 - `docs/guides/deployment.md`
-- `.cursor/rules/system-stability.mdc`
-- `.cursor/rules/git-workflow.mdc`
+- `.cursor/rules/00-core-safety.mdc`
+- `.cursor/rules/20-git-workflow.mdc`
 
 ---
 

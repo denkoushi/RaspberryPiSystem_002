@@ -1,0 +1,25 @@
+---
+description: Git操作の安全規約（混在コミット・誤push・履歴改変事故を防ぐ）。
+alwaysApply: false
+---
+
+# Gitワークフロー（Agent Requested）
+
+## 原則
+
+- 変更は目的ごとに分割し、混在を避ける（1コミット=1意図）
+- push/merge/release/deploy は**明示依頼がある時のみ**行う
+
+## コミットメッセージ
+
+- `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:` を基本（Conventional Commits）
+- 目的（why）を優先して短く書く
+
+## 危険操作の扱い
+
+- `--force`、履歴改変、main直系へのpush は原則禁止（必要なら理由・手順・影響を明記）
+
+## 最低限チェック（git操作時）
+
+- `git status` / `git diff` で範囲確認
+- 秘密情報（`.env`等）が含まれないことを確認

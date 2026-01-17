@@ -1,0 +1,53 @@
+---
+description: ドキュメント・ナレッジを構造化し、検索容易で経時に強くなる運用へ揃える。
+alwaysApply: true
+---
+
+# コア: ドキュメント/ナレッジ（Always）
+
+## 原則
+
+- 変更・調査・障害対応は**後から再現できる形**で残す（「書いた本人しか分からない」を禁止）
+- ドキュメントは**構造化**し、索引から辿れるようにする（孤立ドキュメントを作らない）
+
+## 最低限の運用（毎回）
+
+- 重要な変更には、以下のいずれか（または複数）を更新する:
+  - **KB**: 事象と対処（再発防止まで）
+  - **ADR**: 意思決定（トレードオフ含む）
+  - **Runbook**: 手順（運用/復旧）
+  - **Index**: 追加/更新したドキュメントへのリンク
+
+## 推奨のドキュメント体系（汎用）
+
+- `docs/INDEX.md`: 入口（目的別リンク）
+- `docs/knowledge-base/**`: トラブルシュート（KB-xxx）
+- `docs/decisions/**`: ADR（意思決定ログ）
+- `docs/runbooks/**`: 運用手順（復旧含む）
+- `docs/plans/**`: 計画（実装/移行/検証）
+
+## KBテンプレ（コピーして使う）
+
+- Title: `KB-xxx: <短い要約>`
+- Context: 何が起きた/いつ/どこで
+- Symptoms: 症状・ログ・再現手順
+- Investigation: 仮説→検証→結果（CONFIRMED/REJECTED/INCONCLUSIVE）
+- Root cause: 根本原因
+- Fix: 実施した対策（最小変更）
+- Prevention: 再発防止（テスト/監視/手順/ガード）
+- References: 関連PR/issue/docs/ログ/外部リンク
+
+## ADRテンプレ（コピーして使う）
+
+- Title: `ADR-YYYYMMDD: <決定事項>`
+- Status: proposed/accepted/superseded
+- Context: 前提・制約
+- Decision: 決定
+- Alternatives: 検討した選択肢
+- Consequences: 影響（良い/悪い）
+- References: 関連リンク
+
+## 検索性のルール
+
+- ドキュメントタイトル/見出しは、**検索語になりやすい固有名詞**を含める
+- 新規追加したら、必ずどこかの索引（`INDEX.md`や各index）からリンクする
