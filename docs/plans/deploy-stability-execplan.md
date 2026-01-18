@@ -96,25 +96,27 @@ All planned features were successfully implemented and verified:
   - Remote lock acquisition: Passed
   - Resource guard checks: Passed (memory and disk usage within thresholds)
   - Deployment completed successfully (ok=101, changed=22, failed=0)
-  - Slack notifications: Start and success notifications received
+  - Alerts: `alerts/alert-*.json` が生成されることを確認（一次情報）
+  - Slack notifications: Slack配送は設定（Webhook/Dispatcher）に依存するため、着弾は要確認（未検証）
 
 - ✅ **Pi4 deployment**: Successfully deployed to Pi4 using `scripts/update-all-clients.sh`
   - Preflight connectivity checks: Passed
   - Remote lock acquisition: Passed
   - Resource guard checks: Passed
   - Deployment completed successfully
-  - Slack notifications: Start and success notifications received
+  - Alerts: `alerts/alert-*.json` が生成されることを確認（一次情報）
+  - Slack notifications: Slack配送は設定（Webhook/Dispatcher）に依存するため、着弾は要確認（未検証）
 
 **Verified Features**:
 - ✅ Preflight reachability checks (Pi5 + inventory hosts)
 - ✅ Remote lock mechanism (parallel execution prevention)
 - ✅ Resource guard (memory >= 120MB, disk < 90%)
 - ✅ Per-host command timeouts (Pi3 30m / Pi4 10m / Pi5 15m)
-- ✅ Slack notifications (start and success)
+- ✅ Alerts file generation (start/success/failure/per-host failure are recorded as `alerts/alert-*.json`)
 
 **Unverified Features** (expected to work in production):
 - ⚠️ Retry functionality (environment-only retries for unreachable hosts)
-- ⚠️ Success notification details (per-host success status)
+- ⚠️ Slack delivery (API Alerts Dispatcher / Webhook configuration)
 - ⚠️ Lock mechanism with parallel execution (concurrent deployment attempts)
 
 **Issues Encountered During Verification**:

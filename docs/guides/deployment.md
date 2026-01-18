@@ -405,11 +405,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
    - Pi5: 15分
    - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
 
-6. **Slack通知**:
-   - デプロイ開始時: 開始通知
-   - デプロイ成功時: 成功通知（全ホスト成功）
-   - デプロイ失敗時: 失敗通知（失敗ホスト一覧）
-   - ホスト単位の失敗: 個別の失敗通知
+6. **通知（alerts一次情報 + Slackは二次経路）**:
+   - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成します
+   - **Slack通知（チャンネル分離）はAPIのAlerts Dispatcherが担当**します（B1方針）
+     - scripts側は原則「ファイル生成」に専念し、Slackはログ/運用イベントの二次経路として配送します
+     - Slack配送を有効化するには、API側で `ALERTS_DISPATCHER_ENABLED=true` と `ALERTS_SLACK_WEBHOOK_*` の設定が必要です
 
 7. **`--limit`オプション対応**:
    - 特定ホストのみを更新する場合に使用
@@ -419,7 +419,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **実機検証状況**（2026-01-18）:
 - ✅ Pi5とPi4でのデプロイ成功を確認
 - ✅ プリフライト・ロック・リソースガードの動作を確認
-- ⚠️ リトライ機能、成功通知、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ⚠️ Slack通知は「alerts生成」までは確認済みだが、Slack配送（API Dispatcher）設定の有無に依存するため、Slackアプリ着弾は要確認
 
 詳細は [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) を参照。
 

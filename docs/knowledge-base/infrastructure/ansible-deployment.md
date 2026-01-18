@@ -1399,12 +1399,10 @@ cat ~/.status-agent.conf
    - Pi5: 15分
    - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
 
-6. **Slack通知**:
-   - デプロイ開始時: 開始通知
-   - デプロイ成功時: 成功通知（全ホスト成功）
-   - デプロイ失敗時: 失敗通知（失敗ホスト一覧）
-   - ホスト単位の失敗: 個別の失敗通知
-   - `scripts/generate-alert.sh`を再利用して実装
+6. **通知（alerts一次情報 + Slackは二次経路）**:
+   - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成
+   - `scripts/generate-alert.sh`を再利用して alerts ファイルを生成
+   - Slack配送は「二次経路」として扱い、**設定（Webhook/Dispatcher）に依存**する
 
 7. **`--limit`オプション対応**:
    - 特定ホストのみを更新する場合に使用
@@ -1428,7 +1426,8 @@ cat ~/.status-agent.conf
 **実機検証状況**:
 - ✅ Pi5とPi4でのデプロイ成功を確認
 - ✅ プリフライト・ロック・リソースガードの動作を確認
-- ⚠️ リトライ機能、成功通知、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ⚠️ Slack配送は設定（Webhook/Dispatcher）に依存するため、Slackアプリ着弾は要確認（未検証）
 
 **関連ファイル**: 
 - `scripts/update-all-clients.sh`（デプロイスクリプト）

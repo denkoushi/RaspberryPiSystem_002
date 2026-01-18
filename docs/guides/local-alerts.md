@@ -16,6 +16,32 @@ update-frequency: medium
 
 本ガイドでは、ローカル環境（インターネット接続なし）で動作する通知機能について説明します。この機能により、クライアントの異常やAnsible更新の失敗を管理画面で確認できます。
 
+## 重要な考え方（B1: Slackは通知、alertsは一次情報）
+
+- **一次情報**: `alerts/alert-*.json`（管理画面で確認できる永続イベント）
+- **二次経路（通知）**: Slack（チャンネル分離を含む）
+
+このプロジェクトでは、**scriptsはalertsファイル生成に専念**し、**Slackへの配送はAPI側のAlerts Dispatcherが担当**する方針（B1）で設計します。
+
+### Slack配送を有効化する（API Alerts Dispatcher）
+
+Slackに通知したい場合は、APIコンテナに以下を設定します（Webhook URLはIncoming Webhookを使用）：
+
+- `ALERTS_DISPATCHER_ENABLED=true`
+- `ALERTS_SLACK_WEBHOOK_DEPLOY`（デプロイ通知）
+- `ALERTS_SLACK_WEBHOOK_OPS`（運用/監視通知）
+- `ALERTS_SLACK_WEBHOOK_SUPPORT`（サポート通知）
+- `ALERTS_SLACK_WEBHOOK_SECURITY`（セキュリティ通知）
+
+任意で設定（チューニング）:
+
+- `ALERTS_DISPATCHER_INTERVAL_SECONDS`（既定: 30）
+- `ALERTS_DISPATCHER_MAX_ATTEMPTS`（既定: 5）
+- `ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`（既定: 60）
+- `ALERTS_DISPATCHER_WEBHOOK_TIMEOUT_MS`（既定: 5000）
+
+さらに、JSON設定ファイルでまとめて管理する場合は `ALERTS_CONFIG_PATH=/opt/RaspberryPiSystem_002/config/alerts.json` を指定します（Webhook URLなど機密情報はAnsible Vaultで管理すること）。
+
 ## 通知の種類
 
 ### 1. クライアント状態アラート
