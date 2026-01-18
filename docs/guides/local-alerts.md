@@ -27,7 +27,7 @@ update-frequency: medium
 
 Slackに通知したい場合は、APIコンテナに以下を設定します（Webhook URLはIncoming Webhookを使用）：
 
-- `ALERTS_DISPATCHER_ENABLED=true`
+- `ALERTS_DISPATCHER_ENABLED=true`（Phase1: file→Slack）
 - `ALERTS_SLACK_WEBHOOK_DEPLOY`（デプロイ通知）
 - `ALERTS_SLACK_WEBHOOK_OPS`（運用/監視通知）
 - `ALERTS_SLACK_WEBHOOK_SUPPORT`（サポート通知）
@@ -47,6 +47,33 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - 送信済み（`status === 'sent'`）のアラートも再送されません
 - 新規アラート（24時間以内）のみ初回送信として扱われます
 - 失敗時のリトライは`ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`に従って実行されます
+
+### Phase2後続: DB→Slack配送（Alerts DB Dispatcher）
+
+**Phase2後続では、Slack配送を `AlertDelivery`（DB）中心に移行できます。**
+
+**有効化（full switch）**:
+
+- `ALERTS_DISPATCHER_MODE=db`（DB版を使用）
+- `ALERTS_DB_DISPATCHER_ENABLED=true`
+
+任意で設定（チューニング）:
+
+- `ALERTS_DB_DISPATCHER_INTERVAL_SECONDS`（既定: 30）
+- `ALERTS_DB_DISPATCHER_BATCH_SIZE`（既定: 50）
+- `ALERTS_DB_DISPATCHER_CLAIM_LEASE_SECONDS`（既定: 120、同時実行時の重複処理を減らすための短いリース）
+
+**dedupe（重複抑制）**:
+
+- `ALERTS_DEDUPE_ENABLED`（既定: true）
+- `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（既定: 600）
+- `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別windowSeconds）
+
+**注意事項（安全）**:
+
+- DB版Dispatcherは `AlertDelivery.status=pending|failed` を処理します（`sent/suppressed` は処理しません）
+- Phase1と同様、**24時間以上古い未送信アラートは送信しません**（通知暴発防止）
+- **ロールバック**: `ALERTS_DISPATCHER_MODE=file` に戻すとPhase1（file→Slack）に戻せます（`ALERTS_DISPATCHER_ENABLED` も必要）
 
 ### Phase2: DB取り込み（Alerts DB Ingest）
 
@@ -75,8 +102,8 @@ environment:
 
 **注意事項**:
 - DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
-- Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
-- dedupe（重複抑制）はPhase2初期では未実装（後続実装）
+- Slack配送はPhase1（file→Slack）またはPhase2後続（DB→Slack）を選択
+- dedupe（重複抑制）はPhase2後続（DB→Slack）で有効化可能
 
 **実機検証結果（2026-01-18）**:
 - Pi5で実機検証を実施し、DB取り込み・AlertDelivery作成・ファイル→DBのack更新を確認

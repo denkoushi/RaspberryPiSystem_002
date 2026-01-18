@@ -91,6 +91,33 @@ Phase2初回実装の実機検証をPi5で実施し、以下の結果を確認�
 - **dedupe（重複抑制）**: Phase2初期では未実装
 - **DB版Slack配送**: Phase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
 
+## Phase2後続実装スコープ（DB→Slack配送 + dedupe + retry/backoff）
+
+Phase2後続では、Slack配送を **DB中心**（`AlertDelivery`キュー）へ移行し、配送状態・重複抑制・再送を堅牢化する。
+
+### ✅ 実装内容（後続）
+
+- **DB版Dispatcher**: `AlertDelivery(status=pending|failed, nextAttemptAt<=now)` を取得してSlackへ配送
+- **dedupe**: `fingerprint + routeKey + windowSeconds` により連続通知を抑制し、`suppressed` に遷移
+  - windowSecondsは **routeKey別**（未設定はデフォルト10分）
+- **retry/backoff**: 失敗時は `failed` にし、指数バックオフで `nextAttemptAt` を設定（上限あり）
+- **Phase1停止（full switch）**: `alerts/` 走査＋ファイルへのdelivery書き戻しは停止し、DB中心へ完全移行
+  - ロールバック用に `ALERTS_DISPATCHER_MODE=file|db` を用意（安全策）
+
+### 設定（env / JSON config）
+
+- **切替モード**: `ALERTS_DISPATCHER_MODE`（`file` or `db`）
+- **DB版Dispatcher**:
+  - `ALERTS_DB_DISPATCHER_ENABLED`（default: false）
+  - `ALERTS_DB_DISPATCHER_INTERVAL_SECONDS`（default: 30）
+  - `ALERTS_DB_DISPATCHER_BATCH_SIZE`（default: 50）
+  - `ALERTS_DB_DISPATCHER_CLAIM_LEASE_SECONDS`（default: 120）
+- **dedupe**:
+  - `ALERTS_DEDUPE_ENABLED`（default: true）
+  - `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（default: 600）
+  - `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別window）
+
+
 ## データモデル案（Prisma）
 
 ### 1) Alert（一次情報）
