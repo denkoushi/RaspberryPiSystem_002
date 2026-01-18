@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-18）
+
+- **✅ デプロイ安定化機能の実装完了**: デプロイプロセスの安全性と可観測性を向上させる機能を実装。プリフライトリーチビリティチェック（Pi5 + inventory hosts）、リモートロック（並行実行防止、古いロックの自動クリーンアップ）、リソースガード（メモリ120MB、ディスク90%）、環境限定リトライ（unreachable hostsのみ、3回、30秒）、ホストごとのタイムアウト（Pi3 30m / Pi4 10m / Pi5 15m）、Slack通知（start/success/failure/per-host failure）、`--limit`オプション（特定ホストのみ更新）を実装。実機検証でPi5とPi4でのデプロイ成功を確認。実装時の発見事項（locale問題、git権限問題、ESLint設定問題）も解決。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) / [guides/deployment.md](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) / [plans/deploy-stability-execplan.md](../plans/deploy-stability-execplan.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-16）
 
 - **✅ WebRTCビデオ通話機能の修正（clientKey/clientId未設定問題）**: `KioskCallPage.tsx`で`clientKey`と`clientId`が設定されていなかったため、WebSocket接続が確立されずビデオ通話機能が動作しない問題を解決。`useLocalStorage`フックを追加し、`localStorage`から`clientKey`と`clientId`を取得して`useWebRTC`フックに渡すように修正。`resolveClientKey`関数で`DEFAULT_CLIENT_KEY`をフォールバックとして使用するように改善。実機検証でPi4とMac間のビデオ通話が正常に動作することを確認。詳細は [knowledge-base/frontend.md#kb-171](./knowledge-base/frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) を参照。

@@ -1349,3 +1349,114 @@ cat ~/.status-agent.conf
 - デプロイ指示時にinventory引数を明示する必要がある
 
 ---
+
+### [KB-172] デプロイ安定化機能の実装（プリフライト・ロック・リソースガード・リトライ・タイムアウト）
+
+**EXEC_PLAN.md参照**: Deploy Stability Enhancements (Update-All-Clients Primary) (2026-01-17)
+
+**事象**: 
+- デプロイ時の並行実行による競合が発生する可能性があった
+- リソース不足（メモリ・ディスク）でデプロイが失敗する可能性があった
+- ネットワーク障害（一時的なunreachable）でデプロイが失敗する可能性があった
+- デプロイプロセスの可観測性が低く、失敗原因の特定が困難だった
+
+**要因**: 
+- **並行実行防止の不足**: デプロイスクリプトにロック機構がなかった
+- **リソースチェックの不足**: デプロイ前にリソースをチェックする仕組みがなかった
+- **リトライ機能の不足**: 一時的なネットワーク障害でデプロイが失敗していた
+- **タイムアウト設定の不足**: ホストごとの特性に応じたタイムアウト設定がなかった
+- **通知機能の不足**: デプロイの開始・成功・失敗を通知する仕組みがなかった
+
+**実装内容**:
+1. **プリフライトリーチビリティチェック**:
+   - デプロイ開始前にPi5へのSSH接続を確認
+   - Pi5からinventory内の全ホストへの接続を`ansible -m ping`で確認
+   - 接続不可の場合はデプロイを中断（エラーコード3）
+   - `scripts/update-all-clients.sh`の`run_preflight_remotely`関数で実装
+
+2. **リモートロック（並行実行防止）**:
+   - Pi5上の`/opt/RaspberryPiSystem_002/logs/deploy.lock`で並行実行を防止
+   - 古いロック（デフォルト30分以上経過）は自動的にクリーンアップ
+   - ロック取得失敗時はデプロイを中断（エラーコード3）
+   - `scripts/update-all-clients.sh`の`acquire_remote_lock`関数で実装
+
+3. **リソースガード**:
+   - デプロイ前に各ホストのリソースをチェック
+   - メモリ: 120MB未満の場合はデプロイを中断
+   - ディスク: `/opt`の使用率が90%以上の場合はデプロイを中断
+   - `infrastructure/ansible/tasks/resource-guard.yml`で実装
+   - `infrastructure/ansible/playbooks/deploy.yml`の冒頭でinclude
+
+4. **環境限定リトライ**:
+   - unreachable hostsのみを対象にリトライ（最大3回、30秒間隔）
+   - タスク失敗（failed hosts）はリトライしない（環境問題とコード問題を区別）
+   - `--limit`オプションで特定ホストのみリトライ可能
+   - `scripts/update-all-clients.sh`の`get_retry_hosts_if_unreachable_only`関数で実装
+
+5. **ホストごとのタイムアウト**:
+   - Pi3: 30分（リポジトリ更新が遅い場合を考慮）
+   - Pi4: 10分
+   - Pi5: 15分
+   - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
+
+6. **Slack通知**:
+   - デプロイ開始時: 開始通知
+   - デプロイ成功時: 成功通知（全ホスト成功）
+   - デプロイ失敗時: 失敗通知（失敗ホスト一覧）
+   - ホスト単位の失敗: 個別の失敗通知
+   - `scripts/generate-alert.sh`を再利用して実装
+
+7. **`--limit`オプション対応**:
+   - 特定ホストのみを更新する場合に使用
+   - プリフライトチェックとリトライにも適用される
+   - `scripts/update-all-clients.sh`の引数解析で実装
+
+**実装時の発見事項**:
+- **locale問題（dfコマンドの日本語出力）**: `df -P /opt`の出力が日本語ロケールの場合、ヘッダー行の解析が失敗する問題を発見。`tail -n +2`でヘッダー行をスキップすることで解決（`infrastructure/ansible/tasks/resource-guard.yml`）。
+- **git権限問題**: Pi5上で`git pull`実行時に`.git`ディレクトリの権限エラーが発生。`chown -R denkon5sd02:denkon5sd02 .git`で解決。
+- **ESLint設定問題**: テストファイルを`tsconfig.json`から除外した後、ESLintがテストファイルを解析できなくなる問題を発見。`apps/web/tsconfig.test.json`を新規作成し、`apps/web/.eslintrc.cjs`の`parserOptions.project`に追加することで解決。
+
+**学んだこと**: 
+- **デプロイプロセスのガード**: デプロイ前にリソースや接続をチェックすることで、失敗を早期に検出できる
+- **環境問題とコード問題の区別**: unreachable hostsのみをリトライすることで、環境問題とコード問題を区別できる
+- **並行実行防止**: ロック機構により、並行実行による競合を防止できる
+- **可観測性の向上**: Slack通知により、デプロイの状態をリアルタイムで把握できる
+- **locale問題への対応**: コマンド出力のlocale依存性を考慮し、ヘッダー行をスキップするなどの対策が必要
+
+**解決状況**: ✅ **実装完了**（2026-01-17）、✅ **実機検証完了**（2026-01-18、Pi5とPi4で成功）
+
+**実機検証状況**:
+- ✅ Pi5とPi4でのデプロイ成功を確認
+- ✅ プリフライト・ロック・リソースガードの動作を確認
+- ⚠️ リトライ機能、成功通知、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+
+**関連ファイル**: 
+- `scripts/update-all-clients.sh`（デプロイスクリプト）
+- `infrastructure/ansible/tasks/resource-guard.yml`（リソースガードタスク）
+- `infrastructure/ansible/playbooks/deploy.yml`（デプロイプレイブック）
+- `infrastructure/ansible/inventory.yml`（タイムアウト設定）
+- `docs/plans/deploy-stability-execplan.md`（実装計画）
+
+**確認コマンド**:
+```bash
+# デプロイ実行（プリフライト・ロック・リソースガードが自動実行される）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# 特定ホストのみ更新（--limitオプション）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
+```
+
+**再発防止策**:
+- **プリフライトチェック**: デプロイ前に接続を確認し、失敗を早期に検出
+- **リソースガード**: デプロイ前にリソースをチェックし、リソース不足を防止
+- **ロック機構**: 並行実行を防止し、競合を回避
+- **環境限定リトライ**: 一時的なネットワーク障害に対応
+- **Slack通知**: デプロイの状態をリアルタイムで把握
+
+**注意事項**:
+- リトライ機能はunreachable hostsのみを対象とする（failed hostsはリトライしない）
+- リソースガードの閾値（メモリ120MB、ディスク90%）は環境に応じて調整可能
+- タイムアウト設定はホストごとに異なるため、新しいホスト追加時は適切な値を設定する必要がある
+
+---

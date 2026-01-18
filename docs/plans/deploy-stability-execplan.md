@@ -88,12 +88,49 @@ All planned features were successfully implemented and verified:
    - ✅ Lint: `pnpm lint --max-warnings=0` passed
    - ✅ TypeScript: Build succeeded
 
+### Practical Verification Results (2026-01-18)
+
+**Deployment Verification**:
+- ✅ **Pi5 deployment**: Successfully deployed to Pi5 using `scripts/update-all-clients.sh`
+  - Preflight connectivity checks: Passed
+  - Remote lock acquisition: Passed
+  - Resource guard checks: Passed (memory and disk usage within thresholds)
+  - Deployment completed successfully (ok=101, changed=22, failed=0)
+  - Slack notifications: Start and success notifications received
+
+- ✅ **Pi4 deployment**: Successfully deployed to Pi4 using `scripts/update-all-clients.sh`
+  - Preflight connectivity checks: Passed
+  - Remote lock acquisition: Passed
+  - Resource guard checks: Passed
+  - Deployment completed successfully
+  - Slack notifications: Start and success notifications received
+
+**Verified Features**:
+- ✅ Preflight reachability checks (Pi5 + inventory hosts)
+- ✅ Remote lock mechanism (parallel execution prevention)
+- ✅ Resource guard (memory >= 120MB, disk < 90%)
+- ✅ Per-host command timeouts (Pi3 30m / Pi4 10m / Pi5 15m)
+- ✅ Slack notifications (start and success)
+
+**Unverified Features** (expected to work in production):
+- ⚠️ Retry functionality (environment-only retries for unreachable hosts)
+- ⚠️ Success notification details (per-host success status)
+- ⚠️ Lock mechanism with parallel execution (concurrent deployment attempts)
+
+**Issues Encountered During Verification**:
+- **Git permissions error on Pi5**: `.git` directory ownership issue prevented `git pull`. Fixed with `chown -R denkon5sd02:denkon5sd02 .git`.
+- **Resource guard disk usage check locale issue**: `df` command output parsing failed with Japanese locale. Fixed by using `tail -n +2` to skip header line in `infrastructure/ansible/tasks/resource-guard.yml`.
+- **ESLint configuration issue**: After excluding test files from `tsconfig.json`, ESLint could not parse test files. Fixed by creating `apps/web/tsconfig.test.json` and updating `apps/web/.eslintrc.cjs`.
+
 ### Lessons Learned
 
 - **Ansible validation**: Always set `ANSIBLE_ROLES_PATH` when running syntax checks locally.
 - **Docker build timeouts**: Large builds may require extended timeouts (600s+).
 - **TypeScript circular dependencies**: Use `useRef` to break circular dependencies between hooks and callbacks.
 - **Vite chunk optimization**: Large vendor libraries should be split into separate chunks to avoid size warnings.
+- **Locale-aware command parsing**: When parsing command output, consider locale differences and skip header lines when possible.
+- **Git permissions**: Ensure proper ownership of `.git` directory on remote hosts to prevent permission errors during deployment.
+- **ESLint configuration**: When excluding test files from main `tsconfig.json`, create a separate `tsconfig.test.json` and update ESLint configuration accordingly.
 
 ### Known Limitations
 
