@@ -116,7 +116,16 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       clientKey = rawClientKey[0];
     }
     
-    app.log.info({ clientKey, rawClientKey, headers: request.headers }, 'Kiosk config request');
+    // 機密情報保護: x-client-keyをログから除外
+    const sanitizedHeaders = { ...request.headers };
+    if ('x-client-key' in sanitizedHeaders) {
+      sanitizedHeaders['x-client-key'] = '[REDACTED]';
+    }
+    app.log.info({ 
+      clientKey: clientKey ? '[REDACTED]' : undefined, 
+      rawClientKey: '[REDACTED]', 
+      headers: sanitizedHeaders 
+    }, 'Kiosk config request');
     let defaultMode: 'PHOTO' | 'TAG' = 'TAG'; // デフォルトはTAG
     let clientStatus: {
       temperature: number | null;
@@ -128,7 +137,14 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       const client = await prisma.clientDevice.findUnique({
         where: { apiKey: clientKey }
       });
-      app.log.info({ client, clientKey, found: !!client, defaultMode: client?.defaultMode }, 'Client device lookup result');
+      // 機密情報保護: clientKeyとclient.apiKeyをログから除外
+      const sanitizedClient = client ? { ...client, apiKey: '[REDACTED]' } : null;
+      app.log.info({ 
+        client: sanitizedClient, 
+        clientKey: '[REDACTED]', 
+        found: !!client, 
+        defaultMode: client?.defaultMode 
+      }, 'Client device lookup result');
       if (client?.defaultMode) {
         defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
       }
@@ -149,7 +165,12 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    app.log.info({ defaultMode, clientKey, hasClientStatus: !!clientStatus }, 'Returning kiosk config');
+    // 機密情報保護: clientKeyをログから除外
+    app.log.info({ 
+      defaultMode, 
+      clientKey: '[REDACTED]', 
+      hasClientStatus: !!clientStatus 
+    }, 'Returning kiosk config');
     return {
       theme: 'factory-dark',
       greeting: 'タグを順番にかざしてください',

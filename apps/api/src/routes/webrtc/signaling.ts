@@ -72,7 +72,12 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
   //   ここでは `/signaling` のみを定義する（`/webrtc/...` を重ねると二重になる）。
   app.log.info('Registering WebRTC signaling WebSocket route: /signaling');
   app.get('/signaling', { websocket: true }, async (connection, req) => {
-    app.log.info({ url: req.url, headers: req.headers }, 'WebRTC signaling WebSocket connection attempt');
+    // 機密情報保護: x-client-keyをログから除外
+  const sanitizedHeaders = { ...req.headers };
+  if ('x-client-key' in sanitizedHeaders) {
+    sanitizedHeaders['x-client-key'] = '[REDACTED]';
+  }
+  app.log.info({ url: req.url, headers: sanitizedHeaders }, 'WebRTC signaling WebSocket connection attempt');
     // @fastify/websocket の connection 形状が環境差分で異なる可能性があるため、
     // `connection.socket` が無い場合は `connection` 自体をソケットとして扱う（実測でconnection.socketがundefinedのケースあり）。
     const maybeSocket = (connection as unknown as { socket?: unknown }).socket ?? connection;

@@ -4,7 +4,12 @@ import { loanParamsSchema } from './schemas.js';
 
 export function registerLoanDeleteRoute(app: FastifyInstance, loanService: LoanService): void {
   app.delete('/:id', { config: { rateLimit: false } }, async (request) => {
-    app.log.info({ params: request.params, headers: request.headers }, 'Loan delete request received');
+    // 機密情報保護: x-client-keyをログから除外
+    const sanitizedHeaders = { ...request.headers };
+    if ('x-client-key' in sanitizedHeaders) {
+      sanitizedHeaders['x-client-key'] = '[REDACTED]';
+    }
+    app.log.info({ params: request.params, headers: sanitizedHeaders }, 'Loan delete request received');
     try {
       const params = loanParamsSchema.parse(request.params);
       // client-keyがあれば認証をスキップ（キオスク画面からのアクセス）

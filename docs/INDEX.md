@@ -582,6 +582,11 @@ APIの概要と詳細。
 | [port-security-verification-results.md](./security/port-security-verification-results.md) | **ポートセキュリティ修正後の実機検証結果**（実機検証結果と評価、2025-12-18） |
 | [standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) | **標準セキュリティチェックリスト監査レポート**（IPA、OWASP、CISベンチマークに基づく監査結果、2025-12-18） |
 | [postgresql-password-policy-implementation.md](./security/postgresql-password-policy-implementation.md) | **PostgreSQLパスワードポリシー強化の実装**（環境変数によるパスワード管理の実装手順、2025-12-18完了） |
+| [evaluation-plan.md](./security/evaluation-plan.md) | **セキュリティ評価計画書**（OWASP/IPA/CIS/NIST等の標準指標に基づく評価実施計画、2026-01-18作成） |
+| [evaluation-report.md](./security/evaluation-report.md) | **セキュリティ評価報告書**（評価計画書に基づく評価実施結果、2026-01-18作成） |
+| [external-intrusion-risk-analysis.md](./security/external-intrusion-risk-analysis.md) | **外部侵入リスク分析レポート**（外部からの不正侵入リスクの詳細分析、2026-01-18作成） |
+| [urgent-security-measures.md](./security/urgent-security-measures.md) | **緊急に実装すべき安全対策機能**（USBメモリ運用予定がない前提での緊急実装項目、2026-01-18作成） |
+| [log-redaction-implementation.md](./security/log-redaction-implementation.md) | **ログの機密情報保護実装レポート**（x-client-keyのログ出力を[REDACTED]に置換する実装、2026-01-18実装完了） |
 
 ### プレゼンテーション（presentations/）
 
