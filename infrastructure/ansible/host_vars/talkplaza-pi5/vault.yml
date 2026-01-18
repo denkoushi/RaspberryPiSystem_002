@@ -9,6 +9,15 @@ vault_talkplaza_pi5_status_agent_client_key: "client-key-talkplaza-pi5-server"
 
 # Slack（トークプラザ用Webhookを設定）
 vault_talkplaza_slack_kiosk_support_webhook_url: ""
+# Alerts Dispatcher設定（トークプラザ用）
+vault_talkplaza_alerts_dispatcher_enabled: "true"
+# Alerts Dispatcher Slack Webhooks (route-based)
+# NOTE: Slack側で各チャンネル（#rps-deploy, #rps-ops, #rps-security, #rps-support）のIncoming Webhook URLを取得して設定してください
+# 未設定（空文字）の場合は、そのrouteKeyのアラートはSlackに送信されません（ファイル生成のみ）
+vault_talkplaza_alerts_slack_webhook_deploy: ""
+vault_talkplaza_alerts_slack_webhook_ops: ""
+vault_talkplaza_alerts_slack_webhook_security: ""
+vault_talkplaza_alerts_slack_webhook_support: ""
 
 # Dropbox OAuth 2.0（トークプラザ用に分離）
 vault_talkplaza_dropbox_app_key: ""

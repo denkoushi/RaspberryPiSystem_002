@@ -8,7 +8,8 @@ import { registerWebRTCSignaling } from './signaling.js';
 export async function registerWebRTCRoutes(app: FastifyInstance): Promise<void> {
   // 環境変数で有効/無効を切り替え可能
   const webrtcEnabled = process.env.WEBRTC_ENABLED === 'true';
-  app.log.info({ webrtcEnabled, envValue: process.env.WEBRTC_ENABLED }, 'WebRTC routes registration check');
+  const envValue = process.env.WEBRTC_ENABLED;
+  app.log.info({ webrtcEnabled, envValue }, 'WebRTC routes registration check');
   if (!webrtcEnabled) {
     app.log.info('WebRTC routes disabled (WEBRTC_ENABLED !== true)');
     return; // 無効化されている場合は何もしない

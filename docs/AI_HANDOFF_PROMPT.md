@@ -5,7 +5,7 @@
 **まず、以下のドキュメントを順番に確認してください：**
 
 1. **[docs/guides/ai-handoff.md](./guides/ai-handoff.md)** - プロジェクト運用の「1本のルート」を理解する
-2. **[AGENTS.md](../AGENTS.md)** - プロジェクトの基本思想（編集不可）
+2. **[AGENTS.md](../AGENTS.md)** - プロジェクトの基本思想（主要ドキュメントへのショートカット導線あり）
 3. **[.agent/PLANS.md](../.agent/PLANS.md)** - 具体的な思想・行動方針（編集不可）
 4. **[EXEC_PLAN.md](../EXEC_PLAN.md)** - 現在のプロジェクト状態を把握
 5. **[docs/INDEX.md](./INDEX.md)** - 全ドキュメントの索引

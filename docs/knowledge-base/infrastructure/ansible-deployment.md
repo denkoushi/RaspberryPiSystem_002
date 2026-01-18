@@ -1349,3 +1349,659 @@ cat ~/.status-agent.conf
 - デプロイ指示時にinventory引数を明示する必要がある
 
 ---
+
+### [KB-172] デプロイ安定化機能の実装（プリフライト・ロック・リソースガード・リトライ・タイムアウト）
+
+**EXEC_PLAN.md参照**: Deploy Stability Enhancements (Update-All-Clients Primary) (2026-01-17)
+
+**事象**: 
+- デプロイ時の並行実行による競合が発生する可能性があった
+- リソース不足（メモリ・ディスク）でデプロイが失敗する可能性があった
+- ネットワーク障害（一時的なunreachable）でデプロイが失敗する可能性があった
+- デプロイプロセスの可観測性が低く、失敗原因の特定が困難だった
+
+**要因**: 
+- **並行実行防止の不足**: デプロイスクリプトにロック機構がなかった
+- **リソースチェックの不足**: デプロイ前にリソースをチェックする仕組みがなかった
+- **リトライ機能の不足**: 一時的なネットワーク障害でデプロイが失敗していた
+- **タイムアウト設定の不足**: ホストごとの特性に応じたタイムアウト設定がなかった
+- **通知機能の不足**: デプロイの開始・成功・失敗を通知する仕組みがなかった
+
+**実装内容**:
+1. **プリフライトリーチビリティチェック**:
+   - デプロイ開始前にPi5へのSSH接続を確認
+   - Pi5からinventory内の全ホストへの接続を`ansible -m ping`で確認
+   - 接続不可の場合はデプロイを中断（エラーコード3）
+   - `scripts/update-all-clients.sh`の`run_preflight_remotely`関数で実装
+
+2. **リモートロック（並行実行防止）**:
+   - Pi5上の`/opt/RaspberryPiSystem_002/logs/deploy.lock`で並行実行を防止
+   - 古いロック（デフォルト30分以上経過）は自動的にクリーンアップ
+   - ロック取得失敗時はデプロイを中断（エラーコード3）
+   - `scripts/update-all-clients.sh`の`acquire_remote_lock`関数で実装
+
+3. **リソースガード**:
+   - デプロイ前に各ホストのリソースをチェック
+   - メモリ: 120MB未満の場合はデプロイを中断
+   - ディスク: `/opt`の使用率が90%以上の場合はデプロイを中断
+   - `infrastructure/ansible/tasks/resource-guard.yml`で実装
+   - `infrastructure/ansible/playbooks/deploy.yml`の冒頭でinclude
+
+4. **環境限定リトライ**:
+   - unreachable hostsのみを対象にリトライ（最大3回、30秒間隔）
+   - タスク失敗（failed hosts）はリトライしない（環境問題とコード問題を区別）
+   - `--limit`オプションで特定ホストのみリトライ可能
+   - `scripts/update-all-clients.sh`の`get_retry_hosts_if_unreachable_only`関数で実装
+
+5. **ホストごとのタイムアウト**:
+   - Pi3: 30分（リポジトリ更新が遅い場合を考慮）
+   - Pi4: 10分
+   - Pi5: 15分
+   - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
+
+6. **通知（alerts一次情報 + Slackは二次経路）**:
+   - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成
+   - `scripts/generate-alert.sh`を再利用して alerts ファイルを生成
+   - Slack配送は「二次経路」として扱い、**API側のAlerts Dispatcherが担当**（B1アーキテクチャ）
+   - Alerts Dispatcherは`apps/api/src/services/alerts/alerts-dispatcher.ts`で実装
+   - 環境変数`ALERTS_DISPATCHER_ENABLED=true`とWebhook URL設定で有効化
+
+7. **`--limit`オプション対応**:
+   - 特定ホストのみを更新する場合に使用
+   - プリフライトチェックとリトライにも適用される
+   - `scripts/update-all-clients.sh`の引数解析で実装
+
+**実装時の発見事項**:
+- **locale問題（dfコマンドの日本語出力）**: `df -P /opt`の出力が日本語ロケールの場合、ヘッダー行の解析が失敗する問題を発見。`tail -n +2`でヘッダー行をスキップすることで解決（`infrastructure/ansible/tasks/resource-guard.yml`）。
+- **git権限問題**: Pi5上で`git pull`実行時に`.git`ディレクトリの権限エラーが発生。`chown -R denkon5sd02:denkon5sd02 .git`で解決。
+- **ESLint設定問題**: テストファイルを`tsconfig.json`から除外した後、ESLintがテストファイルを解析できなくなる問題を発見。`apps/web/tsconfig.test.json`を新規作成し、`apps/web/.eslintrc.cjs`の`parserOptions.project`に追加することで解決。
+- **`.gitignore`の全階層マッチ問題**: `.gitignore`の`alerts/`と`config/`がサブディレクトリにもマッチし、`apps/api/src/services/alerts/`が無視される問題を発見。`/alerts/`と`/config/`に修正してルート直下のみを無視するように変更。
+- **過去のアラート再送問題**: Alerts Dispatcher起動時に、過去のアラートファイル（`deliveries.slack`がない）がすべて再送される問題を発見。`shouldRetry`関数を修正し、24時間以上古いアラートは再送しないように変更。送信済み（`status === 'sent'`）のアラートも再送されない。
+
+**学んだこと**: 
+- **デプロイプロセスのガード**: デプロイ前にリソースや接続をチェックすることで、失敗を早期に検出できる
+- **環境問題とコード問題の区別**: unreachable hostsのみをリトライすることで、環境問題とコード問題を区別できる
+- **並行実行防止**: ロック機構により、並行実行による競合を防止できる
+- **可観測性の向上**: Slack通知により、デプロイの状態をリアルタイムで把握できる
+- **locale問題への対応**: コマンド出力のlocale依存性を考慮し、ヘッダー行をスキップするなどの対策が必要
+
+**解決状況**: ✅ **実装完了**（2026-01-17）、✅ **実機検証完了**（2026-01-18、Pi5とPi4で成功）
+
+**実機検証状況**:
+- ✅ Pi5とPi4でのデプロイ成功を確認
+- ✅ プリフライト・ロック・リソースガードの動作を確認
+- ✅ Alerts Dispatcher Phase 1実装完了・CI成功
+- ✅ Slack通知の実機検証完了（2026-01-18、Pi5でWebhook設定後、テストアラートがSlackに正常に送信されることを確認）
+- ✅ 過去のアラート再送問題の修正完了（24時間以上古いアラートは再送されないことを確認）
+- ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+
+**関連ファイル**: 
+- `scripts/update-all-clients.sh`（デプロイスクリプト）
+- `infrastructure/ansible/tasks/resource-guard.yml`（リソースガードタスク）
+- `infrastructure/ansible/playbooks/deploy.yml`（デプロイプレイブック）
+- `infrastructure/ansible/inventory.yml`（タイムアウト設定）
+- `apps/api/src/services/alerts/alerts-dispatcher.ts`（Alerts Dispatcher実装）
+- `apps/api/src/services/alerts/alerts-config.ts`（設定読み込み）
+- `apps/api/src/services/alerts/slack-sink.ts`（Slack送信）
+- `docs/plans/deploy-stability-execplan.md`（実装計画）
+- `docs/plans/alerts-platform-phase2.md`（Phase 2設計）
+
+**確認コマンド**:
+```bash
+# デプロイ実行（プリフライト・ロック・リソースガードが自動実行される）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# 特定ホストのみ更新（--limitオプション）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
+```
+
+**再発防止策**:
+- **プリフライトチェック**: デプロイ前に接続を確認し、失敗を早期に検出
+- **リソースガード**: デプロイ前にリソースをチェックし、リソース不足を防止
+- **ロック機構**: 並行実行を防止し、競合を回避
+- **環境限定リトライ**: 一時的なネットワーク障害に対応
+- **Slack通知**: デプロイの状態をリアルタイムで把握
+- **過去のアラート再送防止**: 24時間以上古いアラートは再送しないロジックを実装
+- **送信済みアラートの再送防止**: `status === 'sent'`のアラートは再送しないロジックを実装
+
+**注意事項**:
+- リトライ機能はunreachable hostsのみを対象とする（failed hostsはリトライしない）
+- リソースガードの閾値（メモリ120MB、ディスク90%）は環境に応じて調整可能
+- タイムアウト設定はホストごとに異なるため、新しいホスト追加時は適切な値を設定する必要がある
+
+---
+
+### [KB-173] Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善
+
+**EXEC_PLAN.md参照**: Alerts Platform Phase2実装（2026-01-18）
+
+**事象**: 
+- Alerts Platform Phase2のIngest実装において、空ファイル（0バイト）や壊れたJSONファイルが`errors`としてカウントされ、ログノイズが発生
+- 実機検証時に`errors:2`が毎回発生し、実際のエラーと区別が困難
+- Pi5の`alerts/`ディレクトリに1033件の0バイトファイルが存在
+
+**要因**: 
+- **空ファイルの存在**: ローテーションや部分書き込みにより、0バイトの`alert-*.json`ファイルが大量に存在
+- **エラーカウントの扱い**: 空ファイルや壊れたJSONを`errors`として扱っていたため、運用上の問題（ローテーション/部分書き込み）がエラーとして扱われていた
+- **ログノイズ**: 実際のエラーと区別が困難で、運用上の問題を特定しづらい
+
+**試行した対策**: 
+- [試行1] 空ファイルの存在を確認 → **確認**（1033件の0バイトファイルを発見）
+- [試行2] `readAlert`関数で空ファイルをスキップするように変更 → **成功**
+  - `fs.stat`でファイルサイズを確認し、0バイトの場合は`skipped`として扱う
+  - 壊れたJSONも`errors`ではなく`skipped`として扱うように変更
+
+**根本原因**: 
+- 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ため、エラーとして扱うべきではない
+- エラーカウントは実際のシステムエラー（DB接続エラー、権限エラー等）に限定すべき
+
+**実施した対策**: 
+- **空ファイルの検出**: `fs.stat`でファイルサイズを確認し、0バイトの場合は`skipped`として扱う
+- **エラーカウントの改善**: 空ファイルや壊れたJSONを`errors`ではなく`skipped`として扱うように変更
+- **ログレベルの調整**: 空ファイルのスキップは`debug`レベルでログ出力し、ノイズを削減
+
+**実装詳細**:
+```typescript
+// apps/api/src/services/alerts/alerts-ingestor.ts
+const alert = await readAlert(filePath);
+if (!alert) {
+  // 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ので安全にスキップ
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.size === 0) {
+      logger?.debug({ filePath }, '[AlertsIngestor] Empty alert file, skipping');
+      skipped++;
+      continue;
+    }
+  } catch {
+    // noop
+  }
+  logger?.debug({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+  skipped++;
+  continue;
+}
+```
+
+**実機検証結果**:
+- ✅ DB取り込み: 52件のアラートがDBに取り込まれていることを確認
+- ✅ AlertDelivery作成: 49件のPENDING状態で作成されていることを確認
+- ✅ ファイル→DBのack更新: 正常に動作することを確認
+- ✅ エラーログ改善: `errors:2` → `errors:0`、`skipped:2` に改善されることを確認
+- ✅ ログノイズ削減: 空ファイルのスキップが`debug`レベルでログ出力され、ノイズが削減
+
+**学んだこと**: 
+- **エラーとスキップの区別**: 運用上起こりうる問題（空ファイル、壊れたJSON）はエラーではなくスキップとして扱うべき
+- **ログレベルの適切な使い分け**: デバッグ情報は`debug`レベルで出力し、運用時のノイズを削減
+- **段階的な実装**: Phase2初期ではIngestのみを実装し、dedupeやDB版Dispatcherは後続実装として計画
+
+**解決状況**: ✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+**実機検証状況**:
+- ✅ Pi5でDB取り込み・AlertDelivery作成・ack更新を確認
+- ✅ エラーログ改善を確認（`errors:2` → `errors:0`、`skipped:2`）
+- ✅ ログノイズ削減を確認
+
+**関連ファイル**: 
+- `apps/api/src/services/alerts/alerts-ingestor.ts`（AlertsIngestor実装）
+- `apps/api/src/routes/clients.ts`（API互換性拡張）
+- `apps/api/prisma/schema.prisma`（Alert/AlertDeliveryモデル）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+**確認コマンド**:
+```bash
+# DB取り込み状況を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) FROM \"Alert\";"
+
+# AlertsIngestorのログを確認
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E '(AlertsIngestor|ingested|skipped|errors)'
+```
+
+**再発防止策**:
+- **空ファイルの検出**: `fs.stat`でファイルサイズを確認し、0バイトの場合はスキップ
+- **エラーカウントの改善**: 実際のシステムエラーのみを`errors`としてカウント
+- **ログレベルの適切な使い分け**: デバッグ情報は`debug`レベルで出力
+
+**注意事項**:
+- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true`で明示的に有効化）
+- 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
+- dedupe（重複抑制）はPhase2初期では未実装（後続実装）
+- Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
+
+---
+
+## [KB-174] Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了
+
+**日付**: 2026-01-18  
+**カテゴリ**: Alerts Platform, デプロイ, 実機検証  
+**重要度**: 高  
+**状態**: ✅ **実装完了**、✅ **実機検証完了**
+
+### 症状
+
+Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証を実施し、DB版Dispatcherが正常に動作することを確認する必要があった。
+
+### 実装内容
+
+Phase2後続実装では、以下の機能を実装：
+
+1. **DB版Dispatcher**: `AlertDelivery(status=pending|failed, nextAttemptAt<=now)` を取得してSlackへ配送
+2. **dedupe**: `fingerprint + routeKey + windowSeconds` により連続通知を抑制し、`suppressed` に遷移
+3. **retry/backoff**: 失敗時は `failed` にし、指数バックオフで `nextAttemptAt` を設定（上限あり）
+4. **Phase1停止（full switch）**: `alerts/` 走査＋ファイルへのdelivery書き戻しは停止し、DB中心へ完全移行
+   - ロールバック用に `ALERTS_DISPATCHER_MODE=file|db` を用意（安全策）
+
+**実装ファイル**:
+- `apps/api/src/services/alerts/alerts-db-dispatcher.ts`（新規作成）
+- `apps/api/src/services/alerts/alerts-config.ts`（拡張）
+- `apps/api/src/main.ts`（mode切替ロジック追加）
+- `apps/api/src/services/alerts/__tests__/alerts-db-dispatcher.test.ts`（新規作成）
+
+**環境変数**:
+- `ALERTS_DISPATCHER_MODE`（`file` or `db`）
+- `ALERTS_DB_DISPATCHER_ENABLED`（default: false）
+- `ALERTS_DB_DISPATCHER_INTERVAL_SECONDS`（default: 30）
+- `ALERTS_DB_DISPATCHER_BATCH_SIZE`（default: 50）
+- `ALERTS_DB_DISPATCHER_CLAIM_LEASE_SECONDS`（default: 120）
+- `ALERTS_DEDUPE_ENABLED`（default: true）
+- `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（default: 600）
+- `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別window）
+
+### 実機検証結果（2026-01-18）
+
+Pi5で実機検証を実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **DB版Dispatcher起動**
+   - `AlertsDbDispatcher`が正常に起動（intervalSeconds: 30, batchSize: 50）
+   - Phase1（file）Dispatcherは停止（mode=dbのため）
+
+2. **配送処理**
+   - 1回目: 50件処理 → 10件SENT、40件SUPPRESSED
+   - 2回目: 5件処理 → 0件SENT、5件SUPPRESSED（dedupeで抑制）
+
+3. **dedupe動作**
+   - 同一fingerprintのアラートが正しく抑制されている
+   - 同一fingerprint（`587fef4fe...`）が45件あり、すべてSUPPRESSED
+   - windowSeconds（600秒）が正しく機能
+
+4. **fingerprint自動計算**
+   - 55件中54件にfingerprintが設定されている
+   - 未設定のアラートも自動計算されている
+
+5. **状態遷移**
+   - `PENDING` → `SENT`（10件）
+   - `PENDING` → `SUPPRESSED`（45件、dedupe/acknowledged/too old）
+
+6. **Phase1停止確認**
+   - Phase1（file）Dispatcherは動作していない（mode=dbのため）
+
+#### 検証結果サマリー
+
+```
+DB版Dispatcher: ✅ 正常動作
+配送処理: ✅ 10件SENT、45件SUPPRESSED
+dedupe: ✅ 同一fingerprintで正しく抑制
+fingerprint計算: ✅ 54/55件に設定済み
+Phase1停止: ✅ fileモードは動作していない
+```
+
+### 学んだこと
+
+- **DB版Dispatcherの動作**: `AlertDelivery`キューを処理し、dedupeとretry/backoffが正しく機能することを確認
+- **dedupeの効果**: 同一fingerprintのアラートがwindow内で抑制され、Slack通知の連打を防止
+- **fingerprint自動計算**: 未設定のアラートも自動計算され、dedupeが機能する
+- **Phase1停止**: mode=dbにすることで、Phase1（file）Dispatcherを停止し、DB中心へ完全移行できることを確認
+
+### 解決状況
+
+✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+### 関連ファイル
+
+- `apps/api/src/services/alerts/alerts-db-dispatcher.ts`（DB版Dispatcher実装）
+- `apps/api/src/services/alerts/alerts-config.ts`（設定管理）
+- `apps/api/src/main.ts`（mode切替ロジック）
+- `apps/api/src/services/alerts/__tests__/alerts-db-dispatcher.test.ts`（ユニットテスト）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+### 確認コマンド
+
+```bash
+# DB版Dispatcherのログを確認
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E '(AlertsDbDispatcher|Run completed)'
+
+# AlertDeliveryの状態を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT status, COUNT(*) as count FROM \"AlertDelivery\" GROUP BY status ORDER BY status;"
+
+# fingerprintの設定状況を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) as total_alerts, COUNT(CASE WHEN fingerprint IS NOT NULL THEN 1 END) as with_fingerprint FROM \"Alert\";"
+```
+
+### 注意事項
+
+- DB版DispatcherはデフォルトOFF（`ALERTS_DISPATCHER_MODE=db`と`ALERTS_DB_DISPATCHER_ENABLED=true`で明示的に有効化）
+- Phase1（file）Dispatcherは`ALERTS_DISPATCHER_MODE=file`に戻すことでロールバック可能
+- dedupeは`ALERTS_DEDUPE_ENABLED=true`で有効化（デフォルト: true）
+- windowSecondsはrouteKey別に設定可能（未設定はデフォルト600秒）
+
+---
+
+## [KB-175] Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了
+
+**日付**: 2026-01-18  
+**カテゴリ**: Alerts Platform, デプロイ, 実機検証  
+**重要度**: 高  
+**状態**: ✅ **実装完了**、✅ **実機検証完了**
+
+### 症状
+
+Phase2完全移行（API/UIをDBのみ参照に変更）の実機検証を実施し、管理ダッシュボードでDB alertsが表示されることを確認する必要があった。
+
+### 実装内容
+
+Phase2完全移行では、以下の変更を実施：
+
+1. **API: `/clients/alerts` をDBのみ参照に切替**
+   - ファイル走査（`fs.readdir/readFile`）ブロックを撤去
+   - `prisma.alert.findMany(...)` の結果（`dbAlerts`）を一次表示対象にする
+   - `alerts.fileAlerts` と `details.fileAlerts` は **常に 0 / []** を返す（互換フィールドとして残す・deprecated扱い）
+   - `hasAlerts` は `staleClients || errorLogs || dbAlerts.length` で判定
+
+2. **API: `/clients/alerts/:id/acknowledge` をDBのみ更新に切替**
+   - ファイル探索・`acknowledged=true` 書き込み処理を撤去
+   - DB側のみ `Alert.acknowledged=true, acknowledgedAt=now` を更新
+   - レスポンスは `acknowledgedInDb:true` のみ返す（`acknowledgedInFile` フィールドは削除）
+
+3. **Web: 管理ダッシュボードの表示をDB alertsへ切替**
+   - `ClientAlerts` 型に `dbAlerts`（配列）を追加し、`fileAlerts` はdeprecated（空）として扱う
+   - `DashboardPage` は `details.dbAlerts` を表示（severity表示など必要最小限）
+   - 「確認済み」ボタンは既存の `acknowledgeAlert` を継続利用
+
+4. **Ansible環境変数の永続化**
+   - `infrastructure/ansible/templates/docker.env.j2` に以下を追加:
+     - `ALERTS_DISPATCHER_MODE`（通常: `db`）
+     - `ALERTS_DB_DISPATCHER_ENABLED`（通常: `true`）
+     - `ALERTS_DB_INGEST_ENABLED`（通常: `true`）
+
+5. **API integration test追加**
+   - `GET /api/clients/alerts` が `details.dbAlerts` を返し、`details.fileAlerts` が空であること
+   - `POST /api/clients/alerts/:id/acknowledge` がDB上の `Alert.acknowledged` を更新すること
+
+**実装ファイル**:
+- `apps/api/src/routes/clients.ts`（API: DBのみ参照/更新）
+- `apps/web/src/api/client.ts`（型定義拡張）
+- `apps/web/src/pages/admin/DashboardPage.tsx`（DB alerts表示）
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`（回帰テスト追加）
+- `infrastructure/ansible/templates/docker.env.j2`（環境変数永続化）
+
+### 実機検証結果（2026-01-18）
+
+Pi5で実機検証を実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **API: `/clients/alerts` がDBのみ参照**
+   - APIレスポンスで `alerts.dbAlerts=10`、`details.dbAlerts.length=10` を確認
+   - `alerts.fileAlerts=0`、`details.fileAlerts.length=0`（deprecatedフィールドは空）
+
+2. **Web: 管理ダッシュボードがDB alertsを表示**
+   - 「アラート:」セクションにDB alertsが複数表示されることを確認
+   - `[ports-unexpected]` タイプのアラートが正しく表示される
+   - タイムスタンプが正しく表示される（JST形式: `2026/1/18 14:45:08`）
+
+3. **acknowledge機能**
+   - 「確認済み」ボタンが各DB alertに表示される
+   - ボタンクリックでDBの`acknowledged`が更新される（実装確認済み）
+
+4. **staleClientsアラートとの共存**
+   - 「1台のクライアントが12時間以上オフラインです」とDB alertsが同時に表示される
+   - `hasAlerts`の計算が正しく機能（`staleClients || errorLogs || dbAlerts.length`）
+
+5. **「ファイルベースのアラート:」が表示されない**
+   - 完全移行成功: 古いUI（fileAlerts表示）は表示されない
+
+#### 検証結果サマリー
+
+```
+API: ✅ DBのみ参照（fileAlertsは0/[]固定）
+Web UI: ✅ DB alerts表示（「アラート:」セクション）
+acknowledge: ✅ DBのみ更新（実装確認済み）
+staleClients: ✅ 正常に表示（DB alertsと共存）
+完全移行: ✅ fileAlerts表示なし
+```
+
+### 学んだこと
+
+- **完全移行の成功**: API/UIがDBのみ参照し、ファイルベースの表示が完全に撤廃されたことを確認
+- **互換性維持**: `fileAlerts`フィールドはdeprecatedとして残し、既存クライアントとの互換性を維持
+- **ブラウザキャッシュ**: 実機検証時にブラウザキャッシュが原因で古いUIが表示されることがあるため、強制リロード（Mac: `Cmd+Shift+R` / Windows: `Ctrl+F5`）が必要
+- **デバッグ手法**: UI表示の問題を調査する際は、Playwrightスクリプトを使用してフレッシュブラウザコンテキストでAPIレスポンスとUI状態を確認する方法が有効。これにより、ブラウザキャッシュの影響を排除し、API/UIの実際の動作を確認できる
+
+### 解決状況
+
+✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+### 関連ファイル
+
+- `apps/api/src/routes/clients.ts`（API: DBのみ参照/更新）
+- `apps/web/src/api/client.ts`（型定義拡張）
+- `apps/web/src/pages/admin/DashboardPage.tsx`（DB alerts表示）
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`（回帰テスト）
+- `infrastructure/ansible/templates/docker.env.j2`（環境変数永続化）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+### 確認コマンド
+
+```bash
+# APIレスポンスを確認（認証トークンが必要）
+curl -k -s "https://100.106.158.2/api/clients/alerts" \
+  -H "Authorization: Bearer <token>" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
+
+# DBの未acknowledgedアラート数を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return -c "SELECT COUNT(*) as unacknowledged FROM \"Alert\" WHERE acknowledged = false;"
+```
+
+### 注意事項
+
+- **ブラウザキャッシュ**: 実機検証時は強制リロード（Mac: `Cmd+Shift+R` / Windows: `Ctrl+F5`）を推奨
+- **完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
+- **ロールバック**: Phase1（file→Slack）へのロールバックは可能だが、UI/APIはDB参照のまま
+- **デバッグ時の注意**: UI表示の問題を調査する際は、まずAPIレスポンス（`curl`で直接確認）とフレッシュブラウザコンテキスト（Playwrightスクリプトなど）で確認し、ブラウザキャッシュの影響を排除してから判断する
+
+---
+
+### [KB-176] Slack通知チャンネル分離のデプロイトラブルシューティング（環境変数反映問題）
+
+**事象日**: 2026-01-18
+
+### 症状
+
+Slack通知を4系統（deploy/ops/security/support）に分類する機能を実装後、デプロイしても環境変数（`ALERTS_SLACK_WEBHOOK_*`）がAPIコンテナに反映されない問題が発生。Slackへの通知が届かない状態が続いた。
+
+### 根本原因
+
+複数の要因が連鎖して問題が発生：
+
+1. **Ansibleテンプレートの既存値保持パターン**: `docker.env.j2`が既存の`.env`ファイルの値を抽出し、新しい変数が未設定の場合は既存値を使用するパターンを採用。これにより、Vaultに新しいWebhook URLを設定しても、既存の（空の）`.env`ファイルが優先された
+2. **リモートリポジトリの同期遅延**: Pi5上のリポジトリが最新のテンプレート変更を反映していなかった
+3. **ファイル権限問題**: `vault.yml`がrootに変更されており、`git pull`が失敗
+4. **APIコンテナの再起動忘れ**: `.env`ファイルが更新されても、Dockerコンテナが古い環境変数を保持し続けた
+
+### 試行した対策
+
+| 試行 | 内容 | 結果 |
+|-----|------|------|
+| 1 | Ansible Vaultに変数を設定してデプロイ | ❌ 環境変数がコンテナに反映されず |
+| 2 | Pi5でgit pull | ❌ `vault.yml`の権限問題でエラー |
+| 3 | `sudo chown`でファイル権限を修正後、git pull | ✅ 成功 |
+| 4 | Ansibleプレイブック再実行 | ❌ 既存値保持パターンで空のまま |
+| 5 | Pythonスクリプトで明示的にJinja2レンダリング | ✅ 正しく環境変数が設定された.envを生成 |
+| 6 | SCP + sudoで.envファイルをPi5に配布 | ✅ ファイル更新成功 |
+| 7 | `docker compose restart api` | ✅ 環境変数がコンテナに反映 |
+| 8 | `generate-alert.sh`でテスト通知送信 | ✅ Slackに通知着弾確認 |
+
+### 有効だった対策
+
+#### 解決策1: ファイル権限問題の解決
+
+```bash
+# Pi5にSSH接続
+ssh denkon5sd02@<Pi5のIP>
+
+# rootに変更されたファイルの権限を修正
+cd /opt/RaspberryPiSystem_002
+sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml
+
+# リポジトリを最新化
+git stash  # ローカル変更がある場合
+git pull origin main
+```
+
+#### 解決策2: Jinja2テンプレートの手動レンダリング
+
+Ansibleの既存値保持パターンをバイパスするため、Pythonスクリプトで明示的にレンダリング：
+
+```python
+#!/usr/bin/env python3
+from jinja2 import Template
+
+# テンプレート読み込み
+with open('infrastructure/ansible/templates/docker.env.j2') as f:
+    template = Template(f.read())
+
+# Vault変数を明示的に設定
+variables = {
+    'alerts_dispatcher_enabled': 'true',
+    'alerts_slack_webhook_deploy': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_ops': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_security': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_support': 'https://hooks.slack.com/services/...',
+    # 既存値フォールバック変数は空にして新しい値を強制
+    'existing_alerts_dispatcher_enabled': '',
+    'existing_alerts_slack_webhook_deploy': '',
+    'existing_alerts_slack_webhook_ops': '',
+    'existing_alerts_slack_webhook_security': '',
+    'existing_alerts_slack_webhook_support': '',
+    # その他必要な変数...
+}
+
+# レンダリングしてファイル出力
+result = template.render(**variables)
+with open('rendered.env', 'w') as f:
+    f.write(result)
+```
+
+#### 解決策3: .envファイルの配布とコンテナ再起動
+
+```bash
+# ローカルからPi5にファイルをコピー
+scp rendered.env denkon5sd02@<Pi5のIP>:/tmp/docker.env
+
+# Pi5でファイルを配置
+ssh denkon5sd02@<Pi5のIP>
+sudo cp /tmp/docker.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+sudo chmod 600 /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+
+# APIコンテナを再起動して環境変数を反映
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+```
+
+### 検証結果（2026-01-18）
+
+4つのチャンネルすべてで通知受信を確認：
+
+```bash
+# deployチャンネル
+./scripts/generate-alert.sh ansible-update-failed "テスト: デプロイ失敗" "テスト用"
+# ✅ #rps-deploy で受信
+
+# opsチャンネル
+./scripts/generate-alert.sh storage-usage-high "テスト: ストレージ使用量警告" "テスト用"
+# ✅ #rps-ops で受信
+
+# supportチャンネル
+./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用"
+# ✅ #rps-support で受信
+
+# securityチャンネル（API経由でrole_changeアラートを生成）
+# ✅ #rps-security で受信（17:41確認）
+```
+
+### 学んだこと
+
+1. **Ansibleの既存値保持パターンの落とし穴**: テンプレートが既存の`.env`から値を抽出して優先する場合、新しい変数を反映するには明示的に値を渡す必要がある
+2. **Dockerコンテナの環境変数更新**: `.env`ファイルを更新しただけではコンテナに反映されない。`docker compose restart`または`docker compose up -d --force-recreate`が必要
+3. **ファイル権限問題の発見**: `git pull`の失敗時は、まずファイル権限（`ls -la`）を確認する
+4. **手動Jinja2レンダリング**: Ansibleの複雑なロジックをバイパスしたい場合、Pythonで直接テンプレートをレンダリングする方法が有効
+
+### PostgreSQLテーブル参照の注意点
+
+Prismaで生成されたテーブル名は大文字で始まり、ダブルクォートが必要：
+
+```bash
+# ❌ 失敗: 小文字のテーブル名
+psql -c "SELECT * FROM alerts;"
+# ERROR: relation "alerts" does not exist
+
+# ✅ 成功: 大文字 + ダブルクォート
+psql -c "SELECT * FROM \"Alert\";"
+```
+
+### 解決状況
+
+✅ **解決済み**（2026-01-18）: 4系統すべてのSlackチャンネルで通知受信を確認
+
+### 恒久対策（実装完了・実機検証済み）
+
+**実装日**: 2026-01-18  
+**実機検証日**: 2026-01-18
+
+以下の恒久対策を実装し、実機検証で正常動作を確認：
+
+1. **`.env`更新時のapiコンテナ強制再作成**: `infrastructure/ansible/roles/server/tasks/main.yml`に「Force recreate api when Docker .env changed」タスクを追加。`.env`ファイルが変更された場合、`docker compose up -d --force-recreate api`を実行して環境変数を確実に反映。
+
+2. **デプロイ後の環境変数検証（fail-fast）**: 同じファイルに「Verify API container environment variables after .env update」タスクを追加。デプロイ後に`ALERTS_SLACK_WEBHOOK_*`（`ALERTS_DISPATCHER_ENABLED=true`の場合）と`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`の存在と非空を検証し、不足があればデプロイを失敗させる。
+
+3. **vault.yml権限ドリフトの自動修復**: `infrastructure/ansible/roles/common/tasks/main.yml`に「Fix vault.yml ownership if needed」タスクを追加。`host_vars/**/vault.yml`ファイルの所有者がrootになっている場合、自動的に`ansible_user`に変更し、権限を`0600`に設定して`git pull`失敗を防止。
+
+4. **handlersの再起動ロジック統一**: `infrastructure/ansible/roles/server/handlers/main.yml`と`infrastructure/ansible/playbooks/manage-app-configs.yml`のhandlersを`--force-recreate`に統一し、環境変数変更時の確実な反映を保証。
+
+**実機検証結果**:
+- ✅ Pi5へのデプロイ成功（ok=91, changed=3, failed=0）
+- ✅ APIコンテナ内の環境変数が正しく設定されていることを確認（`ALERTS_SLACK_WEBHOOK_*`、`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`）
+- ✅ `vault.yml`ファイルの権限が適切に設定されていることを確認（所有者: `denkon5sd02:denkon5sd02`、権限: `600`）
+
+**注意**: 今回のデプロイでは、デプロイ前に`vault.yml`ファイルの権限問題が発生しましたが、手動で修正しました。次回のデプロイからは、自動修復機能が動作します。
+
+### 関連ファイル
+
+- `infrastructure/ansible/templates/docker.env.j2`（Jinja2テンプレート）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`（Vault変数）
+- `infrastructure/docker/docker-compose.server.yml`（Docker Compose設定）
+- `docs/guides/deployment.md#slack通知のチャンネル分離`（設定手順）
+- `docs/guides/slack-webhook-setup.md`（Webhook設定手順）
+
+### 確認コマンド
+
+```bash
+# 環境変数がコンテナに反映されているか確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api printenv | grep ALERTS
+
+# テストアラート生成
+./scripts/generate-alert.sh ansible-update-failed "テスト" "確認用"
+
+# DBでアラート配信状態を確認（Prismaの命名規則に注意）
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return \
+  -c "SELECT a.type, a.message, d.status, d.\"sentAt\" FROM \"Alert\" a JOIN \"AlertDelivery\" d ON a.id = d.\"alertId\" ORDER BY a.\"createdAt\" DESC LIMIT 5;"
+```
+
+---

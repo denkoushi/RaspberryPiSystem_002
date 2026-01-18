@@ -286,7 +286,7 @@ curl http://localhost:7071/api/agent/status
 
 ## ラズパイ3（サイネージ）の更新
 
-**重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ前にサイネージサービスを停止する必要があります。
+**重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ時にサイネージ関連サービスを停止してメモリを確保する必要があります。**この停止処理はプレフライトチェックで自動実行**されます。
 
 **重要（2026-01-03更新）**: 
 - Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます
@@ -322,8 +322,14 @@ curl http://localhost:7071/api/agent/status
 
 **手動実行が必要な場合（プレフライトチェック失敗時）**:
 ```bash
-# メモリ不足の場合のみ、手動でサービスを停止
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
+# メモリ不足の場合のみ、手動でサービスを停止・無効化（自動再起動防止）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
+
+# さらに自動再起動を完全に防ぐ（ランタイムマスク）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl mask --runtime signage-lite.service'"
+
+# デバイスタイプによりGUI(lightdm)を停止してメモリを確保（Pi3 / Pi Zero 2W等）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop lightdm || true'"
 
 # 数秒待ってからメモリを確認
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -m'"
@@ -368,10 +374,142 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ブランチを指定する場合は引数として渡してください
 - **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
 
-**重要**: 
-- `scripts/update-all-clients.sh`はPi5も含めて更新します
-- デフォルトは`main`ブランチです
-- ブランチを指定する場合は引数として渡してください
+#### デプロイ安定化機能（2026-01-17実装）
+
+`scripts/update-all-clients.sh`には以下のデプロイ安定化機能が実装されています：
+
+1. **プリフライトリーチビリティチェック**:
+   - デプロイ開始前にPi5へのSSH接続を確認
+   - Pi5からinventory内の全ホストへの接続を`ansible -m ping`で確認
+   - 接続不可の場合はデプロイを中断（エラーコード3）
+
+2. **リモートロック（並行実行防止）**:
+   - Pi5上の`/opt/RaspberryPiSystem_002/logs/deploy.lock`で並行実行を防止
+   - 古いロック（デフォルト30分以上経過）は自動的にクリーンアップ
+   - ロック取得失敗時はデプロイを中断（エラーコード3）
+
+3. **リソースガード**:
+   - デプロイ前に各ホストのリソースをチェック
+   - メモリ: 120MB未満の場合はデプロイを中断
+   - ディスク: `/opt`の使用率が90%以上の場合はデプロイを中断
+   - 詳細は`infrastructure/ansible/tasks/resource-guard.yml`を参照
+
+4. **環境限定リトライ**:
+   - unreachable hostsのみを対象にリトライ（最大3回、30秒間隔）
+   - タスク失敗（failed hosts）はリトライしない（環境問題とコード問題を区別）
+   - `--limit`オプションで特定ホストのみリトライ可能
+
+5. **ホストごとのタイムアウト**:
+   - Pi3: 30分（リポジトリ更新が遅い場合を考慮）
+   - Pi4: 10分
+   - Pi5: 15分
+   - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
+
+6. **通知（alerts一次情報 + Slackは二次経路）**:
+   - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成します
+   - **Slack通知（チャンネル分離）はAPIのAlerts Dispatcherが担当**します（B1方針）
+     - scripts側は原則「ファイル生成」に専念し、Slackはログ/運用イベントの二次経路として配送します
+     - Slack配送を有効化するには、API側で `ALERTS_DISPATCHER_ENABLED=true` と `ALERTS_SLACK_WEBHOOK_*` の設定が必要です
+
+7. **`--limit`オプション対応**:
+   - 特定ホストのみを更新する場合に使用
+   - 例: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3`
+   - プリフライトチェックとリトライにも適用される
+
+**実機検証状況**（2026-01-18）:
+- ✅ Pi5とPi4でのデプロイ成功を確認
+- ✅ プリフライト・ロック・リソースガードの動作を確認
+- ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ⚠️ Slack通知は「alerts生成」までは確認済みだが、Slack配送（API Dispatcher）設定の有無に依存するため、Slackアプリ着弾は要確認
+
+詳細は [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) を参照。
+
+#### Slack通知のチャンネル分離（2026-01-18実装）
+
+**概要**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネルに着弾させることで、運用上の見落としとノイズを削減します。
+
+**チャンネル構成**:
+- `#rps-deploy`: デプロイ関連アラート（`ansible-update-*`, `ansible-health-check-*`）
+- `#rps-ops`: 運用関連アラート（`storage-*`, `csv-import-*`、デフォルト）
+- `#rps-security`: セキュリティ関連アラート（`role_change`等）
+- `#rps-support`: サポート関連アラート（`kiosk-support*`、キオスクサポート直送）
+
+**設定手順**:
+1. **Slack側でチャンネル作成とIncoming Webhook取得**:
+   - ✅ 各チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）を作成済み
+   - 各チャンネルのIncoming Webhook URLを取得（詳細は [Slack Webhook URL設定手順](./slack-webhook-setup.md) を参照）
+
+2. **Ansible VaultにWebhook URLを登録**:
+   ```bash
+   # Pi5のvault.ymlを編集（ansible-vaultで暗号化）
+   ansible-vault edit infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+   ```
+   
+   以下の変数にWebhook URLを設定:
+   ```yaml
+   vault_alerts_slack_webhook_deploy: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_ops: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_security: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_support: "https://hooks.slack.com/services/..."
+   ```
+   
+   **キオスクサポート直送もsupportチャンネルへ**:
+   ```yaml
+   vault_slack_kiosk_support_webhook_url: "https://hooks.slack.com/services/..."  # supportチャンネルのWebhook URL
+   ```
+
+3. **デプロイ実行**:
+   ```bash
+   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+   ```
+   
+   デプロイ後、`infrastructure/docker/.env`に以下の環境変数が設定されます:
+   - `ALERTS_DISPATCHER_ENABLED=true`
+   - `ALERTS_SLACK_WEBHOOK_DEPLOY=...`
+   - `ALERTS_SLACK_WEBHOOK_OPS=...`
+   - `ALERTS_SLACK_WEBHOOK_SECURITY=...`
+   - `ALERTS_SLACK_WEBHOOK_SUPPORT=...`
+
+4. **自動反映**（Ansibleが`.env`更新時にapiを再作成）:
+   - `.env`が更新された場合、Ansibleが`api`コンテナを`--force-recreate`で再作成して環境変数を反映
+   - 反映後に環境変数の検証を行い、不足があればfail-fastでデプロイを停止
+
+**動作確認**:
+- 各routeKeyのテストアラートを生成して、正しいチャンネルに着弾することを確認:
+  ```bash
+  # deployチャンネル確認
+  ./scripts/generate-alert.sh ansible-update-failed "テスト: デプロイ失敗" "テスト用"
+  
+  # opsチャンネル確認
+  ./scripts/generate-alert.sh storage-usage-high "テスト: ストレージ使用量警告" "テスト用"
+  
+  # securityチャンネル確認（API経由）
+  # 管理画面でユーザーのロールを変更すると、role_changeアラートが生成されます
+  
+  # supportチャンネル確認
+  ./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用"
+  ```
+
+**注意事項**:
+- 未設定（空文字）のrouteKeyのアラートはSlackに送信されません（ファイル生成のみ）
+- Generalチャンネルは「フォールバック/人間向け雑談」として残しておくことを推奨
+- 新しいアラートtypeを追加する場合は、`apps/api/src/services/alerts/alerts-config.ts`の`routing.byTypePrefix`にprefixを追加して分類を固定してください
+
+**実機検証完了（2026-01-18）**:
+- ✅ `#rps-deploy`: `ansible-update-failed`アラート受信確認
+- ✅ `#rps-ops`: `storage-usage-high`アラート受信確認
+- ✅ `#rps-security`: `role_change`アラート受信確認
+- ✅ `#rps-support`: `kiosk-support-test`アラート受信確認
+
+**トラブルシューティング**:
+- デプロイが環境変数検証で失敗する場合は、VaultのWebhook設定を確認（未設定/空文字が原因）
+- 既存の手動回避策は [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) に整理済み（標準手順では不要）
+
+**関連ドキュメント**:
+- [Slack Webhook URL設定手順](./slack-webhook-setup.md) - 詳細な設定手順とトラブルシューティング
+- [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)
+- [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト)
+- [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題)
 
 #### Pi5から特定のクライアントのみ更新
 
@@ -714,19 +852,7 @@ NETWORK_MODE=tailscale \
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "free -m"'
    ```
 
-6. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ必須）
-   ```bash
-   # Pi5からPi3へSSH接続してサイネージサービスを停止・無効化・マスク（自動再起動を完全防止）
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer status-agent.timer && sudo systemctl mask --runtime signage-lite.service"'
-   
-   # プロセスが完全に停止していることを確認
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ps aux | grep signage-lite | grep -v grep"'
-   # → 何も表示されないことを確認
-   ```
-   - **重要**: `systemctl disable`だけでは不十分です。`systemctl mask --runtime`も実行しないと、デプロイ中に自動再起動し、メモリ不足でデプロイがハングします（[KB-089](../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)、[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **重要**: `status-agent.timer`も無効化対象に追加してください（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
-   - **注意**: Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合はさらに時間がかかります（[KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
-7. **ローカルIPを使う場合の事前確認**
+6. **ローカルIPを使う場合の事前確認**
    ```bash
    # 各端末で実IPを取得してからgroup_vars/all.ymlを更新する
    ssh denkon5sd02@100.106.158.2 "hostname -I"
@@ -782,13 +908,13 @@ NETWORK_MODE=tailscale \
    
    **注意**: Pi3のサイネージデザイン変更（左ペインタイトル、温度表示）は**Pi5側のデプロイのみで反映**されます。Pi3へのデプロイは不要です（サーバー側レンダリングのため）。
 
-4. **Pi4 systemdサービス確認**
+5. **Pi4 systemdサービス確認**
    ```bash
    ssh denkon5sd02@100.106.158.2 'ssh tools03@100.74.144.79 "systemctl is-active kiosk-browser.service status-agent.timer"'
    # → active を確認
    ```
 
-5. **Pi3サイネージサービスの確認**（デプロイ前に停止した場合）
+6. **Pi3サイネージサービスの確認**
    ```bash
    # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
    # サービスが正常に動作していることを確認

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { BackupConfigSchema, type BackupConfig, defaultBackupConfig, type CsvImportTarget } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
+import { writeDebugLog } from '../../lib/debug-log.js';
 
 /**
  * バックアップ設定の読み込み
@@ -147,7 +148,7 @@ export class BackupConfigLoader {
       );
       // #endregion
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'backup-config.loader.ts:load:success',message:'backup config loaded',data:{configPath,summary:this.summarizeConfig(config),csvImportsLen:Array.isArray(config.csvImports)?config.csvImports.length:0,subjectPatternsKeys:Object.keys(config.csvImportSubjectPatterns ?? {}).length},timestamp:Date.now()})}).catch(()=>{});
+      await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'backup-config.loader.ts:load:success',message:'backup config loaded',data:{configPath,summary:this.summarizeConfig(config),csvImportsLen:Array.isArray(config.csvImports)?config.csvImports.length:0,subjectPatternsKeys:Object.keys(config.csvImportSubjectPatterns ?? {}).length},timestamp:Date.now()});
       // #endregion
       return config;
     } catch (error) {
@@ -169,9 +170,9 @@ export class BackupConfigLoader {
           '[BackupConfigLoader] Returning fallback config'
         );
         // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'backup-config.loader.ts:load:fallback',message:'backup config fallback (ENOENT)',data:{configPath,reason:'ENOENT',summary:this.summarizeConfig(fallback)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+        // #region agent log
+        await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'backup-config.loader.ts:load:fallback',message:'backup config fallback (ENOENT)',data:{configPath,reason:'ENOENT',summary:this.summarizeConfig(fallback)},timestamp:Date.now()});
+        // #endregion
         return fallback;
       }
       
@@ -224,7 +225,7 @@ export class BackupConfigLoader {
         }
       })();
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:attempt',message:'backup config save attempt',data:{configPath,incomingSummary,csvImportsLen:Array.isArray(config.csvImports)?config.csvImports.length:0,hasFallbackMarker:Object.getOwnPropertySymbols(config).includes(this.FALLBACK_MARKER)},timestamp:Date.now()})}).catch(()=>{});
+      await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:attempt',message:'backup config save attempt',data:{configPath,incomingSummary,csvImportsLen:Array.isArray(config.csvImports)?config.csvImports.length:0,hasFallbackMarker:Object.getOwnPropertySymbols(config).includes(this.FALLBACK_MARKER)},timestamp:Date.now()});
       // #endregion
 
       // 本番の保護: 現在のファイルと比較して「急激な縮小/欠落」がある保存は拒否
@@ -258,7 +259,7 @@ export class BackupConfigLoader {
                 '[BackupConfigLoader] Refusing suspicious config save (would likely wipe settings)'
               );
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:refused',message:'backup config save refused (suspicious shrink)',data:{configPath,currentSummary,incomingSummary,looksLikeDestructiveShrink,looksLikeGmailWipe},timestamp:Date.now()})}).catch(()=>{});
+              await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:refused',message:'backup config save refused (suspicious shrink)',data:{configPath,currentSummary,incomingSummary,looksLikeDestructiveShrink,looksLikeGmailWipe},timestamp:Date.now()});
               // #endregion
               throw new Error('Refusing suspicious backup config save (would likely wipe settings)');
             }
@@ -284,7 +285,7 @@ export class BackupConfigLoader {
             '[BackupConfigLoader] Refusing to save fallback config to avoid destructive overwrite',
           );
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:refused',message:'backup config save refused (fallback marker)',data:{configPath,incomingSummary,markerReason:(marker as { reason?: string } | undefined)?.reason ?? 'unknown'},timestamp:Date.now()})}).catch(()=>{});
+          await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'B',location:'backup-config.loader.ts:save:refused',message:'backup config save refused (fallback marker)',data:{configPath,incomingSummary,markerReason:(marker as { reason?: string } | undefined)?.reason ?? 'unknown'},timestamp:Date.now()});
           // #endregion
           throw new Error('Refusing to save fallback backup config (would overwrite real config)');
         }

@@ -2,7 +2,7 @@
 title: ローカル環境対応の通知機能ガイド
 tags: [通知, アラート, ローカル環境]
 audience: [運用者, 開発者]
-last-verified: 2025-12-01
+last-verified: 2026-01-18
 related: [quick-start-deployment.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,11 +10,118 @@ update-frequency: medium
 
 # ローカル環境対応の通知機能ガイド
 
-最終更新: 2025-12-01
+最終更新: 2026-01-18
 
 ## 概要
 
 本ガイドでは、ローカル環境（インターネット接続なし）で動作する通知機能について説明します。この機能により、クライアントの異常やAnsible更新の失敗を管理画面で確認できます。
+
+## 重要な考え方（B1: Slackは通知、alertsは一次情報）
+
+- **一次情報**: `alerts/alert-*.json`（管理画面で確認できる永続イベント）
+- **二次経路（通知）**: Slack（チャンネル分離を含む）
+
+このプロジェクトでは、**scriptsはalertsファイル生成に専念**し、**Slackへの配送はAPI側のAlerts Dispatcherが担当**する方針（B1）で設計します。
+
+### Slack配送を有効化する（API Alerts Dispatcher）
+
+Slackに通知したい場合は、APIコンテナに以下を設定します（Webhook URLはIncoming Webhookを使用）：
+
+- `ALERTS_DISPATCHER_ENABLED=true`（Phase1: file→Slack）
+- `ALERTS_SLACK_WEBHOOK_DEPLOY`（デプロイ通知）
+- `ALERTS_SLACK_WEBHOOK_OPS`（運用/監視通知）
+- `ALERTS_SLACK_WEBHOOK_SUPPORT`（サポート通知）
+- `ALERTS_SLACK_WEBHOOK_SECURITY`（セキュリティ通知）
+
+任意で設定（チューニング）:
+
+- `ALERTS_DISPATCHER_INTERVAL_SECONDS`（既定: 30）
+- `ALERTS_DISPATCHER_MAX_ATTEMPTS`（既定: 5）
+- `ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`（既定: 60）
+- `ALERTS_DISPATCHER_WEBHOOK_TIMEOUT_MS`（既定: 5000）
+
+さらに、JSON設定ファイルでまとめて管理する場合は `ALERTS_CONFIG_PATH=/opt/RaspberryPiSystem_002/config/alerts.json` を指定します（Webhook URLなど機密情報はAnsible Vaultで管理すること）。
+
+**注意事項**:
+- 過去のアラート（24時間以上古い）は自動的に再送されません
+- 送信済み（`status === 'sent'`）のアラートも再送されません
+- 新規アラート（24時間以内）のみ初回送信として扱われます
+- 失敗時のリトライは`ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`に従って実行されます
+
+### Phase2後続: DB→Slack配送（Alerts DB Dispatcher）
+
+**Phase2後続では、Slack配送を `AlertDelivery`（DB）中心に移行できます。**
+
+**有効化（full switch）**:
+
+- `ALERTS_DISPATCHER_MODE=db`（DB版を使用）
+- `ALERTS_DB_DISPATCHER_ENABLED=true`
+
+任意で設定（チューニング）:
+
+- `ALERTS_DB_DISPATCHER_INTERVAL_SECONDS`（既定: 30）
+- `ALERTS_DB_DISPATCHER_BATCH_SIZE`（既定: 50）
+- `ALERTS_DB_DISPATCHER_CLAIM_LEASE_SECONDS`（既定: 120、同時実行時の重複処理を減らすための短いリース）
+
+**dedupe（重複抑制）**:
+
+- `ALERTS_DEDUPE_ENABLED`（既定: true）
+- `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（既定: 600）
+- `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別windowSeconds）
+
+**注意事項（安全）**:
+
+- DB版Dispatcherは `AlertDelivery.status=pending|failed` を処理します（`sent/suppressed` は処理しません）
+- Phase1と同様、**24時間以上古い未送信アラートは送信しません**（通知暴発防止）
+- **ロールバック**: `ALERTS_DISPATCHER_MODE=file` に戻すとPhase1（file→Slack）に戻せます（`ALERTS_DISPATCHER_ENABLED` も必要）
+  - 注意: UI/APIはDB参照のまま（Phase2完全移行の定義）。Phase1 dispatcherは非常時のみ使用
+
+**実機検証結果（2026-01-18）**:
+- Pi5で実機検証を実施し、DB版Dispatcherが正常に動作することを確認
+- 50件処理で10件SENT、40件SUPPRESSED（dedupeで抑制）
+- 同一fingerprintのアラートが正しく抑制され、Slack通知の連打を防止
+- fingerprint自動計算が機能し、54/55件にfingerprintが設定されている
+- Phase1（file）Dispatcherは停止し、DB中心へ完全移行できていることを確認
+- Phase2完全移行（API/UIはDBのみ参照）を実装完了
+- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
+
+### Phase2: DB取り込み（Alerts DB Ingest）
+
+**Phase2では、`alerts/alert-*.json` をDBへ永続化する機能が追加されました。**
+
+**有効化方法**:
+
+`docker-compose.server.yml` または環境変数で以下を設定：
+
+```yaml
+environment:
+  # Phase2: DB取り込みを有効化
+  ALERTS_DB_INGEST_ENABLED: "true"
+  ALERTS_DB_INGEST_INTERVAL_SECONDS: "60"  # 取り込み間隔（秒、デフォルト: 60）
+  ALERTS_DB_INGEST_LIMIT: "50"  # 1回の取り込み上限（デフォルト: 50）
+```
+
+**動作**:
+- `alerts/alert-*.json` を定期的にDBへ取り込み（`Alert`テーブル）
+- 取り込み時に `AlertDelivery(status='pending')` を作成（後続のDB版Dispatcher用）
+- 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
+
+**API互換性（Phase2完全移行後）**:
+- `GET /api/clients/alerts` は **DBのみ参照**。`details.dbAlerts` が実データ、`details.fileAlerts` は常に空配列（deprecated）
+- `POST /api/clients/alerts/:id/acknowledge` は **DBのみ更新**。ファイルは変更しない
+
+**注意事項**:
+- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
+- Slack配送はPhase1（file→Slack）またはPhase2後続（DB→Slack）を選択
+- dedupe（重複抑制）はPhase2後続（DB→Slack）で有効化可能
+- **Phase2完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
+
+**実機検証結果（2026-01-18）**:
+- Pi5で実機検証を実施し、DB取り込み・AlertDelivery作成・ファイル→DBのack更新を確認
+- 空ファイル（0バイト）や壊れたJSONを`errors`ではなく`skipped`として扱う改善を実装し、ログノイズを削減
+- Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証も完了し、DB版Dispatcherが正常に動作することを確認
+- Phase2完全移行（API/UIはDBのみ参照）を実装完了
+- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) を参照
 
 ## 通知の種類
 
@@ -58,11 +165,17 @@ https://192.168.128.131/admin
 
 - **オフラインクライアント**: 12時間以上更新がないクライアントの数
 - **エラーログ**: 過去24時間以内のエラーログの件数
-- **ファイルベースのアラート**: Ansible更新失敗などの通知
+- **DB alerts（Phase2完全移行後）**: DBに保存されたアラート（Ansible更新失敗、ストレージ使用量警告など）
+- **ファイルベースのアラート（Phase2移行前）**: Ansible更新失敗などの通知（Phase2完全移行後は非表示）
 
 ### アラートの確認済み処理
 
-**ファイルベースのアラートを確認済みにする**:
+**DB alertsを確認済みにする（Phase2完全移行後）**:
+
+1. ダッシュボードの「アラート:」セクションで各アラートの「確認済み」ボタンをクリック
+2. アラートがDB上で`acknowledged=true`としてマークされ、表示から消えます
+
+**ファイルベースのアラートを確認済みにする（Phase2移行前）**:
 
 1. ダッシュボードのアラートバナーで「確認済み」ボタンをクリック
 2. アラートが確認済みとしてマークされ、表示から消えます
@@ -130,7 +243,12 @@ curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/ackn
 
 ```bash
 # 更新スクリプトを実行
-./scripts/update-all-clients.sh
+# inventory指定が必須（誤デプロイ防止）
+# 第2工場（既存）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# トークプラザ（新拠点）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
 
 # 失敗した場合、自動的にアラートファイルが生成される
 # alerts/alert-YYYYMMDD-HHMMSS.json
@@ -207,7 +325,47 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 ## トラブルシューティング
 
-### アラートが表示されない場合
+### アラートが表示されない場合（Phase2完全移行後）
+
+**確認事項（順序通りに確認）**:
+
+1. **ブラウザキャッシュの確認**:
+   - Phase2完全移行後、管理ダッシュボードでDB alertsが表示されない場合は、まずブラウザキャッシュをクリア
+   - 強制リロード: Mac: `Cmd+Shift+R` / Windows: `Ctrl+F5`
+   - 開発者ツール（F12）→ Networkタブで「Disable cache」を有効化して再読み込み
+
+2. **APIレスポンスの直接確認**:
+   ```bash
+   # 認証トークンを取得
+   TOKEN=$(curl -k -s -X POST https://100.106.158.2/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+   
+   # APIレスポンスを確認（dbAlertsが0でないことを確認）
+   curl -k -s "https://100.106.158.2/api/clients/alerts" \
+     -H "Authorization: Bearer $TOKEN" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
+   ```
+   - `dbAlertsLen`が0でない場合、APIは正常に動作している（UI側の問題の可能性）
+   - `fileAlertsLen`は常に0（Phase2完全移行後はdeprecated）
+
+3. **データベースの確認**:
+   ```bash
+   # 未acknowledgedのDB alertsを確認
+   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+     psql -U postgres -d borrow_return -c "SELECT COUNT(*) as unacknowledged FROM \"Alert\" WHERE acknowledged = false;"
+   ```
+
+4. **APIサーバーのログ確認**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   ```
+
+5. **デバッグ手法（UI表示の問題を調査する場合）**:
+   - Playwrightスクリプトを使用してフレッシュブラウザコンテキストでAPIレスポンスとUI状態を確認
+   - これにより、ブラウザキャッシュの影響を排除し、API/UIの実際の動作を確認できる
+   - 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) を参照
+
+### アラートが表示されない場合（Phase2移行前）
 
 **確認事項**:
 

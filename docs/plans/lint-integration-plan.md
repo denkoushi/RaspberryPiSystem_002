@@ -349,7 +349,7 @@ todos:
 1. **pre-commitフック** (`.husky/pre-commit`):
    - コミット時に自動的に`pnpm lint --max-warnings=0`が実行される
    - lint違反がある場合はコミットが拒否される
-   - ローカル開発時にも自動的にlint準拠が強制される
+  - ローカル開発時にも自動的にlint準拠が強制される
 
 2. **CI/CD** (`.github/workflows/ci.yml`):
    - `lint-and-test`ジョブが最初に実行される

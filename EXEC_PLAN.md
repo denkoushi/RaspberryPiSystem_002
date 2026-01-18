@@ -9,6 +9,12 @@
 
 ## Progress
 
+- [x] (2026-01-18) **デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
+
+- [x] (2026-01-18) **Slack通知チャンネル分離機能の実装・実機検証完了**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）に着弾させる機能を実装・検証完了。Ansible VaultにWebhook URLを登録し、`docker.env.j2`テンプレートで環境変数を生成。デプロイ時に発生したトラブル（Ansibleテンプレートの既存値保持パターン、ファイル権限問題、コンテナ再起動の必要性）を解決し、4チャンネルすべてでの通知受信を確認。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) / [docs/guides/slack-webhook-setup.md](./docs/guides/slack-webhook-setup.md) / [docs/guides/deployment.md#slack通知のチャンネル分離](./docs/guides/deployment.md#slack通知のチャンネル分離2026-01-18実装) を参照。
+
+- [x] (2026-01-18) **Alerts Platform Phase2完全移行（DB中心運用）実装・実機検証完了**: Phase2完全移行を実装し、API/UIをDBのみ参照に変更。APIの`/clients/alerts`はファイル走査を撤去しDBのみ参照、`/clients/alerts/:id/acknowledge`はDBのみ更新。Web管理ダッシュボードは`dbAlerts`を表示し、「アラート:」セクションにDB alertsが複数表示されることを確認。Ansible環境変数を永続化し、API integration testを追加。実機検証でPi5でのAPIレスポンス（dbAlerts=10、fileAlerts=0）・Web UI表示（DB alerts表示）・acknowledge機能・staleClientsアラートとの共存を確認。ブラウザキャッシュ問題のデバッグ手法（Playwrightスクリプト）も確立。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [docs/plans/alerts-platform-phase2.md](./docs/plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [docs/guides/local-alerts.md](./docs/guides/local-alerts.md) を参照。
+
 - [x] (2026-01-06) **バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [docs/knowledge-base/frontend.md#kb-149](./docs/knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
 
 - [x] (2026-01-06) **外部連携運用台帳ドキュメント作成完了（P2実装）**: Dropbox/Gmail/Slackなどの外部サービス連携の設定・運用情報を一元管理する運用台帳ドキュメントを作成。各外部サービスの設定場所（Ansible Vault、backup.json、環境変数）、設定手順へのリンク、運用時の注意事項、トラブルシューティング情報、設定の永続化方法、ヘルスチェック方法をまとめ。既存のセットアップガイドやナレッジベースへの参照を整理し、運用者が外部連携の設定・運用を効率的に管理できるように改善。詳細は [docs/guides/external-integration-ledger.md](./docs/guides/external-integration-ledger.md) を参照。
@@ -569,6 +575,20 @@
 - 観測: USBカメラ（特にラズパイ4）の起動直後（200〜500ms）に露光・ホワイトバランスが安定せず、最初の数フレームが暗転または全黒になる。現在の実装ではフレーム内容を検査せず、そのまま保存しているため、写真撮影持出のサムネイルが真っ黒になることがある。  
   エビデンス: 写真撮影持出で登録されたLoanのサムネイルが真っ黒で表示される。アイテム自体は登録されているが、サムネイルが視認できない。  
   対応: フロントエンドで`capturePhotoFromStream`内で`ImageData`の平均輝度を計算（Rec. 601式）し、平均輝度が18未満の場合はエラーを投げて再撮影を促す。サーバー側で`sharp().stats()`を使用してRGBチャネルの平均輝度を計算し、平均輝度が`CAMERA_MIN_MEAN_LUMA`（デフォルト18）未満の場合は422エラーを返す。環境変数`CAMERA_MIN_MEAN_LUMA`でしきい値を調整可能。**[KB-068]**
+- 観測: Ansibleの`docker.env.j2`テンプレートが「既存の`.env`ファイルから値を抽出し、変数が未設定の場合は既存値を使用する」パターンを採用しており、新しい変数（Slack Webhook URLなど）を追加してもVaultの値が反映されないことがあった。  
+  エビデンス: Vault変数にWebhook URLを設定してAnsibleをデプロイしても、生成された`.env`ファイルには空のWebhook URLが設定されていた。既存の`.env`ファイルには該当の環境変数がなかった（空文字）ため、既存値（空）が優先された。  
+  対応: Pythonスクリプトで明示的にJinja2テンプレートをレンダリングし、既存値抽出ロジックをバイパス。生成した`.env`ファイルをSCPで配布し、APIコンテナを再起動して環境変数を反映。**[KB-176]**
+- 観測: Prismaで生成されたPostgreSQLのテーブル名は大文字で始まり、SQLで直接参照する場合はダブルクォートが必要。  
+  エビデンス: `SELECT * FROM alerts;` → `ERROR: relation "alerts" does not exist`。正しくは `SELECT * FROM "Alert";`。  
+  対応: SQL直接参照時はテーブル名をダブルクォートで囲む（例: `"Alert"`, `"AlertDelivery"`）。**[KB-176]**
+- 観測: `vault.yml`ファイルがroot所有に変更されていると、`git pull`が失敗する。  
+  エビデンス: `git pull`実行時に`error: unable to unlink old 'infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml': 許可がありません`エラーが発生。  
+  対応: `infrastructure/ansible/roles/common/tasks/main.yml`に「Fix vault.yml ownership if needed」タスクを追加し、デプロイ時に自動修復するように実装。デプロイ前に手動で`sudo chown -R denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars`を実行して修正。次回のデプロイからは自動修復機能が動作する。**[KB-176恒久対策]**
+- 観測: Ansibleの`ansible_connection: local`を使用したローカル実行時に、`become: true`でsudoを実行しようとするとパスワードが要求されることがある。  
+  エビデンス: Macから`update-all-clients.sh`を実行すると、`sudo: a password is required`エラーが発生。Pi5上ではsudoのNOPASSWD設定が有効だが、ローカル実行時には動作しない。  
+  対応: Pi5上で直接Ansibleを実行する方法に切り替え（`ssh denkon5sd02@<Pi5のIP> "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-playbook ..."`）。または、`ansible_connection: local`を削除して通常のSSH接続を使用する方法もある。**[KB-176実機検証]**  
+  エビデンス: `error: insufficient permission for adding an object to repository database`。`ls -la`で確認すると、`vault.yml`がroot:rootになっていた。  
+  対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
 
 ## Decision Log
 
@@ -1157,8 +1177,28 @@
 
 ---
 
+## Next Steps（将来のタスク）
+
+### Alerts Platform Phase3（候補）
+
+**概要**: scriptsもAPI経由でAlert作成に寄せる
+
+**内容**:
+- `scripts/generate-alert.sh`をAPI経由（`POST /api/alerts`）でAlert作成する方式に変更
+- ファイル生成を廃止し、DB直接投入に統一
+- メリット: ファイルI/O削減、即時DB反映、Ingest不要
+
+**現状**: Phase2では「ファイル取り込み」で十分と判断。Phase3は将来の候補として検討。
+
+**参考**: [`docs/plans/alerts-platform-phase2.md`](./docs/plans/alerts-platform-phase2.md)（「最終的には scriptsもAPI経由でAlert作成に寄せる（Phase3候補）が、Phase2では「ファイル取り込み」で十分。」）
+
+**推奨**: 現時点ではPhase2完全移行が完了し、Alerts Platformは安定運用可能な状態。Phase3は将来の拡張として検討し、まずは現状の運用を継続し、Phase2の安定性を確認。運用上の課題や要望を収集し、必要に応じてPhase3やその他の改善を検討。
+
+---
+
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
+変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補を追加。
 変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
 変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
 変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
@@ -1167,4 +1207,5 @@
 変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 6（監視・アラート）実装完了。fail2ban連携のセキュリティ監視タイマー（KB-076）とマルウェアスキャン結果の自動アラート化（KB-077）を実装。ナレッジベース更新（74件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
 変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 7（テスト・検証）完了。IPアドレス切替、Tailscale経路、UFW/HTTPS、fail2ban、暗号化バックアップ復元、マルウェアスキャンの包括的テストを実施。複数ローカルネットワーク環境（会社/自宅）でのVNC接続設定を対応（KB-078）。Phase7テストの実施結果と検証ポイントをナレッジベースに追加（KB-079）。ナレッジベース更新（80件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
 変更履歴: 2025-12-30 — CSVインポート構造改善と計測機器・吊具対応完了。レジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。スケジュール設定を`targets`配列形式に拡張。Gmail件名パターンを管理コンソールから編集できる機能を実装。実機検証完了（UI改善、フォーム状態管理、手動実行時のリトライスキップ機能）。ナレッジベース更新（KB-114, KB-115, KB-116）。詳細は [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/knowledge-base/frontend.md#kb-116](./docs/knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [docs/knowledge-base/api.md#kb-116](./docs/knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) を参照。
-ん```
+変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補（scriptsもAPI経由でAlert作成）を追加。
+変更履歴: 2026-01-18 — デプロイ安定化の恒久対策実装・実機検証完了を記録。KB-176の恒久対策（.env反映保証・環境変数検証・権限修復）を実装し、実機検証で正常動作を確認。Surprises & Discoveriesにvault.yml権限問題とAnsibleローカル実行時のsudo問題を追加。

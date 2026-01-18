@@ -23,11 +23,11 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 30件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 27件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 66件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 67件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 22件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決 |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 16件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正 |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 21件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 8件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -123,6 +123,7 @@ update-frequency: high
 | [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止) | WebRTCシグナリングのWebSocket接続管理（重複接続防止） | ✅ 解決済み |
 | [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 | [KB-149](./frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) | バックアップ履歴ページに用途列を追加（UI改善） | ✅ 解決済み |
+| [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -210,6 +211,11 @@ update-frequency: high
 | [KB-160](./infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) | デプロイスクリプトのinventory引数必須化（誤デプロイ防止） | ✅ 解決済み |
 | [KB-161](./infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) | Dropbox basePathの分離対応（拠点別フォルダ分離） | ✅ 解決済み |
 | [KB-162](./infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) | デプロイスクリプトのinventory/playbookパス相対パス修正（Pi5上での実行時） | ✅ 解決済み |
+| [KB-172](./infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) | デプロイ安定化機能の実装（プリフライト・ロック・リソースガード・リトライ・タイムアウト） | ✅ 解決済み |
+| [KB-173](./infrastructure/ansible-deployment.md#kb-173-alerts-platform-phase2のdb取り込み実装と空ファイル処理の改善) | Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善 | ✅ 解決済み |
+| [KB-174](./infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) | Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了 | ✅ 解決済み |
+| [KB-175](./infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) | Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了 | ✅ 解決済み |
+| [KB-176](./infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) | Slack通知チャンネル分離のデプロイトラブルシューティング（環境変数反映問題） | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -249,9 +255,9 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 109件 |
+| ✅ 解決済み | 110件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **114件** |
+| **合計** | **115件** |
 
 ---
 
@@ -320,6 +326,11 @@ update-frequency: high
 - 2026-01-09: KB-157、KB-158を追加（Pi3のstatus-agent.timerが無効化されていた問題、Macのstatus-agent未設定問題とmacOS対応）
 - 2026-01-14: KB-159、KB-160、KB-161、KB-162を追加（トークプラザ工場へのマルチサイト対応実装、デプロイスクリプトのinventory引数必須化、Dropbox basePathの分離対応、デプロイスクリプトのinventory/playbookパス相対パス修正）
 - 2026-01-15: KB-163、KB-164、KB-165、KB-166、KB-167、KB-168を追加（git cleanによるbackup.json削除問題と根本的改善、Dropboxからのbackup.json復元方法、Gmail OAuth設定の復元方法、Gmail OAuthルートの新構造対応修正、旧キーと新構造の衝突問題と解決方法）
+- 2026-01-18: KB-172を追加（デプロイ安定化機能の実装（プリフライト・ロック・リソースガード・リトライ・タイムアウト））
+- 2026-01-18: KB-173を追加（Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善）
+- 2026-01-18: KB-174を追加（Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了）
+- 2026-01-18: KB-175を追加（Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了）
 - 2026-01-09: KB-156を追加（複数スケジュールの順番切り替え機能実装）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
+- 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）

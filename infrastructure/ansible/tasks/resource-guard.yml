@@ -1,0 +1,39 @@
+---
+# Common resource guard for deployment
+# - Memory must be >= 120MB
+# - Disk usage on /opt must be < 90%
+
+- name: Check available memory (MB)
+  ansible.builtin.shell: free -m | awk '/^Mem:/ {print $7}'
+  register: available_memory_mb_raw
+  changed_when: false
+
+- name: Extract available memory value
+  ansible.builtin.set_fact:
+    available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
+
+- name: Check disk usage on /opt (%)
+  ansible.builtin.shell: df -P /opt | tail -n +2 | awk '{gsub(/%/,"",$5); print $5}'
+  register: disk_used_pct_raw
+  changed_when: false
+  failed_when: disk_used_pct_raw.stdout | trim == ''
+
+- name: Extract disk usage value
+  ansible.builtin.set_fact:
+    disk_used_pct: "{{ disk_used_pct_raw.stdout | trim | int }}"
+
+- name: Fail if insufficient memory available
+  ansible.builtin.fail:
+    msg: >
+      CRITICAL: Insufficient memory available on {{ inventory_hostname }}.
+      Available: {{ available_memory_mb }}MB (required: >= 120MB)
+      Please free memory and retry deployment.
+  when: available_memory_mb | default(0) < 120
+
+- name: Fail if disk usage is too high
+  ansible.builtin.fail:
+    msg: >
+      CRITICAL: Disk usage on /opt is too high on {{ inventory_hostname }}.
+      Used: {{ disk_used_pct }}% (required: < 90%)
+      Please clean up disk space and retry deployment.
+  when: disk_used_pct | default(0) >= 90

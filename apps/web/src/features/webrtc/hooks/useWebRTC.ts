@@ -3,11 +3,13 @@
  * RTCPeerConnectionを管理し、音声のみで開始→ビデオ追加に対応
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getAudioStream, getAudioVideoStream, getVideoStream, stopMediaStream } from '../utils/media';
+import { getAudioStream, getAudioVideoStream, getVideoStream } from '../utils/media';
 
 import { useWebRTCSignaling } from './useWebRTCSignaling';
+
+import type { SignalingMessage } from '../types';
 
 export interface UseWebRTCOptions {
   enabled?: boolean;
@@ -41,6 +43,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const isNegotiatingRef = useRef(false);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const startCallRef = useRef<((callId: string, withVideo?: boolean) => Promise<void>) | null>(null);
   const pcConnectionStartTimeRef = useRef<number | null>(null);
   const pcIceConnectionStartTimeRef = useRef<number | null>(null);
 
@@ -49,6 +52,146 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     onRemoteStreamRef.current = onRemoteStream;
     onErrorRef.current = onError;
   }, [onLocalStream, onRemoteStream, onError]);
+
+  // クリーンアップ関数
+  const cleanup = useCallback(() => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach(track => track.stop());
+      remoteStreamRef.current = null;
+    }
+    videoSenderRef.current = null;
+    isNegotiatingRef.current = false;
+    setCallState('idle');
+    setCurrentCallId(null);
+    setIsVideoEnabled(false);
+    setIncomingCallInfo(null);
+    pcConnectionStartTimeRef.current = null;
+    pcIceConnectionStartTimeRef.current = null;
+  }, []);
+
+  // シグナリング（ref化してhandlersから参照可能にする）
+  const signalingRef = useRef<ReturnType<typeof useWebRTCSignaling> | null>(null);
+
+  // シグナリングハンドラー
+  const handlers = useMemo(() => ({
+    onIncomingCall: (callId: string, from: string, payload?: { callerName?: string; callerLocation?: string | null }) => {
+      setIncomingCallInfo({
+        callId,
+        from,
+        callerName: payload?.callerName,
+        callerLocation: payload?.callerLocation ?? null
+      });
+      setCallState('incoming');
+    },
+    onCallAccepted: async (callId: string) => {
+      currentCallIdRef.current = callId;
+      setCurrentCallId(callId);
+      setCallState('connecting');
+      const startCallFn = startCallRef.current;
+      if (startCallFn) {
+        await startCallFn(callId, false);
+      }
+    },
+    onCallRejected: (callId: string) => {
+      if (callId === currentCallIdRef.current) {
+        cleanup();
+      }
+    },
+    onCallCancelled: (callId: string) => {
+      if (callId === currentCallIdRef.current) {
+        cleanup();
+      }
+    },
+    onCallHangup: (callId: string) => {
+      if (callId === currentCallIdRef.current) {
+        cleanup();
+      }
+    },
+    onOffer: async (message: SignalingMessage) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:handlers.onOffer',message:'signal_offer_received',data:{callId:message.callId,hasPc:Boolean(peerConnectionRef.current),curCallId:currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
+        return;
+      }
+
+      try {
+        const pc = peerConnectionRef.current;
+        const offer = message.payload as RTCSessionDescriptionInit;
+        // offer衝突(glare)対策: こちらがhave-local-offer等で不安定な場合はrollbackしてから受理する
+        if (pc.signalingState !== 'stable') {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await pc.setLocalDescription({ type: 'rollback' } as any);
+          } catch {
+            // ignore: rollback非対応環境もある
+          }
+        }
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        signalingRef.current?.sendMessage({
+          type: 'answer',
+          callId: currentCallIdRef.current!,
+          payload: answer
+        });
+      } catch (error) {
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle offer'));
+      }
+    },
+    onAnswer: async (message: SignalingMessage) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:handlers.onAnswer',message:'signal_answer_received',data:{callId:message.callId,hasPc:Boolean(peerConnectionRef.current),curCallId:currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      // 相手からのAnswerを受信
+      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
+        return;
+      }
+
+      try {
+        const pc = peerConnectionRef.current;
+        const answer = message.payload as RTCSessionDescriptionInit;
+        // Answerは「自分がofferを出している」状態でのみ適用する（それ以外は衝突/順序違い）
+        if (pc.signalingState !== 'have-local-offer') {
+          return;
+        }
+        await pc.setRemoteDescription(answer);
+      } catch (error) {
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
+      }
+    },
+    onIceCandidate: async (message: SignalingMessage) => {
+      // ICE candidateを受信
+      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
+        return;
+      }
+
+      try {
+        const candidate = message.payload as RTCIceCandidateInit;
+        await peerConnectionRef.current.addIceCandidate(candidate);
+      } catch (error) {
+        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to add ICE candidate'));
+      }
+    },
+    onError: (error: Error) => {
+      onErrorRef.current?.(error);
+    }
+  }), [cleanup]);
+
+  // シグナリング
+  const signaling = useWebRTCSignaling({
+    enabled,
+    ...handlers
+  });
+  signalingRef.current = signaling;
 
   // WebRTC設定（Pi4向けに最適化）
   const getRTCConfiguration = useCallback((): RTCConfiguration => {
@@ -80,7 +223,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       if (event.candidate && callId) {
         // signalingはref経由でアクセスするため、依存関係に含めない
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        signaling.sendMessage({
+        signalingRef.current?.sendMessage({
           type: 'ice-candidate',
           callId,
           payload: event.candidate
@@ -97,164 +240,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
           pcConnectionStartTimeRef.current = now;
         }
         setCallState('connected');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onconnectionstatechange',message:'RTCPeerConnection state changed',data:{state,connectionDuration:pcConnectionStartTimeRef.current ? now - pcConnectionStartTimeRef.current : null},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
-      } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-        const connectionDuration = pcConnectionStartTimeRef.current ? now - pcConnectionStartTimeRef.current : null;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:onconnectionstatechange',message:'RTCPeerConnection disconnected',data:{state,connectionDuration,connectionStartTime:pcConnectionStartTimeRef.current},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
-        pcConnectionStartTimeRef.current = null;
-        setCallState('ended');
-        cleanup();
-      }
-    };
-
-    // ICE接続状態の監視（'completed' は iceConnectionState に存在する）
-    pc.oniceconnectionstatechange = () => {
-      const iceState = pc.iceConnectionState;
-      const now = Date.now();
-      if (iceState === 'connected' || iceState === 'completed') {
-        if (!pcIceConnectionStartTimeRef.current) {
-          pcIceConnectionStartTimeRef.current = now;
-        }
-        setCallState('connected');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:oniceconnectionstatechange',message:'ICE connection state changed',data:{iceState,connectionDuration:pcIceConnectionStartTimeRef.current ? now - pcIceConnectionStartTimeRef.current : null},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
-      } else if (iceState === 'disconnected' || iceState === 'failed' || iceState === 'closed') {
-        const connectionDuration = pcIceConnectionStartTimeRef.current ? now - pcIceConnectionStartTimeRef.current : null;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:oniceconnectionstatechange',message:'ICE connection disconnected',data:{iceState,connectionDuration,connectionStartTime:pcIceConnectionStartTimeRef.current},timestamp:now,sessionId:'debug-session',runId:'run-timeout',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
-        pcIceConnectionStartTimeRef.current = null;
-        setCallState('ended');
-        cleanup();
       }
     };
 
     return pc;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onRemoteStream]);
-
-  // クリーンアップ
-  const cleanup = useCallback(() => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    stopMediaStream(localStreamRef.current);
-    localStreamRef.current = null;
-    stopMediaStream(remoteStreamRef.current);
-    remoteStreamRef.current = null;
-    pcConnectionStartTimeRef.current = null;
-    pcIceConnectionStartTimeRef.current = null;
-    setCurrentCallId(null);
-    setIsVideoEnabled(false);
-    setIncomingCallInfo(null);
-    setCallState('idle');
-    onLocalStreamRef.current?.(null);
-    onRemoteStreamRef.current?.(null);
-  }, []);
-
-  // シグナリングフック
-  const signaling = useWebRTCSignaling({
-    enabled,
-    onIncomingCall: (callId, from, payload) => {
-      setIncomingCallInfo({
-        callId,
-        from,
-        callerName: payload?.callerName,
-        callerLocation: payload?.callerLocation || null
-      });
-      setCallState('incoming');
-    },
-    onCallAccepted: async (callId) => {
-      setCurrentCallId(callId);
-      setCallState('connecting');
-      await startCall(callId, false); // 音声のみで開始
-    },
-    onCallRejected: (callId) => {
-      if (callId === currentCallId) {
-        cleanup();
-      }
-    },
-    onCallCancelled: (callId) => {
-      if (callId === currentCallId) {
-        cleanup();
-      }
-    },
-    onCallHangup: (callId) => {
-      if (callId === currentCallId) {
-        cleanup();
-      }
-    },
-    onOffer: async (message) => {
-      // 相手からのOfferを受信
-      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
-        return;
-      }
-
-      try {
-        const pc = peerConnectionRef.current;
-        const offer = message.payload as RTCSessionDescriptionInit;
-        // offer衝突(glare)対策: こちらがhave-local-offer等で不安定な場合はrollbackしてから受理する
-        if (pc.signalingState !== 'stable') {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await pc.setLocalDescription({ type: 'rollback' } as any);
-          } catch {
-            // ignore: rollback非対応環境もある
-          }
-        }
-        await pc.setRemoteDescription(offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        signaling.sendMessage({
-          type: 'answer',
-          callId: currentCallIdRef.current!,
-          payload: answer
-        });
-      } catch (error) {
-        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle offer'));
-      }
-    },
-    onAnswer: async (message) => {
-      // 相手からのAnswerを受信
-      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
-        return;
-      }
-
-      try {
-        const pc = peerConnectionRef.current;
-        const answer = message.payload as RTCSessionDescriptionInit;
-        // Answerは「自分がofferを出している」状態でのみ適用する（それ以外は衝突/順序違い）
-        if (pc.signalingState !== 'have-local-offer') {
-          return;
-        }
-        await pc.setRemoteDescription(answer);
-      } catch (error) {
-        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to handle answer'));
-      }
-    },
-    onIceCandidate: async (message) => {
-      // ICE candidateを受信
-      if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
-        return;
-      }
-
-      try {
-        const candidate = message.payload as RTCIceCandidateInit;
-        await peerConnectionRef.current.addIceCandidate(candidate);
-      } catch (error) {
-        onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to add ICE candidate'));
-      }
-    },
-    onError: (error) => {
-      onErrorRef.current?.(error);
-    }
-  });
+  }, [getRTCConfiguration, onRemoteStreamRef]);
 
   // 通話開始（音声のみ）
   const startCall = useCallback(async (callId: string, withVideo: boolean = false) => {
@@ -287,14 +277,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       // Offerを作成
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
       // Offerを送信
       signaling.sendMessage({
         type: 'offer',
         callId,
         payload: offer
       });
-
       setCallState('connecting');
       setIsVideoEnabled(withVideo);
     } catch (error) {
@@ -302,6 +290,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start call'));
     }
   }, [createPeerConnection, signaling, cleanup]);
+  startCallRef.current = startCall;
 
   // 発信
   const call = useCallback(async (to: string) => {
@@ -319,7 +308,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       to,
       callId
     });
-
     // 相手が受話するまで待機（onCallAcceptedでstartCallが呼ばれる）
   }, [callState, signaling]);
 
@@ -337,7 +325,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       type: 'accept',
       callId
     });
-
     // 受話側は offer を「送らない」。PeerConnection を準備して offer を待つ。
     setCallState('connecting');
 
@@ -390,6 +377,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     }
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo_start',data:{callId:currentCallId,signalingState:peerConnectionRef.current?.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       const pcForVideo = peerConnectionRef.current;
       // 再ネゴシエーション中は新しいofferを作らない（状態崩壊の原因）
       if (pcForVideo.signalingState !== 'stable') {
@@ -398,11 +388,13 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       
       // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
       const videoStream = await getVideoStream();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo_gotVideoStream',data:{hasStream:Boolean(videoStream),videoTracks:videoStream?.getVideoTracks?.().length ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
 
       if (!videoStream || videoStream.getVideoTracks().length === 0) {
         throw new Error('ビデオストリームの取得に失敗しました');
       }
-      
       // 既存のビデオトラックを停止
       if (localStreamRef.current) {
         localStreamRef.current.getVideoTracks().forEach(track => track.stop());
@@ -423,7 +415,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
         // addTrackはRTCRtpSenderを返すので保持（disableVideoでremoveTrackする）
         videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, videoStream);
-        
         // 既存の音声ストリームにビデオトラックを追加
         if (localStreamRef.current) {
           localStreamRef.current.addTrack(videoTrack);
@@ -436,13 +427,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         isNegotiatingRef.current = true;
         const offer = await peerConnectionRef.current.createOffer();
         await peerConnectionRef.current.setLocalDescription(offer);
-
         signaling.sendMessage({
           type: 'offer',
           callId: currentCallId,
           payload: offer
         });
-
         setIsVideoEnabled(true);
       }
     } catch (error) {

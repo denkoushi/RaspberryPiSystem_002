@@ -27,7 +27,7 @@ import {
   type RunBackupRequest,
   type GmailConfigUpdateRequest
 } from './backup';
-import { importMasterSingle } from './client';
+import { getKioskEmployees, importMasterSingle } from './client';
 import {
   borrowItem,
   cancelLoan,
@@ -134,10 +134,7 @@ export function useEmployees() {
 export function useKioskEmployees(clientKey?: string) {
   return useQuery({
     queryKey: ['kiosk-employees', clientKey],
-    queryFn: async () => {
-      const { getKioskEmployees } = await import('./client');
-      return getKioskEmployees(clientKey);
-    },
+    queryFn: () => getKioskEmployees(clientKey),
     enabled: !!clientKey
   });
 }

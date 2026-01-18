@@ -1,0 +1,19 @@
+{
+  "id": "f899ef87-092a-4ecf-aca4-3722b61e87ce",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1766842470358-buubk6m を VIEWER から MANAGER に変更 (by test-1766842470238-a5qfzt)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "2abed8c4-7445-48e7-b868-78472b825cdb",
+    "actorUsername": "test-1766842470238-a5qfzt",
+    "targetUserId": "4b184ad3-29c4-42eb-85b6-e46448bf79c9",
+    "targetUsername": "test-1766842470358-buubk6m",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2025-12-27T13:34:30.370Z",
+  "acknowledged": false
+}

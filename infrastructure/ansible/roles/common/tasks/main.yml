@@ -59,6 +59,43 @@
     - '"server" not in group_names'
     - item.stat.exists
 
+- name: Check if repository exists
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/.git"
+  register: repo_git_stat
+
+- name: Check host_vars directory exists
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/infrastructure/ansible/host_vars"
+  register: host_vars_stat
+  when: repo_git_stat.stat.exists | default(false)
+
+- name: Find vault.yml files in host_vars
+  ansible.builtin.find:
+    paths: "{{ repo_path }}/infrastructure/ansible/host_vars"
+    patterns: "vault.yml"
+    file_type: file
+  register: vault_files
+  when:
+    - repo_git_stat.stat.exists | default(false)
+    - host_vars_stat.stat.exists | default(false)
+
+- name: Fix vault.yml ownership if needed
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  loop: "{{ vault_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when:
+    - repo_git_stat.stat.exists | default(false)
+    - host_vars_stat.stat.exists | default(false)
+    - (vault_files.matched | default(0)) | int > 0
+    - ansible_user is defined
+  become: true
+
 - name: Sync repository to desired state (with retries)
   ansible.builtin.shell: |
     set -euo pipefail

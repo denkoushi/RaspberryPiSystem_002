@@ -42,10 +42,13 @@ update-frequency: high
    - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用（推奨）
    - 現在のネットワーク環境に応じて設定を変更（[デプロイメントガイド](./deployment.md#ネットワーク環境の確認デプロイ前必須)を参照）
 
-2. **Pi3サイネージサービスの停止**（Pi3デプロイ時のみ）
-   ```bash
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "sudo systemctl stop signage-lite.service signage-lite-update.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer"'
-   ```
+2. **デプロイ先inventoryの確認**（誤デプロイ防止）
+   - 第2工場: `infrastructure/ansible/inventory.yml`
+   - トークプラザ: `infrastructure/ansible/inventory-talkplaza.yml`
+
+3. **Pi3/サイネージ端末のプレフライト**（自動化済み）
+   - Pi3/サイネージ端末のサービス停止・mask・必要ならlightdm停止・完了後再起動は **プレフライトチェックで自動実行**されます。手動で`systemctl stop/disable/mask`を実行する必要はありません。\n
+   - 例外として、プレフライトがメモリ不足で中断された場合のみ、[デプロイメントガイドの手動手順](./deployment.md#ラズパイ3サイネージの更新)に従って対処してください。
 
 **Macのターミナルで実行:**
 
@@ -58,10 +61,16 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
-./scripts/update-all-clients.sh main
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# mainブランチで全デバイスを更新（トークプラザ）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
 
 # 特定のブランチで全デバイスを更新
-./scripts/update-all-clients.sh feature/rigging-management
+./scripts/update-all-clients.sh feature/rigging-management infrastructure/ansible/inventory.yml
+
+# 特定のブランチで全デバイスを更新（トークプラザ）
+./scripts/update-all-clients.sh feature/rigging-management infrastructure/ansible/inventory-talkplaza.yml
 ```
 
 **⚠️ 注意**: 

@@ -58,7 +58,8 @@ update-frequency: medium
 ```bash
 # Macのターミナルで実行
 export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
-./scripts/update-all-clients.sh
+# inventory指定が必須（誤デプロイ防止）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 
 # 内部的な動作:
 # 1. Mac → Pi5にSSH接続

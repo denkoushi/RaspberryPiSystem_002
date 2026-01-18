@@ -5,9 +5,11 @@
     "moduleResolution": "Bundler",
     "allowJs": false,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["vite/client"]
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**/*"],
   "references": [
     { "path": "../../packages/shared-types" }
   ]

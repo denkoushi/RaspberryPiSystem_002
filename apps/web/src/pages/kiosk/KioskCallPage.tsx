@@ -5,12 +5,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { DEFAULT_CLIENT_KEY } from '../../api/client';
 import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useWebRTC } from '../../features/webrtc/hooks/useWebRTC';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 export function KioskCallPage() {
+  // clientKeyとclientIdをlocalStorageから取得（WebRTCシグナリングに必要）
+  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
+  const [clientId] = useLocalStorage('kiosk-client-id', '');
+  // NOTE: 値自体はここでは参照しないが、デフォルト値の永続化/整合性のためにフックを評価する
+  void clientKey;
+  void clientId;
+  
   const callTargetsQuery = useKioskCallTargets();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -123,6 +132,9 @@ export function KioskCallPage() {
   }, [callTargetsQuery.data]);
 
   const handleCall = async (to: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleCall',message:'user_action_call',data:{to,callState,isConnected},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     try {
       await call(to);
     } catch (error) {
@@ -132,6 +144,9 @@ export function KioskCallPage() {
   };
 
   const handleAccept = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleAccept',message:'user_action_accept',data:{callState,hasIncoming:Boolean(incomingCallInfo)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     try {
       await accept();
       setShowIncomingModal(false);
@@ -151,6 +166,9 @@ export function KioskCallPage() {
   };
 
   const handleEnableVideo = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleEnableVideo',message:'user_action_enableVideo',data:{callState,isVideoEnabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     try {
       await enableVideo();
     } catch (error) {

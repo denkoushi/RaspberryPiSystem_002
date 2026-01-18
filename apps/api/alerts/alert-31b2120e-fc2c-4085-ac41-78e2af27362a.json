@@ -1,0 +1,19 @@
+{
+  "id": "31b2120e-fc2c-4085-ac41-78e2af27362a",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1766840453627-bchxil を VIEWER から MANAGER に変更 (by test-1766840453484-ve94j)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "9c5a9a49-0ddd-454a-ae7b-1e80cc110f94",
+    "actorUsername": "test-1766840453484-ve94j",
+    "targetUserId": "0699b23b-39d3-45dc-b152-5d935cecf963",
+    "targetUsername": "test-1766840453627-bchxil",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2025-12-27T13:00:53.634Z",
+  "acknowledged": false
+}

@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+  },
   server: {
     port: 4173,
     host: '0.0.0.0',
@@ -16,6 +21,24 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
         ws: true
+      }
+    }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: [
+            'react',
+            'react-dom',
+            'react-router-dom',
+            '@tanstack/react-query',
+            '@xstate/react',
+            'xstate',
+            'axios',
+            'clsx'
+          ]
+        }
       }
     }
   }
