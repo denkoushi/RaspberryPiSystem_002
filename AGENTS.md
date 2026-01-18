@@ -21,3 +21,17 @@
 - `.cursor/rules/20-git-workflow.mdc`: Git安全運用（明示依頼がある時のみ実行）
 - `.cursor/rules/30-docs-maintenance.mdc`: ドキュメント肥大化対策
 - `.cursor/rules/33-frontend-ui-quality.mdc`: UI品質（UI Skillsを条件付き採用）
+
+## プロジェクト固有コンテキスト（ショートカット）
+
+このプロジェクト固有の文脈（デプロイ手順・運用・KB等）は `docs/` 配下にあります。網羅的な入口は `docs/INDEX.md` です。
+
+- **ドキュメント入口**: `docs/INDEX.md`
+- **デプロイ標準手順**: `docs/guides/deployment.md`
+- **ナレッジベース索引**: `docs/knowledge-base/index.md`
+- **CIトラブルシュート**: `docs/guides/ci-troubleshooting.md`
+- **現状把握（進捗・決定）**: `EXEC_PLAN.md`
+
+## 共有時の推奨フレーズ（短縮）
+
+「**`AGENTS.md` と `.cursor/rules/` を読んでから開始**」
