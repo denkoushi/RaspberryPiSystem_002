@@ -130,7 +130,19 @@ export class AlertsIngestor {
     for (const filePath of candidates) {
       const alert = await readAlert(filePath);
       if (!alert) {
-        errors++;
+        // 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ので安全にスキップ
+        try {
+          const stat = await fs.stat(filePath);
+          if (stat.size === 0) {
+            logger?.debug({ filePath }, '[AlertsIngestor] Empty alert file, skipping');
+            skipped++;
+            continue;
+          }
+        } catch {
+          // noop
+        }
+        logger?.debug({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+        skipped++;
         continue;
       }
 
