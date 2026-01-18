@@ -1,164 +1,117 @@
----
-title: Slack Incoming Webhook設定ガイド
-tags: [Slack, Webhook, 設定]
-audience: [運用者, 管理者]
-last-verified: 2026-01-03
-related: [verification-checklist.md]
-category: guides
-update-frequency: low
----
-
-# Slack Incoming Webhook設定ガイド
-
-最終更新: 2026-01-03
+# Slack Webhook URL設定手順
 
 ## 概要
 
-本ドキュメントでは、キオスクサポート機能で使用するSlack Incoming Webhookの設定手順を説明します。
+Slack通知を4系統（deploy/ops/security/support）に分類するため、各チャンネルのIncoming Webhook URLを取得してAnsible Vaultに設定します。
 
 ## 前提条件
 
-- Slackワークスペースへのアクセス権限があること
-- 管理者権限があること（推奨）
+- 4つのSlackチャンネルが作成済み（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）
+- Slackワークスペースの管理者権限、またはIncoming Webhookを作成する権限があること
 
-## 設定手順
+## 手順
 
-### 方法1: Slackワークスペースから直接作成（推奨）
+### 1. 各チャンネルのIncoming Webhook URLを取得
 
-1. **Slackワークスペースにログイン**
-   - ブラウザまたはSlackアプリでワークスペースにアクセス
+各チャンネルごとに以下の手順を繰り返します：
 
-2. **Incoming Webhooksアプリを追加**
-   - 左サイドバーの「Apps」をクリック
-   - 検索バーで「Incoming Webhooks」と検索
-   - 「Incoming Webhooks」アプリを選択して「Add to Slack」をクリック
+1. **Slackアプリの設定画面を開く**
+   - Slackワークスペースで「設定と管理」→「アプリを管理」を開く
+   - または、https://api.slack.com/apps にアクセス
 
-3. **Webhook URLを取得**
-   - 「Post to Channel」で通知を送信したいチャンネルを選択（例: `#general` または `#support`）
-   - 「Add Incoming Webhooks integration」ボタンをクリック
-   - 表示された「Webhook URL」をコピー（形式: `https://hooks.slack.com/services/...`）
+2. **Incoming Webhooksを有効化**
+   - 「機能」→「Incoming Webhooks」を選択
+   - 「Incoming Webhooksを有効にする」をONにする
 
-4. **Webhook URLを保存**
-   - コピーしたURLを安全な場所に保存（後でPi5の環境変数に設定します）
+3. **Webhookを追加**
+   - 「Webhook URLを追加」をクリック
+   - 投稿先チャンネルを選択（例: `#rps-deploy`）
+   - 「許可」をクリック
 
-### 方法2: Slack APIサイトから作成
+4. **Webhook URLをコピー**
+   - 生成されたWebhook URL（例: `https://hooks.slack.com/services/TFG0Z5X53/B0A6W3S6468/...`）をコピー
+   - **重要**: このURLは機密情報です。他人に共有しないでください
 
-1. **Slack APIサイトにアクセス**
-   - https://api.slack.com/apps にアクセス
-   - 「Sign in to your Slack account」をクリックしてログイン
+5. **他のチャンネルでも繰り返す**
+   - `#rps-ops`, `#rps-security`, `#rps-support` についても同様にWebhook URLを取得
 
-2. **新しいアプリを作成**
-   - 「Create New App」をクリック
-   - 「From scratch」を選択
-   - アプリ名（例: `Kiosk Support`）とワークスペースを選択して「Create App」をクリック
+### 2. Ansible VaultにWebhook URLを設定
 
-3. **Incoming Webhooksを有効化**
-   - 左サイドバーの「Incoming Webhooks」をクリック
-   - 「Activate Incoming Webhooks」をONにする
+取得したWebhook URLをAnsible Vaultに設定します：
 
-4. **Webhook URLを追加**
-   - ページ下部の「Add New Webhook to Workspace」をクリック
-   - 通知を送信したいチャンネルを選択して「Allow」をクリック
-   - 表示された「Webhook URL」をコピー
+```bash
+# Pi5のvault.ymlを編集
+ansible-vault edit infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+```
 
-## Pi5側の環境変数設定
+以下の変数に取得したWebhook URLを設定します：
 
-Webhook URLを取得したら、Pi5側の環境変数に設定します。
+```yaml
+# Alerts Dispatcher Slack Webhooks (route-based)
+vault_alerts_slack_webhook_deploy: "https://hooks.slack.com/services/..."  # #rps-deployのURL
+vault_alerts_slack_webhook_ops: "https://hooks.slack.com/services/..."      # #rps-opsのURL
+vault_alerts_slack_webhook_security: "https://hooks.slack.com/services/..." # #rps-securityのURL
+vault_alerts_slack_webhook_support: "https://hooks.slack.com/services/..."  # #rps-supportのURL
 
-### 手順
+# キオスクサポート直送もsupportチャンネルへ（既存のGeneralから変更）
+vault_slack_kiosk_support_webhook_url: "https://hooks.slack.com/services/..."  # #rps-supportのURL（上記と同じ）
+```
 
-1. **Pi5にSSH接続**
-   ```bash
-   ssh denkon5sd02@100.106.158.2
-   ```
+**注意**: 
+- `vault_slack_kiosk_support_webhook_url` は既存のGeneralチャンネルのWebhook URLが設定されている可能性があります。これを `#rps-support` のWebhook URLに更新してください。
+- トークプラザ拠点（`infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml`）も同様に設定が必要です。
 
-2. **（重要）この`.env`はAnsibleで管理される**
+### 3. デプロイと検証
 
-`/opt/RaspberryPiSystem_002/infrastructure/docker/.env` は **Ansibleテンプレートで再生成**されます。  
-ローカルLAN変更などでSERVER_IPを更新すると、`.env`が再生成され、手動で追記した設定が消える可能性があります。
+Webhook URL設定後、デプロイを実行します：
 
-永続化するには **Ansibleのvault変数**として設定してください。
+```bash
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+```
 
-3. **Ansibleのvault変数を編集（推奨）**
-   ```bash
-   cd /opt/RaspberryPiSystem_002/infrastructure/ansible/host_vars/raspberrypi5
-   nano vault.yml
-   ```
+デプロイ後、各routeKeyのテストアラートを生成して、正しいチャンネルに着弾することを確認します：
 
-4. **環境変数を追加**
-   ```bash
-   vault_slack_kiosk_support_webhook_url=取得したWebhookURLをここに貼り付け
-   ```
-   （取得したWebhook URLをそのまま貼り付けてください）
+```bash
+# deployチャンネル確認
+./scripts/generate-alert.sh ansible-update-failed "テスト: デプロイ失敗" "テスト用メッセージ"
 
-5. **設定を反映（.env再生成）**
-   - `infrastructure/ansible/templates/docker.env.j2` により `.env` が生成されます
-   - 反映方法は運用手順に従ってください（例: 設定反映プレイブックの実行）
+# opsチャンネル確認
+./scripts/generate-alert.sh storage-usage-high "テスト: ストレージ使用量警告" "テスト用メッセージ"
 
-6. **APIコンテナを再作成**
-   ```bash
-   docker compose -f docker-compose.server.yml up -d --force-recreate api
-   ```
+# securityチャンネル確認（API経由）
+# 管理画面でユーザーのロールを変更すると、role_changeアラートが生成されます
 
-7. **環境変数の確認**
-   ```bash
-   docker compose -f docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
-   ```
+# supportチャンネル確認
+./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用メッセージ"
+```
 
-## 動作確認
+### 4. APIコンテナの再起動（環境変数変更を反映）
 
-1. **キオスク画面にアクセス**
-   - `https://100.106.158.2/kiosk` にアクセス
+環境変数が変更されたため、APIコンテナを再起動して設定を反映します：
 
-2. **お問い合わせを送信**
-   - ヘッダーの「お問い合わせ」ボタンをクリック
-   - 「よくある困りごと」から1つ選択
-   - 「詳細」欄に任意のメッセージを入力（任意）
-   - 「送信」ボタンをクリック
+```bash
+# Pi5にSSH接続
+ssh denkon5sd02@<Pi5のIP>
 
-3. **Slackチャンネルで確認**
-   - 設定したチャンネルに通知が届いていることを確認
-   - 通知には以下の情報が含まれます:
-     - クライアントID
-     - 端末名
-     - 場所
-     - 画面（ページパス）
-     - メッセージ内容
-     - Request ID
+# Docker ComposeでAPIコンテナを再起動
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+```
 
 ## トラブルシューティング
 
 ### Webhook URLが設定されていない場合
 
-- 環境変数が設定されていない場合、Slack通知はスキップされますが、ログは正常に保存されます
-- APIログに警告メッセージが記録されます: `[SlackWebhook] SLACK_KIOSK_SUPPORT_WEBHOOK_URL is not set, skipping notification`
+- 未設定（空文字）のrouteKeyのアラートはSlackに送信されません（ファイル生成のみ）
+- `infrastructure/docker/.env` を確認して、環境変数が正しく設定されているか確認してください
 
-### 通知が届かない場合
+### アラートが正しいチャンネルに着弾しない場合
 
-1. **環境変数の確認**
-   ```bash
-   docker compose -f docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
-   ```
-
-2. **APIログの確認**
-   ```bash
-   docker compose -f docker-compose.server.yml logs api | grep SlackWebhook
-   ```
-
-3. **Webhook URLの確認**
-   - Slackワークスペースの「Apps」→「Incoming Webhooks」で、Webhookが有効になっているか確認
-   - Webhook URLが正しいか確認（`https://hooks.slack.com/services/`で始まる形式であること）
-
-### セキュリティに関する注意事項
-
-- **Webhook URLは機密情報です**: 公開リポジトリにコミットしないでください
-- **`.env`ファイルの権限**: 適切な権限（`600`）を設定してください
-  ```bash
-  chmod 600 /opt/RaspberryPiSystem_002/infrastructure/docker/.env
-  ```
+1. `infrastructure/docker/.env` で環境変数を確認
+2. APIコンテナのログを確認: `docker logs <api-container-name>`
+3. `apps/api/src/services/alerts/alerts-config.ts` のルーティング設定を確認
 
 ## 関連ドキュメント
 
-- [検証チェックリスト - 6.9 キオスクサポート機能](./verification-checklist.md#69-キオスクサポート機能slack通知)
-- [デプロイメントガイド](./deployment.md)
-
+- [デプロイガイド](./deployment.md#slack通知のチャンネル分離2026-01-18実装)
+- [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)

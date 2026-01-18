@@ -436,8 +436,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **設定手順**:
 1. **Slack側でチャンネル作成とIncoming Webhook取得**:
-   - 各チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）を作成
-   - 各チャンネルのIncoming Webhook URLを取得
+   - ✅ 各チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）を作成済み
+   - 各チャンネルのIncoming Webhook URLを取得（詳細は [Slack Webhook URL設定手順](./slack-webhook-setup.md) を参照）
 
 2. **Ansible VaultにWebhook URLを登録**:
    ```bash
@@ -497,6 +497,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - 新しいアラートtypeを追加する場合は、`apps/api/src/services/alerts/alerts-config.ts`の`routing.byTypePrefix`にprefixを追加して分類を固定してください
 
 **関連ドキュメント**:
+- [Slack Webhook URL設定手順](./slack-webhook-setup.md) - 詳細な設定手順
 - [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)
 - [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト)
 
