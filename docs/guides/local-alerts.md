@@ -2,7 +2,7 @@
 title: ローカル環境対応の通知機能ガイド
 tags: [通知, アラート, ローカル環境]
 audience: [運用者, 開発者]
-last-verified: 2025-12-01
+last-verified: 2026-01-18
 related: [quick-start-deployment.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # ローカル環境対応の通知機能ガイド
 
-最終更新: 2025-12-01
+最終更新: 2026-01-18
 
 ## 概要
 
@@ -83,7 +83,7 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - fingerprint自動計算が機能し、54/55件にfingerprintが設定されている
 - Phase1（file）Dispatcherは停止し、DB中心へ完全移行できていることを確認
 - Phase2完全移行（API/UIはDBのみ参照）を実装完了
-- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
+- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
 
 ### Phase2: DB取り込み（Alerts DB Ingest）
 
@@ -165,11 +165,17 @@ https://192.168.128.131/admin
 
 - **オフラインクライアント**: 12時間以上更新がないクライアントの数
 - **エラーログ**: 過去24時間以内のエラーログの件数
-- **ファイルベースのアラート**: Ansible更新失敗などの通知
+- **DB alerts（Phase2完全移行後）**: DBに保存されたアラート（Ansible更新失敗、ストレージ使用量警告など）
+- **ファイルベースのアラート（Phase2移行前）**: Ansible更新失敗などの通知（Phase2完全移行後は非表示）
 
 ### アラートの確認済み処理
 
-**ファイルベースのアラートを確認済みにする**:
+**DB alertsを確認済みにする（Phase2完全移行後）**:
+
+1. ダッシュボードの「アラート:」セクションで各アラートの「確認済み」ボタンをクリック
+2. アラートがDB上で`acknowledged=true`としてマークされ、表示から消えます
+
+**ファイルベースのアラートを確認済みにする（Phase2移行前）**:
 
 1. ダッシュボードのアラートバナーで「確認済み」ボタンをクリック
 2. アラートが確認済みとしてマークされ、表示から消えます
@@ -319,7 +325,47 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 ## トラブルシューティング
 
-### アラートが表示されない場合
+### アラートが表示されない場合（Phase2完全移行後）
+
+**確認事項（順序通りに確認）**:
+
+1. **ブラウザキャッシュの確認**:
+   - Phase2完全移行後、管理ダッシュボードでDB alertsが表示されない場合は、まずブラウザキャッシュをクリア
+   - 強制リロード: Mac: `Cmd+Shift+R` / Windows: `Ctrl+F5`
+   - 開発者ツール（F12）→ Networkタブで「Disable cache」を有効化して再読み込み
+
+2. **APIレスポンスの直接確認**:
+   ```bash
+   # 認証トークンを取得
+   TOKEN=$(curl -k -s -X POST https://100.106.158.2/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+   
+   # APIレスポンスを確認（dbAlertsが0でないことを確認）
+   curl -k -s "https://100.106.158.2/api/clients/alerts" \
+     -H "Authorization: Bearer $TOKEN" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
+   ```
+   - `dbAlertsLen`が0でない場合、APIは正常に動作している（UI側の問題の可能性）
+   - `fileAlertsLen`は常に0（Phase2完全移行後はdeprecated）
+
+3. **データベースの確認**:
+   ```bash
+   # 未acknowledgedのDB alertsを確認
+   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+     psql -U postgres -d borrow_return -c "SELECT COUNT(*) as unacknowledged FROM \"Alert\" WHERE acknowledged = false;"
+   ```
+
+4. **APIサーバーのログ確認**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   ```
+
+5. **デバッグ手法（UI表示の問題を調査する場合）**:
+   - Playwrightスクリプトを使用してフレッシュブラウザコンテキストでAPIレスポンスとUI状態を確認
+   - これにより、ブラウザキャッシュの影響を排除し、API/UIの実際の動作を確認できる
+   - 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) を参照
+
+### アラートが表示されない場合（Phase2移行前）
 
 **確認事項**:
 
