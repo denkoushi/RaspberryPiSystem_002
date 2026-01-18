@@ -1815,3 +1815,177 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
 - **デバッグ時の注意**: UI表示の問題を調査する際は、まずAPIレスポンス（`curl`で直接確認）とフレッシュブラウザコンテキスト（Playwrightスクリプトなど）で確認し、ブラウザキャッシュの影響を排除してから判断する
 
 ---
+
+### [KB-176] Slack通知チャンネル分離のデプロイトラブルシューティング（環境変数反映問題）
+
+**事象日**: 2026-01-18
+
+### 症状
+
+Slack通知を4系統（deploy/ops/security/support）に分類する機能を実装後、デプロイしても環境変数（`ALERTS_SLACK_WEBHOOK_*`）がAPIコンテナに反映されない問題が発生。Slackへの通知が届かない状態が続いた。
+
+### 根本原因
+
+複数の要因が連鎖して問題が発生：
+
+1. **Ansibleテンプレートの既存値保持パターン**: `docker.env.j2`が既存の`.env`ファイルの値を抽出し、新しい変数が未設定の場合は既存値を使用するパターンを採用。これにより、Vaultに新しいWebhook URLを設定しても、既存の（空の）`.env`ファイルが優先された
+2. **リモートリポジトリの同期遅延**: Pi5上のリポジトリが最新のテンプレート変更を反映していなかった
+3. **ファイル権限問題**: `vault.yml`がrootに変更されており、`git pull`が失敗
+4. **APIコンテナの再起動忘れ**: `.env`ファイルが更新されても、Dockerコンテナが古い環境変数を保持し続けた
+
+### 試行した対策
+
+| 試行 | 内容 | 結果 |
+|-----|------|------|
+| 1 | Ansible Vaultに変数を設定してデプロイ | ❌ 環境変数がコンテナに反映されず |
+| 2 | Pi5でgit pull | ❌ `vault.yml`の権限問題でエラー |
+| 3 | `sudo chown`でファイル権限を修正後、git pull | ✅ 成功 |
+| 4 | Ansibleプレイブック再実行 | ❌ 既存値保持パターンで空のまま |
+| 5 | Pythonスクリプトで明示的にJinja2レンダリング | ✅ 正しく環境変数が設定された.envを生成 |
+| 6 | SCP + sudoで.envファイルをPi5に配布 | ✅ ファイル更新成功 |
+| 7 | `docker compose restart api` | ✅ 環境変数がコンテナに反映 |
+| 8 | `generate-alert.sh`でテスト通知送信 | ✅ Slackに通知着弾確認 |
+
+### 有効だった対策
+
+#### 解決策1: ファイル権限問題の解決
+
+```bash
+# Pi5にSSH接続
+ssh denkon5sd02@<Pi5のIP>
+
+# rootに変更されたファイルの権限を修正
+cd /opt/RaspberryPiSystem_002
+sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml
+
+# リポジトリを最新化
+git stash  # ローカル変更がある場合
+git pull origin main
+```
+
+#### 解決策2: Jinja2テンプレートの手動レンダリング
+
+Ansibleの既存値保持パターンをバイパスするため、Pythonスクリプトで明示的にレンダリング：
+
+```python
+#!/usr/bin/env python3
+from jinja2 import Template
+
+# テンプレート読み込み
+with open('infrastructure/ansible/templates/docker.env.j2') as f:
+    template = Template(f.read())
+
+# Vault変数を明示的に設定
+variables = {
+    'alerts_dispatcher_enabled': 'true',
+    'alerts_slack_webhook_deploy': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_ops': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_security': 'https://hooks.slack.com/services/...',
+    'alerts_slack_webhook_support': 'https://hooks.slack.com/services/...',
+    # 既存値フォールバック変数は空にして新しい値を強制
+    'existing_alerts_dispatcher_enabled': '',
+    'existing_alerts_slack_webhook_deploy': '',
+    'existing_alerts_slack_webhook_ops': '',
+    'existing_alerts_slack_webhook_security': '',
+    'existing_alerts_slack_webhook_support': '',
+    # その他必要な変数...
+}
+
+# レンダリングしてファイル出力
+result = template.render(**variables)
+with open('rendered.env', 'w') as f:
+    f.write(result)
+```
+
+#### 解決策3: .envファイルの配布とコンテナ再起動
+
+```bash
+# ローカルからPi5にファイルをコピー
+scp rendered.env denkon5sd02@<Pi5のIP>:/tmp/docker.env
+
+# Pi5でファイルを配置
+ssh denkon5sd02@<Pi5のIP>
+sudo cp /tmp/docker.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+sudo chmod 600 /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+
+# APIコンテナを再起動して環境変数を反映
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+```
+
+### 検証結果（2026-01-18）
+
+4つのチャンネルすべてで通知受信を確認：
+
+```bash
+# deployチャンネル
+./scripts/generate-alert.sh ansible-update-failed "テスト: デプロイ失敗" "テスト用"
+# ✅ #rps-deploy で受信
+
+# opsチャンネル
+./scripts/generate-alert.sh storage-usage-high "テスト: ストレージ使用量警告" "テスト用"
+# ✅ #rps-ops で受信
+
+# supportチャンネル
+./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用"
+# ✅ #rps-support で受信
+
+# securityチャンネル（API経由でrole_changeアラートを生成）
+# ✅ #rps-security で受信（17:41確認）
+```
+
+### 学んだこと
+
+1. **Ansibleの既存値保持パターンの落とし穴**: テンプレートが既存の`.env`から値を抽出して優先する場合、新しい変数を反映するには明示的に値を渡す必要がある
+2. **Dockerコンテナの環境変数更新**: `.env`ファイルを更新しただけではコンテナに反映されない。`docker compose restart`または`docker compose up -d --force-recreate`が必要
+3. **ファイル権限問題の発見**: `git pull`の失敗時は、まずファイル権限（`ls -la`）を確認する
+4. **手動Jinja2レンダリング**: Ansibleの複雑なロジックをバイパスしたい場合、Pythonで直接テンプレートをレンダリングする方法が有効
+
+### PostgreSQLテーブル参照の注意点
+
+Prismaで生成されたテーブル名は大文字で始まり、ダブルクォートが必要：
+
+```bash
+# ❌ 失敗: 小文字のテーブル名
+psql -c "SELECT * FROM alerts;"
+# ERROR: relation "alerts" does not exist
+
+# ✅ 成功: 大文字 + ダブルクォート
+psql -c "SELECT * FROM \"Alert\";"
+```
+
+### 解決状況
+
+✅ **解決済み**（2026-01-18）: 4系統すべてのSlackチャンネルで通知受信を確認
+
+### 恒久対策（以降は標準手順で自動化）
+
+- `.env`更新時はAnsibleが`api`コンテナを`--force-recreate`で再作成して環境変数を反映
+- デプロイ後に`api`コンテナ内の環境変数を検証し、不足があればfail-fast
+- `host_vars/**/vault.yml`の所有者がrootになっている場合は自動修復して`git pull`失敗を防止
+
+### 関連ファイル
+
+- `infrastructure/ansible/templates/docker.env.j2`（Jinja2テンプレート）
+- `infrastructure/ansible/host_vars/raspberrypi5/vault.yml`（Vault変数）
+- `infrastructure/docker/docker-compose.server.yml`（Docker Compose設定）
+- `docs/guides/deployment.md#slack通知のチャンネル分離`（設定手順）
+- `docs/guides/slack-webhook-setup.md`（Webhook設定手順）
+
+### 確認コマンド
+
+```bash
+# 環境変数がコンテナに反映されているか確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api printenv | grep ALERTS
+
+# テストアラート生成
+./scripts/generate-alert.sh ansible-update-failed "テスト" "確認用"
+
+# DBでアラート配信状態を確認（Prismaの命名規則に注意）
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return \
+  -c "SELECT a.type, a.message, d.status, d.\"sentAt\" FROM \"Alert\" a JOIN \"AlertDelivery\" d ON a.id = d.\"alertId\" ORDER BY a.\"createdAt\" DESC LIMIT 5;"
+```
+
+---

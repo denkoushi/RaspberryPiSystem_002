@@ -85,18 +85,9 @@ Webhook URL設定後、デプロイを実行します：
 ./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用メッセージ"
 ```
 
-### 4. APIコンテナの再起動（環境変数変更を反映）
+### 4. 自動反映（Ansibleがapiを再作成）
 
-環境変数が変更されたため、APIコンテナを再起動して設定を反映します：
-
-```bash
-# Pi5にSSH接続
-ssh denkon5sd02@<Pi5のIP>
-
-# Docker ComposeでAPIコンテナを再起動
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
+`.env`が更新された場合、Ansibleが`api`コンテナを`--force-recreate`で再作成し、環境変数を反映します。手動での再起動は不要です。
 
 ## トラブルシューティング
 
@@ -111,7 +102,79 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 2. APIコンテナのログを確認: `docker logs <api-container-name>`
 3. `apps/api/src/services/alerts/alerts-config.ts` のルーティング設定を確認
 
+### デプロイが環境変数検証で失敗する場合
+
+**症状**: デプロイが fail-fast し、`Missing required environment variables` が表示される
+
+**原因と対策**:
+
+1. **Ansibleテンプレートの既存値保持パターン**
+   - `docker.env.j2`は既存の`.env`から値を抽出し、新しい変数が未設定の場合は既存値を優先
+   - 対策: 明示的に変数を渡すか、既存の`.env`を削除してから再デプロイ
+
+2. **リモートリポジトリの同期遅延**
+   - Pi5上のリポジトリが最新のテンプレートを反映していない
+   - 対策: Pi5で`git pull`を実行
+
+3. **ファイル権限問題**
+   - `vault.yml`がroot所有に変更されている場合、`git pull`が失敗する
+   - 対策:
+   ```bash
+   sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml
+   git pull origin main
+   ```
+
+4. **Webhook URLの未設定**
+   - `ALERTS_DISPATCHER_ENABLED=true` の場合、4系統のWebhook URLが空だと検証で失敗
+   - 対策: Vaultで4系統すべてを設定してから再デプロイ
+
+5. **手動でのJinja2レンダリング（最終手段）**
+   - Ansibleの複雑なロジックをバイパスしたい場合、Pythonで直接テンプレートをレンダリング
+   - 詳細は [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照
+
+### 環境変数がコンテナに反映されているか確認（任意）
+
+```bash
+# コンテナ内の環境変数を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api printenv | grep ALERTS
+
+# 期待される出力:
+# ALERTS_DISPATCHER_ENABLED=true
+# ALERTS_SLACK_WEBHOOK_DEPLOY=https://hooks.slack.com/services/...
+# ALERTS_SLACK_WEBHOOK_OPS=https://hooks.slack.com/services/...
+# ALERTS_SLACK_WEBHOOK_SECURITY=https://hooks.slack.com/services/...
+# ALERTS_SLACK_WEBHOOK_SUPPORT=https://hooks.slack.com/services/...
+```
+
+### テスト通知の送信
+
+```bash
+# 各routeKeyのテストアラートを生成
+./scripts/generate-alert.sh ansible-update-failed "テスト" "deploy確認用"
+./scripts/generate-alert.sh storage-usage-high "テスト" "ops確認用"
+./scripts/generate-alert.sh kiosk-support-test "テスト" "support確認用"
+# security: 管理画面でユーザーのロールを変更するとrole_changeアラートが生成されます
+```
+
+### DBでアラート配信状態を確認
+
+```bash
+# Prismaの命名規則に注意（大文字 + ダブルクォート）
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return \
+  -c "SELECT a.type, d.status, d.\"sentAt\" FROM \"Alert\" a JOIN \"AlertDelivery\" d ON a.id = d.\"alertId\" ORDER BY a.\"createdAt\" DESC LIMIT 5;"
+```
+
+## 実機検証完了（2026-01-18）
+
+4系統すべてのSlackチャンネルで通知受信を確認済み：
+- ✅ `#rps-deploy`: `ansible-update-failed`アラート
+- ✅ `#rps-ops`: `storage-usage-high`アラート
+- ✅ `#rps-security`: `role_change`アラート
+- ✅ `#rps-support`: `kiosk-support-test`アラート
+
 ## 関連ドキュメント
 
 - [デプロイガイド](./deployment.md#slack通知のチャンネル分離2026-01-18実装)
 - [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)
+- [KB-176: Slack通知チャンネル分離のデプロイトラブルシューティング](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題)

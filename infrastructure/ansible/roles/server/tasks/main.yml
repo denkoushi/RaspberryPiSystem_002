@@ -353,6 +353,16 @@
           Docker Compose restart failed on {{ inventory_hostname }}.
           See captured logs above for details.
 
+- name: Force recreate api when Docker .env changed
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ repo_path }}
+    docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
+  args:
+    executable: /bin/bash
+  when:
+    - docker_env_result.changed | default(false)
+
 - name: Wait for API health endpoint to recover
   ansible.builtin.uri:
     url: "{{ api_healthcheck_url }}"
@@ -366,6 +376,45 @@
   until:
     - api_health_result.status == 200
     - (api_health_result.json.status | default('')) == 'ok'
+
+- name: Verify API container environment variables after .env update
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ repo_path }}
+    ENV_OUTPUT="$(docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api printenv)"
+
+    get_env_value() {
+      local key="$1"
+      printf "%s\n" "${ENV_OUTPUT}" | awk -F= -v k="${key}" '$1==k {print substr($0, index($0,"=")+1)}'
+    }
+
+    missing=()
+    dispatcher_enabled="$(get_env_value 'ALERTS_DISPATCHER_ENABLED')"
+
+    if [ "${dispatcher_enabled}" = "true" ]; then
+      for key in ALERTS_SLACK_WEBHOOK_DEPLOY ALERTS_SLACK_WEBHOOK_OPS ALERTS_SLACK_WEBHOOK_SECURITY ALERTS_SLACK_WEBHOOK_SUPPORT; do
+        value="$(get_env_value "${key}")"
+        if [ -z "${value}" ]; then
+          missing+=("${key}")
+        fi
+      done
+    fi
+
+    kiosk_support="$(get_env_value 'SLACK_KIOSK_SUPPORT_WEBHOOK_URL')"
+    if [ -z "${kiosk_support}" ]; then
+      missing+=("SLACK_KIOSK_SUPPORT_WEBHOOK_URL")
+    fi
+
+    missing_count="$(printf '%s\n' "${missing[@]}" | wc -l | tr -d ' ')"
+    if [ "${missing_count}" -gt 0 ]; then
+      printf "Missing required environment variables: %s\n" "$(IFS=,; echo "${missing[*]}")" >&2
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - docker_env_result.changed | default(false)
+  changed_when: false
 
 - name: Apply status-agent configuration and systemd units
   ansible.builtin.import_tasks: status-agent.yml

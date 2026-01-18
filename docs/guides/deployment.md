@@ -470,10 +470,9 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
    - `ALERTS_SLACK_WEBHOOK_SECURITY=...`
    - `ALERTS_SLACK_WEBHOOK_SUPPORT=...`
 
-4. **APIコンテナ再起動**（環境変数変更を反映）:
-   ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-   ```
+4. **自動反映**（Ansibleが`.env`更新時にapiを再作成）:
+   - `.env`が更新された場合、Ansibleが`api`コンテナを`--force-recreate`で再作成して環境変数を反映
+   - 反映後に環境変数の検証を行い、不足があればfail-fastでデプロイを停止
 
 **動作確認**:
 - 各routeKeyのテストアラートを生成して、正しいチャンネルに着弾することを確認:
@@ -496,10 +495,21 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - Generalチャンネルは「フォールバック/人間向け雑談」として残しておくことを推奨
 - 新しいアラートtypeを追加する場合は、`apps/api/src/services/alerts/alerts-config.ts`の`routing.byTypePrefix`にprefixを追加して分類を固定してください
 
+**実機検証完了（2026-01-18）**:
+- ✅ `#rps-deploy`: `ansible-update-failed`アラート受信確認
+- ✅ `#rps-ops`: `storage-usage-high`アラート受信確認
+- ✅ `#rps-security`: `role_change`アラート受信確認
+- ✅ `#rps-support`: `kiosk-support-test`アラート受信確認
+
+**トラブルシューティング**:
+- デプロイが環境変数検証で失敗する場合は、VaultのWebhook設定を確認（未設定/空文字が原因）
+- 既存の手動回避策は [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) に整理済み（標準手順では不要）
+
 **関連ドキュメント**:
-- [Slack Webhook URL設定手順](./slack-webhook-setup.md) - 詳細な設定手順
+- [Slack Webhook URL設定手順](./slack-webhook-setup.md) - 詳細な設定手順とトラブルシューティング
 - [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)
 - [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト)
+- [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題)
 
 #### Pi5から特定のクライアントのみ更新
 

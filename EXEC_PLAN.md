@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-18) **Slack通知チャンネル分離機能の実装・実機検証完了**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）に着弾させる機能を実装・検証完了。Ansible VaultにWebhook URLを登録し、`docker.env.j2`テンプレートで環境変数を生成。デプロイ時に発生したトラブル（Ansibleテンプレートの既存値保持パターン、ファイル権限問題、コンテナ再起動の必要性）を解決し、4チャンネルすべてでの通知受信を確認。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) / [docs/guides/slack-webhook-setup.md](./docs/guides/slack-webhook-setup.md) / [docs/guides/deployment.md#slack通知のチャンネル分離](./docs/guides/deployment.md#slack通知のチャンネル分離2026-01-18実装) を参照。
+
 - [x] (2026-01-18) **Alerts Platform Phase2完全移行（DB中心運用）実装・実機検証完了**: Phase2完全移行を実装し、API/UIをDBのみ参照に変更。APIの`/clients/alerts`はファイル走査を撤去しDBのみ参照、`/clients/alerts/:id/acknowledge`はDBのみ更新。Web管理ダッシュボードは`dbAlerts`を表示し、「アラート:」セクションにDB alertsが複数表示されることを確認。Ansible環境変数を永続化し、API integration testを追加。実機検証でPi5でのAPIレスポンス（dbAlerts=10、fileAlerts=0）・Web UI表示（DB alerts表示）・acknowledge機能・staleClientsアラートとの共存を確認。ブラウザキャッシュ問題のデバッグ手法（Playwrightスクリプト）も確立。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [docs/plans/alerts-platform-phase2.md](./docs/plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [docs/guides/local-alerts.md](./docs/guides/local-alerts.md) を参照。
 
 - [x] (2026-01-06) **バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [docs/knowledge-base/frontend.md#kb-149](./docs/knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
@@ -571,6 +573,15 @@
 - 観測: USBカメラ（特にラズパイ4）の起動直後（200〜500ms）に露光・ホワイトバランスが安定せず、最初の数フレームが暗転または全黒になる。現在の実装ではフレーム内容を検査せず、そのまま保存しているため、写真撮影持出のサムネイルが真っ黒になることがある。  
   エビデンス: 写真撮影持出で登録されたLoanのサムネイルが真っ黒で表示される。アイテム自体は登録されているが、サムネイルが視認できない。  
   対応: フロントエンドで`capturePhotoFromStream`内で`ImageData`の平均輝度を計算（Rec. 601式）し、平均輝度が18未満の場合はエラーを投げて再撮影を促す。サーバー側で`sharp().stats()`を使用してRGBチャネルの平均輝度を計算し、平均輝度が`CAMERA_MIN_MEAN_LUMA`（デフォルト18）未満の場合は422エラーを返す。環境変数`CAMERA_MIN_MEAN_LUMA`でしきい値を調整可能。**[KB-068]**
+- 観測: Ansibleの`docker.env.j2`テンプレートが「既存の`.env`ファイルから値を抽出し、変数が未設定の場合は既存値を使用する」パターンを採用しており、新しい変数（Slack Webhook URLなど）を追加してもVaultの値が反映されないことがあった。  
+  エビデンス: Vault変数にWebhook URLを設定してAnsibleをデプロイしても、生成された`.env`ファイルには空のWebhook URLが設定されていた。既存の`.env`ファイルには該当の環境変数がなかった（空文字）ため、既存値（空）が優先された。  
+  対応: Pythonスクリプトで明示的にJinja2テンプレートをレンダリングし、既存値抽出ロジックをバイパス。生成した`.env`ファイルをSCPで配布し、APIコンテナを再起動して環境変数を反映。**[KB-176]**
+- 観測: Prismaで生成されたPostgreSQLのテーブル名は大文字で始まり、SQLで直接参照する場合はダブルクォートが必要。  
+  エビデンス: `SELECT * FROM alerts;` → `ERROR: relation "alerts" does not exist`。正しくは `SELECT * FROM "Alert";`。  
+  対応: SQL直接参照時はテーブル名をダブルクォートで囲む（例: `"Alert"`, `"AlertDelivery"`）。**[KB-176]**
+- 観測: `vault.yml`ファイルがroot所有に変更されていると、`git pull`が失敗する。  
+  エビデンス: `error: insufficient permission for adding an object to repository database`。`ls -la`で確認すると、`vault.yml`がroot:rootになっていた。  
+  対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
 
 ## Decision Log
 
