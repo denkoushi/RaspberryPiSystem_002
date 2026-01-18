@@ -53,6 +53,24 @@ function defaultRouting(): AlertsDispatcherConfig['routing'] {
   };
 }
 
+/**
+ * アラートタイプからrouteKeyを解決する
+ * @param type アラートタイプ（例: "ansible-update-failed"）
+ * @param routing ルーティング設定
+ * @returns routeKey（deploy/ops/support/security）
+ */
+export function resolveRouteKey(
+  type: string | undefined,
+  routing: { byTypePrefix: Record<string, AlertsRouteKey>; defaultRoute: AlertsRouteKey }
+): AlertsRouteKey {
+  if (!type) return routing.defaultRoute;
+  const entries = Object.entries(routing.byTypePrefix);
+  for (const [prefix, routeKey] of entries) {
+    if (type.startsWith(prefix)) return routeKey;
+  }
+  return routing.defaultRoute;
+}
+
 export async function loadAlertsDispatcherConfig(): Promise<AlertsDispatcherConfig> {
   const alertsDir = process.env.ALERTS_DIR ?? path.join(process.cwd(), 'alerts');
 

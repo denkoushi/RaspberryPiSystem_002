@@ -494,6 +494,26 @@ enum CsvDashboardTemplateType {
   CARD_GRID // カードグリッド形式
 }
 
+enum AlertSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum AlertChannel {
+  SLACK
+  EMAIL
+  HTTP
+}
+
+enum AlertDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
 model CsvDashboard {
   id                String                   @id @default(uuid())
   name              String // ダッシュボード名
@@ -550,4 +570,47 @@ model CsvDashboardRow {
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
+}
+
+model Alert {
+  id            String            @id // ファイルのidをそのまま使用（例: "20260118-103750"）
+  type          String? // アラートタイプ（例: "ansible-update-failed"）
+  severity      AlertSeverity? // 重要度
+  message       String? // メッセージ
+  details       Json? // 詳細情報（JSON形式推奨）
+  source        Json? // 発生源情報（service/host/location等）
+  context       Json? // コンテキスト情報（branch/inventory/requestId/hosts等）
+  fingerprint   String? // dedupe用（type+message+host等から計算）
+  timestamp     DateTime // 発生時刻
+  acknowledged  Boolean           @default(false) // 確認済みフラグ（既存仕様互換）
+  acknowledgedAt DateTime? // 確認済み日時
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deliveries    AlertDelivery[]
+
+  @@index([timestamp])
+  @@index([acknowledged])
+  @@index([type])
+}
+
+model AlertDelivery {
+  id            String              @id @default(uuid())
+  alertId       String // Alert.id（ファイルのid）
+  alert         Alert                @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  channel       AlertChannel         @default(SLACK) // 配送チャンネル（slack/email/http等）
+  routeKey      String // ルートキー（deploy/ops/support/security等）
+  status        AlertDeliveryStatus  @default(PENDING) // 配送状態
+  attemptCount  Int                  @default(0) // 試行回数
+  nextAttemptAt DateTime? // 次回試行時刻（バックオフ）
+  lastAttemptAt DateTime? // 最終試行時刻
+  sentAt        DateTime? // 送信成功時刻
+  lastError     String? // 最終エラーメッセージ
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([alertId, channel, routeKey]) // 同一アラート・チャンネル・ルートの重複を防止
+  @@index([alertId])
+  @@index([status])
+  @@index([nextAttemptAt])
+  @@index([channel, routeKey, status])
 }

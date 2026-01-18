@@ -37,6 +37,25 @@ Phase2では「送達状態をファイルに書く」のをやめ、DBに集約
 - **再送（retry/backoff）**をDispatcherがDBキューとして処理
 - 既存の管理画面・既存のalertsファイル運用を壊さない（段階移行）
 
+## Phase2初回実装スコープ（2026-01-18実装完了）
+
+Phase2の初回実装では、以下の範囲で実装を完了：
+
+- ✅ **Ingest（ファイル→DB取り込み）**: `alerts/alert-*.json` をDBへ永続化する機能を追加
+- ✅ **Prismaスキーマ追加**: `Alert`/`AlertDelivery`モデルとenumを追加
+- ✅ **API互換性**: `GET /clients/alerts` にDB alertsを追加、`POST /clients/alerts/:id/acknowledge` でDB側もack対応
+- ⏳ **dedupe**: 初期は無し（まずDB永続化・互換を安定化）
+- ⏳ **Slack配送**: Phase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
+
+**環境変数**:
+- `ALERTS_DB_INGEST_ENABLED` (default: false) - DB取り込みを有効化
+- `ALERTS_DB_INGEST_INTERVAL_SECONDS` (default: 60) - 取り込み間隔
+- `ALERTS_DB_INGEST_LIMIT` (default: 50) - 1回の取り込み上限
+
+**注意事項**:
+- DB取り込み機能はデフォルトOFF（明示的に有効化した場合のみ動作）
+- 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
+
 ## データモデル案（Prisma）
 
 ### 1) Alert（一次情報）

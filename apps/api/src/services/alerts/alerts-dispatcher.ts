@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logger } from '../../lib/logger.js';
-import { loadAlertsDispatcherConfig, type AlertsRouteKey } from './alerts-config.js';
+import { loadAlertsDispatcherConfig, type AlertsRouteKey, resolveRouteKey } from './alerts-config.js';
 import { sendSlackWebhook } from './slack-sink.js';
 
 type SlackDeliveryState = {
@@ -26,15 +26,6 @@ type AlertFile = {
   };
   [key: string]: unknown;
 };
-
-function resolveRouteKey(type: string | undefined, routing: { byTypePrefix: Record<string, AlertsRouteKey>; defaultRoute: AlertsRouteKey }): AlertsRouteKey {
-  if (!type) return routing.defaultRoute;
-  const entries = Object.entries(routing.byTypePrefix);
-  for (const [prefix, routeKey] of entries) {
-    if (type.startsWith(prefix)) return routeKey;
-  }
-  return routing.defaultRoute;
-}
 
 /**
  * アラートの再送が必要かどうかを判定

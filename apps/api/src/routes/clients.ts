@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 const heartbeatSchema = z.object({
   apiKey: z.string().min(8),
@@ -352,13 +353,33 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       // ディレクトリが存在しない場合は無視
     }
 
+    // DBベースのアラートを読み込む（Phase2: DB取り込み後）
+    const dbAlerts = await prisma.alert.findMany({
+      where: {
+        acknowledged: false
+      },
+      orderBy: {
+        timestamp: 'desc'
+      },
+      take: 10, // 最新10件
+      select: {
+        id: true,
+        type: true,
+        message: true,
+        timestamp: true,
+        acknowledged: true,
+        severity: true
+      }
+    });
+
     return {
       requestId: request.id,
       alerts: {
         staleClients: staleClients.length,
         errorLogs: recentErrorLogs.length,
         fileAlerts: fileAlerts.length,
-        hasAlerts: staleClients.length > 0 || recentErrorLogs.length > 0 || fileAlerts.length > 0
+        dbAlerts: dbAlerts.length,
+        hasAlerts: staleClients.length > 0 || recentErrorLogs.length > 0 || fileAlerts.length > 0 || dbAlerts.length > 0
       },
       details: {
         staleClientIds: staleClients.map((s) => s.clientId),
@@ -367,12 +388,20 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
           message: log.message,
           createdAt: log.createdAt
         })),
-        fileAlerts
+        fileAlerts,
+        dbAlerts: dbAlerts.map((alert) => ({
+          id: alert.id,
+          type: alert.type ?? undefined,
+          message: alert.message ?? undefined,
+          timestamp: alert.timestamp.toISOString(),
+          acknowledged: alert.acknowledged,
+          severity: alert.severity ?? undefined
+        }))
       }
     };
   });
 
-  // ファイルベースのアラートを確認済みにする
+  // アラートを確認済みにする（ファイルベース + DBベース対応）
   app.post('/clients/alerts/:id/acknowledge', { preHandler: canManage }, async (request) => {
     const { id } = request.params as { id: string };
     const fs = await import('fs/promises');
@@ -382,6 +411,30 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       ? alertsDirectory
       : path.join(process.cwd(), 'alerts');
 
+    let acknowledgedInDb = false;
+    let acknowledgedInFile = false;
+
+    // DB側のアラートを確認済みにする（Phase2: DB取り込み後）
+    try {
+      const dbAlert = await prisma.alert.findUnique({
+        where: { id }
+      });
+
+      if (dbAlert && !dbAlert.acknowledged) {
+        await prisma.alert.update({
+          where: { id },
+          data: {
+            acknowledged: true,
+            acknowledgedAt: new Date()
+          }
+        });
+        acknowledgedInDb = true;
+      }
+    } catch (error) {
+      logger?.warn({ err: error, id }, '[Alerts] Failed to acknowledge alert in DB');
+    }
+
+    // ファイル側のアラートを確認済みにする（移行期の互換性維持）
     try {
       const files = await fs.readdir(alertDir);
       const alertFile = files.find((f) => f.startsWith(`alert-${id}`) && f.endsWith('.json'));
@@ -390,17 +443,25 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
         const filePath = path.join(alertDir, alertFile);
         const content = await fs.readFile(filePath, 'utf-8');
         const alert = JSON.parse(content);
-        alert.acknowledged = true;
-        await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
-        return { requestId: request.id, acknowledged: true };
+        if (!alert.acknowledged) {
+          alert.acknowledged = true;
+          await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
+          acknowledgedInFile = true;
+        }
       }
-      
-      throw new ApiError(404, 'アラートが見つかりません');
     } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      throw new ApiError(500, 'アラートの確認処理に失敗しました');
+      logger?.warn({ err: error, id }, '[Alerts] Failed to acknowledge alert in file');
     }
+
+    if (!acknowledgedInDb && !acknowledgedInFile) {
+      throw new ApiError(404, 'アラートが見つかりません');
+    }
+
+    return {
+      requestId: request.id,
+      acknowledged: true,
+      acknowledgedInDb,
+      acknowledgedInFile
+    };
   });
 }

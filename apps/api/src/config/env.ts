@@ -64,7 +64,17 @@ const envSchema = z.object({
   ALERTS_SLACK_WEBHOOK_SECURITY: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional()
-  )
+  ),
+
+  // Alerts DB Ingest (Phase2: file alerts -> DB)
+  // NOTE:
+  // - 既存システムを壊さないため、デフォルトは無効（明示的に有効化した場合のみ動作）
+  ALERTS_DB_INGEST_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  ),
+  ALERTS_DB_INGEST_INTERVAL_SECONDS: z.coerce.number().min(10).max(3600).default(60),
+  ALERTS_DB_INGEST_LIMIT: z.coerce.number().min(1).max(1000).default(50)
 });
 
 export const env = envSchema.parse(process.env);

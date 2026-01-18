@@ -48,6 +48,36 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - 新規アラート（24時間以内）のみ初回送信として扱われます
 - 失敗時のリトライは`ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`に従って実行されます
 
+### Phase2: DB取り込み（Alerts DB Ingest）
+
+**Phase2では、`alerts/alert-*.json` をDBへ永続化する機能が追加されました。**
+
+**有効化方法**:
+
+`docker-compose.server.yml` または環境変数で以下を設定：
+
+```yaml
+environment:
+  # Phase2: DB取り込みを有効化
+  ALERTS_DB_INGEST_ENABLED: "true"
+  ALERTS_DB_INGEST_INTERVAL_SECONDS: "60"  # 取り込み間隔（秒、デフォルト: 60）
+  ALERTS_DB_INGEST_LIMIT: "50"  # 1回の取り込み上限（デフォルト: 50）
+```
+
+**動作**:
+- `alerts/alert-*.json` を定期的にDBへ取り込み（`Alert`テーブル）
+- 取り込み時に `AlertDelivery(status='pending')` を作成（後続のDB版Dispatcher用）
+- 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
+
+**API互換性**:
+- `GET /api/clients/alerts` のレスポンスに `details.dbAlerts` が追加されます
+- `POST /api/clients/alerts/:id/acknowledge` でDB側もackされます（ファイル側も従来通りack）
+
+**注意事項**:
+- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
+- Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
+- dedupe（重複抑制）はPhase2初期では未実装（後続実装）
+
 ## 通知の種類
 
 ### 1. クライアント状態アラート

@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { getBackupScheduler } from './services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
 import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
+import { getAlertsIngestor } from './services/alerts/alerts-ingestor.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()
@@ -33,10 +34,16 @@ if (process.env['NODE_ENV'] !== 'test') {
       const alertsDispatcher = getAlertsDispatcher();
       await alertsDispatcher.start();
 
+      // Alerts ingestor を開始（alertsファイル -> DB取り込み）
+      // NOTE: デフォルト無効。ALERTS_DB_INGEST_ENABLED=true の場合のみ動作。
+      const alertsIngestor = getAlertsIngestor();
+      await alertsIngestor.start();
+
       // Graceful shutdown (best-effort)
       const shutdown = async (signal: string) => {
         try {
           logger.info({ signal }, 'Shutting down API server');
+          await alertsIngestor.stop();
           await alertsDispatcher.stop();
           await app.close();
         } catch (err) {
