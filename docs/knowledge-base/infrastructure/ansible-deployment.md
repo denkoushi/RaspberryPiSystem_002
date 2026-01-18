@@ -1689,3 +1689,127 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psq
 - windowSecondsはrouteKey別に設定可能（未設定はデフォルト600秒）
 
 ---
+
+## [KB-175] Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了
+
+**日付**: 2026-01-18  
+**カテゴリ**: Alerts Platform, デプロイ, 実機検証  
+**重要度**: 高  
+**状態**: ✅ **実装完了**、✅ **実機検証完了**
+
+### 症状
+
+Phase2完全移行（API/UIをDBのみ参照に変更）の実機検証を実施し、管理ダッシュボードでDB alertsが表示されることを確認する必要があった。
+
+### 実装内容
+
+Phase2完全移行では、以下の変更を実施：
+
+1. **API: `/clients/alerts` をDBのみ参照に切替**
+   - ファイル走査（`fs.readdir/readFile`）ブロックを撤去
+   - `prisma.alert.findMany(...)` の結果（`dbAlerts`）を一次表示対象にする
+   - `alerts.fileAlerts` と `details.fileAlerts` は **常に 0 / []** を返す（互換フィールドとして残す・deprecated扱い）
+   - `hasAlerts` は `staleClients || errorLogs || dbAlerts.length` で判定
+
+2. **API: `/clients/alerts/:id/acknowledge` をDBのみ更新に切替**
+   - ファイル探索・`acknowledged=true` 書き込み処理を撤去
+   - DB側のみ `Alert.acknowledged=true, acknowledgedAt=now` を更新
+   - レスポンスは `acknowledgedInDb:true` のみ返す（`acknowledgedInFile` フィールドは削除）
+
+3. **Web: 管理ダッシュボードの表示をDB alertsへ切替**
+   - `ClientAlerts` 型に `dbAlerts`（配列）を追加し、`fileAlerts` はdeprecated（空）として扱う
+   - `DashboardPage` は `details.dbAlerts` を表示（severity表示など必要最小限）
+   - 「確認済み」ボタンは既存の `acknowledgeAlert` を継続利用
+
+4. **Ansible環境変数の永続化**
+   - `infrastructure/ansible/templates/docker.env.j2` に以下を追加:
+     - `ALERTS_DISPATCHER_MODE`（通常: `db`）
+     - `ALERTS_DB_DISPATCHER_ENABLED`（通常: `true`）
+     - `ALERTS_DB_INGEST_ENABLED`（通常: `true`）
+
+5. **API integration test追加**
+   - `GET /api/clients/alerts` が `details.dbAlerts` を返し、`details.fileAlerts` が空であること
+   - `POST /api/clients/alerts/:id/acknowledge` がDB上の `Alert.acknowledged` を更新すること
+
+**実装ファイル**:
+- `apps/api/src/routes/clients.ts`（API: DBのみ参照/更新）
+- `apps/web/src/api/client.ts`（型定義拡張）
+- `apps/web/src/pages/admin/DashboardPage.tsx`（DB alerts表示）
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`（回帰テスト追加）
+- `infrastructure/ansible/templates/docker.env.j2`（環境変数永続化）
+
+### 実機検証結果（2026-01-18）
+
+Pi5で実機検証を実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **API: `/clients/alerts` がDBのみ参照**
+   - APIレスポンスで `alerts.dbAlerts=10`、`details.dbAlerts.length=10` を確認
+   - `alerts.fileAlerts=0`、`details.fileAlerts.length=0`（deprecatedフィールドは空）
+
+2. **Web: 管理ダッシュボードがDB alertsを表示**
+   - 「アラート:」セクションにDB alertsが複数表示されることを確認
+   - `[ports-unexpected]` タイプのアラートが正しく表示される
+   - タイムスタンプが正しく表示される（JST形式: `2026/1/18 14:45:08`）
+
+3. **acknowledge機能**
+   - 「確認済み」ボタンが各DB alertに表示される
+   - ボタンクリックでDBの`acknowledged`が更新される（実装確認済み）
+
+4. **staleClientsアラートとの共存**
+   - 「1台のクライアントが12時間以上オフラインです」とDB alertsが同時に表示される
+   - `hasAlerts`の計算が正しく機能（`staleClients || errorLogs || dbAlerts.length`）
+
+5. **「ファイルベースのアラート:」が表示されない**
+   - 完全移行成功: 古いUI（fileAlerts表示）は表示されない
+
+#### 検証結果サマリー
+
+```
+API: ✅ DBのみ参照（fileAlertsは0/[]固定）
+Web UI: ✅ DB alerts表示（「アラート:」セクション）
+acknowledge: ✅ DBのみ更新（実装確認済み）
+staleClients: ✅ 正常に表示（DB alertsと共存）
+完全移行: ✅ fileAlerts表示なし
+```
+
+### 学んだこと
+
+- **完全移行の成功**: API/UIがDBのみ参照し、ファイルベースの表示が完全に撤廃されたことを確認
+- **互換性維持**: `fileAlerts`フィールドはdeprecatedとして残し、既存クライアントとの互換性を維持
+- **ブラウザキャッシュ**: 実機検証時にブラウザキャッシュが原因で古いUIが表示されることがあるため、強制リロード（Cmd+Shift+R）が必要
+
+### 解決状況
+
+✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+### 関連ファイル
+
+- `apps/api/src/routes/clients.ts`（API: DBのみ参照/更新）
+- `apps/web/src/api/client.ts`（型定義拡張）
+- `apps/web/src/pages/admin/DashboardPage.tsx`（DB alerts表示）
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`（回帰テスト）
+- `infrastructure/ansible/templates/docker.env.j2`（環境変数永続化）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+### 確認コマンド
+
+```bash
+# APIレスポンスを確認（認証トークンが必要）
+curl -k -s "https://100.106.158.2/api/clients/alerts" \
+  -H "Authorization: Bearer <token>" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
+
+# DBの未acknowledgedアラート数を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return -c "SELECT COUNT(*) as unacknowledged FROM \"Alert\" WHERE acknowledged = false;"
+```
+
+### 注意事項
+
+- **ブラウザキャッシュ**: 実機検証時は強制リロード（Mac: `Cmd+Shift+R` / Windows: `Ctrl+F5`）を推奨
+- **完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
+- **ロールバック**: Phase1（file→Slack）へのロールバックは可能だが、UI/APIはDB参照のまま
+
+---

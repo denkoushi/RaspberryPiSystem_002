@@ -209,6 +209,40 @@ Phase2後続実装完了後、API/UIをDBのみ参照に完全移行した（202
 - **Ingest専用**: `AlertsIngestor` が `alerts/` → DB に取り込み（Phase2継続）
 - **API/UIは参照しない**: HTTPルートやWeb UIはDBのみ参照
 
+### 実機検証結果（2026-01-18）
+
+Phase2完全移行の実機検証をPi5で実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **API: `/clients/alerts` がDBのみ参照**
+   - APIレスポンスで `alerts.dbAlerts=10`、`details.dbAlerts.length=10` を確認
+   - `alerts.fileAlerts=0`、`details.fileAlerts.length=0`（deprecatedフィールドは空）
+
+2. **Web: 管理ダッシュボードがDB alertsを表示**
+   - 「アラート:」セクションにDB alertsが複数表示されることを確認
+   - `[ports-unexpected]` タイプのアラートが正しく表示される
+   - タイムスタンプが正しく表示される（JST形式）
+
+3. **acknowledge機能**
+   - 「確認済み」ボタンが各DB alertに表示される
+   - ボタンクリックでDBの`acknowledged`が更新される（実装確認済み）
+
+4. **staleClientsアラートとの共存**
+   - 「1台のクライアントが12時間以上オフラインです」とDB alertsが同時に表示される
+   - `hasAlerts`の計算が正しく機能（`staleClients || errorLogs || dbAlerts.length`）
+
+#### 検証結果サマリー
+
+```
+API: ✅ DBのみ参照（fileAlertsは0/[]固定）
+Web UI: ✅ DB alerts表示（「アラート:」セクション）
+acknowledge: ✅ DBのみ更新（実装確認済み）
+staleClients: ✅ 正常に表示（DB alertsと共存）
+```
+
+詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) を参照。
+
 ## データモデル案（Prisma）
 
 ### 1) Alert（一次情報）
