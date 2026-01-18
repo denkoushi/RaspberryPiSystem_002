@@ -36,13 +36,50 @@ function resolveRouteKey(type: string | undefined, routing: { byTypePrefix: Reco
   return routing.defaultRoute;
 }
 
-function shouldRetry(state: SlackDeliveryState | undefined, nowMs: number, retryDelaySeconds: number, maxAttempts: number): boolean {
-  if (!state) return true;
-  if (state.status === 'sent') return false;
-  if (state.attempts >= maxAttempts) return false;
-  const last = Date.parse(state.lastAttemptAt);
-  if (!Number.isFinite(last)) return true;
-  return nowMs - last >= retryDelaySeconds * 1000;
+/**
+ * アラートの再送が必要かどうかを判定
+ * @param state 既存の配送状態（undefinedの場合は初回送信候補）
+ * @param alert アラートファイルの内容
+ * @param nowMs 現在時刻（ミリ秒）
+ * @param retryDelaySeconds リトライ間隔（秒）
+ * @param maxAttempts 最大試行回数
+ * @returns 再送が必要な場合true
+ */
+function shouldRetry(
+  state: SlackDeliveryState | undefined,
+  alert: AlertFile,
+  nowMs: number,
+  retryDelaySeconds: number,
+  maxAttempts: number
+): boolean {
+  // 既に送信済みの場合は再送しない
+  if (state?.status === 'sent') return false;
+
+  // 最大試行回数に達している場合は再送しない
+  if (state && state.attempts >= maxAttempts) return false;
+
+  // stateが存在する場合（失敗時のリトライ）
+  if (state) {
+    const last = Date.parse(state.lastAttemptAt);
+    if (!Number.isFinite(last)) return true;
+    return nowMs - last >= retryDelaySeconds * 1000;
+  }
+
+  // stateが存在しない場合（初回送信候補）
+  // 過去のアラート（24時間以上古い）は再送しない
+  if (alert.timestamp) {
+    const alertTime = Date.parse(alert.timestamp);
+    if (Number.isFinite(alertTime)) {
+      const ageMs = nowMs - alertTime;
+      const maxAgeMs = 24 * 60 * 60 * 1000; // 24時間
+      if (ageMs > maxAgeMs) {
+        return false; // 過去のアラートは再送しない
+      }
+    }
+  }
+
+  // 新規アラート（24時間以内）は初回送信として扱う
+  return true;
 }
 
 export class AlertsDispatcher {
@@ -118,7 +155,7 @@ export class AlertsDispatcher {
       }
 
       const state = alert.deliveries?.slack?.[routeKey];
-      if (!shouldRetry(state, nowMs, config.retryDelaySeconds, config.maxAttempts)) {
+      if (!shouldRetry(state, alert, nowMs, config.retryDelaySeconds, config.maxAttempts)) {
         continue;
       }
 

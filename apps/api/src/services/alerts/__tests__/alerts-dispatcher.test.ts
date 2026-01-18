@@ -100,5 +100,43 @@ describe('AlertsDispatcher (Phase1)', () => {
     expect(saved.deliveries?.slack?.deploy?.status).toBe('failed');
     expect(saved.deliveries?.slack?.deploy?.attempts).toBe(1);
   });
+
+  it('does not send old alerts (older than 24 hours)', async () => {
+    const oldTimestamp = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(); // 25時間前
+
+    await writeAlert(tmpDir, 'alert-20260117-000000.json', {
+      id: '20260117-000000',
+      type: 'ansible-update-started',
+      message: '古いアラート',
+      timestamp: oldTimestamp,
+      acknowledged: false
+    });
+
+    const dispatcher = new AlertsDispatcher();
+    await dispatcher.runOnceNow();
+
+    // 過去のアラートは送信されない
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends recent alerts (within 24 hours)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: true, status: 200 });
+
+    const recentTimestamp = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(); // 1時間前
+
+    await writeAlert(tmpDir, 'alert-20260118-000002.json', {
+      id: '20260118-000002',
+      type: 'ansible-update-started',
+      message: '最近のアラート',
+      timestamp: recentTimestamp,
+      acknowledged: false
+    });
+
+    const dispatcher = new AlertsDispatcher();
+    await dispatcher.runOnceNow();
+
+    // 最近のアラートは送信される
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
