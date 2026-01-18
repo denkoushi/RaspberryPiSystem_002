@@ -1471,3 +1471,102 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - タイムアウト設定はホストごとに異なるため、新しいホスト追加時は適切な値を設定する必要がある
 
 ---
+
+### [KB-173] Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善
+
+**EXEC_PLAN.md参照**: Alerts Platform Phase2実装（2026-01-18）
+
+**事象**: 
+- Alerts Platform Phase2のIngest実装において、空ファイル（0バイト）や壊れたJSONファイルが`errors`としてカウントされ、ログノイズが発生
+- 実機検証時に`errors:2`が毎回発生し、実際のエラーと区別が困難
+- Pi5の`alerts/`ディレクトリに1033件の0バイトファイルが存在
+
+**要因**: 
+- **空ファイルの存在**: ローテーションや部分書き込みにより、0バイトの`alert-*.json`ファイルが大量に存在
+- **エラーカウントの扱い**: 空ファイルや壊れたJSONを`errors`として扱っていたため、運用上の問題（ローテーション/部分書き込み）がエラーとして扱われていた
+- **ログノイズ**: 実際のエラーと区別が困難で、運用上の問題を特定しづらい
+
+**試行した対策**: 
+- [試行1] 空ファイルの存在を確認 → **確認**（1033件の0バイトファイルを発見）
+- [試行2] `readAlert`関数で空ファイルをスキップするように変更 → **成功**
+  - `fs.stat`でファイルサイズを確認し、0バイトの場合は`skipped`として扱う
+  - 壊れたJSONも`errors`ではなく`skipped`として扱うように変更
+
+**根本原因**: 
+- 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ため、エラーとして扱うべきではない
+- エラーカウントは実際のシステムエラー（DB接続エラー、権限エラー等）に限定すべき
+
+**実施した対策**: 
+- **空ファイルの検出**: `fs.stat`でファイルサイズを確認し、0バイトの場合は`skipped`として扱う
+- **エラーカウントの改善**: 空ファイルや壊れたJSONを`errors`ではなく`skipped`として扱うように変更
+- **ログレベルの調整**: 空ファイルのスキップは`debug`レベルでログ出力し、ノイズを削減
+
+**実装詳細**:
+```typescript
+// apps/api/src/services/alerts/alerts-ingestor.ts
+const alert = await readAlert(filePath);
+if (!alert) {
+  // 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ので安全にスキップ
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.size === 0) {
+      logger?.debug({ filePath }, '[AlertsIngestor] Empty alert file, skipping');
+      skipped++;
+      continue;
+    }
+  } catch {
+    // noop
+  }
+  logger?.debug({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+  skipped++;
+  continue;
+}
+```
+
+**実機検証結果**:
+- ✅ DB取り込み: 52件のアラートがDBに取り込まれていることを確認
+- ✅ AlertDelivery作成: 49件のPENDING状態で作成されていることを確認
+- ✅ ファイル→DBのack更新: 正常に動作することを確認
+- ✅ エラーログ改善: `errors:2` → `errors:0`、`skipped:2` に改善されることを確認
+- ✅ ログノイズ削減: 空ファイルのスキップが`debug`レベルでログ出力され、ノイズが削減
+
+**学んだこと**: 
+- **エラーとスキップの区別**: 運用上起こりうる問題（空ファイル、壊れたJSON）はエラーではなくスキップとして扱うべき
+- **ログレベルの適切な使い分け**: デバッグ情報は`debug`レベルで出力し、運用時のノイズを削減
+- **段階的な実装**: Phase2初期ではIngestのみを実装し、dedupeやDB版Dispatcherは後続実装として計画
+
+**解決状況**: ✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+**実機検証状況**:
+- ✅ Pi5でDB取り込み・AlertDelivery作成・ack更新を確認
+- ✅ エラーログ改善を確認（`errors:2` → `errors:0`、`skipped:2`）
+- ✅ ログノイズ削減を確認
+
+**関連ファイル**: 
+- `apps/api/src/services/alerts/alerts-ingestor.ts`（AlertsIngestor実装）
+- `apps/api/src/routes/clients.ts`（API互換性拡張）
+- `apps/api/prisma/schema.prisma`（Alert/AlertDeliveryモデル）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+**確認コマンド**:
+```bash
+# DB取り込み状況を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) FROM \"Alert\";"
+
+# AlertsIngestorのログを確認
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E '(AlertsIngestor|ingested|skipped|errors)'
+```
+
+**再発防止策**:
+- **空ファイルの検出**: `fs.stat`でファイルサイズを確認し、0バイトの場合はスキップ
+- **エラーカウントの改善**: 実際のシステムエラーのみを`errors`としてカウント
+- **ログレベルの適切な使い分け**: デバッグ情報は`debug`レベルで出力
+
+**注意事項**:
+- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true`で明示的に有効化）
+- 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
+- dedupe（重複抑制）はPhase2初期では未実装（後続実装）
+- Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
+
+---
