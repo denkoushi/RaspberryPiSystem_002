@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-18) **Alerts Platform Phase2完全移行（DB中心運用）実装・実機検証完了**: Phase2完全移行を実装し、API/UIをDBのみ参照に変更。APIの`/clients/alerts`はファイル走査を撤去しDBのみ参照、`/clients/alerts/:id/acknowledge`はDBのみ更新。Web管理ダッシュボードは`dbAlerts`を表示し、「アラート:」セクションにDB alertsが複数表示されることを確認。Ansible環境変数を永続化し、API integration testを追加。実機検証でPi5でのAPIレスポンス（dbAlerts=10、fileAlerts=0）・Web UI表示（DB alerts表示）・acknowledge機能・staleClientsアラートとの共存を確認。ブラウザキャッシュ問題のデバッグ手法（Playwrightスクリプト）も確立。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [docs/plans/alerts-platform-phase2.md](./docs/plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [docs/guides/local-alerts.md](./docs/guides/local-alerts.md) を参照。
+
 - [x] (2026-01-06) **バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [docs/knowledge-base/frontend.md#kb-149](./docs/knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
 
 - [x] (2026-01-06) **外部連携運用台帳ドキュメント作成完了（P2実装）**: Dropbox/Gmail/Slackなどの外部サービス連携の設定・運用情報を一元管理する運用台帳ドキュメントを作成。各外部サービスの設定場所（Ansible Vault、backup.json、環境変数）、設定手順へのリンク、運用時の注意事項、トラブルシューティング情報、設定の永続化方法、ヘルスチェック方法をまとめ。既存のセットアップガイドやナレッジベースへの参照を整理し、運用者が外部連携の設定・運用を効率的に管理できるように改善。詳細は [docs/guides/external-integration-ledger.md](./docs/guides/external-integration-ledger.md) を参照。
@@ -1157,8 +1159,28 @@
 
 ---
 
+## Next Steps（将来のタスク）
+
+### Alerts Platform Phase3（候補）
+
+**概要**: scriptsもAPI経由でAlert作成に寄せる
+
+**内容**:
+- `scripts/generate-alert.sh`をAPI経由（`POST /api/alerts`）でAlert作成する方式に変更
+- ファイル生成を廃止し、DB直接投入に統一
+- メリット: ファイルI/O削減、即時DB反映、Ingest不要
+
+**現状**: Phase2では「ファイル取り込み」で十分と判断。Phase3は将来の候補として検討。
+
+**参考**: [`docs/plans/alerts-platform-phase2.md`](./docs/plans/alerts-platform-phase2.md)（「最終的には scriptsもAPI経由でAlert作成に寄せる（Phase3候補）が、Phase2では「ファイル取り込み」で十分。」）
+
+**推奨**: 現時点ではPhase2完全移行が完了し、Alerts Platformは安定運用可能な状態。Phase3は将来の拡張として検討し、まずは現状の運用を継続し、Phase2の安定性を確認。運用上の課題や要望を収集し、必要に応じてPhase3やその他の改善を検討。
+
+---
+
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
+変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補を追加。
 変更履歴: 2025-11-19 Codex — Validation 1 実施結果と Docker 再起動課題を追記し、`restart: always` の方針を決定。
 変更履歴: 2025-11-19 Codex — Validation 2 実施結果を反映し、Web コンテナ (ports/Caddy/Dockerfile.web) の修正内容を記録。
 変更履歴: 2025-11-23 — Milestone 6 Phase 1 & 3 完了を記録。共通パッケージ作成とAPIルートのモジュール化を実施。Dockerfile修正によるワークスペース依存解決の課題と対応をSurprises & Discoveriesに追加。ラズパイ5/4での動作確認完了を記録。
