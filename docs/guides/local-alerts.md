@@ -78,6 +78,11 @@ environment:
 - Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
 - dedupe（重複抑制）はPhase2初期では未実装（後続実装）
 
+**実機検証結果（2026-01-18）**:
+- Pi5で実機検証を実施し、DB取り込み・AlertDelivery作成・ファイル→DBのack更新を確認
+- 空ファイル（0バイト）や壊れたJSONを`errors`ではなく`skipped`として扱う改善を実装し、ログノイズを削減
+- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#実機検証結果2026-01-18) を参照
+
 ## 通知の種類
 
 ### 1. クライアント状態アラート
