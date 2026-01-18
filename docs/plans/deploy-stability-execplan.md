@@ -23,6 +23,9 @@ After this change, deployments run from `scripts/update-all-clients.sh` become s
 - [x] (2026-01-17 01:20Z) Ran local Docker build verification; `api` and `web` builds succeeded.
 - [x] (2026-01-17 01:25Z) Triggered GitHub Actions CI on feature branch `feat/deploy-stability-20260117`; all jobs passed (lint-and-test, e2e-smoke, e2e-tests, docker-build).
 - [x] (2026-01-17 01:30Z) Recorded outcomes and updated Decision Log.
+- [x] (2026-01-18 01:12Z) Alerts Dispatcher Phase 1実装完了（alerts-dispatcher.ts, alerts-config.ts, slack-sink.ts）。
+- [x] (2026-01-18 01:48Z) 過去のアラート再送問題を修正（24時間以上古いアラートは再送しない）。
+- [x] (2026-01-18 02:00Z) Alerts Dispatcher実機検証完了（Pi5でSlack通知の着弾を確認）。
 
 ## Surprises & Discoveries
 
@@ -116,8 +119,14 @@ All planned features were successfully implemented and verified:
 
 **Unverified Features** (expected to work in production):
 - ⚠️ Retry functionality (environment-only retries for unreachable hosts)
-- ⚠️ Slack delivery (API Alerts Dispatcher / Webhook configuration)
 - ⚠️ Lock mechanism with parallel execution (concurrent deployment attempts)
+
+**Alerts Dispatcher Phase 1実装・検証状況** (2026-01-18):
+- ✅ Alerts Dispatcher Phase 1実装完了（`apps/api/src/services/alerts/`）
+- ✅ ユニットテスト完了・CI成功
+- ✅ 実機検証完了（Pi5でWebhook設定後、テストアラートがSlackに正常に送信されることを確認）
+- ✅ 過去のアラート再送問題の修正完了（24時間以上古いアラートは再送されない、送信済みアラートも再送されない）
+- ✅ `.gitignore`の全階層マッチ問題の修正完了（`/alerts/`と`/config/`に変更）
 
 **Issues Encountered During Verification**:
 - **Git permissions error on Pi5**: `.git` directory ownership issue prevented `git pull`. Fixed with `chown -R denkon5sd02:denkon5sd02 .git`.
@@ -133,6 +142,8 @@ All planned features were successfully implemented and verified:
 - **Locale-aware command parsing**: When parsing command output, consider locale differences and skip header lines when possible.
 - **Git permissions**: Ensure proper ownership of `.git` directory on remote hosts to prevent permission errors during deployment.
 - **ESLint configuration**: When excluding test files from main `tsconfig.json`, create a separate `tsconfig.test.json` and update ESLint configuration accordingly.
+- **`.gitignore`全階層マッチ問題**: `.gitignore`の`alerts/`や`config/`は全階層にマッチするため、サブディレクトリも無視される。ルート直下のみを無視するには`/alerts/`のように先頭に`/`を付ける。
+- **過去のアラート再送問題**: Alerts Dispatcher起動時に、過去のアラートファイル（`deliveries.slack`がない）がすべて再送される問題が発生。`shouldRetry`関数でアラートのタイムスタンプを確認し、24時間以上古いものは再送しないように修正。送信済み（`status === 'sent'`）のアラートも再送されない。
 
 ### Known Limitations
 

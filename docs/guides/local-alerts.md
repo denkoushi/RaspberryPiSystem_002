@@ -42,6 +42,12 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 
 さらに、JSON設定ファイルでまとめて管理する場合は `ALERTS_CONFIG_PATH=/opt/RaspberryPiSystem_002/config/alerts.json` を指定します（Webhook URLなど機密情報はAnsible Vaultで管理すること）。
 
+**注意事項**:
+- 過去のアラート（24時間以上古い）は自動的に再送されません
+- 送信済み（`status === 'sent'`）のアラートも再送されません
+- 新規アラート（24時間以内）のみ初回送信として扱われます
+- 失敗時のリトライは`ALERTS_DISPATCHER_RETRY_DELAY_SECONDS`に従って実行されます
+
 ## 通知の種類
 
 ### 1. クライアント状態アラート

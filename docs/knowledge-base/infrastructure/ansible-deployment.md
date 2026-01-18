@@ -1402,7 +1402,9 @@ cat ~/.status-agent.conf
 6. **通知（alerts一次情報 + Slackは二次経路）**:
    - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成
    - `scripts/generate-alert.sh`を再利用して alerts ファイルを生成
-   - Slack配送は「二次経路」として扱い、**設定（Webhook/Dispatcher）に依存**する
+   - Slack配送は「二次経路」として扱い、**API側のAlerts Dispatcherが担当**（B1アーキテクチャ）
+   - Alerts Dispatcherは`apps/api/src/services/alerts/alerts-dispatcher.ts`で実装
+   - 環境変数`ALERTS_DISPATCHER_ENABLED=true`とWebhook URL設定で有効化
 
 7. **`--limit`オプション対応**:
    - 特定ホストのみを更新する場合に使用
@@ -1413,6 +1415,8 @@ cat ~/.status-agent.conf
 - **locale問題（dfコマンドの日本語出力）**: `df -P /opt`の出力が日本語ロケールの場合、ヘッダー行の解析が失敗する問題を発見。`tail -n +2`でヘッダー行をスキップすることで解決（`infrastructure/ansible/tasks/resource-guard.yml`）。
 - **git権限問題**: Pi5上で`git pull`実行時に`.git`ディレクトリの権限エラーが発生。`chown -R denkon5sd02:denkon5sd02 .git`で解決。
 - **ESLint設定問題**: テストファイルを`tsconfig.json`から除外した後、ESLintがテストファイルを解析できなくなる問題を発見。`apps/web/tsconfig.test.json`を新規作成し、`apps/web/.eslintrc.cjs`の`parserOptions.project`に追加することで解決。
+- **`.gitignore`の全階層マッチ問題**: `.gitignore`の`alerts/`と`config/`がサブディレクトリにもマッチし、`apps/api/src/services/alerts/`が無視される問題を発見。`/alerts/`と`/config/`に修正してルート直下のみを無視するように変更。
+- **過去のアラート再送問題**: Alerts Dispatcher起動時に、過去のアラートファイル（`deliveries.slack`がない）がすべて再送される問題を発見。`shouldRetry`関数を修正し、24時間以上古いアラートは再送しないように変更。送信済み（`status === 'sent'`）のアラートも再送されない。
 
 **学んだこと**: 
 - **デプロイプロセスのガード**: デプロイ前にリソースや接続をチェックすることで、失敗を早期に検出できる
@@ -1426,15 +1430,21 @@ cat ~/.status-agent.conf
 **実機検証状況**:
 - ✅ Pi5とPi4でのデプロイ成功を確認
 - ✅ プリフライト・ロック・リソースガードの動作を確認
+- ✅ Alerts Dispatcher Phase 1実装完了・CI成功
+- ✅ Slack通知の実機検証完了（2026-01-18、Pi5でWebhook設定後、テストアラートがSlackに正常に送信されることを確認）
+- ✅ 過去のアラート再送問題の修正完了（24時間以上古いアラートは再送されないことを確認）
 - ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
-- ⚠️ Slack配送は設定（Webhook/Dispatcher）に依存するため、Slackアプリ着弾は要確認（未検証）
 
 **関連ファイル**: 
 - `scripts/update-all-clients.sh`（デプロイスクリプト）
 - `infrastructure/ansible/tasks/resource-guard.yml`（リソースガードタスク）
 - `infrastructure/ansible/playbooks/deploy.yml`（デプロイプレイブック）
 - `infrastructure/ansible/inventory.yml`（タイムアウト設定）
+- `apps/api/src/services/alerts/alerts-dispatcher.ts`（Alerts Dispatcher実装）
+- `apps/api/src/services/alerts/alerts-config.ts`（設定読み込み）
+- `apps/api/src/services/alerts/slack-sink.ts`（Slack送信）
 - `docs/plans/deploy-stability-execplan.md`（実装計画）
+- `docs/plans/alerts-platform-phase2.md`（Phase 2設計）
 
 **確認コマンド**:
 ```bash
@@ -1452,6 +1462,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **ロック機構**: 並行実行を防止し、競合を回避
 - **環境限定リトライ**: 一時的なネットワーク障害に対応
 - **Slack通知**: デプロイの状態をリアルタイムで把握
+- **過去のアラート再送防止**: 24時間以上古いアラートは再送しないロジックを実装
+- **送信済みアラートの再送防止**: `status === 'sent'`のアラートは再送しないロジックを実装
 
 **注意事項**:
 - リトライ機能はunreachable hostsのみを対象とする（failed hostsはリトライしない）

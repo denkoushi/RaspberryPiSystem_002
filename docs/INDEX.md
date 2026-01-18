@@ -10,7 +10,9 @@
 
 ### 🆕 最新アップデート（2026-01-18）
 
-- **✅ デプロイ安定化機能の実装完了**: デプロイプロセスの安全性と可観測性を向上させる機能を実装。プリフライトリーチビリティチェック（Pi5 + inventory hosts）、リモートロック（並行実行防止、古いロックの自動クリーンアップ）、リソースガード（メモリ120MB、ディスク90%）、環境限定リトライ（unreachable hostsのみ、3回、30秒）、ホストごとのタイムアウト（Pi3 30m / Pi4 10m / Pi5 15m）、Slack通知（start/success/failure/per-host failure）、`--limit`オプション（特定ホストのみ更新）を実装。実機検証でPi5とPi4でのデプロイ成功を確認。実装時の発見事項（locale問題、git権限問題、ESLint設定問題）も解決。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) / [guides/deployment.md](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) / [plans/deploy-stability-execplan.md](../plans/deploy-stability-execplan.md) を参照。
+- **✅ Alerts Dispatcher Phase 1実装・過去のアラート再送問題修正完了**: Alerts Dispatcher Phase 1を実装し、Slack通知の一元管理を実現。B1アーキテクチャ（scriptsはalertsファイル生成、API側がSlack配送）を採用。実機検証でPi5でのSlack通知着弾を確認。過去のアラート再送問題を修正し、24時間以上古いアラートは再送されないように改善。送信済み（`status === 'sent'`）のアラートも再送されない。`.gitignore`の全階層マッチ問題も修正（`/alerts/`と`/config/`に変更）。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) / [guides/local-alerts.md](./guides/local-alerts.md) / [plans/alerts-platform-phase2.md](../plans/alerts-platform-phase2.md) を参照。
+
+- **✅ デプロイ安定化機能の実装完了**: デプロイプロセスの安全性と可観測性を向上させる機能を実装。プリフライトリーチビリティチェック（Pi5 + inventory hosts）、リモートロック（並行実行防止、古いロックの自動クリーンアップ）、リソースガード（メモリ120MB、ディスク90%）、環境限定リトライ（unreachable hostsのみ、3回、30秒）、ホストごとのタイムアウト（Pi3 30m / Pi4 10m / Pi5 15m）、Slack通知（start/success/failure/per-host failure）、`--limit`オプション（特定ホストのみ更新）を実装。実機検証でPi5とPi4でのデプロイ成功を確認。実装時の発見事項（locale問題、git権限問題、ESLint設定問題、`.gitignore`全階層マッチ問題）も解決。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) / [guides/deployment.md](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) / [plans/deploy-stability-execplan.md](../plans/deploy-stability-execplan.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-16）
 
