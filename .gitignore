@@ -23,7 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 logs/
-alerts/
+/alerts/
 
 # Storage (user-uploaded files at project root only)
 /storage/
@@ -32,7 +32,7 @@ alerts/
 certs/
 
 # Runtime configuration (backup.json, etc.)
-config/
+/config/
 
 # Python
 __pycache__/
