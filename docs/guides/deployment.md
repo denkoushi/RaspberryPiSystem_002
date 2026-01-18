@@ -424,6 +424,82 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 詳細は [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) を参照。
 
+#### Slack通知のチャンネル分離（2026-01-18実装）
+
+**概要**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネルに着弾させることで、運用上の見落としとノイズを削減します。
+
+**チャンネル構成**:
+- `#rps-deploy`: デプロイ関連アラート（`ansible-update-*`, `ansible-health-check-*`）
+- `#rps-ops`: 運用関連アラート（`storage-*`, `csv-import-*`、デフォルト）
+- `#rps-security`: セキュリティ関連アラート（`role_change`等）
+- `#rps-support`: サポート関連アラート（`kiosk-support*`、キオスクサポート直送）
+
+**設定手順**:
+1. **Slack側でチャンネル作成とIncoming Webhook取得**:
+   - 各チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）を作成
+   - 各チャンネルのIncoming Webhook URLを取得
+
+2. **Ansible VaultにWebhook URLを登録**:
+   ```bash
+   # Pi5のvault.ymlを編集（ansible-vaultで暗号化）
+   ansible-vault edit infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+   ```
+   
+   以下の変数にWebhook URLを設定:
+   ```yaml
+   vault_alerts_slack_webhook_deploy: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_ops: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_security: "https://hooks.slack.com/services/..."
+   vault_alerts_slack_webhook_support: "https://hooks.slack.com/services/..."
+   ```
+   
+   **キオスクサポート直送もsupportチャンネルへ**:
+   ```yaml
+   vault_slack_kiosk_support_webhook_url: "https://hooks.slack.com/services/..."  # supportチャンネルのWebhook URL
+   ```
+
+3. **デプロイ実行**:
+   ```bash
+   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+   ```
+   
+   デプロイ後、`infrastructure/docker/.env`に以下の環境変数が設定されます:
+   - `ALERTS_DISPATCHER_ENABLED=true`
+   - `ALERTS_SLACK_WEBHOOK_DEPLOY=...`
+   - `ALERTS_SLACK_WEBHOOK_OPS=...`
+   - `ALERTS_SLACK_WEBHOOK_SECURITY=...`
+   - `ALERTS_SLACK_WEBHOOK_SUPPORT=...`
+
+4. **APIコンテナ再起動**（環境変数変更を反映）:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+   ```
+
+**動作確認**:
+- 各routeKeyのテストアラートを生成して、正しいチャンネルに着弾することを確認:
+  ```bash
+  # deployチャンネル確認
+  ./scripts/generate-alert.sh ansible-update-failed "テスト: デプロイ失敗" "テスト用"
+  
+  # opsチャンネル確認
+  ./scripts/generate-alert.sh storage-usage-high "テスト: ストレージ使用量警告" "テスト用"
+  
+  # securityチャンネル確認（API経由）
+  # 管理画面でユーザーのロールを変更すると、role_changeアラートが生成されます
+  
+  # supportチャンネル確認
+  ./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用"
+  ```
+
+**注意事項**:
+- 未設定（空文字）のrouteKeyのアラートはSlackに送信されません（ファイル生成のみ）
+- Generalチャンネルは「フォールバック/人間向け雑談」として残しておくことを推奨
+- 新しいアラートtypeを追加する場合は、`apps/api/src/services/alerts/alerts-config.ts`の`routing.byTypePrefix`にprefixを追加して分類を固定してください
+
+**関連ドキュメント**:
+- [Alerts Platform Phase2設計](../plans/alerts-platform-phase2.md)
+- [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト)
+
 #### Pi5から特定のクライアントのみ更新
 
 ```bash

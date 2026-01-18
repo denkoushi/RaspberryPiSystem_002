@@ -152,6 +152,86 @@
   when: docker_env_stat.stat.exists | default(false)
   no_log: true
 
+- name: Extract existing ALERTS_DISPATCHER_ENABLED from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_alerts_dispatcher_enabled: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^ALERTS_DISPATCHER_ENABLED=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing ALERTS_SLACK_WEBHOOK_DEPLOY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_alerts_slack_webhook_deploy: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^ALERTS_SLACK_WEBHOOK_DEPLOY=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing ALERTS_SLACK_WEBHOOK_OPS from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_alerts_slack_webhook_ops: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^ALERTS_SLACK_WEBHOOK_OPS=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing ALERTS_SLACK_WEBHOOK_SECURITY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_alerts_slack_webhook_security: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^ALERTS_SLACK_WEBHOOK_SECURITY=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing ALERTS_SLACK_WEBHOOK_SUPPORT from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_alerts_slack_webhook_support: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^ALERTS_SLACK_WEBHOOK_SUPPORT=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
 - name: Deploy Docker Compose environment variables
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/docker.env.j2"
