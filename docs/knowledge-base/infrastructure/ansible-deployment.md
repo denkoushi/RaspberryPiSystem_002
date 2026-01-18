@@ -1570,3 +1570,122 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 - Slack配送はPhase1のファイルベースDispatcherを継続（DB版Dispatcherは後続実装）
 
 ---
+
+## [KB-174] Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了
+
+**日付**: 2026-01-18  
+**カテゴリ**: Alerts Platform, デプロイ, 実機検証  
+**重要度**: 高  
+**状態**: ✅ **実装完了**、✅ **実機検証完了**
+
+### 症状
+
+Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証を実施し、DB版Dispatcherが正常に動作することを確認する必要があった。
+
+### 実装内容
+
+Phase2後続実装では、以下の機能を実装：
+
+1. **DB版Dispatcher**: `AlertDelivery(status=pending|failed, nextAttemptAt<=now)` を取得してSlackへ配送
+2. **dedupe**: `fingerprint + routeKey + windowSeconds` により連続通知を抑制し、`suppressed` に遷移
+3. **retry/backoff**: 失敗時は `failed` にし、指数バックオフで `nextAttemptAt` を設定（上限あり）
+4. **Phase1停止（full switch）**: `alerts/` 走査＋ファイルへのdelivery書き戻しは停止し、DB中心へ完全移行
+   - ロールバック用に `ALERTS_DISPATCHER_MODE=file|db` を用意（安全策）
+
+**実装ファイル**:
+- `apps/api/src/services/alerts/alerts-db-dispatcher.ts`（新規作成）
+- `apps/api/src/services/alerts/alerts-config.ts`（拡張）
+- `apps/api/src/main.ts`（mode切替ロジック追加）
+- `apps/api/src/services/alerts/__tests__/alerts-db-dispatcher.test.ts`（新規作成）
+
+**環境変数**:
+- `ALERTS_DISPATCHER_MODE`（`file` or `db`）
+- `ALERTS_DB_DISPATCHER_ENABLED`（default: false）
+- `ALERTS_DB_DISPATCHER_INTERVAL_SECONDS`（default: 30）
+- `ALERTS_DB_DISPATCHER_BATCH_SIZE`（default: 50）
+- `ALERTS_DB_DISPATCHER_CLAIM_LEASE_SECONDS`（default: 120）
+- `ALERTS_DEDUPE_ENABLED`（default: true）
+- `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（default: 600）
+- `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別window）
+
+### 実機検証結果（2026-01-18）
+
+Pi5で実機検証を実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **DB版Dispatcher起動**
+   - `AlertsDbDispatcher`が正常に起動（intervalSeconds: 30, batchSize: 50）
+   - Phase1（file）Dispatcherは停止（mode=dbのため）
+
+2. **配送処理**
+   - 1回目: 50件処理 → 10件SENT、40件SUPPRESSED
+   - 2回目: 5件処理 → 0件SENT、5件SUPPRESSED（dedupeで抑制）
+
+3. **dedupe動作**
+   - 同一fingerprintのアラートが正しく抑制されている
+   - 同一fingerprint（`587fef4fe...`）が45件あり、すべてSUPPRESSED
+   - windowSeconds（600秒）が正しく機能
+
+4. **fingerprint自動計算**
+   - 55件中54件にfingerprintが設定されている
+   - 未設定のアラートも自動計算されている
+
+5. **状態遷移**
+   - `PENDING` → `SENT`（10件）
+   - `PENDING` → `SUPPRESSED`（45件、dedupe/acknowledged/too old）
+
+6. **Phase1停止確認**
+   - Phase1（file）Dispatcherは動作していない（mode=dbのため）
+
+#### 検証結果サマリー
+
+```
+DB版Dispatcher: ✅ 正常動作
+配送処理: ✅ 10件SENT、45件SUPPRESSED
+dedupe: ✅ 同一fingerprintで正しく抑制
+fingerprint計算: ✅ 54/55件に設定済み
+Phase1停止: ✅ fileモードは動作していない
+```
+
+### 学んだこと
+
+- **DB版Dispatcherの動作**: `AlertDelivery`キューを処理し、dedupeとretry/backoffが正しく機能することを確認
+- **dedupeの効果**: 同一fingerprintのアラートがwindow内で抑制され、Slack通知の連打を防止
+- **fingerprint自動計算**: 未設定のアラートも自動計算され、dedupeが機能する
+- **Phase1停止**: mode=dbにすることで、Phase1（file）Dispatcherを停止し、DB中心へ完全移行できることを確認
+
+### 解決状況
+
+✅ **実装完了**（2026-01-18）、✅ **実機検証完了**（2026-01-18）
+
+### 関連ファイル
+
+- `apps/api/src/services/alerts/alerts-db-dispatcher.ts`（DB版Dispatcher実装）
+- `apps/api/src/services/alerts/alerts-config.ts`（設定管理）
+- `apps/api/src/main.ts`（mode切替ロジック）
+- `apps/api/src/services/alerts/__tests__/alerts-db-dispatcher.test.ts`（ユニットテスト）
+- `docs/plans/alerts-platform-phase2.md`（Phase2設計）
+- `docs/guides/local-alerts.md`（ローカル環境対応の通知機能ガイド）
+
+### 確認コマンド
+
+```bash
+# DB版Dispatcherのログを確認
+docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E '(AlertsDbDispatcher|Run completed)'
+
+# AlertDeliveryの状態を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT status, COUNT(*) as count FROM \"AlertDelivery\" GROUP BY status ORDER BY status;"
+
+# fingerprintの設定状況を確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) as total_alerts, COUNT(CASE WHEN fingerprint IS NOT NULL THEN 1 END) as with_fingerprint FROM \"Alert\";"
+```
+
+### 注意事項
+
+- DB版DispatcherはデフォルトOFF（`ALERTS_DISPATCHER_MODE=db`と`ALERTS_DB_DISPATCHER_ENABLED=true`で明示的に有効化）
+- Phase1（file）Dispatcherは`ALERTS_DISPATCHER_MODE=file`に戻すことでロールバック可能
+- dedupeは`ALERTS_DEDUPE_ENABLED=true`で有効化（デフォルト: true）
+- windowSecondsはrouteKey別に設定可能（未設定はデフォルト600秒）
+
+---

@@ -1,0 +1,19 @@
+{
+  "id": "f74a05c8-c93b-4d25-9781-7d1727fe6d96",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1766840453822-j31yin を VIEWER から MANAGER に変更 (by test-1766840453694-6ni6je)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "a08b6a7a-c640-4b08-b17e-f9335ef8efa3",
+    "actorUsername": "test-1766840453694-6ni6je",
+    "targetUserId": "cbb0ef44-93a6-44db-97c1-5733157ed88a",
+    "targetUsername": "test-1766840453822-j31yin",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2025-12-27T13:00:53.828Z",
+  "acknowledged": false
+}

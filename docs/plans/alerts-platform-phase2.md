@@ -117,6 +117,97 @@ Phase2後続では、Slack配送を **DB中心**（`AlertDelivery`キュー）�
   - `ALERTS_DEDUPE_DEFAULT_WINDOW_SECONDS`（default: 600）
   - `ALERTS_DEDUPE_WINDOW_SECONDS_DEPLOY|OPS|SUPPORT|SECURITY`（routeKey別window）
 
+### 実機検証結果（2026-01-18）
+
+Phase2後続実装の実機検証をPi5で実施し、以下の結果を確認：
+
+#### ✅ 検証完了項目
+
+1. **DB版Dispatcher起動**
+   - `AlertsDbDispatcher`が正常に起動（intervalSeconds: 30, batchSize: 50）
+   - Phase1（file）Dispatcherは停止（mode=dbのため）
+
+2. **配送処理**
+   - 1回目: 50件処理 → 10件SENT、40件SUPPRESSED
+   - 2回目: 5件処理 → 0件SENT、5件SUPPRESSED（dedupeで抑制）
+
+3. **dedupe動作**
+   - 同一fingerprintのアラートが正しく抑制されている
+   - 同一fingerprint（`587fef4fe...`）が45件あり、すべてSUPPRESSED
+   - windowSeconds（600秒）が正しく機能
+
+4. **fingerprint自動計算**
+   - 55件中54件にfingerprintが設定されている
+   - 未設定のアラートも自動計算されている
+
+5. **状態遷移**
+   - `PENDING` → `SENT`（10件）
+   - `PENDING` → `SUPPRESSED`（45件、dedupe/acknowledged/too old）
+
+6. **Phase1停止確認**
+   - Phase1（file）Dispatcherは動作していない（mode=dbのため）
+
+#### 検証結果サマリー
+
+```
+DB版Dispatcher: ✅ 正常動作
+配送処理: ✅ 10件SENT、45件SUPPRESSED
+dedupe: ✅ 同一fingerprintで正しく抑制
+fingerprint計算: ✅ 54/55件に設定済み
+Phase1停止: ✅ fileモードは動作していない
+```
+
+詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) を参照。
+
+## Phase2完全移行（DB中心運用）
+
+Phase2後続実装完了後、API/UIをDBのみ参照に完全移行した（2026-01-18実装完了）。
+
+### 完全移行の定義
+
+- **API/UIはDBのみを参照**: `alerts/alert-*.json` を `apps/api` のHTTPルートや `apps/web` が直接読まない
+- **ackはDBのみ**: `/clients/alerts/:id/acknowledge` はDB更新のみ実施し、ファイルは変更しない
+- **Slack配送はDBキューのみ（通常運用）**: `AlertsDbDispatcher` が `AlertDelivery` を処理する
+- **Phase1はロールバック手段としてコードは残す**（ただし通常は使わない）
+
+### 実装内容（完全移行）
+
+1. **API: `/clients/alerts` をDBのみ参照に切替**
+   - ファイル走査（`fs.readdir/readFile`）ブロックを撤去
+   - `prisma.alert.findMany(...)` の結果（`dbAlerts`）を一次表示対象にする
+   - `alerts.fileAlerts` と `details.fileAlerts` は **常に 0 / []** を返す（互換フィールドとして残す・deprecated扱い）
+   - `hasAlerts` は `staleClients || errorLogs || dbAlerts.length` で判定
+
+2. **API: `/clients/alerts/:id/acknowledge` をDBのみ更新に切替**
+   - ファイル探索・`acknowledged=true` 書き込み処理を撤去
+   - DB側のみ `Alert.acknowledged=true, acknowledgedAt=now` を更新
+   - レスポンスは `acknowledgedInDb:true` のみ返す（`acknowledgedInFile` フィールドは削除）
+
+3. **Web: 管理ダッシュボードの表示をDB alertsへ切替**
+   - `ClientAlerts` 型に `dbAlerts`（配列）を追加し、`fileAlerts` はdeprecated（空）として扱う
+   - `DashboardPage` は `details.dbAlerts` を表示（severity表示など必要最小限）
+   - 「確認済み」ボタンは既存の `acknowledgeAlert` を継続利用
+
+4. **Ansible環境変数の永続化**
+   - `infrastructure/ansible/templates/docker.env.j2` に以下を追加:
+     - `ALERTS_DISPATCHER_MODE`（通常: `db`）
+     - `ALERTS_DB_DISPATCHER_ENABLED`（通常: `true`）
+     - `ALERTS_DB_INGEST_ENABLED`（通常: `true`）
+   - 変数は `group_vars` / `host_vars` / `vault` で管理（機密はvault）
+
+### ロールバック方針
+
+- Slack配送だけを戻したい場合:
+  - `ALERTS_DISPATCHER_MODE=file` + `ALERTS_DISPATCHER_ENABLED=true`（Phase1）
+- 注意:
+  - **UI/APIはDB参照のまま**（今回の完全移行の定義）
+  - Phase1 dispatcher はファイルへ delivery 状態を書き戻す挙動が残る点は「非常時のみ許容」として明記
+
+### ファイルの役割（完全移行後）
+
+- **一次入力（Producer）**: scriptsが `alerts/alert-*.json` を生成（従来通り）
+- **Ingest専用**: `AlertsIngestor` が `alerts/` → DB に取り込み（Phase2継続）
+- **API/UIは参照しない**: HTTPルートやWeb UIはDBのみ参照
 
 ## データモデル案（Prisma）
 

@@ -651,11 +651,21 @@ export interface FileAlert {
   acknowledged: boolean;
 }
 
+export interface DbAlert {
+  id: string;
+  type?: string;
+  message?: string;
+  timestamp: string;
+  acknowledged: boolean;
+  severity?: string;
+}
+
 export interface ClientAlerts {
   alerts: {
     staleClients: number;
     errorLogs: number;
-    fileAlerts: number;
+    fileAlerts: number; // deprecated: 互換性のため残す（常に0）
+    dbAlerts: number;
     hasAlerts: boolean;
   };
   details: {
@@ -665,7 +675,8 @@ export interface ClientAlerts {
       message: string;
       createdAt: string;
     }>;
-    fileAlerts: FileAlert[];
+    fileAlerts: FileAlert[]; // deprecated: 互換性のため残す（常に空配列）
+    dbAlerts: DbAlert[];
   };
 }
 

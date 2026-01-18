@@ -15,7 +15,7 @@ export function DashboardPage() {
   // アラート情報を計算
   const alerts = alertsQuery.data?.alerts;
   const hasAlerts = alerts?.hasAlerts ?? false;
-  const fileAlerts = alertsQuery.data?.details.fileAlerts ?? [];
+  const dbAlerts = alertsQuery.data?.details.dbAlerts ?? [];
 
   const handleAcknowledge = async (alertId: string) => {
     await acknowledgeMutation.mutateAsync(alertId);
@@ -44,15 +44,18 @@ export function DashboardPage() {
                     </Link>
                   </p>
                 )}
-                {fileAlerts.length > 0 && (
+                {dbAlerts.length > 0 && (
                   <div className="mt-2">
-                    <p className="font-semibold">ファイルベースのアラート:</p>
-                    {fileAlerts.map((alert) => (
+                    <p className="font-semibold">アラート:</p>
+                    {dbAlerts.map((alert) => (
                       <div key={alert.id} className="ml-2 flex items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">
-                            [{alert.type}] {alert.message}
-                            {alert.details && <span className="text-xs text-slate-600"> ({alert.details})</span>}
+                            {alert.type && `[${alert.type}] `}
+                            {alert.message ?? 'アラート'}
+                            {alert.severity && (
+                              <span className="ml-1 text-xs text-slate-600">({alert.severity})</span>
+                            )}
                           </p>
                           <p className="text-xs text-slate-600">
                             {new Date(alert.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}

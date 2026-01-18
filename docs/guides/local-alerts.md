@@ -74,6 +74,16 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - DB版Dispatcherは `AlertDelivery.status=pending|failed` を処理します（`sent/suppressed` は処理しません）
 - Phase1と同様、**24時間以上古い未送信アラートは送信しません**（通知暴発防止）
 - **ロールバック**: `ALERTS_DISPATCHER_MODE=file` に戻すとPhase1（file→Slack）に戻せます（`ALERTS_DISPATCHER_ENABLED` も必要）
+  - 注意: UI/APIはDB参照のまま（Phase2完全移行の定義）。Phase1 dispatcherは非常時のみ使用
+
+**実機検証結果（2026-01-18）**:
+- Pi5で実機検証を実施し、DB版Dispatcherが正常に動作することを確認
+- 50件処理で10件SENT、40件SUPPRESSED（dedupeで抑制）
+- 同一fingerprintのアラートが正しく抑制され、Slack通知の連打を防止
+- fingerprint自動計算が機能し、54/55件にfingerprintが設定されている
+- Phase1（file）Dispatcherは停止し、DB中心へ完全移行できていることを確認
+- Phase2完全移行（API/UIはDBのみ参照）を実装完了
+- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
 
 ### Phase2: DB取り込み（Alerts DB Ingest）
 
@@ -96,19 +106,22 @@ environment:
 - 取り込み時に `AlertDelivery(status='pending')` を作成（後続のDB版Dispatcher用）
 - 既存のファイルベースアラート取得/ack機能は維持（移行期の互換性）
 
-**API互換性**:
-- `GET /api/clients/alerts` のレスポンスに `details.dbAlerts` が追加されます
-- `POST /api/clients/alerts/:id/acknowledge` でDB側もackされます（ファイル側も従来通りack）
+**API互換性（Phase2完全移行後）**:
+- `GET /api/clients/alerts` は **DBのみ参照**。`details.dbAlerts` が実データ、`details.fileAlerts` は常に空配列（deprecated）
+- `POST /api/clients/alerts/:id/acknowledge` は **DBのみ更新**。ファイルは変更しない
 
 **注意事項**:
 - DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
 - Slack配送はPhase1（file→Slack）またはPhase2後続（DB→Slack）を選択
 - dedupe（重複抑制）はPhase2後続（DB→Slack）で有効化可能
+- **Phase2完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
 
 **実機検証結果（2026-01-18）**:
 - Pi5で実機検証を実施し、DB取り込み・AlertDelivery作成・ファイル→DBのack更新を確認
 - 空ファイル（0バイト）や壊れたJSONを`errors`ではなく`skipped`として扱う改善を実装し、ログノイズを削減
-- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#実機検証結果2026-01-18) を参照
+- Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証も完了し、DB版Dispatcherが正常に動作することを確認
+- Phase2完全移行（API/UIはDBのみ参照）を実装完了
+- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) を参照
 
 ## 通知の種類
 

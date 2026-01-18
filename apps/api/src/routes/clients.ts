@@ -5,7 +5,6 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
 
 const heartbeatSchema = z.object({
   apiKey: z.string().min(8),
@@ -301,7 +300,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // アラート情報を取得（ダッシュボード用）
-  const alertsDirectory = process.env.ALERTS_DIR;
+  // Phase2完全移行: DBのみを参照。fileAlertsは互換性のため空配列/0を返す（deprecated）
 
   app.get('/clients/alerts', { preHandler: canViewStatus }, async (request) => {
     const statuses = await prisma.clientStatus.findMany({
@@ -327,33 +326,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
         })
       : [];
 
-    // ファイルベースのアラートを読み込む（ローカル環境用）
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const alertDir = alertsDirectory
-      ? alertsDirectory
-      : path.join(process.cwd(), 'alerts');
-    const fileAlerts: Array<{ id: string; type: string; message: string; timestamp: string; acknowledged: boolean }> = [];
-    
-    try {
-      const files = await fs.readdir(alertDir);
-      const alertFiles = files.filter((f) => f.startsWith('alert-') && f.endsWith('.json'));
-      for (const file of alertFiles.slice(-10)) { // 最新10件
-        try {
-          const content = await fs.readFile(path.join(alertDir, file), 'utf-8');
-          const alert = JSON.parse(content);
-          if (!alert.acknowledged) {
-            fileAlerts.push(alert);
-          }
-        } catch {
-          // ファイル読み込みエラーは無視
-        }
-      }
-    } catch {
-      // ディレクトリが存在しない場合は無視
-    }
-
-    // DBベースのアラートを読み込む（Phase2: DB取り込み後）
+    // DBベースのアラートを読み込む（Phase2完全移行: DBのみ参照）
     const dbAlerts = await prisma.alert.findMany({
       where: {
         acknowledged: false
@@ -377,9 +350,9 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       alerts: {
         staleClients: staleClients.length,
         errorLogs: recentErrorLogs.length,
-        fileAlerts: fileAlerts.length,
+        fileAlerts: 0, // deprecated: 互換性のため常に0
         dbAlerts: dbAlerts.length,
-        hasAlerts: staleClients.length > 0 || recentErrorLogs.length > 0 || fileAlerts.length > 0 || dbAlerts.length > 0
+        hasAlerts: staleClients.length > 0 || recentErrorLogs.length > 0 || dbAlerts.length > 0
       },
       details: {
         staleClientIds: staleClients.map((s) => s.clientId),
@@ -388,7 +361,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
           message: log.message,
           createdAt: log.createdAt
         })),
-        fileAlerts,
+        fileAlerts: [], // deprecated: 互換性のため常に空配列
         dbAlerts: dbAlerts.map((alert) => ({
           id: alert.id,
           type: alert.type ?? undefined,
@@ -401,67 +374,40 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     };
   });
 
-  // アラートを確認済みにする（ファイルベース + DBベース対応）
+  // アラートを確認済みにする（Phase2完全移行: DBのみ更新）
   app.post('/clients/alerts/:id/acknowledge', { preHandler: canManage }, async (request) => {
     const { id } = request.params as { id: string };
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const alertsDirectory = process.env.ALERTS_DIR;
-    const alertDir = alertsDirectory
-      ? alertsDirectory
-      : path.join(process.cwd(), 'alerts');
 
-    let acknowledgedInDb = false;
-    let acknowledgedInFile = false;
+    // DB側のアラートを確認済みにする（Phase2完全移行: DBのみ更新）
+    const dbAlert = await prisma.alert.findUnique({
+      where: { id }
+    });
 
-    // DB側のアラートを確認済みにする（Phase2: DB取り込み後）
-    try {
-      const dbAlert = await prisma.alert.findUnique({
-        where: { id }
-      });
-
-      if (dbAlert && !dbAlert.acknowledged) {
-        await prisma.alert.update({
-          where: { id },
-          data: {
-            acknowledged: true,
-            acknowledgedAt: new Date()
-          }
-        });
-        acknowledgedInDb = true;
-      }
-    } catch (error) {
-      logger?.warn({ err: error, id }, '[Alerts] Failed to acknowledge alert in DB');
-    }
-
-    // ファイル側のアラートを確認済みにする（移行期の互換性維持）
-    try {
-      const files = await fs.readdir(alertDir);
-      const alertFile = files.find((f) => f.startsWith(`alert-${id}`) && f.endsWith('.json'));
-      
-      if (alertFile) {
-        const filePath = path.join(alertDir, alertFile);
-        const content = await fs.readFile(filePath, 'utf-8');
-        const alert = JSON.parse(content);
-        if (!alert.acknowledged) {
-          alert.acknowledged = true;
-          await fs.writeFile(filePath, JSON.stringify(alert, null, 2), 'utf-8');
-          acknowledgedInFile = true;
-        }
-      }
-    } catch (error) {
-      logger?.warn({ err: error, id }, '[Alerts] Failed to acknowledge alert in file');
-    }
-
-    if (!acknowledgedInDb && !acknowledgedInFile) {
+    if (!dbAlert) {
       throw new ApiError(404, 'アラートが見つかりません');
     }
+
+    if (dbAlert.acknowledged) {
+      // 既に確認済みの場合は成功として返す（冪等性）
+      return {
+        requestId: request.id,
+        acknowledged: true,
+        acknowledgedInDb: true
+      };
+    }
+
+    await prisma.alert.update({
+      where: { id },
+      data: {
+        acknowledged: true,
+        acknowledgedAt: new Date()
+      }
+    });
 
     return {
       requestId: request.id,
       acknowledged: true,
-      acknowledgedInDb,
-      acknowledgedInFile
+      acknowledgedInDb: true
     };
   });
 }

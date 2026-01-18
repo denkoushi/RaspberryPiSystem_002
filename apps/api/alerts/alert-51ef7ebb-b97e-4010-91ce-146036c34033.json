@@ -1,0 +1,19 @@
+{
+  "id": "51ef7ebb-b97e-4010-91ce-146036c34033",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1766840453622-ker82 を VIEWER から MANAGER に変更 (by test-1766840453480-aqvy1p)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "1508233c-3756-495c-a782-a39884e45abf",
+    "actorUsername": "test-1766840453480-aqvy1p",
+    "targetUserId": "6b91e2c5-f6a8-47d1-9a20-884db0580d34",
+    "targetUsername": "test-1766840453622-ker82",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2025-12-27T13:00:53.631Z",
+  "acknowledged": false
+}
