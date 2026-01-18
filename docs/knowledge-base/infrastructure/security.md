@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 8件  
+**件数**: 9件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
@@ -234,6 +234,75 @@ update-frequency: medium
 - `infrastructure/ansible/roles/server/tasks/monitoring.yml`
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
+
+---
+
+---
+
+### [KB-177] `ports-unexpected` が15分おきに発生し続ける（Pi5の不要ポート露出/監視ノイズ）
+
+**EXEC_PLAN.md参照**: 2026-01-18（ポート露出削減 + `security-monitor` 改善）
+
+**事象**:
+- 管理コンソール（`/admin`）に **同一内容の `ports-unexpected`** が15分間隔で出続ける
+- 例: `許可されていないLISTENポートを検出: 111 25 ... 5353 ... 631 ... 5900 ...` のように、OS/常駐サービス由来のポートが混在してノイズ化
+
+**調査（再現/確認コマンド）**:
+- Pi5上でLISTEN/UNCONNの実態を確認:
+  - `sudo ss -H -tulpen`
+- UFWの許可状況を確認:
+  - `sudo ufw status verbose`
+- Docker公開の有無を確認（`db`/`api`がホストへpublishされていないこと）:
+  - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`
+- ベースライン（証跡）: `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+
+**根本要因**:
+1. **`security-monitor.sh` が「ポート番号だけ」で判定**していたため、
+   - `127.0.0.1` だけのサービス（exim4/cups 等）や、
+   - Tailscale由来のソケット（`tailscaled`）や、
+   - OS標準の常駐（rpcbind/avahi 等）
+   まで一律に「危険」と判定し、運用上ノイズになっていた
+2. UFWで遮断していても **サービス自体がLISTENしている**ため、監視としては検知され続ける（＝通知が止まらない）
+
+**有効だった対策（恒久化）**:
+- ✅ 不要サービスを **stop + disable + mask** して、LISTEN自体を消す（UFW依存を減らす）
+  - 対象: `rpcbind.socket` / `rpcbind.service` / `avahi-daemon.service` / `exim4.service` / `cups.service`
+  - 実装: `infrastructure/ansible/roles/server/tasks/security.yml`
+  - 変数: `infrastructure/ansible/group_vars/all.yml`
+    - `server_disable_unused_services: true`
+    - `server_unused_systemd_units_to_mask: [...]`
+- ✅ `security-monitor.sh` のポート監視を改善（**外部露出 + プロセス込み**）
+  - `ss -H -tulpen` を使い `addr:port(process,proto)` をdetailsに含める
+  - 監視から除外:
+    - `127.0.0.1` / `::1`（ループバックのみ）
+    - `tailscaled` および Tailscaleアドレス帯（`100.*`, `fd7a:*`）
+    - link-local（`fe80:*`、DHCPv6クライアント等）
+  - VNC運用を踏まえ `ALLOWED_LISTEN_PORTS` のデフォルトに `5900` を追加
+  - 既存の重複抑止（state比較）は維持
+  - 実装: `infrastructure/ansible/templates/security-monitor.sh.j2`
+
+**適用手順（Pi5）**:
+- `inventory.yml` の `server` は `ansible_connection: local` のため、**Pi5上でAnsibleを実行**するのが前提。
+- 例:
+  - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible`
+  - `ansible-playbook playbooks/harden-server-ports.yml`
+
+**トラブルシューティング**:
+- `security-monitor` のアラートに `(...unknown,udp)` のようにプロセス名が出ない:
+  - `ss -H -tulpen` の `users:(("proc",pid=...))` 抽出が崩れている可能性。
+  - `sed` の正規表現は **basic regex** と **グルーピングの `\(...\)`** が必要（`\\1` のエスケープ違いで失敗しやすい）。
+- コントローラ（Mac）側から `ansible-playbook` を実行すると `role 'server' not found` になる:
+  - `ansible.cfg` の `roles_path = ./roles` は **`infrastructure/ansible` をCWDにして実行**する前提。
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/security-monitor.sh.j2`
+- `infrastructure/ansible/roles/server/tasks/security.yml`
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/playbooks/harden-server-ports.yml`
+- `docs/security/port-security-audit.md`
+- `docs/security/port-security-verification-results.md`
+- `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+- `docs/runbooks/ports-unexpected-and-port-exposure.md`
 
 ---
 

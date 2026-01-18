@@ -101,3 +101,16 @@
     mode: "0644"
   when: ufw_enabled | default(false)
 
+# 不要サービス停止（ポート閉塞）
+# - UFWで遮断されていても「LISTENしている」事実は攻撃面になるため、不要なら停止する
+# - rpcbindはsocket起動のため socket/service の両方を対象にする
+- name: Stop/disable/mask unused systemd units (reduce exposed ports)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: "{{ server_unused_systemd_units_to_mask | default([]) }}"
+  when: server_disable_unused_services | default(false)
+  failed_when: false
+

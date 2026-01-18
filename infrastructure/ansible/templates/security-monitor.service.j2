@@ -4,5 +4,9 @@ ConditionPathExists={{ alert_script_path }}
 
 [Service]
 Type=oneshot
+# Environment variables (space-separated lists)
+Environment="ALLOWED_LISTEN_PORTS={{ security_monitor_allowed_listen_ports | default('22 80 443 5900') }}"
+Environment="SECURITY_MONITOR_IGNORE_PROCESSES={{ security_monitor_ignore_processes | default('tailscaled') }}"
+Environment="SECURITY_MONITOR_IGNORE_ADDR_PREFIXES={{ security_monitor_ignore_addr_prefixes | default('127.0.0.1 ::1 100. fd7a: fe80:') }}"
 ExecStart=/usr/local/bin/security-monitor.sh
 

@@ -266,19 +266,87 @@ else
   exit 1
 fi
 
-# 4. 許可外LISTENポート検知テスト
+# 4. ports-unexpected（LISTEN/UNCONN外部露出）検知/除外の回帰テスト
 rm -f "${TMP_DIR}/file-hashes.txt"
-UNEXPECTED_PORT=8000
-python -m http.server "${UNEXPECTED_PORT}" >/dev/null 2>&1 &
-HTTP_PID=$!
-sleep 2
-OUTPUT_PORTS=$(ALLOWED_LISTEN_PORTS="" FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" REQUIRED_PROCESSES="" run_monitor || true)
-kill "${HTTP_PID}" >/dev/null 2>&1 || true
-if echo "${OUTPUT_PORTS}" | grep -q "ports-unexpected"; then
-  echo "✅ 許可外LISTENポートを検知しました"
-else
-  echo "⚠️  許可外LISTENポートの検知に失敗しました"
+# macOSでも安定してテストできるよう、security-monitor.shが参照する`ss`をモックする
+MOCK_BIN="${TMP_DIR}/bin"
+mkdir -p "${MOCK_BIN}"
+cat > "${MOCK_BIN}/ss" <<'EOF'
+#!/bin/sh
+# Minimal mock output for: ss -H -tulpen
+# NOTE: security-monitor.sh prefers `ss -H -tulpen` and expects no header.
+case "${MOCK_SS_CASE:-with_unexpected}" in
+  ignore_only)
+    cat <<OUT
+udp UNCONN 0      0      0.0.0.0:41641 0.0.0.0:* users:(("tailscaled",pid=1042,fd=21))
+udp UNCONN 0      0      [fe80::1]:546  *:*      users:(("NetworkManager",pid=899,fd=28))
+tcp LISTEN 0      128    0.0.0.0:22    0.0.0.0:* users:(("sshd",pid=1081,fd=6))
+tcp LISTEN 0      128    0.0.0.0:80    0.0.0.0:* users:(("docker-proxy",pid=541662,fd=7))
+tcp LISTEN 0      128    0.0.0.0:443   0.0.0.0:* users:(("docker-proxy",pid=541685,fd=7))
+tcp LISTEN 0      16     *:5900        *:*      users:(("wayvnc",pid=1069,fd=9))
+tcp LISTEN 0      128    127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=1,fd=1))
+OUT
+    ;;
+  with_unexpected|*)
+    cat <<OUT
+udp UNCONN 0      0      0.0.0.0:41641 0.0.0.0:* users:(("tailscaled",pid=1042,fd=21))
+udp UNCONN 0      0      [fe80::1]:546  *:*      users:(("NetworkManager",pid=899,fd=28))
+tcp LISTEN 0      128    0.0.0.0:22    0.0.0.0:* users:(("sshd",pid=1081,fd=6))
+tcp LISTEN 0      128    0.0.0.0:80    0.0.0.0:* users:(("docker-proxy",pid=541662,fd=7))
+tcp LISTEN 0      128    0.0.0.0:443   0.0.0.0:* users:(("docker-proxy",pid=541685,fd=7))
+tcp LISTEN 0      16     *:5900        *:*      users:(("wayvnc",pid=1069,fd=9))
+tcp LISTEN 0      128    127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=1,fd=1))
+tcp LISTEN 0      128    0.0.0.0:8000  0.0.0.0:* users:(("python3",pid=9999,fd=3))
+OUT
+    ;;
+esac
+EOF
+chmod +x "${MOCK_BIN}/ss"
+
+echo "ports-unexpected除外（tailscaled/loopback/link-local）が有効かテスト中..."
+OUTPUT_PORTS_IGNORE=$(PATH="${MOCK_BIN}:${PATH}" \
+  MOCK_SS_CASE="ignore_only" \
+  ALLOWED_LISTEN_PORTS="22 80 443 5900" \
+  SECURITY_MONITOR_IGNORE_PROCESSES="tailscaled" \
+  SECURITY_MONITOR_IGNORE_ADDR_PREFIXES="127.0.0.1 ::1 100. fd7a: fe80:" \
+  FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" REQUIRED_PROCESSES="" run_monitor || true)
+if echo "${OUTPUT_PORTS_IGNORE}" | grep -q "ports-unexpected"; then
+  echo "⚠️  除外対象のみのはずが ports-unexpected が発報されました（期待: なし）"
   exit 1
+else
+  echo "✅ 除外対象のみでは ports-unexpected は発報されません"
+fi
+
+echo "ports-unexpected検知（想定外の外部露出）が動作するかテスト中..."
+# 8000は許可・除外のいずれにも含めない → ports-unexpected になること
+OUTPUT_PORTS=$(PATH="${MOCK_BIN}:${PATH}" \
+  MOCK_SS_CASE="with_unexpected" \
+  ALLOWED_LISTEN_PORTS="22 80 443 5900" \
+  SECURITY_MONITOR_IGNORE_PROCESSES="tailscaled" \
+  SECURITY_MONITOR_IGNORE_ADDR_PREFIXES="127.0.0.1 ::1 100. fd7a: fe80:" \
+  FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" REQUIRED_PROCESSES="" run_monitor || true)
+OUTPUT_PORTS_2=$(PATH="${MOCK_BIN}:${PATH}" \
+  MOCK_SS_CASE="with_unexpected" \
+  ALLOWED_LISTEN_PORTS="22 80 443 5900" \
+  SECURITY_MONITOR_IGNORE_PROCESSES="tailscaled" \
+  SECURITY_MONITOR_IGNORE_ADDR_PREFIXES="127.0.0.1 ::1 100. fd7a: fe80:" \
+  FILE_HASH_TARGETS="${TARGET_FILE}" FILE_HASH_EXCLUDES="" REQUIRED_PROCESSES="" run_monitor || true)
+if echo "${OUTPUT_PORTS}" | grep -q "ports-unexpected"; then
+  if echo "${OUTPUT_PORTS}" | grep -q "0.0.0.0:8000"; then
+    echo "✅ 想定外の外部露出（0.0.0.0:8000）を ports-unexpected として検知しました"
+  else
+    echo "⚠️  ports-unexpectedは出ましたが、detailsに0.0.0.0:8000が含まれていません"
+    exit 1
+  fi
+else
+  echo "⚠️  想定外の外部露出の検知に失敗しました（期待: ports-unexpected）"
+  exit 1
+fi
+if echo "${OUTPUT_PORTS_2}" | grep -q "ports-unexpected"; then
+  echo "⚠️  同一の想定外露出でアラートが重複発報されました（期待: 2回目は抑止）"
+  exit 1
+else
+  echo "✅ 同一の想定外露出は重複発報しません（state抑止）"
 fi
 
 rm -rf "${TMP_DIR}"

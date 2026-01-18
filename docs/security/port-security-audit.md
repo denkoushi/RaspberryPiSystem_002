@@ -1,6 +1,6 @@
 # ポートセキュリティ監査レポート
 
-最終更新: 2025-12-18
+最終更新: 2026-01-18
 
 ## 概要
 
@@ -12,8 +12,8 @@
 
 | サービス | ポートマッピング | 状態 | リスク評価 |
 |---------|----------------|------|----------|
-| PostgreSQL | `5432:5432` | ⚠️ **外部公開** | 🔴 **高リスク** |
-| API | `8080:8080` | ⚠️ **外部公開** | 🔴 **高リスク** |
+| PostgreSQL | ~~`5432:5432`~~（削除） | ✅ **非公開**（Docker内部のみ） | 🟢 低リスク |
+| API | ~~`8080:8080`~~（削除） | ✅ **非公開**（Docker内部のみ） | 🟢 低リスク |
 | Web (Caddy) | `80:80`, `443:443` | ✅ 意図的 | 🟢 低リスク（HTTPS強制） |
 
 ### UFW（ファイアウォール）設定
@@ -41,6 +41,23 @@ ufw_vnc_allowed_networks:
 - ✅ **VNC（5900）**: 信頼ネットワークのみ許可
 - ✅ **PostgreSQL（5432）**: UFWで**ブロック**されている（許可リストにない）
 - ✅ **API（8080）**: UFWで**ブロック**されている（許可リストにない）
+
+## 追加の改善（2026-01-18）
+
+### 不要サービスの停止（LISTEN自体を削減）
+
+UFWで遮断されていても LISTEN している限り、攻撃面・監視ノイズの原因になります。Pi5上で不要な常駐サービスを止め、LISTEN/UNCONNを削減しました。
+
+- 対象（例）: `rpcbind` / `avahi-daemon` / `exim4` / `cups`
+- 方針: **stop + disable + mask**（socket起動系はsocket/serviceの両方）
+- 詳細: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
+
+### `ports-unexpected` の精度改善（外部露出 + プロセス込み）
+
+ポート番号だけの検知は誤検知/ノイズになりやすいため、`security-monitor` を `ss -H -tulpen` ベースにし、`addr:port(process,proto)` を含めて原因特定しやすくしました（Tailscale/loopback/link-localは除外）。
+
+- 詳細: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
+- 証跡: [ports baseline (2026-01-18)](../knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 ## セキュリティ実装状況
 
@@ -78,20 +95,19 @@ ufw_vnc_allowed_networks:
 
 ## リスク評価と対策
 
-### 🔴 高リスク項目
+### 🔴 高リスク項目（過去の指摘）
 
 #### 1. PostgreSQLポート（5432）の公開
 
 **現状**:
-- Docker Composeで`5432:5432`として公開されている
-- ただし、UFWでブロックされているため、実際には外部からアクセス不可
+- ✅ Docker Composeのポートマッピングは削除済み（Docker内部ネットワークのみ）
 
 **リスク**:
-- UFWが無効化された場合、データベースが直接インターネットに公開される
-- デフォルトパスワード（`postgres/postgres`）が設定されている
+- 過去はUFW依存でリスクが残っていた（UFW無効化時に露出）
+- **現在はDockerレベルで非公開**になり、UFW依存が低減
 
 **推奨対策**:
-1. **即座に実施**: Docker Composeのポートマッピングを削除
+1. **実施済み**: Docker Composeのポートマッピングを削除
    ```yaml
    # 修正前
    ports:
@@ -112,16 +128,14 @@ ufw_vnc_allowed_networks:
 #### 2. APIポート（8080）の公開
 
 **現状**:
-- Docker Composeで`8080:8080`として公開されている
-- ただし、UFWでブロックされているため、実際には外部からアクセス不可
-- Caddy（リバースプロキシ）経由でアクセスする設計
+- ✅ Docker Composeのポートマッピングは削除済み（Caddy→`api:8080`のみ）
 
 **リスク**:
-- UFWが無効化された場合、APIが直接インターネットに公開される
-- 認証なしでアクセス可能なエンドポイントが存在する可能性
+- 過去はUFW依存でリスクが残っていた（UFW無効化時に露出）
+- **現在はDockerレベルで非公開**になり、UFW依存が低減
 
 **推奨対策**:
-1. **即座に実施**: Docker Composeのポートマッピングを削除
+1. **実施済み**: Docker Composeのポートマッピングを削除
    ```yaml
    # 修正前
    ports:

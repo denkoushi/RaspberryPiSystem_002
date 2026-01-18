@@ -170,7 +170,7 @@
 
 - **✅ 標準セキュリティチェックリスト監査完了**: IPA「安全なウェブサイトの作り方」、OWASP Top 10 2021、CISベンチマークに基づく監査を実施。主要なセキュリティ対策がほぼ完了していることを確認。未実施項目（CSRF対策、PostgreSQLのSSL/TLS接続強制、パスワードポリシー強化など）と必要性を評価。詳細は [security/standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) を参照。
 
-- **✅ ポートセキュリティ強化完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。インターネット接続状態での本番運用が可能であることを確認。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) を参照。
+- **✅ ポートセキュリティ強化（追加）完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に（UFW依存を低減）。加えて、Pi5上の不要サービス（rpcbind/avahi/exim4/cups）をstop+disable+maskしてLISTEN自体を削減し、`ports-unexpected` を「外部露出 + プロセス込み」で有意にした。ベースライン証跡を保存。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) / [knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [knowledge-base/infrastructure/ports-baseline-20260118.md](./knowledge-base/infrastructure/ports-baseline-20260118.md) を参照。
 
 ### 🆕 最新アップデート（2025-12-17）
 
@@ -414,6 +414,7 @@
 | [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ（HTTPS設定含む） |
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
+| [runbooks/ports-unexpected-and-port-exposure.md](./runbooks/ports-unexpected-and-port-exposure.md) | **Runbook**: `ports-unexpected` / ポート露出の点検と切り分け |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |

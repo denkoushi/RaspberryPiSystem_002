@@ -47,6 +47,7 @@
 - [x] (2025-12-29) **Gmailデータ取得機能実装完了**: PowerAutomateからGmail経由でCSVファイルやJPEGファイルをPi5に送信し、自動的にインポートする機能を実装完了。OAuth 2.0認証によるセキュアな認証フローを実装し、管理画面からGmail設定を管理できるUIを実装。Tailscale DNSをオフにした場合の`/etc/hosts`設定スクリプトを作成し、Gmail OAuth認証が正常に完了（refresh token取得済み）。GmailとDropboxのトークンリフレッシュの違いを明確化（Gmailは自動リフレッシュ、Dropboxは手動リフレッシュ）。詳細は [docs/plans/gmail-data-acquisition-execplan.md](./docs/plans/gmail-data-acquisition-execplan.md) / [docs/guides/gmail-setup-guide.md](./docs/guides/gmail-setup-guide.md) / [docs/knowledge-base/infrastructure/backup-restore.md#kb-108](./docs/knowledge-base/infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) を参照。
 - [x] (2025-12-28) **バックアップ対象ごとのストレージプロバイダー指定機能実装完了（Phase 1-2）**: バックアップ対象ごとにストレージプロバイダー（ローカル/Dropbox）を指定できる機能を実装。Phase 1では単一プロバイダー指定、Phase 2では多重バックアップ（複数プロバイダーへの同時バックアップ）に対応。スキーマ拡張（`storage.provider`/`storage.providers`）、UI改善（チェックボックスによる複数選択）、スケジューラー・API・手動実行エンドポイントの対応を完了。E2Eテストも修正完了。CI通過確認済み。詳細は [docs/requirements/backup-target-management-ui.md](./docs/requirements/backup-target-management-ui.md) を参照。
 - [x] (2025-12-18) **ポートセキュリティ強化完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。インターネット接続状態での本番運用が可能であることを確認。詳細は [docs/security/port-security-audit.md](./docs/security/port-security-audit.md) / [docs/security/port-security-verification-results.md](./docs/security/port-security-verification-results.md) を参照。
+- [x] (2026-01-18) **ポート露出削減と `ports-unexpected` ノイズ低減（恒久化）**: Pi5上の不要サービス（rpcbind/avahi/exim4/cups）をstop+disable+maskし、LISTEN/UNCONN自体を削減。`security-monitor` のポート監視を `ss -H -tulpen` ベースに改善して「外部露出 + プロセス込み」で通知し、Tailscale/loopback/link-local由来のノイズを除外。ベースライン証跡を保存。詳細は [docs/knowledge-base/infrastructure/security.md#kb-177](./docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [docs/knowledge-base/infrastructure/ports-baseline-20260118.md](./docs/knowledge-base/infrastructure/ports-baseline-20260118.md) を参照。
 - [x] (2025-12-18) **UI視認性向上カラーテーマ実装完了（Phase 1-9）**: 工場現場での視認性を向上させるため、提案3（工場現場特化・高視認性テーマ）を採用し、管理コンソール、サイネージ、キオスクのカラーテーマを改善完了。主要ページ（統合一覧、アイテム一覧、キオスク返却画面、サイネージレンダラー、管理コンソール全ページ、工具管理全ページ、サイネージ管理画面のPDF管理エリア）に提案3カラーパレットを適用。コントラスト比約21:1（WCAG AAA準拠）を達成。Lintチェックもすべて通過。Phase 9では`SignagePdfManager`コンポーネントを白背景対応に修正し、サイネージタブとクライアント端末タブのPDF管理エリアの視認性を改善。詳細は [docs/requirements/ui-visibility-color-theme.md](./docs/requirements/ui-visibility-color-theme.md) を参照。
 - [x] (2025-12-17) **Dropbox CSV統合 Phase 3実装・実機検証完了**: CSVインポート後の自動バックアップ機能、Dropboxからの自動リストア機能、バックアップ・リストア履歴機能を実装完了。管理画面UI実装完了（バックアップ履歴、Dropboxリストア、CSVインポートスケジュール管理）。実機検証も完了（バックエンド・フロントエンドUI・CRUD操作・スケジュール実行・トークンリフレッシュ）。Dropboxトークンリフレッシュの修正も完了（`CsvImportScheduler.executeImport`で`refreshToken`の未渡しを修正）。詳細は [docs/analysis/dropbox-csv-integration-status.md](./docs/analysis/dropbox-csv-integration-status.md) を参照。
 - [x] (2025-12-17) **Phase 3必須検証完了**: 実際のデータファイルを使用したエンドツーエンドテスト（CSVインポート→自動バックアップ→Dropboxからのリストア）とエラーハンドリングの確認を完了。CSVインポート成功、自動バックアップ実行確認、Dropboxからのリストア成功、CSVインポート失敗時のエラーハンドリング正常動作を確認。発見された問題: バックアップ履歴に記録されていない（`executeAutoBackup`が`BackupHistoryService`を使用していない）、リストアAPIのパス指定（`basePath`を除いた相対パスで指定する必要がある）。詳細は [docs/guides/phase3-mandatory-verification-results.md](./docs/guides/phase3-mandatory-verification-results.md) を参照。
@@ -453,6 +454,10 @@
 
 ## Surprises & Discoveries
 
+- 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。  
+  対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
+- 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
+  対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
 - 観測: ブラウザのカメラAPI（`navigator.mediaDevices.getUserMedia`）はHTTPSまたはlocalhostでのみ動作する。  
   エビデンス: `http://192.168.10.230:4173/kiosk/photo`でカメラAPIを呼び出すと`navigator.mediaDevices`がundefinedになる。  
   対応: 自己署名証明書を使用してHTTPS環境を構築（`Caddyfile.local`、`Dockerfile.web`、`docker-compose.server.yml`を修正）。**[KB-030]**
@@ -1194,6 +1199,15 @@
 
 **推奨**: 現時点ではPhase2完全移行が完了し、Alerts Platformは安定運用可能な状態。Phase3は将来の拡張として検討し、まずは現状の運用を継続し、Phase2の安定性を確認。運用上の課題や要望を収集し、必要に応じてPhase3やその他の改善を検討。
 
+### Port hardening / security-monitor（候補）
+
+**概要**: `ports-unexpected` を運用に耐える形で固定し、将来のドリフトを減らす
+
+**内容**:
+- `security-monitor.service` に `ALLOWED_LISTEN_PORTS` 等の環境変数を注入できるようにし、allow/ignoreをAnsible変数化する（host/group単位で調整可能にする）
+- `ss -H -tulpen` の出力差異に対するテスト（モック `ss`）を追加し、プロセス抽出/除外条件の回帰を防ぐ
+- 定期的な「ポート/公開状況」スナップショット（ベースライン）の採取をRunbook化（必要なら自動化）
+
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
@@ -1209,3 +1223,4 @@
 変更履歴: 2025-12-30 — CSVインポート構造改善と計測機器・吊具対応完了。レジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。スケジュール設定を`targets`配列形式に拡張。Gmail件名パターンを管理コンソールから編集できる機能を実装。実機検証完了（UI改善、フォーム状態管理、手動実行時のリトライスキップ機能）。ナレッジベース更新（KB-114, KB-115, KB-116）。詳細は [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/knowledge-base/frontend.md#kb-116](./docs/knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [docs/knowledge-base/api.md#kb-116](./docs/knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) を参照。
 変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補（scriptsもAPI経由でAlert作成）を追加。
 変更履歴: 2026-01-18 — デプロイ安定化の恒久対策実装・実機検証完了を記録。KB-176の恒久対策（.env反映保証・環境変数検証・権限修復）を実装し、実機検証で正常動作を確認。Surprises & Discoveriesにvault.yml権限問題とAnsibleローカル実行時のsudo問題を追加。
+変更履歴: 2026-01-18 — Pi5の不要ポート露出削減と `ports-unexpected` ノイズ低減（KB-177）を反映。Progress/Surprises/Next Stepsを更新。

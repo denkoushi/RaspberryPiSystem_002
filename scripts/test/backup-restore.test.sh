@@ -8,6 +8,8 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEST_BACKUP_DIR="${PROJECT_DIR}/test-backups"
 TEST_DB_NAME="test_borrow_return"
+TEST_DB_HOST="${TEST_DB_HOST:-localhost}"
+TEST_DB_PORT="${TEST_DB_PORT:-5432}"
 
 echo "=========================================="
 echo "バックアップ・リストアスクリプトのテスト"
@@ -27,6 +29,9 @@ if docker ps | grep -q "postgres-test"; then
   DB_COMMAND="docker exec ${DB_CONTAINER}"
   DB_COMMAND_INPUT="docker exec -i ${DB_CONTAINER}"  # 標準入力を受け取る場合は-iオプションが必要
   echo "CI環境を検出: postgres-testコンテナを使用します"
+  # ローカルでポート競合がある場合に備えて、ホスト側のポートを上書き可能にする
+  # 例: TEST_DB_PORT=55432 ./scripts/test/backup-restore.test.sh
+  TEST_DB_PORT="${TEST_DB_PORT:-${POSTGRES_TEST_HOST_PORT:-5432}}"
 elif docker compose -f "${COMPOSE_FILE}" ps db 2>/dev/null | grep -q "Up"; then
   # ローカル環境: docker-composeのdbコンテナを使用
   DB_CONTAINER="db"
@@ -55,9 +60,14 @@ EOF
 echo "マイグレーションを使用してスキーマを作成中..."
 cd "${PROJECT_DIR}/apps/api"
 
+# Prisma migration 用の DATABASE_URL（ホスト側のPostgreSQLへ接続）
+# - CI: localhost:5432（postgres-test が 5432 を公開）
+# - ローカル: 5432 が競合する場合は TEST_DB_PORT / POSTGRES_TEST_HOST_PORT で上書き
+PRISMA_DATABASE_URL="${TEST_DATABASE_URL:-postgresql://postgres:postgres@${TEST_DB_HOST}:${TEST_DB_PORT}/${TEST_DB_NAME}}"
+
 # マイグレーションを実行（set -eの影響を受けないように）
 set +e
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${TEST_DB_NAME}" pnpm prisma migrate deploy 2>&1
+DATABASE_URL="${PRISMA_DATABASE_URL}" pnpm prisma migrate deploy 2>&1
 MIGRATE_EXIT_CODE=$?
 set -e
 
