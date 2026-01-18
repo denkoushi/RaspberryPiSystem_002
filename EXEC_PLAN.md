@@ -1189,4 +1189,4 @@
 変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 6（監視・アラート）実装完了。fail2ban連携のセキュリティ監視タイマー（KB-076）とマルウェアスキャン結果の自動アラート化（KB-077）を実装。ナレッジベース更新（74件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
 変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 7（テスト・検証）完了。IPアドレス切替、Tailscale経路、UFW/HTTPS、fail2ban、暗号化バックアップ復元、マルウェアスキャンの包括的テストを実施。複数ローカルネットワーク環境（会社/自宅）でのVNC接続設定を対応（KB-078）。Phase7テストの実施結果と検証ポイントをナレッジベースに追加（KB-079）。ナレッジベース更新（80件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
 変更履歴: 2025-12-30 — CSVインポート構造改善と計測機器・吊具対応完了。レジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。スケジュール設定を`targets`配列形式に拡張。Gmail件名パターンを管理コンソールから編集できる機能を実装。実機検証完了（UI改善、フォーム状態管理、手動実行時のリトライスキップ機能）。ナレッジベース更新（KB-114, KB-115, KB-116）。詳細は [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/knowledge-base/frontend.md#kb-116](./docs/knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [docs/knowledge-base/api.md#kb-116](./docs/knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) を参照。
-ん```
+変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補（scriptsもAPI経由でAlert作成）を追加。
