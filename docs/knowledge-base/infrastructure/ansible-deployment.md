@@ -1959,11 +1959,27 @@ psql -c "SELECT * FROM \"Alert\";"
 
 ✅ **解決済み**（2026-01-18）: 4系統すべてのSlackチャンネルで通知受信を確認
 
-### 恒久対策（以降は標準手順で自動化）
+### 恒久対策（実装完了・実機検証済み）
 
-- `.env`更新時はAnsibleが`api`コンテナを`--force-recreate`で再作成して環境変数を反映
-- デプロイ後に`api`コンテナ内の環境変数を検証し、不足があればfail-fast
-- `host_vars/**/vault.yml`の所有者がrootになっている場合は自動修復して`git pull`失敗を防止
+**実装日**: 2026-01-18  
+**実機検証日**: 2026-01-18
+
+以下の恒久対策を実装し、実機検証で正常動作を確認：
+
+1. **`.env`更新時のapiコンテナ強制再作成**: `infrastructure/ansible/roles/server/tasks/main.yml`に「Force recreate api when Docker .env changed」タスクを追加。`.env`ファイルが変更された場合、`docker compose up -d --force-recreate api`を実行して環境変数を確実に反映。
+
+2. **デプロイ後の環境変数検証（fail-fast）**: 同じファイルに「Verify API container environment variables after .env update」タスクを追加。デプロイ後に`ALERTS_SLACK_WEBHOOK_*`（`ALERTS_DISPATCHER_ENABLED=true`の場合）と`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`の存在と非空を検証し、不足があればデプロイを失敗させる。
+
+3. **vault.yml権限ドリフトの自動修復**: `infrastructure/ansible/roles/common/tasks/main.yml`に「Fix vault.yml ownership if needed」タスクを追加。`host_vars/**/vault.yml`ファイルの所有者がrootになっている場合、自動的に`ansible_user`に変更し、権限を`0600`に設定して`git pull`失敗を防止。
+
+4. **handlersの再起動ロジック統一**: `infrastructure/ansible/roles/server/handlers/main.yml`と`infrastructure/ansible/playbooks/manage-app-configs.yml`のhandlersを`--force-recreate`に統一し、環境変数変更時の確実な反映を保証。
+
+**実機検証結果**:
+- ✅ Pi5へのデプロイ成功（ok=91, changed=3, failed=0）
+- ✅ APIコンテナ内の環境変数が正しく設定されていることを確認（`ALERTS_SLACK_WEBHOOK_*`、`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`）
+- ✅ `vault.yml`ファイルの権限が適切に設定されていることを確認（所有者: `denkon5sd02:denkon5sd02`、権限: `600`）
+
+**注意**: 今回のデプロイでは、デプロイ前に`vault.yml`ファイルの権限問題が発生しましたが、手動で修正しました。次回のデプロイからは、自動修復機能が動作します。
 
 ### 関連ファイル
 

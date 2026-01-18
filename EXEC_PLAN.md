@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-18) **デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
+
 - [x] (2026-01-18) **Slack通知チャンネル分離機能の実装・実機検証完了**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）に着弾させる機能を実装・検証完了。Ansible VaultにWebhook URLを登録し、`docker.env.j2`テンプレートで環境変数を生成。デプロイ時に発生したトラブル（Ansibleテンプレートの既存値保持パターン、ファイル権限問題、コンテナ再起動の必要性）を解決し、4チャンネルすべてでの通知受信を確認。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) / [docs/guides/slack-webhook-setup.md](./docs/guides/slack-webhook-setup.md) / [docs/guides/deployment.md#slack通知のチャンネル分離](./docs/guides/deployment.md#slack通知のチャンネル分離2026-01-18実装) を参照。
 
 - [x] (2026-01-18) **Alerts Platform Phase2完全移行（DB中心運用）実装・実機検証完了**: Phase2完全移行を実装し、API/UIをDBのみ参照に変更。APIの`/clients/alerts`はファイル走査を撤去しDBのみ参照、`/clients/alerts/:id/acknowledge`はDBのみ更新。Web管理ダッシュボードは`dbAlerts`を表示し、「アラート:」セクションにDB alertsが複数表示されることを確認。Ansible環境変数を永続化し、API integration testを追加。実機検証でPi5でのAPIレスポンス（dbAlerts=10、fileAlerts=0）・Web UI表示（DB alerts表示）・acknowledge機能・staleClientsアラートとの共存を確認。ブラウザキャッシュ問題のデバッグ手法（Playwrightスクリプト）も確立。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [docs/plans/alerts-platform-phase2.md](./docs/plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [docs/guides/local-alerts.md](./docs/guides/local-alerts.md) を参照。
@@ -580,6 +582,11 @@
   エビデンス: `SELECT * FROM alerts;` → `ERROR: relation "alerts" does not exist`。正しくは `SELECT * FROM "Alert";`。  
   対応: SQL直接参照時はテーブル名をダブルクォートで囲む（例: `"Alert"`, `"AlertDelivery"`）。**[KB-176]**
 - 観測: `vault.yml`ファイルがroot所有に変更されていると、`git pull`が失敗する。  
+  エビデンス: `git pull`実行時に`error: unable to unlink old 'infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml': 許可がありません`エラーが発生。  
+  対応: `infrastructure/ansible/roles/common/tasks/main.yml`に「Fix vault.yml ownership if needed」タスクを追加し、デプロイ時に自動修復するように実装。デプロイ前に手動で`sudo chown -R denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars`を実行して修正。次回のデプロイからは自動修復機能が動作する。**[KB-176恒久対策]**
+- 観測: Ansibleの`ansible_connection: local`を使用したローカル実行時に、`become: true`でsudoを実行しようとするとパスワードが要求されることがある。  
+  エビデンス: Macから`update-all-clients.sh`を実行すると、`sudo: a password is required`エラーが発生。Pi5上ではsudoのNOPASSWD設定が有効だが、ローカル実行時には動作しない。  
+  対応: Pi5上で直接Ansibleを実行する方法に切り替え（`ssh denkon5sd02@<Pi5のIP> "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-playbook ..."`）。または、`ansible_connection: local`を削除して通常のSSH接続を使用する方法もある。**[KB-176実機検証]**  
   エビデンス: `error: insufficient permission for adding an object to repository database`。`ls -la`で確認すると、`vault.yml`がroot:rootになっていた。  
   対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
 
@@ -1201,3 +1208,4 @@
 変更履歴: 2025-12-05 — セキュリティ強化計画 Phase 7（テスト・検証）完了。IPアドレス切替、Tailscale経路、UFW/HTTPS、fail2ban、暗号化バックアップ復元、マルウェアスキャンの包括的テストを実施。複数ローカルネットワーク環境（会社/自宅）でのVNC接続設定を対応（KB-078）。Phase7テストの実施結果と検証ポイントをナレッジベースに追加（KB-079）。ナレッジベース更新（80件）。詳細は [docs/plans/security-hardening-execplan.md](./docs/plans/security-hardening-execplan.md) を参照。
 変更履歴: 2025-12-30 — CSVインポート構造改善と計測機器・吊具対応完了。レジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。スケジュール設定を`targets`配列形式に拡張。Gmail件名パターンを管理コンソールから編集できる機能を実装。実機検証完了（UI改善、フォーム状態管理、手動実行時のリトライスキップ機能）。ナレッジベース更新（KB-114, KB-115, KB-116）。詳細は [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/knowledge-base/frontend.md#kb-116](./docs/knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [docs/knowledge-base/api.md#kb-116](./docs/knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) を参照。
 変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補（scriptsもAPI経由でAlert作成）を追加。
+変更履歴: 2026-01-18 — デプロイ安定化の恒久対策実装・実機検証完了を記録。KB-176の恒久対策（.env反映保証・環境変数検証・権限修復）を実装し、実機検証で正常動作を確認。Surprises & Discoveriesにvault.yml権限問題とAnsibleローカル実行時のsudo問題を追加。
