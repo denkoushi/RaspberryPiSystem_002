@@ -6,19 +6,20 @@ import { logger } from '../../../lib/logger.js';
  * Dropbox APIの証明書フィンガープリント（SHA256）
  * 
  * 取得方法:
- * 1. openssl s_client -connect api.dropboxapi.com:443 -showcerts < /dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout
+ * 1. openssl s_client -servername api.dropboxapi.com -connect api.dropboxapi.com:443 < /dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256
  * 2. または、pnpm exec tsx apps/api/scripts/get-dropbox-cert-fingerprint.ts を実行
  * 
  * 注意: 証明書が更新された場合は、この値を更新する必要があります。
  * 
- * 現在の証明書情報（2025-12-14時点）:
+ * 現在の証明書情報:
  * - Issuer: DigiCert TLS RSA SHA256 2020 CA1
- * - 取得日: 2025-12-14
+ * - 2025-01-19更新: api.dropboxapi.comの新しい証明書フィンガープリントを追加
  */
 const DROPBOX_CERTIFICATE_FINGERPRINTS = [
-  'sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad', // api.dropboxapi.com
+  'sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad', // api.dropboxapi.com (旧)
   'sha256/4085a9c1e3f6bac2ae9e530e2679e2447655e840d07d7793b047a53ba760f9cc', // content.dropboxapi.com
-  'sha256/5712473809f6c0a24a9cf7cb74dca93d760fc4ee90de1e17fa0224b12b5fea59'  // notify.dropboxapi.com
+  'sha256/5712473809f6c0a24a9cf7cb74dca93d760fc4ee90de1e17fa0224b12b5fea59', // notify.dropboxapi.com
+  'sha256/9d6683591abfc0a0e0681152ed4577430bf5b00e7a3ff71b9f21098e2922a2e5'  // api.dropboxapi.com (新、2025-01-19確認)
 ] as const;
 
 /**
