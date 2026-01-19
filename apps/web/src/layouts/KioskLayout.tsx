@@ -19,13 +19,6 @@ export function KioskLayout() {
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
 
-  // デバッグ用: deployStatusの状態をログ出力
-  useEffect(() => {
-    if (deployStatus !== undefined) {
-      console.log('[KioskLayout] deployStatus:', deployStatus);
-    }
-  }, [deployStatus]);
-
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
     if (!clientKey || clientKey === 'client-demo-key') {
