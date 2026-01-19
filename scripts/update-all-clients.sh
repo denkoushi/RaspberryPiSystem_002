@@ -24,6 +24,7 @@ PREFLIGHT_LOG_FILE="${LOG_DIR}/ansible-preflight-${TIMESTAMP}.log"
 HISTORY_FILE="${LOG_DIR}/ansible-history.jsonl"
 REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE:-/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock}"
 REMOTE_LOCK_TIMEOUT_SECONDS="${REMOTE_LOCK_TIMEOUT_SECONDS:-2400}"
+REMOTE_DEPLOY_STATUS_FILE="${REMOTE_DEPLOY_STATUS_FILE:-/opt/RaspberryPiSystem_002/config/deploy-status.json}"
 
 # 引数解析
 LIMIT_HOSTS=""
@@ -293,6 +294,31 @@ release_remote_lock() {
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_LOCK_FILE}\"" >/dev/null 2>&1 || true
 }
 
+# Pi4デプロイ時のメンテナンスフラグ管理（--limit raspberrypi4 のときのみ）
+set_pi4_maintenance_flag() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+
+  # --limit raspberrypi4 のときだけフラグをON
+  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
+    echo "[INFO] Setting Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"raspberrypi4\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
+  fi
+}
+
+clear_pi4_maintenance_flag() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+
+  # --limit raspberrypi4 のときだけフラグをOFF
+  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
+    echo "[INFO] Clearing Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\"" >/dev/null 2>&1 || true
+  fi
+}
+
 run_locally() {
   cd "${PROJECT_ROOT}"
   local exit_code=0
@@ -425,7 +451,8 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   notify_start
   check_network_mode
   acquire_remote_lock
-  trap 'release_remote_lock' EXIT
+  trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
+  set_pi4_maintenance_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
   if ! run_remotely "${LIMIT_HOSTS}"; then
     retry_hosts=$(get_retry_hosts_if_unreachable_only "${SUMMARY_FILE}")

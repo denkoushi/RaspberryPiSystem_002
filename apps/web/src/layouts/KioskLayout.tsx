@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
-import { useKioskConfig } from '../api/hooks';
+import { useDeployStatus, useKioskConfig } from '../api/hooks';
+import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { Input } from '../components/ui/Input';
@@ -14,6 +15,7 @@ export function KioskLayout() {
   const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
   const { data: kioskConfig } = useKioskConfig();
+  const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
 
@@ -34,6 +36,11 @@ export function KioskLayout() {
       sessionStorage.setItem('kiosk-last-path', path);
     }
   }, [location.pathname]);
+
+  // メンテナンス中はメンテナンス画面を表示
+  if (deployStatus?.kioskMaintenance) {
+    return <KioskMaintenanceScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-800 text-white">

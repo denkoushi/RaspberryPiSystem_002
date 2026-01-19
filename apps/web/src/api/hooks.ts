@@ -55,6 +55,7 @@ import {
   updateClient,
   updateEmployee,
   updateItem,
+  getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
   getSignageSchedules,
@@ -505,6 +506,16 @@ export function useNetworkModeStatus() {
     queryFn: getNetworkModeStatus,
     refetchInterval: 30_000,
     staleTime: 10_000,
+    refetchOnWindowFocus: true
+  });
+}
+
+export function useDeployStatus() {
+  return useQuery({
+    queryKey: ['deploy-status'],
+    queryFn: getDeployStatus,
+    refetchInterval: 5000, // 5秒ごとにポーリング（メンテナンス画面の表示/非表示を即座に反映）
+    staleTime: 0, // キャッシュを無効化して常に最新データを取得
     refetchOnWindowFocus: true
   });
 }

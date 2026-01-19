@@ -846,6 +846,17 @@ export async function getNetworkModeStatus() {
   return data;
 }
 
+export interface DeployStatus {
+  kioskMaintenance: boolean;
+  scope?: string;
+  startedAt?: string;
+}
+
+export async function getDeployStatus(): Promise<DeployStatus> {
+  const { data } = await api.get<DeployStatus>('/system/deploy-status');
+  return data;
+}
+
 // デジタルサイネージ関連の型定義
 export interface SignageSlotConfig {
   pdfId?: string;
