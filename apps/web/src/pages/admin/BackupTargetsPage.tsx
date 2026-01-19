@@ -130,12 +130,17 @@ export function BackupTargetsPage() {
   }
 
   const getStorageProviderLabel = (target?: BackupTarget) => {
+    // Dropboxのアクセストークンが設定されているかチェック（新構造と旧構造の両方に対応）
+    const hasDropboxAccessToken = !!(
+      (config?.storage?.options?.dropbox?.accessToken && config.storage.options.dropbox.accessToken !== '') ||
+      (config?.storage?.options?.accessToken && config.storage.options.accessToken !== '')
+    );
+    
     // Phase 2: providers配列が指定されている場合は複数表示
     if (target?.storage?.providers && target.storage.providers.length > 0) {
       const labels = target.storage.providers.map((p) => {
         if (p === 'dropbox') {
-          const hasAccessToken = !!(config?.storage?.options?.accessToken && config.storage.options.accessToken !== '');
-          return hasAccessToken ? 'Dropbox' : 'Dropbox（未設定）';
+          return hasDropboxAccessToken ? 'Dropbox' : 'Dropbox（未設定）';
         }
         return 'ローカル';
       });
@@ -147,8 +152,7 @@ export function BackupTargetsPage() {
     if (!provider) return '不明';
     
     if (provider === 'dropbox') {
-      const hasAccessToken = !!(config?.storage?.options?.accessToken && config.storage.options.accessToken !== '');
-      return hasAccessToken ? 'Dropbox' : 'Dropbox（未設定・ローカルにフォールバック）';
+      return hasDropboxAccessToken ? 'Dropbox' : 'Dropbox（未設定・ローカルにフォールバック）';
     }
     return 'ローカルストレージ';
   };

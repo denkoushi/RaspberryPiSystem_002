@@ -166,15 +166,34 @@ export interface BackupConfig {
     provider: 'local' | 'dropbox' | 'gmail';
     options?: {
       basePath?: string;
-      accessToken?: string;
-      refreshToken?: string;
-      appKey?: string;
-      appSecret?: string;
-      clientId?: string;
-      clientSecret?: string;
-      redirectUri?: string;
-      subjectPattern?: string;
-      fromEmail?: string;
+      // 新構造: provider別名前空間（推奨）
+      dropbox?: {
+        appKey?: string;
+        appSecret?: string;
+        accessToken?: string;
+        refreshToken?: string;
+      };
+      gmail?: {
+        clientId?: string;
+        clientSecret?: string;
+        redirectUri?: string;
+        accessToken?: string;
+        refreshToken?: string;
+        subjectPattern?: string;
+        fromEmail?: string;
+      };
+      // 旧構造: 後方互換のため残す（deprecated、読み取りのみ）
+      accessToken?: string; // Dropbox用（deprecated: options.dropbox.accessToken を使用）
+      refreshToken?: string; // Dropbox用（deprecated: options.dropbox.refreshToken を使用）
+      appKey?: string; // Dropbox用（deprecated: options.dropbox.appKey を使用）
+      appSecret?: string; // Dropbox用（deprecated: options.dropbox.appSecret を使用）
+      clientId?: string; // Gmail用（deprecated: options.gmail.clientId を使用）
+      clientSecret?: string; // Gmail用（deprecated: options.gmail.clientSecret を使用）
+      redirectUri?: string; // Gmail用（deprecated: options.gmail.redirectUri を使用）
+      subjectPattern?: string; // Gmail用（deprecated: options.gmail.subjectPattern を使用）
+      fromEmail?: string; // Gmail用（deprecated: options.gmail.fromEmail を使用）
+      gmailAccessToken?: string; // deprecated: options.gmail.accessToken を使用
+      gmailRefreshToken?: string; // deprecated: options.gmail.refreshToken を使用
     };
   };
   targets: BackupTarget[];
