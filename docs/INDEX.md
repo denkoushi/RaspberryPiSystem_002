@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-19）
+
+- **✅ セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイルを修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [security/evaluation-report.md](./security/evaluation-report.md) / [security/log-redaction-implementation.md](./security/log-redaction-implementation.md) / [security/urgent-security-measures.md](./security/urgent-security-measures.md) / [knowledge-base/infrastructure/security.md#kb-178](./knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-18）
 
 - **✅ デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-176](./knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
@@ -170,7 +174,7 @@
 
 - **✅ 標準セキュリティチェックリスト監査完了**: IPA「安全なウェブサイトの作り方」、OWASP Top 10 2021、CISベンチマークに基づく監査を実施。主要なセキュリティ対策がほぼ完了していることを確認。未実施項目（CSRF対策、PostgreSQLのSSL/TLS接続強制、パスワードポリシー強化など）と必要性を評価。詳細は [security/standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) を参照。
 
-- **✅ ポートセキュリティ強化完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。インターネット接続状態での本番運用が可能であることを確認。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) を参照。
+- **✅ ポートセキュリティ強化（追加）完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に（UFW依存を低減）。加えて、Pi5上の不要サービス（rpcbind/avahi/exim4/cups）をstop+disable+maskしてLISTEN自体を削減し、`ports-unexpected` を「外部露出 + プロセス込み」で有意にした。ベースライン証跡を保存。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) / [knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [knowledge-base/infrastructure/ports-baseline-20260118.md](./knowledge-base/infrastructure/ports-baseline-20260118.md) を参照。
 
 ### 🆕 最新アップデート（2025-12-17）
 
@@ -414,6 +418,7 @@
 | [guides/production-setup.md](./guides/production-setup.md) | 本番環境セットアップ（HTTPS設定含む） |
 | [guides/backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
 | [guides/monitoring.md](./guides/monitoring.md) | 監視・アラート |
+| [runbooks/ports-unexpected-and-port-exposure.md](./runbooks/ports-unexpected-and-port-exposure.md) | **Runbook**: `ports-unexpected` / ポート露出の点検と切り分け |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
@@ -581,6 +586,11 @@ APIの概要と詳細。
 | [port-security-verification-results.md](./security/port-security-verification-results.md) | **ポートセキュリティ修正後の実機検証結果**（実機検証結果と評価、2025-12-18） |
 | [standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) | **標準セキュリティチェックリスト監査レポート**（IPA、OWASP、CISベンチマークに基づく監査結果、2025-12-18） |
 | [postgresql-password-policy-implementation.md](./security/postgresql-password-policy-implementation.md) | **PostgreSQLパスワードポリシー強化の実装**（環境変数によるパスワード管理の実装手順、2025-12-18完了） |
+| [evaluation-plan.md](./security/evaluation-plan.md) | **セキュリティ評価計画書**（OWASP/IPA/CIS/NIST等の標準指標に基づく評価実施計画、2026-01-18作成） |
+| [evaluation-report.md](./security/evaluation-report.md) | **セキュリティ評価報告書**（評価計画書に基づく評価実施結果、2026-01-18作成） |
+| [external-intrusion-risk-analysis.md](./security/external-intrusion-risk-analysis.md) | **外部侵入リスク分析レポート**（外部からの不正侵入リスクの詳細分析、2026-01-18作成） |
+| [urgent-security-measures.md](./security/urgent-security-measures.md) | **緊急に実装すべき安全対策機能**（USBメモリ運用予定がない前提での緊急実装項目、2026-01-18作成） |
+| [log-redaction-implementation.md](./security/log-redaction-implementation.md) | **ログの機密情報保護実装レポート**（x-client-keyのログ出力を[REDACTED]に置換する実装、2026-01-18実装完了） |
 
 ### プレゼンテーション（presentations/）
 

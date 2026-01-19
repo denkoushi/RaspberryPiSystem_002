@@ -1,10 +1,11 @@
 # ポートセキュリティ修正後の実機検証結果
 
-最終更新: 2025-12-18
+最終更新: 2026-01-18
 
 ## 検証実施日時
 
-2025-12-18
+- 2026-01-18（追加検証: 不要サービス停止 + `ports-unexpected` ノイズ低減 + デプロイ完了確認）
+- 2025-12-18
 
 ## 検証環境
 
@@ -16,6 +17,18 @@
 ## 検証結果サマリー
 
 ### ✅ 成功項目
+
+0. **追加検証（2026-01-18）: 不要ポート露出の削減 + デプロイ完了確認**
+   - ✅ `rpcbind/avahi/exim4/cups` を stop+disable+mask し、LISTEN/UNCONN を削減
+   - ✅ `security-monitor` の `ports-unexpected` を「外部露出 + プロセス込み」に改善し、Tailscale/loopback/link-local を除外
+   - ✅ ベースライン証跡を保存: [ports baseline (2026-01-18)](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+   - ✅ デプロイ完了確認: `feat/ports-hardening-20260118`ブランチをPi5にデプロイし、`harden-server-ports.yml`を実行
+   - ✅ 設定維持確認: Gmail/Dropboxの設定（`backup.json`）が維持されていることを確認
+   - ✅ アラート解消確認: `ports-unexpected`アラートの新規発生なし（ノイズが解消）
+   - ✅ ポート状態確認: 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポート（5432/8080）は非公開
+   - ✅ サービス状態確認: 不要サービス（rpcbind/avahi/exim4/cups）がmask/inactive状態
+   - ✅ 監視稼働確認: `security-monitor.timer`が有効化・稼働中、環境変数が正しく注入されていることを確認
+   - 詳細: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
 
 1. **Docker Compose設定の反映**
    - ✅ 最新コード（58b233e）を取得・適用完了
@@ -48,6 +61,27 @@
    - DB: `5432/tcp`のみ（外部公開なし、Docker内部ネットワークのみ）
 
 ## 検証詳細
+
+### 0. 追加検証（2026-01-18）: LISTEN/UNCONNの削減と監視ノイズ低減
+
+```bash
+# 不要サービスが無効化（mask）されていることを確認
+systemctl is-enabled rpcbind.socket rpcbind.service avahi-daemon.service exim4.service cups.service
+
+# LISTEN/UNCONN の実態確認（プロセス付き）
+sudo ss -H -tulpen
+
+# UFW許可の確認（22/5900は限定、80/443のみAny）
+sudo ufw status verbose
+
+# 管理画面/APIの確認（ローカルホスト）
+curl -k https://localhost/api/system/health
+curl -kI https://localhost/admin
+```
+
+期待値:
+- `111/5353/25/631` 等（不要サービス由来）が消えている
+- `ports-unexpected` がTailscaleソケット等でノイズ発報しない（必要時のみ発報）
 
 ### 1. Docker Compose設定の確認
 

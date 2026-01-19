@@ -11,7 +11,13 @@ FILE_HASH_TARGETS="${FILE_HASH_TARGETS:-/etc/ssh/sshd_config /etc/passwd /etc/sh
 FILE_HASH_STATE="${STATE_DIR}/file-hashes.txt"
 FILE_HASH_EXCLUDES="${FILE_HASH_EXCLUDES:-}"
 REQUIRED_PROCESSES="${REQUIRED_PROCESSES:-sshd caddy}"
-ALLOWED_LISTEN_PORTS="${ALLOWED_LISTEN_PORTS:-22 80 443}"
+ALLOWED_LISTEN_PORTS="${ALLOWED_LISTEN_PORTS:-22 80 443 5900}"
+
+# Optional ignore rules (space-separated lists)
+# - SECURITY_MONITOR_IGNORE_PROCESSES: e.g. "tailscaled"
+# - SECURITY_MONITOR_IGNORE_ADDR_PREFIXES: e.g. "127.0.0.1 ::1 100. fd7a: fe80:"
+SECURITY_MONITOR_IGNORE_PROCESSES="${SECURITY_MONITOR_IGNORE_PROCESSES:-tailscaled}"
+SECURITY_MONITOR_IGNORE_ADDR_PREFIXES="${SECURITY_MONITOR_IGNORE_ADDR_PREFIXES:-127.0.0.1 ::1 100. fd7a: fe80:}"
 
 log_info() {
   logger -t "${TAG}" "$1"
@@ -111,29 +117,91 @@ process_required_processes() {
 }
 
 process_listen_ports() {
-  local current_ports
+  # Best-effort: prefer ss with address/process information for accurate risk assessment
+  local lines=""
+  local mode="ss"
   if command -v ss >/dev/null 2>&1; then
-    current_ports=$(ss -tuln | awk 'NR>1 {print $5}' | awk -F':' '{print $NF}' | sort -u)
+    lines=$(ss -H -tulpen 2>/dev/null || true)
   elif command -v netstat >/dev/null 2>&1; then
-    current_ports=$(netstat -tuln | awk 'NR>2 {print $4}' | awk -F':' '{print $NF}' | sort -u)
+    # Fallback: netstat may not provide consistent pid/program in minimal installs
+    mode="netstat"
+    lines=$(netstat -tuln 2>/dev/null || true)
   else
     return
   fi
 
   local unexpected=()
   local allowed_set=" ${ALLOWED_LISTEN_PORTS} "
-  while read -r port; do
-    [[ -z "${port}" ]] && continue
-    [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${port}")
-  done <<< "${current_ports}"
+  local ignore_procs_set=" ${SECURITY_MONITOR_IGNORE_PROCESSES} "
+  local ignore_addr_prefixes="${SECURITY_MONITOR_IGNORE_ADDR_PREFIXES}"
+
+  if [[ "${mode}" == "ss" ]]; then
+    while IFS= read -r line; do
+      [[ -z "${line}" ]] && continue
+
+      # ss output columns: proto state ... local_address:port ... users:(("proc",pid=...))
+      local local_field proto proc addr port
+      proto=$(echo "${line}" | awk '{print $1}')
+      local_field=$(echo "${line}" | awk '{print $5}')
+      proc=$(echo "${line}" | sed -n 's/.*users:((" *\([^"]*\)".*/\1/p')
+
+      # Extract addr/port from e.g. 0.0.0.0:80, [::]:443, *:5900, [fe80::...]:546, 100.x.x.x:53596
+      port="${local_field##*:}"
+      addr="${local_field%:*}"
+      addr="${addr#[}"
+      addr="${addr%]}"
+
+      # Ignore by process name (space-separated set)
+      if [[ -n "${proc:-}" && "${ignore_procs_set}" == *" ${proc} "* ]]; then
+        continue
+      fi
+
+      # Ignore by address prefix (space-separated prefixes)
+      # Example prefixes: 127.0.0.1, ::1, 100., fd7a:, fe80:
+      local prefix
+      for prefix in ${ignore_addr_prefixes}; do
+        [[ -z "${prefix}" ]] && continue
+        if [[ "${addr}" == "${prefix}"* ]]; then
+          continue 2
+        fi
+      done
+
+      # Only alert on ports that are not explicitly allowed
+      [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${addr}:${port}(${proc:-unknown},${proto})")
+    done <<< "${lines}"
+  else
+    # netstat fallback: keep old behavior (port-only) to avoid false negatives
+    local current_ports
+    current_ports=$(echo "${lines}" | awk 'NR>2 {print $4}' | awk -F':' '{print $NF}' | sort -u)
+    while read -r port; do
+      [[ -z "${port}" ]] && continue
+      [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${port}")
+    done <<< "${current_ports}"
+  fi
 
   if (( {{ '${#' }}unexpected[@]} > 0 )); then
+    # 15分間隔で同じアラートを量産しないため、前回のunexpected集合と比較して変化時のみ通知する
+    local state_file="${STATE_DIR}/listen-ports.unexpected"
+    local current_key="${unexpected[*]}"
+    local previous_key=""
+    previous_key=$(cat "${state_file}" 2>/dev/null || echo "")
+    if [[ "${previous_key}" == "${current_key}" ]]; then
+      log_info "ports-unexpected unchanged; skip alert (unexpected=${current_key})"
+      return
+    fi
+
     WEBHOOK_URL="${WEBHOOK_URL}" WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT}" \
       "{{ alert_script_path }}" \
       "ports-unexpected" \
-      "許可されていないLISTENポートを検出: ${unexpected[*]}" \
+      "許可されていないLISTEN/UNCONN（外部露出）を検出: ${unexpected[*]}" \
       "${unexpected[*]}"
+
+    echo "${current_key}" > "${state_file}" 2>/dev/null || true
+    return
   fi
+
+  # unexpectedが解消された場合は状態をクリア（次回再発時に通知されるようにする）
+  rm -f "${STATE_DIR}/listen-ports.unexpected" 2>/dev/null || true
 }
 
 process_fail2ban

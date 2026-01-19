@@ -681,14 +681,95 @@ export interface ClientAlerts {
 }
 
 export async function getClientAlerts() {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H5',
+      location: 'apps/web/src/api/client.ts:getClientAlerts',
+      message: 'Fetching /clients/alerts',
+      data: {},
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   const { data } = await api.get<{ requestId: string } & ClientAlerts>('/clients/alerts');
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'apps/web/src/api/client.ts:getClientAlerts',
+      message: 'Fetched /clients/alerts response summary',
+      data: {
+        requestId: data?.requestId,
+        counts: {
+          staleClients: data?.alerts?.staleClients,
+          errorLogs: data?.alerts?.errorLogs,
+          dbAlerts: data?.alerts?.dbAlerts,
+          hasAlerts: data?.alerts?.hasAlerts,
+        },
+        dbAlertsTop: (data?.details?.dbAlerts ?? []).slice(0, 10).map((a) => ({
+          id: a.id,
+          type: a.type ?? null,
+          severity: a.severity ?? null,
+          timestamp: a.timestamp,
+          acknowledged: a.acknowledged,
+        })),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   return data;
 }
 
 export async function acknowledgeAlert(alertId: string) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H4',
+      location: 'apps/web/src/api/client.ts:acknowledgeAlert',
+      message: 'POST /clients/alerts/:id/acknowledge start',
+      data: { alertId },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   const { data } = await api.post<{ requestId: string; acknowledged: boolean }>(
     `/clients/alerts/${alertId}/acknowledge`
   );
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'H4',
+      location: 'apps/web/src/api/client.ts:acknowledgeAlert',
+      message: 'POST /clients/alerts/:id/acknowledge success',
+      data: { alertId, requestId: data?.requestId, acknowledged: data?.acknowledged },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   return data;
 }
 

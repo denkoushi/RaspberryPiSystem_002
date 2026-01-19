@@ -78,6 +78,16 @@ fail2ban_http_maxretry: 15
 fail2ban_http_findtime: "15m"
 fail2ban_http_bantime: "1h"
 
+# 不要サービス停止（ポート閉塞）
+# VNCは残す運用だが、不要な常駐サービスは止めて攻撃面を減らす
+server_disable_unused_services: true
+server_unused_systemd_units_to_mask:
+  - rpcbind.socket
+  - rpcbind.service
+  - avahi-daemon.service
+  - exim4.service
+  - cups.service
+
 # マルウェア対策設定
 clamav_server_enabled: true
 clamav_server_scan_paths:
@@ -160,6 +170,13 @@ security_monitor_enabled: true
 security_monitor_state_dir: "/var/lib/security-monitor"
 security_monitor_fail2ban_log: "/var/log/fail2ban.log"
 security_monitor_timer_oncalendar: "*:0/15"
+
+# security-monitor（ports-unexpected）設定
+# - systemd unitから環境変数として注入し、監視ロジックをホスト/環境ごとに調整可能にする
+# - いずれも「空白区切り」を前提とする（bash側の扱いを単純化）
+security_monitor_allowed_listen_ports: "22 80 443 5900"
+security_monitor_ignore_processes: "tailscaled"
+security_monitor_ignore_addr_prefixes: "127.0.0.1 ::1 100. fd7a: fe80:"
 
 # デバイスタイプごとのデフォルト設定（preflightチェック用）
 # 新しいデバイスタイプを追加する場合は、この設定に追加してください

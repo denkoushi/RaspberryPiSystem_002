@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useActiveLoans, useEmployees, useItems, useClientStatuses, useClientAlerts, useAcknowledgeAlert } from '../../api/hooks';
@@ -15,9 +16,72 @@ export function DashboardPage() {
   // アラート情報を計算
   const alerts = alertsQuery.data?.alerts;
   const hasAlerts = alerts?.hasAlerts ?? false;
-  const dbAlerts = alertsQuery.data?.details.dbAlerts ?? [];
+  const dbAlerts = useMemo(() => alertsQuery.data?.details.dbAlerts ?? [], [alertsQuery.data?.details.dbAlerts]);
+  const lastDbAlertsKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const key = JSON.stringify(
+      dbAlerts.map((a) => ({
+        id: a.id,
+        type: a.type ?? null,
+        severity: a.severity ?? null,
+        timestamp: a.timestamp,
+        acknowledged: a.acknowledged,
+      }))
+    );
+
+    if (key === lastDbAlertsKeyRef.current) return;
+    lastDbAlertsKeyRef.current = key;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'apps/web/src/pages/admin/DashboardPage.tsx:DashboardPage',
+        message: 'Dashboard dbAlerts changed',
+        data: {
+          requestId: alertsQuery.data?.requestId,
+          hasAlerts,
+          counts: {
+            staleClients: alerts?.staleClients ?? null,
+            errorLogs: alerts?.errorLogs ?? null,
+            dbAlerts: alerts?.dbAlerts ?? null,
+          },
+          dbAlerts: dbAlerts.slice(0, 10).map((a) => ({
+            id: a.id,
+            type: a.type ?? null,
+            severity: a.severity ?? null,
+            timestamp: a.timestamp,
+            acknowledged: a.acknowledged,
+          })),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [alertsQuery.data?.requestId, alerts?.dbAlerts, alerts?.errorLogs, alerts?.staleClients, dbAlerts, hasAlerts]);
 
   const handleAcknowledge = async (alertId: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'H4',
+        location: 'apps/web/src/pages/admin/DashboardPage.tsx:handleAcknowledge',
+        message: 'Clicked acknowledge',
+        data: { alertId },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
     await acknowledgeMutation.mutateAsync(alertId);
   };
 

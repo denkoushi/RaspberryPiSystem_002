@@ -131,6 +131,18 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか
   - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
+- [ ] **ポート公開/不要サービス/監視の確認**: 不要なLISTEN/UNCONNが出ていないか、`ports-unexpected` がノイズ化していないか確認
+  ```bash
+  # LISTEN/UNCONN（プロセス込み）
+  ssh denkon5sd02@raspberrypi.local "sudo ss -H -tulpen"
+
+  # Dockerの公開状況（db/apiがホストへpublishされていないこと）
+  ssh denkon5sd02@raspberrypi.local "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
+
+  # security-monitor.timer が有効/稼働していること
+  ssh denkon5sd02@raspberrypi.local "systemctl is-enabled security-monitor.timer && systemctl is-active security-monitor.timer"
+  ```
+  - 参考: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [port-security-audit.md](../security/port-security-audit.md)
 
 ### 初回セットアップ: 環境変数ファイルの作成
 

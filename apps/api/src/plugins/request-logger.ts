@@ -14,7 +14,7 @@ export function registerRequestLogger(app: FastifyInstance): void {
         headers: {
           'user-agent': request.headers['user-agent'],
           'x-forwarded-for': request.headers['x-forwarded-for'],
-          'x-client-key': request.headers['x-client-key'],
+          'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
           'authorization': request.headers['authorization'] ? '[REDACTED]' : undefined,
         },
         ip: request.ip,
@@ -37,7 +37,7 @@ export function registerRequestLogger(app: FastifyInstance): void {
           headers: {
             'user-agent': request.headers['user-agent'],
             'x-forwarded-for': request.headers['x-forwarded-for'],
-            'x-client-key': request.headers['x-client-key'],
+            'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
           },
           ip: request.ip,
           hostname: request.hostname,

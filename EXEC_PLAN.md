@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-19) **セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。評価計画書を作成し、机上評価・コードレビュー・実機検証（Pi5へのTailscale経由アクセス）を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイル（`request-logger.ts`、`kiosk.ts`、`tools/loans/cancel.ts`、`tools/loans/return.ts`、`webrtc/signaling.ts`、`tools/loans/delete.ts`）を修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功（lint-and-test、e2e-smoke、e2e-tests、docker-build）、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [docs/security/evaluation-report.md](./docs/security/evaluation-report.md) / [docs/security/log-redaction-implementation.md](./docs/security/log-redaction-implementation.md) / [docs/security/urgent-security-measures.md](./docs/security/urgent-security-measures.md) / [docs/knowledge-base/infrastructure/security.md#kb-178](./docs/knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [docs/presentations/security-measures-presentation.md](./docs/presentations/security-measures-presentation.md) を参照。
+
 - [x] (2026-01-18) **デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
 
 - [x] (2026-01-18) **Slack通知チャンネル分離機能の実装・実機検証完了**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）に着弾させる機能を実装・検証完了。Ansible VaultにWebhook URLを登録し、`docker.env.j2`テンプレートで環境変数を生成。デプロイ時に発生したトラブル（Ansibleテンプレートの既存値保持パターン、ファイル権限問題、コンテナ再起動の必要性）を解決し、4チャンネルすべてでの通知受信を確認。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) / [docs/guides/slack-webhook-setup.md](./docs/guides/slack-webhook-setup.md) / [docs/guides/deployment.md#slack通知のチャンネル分離](./docs/guides/deployment.md#slack通知のチャンネル分離2026-01-18実装) を参照。
@@ -47,6 +49,7 @@
 - [x] (2025-12-29) **Gmailデータ取得機能実装完了**: PowerAutomateからGmail経由でCSVファイルやJPEGファイルをPi5に送信し、自動的にインポートする機能を実装完了。OAuth 2.0認証によるセキュアな認証フローを実装し、管理画面からGmail設定を管理できるUIを実装。Tailscale DNSをオフにした場合の`/etc/hosts`設定スクリプトを作成し、Gmail OAuth認証が正常に完了（refresh token取得済み）。GmailとDropboxのトークンリフレッシュの違いを明確化（Gmailは自動リフレッシュ、Dropboxは手動リフレッシュ）。詳細は [docs/plans/gmail-data-acquisition-execplan.md](./docs/plans/gmail-data-acquisition-execplan.md) / [docs/guides/gmail-setup-guide.md](./docs/guides/gmail-setup-guide.md) / [docs/knowledge-base/infrastructure/backup-restore.md#kb-108](./docs/knowledge-base/infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) を参照。
 - [x] (2025-12-28) **バックアップ対象ごとのストレージプロバイダー指定機能実装完了（Phase 1-2）**: バックアップ対象ごとにストレージプロバイダー（ローカル/Dropbox）を指定できる機能を実装。Phase 1では単一プロバイダー指定、Phase 2では多重バックアップ（複数プロバイダーへの同時バックアップ）に対応。スキーマ拡張（`storage.provider`/`storage.providers`）、UI改善（チェックボックスによる複数選択）、スケジューラー・API・手動実行エンドポイントの対応を完了。E2Eテストも修正完了。CI通過確認済み。詳細は [docs/requirements/backup-target-management-ui.md](./docs/requirements/backup-target-management-ui.md) を参照。
 - [x] (2025-12-18) **ポートセキュリティ強化完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に。UFWに依存せず、Dockerレベルでポートがブロックされる。実機検証完了。インターネット接続状態での本番運用が可能であることを確認。詳細は [docs/security/port-security-audit.md](./docs/security/port-security-audit.md) / [docs/security/port-security-verification-results.md](./docs/security/port-security-verification-results.md) を参照。
+- [x] (2026-01-18) **ポート露出削減と `ports-unexpected` ノイズ低減（恒久化・実機検証完了）**: Pi5上の不要サービス（rpcbind/avahi/exim4/cups）をstop+disable+maskし、LISTEN/UNCONN自体を削減。`security-monitor` のポート監視を `ss -H -tulpen` ベースに改善して「外部露出 + プロセス込み」で通知し、Tailscale/loopback/link-local由来のノイズを除外。ベースライン証跡を保存。実機検証完了（デプロイ成功、Gmail/Dropbox設定維持確認、アラート新規発生なし確認）。詳細は [docs/knowledge-base/infrastructure/security.md#kb-177](./docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [docs/knowledge-base/infrastructure/ports-baseline-20260118.md](./docs/knowledge-base/infrastructure/ports-baseline-20260118.md) を参照。
 - [x] (2025-12-18) **UI視認性向上カラーテーマ実装完了（Phase 1-9）**: 工場現場での視認性を向上させるため、提案3（工場現場特化・高視認性テーマ）を採用し、管理コンソール、サイネージ、キオスクのカラーテーマを改善完了。主要ページ（統合一覧、アイテム一覧、キオスク返却画面、サイネージレンダラー、管理コンソール全ページ、工具管理全ページ、サイネージ管理画面のPDF管理エリア）に提案3カラーパレットを適用。コントラスト比約21:1（WCAG AAA準拠）を達成。Lintチェックもすべて通過。Phase 9では`SignagePdfManager`コンポーネントを白背景対応に修正し、サイネージタブとクライアント端末タブのPDF管理エリアの視認性を改善。詳細は [docs/requirements/ui-visibility-color-theme.md](./docs/requirements/ui-visibility-color-theme.md) を参照。
 - [x] (2025-12-17) **Dropbox CSV統合 Phase 3実装・実機検証完了**: CSVインポート後の自動バックアップ機能、Dropboxからの自動リストア機能、バックアップ・リストア履歴機能を実装完了。管理画面UI実装完了（バックアップ履歴、Dropboxリストア、CSVインポートスケジュール管理）。実機検証も完了（バックエンド・フロントエンドUI・CRUD操作・スケジュール実行・トークンリフレッシュ）。Dropboxトークンリフレッシュの修正も完了（`CsvImportScheduler.executeImport`で`refreshToken`の未渡しを修正）。詳細は [docs/analysis/dropbox-csv-integration-status.md](./docs/analysis/dropbox-csv-integration-status.md) を参照。
 - [x] (2025-12-17) **Phase 3必須検証完了**: 実際のデータファイルを使用したエンドツーエンドテスト（CSVインポート→自動バックアップ→Dropboxからのリストア）とエラーハンドリングの確認を完了。CSVインポート成功、自動バックアップ実行確認、Dropboxからのリストア成功、CSVインポート失敗時のエラーハンドリング正常動作を確認。発見された問題: バックアップ履歴に記録されていない（`executeAutoBackup`が`BackupHistoryService`を使用していない）、リストアAPIのパス指定（`basePath`を除いた相対パスで指定する必要がある）。詳細は [docs/guides/phase3-mandatory-verification-results.md](./docs/guides/phase3-mandatory-verification-results.md) を参照。
@@ -453,6 +456,16 @@
 
 ## Surprises & Discoveries
 
+- 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。  
+  対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
+- 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
+  対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
+- 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。  
+  エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
+  対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
+- 観測: `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある。  
+  エビデンス: デプロイスクリプトが10分タイムアウトしたが、手動で`curl`すると`/api/system/health`が`ok`を返す。  
+  対応: Dockerサービス起動に時間がかかる場合があるため、タイムアウト後も手動でヘルスチェックを実施し、必要に応じてコンテナ再起動を確認。**[KB-177]**
 - 観測: ブラウザのカメラAPI（`navigator.mediaDevices.getUserMedia`）はHTTPSまたはlocalhostでのみ動作する。  
   エビデンス: `http://192.168.10.230:4173/kiosk/photo`でカメラAPIを呼び出すと`navigator.mediaDevices`がundefinedになる。  
   対応: 自己署名証明書を使用してHTTPS環境を構築（`Caddyfile.local`、`Dockerfile.web`、`docker-compose.server.yml`を修正）。**[KB-030]**
@@ -1194,6 +1207,49 @@
 
 **推奨**: 現時点ではPhase2完全移行が完了し、Alerts Platformは安定運用可能な状態。Phase3は将来の拡張として検討し、まずは現状の運用を継続し、Phase2の安定性を確認。運用上の課題や要望を収集し、必要に応じてPhase3やその他の改善を検討。
 
+### Port hardening / security-monitor（完了）
+
+**概要**: `ports-unexpected` を運用に耐える形で固定し、将来のドリフトを減らす
+
+**実装内容**:
+- ✅ `security-monitor.service` に `ALLOWED_LISTEN_PORTS` / `SECURITY_MONITOR_IGNORE_PROCESSES` / `SECURITY_MONITOR_IGNORE_ADDR_PREFIXES` の環境変数を注入できるようにし、allow/ignoreをAnsible変数化（host/group単位で調整可能）
+- ✅ `ss -H -tulpen` の出力差異に対するテスト（モック `ss`）を追加し、プロセス抽出/除外条件の回帰を防ぐ（`scripts/test/monitor.test.sh`）
+- ✅ 定期的な「ポート/公開状況」スナップショット（ベースライン）の採取をRunbook化（`docs/runbooks/ports-unexpected-and-port-exposure.md`）
+- ✅ 不要サービス（rpcbind/avahi/exim4/cups）のstop+disable+maskをAnsible化（`harden-server-ports.yml`）
+
+**実機検証結果**:
+- ✅ デプロイ成功（`feat/ports-hardening-20260118`ブランチ）
+- ✅ Gmail/Dropbox設定が維持されていることを確認
+- ✅ アラート新規発生なし（`ports-unexpected`ノイズが解消）
+- ✅ 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポートは非公開
+
+**詳細**: [KB-177](../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
+
+### 運用安定性の継続的改善（推奨）
+
+**概要**: ポート露出削減機能の実装完了を機に、運用安定性を継続的に改善する
+
+**推奨タスク**:
+1. **定期ポート監査の自動化**（月1回）
+   - `ports-baseline-YYYYMMDD.md`の自動生成スクリプト作成
+   - ベースラインとの差分検出とアラート生成
+   - Runbook（`docs/runbooks/ports-unexpected-and-port-exposure.md`）の定期実行チェックリスト化
+
+2. **外部連携設定のドリフト検出**
+   - Gmail/Dropbox設定の定期検証（設定ファイルと実際の動作の整合性確認）
+   - トークン有効期限の監視と自動リフレッシュ確認
+   - 既存の`external-integration-ledger.md`を活用した定期点検
+
+3. **デプロイ後の自動検証強化**
+   - `deploy.sh`のヘルスチェックタイムアウト問題の改善（再試行ロジック、段階的チェック）
+   - デプロイ後の必須チェック項目の自動化（ポート状態、サービス状態、設定維持確認）
+
+4. **監視・アラートの精度向上**
+   - `ports-unexpected`以外のアラート種別のノイズ低減
+   - アラートの重要度分類と通知先の最適化（Slackチャンネル分離の活用）
+
+**優先度**: 中（運用上の課題や要望を収集してから実施）
+
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
@@ -1209,3 +1265,5 @@
 変更履歴: 2025-12-30 — CSVインポート構造改善と計測機器・吊具対応完了。レジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。スケジュール設定を`targets`配列形式に拡張。Gmail件名パターンを管理コンソールから編集できる機能を実装。実機検証完了（UI改善、フォーム状態管理、手動実行時のリトライスキップ機能）。ナレッジベース更新（KB-114, KB-115, KB-116）。詳細は [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/knowledge-base/frontend.md#kb-116](./docs/knowledge-base/frontend.md#kb-116-csvインポートスケジュールページのフォーム状態管理改善) / [docs/knowledge-base/api.md#kb-116](./docs/knowledge-base/api.md#kb-116-csvインポート手動実行時のリトライスキップ機能) を参照。
 変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補（scriptsもAPI経由でAlert作成）を追加。
 変更履歴: 2026-01-18 — デプロイ安定化の恒久対策実装・実機検証完了を記録。KB-176の恒久対策（.env反映保証・環境変数検証・権限修復）を実装し、実機検証で正常動作を確認。Surprises & Discoveriesにvault.yml権限問題とAnsibleローカル実行時のsudo問題を追加。
+変更履歴: 2026-01-18 — Pi5の不要ポート露出削減と `ports-unexpected` ノイズ低減（KB-177）を反映。Progress/Surprises/Next Stepsを更新。
+変更履歴: 2026-01-18 — ポート露出削減機能の実機検証完了を記録。デプロイ成功、Gmail/Dropbox設定維持確認、アラート新規発生なし確認を反映。Surprises & Discoveriesにデプロイ時のトラブルシューティングを追加。Next StepsのPort hardening候補を完了済みに更新。
