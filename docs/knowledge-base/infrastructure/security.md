@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - セキュリティ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2025-12-29
+last-verified: 2026-01-19
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 9件  
+**件数**: 10件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
@@ -287,12 +287,26 @@ update-frequency: medium
   - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible`
   - `ansible-playbook playbooks/harden-server-ports.yml`
 
+**実機検証結果（2026-01-18）**:
+- ✅ デプロイ成功: `feat/ports-hardening-20260118`ブランチをPi5にデプロイし、`harden-server-ports.yml`を実行
+- ✅ 設定維持確認: Gmail/Dropboxの設定（`backup.json`）が維持されていることを確認
+- ✅ アラート解消: `ports-unexpected`アラートの新規発生なし（ノイズが解消）
+- ✅ ポート状態確認: 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポート（5432/8080）は非公開
+- ✅ サービス状態確認: 不要サービス（rpcbind/avahi/exim4/cups）がmask/inactive状態
+- ✅ 監視稼働確認: `security-monitor.timer`が有効化・稼働中、環境変数が正しく注入されていることを確認
+
 **トラブルシューティング**:
 - `security-monitor` のアラートに `(...unknown,udp)` のようにプロセス名が出ない:
   - `ss -H -tulpen` の `users:(("proc",pid=...))` 抽出が崩れている可能性。
   - `sed` の正規表現は **basic regex** と **グルーピングの `\(...\)`** が必要（`\\1` のエスケープ違いで失敗しやすい）。
 - コントローラ（Mac）側から `ansible-playbook` を実行すると `role 'server' not found` になる:
   - `ansible.cfg` の `roles_path = ./roles` は **`infrastructure/ansible` をCWDにして実行**する前提。
+- デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る:
+  - エビデンス: `error: The following untracked working tree files would be overwritten by checkout`
+  - 対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。
+- `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある:
+  - エビデンス: デプロイスクリプトが10分タイムアウトしたが、手動で`curl`すると`/api/system/health`が`ok`を返す。
+  - 対応: Dockerサービス起動に時間がかかる場合があるため、タイムアウト後も手動でヘルスチェックを実施し、必要に応じてコンテナ再起動を確認。
 
 **関連ファイル**:
 - `infrastructure/ansible/templates/security-monitor.sh.j2`
@@ -403,5 +417,96 @@ update-frequency: medium
 - `infrastructure/ansible/roles/server/tasks/monitoring.yml`
 
 ---
+
+---
+
+### [KB-178] ログの機密情報保護実装（x-client-keyの[REDACTED]置換）
+
+**EXEC_PLAN.md参照**: 2026-01-18（セキュリティ評価・緊急対策実装）
+
+**事象**: 
+- `x-client-key`（キオスクAPI認証キー）がログに平文で出力されていた
+- ログファイルが漏洩した場合、`x-client-key`が悪用され、キオスクAPIへの不正アクセスが可能になる
+- セキュリティ評価で中優先度だが影響が大きい脆弱性として特定された
+
+**要因**: 
+1. **ログ出力時の機密情報フィルタリング未実装**: リクエストロガーや各ルートハンドラーで、`x-client-key`をそのままログに出力していた
+2. **機密情報の定義が不明確**: どの情報が機密情報として扱うべきか、明確な基準がなかった
+
+**有効だった対策**: 
+- ✅ **ログ出力時の機密情報フィルタリング実装**（2026-01-18）:
+  1. `request-logger.ts`: `x-client-key`を`[REDACTED]`に置換
+  2. `kiosk.ts`: `clientKey`、`rawClientKey`、`client.apiKey`を`[REDACTED]`に置換、`headers`から`x-client-key`を除外
+  3. `tools/loans/cancel.ts`: `headerKey`と`headers`から`x-client-key`を除外
+  4. `tools/loans/return.ts`: `headerKey`と`headers`から`x-client-key`を除外
+  5. `webrtc/signaling.ts`: `headers`から`x-client-key`を除外
+  6. `tools/loans/delete.ts`: `headers`から`x-client-key`を除外
+
+**実装の詳細**:
+- **修正パターン1**: ヘッダーから直接除外
+  ```typescript
+  // 修正前
+  'x-client-key': request.headers['x-client-key'],
+  
+  // 修正後
+  'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
+  ```
+
+- **修正パターン2**: ヘッダーオブジェクト全体をサニタイズ
+  ```typescript
+  // 修正前
+  app.log.info({ headers: request.headers }, 'Request received');
+  
+  // 修正後
+  const sanitizedHeaders = { ...request.headers };
+  if ('x-client-key' in sanitizedHeaders) {
+    sanitizedHeaders['x-client-key'] = '[REDACTED]';
+  }
+  app.log.info({ headers: sanitizedHeaders }, 'Request received');
+  ```
+
+- **修正パターン3**: 変数自体を`[REDACTED]`に置換
+  ```typescript
+  // 修正前
+  app.log.info({ clientKey, rawClientKey }, 'Kiosk config request');
+  
+  // 修正後
+  app.log.info({ 
+    clientKey: clientKey ? '[REDACTED]' : undefined, 
+    rawClientKey: '[REDACTED]' 
+  }, 'Kiosk config request');
+  ```
+
+**実機検証結果（2026-01-18）**:
+- ✅ CI成功: GitHub Actions CIで全テストが成功（lint-and-test、e2e-smoke、e2e-tests、docker-build）
+- ✅ デプロイ成功: `feat/ports-hardening-20260118`ブランチをPi5にデプロイし、正常に動作
+- ✅ ログ確認: ログに`x-client-key`が`[REDACTED]`として出力されることを確認
+- ✅ 機能確認: キオスクAPIが正常に動作し、認証も正常に機能
+
+**学んだこと**: 
+- ログ出力時は機密情報（認証キー、パスワード、トークン等）を必ずフィルタリングする
+- `[REDACTED]`という明確なマーカーを使用することで、機密情報が意図的に隠されていることを示す
+- ログの可読性は低下するが、セキュリティを優先する
+- デバッグ時は必要に応じて、デバッグモードでのみ値を出力する機能を追加することを検討できる
+
+**副作用**: 
+- **ログの可読性**: `x-client-key`が`[REDACTED]`に置換されるため、ログの可読性が低下する可能性があるが、セキュリティを優先
+- **デバッグ**: `x-client-key`の値がログに出力されないため、デバッグ時に値の確認が困難になる可能性がある
+
+**再発防止**: 
+- 新しいAPIエンドポイントを追加する際は、ログ出力時に機密情報をフィルタリングすることを徹底
+- コードレビュー時に、ログ出力箇所で機密情報が含まれていないか確認するチェックリストを追加
+- CIでログ出力に機密情報が含まれていないか検証するテストを追加することを検討
+
+**関連ファイル**: 
+- `apps/api/src/plugins/request-logger.ts`
+- `apps/api/src/routes/kiosk.ts`
+- `apps/api/src/routes/tools/loans/cancel.ts`
+- `apps/api/src/routes/tools/loans/return.ts`
+- `apps/api/src/routes/webrtc/signaling.ts`
+- `apps/api/src/routes/tools/loans/delete.ts`
+- `docs/security/log-redaction-implementation.md`
+- `docs/security/urgent-security-measures.md`
+- `docs/security/evaluation-report.md`
 
 ---

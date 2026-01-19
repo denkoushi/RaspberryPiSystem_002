@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-19）
+
+- **✅ セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイルを修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [security/evaluation-report.md](./security/evaluation-report.md) / [security/log-redaction-implementation.md](./security/log-redaction-implementation.md) / [security/urgent-security-measures.md](./security/urgent-security-measures.md) / [knowledge-base/infrastructure/security.md#kb-178](./knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-18）
 
 - **✅ デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-176](./knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。

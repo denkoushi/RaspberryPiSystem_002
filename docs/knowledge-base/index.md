@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2025-12-01
+last-verified: 2026-01-19
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -28,7 +28,7 @@ update-frequency: high
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 22件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決 |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 21件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング |
-| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 9件 | セキュリティ対策と監視 |
+| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 18件 | その他のインフラ関連（ストレージ管理、macOS対応含む） |
@@ -170,6 +170,7 @@ update-frequency: high
 | [KB-071](./infrastructure/security.md#kb-071-tailscale導入とssh接続設定) | Tailscale導入とSSH接続設定 | ✅ 解決済み |
 | [KB-078](./infrastructure/security.md#kb-078-複数ローカルネットワーク環境でのvnc接続設定) | 複数ローカルネットワーク環境でのVNC接続設定 | ✅ 解決済み |
 | [KB-079](./infrastructure/security.md#kb-079-phase7セキュリティテストの実施結果と検証ポイント) | Phase7セキュリティテストの実施結果と検証ポイント | ✅ 解決済み |
+| [KB-178](./infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) | ログの機密情報保護実装（x-client-keyの[REDACTED]置換） | ✅ 解決済み（2026-01-18） |
 | [KB-080](./infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
 | [KB-081](./infrastructure/signage.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) | Pi3サイネージが新デザインへ更新されない | 🔄 進行中 |
 | [KB-082](./infrastructure/signage.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | ✅ 解決済み |
