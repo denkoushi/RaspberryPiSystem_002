@@ -1,4 +1,5 @@
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildServer } from '../../../app.js';
 
