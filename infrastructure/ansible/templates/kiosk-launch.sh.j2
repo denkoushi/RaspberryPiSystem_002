@@ -7,6 +7,9 @@ export XDG_CURRENT_DESKTOP={{ kiosk_desktop | default('LXDE') }}
 export XDG_SESSION_TYPE=x11
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 export CHROME_WRAPPER=/usr/bin/chromium-browser
+# キーリングを無効化（パスワードダイアログを表示しない）
+export GNOME_KEYRING_CONTROL=""
+export SSH_AUTH_SOCK=""
 
 CHROMIUM_FLAGS=(
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
@@ -21,7 +24,10 @@ CHROMIUM_FLAGS=(
   --allow-insecure-localhost
   --ignore-certificate-errors
   --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }}
+  # 警告バーを非表示にする
+  --disable-infobars
+  # キーリングを無効化（パスワードストアをbasicに設定）
+  --password-store=basic
 )
 
 exec chromium-browser "${CHROMIUM_FLAGS[@]}"
-
