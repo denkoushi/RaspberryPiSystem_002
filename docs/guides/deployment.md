@@ -275,6 +275,13 @@ curl http://localhost:8080/api/system/health
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 - `status-agent.conf`の`API_BASE_URL`は自動的に`https://<Pi5>/api`に設定されます（Ansibleが`group_vars/all.yml`の`api_base_url`を使用）
 
+**重要（2026-01-19更新）**: 
+- **Pi4デプロイ時のメンテナンス画面表示**: Pi4デプロイ時（`--limit raspberrypi4`使用時）に、キオスク画面にメンテナンス画面が自動的に表示されます
+  - デプロイスクリプト（`scripts/update-all-clients.sh`）が自動的にメンテナンスフラグを設定・クリアします
+  - メンテナンス画面は「メンテナンス中」メッセージとスピナーを表示し、ユーザーの操作を防ぎます
+  - デプロイ完了後、メンテナンス画面は自動的に消えます（最大5秒以内）
+  - 詳細は [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
+
 ```bash
 # 1. リポジトリを更新
 cd /opt/RaspberryPiSystem_002
@@ -428,9 +435,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
    - 例: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3`
    - プリフライトチェックとリトライにも適用される
 
-**実機検証状況**（2026-01-18）:
-- ✅ Pi5とPi4でのデプロイ成功を確認
-- ✅ プリフライト・ロック・リソースガードの動作を確認
+**実機検証状況**:
+- ✅ Pi5でのデプロイ成功を確認（2026-01-18）
+- ✅ Pi4でのデプロイ成功を確認（2026-01-19、[KB-182](../knowledge-base/infrastructure/ansible-deployment.md#kb-182-pi4デプロイ検証結果デプロイ安定化機能の動作確認)参照）
+- ✅ プリフライト・ロック・リソースガードの動作を確認（Pi5、Pi4）
 - ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
 - ⚠️ Slack通知は「alerts生成」までは確認済みだが、Slack配送（API Dispatcher）設定の有無に依存するため、Slackアプリ着弾は要確認
 

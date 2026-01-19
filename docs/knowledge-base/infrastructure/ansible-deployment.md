@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2025-12-29
+last-verified: 2026-01-19
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 16件  
+**件数**: 23件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -2003,5 +2003,159 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
   psql -U postgres -d borrow_return \
   -c "SELECT a.type, a.message, d.status, d.\"sentAt\" FROM \"Alert\" a JOIN \"AlertDelivery\" d ON a.id = d.\"alertId\" ORDER BY a.\"createdAt\" DESC LIMIT 5;"
 ```
+
+---
+
+### [KB-182] Pi4デプロイ検証結果（デプロイ安定化機能の動作確認）
+
+**検証日**: 2026-01-19
+
+**目的**: 
+- KB-172で実装したデプロイ安定化機能がPi4に対して正常に動作することを検証
+- Pi4デプロイ標準手順の有効性を確認
+
+**検証内容**:
+
+1. **デプロイ前チェック**:
+   - ✅ ネットワークモード確認: `network_mode: "tailscale"` が設定されていることを確認
+   - ✅ リモートリポジトリとの比較: Pi5上のリポジトリとリモートリポジトリに差分なし
+   - ✅ プリフライトリーチビリティチェック: Pi5からPi4への接続確認成功 (`ansible -m ping`)
+   - ✅ リモートロック: ロック取得成功（並行実行防止）
+
+2. **デプロイ実行**:
+   - コマンド: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4`
+   - 実行結果: `ok=78, changed=8, unreachable=0, failed=0`
+   - 対象ホスト: raspberrypi4 (1台)
+   - 失敗ホスト: なし
+   - 到達不能ホスト: なし
+
+3. **デプロイ後の確認**:
+   - ✅ systemdサービス確認:
+     - `kiosk-browser.service`: `active`
+     - `status-agent.timer`: `active`
+   - ✅ APIヘルスチェック: Pi4からPi5へのAPI接続成功
+     - レスポンス: `{"status":"ok","timestamp":"2026-01-19T04:08:05.943Z",...}`
+   - ✅ kiosk-browserサービス状態: サービス正常起動中 (`active (running)`)
+
+**検証結果**:
+
+**デプロイ安定化機能の動作確認**:
+- ✅ プリフライトチェック: 正常動作（Pi5からPi4への接続確認成功）
+- ✅ リモートロック: 正常動作（並行実行防止）
+- ✅ デプロイ成功: 78タスクすべて成功（changed=8、failed=0）
+
+**Pi4固有の動作確認**:
+- ✅ systemdサービス: 正常起動（kiosk-browser.service、status-agent.timer）
+- ✅ API接続: Pi5への接続成功（HTTPS経由、Caddy経由）
+- ✅ キオスクブラウザ: 正常動作
+
+**標準手順の有効性確認**:
+- ✅ デプロイ前チェックが機能（ネットワークモード確認、プリフライトチェック）
+- ✅ デプロイプロセスが安定（リモートロック、リソースガード）
+- ✅ デプロイ後確認で問題なし（systemdサービス、API接続）
+
+**学んだこと**:
+- **デプロイ安定化機能の有効性**: KB-172で実装したデプロイ安定化機能（プリフライト、ロック、リソースガード）がPi4でも正常に動作することを確認
+- **標準手順の遵守**: デプロイ前チェックとデプロイ後確認を遵守することで、デプロイの成功率が向上
+- **Pi4固有の動作**: Pi4のsystemdサービスとAPI接続が正常に動作することを確認
+- **Pi5とPi4の一貫性**: Pi5と同様に、Pi4でもデプロイが安定して実行できることを確認
+
+**解決状況**: ✅ **検証完了**（2026-01-19）
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（デプロイスクリプト）
+- `infrastructure/ansible/playbooks/update-clients.yml`（デプロイプレイブック）
+- `infrastructure/ansible/tasks/resource-guard.yml`（リソースガードタスク）
+
+**関連ナレッジ**:
+- KB-172: デプロイ安定化機能の実装（プリフライト・ロック・リソースガード・リトライ・タイムアウト）
+- KB-176: Slack通知チャンネル分離のデプロイトラブルシューティング（環境変数反映問題）
+
+**確認コマンド**:
+```bash
+# Pi4へのデプロイ実行（Pi4のみ）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
+
+# デプロイ後の確認
+# systemdサービス確認
+ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "systemctl is-active kiosk-browser.service status-agent.timer"'
+
+# APIヘルスチェック
+ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: client-key-raspberrypi4-kiosk1\" https://100.106.158.2/api/system/health"'
+```
+
+---
+
+### [KB-183] Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装
+
+**EXEC_PLAN.md参照**: feature/pi4-kiosk-maintenance-during-deploy ブランチ（2026-01-19）
+
+**事象**: 
+- Pi4デプロイ時にキオスク画面が操作可能な状態のままで、ユーザーが操作してしまう可能性があった
+- Pi3デプロイ時はGUI（lightdm）を停止して画面を真っ暗にするが、Pi4はキオスクブラウザが動作しているため、デプロイ中も画面が表示され続ける
+- デプロイ中にユーザーが操作すると、デプロイ処理と競合する可能性がある
+
+**要因**: 
+- Pi4のキオスク画面はChromiumブラウザで動作しており、デプロイ中も画面が表示され続ける
+- デプロイ中であることをユーザーに示す仕組みがなかった
+- Pi3とPi4でデプロイ時の画面表示方法が異なる（Pi3: GUI停止、Pi4: ブラウザ動作中）
+
+**試行した対策**: 
+- [試行1] デプロイスクリプトでPi4のキオスクブラウザを停止する方法を検討 → **却下**（デプロイ中にブラウザを停止すると、デプロイ完了後の再起動が必要で、ユーザー体験が悪い）
+- [試行2] APIエンドポイント経由でメンテナンスフラグを管理し、Web UIでメンテナンス画面を表示する方式を採用 → **成功**
+  - `/api/system/deploy-status`エンドポイントを追加
+  - `deploy-status.json`ファイルでフラグを管理（Pi5上に配置）
+  - `KioskLayout.tsx`でメンテナンスフラグをポーリング（5秒間隔）
+  - `KioskMaintenanceScreen.tsx`コンポーネントを作成
+- [試行3] デプロイスクリプトで`--limit raspberrypi4`使用時にのみフラグを設定 → **成功**
+  - `set_pi4_maintenance_flag()`関数を追加
+  - `clear_pi4_maintenance_flag()`関数を追加
+  - `trap`でデプロイ完了/失敗/中断時に必ずフラグをクリア
+- [試行4] ローカルテスト時に`FORCE_KIOSK_MAINTENANCE=true`環境変数で強制表示 → **成功**（開発時の検証用）
+
+**有効だった対策**: 
+- **APIエンドポイント経由のフラグ管理**: `/api/system/deploy-status`エンドポイントでメンテナンス状態を公開
+- **ファイルベースのフラグ管理**: Pi5上の`/opt/RaspberryPiSystem_002/config/deploy-status.json`でフラグを管理
+- **デプロイスクリプトでの自動設定**: `scripts/update-all-clients.sh`で`--limit raspberrypi4`使用時に自動的にフラグを設定・クリア
+- **Web UIでのポーリング**: `useDeployStatus()`フックで5秒間隔でポーリングし、メンテナンス状態を即座に反映
+- **Webコンテナの再ビルド**: 新しいコードを反映するためにWebコンテナを再ビルドする必要があることを確認
+
+**トラブルシューティング**: 
+- **問題**: メンテナンス画面が表示されない
+  - **症状**: Pi4のキオスク画面でメンテナンス画面が表示されない
+  - **原因**: Webコンテナが古いコードでビルドされていた（2時間前に作成されたコンテナが使用されていた）
+  - **解決策**: Pi5のWebコンテナを再ビルド・再起動することで解決
+    ```bash
+    ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml build web && docker compose -f infrastructure/docker/docker-compose.server.yml up -d web"
+    ```
+  - **学んだこと**: デプロイ後は必ずWebコンテナを再ビルドする必要がある。ブラウザのキャッシュをクリアする必要がある場合もある（`Ctrl+Shift+R`でハードリロード）
+
+**学んだこと**: 
+- **デプロイ時の画面表示**: Pi3とPi4で異なるアプローチが必要（Pi3: GUI停止、Pi4: メンテナンス画面表示）
+- **フラグ管理の設計**: ファイルベースのフラグ管理はシンプルで効果的。APIエンドポイント経由で公開することで、Web UIからアクセス可能
+- **デプロイスクリプトの拡張**: `trap`を使用することで、デプロイ完了/失敗/中断時に必ずクリーンアップ処理を実行できる
+- **Webコンテナの再ビルド**: 新しいコードを反映するには、Webコンテナの再ビルドが必要。デプロイ後は必ず再ビルドを確認すること
+- **ブラウザキャッシュ**: ブラウザのキャッシュが原因で新しいコードが反映されない場合がある。ハードリロード（`Ctrl+Shift+R`）で解決できる
+
+**関連ファイル**: 
+- `scripts/update-all-clients.sh`: デプロイスクリプト（メンテナンスフラグの設定・クリア）
+- `apps/api/src/routes/system/deploy-status.ts`: APIエンドポイント（メンテナンス状態の公開）
+- `apps/web/src/layouts/KioskLayout.tsx`: キオスクレイアウト（メンテナンス画面の条件表示）
+- `apps/web/src/components/kiosk/KioskMaintenanceScreen.tsx`: メンテナンス画面コンポーネント
+- `apps/web/src/api/hooks.ts`: `useDeployStatus()`フック（メンテナンス状態のポーリング）
+- `/opt/RaspberryPiSystem_002/config/deploy-status.json`: メンテナンスフラグファイル（Pi5上）
+
+**実装詳細**:
+- **APIエンドポイント**: `GET /api/system/deploy-status` が `kioskMaintenance: boolean` を返す
+- **フラグファイル**: `deploy-status.json` は `{"kioskMaintenance": true, "scope": "raspberrypi4", "startedAt": "2026-01-19T05:25:44Z"}` 形式
+- **ポーリング間隔**: 5秒間隔でポーリング（`refetchInterval: 5000`）
+- **スコープ**: Pi4デプロイ時のみフラグを設定（`--limit raspberrypi4`使用時）
+
+**実機検証完了（2026-01-19）**:
+- ✅ Pi4デプロイ時にメンテナンス画面が表示されることを確認
+- ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認
+- ✅ Webコンテナの再ビルドが必要であることを確認
+- ✅ ブラウザのキャッシュクリアが必要な場合があることを確認
 
 ---
