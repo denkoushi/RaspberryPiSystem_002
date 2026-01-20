@@ -24,6 +24,72 @@
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
 
+## CSVダッシュボード機能（生産スケジュール表示）
+
+CSVダッシュボード機能により、Gmail経由で取得したCSVファイルをキオスク画面で表示できます。生産スケジュールなどの進捗管理に利用できます。
+
+### 機能概要
+
+- **CSVダッシュボード**: Gmail経由で取得したCSVファイルをデータベースに保存し、キオスク画面で表示
+- **完了ボタン**: キオスク画面で完了ボタン（赤いボタン）を押すと、`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
+- **グレーアウト表示**: 完了済みアイテム（`progress='完了'`）を`opacity-50 grayscale`で視覚的にグレーアウト
+- **トグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+
+### 設定手順
+
+1. **CSVダッシュボードの作成**: 管理コンソール（`/admin/csv-dashboards`）でCSVダッシュボードを作成
+   - **名前**: ダッシュボード名（例: `ProductionSchedule_Mishima_Grinding`）
+   - **Gmail件名パターン**: Gmailの件名パターン（例: `生産日程_三島_研削工程`）
+   - **日付列**: CSVの日付列名（例: `date`）
+   - **取り込みモード**: 「機械的追加（重複無視）」または「重複除去」
+   - **表示期間**: 表示する期間（日数）
+   - **テンプレート**: 「テーブル形式」または「カードグリッド形式」
+
+2. **CSVファイルのアップロード**: 管理コンソールからCSVファイルをアップロード、またはGmail経由で自動取得
+
+3. **キオスク画面での表示**: キオスク画面（`/kiosk/production-schedule`）でデータを確認
+
+### Gmailスケジュール取り込み（csvDashboards）
+
+CSVダッシュボードのGmail取り込みは、CSVインポートスケジュールの`targets`に`csvDashboards`を追加して実行します。
+
+**ポイント**:
+- `target.source`は**CSVダッシュボードID**を指定する（件名パターンはダッシュボード設定を使用）
+- Gmail件名は`CsvDashboard.gmailSubjectPattern`から取得するため、スケジュール側で件名を設定する必要はない
+- デフォルト設定には`MeasuringInstrumentLoans`向けの無効スケジュールが含まれている（有効化は運用で実施）
+
+**設定例**（管理コンソール / CSVインポート）:
+1. **プロバイダー**: `gmail`
+2. **ターゲット**: `CSVダッシュボード`
+3. **CSVダッシュボード**: `MeasuringInstrumentLoans`
+4. **スケジュール**: 例）`0 * * * *`（毎時）
+
+### APIエンドポイント
+
+**キオスク用エンドポイント**:
+- `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得（すべての行を返す、完了済みも含む）
+- `PUT /api/kiosk/production-schedule/:rowId/complete`: 完了状態をトグル（完了→未完了、未完了→完了）
+
+**認証**: `x-client-key`ヘッダーが必要（キオスク用認証キー）
+
+### CSVフォーマット例
+
+```csv
+FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
+製品コード1,製番1,0001,資源コード1,品名1,所要時間1,工順1
+製品コード2,製番2,0002,資源コード2,品名2,所要時間2,工順2
+```
+
+### 実機検証
+
+実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)を参照してください。
+
+### 関連ドキュメント
+
+- [CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)
+- [KB-184: 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能)
+- [KB-185: CSVダッシュボードのgmailSubjectPattern設定UI改善](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善)
+
 ## USBメモリ経由のCSVインポート
 
 管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具の4種類に対応しています。

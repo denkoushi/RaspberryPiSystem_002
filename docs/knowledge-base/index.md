@@ -73,6 +73,8 @@ update-frequency: high
 | [KB-133](./api.md#kb-133-fastifywebsocketのconnectionsocketがundefinedになる問題) | @fastify/websocketのconnection.socketがundefinedになる問題 | ✅ 解決済み |
 | [KB-134](./api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策) | WebSocket接続の5分タイムアウト問題とkeepalive対策 | ✅ 解決済み |
 | [KB-135](./api.md#kb-135-キオスク通話候補取得用apiエンドポイント追加) | キオスク通話候補取得用APIエンドポイント追加 | ✅ 解決済み |
+| [KB-185](./api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) | CSVダッシュボードのgmailSubjectPattern設定UI改善 | ✅ 解決済み |
+| [KB-186](./api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) | CsvImportSubjectPatternモデル追加による設計統一（マスターデータインポートの件名パターンDB化） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -124,6 +126,7 @@ update-frequency: high
 | [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 | [KB-149](./frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) | バックアップ履歴ページに用途列を追加（UI改善） | ✅ 解決済み |
 | [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
+| [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -265,7 +268,7 @@ update-frequency: high
 | ✅ 実装完了 | 1件 |
 | ✅ 検証完了 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **120件** |
+| **合計** | **123件** |
 
 ---
 
@@ -345,3 +348,4 @@ update-frequency: high
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）
+- 2026-01-XX: KB-184、KB-185、KB-186を追加（生産スケジュールキオスクページ実装、CSVダッシュボードのgmailSubjectPattern設定UI改善、CsvImportSubjectPatternモデル追加による設計統一）

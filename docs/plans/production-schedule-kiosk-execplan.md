@@ -1,0 +1,252 @@
+# 生産スケジュールキオスクページ実装 ExecPlan
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
+
+This document must be maintained in accordance with `.agent/PLANS.md`.
+
+## Purpose / Big Picture
+
+PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したCSVファイル（件名: `生産日程_三島_研削工程`）をキオスク画面で表示し、完了ボタン（赤いボタン）で`progress`フィールドを更新する機能を実装します。
+
+実装完了後、ユーザーはキオスク画面（`/kiosk/production-schedule`）で生産スケジュールを確認し、完了した部品にチェックを入れることができます。完了済みアイテムはグレーアウト表示され、誤操作時はトグルで未完了に戻せます。
+
+## Context
+
+### 関連ドキュメント
+
+- `docs/knowledge-base/frontend.md#kb-184`: 生産スケジュールキオスクページ実装のトラブルシューティング
+- `docs/knowledge-base/api.md#kb-185`: CSVダッシュボードのgmailSubjectPattern設定UI改善
+- `docs/knowledge-base/api.md#kb-186`: CsvImportSubjectPatternモデル追加による設計統一
+- `docs/guides/csv-import-export.md`: CSVインポート・エクスポート仕様
+- `docs/guides/csv-dashboard-verification.md`: CSVダッシュボード可視化機能の実機検証手順
+
+### 既存実装
+
+- `apps/api/src/services/csv-dashboard/`: CSVダッシュボードの取り込み・管理機能
+- `apps/api/src/services/imports/csv-import-scheduler.ts`: CSVインポートスケジューラー
+- `apps/api/src/routes/kiosk.ts`: キオスク用APIエンドポイント
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: キオスク生産スケジュールページ
+
+### 用語定義
+
+- **CSVダッシュボード**: Gmail経由で取得したCSVファイルをデータベースに保存し、キオスクやサイネージで表示する機能
+- **ProductionSchedule_Mishima_Grinding**: 生産日程（研削工程）用のCSVダッシュボード（ID: `3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01`）
+- **MeasuringInstrumentLoans**: 計測機器の持出状況用のCSVダッシュボード（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`）
+- **gmailSubjectPattern**: CSVダッシュボードごとに設定するGmail件名パターン（例: `生産日程_三島_研削工程`）
+- **CsvImportSubjectPattern**: マスターデータインポート用のGmail件名パターンをDBで管理するモデル
+
+## Scope
+
+### 実装順序（本スレッドで合意）
+
+1. **生産スケジュールの実機検証**: CSVファイルをDBに入れて検証
+2. **UI改善**: `gmailSubjectPattern`設定フィールドを管理コンソールのCSVダッシュボードページに追加
+3. **サイネージ用データ取得の構築**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示
+4. **設計統一**: `csvImportSubjectPatterns`を`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行
+
+### 詳細ToDo（内部実装タスク）
+
+- [x] 作業ブランチ作成（`feat/production-schedule-kiosk`）
+- [x] DBスキーマ: `CsvDashboard`に`gmailSubjectPattern`追加＋マイグレーション
+- [x] CSV取り込み: `CsvImportScheduler`のcsvDashboards件名解決を`dashboard.gmailSubjectPattern`参照に修正
+- [x] 差分検出: `CsvDashboardIngestor`のDEDUPをIN検索＋差分update＋progress完了維持に改善
+- [x] Seed: 生産日程用`CsvDashboard`をupsert作成（列定義/キー/件名/日付列）
+- [x] API: キオスク用生産日程API（list + complete）を追加
+- [x] Web: `KioskLayout`へナビ追加＋`ProductionSchedulePage`実装（カード/完了ボタン/検索履歴）
+- [x] テスト: API統合テスト追加（kiosk production schedule）
+- [x] ローカルテスト実行手順とCI確認（push/PRでActions起動）
+- [x] UI改善: `CsvDashboardsPage`に`gmailSubjectPattern`設定フィールド追加
+- [x] 設計統一（モデル追加のみ）: `CsvImportSubjectPattern`モデル追加＋seedデータ投入
+- [x] 設計統一（スケジューラー統合）: `CsvImportScheduler`でマスターデータインポート時にDBから件名パターンを取得するように修正（`CsvImportSubjectPattern` → Gmail候補件名パターンとして利用、`target.source`はフォールバック）
+
+### アーキテクチャ改善ToDo（CSV取得の疎結合・モジュール化・スケーラビリティ）
+
+**目的**: CSV取得（Gmail/Dropbox/Localなど）をスケジューラーから分離し、依存方向を「安定→不安定」に揃える。新しい取得元（例: S3）追加やエラーハンドリング改善を“局所変更”に閉じ込める。
+
+- [x] **境界（インターフェース）の導入**: `CsvImportScheduler` が直接 `StorageProvider` / Gmail例外 / Prisma に依存しないよう、`CsvImportExecutionService` と `CsvImportSourceService` を導入
+- [x] **Gmail件名パターン解決の分離**: DBの `CsvImportSubjectPattern`（優先度付き） + `target.source`（後方互換フォールバック）を候補生成として `CsvImportSourceService` に分離（`CsvImportSubjectPatternProvider` を導入）
+- [x] **取得元アダプタ化**: Gmail専用の `NoMatchingMessageError` は `CsvImportSourceService` / `CsvDashboardSourceService` 内で吸収し、schedulerは取得元非依存に
+- [x] **スケーラビリティ**: 1回のスケジュール実行で同一 `importType` の候補パターンをキャッシュし、DB往復・ログ量を抑制（挙動は不変）
+- [x] **テスト**: 取得元と候補解決はユニットで検証し、schedulerのテストはDI前提で薄く保つ
+
+## Progress
+
+- [x] (2026-01-XX) **実装順序1: 生産スケジュールの実機検証完了**: CSVファイル（`標準工数_機械工数 (4).csv`）をDBに取り込み、キオスク画面（`/kiosk/production-schedule`）で表示確認。完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。実機検証で発見された問題（seed.tsの`enabled: true`不足、prisma db seed失敗、CIテスト失敗）をすべて解決。詳細は [KB-184](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) を参照。
+
+- [x] (2026-01-XX) **実装順序2: UI改善完了**: CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソール（`/admin/csv-dashboards`）に追加。`CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加し、APIスキーマと型定義を更新。実機検証で設定が正しく保存・使用されることを確認。詳細は [KB-185](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) を参照。
+
+- [x] (2026-01-XX) **実装順序3: サイネージ用データ取得の構築**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示するための導線を整備。`seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。既定のCSVインポートスケジュール（無効）を用意し、管理コンソールで有効化できる状態に整備。サイネージスケジュール側の手順をドキュメント化。
+
+- [x] (2026-01-XX) **実装順序4: 設計統一（完了・互換性維持中）**: マスターデータインポートのGmail件名パターンを`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行する設計変更。
+  - ✅ **完了済み**: Prismaスキーマに`CsvImportSubjectPattern`モデル追加（`schema.prisma:578-591`）、`seed.ts`にデフォルトデータ投入
+  - ✅ **完了済み**: `CsvImportScheduler`がDB（`CsvImportSubjectPattern`）から件名パターンを取得し、候補を順に試行する（`target.source`はフォールバックとして候補に追加）
+  - ⏳ **互換性維持中**: `backup-config.ts`の`csvImportSubjectPatterns`（旧設定）は後方互換のため残置（deprecate→移行→削除の段階的移行で安全に進める）
+  - 詳細は [KB-186](../knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) を参照
+
+## Surprises & Discoveries
+
+### 本番環境での`prisma db seed`失敗
+
+**発見**: Raspberry Piの本番環境で`prisma db seed`が失敗。`tsx`がdev依存のため、`NODE_ENV=production`ではインストールされていない。
+
+**対策**: 直接SQLで`INSERT ... ON CONFLICT DO UPDATE`を実行してシードデータを投入。将来的には、本番環境でも`tsx`を使用可能にするか、シードスクリプトをJavaScriptに変換する必要がある。
+
+**関連ファイル**: `apps/api/prisma/seed.ts`
+
+### 完了ボタンの仕様変更
+
+**発見**: 当初は完了済みアイテムを一覧から除外する仕様だったが、グレーアウト表示により一覧に残す仕様に変更。
+
+**理由**: 完了済みアイテムも確認できるようにし、誤操作時の復元（トグル）を可能にするため。
+
+**実装**: `GET /api/kiosk/production-schedule`はすべての行を返すように変更し、フロントエンドで`progress='完了'`のアイテムを`opacity-50 grayscale`でグレーアウト表示。
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+### 管理UI導線の誤解
+
+**発見**: 「サイネージの中にCSVダッシュボードはない」という指摘を受け、管理コンソールのナビゲーション構造を確認。
+
+**原因**: CSVダッシュボードは「サイネージ」タブではなく、独立した「CSVダッシュボード」タブからアクセスする必要がある。
+
+**対策**: 実機検証手順を明確化し、管理コンソールのナビゲーション構造をドキュメント化。
+
+**関連ファイル**: `apps/web/src/layouts/AdminLayout.tsx`
+
+### `seed.ts`の`enabled: true`不足
+
+**発見**: `ProductionSchedule_Mishima_Grinding`の`upsert`で`update`ブロックに`enabled: true`がなく、既存レコードが無効化される可能性があった。
+
+**対策**: `update`ブロックに`enabled: true`を追加して修正。
+
+**関連ファイル**: `apps/api/prisma/seed.ts`
+
+## Decision Log
+
+### progressの優先順位（DB操作を優先して完了維持）
+
+**決定**: キオスクで完了にしたら**DB側を優先して完了維持**（次回CSVが空欄でも戻さない）。PowerApps側反映は**将来対応**。
+
+**理由**: キオスクでの操作を優先し、誤操作時の復元を可能にするため。PowerApps側への反映は将来的に実装する。
+
+**実装**: `CsvDashboardIngestor`のDEDUPモードで、既存行の`rowData.progress`が`完了`の場合は維持するロジックを追加。
+
+**関連ファイル**: `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`
+
+### 完了の表現（一覧除外ではなくグレーアウト）
+
+**決定**: 完了済みアイテムを一覧から除外せず、グレーアウト表示で視覚的に識別可能にする。
+
+**理由**: 完了済みアイテムも確認できるようにし、誤操作時の復元（トグル）を可能にするため。
+
+**実装**: `GET /api/kiosk/production-schedule`はすべての行を返すように変更し、フロントエンドで`progress='完了'`のアイテムを`opacity-50 grayscale`でグレーアウト表示。
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+### CSVダッシュボードのgmailSubjectPattern設定方式
+
+**決定**: CSVダッシュボードごとに`gmailSubjectPattern`を設定できるようにし、`CsvDashboard`モデルに`gmailSubjectPattern`フィールドを追加。
+
+**理由**: CSVダッシュボードごとに異なる件名パターンが必要なため。管理コンソールから設定可能にすることで、運用時の柔軟性を確保。
+
+**実装**: `apps/api/prisma/schema.prisma`に`gmailSubjectPattern String?`を追加し、`CsvDashboardsPage.tsx`に設定UIを追加。
+
+**関連ファイル**: `apps/api/prisma/schema.prisma`, `apps/web/src/pages/admin/CsvDashboardsPage.tsx`
+
+### マスターデータインポートの件名パターン管理方式
+
+**決定**: マスターデータインポートのGmail件名パターンを`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行。
+
+**理由**: CSVダッシュボードの`gmailSubjectPattern`はDBに保存されているため、設計を統一するため。DB化により、管理コンソールからの編集が容易になる。
+
+**実装状況**:
+- ✅ `apps/api/prisma/schema.prisma`に`CsvImportSubjectPattern`モデルを追加済み
+- ✅ `apps/api/prisma/seed.ts`にデフォルトデータを投入済み
+- ✅ `CsvImportScheduler`はDBから件名パターンを取得し、候補を順に試行（`target.source`はフォールバック）
+- ✅ `CsvImportSourceService` + `CsvImportSubjectPatternProvider` で候補生成と取得を分離（schedulerから詳細を排除）
+
+**関連ファイル**: `apps/api/prisma/schema.prisma`, `apps/api/prisma/seed.ts`, `apps/api/src/services/imports/csv-import-scheduler.ts`
+
+## Next Steps
+
+### 実装順序3: サイネージ用データ取得の構築（完了・実機検証待ち）
+
+**目的**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示する機能を構築する。
+
+**現状**: `seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。CSVインポートスケジュールは無効状態で作成済みのため、運用で有効化して実機検証を実施する。
+
+**実施手順**:
+
+1. **CSVインポートスケジュールの有効化**
+   - 管理コンソール（`/admin/imports/schedules`）でCSVインポートスケジュールを作成または編集
+   - **ターゲット**: 「CSVダッシュボード」を選択
+   - **CSVダッシュボード**: `MeasuringInstrumentLoans`を選択
+   - **Gmail件名パターン**: ダッシュボード設定（`gmailSubjectPattern`）を使用するため、スケジュール側の追加設定は不要
+   - **スケジュール**: 適切なcron形式を設定（例: 毎時0分に実行）
+
+2. **サイネージスケジュールの設定**
+   - 管理コンソール（`/admin/signage/schedules`）でサイネージスケジュールを作成または編集
+   - **レイアウト**: 「全体表示（FULL）」または「左右分割表示（SPLIT）」を選択
+   - **コンテンツ種別**: 「CSVダッシュボード」を選択
+   - **CSVダッシュボード**: `MeasuringInstrumentLoans`を選択
+   - **表示期間**: 適切な日数を設定（デフォルト: 7日）
+
+3. **Gmail経由のCSV取得テスト**
+   - PowerAutomateからGmailに計測機器の持出状況CSVを送信（件名: `計測機器持出状況`）
+   - CSVインポートスケジュールを手動実行（またはスケジュール実行を待つ）
+   - データが`CsvDashboardRow`テーブルに取り込まれることを確認
+
+4. **サイネージ表示の確認**
+   - サイネージ画面（Pi3）でCSVダッシュボードが表示されることを確認
+   - または、`/api/signage/content`でレスポンスを確認（`csvDashboardsById`にデータが含まれることを確認）
+
+**関連ファイル**:
+- `apps/api/prisma/seed.ts`（`MeasuringInstrumentLoans` CSVダッシュボード設定）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（CSVインポートスケジューラー）
+- `apps/api/src/services/signage/signage.service.ts`（サイネージサービス）
+
+**参考ドキュメント**:
+- [CSVダッシュボード可視化機能の実機検証手順](../guides/csv-dashboard-verification.md)
+- [KB-155: CSVダッシュボード可視化機能実装完了](../knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了)
+
+### 実装順序4: 設計統一（互換性維持のみ）
+
+**目的**: マスターデータインポート（employees, items, measuringInstruments, riggingGears）の件名パターン取得を`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行する。
+
+**現状**:
+- ✅ `CsvImportSubjectPattern`モデルは`schema.prisma:578-591`に追加済み
+- ✅ `seed.ts`にデフォルトデータ投入済み
+- ✅ `CsvImportScheduler`はマスターデータインポート時にDBから件名パターンを取得し、候補を順に試行（`target.source`はフォールバック）
+
+**実施手順**:
+
+1. **互換性維持**
+   - `csvImportSubjectPatterns`（旧設定）はdeprecate状態で残置
+   - 既存運用の影響を避けるため、削除時期は段階的に判断
+
+**関連ファイル**:
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（修正対象）
+- `apps/api/src/services/backup/backup-config.ts`（整理対象）
+- `apps/api/prisma/schema.prisma`（モデル定義）
+
+## Outcomes & Retrospective
+
+### 完了したタスクの成果
+
+- ✅ **生産スケジュールキオスクページ**: PowerAppsのUIを参考に実装し、完了ボタンによる進捗管理が可能になった
+- ✅ **gmailSubjectPattern設定UI**: 管理コンソールからCSVダッシュボードごとに件名パターンを設定できるようになった
+- ✅ **設計統一（DB化＋スケジューラー統合）**: `CsvImportSubjectPattern`のDB化とスケジューラー統合を完了し、後方互換は維持
+
+### 学んだこと
+
+1. **完了状態の視覚的表現**: グレーアウト（`opacity-50 grayscale`）により、完了済みアイテムを一目で識別可能
+2. **トグル機能の実装**: 完了→未完了のトグルにより、誤操作時の復元が可能
+3. **本番環境でのseed実行**: `tsx`がdev依存のため、本番環境では直接SQLで実行する必要がある場合がある
+4. **モデル追加と実装統合の分離**: DBモデル追加だけでは不十分で、実装統合まで確認が必要。統合後に進捗記載を更新する運用が有効
+
+### 今後の改善点
+
+- 実装順序3（サイネージ用データ取得）の実機検証を完了する
+- `csvImportSubjectPatterns`の削除判断（互換性を見ながら段階的に移行）
+- PowerApps側へのprogress反映機能を将来的に実装する
+- 本番環境での`prisma db seed`実行方法を改善する（`tsx`の代替手段を検討）

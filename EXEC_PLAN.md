@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-XX) **生産スケジュールキオスクページ実装・実機検証完了**: PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装。CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示し、完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に。完了ボタンのグレーアウト・トグル機能を実装し、完了済みアイテムを`opacity-50 grayscale`で視覚的にグレーアウト。完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル。チェックマーク位置調整（`pr-11`でパディング追加）と`FSEIBAN`の下3桁表示を実装。CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソールに追加。`CsvImportSubjectPattern`モデルを追加し、マスターデータインポートの件名パターンをDB化（設計統一）。実機検証でCSVダッシュボードのデータがキオスク画面に表示され、完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。CI成功、デプロイ成功。ナレッジベースにKB-184、KB-185、KB-186を追加。詳細は [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) / [docs/knowledge-base/frontend.md#kb-184](./docs/knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [docs/knowledge-base/api.md#kb-185](./docs/knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) / [docs/knowledge-base/api.md#kb-186](./docs/knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
+
 - [x] (2026-01-19) **セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。評価計画書を作成し、机上評価・コードレビュー・実機検証（Pi5へのTailscale経由アクセス）を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイル（`request-logger.ts`、`kiosk.ts`、`tools/loans/cancel.ts`、`tools/loans/return.ts`、`webrtc/signaling.ts`、`tools/loans/delete.ts`）を修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功（lint-and-test、e2e-smoke、e2e-tests、docker-build）、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [docs/security/evaluation-report.md](./docs/security/evaluation-report.md) / [docs/security/log-redaction-implementation.md](./docs/security/log-redaction-implementation.md) / [docs/security/urgent-security-measures.md](./docs/security/urgent-security-measures.md) / [docs/knowledge-base/infrastructure/security.md#kb-178](./docs/knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [docs/presentations/security-measures-presentation.md](./docs/presentations/security-measures-presentation.md) を参照。
 
 - [x] (2026-01-18) **デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
@@ -1249,6 +1251,22 @@
    - アラートの重要度分類と通知先の最適化（Slackチャンネル分離の活用）
 
 **優先度**: 中（運用上の課題や要望を収集してから実施）
+
+### 生産スケジュールキオスクページ実装（実装順序3: サイネージ用データ取得）
+
+**目的**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示する機能を構築する。
+
+**現状**: `seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。次に、CSVインポートスケジュールに`csvDashboards`ターゲットを追加し、サイネージスケジュールでCSVダッシュボードを選択して表示確認する必要がある。
+
+**実施手順**:
+1. CSVインポートスケジュールの設定（管理コンソール `/admin/imports/schedules`）
+2. サイネージスケジュールの設定（管理コンソール `/admin/signage/schedules`）
+3. Gmail経由のCSV取得テスト
+4. サイネージ表示の確認
+
+**詳細**: [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md#next-steps) の「実装順序3: サイネージ用データ取得の構築」セクションを参照。
+
+**優先度**: 中（実装順序1,2,4は完了済み。実装順序3のみ未完了）
 
 ---
 

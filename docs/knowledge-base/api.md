@@ -1249,6 +1249,126 @@ if (data.type === 'ping') {
 
 ---
 
+### [KB-185] CSVダッシュボードのgmailSubjectPattern設定UI改善
+
+**実装日時**: 2026-01-XX
+
+**事象**: 
+- CSVダッシュボードのGmail件名パターン（`gmailSubjectPattern`）を管理コンソールから設定できない
+- CSVインポートスケジュールでCSVダッシュボードを選択する際、Gmail件名パターンを個別に設定する必要がある
+
+**要因**: 
+- `CsvDashboard`モデルに`gmailSubjectPattern`フィールドは追加されていたが、管理コンソールUIに設定フィールドがなかった
+- `CsvDashboardsPage.tsx`に`gmailSubjectPattern`の入力フィールドが実装されていなかった
+
+**実施した対策**: 
+- ✅ **管理コンソールUIに設定フィールド追加**: `CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加
+- ✅ **APIスキーマ更新**: `csvDashboardCreateSchema`と`csvDashboardUpdateSchema`に`gmailSubjectPattern`を追加
+- ✅ **型定義更新**: `CsvDashboardCreateInput`と`CsvDashboardUpdateInput`に`gmailSubjectPattern`を追加
+- ✅ **CSVインポートスケジューラー修正**: `CsvImportScheduler`でCSVダッシュボードの`gmailSubjectPattern`を取得するように修正
+- ✅ **取り込み責務の集約**: CSVダッシュボードの取得・取り込みは`CsvDashboardImportService`に集約し、スケジューラーの責務を薄く維持
+
+**実装の詳細**:
+1. **管理コンソールUI**: `apps/web/src/pages/admin/CsvDashboardsPage.tsx`を修正
+   - `gmailSubjectPattern`状態変数を追加
+   - 「Gmail件名パターン」入力フィールドを追加
+   - `updateCsvDashboard`のペイロードに`gmailSubjectPattern`を含める
+2. **APIスキーマ**: `apps/api/src/routes/csv-dashboards/schemas.ts`を修正
+   - `csvDashboardCreateSchema`と`csvDashboardUpdateSchema`に`gmailSubjectPattern: z.string().optional().nullable()`を追加
+3. **型定義**: `apps/api/src/services/csv-dashboard/csv-dashboard.types.ts`を修正
+   - `CsvDashboardCreateInput`と`CsvDashboardUpdateInput`に`gmailSubjectPattern?: string | null;`を追加
+4. **CSVインポートスケジューラー**: `apps/api/src/services/imports/csv-import-scheduler.ts`を修正
+   - CSVダッシュボードの`gmailSubjectPattern`を`dashboard.gmailSubjectPattern`から取得
+5. **CSVダッシュボード取り込み**: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`に取得〜保存〜取り込みを集約
+
+**学んだこと**:
+1. **設定の一元管理**: CSVダッシュボードごとにGmail件名パターンを設定することで、スケジュール設定を簡素化
+2. **UIとAPIの整合性**: フロントエンドの型定義（`client.ts`）とバックエンドの型定義（`csv-dashboard.types.ts`）を同期する必要がある
+3. **スキーマバリデーション**: Zodスキーマで`optional().nullable()`を使用することで、`null`と`undefined`の両方に対応可能
+4. **責務の分離**: CSVダッシュボード取り込みは専用サービスに集約し、スケジューラーの責務を薄く保つ
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-XX）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-XX）
+- 管理コンソールでCSVダッシュボードの「Gmail件名パターン」を設定できることを確認
+- 設定した`gmailSubjectPattern`がCSVインポートスケジューラーで使用されることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`（UI修正）
+- `apps/api/src/routes/csv-dashboards/schemas.ts`（スキーマ更新）
+- `apps/api/src/services/csv-dashboard/csv-dashboard.types.ts`（型定義更新）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（スケジューラー修正）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`（取り込み集約）
+- `apps/web/src/api/client.ts`（型定義更新）
+
+---
+
+### [KB-186] CsvImportSubjectPatternモデル追加による設計統一（マスターデータインポートの件名パターンDB化）
+
+**作成日時**: 2026-01-XX
+
+**事象**: 
+- マスターデータ（従業員・工具・計測機器・吊具）のGmail件名パターンが`backup.json`に保存されており、DBと設定ファイルの二重管理になっている
+- CSVダッシュボードの`gmailSubjectPattern`はDBに保存されているが、マスターデータの件名パターンは`backup.json`に保存されている
+
+**要因**: 
+- マスターデータのGmail件名パターンが`backup.json`の`csvImportSubjectPatterns`に保存されていた
+- CSVダッシュボードの`gmailSubjectPattern`はDBに保存されているため、設計が統一されていない
+
+**実施した対策（完了）**: 
+- ✅ **CsvImportSubjectPatternモデル追加**: Prismaスキーマに`CsvImportSubjectPattern`モデルを追加（`schema.prisma:578-591`）
+- ✅ **seed.tsにデフォルトデータ追加**: `backup.json`からDBへ移行するためのデフォルトデータを`seed.ts`に追加
+- ✅ **件名候補の分離**: `CsvImportSourceService` + `CsvImportSubjectPatternProvider` を導入し、件名候補生成を専用サービスへ分離
+- ✅ **スケジューラー統合**: `CsvImportExecutionService` 経由でDBパターンを解決し、`target.source`はフォールバックとして追加
+- ✅ **キャッシュでスケール対応**: 1回の実行内で`importType`単位に候補パターンをキャッシュしてDB往復を削減
+- ✅ **取得元の詳細隔離**: Gmail特有のエラー処理は`CsvImportSourceService`内に閉じ込め、スケジューラーは取得元非依存に
+
+**実装の詳細**:
+1. **Prismaスキーマ**: `apps/api/prisma/schema.prisma`に`CsvImportSubjectPattern`モデルを追加
+   ```prisma
+   model CsvImportSubjectPattern {
+     id          String   @id @default(uuid())
+     importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears）
+     pattern     String   // Gmail件名パターン
+     priority    Int      @default(0) // 優先順位（数値が小さいほど優先）
+     enabled     Boolean  @default(true)
+     createdAt   DateTime @default(now())
+     updatedAt   DateTime @updatedAt
+
+     @@unique([importType, pattern])
+     @@index([importType])
+     @@index([importType, enabled])
+     @@index([priority])
+   }
+   ```
+2. **seed.ts更新**: `apps/api/prisma/seed.ts`にデフォルトデータを追加
+   - `backup.json`の`csvImportSubjectPatterns`からDBへ移行するためのデフォルトデータ
+3. **取得サービスの導入**: `apps/api/src/services/imports/csv-import-source.service.ts`
+   - DBの候補 + 旧`target.source`を候補に統合し、順に取得
+4. **スケジューラー統合**: `apps/api/src/services/imports/csv-import-execution.service.ts`
+   - `CsvImportSourceService`を使用して取得、`CsvImportScheduler`は薄いオーケストレーターへ
+5. **互換性維持**: `backup-config.ts`の`csvImportSubjectPatterns`はdeprecateとして残置
+
+**トラブルシューティング**:
+- **Gmailで一致しない**: `CsvImportSubjectPattern`が`enabled: true`で登録されているか、件名が候補と一致しているかを確認
+- **旧設定の影響**: `target.source`はフォールバックとして候補に追加されるため、意図しない一致があればスケジュールの`target.source`を見直す
+- **候補が空になる**: DB側の`CsvImportSubjectPattern`が空の場合でも、`target.source`が空文字だと候補が生成されない
+
+**解決状況**: ✅ **実装完了（DB化・スケジューラー統合・互換性維持）**
+
+**関連ファイル**:
+- ✅ `apps/api/prisma/schema.prisma`（`CsvImportSubjectPattern`モデル追加済み）
+- ✅ `apps/api/prisma/seed.ts`（デフォルトデータ追加済み）
+- ✅ `apps/api/src/services/imports/csv-import-source.service.ts`（候補生成と取得の分離）
+- ✅ `apps/api/src/services/imports/csv-import-subject-pattern.provider.ts`（DBアクセス抽象化）
+- ✅ `apps/api/src/services/imports/csv-import-execution.service.ts`（スケジューラー統合）
+- ✅ `apps/api/src/services/imports/csv-import-scheduler.ts`（オーケストレーター化）
+- ✅ `apps/api/src/services/backup/backup-config.ts`（`csvImportSubjectPatterns`は互換性のため残置）
+
+**参照**: `docs/plans/production-schedule-kiosk-execplan.md`の「実装順序4: 設計統一（残タスク）」を参照
+
+---
+
 ### [KB-135] キオスク通話候補取得用APIエンドポイント追加
 
 **EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）
