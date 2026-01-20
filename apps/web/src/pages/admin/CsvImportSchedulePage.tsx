@@ -509,12 +509,16 @@ export function CsvImportSchedulePage() {
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
                 ID *
+                {formData.targets?.some(t => t.type === 'csvDashboards' && t.source) && (
+                  <span className="ml-2 text-xs text-slate-500">（CSVダッシュボード選択時に自動生成）</span>
+                )}
               </label>
               <input
                 type="text"
                 className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
-                value={formData.id}
+                value={formData.id || ''}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                placeholder={formData.targets?.some(t => t.type === 'csvDashboards' && t.source) ? 'CSVダッシュボード選択時に自動生成されます' : '例: csv-import-measuring-instrument-loans'}
               />
             </div>
             <div>
@@ -573,9 +577,25 @@ export function CsvImportSchedulePage() {
                         value={target.source}
                         onChange={(e) => {
                           const newTargets = [...(formData.targets || [])];
-                          newTargets[index] = { ...target, source: e.target.value };
-                          setFormData({ ...formData, targets: newTargets });
+                          const selectedDashboardId = e.target.value;
+                          newTargets[index] = { ...target, source: selectedDashboardId };
+                          
+                          // ダッシュボード選択時にスケジュールIDと名前を自動設定
+                          const selectedDashboard = (csvDashboardsData || []).find(d => d.id === selectedDashboardId);
+                          if (selectedDashboard && !formData.id) {
+                            // IDが未設定の場合のみ自動生成（編集時は上書きしない）
+                            const autoId = `csv-import-${selectedDashboard.name.toLowerCase().replace(/\s+/g, '-')}`;
+                            setFormData({
+                              ...formData,
+                              id: autoId,
+                              name: selectedDashboard.name ? `${selectedDashboard.name} (csvDashboards)` : undefined,
+                              targets: newTargets
+                            });
+                          } else {
+                            setFormData({ ...formData, targets: newTargets });
+                          }
                         }}
+                        required
                       >
                         <option value="">CSVダッシュボードを選択してください</option>
                         {(csvDashboardsData || []).map((dashboard) => (
@@ -906,9 +926,25 @@ export function CsvImportSchedulePage() {
                                   value={target.source}
                                   onChange={(e) => {
                                     const newTargets = [...(formData.targets || [])];
-                                    newTargets[index] = { ...target, source: e.target.value };
-                                    setFormData({ ...formData, targets: newTargets });
+                                    const selectedDashboardId = e.target.value;
+                                    newTargets[index] = { ...target, source: selectedDashboardId };
+                                    
+                                    // ダッシュボード選択時にスケジュールIDと名前を自動設定（編集時はIDを変更しない）
+                                    const selectedDashboard = (csvDashboardsData || []).find(d => d.id === selectedDashboardId);
+                                    if (selectedDashboard && !editingId && !formData.id) {
+                                      // 新規作成時のみIDを自動生成
+                                      const autoId = `csv-import-${selectedDashboard.name.toLowerCase().replace(/\s+/g, '-')}`;
+                                      setFormData({
+                                        ...formData,
+                                        id: autoId,
+                                        name: selectedDashboard.name ? `${selectedDashboard.name} (csvDashboards)` : formData.name,
+                                        targets: newTargets
+                                      });
+                                    } else {
+                                      setFormData({ ...formData, targets: newTargets });
+                                    }
                                   }}
+                                  required
                                 >
                                   <option value="">CSVダッシュボードを選択してください</option>
                                   {(csvDashboardsData || []).map((dashboard) => (
