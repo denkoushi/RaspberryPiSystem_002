@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger.js';
 import { CsvDashboardIngestor } from './csv-dashboard-ingestor.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
+import { NoMatchingMessageError } from '../backup/storage/gmail-storage.provider.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -54,12 +55,25 @@ export class CsvDashboardImportService {
         '[CsvDashboardImportService] Processing CSV dashboard ingestion'
       );
 
-      const { buffer, messageId, messageSubject } = await this.sourceService.downloadCsv({
-        provider,
-        storageProvider,
-        gmailSubjectPattern,
-      });
+      let bufferResult: { buffer: Buffer; messageId?: string; messageSubject?: string } | null = null;
+      try {
+        bufferResult = await this.sourceService.downloadCsv({
+          provider,
+          storageProvider,
+          gmailSubjectPattern,
+        });
+      } catch (error) {
+        if (error instanceof NoMatchingMessageError) {
+          logger?.info(
+            { dashboardId, gmailSubjectPattern, provider },
+            '[CsvDashboardImportService] No matching Gmail message, skipping'
+          );
+          continue;
+        }
+        throw error;
+      }
 
+      const { buffer, messageId, messageSubject } = bufferResult;
       const csvContent = buffer.toString('utf-8');
 
       // CSVファイルを原本として保存
