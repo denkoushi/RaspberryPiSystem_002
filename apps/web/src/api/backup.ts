@@ -43,8 +43,8 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
-  source: string; // Dropbox用: パス、Gmail用: 件名パターン
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards';
+  source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
 export type CsvImportSubjectPatternType =
