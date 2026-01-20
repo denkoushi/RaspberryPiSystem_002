@@ -57,7 +57,8 @@ export class CsvImportExecutionService {
         save: BackupConfigLoader.save,
       },
       storageProviderFactory: {
-        createFromConfig: StorageProviderFactory.createFromConfig,
+        createFromConfig: (config: BackupConfig, requestProtocol?: string, requestHost?: string, onTokenUpdate?: (token: string) => Promise<void>) =>
+          StorageProviderFactory.createFromConfig(config, requestProtocol, requestHost, onTokenUpdate),
       },
       createCsvImportSourceService: () => new CsvImportSourceService(),
       createCsvDashboardImportService: () => new CsvDashboardImportService(),
