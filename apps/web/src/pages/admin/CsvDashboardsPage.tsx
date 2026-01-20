@@ -24,6 +24,7 @@ export function CsvDashboardsPage() {
   const [displayPeriodDays, setDisplayPeriodDays] = useState<number>(1);
   const [dateColumnName, setDateColumnName] = useState<string>('');
   const [emptyMessage, setEmptyMessage] = useState<string>('');
+  const [gmailSubjectPattern, setGmailSubjectPattern] = useState<string>('');
   const [enabled, setEnabled] = useState<boolean>(true);
 
   // 選択が切り替わった時にフォームを同期
@@ -32,6 +33,7 @@ export function CsvDashboardsPage() {
     setDisplayPeriodDays(selected.displayPeriodDays ?? 1);
     setDateColumnName(selected.dateColumnName ?? '');
     setEmptyMessage(selected.emptyMessage ?? '');
+    setGmailSubjectPattern(selected.gmailSubjectPattern ?? '');
     setEnabled(Boolean(selected.enabled));
   }, [selected]);
 
@@ -42,6 +44,7 @@ export function CsvDashboardsPage() {
         displayPeriodDays,
         dateColumnName: dateColumnName.length > 0 ? dateColumnName : null,
         emptyMessage: emptyMessage.length > 0 ? emptyMessage : null,
+        gmailSubjectPattern: gmailSubjectPattern.length > 0 ? gmailSubjectPattern : null,
         enabled,
       });
     },
@@ -141,6 +144,19 @@ export function CsvDashboardsPage() {
                   className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                   placeholder="例: 本日のデータはありません"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Gmail件名パターン</label>
+                <input
+                  value={gmailSubjectPattern}
+                  onChange={(e) => setGmailSubjectPattern(e.target.value)}
+                  className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                  placeholder="例: 生産日程_三島_研削工程"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  GmailからCSVを取得する際の件名パターン。スケジュール実行時に使用されます。
+                </p>
               </div>
 
               <div className="flex items-center gap-2">

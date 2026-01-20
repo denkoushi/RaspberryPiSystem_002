@@ -42,6 +42,7 @@ export const csvDashboardCreateSchema = z.object({
   ingestMode: z.enum(['APPEND', 'DEDUP']).default('APPEND'),
   dedupKeyColumns: z.array(z.string().min(1)).default([]),
   gmailScheduleId: z.string().uuid().optional().nullable(),
+  gmailSubjectPattern: z.string().optional().nullable(), // Gmail件名パターン（CSV取得用）
   templateType: z.enum(['TABLE', 'CARD_GRID']).default('TABLE'),
   templateConfig: templateConfigSchema,
 });

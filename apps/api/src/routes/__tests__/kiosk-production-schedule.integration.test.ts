@@ -77,24 +77,30 @@ describe('Kiosk Production Schedule API', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('lists only in-progress rows (progress empty)', async () => {
+  it('lists all rows including completed ones (for graying out)', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule',
       headers: { 'x-client-key': CLIENT_KEY }
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
-    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0001']);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; progress?: string } }> };
+    // 完了状態のものも含めて全て返す（グレーアウト表示のため）
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0001', '0002']);
+    // 完了状態のものはprogressが'完了'
+    const completedRow = body.rows.find((r) => r.rowData.ProductNo === '0002');
+    expect(completedRow?.rowData.progress).toBe('完了');
   });
 
-  it('completes a row and removes it from list', async () => {
+  it('completes a row and keeps it in list (grayed out)', async () => {
     const list = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule',
       headers: { 'x-client-key': CLIENT_KEY }
     });
-    const first = (list.json() as any).rows[0];
+    const first = (list.json() as any).rows.find((r: any) => r.rowData.ProductNo === '0001');
+    expect(first).toBeDefined();
+    expect(first.rowData.progress).toBe('');
 
     const complete = await app.inject({
       method: 'PUT',
@@ -108,7 +114,10 @@ describe('Kiosk Production Schedule API', () => {
       url: '/api/kiosk/production-schedule',
       headers: { 'x-client-key': CLIENT_KEY }
     });
-    expect((after.json() as any).rows).toHaveLength(0);
+    // 完了状態のものも含めて全て返す（グレーアウト表示のため）
+    expect((after.json() as any).rows).toHaveLength(2);
+    const completedRow = (after.json() as any).rows.find((r: any) => r.id === first.id);
+    expect(completedRow.rowData.progress).toBe('完了');
   });
 });
 

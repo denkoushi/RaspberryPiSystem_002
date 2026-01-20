@@ -127,12 +127,21 @@ export function ProductionSchedulePage() {
               const hinMei = String(d.FHINMEI ?? '');
               const shoyoryo = d.FSIGENSHOYORYO ?? '';
               const kojun = d.FKOJUN ?? '';
+              const isCompleted = d.progress === '完了';
+              const seibanLastDigits = String(d.FSEIBAN ?? '').slice(-3);
 
               return (
-                <div key={r.id} className="relative rounded-lg border border-white/20 bg-white text-slate-900 shadow">
+                <div
+                  key={r.id}
+                  className={`relative rounded-lg border border-white/20 bg-white text-slate-900 shadow ${
+                    isCompleted ? 'opacity-50 grayscale' : ''
+                  }`}
+                >
                   <button
-                    className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700 disabled:opacity-60"
-                    aria-label="完了にする"
+                    className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full text-white shadow hover:opacity-80 disabled:opacity-60 ${
+                      isCompleted ? 'bg-gray-500 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                    aria-label={isCompleted ? '未完了に戻す' : '完了にする'}
                     onClick={() => handleComplete(r.id)}
                     disabled={isBlocking || completeMutation.isPending}
                   >
@@ -140,20 +149,25 @@ export function ProductionSchedulePage() {
                   </button>
 
                   <div className="px-3 pt-3">
-                    <div className="flex items-start justify-between gap-2 pr-10">
-                      <div className="text-sm font-bold text-slate-900">{hinCd}</div>
-                      <div className="text-xs font-mono font-semibold text-slate-700">{seibanMasked}</div>
-                    </div>
-
-                    <div className="mt-1 flex items-center justify-between text-xs text-slate-700">
-                      <div className="font-mono font-semibold">{productNo}</div>
-                      <div className="font-mono font-semibold">{shigenCd}</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-slate-900">{hinCd}</div>
+                        <div className="mt-1 flex items-center justify-between text-xs text-slate-700">
+                          <div className="font-mono font-semibold">{productNo}</div>
+                          <div className="font-mono font-semibold">{shigenCd}</div>
+                        </div>
+                      </div>
+                      <div className="text-xs font-mono font-semibold text-slate-700 pr-11">
+                        {seibanMasked} {seibanLastDigits}
+                      </div>
                     </div>
 
                     <div className="mt-2 min-h-[2.25rem] text-sm font-semibold text-slate-900">{hinMei}</div>
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 bg-red-600 px-3 py-2 text-white">
+                  <div className={`mt-2 grid grid-cols-2 gap-2 px-3 py-2 text-white ${
+                    isCompleted ? 'bg-gray-500' : 'bg-red-600'
+                  }`}>
                     <div className="text-xs">
                       <div className="opacity-90">所要</div>
                       <div className="text-sm font-bold">{String(shoyoryo)}</div>

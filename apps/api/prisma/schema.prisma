@@ -574,6 +574,22 @@ model CsvDashboardRow {
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
 }
 
+// CSVインポート件名パターン（マスターデータ用）
+model CsvImportSubjectPattern {
+  id          String   @id @default(uuid())
+  importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears）
+  pattern     String   // Gmail件名パターン
+  priority    Int      @default(0) // 優先順位（数値が小さいほど優先）
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([importType, pattern])
+  @@index([importType])
+  @@index([importType, enabled])
+  @@index([priority])
+}
+
 model Alert {
   id            String            @id // ファイルのidをそのまま使用（例: "20260118-103750"）
   type          String? // アラートタイプ（例: "ansible-update-failed"）

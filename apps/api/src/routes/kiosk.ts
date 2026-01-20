@@ -132,8 +132,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     const filtered = allRows.filter((row) => {
       const data = row.rowData as Record<string, unknown>;
-      const progress = typeof data.progress === 'string' ? data.progress.trim() : '';
-      if (progress.length > 0) return false; // 仕掛中のみ（空欄）
+      // 完了状態のものも表示する（グレーアウト表示のため）
       if (productNoFilter && productNoFilter.length > 0) {
         return String(data.ProductNo ?? '').includes(productNoFilter);
       }
@@ -190,13 +189,11 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     const current = row.rowData as Record<string, unknown>;
     const currentProgress = typeof current.progress === 'string' ? current.progress.trim() : '';
-    if (currentProgress === COMPLETED_PROGRESS_VALUE) {
-      return { success: true, alreadyCompleted: true };
-    }
-
+    
+    // トグル動作: 既に完了している場合は未完了に戻す
     const nextRowData: Record<string, unknown> = {
       ...current,
-      progress: COMPLETED_PROGRESS_VALUE,
+      progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE,
     };
 
     await prisma.csvDashboardRow.update({

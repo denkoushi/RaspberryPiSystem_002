@@ -67,6 +67,7 @@ export class CsvDashboardService {
         ingestMode: input.ingestMode || 'APPEND',
         dedupKeyColumns: input.dedupKeyColumns || [],
         gmailScheduleId: input.gmailScheduleId ?? null,
+        gmailSubjectPattern: input.gmailSubjectPattern ?? null,
         templateType: input.templateType || 'TABLE',
         templateConfig: input.templateConfig as unknown as Prisma.JsonObject,
       },
@@ -99,6 +100,7 @@ export class CsvDashboardService {
     if (input.ingestMode !== undefined) updateData.ingestMode = input.ingestMode;
     if (input.dedupKeyColumns !== undefined) updateData.dedupKeyColumns = input.dedupKeyColumns;
     if (input.gmailScheduleId !== undefined) updateData.gmailScheduleId = input.gmailScheduleId;
+    if (input.gmailSubjectPattern !== undefined) updateData.gmailSubjectPattern = input.gmailSubjectPattern;
     if (input.templateType !== undefined) updateData.templateType = input.templateType;
     if (input.templateConfig !== undefined) updateData.templateConfig = input.templateConfig as unknown as Prisma.JsonObject;
     if (input.enabled !== undefined) updateData.enabled = input.enabled;
