@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
+import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -96,18 +97,9 @@ export class CsvDashboardIngestor {
         rowsAdded = normalizedRows.length;
       } else {
         // 重複除去モード：今回CSV内のハッシュだけをDBに問い合わせて差分反映
-        const incomingByHash = new Map<string, { occurredAt: Date; data: NormalizedRowData }>();
-        for (const row of normalizedRows) {
-          if (!row.hash) {
-            // DEDUPモードではハッシュが必須（安全側でスキップ）
-            rowsSkipped++;
-            continue;
-          }
-          // CSV内の重複は後勝ちで上書き（実用上の簡易ルール）
-          incomingByHash.set(row.hash, { occurredAt: row.occurredAt, data: row.data });
-        }
-
-        const incomingHashes = Array.from(incomingByHash.keys());
+        const incomingHashes = normalizedRows
+          .map((row) => row.hash)
+          .filter((hash): hash is string => !!hash);
         const existingRows = incomingHashes.length
           ? await prisma.csvDashboardRow.findMany({
               where: {
@@ -123,70 +115,15 @@ export class CsvDashboardIngestor {
             })
           : [];
 
-        const existingByHash = new Map<
-          string,
-          { id: string; occurredAt: Date; rowData: Prisma.JsonValue }
-        >();
-        for (const r of existingRows) {
-          if (r.dataHash) {
-            existingByHash.set(r.dataHash, { id: r.id, occurredAt: r.occurredAt, rowData: r.rowData });
-          }
-        }
-
-        const rowsToCreate: Array<{
-          csvDashboardId: string;
-          occurredAt: Date;
-          dataHash: string;
-          rowData: Prisma.InputJsonValue;
-        }> = [];
-
-        const updates: Array<{
-          id: string;
-          occurredAt: Date;
-          rowData: Prisma.InputJsonValue;
-        }> = [];
-
-        const isCompleted = (rowData: Prisma.JsonValue): boolean => {
-          const progress = (rowData as Record<string, unknown> | null | undefined)?.progress;
-          return typeof progress === 'string' && progress.trim() === CsvDashboardIngestor.COMPLETED_PROGRESS_VALUE;
-        };
-
-        for (const [hash, incoming] of incomingByHash.entries()) {
-          const existing = existingByHash.get(hash);
-          if (!existing) {
-            rowsToCreate.push({
-              csvDashboardId: dashboardId,
-              occurredAt: incoming.occurredAt,
-              dataHash: hash,
-              rowData: incoming.data as Prisma.InputJsonValue,
-            });
-            rowsAdded++;
-            continue;
-          }
-
-          // 既に完了なら、CSV側が空欄でも戻さない（キオスク操作優先）
-          if (isCompleted(existing.rowData)) {
-            rowsSkipped++;
-            continue;
-          }
-
-          // 差分がある場合のみ更新（完了維持のためprogressは上書き可）
-          const existingRowData = existing.rowData as unknown as NormalizedRowData;
-          const sameData = JSON.stringify(existingRowData) === JSON.stringify(incoming.data);
-          const sameOccurredAt = existing.occurredAt.getTime() === incoming.occurredAt.getTime();
-
-          if (sameData && sameOccurredAt) {
-            rowsSkipped++;
-            continue;
-          }
-
-          updates.push({
-            id: existing.id,
-            occurredAt: incoming.occurredAt,
-            rowData: incoming.data as Prisma.InputJsonValue,
-          });
-          rowsAdded++;
-        }
+        const diff = computeCsvDashboardDedupDiff({
+          dashboardId,
+          incomingRows: normalizedRows,
+          existingRows,
+          completedValue: CsvDashboardIngestor.COMPLETED_PROGRESS_VALUE
+        });
+        const { rowsToCreate, updates } = diff;
+        rowsAdded = diff.rowsAdded;
+        rowsSkipped = diff.rowsSkipped;
 
         if (rowsToCreate.length > 0) {
           await prisma.csvDashboardRow.createMany({ data: rowsToCreate });

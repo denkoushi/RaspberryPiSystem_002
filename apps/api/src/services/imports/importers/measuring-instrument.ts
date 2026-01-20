@@ -4,6 +4,7 @@ import pkg from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
+import { buildUpdateDiff } from '../diff/master-data-diff.js';
 
 const { MeasuringInstrumentStatus } = pkg;
 
@@ -170,17 +171,22 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
               }
             }
 
-            await tx.measuringInstrument.update({
-              where: { managementNumber: row.managementNumber },
-              data: {
-                name: row.name,
-                storageLocation: row.storageLocation ?? undefined,
-                department: row.department ?? undefined,
-                measurementRange: row.measurementRange ?? undefined,
-                calibrationExpiryDate: row.calibrationExpiryDate ?? undefined,
-                status: row.status ?? MeasuringInstrumentStatus.AVAILABLE
-              }
-            });
+            const updateData = {
+              name: row.name,
+              storageLocation: row.storageLocation ?? undefined,
+              department: row.department ?? undefined,
+              measurementRange: row.measurementRange ?? undefined,
+              calibrationExpiryDate: row.calibrationExpiryDate ?? undefined,
+              status: row.status ?? MeasuringInstrumentStatus.AVAILABLE
+            };
+            const diff = buildUpdateDiff(existing, updateData);
+            if (diff.hasChanges) {
+              await tx.measuringInstrument.update({
+                where: { managementNumber: row.managementNumber },
+                data: diff.data
+              });
+              result.updated += 1;
+            }
 
             // タグの更新
             if (tagUid !== null) {
@@ -198,7 +204,6 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
               }
             }
 
-            result.updated += 1;
           } else {
             // 作成処理
             if (tagUid) {

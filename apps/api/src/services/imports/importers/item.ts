@@ -4,6 +4,7 @@ import pkg from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
+import { buildUpdateDiff } from '../diff/master-data-diff.js';
 
 const { ItemStatus } = pkg;
 
@@ -152,9 +153,13 @@ export class ItemCsvImporter implements CsvImporter {
             }
           }
           
+          const diff = buildUpdateDiff(existing, updateData);
+          if (!diff.hasChanges) {
+            continue;
+          }
           await tx.item.update({
             where: { itemCode: row.itemCode },
-            data: updateData
+            data: diff.data
           });
           result.updated += 1;
         } else {

@@ -4,6 +4,13 @@ import { GmailApiClient } from '../gmail-api-client.js';
 import { GmailOAuthService } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
 
+export class NoMatchingMessageError extends Error {
+  constructor(query: string) {
+    super(`No messages found matching query: ${query}`);
+    this.name = 'NoMatchingMessageError';
+  }
+}
+
 /**
  * Gmail APIを使用したストレージプロバイダー。
  * Gmailから添付ファイルを取得する機能を提供する。
@@ -184,7 +191,7 @@ export class GmailStorageProvider implements StorageProvider {
       const messageIds = await this.gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
-        throw new Error(`No messages found matching query: ${query}`);
+        throw new NoMatchingMessageError(query);
       }
 
       // 最初のメールから添付ファイルを取得
@@ -312,7 +319,7 @@ export class GmailStorageProvider implements StorageProvider {
       const messageIds = await this.gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
-        throw new Error(`No messages found matching query: ${query}`);
+        throw new NoMatchingMessageError(query);
       }
 
       // 最初のメールから添付ファイルとメタデータを取得

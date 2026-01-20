@@ -16,6 +16,11 @@ import {
   deleteBackupTarget,
   runBackup,
   getBackupConfigHealth,
+  getCsvImportSubjectPatterns,
+  createCsvImportSubjectPattern,
+  updateCsvImportSubjectPattern,
+  deleteCsvImportSubjectPattern,
+  reorderCsvImportSubjectPatterns,
   getGmailConfig,
   updateGmailConfig,
   deleteGmailConfig,
@@ -25,7 +30,9 @@ import {
   type RestoreFromDropboxRequest,
   type BackupTarget,
   type RunBackupRequest,
-  type GmailConfigUpdateRequest
+  type GmailConfigUpdateRequest,
+  type CsvImportSubjectPatternType,
+  type CsvImportSubjectPattern
 } from './backup';
 import { getKioskEmployees, getKioskProductionSchedule, importMasterSingle } from './client';
 import {
@@ -747,6 +754,56 @@ export function useBackupConfig() {
     queryKey: ['backup-config'],
     queryFn: getBackupConfig
   });
+}
+
+export function useCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType) {
+  return useQuery({
+    queryKey: ['csv-import-subject-patterns', importType],
+    queryFn: () => getCsvImportSubjectPatterns(importType)
+  });
+}
+
+export function useCsvImportSubjectPatternMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (payload: {
+      importType: CsvImportSubjectPatternType;
+      pattern: string;
+      priority?: number;
+      enabled?: boolean;
+    }) => createCsvImportSubjectPattern(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+    }
+  });
+
+  const update = useMutation({
+    mutationFn: (payload: {
+      id: string;
+      data: Partial<Pick<CsvImportSubjectPattern, 'pattern' | 'priority' | 'enabled'>>;
+    }) => updateCsvImportSubjectPattern(payload.id, payload.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+    }
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteCsvImportSubjectPattern(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+    }
+  });
+
+  const reorder = useMutation({
+    mutationFn: (payload: { importType: CsvImportSubjectPatternType; orderedIds: string[] }) =>
+      reorderCsvImportSubjectPatterns(payload),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns', variables.importType] });
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+    }
+  });
+
+  return { create, update, remove, reorder };
 }
 
 export function useBackupConfigHealth() {

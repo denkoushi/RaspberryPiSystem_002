@@ -202,7 +202,18 @@ export const defaultBackupConfig: BackupConfig = {
     days: 30,
     maxBackups: 100
   },
-  csvImports: [],
+  csvImports: [
+    {
+      id: 'csv-import-measuring-instrument-loans',
+      name: 'MeasuringInstrumentLoans (csvDashboards)',
+      provider: 'gmail',
+      targets: [
+        { type: 'csvDashboards', source: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }
+      ],
+      schedule: '0 * * * *',
+      enabled: false
+    }
+  ],
   csvImportSubjectPatterns: {
     employees: [
       '[Pi5 CSV Import] employees',
