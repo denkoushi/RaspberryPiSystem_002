@@ -35,6 +35,10 @@ echo "Prismaマイグレーションを実行中..."
 cd apps/api
 pnpm prisma migrate deploy
 
+# Prisma Clientを生成（schema変更時に必要）
+echo "Prisma Clientを生成中..."
+pnpm prisma generate
+
 # テストを実行
 echo "テストを実行中..."
 pnpm test

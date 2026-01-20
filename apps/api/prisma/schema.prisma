@@ -525,6 +525,7 @@ model CsvDashboard {
   ingestMode        CsvDashboardIngestMode   @default(APPEND) // 取り込み方式
   dedupKeyColumns   String[]                 @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
   gmailScheduleId   String? // Gmail取得スケジュールID（オプション、将来の拡張用）
+  gmailSubjectPattern String? // Gmail件名パターン（CSV取得用）
   templateType      CsvDashboardTemplateType @default(TABLE) // 可視化テンプレート種別
   templateConfig    Json // テンプレート設定（行数、フォントサイズ、表示列など）
   csvFilePath       String? // 最新のCSVファイルパス（原本保存先）
@@ -536,6 +537,7 @@ model CsvDashboard {
 
   @@index([enabled])
   @@index([gmailScheduleId])
+  @@index([gmailSubjectPattern])
 }
 
 model CsvDashboardIngestRun {

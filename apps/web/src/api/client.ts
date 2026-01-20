@@ -178,6 +178,31 @@ export async function getKioskEmployees(clientKey?: string) {
   return data.employees;
 }
 
+export interface ProductionScheduleRow {
+  id: string;
+  occurredAt: string;
+  rowData: Record<string, unknown>;
+}
+
+export interface ProductionScheduleListResponse {
+  page: number;
+  pageSize: number;
+  total: number;
+  rows: ProductionScheduleRow[];
+}
+
+export async function getKioskProductionSchedule(params?: { productNo?: string; page?: number; pageSize?: number }) {
+  const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', {
+    params
+  });
+  return data;
+}
+
+export async function completeKioskProductionScheduleRow(rowId: string) {
+  const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  return data;
+}
+
 export async function createEmployee(input: Partial<Employee>) {
   const { data } = await api.post<{ employee: Employee }>('/tools/employees', input);
   return data.employee;

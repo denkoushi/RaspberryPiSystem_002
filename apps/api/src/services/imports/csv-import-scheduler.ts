@@ -634,15 +634,17 @@ export class CsvImportScheduler {
           continue;
         }
         
-        // Gmail件名パターンを取得
-        // 簡易実装として、CSVダッシュボードのgmailScheduleIdが設定されている場合は、
-        // そのスケジュールの件名パターンを使用する
-        // 実際の実装では、CSVダッシュボードの設定にGmail件名パターンを直接保存するか、
-        // スケジュール設定から取得する必要がある
-        // 暫定実装として、target.sourceをGmail件名パターンとして使用（将来の拡張用）
-        const gmailSubjectPattern = dashboard.gmailScheduleId 
-          ? target.source // スケジュールIDが設定されている場合は、sourceを件名パターンとして使用
-          : target.source; // それ以外の場合もsourceを件名パターンとして使用
+        // Gmail件名パターンを取得（CSVダッシュボード設定から取得）
+        // NOTE: target.source は dashboardId であり、件名パターンとは別物
+        const gmailSubjectPattern = (dashboard as unknown as { gmailSubjectPattern?: string | null })
+          .gmailSubjectPattern;
+        if (!gmailSubjectPattern || gmailSubjectPattern.trim().length === 0) {
+          logger?.warn(
+            { dashboardId, provider },
+            '[CsvImportScheduler] CSV dashboard gmailSubjectPattern is not set, skipping'
+          );
+          continue;
+        }
         
         logger?.info(
           { dashboardId, gmailSubjectPattern, provider },

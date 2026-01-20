@@ -27,10 +27,11 @@ import {
   type RunBackupRequest,
   type GmailConfigUpdateRequest
 } from './backup';
-import { getKioskEmployees, importMasterSingle } from './client';
+import { getKioskEmployees, getKioskProductionSchedule, importMasterSingle } from './client';
 import {
   borrowItem,
   cancelLoan,
+  completeKioskProductionScheduleRow,
   createEmployee,
   createItem,
   deleteEmployee,
@@ -137,6 +138,26 @@ export function useKioskEmployees(clientKey?: string) {
     queryKey: ['kiosk-employees', clientKey],
     queryFn: () => getKioskEmployees(clientKey),
     enabled: !!clientKey
+  });
+}
+
+export function useKioskProductionSchedule(params?: { productNo?: string; page?: number; pageSize?: number }) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule', params],
+    queryFn: () => getKioskProductionSchedule(params),
+    // 仕掛中が頻繁に変わるため軽く自動更新
+    refetchInterval: 30000,
+    placeholderData: (previousData) => previousData
+  });
+}
+
+export function useCompleteKioskProductionScheduleRow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: string) => completeKioskProductionScheduleRow(rowId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
   });
 }
 

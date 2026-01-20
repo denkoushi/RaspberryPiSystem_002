@@ -11,6 +11,10 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
+  const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+  const productionScheduleGmailSubjectPattern = '生産日程_三島_研削工程';
+
   const passwordHash = await bcrypt.hash('admin1234', 10);
   await prisma.user.upsert({
     where: { username: 'admin' },
@@ -102,6 +106,61 @@ async function main() {
       create: client
     });
   }
+
+  // 生産日程（研削工程）用のCSVダッシュボードを作成（キオスク表示のデータソース）
+  await prisma.csvDashboard.upsert({
+    where: { id: productionScheduleDashboardId },
+    update: {
+      name: 'ProductionSchedule_Mishima_Grinding',
+      description: '生産日程（研削工程）',
+      gmailSubjectPattern: productionScheduleGmailSubjectPattern,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: 'registeredAt',
+      displayPeriodDays: 1,
+      templateType: 'CARD_GRID',
+      templateConfig: {
+        cardsPerPage: 60,
+        fontSize: 14,
+        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
+        gridColumns: 6,
+        gridRows: 10
+      }
+    },
+    create: {
+      id: productionScheduleDashboardId,
+      name: 'ProductionSchedule_Mishima_Grinding',
+      description: '生産日程（研削工程）',
+      gmailSubjectPattern: productionScheduleGmailSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: 'registeredAt',
+      displayPeriodDays: 1,
+      emptyMessage: '仕掛中のデータはありません',
+      columnDefinitions: [
+        { internalName: 'ProductNo', displayName: '製番01', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
+        { internalName: 'FSIGENMEI', displayName: '資源名', csvHeaderCandidates: ['FSIGENMEI'], dataType: 'string', order: 1 },
+        { internalName: 'FSEIBAN', displayName: '製番02', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+        { internalName: 'FHINCD', displayName: '製品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 3 },
+        { internalName: 'FHINMEI', displayName: '品名', csvHeaderCandidates: ['FHINMEI'], dataType: 'string', order: 4 },
+        { internalName: 'FSIGENCD', displayName: '資源コード', csvHeaderCandidates: ['FSIGENCD'], dataType: 'string', order: 5 },
+        { internalName: 'FSIGENSHOYORYO', displayName: '所要時間', csvHeaderCandidates: ['FSIGENSHOYORYO'], dataType: 'number', order: 6 },
+        { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['FKOJUN'], dataType: 'string', order: 7 },
+        { internalName: 'progress', displayName: '進捗', csvHeaderCandidates: ['progress'], dataType: 'string', order: 8, required: false },
+        { internalName: 'updatedAt', displayName: '更新日時', csvHeaderCandidates: ['更新日時'], dataType: 'date', order: 9, required: false },
+        { internalName: 'registeredAt', displayName: '登録日時', csvHeaderCandidates: ['登録日時'], dataType: 'date', order: 10, required: false }
+      ],
+      templateType: 'CARD_GRID',
+      templateConfig: {
+        cardsPerPage: 60,
+        fontSize: 14,
+        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
+        gridColumns: 6,
+        gridRows: 10
+      }
+    }
+  });
 
   // 計測機器のテストデータ（実機検証用）
   const now = new Date();
