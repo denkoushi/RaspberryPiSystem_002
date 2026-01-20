@@ -1112,6 +1112,12 @@ export interface CsvDashboard {
   updatedAt: string;
 }
 
+export interface CsvPreviewResult {
+  headers: string[];
+  sampleRows: Array<Record<string, unknown>>;
+  detectedTypes: Record<string, 'string' | 'number' | 'date' | 'boolean'>;
+}
+
 export async function getCsvDashboards(filters?: { enabled?: boolean; search?: string }) {
   const params = new URLSearchParams();
   if (filters?.enabled !== undefined) {
@@ -1144,6 +1150,11 @@ export async function uploadCsvToDashboard(id: string, file: File) {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
+}
+
+export async function previewCsvDashboardParse(id: string, csvContent: string) {
+  const { data } = await api.post<{ preview: CsvPreviewResult }>(`/csv-dashboards/${id}/preview-parse`, { csvContent });
+  return data.preview;
 }
 
 export interface SignageRenderResult {

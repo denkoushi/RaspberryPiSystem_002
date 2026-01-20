@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { getCsvDashboard, getCsvDashboards, updateCsvDashboard, uploadCsvToDashboard, type CsvDashboard } from '../../api/client';
+import {
+  getCsvDashboard,
+  getCsvDashboards,
+  previewCsvDashboardParse,
+  updateCsvDashboard,
+  uploadCsvToDashboard,
+  type CsvDashboard,
+  type CsvPreviewResult,
+} from '../../api/client';
 import { Button } from '../../components/ui/Button';
 
 export function CsvDashboardsPage() {
@@ -26,6 +34,11 @@ export function CsvDashboardsPage() {
   const [emptyMessage, setEmptyMessage] = useState<string>('');
   const [gmailSubjectPattern, setGmailSubjectPattern] = useState<string>('');
   const [enabled, setEnabled] = useState<boolean>(true);
+  const [columnDefinitions, setColumnDefinitions] = useState<CsvDashboard['columnDefinitions']>([]);
+  const [columnDefinitionError, setColumnDefinitionError] = useState<string | null>(null);
+  const [previewCsvContent, setPreviewCsvContent] = useState<string>('');
+  const [previewResult, setPreviewResult] = useState<CsvPreviewResult | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // 選択が切り替わった時にフォームを同期
   useEffect(() => {
@@ -35,17 +48,49 @@ export function CsvDashboardsPage() {
     setEmptyMessage(selected.emptyMessage ?? '');
     setGmailSubjectPattern(selected.gmailSubjectPattern ?? '');
     setEnabled(Boolean(selected.enabled));
+    const sortedColumns = [...(selected.columnDefinitions ?? [])].sort((a, b) => a.order - b.order);
+    setColumnDefinitions(sortedColumns.map((col, index) => ({ ...col, order: index })));
+    setColumnDefinitionError(null);
+    setPreviewCsvContent('');
+    setPreviewResult(null);
+    setPreviewError(null);
   }, [selected]);
+
+  const normalizedColumnDefinitions = useMemo(
+    () => columnDefinitions.map((col, index) => ({ ...col, order: index })),
+    [columnDefinitions]
+  );
+
+  const validateColumnDefinitions = (columns: CsvDashboard['columnDefinitions']): string | null => {
+    if (columns.length === 0) {
+      return '列定義が空です。';
+    }
+    for (const col of columns) {
+      if (!col.displayName?.trim()) {
+        return '表示名が空の列があります。';
+      }
+      if (!col.csvHeaderCandidates || col.csvHeaderCandidates.length === 0) {
+        return `CSVヘッダー候補が空の列があります（${col.internalName}）。`;
+      }
+    }
+    return null;
+  };
 
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) throw new Error('CSVダッシュボードが選択されていません');
+      const validationError = validateColumnDefinitions(normalizedColumnDefinitions);
+      if (validationError) {
+        setColumnDefinitionError(validationError);
+        throw new Error(validationError);
+      }
       return updateCsvDashboard(selectedId, {
         displayPeriodDays,
         dateColumnName: dateColumnName.length > 0 ? dateColumnName : null,
         emptyMessage: emptyMessage.length > 0 ? emptyMessage : null,
         gmailSubjectPattern: gmailSubjectPattern.length > 0 ? gmailSubjectPattern : null,
         enabled,
+        columnDefinitions: normalizedColumnDefinitions,
       });
     },
     onSuccess: async (dashboard) => {
@@ -69,6 +114,10 @@ export function CsvDashboardsPage() {
   });
 
   const dashboards = dashboardsQuery.data ?? [];
+  const previewHeaders = previewResult?.headers ?? [];
+  const unmatchedHeaders = previewHeaders.filter((header) =>
+    normalizedColumnDefinitions.every((col) => !col.csvHeaderCandidates.includes(header))
+  );
 
   return (
     <div className="space-y-6">
@@ -185,6 +234,200 @@ export function CsvDashboardsPage() {
                 )}
                 {updateMutation.isSuccess && (
                   <span className="text-sm text-emerald-700">保存しました。</span>
+                )}
+              </div>
+              {columnDefinitionError && (
+                <p className="text-sm text-rose-600">{columnDefinitionError}</p>
+              )}
+
+              <hr className="border-slate-200" />
+
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">列定義（表示＋安全側編集）</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  internalNameとdataTypeは変更できません。表示名・CSVヘッダー候補・必須・表示順のみ編集できます。
+                </p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="border border-slate-200 px-2 py-1">順序</th>
+                        <th className="border border-slate-200 px-2 py-1">internalName</th>
+                        <th className="border border-slate-200 px-2 py-1">dataType</th>
+                        <th className="border border-slate-200 px-2 py-1">表示名</th>
+                        <th className="border border-slate-200 px-2 py-1">CSVヘッダー候補（カンマ区切り）</th>
+                        <th className="border border-slate-200 px-2 py-1">必須</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {normalizedColumnDefinitions.map((col, index) => (
+                        <tr key={col.internalName} className="odd:bg-white even:bg-slate-50">
+                          <td className="border border-slate-200 px-2 py-1">
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                variant="ghost"
+                                onClick={() => {
+                                  if (index === 0) return;
+                                  setColumnDefinitions((prev) => {
+                                    const next = [...prev];
+                                    const temp = next[index - 1];
+                                    next[index - 1] = next[index];
+                                    next[index] = temp;
+                                    return next;
+                                  });
+                                }}
+                                disabled={index === 0}
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                onClick={() => {
+                                  if (index === normalizedColumnDefinitions.length - 1) return;
+                                  setColumnDefinitions((prev) => {
+                                    const next = [...prev];
+                                    const temp = next[index + 1];
+                                    next[index + 1] = next[index];
+                                    next[index] = temp;
+                                    return next;
+                                  });
+                                }}
+                                disabled={index === normalizedColumnDefinitions.length - 1}
+                              >
+                                ↓
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 font-mono text-slate-700">
+                            {col.internalName}
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 text-slate-700">{col.dataType}</td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            <input
+                              value={col.displayName}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setColumnDefinitions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, displayName: value } : item))
+                                );
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1">
+                            <input
+                              value={col.csvHeaderCandidates.join(', ')}
+                              onChange={(e) => {
+                                const candidates = Array.from(
+                                  new Set(
+                                    e.target.value
+                                      .split(',')
+                                      .map((val) => val.trim())
+                                      .filter((val) => val.length > 0)
+                                  )
+                                );
+                                setColumnDefinitions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, csvHeaderCandidates: candidates } : item))
+                                );
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+                          </td>
+                          <td className="border border-slate-200 px-2 py-1 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(col.required)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setColumnDefinitions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, required: checked } : item))
+                                );
+                              }}
+                              className="h-4 w-4"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <hr className="border-slate-200" />
+
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">CSVプレビュー（ヘッダー照合）</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  CSVのヘッダー行を貼り付けるか、CSVファイルを選択して照合できます。
+                </p>
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    value={previewCsvContent}
+                    onChange={(e) => setPreviewCsvContent(e.target.value)}
+                    className="h-24 w-full rounded border border-slate-300 p-2 text-xs"
+                    placeholder="例: 管理番号,名称,持出従業員,持出日時,返却予定日時,状態"
+                  />
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setPreviewCsvContent(String(reader.result ?? ''));
+                      };
+                      reader.readAsText(file);
+                    }}
+                    className="text-xs"
+                  />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        if (!previewCsvContent.trim()) {
+                          setPreviewError('CSV内容が空です。');
+                          setPreviewResult(null);
+                          return;
+                        }
+                        try {
+                          setPreviewError(null);
+                          const result = await previewCsvDashboardParse(selectedId, previewCsvContent);
+                          setPreviewResult(result);
+                        } catch (error) {
+                          setPreviewResult(null);
+                          setPreviewError(error instanceof Error ? error.message : 'プレビュー解析に失敗しました。');
+                        }
+                      }}
+                    >
+                      プレビュー解析
+                    </Button>
+                    {previewError && <span className="text-xs text-rose-600">{previewError}</span>}
+                  </div>
+                </div>
+                {previewResult && (
+                  <div className="mt-4 space-y-2 text-xs text-slate-700">
+                    <div>
+                      <p className="font-semibold">ヘッダー照合結果</p>
+                      <ul className="mt-1 space-y-1">
+                        {normalizedColumnDefinitions.map((col) => {
+                          const matched = col.csvHeaderCandidates.find((candidate) => previewHeaders.includes(candidate));
+                          return (
+                            <li key={col.internalName}>
+                              {col.displayName}（{col.internalName}）: {matched ? `一致: ${matched}` : col.required ? '未一致（必須）' : '未一致'}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                    {unmatchedHeaders.length > 0 && (
+                      <div>
+                        <p className="font-semibold text-amber-700">未対応のヘッダー</p>
+                        <p className="mt-1">{unmatchedHeaders.join(', ')}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

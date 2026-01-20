@@ -76,6 +76,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - [x] (2026-01-XX) **実装順序2: UI改善完了**: CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソール（`/admin/csv-dashboards`）に追加。`CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加し、APIスキーマと型定義を更新。実機検証で設定が正しく保存・使用されることを確認。詳細は [KB-185](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) を参照。
 
 - [x] (2026-01-XX) **実装順序3: サイネージ用データ取得の構築**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示するための導線を整備。`seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。既定のCSVインポートスケジュール（無効）を用意し、管理コンソールで有効化できる状態に整備。サイネージスケジュール側の手順をドキュメント化。
+- [x] (2026-01-20) **CSVインポートスケジュールUI改善**: ID自動生成機能とNoMatchingMessageErrorハンドリング改善を実装。CSVダッシュボード選択時にスケジュールIDと名前を自動生成し、Gmailに該当メールがない場合でもエラーにならず正常に完了するように改善。詳細は [KB-187](../knowledge-base/api.md#kb-187-csvインポートスケジュール作成時のid自動生成とnomatchingmessageerrorハンドリング改善) を参照。
 
 - [x] (2026-01-XX) **実装順序4: 設計統一（完了・互換性維持中）**: マスターデータインポートのGmail件名パターンを`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行する設計変更。
   - ✅ **完了済み**: Prismaスキーマに`CsvImportSubjectPattern`モデル追加（`schema.prisma:578-591`）、`seed.ts`にデフォルトデータ投入
@@ -84,6 +85,30 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
   - 詳細は [KB-186](../knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) を参照
 
 ## Surprises & Discoveries
+
+### CSVインポートスケジュール作成時のID自動生成機能
+
+**発見**: CSVダッシュボードを選択してもスケジュールIDが自動入力されず、手動入力が必要だった。
+
+**対策**: CSVダッシュボード選択時に、ダッシュボード名から自動的にIDと名前を生成する機能を追加。編集時は既存IDを変更しない。
+
+**関連ファイル**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+### NoMatchingMessageErrorの500エラー問題
+
+**発見**: Gmailに該当する未読メールがない場合、`NoMatchingMessageError`が発生し、500エラーになっていた。これは正常な状態（メールがない）をエラーとして扱っていた。
+
+**対策**: `CsvDashboardImportService.ingestTargets`で`NoMatchingMessageError`を捕捉し、該当ダッシュボードをスキップして処理を継続するように変更。メールがない場合は正常に完了し、エラーにならない。
+
+**関連ファイル**: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`
+
+### アラート生成スクリプトのシェル実行エラー
+
+**発見**: `ImportAlertService`が`exec(string)`でシェル実行しており、括弧や改行を含むメッセージでシェルエスケープが破綻していた。
+
+**対策**: `execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避。
+
+**関連ファイル**: `apps/api/src/services/imports/import-alert.service.ts`
 
 ### 本番環境での`prisma db seed`失敗
 
@@ -169,11 +194,11 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 ## Next Steps
 
-### 実装順序3: サイネージ用データ取得の構築（完了・実機検証待ち）
+### 実装順序3: サイネージ用データ取得の構築（実機検証中）
 
 **目的**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示する機能を構築する。
 
-**現状**: `seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。CSVインポートスケジュールは無効状態で作成済みのため、運用で有効化して実機検証を実施する。
+**現状**: `seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。CSVインポートスケジュールの作成・実行機能は実装完了し、正常に動作することを確認済み（2026-01-20）。次のステップは、Gmail経由のCSV取得とサイネージ表示の実機検証。
 
 **実施手順**:
 
@@ -236,6 +261,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - ✅ **生産スケジュールキオスクページ**: PowerAppsのUIを参考に実装し、完了ボタンによる進捗管理が可能になった
 - ✅ **gmailSubjectPattern設定UI**: 管理コンソールからCSVダッシュボードごとに件名パターンを設定できるようになった
 - ✅ **設計統一（DB化＋スケジューラー統合）**: `CsvImportSubjectPattern`のDB化とスケジューラー統合を完了し、後方互換は維持
+- ✅ **ID自動生成機能**: CSVダッシュボード選択時にスケジュールIDと名前を自動生成し、ユーザー入力の手間を削減
+- ✅ **NoMatchingMessageErrorハンドリング**: メールがない場合でもエラーにならず、正常に完了するように改善
 
 ### 学んだこと
 
@@ -243,6 +270,9 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 2. **トグル機能の実装**: 完了→未完了のトグルにより、誤操作時の復元が可能
 3. **本番環境でのseed実行**: `tsx`がdev依存のため、本番環境では直接SQLで実行する必要がある場合がある
 4. **モデル追加と実装統合の分離**: DBモデル追加だけでは不十分で、実装統合まで確認が必要。統合後に進捗記載を更新する運用が有効
+5. **UIの自動化**: ユーザー入力の手間を減らすため、選択に基づく自動生成は有効（ID自動生成機能）
+6. **エラーハンドリングの粒度**: メールがないことは「エラー」ではなく「スキップ可能な状態」として扱うことで、UXが向上
+7. **シェル実行の安全性**: `exec(string)`はシェルエスケープが複雑になるため、`execFile`で引数配列を渡す方が安全
 
 ### 今後の改善点
 

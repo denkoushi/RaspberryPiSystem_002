@@ -1369,6 +1369,69 @@ if (data.type === 'ping') {
 
 ---
 
+### [KB-187] CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善
+
+**実装日時**: 2026-01-20
+
+**事象**: 
+- CSVインポートスケジュール作成時に、`csvDashboards`タイプを選択してもIDが自動入力されず、手動入力が必要だった
+- Gmailに該当する未読メールがない場合、`NoMatchingMessageError`が発生し、500エラーになっていた
+- アラート生成スクリプト（`generate-alert.sh`）が括弧を含むメッセージでシェル実行エラーを起こしていた
+
+**要因**: 
+- CSVダッシュボード選択時にスケジュールIDと名前の自動生成ロジックが実装されていなかった
+- `CsvDashboardImportService.ingestTargets`で`NoMatchingMessageError`を捕捉せず、上位に伝播していた
+- `ImportAlertService`が`exec(string)`でシェル実行しており、括弧や改行を含む文字列でエスケープが破綻していた
+
+**実施した対策**: 
+- ✅ **ID自動生成機能追加**: `CsvImportSchedulePage.tsx`でCSVダッシュボード選択時にスケジュールIDと名前を自動生成（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
+- ✅ **NoMatchingMessageErrorハンドリング**: `CsvDashboardImportService.ingestTargets`で`NoMatchingMessageError`を捕捉し、該当ダッシュボードをスキップして処理を継続
+- ✅ **アラート生成の改善**: `ImportAlertService`を`execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避
+
+**実装の詳細**:
+1. **フロントエンド（ID自動生成）**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+   - CSVダッシュボード選択時の`onChange`で、選択されたダッシュボード名からIDと名前を自動生成
+   - 編集時は既存IDを変更しない（新規作成時のみ自動生成）
+   - IDフィールドにプレースホルダーを追加し、自動生成であることを明示
+
+2. **バックエンド（NoMatchingMessageErrorハンドリング）**: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`
+   - `downloadCsv`呼び出しを`try-catch`で囲み、`NoMatchingMessageError`を捕捉
+   - エラー時はログに記録し、該当ダッシュボードをスキップして次のダッシュボード処理を継続
+   - 空の結果（`{}`）を返すことで、スケジューラー側でエラーにならないようにする
+
+3. **アラート生成の改善**: `apps/api/src/services/imports/import-alert.service.ts`
+   - `exec(string)`から`execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避
+   - 括弧や改行を含むメッセージでも安全に実行可能
+
+**トラブルシューティング**:
+- **Gmailで一致しない**: メールがない場合は正常にスキップされ、エラーにならない。メール送信後に再実行すれば取り込まれる
+- **IDが自動生成されない**: ブラウザのキャッシュをクリアし、ページを再読み込みする
+- **アラート生成エラー**: `execFile`への変更により、括弧や改行を含むメッセージでも正常に動作する
+
+**運用メモ**:
+- CSVダッシュボードの列定義（`columnDefinitions`）は管理コンソール（`/admin/csv-dashboards`）で確認・編集可能
+- 変更可能なのは表示名/CSVヘッダー候補/必須フラグ/表示順のみ（`internalName`と`dataType`は表示のみ）
+- CSVプレビュー解析でヘッダー照合を行い、必須列不足や未知ヘッダーを事前確認する
+
+**学んだこと**:
+1. **UIの自動化**: ユーザー入力の手間を減らすため、選択に基づく自動生成は有効
+2. **エラーハンドリングの粒度**: メールがないことは「エラー」ではなく「スキップ可能な状態」として扱うことで、UXが向上
+3. **シェル実行の安全性**: `exec(string)`はシェルエスケープが複雑になるため、`execFile`で引数配列を渡す方が安全
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-20）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-20）
+- CSVダッシュボード選択時にIDと名前が自動生成されることを確認
+- Gmailに該当メールがない場合でも、エラーではなく正常に完了することを確認
+- アラート生成が正常に動作することを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（ID自動生成）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`（NoMatchingMessageErrorハンドリング）
+- `apps/api/src/services/imports/import-alert.service.ts`（アラート生成改善）
+
+---
+
 ### [KB-135] キオスク通話候補取得用APIエンドポイント追加
 
 **EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）

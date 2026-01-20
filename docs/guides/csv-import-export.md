@@ -49,6 +49,23 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 
 3. **キオスク画面での表示**: キオスク画面（`/kiosk/production-schedule`）でデータを確認
 
+### 列定義（columnDefinitions）の確認・編集
+
+CSVダッシュボードの列定義は、管理コンソール（`/admin/csv-dashboards`）で確認・編集できます。
+
+**編集可能**:
+- 表示名（`displayName`）
+- CSVヘッダー候補（`csvHeaderCandidates`、カンマ区切りで入力）
+- 必須フラグ（`required`）
+- 表示順（↑↓ボタンで並べ替え）
+
+**編集不可（表示のみ）**:
+- 内部名（`internalName`）
+- データ型（`dataType`）
+
+**安全策**:
+- CSVプレビュー解析（ヘッダー照合）で、必須列不足や未知ヘッダーを事前確認できます。
+
 ### Gmailスケジュール取り込み（csvDashboards）
 
 CSVダッシュボードのGmail取り込みは、CSVインポートスケジュールの`targets`に`csvDashboards`を追加して実行します。
@@ -61,8 +78,12 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 **設定例**（管理コンソール / CSVインポート）:
 1. **プロバイダー**: `gmail`
 2. **ターゲット**: `CSVダッシュボード`
-3. **CSVダッシュボード**: `MeasuringInstrumentLoans`
+3. **CSVダッシュボード**: `MeasuringInstrumentLoans`を選択（選択時にスケジュールIDと名前が自動生成される）
 4. **スケジュール**: 例）`0 * * * *`（毎時）
+
+**注意事項**:
+- CSVダッシュボードを選択すると、スケジュールIDと名前が自動生成されます（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
+- Gmailに該当する未読メールがない場合でも、エラーにならず正常に完了します（該当ダッシュボードはスキップされる）
 
 ### APIエンドポイント
 
