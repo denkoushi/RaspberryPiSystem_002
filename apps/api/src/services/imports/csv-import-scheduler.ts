@@ -113,6 +113,10 @@ export class CsvImportScheduler {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'csv-import-scheduler.ts:executeSingleRun',message:'executeSingleRun error',data:{taskId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       logger?.error(
         { err: error, taskId, name: importSchedule.name },
         isManual ? '[CsvImportScheduler] Manual CSV import failed' : '[CsvImportScheduler] Scheduled CSV import failed'
@@ -427,6 +431,10 @@ export class CsvImportScheduler {
       throw new Error(`CSV import schedule not found: ${importId}`);
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'csv-import-scheduler.ts:runImport',message:'runImport schedule loaded',data:{importId,enabled:importSchedule.enabled,provider:importSchedule.provider || 'default',targetTypes:(importSchedule.targets || []).map(target => target.type),targetSources:(importSchedule.targets || []).map(target => target.source)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     if (!importSchedule.enabled) {
       throw new Error(`CSV import schedule is disabled: ${importId}`);
     }
@@ -453,6 +461,9 @@ export class CsvImportScheduler {
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     skipRetry = false
   ) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'csv-import-scheduler.ts:executeImport',message:'executeImport start',data:{scheduleId:importSchedule.id,skipRetry,provider:importSchedule.provider || 'default',hasTargets:Array.isArray(importSchedule.targets) && importSchedule.targets.length > 0},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const executionService = this.createExecutionService();
     return await executionService.execute({ config, importSchedule, skipRetry });
   }
