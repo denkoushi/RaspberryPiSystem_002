@@ -186,6 +186,7 @@ async function main() {
       name: 'MeasuringInstrumentLoans',
       description: '計測機器の持出状況（PowerApps連携）',
       gmailSubjectPattern: measuringInstrumentLoansGmailSubjectPattern,
+      enabled: true,
       ingestMode: 'DEDUP',
       dedupKeyColumns: ['managementNumber', 'borrowedAt'],
       dateColumnName: 'borrowedAt',
