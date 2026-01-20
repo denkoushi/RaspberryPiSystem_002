@@ -5,7 +5,8 @@ import {
   useCsvImportSchedules,
   useCsvImportScheduleMutations,
   useCsvImportSubjectPatterns,
-  useCsvImportSubjectPatternMutations
+  useCsvImportSubjectPatternMutations,
+  useCsvDashboards
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -140,6 +141,7 @@ export function CsvImportSchedulePage() {
   const { data: subjectPatternData, isLoading: isLoadingPatterns } = useCsvImportSubjectPatterns();
   const { create: createPattern, update: updatePattern, remove: removePattern } =
     useCsvImportSubjectPatternMutations();
+  const { data: csvDashboardsData } = useCsvDashboards({ enabled: true });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -555,7 +557,7 @@ export function CsvImportSchedulePage() {
                       value={target.type}
                       onChange={(e) => {
                         const newTargets = [...(formData.targets || [])];
-                        newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' };
+                        newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards', source: '' };
                         setFormData({ ...formData, targets: newTargets });
                       }}
                     >
@@ -563,8 +565,26 @@ export function CsvImportSchedulePage() {
                       <option value="items">アイテム</option>
                       <option value="measuringInstruments">計測機器</option>
                       <option value="riggingGears">吊具</option>
+                      <option value="csvDashboards">CSVダッシュボード</option>
                     </select>
-                    {formData.provider === 'gmail' ? (
+                    {target.type === 'csvDashboards' ? (
+                      <select
+                        className="flex-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
+                        value={target.source}
+                        onChange={(e) => {
+                          const newTargets = [...(formData.targets || [])];
+                          newTargets[index] = { ...target, source: e.target.value };
+                          setFormData({ ...formData, targets: newTargets });
+                        }}
+                      >
+                        <option value="">CSVダッシュボードを選択してください</option>
+                        {(csvDashboardsData || []).map((dashboard) => (
+                          <option key={dashboard.id} value={dashboard.id}>
+                            {dashboard.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : formData.provider === 'gmail' ? (
                       <select
                         className="flex-1 rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900"
                         value={target.source}
@@ -853,7 +873,7 @@ export function CsvImportSchedulePage() {
                                 value={target.type}
                                 onChange={(e) => {
                                   const newTargets = [...(formData.targets || [])];
-                                  newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' };
+                                  newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards', source: '' };
                                   setFormData({ ...formData, targets: newTargets });
                                 }}
                               >
@@ -861,6 +881,7 @@ export function CsvImportSchedulePage() {
                                 <option value="items">アイテム</option>
                                 <option value="measuringInstruments">計測機器</option>
                                 <option value="riggingGears">吊具</option>
+                                <option value="csvDashboards">CSVダッシュボード</option>
                               </select>
                               {formData.provider === 'gmail' ? (
                                 <select
@@ -876,6 +897,23 @@ export function CsvImportSchedulePage() {
                                   {(patternsByType[target.type] || []).map((pattern) => (
                                     <option key={pattern.id} value={pattern.pattern}>
                                       {pattern.pattern}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : target.type === 'csvDashboards' ? (
+                                <select
+                                  className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                  value={target.source}
+                                  onChange={(e) => {
+                                    const newTargets = [...(formData.targets || [])];
+                                    newTargets[index] = { ...target, source: e.target.value };
+                                    setFormData({ ...formData, targets: newTargets });
+                                  }}
+                                >
+                                  <option value="">CSVダッシュボードを選択してください</option>
+                                  {(csvDashboardsData || []).map((dashboard) => (
+                                    <option key={dashboard.id} value={dashboard.id}>
+                                      {dashboard.name}
                                     </option>
                                   ))}
                                 </select>

@@ -1034,7 +1034,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
   // スケジュール追加
   const csvImportTargetSchema = z.object({
-    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']),
+    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'csvDashboards']),
     source: z.string().min(1, 'sourceは必須です')
   });
 
