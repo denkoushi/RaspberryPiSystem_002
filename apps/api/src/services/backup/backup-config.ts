@@ -211,7 +211,9 @@ export const defaultBackupConfig: BackupConfig = {
         { type: 'csvDashboards', source: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }
       ],
       schedule: '0 * * * *',
-      enabled: false
+      enabled: false,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     }
   ],
   csvImportSubjectPatterns: {

@@ -5,6 +5,7 @@ import { BackupService } from '../backup/backup.service.js';
 import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
 import { CsvBackupTarget } from '../backup/targets/csv-backup.target.js';
 import { DatabaseBackupTarget } from '../backup/targets/database-backup.target.js';
+import type { BackupTarget } from '../backup/backup-target.interface.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { BackupVerifier } from '../backup/backup-verifier.js';
 import { BackupOperationType } from '@prisma/client';
@@ -39,22 +40,14 @@ export interface StorageProviderFactoryLike {
 }
 
 type BackupServiceLike = {
-  backup: (target: { info: { type: string; source: string }; createBackup: () => Promise<Buffer> }, options?: { label?: string }) => Promise<{
-    success: boolean;
-    path?: string;
-    sizeBytes?: number;
-    timestamp: Date;
-  }>;
+  backup: BackupService['backup'];
 };
 
 type BackupVerifierLike = {
-  verify: (data: Buffer) => { hash: string };
+  verify: (data: Buffer) => { hash?: string };
 };
 
-type BackupTargetLike = {
-  info: { type: string; source: string };
-  createBackup: () => Promise<Buffer>;
-};
+type BackupTargetLike = BackupTarget;
 
 type CsvBackupSource = 'employees' | 'items';
 
@@ -93,7 +86,7 @@ export class CsvImportAutoBackupService {
       overrides.createCsvBackupTarget ?? ((source, options) => new CsvBackupTarget(source, options));
     this.createDatabaseBackupTarget =
       overrides.createDatabaseBackupTarget ?? ((dbUrl) => new DatabaseBackupTarget(dbUrl));
-    this.verifier = overrides.verifier ?? BackupVerifier;
+    this.verifier = overrides.verifier ?? { verify: (data) => BackupVerifier.verify(data) };
     this.getDatabaseUrl =
       overrides.getDatabaseUrl ??
       (() => process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return');

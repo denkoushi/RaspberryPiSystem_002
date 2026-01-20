@@ -38,7 +38,8 @@ export class CsvImportScheduler {
     this.alertService = new ImportAlertService();
     this.backupHistoryService = new BackupHistoryService();
     this.createExecutionService = () => new CsvImportExecutionService();
-    this.createAutoBackupService = () => new CsvImportAutoBackupService(this.backupHistoryService);
+    this.createAutoBackupService = () =>
+      new CsvImportAutoBackupService({ backupHistoryService: this.backupHistoryService });
     this.createCsvDashboardRetentionService = () => new CsvDashboardRetentionService();
 
     if (overrides.historyService) this.historyService = overrides.historyService;
