@@ -894,7 +894,7 @@ export function CsvImportSchedulePage() {
                                   }}
                                 >
                                   <option value="">選択してください</option>
-                                  {(patternsByType[target.type] || []).map((pattern) => (
+                                  {(target.type !== 'csvDashboards' && patternsByType[target.type as CsvImportSubjectPatternType] || []).map((pattern) => (
                                     <option key={pattern.id} value={pattern.pattern}>
                                       {pattern.pattern}
                                     </option>
