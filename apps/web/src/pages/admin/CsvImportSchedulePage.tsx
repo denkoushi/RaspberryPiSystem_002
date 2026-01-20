@@ -354,9 +354,20 @@ export function CsvImportSchedulePage() {
     }
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run requested',data:{scheduleId:id,provider:provider,targets:(schedule?.targets || []).map(t => ({ type: t.type, source: t.source }))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       await run.mutateAsync(id);
       refetch();
     } catch (error) {
+      const err = error as {
+        message?: string;
+        response?: { status?: number; data?: unknown };
+      };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error',data:{scheduleId:id,errorMessage:err?.message,axiosStatus:err?.response?.status,axiosData:err?.response?.data},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       // エラーはmutationのisErrorで表示
     }
   };
