@@ -1246,23 +1246,41 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   // 手動実行
   app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1248',message:'manual run request received',data:{scheduleId:id,reqId:(request as any).id ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     
     // スケジュールが存在するか確認
     const config = await BackupConfigLoader.load();
     const schedule = config.csvImports?.find(s => s.id === id);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1252',message:'loaded csv import schedules',data:{scheduleId:id,hasCsvImports:Array.isArray(config.csvImports),csvImportCount:config.csvImports?.length ?? 0,scheduleIds:(config.csvImports ?? []).map((s) => s.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     
     if (!schedule) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1255',message:'schedule not found',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
     }
     
     const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
     const scheduler = getCsvImportScheduler();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1260',message:'about to run scheduler import',data:{scheduleId:id,hasScheduler:!!scheduler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
     
     try {
       await scheduler.runImport(id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1262',message:'scheduler.runImport succeeded',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
       return { message: 'インポートを実行しました' };
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1266',message:'scheduler.runImport failed',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
       if (error instanceof Error) {
         // スケジュールが見つからないエラーの場合は404
