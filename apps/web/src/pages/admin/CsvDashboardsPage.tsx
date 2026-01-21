@@ -298,17 +298,30 @@ export function CsvDashboardsPage() {
                               </Button>
                             </div>
                           </td>
-                          <td className="border border-slate-200 px-2 py-1 font-mono text-slate-700">
+                          <td className="border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-slate-500">
                             {col.internalName}
+                            <span className="ml-1 text-xs text-slate-400">（読み取り専用）</span>
                           </td>
-                          <td className="border border-slate-200 px-2 py-1 text-slate-700">{col.dataType}</td>
+                          <td className="border border-slate-200 bg-slate-100 px-2 py-1 text-slate-500">
+                            {col.dataType}
+                            <span className="ml-1 text-xs text-slate-400">（読み取り専用）</span>
+                          </td>
                           <td className="border border-slate-200 px-2 py-1">
                             <input
                               value={col.displayName}
                               onChange={(e) => {
                                 const value = e.target.value;
                                 setColumnDefinitions((prev) =>
-                                  prev.map((item, idx) => (idx === index ? { ...item, displayName: value } : item))
+                                  prev.map((item, idx) => {
+                                    if (idx !== index) return item;
+                                    // 表示名を変更したとき、CSVヘッダー候補に自動追加（重複を避ける）
+                                    const updatedCandidates = [...item.csvHeaderCandidates];
+                                    if (value && !updatedCandidates.includes(value)) {
+                                      // 表示名を先頭に追加
+                                      updatedCandidates.unshift(value);
+                                    }
+                                    return { ...item, displayName: value, csvHeaderCandidates: updatedCandidates };
+                                  })
                                 );
                               }}
                               className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
