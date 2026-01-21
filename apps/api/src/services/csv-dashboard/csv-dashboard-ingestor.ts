@@ -249,9 +249,21 @@ export class CsvDashboardIngestor {
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:missing',message:'required column missing',data:{internalName:colDef.internalName,displayName:colDef.displayName,candidates:colDef.csvHeaderCandidates,headersPreview:csvHeaders.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
+          const userMessage = [
+            'CSVファイルの列構成が設定と一致しません。',
+            `見つからなかった列: ${colDef.displayName} (内部名: ${colDef.internalName})`,
+            `候補: ${colDef.csvHeaderCandidates.join(', ')}`,
+            '対応: CSVヘッダー行を確認し、必要なら管理コンソールで列定義の候補を追加してください。'
+          ].join(' ');
           throw new ApiError(
             400,
-            `列 "${colDef.displayName}" (内部名: ${colDef.internalName}) が見つかりません。候補: ${colDef.csvHeaderCandidates.join(', ')}`
+            userMessage,
+            {
+              missingColumn: colDef.displayName,
+              internalName: colDef.internalName,
+              candidates: colDef.csvHeaderCandidates
+            },
+            'CSV_HEADER_MISMATCH'
           );
         }
         // オプション列の場合はスキップ

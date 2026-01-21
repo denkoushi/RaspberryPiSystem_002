@@ -8,6 +8,7 @@ import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
 import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js';
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * CSVインポートスケジューラー
@@ -112,6 +113,20 @@ export class CsvImportScheduler {
       return summary;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      let alertMessage = errorMessage;
+      if (error instanceof ApiError && error.code === 'CSV_HEADER_MISMATCH') {
+        const details = error.details as { missingColumn?: string; internalName?: string; candidates?: string[] } | undefined;
+        alertMessage = [
+          'CSVインポートが列構成不一致で失敗しました。',
+          details?.missingColumn
+            ? `不足列: ${details.missingColumn}${details.internalName ? ` (内部名: ${details.internalName})` : ''}`
+            : undefined,
+          details?.candidates?.length ? `候補: ${details.candidates.join(', ')}` : undefined,
+          '対応: CSVヘッダー行を確認し、必要なら管理コンソールで列定義の候補を追加してください。'
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
 
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'csv-import-scheduler.ts:executeSingleRun',message:'executeSingleRun error',data:{taskId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage},timestamp:Date.now()})}).catch(()=>{});
@@ -131,7 +146,7 @@ export class CsvImportScheduler {
       await this.alertService.generateFailureAlert({
         scheduleId: taskId,
         scheduleName: importSchedule.name,
-        errorMessage,
+        errorMessage: alertMessage,
         historyId,
       });
 
