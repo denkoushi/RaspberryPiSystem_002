@@ -226,18 +226,29 @@ export class CsvDashboardIngestor {
     columnDefinitions: ColumnDefinition[]
   ): Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }> {
     const mapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }> = [];
+    const normalizeHeader = (value: string) => {
+      // BOM / 全角空白 / 通常空白 / 両端引用符を除去して比較しやすくする
+      const trimmed = value.replace(/^\uFEFF/, '').replace(/^[\s\u3000]+|[\s\u3000]+$/g, '');
+      return trimmed.replace(/^"+|"+$/g, '').toLowerCase();
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:entry',message:'createColumnMapping headers preview',data:{headerCount:csvHeaders.length,headersPreview:csvHeaders.slice(0,10).map((header)=>({raw:header,normalized:header.replace(/^\\uFEFF/,'').trim()}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     for (const colDef of columnDefinitions) {
       // CSVヘッダーから候補を検索
       const csvIndex = csvHeaders.findIndex((header) =>
         colDef.csvHeaderCandidates.some((candidate) =>
-          header.toLowerCase().trim() === candidate.toLowerCase().trim()
+          normalizeHeader(header) === normalizeHeader(candidate)
         )
       );
 
       if (csvIndex === -1) {
         // 必須列が見つからない場合はエラー
         if (colDef.required !== false) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:missing',message:'required column missing',data:{internalName:colDef.internalName,displayName:colDef.displayName,candidates:colDef.csvHeaderCandidates,headersPreview:csvHeaders.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           throw new ApiError(
             400,
             `列 "${colDef.displayName}" (内部名: ${colDef.internalName}) が見つかりません。候補: ${colDef.csvHeaderCandidates.join(', ')}`

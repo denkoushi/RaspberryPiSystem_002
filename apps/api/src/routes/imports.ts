@@ -14,6 +14,7 @@ import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
 import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
+import { writeDebugLog } from '../lib/debug-log.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -1249,6 +1250,9 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1248',message:'manual run request received',data:{scheduleId:id,reqId:(request as any).id ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
     // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H1',location:'imports.ts:1249',message:'manual run request received (file log)',data:{scheduleId:id,reqId:(request as any).id ?? null},timestamp:Date.now()});
+    // #endregion
     
     // スケジュールが存在するか確認
     const config = await BackupConfigLoader.load();
@@ -1256,10 +1260,16 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1252',message:'loaded csv import schedules',data:{scheduleId:id,hasCsvImports:Array.isArray(config.csvImports),csvImportCount:config.csvImports?.length ?? 0,scheduleIds:(config.csvImports ?? []).map((s) => s.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
     // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H2',location:'imports.ts:1253',message:'loaded csv import schedules (file log)',data:{scheduleId:id,hasCsvImports:Array.isArray(config.csvImports),csvImportCount:config.csvImports?.length ?? 0,scheduleIds:(config.csvImports ?? []).map((s) => s.id),backupConfigPath:process.env.BACKUP_CONFIG_PATH ?? null},timestamp:Date.now()});
+    // #endregion
     
     if (!schedule) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1255',message:'schedule not found',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H1',location:'imports.ts:1256',message:'schedule not found (file log)',data:{scheduleId:id},timestamp:Date.now()});
       // #endregion
       throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
     }
@@ -1269,11 +1279,17 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1260',message:'about to run scheduler import',data:{scheduleId:id,hasScheduler:!!scheduler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
     // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1261',message:'about to run scheduler import (file log)',data:{scheduleId:id,hasScheduler:!!scheduler},timestamp:Date.now()});
+    // #endregion
     
     try {
       await scheduler.runImport(id);
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1262',message:'scheduler.runImport succeeded',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1263',message:'scheduler.runImport succeeded (file log)',data:{scheduleId:id},timestamp:Date.now()});
       // #endregion
       request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
       return { message: 'インポートを実行しました' };
@@ -1281,10 +1297,17 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1266',message:'scheduler.runImport failed',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
       // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1267',message:'scheduler.runImport failed (file log)',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()});
+      // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
       if (error instanceof Error) {
-        // スケジュールが見つからないエラーの場合は404
-        if (error.message.includes('not found') || error.message.includes('見つかりません')) {
+        // スケジュールが見つからないエラーの場合のみ404
+        // NOTE: 取り込み側（CSVダッシュボード列不足など）も「見つかりません」を含むため、誤判定しない
+        if (
+          error.message.includes('スケジュールが見つかりません') ||
+          error.message.toLowerCase().includes('schedule not found')
+        ) {
           throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
         }
         throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
