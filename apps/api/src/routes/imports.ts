@@ -1301,6 +1301,12 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1267',message:'scheduler.runImport failed (file log)',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()});
       // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+      
+      // ApiErrorの場合はstatusCodeを尊重して再スロー
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
       if (error instanceof Error) {
         // スケジュールが見つからないエラーの場合のみ404
         // NOTE: 取り込み側（CSVダッシュボード列不足など）も「見つかりません」を含むため、誤判定しない
