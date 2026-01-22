@@ -368,6 +368,45 @@ export function CsvImportSchedulePage() {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,response},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
+
+      // 取り込みは200でも「部分失敗」があり得る（例: 列不一致で後段処理が失敗）
+      // 安全仕様として、失敗が含まれる場合はGmail後処理（既読化/ゴミ箱移動）が行われず、受信箱に残る。
+      const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
+      const summary = (response as { summary?: unknown })?.summary;
+      const dashboardSummaryRaw = isRecord(summary) ? summary.csvDashboards : undefined;
+      const dashboardSummary = isRecord(dashboardSummaryRaw) ? dashboardSummaryRaw : undefined;
+      const failureMessages: string[] = [];
+      if (dashboardSummary && typeof dashboardSummary === 'object') {
+        for (const [dashboardId, result] of Object.entries(dashboardSummary)) {
+          const debugRaw = isRecord(result) ? result.debug : undefined;
+          const debug = isRecord(debugRaw) ? debugRaw : undefined;
+          const failed = Array.isArray(debug?.failedMessageIdSuffixes)
+            ? debug.failedMessageIdSuffixes.length
+            : 0;
+          if (failed <= 0) continue;
+          const downloaded = Array.isArray(debug?.downloadedMessageIdSuffixes)
+            ? debug.downloadedMessageIdSuffixes.length
+            : 0;
+          const firstError =
+            Array.isArray(debug?.errorDetails) &&
+            debug.errorDetails.length > 0 &&
+            isRecord(debug.errorDetails[0]) &&
+            typeof debug.errorDetails[0].error === 'string'
+              ? debug.errorDetails[0].error
+              : undefined;
+          const reason = firstError ? firstError : '不明なエラー';
+          failureMessages.push(`- CSVダッシュボード(${dashboardId}): ${reason}（失敗 ${failed}/${downloaded || '?'}）`);
+        }
+      }
+      if (failureMessages.length > 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'UI',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run had partial failures; showing warning',data:{scheduleId:id,failureCount:failureMessages.length,firstFailure:failureMessages[0]},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        alert(
+          `一部の取り込みに失敗しました。\n\n${failureMessages.join('\n')}\n\n安全のため、該当メールは未読のまま残しています（受信箱が空になりません）。CSV列定義（例: day列）を確認して再実行してください。`
+        );
+      }
+
       refetch();
     } catch (error) {
       const err = error as {
