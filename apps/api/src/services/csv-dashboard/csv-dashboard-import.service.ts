@@ -11,6 +11,14 @@ export type CsvDashboardIngestResult = {
   rowsProcessed: number;
   rowsAdded: number;
   rowsSkipped: number;
+  debug?: {
+    provider: string;
+    bufferResultsCount: number;
+    downloadedMessageIdSuffixes: string[];
+    postProcessedMessageIdSuffixes: string[];
+    failedMessageIdSuffixes: string[];
+    canPostProcessGmail: boolean;
+  };
 };
 
 export class CsvDashboardImportService {
@@ -44,6 +52,9 @@ export class CsvDashboardImportService {
     const results: Record<string, CsvDashboardIngestResult> = {};
 
     for (const dashboardId of dashboardIds) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'csv-dashboard-import.service.ts:dashboard-loop',message:'Start dashboard ingest loop',data:{dashboardId,provider},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const dashboard = await prisma.csvDashboard.findUnique({ where: { id: dashboardId } });
 
       if (!dashboard) {
@@ -88,13 +99,26 @@ export class CsvDashboardImportService {
         throw error;
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'csv-dashboard-import.service.ts:after-downloadCsv',message:'downloadCsv returned results',data:{dashboardId,provider,resultsCount:bufferResults.length,canPostProcessGmail:(provider==='gmail'&&CsvDashboardImportService.canPostProcessGmail(storageProvider))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       let totalProcessed = 0;
       let totalAdded = 0;
       let totalSkipped = 0;
       let lastError: unknown | null = null;
+      const downloadedMessageIdSuffixes: string[] = [];
+      const postProcessedMessageIdSuffixes: string[] = [];
+      const failedMessageIdSuffixes: string[] = [];
+      const canPostProcessGmail = provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider);
 
       for (const bufferResult of bufferResults) {
         const { buffer, messageId, messageSubject } = bufferResult;
+        const safeMessageId = messageId ? messageId.slice(-6) : null;
+        if (safeMessageId) downloadedMessageIdSuffixes.push(safeMessageId);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'D',location:'csv-dashboard-import.service.ts:per-message',message:'Start processing message',data:{dashboardId,provider,messageIdSuffix:safeMessageId,hasMessageId:!!messageId,hasMessageSubject:!!messageSubject},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         const csvContent = buffer.toString('utf-8');
 
         try {
@@ -126,11 +150,19 @@ export class CsvDashboardImportService {
 
           // Gmail後処理（成功時のみ）
           if (provider === 'gmail' && messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider)) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'csv-dashboard-import.service.ts:pre-postprocess',message:'About to post-process Gmail message',data:{dashboardId,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             await storageProvider.markAsRead(messageId);
             await storageProvider.trashMessage(messageId);
+            if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'csv-dashboard-import.service.ts:post-postprocess',message:'Finished post-processing Gmail message',data:{dashboardId,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
           }
         } catch (error) {
           lastError = error;
+          if (safeMessageId) failedMessageIdSuffixes.push(safeMessageId);
           logger?.error(
             { err: error, dashboardId, messageId },
             '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
@@ -147,6 +179,14 @@ export class CsvDashboardImportService {
         rowsProcessed: totalProcessed,
         rowsAdded: totalAdded,
         rowsSkipped: totalSkipped,
+        debug: {
+          provider,
+          bufferResultsCount: bufferResults.length,
+          downloadedMessageIdSuffixes,
+          postProcessedMessageIdSuffixes,
+          failedMessageIdSuffixes,
+          canPostProcessGmail,
+        },
       };
       results[dashboardId] = aggregatedResult;
       logger?.info({ dashboardId, result: aggregatedResult }, '[CsvDashboardImportService] CSV dashboard ingestion completed');

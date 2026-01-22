@@ -1284,7 +1284,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // #endregion
     
     try {
-      await scheduler.runImport(id);
+      const summary = await scheduler.runImport(id);
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1262',message:'scheduler.runImport succeeded',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
       // #endregion
@@ -1292,7 +1292,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1263',message:'scheduler.runImport succeeded (file log)',data:{scheduleId:id},timestamp:Date.now()});
       // #endregion
       request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
-      return { message: 'インポートを実行しました' };
+      return { message: 'インポートを実行しました', summary };
     } catch (error) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1266',message:'scheduler.runImport failed',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});

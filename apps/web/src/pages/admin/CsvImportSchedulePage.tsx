@@ -358,7 +358,10 @@ export function CsvImportSchedulePage() {
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run requested',data:{scheduleId:id,provider:provider,targets:(schedule?.targets || []).map(t => ({ type: t.type, source: t.source }))},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
 
-      await run.mutateAsync(id);
+      const response = await run.mutateAsync(id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,response},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       refetch();
     } catch (error) {
       const err = error as {

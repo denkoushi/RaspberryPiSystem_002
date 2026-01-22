@@ -354,6 +354,7 @@
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
 | デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | **CSVダッシュボード可視化機能を検証したい** | **[guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md)** |
+| **計測機器持出返却イベント機能を検証したい** | **[guides/measuring-instrument-loan-events-verification.md](./guides/measuring-instrument-loan-events-verification.md)** |
 | システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./guides/stability-improvement-test.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |

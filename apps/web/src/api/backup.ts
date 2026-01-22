@@ -155,8 +155,8 @@ export async function deleteCsvImportSchedule(id: string): Promise<{ message: st
   return data;
 }
 
-export async function runCsvImportSchedule(id: string): Promise<{ message: string }> {
-  const { data } = await api.post<{ message: string }>(`/imports/schedule/${id}/run`, {});
+export async function runCsvImportSchedule(id: string): Promise<{ message: string; summary?: unknown }> {
+  const { data } = await api.post<{ message: string; summary?: unknown }>(`/imports/schedule/${id}/run`, {});
   return data;
 }
 

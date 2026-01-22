@@ -63,7 +63,16 @@ export class CsvImportScheduler {
     config: BackupConfig;
     importSchedule: NonNullable<BackupConfig['csvImports']>[0];
     isManual: boolean;
-  }): Promise<{ employees?: { processed: number; created: number; updated: number }; items?: { processed: number; created: number; updated: number }; measuringInstruments?: { processed: number; created: number; updated: number }; riggingGears?: { processed: number; created: number; updated: number }; csvDashboards?: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> }> {
+  }): Promise<{
+    employees?: { processed: number; created: number; updated: number };
+    items?: { processed: number; created: number; updated: number };
+    measuringInstruments?: { processed: number; created: number; updated: number };
+    riggingGears?: { processed: number; created: number; updated: number };
+    csvDashboards?: Record<
+      string,
+      { rowsProcessed: number; rowsAdded: number; rowsSkipped: number; debug?: unknown }
+    >;
+  }> {
     const { config, importSchedule, isManual } = params;
     const taskId = importSchedule.id;
     let historyId: string | undefined;
@@ -508,7 +517,7 @@ export class CsvImportScheduler {
   /**
    * 手動でインポートを実行
    */
-  async runImport(importId: string): Promise<void> {
+  async runImport(importId: string): Promise<Awaited<ReturnType<CsvImportScheduler['executeSingleRun']>>> {
     const config = await BackupConfigLoader.load();
     const importSchedule = config.csvImports?.find(imp => imp.id === importId);
     
@@ -531,7 +540,7 @@ export class CsvImportScheduler {
 
     this.runningImports.add(importId);
     try {
-      await this.executeSingleRun({ config, importSchedule, isManual: true });
+      return await this.executeSingleRun({ config, importSchedule, isManual: true });
     } finally {
       this.runningImports.delete(importId);
     }
