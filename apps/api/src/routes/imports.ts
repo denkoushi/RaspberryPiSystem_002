@@ -12,6 +12,7 @@ import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
+import type { StorageProvider } from '../services/backup/storage/storage-provider.interface.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../services/backup/gmail-oauth.service.js';
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
 import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
