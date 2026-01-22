@@ -59,15 +59,31 @@ docker compose -f "${COMPOSE_FILE}" up -d --build
 # データベースマイグレーションを実行
 log "データベースマイグレーションを実行中..."
 sleep 5  # データベースが起動するまで待機
-docker compose -f "${COMPOSE_FILE}" exec -T api pnpm prisma migrate deploy || {
-  log "警告: マイグレーションの実行に失敗しました。手動で確認してください。"
-}
+docker compose -f "${COMPOSE_FILE}" exec -T api pnpm prisma migrate deploy
+
+# データベース整合性チェック（fail-fast）
+log "データベース整合性チェックを実行中..."
+docker compose -f "${COMPOSE_FILE}" exec -T api pnpm prisma migrate status
+
+MIGRATION_COUNT=$(docker compose -f "${COMPOSE_FILE}" exec -T db psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";")
+if [ "${MIGRATION_COUNT}" -le 0 ]; then
+  log "エラー: _prisma_migrations が空です。マイグレーション未適用の可能性があります。"
+  exit 1
+fi
+
+TABLE_EXISTS=$(docker compose -f "${COMPOSE_FILE}" exec -T db psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;")
+if [ "${TABLE_EXISTS}" != "t" ]; then
+  log "エラー: MeasuringInstrumentLoanEvent テーブルが存在しません。"
+  exit 1
+fi
 
 # ヘルスチェック
 log "ヘルスチェックを実行中..."
 sleep 10  # APIが起動するまで待機
 for i in {1..30}; do
-  if curl -f -s http://localhost:8080/api/system/health > /dev/null 2>&1; then
+  status_https=$(curl -k -s -o /dev/null -w "%{http_code}" https://localhost/api/system/health || true)
+  status_http=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/system/health || true)
+  if [ "${status_https}" = "200" ] || [ "${status_http}" = "200" ]; then
     log "ヘルスチェック成功"
     break
   fi

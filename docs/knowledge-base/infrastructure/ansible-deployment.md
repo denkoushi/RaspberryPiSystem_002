@@ -18,6 +18,37 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 ---
 
+### [KB-191] デプロイは成功したのにDBが古い（テーブル不存在）
+
+**発生日**: 2026-01-XX  
+
+**事象**:
+- デプロイ後にAPIが起動しているにもかかわらず、`MeasuringInstrumentLoanEvent` などの新規テーブルが存在せず機能が失敗する
+- エラー例: `The table "public.MeasuringInstrumentLoanEvent" does not exist`
+
+**要因**:
+- `scripts/server/deploy.sh` が `pnpm prisma migrate deploy` 失敗時に警告だけで続行する設計
+- Ansible経路（`scripts/update-all-clients.sh` → `deploy.yml`）がDB整合性ゲートを持たず、APIヘルスのみで成功扱いしていた
+
+**有効だった対策**:
+- ✅ **解決済み（設計更新）**:
+  1. **Pi5単体デプロイのfail-fast化**: migrate失敗時にデプロイを停止
+  2. **DB整合性ゲートの追加**: `_prisma_migrations` の存在と必須テーブルの存在を検証
+  3. **Ansible検証にDBゲートを統合**: `verification-map.yml` の `type: command` でDBチェックを実行
+  4. **health-check playbookにDBチェックを追加**（P2経路のfail-fast強化）
+
+**学んだこと**:
+- APIヘルスチェックだけではDB整合性を担保できない
+- マイグレーション未適用は全機能に波及するため、デプロイ成功条件にDBゲートを必須化するべき
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`
+- `infrastructure/ansible/playbooks/health-check.yml`
+- `infrastructure/ansible/verification-map.yml`
+- `docs/guides/deployment.md`
+
+---
+
 ### [KB-058] Ansible接続設定でRaspberry Pi 3/4への接続に失敗する問題（ユーザー名・SSH鍵・サービス存在確認）
 
 **EXEC_PLAN.md参照**: Phase 1 実機テスト（2025-12-01）

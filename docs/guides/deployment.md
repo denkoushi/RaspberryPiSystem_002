@@ -36,6 +36,16 @@ update-frequency: medium
 - `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
 - どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
 
+### デプロイ成功条件（共通）
+
+**成功条件に満たない場合は「デプロイ失敗」として扱う**（fail-fast）。最低限の共通条件は以下:
+
+- **DB整合性**:
+  - `pnpm prisma migrate status` が最新
+  - 必須テーブル（例: `MeasuringInstrumentLoanEvent`）が存在
+- **API稼働**: `GET /api/system/health` が 200 で `status=ok`
+- **証跡**: デプロイログ/検証ログが残り、失敗理由が追跡できる
+
 ## 🌐 ネットワーク環境の確認（デプロイ前必須）
 
 **重要**: デプロイ前に、現在のネットワーク環境（オフィス/自宅）を確認し、Pi5上の`group_vars/all.yml`の`network_mode`を適切に設定してください。これがデプロイ成功の最重要ポイントです。
@@ -106,6 +116,16 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # Pi5上でbackup.jsonをバックアップ
   ssh denkon5sd02@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
   ```
+- [ ] **フルバックアップの実行（推奨）**: DB/ENV/ストレージを含むバックアップを実行（[バックアップ手順](./backup-and-restore.md)参照）
+  ```bash
+  # Pi5上で実行
+  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && ./scripts/server/backup.sh"
+  ```
+- [ ] **バックアップ設定の健全性確認（推奨）**: `backup.json`の衝突/ドリフト/欠落を検知（[KB-148](../knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装)参照）
+  ```bash
+  # Pi5上で実行（自己署名TLSのため -k）
+  ssh denkon5sd02@raspberrypi.local "curl -sk https://localhost/api/backup/config/health/internal"
+  ```
 - [ ] **ネットワーク環境の確認**: `group_vars/all.yml`の`network_mode`が現在のネットワーク環境と一致しているか確認
   ```bash
   # Pi5上のnetwork_modeを確認
@@ -131,6 +151,16 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか
   - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
+- [ ] **DB整合性チェック**: マイグレーション適用と必須テーブルの存在を確認
+  ```bash
+  # Pi5上で実行
+  cd /opt/RaspberryPiSystem_002
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+    psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";"
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+    psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;"
+  ```
 - [ ] **ポート公開/不要サービス/監視の確認**: 不要なLISTEN/UNCONNが出ていないか、`ports-unexpected` がノイズ化していないか確認
   ```bash
   # LISTEN/UNCONN（プロセス込み）
@@ -735,6 +765,11 @@ git checkout <前のコミットハッシュ>
 # 2. データベースをリストア（必要に応じて）
 ./scripts/server/restore.sh /opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz
 ```
+
+**補足（運用経路別）**:
+- **Ansible経路**: `scripts/update-all-clients.sh` 実行後に問題が出た場合、クライアント設定の復旧は `infrastructure/ansible/playbooks/rollback.yml` を使用する
+- **統合デプロイ**: `scripts/deploy/deploy-all.sh` は `ROLLBACK_ON_FAIL=1` でロールバックを試行可能（事前に `ROLLBACK_CMD` を確認）
+- **DBロールバックの原則**: 破壊的マイグレーションは避け、復旧はバックアップからのリストアを基本とする
 
 ## トラブルシューティング
 

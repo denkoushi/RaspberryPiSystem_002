@@ -686,6 +686,20 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(statusCode).send(health);
   });
 
+  // 設定の健全性チェック（内部用: localhostからのみ、認証不要）
+  // backup/restore手順や事前チェックで利用するためのエンドポイント
+  app.get('/backup/config/health/internal', {
+    config: { rateLimit: false }
+  }, async (request, reply) => {
+    const remoteAddress = request.socket.remoteAddress || request.ip;
+    if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1' && !remoteAddress?.startsWith('172.')) {
+      throw new ApiError(403, 'Internal config health endpoint is only accessible from localhost');
+    }
+    const health = await BackupConfigLoader.checkHealth();
+    const statusCode = health.status === 'error' ? 500 : 200;
+    return reply.status(statusCode).send(health);
+  });
+
   // 設定の更新
   app.put('/backup/config', {
     preHandler: [mustBeAdmin],

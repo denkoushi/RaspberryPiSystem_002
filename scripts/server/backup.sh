@@ -16,7 +16,7 @@ set -e
 BACKUP_DIR="/opt/backups"
 PROJECT_DIR="/opt/RaspberryPiSystem_002"
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
-API_URL="http://localhost:8080/api"
+API_URL="https://localhost/api"
 DATE=$(date +%Y%m%d_%H%M%S)
 RETENTION_DAYS=30
 
@@ -25,7 +25,7 @@ mkdir -p "${BACKUP_DIR}"
 
 # APIが利用可能か確認
 check_api_available() {
-  if ! curl -f -s "${API_URL}/system/health" > /dev/null 2>&1; then
+  if ! curl -k -f -s "${API_URL}/system/health" > /dev/null 2>&1; then
     echo "警告: APIが利用できません。ローカルバックアップのみ実行します。"
     return 1
   fi
@@ -43,7 +43,7 @@ backup_via_api() {
     metadata="{\"label\":\"${label}\"}"
   fi
   
-  local response=$(curl -s -X POST "${API_URL}/backup/internal" \
+  local response=$(curl -k -s -X POST "${API_URL}/backup/internal" \
     -H "Content-Type: application/json" \
     -d "{\"kind\":\"${kind}\",\"source\":\"${source}\",\"metadata\":${metadata}}" 2>&1)
   

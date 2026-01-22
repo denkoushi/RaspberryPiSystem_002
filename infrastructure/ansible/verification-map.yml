@@ -5,8 +5,21 @@ verification_map:
     # 失敗基準: タイムアウト、接続エラー、または200以外のステータスコード
     - name: api_health
       type: http_get
-      url: "http://{{ server_ip }}:8080/api/system/health"
+      url: "{{ server_base_url }}/api/system/health"
       expected_status: 200
+      insecure_tls: true
+    - name: prisma_migrate_status
+      type: command
+      command: "ssh -o BatchMode=yes denkon5sd02@{{ server_ip }} \"cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status\""
+      expected_output: ""
+    - name: prisma_migrations_table
+      type: command
+      command: "ssh -o BatchMode=yes denkon5sd02@{{ server_ip }} \"cd /opt/RaspberryPiSystem_002 && count=\\$(docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc \\\"SELECT COUNT(*) FROM \\\\\\\"_prisma_migrations\\\\\\\";\\\"); test \\\"\\${count}\\\" -ge 1\""
+      expected_output: ""
+    - name: measuring_instrument_loan_event_table
+      type: command
+      command: "ssh -o BatchMode=yes denkon5sd02@{{ server_ip }} \"cd /opt/RaspberryPiSystem_002 && exists=\\$(docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc \\\"SELECT to_regclass('public.\\\\\\\"MeasuringInstrumentLoanEvent\\\\\\\"') IS NOT NULL;\\\"); test \\\"\\${exists}\\\" = \\\"t\\\"\""
+      expected_output: ""
   pi4_kiosk:
     # 目的: Pi4キオスクが「持出一覧」を表示できることを確認（キオスクが実際に使用する機能の検証）
     # 検証対象: /api/tools/loans/activeエンドポイント（キオスクが実際に使用するエンドポイント）
@@ -15,8 +28,9 @@ verification_map:
     # 検証方法: x-client-keyヘッダーにclient-key-raspberrypi4-kiosk1（または管理コンソールで設定されたキー）を付与
     - name: kiosk_active_loans
       type: http_get
-      url: "http://{{ server_ip }}:8080/api/tools/loans/active"
+      url: "{{ server_base_url }}/api/tools/loans/active"
       expected_status: 200
+      insecure_tls: true
       headers:
         x-client-key: "client-key-raspberrypi4-kiosk1"
   pi3_signage:
@@ -25,6 +39,7 @@ verification_map:
     # 失敗基準: タイムアウト、接続エラー、または200以外のステータスコード
     - name: signage_image
       type: http_get
-      url: "http://{{ server_ip }}:8080/api/signage/content"
+      url: "{{ server_base_url }}/api/signage/content"
       expected_status: 200
+      insecure_tls: true
 
