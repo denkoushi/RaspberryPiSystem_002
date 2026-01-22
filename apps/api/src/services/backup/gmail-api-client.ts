@@ -75,6 +75,39 @@ export class GmailApiClient {
   }
 
   /**
+   * メールを全件検索（ページネーション対応）
+   * @param query Gmail検索クエリ
+   * @returns メッセージIDの配列
+   */
+  async searchMessagesAll(query: string): Promise<string[]> {
+    try {
+      const messageIds: string[] = [];
+      let pageToken: string | undefined;
+
+      do {
+        const response = await this.gmail.users.messages.list({
+          userId: 'me',
+          q: query,
+          maxResults: 100,
+          pageToken
+        });
+
+        const messages = response.data.messages || [];
+        messageIds.push(...messages.map((msg) => msg.id || '').filter((id) => id !== ''));
+        pageToken = response.data.nextPageToken || undefined;
+      } while (pageToken);
+
+      return messageIds;
+    } catch (error) {
+      logger?.error(
+        { err: error, query },
+        '[GmailApiClient] Failed to search messages (all pages)'
+      );
+      throw new Error(`Failed to search messages: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * メール詳細を取得
    * @param messageId メッセージID
    * @returns メッセージ情報
@@ -155,6 +188,51 @@ export class GmailApiClient {
         '[GmailApiClient] Failed to archive message'
       );
       throw new Error(`Failed to archive message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * メールを既読にする（UNREADラベルを削除）
+   * @param messageId メッセージID
+   */
+  async markAsRead(messageId: string): Promise<void> {
+    try {
+      await this.gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          removeLabelIds: ['UNREAD']
+        }
+      });
+
+      logger?.info({ messageId }, '[GmailApiClient] Message marked as read');
+    } catch (error) {
+      logger?.error(
+        { err: error, messageId },
+        '[GmailApiClient] Failed to mark message as read'
+      );
+      throw new Error(`Failed to mark message as read: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * メールをゴミ箱へ移動
+   * @param messageId メッセージID
+   */
+  async trashMessage(messageId: string): Promise<void> {
+    try {
+      await this.gmail.users.messages.trash({
+        userId: 'me',
+        id: messageId,
+      });
+
+      logger?.info({ messageId }, '[GmailApiClient] Message trashed');
+    } catch (error) {
+      logger?.error(
+        { err: error, messageId },
+        '[GmailApiClient] Failed to trash message'
+      );
+      throw new Error(`Failed to trash message: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

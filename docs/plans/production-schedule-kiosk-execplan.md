@@ -75,8 +75,9 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-01-XX) **実装順序2: UI改善完了**: CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソール（`/admin/csv-dashboards`）に追加。`CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加し、APIスキーマと型定義を更新。実機検証で設定が正しく保存・使用されることを確認。詳細は [KB-185](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) を参照。
 
-- [x] (2026-01-XX) **実装順序3: サイネージ用データ取得の構築**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示するための導線を整備。`seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。既定のCSVインポートスケジュール（無効）を用意し、管理コンソールで有効化できる状態に整備。サイネージスケジュール側の手順をドキュメント化。
+- [x] (2026-01-22) **実装順序3: サイネージ用データ取得の構築（実機検証完了）**: `MeasuringInstrumentLoans`（件名: `計測機器持出状況`）をGmail経由で取得し、CSVインポート→サイネージ表示までのE2Eを実機確認。初期はCSV列名と管理コンソールの列定義が不一致で失敗したが、列定義をCSVに合わせて修正後、エラーなく取り込み・サイネージ表示が成功。
 - [x] (2026-01-20) **CSVインポートスケジュールUI改善**: ID自動生成機能とNoMatchingMessageErrorハンドリング改善を実装。CSVダッシュボード選択時にスケジュールIDと名前を自動生成し、Gmailに該当メールがない場合でもエラーにならず正常に完了するように改善。詳細は [KB-187](../knowledge-base/api.md#kb-187-csvインポートスケジュール作成時のid自動生成とnomatchingmessageerrorハンドリング改善) を参照。
+- [x] (2026-01-21) **CSVインポート実行エンドポイントのエラーハンドリング改善**: ApiErrorのstatusCodeを尊重するように修正。列不一致エラーが500ではなく400 Bad Requestとして返されるようになり、ブラウザコンソールでも適切なステータスコードが記録される。詳細は [KB-188](../knowledge-base/api.md#kb-188-csvインポート実行エンドポイントでのapierror-statuscode尊重) を参照。
 
 - [x] (2026-01-XX) **実装順序4: 設計統一（完了・互換性維持中）**: マスターデータインポートのGmail件名パターンを`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行する設計変更。
   - ✅ **完了済み**: Prismaスキーマに`CsvImportSubjectPattern`モデル追加（`schema.prisma:578-591`）、`seed.ts`にデフォルトデータ投入
@@ -109,6 +110,24 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 **対策**: `execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避。
 
 **関連ファイル**: `apps/api/src/services/imports/import-alert.service.ts`
+
+### CSVインポート実行エンドポイントでのApiError statusCode無視問題
+
+**発見**: CSVインポート実行時に列不一致エラーが発生すると、ブラウザコンソールに500 Internal Server Errorが記録されていた。UIには適切なエラーメッセージが表示されるが、HTTPステータスコードが500（サーバー側の問題）になっていた。列不一致はクライアント側の問題なので、400 Bad Requestが適切。
+
+**対策**: `apps/api/src/routes/imports.ts`の`POST /imports/schedule/:id/run`エンドポイントで、`ApiError`の場合は`statusCode`を尊重して再スローするように修正。`error instanceof ApiError`のチェックを最初に行い、`ApiError`の場合はその`statusCode`を尊重して再スロー。それ以外の`Error`の場合のみ、500に変換。
+
+**関連ファイル**: `apps/api/src/routes/imports.ts`
+
+### CSV列定義（columnDefinitions）と取り込みCSVヘッダー不一致による取り込み失敗
+
+**発見**: `MeasuringInstrumentLoans`の取り込みで「列構成が一致しない」エラーが発生。原因は、取り込み対象CSVのヘッダー行と管理コンソールの列定義（CSVヘッダー候補）が不一致だった。
+
+**対策**: 管理コンソール（`/admin/csv-dashboards`）で対象CSVダッシュボードの列定義をCSVの実ヘッダーに合わせて修正。必要に応じて「CSVプレビュー（ヘッダー照合）」で事前確認してから実行する。
+
+**結果**: スケジュール手動実行で正常に取り込まれ、サイネージ表示も正常に更新されることを実機で確認。
+
+**関連ファイル**: `apps/web/src/pages/admin/CsvDashboardsPage.tsx`, `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`
 
 ### 本番環境での`prisma db seed`失敗
 
@@ -194,13 +213,13 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 ## Next Steps
 
-### 実装順序3: サイネージ用データ取得の構築（実機検証中）
+### 実装順序3: サイネージ用データ取得の構築（実機検証完了）
 
 **目的**: 計測機器の持出状況をGmail経由で取得し、サイネージで表示する機能を構築する。
 
-**現状**: `seed.ts`に`MeasuringInstrumentLoans` CSVダッシュボードの設定は追加済み（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）。CSVインポートスケジュールの作成・実行機能は実装完了し、正常に動作することを確認済み（2026-01-20）。次のステップは、Gmail経由のCSV取得とサイネージ表示の実機検証。
+**現状**: `MeasuringInstrumentLoans`（ID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`、件名パターン: `計測機器持出状況`）について、Gmail経由のCSV取得→取り込み→サイネージ表示までのE2Eを実機検証し、正常動作を確認済み（2026-01-22）。
 
-**実施手順**:
+**実施手順（再実行・運用時のチェックポイント）**:
 
 1. **CSVインポートスケジュールの有効化**
    - 管理コンソール（`/admin/imports/schedules`）でCSVインポートスケジュールを作成または編集
@@ -234,6 +253,12 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - [CSVダッシュボード可視化機能の実機検証手順](../guides/csv-dashboard-verification.md)
 - [KB-155: CSVダッシュボード可視化機能実装完了](../knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了)
 
+### 次のタスク候補（運用・スケール）
+
+1. **高頻度更新の取り込み要件整理**（「最新スナップショットが見えればよい」 vs 「借用/返却イベントを全て追跡したい」）
+2. **Gmail取り込みの安定化**（未読メールが溜まっても誤選択しない/再処理しない）
+   - 現行は `is:unread` の検索結果先頭1通の先頭添付のみ取得し、処理後は `INBOX` ラベルを外すだけ（未読フラグは残る）ため、運用によっては再処理や“どのメールを取るか”の揺れが起き得る
+
 ### 実装順序4: 設計統一（互換性維持のみ）
 
 **目的**: マスターデータインポート（employees, items, measuringInstruments, riggingGears）の件名パターン取得を`backup.json`からDBテーブル（`CsvImportSubjectPattern`）へ移行する。
@@ -263,6 +288,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - ✅ **設計統一（DB化＋スケジューラー統合）**: `CsvImportSubjectPattern`のDB化とスケジューラー統合を完了し、後方互換は維持
 - ✅ **ID自動生成機能**: CSVダッシュボード選択時にスケジュールIDと名前を自動生成し、ユーザー入力の手間を削減
 - ✅ **NoMatchingMessageErrorハンドリング**: メールがない場合でもエラーにならず、正常に完了するように改善
+- ✅ **ApiError statusCode尊重**: CSVインポート実行エンドポイントでApiErrorのstatusCodeを尊重し、適切なHTTPステータスコード（400/500）を返すように改善
 
 ### 学んだこと
 
@@ -273,6 +299,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 5. **UIの自動化**: ユーザー入力の手間を減らすため、選択に基づく自動生成は有効（ID自動生成機能）
 6. **エラーハンドリングの粒度**: メールがないことは「エラー」ではなく「スキップ可能な状態」として扱うことで、UXが向上
 7. **シェル実行の安全性**: `exec(string)`はシェルエスケープが複雑になるため、`execFile`で引数配列を渡す方が安全
+8. **エラーハンドリングの階層**: `ApiError`の`statusCode`を尊重することで、適切なHTTPステータスコードを返せる。クライアント側の問題（400）とサーバー側の問題（500）を適切に区別することで、デバッグが容易になる
 
 ### 今後の改善点
 

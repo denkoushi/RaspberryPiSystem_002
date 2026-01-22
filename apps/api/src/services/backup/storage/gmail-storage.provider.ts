@@ -372,5 +372,72 @@ export class GmailStorageProvider implements StorageProvider {
       };
     });
   }
+
+  /**
+   * Gmailからファイルを取得（CSVダッシュボード用：未読全件、メタデータ付き）
+   * @param path 件名パターン（Gmail用）
+   * @returns ファイルのBuffer、メッセージID、件名の配列
+   */
+  async downloadAllWithMetadata(path: string): Promise<Array<{
+    buffer: Buffer;
+    messageId: string;
+    messageSubject: string;
+  }>> {
+    return this.handleAuthError(async () => {
+      const query = this.buildSearchQuery(path);
+
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages (all with metadata)'
+      );
+
+      const messageIds = await this.gmailClient.searchMessagesAll(query);
+
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
+      }
+
+      const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
+
+      for (const messageId of messageIds) {
+        const message = await this.gmailClient.getMessage(messageId);
+        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+        const messageSubject = subjectHeader?.value || 'No Subject';
+
+        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        if (!attachment) {
+          throw new Error(`No attachment found in message: ${messageId}`);
+        }
+
+        logger?.info(
+          {
+            messageId,
+            messageSubject,
+            filename: attachment.filename,
+            size: attachment.buffer.length,
+          },
+          '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
+        );
+
+        results.push({ buffer: attachment.buffer, messageId, messageSubject });
+      }
+
+      return results;
+    });
+  }
+
+  /**
+   * メールを既読にする（UNREADラベル削除）
+   */
+  async markAsRead(messageId: string): Promise<void> {
+    await this.gmailClient.markAsRead(messageId);
+  }
+
+  /**
+   * メールをゴミ箱へ移動
+   */
+  async trashMessage(messageId: string): Promise<void> {
+    await this.gmailClient.trashMessage(messageId);
+  }
 }
 

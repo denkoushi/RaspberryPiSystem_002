@@ -1432,6 +1432,110 @@ if (data.type === 'ping') {
 
 ---
 
+### [KB-188] CSVインポート実行エンドポイントでのApiError statusCode尊重
+
+**EXEC_PLAN.md参照**: production-schedule-kiosk-execplan.md (2026-01-21)
+
+**事象**: 
+- CSVインポート実行時に列不一致エラーが発生すると、ブラウザコンソールに500 Internal Server Errorが記録される
+- UIには適切なエラーメッセージが表示されるが、HTTPステータスコードが500（サーバー側の問題）になっている
+- 列不一致はクライアント側の問題（CSVファイルの列構成が設定と一致しない）なので、400 Bad Requestが適切
+
+**要因**: 
+- `apps/api/src/routes/imports.ts`の`POST /imports/schedule/:id/run`エンドポイントで、`ApiError`の`statusCode`を無視して常に500に変換していた
+- `error instanceof ApiError`のチェックがなく、`ApiError`の`statusCode`（例: 400）が無視されていた
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-21）: `ApiError`の場合は`statusCode`を尊重して再スローするように修正
+- `error instanceof ApiError`のチェックを最初に行い、`ApiError`の場合はその`statusCode`を尊重して再スロー
+- それ以外の`Error`の場合のみ、500に変換
+
+**実装詳細**:
+```typescript
+// apps/api/src/routes/imports.ts
+} catch (error) {
+  request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+  
+  // ApiErrorの場合はstatusCodeを尊重して再スロー
+  if (error instanceof ApiError) {
+    throw error;
+  }
+  
+  if (error instanceof Error) {
+    // スケジュールが見つからないエラーの場合のみ404
+    if (
+      error.message.includes('スケジュールが見つかりません') ||
+      error.message.toLowerCase().includes('schedule not found')
+    ) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+    throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
+  }
+  throw new ApiError(500, 'インポート実行に失敗しました');
+}
+```
+
+**トラブルシューティング**:
+- **500エラーが続く**: ブラウザのキャッシュをクリアし、ページを再読み込みする。デプロイが完了しているか確認する
+- **400エラーが表示される**: これは正常な動作。CSVファイルの列構成を確認し、管理コンソールで列定義の候補を追加する
+
+**学んだこと**:
+1. **エラーハンドリングの階層**: `ApiError`の`statusCode`を尊重することで、適切なHTTPステータスコードを返せる
+2. **エラーの分類**: クライアント側の問題（400）とサーバー側の問題（500）を適切に区別することで、デバッグが容易になる
+3. **ブラウザコンソールのエラー**: 400エラーは正常なエラーハンドリングの結果。UIに適切なメッセージが表示されていれば問題ない
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-21）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-21）
+- CSVインポート実行時に列不一致エラーが発生すると、ブラウザコンソールに400 Bad Requestが記録されることを確認
+- UIには適切なエラーメッセージ（「見つからなかった列: 管理番号」「候補: managementNumber, 管理番号」「対応: CSVヘッダー行を確認し...」）が表示されることを確認
+
+**関連ファイル**:
+- `apps/api/src/routes/imports.ts`（エラーハンドリング修正）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（CSV_HEADER_MISMATCHエラー生成）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（アラートメッセージ改善）
+
+---
+
+### [KB-189] Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか）
+
+**EXEC_PLAN.md参照**: production-schedule-kiosk-execplan.md（実装順序3 / MeasuringInstrumentLoans）
+
+**事象**:
+- PowerAutomateが「アイテム追加/変更のたびにメール送信」すると、Gmailに同件名のメールが短時間に多数たまる
+- CSVインポートの手動実行/スケジュール実行で、期待したCSV（最新/特定の添付）ではなく別のメール添付が取り込まれるように見える
+- 取り込みが「列構成不一致」になったり、逆に「一部しか更新されない」ように見える
+
+**要因（現行仕様）**:
+- CSVダッシュボード（`csvDashboards`）のGmail取得は「未読」検索でヒットした中から、**先頭1通の最初の添付**のみを取得する実装になっている
+  - 検索クエリ: `subject:"<CsvDashboard.gmailSubjectPattern>" is:unread`（送信元制限 `from:` は設定がある場合のみ）
+  - 取得件数: Gmail API `users.messages.list` で最大10件（`maxResults: 10`）
+  - 対象メール: 検索結果の先頭（`messageIds[0]`）
+  - 対象添付: multipartを再帰探索して最初に見つかった添付（`attachmentId`）
+- 処理後は「アーカイブ（INBOXラベル削除）」のみで、未読フラグは維持される
+
+**実装箇所（根拠）**:
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`
+  - `buildSearchQuery()` が `is:unread` を付与
+  - `downloadWithMetadata()` が `messageIds[0]` の添付を取得し、`archiveMessage()` を呼ぶ
+- `apps/api/src/services/backup/gmail-api-client.ts`
+  - `searchMessages()` が `maxResults: 10` で一覧を取得
+  - `getFirstAttachment()` が最初に見つかった添付を採用
+
+**対策（運用）**:
+1. **PowerAutomateを“イベント毎”ではなく“スナップショット定期送信”に変更**（例: 5分/15分ごとに最新CSVを1通送る）
+2. **本システム側のスケジュール頻度を上げる**（送信頻度と整合させる）
+3. **同件名の未読を溜めない運用**（取り込ませたいメールを未読1通に揃える）
+4. **列定義の不一致を避ける**: 取り込み前に管理コンソールの「CSVプレビュー（ヘッダー照合）」で確認し、必要なら列定義の候補を追加/調整する
+
+**学んだこと**:
+- 本システムのCSVダッシュボード取り込みは「メール（CSVスナップショット）単位」であり、借用/返却の全イベントを逐次追跡する設計ではない
+- 高頻度更新が必要なら、上流（PowerAutomate）で集約し、下流（本システム）は一定間隔で最新状態を取り込むのが安全
+
+**解決状況**: ✅ **仕様把握・運用指針を整理**（2026-01-22）
+
+---
+
 ### [KB-135] キオスク通話候補取得用APIエンドポイント追加
 
 **EXEC_PLAN.md参照**: feat/webrtc-voice-call実装（2026-01-04〜05）

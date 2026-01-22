@@ -574,6 +574,23 @@ model CsvDashboardRow {
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
 }
 
+model MeasuringInstrumentLoanEvent {
+  id                  String   @id @default(uuid())
+  managementNumber    String
+  eventAt             DateTime // CSVのday列（UTC）のイベント時刻
+  action              String // 持ち出し / 返却
+  raw                 Json // CSV行の原本
+  sourceMessageId     String? // GmailメッセージID
+  sourceMessageSubject String? // Gmail件名
+  sourceCsvDashboardId String? // CSVダッシュボードID
+  createdAt           DateTime @default(now())
+
+  @@unique([managementNumber, eventAt, action])
+  @@index([eventAt])
+  @@index([managementNumber])
+  @@index([action])
+}
+
 // CSVインポート件名パターン（マスターデータ用）
 model CsvImportSubjectPattern {
   id          String   @id @default(uuid())

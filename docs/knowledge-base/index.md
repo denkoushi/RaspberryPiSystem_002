@@ -20,7 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 30件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング |
+| API関連 | [api.md](./api.md) | 32件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
@@ -75,6 +75,9 @@ update-frequency: high
 | [KB-135](./api.md#kb-135-キオスク通話候補取得用apiエンドポイント追加) | キオスク通話候補取得用APIエンドポイント追加 | ✅ 解決済み |
 | [KB-185](./api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) | CSVダッシュボードのgmailSubjectPattern設定UI改善 | ✅ 解決済み |
 | [KB-186](./api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) | CsvImportSubjectPatternモデル追加による設計統一（マスターデータインポートの件名パターンDB化） | ✅ 解決済み |
+| [KB-187](./api.md#kb-187-csvインポートスケジュール作成時のid自動生成とnomatchingmessageerrorハンドリング改善) | CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善 | ✅ 解決済み |
+| [KB-188](./api.md#kb-188-csvインポート実行エンドポイントでのapierror-statuscode尊重) | CSVインポート実行エンドポイントでのApiError statusCode尊重 | ✅ 解決済み |
+| [KB-189](./api.md#kb-189-gmailに同件名メールが溜まる場合のcsvダッシュボード取り込み仕様どの添付を取るか) | Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -350,3 +353,5 @@ update-frequency: high
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）
 - 2026-01-XX: KB-184、KB-185、KB-186を追加（生産スケジュールキオスクページ実装、CSVダッシュボードのgmailSubjectPattern設定UI改善、CsvImportSubjectPatternモデル追加による設計統一）
 - 2026-01-20: KB-187を追加（CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善）
+- 2026-01-21: KB-188を追加（CSVインポート実行エンドポイントでのApiError statusCode尊重）
+- 2026-01-22: KB-189を追加（Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様）

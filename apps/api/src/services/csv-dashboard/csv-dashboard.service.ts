@@ -361,12 +361,12 @@ export class CsvDashboardService {
 
   /**
    * 古いCSVダッシュボードデータを削除（レテンション管理）
-   * 前年(2025)は保持、前々年(2024)は削除、当年の前月分を月次で削除
+   * - 前々年は削除
+   * - 当年の前月分削除は行わない（レビュー用途の保持要件と衝突するため）
    */
   async cleanupOldData(): Promise<{ deletedRows: number; deletedIngestRuns: number }> {
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
     const twoYearsAgo = currentYear - 2; // 前々年
 
     let deletedRows = 0;
@@ -401,39 +401,8 @@ export class CsvDashboardService {
       });
       deletedIngestRuns += deletedIngestRunsTwoYearsAgo.count;
 
-      // 当年の過去月（当月より前）を削除
-      if (currentMonth > 1) {
-        // 例: 2月(=currentMonth=2) になったら 1月データを削除、3月なら 1月/2月を削除
-        const startOfCurrentYearJst = new Date(currentYear, 0, 1, 0, 0, 0, 0);
-        const startOfCurrentMonthJst = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0);
-
-        // UTCに変換（Asia/Tokyo = UTC+9）
-        const startOfCurrentYearUtc = new Date(startOfCurrentYearJst.getTime() - 9 * 60 * 60 * 1000);
-        const startOfCurrentMonthUtc = new Date(startOfCurrentMonthJst.getTime() - 9 * 60 * 60 * 1000);
-
-        const deletedRowsCurrentYearPastMonths = await prisma.csvDashboardRow.deleteMany({
-          where: {
-            occurredAt: {
-              gte: startOfCurrentYearUtc,
-              lt: startOfCurrentMonthUtc,
-            },
-          },
-        });
-        deletedRows += deletedRowsCurrentYearPastMonths.count;
-
-        const deletedIngestRunsCurrentYearPastMonths = await prisma.csvDashboardIngestRun.deleteMany({
-          where: {
-            startedAt: {
-              gte: startOfCurrentYearUtc,
-              lt: startOfCurrentMonthUtc,
-            },
-          },
-        });
-        deletedIngestRuns += deletedIngestRunsCurrentYearPastMonths.count;
-      }
-
       logger?.info(
-        { deletedRows, deletedIngestRuns, currentYear, currentMonth },
+        { deletedRows, deletedIngestRuns, currentYear },
         '[CsvDashboardService] Cleanup completed'
       );
 

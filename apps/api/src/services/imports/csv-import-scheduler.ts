@@ -9,6 +9,7 @@ import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-ret
 import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js';
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
+import { MeasuringInstrumentLoanRetentionService } from '../measuring-instruments/measuring-instrument-loan-retention.service.js';
 
 /**
  * CSVインポートスケジューラー
@@ -17,6 +18,7 @@ export class CsvImportScheduler {
   private tasks: Map<string, cron.ScheduledTask> = new Map();
   private cleanupTask: cron.ScheduledTask | null = null;
   private csvDashboardRetentionTask: cron.ScheduledTask | null = null;
+  private measuringInstrumentLoanRetentionTask: cron.ScheduledTask | null = null;
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
@@ -26,6 +28,7 @@ export class CsvImportScheduler {
   private createExecutionService: () => CsvImportExecutionService;
   private createAutoBackupService: () => CsvImportAutoBackupService;
   private createCsvDashboardRetentionService: () => CsvDashboardRetentionService;
+  private createMeasuringInstrumentLoanRetentionService: () => MeasuringInstrumentLoanRetentionService;
 
   constructor(overrides: {
     historyService?: ImportHistoryService;
@@ -42,6 +45,7 @@ export class CsvImportScheduler {
     this.createAutoBackupService = () =>
       new CsvImportAutoBackupService({ backupHistoryService: this.backupHistoryService });
     this.createCsvDashboardRetentionService = () => new CsvDashboardRetentionService();
+    this.createMeasuringInstrumentLoanRetentionService = () => new MeasuringInstrumentLoanRetentionService();
 
     if (overrides.historyService) this.historyService = overrides.historyService;
     if (overrides.alertService) this.alertService = overrides.alertService;
@@ -50,6 +54,8 @@ export class CsvImportScheduler {
     if (overrides.createAutoBackupService) this.createAutoBackupService = overrides.createAutoBackupService;
     if (overrides.createCsvDashboardRetentionService)
       this.createCsvDashboardRetentionService = overrides.createCsvDashboardRetentionService;
+    if (overrides.createMeasuringInstrumentLoanRetentionService)
+      this.createMeasuringInstrumentLoanRetentionService = overrides.createMeasuringInstrumentLoanRetentionService;
   }
 
   private async executeSingleRun(params: {
@@ -190,6 +196,8 @@ export class CsvImportScheduler {
       await this.startCleanupJob(config);
       // CSVダッシュボードレテンション削除Jobを開始
       await this.startCsvDashboardRetentionJob();
+      // 計測機器持出返却イベントの年次削除Jobを開始
+      await this.startMeasuringInstrumentLoanRetentionJob();
       return;
     }
 
@@ -264,6 +272,9 @@ export class CsvImportScheduler {
     
     // CSVダッシュボードレテンション削除Jobを開始
     await this.startCsvDashboardRetentionJob();
+
+    // 計測機器持出返却イベントの年次削除Jobを開始
+    await this.startMeasuringInstrumentLoanRetentionJob();
   }
 
   /**
@@ -391,6 +402,64 @@ export class CsvImportScheduler {
     logger?.info(
       { schedule: retentionSchedule },
       '[CsvImportScheduler] CSV dashboard retention job registered'
+    );
+  }
+
+  /**
+   * 計測機器持出返却イベントの年次削除Jobを開始
+   */
+  private async startMeasuringInstrumentLoanRetentionJob(): Promise<void> {
+    if (this.measuringInstrumentLoanRetentionTask) {
+      this.measuringInstrumentLoanRetentionTask.stop();
+      this.measuringInstrumentLoanRetentionTask = null;
+    }
+
+    // 1月中の2:30に実行（年次削除）
+    const retentionSchedule = '0 30 2 1 *';
+
+    try {
+      if (!validate(retentionSchedule)) {
+        logger?.warn(
+          { schedule: retentionSchedule },
+          '[CsvImportScheduler] Invalid measuring instrument retention schedule format, skipping'
+        );
+        return;
+      }
+    } catch (error) {
+      logger?.warn(
+        { err: error, schedule: retentionSchedule },
+        '[CsvImportScheduler] Invalid measuring instrument retention schedule format, skipping'
+      );
+      return;
+    }
+
+    this.measuringInstrumentLoanRetentionTask = cron.schedule(retentionSchedule, async () => {
+      try {
+        logger?.info(
+          '[CsvImportScheduler] Starting measuring instrument loan retention cleanup'
+        );
+
+        const retentionService = this.createMeasuringInstrumentLoanRetentionService();
+        const { deletedEvents, twoYearsAgo } = await retentionService.cleanupTwoYearsAgo();
+
+        logger?.info(
+          { deletedEvents, twoYearsAgo },
+          '[CsvImportScheduler] Measuring instrument loan retention cleanup completed'
+        );
+      } catch (error) {
+        logger?.error(
+          { err: error },
+          '[CsvImportScheduler] Measuring instrument loan retention cleanup failed'
+        );
+      }
+    }, {
+      scheduled: true,
+      timezone: 'Asia/Tokyo'
+    });
+
+    logger?.info(
+      { schedule: retentionSchedule },
+      '[CsvImportScheduler] Measuring instrument loan retention job registered'
     );
   }
 

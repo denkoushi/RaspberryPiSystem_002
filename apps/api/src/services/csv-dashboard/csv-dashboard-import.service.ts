@@ -5,6 +5,7 @@ import { CsvDashboardIngestor } from './csv-dashboard-ingestor.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
 import { NoMatchingMessageError } from '../backup/storage/gmail-storage.provider.js';
+import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -15,6 +16,20 @@ export type CsvDashboardIngestResult = {
 export class CsvDashboardImportService {
   private sourceService = new CsvDashboardSourceService();
   private ingestor = new CsvDashboardIngestor();
+  private measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
+
+  private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+  private static canPostProcessGmail(storageProvider: StorageProvider): storageProvider is StorageProvider & {
+    markAsRead: (messageId: string) => Promise<void>;
+    trashMessage: (messageId: string) => Promise<void>;
+  } {
+    const provider = storageProvider as StorageProvider & {
+      markAsRead?: (messageId: string) => Promise<void>;
+      trashMessage?: (messageId: string) => Promise<void>;
+    };
+    return typeof provider.markAsRead === 'function' && typeof provider.trashMessage === 'function';
+  }
 
   /**
    * csvDashboardsターゲット群を取り込み、dashboardId -> 結果 を返す。
@@ -55,9 +70,9 @@ export class CsvDashboardImportService {
         '[CsvDashboardImportService] Processing CSV dashboard ingestion'
       );
 
-      let bufferResult: { buffer: Buffer; messageId?: string; messageSubject?: string } | null = null;
+      let bufferResults: Array<{ buffer: Buffer; messageId?: string; messageSubject?: string }> = [];
       try {
-        bufferResult = await this.sourceService.downloadCsv({
+        bufferResults = await this.sourceService.downloadCsv({
           provider,
           storageProvider,
           gmailSubjectPattern,
@@ -73,23 +88,68 @@ export class CsvDashboardImportService {
         throw error;
       }
 
-      const { buffer, messageId, messageSubject } = bufferResult;
-      const csvContent = buffer.toString('utf-8');
+      let totalProcessed = 0;
+      let totalAdded = 0;
+      let totalSkipped = 0;
+      let lastError: unknown | null = null;
 
-      // CSVファイルを原本として保存
-      const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
+      for (const bufferResult of bufferResults) {
+        const { buffer, messageId, messageSubject } = bufferResult;
+        const csvContent = buffer.toString('utf-8');
 
-      // 取り込み処理を実行
-      const result = await this.ingestor.ingestFromGmail(
-        dashboardId,
-        csvContent,
-        messageId,
-        messageSubject,
-        csvFilePath
-      );
+        try {
+          // CSVファイルを原本として保存
+          const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
 
-      results[dashboardId] = result;
-      logger?.info({ dashboardId, result }, '[CsvDashboardImportService] CSV dashboard ingestion completed');
+          // 取り込み処理を実行
+          const result = await this.ingestor.ingestFromGmail(
+            dashboardId,
+            csvContent,
+            messageId,
+            messageSubject,
+            csvFilePath
+          );
+
+          totalProcessed += result.rowsProcessed;
+          totalAdded += result.rowsAdded;
+          totalSkipped += result.rowsSkipped;
+
+          // 計測機器持出返却のイベント投影
+          if (dashboardId === CsvDashboardImportService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
+            await this.measuringInstrumentLoanEventService.projectEventsFromCsv({
+              dashboardId,
+              csvContent,
+              messageId,
+              messageSubject,
+            });
+          }
+
+          // Gmail後処理（成功時のみ）
+          if (provider === 'gmail' && messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider)) {
+            await storageProvider.markAsRead(messageId);
+            await storageProvider.trashMessage(messageId);
+          }
+        } catch (error) {
+          lastError = error;
+          logger?.error(
+            { err: error, dashboardId, messageId },
+            '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
+          );
+          continue;
+        }
+      }
+
+      if (totalProcessed === 0 && lastError) {
+        throw lastError;
+      }
+
+      const aggregatedResult = {
+        rowsProcessed: totalProcessed,
+        rowsAdded: totalAdded,
+        rowsSkipped: totalSkipped,
+      };
+      results[dashboardId] = aggregatedResult;
+      logger?.info({ dashboardId, result: aggregatedResult }, '[CsvDashboardImportService] CSV dashboard ingestion completed');
     }
 
     return results;
