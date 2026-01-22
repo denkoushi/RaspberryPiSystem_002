@@ -182,7 +182,11 @@ export class CsvDashboardImportService {
           // #region agent debug
           stepLogs.push(`${safeMessageId}:check-postProcess:provider=${provider},hasMessageId=${!!messageId},canPostProcess=${CsvDashboardImportService.canPostProcessGmail(storageProvider)}`);
           // #endregion
-          if (provider === 'gmail' && messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider)) {
+          const shouldPostProcess = provider === 'gmail' && !!messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'A',location:'csv-dashboard-import.service.ts:postProcess-decision',message:'Decide whether to post-process Gmail message',data:{provider,shouldPostProcess,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (shouldPostProcess && messageId) {
             // #region agent debug
             stepLogs.push(`${safeMessageId}:enter-postProcess`);
             // #endregion
@@ -219,6 +223,9 @@ export class CsvDashboardImportService {
               await storageProvider.trashMessage(messageId);
               // #region agent debug
               stepLogs.push(`${safeMessageId}:after-trashMessage:success`);
+              // #endregion
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'B',location:'csv-dashboard-import.service.ts:after-trashMessage',message:'Gmail post-process completed',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
               // #endregion
             } catch (postProcessError) {
               // #region agent debug
