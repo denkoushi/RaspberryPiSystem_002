@@ -7,7 +7,8 @@ import type { ColumnDefinition } from '../csv-dashboard/csv-dashboard.types.js';
 type ColumnMapping = Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }>;
 
 export class MeasuringInstrumentLoanEventService {
-  private static readonly TARGET_INTERNAL_NAMES = new Set(['managementNumber', 'day', 'shiyou_henkyaku']);
+  // CSVダッシュボードの列定義に合わせて、実際に存在するinternalNameを要求する
+  private static readonly TARGET_INTERNAL_NAMES = new Set(['managementNumber', 'borrowedAt', 'shiyou_henkyaku']);
 
   async projectEventsFromCsv(params: {
     dashboardId: string;
@@ -39,7 +40,8 @@ export class MeasuringInstrumentLoanEventService {
       const normalized = this.normalizeRow(row, columnMapping);
       const managementNumber = String(normalized.managementNumber ?? '').trim();
       const action = String(normalized.shiyou_henkyaku ?? '').trim();
-      const dayRaw = String(normalized.day ?? '').trim();
+      // CSVダッシュボードの列定義では internalName が 'borrowedAt' として定義されている
+      const dayRaw = String(normalized.borrowedAt ?? '').trim();
 
       if (!managementNumber || !action || !dayRaw) {
         continue;
