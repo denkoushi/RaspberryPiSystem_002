@@ -1,7 +1,7 @@
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { GmailApiClient } from '../gmail-api-client.js';
-import { GmailOAuthService } from '../gmail-oauth.service.js';
+import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
 
 export class NoMatchingMessageError extends Error {
@@ -91,6 +91,9 @@ export class GmailStorageProvider implements StorageProvider {
     } catch (error: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const err: any = error;
+      if (err instanceof GmailReauthRequiredError || isInvalidGrantMessage(err?.message)) {
+        throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
+      }
       // 401エラーまたは認証関連のエラーの場合、リフレッシュを試みる
       const isAuthError = err?.status === 401 || 
         err?.code === 401 ||

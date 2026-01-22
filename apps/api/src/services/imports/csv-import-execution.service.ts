@@ -32,7 +32,8 @@ export interface StorageProviderFactoryLike {
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
-    onTokenUpdate?: (token: string) => Promise<void>
+    onTokenUpdate?: (token: string) => Promise<void>,
+    options?: { allowFallbackToLocal?: boolean }
   ): Promise<StorageProvider>;
 }
 
@@ -178,7 +179,8 @@ export class CsvImportExecutionService {
       },
       protocol,
       host,
-      onTokenUpdate
+      onTokenUpdate,
+      { allowFallbackToLocal: provider !== 'gmail' }
     );
 
     // ターゲットを取得（新形式優先、旧形式は変換）

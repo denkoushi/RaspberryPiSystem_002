@@ -5,7 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { GmailOAuthService } from '../../services/backup/gmail-oauth.service.js';
+import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   subjectPattern?: string;
@@ -260,6 +260,9 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       });
     } catch (error) {
       logger?.error({ err: error }, '[GmailOAuthRoute] Failed to refresh access token');
+      if (error instanceof GmailReauthRequiredError || isInvalidGrantMessage(error instanceof Error ? error.message : undefined)) {
+        throw new ApiError(401, 'Gmailの再認可が必要です。管理コンソールの「OAuth認証」を実行してください。');
+      }
       throw new ApiError(
         500,
         `Failed to refresh access token: ${error instanceof Error ? error.message : String(error)}`

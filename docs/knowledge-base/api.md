@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2025-01-03
+last-verified: 2026-01-22
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 25件  
+**件数**: 33件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1533,6 +1533,40 @@ if (data.type === 'ping') {
 - 高頻度更新が必要なら、上流（PowerAutomate）で集約し、下流（本システム）は一定間隔で最新状態を取り込むのが安全
 
 **解決状況**: ✅ **仕様把握・運用指針を整理**（2026-01-22）
+
+---
+
+### [KB-190] Gmail OAuthのinvalid_grantでCSV取り込みが500になる
+
+**日付**: 2026-01-22
+
+**事象**:
+- 管理コンソール「Gmail設定 > トークン更新」で500が返る
+- CSVインポート手動実行で `Failed to search messages: invalid_grant` が出て500になる
+
+**要因**:
+- Gmail OAuthのrefresh tokenが無効化されていた（`invalid_grant`）
+- 失効時の例外が500に変換され、再認可が必要な状態であることがUIから分からなかった
+- Gmailのrefresh失敗時にlocalへフォールバックする挙動があり、正常に見えるが取り込みが無反映になる可能性があった
+
+**有効だった対策**:
+- ✅ `invalid_grant` を **再認可必須**として分類し、`401`で明示的に返す
+- ✅ Gmail経由の取り込みは **silent fallback を抑止**し、運用に再認可が必要であることを通知
+- ✅ 管理コンソールのエラーメッセージを「再認可が必要」へ寄せる
+
+**学んだこと**:
+- 個人Gmailでは `invalid_grant` は自動復旧できないため、再認可導線が必須
+- エラーは500ではなく運用判断できるHTTPステータス（401/400）で返すべき
+
+**解決状況**: ✅ **実装完了・運用導線整理**（2026-01-22）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/gmail-oauth.service.ts`
+- `apps/api/src/routes/gmail/oauth.ts`
+- `apps/api/src/routes/imports.ts`
+- `apps/api/src/services/backup/storage-provider-factory.ts`
+- `apps/web/src/pages/admin/GmailConfigPage.tsx`
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
 
 ---
 

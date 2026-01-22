@@ -12,6 +12,7 @@ import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
+import { GmailReauthRequiredError, isInvalidGrantMessage } from '../services/backup/gmail-oauth.service.js';
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
 import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
 import { writeDebugLog } from '../lib/debug-log.js';
@@ -898,7 +899,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           provider
         }
       };
-      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, true);
+      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, {
+        returnProvider: true,
+        allowFallbackToLocal: provider !== 'gmail',
+      });
       const storageProvider = created.storageProvider;
 
       const files: { employees?: Buffer; items?: Buffer } = {};
@@ -1302,6 +1306,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
       
+      if (error instanceof GmailReauthRequiredError || isInvalidGrantMessage(error instanceof Error ? error.message : undefined)) {
+        throw new ApiError(401, 'Gmailの再認可が必要です。管理コンソールの「OAuth認証」を実行してください。');
+      }
+
       // ApiErrorの場合はstatusCodeを尊重して再スロー
       if (error instanceof ApiError) {
         throw error;

@@ -66,11 +66,18 @@ export class GmailApiClient {
       const messages = response.data.messages || [];
       return messages.map(msg => msg.id || '').filter(id => id !== '');
     } catch (error) {
+      const err = error as { message?: string; status?: number; code?: number };
+      const statusInfo = [err?.status, err?.code].filter(Boolean).join('/');
+      const statusSuffix = statusInfo ? ` (status: ${statusInfo})` : '';
       logger?.error(
         { err: error, query },
         '[GmailApiClient] Failed to search messages'
       );
-      throw new Error(`Failed to search messages: ${error instanceof Error ? error.message : String(error)}`);
+      const wrapped = new Error(
+        `Failed to search messages: ${error instanceof Error ? error.message : String(error)}${statusSuffix}`
+      );
+      (wrapped as { cause?: unknown }).cause = error;
+      throw wrapped;
     }
   }
 
@@ -99,11 +106,18 @@ export class GmailApiClient {
 
       return messageIds;
     } catch (error) {
+      const err = error as { message?: string; status?: number; code?: number };
+      const statusInfo = [err?.status, err?.code].filter(Boolean).join('/');
+      const statusSuffix = statusInfo ? ` (status: ${statusInfo})` : '';
       logger?.error(
         { err: error, query },
         '[GmailApiClient] Failed to search messages (all pages)'
       );
-      throw new Error(`Failed to search messages: ${error instanceof Error ? error.message : String(error)}`);
+      const wrapped = new Error(
+        `Failed to search messages: ${error instanceof Error ? error.message : String(error)}${statusSuffix}`
+      );
+      (wrapped as { cause?: unknown }).cause = error;
+      throw wrapped;
     }
   }
 

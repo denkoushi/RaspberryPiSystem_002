@@ -28,6 +28,11 @@ export interface StorageProviderOptions {
   onTokenUpdate?: (token: string) => Promise<void>;
 }
 
+type StorageProviderCreateOptions = {
+  returnProvider?: boolean;
+  allowFallbackToLocal?: boolean;
+};
+
 /**
  * ストレージプロバイダーファクトリー
  * レジストリパターンを使用してストレージプロバイダーを作成する
@@ -116,35 +121,40 @@ export class StorageProviderFactory {
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
-    onTokenUpdate?: (token: string) => Promise<void>
+    onTokenUpdate?: (token: string) => Promise<void>,
+    options?: StorageProviderCreateOptions
   ): Promise<StorageProvider>;
   static createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: false
+    options?: StorageProviderCreateOptions | false
   ): Promise<StorageProvider>;
   static createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: true
+    options?: StorageProviderCreateOptions | true
   ): Promise<{ provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider }>;
   static async createFromConfig(
     config: BackupConfig,
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: boolean
+    options?: StorageProviderCreateOptions | boolean
   ): Promise<StorageProvider | { provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider }> {
-    const options: StorageProviderOptions = {
+    const resolvedOptions: StorageProviderCreateOptions = typeof options === 'boolean'
+      ? { returnProvider: options }
+      : (options ?? {});
+    const allowFallbackToLocal = resolvedOptions.allowFallbackToLocal ?? true;
+    const providerOptions: StorageProviderOptions = {
       provider: config.storage.provider
     };
 
     // local/dropbox/gmail共通
-    options.basePath = config.storage.options?.basePath as string | undefined;
+    providerOptions.basePath = config.storage.options?.basePath as string | undefined;
 
     if (config.storage.provider === 'gmail') {
       // 新構造優先: options.gmail.* → 後方互換: gmailAccessToken/gmailRefreshToken → 旧: accessToken/refreshToken
@@ -191,15 +201,23 @@ export class StorageProviderFactory {
             await onTokenUpdate(accessToken);
           }
         } catch (error) {
-          logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh Gmail access token from refresh token, falling back to local storage');
-          options.provider = 'local';
+          logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh Gmail access token from refresh token');
+          if (allowFallbackToLocal) {
+            providerOptions.provider = 'local';
+          } else {
+            throw error;
+          }
         }
       }
 
       // accessTokenが空の場合はlocalにフォールバック
       if (!accessToken || accessToken.trim() === '') {
-        logger?.warn('[StorageProviderFactory] Gmail access token is empty, falling back to local storage');
-        options.provider = 'local';
+        logger?.warn('[StorageProviderFactory] Gmail access token is empty');
+        if (allowFallbackToLocal) {
+          providerOptions.provider = 'local';
+        } else {
+          throw new ApiError(400, 'Gmail access token is required');
+        }
       } else {
         // OAuth2Clientを作成（設定ファイルのredirectUriを優先、なければ動的生成）
         const redirectUriForClient = redirectUri ?? (requestProtocol && requestHost 
@@ -207,20 +225,20 @@ export class StorageProviderFactory {
           : undefined);
         const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUriForClient);
         
-        options.accessToken = accessToken;
-        options.refreshToken = refreshToken;
-        options.clientId = clientId;
-        options.clientSecret = clientSecret;
-        options.subjectPattern = subjectPattern;
-        options.fromEmail = fromEmail;
-        options.oauth2Client = oauth2Client;
+        providerOptions.accessToken = accessToken;
+        providerOptions.refreshToken = refreshToken;
+        providerOptions.clientId = clientId;
+        providerOptions.clientSecret = clientSecret;
+        providerOptions.subjectPattern = subjectPattern;
+        providerOptions.fromEmail = fromEmail;
+        providerOptions.oauth2Client = oauth2Client;
 
         // リダイレクトURIを構築
         if (requestProtocol && requestHost) {
-          options.redirectUri = `${requestProtocol}://${requestHost}/api/gmail/oauth/callback`;
+          providerOptions.redirectUri = `${requestProtocol}://${requestHost}/api/gmail/oauth/callback`;
         }
 
-        options.onTokenUpdate = onTokenUpdate;
+        providerOptions.onTokenUpdate = onTokenUpdate;
       }
     } else if (config.storage.provider === 'dropbox') {
       // 新構造優先: options.dropbox.* → 後方互換: 旧 options.*
@@ -257,7 +275,7 @@ export class StorageProviderFactory {
           }
         } catch (error) {
           logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh access token from refresh token, falling back to local storage');
-          options.provider = 'local';
+          providerOptions.provider = 'local';
         }
       }
       
@@ -265,26 +283,26 @@ export class StorageProviderFactory {
       if (!accessToken || accessToken.trim() === '') {
         // ログに警告を出力してlocalにフォールバック
         console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
-        options.provider = 'local';
+        providerOptions.provider = 'local';
       } else {
-        options.accessToken = accessToken;
-        options.refreshToken = refreshToken;
-        options.appKey = appKey;
-        options.appSecret = appSecret;
+        providerOptions.accessToken = accessToken;
+        providerOptions.refreshToken = refreshToken;
+        providerOptions.appKey = appKey;
+        providerOptions.appSecret = appSecret;
 
         // リダイレクトURIを構築
         if (requestProtocol && requestHost) {
-          options.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
+          providerOptions.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
         }
 
-        options.onTokenUpdate = onTokenUpdate;
+        providerOptions.onTokenUpdate = onTokenUpdate;
       }
     }
 
-    const storageProvider = this.create(options);
-    const actualProvider = options.provider;
+    const storageProvider = this.create(providerOptions);
+    const actualProvider = providerOptions.provider;
 
-    if (returnProvider) {
+    if (resolvedOptions.returnProvider) {
       return { provider: actualProvider, storageProvider };
     }
     return storageProvider;
@@ -300,7 +318,8 @@ export class StorageProviderFactory {
     target: BackupConfig['targets'][0],
     requestProtocol?: string,
     requestHost?: string,
-    onTokenUpdate?: (token: string) => Promise<void>
+    onTokenUpdate?: (token: string) => Promise<void>,
+    options?: StorageProviderCreateOptions
   ): Promise<StorageProvider>;
   static createFromTarget(
     config: BackupConfig,
@@ -308,7 +327,7 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: false
+    options?: StorageProviderCreateOptions | false
   ): Promise<StorageProvider>;
   static createFromTarget(
     config: BackupConfig,
@@ -316,7 +335,7 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: true
+    options?: StorageProviderCreateOptions | true
   ): Promise<{ provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider }>;
   static async createFromTarget(
     config: BackupConfig,
@@ -324,17 +343,21 @@ export class StorageProviderFactory {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    returnProvider?: boolean
+    options?: StorageProviderCreateOptions | boolean
   ): Promise<StorageProvider | { provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider }> {
+    const resolvedOptions: StorageProviderCreateOptions = typeof options === 'boolean'
+      ? { returnProvider: options }
+      : (options ?? {});
+    const allowFallbackToLocal = resolvedOptions.allowFallbackToLocal ?? true;
     // 対象ごとのストレージプロバイダーが指定されている場合はそれを使用
     const provider = target.storage?.provider ?? config.storage.provider;
     
-    const options: StorageProviderOptions = {
+    const providerOptions: StorageProviderOptions = {
       provider
     };
 
     // basePathは全体設定から取得（対象ごとの設定は将来の拡張用）
-    options.basePath = config.storage.options?.basePath as string | undefined;
+    providerOptions.basePath = config.storage.options?.basePath as string | undefined;
 
     if (provider === 'gmail') {
       // 新構造優先: options.gmail.* → 後方互換: gmailAccessToken/gmailRefreshToken → 旧: accessToken/refreshToken
@@ -381,15 +404,23 @@ export class StorageProviderFactory {
             await onTokenUpdate(accessToken);
           }
         } catch (error) {
-          logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh Gmail access token from refresh token, falling back to local storage');
-          options.provider = 'local';
+          logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh Gmail access token from refresh token');
+          if (allowFallbackToLocal) {
+            providerOptions.provider = 'local';
+          } else {
+            throw error;
+          }
         }
       }
 
       // accessTokenが空の場合はlocalにフォールバック
       if (!accessToken || accessToken.trim() === '') {
-        logger?.warn('[StorageProviderFactory] Gmail access token is empty, falling back to local storage');
-        options.provider = 'local';
+        logger?.warn('[StorageProviderFactory] Gmail access token is empty');
+        if (allowFallbackToLocal) {
+          providerOptions.provider = 'local';
+        } else {
+          throw new ApiError(400, 'Gmail access token is required');
+        }
       } else {
         // OAuth2Clientを作成（設定ファイルのredirectUriを優先、なければ動的生成）
         const redirectUriForClient = redirectUri ?? (requestProtocol && requestHost 
@@ -397,15 +428,15 @@ export class StorageProviderFactory {
           : undefined);
         const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUriForClient);
         
-        options.accessToken = accessToken;
-        options.refreshToken = refreshToken;
-        options.clientId = clientId;
-        options.clientSecret = clientSecret;
-        options.subjectPattern = subjectPattern;
-        options.fromEmail = fromEmail;
-        options.oauth2Client = oauth2Client;
+        providerOptions.accessToken = accessToken;
+        providerOptions.refreshToken = refreshToken;
+        providerOptions.clientId = clientId;
+        providerOptions.clientSecret = clientSecret;
+        providerOptions.subjectPattern = subjectPattern;
+        providerOptions.fromEmail = fromEmail;
+        providerOptions.oauth2Client = oauth2Client;
 
-        options.onTokenUpdate = onTokenUpdate;
+        providerOptions.onTokenUpdate = onTokenUpdate;
       }
     } else if (provider === 'dropbox') {
       // 新構造優先: options.dropbox.* → 後方互換: 旧 options.*
@@ -442,33 +473,33 @@ export class StorageProviderFactory {
           }
         } catch (error) {
           logger?.error({ err: error }, '[StorageProviderFactory] Failed to refresh access token from refresh token, falling back to local storage');
-          options.provider = 'local';
+          providerOptions.provider = 'local';
         }
       }
       
       // accessTokenが空の場合はlocalにフォールバック
       if (!accessToken || accessToken.trim() === '') {
         console.warn('[StorageProviderFactory] Dropbox access token is empty, falling back to local storage');
-        options.provider = 'local';
+        providerOptions.provider = 'local';
       } else {
-        options.accessToken = accessToken;
-        options.refreshToken = refreshToken;
-        options.appKey = appKey;
-        options.appSecret = appSecret;
+        providerOptions.accessToken = accessToken;
+        providerOptions.refreshToken = refreshToken;
+        providerOptions.appKey = appKey;
+        providerOptions.appSecret = appSecret;
 
         // リダイレクトURIを構築
         if (requestProtocol && requestHost) {
-          options.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
+          providerOptions.redirectUri = `${requestProtocol}://${requestHost}/api/backup/oauth/callback`;
         }
 
-        options.onTokenUpdate = onTokenUpdate;
+        providerOptions.onTokenUpdate = onTokenUpdate;
       }
     }
 
-    const storageProvider = this.create(options);
-    const actualProvider = options.provider;
+    const storageProvider = this.create(providerOptions);
+    const actualProvider = providerOptions.provider;
 
-    if (returnProvider) {
+    if (resolvedOptions.returnProvider) {
       return { provider: actualProvider, storageProvider };
     }
     return storageProvider;
