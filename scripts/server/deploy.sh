@@ -21,13 +21,13 @@ cd "${PROJECT_DIR}"
 # Gitの最新状態を取得
 log "Gitリポジトリを更新中..."
 # ローカル変更がある場合はstashしてから更新
-if ! git diff --quiet || ! git diff --cached --quiet; then
+if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
   log "ローカル変更をstashします..."
-  git stash push -m "Auto-stash before deploy $(date +%Y%m%d_%H%M%S)"
+  git stash push -u -m "Auto-stash before deploy $(date +%Y%m%d_%H%M%S)"
 fi
 git fetch origin
 git checkout "${BRANCH}"
-git pull origin "${BRANCH}"
+git pull --ff-only origin "${BRANCH}"
 
 # 依存関係をインストール
 log "依存関係をインストール中..."
