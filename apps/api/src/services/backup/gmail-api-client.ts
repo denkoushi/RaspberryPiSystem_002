@@ -197,6 +197,10 @@ export class GmailApiClient {
    */
   async markAsRead(messageId: string): Promise<void> {
     try {
+      const safeMessageId = messageId ? messageId.slice(-6) : null;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:markAsRead',message:'markAsRead called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await this.gmail.users.messages.modify({
         userId: 'me',
         id: messageId,
@@ -221,6 +225,10 @@ export class GmailApiClient {
    */
   async trashMessage(messageId: string): Promise<void> {
     try {
+      const safeMessageId = messageId ? messageId.slice(-6) : null;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:trashMessage',message:'trashMessage called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await this.gmail.users.messages.trash({
         userId: 'me',
         id: messageId,

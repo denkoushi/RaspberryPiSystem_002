@@ -386,12 +386,20 @@ export class GmailStorageProvider implements StorageProvider {
     return this.handleAuthError(async () => {
       const query = this.buildSearchQuery(path);
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'C',location:'gmail-storage.provider.ts:downloadAllWithMetadata',message:'Searching messages (all with metadata)',data:{hasPath:!!path,subjectPatternLength:(path||'').length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       logger?.info(
         { path, query },
         '[GmailStorageProvider] Searching for messages (all with metadata)'
       );
 
       const messageIds = await this.gmailClient.searchMessagesAll(query);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'C',location:'gmail-storage.provider.ts:after-searchMessagesAll',message:'searchMessagesAll returned',data:{messageCount:messageIds.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (messageIds.length === 0) {
         throw new NoMatchingMessageError(query);
@@ -400,6 +408,10 @@ export class GmailStorageProvider implements StorageProvider {
       const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
 
       for (const messageId of messageIds) {
+        const safeMessageId = messageId ? messageId.slice(-6) : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'D',location:'gmail-storage.provider.ts:per-message',message:'Fetching message + first attachment',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         const message = await this.gmailClient.getMessage(messageId);
         const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
         const messageSubject = subjectHeader?.value || 'No Subject';
