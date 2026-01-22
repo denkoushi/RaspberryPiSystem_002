@@ -36,9 +36,9 @@ export class MeasuringInstrumentLoanEventService {
       eventAt: Date;
       action: string;
       raw: Record<string, unknown>;
-      sourceMessageId?: string | null;
-      sourceMessageSubject?: string | null;
-      sourceCsvDashboardId?: string | null;
+      sourceMessageId: string | null;
+      sourceMessageSubject: string | null;
+      sourceCsvDashboardId: string | null;
     }> = [];
 
     for (let i = 1; i < rows.length; i += 1) {
@@ -68,7 +68,7 @@ export class MeasuringInstrumentLoanEventService {
         raw: normalized,
         sourceMessageId: messageId ?? null,
         sourceMessageSubject: messageSubject ?? null,
-        sourceCsvDashboardId: dashboardId,
+        sourceCsvDashboardId: dashboardId ?? null,
       });
     }
 

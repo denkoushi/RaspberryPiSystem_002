@@ -37,6 +37,7 @@ export class CsvImportScheduler {
     createExecutionService?: () => CsvImportExecutionService;
     createAutoBackupService?: () => CsvImportAutoBackupService;
     createCsvDashboardRetentionService?: () => CsvDashboardRetentionService;
+    createMeasuringInstrumentLoanRetentionService?: () => MeasuringInstrumentLoanRetentionService;
   } = {}) {
     this.historyService = new ImportHistoryService();
     this.alertService = new ImportAlertService();
