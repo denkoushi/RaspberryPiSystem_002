@@ -902,7 +902,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, {
         returnProvider: true,
         allowFallbackToLocal: provider !== 'gmail',
-      });
+      }) as unknown as { provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider };
       const storageProvider = created.storageProvider;
 
       const files: { employees?: Buffer; items?: Buffer } = {};
@@ -914,7 +914,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           const downloadStart = Date.now();
           files.employees = await storageProvider.download(employeesPath);
           const downloadTime = Date.now() - downloadStart;
-          const fileSize = files.employees.length;
+          const fileSize = files.employees!.length;
           request.log.info({
             provider,
             path: employeesPath,
@@ -944,7 +944,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           const downloadStart = Date.now();
           files.items = await storageProvider.download(itemsPath);
           const downloadTime = Date.now() - downloadStart;
-          const fileSize = files.items.length;
+          const fileSize = files.items!.length;
           request.log.info({
             provider,
             path: itemsPath,
