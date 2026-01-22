@@ -8,7 +8,8 @@ type ColumnMapping = Array<{ csvIndex: number; internalName: string; columnDef: 
 
 export class MeasuringInstrumentLoanEventService {
   // CSVダッシュボードの列定義に合わせて、実際に存在するinternalNameを要求する
-  private static readonly TARGET_INTERNAL_NAMES = new Set(['managementNumber', 'borrowedAt', 'shiyou_henkyaku']);
+  // status列のcsvHeaderCandidatesには"shiyou_henkyaku"が含まれているが、internalNameは"status"
+  private static readonly TARGET_INTERNAL_NAMES = new Set(['managementNumber', 'borrowedAt', 'status']);
 
   async projectEventsFromCsv(params: {
     dashboardId: string;
@@ -39,7 +40,8 @@ export class MeasuringInstrumentLoanEventService {
       const row = rows[i];
       const normalized = this.normalizeRow(row, columnMapping);
       const managementNumber = String(normalized.managementNumber ?? '').trim();
-      const action = String(normalized.shiyou_henkyaku ?? '').trim();
+      // status列のcsvHeaderCandidatesが"shiyou_henkyaku"を含むので、CSV値は正しく取得される
+      const action = String(normalized.status ?? '').trim();
       // CSVダッシュボードの列定義では internalName が 'borrowedAt' として定義されている
       const dayRaw = String(normalized.borrowedAt ?? '').trim();
 
