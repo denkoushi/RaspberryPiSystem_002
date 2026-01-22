@@ -17,6 +17,7 @@ export type CsvDashboardIngestResult = {
     downloadedMessageIdSuffixes: string[];
     postProcessedMessageIdSuffixes: string[];
     failedMessageIdSuffixes: string[];
+    postProcessErrorByMessageIdSuffix?: Record<string, { step: 'markAsRead' | 'trashMessage'; error: string }>;
     canPostProcessGmail: boolean;
   };
 };
@@ -110,6 +111,10 @@ export class CsvDashboardImportService {
       const downloadedMessageIdSuffixes: string[] = [];
       const postProcessedMessageIdSuffixes: string[] = [];
       const failedMessageIdSuffixes: string[] = [];
+      const postProcessErrorByMessageIdSuffix: Record<
+        string,
+        { step: 'markAsRead' | 'trashMessage'; error: string }
+      > = {};
       const canPostProcessGmail = provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider);
 
       for (const bufferResult of bufferResults) {
@@ -150,15 +155,35 @@ export class CsvDashboardImportService {
 
           // Gmail後処理（成功時のみ）
           if (provider === 'gmail' && messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider)) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'csv-dashboard-import.service.ts:pre-postprocess',message:'About to post-process Gmail message',data:{dashboardId,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-            await storageProvider.markAsRead(messageId);
-            await storageProvider.trashMessage(messageId);
+            try {
+              await storageProvider.markAsRead(messageId);
+            } catch (postProcessError) {
+              if (safeMessageId) {
+                postProcessErrorByMessageIdSuffix[safeMessageId] = {
+                  step: 'markAsRead',
+                  error:
+                    postProcessError instanceof Error ? postProcessError.message : String(postProcessError),
+                };
+              }
+              // 後処理に失敗した場合は、メールを残して次回再試行できるようにする
+              throw postProcessError;
+            }
+
+            try {
+              await storageProvider.trashMessage(messageId);
+            } catch (postProcessError) {
+              if (safeMessageId) {
+                postProcessErrorByMessageIdSuffix[safeMessageId] = {
+                  step: 'trashMessage',
+                  error:
+                    postProcessError instanceof Error ? postProcessError.message : String(postProcessError),
+                };
+              }
+              // 後処理に失敗した場合は、メールを残して次回再試行できるようにする
+              throw postProcessError;
+            }
+
             if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'csv-dashboard-import.service.ts:post-postprocess',message:'Finished post-processing Gmail message',data:{dashboardId,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
           }
         } catch (error) {
           lastError = error;
@@ -185,6 +210,8 @@ export class CsvDashboardImportService {
           downloadedMessageIdSuffixes,
           postProcessedMessageIdSuffixes,
           failedMessageIdSuffixes,
+          postProcessErrorByMessageIdSuffix:
+            Object.keys(postProcessErrorByMessageIdSuffix).length > 0 ? postProcessErrorByMessageIdSuffix : undefined,
           canPostProcessGmail,
         },
       };
