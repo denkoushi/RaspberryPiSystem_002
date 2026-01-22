@@ -1,5 +1,6 @@
 import { parse } from 'csv-parse/sync';
 import { prisma } from '../../lib/prisma.js';
+import type { Prisma } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 import type { ColumnDefinition } from '../csv-dashboard/csv-dashboard.types.js';
 
@@ -31,15 +32,7 @@ export class MeasuringInstrumentLoanEventService {
       }
     }
 
-    const dataToInsert: Array<{
-      managementNumber: string;
-      eventAt: Date;
-      action: string;
-      raw: Record<string, unknown>;
-      sourceMessageId: string | null;
-      sourceMessageSubject: string | null;
-      sourceCsvDashboardId: string | null;
-    }> = [];
+    const dataToInsert: Prisma.MeasuringInstrumentLoanEventCreateManyInput[] = [];
 
     for (let i = 1; i < rows.length; i += 1) {
       const row = rows[i];
@@ -65,7 +58,7 @@ export class MeasuringInstrumentLoanEventService {
         managementNumber,
         eventAt,
         action,
-        raw: normalized,
+        raw: normalized as Prisma.InputJsonValue,
         sourceMessageId: messageId ?? null,
         sourceMessageSubject: messageSubject ?? null,
         sourceCsvDashboardId: dashboardId ?? null,
