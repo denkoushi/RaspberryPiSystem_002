@@ -1794,3 +1794,63 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - `apps/api/prisma/seed.ts`（`enabled: true`追加）
 
 ---
+
+### [KB-192] 管理コンソールのサイネージプレビュー機能実装とJWT認証問題
+
+**日付**: 2026-01-23
+
+**事象**:
+- 管理コンソールに「サイネージプレビュー」タブを追加し、Pi3で表示中のサイネージ画像をプレビューできるようにした
+- ブラウザで直接表示しようとしたが、`GET /api/signage/current-image 401 (Unauthorized)` エラーが発生し、画像が表示されなかった
+- ブラウザログに認証エラーが記録されていた
+
+**要因**:
+- `SignagePreviewPage.tsx`で`fetch('/api/signage/current-image', { credentials: 'include' })`を使用していた
+- `credentials: 'include'`はCookie認証用であり、本システムはJWT認証（`Authorization`ヘッダー）を使用している
+- `fetch`では`Authorization`ヘッダーを自動付与できないため、401エラーが発生していた
+- `/api/signage/current-image`エンドポイントは、`x-client-key`ヘッダーまたはJWT認証が必要な実装になっていた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-01-23）: `fetch`を`axios(api)`クライアントに変更し、JWT認証ヘッダーを自動付与
+  1. **axiosクライアントの使用**: `api.get('/signage/current-image', { responseType: 'blob' })`でBlob取得
+  2. **自動認証ヘッダー付与**: `api`クライアントが`setAuthToken`で設定されたJWTトークンを`Authorization`ヘッダーに自動付与
+  3. **Blob処理**: `URL.createObjectURL`でBlobをURLに変換し、`<img>`要素で表示
+  4. **メモリリーク防止**: `useEffect`のクリーンアップで`URL.revokeObjectURL`を実行
+
+**実装の詳細**:
+1. **UI実装**: `apps/web/src/pages/admin/SignagePreviewPage.tsx`
+   - 30秒ごとの自動更新と手動更新ボタンを実装
+   - エラー表示とローディング状態の管理
+   - 画像のアスペクト比を維持した表示（`aspect-video`、`object-contain`）
+
+2. **ルーティング**: `apps/web/src/App.tsx`
+   - `/admin/signage/preview`ルートを追加
+
+3. **ナビゲーション**: `apps/web/src/layouts/AdminLayout.tsx`
+   - 「サイネージプレビュー」タブを追加
+
+**トラブルシューティング**:
+1. **401エラーの原因特定**:
+   - 症状: `GET /api/signage/current-image 401 (Unauthorized)`
+   - 原因: `fetch`ではJWT認証ヘッダーが付与されない
+   - 対策: `axios(api)`クライアントを使用して自動認証ヘッダーを付与
+
+2. **セキュリティ考慮**:
+   - 最初はクエリパラメータ（`?key=...`）でのクライアントキー指定を追加したが、セキュリティ上の懸念から管理コンソール内タブとして実装
+   - JWT認証を使用することで、認証済みユーザーのみがアクセス可能
+
+**学んだこと**:
+- 管理コンソール内のAPI呼び出しは、`fetch`ではなく`axios(api)`クライアントを使用することで、JWT認証ヘッダーが自動付与される
+- `credentials: 'include'`はCookie認証用であり、JWT認証には`Authorization`ヘッダーが必要
+- Blob取得時は`responseType: 'blob'`を指定し、`URL.createObjectURL`でURLに変換してから表示する
+- メモリリークを防ぐため、`useEffect`のクリーンアップで`URL.revokeObjectURL`を実行する
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-23）
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/SignagePreviewPage.tsx`（UI実装）
+- `apps/web/src/App.tsx`（ルーティング追加）
+- `apps/web/src/layouts/AdminLayout.tsx`（ナビゲーション追加）
+- `apps/api/src/routes/signage/render.ts`（APIエンドポイント、クエリパラメータサポートも追加）
+
+---
