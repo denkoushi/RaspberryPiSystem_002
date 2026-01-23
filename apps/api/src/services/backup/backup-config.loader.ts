@@ -16,6 +16,84 @@ export class BackupConfigLoader {
   private static readonly FALLBACK_MARKER = Symbol('BackupConfigLoader.FALLBACK_CONFIG');
 
   /**
+   * 旧キー（deprecated）を新構造が有効な場合にのみ削除する。
+   *
+   * 方針:
+   * - 新構造（options.dropbox / options.gmail）を正とする（新構造優先）
+   * - 後方互換の保険として、新構造側に値が無い場合は旧キーを削除しない
+   * - 保存時のみ実施（既存ファイルは次回save時にクリーンアップされる）
+   */
+  private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfig {
+    const opts = validatedConfig.storage.options as NonNullable<BackupConfig['storage']['options']> | undefined;
+    if (!opts) return validatedConfig;
+
+    const hasNonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+
+    // Dropbox: options.dropbox.* が存在し、そのフィールドに値がある場合のみ旧キーを削除
+    if (opts.dropbox) {
+      const dropbox = opts.dropbox as {
+        accessToken?: unknown;
+        refreshToken?: unknown;
+        appKey?: unknown;
+        appSecret?: unknown;
+      };
+
+      if (hasNonEmpty(dropbox.accessToken) && hasNonEmpty(opts.accessToken)) {
+        delete (opts as Record<string, unknown>).accessToken;
+      }
+      if (hasNonEmpty(dropbox.refreshToken) && hasNonEmpty(opts.refreshToken)) {
+        delete (opts as Record<string, unknown>).refreshToken;
+      }
+      if (hasNonEmpty(dropbox.appKey) && hasNonEmpty(opts.appKey)) {
+        delete (opts as Record<string, unknown>).appKey;
+      }
+      if (hasNonEmpty(dropbox.appSecret) && hasNonEmpty(opts.appSecret)) {
+        delete (opts as Record<string, unknown>).appSecret;
+      }
+    }
+
+    // Gmail: options.gmail.* が存在し、そのフィールドに値がある場合のみ旧キーを削除
+    if (opts.gmail) {
+      const gmail = opts.gmail as {
+        accessToken?: unknown;
+        refreshToken?: unknown;
+        clientId?: unknown;
+        clientSecret?: unknown;
+        redirectUri?: unknown;
+        subjectPattern?: unknown;
+        fromEmail?: unknown;
+      };
+
+      // 旧: clientId/clientSecret/redirectUri/subjectPattern/fromEmail
+      if (hasNonEmpty(gmail.clientId) && hasNonEmpty(opts.clientId)) {
+        delete (opts as Record<string, unknown>).clientId;
+      }
+      if (hasNonEmpty(gmail.clientSecret) && hasNonEmpty(opts.clientSecret)) {
+        delete (opts as Record<string, unknown>).clientSecret;
+      }
+      if (hasNonEmpty(gmail.redirectUri) && hasNonEmpty(opts.redirectUri)) {
+        delete (opts as Record<string, unknown>).redirectUri;
+      }
+      if (hasNonEmpty(gmail.subjectPattern) && hasNonEmpty(opts.subjectPattern)) {
+        delete (opts as Record<string, unknown>).subjectPattern;
+      }
+      if (hasNonEmpty(gmail.fromEmail) && hasNonEmpty(opts.fromEmail)) {
+        delete (opts as Record<string, unknown>).fromEmail;
+      }
+
+      // 旧: gmailAccessToken/gmailRefreshToken（分離キー）
+      if (hasNonEmpty(gmail.accessToken) && hasNonEmpty(opts.gmailAccessToken)) {
+        delete (opts as Record<string, unknown>).gmailAccessToken;
+      }
+      if (hasNonEmpty(gmail.refreshToken) && hasNonEmpty(opts.gmailRefreshToken)) {
+        delete (opts as Record<string, unknown>).gmailRefreshToken;
+      }
+    }
+
+    return validatedConfig;
+  }
+
+  /**
    * 設定ファイルを読み込む
    */
   static async load(): Promise<BackupConfig> {
@@ -297,12 +375,13 @@ export class BackupConfigLoader {
       
       // 設定を検証
       const validatedConfig = BackupConfigSchema.parse(config);
+      const prunedConfig = this.pruneLegacyKeysOnSave(validatedConfig);
       
       // JSONファイルとして保存（atomic write）
       // NOTE: 直接writeFileすると、同時readでJSONが壊れた状態を読んでしまい、load()がフォールバック→保存で上書き、が起き得る。
       // tmpへ書いてrenameすることで、読み取り側は常に「完全なJSON」を読む。
       const tmpPath = `${configPath}.tmp.${process.pid}.${Date.now()}`;
-      const payload = JSON.stringify(validatedConfig, null, 2);
+      const payload = JSON.stringify(prunedConfig, null, 2);
       await fs.writeFile(tmpPath, payload, 'utf-8');
       await fs.rename(tmpPath, configPath);
       
