@@ -50,6 +50,30 @@ export class CsvDashboardTemplateRenderer {
     const canvasHeight = context?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT;
     const scale = canvasWidth / DEFAULT_CANVAS_WIDTH;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'X',
+        location: 'csv-dashboard-template-renderer.ts:renderTable',
+        message: 'renderTable entry',
+        data: {
+          canvasWidth,
+          canvasHeight,
+          scale,
+          rowsLen: rows.length,
+          rowsPerPageConfig: config.rowsPerPage,
+          fontSize: config.fontSize,
+          displayColumnsLen: config.displayColumns?.length ?? null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
     const selectedColumnDefs = config.displayColumns
       .map((internalName) => columnDefinitions.find((col) => col.internalName === internalName))
       .filter((col): col is RenderableColumnDefinition => col !== undefined);
@@ -321,12 +345,80 @@ export class CsvDashboardTemplateRenderer {
     const safetyPadding = Math.round(6 * scale);
     const minWidth = Math.max(60, Math.round(fontSizePx * 3));
 
+    // #region agent log
+    try {
+      const perColumn = displayColumns.map((col, idx) => {
+        // NOTE: PII防止のため、実値はログに出さない（em/長さ等の数値のみ）
+        let maxEmRawSample = this.approxTextEm(col.displayName);
+        let maxEmFmtSample = this.approxTextEm(col.displayName);
+        for (const row of sampleRows) {
+          const raw = row[col.internalName];
+          const rawStr = raw == null ? '' : String(raw);
+          const fmtStr = raw == null ? '' : String(this.formatCellValueForSignage(col, raw));
+          maxEmRawSample = Math.max(maxEmRawSample, this.approxTextEm(rawStr));
+          maxEmFmtSample = Math.max(maxEmFmtSample, this.approxTextEm(fmtStr));
+        }
+
+        let maxEmRawAll = this.approxTextEm(col.displayName);
+        let maxEmFmtAll = this.approxTextEm(col.displayName);
+        for (const row of rows) {
+          const raw = row[col.internalName];
+          const rawStr = raw == null ? '' : String(raw);
+          const fmtStr = raw == null ? '' : String(this.formatCellValueForSignage(col, raw));
+          maxEmRawAll = Math.max(maxEmRawAll, this.approxTextEm(rawStr));
+          maxEmFmtAll = Math.max(maxEmFmtAll, this.approxTextEm(fmtStr));
+        }
+
+        return {
+          index: idx,
+          internalName: col.internalName,
+          dataType: col.dataType ?? null,
+          fixedPx: fixed[idx] ?? null,
+          maxEmRawSample,
+          maxEmFmtSample,
+          maxEmRawAll,
+          maxEmFmtAll,
+        };
+      });
+
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'A',
+          location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+          message: 'column width inputs (raw vs formatted, sample vs all)',
+          data: {
+            canvasWidth,
+            scale,
+            fontSizePx,
+            rowsLen: rows.length,
+            rowsPerPage,
+            sampleLen: sampleRows.length,
+            basePadding,
+            safetyPadding,
+            minWidth,
+            perColumn,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
+    // #endregion
+
+    // 列幅は「表示中ページ」ではなく、全行の最大文字列に追随させる
+    // （ページ切り替えで列幅が変わると視認性が落ち、ユーザー期待ともズレる）
     const requiredWidths = displayColumns.map((col) => {
       let maxEm = this.approxTextEm(col.displayName);
-      for (const row of sampleRows) {
+      for (const row of rows) {
         const v = row[col.internalName];
-        const s = v == null ? '' : String(v);
-        maxEm = Math.max(maxEm, this.approxTextEm(s));
+        // 実際に描画する値（date列はJSTフォーマット）で幅を見積もる
+        const formatted = v == null ? '' : String(this.formatCellValueForSignage(col, v));
+        maxEm = Math.max(maxEm, this.approxTextEm(formatted));
       }
       const textWidth = maxEm * Math.max(1, fontSizePx);
       const required = Math.ceil(textWidth + basePadding * 2 + safetyPadding);
@@ -338,6 +430,21 @@ export class CsvDashboardTemplateRenderer {
 
     if (total <= canvasWidth) {
       // 過剰な余白を作らない。右側に余白が残っても良い。
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'pre-fix',
+          hypothesisId: 'D',
+          location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+          message: 'column widths chosen (no shrink)',
+          data: { canvasWidth, total, widths, requiredWidths },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       return widths;
     }
 
@@ -345,6 +452,22 @@ export class CsvDashboardTemplateRenderer {
     const scaleDown = canvasWidth / total;
     const minWidths = widths.map((w) => Math.min(w, minWidth));
     const scaled = widths.map((w, i) => Math.max(minWidths[i], Math.floor(w * scaleDown)));
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'B',
+        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+        message: 'column widths chosen (pre shrink)',
+        data: { canvasWidth, total, scaleDown, widths, minWidths, scaled },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
 
     return this.shrinkToFit(scaled, minWidths, canvasWidth);
   }
@@ -380,6 +503,28 @@ export class CsvDashboardTemplateRenderer {
     if (remaining > 0) {
       widths[widths.length - 1] = Math.max(1, widths[widths.length - 1] - remaining);
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'B',
+        location: 'csv-dashboard-template-renderer.ts:shrinkToFit',
+        message: 'column widths chosen (post shrink)',
+        data: {
+          canvasWidth,
+          totalBefore: total,
+          totalAfter: widths.reduce((sum, w) => sum + w, 0),
+          widths,
+          minWidths,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
 
     return widths;
   }

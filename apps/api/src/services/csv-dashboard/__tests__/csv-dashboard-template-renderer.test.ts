@@ -83,4 +83,28 @@ describe('CsvDashboardTemplateRenderer renderTable', () => {
     const largeWidths = extractHeaderWidths(svgLarge);
     expect(largeWidths[0]).toBeGreaterThan(smallWidths[0]);
   });
+
+  it('uses max string across all rows (not only first page rows)', () => {
+    const renderer = new CsvDashboardTemplateRenderer();
+    const rows: NormalizedRowData[] = [
+      { colA: 'A', colB: 'B' },
+      { colA: 'AA', colB: 'BB' },
+      // 画面に入らない位置に長い値（この列幅も追随させたい）
+      { colA: 'A'.repeat(80), colB: 'B' }
+    ];
+
+    // canvasHeightを小さくして rowsPerPage が 1 になる状況を作る
+    const svg = renderer.renderTable(rows, columnDefinitions, {
+      ...baseConfig,
+      rowsPerPage: 200
+    }, 'Test', undefined, {
+      canvasWidth: 900,
+      canvasHeight: 140
+    });
+
+    const widths = extractHeaderWidths(svg);
+    expect(widths.length).toBe(2);
+    // 長い値があるcolAが、colBより十分広いこと
+    expect(widths[0]).toBeGreaterThan(widths[1]);
+  });
 });
