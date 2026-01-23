@@ -46,12 +46,19 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   });
 
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
+    // クライアントキーをヘッダーまたはクエリパラメータから取得（ブラウザ直接アクセス対応）
     const headerKey = request.headers['x-client-key'];
-    if (!headerKey) {
+    const queryKey = typeof request.query === 'object' && request.query !== null && 'key' in request.query
+      ? String(request.query.key)
+      : null;
+    const clientKey = headerKey || queryKey;
+
+    if (!clientKey) {
       await canView(request, reply);
     } else {
+      const keyValue = typeof clientKey === 'string' ? clientKey : clientKey[0];
       const client = await prisma.clientDevice.findUnique({
-        where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] }
+        where: { apiKey: keyValue }
       });
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');

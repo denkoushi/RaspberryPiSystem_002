@@ -55,6 +55,7 @@ export function AdminLayout() {
           { to: '/admin/gmail/config', label: 'Gmail設定' },
           { to: '/admin/backup/targets', label: 'バックアップ' },
           { to: '/admin/signage/schedules', label: 'サイネージ' },
+          { to: '/admin/signage/preview', label: 'サイネージプレビュー' },
           { to: '/admin/security', label: 'セキュリティ' },
         ],
       },
@@ -136,6 +137,9 @@ export function AdminLayout() {
           </NavLink>
           <NavLink to="/admin/signage/schedules" className={linkClass}>
             サイネージ
+          </NavLink>
+          <NavLink to="/admin/signage/preview" className={linkClass}>
+            サイネージプレビュー
           </NavLink>
           <NavLink to="/admin/security" className={linkClass}>
             セキュリティ

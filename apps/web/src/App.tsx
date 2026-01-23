@@ -16,6 +16,7 @@ import { MasterImportPage } from './pages/admin/MasterImportPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
+import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
@@ -96,6 +97,7 @@ function App() {
           <Route path="schedules" element={<SignageSchedulesPage />} />
           <Route path="pdfs" element={<SignagePdfsPage />} />
           <Route path="emergency" element={<SignageEmergencyPage />} />
+          <Route path="preview" element={<SignagePreviewPage />} />
         </Route>
         {/* 後方互換性のため、既存パスも維持 */}
         <Route path="employees" element={<EmployeesPage />} />
