@@ -12,10 +12,16 @@ interface RenderableColumnDefinition {
   internalName: string;
   displayName: string;
   dataType?: string;
+  order?: number;
 }
 
-const CANVAS_WIDTH = 1920;
-const CANVAS_HEIGHT = 1080;
+export interface CsvDashboardRenderContext {
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+const DEFAULT_CANVAS_WIDTH = 1920;
+const DEFAULT_CANVAS_HEIGHT = 1080;
 
 /**
  * CSVダッシュボードテンプレートレンダラー
@@ -32,35 +38,38 @@ export class CsvDashboardTemplateRenderer {
     columnDefinitions: RenderableColumnDefinition[],
     config: TableTemplateConfig,
     dashboardName: string,
-    emptyMessage?: string | null
+    emptyMessage?: string | null,
+    context?: Partial<CsvDashboardRenderContext>
   ): string {
     if (rows.length === 0) {
       return this.renderEmptyMessage(dashboardName, emptyMessage || 'データがありません');
     }
 
-    const effectiveDisplayColumns = this.getEffectiveDisplayColumnsForSignage(
-      dashboardName,
-      columnDefinitions,
-      config.displayColumns
-    );
-
     // 表示列の定義を取得（順序も反映）
-    const displayColumns = effectiveDisplayColumns
+    const canvasWidth = context?.canvasWidth ?? DEFAULT_CANVAS_WIDTH;
+    const canvasHeight = context?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT;
+    const scale = canvasWidth / DEFAULT_CANVAS_WIDTH;
+
+    const selectedColumnDefs = config.displayColumns
       .map((internalName) => columnDefinitions.find((col) => col.internalName === internalName))
       .filter((col): col is RenderableColumnDefinition => col !== undefined);
 
-    const topTitleHeight = 64;
-    const tableTop = 80;
-    const headerHeight = 56;
-    const rowHeight = Math.max(30, config.fontSize + 18);
-    const tableWidth = CANVAS_WIDTH;
-    const availableHeight = CANVAS_HEIGHT - tableTop - headerHeight - 16;
+    // displayColumns が不正/空の場合は、列定義の順序で全列表示にフォールバック
+    const displayColumns =
+      selectedColumnDefs.length > 0
+        ? selectedColumnDefs
+        : [...columnDefinitions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    const topTitleHeight = Math.round(64 * scale);
+    const tableTop = Math.round(80 * scale);
+    const headerHeight = Math.round(56 * scale);
+    const rowHeight = Math.max(Math.round(30 * scale), Math.round((config.fontSize + 18) * scale));
+    const availableHeight = canvasHeight - tableTop - headerHeight - Math.round(16 * scale);
     const maxRowsByHeight = Math.max(1, Math.floor(availableHeight / rowHeight));
     const rowsPerPage = Math.min(rows.length, config.rowsPerPage, maxRowsByHeight);
 
     // カラム幅（サイネージでの視認性優先）
-    const columnLayout = this.getColumnLayoutForSignage(dashboardName, displayColumns);
-    const columnWidths = columnLayout.widths;
+    const columnWidths = this.computeColumnWidths(displayColumns, rows, rowsPerPage, config, canvasWidth);
     const columnX = columnWidths.reduce<number[]>((acc, w, i) => {
       acc[i] = (i === 0 ? 0 : acc[i - 1] + columnWidths[i - 1]);
       return acc;
@@ -70,13 +79,13 @@ export class CsvDashboardTemplateRenderer {
     const headerCells = displayColumns
       .map(
         (col, index) => {
-          const headerLabel = this.getHeaderLabelForSignage(dashboardName, col);
+          const headerLabel = col.displayName;
           const x = columnX[index] ?? 0;
-          const w = columnWidths[index] ?? Math.floor(tableWidth / displayColumns.length);
+          const w = columnWidths[index] ?? Math.floor(canvasWidth / displayColumns.length);
           return `
       <rect x="${x}" y="0" width="${w}" height="${headerHeight}" fill="#1e293b" stroke="#334155" stroke-width="2"/>
       <text x="${x + w / 2}" y="${headerHeight / 2 + 2}"
-            font-family="Arial, sans-serif" font-size="${config.fontSize + 4}" font-weight="bold"
+            font-family="Arial, sans-serif" font-size="${Math.max(10, Math.round((config.fontSize + 4) * scale))}" font-weight="bold"
             fill="#ffffff" text-anchor="middle" dominant-baseline="middle">
         ${this.escapeXml(headerLabel)}
       </text>
@@ -92,24 +101,25 @@ export class CsvDashboardTemplateRenderer {
         const cells = displayColumns
           .map((col, colIndex) => {
             const x = columnX[colIndex] ?? 0;
-            const w = columnWidths[colIndex] ?? Math.floor(tableWidth / displayColumns.length);
+            const w = columnWidths[colIndex] ?? Math.floor(canvasWidth / displayColumns.length);
             const y = headerHeight + rowIndex * rowHeight;
             const rawValue = row[col.internalName];
-            const formattedValue = this.formatCellValueForSignage(
-              dashboardName,
-              col,
-              rawValue
-            );
-            const cellPaddingX = 12;
+            const formattedValue = this.formatCellValueForSignage(col, rawValue);
+            const cellPaddingX = this.computeCellPaddingX(w, scale);
             const maxTextWidth = Math.max(0, w - cellPaddingX * 2);
-            const textValue = this.truncateForApproxWidth(String(formattedValue ?? ''), maxTextWidth, config.fontSize);
+            const effectiveFontSize = Math.max(10, Math.round(config.fontSize * scale));
+            const textValue = this.truncateForApproxWidth(
+              String(formattedValue ?? ''),
+              maxTextWidth,
+              effectiveFontSize
+            );
             return `
         <rect x="${x}" y="${y}"
               width="${w}" height="${rowHeight}"
               fill="${rowIndex % 2 === 0 ? '#0f172a' : '#1e293b'}"
               stroke="#334155" stroke-width="1"/>
         <text x="${x + cellPaddingX}" y="${y + rowHeight / 2 + 2}"
-              font-family="Arial, sans-serif" font-size="${config.fontSize}"
+              font-family="Arial, sans-serif" font-size="${effectiveFontSize}"
               fill="#ffffff" dominant-baseline="middle">
           ${this.escapeXml(textValue)}
         </text>
@@ -121,9 +131,9 @@ export class CsvDashboardTemplateRenderer {
       .join('');
 
     return `
-    <svg width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="#0a0e27"/>
-      <text x="${CANVAS_WIDTH / 2}" y="${topTitleHeight / 2 + 6}" font-family="Arial, sans-serif" font-size="36" font-weight="bold"
+    <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${canvasWidth}" height="${canvasHeight}" fill="#0a0e27"/>
+      <text x="${canvasWidth / 2}" y="${topTitleHeight / 2 + Math.round(6 * scale)}" font-family="Arial, sans-serif" font-size="${Math.max(18, Math.round(36 * scale))}" font-weight="bold"
             fill="#ffffff" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
       <g transform="translate(0, ${tableTop})">
         ${headerCells}
@@ -206,11 +216,11 @@ export class CsvDashboardTemplateRenderer {
    */
   private renderEmptyMessage(dashboardName: string, message: string): string {
     return `
-    <svg width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" fill="#0a0e27"/>
-      <text x="${CANVAS_WIDTH / 2}" y="400" font-family="Arial, sans-serif" font-size="32" font-weight="bold"
+    <svg width="${DEFAULT_CANVAS_WIDTH}" height="${DEFAULT_CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${DEFAULT_CANVAS_WIDTH}" height="${DEFAULT_CANVAS_HEIGHT}" fill="#0a0e27"/>
+      <text x="${DEFAULT_CANVAS_WIDTH / 2}" y="400" font-family="Arial, sans-serif" font-size="32" font-weight="bold"
             fill="#ffffff" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
-      <text x="${CANVAS_WIDTH / 2}" y="500" font-family="Arial, sans-serif" font-size="24"
+      <text x="${DEFAULT_CANVAS_WIDTH / 2}" y="500" font-family="Arial, sans-serif" font-size="24"
             fill="#94a3b8" text-anchor="middle">${this.escapeXml(message)}</text>
     </svg>
     `;
@@ -228,61 +238,16 @@ export class CsvDashboardTemplateRenderer {
       .replace(/'/g, '&apos;');
   }
 
-  private getEffectiveDisplayColumnsForSignage(
-    dashboardName: string,
-    columnDefinitions: RenderableColumnDefinition[],
-    configuredColumns: string[]
-  ): string[] {
-    // サイネージ「MeasuringInstrumentLoans」は必要項目に絞る（見切れ防止＋要求仕様）
-    if (dashboardName === 'MeasuringInstrumentLoans') {
-      const existing = new Set(columnDefinitions.map((c) => c.internalName));
-      const pick = (candidates: string[]): string | null =>
-        candidates.find((c) => existing.has(c)) ?? null;
-
-      const managementNumber = pick(['managementNumber']);
-      const instrumentName = pick(['name', 'instrumentName', 'measuringInstrumentName']);
-      const personName = pick(['borrower', 'employeeName', 'personName', 'userName']);
-      const status = pick(['status', 'shiyou_henkyaku']);
-      const day = pick(['day', 'borrowedAt', 'eventAt']);
-
-      return [managementNumber, instrumentName, personName, status, day].filter(
-        (v): v is string => Boolean(v)
-      );
-    }
-
-    return configuredColumns;
-  }
-
-  private getHeaderLabelForSignage(dashboardName: string, col: RenderableColumnDefinition): string {
-    if (dashboardName === 'MeasuringInstrumentLoans') {
-      if (col.internalName === 'day' || col.internalName === 'borrowedAt' || col.internalName === 'eventAt') {
-        return '日時';
-      }
-      if (col.internalName === 'status' || col.internalName === 'shiyou_henkyaku') {
-        return 'ステータス';
-      }
-    }
-    return col.displayName;
-  }
-
-  private formatCellValueForSignage(
-    dashboardName: string,
-    col: RenderableColumnDefinition,
-    rawValue: unknown
-  ): string {
+  private formatCellValueForSignage(col: RenderableColumnDefinition, rawValue: unknown): string {
     if (rawValue == null) {
       return '';
     }
 
     const asString = String(rawValue);
 
-    // サイネージ要件: MeasuringInstrumentLoans の日時は JST + 指定フォーマット（秒なし）
-    if (dashboardName === 'MeasuringInstrumentLoans') {
-      const isDayColumn =
-        col.internalName === 'day' || col.internalName === 'borrowedAt' || col.internalName === 'eventAt';
-      if (isDayColumn) {
-        return this.formatJstTimestampForSignage(asString) ?? asString;
-      }
+    // date列はサイネージ用フォーマットで表示（DBはUTC保持、表示のみJST）
+    if (col.dataType === 'date') {
+      return this.formatJstTimestampForSignage(asString) ?? asString;
     }
 
     return asString;
@@ -321,28 +286,95 @@ export class CsvDashboardTemplateRenderer {
     return `${year}/${month}/${day}（${weekday}）${ampm}${hour}:${minute}`;
   }
 
-  private getColumnLayoutForSignage(
-    dashboardName: string,
-    displayColumns: RenderableColumnDefinition[]
-  ): { widths: number[] } {
+  private computeColumnWidths(
+    displayColumns: RenderableColumnDefinition[],
+    rows: NormalizedRowData[],
+    rowsPerPage: number,
+    config: TableTemplateConfig,
+    canvasWidth: number
+  ): number[] {
     if (displayColumns.length === 0) {
-      return { widths: [] };
+      return [];
     }
 
-    // 視認性優先の固定比率（合計=1.0）
-    if (dashboardName === 'MeasuringInstrumentLoans') {
-      // 管理番号/名称/人名/ステータス/日時
-      const ratios = [0.16, 0.30, 0.18, 0.12, 0.24];
-      const widths = displayColumns.map((_, i) => Math.round(CANVAS_WIDTH * (ratios[i] ?? 1 / displayColumns.length)));
-      // 端数調整
+    const fixed: Array<number | null> = displayColumns.map((col) => {
+      const px = config.columnWidths?.[col.internalName];
+      return typeof px === 'number' && Number.isFinite(px) && px > 0 ? px : null;
+    });
+
+    const fixedSum = fixed.reduce((sum, v) => sum + (v ?? 0), 0);
+    const autoIndices = fixed
+      .map((v, i) => ({ v, i }))
+      .filter((x) => x.v == null)
+      .map((x) => x.i);
+
+    // fixedが幅を食い潰す場合は、全体をスケールして収める
+    if (fixedSum >= canvasWidth) {
+      const scale = canvasWidth / fixedSum;
+      const widths = fixed.map((v) => Math.max(20, Math.floor((v ?? 1) * scale)));
       const sum = widths.reduce((a, b) => a + b, 0);
-      widths[widths.length - 1] += CANVAS_WIDTH - sum;
-      return { widths };
+      widths[widths.length - 1] += canvasWidth - sum;
+      return widths;
     }
 
-    const w = Math.floor(CANVAS_WIDTH / displayColumns.length);
-    const widths = displayColumns.map((_, i) => (i === displayColumns.length - 1 ? CANVAS_WIDTH - w * (displayColumns.length - 1) : w));
-    return { widths };
+    if (autoIndices.length === 0) {
+      const widths = fixed.map((v) => Math.round(v ?? 0));
+      const sum = widths.reduce((a, b) => a + b, 0);
+      widths[widths.length - 1] += canvasWidth - sum;
+      return widths;
+    }
+
+    const remaining = Math.max(0, canvasWidth - fixedSum);
+    const minWidth = 80;
+    const maxWidth = Math.max(120, Math.floor(canvasWidth * 0.55));
+
+    // データ長（最大文字幅の近似）から重みを作る
+    const sampleRows = rows.slice(0, rowsPerPage);
+    const weights = autoIndices.map((i) => {
+      const col = displayColumns[i];
+      let maxEm = col.displayName.length; // ヘッダーも考慮
+      for (const row of sampleRows) {
+        const v = row[col.internalName];
+        const s = v == null ? '' : String(v);
+        maxEm = Math.max(maxEm, this.approxTextEm(s));
+      }
+      return Math.max(1, maxEm);
+    });
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+
+    const widths: number[] = displayColumns.map((_, i) => Math.round(fixed[i] ?? 0));
+
+    // まずminを確保
+    const minTotal = minWidth * autoIndices.length;
+    const remainingAfterMin = Math.max(0, remaining - minTotal);
+    autoIndices.forEach((idx, k) => {
+      const extra = weightSum > 0 ? Math.floor((remainingAfterMin * weights[k]) / weightSum) : 0;
+      widths[idx] = Math.min(maxWidth, minWidth + extra);
+    });
+
+    // 合計調整（端数/上限によりズレるため）
+    const sum = widths.reduce((a, b) => a + b, 0);
+    const delta = canvasWidth - sum;
+    widths[widths.length - 1] += delta;
+    return widths;
+  }
+
+  private computeCellPaddingX(columnWidth: number, scale: number): number {
+    // 狭い列はpaddingを削って有効領域を確保する
+    const base = Math.round(12 * scale);
+    const min = Math.round(4 * scale);
+    const max = Math.round(12 * scale);
+    const byWidth = Math.round(columnWidth * 0.03);
+    return Math.max(min, Math.min(max, Math.min(base, byWidth)));
+  }
+
+  private approxTextEm(text: string): number {
+    let used = 0;
+    for (const ch of text) {
+      const code = ch.codePointAt(0);
+      used += code != null && code <= 0xff ? 0.6 : 1.0;
+    }
+    return used;
   }
 
   private truncateForApproxWidth(text: string, maxWidthPx: number, fontSizePx: number): string {

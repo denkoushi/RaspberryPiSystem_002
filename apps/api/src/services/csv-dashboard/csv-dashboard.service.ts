@@ -78,15 +78,18 @@ export class CsvDashboardService {
    * CSVダッシュボードを更新
    */
   async update(id: string, input: CsvDashboardUpdateInput): Promise<CsvDashboard> {
-    // 存在確認
-    await this.findById(id);
+    // 存在確認（templateTypeのフォールバックにも使う）
+    const existing = await this.findById(id);
 
     // バリデーション
     if (input.columnDefinitions) {
       this.validateColumnDefinitions(input.columnDefinitions);
     }
-    if (input.templateConfig && input.templateType) {
-      this.validateTemplateConfig(input.templateType, input.templateConfig);
+
+    // templateConfig更新時は、templateTypeが未指定でも既存タイプで検証する（後方互換）
+    if (input.templateConfig !== undefined) {
+      const effectiveTemplateType = (input.templateType ?? existing.templateType) as 'TABLE' | 'CARD_GRID';
+      this.validateTemplateConfig(effectiveTemplateType, input.templateConfig);
     }
 
     const updateData: Prisma.CsvDashboardUpdateInput = {};
@@ -194,15 +197,35 @@ export class CsvDashboardService {
     templateConfig: unknown
   ): void {
     if (templateType === 'TABLE') {
-      const config = templateConfig as { rowsPerPage?: number; fontSize?: number; displayColumns?: string[] };
+      const config = templateConfig as {
+        rowsPerPage?: number;
+        fontSize?: number;
+        displayColumns?: string[];
+        columnWidths?: Record<string, number>;
+      };
       if (!config.rowsPerPage || config.rowsPerPage <= 0) {
         throw new ApiError(400, 'テーブル形式の行数が無効です');
       }
       if (!config.fontSize || config.fontSize <= 0) {
         throw new ApiError(400, 'フォントサイズが無効です');
       }
+      if (config.fontSize < 10 || config.fontSize > 48) {
+        throw new ApiError(400, 'フォントサイズは10〜48の範囲で指定してください');
+      }
       if (!config.displayColumns || config.displayColumns.length === 0) {
         throw new ApiError(400, '表示列が指定されていません');
+      }
+
+      // columnWidthsは任意。指定がある場合のみ最小限バリデーション（キーの妥当性は列定義側に委ねる）
+      if (config.columnWidths) {
+        for (const [key, value] of Object.entries(config.columnWidths)) {
+          if (!key || typeof key !== 'string') {
+            throw new ApiError(400, '列幅のキーが無効です');
+          }
+          if (!Number.isFinite(value) || value <= 0) {
+            throw new ApiError(400, `列幅が無効です（${key}）`);
+          }
+        }
       }
     } else if (templateType === 'CARD_GRID') {
       const config = templateConfig as {
@@ -215,6 +238,9 @@ export class CsvDashboardService {
       }
       if (!config.fontSize || config.fontSize <= 0) {
         throw new ApiError(400, 'フォントサイズが無効です');
+      }
+      if (config.fontSize < 10 || config.fontSize > 48) {
+        throw new ApiError(400, 'フォントサイズは10〜48の範囲で指定してください');
       }
       if (!config.displayFields || config.displayFields.length === 0) {
         throw new ApiError(400, '表示項目が指定されていません');

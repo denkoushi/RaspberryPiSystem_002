@@ -12,17 +12,18 @@ const columnDefinitionSchema = z.object({
 
 // テーブル形式テンプレート設定のスキーマ
 const tableTemplateConfigSchema = z.object({
-  rowsPerPage: z.number().int().positive(),
-  fontSize: z.number().int().positive(),
+  rowsPerPage: z.number().int().min(1).max(200),
+  fontSize: z.number().int().min(10).max(48),
   displayColumns: z.array(z.string().min(1)),
-  columnWidths: z.record(z.string(), z.number().int().positive()).optional(),
+  // px指定（未指定は自動レイアウト）。キーはinternalName想定。
+  columnWidths: z.record(z.string(), z.number().int().min(20).max(5000)).optional(),
   headerFixed: z.boolean().optional(),
 });
 
 // カードグリッド形式テンプレート設定のスキーマ
 const cardGridTemplateConfigSchema = z.object({
-  cardsPerPage: z.number().int().positive(),
-  fontSize: z.number().int().positive(),
+  cardsPerPage: z.number().int().min(1).max(200),
+  fontSize: z.number().int().min(10).max(48),
   displayFields: z.array(z.string().min(1)),
   gridColumns: z.number().int().positive().optional(),
   gridRows: z.number().int().positive().optional(),

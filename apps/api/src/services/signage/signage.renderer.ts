@@ -536,7 +536,8 @@ export class SignageRenderer {
    */
   private async renderCsvDashboard(
     dashboardId: string,
-    csvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }
+    csvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> },
+    options?: { canvasWidth?: number; canvasHeight?: number }
   ): Promise<Buffer> {
     const dashboard = await prisma.csvDashboard.findUnique({
       where: { id: dashboardId },
@@ -561,13 +562,15 @@ export class SignageRenderer {
         rowsPerPage: number;
         fontSize: number;
         displayColumns: string[];
+        columnWidths?: Record<string, number>;
       };
       svg = this.csvDashboardTemplateRenderer.renderTable(
         csvDashboard.rows,
         columnDefinitions,
         templateConfig,
         dashboard.name,
-        dashboard.emptyMessage
+        dashboard.emptyMessage,
+        { canvasWidth: options?.canvasWidth ?? WIDTH, canvasHeight: options?.canvasHeight ?? HEIGHT }
       );
     } else {
       const templateConfig = dashboard.templateConfig as {
@@ -584,10 +587,13 @@ export class SignageRenderer {
       );
     }
 
+    const targetWidth = options?.canvasWidth ?? WIDTH;
+    const targetHeight = options?.canvasHeight ?? HEIGHT;
+
     // 重要: デフォルト(fit=cover)だと、SVGの縦横比が16:9でない場合に左右/上下がトリミングされ
     // 表示が見切れる。サイネージでは「見切れない」ことを優先して contain に固定する。
     return await sharp(Buffer.from(svg))
-      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
+      .resize(targetWidth, targetHeight, { fit: 'contain', background: BACKGROUND })
       .jpeg({ quality: 90 })
       .toBuffer();
   }
@@ -599,6 +605,19 @@ export class SignageRenderer {
     leftPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } },
     rightPane: { kind: 'pdf' | 'loans' | 'csv_dashboard'; tools?: ToolItem[]; pdfOptions?: SplitPdfOptions; csvDashboard?: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } }
   ): Promise<Buffer> {
+    // buildSplitWithPanesSvg と同じレイアウト計算で、CSVをペインサイズに合わせてレンダリングする
+    const scale = WIDTH / 1920;
+    const outerPadding = 0;
+    const panelGap = Math.round(12 * scale);
+    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.5);
+    const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
+    const panelHeight = HEIGHT - outerPadding * 2;
+    const innerPadding = Math.round(12 * scale);
+    const headerHeight = Math.round(40 * scale);
+    const paneContentHeight = panelHeight - innerPadding * 2 - headerHeight;
+    const leftPaneContentWidth = leftWidth - innerPadding * 2;
+    const rightPaneContentWidth = rightWidth - innerPadding * 2;
+
     // 左右のPDF画像またはCSVダッシュボード画像を事前にBase64エンコード
     let leftImageBase64: string | null = null;
     let rightImageBase64: string | null = null;
@@ -611,7 +630,10 @@ export class SignageRenderer {
       );
     } else if (leftPane.kind === 'csv_dashboard' && leftPane.csvDashboard) {
       // CSVダッシュボードをレンダリングしてBase64エンコード
-      const csvDashboardBuffer = await this.renderCsvDashboard(leftPane.csvDashboard.id, leftPane.csvDashboard);
+      const csvDashboardBuffer = await this.renderCsvDashboard(leftPane.csvDashboard.id, leftPane.csvDashboard, {
+        canvasWidth: leftPaneContentWidth,
+        canvasHeight: paneContentHeight,
+      });
       leftImageBase64 = `data:image/jpeg;base64,${csvDashboardBuffer.toString('base64')}`;
     }
 
@@ -623,7 +645,10 @@ export class SignageRenderer {
       );
     } else if (rightPane.kind === 'csv_dashboard' && rightPane.csvDashboard) {
       // CSVダッシュボードをレンダリングしてBase64エンコード
-      const csvDashboardBuffer = await this.renderCsvDashboard(rightPane.csvDashboard.id, rightPane.csvDashboard);
+      const csvDashboardBuffer = await this.renderCsvDashboard(rightPane.csvDashboard.id, rightPane.csvDashboard, {
+        canvasWidth: rightPaneContentWidth,
+        canvasHeight: paneContentHeight,
+      });
       rightImageBase64 = `data:image/jpeg;base64,${csvDashboardBuffer.toString('base64')}`;
     }
 
