@@ -12,21 +12,22 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
+import {
+  DAYS_OF_WEEK,
+  INTERVAL_PRESETS,
+  MIN_INTERVAL_MINUTES,
+  formatCronSchedule,
+  formatIntervalCronSchedule,
+  formatScheduleForDisplay,
+  parseCronSchedule,
+  type ScheduleMode
+} from './csv-import-schedule-utils';
+
 import type {
   CsvImportSchedule,
   CsvImportSubjectPattern,
   CsvImportSubjectPatternType
 } from '../../api/backup';
-
-const DAYS_OF_WEEK = [
-  { value: 0, label: '日' },
-  { value: 1, label: '月' },
-  { value: 2, label: '火' },
-  { value: 3, label: '水' },
-  { value: 4, label: '木' },
-  { value: 5, label: '金' },
-  { value: 6, label: '土' },
-];
 
 const SUBJECT_PATTERN_TYPES: Array<{ value: CsvImportSubjectPatternType; label: string }> = [
   { value: 'employees', label: '従業員' },
@@ -34,106 +35,6 @@ const SUBJECT_PATTERN_TYPES: Array<{ value: CsvImportSubjectPatternType; label: 
   { value: 'measuringInstruments', label: '計測機器' },
   { value: 'riggingGears', label: '吊具' }
 ];
-
-/**
- * cron形式のスケジュールをUI形式に変換
- * cron形式: "分 時 日 月 曜日" (例: "0 4 * * *" = 毎日4時)
- * UI形式: { time: "04:00", daysOfWeek: [0,1,2,3,4,5,6] } (全て選択時は空配列)
- */
-function parseCronSchedule(cronSchedule?: string): { time: string; daysOfWeek: number[] } {
-  if (!cronSchedule || !cronSchedule.trim()) {
-    return { time: '02:00', daysOfWeek: [] };
-  }
-
-  const parts = cronSchedule.trim().split(/\s+/);
-  if (parts.length !== 5) {
-    // 不正な形式の場合はデフォルト値を返す
-    return { time: '02:00', daysOfWeek: [] };
-  }
-
-  const minute = parts[0];
-  const hour = parts[1];
-  const dayOfWeek = parts[4];
-
-  // 時刻を "HH:MM" 形式に変換
-  const hourNum = parseInt(hour, 10);
-  const minuteNum = parseInt(minute, 10);
-  if (isNaN(hourNum) || isNaN(minuteNum)) {
-    return { time: '02:00', daysOfWeek: [] };
-  }
-  const time = `${hourNum.toString().padStart(2, '0')}:${minuteNum.toString().padStart(2, '0')}`;
-
-  // 曜日を配列に変換
-  let daysOfWeek: number[] = [];
-  if (dayOfWeek === '*') {
-    // 全ての曜日（空配列で表現）
-    daysOfWeek = [];
-  } else {
-    // カンマ区切りの曜日を配列に変換
-    const dayParts = dayOfWeek.split(',');
-    daysOfWeek = dayParts
-      .map((d) => parseInt(d.trim(), 10))
-      .filter((d) => !isNaN(d) && d >= 0 && d <= 6);
-  }
-
-  return { time, daysOfWeek };
-}
-
-/**
- * UI形式からcron形式のスケジュールに変換
- * UI形式: { time: "04:00", daysOfWeek: [1,3,5] }
- * cron形式: "0 4 * * 1,3,5"
- */
-function formatCronSchedule(time: string, daysOfWeek: number[]): string {
-  const [hour, minute] = time.split(':');
-  const hourNum = parseInt(hour || '2', 10);
-  const minuteNum = parseInt(minute || '0', 10);
-
-  // 曜日が空配列の場合は全ての曜日（*）を意味する
-  const dayOfWeekStr = daysOfWeek.length === 0 ? '*' : daysOfWeek.sort((a, b) => a - b).join(',');
-
-  // cron形式: "分 時 日 月 曜日"
-  return `${minuteNum} ${hourNum} * * ${dayOfWeekStr}`;
-}
-
-/**
- * cron形式のスケジュールを人間が読みやすい形式に変換
- * cron形式: "0 4 * * 1,2,3" → "毎週月曜日、火曜日、水曜日の午前4時"
- */
-function formatScheduleForDisplay(cronSchedule: string): string {
-  const parsed = parseCronSchedule(cronSchedule);
-  const { time, daysOfWeek } = parsed;
-  
-  const [hour, minute] = time.split(':');
-  const hourNum = parseInt(hour || '0', 10);
-  const minuteNum = parseInt(minute || '0', 10);
-  
-  // 時刻を日本語形式に変換（午前/午後の判定）
-  let timeStr: string;
-  if (hourNum === 0) {
-    timeStr = minuteNum === 0 ? '午前0時' : `午前0時${minuteNum}分`;
-  } else if (hourNum < 12) {
-    timeStr = minuteNum === 0 ? `午前${hourNum}時` : `午前${hourNum}時${minuteNum}分`;
-  } else if (hourNum === 12) {
-    timeStr = minuteNum === 0 ? '午後12時' : `午後12時${minuteNum}分`;
-  } else {
-    const pmHour = hourNum - 12;
-    timeStr = minuteNum === 0 ? `午後${pmHour}時` : `午後${pmHour}時${minuteNum}分`;
-  }
-  
-  // 曜日を日本語形式に変換
-  if (daysOfWeek.length === 0) {
-    return `毎日${timeStr}`;
-  }
-  
-  const dayLabels = daysOfWeek
-    .sort((a, b) => a - b)
-    .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
-    .filter(Boolean)
-    .join('、');
-  
-  return `毎週${dayLabels}の${timeStr}`;
-}
 
 export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
@@ -184,6 +85,10 @@ export function CsvImportSchedulePage() {
   // スケジュールをUI形式で管理
   const [scheduleTime, setScheduleTime] = useState('02:00');
   const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>([]);
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('timeOfDay');
+  const [intervalMinutes, setIntervalMinutes] = useState<string>('10');
+  const [scheduleEditable, setScheduleEditable] = useState(true);
+  const [scheduleEditWarning, setScheduleEditWarning] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<CsvImportSchedule>>({
     id: '',
@@ -233,8 +138,23 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    // UI形式からcron形式に変換
-    const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
+    if (!scheduleEditable || scheduleMode === 'custom') {
+      setValidationError('このスケジュール形式はUIから編集できません');
+      return;
+    }
+
+    let cronSchedule = '';
+    if (scheduleMode === 'intervalMinutes') {
+      const intervalValue = Number(intervalMinutes);
+      if (!Number.isInteger(intervalValue) || intervalValue < MIN_INTERVAL_MINUTES) {
+        setValidationError(`間隔は${MIN_INTERVAL_MINUTES}分以上で指定してください`);
+        return;
+      }
+      cronSchedule = formatIntervalCronSchedule(intervalValue, scheduleDaysOfWeek);
+    } else {
+      // UI形式からcron形式に変換（時刻+曜日）
+      cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
+    }
 
     // 新形式が存在する場合は新形式で保存し、旧形式は空にする
     const scheduleToSave: CsvImportSchedule = {
@@ -271,6 +191,10 @@ export function CsvImportSchedulePage() {
       });
       setScheduleTime('02:00');
       setScheduleDaysOfWeek([]);
+      setScheduleMode('timeOfDay');
+      setIntervalMinutes('10');
+      setScheduleEditable(true);
+      setScheduleEditWarning(null);
       refetch();
     } catch (error) {
       // エラーはmutationのisErrorで表示
@@ -288,8 +212,23 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    // UI形式からcron形式に変換
-    const cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
+    if (!scheduleEditable || scheduleMode === 'custom') {
+      setValidationError('このスケジュール形式はUIから編集できません');
+      return;
+    }
+
+    let cronSchedule = '';
+    if (scheduleMode === 'intervalMinutes') {
+      const intervalValue = Number(intervalMinutes);
+      if (!Number.isInteger(intervalValue) || intervalValue < MIN_INTERVAL_MINUTES) {
+        setValidationError(`間隔は${MIN_INTERVAL_MINUTES}分以上で指定してください`);
+        return;
+      }
+      cronSchedule = formatIntervalCronSchedule(intervalValue, scheduleDaysOfWeek);
+    } else {
+      // UI形式からcron形式に変換
+      cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
+    }
 
     // 新形式が存在する場合は新形式で保存し、旧形式は空にする
     const scheduleToSave: Partial<CsvImportSchedule> = {
@@ -438,6 +377,10 @@ export function CsvImportSchedulePage() {
     const parsed = parseCronSchedule(schedule.schedule);
     setScheduleTime(parsed.time);
     setScheduleDaysOfWeek(parsed.daysOfWeek);
+    setScheduleMode(parsed.mode === 'custom' ? 'timeOfDay' : parsed.mode);
+    setIntervalMinutes(parsed.intervalMinutes ? String(parsed.intervalMinutes) : '10');
+    setScheduleEditable(parsed.isEditable);
+    setScheduleEditWarning(parsed.isEditable ? null : (parsed.reason || 'このcron形式はUIから編集できません'));
   };
 
   const cancelEdit = () => {
@@ -461,6 +404,10 @@ export function CsvImportSchedulePage() {
     });
     setScheduleTime('02:00');
     setScheduleDaysOfWeek([]);
+    setScheduleMode('timeOfDay');
+    setIntervalMinutes('10');
+    setScheduleEditable(true);
+    setScheduleEditWarning(null);
   };
 
   const handleCancelCreate = () => {
@@ -484,6 +431,10 @@ export function CsvImportSchedulePage() {
     });
     setScheduleTime('02:00');
     setScheduleDaysOfWeek([]);
+    setScheduleMode('timeOfDay');
+    setIntervalMinutes('10');
+    setScheduleEditable(true);
+    setScheduleEditWarning(null);
   };
 
   // 新規作成フォームを開いた時にスケジュールの初期値を設定
@@ -508,6 +459,10 @@ export function CsvImportSchedulePage() {
       });
       setScheduleTime('02:00');
       setScheduleDaysOfWeek([]);
+      setScheduleMode('timeOfDay');
+      setIntervalMinutes('10');
+      setScheduleEditable(true);
+      setScheduleEditWarning(null);
     }
   }, [showCreateForm]);
 
@@ -728,15 +683,72 @@ export function CsvImportSchedulePage() {
                 スケジュール *
               </label>
               <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode('timeOfDay')}
+                    className={`rounded-md border-2 px-3 py-1 text-xs font-semibold transition-colors ${
+                      scheduleMode === 'timeOfDay'
+                        ? 'border-emerald-700 bg-emerald-600 text-white'
+                        : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    時刻指定
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode('intervalMinutes')}
+                    className={`rounded-md border-2 px-3 py-1 text-xs font-semibold transition-colors ${
+                      scheduleMode === 'intervalMinutes'
+                        ? 'border-emerald-700 bg-emerald-600 text-white'
+                        : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    間隔指定（N分ごと）
+                  </button>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    実行時刻
+                    {scheduleMode === 'intervalMinutes' ? '実行間隔' : '実行時刻'}
                   </label>
-                  <Input
-                    type="time"
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
-                  />
+                  {scheduleMode === 'intervalMinutes' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={MIN_INTERVAL_MINUTES}
+                          value={intervalMinutes}
+                          onChange={(e) => setIntervalMinutes(e.target.value)}
+                        />
+                        <span className="text-xs text-slate-600">分ごと</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {INTERVAL_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setIntervalMinutes(String(preset))}
+                            className={`rounded-md border-2 px-2 py-0.5 text-xs font-semibold transition-colors ${
+                              intervalMinutes === String(preset)
+                                ? 'border-emerald-700 bg-emerald-600 text-white'
+                                : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {preset}分
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-600">
+                        最小{MIN_INTERVAL_MINUTES}分。負荷を考慮して短すぎる間隔は避けてください。
+                      </p>
+                    </div>
+                  ) : (
+                    <Input
+                      type="time"
+                      value={scheduleTime}
+                      onChange={(e) => setScheduleTime(e.target.value)}
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -912,18 +924,65 @@ export function CsvImportSchedulePage() {
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-2">
-                          <Input
-                            type="time"
-                            value={scheduleTime}
-                            onChange={(e) => setScheduleTime(e.target.value)}
-                            className="w-full text-xs"
-                          />
+                          {scheduleEditWarning && (
+                            <div className="rounded-md border border-amber-600 bg-amber-50 p-1 text-xs text-amber-700">
+                              {scheduleEditWarning}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setScheduleMode('timeOfDay')}
+                              disabled={!scheduleEditable}
+                              className={`rounded-md border-2 px-2 py-0.5 text-xs font-semibold transition-colors ${
+                                scheduleMode === 'timeOfDay'
+                                  ? 'border-emerald-700 bg-emerald-600 text-white'
+                                  : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                              } ${!scheduleEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                              時刻
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScheduleMode('intervalMinutes')}
+                              disabled={!scheduleEditable}
+                              className={`rounded-md border-2 px-2 py-0.5 text-xs font-semibold transition-colors ${
+                                scheduleMode === 'intervalMinutes'
+                                  ? 'border-emerald-700 bg-emerald-600 text-white'
+                                  : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
+                              } ${!scheduleEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                              間隔
+                            </button>
+                          </div>
+                          {scheduleMode === 'intervalMinutes' ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min={MIN_INTERVAL_MINUTES}
+                                value={intervalMinutes}
+                                onChange={(e) => setIntervalMinutes(e.target.value)}
+                                className="w-full text-xs"
+                                disabled={!scheduleEditable}
+                              />
+                              <span className="text-[10px] text-slate-600">分ごと</span>
+                            </div>
+                          ) : (
+                            <Input
+                              type="time"
+                              value={scheduleTime}
+                              onChange={(e) => setScheduleTime(e.target.value)}
+                              className="w-full text-xs"
+                              disabled={!scheduleEditable}
+                            />
+                          )}
                           <div className="flex gap-1 flex-wrap">
                             {DAYS_OF_WEEK.map((day) => (
                               <button
                                 key={day.value}
                                 type="button"
                                 onClick={() => {
+                                  if (!scheduleEditable) return;
                                   const currentDays = scheduleDaysOfWeek;
                                   if (currentDays.includes(day.value)) {
                                     setScheduleDaysOfWeek(currentDays.filter((d) => d !== day.value));
@@ -935,7 +994,7 @@ export function CsvImportSchedulePage() {
                                   scheduleDaysOfWeek.includes(day.value)
                                     ? 'border-emerald-700 bg-emerald-600 text-white'
                                     : 'border-slate-500 bg-white text-slate-700 hover:bg-slate-100'
-                                }`}
+                                } ${!scheduleEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
                               >
                                 {day.label}
                               </button>
@@ -1081,7 +1140,7 @@ export function CsvImportSchedulePage() {
                             <Button
                               className="px-2 py-1 text-xs"
                               onClick={() => handleUpdate(schedule.id)}
-                              disabled={update.isPending}
+                              disabled={update.isPending || !scheduleEditable}
                             >
                               {update.isPending ? '保存中...' : '保存'}
                             </Button>

@@ -6,6 +6,7 @@ import { z, ZodError } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { validate as validateCron } from 'node-cron';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
@@ -19,6 +20,27 @@ import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/
 import { writeDebugLog } from '../lib/debug-log.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
+
+const MIN_CSV_IMPORT_INTERVAL_MINUTES = 5;
+
+function extractIntervalMinutes(schedule: string): number | null {
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length !== 5) {
+    return null;
+  }
+  const [minute, hour, dayOfMonth, month] = parts;
+  if (hour !== '*' || dayOfMonth !== '*' || month !== '*') {
+    return null;
+  }
+  if (minute === '*') {
+    return 1;
+  }
+  if (minute.startsWith('*/')) {
+    const interval = parseInt(minute.slice(2), 10);
+    return Number.isInteger(interval) ? interval : null;
+  }
+  return null;
+}
 
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
@@ -1095,6 +1117,23 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return true;
   }, {
     message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
+  }).superRefine((data, ctx) => {
+    if (!validateCron(data.schedule)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: 'スケジュール（cron形式）が不正です'
+      });
+      return;
+    }
+    const interval = extractIntervalMinutes(data.schedule);
+    if (interval !== null && interval < MIN_CSV_IMPORT_INTERVAL_MINUTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: `スケジュール間隔は${MIN_CSV_IMPORT_INTERVAL_MINUTES}分以上で指定してください`
+      });
+    }
   });
 
   app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
@@ -1189,6 +1228,26 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return true;
   }, {
     message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
+  }).superRefine((data, ctx) => {
+    if (!data.schedule) {
+      return;
+    }
+    if (!validateCron(data.schedule)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: 'スケジュール（cron形式）が不正です'
+      });
+      return;
+    }
+    const interval = extractIntervalMinutes(data.schedule);
+    if (interval !== null && interval < MIN_CSV_IMPORT_INTERVAL_MINUTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: `スケジュール間隔は${MIN_CSV_IMPORT_INTERVAL_MINUTES}分以上で指定してください`
+      });
+    }
   });
 
   // スケジュール更新

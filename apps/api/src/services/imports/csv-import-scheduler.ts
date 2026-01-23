@@ -29,6 +29,7 @@ export class CsvImportScheduler {
   private createAutoBackupService: () => CsvImportAutoBackupService;
   private createCsvDashboardRetentionService: () => CsvDashboardRetentionService;
   private createMeasuringInstrumentLoanRetentionService: () => MeasuringInstrumentLoanRetentionService;
+  private readonly minIntervalMinutes = 5;
 
   constructor(overrides: {
     historyService?: ImportHistoryService;
@@ -57,6 +58,25 @@ export class CsvImportScheduler {
       this.createCsvDashboardRetentionService = overrides.createCsvDashboardRetentionService;
     if (overrides.createMeasuringInstrumentLoanRetentionService)
       this.createMeasuringInstrumentLoanRetentionService = overrides.createMeasuringInstrumentLoanRetentionService;
+  }
+
+  private extractIntervalMinutes(schedule: string): number | null {
+    const parts = schedule.trim().split(/\s+/);
+    if (parts.length !== 5) {
+      return null;
+    }
+    const [minute, hour, dayOfMonth, month] = parts;
+    if (hour !== '*' || dayOfMonth !== '*' || month !== '*') {
+      return null;
+    }
+    if (minute === '*') {
+      return 1;
+    }
+    if (minute.startsWith('*/')) {
+      const interval = parseInt(minute.slice(2), 10);
+      return Number.isInteger(interval) ? interval : null;
+    }
+    return null;
   }
 
   private async executeSingleRun(params: {
@@ -239,6 +259,15 @@ export class CsvImportScheduler {
         logger?.warn(
           { err: error, taskId, name: importSchedule.name, schedule: importSchedule.schedule },
           '[CsvImportScheduler] Invalid cron schedule format, skipping'
+        );
+        continue;
+      }
+
+      const intervalMinutes = this.extractIntervalMinutes(importSchedule.schedule);
+      if (intervalMinutes !== null && intervalMinutes < this.minIntervalMinutes) {
+        logger?.warn(
+          { taskId, name: importSchedule.name, schedule: importSchedule.schedule, intervalMinutes },
+          '[CsvImportScheduler] Schedule interval is too short, skipping'
         );
         continue;
       }
