@@ -14,6 +14,8 @@
 
 ### 🆕 最新アップデート（2026-01-23）
 
+- **✅ スケジュール自動実行時のバックアップ履歴記録問題修正完了**: 管理コンソールのバックアップタブの履歴ボタンから履歴を見ると、スケジュールの数と履歴の数が一致しない問題を解決。原因は`BackupScheduler.executeBackup`メソッドに履歴作成・更新処理が実装されていなかったこと。手動実行（`/api/backup`）では履歴が記録されていたが、スケジュール自動実行では記録されていなかった。`BackupScheduler.executeBackup`に`BackupHistoryService.createHistory()`、`completeHistory()`、`failHistory()`を追加し、手動実行と同じロジックを適用。CI成功、デプロイ完了。次回のスケジュール実行（毎日4時、5時、6時、毎週日曜2時）で履歴が記録されることを確認予定。ナレッジベースにKB-194を追加。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-194](./knowledge-base/infrastructure/backup-restore.md#kb-194-スケジュール自動実行時にバックアップ履歴が記録されない問題) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) を参照。
+
 - **✅ 管理コンソールのサイネージプレビュー機能実装完了**: 管理コンソールに「サイネージプレビュー」タブを追加し、Pi3で表示中のサイネージ画像をプレビューできるように実装。30秒ごとの自動更新と手動更新ボタンを実装。最初は`fetch`で実装していたが、JWT認証ヘッダーが付与されず401エラーが発生。`axios(api)`クライアントに変更することで、JWT認証ヘッダーが自動付与され、正常に画像を取得・表示できるようになった。Blob取得と`URL.createObjectURL`による画像表示、メモリリーク防止のための`URL.revokeObjectURL`実装を完了。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-192を追加。詳細は [knowledge-base/frontend.md#kb-192](./knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
 - **✅ CSVインポートスケジュールの間隔設定機能実装完了**: CSVインポートスケジュールが1日1回（曜日+時刻）のみで、10分ごとなどの細かい頻度設定ができなかった問題を解決。UIに「間隔（N分ごと）」モードを追加し、5分、10分、15分、30分、60分のプリセットを提供。最小5分間隔の制限をUI/API/スケジューラーの3層で実装（多層防御）。既存のcronスケジュールを解析し、UIで編集可能かどうかを判定する機能を実装。cron文字列を人間可読形式で表示する機能を追加（例: `"*/10 * * * 1,3"` → `"毎週月、水の10分ごと"`）。cron解析・生成ロジックをユーティリティ関数として分離し、保守性を向上。UIユニットテストとAPI統合テストを追加。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-191を追加。詳細は [knowledge-base/api.md#kb-191](./knowledge-base/api.md#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。

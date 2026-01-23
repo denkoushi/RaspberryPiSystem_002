@@ -56,5 +56,20 @@ describe('BackupService with LocalStorageProvider', () => {
     const listAfter = await backupService.listBackups();
     expect(listAfter.some(entry => entry.path === result.path)).toBe(false);
   });
+
+  it('should sanitize label so backup path is safe', async () => {
+    const sourceFile = path.join(workDir, 'source3.txt');
+    await fs.writeFile(sourceFile, 'label-sanitize');
+
+    const target = new FileBackupTarget(sourceFile);
+    const result = await backupService.backup(target, { label: 'manual-test /app/config/host-etc  ' });
+    expect(result.success).toBe(true);
+    expect(result.path).toBeDefined();
+
+    // label内のスラッシュや末尾空白がパスを壊さないこと（/ を含まない）
+    expect(result.path!).not.toContain('/app/config/');
+    // 正規化されたラベルが path の中間要素に入ること
+    expect(result.path!).toContain('-manual-test_app_config_host-etc/');
+  });
 });
 

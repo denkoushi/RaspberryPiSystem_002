@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 16件  
+**件数**: 26件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -1464,5 +1464,113 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - 新構造への移行を完了し、旧構造のキーを削除済み
 - 今後は新構造（`options.dropbox.*`, `options.gmail.*`）のみを使用する
 - ヘルスチェック機能により、設定の問題を早期に検出できる
+
+---
+
+## KB-194: スケジュール自動実行時にバックアップ履歴が記録されない問題
+
+**発生日**: 2026-01-23
+
+**事象**: 
+- 管理コンソールのバックアップタブの履歴ボタンから履歴を見ると、スケジュールの数と履歴の数が一致しない
+- スケジュールに登録されている25個のターゲットのうち、過去7日間で8個のターゲットのみが実行されている
+- 手動実行のバックアップは履歴に記録されるが、スケジュール自動実行のバックアップが履歴に記録されていない
+
+**根本原因**:
+- `BackupScheduler.executeBackup`メソッドに履歴作成・更新処理が実装されていなかった
+- 手動実行（`/api/backup`エンドポイント）では`BackupHistoryService.createHistory()`、`completeHistory()`、`failHistory()`を呼び出していたが、スケジュール自動実行ではこれらの処理が呼ばれていなかった
+
+**調査過程**:
+1. **仮説1**: スケジュール実行が正常に動作していない → REJECTED（バックアップは実行されていた）
+2. **仮説2**: 履歴作成処理が条件分岐でスキップされている → REJECTED（コード確認で処理自体が存在しないことを確認）
+3. **仮説3**: 履歴作成処理がエラーで失敗している → REJECTED（ログにエラーが記録されていない）
+4. **仮説4**: `BackupScheduler.executeBackup`に履歴作成処理がない → CONFIRMED（コード確認で確認）
+
+**解決方法**:
+`BackupScheduler.executeBackup`メソッドに履歴作成・更新処理を追加:
+
+```typescript
+// 各プロバイダーに順次バックアップを実行（多重バックアップ）
+const historyService = new BackupHistoryService();
+const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
+for (const requestedProvider of providers) {
+  let historyId: string | null = null;
+  try {
+    // ... ストレージプロバイダーの作成 ...
+    
+    // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
+    historyId = await historyService.createHistory({
+      operationType: BackupOperationType.BACKUP,
+      targetKind: target.kind,
+      targetSource: target.source,
+      storageProvider: safeProvider
+    });
+
+    // バックアップを実行
+    const result = await backupService.backup(backupTarget, {
+      label: target.metadata?.label as string
+    });
+
+    if (!result.success) {
+      results.push({ provider: safeProvider, success: false, error: result.error });
+      // 履歴を失敗として更新
+      if (historyId) {
+        await historyService.failHistory(historyId, result.error || 'Unknown error');
+      }
+    } else {
+      results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+      // 履歴を完了として更新
+      if (historyId) {
+        await historyService.completeHistory(historyId, {
+          targetKind: target.kind,
+          targetSource: target.source,
+          sizeBytes: result.sizeBytes,
+          path: result.path
+        });
+      }
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    results.push({ provider: requestedProvider, success: false, error: errorMessage });
+    // 履歴を失敗として更新
+    if (historyId) {
+      await historyService.failHistory(historyId, errorMessage);
+    }
+  }
+}
+```
+
+**修正内容**:
+- `BackupHistoryService`のインスタンスを作成
+- 各プロバイダーのバックアップ実行前に`createHistory()`を呼び出し
+- 成功時に`completeHistory()`を呼び出し
+- 失敗時に`failHistory()`を呼び出し
+- 手動実行（`/api/backup`）と同じロジックを適用
+
+**学んだこと**:
+- **コードの重複**: 手動実行とスケジュール実行で同じロジックを実装する必要があるが、実装漏れが発生していた
+- **テストの重要性**: スケジュール実行のテストが不足していたため、履歴記録の不備に気づけなかった
+- **履歴の重要性**: バックアップ履歴は監査証跡として重要であり、すべての実行（手動・自動）を記録する必要がある
+- **デバッグログの活用**: ログに「Starting scheduled backup」が記録されていないことから、手動実行である可能性を特定できた
+
+**解決状況**: ✅ **解決完了**（2026-01-23）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-scheduler.ts`（`executeBackup`メソッドに履歴作成処理を追加）
+- `apps/api/src/routes/backup.ts`（手動実行の履歴作成処理を参考）
+
+**検証結果**:
+- ✅ CIテスト成功（lint、ビルド、テストすべて通過）
+- ✅ デプロイ完了（Pi5にデプロイ済み）
+- ⏳ 次回のスケジュール実行（毎日4時、5時、6時、毎週日曜2時）で履歴が記録されることを確認予定
+
+**関連ナレッジ**:
+- KB-095: バックアップ履歴のストレージプロバイダー記録の不整合（実際に使用されたプロバイダーを記録する重要性）
+- KB-096: Dropboxバックアップ履歴未記録問題（refreshTokenからaccessToken自動取得機能）
+
+**再発防止策**:
+- スケジュール実行のテストを追加して、履歴記録が正しく動作することを確認する
+- 手動実行とスケジュール実行で同じロジックを使用することを明示的にドキュメント化する
+- デプロイ後の検証チェックリストに「スケジュール実行の履歴記録確認」を追加する
 
 ---

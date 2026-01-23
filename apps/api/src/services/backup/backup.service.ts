@@ -85,7 +85,8 @@ export class BackupService implements BackupProvider {
 
   private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
     const now = new Date().toISOString().replace(/[:.]/g, '-');
-    const label = options?.label ? `-${options.label}` : '';
+    const safeLabel = options?.label ? this.sanitizePathSegment(options.label) : '';
+    const label = safeLabel ? `-${safeLabel}` : '';
     // LocalStorageProviderのgetBaseDir()が既に/opt/RaspberryPiSystem_002/backupsを返すため、
     // ここでは相対パスのみを返す（backups/プレフィックスなし）
     // CSVファイルには.csv拡張子、データベースバックアップには.sql.gz拡張子を付与
@@ -96,6 +97,31 @@ export class BackupService implements BackupProvider {
       extension = '.sql.gz';
     }
     return `${info.type}/${now}${label}/${info.source}${extension}`;
+  }
+
+  /**
+   * パス要素として安全な文字列に正規化する。
+   *
+   * 目的:
+   * - label が `/` を含むとパス階層が増え、Dropboxで 409(path_lookup 等) になり得る
+   * - 末尾空白や制御文字を排除し、意図しないパス生成を防ぐ
+   */
+  private sanitizePathSegment(input: string): string {
+    const trimmed = input.trim();
+    if (!trimmed) return '';
+
+    // 制御文字を除去（念のため）
+    // eslint-disable-next-line no-control-regex
+    let s = trimmed.replace(/[\x00-\x1F\x7F]/g, '');
+    // パス区切りは破壊的なので '_' に置換
+    s = s.replace(/[/\\]/g, '_');
+    // 空白は '_' に寄せる（視認性と安全性のバランス）
+    s = s.replace(/\s+/g, '_');
+    // '_' の連続は1つに正規化
+    s = s.replace(/_+/g, '_');
+    // 過度に長いラベルは切り詰め（パス肥大化・UI崩れを防ぐ）
+    if (s.length > 64) s = s.slice(0, 64);
+    return s;
   }
 }
 
