@@ -48,6 +48,8 @@
   register: install_result
   changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
   failed_when: false
+  become: false
+  become_user: "{{ ansible_user }}"
 
 - name: Install tmpfiles configuration for /run/signage
   ansible.builtin.template:

@@ -29,8 +29,54 @@ git fetch origin
 git checkout "${BRANCH}"
 git pull --ff-only origin "${BRANCH}"
 
+# node_modulesの権限ガード（root所有でpnpmが失敗するケースを自動復旧）
+fix_node_modules_permissions() {
+  local targets=()
+  if [ -d "node_modules" ]; then
+    targets+=("node_modules")
+  fi
+  for path in packages/*/node_modules; do
+    if [ -d "${path}" ]; then
+      targets+=("${path}")
+    fi
+  done
+  if [ ${#targets[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  local need_fix=0
+  for t in "${targets[@]}"; do
+    local owner
+    owner=$(stat -c '%U' "${t}" 2>/dev/null || echo "")
+    if [ "${owner}" = "root" ]; then
+      need_fix=1
+      break
+    fi
+    if [ -d "${t}/.bin" ]; then
+      owner=$(stat -c '%U' "${t}/.bin" 2>/dev/null || echo "")
+      if [ "${owner}" = "root" ]; then
+        need_fix=1
+        break
+      fi
+    fi
+  done
+
+  if [ ${need_fix} -eq 1 ]; then
+    if ! command -v sudo >/dev/null 2>&1; then
+      log "エラー: node_modulesがroot所有ですがsudoが見つかりません。手動で権限修正してください。"
+      exit 1
+    fi
+    log "node_modulesがroot所有のため権限を修正します..."
+    sudo chown -R "$(whoami):$(whoami)" "${targets[@]}" || {
+      log "エラー: node_modulesの権限修正に失敗しました。手動で修正して再実行してください。"
+      exit 1
+    }
+  fi
+}
+
 # 依存関係をインストール
 log "依存関係をインストール中..."
+fix_node_modules_permissions
 pnpm install
 
 # 共有型パッケージをビルド

@@ -131,6 +131,13 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # Pi5上のnetwork_modeを確認
   ssh denkon5sd02@raspberrypi.local "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
   ```
+- [ ] **node_modules権限の確認**: root所有の`node_modules`が存在しないか（存在する場合は事前に修正）
+  ```bash
+  # Pi5上で実行（root所有を検出）
+  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && find node_modules packages -type d -name '.bin' -user root -maxdepth 4 | head -n 5"
+  # 修正が必要な場合
+  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
+  ```
 - [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
 
 ### デプロイ後チェックリスト

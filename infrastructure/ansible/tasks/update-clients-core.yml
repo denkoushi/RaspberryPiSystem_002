@@ -7,6 +7,10 @@
   register: install_result
   changed_when: "'added' in (install_result.stdout | default('')) or 'audited' in (install_result.stdout | default(''))"
   failed_when: false
+  become: false
+  become_user: "{{ ansible_user }}"
+  when:
+    - '"server" not in group_names'
 
 # signage-update.shのIPアドレスを自動更新（ネットワーク変更時の再発防止）
 - name: Update signage-update.sh server URL

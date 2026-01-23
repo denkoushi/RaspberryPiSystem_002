@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 23件  
+**件数**: 24件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -62,6 +62,37 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - `infrastructure/ansible/playbooks/health-check.yml`
 - `infrastructure/ansible/verification-map.yml`
 - `scripts/deploy/verifier.sh`
+- `docs/guides/deployment.md`
+
+---
+
+### [KB-192] node_modulesがroot所有になり、deploy.shのpnpm installが失敗する
+
+**発生日**: 2026-01-23  
+
+**事象**:
+- `scripts/server/deploy.sh` 実行時に `pnpm install` が `EACCES: permission denied, rmdir ...node_modules/.bin` で失敗
+- `node_modules` / `packages/*/node_modules` の所有者が `root` になっている
+
+**要因**:
+- Ansibleプレイブックは `become: true` で実行される
+- `update-clients-core.yml` / `roles/signage/tasks/main.yml` にある `pnpm install --filter signage-lite-client --prod` がroot権限で実行されると、`node_modules` がroot所有になる
+- `deploy.sh` は通常ユーザー実行を前提としており、権限修正ロジックが未実装
+
+**有効だった対策**:
+- ✅ **暫定復旧**: `sudo chown -R <user>:<user> /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules`
+- ✅ **恒久対策（実装）**:
+  1. Ansible側で `pnpm install` を `ansible_user` で実行し、root所有を回避
+  2. `deploy.sh` に権限ガードを追加し、root所有を検出したら自動で`chown`して続行
+
+**再発防止**:
+- Ansibleの`pnpm install`は`become: false` / `become_user: "{{ ansible_user }}"`で実行
+- `deploy.sh`の事前チェックでroot所有を自動修復（失敗時はfail-fast）
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`
+- `infrastructure/ansible/tasks/update-clients-core.yml`
+- `infrastructure/ansible/roles/signage/tasks/main.yml`
 - `docs/guides/deployment.md`
 
 ---
