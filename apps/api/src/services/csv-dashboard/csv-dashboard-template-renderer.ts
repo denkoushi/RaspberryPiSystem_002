@@ -302,7 +302,7 @@ export class CsvDashboardTemplateRenderer {
       return typeof px === 'number' && Number.isFinite(px) && px > 0 ? px : null;
     });
 
-    const fixedSum = fixed.reduce((sum, v) => sum + (v ?? 0), 0);
+    const fixedSum = fixed.reduce<number>((sum, v) => sum + (v ?? 0), 0);
     const autoIndices = fixed
       .map((v, i) => ({ v, i }))
       .filter((x) => x.v == null)
@@ -319,7 +319,7 @@ export class CsvDashboardTemplateRenderer {
 
     if (autoIndices.length === 0) {
       const widths = fixed.map((v) => Math.round(v ?? 0));
-      const sum = widths.reduce((a, b) => a + b, 0);
+      const sum = widths.reduce<number>((a, b) => a + b, 0);
       widths[widths.length - 1] += canvasWidth - sum;
       return widths;
     }
@@ -340,7 +340,7 @@ export class CsvDashboardTemplateRenderer {
       }
       return Math.max(1, maxEm);
     });
-    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const weightSum = weights.reduce<number>((a, b) => a + b, 0);
 
     const widths: number[] = displayColumns.map((_, i) => Math.round(fixed[i] ?? 0));
 
@@ -353,7 +353,7 @@ export class CsvDashboardTemplateRenderer {
     });
 
     // 合計調整（端数/上限によりズレるため）
-    const sum = widths.reduce((a, b) => a + b, 0);
+    const sum = widths.reduce<number>((a, b) => a + b, 0);
     const delta = canvasWidth - sum;
     widths[widths.length - 1] += delta;
     return widths;
