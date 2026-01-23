@@ -20,14 +20,14 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 30件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング |
+| API関連 | [api.md](./api.md) | 34件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 68件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示 |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 70件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化） |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 25件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正 |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 23件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能 |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 25件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -73,6 +73,13 @@ update-frequency: high
 | [KB-133](./api.md#kb-133-fastifywebsocketのconnectionsocketがundefinedになる問題) | @fastify/websocketのconnection.socketがundefinedになる問題 | ✅ 解決済み |
 | [KB-134](./api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策) | WebSocket接続の5分タイムアウト問題とkeepalive対策 | ✅ 解決済み |
 | [KB-135](./api.md#kb-135-キオスク通話候補取得用apiエンドポイント追加) | キオスク通話候補取得用APIエンドポイント追加 | ✅ 解決済み |
+| [KB-185](./api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) | CSVダッシュボードのgmailSubjectPattern設定UI改善 | ✅ 解決済み |
+| [KB-186](./api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) | CsvImportSubjectPatternモデル追加による設計統一（マスターデータインポートの件名パターンDB化） | ✅ 解決済み |
+| [KB-187](./api.md#kb-187-csvインポートスケジュール作成時のid自動生成とnomatchingmessageerrorハンドリング改善) | CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善 | ✅ 解決済み |
+| [KB-188](./api.md#kb-188-csvインポート実行エンドポイントでのapierror-statuscode尊重) | CSVインポート実行エンドポイントでのApiError statusCode尊重 | ✅ 解決済み |
+| [KB-189](./api.md#kb-189-gmailに同件名メールが溜まる場合のcsvダッシュボード取り込み仕様どの添付を取るか) | Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか） | ✅ 解決済み |
+| [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる) | Gmail OAuthのinvalid_grantでCSV取り込みが500になる | ✅ 解決済み |
+| [KB-191](./api.md#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) | CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定） | ✅ 解決済み |
 
 ### データベース関連
 
@@ -124,6 +131,7 @@ update-frequency: high
 | [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 | [KB-149](./frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) | バックアップ履歴ページに用途列を追加（UI改善） | ✅ 解決済み |
 | [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
+| [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -189,6 +197,7 @@ update-frequency: high
 | [KB-154](./infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) | SPLITモードで左右別PDF表示に対応 | ✅ 解決済み |
 | [KB-155](./infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) | CSVダッシュボード可視化機能実装完了 | ✅ 解決済み |
 | [KB-156](./infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) | 複数スケジュールの順番切り替え機能実装 | ✅ 解決済み |
+| [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
@@ -222,6 +231,8 @@ update-frequency: high
 | [KB-181](./infrastructure/backup-restore.md#kb-181-ui表示問題の修正dropbox設定の新構造対応) | UI表示問題の修正（Dropbox設定の新構造対応） | ✅ 解決済み |
 | [KB-182](./infrastructure/ansible-deployment.md#kb-182-pi4デプロイ検証結果デプロイ安定化機能の動作確認) | Pi4デプロイ検証結果（デプロイ安定化機能の動作確認） | ✅ 検証完了 |
 | [KB-183](./infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) | Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装 | ✅ 実装完了 |
+| [KB-191](./infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) | デプロイは成功したのにDBが古い（テーブル不存在） | ✅ 解決済み |
+| [KB-192](./infrastructure/ansible-deployment.md#kb-192-node_modulesがroot所有になりdeployshのpnpm-installが失敗する) | node_modulesがroot所有になり、deploy.shのpnpm installが失敗する | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -261,11 +272,11 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 113件 |
+| ✅ 解決済み | 115件 |
 | ✅ 実装完了 | 1件 |
 | ✅ 検証完了 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **120件** |
+| **合計** | **125件** |
 
 ---
 
@@ -342,6 +353,14 @@ update-frequency: high
 - 2026-01-19: KB-182を追加（Pi4デプロイ検証結果：デプロイ安定化機能の動作確認）
 - 2026-01-19: KB-183を追加（Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装）
 - 2026-01-09: KB-156を追加（複数スケジュールの順番切り替え機能実装）
+- 2026-01-23: KB-193を追加（CSVダッシュボードの列幅計算改善：フォントサイズ反映・全行考慮・列名考慮）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）
+- 2026-01-XX: KB-184、KB-185、KB-186を追加（生産スケジュールキオスクページ実装、CSVダッシュボードのgmailSubjectPattern設定UI改善、CsvImportSubjectPatternモデル追加による設計統一）
+- 2026-01-20: KB-187を追加（CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善）
+- 2026-01-21: KB-188を追加（CSVインポート実行エンドポイントでのApiError statusCode尊重）
+- 2026-01-22: KB-189を追加（Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様）
+- 2026-01-22: KB-190を追加（Gmail OAuthのinvalid_grantでCSV取り込みが500になる）
+- 2026-01-22: KB-191を追加（デプロイは成功したのにDBが古い（テーブル不存在）・デプロイ検証強化）
+- 2026-01-23: KB-192を追加（node_modulesがroot所有になりdeploy.shのpnpm installが失敗する）

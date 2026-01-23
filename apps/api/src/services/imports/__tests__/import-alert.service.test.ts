@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { ImportAlertService } from '../import-alert.service.js';
 
-// execをモック
+// execFileをモック
 vi.mock('child_process', () => ({
-  exec: vi.fn()
+  execFile: vi.fn()
 }));
 
 describe('ImportAlertService', () => {
@@ -28,10 +28,12 @@ describe('ImportAlertService', () => {
 
   describe('generateFailureAlert', () => {
     it('should generate failure alert', async () => {
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
-        if (callback) {
-          callback(null, { stdout: '', stderr: '' });
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((file: any, args: any, optionsOrCallback: any, callback?: any) => {
+        // promisifyは最後の引数がコールバックであることを期待
+        const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+        if (cb) {
+          setImmediate(() => cb(null, Buffer.from(''), Buffer.from('')));
         }
         return {} as any;
       });
@@ -42,17 +44,21 @@ describe('ImportAlertService', () => {
         errorMessage: 'Test error'
       });
 
-      expect(mockExec).toHaveBeenCalled();
-      const callArgs = mockExec.mock.calls[0];
-      expect(callArgs[0]).toContain('generate-alert.sh');
-      expect(callArgs[0]).toContain('csv-import-failure');
+      expect(mockExecFile).toHaveBeenCalled();
+      const callArgs = mockExecFile.mock.calls[0];
+      expect(callArgs[0]).toBe('bash');
+      expect(Array.isArray(callArgs[1])).toBe(true);
+      const args = callArgs[1] as string[];
+      expect(args[0]).toContain('generate-alert.sh');
+      expect(args[1]).toBe('csv-import-failure');
     });
 
-    it('should handle exec errors gracefully', async () => {
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
-        if (callback) {
-          callback(new Error('Exec failed'), { stdout: '', stderr: '' });
+    it('should handle execFile errors gracefully', async () => {
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((file: any, args: any, optionsOrCallback: any, callback?: any) => {
+        const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+        if (cb) {
+          setImmediate(() => cb(new Error('ExecFile failed'), Buffer.from(''), Buffer.from('')));
         }
         return {} as any;
       });
@@ -69,10 +75,11 @@ describe('ImportAlertService', () => {
 
   describe('generateConsecutiveFailureAlert', () => {
     it('should generate consecutive failure alert', async () => {
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
-        if (callback) {
-          callback(null, { stdout: '', stderr: '' });
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((file: any, args: any, optionsOrCallback: any, callback?: any) => {
+        const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+        if (cb) {
+          setImmediate(() => cb(null, Buffer.from(''), Buffer.from('')));
         }
         return {} as any;
       });
@@ -84,10 +91,12 @@ describe('ImportAlertService', () => {
         lastError: 'Test error'
       });
 
-      expect(mockExec).toHaveBeenCalled();
-      const callArgs = mockExec.mock.calls[0];
-      expect(callArgs[0]).toContain('csv-import-consecutive-failure');
-      expect(callArgs[0]).toContain('3回連続で失敗');
+      expect(mockExecFile).toHaveBeenCalled();
+      const callArgs = mockExecFile.mock.calls[0];
+      expect(callArgs[0]).toBe('bash');
+      const args = callArgs[1] as string[];
+      expect(args[1]).toBe('csv-import-consecutive-failure');
+      expect(args[2]).toContain('3回連続で失敗');
     });
   });
 
@@ -95,11 +104,13 @@ describe('ImportAlertService', () => {
     it('should escape shell arguments correctly', async () => {
       const service = new ImportAlertService();
       
-      // プライベートメソッドのテストは難しいが、実際の動作で確認
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
-        if (callback) {
-          callback(null, { stdout: '', stderr: '' });
+      // execFileは引数配列として渡すため、シェルエスケープは不要
+      // 実際の動作で確認
+      const mockExecFile = vi.mocked(execFile);
+      mockExecFile.mockImplementation((file: any, args: any, optionsOrCallback: any, callback?: any) => {
+        const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+        if (cb) {
+          setImmediate(() => cb(null, Buffer.from(''), Buffer.from('')));
         }
         return {} as any;
       });
@@ -109,9 +120,10 @@ describe('ImportAlertService', () => {
         errorMessage: "test'with'quotes"
       });
 
-      const callArgs = mockExec.mock.calls[0];
-      // シェルエスケープが適用されていることを確認
-      expect(callArgs[0]).toBeDefined();
+      const callArgs = mockExecFile.mock.calls[0];
+      // execFileが呼ばれていることを確認（引数配列として渡される）
+      expect(callArgs[0]).toBe('bash');
+      expect(Array.isArray(callArgs[1])).toBe(true);
     });
   });
 });

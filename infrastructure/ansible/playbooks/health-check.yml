@@ -1,4 +1,57 @@
 ---
+- name: Collect server health and DB integrity
+  hosts: server
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Check API health (server)
+      ansible.builtin.uri:
+        url: "https://localhost/api/system/health"
+        method: GET
+        status_code: 200
+        return_content: true
+        validate_certs: false
+      register: api_health_result
+      retries: 8
+      delay: 5
+      until:
+        - api_health_result.status == 200
+        - (api_health_result.json.status | default('')) == 'ok'
+
+    - name: Check Prisma migrate status
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd /opt/RaspberryPiSystem_002
+        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+      args:
+        executable: /bin/bash
+      register: prisma_migrate_status
+      changed_when: false
+
+    - name: Check _prisma_migrations has entries
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd /opt/RaspberryPiSystem_002
+        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+          psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";"
+      args:
+        executable: /bin/bash
+      register: prisma_migrations_count
+      changed_when: false
+      failed_when: (prisma_migrations_count.stdout | trim | int) <= 0
+
+    - name: Check MeasuringInstrumentLoanEvent table exists
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd /opt/RaspberryPiSystem_002
+        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+          psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;"
+      args:
+        executable: /bin/bash
+      register: loan_event_table_exists
+      changed_when: false
+      failed_when: (loan_event_table_exists.stdout | trim) != "t"
+
 - name: Collect signage client health data
   hosts: clients
   gather_facts: false

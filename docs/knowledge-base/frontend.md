@@ -1732,3 +1732,65 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`（connect関数）
 
 ---
+
+### [KB-184] 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能
+
+**実装日時**: 2026-01-XX
+
+**事象**: 
+- PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装
+- CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示
+- 完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
+
+**実装内容**: 
+- ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
+- ✅ **完了ボタンのグレーアウト**: `progress='完了'`のアイテムを`opacity-50 grayscale`で視覚的にグレーアウト
+- ✅ **完了ボタンのトグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+- ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
+- ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
+- ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
+
+**API変更**:
+- ✅ **GET /kiosk/production-schedule**: すべての行を返すように変更（完了済みも含む）
+- ✅ **PUT /kiosk/production-schedule/:rowId/complete**: トグル機能を実装（完了→未完了、未完了→完了）
+
+**実装の詳細**:
+1. **キオスクページ**: `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`を実装
+   - CSVダッシュボードのデータを取得（`useQuery`）
+   - 完了状態に応じたスタイリング（`opacity-50 grayscale`）
+   - 完了ボタンのトグル機能（`useMutation`）
+2. **APIエンドポイント**: `apps/api/src/routes/kiosk.ts`を修正
+   - `GET /kiosk/production-schedule`: `progress`フィルタを削除し、すべての行を返す
+   - `PUT /kiosk/production-schedule/:rowId/complete`: トグルロジックを実装
+3. **テスト更新**: `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`を更新
+   - 完了済みアイテムも返されることを確認
+   - トグル機能の動作を確認
+
+**トラブルシューティング**:
+1. **seed.tsの`enabled: true`不足**: `ProductionSchedule_Mishima_Grinding`の`upsert`で`update`ブロックに`enabled: true`がなく、無効化される可能性があった。`update`ブロックに`enabled: true`を追加して修正。
+2. **prisma db seed失敗**: 本番環境（Raspberry Pi）で`prisma db seed`が失敗（`tsx`がdev依存のため）。直接SQLで`INSERT ... ON CONFLICT DO UPDATE`を実行して解決。
+3. **CIテスト失敗**: API変更により、テストの期待値が不一致。テストを更新して完了済みアイテムも含むことを確認するように修正。
+
+**学んだこと**:
+1. **完了状態の視覚的表現**: グレーアウト（`opacity-50 grayscale`）により、完了済みアイテムを一目で識別可能
+2. **トグル機能の実装**: 完了→未完了のトグルにより、誤操作時の復元が可能
+3. **seed.tsの注意点**: `upsert`の`update`ブロックに`enabled`などの必須フィールドを含める必要がある
+4. **本番環境でのseed実行**: `tsx`がdev依存のため、本番環境では直接SQLで実行する必要がある場合がある
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-XX）
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-XX）
+- CSVダッシュボードのデータがキオスク画面に表示されることを確認
+- 完了ボタンを押すと`progress`が「完了」に更新されることを確認
+- 完了済みアイテムがグレーアウトされることを確認
+- 完了ボタンを再度押すと`progress`が空文字（未完了）に戻ることを確認
+- チェックマークとテキストの重なりが解消されていることを確認
+- `FSEIBAN`の下3桁が表示されることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（キオスクページ実装）
+- `apps/api/src/routes/kiosk.ts`（APIエンドポイント修正）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（テスト更新）
+- `apps/api/prisma/seed.ts`（`enabled: true`追加）
+
+---

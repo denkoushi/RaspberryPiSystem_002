@@ -14,6 +14,7 @@ import { registerGmailOAuthRoutes } from './gmail/oauth.js';
 import { registerGmailConfigRoutes } from './gmail/config.js';
 import { registerWebRTCRoutes } from './webrtc/index.js';
 import { registerCsvDashboardRoutes } from './csv-dashboards/index.js';
+import { registerCsvImportSubjectPatternRoutes } from './csv-import-subject-patterns.js';
 
 /**
  * すべてのルートを登録
@@ -50,6 +51,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerWebRTCRoutes(subApp);
       // CSVダッシュボード管理ルート
       registerCsvDashboardRoutes(subApp);
+      // CSVインポート件名パターン管理ルート
+      registerCsvImportSubjectPatternRoutes(subApp);
     },
     { prefix: '/api' },
   );

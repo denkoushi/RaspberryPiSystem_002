@@ -1,8 +1,15 @@
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { GmailApiClient } from '../gmail-api-client.js';
-import { GmailOAuthService } from '../gmail-oauth.service.js';
+import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
+
+export class NoMatchingMessageError extends Error {
+  constructor(query: string) {
+    super(`No messages found matching query: ${query}`);
+    this.name = 'NoMatchingMessageError';
+  }
+}
 
 /**
  * Gmail APIを使用したストレージプロバイダー。
@@ -84,6 +91,9 @@ export class GmailStorageProvider implements StorageProvider {
     } catch (error: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const err: any = error;
+      if (err instanceof GmailReauthRequiredError || isInvalidGrantMessage(err?.message)) {
+        throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
+      }
       // 401エラーまたは認証関連のエラーの場合、リフレッシュを試みる
       const isAuthError = err?.status === 401 || 
         err?.code === 401 ||
@@ -184,7 +194,7 @@ export class GmailStorageProvider implements StorageProvider {
       const messageIds = await this.gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
-        throw new Error(`No messages found matching query: ${query}`);
+        throw new NoMatchingMessageError(query);
       }
 
       // 最初のメールから添付ファイルを取得
@@ -312,7 +322,7 @@ export class GmailStorageProvider implements StorageProvider {
       const messageIds = await this.gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
-        throw new Error(`No messages found matching query: ${query}`);
+        throw new NoMatchingMessageError(query);
       }
 
       // 最初のメールから添付ファイルとメタデータを取得
@@ -364,6 +374,85 @@ export class GmailStorageProvider implements StorageProvider {
         messageSubject,
       };
     });
+  }
+
+  /**
+   * Gmailからファイルを取得（CSVダッシュボード用：未読全件、メタデータ付き）
+   * @param path 件名パターン（Gmail用）
+   * @returns ファイルのBuffer、メッセージID、件名の配列
+   */
+  async downloadAllWithMetadata(path: string): Promise<Array<{
+    buffer: Buffer;
+    messageId: string;
+    messageSubject: string;
+  }>> {
+    return this.handleAuthError(async () => {
+      const query = this.buildSearchQuery(path);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'C',location:'gmail-storage.provider.ts:downloadAllWithMetadata',message:'Searching messages (all with metadata)',data:{hasPath:!!path,subjectPatternLength:(path||'').length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages (all with metadata)'
+      );
+
+      const messageIds = await this.gmailClient.searchMessagesAll(query);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'C',location:'gmail-storage.provider.ts:after-searchMessagesAll',message:'searchMessagesAll returned',data:{messageCount:messageIds.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
+      }
+
+      const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
+
+      for (const messageId of messageIds) {
+        const safeMessageId = messageId ? messageId.slice(-6) : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'D',location:'gmail-storage.provider.ts:per-message',message:'Fetching message + first attachment',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        const message = await this.gmailClient.getMessage(messageId);
+        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+        const messageSubject = subjectHeader?.value || 'No Subject';
+
+        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        if (!attachment) {
+          throw new Error(`No attachment found in message: ${messageId}`);
+        }
+
+        logger?.info(
+          {
+            messageId,
+            messageSubject,
+            filename: attachment.filename,
+            size: attachment.buffer.length,
+          },
+          '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
+        );
+
+        results.push({ buffer: attachment.buffer, messageId, messageSubject });
+      }
+
+      return results;
+    });
+  }
+
+  /**
+   * メールを既読にする（UNREADラベル削除）
+   */
+  async markAsRead(messageId: string): Promise<void> {
+    await this.gmailClient.markAsRead(messageId);
+  }
+
+  /**
+   * メールをゴミ箱へ移動
+   */
+  async trashMessage(messageId: string): Promise<void> {
+    await this.gmailClient.trashMessage(messageId);
   }
 }
 

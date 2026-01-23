@@ -4,6 +4,7 @@ import pkg from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
+import { buildUpdateDiff } from '../diff/master-data-diff.js';
 
 const { RiggingStatus } = pkg;
 
@@ -195,22 +196,27 @@ export class RiggingGearCsvImporter implements CsvImporter {
               }
             }
 
-            await tx.riggingGear.update({
-              where: { managementNumber: row.managementNumber },
-              data: {
-                name: row.name,
-                storageLocation: row.storageLocation,
-                department: row.department,
-                startedAt: row.startedAt ?? undefined,
-                usableYears: row.usableYears ?? undefined,
-                maxLoadTon: row.maxLoadTon ?? undefined,
-                lengthMm: row.lengthMm ?? undefined,
-                widthMm: row.widthMm ?? undefined,
-                thicknessMm: row.thicknessMm ?? undefined,
-                status: row.status ?? RiggingStatus.AVAILABLE,
-                notes: row.notes ?? undefined
-              }
-            });
+            const updateData = {
+              name: row.name,
+              storageLocation: row.storageLocation,
+              department: row.department,
+              startedAt: row.startedAt ?? undefined,
+              usableYears: row.usableYears ?? undefined,
+              maxLoadTon: row.maxLoadTon ?? undefined,
+              lengthMm: row.lengthMm ?? undefined,
+              widthMm: row.widthMm ?? undefined,
+              thicknessMm: row.thicknessMm ?? undefined,
+              status: row.status ?? RiggingStatus.AVAILABLE,
+              notes: row.notes ?? undefined
+            };
+            const diff = buildUpdateDiff(existing, updateData);
+            if (diff.hasChanges) {
+              await tx.riggingGear.update({
+                where: { managementNumber: row.managementNumber },
+                data: diff.data
+              });
+              result.updated += 1;
+            }
 
             // タグの更新
             if (tagUid !== null) {
@@ -225,7 +231,6 @@ export class RiggingGearCsvImporter implements CsvImporter {
               }
             }
 
-            result.updated += 1;
           } else {
             // 作成処理
             if (tagUid) {

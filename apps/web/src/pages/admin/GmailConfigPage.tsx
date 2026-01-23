@@ -102,7 +102,10 @@ export function GmailConfigPage() {
       await refresh.mutateAsync();
       alert('トークンをリフレッシュしました');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'トークンのリフレッシュに失敗しました';
+      const apiMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      const errorMessage = typeof apiMessage === 'string'
+        ? apiMessage
+        : (error instanceof Error ? error.message : 'トークンのリフレッシュに失敗しました');
       alert(`エラー: ${errorMessage}`);
     }
   };

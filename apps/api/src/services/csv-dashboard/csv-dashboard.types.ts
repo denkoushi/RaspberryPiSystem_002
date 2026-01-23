@@ -47,6 +47,7 @@ export interface CsvDashboardCreateInput {
   ingestMode?: CsvDashboardIngestMode;
   dedupKeyColumns?: string[];
   gmailScheduleId?: string | null;
+  gmailSubjectPattern?: string | null; // Gmail件名パターン（CSV取得用）
   templateType?: CsvDashboardTemplateType;
   templateConfig: TableTemplateConfig | CardGridTemplateConfig;
 }
@@ -64,6 +65,7 @@ export interface CsvDashboardUpdateInput {
   ingestMode?: CsvDashboardIngestMode;
   dedupKeyColumns?: string[];
   gmailScheduleId?: string | null;
+  gmailSubjectPattern?: string | null; // Gmail件名パターン（CSV取得用）
   templateType?: CsvDashboardTemplateType;
   templateConfig?: TableTemplateConfig | CardGridTemplateConfig;
   enabled?: boolean;

@@ -5,11 +5,14 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
+import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 
 /**
  * CSVダッシュボード取り込みサービス
  */
 export class CsvDashboardIngestor {
+  private static readonly COMPLETED_PROGRESS_VALUE = '完了';
+
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
    */
@@ -93,48 +96,54 @@ export class CsvDashboardIngestor {
         });
         rowsAdded = normalizedRows.length;
       } else {
-        // 重複除去モード：ハッシュで重複チェック
-        const existingHashes = new Set<string>();
-        if (dashboard.dedupKeyColumns.length > 0) {
-          const existingRows = await prisma.csvDashboardRow.findMany({
-            where: {
-              csvDashboardId: dashboardId,
-              dataHash: { not: null },
-            },
-            select: { dataHash: true },
-          });
-          existingRows.forEach((row) => {
-            if (row.dataHash) existingHashes.add(row.dataHash);
-          });
+        // 重複除去モード：今回CSV内のハッシュだけをDBに問い合わせて差分反映
+        const incomingHashes = normalizedRows
+          .map((row) => row.hash)
+          .filter((hash): hash is string => !!hash);
+        const existingRows = incomingHashes.length
+          ? await prisma.csvDashboardRow.findMany({
+              where: {
+                csvDashboardId: dashboardId,
+                dataHash: { in: incomingHashes },
+              },
+              select: {
+                id: true,
+                dataHash: true,
+                occurredAt: true,
+                rowData: true,
+              },
+            })
+          : [];
+
+        const diff = computeCsvDashboardDedupDiff({
+          dashboardId,
+          incomingRows: normalizedRows,
+          existingRows,
+          completedValue: CsvDashboardIngestor.COMPLETED_PROGRESS_VALUE
+        });
+        const { rowsToCreate, updates } = diff;
+        rowsAdded = diff.rowsAdded;
+        rowsSkipped = diff.rowsSkipped;
+
+        if (rowsToCreate.length > 0) {
+          await prisma.csvDashboardRow.createMany({ data: rowsToCreate });
         }
 
-        const rowsToAdd: Array<{
-          csvDashboardId: string;
-          occurredAt: Date;
-          dataHash: string | null;
-          rowData: Prisma.InputJsonValue;
-        }> = [];
-
-        for (const row of normalizedRows) {
-          if (row.hash && existingHashes.has(row.hash)) {
-            rowsSkipped++;
-          } else {
-            if (row.hash) existingHashes.add(row.hash);
-            rowsToAdd.push({
-              csvDashboardId: dashboardId,
-              occurredAt: row.occurredAt,
-              dataHash: row.hash ?? null,
-              rowData: row.data as Prisma.InputJsonValue,
-            });
+        if (updates.length > 0) {
+          // 大量更新に備えて分割（トランザクションでまとめて実行）
+          const chunkSize = 100;
+          for (let i = 0; i < updates.length; i += chunkSize) {
+            const chunk = updates.slice(i, i + chunkSize);
+            await prisma.$transaction(
+              chunk.map((u) =>
+                prisma.csvDashboardRow.update({
+                  where: { id: u.id },
+                  data: { occurredAt: u.occurredAt, rowData: u.rowData },
+                })
+              )
+            );
           }
         }
-
-        if (rowsToAdd.length > 0) {
-          await prisma.csvDashboardRow.createMany({
-            data: rowsToAdd,
-          });
-        }
-        rowsAdded = rowsToAdd.length;
       }
 
       // 取り込み実行ログを完了として更新
@@ -217,21 +226,44 @@ export class CsvDashboardIngestor {
     columnDefinitions: ColumnDefinition[]
   ): Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }> {
     const mapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }> = [];
+    const normalizeHeader = (value: string) => {
+      // BOM / 全角空白 / 通常空白 / 両端引用符を除去して比較しやすくする
+      const trimmed = value.replace(/^\uFEFF/, '').replace(/^[\s\u3000]+|[\s\u3000]+$/g, '');
+      return trimmed.replace(/^"+|"+$/g, '').toLowerCase();
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:entry',message:'createColumnMapping headers preview',data:{headerCount:csvHeaders.length,headersPreview:csvHeaders.slice(0,10).map((header)=>({raw:header,normalized:header.replace(/^\\uFEFF/,'').trim()}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     for (const colDef of columnDefinitions) {
       // CSVヘッダーから候補を検索
       const csvIndex = csvHeaders.findIndex((header) =>
         colDef.csvHeaderCandidates.some((candidate) =>
-          header.toLowerCase().trim() === candidate.toLowerCase().trim()
+          normalizeHeader(header) === normalizeHeader(candidate)
         )
       );
 
       if (csvIndex === -1) {
         // 必須列が見つからない場合はエラー
         if (colDef.required !== false) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:missing',message:'required column missing',data:{internalName:colDef.internalName,displayName:colDef.displayName,candidates:colDef.csvHeaderCandidates,headersPreview:csvHeaders.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          const userMessage = [
+            'CSVファイルの列構成が設定と一致しません。',
+            `見つからなかった列: ${colDef.displayName} (内部名: ${colDef.internalName})`,
+            `候補: ${colDef.csvHeaderCandidates.join(', ')}`,
+            '対応: CSVヘッダー行を確認し、必要なら管理コンソールで列定義の候補を追加してください。'
+          ].join(' ');
           throw new ApiError(
             400,
-            `列 "${colDef.displayName}" (内部名: ${colDef.internalName}) が見つかりません。候補: ${colDef.csvHeaderCandidates.join(', ')}`
+            userMessage,
+            {
+              missingColumn: colDef.displayName,
+              internalName: colDef.internalName,
+              candidates: colDef.csvHeaderCandidates
+            },
+            'CSV_HEADER_MISMATCH'
           );
         }
         // オプション列の場合はスキップ

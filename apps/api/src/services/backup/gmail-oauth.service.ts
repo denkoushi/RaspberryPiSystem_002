@@ -1,6 +1,18 @@
 import fetch from 'node-fetch';
 import { logger } from '../../lib/logger.js';
 
+export class GmailReauthRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GmailReauthRequiredError';
+  }
+}
+
+export const isInvalidGrantMessage = (message?: string) => {
+  if (!message) return false;
+  return message.toLowerCase().includes('invalid_grant');
+};
+
 /**
  * Gmail OAuth 2.0トークン情報
  */
@@ -137,6 +149,9 @@ export class GmailOAuthService {
         { status: response.status, error: errorText },
         '[GmailOAuthService] Failed to refresh access token'
       );
+      if (isInvalidGrantMessage(errorText)) {
+        throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
+      }
       throw new Error(`Failed to refresh access token: ${response.status} ${errorText}`);
     }
 

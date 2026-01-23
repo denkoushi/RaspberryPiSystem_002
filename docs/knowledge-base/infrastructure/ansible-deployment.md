@@ -11,10 +11,89 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 23件  
+**件数**: 24件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
+
+---
+
+### [KB-191] デプロイは成功したのにDBが古い（テーブル不存在）
+
+**発生日**: 2026-01-22  
+
+**事象**:
+- デプロイ後にAPIが起動しているにもかかわらず、`MeasuringInstrumentLoanEvent` などの新規テーブルが存在せず機能が失敗する
+- エラー例: `The table "public.MeasuringInstrumentLoanEvent" does not exist`
+- デプロイスクリプトは警告だけで続行し、マイグレーション未適用を検知できなかった
+
+**要因**:
+- `scripts/server/deploy.sh` が `pnpm prisma migrate deploy` 失敗時に警告だけで続行する設計（`|| { log "警告: ..." }`）
+- Ansible経路（`scripts/update-all-clients.sh` → `deploy.yml`）がDB整合性ゲートを持たず、APIヘルスのみで成功扱いしていた
+- `verification-map.yml` にDBチェックが存在せず、`verifier.sh` でもDB整合性を検証していなかった
+
+**有効だった対策**:
+- ✅ **解決済み（設計更新・実機検証完了）**:
+  1. **Pi5単体デプロイのfail-fast化**: `deploy.sh` でmigrate失敗時にデプロイを停止（`exit 1`）
+  2. **DB整合性ゲートの追加**: `_prisma_migrations` の存在と必須テーブル（`MeasuringInstrumentLoanEvent`）の存在を検証
+  3. **Ansible検証にDBゲートを統合**: `verification-map.yml` の `type: command` でDBチェックを実行（SSH経由でPi5上で実行）
+  4. **health-check playbookにDBチェックを追加**（P2経路のfail-fast強化）
+  5. **verifier.shのTLS対応**: 自己署名証明書でも`http_get`が動作するように`insecure_tls`オプションを追加
+  6. **verifier.shのcommand変数展開**: `{{ server_ip }}`などの変数を`render_vars`で展開するように修正
+
+**実機検証結果（2026-01-22）**:
+- Pi5で`deploy.sh`実行後、DBゲートが正常に動作（`MeasuringInstrumentLoanEvent`テーブル存在確認: `t`）
+- `verifier.sh`実行で全チェックpass（`overall_status: passed`）
+  - APIヘルス: HTTP 200
+  - migrate status: 22 migrations found, Database schema is up to date
+  - `_prisma_migrations`テーブル: 存在確認pass
+  - `MeasuringInstrumentLoanEvent`テーブル: 存在確認pass
+  - Pi4キオスク/Pi3サイネージのHTTPゲート: 全てpass
+
+**学んだこと**:
+- APIヘルスチェックだけではDB整合性を担保できない
+- マイグレーション未適用は全機能に波及するため、デプロイ成功条件にDBゲートを必須化するべき
+- `verifier.sh`はMac上で実行されるため、SSH経由でPi5上のコマンドを実行する必要がある
+- 自己署名証明書環境では`insecure_tls: true`が必要
+- デプロイタイムアウト（240秒）ではDocker buildが完了しない場合があるため、十分なタイムアウト設定が必要
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`
+- `infrastructure/ansible/playbooks/health-check.yml`
+- `infrastructure/ansible/verification-map.yml`
+- `scripts/deploy/verifier.sh`
+- `docs/guides/deployment.md`
+
+---
+
+### [KB-192] node_modulesがroot所有になり、deploy.shのpnpm installが失敗する
+
+**発生日**: 2026-01-23  
+
+**事象**:
+- `scripts/server/deploy.sh` 実行時に `pnpm install` が `EACCES: permission denied, rmdir ...node_modules/.bin` で失敗
+- `node_modules` / `packages/*/node_modules` の所有者が `root` になっている
+
+**要因**:
+- Ansibleプレイブックは `become: true` で実行される
+- `update-clients-core.yml` / `roles/signage/tasks/main.yml` にある `pnpm install --filter signage-lite-client --prod` がroot権限で実行されると、`node_modules` がroot所有になる
+- `deploy.sh` は通常ユーザー実行を前提としており、権限修正ロジックが未実装
+
+**有効だった対策**:
+- ✅ **暫定復旧**: `sudo chown -R <user>:<user> /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules`
+- ✅ **恒久対策（実装）**:
+  1. Ansible側で `pnpm install` を `ansible_user` で実行し、root所有を回避
+  2. `deploy.sh` に権限ガードを追加し、root所有を検出したら自動で`chown`して続行
+
+**再発防止**:
+- Ansibleの`pnpm install`は`become: false` / `become_user: "{{ ansible_user }}"`で実行
+- `deploy.sh`の事前チェックでroot所有を自動修復（失敗時はfail-fast）
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`
+- `infrastructure/ansible/tasks/update-clients-core.yml`
+- `infrastructure/ansible/roles/signage/tasks/main.yml`
+- `docs/guides/deployment.md`
 
 ---
 

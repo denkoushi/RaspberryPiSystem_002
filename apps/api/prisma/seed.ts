@@ -11,6 +11,10 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
+  const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+  const productionScheduleGmailSubjectPattern = '生産日程_三島_研削工程';
+
   const passwordHash = await bcrypt.hash('admin1234', 10);
   await prisma.user.upsert({
     where: { username: 'admin' },
@@ -100,6 +104,168 @@ async function main() {
       where: { apiKey: client.apiKey },
       update: { name: client.name, location: client.location, defaultMode: client.defaultMode },
       create: client
+    });
+  }
+
+  // 生産日程（研削工程）用のCSVダッシュボードを作成（キオスク表示のデータソース）
+  await prisma.csvDashboard.upsert({
+    where: { id: productionScheduleDashboardId },
+    update: {
+      name: 'ProductionSchedule_Mishima_Grinding',
+      description: '生産日程（研削工程）',
+      gmailSubjectPattern: productionScheduleGmailSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: 'registeredAt',
+      displayPeriodDays: 1,
+      emptyMessage: '仕掛中のデータはありません',
+      columnDefinitions: [
+        { internalName: 'ProductNo', displayName: '製番01', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
+        { internalName: 'FSIGENMEI', displayName: '資源名', csvHeaderCandidates: ['FSIGENMEI'], dataType: 'string', order: 1 },
+        { internalName: 'FSEIBAN', displayName: '製番02', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+        { internalName: 'FHINCD', displayName: '製品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 3 },
+        { internalName: 'FHINMEI', displayName: '品名', csvHeaderCandidates: ['FHINMEI'], dataType: 'string', order: 4 },
+        { internalName: 'FSIGENCD', displayName: '資源コード', csvHeaderCandidates: ['FSIGENCD'], dataType: 'string', order: 5 },
+        { internalName: 'FSIGENSHOYORYO', displayName: '所要時間', csvHeaderCandidates: ['FSIGENSHOYORYO'], dataType: 'number', order: 6 },
+        { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['FKOJUN'], dataType: 'string', order: 7 },
+        { internalName: 'progress', displayName: '進捗', csvHeaderCandidates: ['progress'], dataType: 'string', order: 8, required: false },
+        { internalName: 'updatedAt', displayName: '更新日時', csvHeaderCandidates: ['更新日時'], dataType: 'date', order: 9, required: false },
+        { internalName: 'registeredAt', displayName: '登録日時', csvHeaderCandidates: ['登録日時'], dataType: 'date', order: 10, required: false }
+      ],
+      templateType: 'CARD_GRID',
+      templateConfig: {
+        cardsPerPage: 60,
+        fontSize: 14,
+        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
+        gridColumns: 6,
+        gridRows: 10
+      }
+    },
+    create: {
+      id: productionScheduleDashboardId,
+      name: 'ProductionSchedule_Mishima_Grinding',
+      description: '生産日程（研削工程）',
+      gmailSubjectPattern: productionScheduleGmailSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: 'registeredAt',
+      displayPeriodDays: 1,
+      emptyMessage: '仕掛中のデータはありません',
+      columnDefinitions: [
+        { internalName: 'ProductNo', displayName: '製番01', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
+        { internalName: 'FSIGENMEI', displayName: '資源名', csvHeaderCandidates: ['FSIGENMEI'], dataType: 'string', order: 1 },
+        { internalName: 'FSEIBAN', displayName: '製番02', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+        { internalName: 'FHINCD', displayName: '製品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 3 },
+        { internalName: 'FHINMEI', displayName: '品名', csvHeaderCandidates: ['FHINMEI'], dataType: 'string', order: 4 },
+        { internalName: 'FSIGENCD', displayName: '資源コード', csvHeaderCandidates: ['FSIGENCD'], dataType: 'string', order: 5 },
+        { internalName: 'FSIGENSHOYORYO', displayName: '所要時間', csvHeaderCandidates: ['FSIGENSHOYORYO'], dataType: 'number', order: 6 },
+        { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['FKOJUN'], dataType: 'string', order: 7 },
+        { internalName: 'progress', displayName: '進捗', csvHeaderCandidates: ['progress'], dataType: 'string', order: 8, required: false },
+        { internalName: 'updatedAt', displayName: '更新日時', csvHeaderCandidates: ['更新日時'], dataType: 'date', order: 9, required: false },
+        { internalName: 'registeredAt', displayName: '登録日時', csvHeaderCandidates: ['登録日時'], dataType: 'date', order: 10, required: false }
+      ],
+      templateType: 'CARD_GRID',
+      templateConfig: {
+        cardsPerPage: 60,
+        fontSize: 14,
+        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
+        gridColumns: 6,
+        gridRows: 10
+      }
+    }
+  });
+
+  // 計測機器の持出状況用のCSVダッシュボードを作成（サイネージ表示のデータソース）
+  const measuringInstrumentLoansDashboardId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  const measuringInstrumentLoansGmailSubjectPattern = '計測機器持出状況';
+  await prisma.csvDashboard.upsert({
+    where: { id: measuringInstrumentLoansDashboardId },
+    update: {
+      name: 'MeasuringInstrumentLoans',
+      description: '計測機器の持出状況（PowerApps連携）',
+      gmailSubjectPattern: measuringInstrumentLoansGmailSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['managementNumber', 'borrowedAt'],
+      dateColumnName: 'borrowedAt',
+      displayPeriodDays: 7,
+      templateType: 'TABLE',
+      templateConfig: {
+        rowsPerPage: 50,
+        fontSize: 14,
+        displayColumns: ['managementNumber', 'name', 'borrower', 'borrowedAt', 'expectedReturnAt'],
+        headerFixed: true
+      }
+    },
+    create: {
+      id: measuringInstrumentLoansDashboardId,
+      name: 'MeasuringInstrumentLoans',
+      description: '計測機器の持出状況（PowerApps連携）',
+      gmailSubjectPattern: measuringInstrumentLoansGmailSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['managementNumber', 'borrowedAt'],
+      dateColumnName: 'borrowedAt',
+      displayPeriodDays: 7,
+      emptyMessage: '持出中の計測機器はありません',
+      columnDefinitions: [
+        { internalName: 'managementNumber', displayName: '管理番号', csvHeaderCandidates: ['managementNumber', '管理番号'], dataType: 'string', order: 0 },
+        { internalName: 'name', displayName: '名称', csvHeaderCandidates: ['name', '名称'], dataType: 'string', order: 1 },
+        { internalName: 'borrower', displayName: '持出従業員', csvHeaderCandidates: ['borrower', '持出従業員', 'employeeName'], dataType: 'string', order: 2 },
+        { internalName: 'borrowedAt', displayName: '持出日時', csvHeaderCandidates: ['borrowedAt', '持出日時', 'borrowedDate'], dataType: 'date', order: 3 },
+        { internalName: 'expectedReturnAt', displayName: '返却予定日時', csvHeaderCandidates: ['expectedReturnAt', '返却予定日時', 'expectedReturnDate'], dataType: 'date', order: 4, required: false },
+        { internalName: 'status', displayName: '状態', csvHeaderCandidates: ['status', '状態'], dataType: 'string', order: 5, required: false }
+      ],
+      templateType: 'TABLE',
+      templateConfig: {
+        rowsPerPage: 50,
+        fontSize: 14,
+        displayColumns: ['managementNumber', 'name', 'borrower', 'borrowedAt', 'expectedReturnAt'],
+        headerFixed: true
+      }
+    }
+  });
+
+  // CSVインポート件名パターンのデフォルトデータを投入
+  const defaultSubjectPatterns = [
+    { importType: 'employees', pattern: '[Pi5 CSV Import] employees', priority: 0 },
+    { importType: 'employees', pattern: '[CSV Import] employees', priority: 1 },
+    { importType: 'employees', pattern: 'CSV Import - employees', priority: 2 },
+    { importType: 'employees', pattern: '従業員CSVインポート', priority: 3 },
+    { importType: 'items', pattern: '[Pi5 CSV Import] items', priority: 0 },
+    { importType: 'items', pattern: '[CSV Import] items', priority: 1 },
+    { importType: 'items', pattern: 'CSV Import - items', priority: 2 },
+    { importType: 'items', pattern: 'アイテムCSVインポート', priority: 3 },
+    { importType: 'measuringInstruments', pattern: '[Pi5 CSV Import] measuring-instruments', priority: 0 },
+    { importType: 'measuringInstruments', pattern: '[CSV Import] measuring-instruments', priority: 1 },
+    { importType: 'measuringInstruments', pattern: 'CSV Import - measuring-instruments', priority: 2 },
+    { importType: 'measuringInstruments', pattern: '計測機器CSVインポート', priority: 3 },
+    { importType: 'riggingGears', pattern: '[Pi5 CSV Import] rigging-gears', priority: 0 },
+    { importType: 'riggingGears', pattern: '[CSV Import] rigging-gears', priority: 1 },
+    { importType: 'riggingGears', pattern: 'CSV Import - rigging-gears', priority: 2 },
+    { importType: 'riggingGears', pattern: '吊具CSVインポート', priority: 3 },
+  ];
+
+  for (const pattern of defaultSubjectPatterns) {
+    await prisma.csvImportSubjectPattern.upsert({
+      where: {
+        importType_pattern: {
+          importType: pattern.importType as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears',
+          pattern: pattern.pattern,
+        },
+      },
+      update: {
+        priority: pattern.priority,
+        enabled: true,
+      },
+      create: {
+        importType: pattern.importType as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears',
+        pattern: pattern.pattern,
+        priority: pattern.priority,
+        enabled: true,
+      },
     });
   }
 

@@ -26,9 +26,27 @@ repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 ver_map="${VERIFICATION_MAP_PATH:-${repo_root}/infrastructure/ansible/verification-map.yml}"
 
 python3 - <<'PY' "${enable_exec}" "${now_ts}" "${input}" "${ver_map}"
-import sys, json, yaml, os, subprocess, time, re, urllib.request
+import sys, json, yaml, os, subprocess, time, re, urllib.request, ssl
 
 enable_exec, now_ts, stdin_json, ver_map = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+LOG_PATH = "/Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug.log"
+
+def log_event(hypothesis_id: str, location: str, message: str, data: dict):
+    payload = {
+        "sessionId": "debug-session",
+        "runId": os.environ.get("DEBUG_RUN_ID", "verifier-run"),
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(LOG_PATH, "a") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 def load_json(text):
     try:
@@ -55,14 +73,24 @@ def render_vars(text: str):
         return os.environ.get(env_key, "")
     return re.sub(r"\{\{\s*([^\}]+?)\s*\}\}", repl, text)
 
-def http_get(url: str, expected_status: int, timeout: int = 5, headers: dict = None):
+def http_get(url: str, expected_status: int, timeout: int = 5, headers: dict = None, insecure_tls: bool = False):
     start = time.time()
     try:
+        #region agent log
+        log_event("H2", "verifier.sh:http_get", "http_get request", {
+            "url": url,
+            "expected_status": expected_status,
+            "insecure_tls": insecure_tls
+        })
+        #endregion
         req = urllib.request.Request(url)
         if headers:
             for key, value in headers.items():
                 req.add_header(key, value)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        context = None
+        if url.startswith("https://") and insecure_tls:
+            context = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
             status = resp.getcode()
             duration = int(time.time() - start)
             return {
@@ -72,6 +100,12 @@ def http_get(url: str, expected_status: int, timeout: int = 5, headers: dict = N
             }
     except Exception as e:
         duration = int(time.time() - start)
+        #region agent log
+        log_event("H2", "verifier.sh:http_get", "http_get error", {
+            "url": url,
+            "error": str(e)
+        })
+        #endregion
         return {
             "status": "fail",
             "error": str(e),
@@ -97,6 +131,14 @@ def command_check(command: str, expected_output: str):
     duration = int(time.time() - start)
     out = proc.stdout.strip()
     ok = proc.returncode == 0 and (expected_output == "" or expected_output in out)
+    #region agent log
+    log_event("H3", "verifier.sh:command_check", "command result", {
+        "command": command,
+        "exit_code": proc.returncode,
+        "stdout_tail": out[-200:],
+        "stderr_tail": proc.stderr.strip()[-200:]
+    })
+    #endregion
     return {
         "status": "pass" if ok else "fail",
         "exit_code": proc.returncode,
@@ -143,11 +185,23 @@ for r in deploy_result.get("results", []):
 
 ver_results = []
 
+#region agent log
+log_event("H4", "verifier.sh:deploy_targets", "deploy targets parsed", {
+    "deploy_targets": deploy_targets
+})
+#endregion
+
 for target, checks in ver_map_obj.items():
     target_status = deploy_targets.get(target, "unknown")
     target_checks = []
 
     if target_status not in ("success", "skipped"):
+        #region agent log
+        log_event("H4", "verifier.sh:target_skip", "target skipped by status", {
+            "target": target,
+            "target_status": target_status
+        })
+        #endregion
         ver_results.append({
             "target": target,
             "overall_status": "skipped",
@@ -173,11 +227,12 @@ for target, checks in ver_map_obj.items():
             url = render_vars(chk.get("url", ""))
             expected_status = int(chk.get("expected_status", 200))
             headers = chk.get("headers", {})
+            insecure_tls = bool(chk.get("insecure_tls", False))
             # headersの値もrender_varsで変数展開
             rendered_headers = {}
             for key, value in headers.items():
                 rendered_headers[key] = render_vars(str(value))
-            res = http_get(url, expected_status, headers=rendered_headers if rendered_headers else None)
+            res = http_get(url, expected_status, headers=rendered_headers if rendered_headers else None, insecure_tls=insecure_tls)
             res.update({"name": name, "type": chk_type, "url": url})
         elif chk_type == "systemd_status":
             service = chk.get("service", "")
@@ -185,8 +240,8 @@ for target, checks in ver_map_obj.items():
             res = systemd_status(service, expected_status)
             res.update({"name": name, "type": chk_type, "service": service})
         elif chk_type == "command":
-            command = chk.get("command", "")
-            expected_output = chk.get("expected_output", "")
+            command = render_vars(chk.get("command", ""))
+            expected_output = render_vars(chk.get("expected_output", ""))
             res = command_check(command, expected_output)
             res.update({"name": name, "type": chk_type, "command": command})
         else:

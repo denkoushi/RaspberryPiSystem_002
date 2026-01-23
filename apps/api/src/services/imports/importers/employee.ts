@@ -5,6 +5,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
+import { buildUpdateDiff } from '../diff/master-data-diff.js';
 
 const { EmployeeStatus } = pkg;
 
@@ -161,9 +162,13 @@ export class EmployeeCsvImporter implements CsvImporter {
               }
             }
             
+            const diff = buildUpdateDiff(existing, updateData);
+            if (!diff.hasChanges) {
+              continue;
+            }
             await tx.employee.update({
               where: { employeeCode: row.employeeCode },
-              data: updateData
+              data: diff.data
             });
             result.updated += 1;
           } else {

@@ -5,6 +5,9 @@ import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { sendSlackNotification } from '../services/notifications/slack-webhook.js';
 
+const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+const COMPLETED_PROGRESS_VALUE = '完了';
+
 const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
     try {
@@ -63,23 +66,35 @@ function checkRateLimit(clientKey: string): boolean {
 }
 
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
-  // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
-  app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
-    const rawClientKey = request.headers['x-client-key'];
+  const productionScheduleQuerySchema = z.object({
+    productNo: z.string().min(1).max(100).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(2000).optional(),
+  });
+
+  const productionScheduleCompleteParamsSchema = z.object({
+    rowId: z.string().uuid(),
+  });
+
+  const requireClientDevice = async (rawClientKey: unknown) => {
     const clientKey = normalizeClientKey(rawClientKey);
-    
     if (!clientKey) {
       throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
     }
 
-    // クライアントデバイスの存在確認（認証として使用）
     const clientDevice = await prisma.clientDevice.findUnique({
-      where: { apiKey: clientKey }
+      where: { apiKey: clientKey },
     });
-
     if (!clientDevice) {
       throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
     }
+    return { clientKey, clientDevice };
+  };
+
+  // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
+  app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
+    const rawClientKey = request.headers['x-client-key'];
+    await requireClientDevice(rawClientKey);
 
     // アクティブな従業員のみを取得（基本情報のみ）
     const employees = await prisma.employee.findMany({
@@ -97,6 +112,96 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { employees };
+  });
+
+  // 生産日程（研削工程）: 仕掛中のみ取得（x-client-key認証のみ）
+  app.get('/kiosk/production-schedule', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+
+    const query = productionScheduleQuerySchema.parse(request.query);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 400;
+    const productNoFilter = query.productNo?.trim();
+
+    // 一旦アプリ側でフィルタリング（progressはJSON内のため）
+    const allRows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, occurredAt: true, rowData: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const filtered = allRows.filter((row) => {
+      const data = row.rowData as Record<string, unknown>;
+      // 完了状態のものも表示する（グレーアウト表示のため）
+      if (productNoFilter && productNoFilter.length > 0) {
+        return String(data.ProductNo ?? '').includes(productNoFilter);
+      }
+      return true;
+    });
+
+    // 表示順: 製番(FSEIBAN)→製品(ProductNo)→工順(FKOJUN)→品番(FHINCD)
+    filtered.sort((a, b) => {
+      const ad = a.rowData as Record<string, unknown>;
+      const bd = b.rowData as Record<string, unknown>;
+      const aSeiban = String(ad.FSEIBAN ?? '');
+      const bSeiban = String(bd.FSEIBAN ?? '');
+      if (aSeiban !== bSeiban) return aSeiban.localeCompare(bSeiban, 'ja');
+      const aProd = String(ad.ProductNo ?? '');
+      const bProd = String(bd.ProductNo ?? '');
+      if (aProd !== bProd) return aProd.localeCompare(bProd, 'ja');
+      const aKojun = String(ad.FKOJUN ?? '');
+      const bKojun = String(bd.FKOJUN ?? '');
+      if (aKojun !== bKojun) return aKojun.localeCompare(bKojun, 'ja');
+      const aHin = String(ad.FHINCD ?? '');
+      const bHin = String(bd.FHINCD ?? '');
+      return aHin.localeCompare(bHin, 'ja');
+    });
+
+    const total = filtered.length;
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const pageRows = filtered.slice(start, end);
+
+    return {
+      page,
+      pageSize,
+      total,
+      rows: pageRows.map((r) => ({
+        id: r.id,
+        occurredAt: r.occurredAt,
+        rowData: r.rowData,
+      })),
+    };
+  });
+
+  // 生産日程（研削工程）: 完了にする（x-client-key認証のみ）
+  app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const params = productionScheduleCompleteParamsSchema.parse(request.params);
+
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: { id: params.rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, rowData: true },
+    });
+    if (!row) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+
+    const current = row.rowData as Record<string, unknown>;
+    const currentProgress = typeof current.progress === 'string' ? current.progress.trim() : '';
+    
+    // トグル動作: 既に完了している場合は未完了に戻す
+    const nextRowData: Record<string, unknown> = {
+      ...current,
+      progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE,
+    };
+
+    await prisma.csvDashboardRow.update({
+      where: { id: row.id },
+      data: { rowData: nextRowData as Prisma.InputJsonValue },
+    });
+
+    return { success: true, alreadyCompleted: false };
   });
 
   app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {

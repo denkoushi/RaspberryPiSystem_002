@@ -1,10 +1,10 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join } from 'path';
 import { logger } from '../../lib/logger.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * CSVインポートアラートサービス
@@ -42,20 +42,19 @@ export class ImportAlertService {
     try {
       // generate-alert.shスクリプトを実行
       const scriptPath = join(this.projectRoot, 'scripts', 'generate-alert.sh');
-      
-      // シェルエスケープ
-      const escapedType = this.escapeShellArg(alertType);
-      const escapedMessage = this.escapeShellArg(message);
-      const escapedDetails = this.escapeShellArg(details);
 
-      const command = `bash "${scriptPath}" "${escapedType}" "${escapedMessage}" "${escapedDetails}"`;
-      
       logger?.info(
         { scheduleId: params.scheduleId, historyId: params.historyId },
         '[ImportAlertService] Generating failure alert'
       );
 
-      await execAsync(command, {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'import-alert.service.ts:generateFailureAlert',message:'execFile alert payload',data:{scheduleId:params.scheduleId,messageHasParen:message.includes('('),detailsHasNewline:details.includes('\n'),messageLength:message.length,detailsLength:details.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      // NOTE: exec(string) + シェルエスケープは、改行や括弧などを含む文字列で壊れやすい。
+      // ここではexecFileで引数配列として渡して、安全にスクリプトを実行する。
+      await execFileAsync('bash', [scriptPath, alertType, message, details], {
         cwd: this.projectRoot,
         timeout: 10000 // 10秒のタイムアウト
       });
@@ -65,6 +64,9 @@ export class ImportAlertService {
         '[ImportAlertService] Failure alert generated'
       );
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H5',location:'import-alert.service.ts:generateFailureAlert',message:'execFile alert error',data:{scheduleId:params.scheduleId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       // アラート生成の失敗はログに記録するが、例外は投げない（インポート処理を中断しない）
       logger?.error(
         { err: error, scheduleId: params.scheduleId },
@@ -93,19 +95,13 @@ export class ImportAlertService {
 
     try {
       const scriptPath = join(this.projectRoot, 'scripts', 'generate-alert.sh');
-      
-      const escapedType = this.escapeShellArg(alertType);
-      const escapedMessage = this.escapeShellArg(message);
-      const escapedDetails = this.escapeShellArg(details);
 
-      const command = `bash "${scriptPath}" "${escapedType}" "${escapedMessage}" "${escapedDetails}"`;
-      
       logger?.warn(
         { scheduleId: params.scheduleId, failureCount: params.failureCount },
         '[ImportAlertService] Generating consecutive failure alert'
       );
 
-      await execAsync(command, {
+      await execFileAsync('bash', [scriptPath, alertType, message, details], {
         cwd: this.projectRoot,
         timeout: 10000
       });
@@ -120,13 +116,5 @@ export class ImportAlertService {
         '[ImportAlertService] Failed to generate consecutive failure alert'
       );
     }
-  }
-
-  /**
-   * シェル引数をエスケープ
-   */
-  private escapeShellArg(arg: string): string {
-    // シングルクォートで囲み、内部のシングルクォートをエスケープ
-    return `'${arg.replace(/'/g, "'\\''")}'`;
   }
 }

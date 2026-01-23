@@ -43,8 +43,24 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
-  source: string; // Dropbox用: パス、Gmail用: 件名パターン
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards';
+  source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
+}
+
+export type CsvImportSubjectPatternType =
+  | 'employees'
+  | 'items'
+  | 'measuringInstruments'
+  | 'riggingGears';
+
+export interface CsvImportSubjectPattern {
+  id: string;
+  importType: CsvImportSubjectPatternType;
+  pattern: string;
+  priority: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // CSVインポートスケジュールの型定義
@@ -139,9 +155,56 @@ export async function deleteCsvImportSchedule(id: string): Promise<{ message: st
   return data;
 }
 
-export async function runCsvImportSchedule(id: string): Promise<{ message: string }> {
-  const { data } = await api.post<{ message: string }>(`/imports/schedule/${id}/run`, {});
+export async function runCsvImportSchedule(id: string): Promise<{ message: string; summary?: unknown }> {
+  const { data } = await api.post<{ message: string; summary?: unknown }>(`/imports/schedule/${id}/run`, {});
   return data;
+}
+
+export async function getCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType) {
+  const { data } = await api.get<{ patterns: CsvImportSubjectPattern[] }>('/csv-import-subject-patterns', {
+    params: importType ? { importType } : undefined
+  });
+  return data;
+}
+
+export async function createCsvImportSubjectPattern(payload: {
+  importType: CsvImportSubjectPatternType;
+  pattern: string;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  const { data } = await api.post<{ pattern: CsvImportSubjectPattern }>(
+    '/csv-import-subject-patterns',
+    payload
+  );
+  return data.pattern;
+}
+
+export async function updateCsvImportSubjectPattern(
+  id: string,
+  payload: Partial<Pick<CsvImportSubjectPattern, 'pattern' | 'priority' | 'enabled'>>
+) {
+  const { data } = await api.put<{ pattern: CsvImportSubjectPattern }>(
+    `/csv-import-subject-patterns/${id}`,
+    payload
+  );
+  return data.pattern;
+}
+
+export async function deleteCsvImportSubjectPattern(id: string) {
+  const { data } = await api.delete<{ success: boolean }>(`/csv-import-subject-patterns/${id}`);
+  return data;
+}
+
+export async function reorderCsvImportSubjectPatterns(payload: {
+  importType: CsvImportSubjectPatternType;
+  orderedIds: string[];
+}) {
+  const { data } = await api.post<{ patterns: CsvImportSubjectPattern[] }>(
+    '/csv-import-subject-patterns/reorder',
+    payload
+  );
+  return data.patterns;
 }
 
 // バックアップ設定の型定義

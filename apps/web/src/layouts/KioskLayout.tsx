@@ -141,6 +141,12 @@ export function KioskLayout() {
                 吊具 持出
               </NavLink>
               <NavLink
+                to="/kiosk/production-schedule"
+                className={({ isActive }) => (isActive ? `${navLink} bg-blue-500` : navLink)}
+              >
+                生産スケジュール
+              </NavLink>
+              <NavLink
                 to="/kiosk/call"
                 className={({ isActive }) => (isActive ? `${navLink} bg-purple-600` : navLink)}
               >

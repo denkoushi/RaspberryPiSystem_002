@@ -18,6 +18,7 @@ import type {
   CsvDashboardSlotConfig,
 } from './signage-layout.types.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
+import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 
 export interface SignageScheduleInput {
   name: string;
@@ -106,6 +107,10 @@ export interface SignageContentResponse {
 }
 
 export class SignageService {
+  private readonly csvDashboardService = new CsvDashboardService();
+  private readonly measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
+  private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
   /**
    * 有効なスケジュール一覧を取得（優先順位順）
    */
@@ -281,27 +286,13 @@ export class SignageService {
       // CSVダッシュボードスロットの情報を収集
       const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
       const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
-      const csvDashboardService = new CsvDashboardService();
 
       for (const slot of csvDashboardSlots) {
         const csvDashboardId = slot.config.csvDashboardId;
         if (!csvDashboardDataMap.has(csvDashboardId)) {
-          const dashboard = await prisma.csvDashboard.findUnique({
-            where: { id: csvDashboardId },
-          });
-          if (dashboard && dashboard.enabled) {
-            const pageData = await csvDashboardService.getPageData(
-              csvDashboardId,
-              1,
-              dashboard.displayPeriodDays ?? 1
-            );
-            csvDashboardDataMap.set(csvDashboardId, {
-              id: dashboard.id,
-              name: dashboard.name,
-              pageNumber: pageData.pageNumber,
-              totalPages: pageData.totalPages,
-              rows: pageData.rows,
-            });
+          const csvDashboardData = await this.getCsvDashboardData(csvDashboardId);
+          if (csvDashboardData) {
+            csvDashboardDataMap.set(csvDashboardId, csvDashboardData);
           }
         }
       }
@@ -451,6 +442,48 @@ export class SignageService {
       displayMode: SignageDisplayMode.SINGLE,
       tools,
       measuringInstruments,
+    };
+  }
+
+  private async getCsvDashboardData(
+    csvDashboardId: string
+  ): Promise<{ id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | null> {
+    const dashboard = await prisma.csvDashboard.findUnique({
+      where: { id: csvDashboardId },
+    });
+    if (!dashboard || !dashboard.enabled) {
+      return null;
+    }
+
+    if (csvDashboardId === SignageService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
+      const rows = await this.measuringInstrumentLoanEventService.getTodayBorrowedRowsJst();
+      const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
+      const rowsPerPage =
+        dashboard.templateType === 'TABLE'
+          ? templateConfig.rowsPerPage || 10
+          : templateConfig.cardsPerPage || 9;
+      const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+      const pageRows = rows.slice(0, rowsPerPage);
+      return {
+        id: dashboard.id,
+        name: dashboard.name,
+        pageNumber: 1,
+        totalPages,
+        rows: pageRows,
+      };
+    }
+
+    const pageData = await this.csvDashboardService.getPageData(
+      csvDashboardId,
+      1,
+      dashboard.displayPeriodDays ?? 1
+    );
+    return {
+      id: dashboard.id,
+      name: dashboard.name,
+      pageNumber: pageData.pageNumber,
+      totalPages: pageData.totalPages,
+      rows: pageData.rows,
     };
   }
 
@@ -726,29 +759,13 @@ export class SignageService {
     // CSVダッシュボードスロットの情報を収集
     const csvDashboardSlots = layoutConfig.slots.filter((slot) => slot.kind === 'csv_dashboard') as Array<SignageSlot & { config: CsvDashboardSlotConfig }>;
     const csvDashboardDataMap = new Map<string, { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> }>();
-    const csvDashboardService = new CsvDashboardService();
 
     for (const slot of csvDashboardSlots) {
       const csvDashboardId = slot.config.csvDashboardId;
       if (!csvDashboardDataMap.has(csvDashboardId)) {
-        const dashboard = await prisma.csvDashboard.findUnique({
-          where: { id: csvDashboardId },
-        });
-        if (dashboard && dashboard.enabled) {
-          // 現在のページ番号を取得（簡易実装として1ページ目を取得）
-          // 実際の実装では、レンダリングごとにページ番号を進める必要がある
-          const pageData = await csvDashboardService.getPageData(
-            csvDashboardId,
-            1, // ページ番号（将来はレンダリングごとに進める）
-            dashboard.displayPeriodDays ?? 1
-          );
-          csvDashboardDataMap.set(csvDashboardId, {
-            id: dashboard.id,
-            name: dashboard.name,
-            pageNumber: pageData.pageNumber,
-            totalPages: pageData.totalPages,
-            rows: pageData.rows,
-          });
+        const csvDashboardData = await this.getCsvDashboardData(csvDashboardId);
+        if (csvDashboardData) {
+          csvDashboardDataMap.set(csvDashboardId, csvDashboardData);
         }
       }
     }

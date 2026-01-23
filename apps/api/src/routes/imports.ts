@@ -6,16 +6,41 @@ import { z, ZodError } from 'zod';
 import type { Prisma } from '@prisma/client';
 import pkg from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { validate as validateCron } from 'node-cron';
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { DropboxStorageProvider } from '../services/backup/storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
+import type { StorageProvider } from '../services/backup/storage/storage-provider.interface.js';
+import { GmailReauthRequiredError, isInvalidGrantMessage } from '../services/backup/gmail-oauth.service.js';
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
 import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
+import { writeDebugLog } from '../lib/debug-log.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
+
+const MIN_CSV_IMPORT_INTERVAL_MINUTES = 5;
+
+function extractIntervalMinutes(schedule: string): number | null {
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length !== 5) {
+    return null;
+  }
+  const [minute, hour, dayOfMonth, month] = parts;
+  if (hour !== '*' || dayOfMonth !== '*' || month !== '*') {
+    return null;
+  }
+  if (minute === '*') {
+    return 1;
+  }
+  if (minute.startsWith('*/')) {
+    const interval = parseInt(minute.slice(2), 10);
+    return Number.isInteger(interval) ? interval : null;
+  }
+  return null;
+}
 
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
@@ -897,7 +922,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           provider
         }
       };
-      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, true);
+      const created = await StorageProviderFactory.createFromConfig(providerConfig, protocol, host, onTokenUpdate, {
+        returnProvider: true,
+        allowFallbackToLocal: provider !== 'gmail',
+      }) as unknown as { provider: 'local' | 'dropbox' | 'gmail'; storageProvider: StorageProvider };
       const storageProvider = created.storageProvider;
 
       const files: { employees?: Buffer; items?: Buffer } = {};
@@ -909,7 +937,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           const downloadStart = Date.now();
           files.employees = await storageProvider.download(employeesPath);
           const downloadTime = Date.now() - downloadStart;
-          const fileSize = files.employees.length;
+          const fileSize = files.employees!.length;
           request.log.info({
             provider,
             path: employeesPath,
@@ -939,7 +967,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           const downloadStart = Date.now();
           files.items = await storageProvider.download(itemsPath);
           const downloadTime = Date.now() - downloadStart;
-          const fileSize = files.items.length;
+          const fileSize = files.items!.length;
           request.log.info({
             provider,
             path: itemsPath,
@@ -1034,7 +1062,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
   // スケジュール追加
   const csvImportTargetSchema = z.object({
-    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']),
+    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'csvDashboards']),
     source: z.string().min(1, 'sourceは必須です')
   });
 
@@ -1089,6 +1117,23 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return true;
   }, {
     message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
+  }).superRefine((data, ctx) => {
+    if (!validateCron(data.schedule)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: 'スケジュール（cron形式）が不正です'
+      });
+      return;
+    }
+    const interval = extractIntervalMinutes(data.schedule);
+    if (interval !== null && interval < MIN_CSV_IMPORT_INTERVAL_MINUTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: `スケジュール間隔は${MIN_CSV_IMPORT_INTERVAL_MINUTES}分以上で指定してください`
+      });
+    }
   });
 
   app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
@@ -1183,6 +1228,26 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return true;
   }, {
     message: 'Dropboxの場合、employeesPathとitemsPathは.csvで終わる必要があります'
+  }).superRefine((data, ctx) => {
+    if (!data.schedule) {
+      return;
+    }
+    if (!validateCron(data.schedule)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: 'スケジュール（cron形式）が不正です'
+      });
+      return;
+    }
+    const interval = extractIntervalMinutes(data.schedule);
+    if (interval !== null && interval < MIN_CSV_IMPORT_INTERVAL_MINUTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule'],
+        message: `スケジュール間隔は${MIN_CSV_IMPORT_INTERVAL_MINUTES}分以上で指定してください`
+      });
+    }
   });
 
   // スケジュール更新
@@ -1246,27 +1311,77 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
   // 手動実行
   app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1248',message:'manual run request received',data:{scheduleId:id,reqId:(request as any).id ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H1',location:'imports.ts:1249',message:'manual run request received (file log)',data:{scheduleId:id,reqId:(request as any).id ?? null},timestamp:Date.now()});
+    // #endregion
     
     // スケジュールが存在するか確認
     const config = await BackupConfigLoader.load();
     const schedule = config.csvImports?.find(s => s.id === id);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1252',message:'loaded csv import schedules',data:{scheduleId:id,hasCsvImports:Array.isArray(config.csvImports),csvImportCount:config.csvImports?.length ?? 0,scheduleIds:(config.csvImports ?? []).map((s) => s.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H2',location:'imports.ts:1253',message:'loaded csv import schedules (file log)',data:{scheduleId:id,hasCsvImports:Array.isArray(config.csvImports),csvImportCount:config.csvImports?.length ?? 0,scheduleIds:(config.csvImports ?? []).map((s) => s.id),backupConfigPath:process.env.BACKUP_CONFIG_PATH ?? null},timestamp:Date.now()});
+    // #endregion
     
     if (!schedule) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1255',message:'schedule not found',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H1',location:'imports.ts:1256',message:'schedule not found (file log)',data:{scheduleId:id},timestamp:Date.now()});
+      // #endregion
       throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
     }
     
     const { getCsvImportScheduler } = await import('../services/imports/csv-import-scheduler.js');
     const scheduler = getCsvImportScheduler();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1260',message:'about to run scheduler import',data:{scheduleId:id,hasScheduler:!!scheduler},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
+    // #region agent log
+    await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1261',message:'about to run scheduler import (file log)',data:{scheduleId:id,hasScheduler:!!scheduler},timestamp:Date.now()});
+    // #endregion
     
     try {
-      await scheduler.runImport(id);
+      const summary = await scheduler.runImport(id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1262',message:'scheduler.runImport succeeded',data:{scheduleId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1263',message:'scheduler.runImport succeeded (file log)',data:{scheduleId:id},timestamp:Date.now()});
+      // #endregion
       request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
-      return { message: 'インポートを実行しました' };
+      return { message: 'インポートを実行しました', summary };
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'imports.ts:1266',message:'scheduler.runImport failed',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      await writeDebugLog({sessionId:'debug-session',runId:'run2',hypothesisId:'H4',location:'imports.ts:1267',message:'scheduler.runImport failed (file log)',data:{scheduleId:id,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()});
+      // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+      
+      if (error instanceof GmailReauthRequiredError || isInvalidGrantMessage(error instanceof Error ? error.message : undefined)) {
+        throw new ApiError(401, 'Gmailの再認可が必要です。管理コンソールの「OAuth認証」を実行してください。');
+      }
+
+      // ApiErrorの場合はstatusCodeを尊重して再スロー
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
       if (error instanceof Error) {
-        // スケジュールが見つからないエラーの場合は404
-        if (error.message.includes('not found') || error.message.includes('見つかりません')) {
+        // スケジュールが見つからないエラーの場合のみ404
+        // NOTE: 取り込み側（CSVダッシュボード列不足など）も「見つかりません」を含むため、誤判定しない
+        if (
+          error.message.includes('スケジュールが見つかりません') ||
+          error.message.toLowerCase().includes('schedule not found')
+        ) {
           throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
         }
         throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);

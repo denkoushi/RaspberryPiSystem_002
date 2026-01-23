@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-16（Pi3デプロイ時のlightdm停止・自動再起動対応）
+最終更新: 2026-01-22（デプロイ検証強化: DBゲート追加・fail-fast化）
 
 ## 概要
 
@@ -35,6 +35,16 @@ update-frequency: medium
 - Pi5のデプロイには`scripts/server/deploy.sh`を使用してください
 - `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
 - どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
+
+### デプロイ成功条件（共通）
+
+**成功条件に満たない場合は「デプロイ失敗」として扱う**（fail-fast）。最低限の共通条件は以下:
+
+- **DB整合性**:
+  - `pnpm prisma migrate status` が最新
+  - 必須テーブル（例: `MeasuringInstrumentLoanEvent`）が存在
+- **API稼働**: `GET /api/system/health` が 200 で `status=ok`
+- **証跡**: デプロイログ/検証ログが残り、失敗理由が追跡できる
 
 ## 🌐 ネットワーク環境の確認（デプロイ前必須）
 
@@ -106,10 +116,27 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # Pi5上でbackup.jsonをバックアップ
   ssh denkon5sd02@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
   ```
+- [ ] **フルバックアップの実行（推奨）**: DB/ENV/ストレージを含むバックアップを実行（[バックアップ手順](./backup-and-restore.md)参照）
+  ```bash
+  # Pi5上で実行
+  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && ./scripts/server/backup.sh"
+  ```
+- [ ] **バックアップ設定の健全性確認（推奨）**: `backup.json`の衝突/ドリフト/欠落を検知（[KB-148](../knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装)参照）
+  ```bash
+  # Pi5上で実行（自己署名TLSのため -k）
+  ssh denkon5sd02@raspberrypi.local "curl -sk https://localhost/api/backup/config/health/internal"
+  ```
 - [ ] **ネットワーク環境の確認**: `group_vars/all.yml`の`network_mode`が現在のネットワーク環境と一致しているか確認
   ```bash
   # Pi5上のnetwork_modeを確認
   ssh denkon5sd02@raspberrypi.local "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+  ```
+- [ ] **node_modules権限の確認**: root所有の`node_modules`が存在しないか（存在する場合は事前に修正）
+  ```bash
+  # Pi5上で実行（root所有を検出）
+  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && find node_modules packages -type d -name '.bin' -user root -maxdepth 4 | head -n 5"
+  # 修正が必要な場合
+  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
   ```
 - [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
 
@@ -131,6 +158,16 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか
   - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
+- [ ] **DB整合性チェック**: マイグレーション適用と必須テーブルの存在を確認
+  ```bash
+  # Pi5上で実行
+  cd /opt/RaspberryPiSystem_002
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+    psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";"
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+    psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;"
+  ```
 - [ ] **ポート公開/不要サービス/監視の確認**: 不要なLISTEN/UNCONNが出ていないか、`ports-unexpected` がノイズ化していないか確認
   ```bash
   # LISTEN/UNCONN（プロセス込み）
@@ -735,6 +772,11 @@ git checkout <前のコミットハッシュ>
 # 2. データベースをリストア（必要に応じて）
 ./scripts/server/restore.sh /opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz
 ```
+
+**補足（運用経路別）**:
+- **Ansible経路**: `scripts/update-all-clients.sh` 実行後に問題が出た場合、クライアント設定の復旧は `infrastructure/ansible/playbooks/rollback.yml` を使用する
+- **統合デプロイ**: `scripts/deploy/deploy-all.sh` は `ROLLBACK_ON_FAIL=1` でロールバックを試行可能（事前に `ROLLBACK_CMD` を確認）
+- **DBロールバックの原則**: 破壊的マイグレーションは避け、復旧はバックアップからのリストアを基本とする
 
 ## トラブルシューティング
 

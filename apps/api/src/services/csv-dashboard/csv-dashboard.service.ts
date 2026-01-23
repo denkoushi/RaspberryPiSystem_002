@@ -67,6 +67,7 @@ export class CsvDashboardService {
         ingestMode: input.ingestMode || 'APPEND',
         dedupKeyColumns: input.dedupKeyColumns || [],
         gmailScheduleId: input.gmailScheduleId ?? null,
+        gmailSubjectPattern: input.gmailSubjectPattern ?? null,
         templateType: input.templateType || 'TABLE',
         templateConfig: input.templateConfig as unknown as Prisma.JsonObject,
       },
@@ -77,15 +78,18 @@ export class CsvDashboardService {
    * CSVダッシュボードを更新
    */
   async update(id: string, input: CsvDashboardUpdateInput): Promise<CsvDashboard> {
-    // 存在確認
-    await this.findById(id);
+    // 存在確認（templateTypeのフォールバックにも使う）
+    const existing = await this.findById(id);
 
     // バリデーション
     if (input.columnDefinitions) {
       this.validateColumnDefinitions(input.columnDefinitions);
     }
-    if (input.templateConfig && input.templateType) {
-      this.validateTemplateConfig(input.templateType, input.templateConfig);
+
+    // templateConfig更新時は、templateTypeが未指定でも既存タイプで検証する（後方互換）
+    if (input.templateConfig !== undefined) {
+      const effectiveTemplateType = (input.templateType ?? existing.templateType) as 'TABLE' | 'CARD_GRID';
+      this.validateTemplateConfig(effectiveTemplateType, input.templateConfig);
     }
 
     const updateData: Prisma.CsvDashboardUpdateInput = {};
@@ -99,6 +103,7 @@ export class CsvDashboardService {
     if (input.ingestMode !== undefined) updateData.ingestMode = input.ingestMode;
     if (input.dedupKeyColumns !== undefined) updateData.dedupKeyColumns = input.dedupKeyColumns;
     if (input.gmailScheduleId !== undefined) updateData.gmailScheduleId = input.gmailScheduleId;
+    if (input.gmailSubjectPattern !== undefined) updateData.gmailSubjectPattern = input.gmailSubjectPattern;
     if (input.templateType !== undefined) updateData.templateType = input.templateType;
     if (input.templateConfig !== undefined) updateData.templateConfig = input.templateConfig as unknown as Prisma.JsonObject;
     if (input.enabled !== undefined) updateData.enabled = input.enabled;
@@ -192,15 +197,35 @@ export class CsvDashboardService {
     templateConfig: unknown
   ): void {
     if (templateType === 'TABLE') {
-      const config = templateConfig as { rowsPerPage?: number; fontSize?: number; displayColumns?: string[] };
+      const config = templateConfig as {
+        rowsPerPage?: number;
+        fontSize?: number;
+        displayColumns?: string[];
+        columnWidths?: Record<string, number>;
+      };
       if (!config.rowsPerPage || config.rowsPerPage <= 0) {
         throw new ApiError(400, 'テーブル形式の行数が無効です');
       }
       if (!config.fontSize || config.fontSize <= 0) {
         throw new ApiError(400, 'フォントサイズが無効です');
       }
+      if (config.fontSize < 10 || config.fontSize > 48) {
+        throw new ApiError(400, 'フォントサイズは10〜48の範囲で指定してください');
+      }
       if (!config.displayColumns || config.displayColumns.length === 0) {
         throw new ApiError(400, '表示列が指定されていません');
+      }
+
+      // columnWidthsは任意。指定がある場合のみ最小限バリデーション（キーの妥当性は列定義側に委ねる）
+      if (config.columnWidths) {
+        for (const [key, value] of Object.entries(config.columnWidths)) {
+          if (!key || typeof key !== 'string') {
+            throw new ApiError(400, '列幅のキーが無効です');
+          }
+          if (!Number.isFinite(value) || value <= 0) {
+            throw new ApiError(400, `列幅が無効です（${key}）`);
+          }
+        }
       }
     } else if (templateType === 'CARD_GRID') {
       const config = templateConfig as {
@@ -213,6 +238,9 @@ export class CsvDashboardService {
       }
       if (!config.fontSize || config.fontSize <= 0) {
         throw new ApiError(400, 'フォントサイズが無効です');
+      }
+      if (config.fontSize < 10 || config.fontSize > 48) {
+        throw new ApiError(400, 'フォントサイズは10〜48の範囲で指定してください');
       }
       if (!config.displayFields || config.displayFields.length === 0) {
         throw new ApiError(400, '表示項目が指定されていません');
@@ -359,12 +387,12 @@ export class CsvDashboardService {
 
   /**
    * 古いCSVダッシュボードデータを削除（レテンション管理）
-   * 前年(2025)は保持、前々年(2024)は削除、当年の前月分を月次で削除
+   * - 前々年は削除
+   * - 当年の前月分削除は行わない（レビュー用途の保持要件と衝突するため）
    */
   async cleanupOldData(): Promise<{ deletedRows: number; deletedIngestRuns: number }> {
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
     const twoYearsAgo = currentYear - 2; // 前々年
 
     let deletedRows = 0;
@@ -399,39 +427,8 @@ export class CsvDashboardService {
       });
       deletedIngestRuns += deletedIngestRunsTwoYearsAgo.count;
 
-      // 当年の過去月（当月より前）を削除
-      if (currentMonth > 1) {
-        // 例: 2月(=currentMonth=2) になったら 1月データを削除、3月なら 1月/2月を削除
-        const startOfCurrentYearJst = new Date(currentYear, 0, 1, 0, 0, 0, 0);
-        const startOfCurrentMonthJst = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0);
-
-        // UTCに変換（Asia/Tokyo = UTC+9）
-        const startOfCurrentYearUtc = new Date(startOfCurrentYearJst.getTime() - 9 * 60 * 60 * 1000);
-        const startOfCurrentMonthUtc = new Date(startOfCurrentMonthJst.getTime() - 9 * 60 * 60 * 1000);
-
-        const deletedRowsCurrentYearPastMonths = await prisma.csvDashboardRow.deleteMany({
-          where: {
-            occurredAt: {
-              gte: startOfCurrentYearUtc,
-              lt: startOfCurrentMonthUtc,
-            },
-          },
-        });
-        deletedRows += deletedRowsCurrentYearPastMonths.count;
-
-        const deletedIngestRunsCurrentYearPastMonths = await prisma.csvDashboardIngestRun.deleteMany({
-          where: {
-            startedAt: {
-              gte: startOfCurrentYearUtc,
-              lt: startOfCurrentMonthUtc,
-            },
-          },
-        });
-        deletedIngestRuns += deletedIngestRunsCurrentYearPastMonths.count;
-      }
-
       logger?.info(
-        { deletedRows, deletedIngestRuns, currentYear, currentMonth },
+        { deletedRows, deletedIngestRuns, currentYear },
         '[CsvDashboardService] Cleanup completed'
       );
 

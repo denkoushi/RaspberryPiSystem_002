@@ -198,6 +198,44 @@ describe('CSV Import Schedule API', () => {
       expect((json.schedule.targets as Array<{ type: string }>).length).toBe(2);
     });
 
+    it('should reject schedule intervals shorter than 5 minutes', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/imports/schedule',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          id: 'test-schedule-too-fast',
+          name: 'Too Fast',
+          targets: [{ type: 'employees', source: '/backups/csv/employees.csv' }],
+          schedule: '*/1 * * * *',
+          enabled: true
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should accept schedule intervals of 5 minutes or more', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/imports/schedule',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          id: 'test-schedule-interval-ok',
+          name: 'Interval OK',
+          targets: [{ type: 'employees', source: '/backups/csv/employees.csv' }],
+          schedule: '*/5 * * * *',
+          enabled: true
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
     it('should return 409 for duplicate ID', async () => {
       // 最初のスケジュールを作成
       await app.inject({
@@ -297,6 +335,21 @@ describe('CSV Import Schedule API', () => {
       const json = response.json() as { schedule: { name: string; enabled: boolean } };
       expect(json.schedule.name).toBe('Updated Schedule');
       expect(json.schedule.enabled).toBe(false);
+    });
+
+    it('should reject too-short interval updates', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/imports/schedule/test-update',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          schedule: '*/1 * * * *'
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
     });
 
     it('should return 404 for non-existent schedule', async () => {

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2025-01-03
+last-verified: 2026-01-22
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 25件  
+**件数**: 33件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1246,6 +1246,422 @@ if (data.type === 'ping') {
 - `apps/api/src/routes/webrtc/signaling.ts`
 - `apps/web/src/features/webrtc/types.ts`
 - `apps/api/src/routes/webrtc/types.ts`
+
+---
+
+### [KB-185] CSVダッシュボードのgmailSubjectPattern設定UI改善
+
+**実装日時**: 2026-01-XX
+
+**事象**: 
+- CSVダッシュボードのGmail件名パターン（`gmailSubjectPattern`）を管理コンソールから設定できない
+- CSVインポートスケジュールでCSVダッシュボードを選択する際、Gmail件名パターンを個別に設定する必要がある
+
+**要因**: 
+- `CsvDashboard`モデルに`gmailSubjectPattern`フィールドは追加されていたが、管理コンソールUIに設定フィールドがなかった
+- `CsvDashboardsPage.tsx`に`gmailSubjectPattern`の入力フィールドが実装されていなかった
+
+**実施した対策**: 
+- ✅ **管理コンソールUIに設定フィールド追加**: `CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加
+- ✅ **APIスキーマ更新**: `csvDashboardCreateSchema`と`csvDashboardUpdateSchema`に`gmailSubjectPattern`を追加
+- ✅ **型定義更新**: `CsvDashboardCreateInput`と`CsvDashboardUpdateInput`に`gmailSubjectPattern`を追加
+- ✅ **CSVインポートスケジューラー修正**: `CsvImportScheduler`でCSVダッシュボードの`gmailSubjectPattern`を取得するように修正
+- ✅ **取り込み責務の集約**: CSVダッシュボードの取得・取り込みは`CsvDashboardImportService`に集約し、スケジューラーの責務を薄く維持
+
+**実装の詳細**:
+1. **管理コンソールUI**: `apps/web/src/pages/admin/CsvDashboardsPage.tsx`を修正
+   - `gmailSubjectPattern`状態変数を追加
+   - 「Gmail件名パターン」入力フィールドを追加
+   - `updateCsvDashboard`のペイロードに`gmailSubjectPattern`を含める
+2. **APIスキーマ**: `apps/api/src/routes/csv-dashboards/schemas.ts`を修正
+   - `csvDashboardCreateSchema`と`csvDashboardUpdateSchema`に`gmailSubjectPattern: z.string().optional().nullable()`を追加
+3. **型定義**: `apps/api/src/services/csv-dashboard/csv-dashboard.types.ts`を修正
+   - `CsvDashboardCreateInput`と`CsvDashboardUpdateInput`に`gmailSubjectPattern?: string | null;`を追加
+4. **CSVインポートスケジューラー**: `apps/api/src/services/imports/csv-import-scheduler.ts`を修正
+   - CSVダッシュボードの`gmailSubjectPattern`を`dashboard.gmailSubjectPattern`から取得
+5. **CSVダッシュボード取り込み**: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`に取得〜保存〜取り込みを集約
+
+**学んだこと**:
+1. **設定の一元管理**: CSVダッシュボードごとにGmail件名パターンを設定することで、スケジュール設定を簡素化
+2. **UIとAPIの整合性**: フロントエンドの型定義（`client.ts`）とバックエンドの型定義（`csv-dashboard.types.ts`）を同期する必要がある
+3. **スキーマバリデーション**: Zodスキーマで`optional().nullable()`を使用することで、`null`と`undefined`の両方に対応可能
+4. **責務の分離**: CSVダッシュボード取り込みは専用サービスに集約し、スケジューラーの責務を薄く保つ
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-XX）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-XX）
+- 管理コンソールでCSVダッシュボードの「Gmail件名パターン」を設定できることを確認
+- 設定した`gmailSubjectPattern`がCSVインポートスケジューラーで使用されることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`（UI修正）
+- `apps/api/src/routes/csv-dashboards/schemas.ts`（スキーマ更新）
+- `apps/api/src/services/csv-dashboard/csv-dashboard.types.ts`（型定義更新）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（スケジューラー修正）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`（取り込み集約）
+- `apps/web/src/api/client.ts`（型定義更新）
+
+---
+
+### [KB-186] CsvImportSubjectPatternモデル追加による設計統一（マスターデータインポートの件名パターンDB化）
+
+**作成日時**: 2026-01-XX
+
+**事象**: 
+- マスターデータ（従業員・工具・計測機器・吊具）のGmail件名パターンが`backup.json`に保存されており、DBと設定ファイルの二重管理になっている
+- CSVダッシュボードの`gmailSubjectPattern`はDBに保存されているが、マスターデータの件名パターンは`backup.json`に保存されている
+
+**要因**: 
+- マスターデータのGmail件名パターンが`backup.json`の`csvImportSubjectPatterns`に保存されていた
+- CSVダッシュボードの`gmailSubjectPattern`はDBに保存されているため、設計が統一されていない
+
+**実施した対策（完了）**: 
+- ✅ **CsvImportSubjectPatternモデル追加**: Prismaスキーマに`CsvImportSubjectPattern`モデルを追加（`schema.prisma:578-591`）
+- ✅ **seed.tsにデフォルトデータ追加**: `backup.json`からDBへ移行するためのデフォルトデータを`seed.ts`に追加
+- ✅ **件名候補の分離**: `CsvImportSourceService` + `CsvImportSubjectPatternProvider` を導入し、件名候補生成を専用サービスへ分離
+- ✅ **スケジューラー統合**: `CsvImportExecutionService` 経由でDBパターンを解決し、`target.source`はフォールバックとして追加
+- ✅ **キャッシュでスケール対応**: 1回の実行内で`importType`単位に候補パターンをキャッシュしてDB往復を削減
+- ✅ **取得元の詳細隔離**: Gmail特有のエラー処理は`CsvImportSourceService`内に閉じ込め、スケジューラーは取得元非依存に
+
+**実装の詳細**:
+1. **Prismaスキーマ**: `apps/api/prisma/schema.prisma`に`CsvImportSubjectPattern`モデルを追加
+   ```prisma
+   model CsvImportSubjectPattern {
+     id          String   @id @default(uuid())
+     importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears）
+     pattern     String   // Gmail件名パターン
+     priority    Int      @default(0) // 優先順位（数値が小さいほど優先）
+     enabled     Boolean  @default(true)
+     createdAt   DateTime @default(now())
+     updatedAt   DateTime @updatedAt
+
+     @@unique([importType, pattern])
+     @@index([importType])
+     @@index([importType, enabled])
+     @@index([priority])
+   }
+   ```
+2. **seed.ts更新**: `apps/api/prisma/seed.ts`にデフォルトデータを追加
+   - `backup.json`の`csvImportSubjectPatterns`からDBへ移行するためのデフォルトデータ
+3. **取得サービスの導入**: `apps/api/src/services/imports/csv-import-source.service.ts`
+   - DBの候補 + 旧`target.source`を候補に統合し、順に取得
+4. **スケジューラー統合**: `apps/api/src/services/imports/csv-import-execution.service.ts`
+   - `CsvImportSourceService`を使用して取得、`CsvImportScheduler`は薄いオーケストレーターへ
+5. **互換性維持**: `backup-config.ts`の`csvImportSubjectPatterns`はdeprecateとして残置
+
+**トラブルシューティング**:
+- **Gmailで一致しない**: `CsvImportSubjectPattern`が`enabled: true`で登録されているか、件名が候補と一致しているかを確認
+- **旧設定の影響**: `target.source`はフォールバックとして候補に追加されるため、意図しない一致があればスケジュールの`target.source`を見直す
+- **候補が空になる**: DB側の`CsvImportSubjectPattern`が空の場合でも、`target.source`が空文字だと候補が生成されない
+
+**解決状況**: ✅ **実装完了（DB化・スケジューラー統合・互換性維持）**
+
+**関連ファイル**:
+- ✅ `apps/api/prisma/schema.prisma`（`CsvImportSubjectPattern`モデル追加済み）
+- ✅ `apps/api/prisma/seed.ts`（デフォルトデータ追加済み）
+- ✅ `apps/api/src/services/imports/csv-import-source.service.ts`（候補生成と取得の分離）
+- ✅ `apps/api/src/services/imports/csv-import-subject-pattern.provider.ts`（DBアクセス抽象化）
+- ✅ `apps/api/src/services/imports/csv-import-execution.service.ts`（スケジューラー統合）
+- ✅ `apps/api/src/services/imports/csv-import-scheduler.ts`（オーケストレーター化）
+- ✅ `apps/api/src/services/backup/backup-config.ts`（`csvImportSubjectPatterns`は互換性のため残置）
+
+**参照**: `docs/plans/production-schedule-kiosk-execplan.md`の「実装順序4: 設計統一（残タスク）」を参照
+
+---
+
+### [KB-187] CSVインポートスケジュール作成時のID自動生成とNoMatchingMessageErrorハンドリング改善
+
+**実装日時**: 2026-01-20
+
+**事象**: 
+- CSVインポートスケジュール作成時に、`csvDashboards`タイプを選択してもIDが自動入力されず、手動入力が必要だった
+- Gmailに該当する未読メールがない場合、`NoMatchingMessageError`が発生し、500エラーになっていた
+- アラート生成スクリプト（`generate-alert.sh`）が括弧を含むメッセージでシェル実行エラーを起こしていた
+
+**要因**: 
+- CSVダッシュボード選択時にスケジュールIDと名前の自動生成ロジックが実装されていなかった
+- `CsvDashboardImportService.ingestTargets`で`NoMatchingMessageError`を捕捉せず、上位に伝播していた
+- `ImportAlertService`が`exec(string)`でシェル実行しており、括弧や改行を含む文字列でエスケープが破綻していた
+
+**実施した対策**: 
+- ✅ **ID自動生成機能追加**: `CsvImportSchedulePage.tsx`でCSVダッシュボード選択時にスケジュールIDと名前を自動生成（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
+- ✅ **NoMatchingMessageErrorハンドリング**: `CsvDashboardImportService.ingestTargets`で`NoMatchingMessageError`を捕捉し、該当ダッシュボードをスキップして処理を継続
+- ✅ **アラート生成の改善**: `ImportAlertService`を`execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避
+
+**実装の詳細**:
+1. **フロントエンド（ID自動生成）**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+   - CSVダッシュボード選択時の`onChange`で、選択されたダッシュボード名からIDと名前を自動生成
+   - 編集時は既存IDを変更しない（新規作成時のみ自動生成）
+   - IDフィールドにプレースホルダーを追加し、自動生成であることを明示
+
+2. **バックエンド（NoMatchingMessageErrorハンドリング）**: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`
+   - `downloadCsv`呼び出しを`try-catch`で囲み、`NoMatchingMessageError`を捕捉
+   - エラー時はログに記録し、該当ダッシュボードをスキップして次のダッシュボード処理を継続
+   - 空の結果（`{}`）を返すことで、スケジューラー側でエラーにならないようにする
+
+3. **アラート生成の改善**: `apps/api/src/services/imports/import-alert.service.ts`
+   - `exec(string)`から`execFile`に変更し、引数配列として渡すことでシェルエスケープ問題を回避
+   - 括弧や改行を含むメッセージでも安全に実行可能
+
+**トラブルシューティング**:
+- **Gmailで一致しない**: メールがない場合は正常にスキップされ、エラーにならない。メール送信後に再実行すれば取り込まれる
+- **IDが自動生成されない**: ブラウザのキャッシュをクリアし、ページを再読み込みする
+- **アラート生成エラー**: `execFile`への変更により、括弧や改行を含むメッセージでも正常に動作する
+
+**運用メモ**:
+- CSVダッシュボードの列定義（`columnDefinitions`）は管理コンソール（`/admin/csv-dashboards`）で確認・編集可能
+- 変更可能なのは表示名/CSVヘッダー候補/必須フラグ/表示順のみ（`internalName`と`dataType`は表示のみ）
+- CSVプレビュー解析でヘッダー照合を行い、必須列不足や未知ヘッダーを事前確認する
+
+**学んだこと**:
+1. **UIの自動化**: ユーザー入力の手間を減らすため、選択に基づく自動生成は有効
+2. **エラーハンドリングの粒度**: メールがないことは「エラー」ではなく「スキップ可能な状態」として扱うことで、UXが向上
+3. **シェル実行の安全性**: `exec(string)`はシェルエスケープが複雑になるため、`execFile`で引数配列を渡す方が安全
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-20）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-20）
+- CSVダッシュボード選択時にIDと名前が自動生成されることを確認
+- Gmailに該当メールがない場合でも、エラーではなく正常に完了することを確認
+- アラート生成が正常に動作することを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（ID自動生成）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`（NoMatchingMessageErrorハンドリング）
+- `apps/api/src/services/imports/import-alert.service.ts`（アラート生成改善）
+
+---
+
+### [KB-188] CSVインポート実行エンドポイントでのApiError statusCode尊重
+
+**EXEC_PLAN.md参照**: production-schedule-kiosk-execplan.md (2026-01-21)
+
+**事象**: 
+- CSVインポート実行時に列不一致エラーが発生すると、ブラウザコンソールに500 Internal Server Errorが記録される
+- UIには適切なエラーメッセージが表示されるが、HTTPステータスコードが500（サーバー側の問題）になっている
+- 列不一致はクライアント側の問題（CSVファイルの列構成が設定と一致しない）なので、400 Bad Requestが適切
+
+**要因**: 
+- `apps/api/src/routes/imports.ts`の`POST /imports/schedule/:id/run`エンドポイントで、`ApiError`の`statusCode`を無視して常に500に変換していた
+- `error instanceof ApiError`のチェックがなく、`ApiError`の`statusCode`（例: 400）が無視されていた
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-21）: `ApiError`の場合は`statusCode`を尊重して再スローするように修正
+- `error instanceof ApiError`のチェックを最初に行い、`ApiError`の場合はその`statusCode`を尊重して再スロー
+- それ以外の`Error`の場合のみ、500に変換
+
+**実装詳細**:
+```typescript
+// apps/api/src/routes/imports.ts
+} catch (error) {
+  request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+  
+  // ApiErrorの場合はstatusCodeを尊重して再スロー
+  if (error instanceof ApiError) {
+    throw error;
+  }
+  
+  if (error instanceof Error) {
+    // スケジュールが見つからないエラーの場合のみ404
+    if (
+      error.message.includes('スケジュールが見つかりません') ||
+      error.message.toLowerCase().includes('schedule not found')
+    ) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
+    }
+    throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
+  }
+  throw new ApiError(500, 'インポート実行に失敗しました');
+}
+```
+
+**トラブルシューティング**:
+- **500エラーが続く**: ブラウザのキャッシュをクリアし、ページを再読み込みする。デプロイが完了しているか確認する
+- **400エラーが表示される**: これは正常な動作。CSVファイルの列構成を確認し、管理コンソールで列定義の候補を追加する
+
+**学んだこと**:
+1. **エラーハンドリングの階層**: `ApiError`の`statusCode`を尊重することで、適切なHTTPステータスコードを返せる
+2. **エラーの分類**: クライアント側の問題（400）とサーバー側の問題（500）を適切に区別することで、デバッグが容易になる
+3. **ブラウザコンソールのエラー**: 400エラーは正常なエラーハンドリングの結果。UIに適切なメッセージが表示されていれば問題ない
+
+**解決状況**: ✅ **実装完了・CI成功・実機検証完了**（2026-01-21）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-21）
+- CSVインポート実行時に列不一致エラーが発生すると、ブラウザコンソールに400 Bad Requestが記録されることを確認
+- UIには適切なエラーメッセージ（「見つからなかった列: 管理番号」「候補: managementNumber, 管理番号」「対応: CSVヘッダー行を確認し...」）が表示されることを確認
+
+**関連ファイル**:
+- `apps/api/src/routes/imports.ts`（エラーハンドリング修正）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（CSV_HEADER_MISMATCHエラー生成）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（アラートメッセージ改善）
+
+---
+
+### [KB-189] Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか）
+
+**EXEC_PLAN.md参照**: production-schedule-kiosk-execplan.md（実装順序3 / MeasuringInstrumentLoans）
+
+**事象**:
+- PowerAutomateが「アイテム追加/変更のたびにメール送信」すると、Gmailに同件名のメールが短時間に多数たまる
+- CSVインポートの手動実行/スケジュール実行で、期待したCSV（最新/特定の添付）ではなく別のメール添付が取り込まれるように見える
+- 取り込みが「列構成不一致」になったり、逆に「一部しか更新されない」ように見える
+
+**要因（現行仕様）**:
+- CSVダッシュボード（`csvDashboards`）のGmail取得は「未読」検索でヒットした中から、**先頭1通の最初の添付**のみを取得する実装になっている
+  - 検索クエリ: `subject:"<CsvDashboard.gmailSubjectPattern>" is:unread`（送信元制限 `from:` は設定がある場合のみ）
+  - 取得件数: Gmail API `users.messages.list` で最大10件（`maxResults: 10`）
+  - 対象メール: 検索結果の先頭（`messageIds[0]`）
+  - 対象添付: multipartを再帰探索して最初に見つかった添付（`attachmentId`）
+- 処理後は「アーカイブ（INBOXラベル削除）」のみで、未読フラグは維持される
+
+**実装箇所（根拠）**:
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`
+  - `buildSearchQuery()` が `is:unread` を付与
+  - `downloadWithMetadata()` が `messageIds[0]` の添付を取得し、`archiveMessage()` を呼ぶ
+- `apps/api/src/services/backup/gmail-api-client.ts`
+  - `searchMessages()` が `maxResults: 10` で一覧を取得
+  - `getFirstAttachment()` が最初に見つかった添付を採用
+
+**対策（運用）**:
+1. **PowerAutomateを“イベント毎”ではなく“スナップショット定期送信”に変更**（例: 5分/15分ごとに最新CSVを1通送る）
+2. **本システム側のスケジュール頻度を上げる**（送信頻度と整合させる）
+   - ✅ **実装完了**（2026-01-23）: 管理コンソール「CSVインポートスケジュール」で **「間隔（N分ごと）」** を選択可能（最小5分）
+   - 例: 10分ごと → `*/10 * * * *` が保存される
+   - 詳細は [KB-191](#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) を参照
+3. **同件名の未読を溜めない運用**（取り込ませたいメールを未読1通に揃える）
+4. **列定義の不一致を避ける**: 取り込み前に管理コンソールの「CSVプレビュー（ヘッダー照合）」で確認し、必要なら列定義の候補を追加/調整する
+
+**学んだこと**:
+- 本システムのCSVダッシュボード取り込みは「メール（CSVスナップショット）単位」であり、借用/返却の全イベントを逐次追跡する設計ではない
+- 高頻度更新が必要なら、上流（PowerAutomate）で集約し、下流（本システム）は一定間隔で最新状態を取り込むのが安全
+
+**解決状況**: ✅ **仕様把握・運用指針を整理・実装完了**（2026-01-23）
+
+---
+
+### [KB-190] Gmail OAuthのinvalid_grantでCSV取り込みが500になる
+
+**日付**: 2026-01-22
+
+**事象**:
+- 管理コンソール「Gmail設定 > トークン更新」で500が返る
+- CSVインポート手動実行で `Failed to search messages: invalid_grant` が出て500になる
+
+**要因**:
+- Gmail OAuthのrefresh tokenが無効化されていた（`invalid_grant`）
+- 失効時の例外が500に変換され、再認可が必要な状態であることがUIから分からなかった
+- Gmailのrefresh失敗時にlocalへフォールバックする挙動があり、正常に見えるが取り込みが無反映になる可能性があった
+
+**有効だった対策**:
+- ✅ `invalid_grant` を **再認可必須**として分類し、`401`で明示的に返す
+- ✅ Gmail経由の取り込みは **silent fallback を抑止**し、運用に再認可が必要であることを通知
+- ✅ 管理コンソールのエラーメッセージを「再認可が必要」へ寄せる
+
+**学んだこと**:
+- 個人Gmailでは `invalid_grant` は自動復旧できないため、再認可導線が必須
+- エラーは500ではなく運用判断できるHTTPステータス（401/400）で返すべき
+
+**解決状況**: ✅ **実装完了・運用導線整理**（2026-01-22）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/gmail-oauth.service.ts`
+- `apps/api/src/routes/gmail/oauth.ts`
+- `apps/api/src/routes/imports.ts`
+- `apps/api/src/services/backup/storage-provider-factory.ts`
+- `apps/web/src/pages/admin/GmailConfigPage.tsx`
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-191] CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定）
+
+**日付**: 2026-01-23
+
+**事象**:
+- CSVインポートスケジュールが1日1回（曜日+時刻）のみで、10分ごとなどの細かい頻度設定ができなかった
+- PowerAutomateからGmail経由でCSVが送信されるタイミングが不定なため、Raspberry Pi側で頻度を上げて取得したいが、UIから設定できなかった
+- バックエンドは`node-cron`を使用し、cron形式（例: `"*/10 * * * *"` = 10分ごと）に対応済みだったが、UIが対応していなかった
+
+**要因**:
+- UIが「時刻指定」モード（`"0 2 * * 1"` = 毎週月曜2時）のみで、間隔指定（`"*/10 * * * *"` = 10分ごと）に対応していなかった
+- cron形式の解析・生成ロジックがUIに実装されていなかった
+- 既存のcronスケジュールをUIで編集する際に、複雑な形式（編集不可）とシンプルな形式（編集可能）を区別する仕組みがなかった
+
+**有効だった対策**:
+- ✅ **UIに「間隔（N分ごと）」モードを追加**（2026-01-23）:
+  1. **スケジュールモードの追加**: `ScheduleMode`型（`'timeOfDay' | 'intervalMinutes' | 'custom'`）を追加
+  2. **UIモード選択**: 「時刻指定」と「間隔指定」のボタンで切り替え可能に
+  3. **間隔プリセット**: 5分、10分、15分、30分、60分のプリセットを提供
+  4. **cron解析機能**: 既存のcronスケジュールを解析し、UIで編集可能かどうかを判定
+  5. **cron生成機能**: UIの入力（時刻+曜日、または間隔+曜日）からcron文字列を生成
+
+- ✅ **最小5分間隔の制限を多層防御で実装**:
+  1. **UI側**: `MIN_INTERVAL_MINUTES = 5`を定数化し、間隔入力時にバリデーション
+  2. **API側**: Zodスキーマの`.superRefine`でcron形式と最小間隔を検証（`node-cron`の`validate`を使用）
+  3. **スケジューラー側**: `CsvImportScheduler.start()`で間隔を抽出し、5分未満の場合は警告ログを出力してスキップ（`backup.json`を手動編集した場合の防御）
+
+- ✅ **既存cronの解析・表示機能を実装**:
+  1. **cron解析ユーティリティ**: `csv-import-schedule-utils.ts`に`parseCronSchedule`関数を実装
+  2. **編集可能性の判定**: シンプルな形式（時刻指定、間隔指定）は編集可能、それ以外は`custom`として表示
+  3. **人間可読形式の表示**: `formatScheduleForDisplay`関数でcron文字列を日本語で表示（例: `"*/10 * * * 1,3"` → `"毎週月、水の10分ごと"`）
+
+**実装の詳細**:
+1. **UI実装**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+   - `scheduleMode`、`intervalMinutes`、`scheduleEditable`状態を追加
+   - モード選択ボタン、間隔入力（プリセット+手動入力）、編集不可警告を実装
+
+2. **cron解析ユーティリティ**: `apps/web/src/pages/admin/csv-import-schedule-utils.ts`（新規作成）
+   - `parseCronSchedule`: cron文字列を解析し、モード・時刻・間隔・曜日・編集可能性を返す
+   - `formatIntervalCronSchedule`: 間隔+曜日からcron文字列を生成
+   - `formatScheduleForDisplay`: cron文字列を人間可読形式に変換
+
+3. **API実装**: `apps/api/src/routes/imports.ts`
+   - `MIN_CSV_IMPORT_INTERVAL_MINUTES = 5`を定義
+   - `extractIntervalMinutes`関数でcron文字列から間隔を抽出
+   - Zodスキーマの`.superRefine`でcron形式と最小間隔を検証
+
+4. **スケジューラー実装**: `apps/api/src/services/imports/csv-import-scheduler.ts`
+   - `minIntervalMinutes = 5`を定義
+   - `extractIntervalMinutes`関数で間隔を抽出
+   - 5分未満の場合は警告ログを出力してスキップ
+
+5. **テスト実装**:
+   - UIユニットテスト: `apps/web/src/pages/admin/__tests__/csv-import-schedule-utils.test.ts`（新規作成）
+   - API統合テスト: `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`に最小間隔検証を追加
+
+**トラブルシューティング**:
+1. **JSDocコメントの`*/`がesbuildで誤解釈される問題**:
+   - 症状: `ERROR: Unexpected "*"`が発生
+   - 原因: JSDocコメント内の`*/5`が`*/`として解釈され、コメント終了と誤認
+   - 対策: `*/5`を`* /5`（スペース追加）に変更
+
+2. **テストの期待値タイポ**:
+   - 症状: `expected '毎週月、水の10分ごと' to be '毎週月、火の10分ごと'`
+   - 原因: テストケースの期待値が誤り（`1,3`は月・水だが、期待値が月・火）
+   - 対策: 期待値を正しい値に修正
+
+3. **ESLint import/orderエラー**:
+   - 症状: `git commit`時にESLintエラーが発生
+   - 原因: import文のグループ間に空行がなかった
+   - 対策: import文のグループ間に空行を追加
+
+**学んだこと**:
+- cron形式の解析・生成ロジックは複雑だが、ユーティリティ関数として分離することで保守性が向上する
+- 制約（最小間隔5分）はUI/API/スケジューラーの3層で実装することで、手動編集やバグによる回避を防げる（多層防御）
+- 既存のcronスケジュールを編集可能かどうかを判定するロジックは、ユーザー体験を大きく改善する
+- JSDocコメント内の`*/`はesbuildで誤解釈される可能性があるため、スペースを追加するか、別の表現を使用する
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-23）
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（UI実装）
+- `apps/web/src/pages/admin/csv-import-schedule-utils.ts`（cron解析ユーティリティ）
+- `apps/web/src/pages/admin/__tests__/csv-import-schedule-utils.test.ts`（UIユニットテスト）
+- `apps/api/src/routes/imports.ts`（API実装）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（スケジューラー実装）
+- `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（API統合テスト）
+- `docs/guides/csv-import-export.md`（ドキュメント更新）
+- `docs/knowledge-base/api.md`（KB-189更新）
 
 ---
 

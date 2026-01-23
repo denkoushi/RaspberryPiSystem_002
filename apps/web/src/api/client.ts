@@ -178,6 +178,31 @@ export async function getKioskEmployees(clientKey?: string) {
   return data.employees;
 }
 
+export interface ProductionScheduleRow {
+  id: string;
+  occurredAt: string;
+  rowData: Record<string, unknown>;
+}
+
+export interface ProductionScheduleListResponse {
+  page: number;
+  pageSize: number;
+  total: number;
+  rows: ProductionScheduleRow[];
+}
+
+export async function getKioskProductionSchedule(params?: { productNo?: string; page?: number; pageSize?: number }) {
+  const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', {
+    params
+  });
+  return data;
+}
+
+export async function completeKioskProductionScheduleRow(rowId: string) {
+  const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  return data;
+}
+
 export async function createEmployee(input: Partial<Employee>) {
   const { data } = await api.post<{ employee: Employee }>('/tools/employees', input);
   return data.employee;
@@ -1078,12 +1103,19 @@ export interface CsvDashboard {
   ingestMode: 'APPEND' | 'DEDUP';
   dedupKeyColumns: string[];
   gmailScheduleId: string | null;
+  gmailSubjectPattern: string | null; // Gmail件名パターン（CSV取得用）
   templateType: 'TABLE' | 'CARD_GRID';
   templateConfig: Record<string, unknown>;
   csvFilePath: string | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CsvPreviewResult {
+  headers: string[];
+  sampleRows: Array<Record<string, unknown>>;
+  detectedTypes: Record<string, 'string' | 'number' | 'date' | 'boolean'>;
 }
 
 export async function getCsvDashboards(filters?: { enabled?: boolean; search?: string }) {
@@ -1105,7 +1137,7 @@ export async function getCsvDashboard(id: string) {
 
 export async function updateCsvDashboard(
   id: string,
-  payload: Partial<Pick<CsvDashboard, 'name' | 'description' | 'columnDefinitions' | 'dateColumnName' | 'displayPeriodDays' | 'emptyMessage' | 'ingestMode' | 'dedupKeyColumns' | 'gmailScheduleId' | 'templateType' | 'templateConfig' | 'enabled'>>
+  payload: Partial<Pick<CsvDashboard, 'name' | 'description' | 'columnDefinitions' | 'dateColumnName' | 'displayPeriodDays' | 'emptyMessage' | 'ingestMode' | 'dedupKeyColumns' | 'gmailScheduleId' | 'gmailSubjectPattern' | 'templateType' | 'templateConfig' | 'enabled'>>
 ) {
   const { data } = await api.put<{ dashboard: CsvDashboard }>(`/csv-dashboards/${id}`, payload);
   return data.dashboard;
@@ -1118,6 +1150,11 @@ export async function uploadCsvToDashboard(id: string, file: File) {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
+}
+
+export async function previewCsvDashboardParse(id: string, csvContent: string) {
+  const { data } = await api.post<{ preview: CsvPreviewResult }>(`/csv-dashboards/${id}/preview-parse`, { csvContent });
+  return data.preview;
 }
 
 export interface SignageRenderResult {
