@@ -20,7 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 33件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング |
+| API関連 | [api.md](./api.md) | 34件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
@@ -79,6 +79,7 @@ update-frequency: high
 | [KB-188](./api.md#kb-188-csvインポート実行エンドポイントでのapierror-statuscode尊重) | CSVインポート実行エンドポイントでのApiError statusCode尊重 | ✅ 解決済み |
 | [KB-189](./api.md#kb-189-gmailに同件名メールが溜まる場合のcsvダッシュボード取り込み仕様どの添付を取るか) | Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか） | ✅ 解決済み |
 | [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる) | Gmail OAuthのinvalid_grantでCSV取り込みが500になる | ✅ 解決済み |
+| [KB-191](./api.md#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) | CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定） | ✅ 解決済み |
 
 ### データベース関連
 

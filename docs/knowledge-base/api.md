@@ -1525,8 +1525,9 @@ if (data.type === 'ping') {
 **対策（運用）**:
 1. **PowerAutomateを“イベント毎”ではなく“スナップショット定期送信”に変更**（例: 5分/15分ごとに最新CSVを1通送る）
 2. **本システム側のスケジュール頻度を上げる**（送信頻度と整合させる）
-   - 管理コンソール「CSVインポートスケジュール」で **「間隔（N分ごと）」** を選択可能（最小5分）
+   - ✅ **実装完了**（2026-01-23）: 管理コンソール「CSVインポートスケジュール」で **「間隔（N分ごと）」** を選択可能（最小5分）
    - 例: 10分ごと → `*/10 * * * *` が保存される
+   - 詳細は [KB-191](#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) を参照
 3. **同件名の未読を溜めない運用**（取り込ませたいメールを未読1通に揃える）
 4. **列定義の不一致を避ける**: 取り込み前に管理コンソールの「CSVプレビュー（ヘッダー照合）」で確認し、必要なら列定義の候補を追加/調整する
 
@@ -1534,7 +1535,7 @@ if (data.type === 'ping') {
 - 本システムのCSVダッシュボード取り込みは「メール（CSVスナップショット）単位」であり、借用/返却の全イベントを逐次追跡する設計ではない
 - 高頻度更新が必要なら、上流（PowerAutomate）で集約し、下流（本システム）は一定間隔で最新状態を取り込むのが安全
 
-**解決状況**: ✅ **仕様把握・運用指針を整理**（2026-01-22）
+**解決状況**: ✅ **仕様把握・運用指針を整理・実装完了**（2026-01-23）
 
 ---
 
@@ -1569,6 +1570,98 @@ if (data.type === 'ping') {
 - `apps/api/src/services/backup/storage-provider-factory.ts`
 - `apps/web/src/pages/admin/GmailConfigPage.tsx`
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+---
+
+### [KB-191] CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定）
+
+**日付**: 2026-01-23
+
+**事象**:
+- CSVインポートスケジュールが1日1回（曜日+時刻）のみで、10分ごとなどの細かい頻度設定ができなかった
+- PowerAutomateからGmail経由でCSVが送信されるタイミングが不定なため、Raspberry Pi側で頻度を上げて取得したいが、UIから設定できなかった
+- バックエンドは`node-cron`を使用し、cron形式（例: `"*/10 * * * *"` = 10分ごと）に対応済みだったが、UIが対応していなかった
+
+**要因**:
+- UIが「時刻指定」モード（`"0 2 * * 1"` = 毎週月曜2時）のみで、間隔指定（`"*/10 * * * *"` = 10分ごと）に対応していなかった
+- cron形式の解析・生成ロジックがUIに実装されていなかった
+- 既存のcronスケジュールをUIで編集する際に、複雑な形式（編集不可）とシンプルな形式（編集可能）を区別する仕組みがなかった
+
+**有効だった対策**:
+- ✅ **UIに「間隔（N分ごと）」モードを追加**（2026-01-23）:
+  1. **スケジュールモードの追加**: `ScheduleMode`型（`'timeOfDay' | 'intervalMinutes' | 'custom'`）を追加
+  2. **UIモード選択**: 「時刻指定」と「間隔指定」のボタンで切り替え可能に
+  3. **間隔プリセット**: 5分、10分、15分、30分、60分のプリセットを提供
+  4. **cron解析機能**: 既存のcronスケジュールを解析し、UIで編集可能かどうかを判定
+  5. **cron生成機能**: UIの入力（時刻+曜日、または間隔+曜日）からcron文字列を生成
+
+- ✅ **最小5分間隔の制限を多層防御で実装**:
+  1. **UI側**: `MIN_INTERVAL_MINUTES = 5`を定数化し、間隔入力時にバリデーション
+  2. **API側**: Zodスキーマの`.superRefine`でcron形式と最小間隔を検証（`node-cron`の`validate`を使用）
+  3. **スケジューラー側**: `CsvImportScheduler.start()`で間隔を抽出し、5分未満の場合は警告ログを出力してスキップ（`backup.json`を手動編集した場合の防御）
+
+- ✅ **既存cronの解析・表示機能を実装**:
+  1. **cron解析ユーティリティ**: `csv-import-schedule-utils.ts`に`parseCronSchedule`関数を実装
+  2. **編集可能性の判定**: シンプルな形式（時刻指定、間隔指定）は編集可能、それ以外は`custom`として表示
+  3. **人間可読形式の表示**: `formatScheduleForDisplay`関数でcron文字列を日本語で表示（例: `"*/10 * * * 1,3"` → `"毎週月、水の10分ごと"`）
+
+**実装の詳細**:
+1. **UI実装**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+   - `scheduleMode`、`intervalMinutes`、`scheduleEditable`状態を追加
+   - モード選択ボタン、間隔入力（プリセット+手動入力）、編集不可警告を実装
+
+2. **cron解析ユーティリティ**: `apps/web/src/pages/admin/csv-import-schedule-utils.ts`（新規作成）
+   - `parseCronSchedule`: cron文字列を解析し、モード・時刻・間隔・曜日・編集可能性を返す
+   - `formatIntervalCronSchedule`: 間隔+曜日からcron文字列を生成
+   - `formatScheduleForDisplay`: cron文字列を人間可読形式に変換
+
+3. **API実装**: `apps/api/src/routes/imports.ts`
+   - `MIN_CSV_IMPORT_INTERVAL_MINUTES = 5`を定義
+   - `extractIntervalMinutes`関数でcron文字列から間隔を抽出
+   - Zodスキーマの`.superRefine`でcron形式と最小間隔を検証
+
+4. **スケジューラー実装**: `apps/api/src/services/imports/csv-import-scheduler.ts`
+   - `minIntervalMinutes = 5`を定義
+   - `extractIntervalMinutes`関数で間隔を抽出
+   - 5分未満の場合は警告ログを出力してスキップ
+
+5. **テスト実装**:
+   - UIユニットテスト: `apps/web/src/pages/admin/__tests__/csv-import-schedule-utils.test.ts`（新規作成）
+   - API統合テスト: `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`に最小間隔検証を追加
+
+**トラブルシューティング**:
+1. **JSDocコメントの`*/`がesbuildで誤解釈される問題**:
+   - 症状: `ERROR: Unexpected "*"`が発生
+   - 原因: JSDocコメント内の`*/5`が`*/`として解釈され、コメント終了と誤認
+   - 対策: `*/5`を`* /5`（スペース追加）に変更
+
+2. **テストの期待値タイポ**:
+   - 症状: `expected '毎週月、水の10分ごと' to be '毎週月、火の10分ごと'`
+   - 原因: テストケースの期待値が誤り（`1,3`は月・水だが、期待値が月・火）
+   - 対策: 期待値を正しい値に修正
+
+3. **ESLint import/orderエラー**:
+   - 症状: `git commit`時にESLintエラーが発生
+   - 原因: import文のグループ間に空行がなかった
+   - 対策: import文のグループ間に空行を追加
+
+**学んだこと**:
+- cron形式の解析・生成ロジックは複雑だが、ユーティリティ関数として分離することで保守性が向上する
+- 制約（最小間隔5分）はUI/API/スケジューラーの3層で実装することで、手動編集やバグによる回避を防げる（多層防御）
+- 既存のcronスケジュールを編集可能かどうかを判定するロジックは、ユーザー体験を大きく改善する
+- JSDocコメント内の`*/`はesbuildで誤解釈される可能性があるため、スペースを追加するか、別の表現を使用する
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-23）
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（UI実装）
+- `apps/web/src/pages/admin/csv-import-schedule-utils.ts`（cron解析ユーティリティ）
+- `apps/web/src/pages/admin/__tests__/csv-import-schedule-utils.test.ts`（UIユニットテスト）
+- `apps/api/src/routes/imports.ts`（API実装）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（スケジューラー実装）
+- `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（API統合テスト）
+- `docs/guides/csv-import-export.md`（ドキュメント更新）
+- `docs/knowledge-base/api.md`（KB-189更新）
 
 ---
 
