@@ -107,4 +107,23 @@ describe('CsvDashboardTemplateRenderer renderTable', () => {
     // 長い値があるcolAが、colBより十分広いこと
     expect(widths[0]).toBeGreaterThan(widths[1]);
   });
+
+  it('accounts for long header text (header uses larger bold font)', () => {
+    const renderer = new CsvDashboardTemplateRenderer();
+    const longHeaderDefs = [
+      { internalName: 'colA', displayName: 'とても長い列名_ABCDEF0123456789', dataType: 'string' },
+      { internalName: 'colB', displayName: '短', dataType: 'string' }
+    ];
+    const rows: NormalizedRowData[] = [{ colA: 'A', colB: 'B' }];
+
+    const svg = renderer.renderTable(rows, longHeaderDefs, baseConfig, 'Test', undefined, {
+      canvasWidth: 1920,
+      canvasHeight: 1080
+    });
+
+    const widths = extractHeaderWidths(svg);
+    expect(widths.length).toBe(2);
+    // 値は短いが、列名が長いcolAが広くなること
+    expect(widths[0]).toBeGreaterThan(widths[1]);
+  });
 });

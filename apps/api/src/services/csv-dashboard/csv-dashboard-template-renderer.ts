@@ -344,6 +344,9 @@ export class CsvDashboardTemplateRenderer {
     const basePadding = Math.round(12 * scale);
     const safetyPadding = Math.round(6 * scale);
     const minWidth = Math.max(60, Math.round(fontSizePx * 3));
+    const headerFontSizePx = Math.round(config.fontSize + 4);
+    // 太字ぶんをざっくり係数で見積もる（実フォントの差はあるが、列名が切れる方が痛い）
+    const headerBoldFactor = 1.06;
 
     // #region agent log
     try {
@@ -394,6 +397,7 @@ export class CsvDashboardTemplateRenderer {
             canvasWidth,
             scale,
             fontSizePx,
+            headerFontSizePx: Math.round(config.fontSize + 4),
             rowsLen: rows.length,
             rowsPerPage,
             sampleLen: sampleRows.length,
@@ -413,14 +417,17 @@ export class CsvDashboardTemplateRenderer {
     // 列幅は「表示中ページ」ではなく、全行の最大文字列に追随させる
     // （ページ切り替えで列幅が変わると視認性が落ち、ユーザー期待ともズレる）
     const requiredWidths = displayColumns.map((col) => {
-      let maxEm = this.approxTextEm(col.displayName);
+      const headerEm = this.approxTextEm(col.displayName);
+      let dataMaxEm = 0;
       for (const row of rows) {
         const v = row[col.internalName];
         // 実際に描画する値（date列はJSTフォーマット）で幅を見積もる
         const formatted = v == null ? '' : String(this.formatCellValueForSignage(col, v));
-        maxEm = Math.max(maxEm, this.approxTextEm(formatted));
+        dataMaxEm = Math.max(dataMaxEm, this.approxTextEm(formatted));
       }
-      const textWidth = maxEm * Math.max(1, fontSizePx);
+      const headerWidth = headerEm * Math.max(1, headerFontSizePx) * headerBoldFactor;
+      const dataWidth = dataMaxEm * Math.max(1, fontSizePx);
+      const textWidth = Math.max(headerWidth, dataWidth);
       const required = Math.ceil(textWidth + basePadding * 2 + safetyPadding);
       return Math.max(minWidth, required);
     });
