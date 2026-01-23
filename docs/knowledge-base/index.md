@@ -196,6 +196,7 @@ update-frequency: high
 | [KB-154](./infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) | SPLITモードで左右別PDF表示に対応 | ✅ 解決済み |
 | [KB-155](./infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) | CSVダッシュボード可視化機能実装完了 | ✅ 解決済み |
 | [KB-156](./infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) | 複数スケジュールの順番切り替え機能実装 | ✅ 解決済み |
+| [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
@@ -351,6 +352,7 @@ update-frequency: high
 - 2026-01-19: KB-182を追加（Pi4デプロイ検証結果：デプロイ安定化機能の動作確認）
 - 2026-01-19: KB-183を追加（Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装）
 - 2026-01-09: KB-156を追加（複数スケジュールの順番切り替え機能実装）
+- 2026-01-23: KB-193を追加（CSVダッシュボードの列幅計算改善：フォントサイズ反映・全行考慮・列名考慮）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）

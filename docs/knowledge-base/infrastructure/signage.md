@@ -955,6 +955,77 @@ const textX = x + textAreaX;
 
 ---
 
+### [KB-193] CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮）
+
+**実装日時**: 2026-01-23
+
+**事象**: 
+- Pi3で表示中のサイネージのCSVダッシュボードで、フォントサイズ変更が反映されない
+- 列幅が適切に追随せず、長い文字列が切れる、または過剰な余白が発生する
+- 列名（ヘッダー）が長い場合、列幅が不足して切れる
+
+**要因**: 
+1. **フォントサイズ未反映**: `computeColumnWidths`メソッドで`scale`と`fontSizePx`が列幅計算に正しく反映されていなかった
+2. **最初のページのみ考慮**: 列幅計算が`rowsPerPage`（最初のページの行数）のみを考慮し、後続ページの長い文字列を考慮していなかった
+3. **フォーマット済み値未使用**: 日付列など、フォーマット後の値が実際の表示幅と異なる場合に、生の値で幅を計算していた
+4. **列名未考慮**: 列名（ヘッダー）は`fontSize+4px`で太字表示されるが、列幅計算に含まれていなかった
+
+**実施した対策**: 
+- ✅ **フォントサイズ反映**: `computeColumnWidths`メソッドのシグネチャに`scale`と`fontSizePx`を追加し、列幅計算に反映
+- ✅ **全行の最大文字列を考慮**: `sampleRows`（最初のページ）だけでなく、`rows`配列全体を走査して最大文字列を取得
+- ✅ **フォーマット済み値を使用**: `formatCellValueForSignage`を使用して、日付列などフォーマット後の値で幅を計算
+- ✅ **列名も列幅計算に含める**: 列名のフォントサイズ（`fontSize+4px`）と太字係数（1.06）を考慮し、列名とデータ値の最大幅の大きい方を採用
+- ✅ **テスト追加**: 列幅計算の動作を検証するユニットテストを追加（5件すべてパス）
+
+**実装の詳細**:
+1. **列幅計算の改善**:
+   ```typescript
+   // 列名の幅計算
+   const headerFontSizePx = Math.round(config.fontSize + 4);
+   const headerBoldFactor = 1.06; // 太字ぶんをざっくり係数で見積もる
+   const headerEm = this.approxTextEm(col.name);
+   const headerWidth = headerEm * Math.max(1, headerFontSizePx) * headerBoldFactor;
+   
+   // データ値の幅計算（全行を走査）
+   let dataMaxEm = 0;
+   for (const row of rows) {
+     const formatted = this.formatCellValueForSignage(col, row[col.key]);
+     const em = this.approxTextEm(formatted);
+     dataMaxEm = Math.max(dataMaxEm, em);
+   }
+   const dataWidth = dataMaxEm * Math.max(1, fontSizePx);
+   
+   // 列名とデータ値の最大幅の大きい方を採用
+   const textWidth = Math.max(headerWidth, dataWidth);
+   ```
+
+2. **shrinkToFitヘルパー**: 列幅の合計が`canvasWidth`を超える場合、比例的に縮小（`minWidth`を尊重）
+
+3. **デバッグ手法**: 
+   - `fetch`ベースのログ出力（NDJSON形式）でランタイムデータを収集
+   - 仮説駆動デバッグ（Hypothesis D: 全行考慮の不足を確認）
+
+**学んだこと**:
+1. **全行走査の重要性**: 最初のページだけでなく、全データを走査することで、後続ページの長い文字列も適切に表示できる
+2. **フォーマット済み値の使用**: 日付列など、表示時にフォーマットされる値は、フォーマット後の値で幅を計算する必要がある
+3. **列名の考慮**: 列名は通常、データ値より大きなフォントサイズで太字表示されるため、列幅計算に含める必要がある
+4. **仮説駆動デバッグ**: 複数の仮説を立て、ログで証拠を収集することで、根本原因を効率的に特定できる
+
+**解決状況**: ✅ **解決済み**（2026-01-23）
+
+**実機検証結果**: ✅ **正常動作**（2026-01-23）
+- フォントサイズ変更が列幅に反映されることを確認
+- 長い文字列が後続ページにある場合でも、列幅が適切に計算されることを確認
+- 長い列名が切れないように列幅が確保されることを確認
+- 全画面表示（FULL）と分割表示（SPLIT）の両方で正常動作を確認
+
+**関連ファイル**:
+- `apps/api/src/services/csv-dashboard/csv-dashboard-template-renderer.ts`（列幅計算改善）
+- `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-template-renderer.test.ts`（テスト追加）
+- `docs/modules/signage/README.md`（CSVダッシュボード仕様更新）
+
+---
+
 ### 2. サイネージのパフォーマンス最適化（優先度: 低）
 
 - **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング
