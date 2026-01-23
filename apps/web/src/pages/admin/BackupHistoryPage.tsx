@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useBackupHistory } from '../../api/hooks';
@@ -29,6 +29,55 @@ export function BackupHistoryPage() {
   const { data, isLoading, isFetching } = useBackupHistory(filters);
   const history = data?.history ?? [];
   const totalPages = data ? Math.ceil(data.total / 20) : 1;
+
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'B',
+        location: 'BackupHistoryPage.tsx:filters',
+        message: 'BackupHistoryPage filters changed',
+        data: { ...filters },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  }, [filters]);
+
+  useEffect(() => {
+    if (!data) return;
+    const currentHistory = data.history ?? [];
+    const distinctTargets = new Set(currentHistory.map((h) => `${h.targetKind}:${h.targetSource}`)).size;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'C',
+        location: 'BackupHistoryPage.tsx:data',
+        message: 'BackupHistoryPage received data',
+        data: {
+          returnedRows: currentHistory.length,
+          total: data.total,
+          totalPages: Math.ceil(data.total / 20),
+          distinctTargetsInPage: distinctTargets,
+          sample: currentHistory.slice(0, 5).map((h) => ({
+            operationType: h.operationType,
+            targetKind: h.targetKind,
+            targetSource: String(h.targetSource).slice(0, 60),
+            storageProvider: h.storageProvider,
+            status: h.status
+          }))
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  }, [data]);
+  // #endregion
 
   const getStatusColor = (status: BackupStatus) => {
     switch (status) {

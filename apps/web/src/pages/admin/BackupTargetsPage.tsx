@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth } from '../../api/hooks';
@@ -17,6 +17,32 @@ export function BackupTargetsPage() {
   const [runningIndex, setRunningIndex] = useState<number | null>(null);
 
   const targets = config?.targets ?? [];
+
+  // #region agent log
+  useEffect(() => {
+    const currentTargets = config?.targets ?? [];
+    const enabledWithSchedule = currentTargets.filter((t) => t.enabled && !!t.schedule).length;
+    const enabledTotal = currentTargets.filter((t) => t.enabled).length;
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'A',
+        location: 'BackupTargetsPage.tsx:targets-summary',
+        message: 'BackupTargetsPage loaded targets summary',
+        data: {
+          targetsTotal: currentTargets.length,
+          enabledTotal,
+          enabledWithSchedule,
+          storageProvider: config?.storage?.provider ?? null
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  }, [config]);
+  // #endregion
 
   const handleToggleEnabled = async (index: number) => {
     const target = targets[index];

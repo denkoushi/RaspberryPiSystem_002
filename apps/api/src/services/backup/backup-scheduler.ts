@@ -5,6 +5,7 @@ import type { BackupConfig } from './backup-config.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
 import { StorageProviderFactory } from './storage-provider-factory.js';
 import { BackupHistoryService } from './backup-history.service.js';
+import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
 
@@ -176,8 +177,10 @@ export class BackupScheduler {
     }
 
     // 各プロバイダーに順次バックアップを実行（多重バックアップ）
-    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; error?: string }> = [];
+    const historyService = new BackupHistoryService();
+    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
     for (const requestedProvider of providers) {
+      let historyId: string | null = null;
       try {
         // 一時的にtargetのstorage.providerを設定してストレージプロバイダーを作成
         const targetWithProvider = {
@@ -189,21 +192,50 @@ export class BackupScheduler {
         const storageProvider = providerResult.storageProvider;
         const backupService = new BackupService(storageProvider);
 
+        // Gmailの場合はlocalにフォールバック
+        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
+
+        // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
+        // #region agent log
+        await writeDebugLog({sessionId:'debug-session',runId:'run1',hypothesisId:'D',location:'backup-scheduler.ts:executeBackup:createHistory',message:'Creating backup history for scheduled backup',data:{targetKind:target.kind,targetSource:target.source.slice(0,60),storageProvider:safeProvider},timestamp:Date.now()});
+        // #endregion
+        historyId = await historyService.createHistory({
+          operationType: BackupOperationType.BACKUP,
+          targetKind: target.kind,
+          targetSource: target.source,
+          storageProvider: safeProvider
+        });
+
         // バックアップを実行
         const result = await backupService.backup(backupTarget, {
           label: target.metadata?.label as string
         });
 
-        // Gmailの場合はlocalにフォールバック
-        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
         if (!result.success) {
           results.push({ provider: safeProvider, success: false, error: result.error });
+          // 履歴を失敗として更新
+          if (historyId) {
+            await historyService.failHistory(historyId, result.error || 'Unknown error');
+          }
         } else {
-          results.push({ provider: safeProvider, success: true });
+          results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
+          // 履歴を完了として更新
+          if (historyId) {
+            await historyService.completeHistory(historyId, {
+              targetKind: target.kind,
+              targetSource: target.source,
+              sizeBytes: result.sizeBytes,
+              path: result.path
+            });
+          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         results.push({ provider: requestedProvider, success: false, error: errorMessage });
+        // 履歴を失敗として更新
+        if (historyId) {
+          await historyService.failHistory(historyId, errorMessage);
+        }
         // エラーが発生しても次のプロバイダーに続行
       }
     }
