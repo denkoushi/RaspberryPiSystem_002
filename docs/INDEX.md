@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-22）
+
+- **✅ デプロイ検証強化（DBゲート追加・fail-fast化）実装・実機検証完了**: デプロイが成功したように見えてもDBマイグレーション未適用でテーブル不存在エラーが発生する問題を根本解決。Pi5単体デプロイ（`deploy.sh`）にDB整合性ゲートを追加し、migrate失敗時にfail-fast。`verification-map.yml`にDBゲート（migrate status、`_prisma_migrations`存在、必須テーブル存在）を追加し、`verifier.sh`でSSH経由でPi5上のDBチェックを実行。`verifier.sh`にTLS自己署名対応（`insecure_tls`）とcommand変数展開を実装。`health-check.yml`にサーバー側DBチェックを追加。`backup.sh`をHTTPS対応に変更。`MeasuringInstrumentLoanEvent`マイグレーションを追加。実機検証で全DBゲート/HTTPゲート/スモークテストがpassすることを確認。デプロイタイムアウト問題（240秒不足）を発見し、`CI=1`で再実行して解決。ナレッジベースにKB-191を更新。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-191](./knowledge-base/infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) / [guides/deployment.md](./guides/deployment.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-XX）
 
 - **✅ 生産スケジュールキオスクページ実装・実機検証完了**: PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装。CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示し、完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に。完了ボタンのグレーアウト・トグル機能を実装し、完了済みアイテムを`opacity-50 grayscale`で視覚的にグレーアウト。完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル。チェックマーク位置調整（`pr-11`でパディング追加）と`FSEIBAN`の下3桁表示を実装。CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソールに追加。`CsvImportSubjectPattern`モデルを追加し、マスターデータインポートの件名パターンをDB化（設計統一）。実機検証でCSVダッシュボードのデータがキオスク画面に表示され、完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。CI成功、デプロイ成功。ナレッジベースにKB-184、KB-185、KB-186を追加。詳細は [knowledge-base/frontend.md#kb-184](./knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [knowledge-base/api.md#kb-185](./knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) / [knowledge-base/api.md#kb-186](./knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。

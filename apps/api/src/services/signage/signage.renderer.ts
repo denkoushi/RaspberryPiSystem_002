@@ -584,8 +584,10 @@ export class SignageRenderer {
       );
     }
 
+    // 重要: デフォルト(fit=cover)だと、SVGの縦横比が16:9でない場合に左右/上下がトリミングされ
+    // 表示が見切れる。サイネージでは「見切れない」ことを優先して contain に固定する。
     return await sharp(Buffer.from(svg))
-      .resize(WIDTH, HEIGHT)
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
       .jpeg({ quality: 90 })
       .toBuffer();
   }
