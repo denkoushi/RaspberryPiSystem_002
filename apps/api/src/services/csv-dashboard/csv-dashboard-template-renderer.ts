@@ -60,16 +60,28 @@ export class CsvDashboardTemplateRenderer {
         ? selectedColumnDefs
         : [...columnDefinitions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+    // NOTE:
+    // - SPLIT表示では canvasWidth が小さくなるため scale < 1 になる
+    // - フォントサイズを scale で縮小すると、min clamp と丸めで「フォントサイズ変更が効かない」状態になりやすい
+    // - config.fontSize は「出力キャンバス(px)に対するサイズ」として扱い、フォント自体は scale で縮小しない
     const topTitleHeight = Math.round(64 * scale);
     const tableTop = Math.round(80 * scale);
-    const headerHeight = Math.round(56 * scale);
-    const rowHeight = Math.max(Math.round(30 * scale), Math.round((config.fontSize + 18) * scale));
+    const headerHeight = Math.max(Math.round(56 * scale), Math.round(config.fontSize + 24));
+    const rowHeight = Math.max(Math.round(30 * scale), Math.round(config.fontSize + 18));
     const availableHeight = canvasHeight - tableTop - headerHeight - Math.round(16 * scale);
     const maxRowsByHeight = Math.max(1, Math.floor(availableHeight / rowHeight));
     const rowsPerPage = Math.min(rows.length, config.rowsPerPage, maxRowsByHeight);
 
     // カラム幅（サイネージでの視認性優先）
-    const columnWidths = this.computeColumnWidths(displayColumns, rows, rowsPerPage, config, canvasWidth);
+    const columnWidths = this.computeColumnWidths(
+      displayColumns,
+      rows,
+      rowsPerPage,
+      config,
+      canvasWidth,
+      scale,
+      Math.round(config.fontSize)
+    );
     const columnX = columnWidths.reduce<number[]>((acc, w, i) => {
       acc[i] = (i === 0 ? 0 : acc[i - 1] + columnWidths[i - 1]);
       return acc;
@@ -85,7 +97,7 @@ export class CsvDashboardTemplateRenderer {
           return `
       <rect x="${x}" y="0" width="${w}" height="${headerHeight}" fill="#1e293b" stroke="#334155" stroke-width="2"/>
       <text x="${x + w / 2}" y="${headerHeight / 2 + 2}"
-            font-family="Arial, sans-serif" font-size="${Math.max(10, Math.round((config.fontSize + 4) * scale))}" font-weight="bold"
+            font-family="Arial, sans-serif" font-size="${Math.round(config.fontSize + 4)}" font-weight="bold"
             fill="#ffffff" text-anchor="middle" dominant-baseline="middle">
         ${this.escapeXml(headerLabel)}
       </text>
@@ -107,7 +119,7 @@ export class CsvDashboardTemplateRenderer {
             const formattedValue = this.formatCellValueForSignage(col, rawValue);
             const cellPaddingX = this.computeCellPaddingX(w, scale);
             const maxTextWidth = Math.max(0, w - cellPaddingX * 2);
-            const effectiveFontSize = Math.max(10, Math.round(config.fontSize * scale));
+            const effectiveFontSize = Math.round(config.fontSize);
             const textValue = this.truncateForApproxWidth(
               String(formattedValue ?? ''),
               maxTextWidth,
@@ -291,7 +303,9 @@ export class CsvDashboardTemplateRenderer {
     rows: NormalizedRowData[],
     rowsPerPage: number,
     config: TableTemplateConfig,
-    canvasWidth: number
+    canvasWidth: number,
+    scale: number,
+    fontSizePx: number
   ): number[] {
     if (displayColumns.length === 0) {
       return [];
@@ -302,60 +316,71 @@ export class CsvDashboardTemplateRenderer {
       return typeof px === 'number' && Number.isFinite(px) && px > 0 ? px : null;
     });
 
-    const fixedSum = fixed.reduce<number>((sum, v) => sum + (v ?? 0), 0);
-    const autoIndices = fixed
-      .map((v, i) => ({ v, i }))
-      .filter((x) => x.v == null)
-      .map((x) => x.i);
-
-    // fixedが幅を食い潰す場合は、全体をスケールして収める
-    if (fixedSum >= canvasWidth) {
-      const scale = canvasWidth / fixedSum;
-      const widths = fixed.map((v) => Math.max(20, Math.floor((v ?? 1) * scale)));
-      const sum = widths.reduce((a, b) => a + b, 0);
-      widths[widths.length - 1] += canvasWidth - sum;
-      return widths;
-    }
-
-    if (autoIndices.length === 0) {
-      const widths = fixed.map((v) => Math.round(v ?? 0));
-      const sum = widths.reduce<number>((a, b) => a + b, 0);
-      widths[widths.length - 1] += canvasWidth - sum;
-      return widths;
-    }
-
-    const remaining = Math.max(0, canvasWidth - fixedSum);
-    const minWidth = 80;
-    const maxWidth = Math.max(120, Math.floor(canvasWidth * 0.55));
-
-    // データ長（最大文字幅の近似）から重みを作る
     const sampleRows = rows.slice(0, rowsPerPage);
-    const weights = autoIndices.map((i) => {
-      const col = displayColumns[i];
-      let maxEm = col.displayName.length; // ヘッダーも考慮
+    const basePadding = Math.round(12 * scale);
+    const safetyPadding = Math.round(6 * scale);
+    const minWidth = Math.max(60, Math.round(fontSizePx * 3));
+
+    const requiredWidths = displayColumns.map((col) => {
+      let maxEm = this.approxTextEm(col.displayName);
       for (const row of sampleRows) {
         const v = row[col.internalName];
         const s = v == null ? '' : String(v);
         maxEm = Math.max(maxEm, this.approxTextEm(s));
       }
-      return Math.max(1, maxEm);
-    });
-    const weightSum = weights.reduce<number>((a, b) => a + b, 0);
-
-    const widths: number[] = displayColumns.map((_, i) => Math.round(fixed[i] ?? 0));
-
-    // まずminを確保
-    const minTotal = minWidth * autoIndices.length;
-    const remainingAfterMin = Math.max(0, remaining - minTotal);
-    autoIndices.forEach((idx, k) => {
-      const extra = weightSum > 0 ? Math.floor((remainingAfterMin * weights[k]) / weightSum) : 0;
-      widths[idx] = Math.min(maxWidth, minWidth + extra);
+      const textWidth = maxEm * Math.max(1, fontSizePx);
+      const required = Math.ceil(textWidth + basePadding * 2 + safetyPadding);
+      return Math.max(minWidth, required);
     });
 
-    // 合計調整（端数/上限によりズレるため）
-    const sum = widths.reduce<number>((a, b) => a + b, 0);
-    const delta = canvasWidth - sum;
-    widths[widths.length - 1] += delta;
+    const widths = displayColumns.map((_, i) => Math.round(fixed[i] ?? requiredWidths[i]));
+    const total = widths.reduce((sum, w) => sum + w, 0);
+
+    if (total <= canvasWidth) {
+      // 過剰な余白を作らない。右側に余白が残っても良い。
+      return widths;
+    }
+
+    // 全体を縮小し、最小幅は確保する
+    const scaleDown = canvasWidth / total;
+    const minWidths = widths.map((w) => Math.min(w, minWidth));
+    const scaled = widths.map((w, i) => Math.max(minWidths[i], Math.floor(w * scaleDown)));
+
+    return this.shrinkToFit(scaled, minWidths, canvasWidth);
+  }
+
+  private shrinkToFit(widths: number[], minWidths: number[], canvasWidth: number): number[] {
+    const total = widths.reduce((sum, w) => sum + w, 0);
+    if (total <= canvasWidth) {
+      return widths;
+    }
+
+    const adjustableIndices = widths
+      .map((w, i) => ({ w, i }))
+      .filter(({ w, i }) => w > minWidths[i])
+      .map(({ i }) => i);
+
+    if (adjustableIndices.length === 0) {
+      // どうしても収まらない場合は最後の列を削って合わせる
+      widths[widths.length - 1] -= total - canvasWidth;
+      return widths;
+    }
+
+    let remaining = total - canvasWidth;
+    const adjustableTotal = adjustableIndices.reduce((sum, i) => sum + (widths[i] - minWidths[i]), 0);
+    adjustableIndices.forEach((i) => {
+      if (remaining <= 0) return;
+      const room = widths[i] - minWidths[i];
+      const reduce = adjustableTotal > 0 ? Math.ceil((remaining * room) / adjustableTotal) : 0;
+      const applied = Math.min(room, reduce);
+      widths[i] -= applied;
+      remaining -= applied;
+    });
+
+    if (remaining > 0) {
+      widths[widths.length - 1] = Math.max(1, widths[widths.length - 1] - remaining);
+    }
+
     return widths;
   }
 
