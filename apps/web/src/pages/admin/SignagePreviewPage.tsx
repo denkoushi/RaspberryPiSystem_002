@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { api } from '../../api/client';
 import { Card } from '../../components/ui/Card';
 
 export function SignagePreviewPage() {
@@ -7,33 +8,44 @@ export function SignagePreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchImage = async () => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'signage-preview',hypothesisId:'H1',location:'apps/web/src/pages/admin/SignagePreviewPage.tsx:9',message:'SignagePreviewPage mounted',data:{hasAxiosAuthHeader:Boolean(api?.defaults?.headers?.common?.Authorization),pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
+  const fetchImage = async (trigger: 'mount' | 'interval' | 'manual') => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('/api/signage/current-image', {
-        credentials: 'include', // Cookieを含める（JWT認証用）
-      });
 
-      if (!response.ok) {
-        throw new Error(`画像の取得に失敗しました: ${response.status}`);
-      }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'signage-preview',hypothesisId:'H1',location:'apps/web/src/pages/admin/SignagePreviewPage.tsx:fetchImage',message:'fetchImage start',data:{trigger,hasAxiosAuthHeader:Boolean(api?.defaults?.headers?.common?.Authorization)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
-      const blob = await response.blob();
+      // 管理コンソールはJWT(Authorizationヘッダー)認証のため、axiosクライアントを使用してBlob取得する
+      const response = await api.get('/signage/current-image', { responseType: 'blob' });
+      const blob = response.data as Blob;
       const url = URL.createObjectURL(blob);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'signage-preview',hypothesisId:'H1',location:'apps/web/src/pages/admin/SignagePreviewPage.tsx:fetchImage',message:'fetchImage success',data:{trigger,blobType:blob.type||null,blobSize:blob.size||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       setImageUrl(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '画像の取得に失敗しました');
+      const message = err instanceof Error ? err.message : '画像の取得に失敗しました';
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'signage-preview',hypothesisId:'H2',location:'apps/web/src/pages/admin/SignagePreviewPage.tsx:fetchImage',message:'fetchImage error',data:{trigger,errorMessage:message},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setError(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchImage();
+    fetchImage('mount');
     // 30秒ごとに自動更新（サイネージの更新間隔に合わせる）
-    const interval = setInterval(fetchImage, 30000);
+    const interval = setInterval(() => fetchImage('interval'), 30000);
     return () => {
       clearInterval(interval);
     };
@@ -56,7 +68,7 @@ export function SignagePreviewPage() {
             Pi3で表示中のサイネージ画像をプレビューします（30秒ごとに自動更新）
           </p>
           <button
-            onClick={fetchImage}
+            onClick={() => fetchImage('manual')}
             disabled={isLoading}
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:bg-slate-400 transition-colors"
           >
