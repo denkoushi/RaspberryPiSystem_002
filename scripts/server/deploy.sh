@@ -8,10 +8,26 @@ set -e
 BRANCH="${1:-main}"
 PROJECT_DIR="/opt/RaspberryPiSystem_002"
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
+LOG_DIR="${PROJECT_DIR}/logs/deploy"
+TS="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
+LOG_FILE="${LOG_DIR}/deploy-sh-${TS}.log"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
+
+mkdir -p "${LOG_DIR}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+log "Deploy log: ${LOG_FILE}"
+
+recover_on_failure() {
+  local exit_code=$?
+  if [ "${exit_code}" -ne 0 ]; then
+    log "デプロイ失敗（exit ${exit_code}）。復旧のため docker compose up -d を試行します。"
+    docker compose -f "${COMPOSE_FILE}" up -d || true
+  fi
+}
+trap recover_on_failure EXIT
 
 log "デプロイを開始します (ブランチ: ${BRANCH})"
 
@@ -99,8 +115,8 @@ cd "${PROJECT_DIR}"
 
 # Dockerコンテナを再ビルド・再起動
 log "Dockerコンテナを再ビルド・再起動中..."
-docker compose -f "${COMPOSE_FILE}" down
-docker compose -f "${COMPOSE_FILE}" up -d --build
+docker compose -f "${COMPOSE_FILE}" build
+docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
 
 # データベースマイグレーションを実行
 log "データベースマイグレーションを実行中..."

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 24件  
+**件数**: 25件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -2236,5 +2236,158 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 - ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認
 - ✅ Webコンテナの再ビルドが必要であることを確認
 - ✅ ブラウザのキャッシュクリアが必要な場合があることを確認
+
+---
+
+### [KB-193] デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果
+
+**発生日**: 2026-01-24  
+**Status**: ✅ Root Cause Identified
+
+**事象**:
+- SSH経由でのデプロイスクリプト実行がタイムアウト
+- デプロイ完了後にコンテナが未起動の状態
+
+**症状**:
+1. **タイムアウト**: Dockerビルド中にコマンド実行がタイムアウトし、デプロイスクリプトが途中で中断される
+2. **コンテナ未起動**: デプロイスクリプトがタイムアウトした後、コンテナが起動していない
+
+**徹底調査結果（2026-01-24実施）**:
+
+#### 時系列分析（Docker Events + システムログ）
+
+| 時刻 | イベント | 詳細 |
+|------|---------|------|
+| 19:44:47 | deploy.sh開始 | `[2026-01-24 19:44:47] デプロイを開始します` |
+| 19:45:30 | docker compose down実行 | コンテナkill→stop→destroy完了 |
+| 19:45:42 | docker compose up開始 | イメージビルド開始 |
+| 19:49:56 | **context canceled** | `rpc error: code = Canceled desc = context canceled` |
+| 19:55:00 | **context canceled（再試行）** | `failed to extract layer: context canceled` |
+| 19:56:07 | 手動実行で成功 | `docker compose up -d --build`実行後、コンテナcreate→start成功 |
+
+#### 根本原因の特定（事実ベース）
+
+**確認された事実**:
+1. **`docker compose down`は成功**（19:45:30）
+2. **`docker compose up -d --build`は開始されたが、ビルド中にcontext canceledが発生**（19:49:56）
+3. **SSH接続の切断記録はない**（SSHログに「Connection closed」「Disconnected」の記録なし）
+4. **deploy.shのプロセスは既に存在しない**（調査時点で終了済み）
+5. **手動実行では成功**（19:56:07）
+
+**推測される原因（証拠に基づく）**:
+1. **クライアント側のタイムアウト**: Cursorの`run_terminal_cmd`ツールがタイムアウトした可能性
+   - **証拠**: トランスクリプトに「Command timed out」の記録はないが、Docker buildが中断されている
+   - **不確実性**: SSH接続の切断記録がないため、SSHセッション自体は残っている可能性がある
+
+2. **deploy.shの実行構造の問題**:
+   ```bash
+   # deploy.shの構造
+   docker compose down        # ✅ 成功（19:45:30）
+   docker compose up -d --build # ❌ 中断（19:49:56にキャンセル）
+   ```
+   - `set -e`により、エラー時に即座に停止する設計
+   - **事実**: `down`成功後に`up`がキャンセルされ、コンテナが存在しない状態になった
+   - **不確実性**: なぜ`up`がキャンセルされたかは、SSHセッション終了の記録がないため不明
+
+3. **Docker BuildKitのcontext canceled**:
+   - **事実**: `rpc error: code = Canceled desc = context canceled`が19:49:56に発生
+   - **事実**: `failed to extract layer: context canceled`が19:55:00に発生（再試行もキャンセル）
+   - **推測**: ビルドコンテキスト（ファイル転送）が中断された可能性
+   - **不確実性**: なぜ中断されたかは、SSH切断記録がないため不明
+
+**真因の特定に必要な追加調査**:
+- SSHセッションのstdin/stdoutが閉じられたかどうかの確認
+- deploy.shプロセスがSIGHUPを受け取ったかどうかの確認
+- クライアント側（Cursor）のタイムアウト設定の確認
+
+#### 検証結果
+
+**除外された要因**:
+- ❌ **SSH接続の切断**: SSHログに切断記録なし（19:40-20:10の範囲で切断なし）
+- ❌ **並行デプロイ**: cron/timerによる自動実行なし、他のdeploy.shプロセスなし
+- ❌ **OOM Killer**: メモリ不足によるkillなし（メモリ使用率: dockerd 7.1%, API 4.6%）
+- ❌ **ネットワーク切断**: ネットワークログに異常なし
+- ❌ **Dockerデーモンの問題**: Dockerデーモンは正常稼働
+
+**確認された事実**:
+- ✅ `docker compose down`は正常に完了（19:45:30）
+- ✅ `docker compose up -d --build`は開始されたが、ビルド中にキャンセル（19:49:56, 19:55:00）
+- ✅ 手動実行（19:56:07）では正常に完了
+- ✅ コンテナは`down`で削除され、`up`がキャンセルされたため、コンテナが存在しない状態になった
+
+#### その他の発見事項
+
+1. **deploy.shの設計上の問題**:
+   - `docker compose down`と`docker compose up`が**アトミックでない**
+   - `down`成功後に`up`が失敗すると、**サービスダウン状態が残る**
+   - ロールバック機能がない（`down`実行後、`up`失敗時の復旧手段がない）
+
+2. **Docker Composeの依存関係**:
+   - `depends_on`は起動開始のみ待機（起動完了を待たない）
+   - `condition: service_healthy`がないため、DB起動前にAPIが起動を試みる可能性
+
+3. **ヘルスチェックの実装**:
+   - 503（degraded）を失敗とみなす設計
+   - メモリ使用率96%で503を返すが、API自体は動作している
+
+**推奨対策（優先度順）**:
+
+1. **即座の対策（実行環境の改善）**:
+   - **Pi5上で直接実行**: SSH経由ではなく、Pi5のシェルで直接`deploy.sh`を実行
+   - **screen/tmux使用**: SSH経由で実行する場合、`screen`や`tmux`でデタッチ可能なセッションで実行
+   - **nohup使用**: `nohup ./scripts/server/deploy.sh main > /tmp/deploy.log 2>&1 &`
+
+2. **短期対策（deploy.shの改善）**:
+   - **アトミック性の確保**: `down`と`up`を1つのトランザクションとして扱う（`down`失敗時は`up`を実行しない）
+   - **ロールバック機能**: `up`失敗時に、前のイメージで`up`を再試行
+   - **タイムアウト設定**: 長時間コマンド（`docker compose up`）にタイムアウトを設定し、タイムアウト時はエラーメッセージを出力
+
+3. **中期対策（Docker Composeの改善）**:
+   - **healthcheck追加**: DBコンテナにhealthcheckを追加
+   - **depends_on改善**: `condition: service_healthy`を追加
+   - **待機ロジック改善**: 固定値の`sleep`を、実際の起動完了を待つロジックに変更
+
+4. **長期対策（デプロイプロセスの改善）**:
+   - **Blue-Greenデプロイ**: 新しいコンテナを起動してから、古いコンテナを停止
+   - **デプロイロック**: 並行実行を防止するロック機構（既に`scripts/update-all-clients.sh`には実装済み）
+   - **デプロイログ**: デプロイ実行ログをファイルに保存（`/tmp/deploy.log`など）
+
+#### 標準手順とdeploy.shの不備
+
+**標準手順（deployment.md）の不備**:
+1. **SSH経由実行時のリスク未記載**: SSH経由でワンライナー実行する場合のタイムアウトリスクを明記していなかった
+2. **実行環境への依存未記載**: クライアント側（Cursor等）のタイムアウト設定への依存を明記していなかった
+3. **長時間処理の注意喚起なし**: Dockerビルドが数分かかることを考慮した注意喚起がなかった
+
+**deploy.shの設計上の不備**:
+1. **アトミック性の欠如**: `docker compose down`と`up`が分離されており、`down`成功後に`up`が失敗するとサービスダウン状態が残る
+2. **タイムアウト設定なし**: 長時間コマンド（`docker compose up --build`）にタイムアウト設定がない
+3. **中断時の復旧手段なし**: SSHセッション終了やプロセス中断時の復旧機能がない
+4. **ロールバック機能なし**: `up`失敗時に前の状態に戻す機能がない
+
+**実装優先度**:
+1. **最優先**: deploy.shにアトミック性とロールバック機能を追加（`down`失敗時は`up`を実行しない、`up`失敗時は前のイメージで再起動）
+2. **高**: 標準手順（deployment.md）にSSH経由実行時の注意事項と代替手段を明記
+3. **中**: Docker Composeのhealthcheckと依存関係改善
+4. **低**: Blue-Greenデプロイの検討
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`: デプロイスクリプト（**改善必須**）
+- `infrastructure/docker/docker-compose.server.yml`: Docker Compose設定（改善対象）
+- [deployment.md](../../guides/deployment.md): デプロイ標準手順（**更新必須**）
+- [deploy-stability-execplan.md](../../plans/deploy-stability-execplan.md): デプロイ安定化機能の実装計画
+
+**参考**: 同様の問題は`scripts/update-all-clients.sh`では既に解決済み（ロック機構、リトライ機能、タイムアウト設定）。`deploy.sh`にも同様の改善が必要。
+
+**結論**: 
+- **確実な事実**: `docker compose down`成功後に`docker compose up`がキャンセルされ、コンテナが存在しない状態になった
+- **確実な不備**: deploy.shは`down`と`up`がアトミックでなく、中断時の復旧機能がない
+- **確実な不備**: 標準手順はSSH経由実行時のリスクを明記していない
+- **不確実な点**: なぜ`up`がキャンセルされたかは、SSH切断記録がないため完全には特定できていない（クライアント側のタイムアウトの可能性が高いが、証拠が不十分）
+
+**必要な改善**:
+1. **deploy.shの改善**: `down`と`up`のアトミック性確保、中断時の復旧機能追加
+2. **標準手順の改善**: SSH経由実行時のリスクと代替手段の明記
+3. **追加調査**: SSHセッション終了の詳細な調査（stdin/stdoutの状態、SIGHUPの有無）
 
 ---
