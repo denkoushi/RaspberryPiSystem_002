@@ -45,7 +45,6 @@ export function ProductionSchedulePage() {
   const scheduleQuery = useKioskProductionSchedule(queryParams);
   const completeMutation = useCompleteKioskProductionScheduleRow();
 
-  const rows = scheduleQuery.data?.rows ?? [];
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
       { key: 'FHINCD', label: '品番' },
@@ -73,7 +72,8 @@ export function ProductionSchedulePage() {
   }, []);
 
   const normalizedRows = useMemo<NormalizedScheduleRow[]>(() => {
-    return rows.map((r) => {
+    const sourceRows = scheduleQuery.data?.rows ?? [];
+    return sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const seibanMasked = '********';
       const seibanLastDigits = String(d.FSEIBAN ?? '').slice(-3);
@@ -93,7 +93,7 @@ export function ProductionSchedulePage() {
         values
       };
     });
-  }, [rows]);
+  }, [scheduleQuery.data?.rows]);
 
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
@@ -203,7 +203,7 @@ export function ProductionSchedulePage() {
         <p className="text-sm font-semibold text-white/80">読み込み中...</p>
       ) : scheduleQuery.isError ? (
         <p className="text-sm font-semibold text-rose-300">取得に失敗しました。</p>
-      ) : rows.length === 0 ? (
+      ) : normalizedRows.length === 0 ? (
         <p className="text-sm font-semibold text-white/80">仕掛中のデータはありません。</p>
       ) : (
         <div className="flex-1 overflow-auto">
