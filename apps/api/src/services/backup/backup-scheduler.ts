@@ -289,18 +289,28 @@ export class BackupScheduler {
     targetKind?: string, // ターゲットの種類
     targetSource?: string // ターゲットのソース
   ): Promise<void> {
-    if (!retention || !retention.days) {
+    if (!retention || (!retention.days && !retention.maxBackups)) {
       return;
     }
 
     // 対象ごとのバックアップのみを取得（prefixが指定されている場合）
     const backups = await backupService.listBackups({ prefix });
     // ターゲットのソース名に一致するバックアップのみ対象とする
-    const targetBackups = sourceForPrefix
-      ? backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`))
-      : backups;
-    const now = new Date();
-    const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
+    const matchesSource = (path: string | null | undefined): boolean => {
+      if (!sourceForPrefix) return true;
+      if (!path) return false;
+      if (targetKind === 'database') {
+        return path.endsWith(`/${sourceForPrefix}.sql.gz`) || path.endsWith(`/${sourceForPrefix}.sql`);
+      }
+      if (targetKind === 'csv') {
+        return path.endsWith(`/${sourceForPrefix}.csv`);
+      }
+      return path.endsWith(`/${sourceForPrefix}`);
+    };
+    const targetBackups = backups.filter((b) => matchesSource(b.path));
+    const retentionDate = retention.days
+      ? new Date(Date.now() - retention.days * 24 * 60 * 60 * 1000)
+      : null;
 
     const historyService = new BackupHistoryService();
 
@@ -333,28 +343,30 @@ export class BackupScheduler {
     }
 
     // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
-    const sortedBackups = targetBackups
-      .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
-      .sort((a, b) => {
-        if (!a.modifiedAt || !b.modifiedAt) return 0;
-        return a.modifiedAt.getTime() - b.modifiedAt.getTime();
-      });
-    for (const backup of sortedBackups) {
-      if (!backup.path) continue;
-      try {
-        await backupService.deleteBackup(backup.path);
-        // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+    if (retentionDate) {
+      const sortedBackups = targetBackups
+        .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
+        .sort((a, b) => {
+          if (!a.modifiedAt || !b.modifiedAt) return 0;
+          return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+        });
+      for (const backup of sortedBackups) {
+        if (!backup.path) continue;
         try {
-          const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
-          if (updatedCount > 0) {
-            logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+          await backupService.deleteBackup(backup.path);
+          // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+          try {
+            const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+            if (updatedCount > 0) {
+              logger?.info({ path: backup.path, updatedCount }, '[BackupScheduler] Backup history fileStatus updated to DELETED');
+            }
+          } catch (error) {
+            logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
           }
+          logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
         } catch (error) {
-          logger?.error({ err: error, path: backup.path }, '[BackupScheduler] Failed to update backup history fileStatus');
+          logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
         }
-        logger?.info({ path: backup.path, prefix }, '[BackupScheduler] Old backup deleted');
-      } catch (error) {
-        logger?.error({ err: error, path: backup.path, prefix }, '[BackupScheduler] Failed to delete old backup');
       }
     }
 
