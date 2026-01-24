@@ -12,6 +12,7 @@ import { ApiError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { DropboxOAuthService } from '../services/backup/dropbox-oauth.service.js';
 import { BackupHistoryService } from '../services/backup/backup-history.service.js';
+import { planDropboxSelectivePurge } from '../services/backup/dropbox-backup-maintenance.js';
 import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
 
@@ -1476,5 +1477,120 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       logger?.error({ err: error }, '[BackupRoute] Failed to purge Dropbox backups');
       throw new ApiError(500, `Failed to purge Dropbox backups: ${errorMessage}`);
     }
+  });
+
+  // Dropbox /backups 配下の選択削除（最新DBのみ保持）
+  app.post('/backup/dropbox/purge-selective', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          confirmText: { type: 'string' },
+          dryRun: { type: 'boolean' },
+          keepLatestDatabaseCount: { type: 'number' }
+        },
+        required: ['confirmText']
+      }
+    }
+  }, async (request, reply) => {
+    const body = request.body as { confirmText: string; dryRun?: boolean; keepLatestDatabaseCount?: number };
+
+    const REQUIRED_CONFIRM_TEXT = 'DELETE_ALL_UNDER_/backups_EXCEPT_LATEST_DB';
+    if (body.confirmText !== REQUIRED_CONFIRM_TEXT) {
+      throw new ApiError(400, `Invalid confirmation text. Must be exactly: ${REQUIRED_CONFIRM_TEXT}`);
+    }
+
+    const keepLatestDatabaseCount = body.keepLatestDatabaseCount ?? 1;
+    if (!Number.isFinite(keepLatestDatabaseCount) || keepLatestDatabaseCount < 1) {
+      throw new ApiError(400, 'keepLatestDatabaseCount must be >= 1');
+    }
+
+    const config = await BackupConfigLoader.load();
+
+    if (config.storage.provider !== 'dropbox') {
+      throw new ApiError(400, 'Dropbox storage provider is not configured');
+    }
+
+    const basePath = (config.storage.options?.basePath as string | undefined) || '/backups';
+    if (basePath !== '/backups') {
+      throw new ApiError(400, `Unexpected basePath: ${basePath}. Only /backups is allowed for purge operation.`);
+    }
+
+    const protocol = Array.isArray(request.headers['x-forwarded-proto'])
+      ? request.headers['x-forwarded-proto'][0]
+      : (request.headers['x-forwarded-proto'] || request.protocol || 'http');
+    const host = Array.isArray(request.headers.host)
+      ? request.headers.host[0]
+      : (request.headers.host || 'localhost:8080');
+
+    const onTokenUpdate = async (newToken: string) => {
+      const latestConfig = await BackupConfigLoader.load();
+      (latestConfig.storage.options ??= {});
+      const opts = latestConfig.storage.options as LegacyStorageOptions;
+      opts.dropbox = { ...(opts.dropbox ?? {}), accessToken: newToken };
+      opts.accessToken = newToken;
+      await BackupConfigLoader.save(latestConfig);
+    };
+
+    const dropboxProvider = await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
+    const backupService = new BackupService(dropboxProvider);
+
+    logger?.info({ basePath }, '[BackupRoute] Listing Dropbox backups before selective purge');
+    const backups = await backupService.listBackups({ prefix: '' });
+
+    const plan = planDropboxSelectivePurge(backups, keepLatestDatabaseCount);
+    if (plan.reason === 'no_database_backups') {
+      throw new ApiError(400, 'No database backups found under /backups/database. Aborting purge for safety.');
+    }
+
+    const deletePaths = plan.remove.map((backup) => backup.path).filter((path): path is string => !!path);
+    const keepPaths = plan.keep.map((backup) => backup.path).filter((path): path is string => !!path);
+    const skippedMissingPathCount = plan.skippedMissingPath.length;
+    const deleteSizeBytes = plan.remove.reduce((total, backup) => total + (backup.sizeBytes ?? 0), 0);
+
+    const dryRun = body.dryRun !== false;
+    if (dryRun) {
+      return reply.status(200).send({
+        success: true,
+        dryRun: true,
+        keepLatestDatabaseCount,
+        keepCount: keepPaths.length,
+        deleteCount: deletePaths.length,
+        skippedMissingPathCount,
+        deleteSizeBytes,
+        keepSample: keepPaths.slice(0, 5),
+        deleteSample: deletePaths.slice(0, 10)
+      });
+    }
+
+    let deletedCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+    for (const path of deletePaths) {
+      try {
+        await backupService.deleteBackup(path);
+        deletedCount++;
+        logger?.info({ path }, '[BackupRoute] Deleted backup (selective purge)');
+      } catch (error) {
+        failedCount++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`${path}: ${errorMessage}`);
+        logger?.error({ err: error, path }, '[BackupRoute] Failed to delete backup (selective purge)');
+      }
+    }
+
+    return reply.status(200).send({
+      success: failedCount === 0,
+      dryRun: false,
+      keepLatestDatabaseCount,
+      keepCount: keepPaths.length,
+      deleteCount: deletePaths.length,
+      deletedCount,
+      failedCount,
+      skippedMissingPathCount,
+      deleteSizeBytes,
+      errors: errors.length > 0 ? errors : undefined
+    });
   });
 }
