@@ -13,6 +13,15 @@ export type DropboxSelectivePurgePlan = {
 
 const DATABASE_PREFIX = 'database/';
 
+const normalizePathForKindCheck = (inputPath: string): string => {
+  // Dropboxのlistは `/backups/...` のような完全パスを返し得る。
+  // 既存仕様（docs/api/backup.md）では `/backups/...` と `database/...` の両方が登場するため、
+  // kind判定のために「先頭スラッシュ」と「backups/」を剥がして相対パスに寄せる。
+  const collapsed = inputPath.replace(/\/+/g, '/');
+  const noLeadingSlash = collapsed.replace(/^\/+/, '');
+  return noLeadingSlash.startsWith('backups/') ? noLeadingSlash.slice('backups/'.length) : noLeadingSlash;
+};
+
 const toDate = (value: BackupListEntry['modifiedAt']): Date => {
   if (value instanceof Date) return value;
   if (typeof value === 'string') {
@@ -35,7 +44,7 @@ export const planDropboxSelectivePurge = (
     (entry): entry is BackupListEntry & { path: string } => typeof entry.path === 'string' && entry.path.length > 0
   );
 
-  const databaseEntries = withPath.filter((entry) => entry.path.startsWith(DATABASE_PREFIX));
+  const databaseEntries = withPath.filter((entry) => normalizePathForKindCheck(entry.path).startsWith(DATABASE_PREFIX));
   if (databaseEntries.length === 0) {
     return {
       keep: [],

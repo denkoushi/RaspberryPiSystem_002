@@ -21,6 +21,23 @@ describe('planDropboxSelectivePurge', () => {
     expect(plan.reason).toBeUndefined();
   });
 
+  it('treats /backups/database/... as database backups (Dropbox full path)', () => {
+    const entries = [
+      { path: '/backups/database/2026-01-01/borrow_return.sql.gz', modifiedAt: new Date('2026-01-01T00:00:00Z') },
+      { path: '/backups/database/2026-01-02/borrow_return.sql.gz', modifiedAt: new Date('2026-01-02T00:00:00Z') },
+      { path: '/backups/csv/2026-01-02/employees.csv', modifiedAt: new Date('2026-01-02T01:00:00Z') }
+    ];
+
+    const plan = planDropboxSelectivePurge(entries, 1);
+
+    expect(plan.reason).toBeUndefined();
+    expect(plan.keep.map((entry) => entry.path)).toEqual(['/backups/database/2026-01-02/borrow_return.sql.gz']);
+    expect(plan.remove.map((entry) => entry.path)).toEqual([
+      '/backups/database/2026-01-01/borrow_return.sql.gz',
+      '/backups/csv/2026-01-02/employees.csv'
+    ]);
+  });
+
   it('aborts when no database backups are found', () => {
     const entries = [
       { path: 'csv/2026-01-02/employees.csv', modifiedAt: new Date('2026-01-02T01:00:00Z') }

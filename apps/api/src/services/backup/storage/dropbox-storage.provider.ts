@@ -468,12 +468,28 @@ export class DropboxStorageProvider implements StorageProvider {
    * パスを正規化する（basePathをプレフィックスとして追加）
    */
   private normalizePath(path: string): string {
-    // 先頭のスラッシュを削除
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    // basePathと結合
-    const fullPath = `${this.basePath}/${cleanPath}`;
-    // 連続するスラッシュを1つに
-    return fullPath.replace(/\/+/g, '/');
+    const normalizedBasePath = this.basePath.replace(/\/+$/g, '') || '/backups';
+    const baseNoLeadingSlash = normalizedBasePath.replace(/^\/+/g, '');
+
+    const trimmed = String(path ?? '').trim();
+    if (!trimmed) return normalizedBasePath;
+
+    // 正規化の前にスラッシュを潰す（比較を安定させる）
+    const collapsed = trimmed.replace(/\/+/g, '/');
+
+    // すでに basePath を含む完全パス（/backups/...）はそのまま使う
+    if (collapsed === normalizedBasePath || collapsed.startsWith(`${normalizedBasePath}/`)) {
+      return collapsed;
+    }
+
+    // basePath の先頭スラッシュ無し表現（backups/...）が来た場合は、先頭に "/" を付けて返す
+    const noLeadingSlash = collapsed.startsWith('/') ? collapsed.slice(1) : collapsed;
+    if (noLeadingSlash === baseNoLeadingSlash || noLeadingSlash.startsWith(`${baseNoLeadingSlash}/`)) {
+      return `/${noLeadingSlash}`.replace(/\/+/g, '/');
+    }
+
+    // それ以外は相対パスとして basePath 配下に配置
+    return `${normalizedBasePath}/${noLeadingSlash}`.replace(/\/+/g, '/');
   }
 
   /**
