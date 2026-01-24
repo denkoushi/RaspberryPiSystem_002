@@ -1538,12 +1538,14 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     logger?.info({ basePath }, '[BackupRoute] Listing Dropbox backups before selective purge');
     const backups = await backupService.listBackups({ prefix: '' });
+    logger?.info({ backupCount: backups.length, samplePaths: backups.slice(0, 5).map(b => b.path) }, '[BackupRoute] Retrieved backups from Dropbox');
 
     // Dropboxのパスは /backups/database/... の形式なので、basePathを除去してから planDropboxSelectivePurge に渡す
     const normalizedBackups = backups.map((backup) => ({
       ...backup,
       path: backup.path?.startsWith(basePath) ? backup.path.slice(basePath.length).replace(/^\//, '') : backup.path
     }));
+    logger?.info({ normalizedCount: normalizedBackups.length, sampleNormalizedPaths: normalizedBackups.slice(0, 5).map(b => b.path) }, '[BackupRoute] Normalized backup paths');
 
     const plan = planDropboxSelectivePurge(normalizedBackups, keepLatestDatabaseCount);
     if (plan.reason === 'no_database_backups') {
