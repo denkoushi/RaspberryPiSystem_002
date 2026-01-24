@@ -60,7 +60,7 @@ export function ProductionSchedulePage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-2">
       {isBlocking ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="rounded-lg bg-slate-900 px-6 py-4 text-white shadow-lg">
@@ -69,7 +69,7 @@ export function ProductionSchedulePage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={inputProductNo}
@@ -117,7 +117,7 @@ export function ProductionSchedulePage() {
         <p className="text-sm font-semibold text-white/80">仕掛中のデータはありません。</p>
       ) : (
         <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
             {rows.map((r) => {
               const d = (r.rowData ?? {}) as ScheduleRowData;
               const hinCd = String(d.FHINCD ?? '');
@@ -138,7 +138,7 @@ export function ProductionSchedulePage() {
                   }`}
                 >
                   <button
-                    className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full text-white shadow hover:opacity-80 disabled:opacity-60 ${
+                    className={`absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full text-white shadow hover:opacity-80 disabled:opacity-60 ${
                       isCompleted ? 'bg-gray-500 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
                     }`}
                     aria-label={isCompleted ? '未完了に戻す' : '完了にする'}
@@ -148,24 +148,24 @@ export function ProductionSchedulePage() {
                     ✓
                   </button>
 
-                  <div className="px-3 pt-3">
+                  <div className="px-2 pt-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="text-sm font-bold text-slate-900">{hinCd}</div>
-                        <div className="mt-1 flex items-center justify-between text-xs text-slate-700">
+                        <div className="mt-0.5 flex items-center justify-between text-xs text-slate-700">
                           <div className="font-mono font-semibold">{productNo}</div>
                           <div className="font-mono font-semibold">{shigenCd}</div>
                         </div>
                       </div>
-                      <div className="text-xs font-mono font-semibold text-slate-700 pr-11">
+                      <div className="text-xs font-mono font-semibold text-slate-700 pr-9">
                         {seibanMasked} {seibanLastDigits}
                       </div>
                     </div>
 
-                    <div className="mt-2 min-h-[2.25rem] text-sm font-semibold text-slate-900">{hinMei}</div>
+                    <div className="mt-1 min-h-[1.75rem] text-sm font-semibold text-slate-900">{hinMei}</div>
                   </div>
 
-                  <div className={`mt-2 grid grid-cols-2 gap-2 px-3 py-2 text-white ${
+                  <div className={`mt-1 grid grid-cols-2 gap-2 px-2 py-1.5 text-white ${
                     isCompleted ? 'bg-gray-500' : 'bg-red-600'
                   }`}>
                     <div className="text-xs">
