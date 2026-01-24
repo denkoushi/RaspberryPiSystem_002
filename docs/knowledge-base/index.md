@@ -27,7 +27,7 @@ update-frequency: high
 | フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 70件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化） |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
-| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 25件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正 |
+| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 25件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
@@ -357,6 +357,9 @@ update-frequency: high
 - 2026-01-09: KB-156を追加（複数スケジュールの順番切り替え機能実装）
 - 2026-01-23: KB-193を追加（CSVダッシュボードの列幅計算改善：フォントサイズ反映・全行考慮・列名考慮）
 - 2026-01-23: KB-194を追加（スケジュール自動実行時にバックアップ履歴が記録されない問題）
+- 2026-01-23: KB-195を追加（Dropbox 409 Conflictエラー：labelサニタイズ未実施によるパス不正）
+- 2026-01-24: KB-196を追加（旧キー自動削除機能の実装：backup.json保存時の自動クリーンアップ）
+- 2026-01-24: KB-197、KB-198を追加（Dropbox選択削除のパス正規化不整合、retention.maxBackupsの仕様/実装差）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）

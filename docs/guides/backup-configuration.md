@@ -313,7 +313,12 @@ PostgreSQLデータベースをバックアップする場合：
 
 **設定項目**:
 - `days`: バックアップを保持する日数（デフォルト: 30日）
-- `maxBackups`: 最大バックアップ数（オプション、指定した場合は日数に関係なく最大数まで保持）
+- `maxBackups`: 最大バックアップ数（オプション）
+
+**重要（実装上の注意）**:
+- 現行実装では、保持期間のクリーンアップ処理は `retention.days` が設定されている場合にのみ実行されます。
+- そのため、**`maxBackups`のみで運用したい場合でも、暫定的に`days`を併記**してください（例: `days: 3650, maxBackups: 10`）。
+  - ※ `maxBackups`単独でも動くべきですが、現時点では仕様と実装に差があります（改善計画で扱います）。
 
 ## バックアップパス構造の仕様
 
@@ -321,18 +326,20 @@ PostgreSQLデータベースをバックアップする場合：
 
 ### APIレスポンスの`path`形式
 
-APIレスポンスの`path`は**相対パス**で返されます：
+APIレスポンスの`path`は、基本的に**`basePath`を含む完全パス**（`/backups/...`）で返されます：
 
 ```
-{type}/{timestamp}/{source}.{extension}
+/backups/{type}/{timestamp}/{source}.{extension}
 ```
 
 **例**:
-- `csv/2025-12-15T00-42-04-953Z/employees.csv`
-- `csv/2025-12-15T00-42-04-953Z/items.csv`
-- `database/2025-12-15T00-40-00-000Z/borrow_return.sql`
+- `/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
+- `/backups/csv/2025-12-15T00-42-04-953Z/items.csv`
+- `/backups/database/2025-12-15T00-40-00-000Z/borrow_return.sql.gz`
 
-**注意**: `backups/`プレフィックスは含まれません。これは`LocalStorageProvider`の`getBaseDir()`と結合するためです。
+**注意**:
+- 内部実装や一部の入力（例: Dropboxからのリストア）では、`database/...` のような相対パスが渡される場合があります。
+- 呼び出し側は、**完全パス（`/backups/...`）と相対パス（`database/...`）の両方が混在し得る**前提で扱ってください（API仕様は `docs/api/backup.md` を正とする）。
 
 ### エラーハンドリング（2025-12-29追加）
 

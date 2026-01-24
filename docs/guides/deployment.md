@@ -111,6 +111,9 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   git fetch origin
   git diff HEAD origin/main
   ```
+- [ ] **コミット/プッシュ/CIの確認（重要）**:
+  - `scripts/server/deploy.sh` は **`git pull origin <branch>` でリモートを取り込む**ため、ローカルで未pushの変更はデプロイされません。
+  - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) 参照）。
 - [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
   ```bash
   # Pi5上でbackup.jsonをバックアップ

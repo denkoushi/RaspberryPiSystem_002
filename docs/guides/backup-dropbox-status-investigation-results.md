@@ -123,6 +123,18 @@
    - バックアップ履歴を定期的に確認
    - 失敗率が高い場合はアラートを設定
 
+4. **Dropbox容量対策（2026-01-24追加）**:
+   - Dropbox容量が逼迫している場合、管理者向けの破壊的メンテナンスとして以下を使用可能:
+     - **全削除**: `POST /api/backup/dropbox/purge`
+     - **選択削除（最新DBだけ残す）**: `POST /api/backup/dropbox/purge-selective`（`dryRun`対応、強い確認テキスト必須）
+   - 今回は容量が既に約25%消費されていたため、**`purge-selective`で最新DBを残し既存バックアップを削除**（ワンショット対応）
+   - 以後の増加抑制は、`backup.json`のスケジュール頻度/保持（`retention`）最適化で実施する（別タスク）
+
+5. **注意: パス形式の混在（2026-01-24追加）**:
+   - Dropboxのlist結果や履歴の`path`は、`/backups/...` のような完全パスを返し得る。
+   - 選択削除ロジックは、`/backups/database/...` と `database/...` の両方をDBバックアップとして判定できるように対処済み。
+   - API仕様は `docs/api/backup.md` を参照。
+
 ## 関連ドキュメント
 
 - [バックアップ設定ガイド](./backup-configuration.md)

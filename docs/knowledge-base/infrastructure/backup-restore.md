@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 26件  
+**件数**: 27件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -1572,5 +1572,318 @@ for (const requestedProvider of providers) {
 - スケジュール実行のテストを追加して、履歴記録が正しく動作することを確認する
 - 手動実行とスケジュール実行で同じロジックを使用することを明示的にドキュメント化する
 - デプロイ後の検証チェックリストに「スケジュール実行の履歴記録確認」を追加する
+
+---
+
+## KB-195: Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）
+
+**発生日**: 2026-01-23
+
+**事象**: 
+- 手動バックアップ実行時に、Dropbox APIから`409 Conflict`エラーが発生
+- エラーメッセージ: `path_lookup`または`path/conflict`エラー
+- 特定のlabel（例: `"manual-test /app/config/host-etc  "`）を使用した場合に発生
+
+**症状**:
+- バックアップAPI（`POST /api/backup/internal`）が`500 Internal Server Error`を返す
+- Dropbox APIが`409 Conflict`を返す
+- ログに`[DropboxStorageProvider] Upload failed: 409 Conflict`が記録される
+
+**根本原因**:
+- `BackupService.buildPath()`メソッドで、`options.label`がパスに直接埋め込まれていた
+- labelに`/`や`\`などのパス区切り文字が含まれると、Dropboxのパス構造が不正になる
+- labelに末尾空白や制御文字が含まれると、パスが不正になる
+- Dropbox APIは不正なパス構造を`409 Conflict`として拒否する
+
+**調査過程**:
+1. **仮説1**: Dropbox APIの`overwrite`モードが正しく設定されていない → REJECTED（`dropbox-storage.provider.ts`で`mode: { '.tag': 'overwrite' }`が設定されていることを確認）
+2. **仮説2**: 既存ファイルとの衝突 → REJECTED（`overwrite`モードが設定されているため、既存ファイルとの衝突は発生しない）
+3. **仮説3**: パス構造が不正（labelに`/`が含まれる） → CONFIRMED（`buildPath()`でlabelが直接パスに埋め込まれていることを確認）
+4. **仮説4**: labelのサニタイズ処理がない → CONFIRMED（`sanitizePathSegment()`関数が存在しないことを確認）
+
+**解決方法**:
+`BackupService`に`sanitizePathSegment()`メソッドを追加し、`buildPath()`でlabelをサニタイズしてから使用:
+
+```typescript
+private sanitizePathSegment(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  // 制御文字を除去（念のため）
+  // eslint-disable-next-line no-control-regex
+  let s = trimmed.replace(/[\x00-\x1F\x7F]/g, '');
+  // パス区切りは破壊的なので '_' に置換
+  s = s.replace(/[/\\]/g, '_');
+  // 空白は '_' に寄せる（視認性と安全性のバランス）
+  s = s.replace(/\s+/g, '_');
+  // '_' の連続は1つに正規化
+  s = s.replace(/_+/g, '_');
+  // 過度に長いラベルは切り詰め（パス肥大化・UI崩れを防ぐ）
+  if (s.length > 64) s = s.slice(0, 64);
+  return s;
+}
+
+private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
+  const now = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeLabel = options?.label ? this.sanitizePathSegment(options.label) : '';
+  const label = safeLabel ? `-${safeLabel}` : '';
+  // ...
+  return `${info.type}/${now}${label}/${info.source}${extension}`;
+}
+```
+
+**修正内容**:
+- `sanitizePathSegment()`メソッドを追加:
+  - 制御文字（`\x00-\x1F`, `\x7F`）を除去
+  - パス区切り文字（`/`, `\`）を`_`に置換
+  - 空白文字を`_`に正規化
+  - 連続する`_`を1つに正規化
+  - 64文字を超える場合は切り詰め
+- `buildPath()`メソッドでlabelをサニタイズしてから使用
+- テストケースを追加（`should sanitize label so backup path is safe`）
+
+**学んだこと**:
+- **外部APIのパス構造**: Dropbox APIはパス構造の検証を行い、不正なパスを`409 Conflict`として拒否する
+- **ユーザー入力のサニタイズ**: パスに埋め込むユーザー入力は必ずサニタイズする必要がある
+- **エラーメッセージの解釈**: `409 Conflict`は「既存ファイルとの衝突」だけでなく、「パス構造の不正」も示す可能性がある
+- **テストの重要性**: 境界値テスト（特殊文字を含むlabel）を追加することで、この問題を早期に発見できた
+
+**解決状況**: ✅ **解決完了**（2026-01-23）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup.service.ts`（`sanitizePathSegment()`メソッド追加、`buildPath()`修正）
+- `apps/api/src/services/backup/__tests__/backup.service.test.ts`（テストケース追加）
+
+**検証結果**:
+- ✅ CIテスト成功（lint、ビルド、テストすべて通過）
+- ✅ デプロイ完了（Pi5にデプロイ済み）
+- ✅ 手動バックアップ実行で`409 Conflict`エラーが発生しなくなったことを確認
+
+**関連ナレッジ**:
+- KB-107: Dropboxストレージプロバイダーのエラーハンドリング改善（レート制限エラー時のリトライ）
+- KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する（トークン分離で恒久対策）
+
+**関連ドキュメント**:
+- [Dropboxバックアップ機能の状況調査レポート](../guides/backup-dropbox-status-investigation.md)
+- [Dropboxバックアップ機能の状況調査結果](../guides/backup-dropbox-status-investigation-results.md)
+
+**再発防止策**:
+- ユーザー入力（label）をパスに埋め込む場合は、必ずサニタイズ処理を実施する
+- 境界値テスト（特殊文字を含む入力）を追加して、サニタイズ処理の動作を確認する
+- 外部APIのエラーメッセージ（`409 Conflict`）を適切に解釈し、パス構造の不正も考慮する
+
+---
+
+## KB-196: 旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）
+
+**発生日**: 2026-01-24
+
+**事象**: 
+- 管理コンソールのバックアップタブで「設定の健全性: 警告 (1件の問題を検出)」が表示された
+- 警告内容: 「Dropbox accessToken: 旧キーと新構造（options.dropbox.accessToken）の両方に異なる値が設定されています」
+- KB-168で手動削除の方法は記録されていたが、保存時に自動的に削除する機能がなかった
+
+**根本原因**:
+- `backup.json`の`storage.options`直下に旧キー（`accessToken`, `refreshToken`, `appKey`, `appSecret` for Dropbox; `clientId`, `clientSecret`, `redirectUri`, `subjectPattern`, `fromEmail`, `gmailAccessToken`, `gmailRefreshToken` for Gmail）が残っていた
+- 新構造（`options.dropbox.*`, `options.gmail.*`）と旧構造が混在していた
+- `BackupConfigLoader.save()`メソッドに旧キーを自動削除する処理が実装されていなかった
+
+**調査過程**:
+1. **仮説1**: 手動で削除すれば解決する → CONFIRMED（KB-168で手動削除方法を記録済み）
+2. **仮説2**: 保存時に自動削除する機能を追加すべき → CONFIRMED（保存時に自動クリーンアップすることで、再発を防止できる）
+3. **仮説3**: 新構造の値が空の場合は旧キーを保持すべき → CONFIRMED（後方互換性のため、新構造の値が存在しない場合は旧キーを保持）
+
+**解決方法**:
+`BackupConfigLoader.save()`メソッドに`pruneLegacyKeysOnSave()`静的メソッドを追加し、保存時に旧キーを自動削除:
+
+```typescript
+private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfig {
+  const opts = validatedConfig.storage.options as NonNullable<BackupConfig['storage']['options']> | undefined;
+  if (!opts) return validatedConfig;
+
+  const hasNonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+
+  // Dropbox: options.dropbox.* が存在し、そのフィールドに値がある場合のみ旧キーを削除
+  if (opts.dropbox) {
+    const dropbox = opts.dropbox as {
+      accessToken?: unknown;
+      refreshToken?: unknown;
+      appKey?: unknown;
+      appSecret?: unknown;
+    };
+
+    if (hasNonEmpty(dropbox.accessToken) && hasNonEmpty(opts.accessToken)) {
+      delete (opts as Record<string, unknown>).accessToken;
+    }
+    if (hasNonEmpty(dropbox.refreshToken) && hasNonEmpty(opts.refreshToken)) {
+      delete (opts as Record<string, unknown>).refreshToken;
+    }
+    if (hasNonEmpty(dropbox.appKey) && hasNonEmpty(opts.appKey)) {
+      delete (opts as Record<string, unknown>).appKey;
+    }
+    if (hasNonEmpty(dropbox.appSecret) && hasNonEmpty(opts.appSecret)) {
+      delete (opts as Record<string, unknown>).appSecret;
+    }
+  }
+
+  // Gmail: options.gmail.* が存在し、そのフィールドに値がある場合のみ旧キーを削除
+  if (opts.gmail) {
+    const gmail = opts.gmail as {
+      accessToken?: unknown;
+      refreshToken?: unknown;
+      clientId?: unknown;
+      clientSecret?: unknown;
+      redirectUri?: unknown;
+      subjectPattern?: unknown;
+      fromEmail?: unknown;
+    };
+
+    // 旧: clientId/clientSecret/redirectUri/subjectPattern/fromEmail
+    if (hasNonEmpty(gmail.clientId) && hasNonEmpty(opts.clientId)) {
+      delete (opts as Record<string, unknown>).clientId;
+    }
+    if (hasNonEmpty(gmail.clientSecret) && hasNonEmpty(opts.clientSecret)) {
+      delete (opts as Record<string, unknown>).clientSecret;
+    }
+    if (hasNonEmpty(gmail.redirectUri) && hasNonEmpty(opts.redirectUri)) {
+      delete (opts as Record<string, unknown>).redirectUri;
+    }
+    if (hasNonEmpty(gmail.subjectPattern) && hasNonEmpty(opts.subjectPattern)) {
+      delete (opts as Record<string, unknown>).subjectPattern;
+    }
+    if (hasNonEmpty(gmail.fromEmail) && hasNonEmpty(opts.fromEmail)) {
+      delete (opts as Record<string, unknown>).fromEmail;
+    }
+
+    // 旧: gmailAccessToken/gmailRefreshToken（分離キー）
+    if (hasNonEmpty(gmail.accessToken) && hasNonEmpty(opts.gmailAccessToken)) {
+      delete (opts as Record<string, unknown>).gmailAccessToken;
+    }
+    if (hasNonEmpty(gmail.refreshToken) && hasNonEmpty(opts.gmailRefreshToken)) {
+      delete (opts as Record<string, unknown>).gmailRefreshToken;
+    }
+  }
+
+  return validatedConfig;
+}
+```
+
+**修正内容**:
+- `BackupConfigLoader.pruneLegacyKeysOnSave()`静的メソッドを追加:
+  - Dropbox: `options.dropbox.*`が存在し、値が非空の場合のみ旧キー（`accessToken`, `refreshToken`, `appKey`, `appSecret`）を削除
+  - Gmail: `options.gmail.*`が存在し、値が非空の場合のみ旧キー（`clientId`, `clientSecret`, `redirectUri`, `subjectPattern`, `fromEmail`, `gmailAccessToken`, `gmailRefreshToken`）を削除
+  - 後方互換性: 新構造の値が空の場合は旧キーを保持（移行中の設定を保護）
+- `BackupConfigLoader.save()`メソッドで`pruneLegacyKeysOnSave()`を呼び出し、保存前に旧キーを削除
+- ユニットテストを追加:
+  - `should prune legacy Dropbox keys when options.dropbox has values (prefer new structure)`: 新構造が存在する場合、旧キーが削除されることを確認
+  - `should not prune legacy Dropbox accessToken when options.dropbox.accessToken is missing`: 新構造が存在しない場合、旧キーが保持されることを確認（後方互換性）
+  - `should prune legacy Gmail keys when options.gmail has values, without touching dropbox legacy accessToken`: Gmailの旧キーが削除され、Dropboxの旧キーが影響を受けないことを確認
+
+**学んだこと**:
+- **自動クリーンアップの重要性**: 手動削除に依存せず、保存時に自動的にクリーンアップすることで、設定の一貫性を保つ
+- **後方互換性の維持**: 新構造の値が空の場合は旧キーを保持することで、移行中の設定を保護
+- **テストの重要性**: ユニットテストを追加することで、自動削除ロジックの動作を確認し、回帰を防止
+- **段階的な移行**: 新構造への移行は段階的に行い、保存時に自動的に旧キーを削除することで、移行を促進
+
+**解決状況**: ✅ **解決完了**（2026-01-24）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-config.loader.ts`（`pruneLegacyKeysOnSave()`メソッド追加、`save()`メソッド修正）
+- `apps/api/src/services/backup/__tests__/backup-config.loader.test.ts`（ユニットテスト追加）
+
+**検証結果**:
+- ✅ ローカルテスト成功（lint、ビルド、テストすべて通過）
+- ✅ CI成功（GitHub Actions CIが成功）
+- ✅ デプロイ完了（Pi5にデプロイ済み）
+- ✅ 実機検証完了:
+  - デプロイ前: ヘルスチェックで警告が表示されていた（`"status":"warning","issues":[...]`）
+  - デプロイ後: `BackupConfigLoader.load()`と`BackupConfigLoader.save()`を実行
+  - 検証: ヘルスチェックで警告が解消された（`"status":"healthy","issues":[]`）
+  - 確認: `backup.json`から旧キー（`accessToken`）が削除され、新構造（`options.dropbox.accessToken`）のみが残っていることを確認
+
+**関連ナレッジ**:
+- KB-148: backup.jsonの衝突・ドリフト検出の自動化（新構造の導入）
+- KB-168: 旧キーと新構造の衝突問題と解決方法（手動削除方法）
+
+**再発防止策**:
+- `BackupConfigLoader.save()`で保存時に自動的に旧キーを削除する機能を実装
+- ユニットテストを追加して、自動削除ロジックの動作を確認
+- 後方互換性を維持し、新構造の値が空の場合は旧キーを保持
+- ヘルスチェック機能（KB-148）により、設定の問題を早期に検出できる
+
+---
+
+## KB-197: Dropbox選択削除（purge-selective）がDBバックアップを検出できない（パス正規化の不整合）
+
+**発生日**: 2026-01-24
+
+**事象**:
+- `POST /api/backup/dropbox/purge-selective` の `dryRun` 実行で、DBバックアップが存在するはずなのに「No database backups found...」で中断した。
+
+**症状**:
+- APIが `400` を返す（安全策により全削除を避けるため中断）
+
+**調査過程**（抜粋）:
+1. **仮説1**: DropboxにDBバックアップが無い → REJECTED（履歴やlist結果から存在）
+2. **仮説2**: list結果の`path`形式が想定と異なる → CONFIRMED（`/backups/database/...` のような完全パスが返る）
+3. **仮説3**: パス正規化が非冪等で `/backups/backups/...` を作る → CONFIRMED（`normalizePath`の扱いが原因）
+
+**根本原因**:
+- DBバックアップ判定が `database/` の相対パス前提になっていた一方、Dropboxのlistは `/backups/database/...` のような完全パスを返し得た。
+- さらに、Dropbox側のパス正規化が「既に`basePath`を含むパス」入力に対して冪等ではなく、二重に`/backups`を付与し得た。
+
+**解決方法**（最小修正）:
+- `DropboxStorageProvider.normalizePath()` を冪等にし、`/backups/...` を再度 `/backups/` 配下に連結しないよう修正。
+- 選択削除計画関数 `planDropboxSelectivePurge()` において、DB判定専用の正規化を導入し、`/backups/database/...` と `database/...` の両方をDBバックアップとして判定可能にした。
+- ユニットテストで `/backups/database/...` をDBバックアップとして扱えることを追加検証。
+
+**解決状況**: ✅ **解決済み**（2026-01-24）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（`normalizePath`の冪等化）
+- `apps/api/src/services/backup/dropbox-backup-maintenance.ts`（DB判定用の正規化追加）
+- `apps/api/src/services/backup/__tests__/dropbox-backup-maintenance.test.ts`（テスト追加）
+- `apps/api/src/routes/backup.ts`（`POST /backup/dropbox/purge-selective`）
+
+**関連ドキュメント**:
+- `docs/api/backup.md`（DropboxメンテナンスAPI）
+- `docs/guides/backup-configuration.md`（パス形式の注意）
+
+**再発防止策**:
+- 外部ストレージの`path`形式（相対/絶対）の混在を前提にし、判定・削除・復元は正規化を境界で統一する
+- 破壊的APIは `dryRun` と強い確認テキストを必須にし、DBバックアップが検出できない場合は中断する（安全策）
+
+---
+
+## KB-198: retention.maxBackupsがdays無しだと自動削除が動かない（仕様と実装の差）
+
+**発生日**: 2026-01-24
+
+**事象**:
+- `backup.json` の `retention.maxBackups` を設定しても、バックアップ数が増え続ける。
+
+**症状**:
+- 期待: `maxBackups` を超えたら古いバックアップが削除される
+- 実際: 削除が走らない（ログにも削除が出ない）
+
+**根本原因**:
+- 現行実装の `BackupScheduler.cleanupOldBackups()` は `retention.days` が未設定の場合に早期returnしており、`maxBackups`のみの設定ではクリーンアップが実行されない。
+
+**暫定回避策**:
+- `maxBackups` を使う場合でも、**必ず `days` を併記**する（例: `days: 3650, maxBackups: 30`）。
+
+**解決状況**: ⚠️ **仕様/実装の差を確認し、暫定回避策をドキュメント化**（恒久修正は別タスク）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/backup-scheduler.ts`（`cleanupOldBackups`）
+
+**関連ドキュメント**:
+- `docs/api/backup.md`（保持期間設定の注意）
+- `docs/guides/backup-configuration.md`（保持期間設定の注意）
+
+**恒久対策（計画）**:
+- `retention.maxBackups` 単独でもクリーンアップが動作するよう、`cleanupOldBackups()` の条件を見直し
+- ユニットテスト追加（`days`無しでも `maxBackups` が効くこと）
+- 仕様ドキュメントを「実装と一致する形」に確定
 
 ---

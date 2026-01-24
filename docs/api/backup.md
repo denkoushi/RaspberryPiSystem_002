@@ -676,6 +676,105 @@ Dropbox OAuth認証のコールバックエンドポイントです。Dropboxか
 
 ---
 
+### Dropboxメンテナンス（管理者向け・破壊的操作）
+
+#### POST /api/backup/dropbox/purge
+
+Dropboxの`/backups`配下を**全削除**します（不可逆）。安全のため、強い確認テキストが必須です。
+
+**リクエスト**
+
+```json
+{
+  "confirmText": "DELETE_ALL_UNDER_/backups"
+}
+```
+
+**レスポンス**
+
+```json
+{
+  "success": true,
+  "deletedCount": 123,
+  "failedCount": 0,
+  "totalCount": 123,
+  "errors": []
+}
+```
+
+**注意**
+
+- `basePath`が`/backups`以外の場合は拒否されます
+- 履歴（DB）については、削除と同期しない場合があります（監査証跡は残す方針）
+
+---
+
+#### POST /api/backup/dropbox/purge-selective
+
+Dropboxの`/backups`配下を**選択削除**します。最新のDBバックアップ（`database/`）だけを残し、それ以外を削除します（不可逆）。
+
+**リクエスト**
+
+```json
+{
+  "confirmText": "DELETE_ALL_UNDER_/backups_EXCEPT_LATEST_DB",
+  "dryRun": true,
+  "keepLatestDatabaseCount": 1
+}
+```
+
+**パラメータ**
+
+- `confirmText` (必須): 事故防止の固定文字列
+- `dryRun` (オプション): デフォルト`true`（`false`指定時のみ削除を実行）
+- `keepLatestDatabaseCount` (オプション): デフォルト`1`（最新DBを何件残すか）
+
+**レスポンス（dryRun=true）**
+
+```json
+{
+  "success": true,
+  "dryRun": true,
+  "keepLatestDatabaseCount": 1,
+  "keepCount": 1,
+  "deleteCount": 123,
+  "skippedMissingPathCount": 0,
+  "deleteSizeBytes": 1234567,
+  "keepSample": ["/backups/database/..."],
+  "deleteSample": ["/backups/csv/...", "/backups/image/..."]
+}
+```
+
+**レスポンス（dryRun=false）**
+
+```json
+{
+  "success": true,
+  "dryRun": false,
+  "keepLatestDatabaseCount": 1,
+  "keepCount": 1,
+  "deleteCount": 123,
+  "deletedCount": 123,
+  "failedCount": 0,
+  "skippedMissingPathCount": 0,
+  "deleteSizeBytes": 1234567,
+  "errors": []
+}
+```
+
+**エラー**
+
+- `400` - `confirmText`不一致 / `keepLatestDatabaseCount < 1` / `basePath != /backups` / DBバックアップが見つからない（安全のため中断）
+- `500` - 削除処理の失敗
+
+**注意**
+
+- `basePath`が`/backups`以外の場合は拒否されます（安全策）
+- DBバックアップが1件も見つからない場合は**全削除を避けるため中断**します
+- `backupPath`（`/backups/...`）は、Dropbox側の完全パスと相対パスの両方が混在し得るため、呼び出し側は両対応を前提にしてください
+
+---
+
 ## 内部エンドポイント
 
 ### POST /api/backup/internal
@@ -842,6 +941,10 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 - `maxBackups`: 最大保持数（この数を超えたバックアップは古いものから自動削除）
 
 対象ごとの設定が優先され、未指定時は全体設定（`config.retention`）を使用します。
+
+**注意（現行実装の制約）**:
+- 自動削除（保持期間のクリーンアップ）は `retention.days` が設定されている場合にのみ実行されます。
+- `maxBackups`のみで運用したい場合でも、暫定的に`days`を併記してください（改善計画で見直します）。
 
 ---
 
