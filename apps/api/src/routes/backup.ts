@@ -1539,13 +1539,26 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     logger?.info({ basePath }, '[BackupRoute] Listing Dropbox backups before selective purge');
     const backups = await backupService.listBackups({ prefix: '' });
 
-    const plan = planDropboxSelectivePurge(backups, keepLatestDatabaseCount);
+    // Dropboxのパスは /backups/database/... の形式なので、basePathを除去してから planDropboxSelectivePurge に渡す
+    const normalizedBackups = backups.map((backup) => ({
+      ...backup,
+      path: backup.path?.startsWith(basePath) ? backup.path.slice(basePath.length).replace(/^\//, '') : backup.path
+    }));
+
+    const plan = planDropboxSelectivePurge(normalizedBackups, keepLatestDatabaseCount);
     if (plan.reason === 'no_database_backups') {
       throw new ApiError(400, 'No database backups found under /backups/database. Aborting purge for safety.');
     }
 
-    const deletePaths = plan.remove.map((backup) => backup.path).filter((path): path is string => !!path);
-    const keepPaths = plan.keep.map((backup) => backup.path).filter((path): path is string => !!path);
+    // 削除・保持パスは元の完全パスに戻す必要がある
+    const deletePaths = plan.remove.map((backup) => {
+      const normalizedPath = backup.path;
+      return normalizedPath ? `${basePath}/${normalizedPath}`.replace(/\/+/g, '/') : null;
+    }).filter((path): path is string => !!path);
+    const keepPaths = plan.keep.map((backup) => {
+      const normalizedPath = backup.path;
+      return normalizedPath ? `${basePath}/${normalizedPath}`.replace(/\/+/g, '/') : null;
+    }).filter((path): path is string => !!path);
     const skippedMissingPathCount = plan.skippedMissingPath.length;
     const deleteSizeBytes = plan.remove.reduce((total, backup) => total + (backup.sizeBytes ?? 0), 0);
 
