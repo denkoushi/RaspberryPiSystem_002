@@ -113,7 +113,8 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   ```
 - [ ] **コミット/プッシュ/CIの確認（重要）**:
   - `scripts/server/deploy.sh` は **`git pull origin <branch>` でリモートを取り込む**ため、ローカルで未pushの変更はデプロイされません。
-  - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) 参照）。
+  - `scripts/update-all-clients.sh` は **fail-fastチェック**により、未commit/未pushの状態でデプロイを実行しようとするとエラーで停止します。
+  - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)、[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) 参照）。
 - [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
   ```bash
   # Pi5上でbackup.jsonをバックアップ
@@ -257,6 +258,21 @@ bash ./scripts/server/deploy-detached.sh feature/new-feature
 # 実行状態はログ/ステータス/exitで確認
 ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | head -3
 ```
+
+**Ansible経由デプロイのログ追尾**:
+`scripts/update-all-clients.sh`で`--detach`モードを使用する場合、ログはリアルタイムで表示されません。以下の方法でログを追尾できます：
+
+- **`--detach --follow`**: デプロイ開始後、`tail -f`でログをリアルタイム追尾
+  ```bash
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow
+  ```
+
+- **`--attach <run_id>`**: 既存のデタッチ実行のログをリアルタイム追尾
+  ```bash
+  ./scripts/update-all-clients.sh --attach 20260125-135737-15664
+  ```
+
+詳細は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) を参照してください。
 
 **deploy.shの改善機能（2026-01-24実装）**:
 - **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）

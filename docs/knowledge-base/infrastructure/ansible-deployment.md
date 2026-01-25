@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-19
+last-verified: 2026-01-25
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 25件  
+**件数**: 26件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -2447,5 +2447,83 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 - `build`→`up --force-recreate`に変更することで、ビルド完了後にコンテナを再作成でき、サービスダウン状態を回避できる
 - `trap`でEXIT時に復旧処理を実行することで、中断時でもコンテナが起動していない状態を自動復旧できる
 - ログを永続化することで、タイムアウト時でもデプロイ実行ログを確認できる
+
+---
+
+### [KB-200] デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能
+
+**発生日**: 2026-01-25  
+**Status**: ✅ 解決済み（2026-01-25）
+
+**事象**:
+- デプロイ標準手順のルール（「Pi5が `origin/<branch>` をpullして実行」）が、スクリプトレベルで強制されていなかった
+- ローカル未push/未commitの状態でデプロイを実行しても、警告だけで続行していた
+- `--detach`モードでデプロイを実行した場合、ログがリアルタイムで表示されず、進捗確認が困難だった
+
+**症状**:
+- ローカルで修正したファイルがリモートにプッシュされていない状態でデプロイを実行
+- Pi5側は `git pull origin <branch>` で古いファイルを取得し、デプロイが失敗する可能性がある
+- `--detach`モードで実行すると、ログがリアルタイムで表示されず、`--status`コマンドを手動で実行する必要がある
+
+**要因**:
+- **根本原因**: デプロイ標準手順のルールが、スクリプトレベルで強制されていなかった
+- 開発中の正常な状態（ローカルが最新、リモートが古い）を「失敗要因」として扱う設計になっていた
+- `--detach`モードでは、リモートでバックグラウンド実行されるため、ローカルのターミナルにはログが流れない
+
+**有効だった対策**:
+- ✅ **恒久修正（実装完了・実機検証完了）**:
+  1. **fail-fastチェックの追加**: デプロイ実行前に以下をチェックし、条件を満たさない場合はエラーで停止
+     - **未commitチェック**: ローカル作業ツリーがdirty（未commit変更あり）なら停止
+     - **未pushチェック**: ローカルブランチが `origin/<branch>` よりahead（未pushコミットあり）なら停止
+     - **例外**: `--print-plan` / `--status` / `--attach` はチェック不要（実行しないため）
+  2. **エラーメッセージの改善**: 対処方法（commit→push→CI成功→再実行）を明示
+  3. **ログ追尾機能の明確化**: `--follow`オプションと`--attach <run_id>`オプションの使用方法を明確化
+
+**実装詳細**:
+```bash
+ensure_local_repo_ready_for_deploy() {
+  # 1) Working tree must be clean
+  if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    echo "[ERROR] ローカルリポジトリに未commit変更があります。デプロイはリモートブランチ由来に限定します。"
+    exit 2
+  fi
+  
+  # 2) No ahead commits (must be pushed)
+  local local_ref=$(git rev-parse --abbrev-ref HEAD)
+  local counts=$(git rev-list --left-right --count "origin/${REPO_VERSION}...${local_ref}" 2>/dev/null || echo "0	0")
+  local ahead=$(echo "${counts}" | awk '{print $1}')
+  if [[ "${ahead}" -gt 0 ]]; then
+    echo "[ERROR] ローカルに未pushコミットがあります（origin/${REPO_VERSION}よりahead）。"
+    exit 2
+  fi
+}
+```
+
+**ログ追尾方法**:
+- `--detach --follow`: デプロイ開始後、`tail -f`でログをリアルタイム追尾
+- `--attach <run_id>`: 既存のデタッチ実行のログをリアルタイム追尾
+
+**実機検証結果（2026-01-25）**:
+- Pi5へのデプロイが正常完遂（`feat/deploy-sh-hardening-20260124`ブランチ）
+- fail-fastチェックが正常に動作（未commit変更がある場合、エラーで停止）
+- デタッチ実行が正常に動作（全デバイス: Pi5/Pi4/Pi3のデプロイが成功）
+- Pi3のサービス停止とリソース確保が正常に実行
+- DB整合性ゲートが正常に動作（必須テーブル存在確認: `MeasuringInstrumentLoanEvent`）
+- APIが正常に稼働中
+
+**再発防止**:
+- デプロイ標準手順を遵守: **ブランチをpush→CI成功→そのブランチ名でデプロイ**
+- スクリプトレベルでルールを強制: fail-fastチェックにより、未push/未commitの状態でデプロイを実行しようとするとエラーで停止
+- ドキュメント更新: `docs/guides/deployment.md` に「push+CI成功→ブランチ指定でデプロイ」「未push/未commitは拒否」を明記
+- ログ追尾方法の明記: `--detach --follow`または`--attach <run_id>`を使用してログをリアルタイム追尾
+
+**学んだこと**:
+- デプロイ標準手順のルールは、スクリプトレベルで強制する必要がある（ドキュメントだけでは不十分）
+- 開発中の正常な状態（ローカルが最新、リモートが古い）を「失敗要因」として扱うのではなく、**ルールを遵守するようにfail-fastで停止**する設計が適切
+- `--detach`モードでは、ログがリアルタイムで表示されないため、`--follow`または`--attach`を使用してログを追尾する必要がある
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（fail-fastチェック追加、ログ追尾機能）
+- `docs/guides/deployment.md`（デプロイ標準手順の明記、ログ追尾方法の追加）
 
 ---
