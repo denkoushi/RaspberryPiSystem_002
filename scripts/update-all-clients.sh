@@ -111,6 +111,72 @@ Examples:
 USAGE
 }
 
+ensure_local_repo_ready_for_deploy() {
+  # Skip checks for read-only operations
+  if [[ -n "${ATTACH_RUN_ID}" || -n "${STATUS_RUN_ID}" || ${PRINT_PLAN} -eq 1 ]]; then
+    return 0
+  fi
+
+  # Only enforce for remote deployments (Pi5 pulls from origin/<branch>)
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # 1) Working tree must be clean (no local-only state)
+  if ! git -C "${PROJECT_ROOT}" diff --quiet \
+    || ! git -C "${PROJECT_ROOT}" diff --cached --quiet \
+    || [ -n "$(git -C "${PROJECT_ROOT}" ls-files --others --exclude-standard)" ]; then
+    echo "[ERROR] ローカルリポジトリに未commit変更があります。デプロイはリモートブランチ由来に限定します。" >&2
+    echo "        対処: commit するか stash してから再実行してください。" >&2
+    exit 2
+  fi
+
+  # 2) The target branch must exist on origin and must include local commits (no ahead/diverged)
+  # Fetch only the target branch ref (fast, minimal)
+  if ! git -C "${PROJECT_ROOT}" fetch -q origin "${REPO_VERSION}" >/dev/null 2>&1; then
+    echo "[ERROR] origin/${REPO_VERSION} を取得できません（fetch失敗）。" >&2
+    echo "        対処: 先に push（ブランチ作成含む）し、CI成功後に再実行してください。" >&2
+    exit 2
+  fi
+  if ! git -C "${PROJECT_ROOT}" rev-parse --verify --quiet "origin/${REPO_VERSION}" >/dev/null 2>&1; then
+    echo "[ERROR] origin/${REPO_VERSION} が見つかりません。" >&2
+    echo "        対処: 対象ブランチを push してから再実行してください。" >&2
+    exit 2
+  fi
+
+  local local_ref="HEAD"
+  if git -C "${PROJECT_ROOT}" show-ref --verify --quiet "refs/heads/${REPO_VERSION}"; then
+    local_ref="${REPO_VERSION}"
+  fi
+
+  local counts
+  counts=$(git -C "${PROJECT_ROOT}" rev-list --left-right --count "origin/${REPO_VERSION}...${local_ref}" 2>/dev/null || echo "")
+  local behind=""
+  local ahead=""
+  if [[ -n "${counts}" ]]; then
+    behind="${counts%% *}"
+    ahead="${counts##* }"
+  fi
+  if [[ -n "${ahead}" && "${ahead}" != "${behind}" && "${ahead}" -gt 0 ]]; then
+    echo "[ERROR] ローカル(${local_ref})に未pushコミットがあります（origin/${REPO_VERSION}よりahead）。" >&2
+    echo "        対処: pushしてCI成功を確認後にデプロイしてください。" >&2
+    exit 2
+  fi
+  if [[ -n "${ahead}" && "${ahead}" == "${behind}" && "${ahead}" -gt 0 ]]; then
+    # Defensive: unexpected parse; treat as not-safe
+    echo "[ERROR] ブランチ差分の判定に失敗しました（counts='${counts}'）。" >&2
+    echo "        対処: push/CI成功を確認後に再実行してください。" >&2
+    exit 2
+  fi
+}
+
 require_remote_host() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     echo "[ERROR] RASPI_SERVER_HOST is not set. Remote operations require Pi5 host." >&2
@@ -492,49 +558,61 @@ start_remote_detached() {
     limit_arg="--limit ${LIMIT_HOSTS}"
   fi
   remote_run_paths "${run_id}"
+  local INVENTORY_BASENAME="${inventory_basename}"
+  local PLAYBOOK_RELATIVE="${playbook_relative}"
 
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat > /tmp/ansible-update-${run_id}.sh <<'REMOTE_SCRIPT'
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat > /tmp/ansible-update-${run_id}.sh" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-RUN_ID=\"${run_id}\"
-REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\"
-REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\"
-REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\"
-REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\"
-REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\"
-REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\"
-REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\"
-REPO_VERSION=\"${REPO_VERSION}\"
-INVENTORY_BASENAME=\"${inventory_basename}\"
-PLAYBOOK_RELATIVE=\"${playbook_relative}\"
-LIMIT_HOSTS=\"${LIMIT_HOSTS}\"
+RUN_ID="${RUN_ID}"
+REMOTE_LOG_DIR="${REMOTE_LOG_DIR}"
+REMOTE_RUN_LOG="${REMOTE_RUN_LOG}"
+REMOTE_RUN_STATUS="${REMOTE_RUN_STATUS}"
+REMOTE_RUN_EXIT="${REMOTE_RUN_EXIT}"
+REMOTE_RUN_PID="${REMOTE_RUN_PID}"
+REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE}"
+REMOTE_DEPLOY_STATUS_FILE="${REMOTE_DEPLOY_STATUS_FILE}"
+REPO_VERSION="${REPO_VERSION}"
+INVENTORY_BASENAME="${INVENTORY_BASENAME}"
+PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
+LIMIT_HOSTS="${LIMIT_HOSTS}"
 
-mkdir -p \"${REMOTE_LOG_DIR}\"
+mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 export ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles
-export ANSIBLE_REPO_VERSION=\"${REPO_VERSION}\"
+export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
+if [ -d /opt/RaspberryPiSystem_002/.git ]; then
+  if ! git -C /opt/RaspberryPiSystem_002 diff --quiet \
+    || ! git -C /opt/RaspberryPiSystem_002 diff --cached --quiet \
+    || [ -n "$(git -C /opt/RaspberryPiSystem_002 ls-files --others --exclude-standard)" ]; then
+    git -C /opt/RaspberryPiSystem_002 stash push -u -m "Auto-stash before ansible update $(date +%Y%m%d_%H%M%S)" || true
+  fi
+  git -C /opt/RaspberryPiSystem_002 fetch origin
+  git -C /opt/RaspberryPiSystem_002 checkout "${REPO_VERSION}"
+  git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
+fi
 
 write_status() {
-  local state=\"$1\"
-  local exit_code=\"${2:-}\" 
-  python3 - <<'PY' \"${REMOTE_RUN_STATUS}\" \"${RUN_ID}\" \"${REPO_VERSION}\" \"${INVENTORY_BASENAME}\" \"${LIMIT_HOSTS}\" \"${state}\" \"${exit_code}\"
+  local state="$1"
+  local exit_code="${2:-}"
+  python3 - <<'PY' "${REMOTE_RUN_STATUS}" "${RUN_ID}" "${REPO_VERSION}" "${INVENTORY_BASENAME}" "${LIMIT_HOSTS}" "${state}" "${exit_code}"
 import json, sys, time
 path, run_id, repo_version, inventory, limit_hosts, state, exit_code = sys.argv[1:]
 data = {
-    \"runId\": run_id,
-    \"branch\": repo_version,
-    \"inventory\": inventory,
-    \"limitHosts\": limit_hosts,
-    \"state\": state,
-    \"updatedAt\": time.strftime(\"%Y-%m-%dT%H:%M:%SZ\", time.gmtime()),
+    "runId": run_id,
+    "branch": repo_version,
+    "inventory": inventory,
+    "limitHosts": limit_hosts,
+    "state": state,
+    "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
 }
-if state == \"running\":
-    data[\"startedAt\"] = data[\"updatedAt\"]
-if state in (\"success\", \"failed\"):
-    data[\"endedAt\"] = data[\"updatedAt\"]
-    data[\"exitCode\"] = exit_code
-with open(path, \"w\", encoding=\"utf-8\") as fh:
+if state == "running":
+    data["startedAt"] = data["updatedAt"]
+if state in ("success", "failed"):
+    data["endedAt"] = data["updatedAt"]
+    data["exitCode"] = exit_code
+with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False)
 PY
 }
@@ -549,100 +627,107 @@ send_alert() {
 }
 
 generate_summary() {
-  local log_file=\"$1\"
-  local summary_file=\"$2\"
-  python3 - <<'PY' \"${log_file}\" \"${summary_file}\"
+  local log_file="$1"
+  local summary_file="$2"
+  python3 - <<'PY' "${log_file}" "${summary_file}"
 import json, re, sys
 log_path, summary_path = sys.argv[1:]
-with open(log_path, encoding=\"utf-8\", errors=\"ignore\") as fh:
+with open(log_path, encoding="utf-8", errors="ignore") as fh:
     text = fh.read()
-failed_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+ .* failed=[1-9]\", text, re.M))
-unreachable_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+ .* unreachable=[1-9]\", text, re.M))
-all_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+\", text, re.M))
+failed_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+ .* failed=[1-9]", text, re.M))
+unreachable_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+ .* unreachable=[1-9]", text, re.M))
+all_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+", text, re.M))
 summary = {
-    \"timestamp\": \"${TIMESTAMP}\",
-    \"logFile\": log_path,
-    \"totalHosts\": len(all_hosts),
-    \"failedHosts\": sorted(failed_hosts),
-    \"unreachableHosts\": sorted(unreachable_hosts),
-    \"success\": len(failed_hosts) == 0 and len(unreachable_hosts) == 0,
+    "timestamp": "${TIMESTAMP}",
+    "logFile": log_path,
+    "totalHosts": len(all_hosts),
+    "failedHosts": sorted(failed_hosts),
+    "unreachableHosts": sorted(unreachable_hosts),
+    "success": len(failed_hosts) == 0 and len(unreachable_hosts) == 0,
 }
-with open(summary_path, \"w\", encoding=\"utf-8\") as fh:
+with open(summary_path, "w", encoding="utf-8") as fh:
     json.dump(summary, fh, ensure_ascii=False)
 PY
 }
 
 get_retry_hosts_if_unreachable_only() {
-  local summary_path=\"$1\"
-  python3 - <<'PY' \"${summary_path}\"
+  local summary_path="$1"
+  python3 - <<'PY' "${summary_path}"
 import json, sys
 summary_path = sys.argv[1]
-with open(summary_path, encoding=\"utf-8\") as fh:
+with open(summary_path, encoding="utf-8") as fh:
     summary = json.load(fh)
-failed = summary.get(\"failedHosts\", []) or []
-unreachable = summary.get(\"unreachableHosts\", []) or []
+failed = summary.get("failedHosts", []) or []
+unreachable = summary.get("unreachableHosts", []) or []
 if failed or not unreachable:
-    print(\"\")
+    print("")
     sys.exit(0)
-print(\",\".join(unreachable))
+print(",".join(unreachable))
 PY
 }
 
 cleanup() {
-  local exit_code=\$?
-  echo \"\${exit_code}\" > \"${REMOTE_RUN_EXIT}\" || true
-  if [ \"${LIMIT_HOSTS}\" = \"raspberrypi4\" ]; then
-    rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\" >/dev/null 2>&1 || true
+  local exit_code=$?
+  echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
+  if [ "${LIMIT_HOSTS}" = "raspberrypi4" ]; then
+    rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
   fi
-  rm -f \"${REMOTE_LOCK_FILE}\" >/dev/null 2>&1 || true
+  rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 write_status running
-echo \"[INFO] Detach run started: ${run_id}\"
-echo \"[INFO] Log: ${REMOTE_RUN_LOG}\"
+echo "[INFO] Detach run started: ${RUN_ID}"
+echo "[INFO] Log: ${REMOTE_RUN_LOG}"
 
-summary_file=\"${REMOTE_LOG_DIR}/ansible-update-${run_id}.summary.json\"
+summary_file="${REMOTE_LOG_DIR}/ansible-update-${RUN_ID}.summary.json"
 attempt=1
 max_attempts=3
-while [ \${attempt} -le \${max_attempts} ]; do
-  echo \"[INFO] Running ansible-playbook (attempt \${attempt}/\${max_attempts})\"
-  if [ -n \"${LIMIT_HOSTS}\" ]; then
-    ansible-playbook -i \"${INVENTORY_BASENAME}\" \"${PLAYBOOK_RELATIVE}\" --limit \"${LIMIT_HOSTS}\" || true
+while [ ${attempt} -le ${max_attempts} ]; do
+  echo "[INFO] Running ansible-playbook (attempt ${attempt}/${max_attempts})"
+  if [ -n "${LIMIT_HOSTS}" ]; then
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" || true
   else
-    ansible-playbook -i \"${INVENTORY_BASENAME}\" \"${PLAYBOOK_RELATIVE}\" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" || true
   fi
-  generate_summary \"${REMOTE_RUN_LOG}\" \"${summary_file}\"
-  retry_hosts=\$(get_retry_hosts_if_unreachable_only \"${summary_file}\")
-  if [ -z \"\${retry_hosts}\" ]; then
+  generate_summary "${REMOTE_RUN_LOG}" "${summary_file}"
+  retry_hosts=$(get_retry_hosts_if_unreachable_only "${summary_file}")
+  if [ -z "${retry_hosts}" ]; then
     break
   fi
-  LIMIT_HOSTS=\"\${retry_hosts}\"
-  attempt=\$((attempt + 1))
+  LIMIT_HOSTS="${retry_hosts}"
+  attempt=$((attempt + 1))
   sleep 30
 done
 
 exit_code=0
-if python3 - <<'PY' \"${summary_file}\" >/dev/null 2>&1
+echo "[INFO] Summary file: ${summary_file}"
+summary_check=0
+summary_check_output=$(python3 - "${summary_file}" <<'PY' 2>&1 || summary_check=$?
 import json, sys
 with open(sys.argv[1], encoding=\"utf-8\") as fh:
     summary = json.load(fh)
 sys.exit(0 if summary.get(\"success\") is True else 1)
 PY
-then
+)
+if [ "${summary_check}" -eq 0 ]; then
   exit_code=0
-  write_status success \"${exit_code}\"
-  send_alert \"ansible-update-success\" \"Ansible更新が完了しました\" \"ログファイル: ${REMOTE_RUN_LOG}\"
+  echo "[INFO] Summary success check: true"
+  write_status success "${exit_code}"
+  send_alert "ansible-update-success" "Ansible更新が完了しました" "ログファイル: ${REMOTE_RUN_LOG}"
 else
   exit_code=1
-  write_status failed \"${exit_code}\"
-  send_alert \"ansible-update-failed\" \"Ansible更新が失敗しました\" \"ログファイル: ${REMOTE_RUN_LOG}\"
+  echo "[INFO] Summary success check: false"
+  if [ -n "${summary_check_output}" ]; then
+    echo "[INFO] Summary check error output: ${summary_check_output}"
+  fi
+  write_status failed "${exit_code}"
+  send_alert "ansible-update-failed" "Ansible更新が失敗しました" "ログファイル: ${REMOTE_RUN_LOG}"
 fi
-exit \${exit_code}
+exit ${exit_code}
 REMOTE_SCRIPT
-chmod +x /tmp/ansible-update-${run_id}.sh
-nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\"
-"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Detach run started: ${run_id}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
@@ -782,6 +867,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
+  ensure_local_repo_ready_for_deploy
   notify_start
   check_network_mode
   acquire_remote_lock

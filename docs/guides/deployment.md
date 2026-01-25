@@ -471,6 +471,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `scripts/update-all-clients.sh`はPi5も含めて更新します
 - デフォルトは`main`ブランチです
 - ブランチを指定する場合は引数として渡してください
+- **デプロイはPi5が `origin/<branch>` をpullして実行**します（ローカル未commit/未pushの変更はデプロイされません）。その状態で実行すると、スクリプトが **fail-fastで停止**します。
+  - 対処: 変更をcommit → push → GitHub Actions CIが成功 → そのブランチ名で再実行
 - **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
 
 #### デプロイ安定化機能（2026-01-17実装）
