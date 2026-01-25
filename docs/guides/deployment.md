@@ -248,6 +248,25 @@ cd /opt/RaspberryPiSystem_002
 ./scripts/server/deploy.sh feature/new-feature
 ```
 
+**デタッチ実行（長時間デプロイ向け）**:
+```bash
+# ラズパイ5で実行（デタッチ）
+cd /opt/RaspberryPiSystem_002
+bash ./scripts/server/deploy-detached.sh feature/new-feature
+
+# 実行状態はログ/ステータス/exitで確認
+ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | head -3
+```
+
+**deploy.shの改善機能（2026-01-24実装）**:
+- **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）
+- **中断時の自動復旧**: SSHセッション終了やプロセス中断時でも、`trap`でEXIT時に`docker compose up -d`を試行し、コンテナが起動していない状態を自動復旧します
+- **ログ永続化**: デプロイ実行ログを`logs/deploy/deploy-sh-<timestamp>.log`に保存し、タイムアウト時でもログを確認可能です
+
+**注意事項**:
+- SSH経由で長時間実行する場合（Dockerビルドが数分かかる）、クライアント側のタイムアウト設定に注意してください。タイムアウトが発生した場合でも、`trap`による自動復旧が動作しますが、ログファイルで実行状況を確認してください
+- デプロイログは`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-<timestamp>.log`に保存されます
+
 ### 方法2: 手動で更新
 
 **⚠️ 重要**: デプロイ前に必ず以下を確認してください：
@@ -425,6 +444,27 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # 特定のブランチで全デバイスを更新（第2工場）
 ./scripts/update-all-clients.sh feature/rigging-management infrastructure/ansible/inventory.yml
+```
+
+#### デタッチ実行（長時間デプロイ向け・推奨）
+
+**ポイント**:
+- Mac/SSH経由の実行はクライアント側タイムアウトで「途中停止して見える」ことがあります。
+- `--detach` を使うと **Pi5側で処理が継続**し、ローカル切断の影響を受けません。
+- 進捗は `--attach` / `--status` で確認できます。
+
+```bash
+# 第2工場: デタッチ実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+# トークプラザ: デタッチ実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml --detach
+
+# ログ追尾（run_idを指定）
+./scripts/update-all-clients.sh --attach 20260125-123456-4242
+
+# 状態確認（run_idを指定）
+./scripts/update-all-clients.sh --status 20260125-123456-4242
 ```
 
 **重要**: 

@@ -1735,12 +1735,13 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 ### [KB-184] 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能
 
-**実装日時**: 2026-01-XX
+**実装日時**: 2026-01-XX（初回実装）、2026-01-24（UI改善：テーブル形式化）
 
 **事象**: 
 - PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装
 - CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示
 - 完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
+- **UI改善（2026-01-24）**: カード形式では表示数に限界があり、より多くのアイテムを表示するためにテーブル形式に変更
 
 **実装内容**: 
 - ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
@@ -1749,6 +1750,10 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
 - ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
 - ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
+- ✅ **UI改善（2026-01-24）**: カード形式からテーブル形式に変更し、表示密度を向上
+  - **1行2アイテム表示**: 幅1200px以上の画面で1行に2アイテムを表示（レスポンシブ対応）
+  - **列幅自動調整**: CSVダッシュボードの列幅計算ロジックをフロントエンドに移植し、テキスト幅に応じて自動調整
+  - **完了チェックボタン**: 左端に配置し、完了状態を視覚的に識別可能に
 
 **API変更**:
 - ✅ **GET /kiosk/production-schedule**: すべての行を返すように変更（完了済みも含む）
@@ -1759,10 +1764,20 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
    - CSVダッシュボードのデータを取得（`useQuery`）
    - 完了状態に応じたスタイリング（`opacity-50 grayscale`）
    - 完了ボタンのトグル機能（`useMutation`）
-2. **APIエンドポイント**: `apps/api/src/routes/kiosk.ts`を修正
+   - **UI改善（2026-01-24）**: テーブル形式への変更
+     - `ResizeObserver`を使用したコンテナ幅の監視
+     - 幅1200px以上で2列表示、未満で1列表示（レスポンシブ）
+     - `columnWidth.ts`ヘルパーを使用した列幅自動調整
+     - 行のペアリング（`rowPairs`）による2アイテム表示
+2. **列幅計算ヘルパー**: `apps/web/src/features/kiosk/columnWidth.ts`を新規作成
+   - CSVダッシュボードの列幅計算ロジック（`csv-dashboard-template-renderer.ts`）をフロントエンドに移植
+   - `computeColumnWidths`関数: テキスト幅に基づく列幅計算
+   - `approxTextEm`関数: 半角/全角文字を考慮したテキスト幅推定
+   - `shrinkToFit`関数: コンテナ幅を超える場合の比例縮小
+3. **APIエンドポイント**: `apps/api/src/routes/kiosk.ts`を修正
    - `GET /kiosk/production-schedule`: `progress`フィルタを削除し、すべての行を返す
    - `PUT /kiosk/production-schedule/:rowId/complete`: トグルロジックを実装
-3. **テスト更新**: `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`を更新
+4. **テスト更新**: `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`を更新
    - 完了済みアイテムも返されることを確認
    - トグル機能の動作を確認
 
@@ -1776,22 +1791,30 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 2. **トグル機能の実装**: 完了→未完了のトグルにより、誤操作時の復元が可能
 3. **seed.tsの注意点**: `upsert`の`update`ブロックに`enabled`などの必須フィールドを含める必要がある
 4. **本番環境でのseed実行**: `tsx`がdev依存のため、本番環境では直接SQLで実行する必要がある場合がある
+5. **UI改善（2026-01-24）**:
+   - **表示密度の向上**: カード形式からテーブル形式への変更により、1行あたりの表示数を2倍に（幅1200px以上の場合）
+   - **ロジックの再利用**: バックエンドの列幅計算ロジックをフロントエンドに移植し、一貫したUI動作を実現
+   - **レスポンシブデザイン**: `ResizeObserver`を使用した動的なレイアウト切り替え
+   - **モジュール化**: 列幅計算ロジックを`columnWidth.ts`に分離し、保守性を向上
 
 **解決状況**: ✅ **実装完了・実機検証完了**（2026-01-XX）
 
-**実機検証結果**: ✅ **すべて正常動作**（2026-01-XX）
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-XX、2026-01-24 UI改善後も正常動作）
 - CSVダッシュボードのデータがキオスク画面に表示されることを確認
 - 完了ボタンを押すと`progress`が「完了」に更新されることを確認
 - 完了済みアイテムがグレーアウトされることを確認
 - 完了ボタンを再度押すと`progress`が空文字（未完了）に戻ることを確認
 - チェックマークとテキストの重なりが解消されていることを確認
 - `FSEIBAN`の下3桁が表示されることを確認
+- **UI改善後（2026-01-24）**: テーブル形式で正常表示、1行2アイテム表示（幅1200px以上）、列幅自動調整が正常動作することを確認
 
 **関連ファイル**:
-- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（キオスクページ実装）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（キオスクページ実装、2026-01-24にテーブル形式化）
+- `apps/web/src/features/kiosk/columnWidth.ts`（列幅計算ヘルパー、2026-01-24に新規作成）
 - `apps/api/src/routes/kiosk.ts`（APIエンドポイント修正）
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（テスト更新）
 - `apps/api/prisma/seed.ts`（`enabled: true`追加）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-template-renderer.ts`（列幅計算ロジックの参考元）
 
 ---
 

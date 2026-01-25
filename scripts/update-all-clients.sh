@@ -25,17 +25,44 @@ HISTORY_FILE="${LOG_DIR}/ansible-history.jsonl"
 REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE:-/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock}"
 REMOTE_LOCK_TIMEOUT_SECONDS="${REMOTE_LOCK_TIMEOUT_SECONDS:-2400}"
 REMOTE_DEPLOY_STATUS_FILE="${REMOTE_DEPLOY_STATUS_FILE:-/opt/RaspberryPiSystem_002/config/deploy-status.json}"
+REMOTE_LOG_DIR="${REMOTE_LOG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy}"
 
 # 引数解析
 LIMIT_HOSTS=""
 INVENTORY_PATH=""
 REPO_VERSION=""
+DETACH_MODE=0
+FOLLOW_MODE=0
+ATTACH_RUN_ID=""
+STATUS_RUN_ID=""
+PRINT_PLAN=0
+RUN_ID=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --limit)
       LIMIT_HOSTS="$2"
       shift 2
+      ;;
+    --detach)
+      DETACH_MODE=1
+      shift
+      ;;
+    --follow)
+      FOLLOW_MODE=1
+      shift
+      ;;
+    --attach)
+      ATTACH_RUN_ID="$2"
+      shift 2
+      ;;
+    --status)
+      STATUS_RUN_ID="$2"
+      shift 2
+      ;;
+    --print-plan|--dry-run)
+      PRINT_PLAN=1
+      shift
       ;;
     *)
       if [[ -z "${REPO_VERSION}" ]]; then
@@ -58,7 +85,10 @@ mkdir -p "${LOG_DIR}"
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
+  ./scripts/update-all-clients.sh --attach <run_id>
+  ./scripts/update-all-clients.sh --status <run_id>
+  ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
 
 Examples:
   # 第2工場（既存）
@@ -69,24 +99,60 @@ Examples:
 
   # Pi3を除外してデプロイ
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
+
+  # デタッチ実行（Pi5側で継続実行）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+  # デタッチ実行のログ追尾
+  ./scripts/update-all-clients.sh --attach 20260125-123456-4242
+
+  # 状態確認
+  ./scripts/update-all-clients.sh --status 20260125-123456-4242
 USAGE
 }
 
-if [[ -z "${INVENTORY_PATH}" ]]; then
+require_remote_host() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    echo "[ERROR] RASPI_SERVER_HOST is not set. Remote operations require Pi5 host." >&2
+    exit 2
+  fi
+}
+
+build_run_id() {
+  if [[ -n "${RUN_ID}" ]]; then
+    echo "${RUN_ID}"
+    return 0
+  fi
+  echo "${TIMESTAMP}-${RANDOM}"
+}
+
+if [[ -n "${ATTACH_RUN_ID}" || -n "${STATUS_RUN_ID}" ]]; then
+  require_remote_host
+fi
+
+if [[ -z "${INVENTORY_PATH}" && -z "${ATTACH_RUN_ID}" && -z "${STATUS_RUN_ID}" ]]; then
   usage
   exit 2
 fi
 
-if [[ ! -f "${PROJECT_ROOT}/${INVENTORY_PATH}" ]]; then
+if [[ -n "${INVENTORY_PATH}" && ! -f "${PROJECT_ROOT}/${INVENTORY_PATH}" ]]; then
   echo "[ERROR] inventory not found: ${INVENTORY_PATH}" >&2
   usage
   exit 2
 fi
 
-echo "[INFO] Target inventory: ${INVENTORY_PATH}"
-echo "[INFO] Repo version: ${REPO_VERSION}"
-if [[ -n "${LIMIT_HOSTS}" ]]; then
-  echo "[INFO] Limit hosts: ${LIMIT_HOSTS}"
+if [[ -n "${INVENTORY_PATH}" ]]; then
+  echo "[INFO] Target inventory: ${INVENTORY_PATH}"
+  echo "[INFO] Repo version: ${REPO_VERSION}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    echo "[INFO] Limit hosts: ${LIMIT_HOSTS}"
+  fi
+fi
+if [[ ${DETACH_MODE} -eq 1 ]]; then
+  echo "[INFO] Detach mode: enabled"
+fi
+if [[ ${FOLLOW_MODE} -eq 1 ]]; then
+  echo "[INFO] Follow mode: enabled"
 fi
 
 # エラーコードを返す関数
@@ -319,6 +385,274 @@ clear_pi4_maintenance_flag() {
   fi
 }
 
+remote_run_paths() {
+  local run_id="$1"
+  REMOTE_RUN_ID="${run_id}"
+  REMOTE_RUN_LOG="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.log"
+  REMOTE_RUN_STATUS="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.status.json"
+  REMOTE_RUN_EXIT="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.exit"
+  REMOTE_RUN_PID="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.pid"
+}
+
+remote_status() {
+  local run_id="$1"
+  remote_run_paths "${run_id}"
+  echo "[INFO] Remote status for ${run_id} on ${REMOTE_HOST}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then cat \"${REMOTE_RUN_STATUS}\"; else echo \"{\\\"error\\\":\\\"status not found\\\",\\\"runId\\\":\\\"${run_id}\\\"}\"; fi"
+  if ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; then
+    local exit_code
+    exit_code=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_EXIT}\"" || echo "unknown")
+    echo "[INFO] Exit code: ${exit_code}"
+  else
+    echo "[INFO] Exit code: running"
+  fi
+}
+
+remote_attach() {
+  local run_id="$1"
+  remote_run_paths "${run_id}"
+  echo "[INFO] Attaching to ${run_id} on ${REMOTE_HOST}"
+  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_LOG}\""; then
+    echo "[ERROR] Remote log not found: ${REMOTE_RUN_LOG}"
+    exit 2
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "tail -f \"${REMOTE_RUN_LOG}\"" &
+  local tail_pid=$!
+  while ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; do
+    sleep 5
+  done
+  kill "${tail_pid}" >/dev/null 2>&1 || true
+  local exit_code
+  exit_code=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_EXIT}\"" || echo "unknown")
+  echo "[INFO] Remote run finished with exit code: ${exit_code}"
+}
+
+if [[ -n "${STATUS_RUN_ID}" ]]; then
+  remote_status "${STATUS_RUN_ID}"
+  exit 0
+fi
+
+if [[ -n "${ATTACH_RUN_ID}" ]]; then
+  remote_attach "${ATTACH_RUN_ID}"
+  exit 0
+fi
+
+print_plan() {
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  if [[ -n "${REMOTE_HOST}" ]]; then
+    local planned_run_id
+    planned_run_id=$(build_run_id)
+    remote_run_paths "${planned_run_id}"
+    echo "[PLAN] Mode: remote"
+    echo "[PLAN] Host: ${REMOTE_HOST}"
+    echo "[PLAN] Run ID: ${planned_run_id}"
+    echo "[PLAN] Command: ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}"
+    if [[ ${DETACH_MODE} -eq 1 ]]; then
+      echo "[PLAN] Detach: enabled"
+      echo "[PLAN] Remote log: ${REMOTE_RUN_LOG}"
+      echo "[PLAN] Remote status: ${REMOTE_RUN_STATUS}"
+      echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
+      echo "[PLAN] Remote pid: ${REMOTE_RUN_PID}"
+    fi
+  else
+    echo "[PLAN] Mode: local"
+    echo "[PLAN] Command: ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}"
+  fi
+}
+if [[ ${PRINT_PLAN} -eq 1 ]]; then
+  print_plan
+  exit 0
+fi
+
+if [[ ${DETACH_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
+  echo "[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5)." >&2
+  exit 2
+fi
+
+
+start_remote_detached() {
+  local run_id="$1"
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  remote_run_paths "${run_id}"
+
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat > /tmp/ansible-update-${run_id}.sh <<'REMOTE_SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN_ID=\"${run_id}\"
+REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\"
+REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\"
+REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\"
+REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\"
+REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\"
+REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\"
+REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\"
+REPO_VERSION=\"${REPO_VERSION}\"
+INVENTORY_BASENAME=\"${inventory_basename}\"
+PLAYBOOK_RELATIVE=\"${playbook_relative}\"
+LIMIT_HOSTS=\"${LIMIT_HOSTS}\"
+
+mkdir -p \"${REMOTE_LOG_DIR}\"
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+export ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles
+export ANSIBLE_REPO_VERSION=\"${REPO_VERSION}\"
+
+write_status() {
+  local state=\"$1\"
+  local exit_code=\"${2:-}\" 
+  python3 - <<'PY' \"${REMOTE_RUN_STATUS}\" \"${RUN_ID}\" \"${REPO_VERSION}\" \"${INVENTORY_BASENAME}\" \"${LIMIT_HOSTS}\" \"${state}\" \"${exit_code}\"
+import json, sys, time
+path, run_id, repo_version, inventory, limit_hosts, state, exit_code = sys.argv[1:]
+data = {
+    \"runId\": run_id,
+    \"branch\": repo_version,
+    \"inventory\": inventory,
+    \"limitHosts\": limit_hosts,
+    \"state\": state,
+    \"updatedAt\": time.strftime(\"%Y-%m-%dT%H:%M:%SZ\", time.gmtime()),
+}
+if state == \"running\":
+    data[\"startedAt\"] = data[\"updatedAt\"]
+if state in (\"success\", \"failed\"):
+    data[\"endedAt\"] = data[\"updatedAt\"]
+    data[\"exitCode\"] = exit_code
+with open(path, \"w\", encoding=\"utf-8\") as fh:
+    json.dump(data, fh, ensure_ascii=False)
+PY
+}
+
+send_alert() {
+  local key="$1"
+  local title="$2"
+  local detail="$3"
+  if [ -f "/opt/RaspberryPiSystem_002/scripts/generate-alert.sh" ]; then
+    /opt/RaspberryPiSystem_002/scripts/generate-alert.sh "${key}" "${title}" "${detail}"
+  fi
+}
+
+generate_summary() {
+  local log_file=\"$1\"
+  local summary_file=\"$2\"
+  python3 - <<'PY' \"${log_file}\" \"${summary_file}\"
+import json, re, sys
+log_path, summary_path = sys.argv[1:]
+with open(log_path, encoding=\"utf-8\", errors=\"ignore\") as fh:
+    text = fh.read()
+failed_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+ .* failed=[1-9]\", text, re.M))
+unreachable_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+ .* unreachable=[1-9]\", text, re.M))
+all_hosts = set(re.findall(r\"^([\\w\\-]+): ok=\\d+\", text, re.M))
+summary = {
+    \"timestamp\": \"${TIMESTAMP}\",
+    \"logFile\": log_path,
+    \"totalHosts\": len(all_hosts),
+    \"failedHosts\": sorted(failed_hosts),
+    \"unreachableHosts\": sorted(unreachable_hosts),
+    \"success\": len(failed_hosts) == 0 and len(unreachable_hosts) == 0,
+}
+with open(summary_path, \"w\", encoding=\"utf-8\") as fh:
+    json.dump(summary, fh, ensure_ascii=False)
+PY
+}
+
+get_retry_hosts_if_unreachable_only() {
+  local summary_path=\"$1\"
+  python3 - <<'PY' \"${summary_path}\"
+import json, sys
+summary_path = sys.argv[1]
+with open(summary_path, encoding=\"utf-8\") as fh:
+    summary = json.load(fh)
+failed = summary.get(\"failedHosts\", []) or []
+unreachable = summary.get(\"unreachableHosts\", []) or []
+if failed or not unreachable:
+    print(\"\")
+    sys.exit(0)
+print(\",\".join(unreachable))
+PY
+}
+
+cleanup() {
+  local exit_code=\$?
+  echo \"\${exit_code}\" > \"${REMOTE_RUN_EXIT}\" || true
+  if [ \"${LIMIT_HOSTS}\" = \"raspberrypi4\" ]; then
+    rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\" >/dev/null 2>&1 || true
+  fi
+  rm -f \"${REMOTE_LOCK_FILE}\" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+write_status running
+echo \"[INFO] Detach run started: ${run_id}\"
+echo \"[INFO] Log: ${REMOTE_RUN_LOG}\"
+
+summary_file=\"${REMOTE_LOG_DIR}/ansible-update-${run_id}.summary.json\"
+attempt=1
+max_attempts=3
+while [ \${attempt} -le \${max_attempts} ]; do
+  echo \"[INFO] Running ansible-playbook (attempt \${attempt}/\${max_attempts})\"
+  if [ -n \"${LIMIT_HOSTS}\" ]; then
+    ansible-playbook -i \"${INVENTORY_BASENAME}\" \"${PLAYBOOK_RELATIVE}\" --limit \"${LIMIT_HOSTS}\" || true
+  else
+    ansible-playbook -i \"${INVENTORY_BASENAME}\" \"${PLAYBOOK_RELATIVE}\" || true
+  fi
+  generate_summary \"${REMOTE_RUN_LOG}\" \"${summary_file}\"
+  retry_hosts=\$(get_retry_hosts_if_unreachable_only \"${summary_file}\")
+  if [ -z \"\${retry_hosts}\" ]; then
+    break
+  fi
+  LIMIT_HOSTS=\"\${retry_hosts}\"
+  attempt=\$((attempt + 1))
+  sleep 30
+done
+
+exit_code=0
+if python3 - <<'PY' \"${summary_file}\" >/dev/null 2>&1
+import json, sys
+with open(sys.argv[1], encoding=\"utf-8\") as fh:
+    summary = json.load(fh)
+sys.exit(0 if summary.get(\"success\") is True else 1)
+PY
+then
+  exit_code=0
+  write_status success \"${exit_code}\"
+  send_alert \"ansible-update-success\" \"Ansible更新が完了しました\" \"ログファイル: ${REMOTE_RUN_LOG}\"
+else
+  exit_code=1
+  write_status failed \"${exit_code}\"
+  send_alert \"ansible-update-failed\" \"Ansible更新が失敗しました\" \"ログファイル: ${REMOTE_RUN_LOG}\"
+fi
+exit \${exit_code}
+REMOTE_SCRIPT
+chmod +x /tmp/ansible-update-${run_id}.sh
+nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\"
+"
+  echo "[INFO] Detach run started: ${run_id}"
+  echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
+  echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
+  echo "[INFO] Remote exit: ${REMOTE_RUN_EXIT}"
+  echo "[INFO] Remote pid: ${REMOTE_RUN_PID}"
+  if [[ ${FOLLOW_MODE} -eq 1 ]]; then
+    remote_attach "${run_id}"
+  fi
+}
+
 run_locally() {
   cd "${PROJECT_ROOT}"
   local exit_code=0
@@ -451,9 +785,16 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   notify_start
   check_network_mode
   acquire_remote_lock
-  trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
+  if [[ ${DETACH_MODE} -eq 0 ]]; then
+    trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
+  fi
   set_pi4_maintenance_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
+  if [[ ${DETACH_MODE} -eq 1 ]]; then
+    RUN_ID="$(build_run_id)"
+    start_remote_detached "${RUN_ID}"
+    exit 0
+  fi
   if ! run_remotely "${LIMIT_HOSTS}"; then
     retry_hosts=$(get_retry_hosts_if_unreachable_only "${SUMMARY_FILE}")
     if [[ -n "${retry_hosts}" ]]; then

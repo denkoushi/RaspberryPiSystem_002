@@ -15,6 +15,8 @@
 
 - [x] (2026-01-23) **CSVダッシュボードの列幅計算改善完了**: Pi3で表示中のサイネージのCSVダッシュボードで、フォントサイズ変更が反映されず、列幅が適切に追随しない問題を解決。列幅計算にフォントサイズを反映し、最初のページだけでなく全データ行を走査して最大文字列を考慮するように改善。日付列などフォーマット後の値で幅を計算するように修正。列名（ヘッダー）は`fontSize+4px`で太字表示されるため、列幅計算にも含めるように改善（太字係数1.06を適用）。列幅の合計がキャンバス幅を超える場合、比例的に縮小する機能を実装。仮説駆動デバッグ（fetchベースのNDJSONログ出力）により根本原因を特定。列幅計算の動作を検証するユニットテストを追加（5件すべてパス）。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-193を追加。詳細は [docs/knowledge-base/infrastructure/signage.md#kb-193](./docs/knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) / [docs/modules/signage/README.md](./docs/modules/signage/README.md) を参照。
 
+- [x] (2026-01-24) **生産スケジュールキオスクページUI改善完了（テーブル形式化・列幅自動調整）**: キオスク生産スケジュールページの表示数を増やすため、カード形式からテーブル形式に変更。1行2アイテム表示（幅1200px以上）を実装し、レスポンシブ対応（幅1200px未満で1列表示）を実装。CSVダッシュボードの列幅計算ロジック（`csv-dashboard-template-renderer.ts`）をフロントエンドに移植し、`apps/web/src/features/kiosk/columnWidth.ts`として分離。`ResizeObserver`を使用したコンテナ幅の監視、`computeColumnWidths`関数によるテキスト幅に基づく列幅計算、`approxTextEm`関数による半角/全角文字を考慮したテキスト幅推定、`shrinkToFit`関数による比例縮小を実装。完了チェックボタンを左端に配置し、完了状態を視覚的に識別可能に。CI成功、デプロイ成功、実機検証完了（テーブル形式で正常表示、1行2アイテム表示、列幅自動調整が正常動作）。KB-184を更新。詳細は [docs/knowledge-base/frontend.md#kb-184](./docs/knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [docs/knowledge-base/infrastructure/signage.md#kb-193](./docs/knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) を参照。
+
 - [x] (2026-01-XX) **生産スケジュールキオスクページ実装・実機検証完了**: PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装。CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示し、完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に。完了ボタンのグレーアウト・トグル機能を実装し、完了済みアイテムを`opacity-50 grayscale`で視覚的にグレーアウト。完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル。チェックマーク位置調整（`pr-11`でパディング追加）と`FSEIBAN`の下3桁表示を実装。CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソールに追加。`CsvImportSubjectPattern`モデルを追加し、マスターデータインポートの件名パターンをDB化（設計統一）。実機検証でCSVダッシュボードのデータがキオスク画面に表示され、完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。CI成功、デプロイ成功。ナレッジベースにKB-184、KB-185、KB-186を追加。詳細は [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) / [docs/knowledge-base/frontend.md#kb-184](./docs/knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [docs/knowledge-base/api.md#kb-185](./docs/knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) / [docs/knowledge-base/api.md#kb-186](./docs/knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
 
 - [x] (2026-01-19) **セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。評価計画書を作成し、机上評価・コードレビュー・実機検証（Pi5へのTailscale経由アクセス）を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイル（`request-logger.ts`、`kiosk.ts`、`tools/loans/cancel.ts`、`tools/loans/return.ts`、`webrtc/signaling.ts`、`tools/loans/delete.ts`）を修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功（lint-and-test、e2e-smoke、e2e-tests、docker-build）、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [docs/security/evaluation-report.md](./docs/security/evaluation-report.md) / [docs/security/log-redaction-implementation.md](./docs/security/log-redaction-implementation.md) / [docs/security/urgent-security-measures.md](./docs/security/urgent-security-measures.md) / [docs/knowledge-base/infrastructure/security.md#kb-178](./docs/knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [docs/presentations/security-measures-presentation.md](./docs/presentations/security-measures-presentation.md) を参照。
@@ -1295,6 +1297,40 @@
    - 長いテキストの自動折り返し・省略表示
 
 **現状**: KB-193で列幅計算の基本機能は完成。上記の改善は運用上の課題や要望を収集してから実施。
+
+### 生産スケジュールキオスクページのUI改善（完了・次の改善候補）
+
+**概要**: 2026-01-24にテーブル形式化・列幅自動調整を実装完了。次の改善候補を検討
+
+**完了した改善**:
+- ✅ カード形式からテーブル形式への変更（表示密度向上）
+- ✅ 1行2アイテム表示（幅1200px以上、レスポンシブ対応）
+- ✅ CSVダッシュボードの列幅計算ロジックのフロントエンド移植
+- ✅ `ResizeObserver`を使用した動的レイアウト切り替え
+
+**次の改善候補**:
+1. **パフォーマンス最適化**（優先度: 中）
+   - 列幅計算の再計算頻度の改善（`normalizedRows`変更時のみ再計算）
+   - 大量データ（2000行以上）時の仮想スクロール対応
+   - `useMemo`の依存配列最適化
+
+2. **コードのモジュール化**（優先度: 低）
+   - `normalizeScheduleRows`関数の抽出（`ProductionSchedulePage.tsx`から分離）
+   - データ正規化ロジックの再利用性向上
+   - UIコンポーネントの責務分離
+
+3. **UI機能追加**（優先度: 低）
+   - スクロール位置の保持（ページリロード時）
+   - フィルタリング機能（完了/未完了、品番、製番など）
+   - ソート機能（列ヘッダークリックでソート）
+   - 検索機能（テキスト入力で絞り込み）
+
+4. **テスト追加**（優先度: 中）
+   - テーブル形式のUIテスト（E2Eテスト）
+   - 列幅計算のユニットテスト
+   - レスポンシブレイアウトのテスト
+
+**現状**: 基本的なUI改善は完了し、正常動作を確認。上記の改善は運用上の課題や要望を収集してから実施。
 
 **詳細**: [docs/knowledge-base/infrastructure/signage.md#kb-193](./docs/knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮)
 

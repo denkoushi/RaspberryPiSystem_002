@@ -2242,7 +2242,7 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 ### [KB-193] デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果
 
 **発生日**: 2026-01-24  
-**Status**: ✅ Root Cause Identified
+**Status**: ✅ Root Cause Identified → ✅ Fixed (2026-01-24)
 
 **事象**:
 - SSH経由でのデプロイスクリプト実行がタイムアウト
@@ -2389,5 +2389,63 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 1. **deploy.shの改善**: `down`と`up`のアトミック性確保、中断時の復旧機能追加
 2. **標準手順の改善**: SSH経由実行時のリスクと代替手段の明記
 3. **追加調査**: SSHセッション終了の詳細な調査（stdin/stdoutの状態、SIGHUPの有無）
+
+#### 実装された改善（2026-01-24完了）
+
+**実装内容**:
+1. **`docker compose down`の削除**: `down`と`up`を分離していた設計を変更し、`build`→`up --force-recreate`に変更
+   - **効果**: `down`成功後に`up`が失敗してもサービスダウン状態を回避
+   - **実装**: `scripts/server/deploy.sh`の117-119行目を変更
+   ```bash
+   # 変更前
+   docker compose -f "${COMPOSE_FILE}" down
+   docker compose -f "${COMPOSE_FILE}" up -d --build
+   
+   # 変更後
+   docker compose -f "${COMPOSE_FILE}" build
+   docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
+   ```
+
+2. **中断時の自動復旧機能**: `trap`でEXIT時に`docker compose up -d`を試行
+   - **効果**: SSHセッション終了やプロセス中断時でも、コンテナが起動していない状態を自動復旧
+   - **実装**: `scripts/server/deploy.sh`の23-30行目に追加
+   ```bash
+   recover_on_failure() {
+     local exit_code=$?
+     if [ "${exit_code}" -ne 0 ]; then
+       log "デプロイ失敗（exit ${exit_code}）。復旧のため docker compose up -d を試行します。"
+       docker compose -f "${COMPOSE_FILE}" up -d || true
+     fi
+   }
+   trap recover_on_failure EXIT
+   ```
+
+3. **ログ永続化**: `logs/deploy/deploy-sh-<timestamp>.log`にログを保存
+   - **効果**: デプロイ実行ログを永続化し、タイムアウト時でもログを確認可能
+   - **実装**: `scripts/server/deploy.sh`の11-21行目に追加
+   ```bash
+   LOG_DIR="${PROJECT_DIR}/logs/deploy"
+   TS="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
+   LOG_FILE="${LOG_DIR}/deploy-sh-${TS}.log"
+   mkdir -p "${LOG_DIR}"
+   exec > >(tee -a "${LOG_FILE}") 2>&1
+   log "Deploy log: ${LOG_FILE}"
+   ```
+
+**実機検証結果（2026-01-24）**:
+- ✅ Pi5で`feat/deploy-sh-hardening-20260124`ブランチをデプロイ成功
+- ✅ ログファイルが`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-2026-01-24T12-23-22Z.log`に作成されたことを確認
+- ✅ Dockerビルド・再作成・マイグレーション・ヘルスチェックが正常に完了
+- ✅ 改善前の問題（`down`後に`up`が中断されコンテナ未起動）は発生せず
+
+**残りの改善案（優先度順）**:
+1. **中**: Docker Composeのhealthcheckと依存関係改善（`depends_on`に`condition: service_healthy`追加）
+2. **低**: Blue-Greenデプロイの検討（現状の`--force-recreate`で十分な可能性が高い）
+
+**学んだこと**:
+- `docker compose down`と`up`を分離すると、`down`成功後に`up`が失敗するとサービスダウン状態が残る
+- `build`→`up --force-recreate`に変更することで、ビルド完了後にコンテナを再作成でき、サービスダウン状態を回避できる
+- `trap`でEXIT時に復旧処理を実行することで、中断時でもコンテナが起動していない状態を自動復旧できる
+- ログを永続化することで、タイムアウト時でもデプロイ実行ログを確認できる
 
 ---
