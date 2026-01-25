@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-01-19
+last-verified: 2026-01-25
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -23,12 +23,12 @@ update-frequency: high
 | API関連 | [api.md](./api.md) | 34件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定 |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 29件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
-| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 4件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
+| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 5件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 70件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化） |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 71件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 25件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化） |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 27件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -98,6 +98,8 @@ update-frequency: high
 | [KB-009](./ci-cd.md#kb-009-e2eテストのログイン成功後のリダイレクトがci環境で失敗する) | E2Eテストのログイン成功後のリダイレクトがCI環境で失敗する | ✅ 解決済み |
 | [KB-023](./ci-cd.md#kb-023-ciでバックアップリストアテストが失敗する) | CIでバックアップ・リストアテストが失敗する | 🔄 進行中 |
 | [KB-024](./ci-cd.md#kb-024-ciテストアーキテクチャの設計不足) | CI/テストアーキテクチャの設計不足 | 🔄 進行中 |
+| [KB-025](./ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する) | E2Eスモーク（kiosk）がナビゲーション不可視で失敗する | ✅ 解決済み |
+| [KB-026](./ci-cd.md#kb-026-cursor内の編集ツールが大きなyamlファイルで失敗する) | Cursor内の編集ツールが大きなYAMLファイルで失敗する | ✅ 解決済み |
 
 ### フロントエンド関連
 
@@ -235,6 +237,8 @@ update-frequency: high
 | [KB-183](./infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) | Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装 | ✅ 実装完了 |
 | [KB-191](./infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) | デプロイは成功したのにDBが古い（テーブル不存在） | ✅ 解決済み |
 | [KB-192](./infrastructure/ansible-deployment.md#kb-192-node_modulesがroot所有になりdeployshのpnpm-installが失敗する) | node_modulesがroot所有になり、deploy.shのpnpm installが失敗する | ✅ 解決済み |
+| [KB-193](./infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果) | デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果 | ✅ 解決済み |
+| [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) | デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -274,11 +278,11 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 116件 |
+| ✅ 解決済み | 117件 |
 | ✅ 実装完了 | 1件 |
 | ✅ 検証完了 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **126件** |
+| **合計** | **127件** |
 
 ---
 
@@ -370,3 +374,5 @@ update-frequency: high
 - 2026-01-22: KB-190を追加（Gmail OAuthのinvalid_grantでCSV取り込みが500になる）
 - 2026-01-22: KB-191を追加（デプロイは成功したのにDBが古い（テーブル不存在）・デプロイ検証強化）
 - 2026-01-23: KB-192を追加（node_modulesがroot所有になりdeploy.shのpnpm installが失敗する）
+- 2026-01-24: KB-193を追加（デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果）→ 2026-01-24に改善実装完了（down後回し、中断時復旧、ログ永続化）
+- 2026-01-25: KB-200を追加（デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能）→ 2026-01-25に実装完了・実機検証完了（Pi5/Pi4/Pi3へのデプロイ成功）

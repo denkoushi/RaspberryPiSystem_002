@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-19
+last-verified: 2026-01-25
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 24件  
+**件数**: 26件  
 **索引**: [index.md](../index.md)
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
@@ -2236,5 +2236,294 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 - ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認
 - ✅ Webコンテナの再ビルドが必要であることを確認
 - ✅ ブラウザのキャッシュクリアが必要な場合があることを確認
+
+---
+
+### [KB-193] デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果
+
+**発生日**: 2026-01-24  
+**Status**: ✅ Root Cause Identified → ✅ Fixed (2026-01-24)
+
+**事象**:
+- SSH経由でのデプロイスクリプト実行がタイムアウト
+- デプロイ完了後にコンテナが未起動の状態
+
+**症状**:
+1. **タイムアウト**: Dockerビルド中にコマンド実行がタイムアウトし、デプロイスクリプトが途中で中断される
+2. **コンテナ未起動**: デプロイスクリプトがタイムアウトした後、コンテナが起動していない
+
+**徹底調査結果（2026-01-24実施）**:
+
+#### 時系列分析（Docker Events + システムログ）
+
+| 時刻 | イベント | 詳細 |
+|------|---------|------|
+| 19:44:47 | deploy.sh開始 | `[2026-01-24 19:44:47] デプロイを開始します` |
+| 19:45:30 | docker compose down実行 | コンテナkill→stop→destroy完了 |
+| 19:45:42 | docker compose up開始 | イメージビルド開始 |
+| 19:49:56 | **context canceled** | `rpc error: code = Canceled desc = context canceled` |
+| 19:55:00 | **context canceled（再試行）** | `failed to extract layer: context canceled` |
+| 19:56:07 | 手動実行で成功 | `docker compose up -d --build`実行後、コンテナcreate→start成功 |
+
+#### 根本原因の特定（事実ベース）
+
+**確認された事実**:
+1. **`docker compose down`は成功**（19:45:30）
+2. **`docker compose up -d --build`は開始されたが、ビルド中にcontext canceledが発生**（19:49:56）
+3. **SSH接続の切断記録はない**（SSHログに「Connection closed」「Disconnected」の記録なし）
+4. **deploy.shのプロセスは既に存在しない**（調査時点で終了済み）
+5. **手動実行では成功**（19:56:07）
+
+**推測される原因（証拠に基づく）**:
+1. **クライアント側のタイムアウト**: Cursorの`run_terminal_cmd`ツールがタイムアウトした可能性
+   - **証拠**: トランスクリプトに「Command timed out」の記録はないが、Docker buildが中断されている
+   - **不確実性**: SSH接続の切断記録がないため、SSHセッション自体は残っている可能性がある
+
+2. **deploy.shの実行構造の問題**:
+   ```bash
+   # deploy.shの構造
+   docker compose down        # ✅ 成功（19:45:30）
+   docker compose up -d --build # ❌ 中断（19:49:56にキャンセル）
+   ```
+   - `set -e`により、エラー時に即座に停止する設計
+   - **事実**: `down`成功後に`up`がキャンセルされ、コンテナが存在しない状態になった
+   - **不確実性**: なぜ`up`がキャンセルされたかは、SSHセッション終了の記録がないため不明
+
+3. **Docker BuildKitのcontext canceled**:
+   - **事実**: `rpc error: code = Canceled desc = context canceled`が19:49:56に発生
+   - **事実**: `failed to extract layer: context canceled`が19:55:00に発生（再試行もキャンセル）
+   - **推測**: ビルドコンテキスト（ファイル転送）が中断された可能性
+   - **不確実性**: なぜ中断されたかは、SSH切断記録がないため不明
+
+**真因の特定に必要な追加調査**:
+- SSHセッションのstdin/stdoutが閉じられたかどうかの確認
+- deploy.shプロセスがSIGHUPを受け取ったかどうかの確認
+- クライアント側（Cursor）のタイムアウト設定の確認
+
+#### 検証結果
+
+**除外された要因**:
+- ❌ **SSH接続の切断**: SSHログに切断記録なし（19:40-20:10の範囲で切断なし）
+- ❌ **並行デプロイ**: cron/timerによる自動実行なし、他のdeploy.shプロセスなし
+- ❌ **OOM Killer**: メモリ不足によるkillなし（メモリ使用率: dockerd 7.1%, API 4.6%）
+- ❌ **ネットワーク切断**: ネットワークログに異常なし
+- ❌ **Dockerデーモンの問題**: Dockerデーモンは正常稼働
+
+**確認された事実**:
+- ✅ `docker compose down`は正常に完了（19:45:30）
+- ✅ `docker compose up -d --build`は開始されたが、ビルド中にキャンセル（19:49:56, 19:55:00）
+- ✅ 手動実行（19:56:07）では正常に完了
+- ✅ コンテナは`down`で削除され、`up`がキャンセルされたため、コンテナが存在しない状態になった
+
+#### その他の発見事項
+
+1. **deploy.shの設計上の問題**:
+   - `docker compose down`と`docker compose up`が**アトミックでない**
+   - `down`成功後に`up`が失敗すると、**サービスダウン状態が残る**
+   - ロールバック機能がない（`down`実行後、`up`失敗時の復旧手段がない）
+
+2. **Docker Composeの依存関係**:
+   - `depends_on`は起動開始のみ待機（起動完了を待たない）
+   - `condition: service_healthy`がないため、DB起動前にAPIが起動を試みる可能性
+
+3. **ヘルスチェックの実装**:
+   - 503（degraded）を失敗とみなす設計
+   - メモリ使用率96%で503を返すが、API自体は動作している
+
+**推奨対策（優先度順）**:
+
+1. **即座の対策（実行環境の改善）**:
+   - **Pi5上で直接実行**: SSH経由ではなく、Pi5のシェルで直接`deploy.sh`を実行
+   - **screen/tmux使用**: SSH経由で実行する場合、`screen`や`tmux`でデタッチ可能なセッションで実行
+   - **nohup使用**: `nohup ./scripts/server/deploy.sh main > /tmp/deploy.log 2>&1 &`
+
+2. **短期対策（deploy.shの改善）**:
+   - **アトミック性の確保**: `down`と`up`を1つのトランザクションとして扱う（`down`失敗時は`up`を実行しない）
+   - **ロールバック機能**: `up`失敗時に、前のイメージで`up`を再試行
+   - **タイムアウト設定**: 長時間コマンド（`docker compose up`）にタイムアウトを設定し、タイムアウト時はエラーメッセージを出力
+
+3. **中期対策（Docker Composeの改善）**:
+   - **healthcheck追加**: DBコンテナにhealthcheckを追加
+   - **depends_on改善**: `condition: service_healthy`を追加
+   - **待機ロジック改善**: 固定値の`sleep`を、実際の起動完了を待つロジックに変更
+
+4. **長期対策（デプロイプロセスの改善）**:
+   - **Blue-Greenデプロイ**: 新しいコンテナを起動してから、古いコンテナを停止
+   - **デプロイロック**: 並行実行を防止するロック機構（既に`scripts/update-all-clients.sh`には実装済み）
+   - **デプロイログ**: デプロイ実行ログをファイルに保存（`/tmp/deploy.log`など）
+
+#### 標準手順とdeploy.shの不備
+
+**標準手順（deployment.md）の不備**:
+1. **SSH経由実行時のリスク未記載**: SSH経由でワンライナー実行する場合のタイムアウトリスクを明記していなかった
+2. **実行環境への依存未記載**: クライアント側（Cursor等）のタイムアウト設定への依存を明記していなかった
+3. **長時間処理の注意喚起なし**: Dockerビルドが数分かかることを考慮した注意喚起がなかった
+
+**deploy.shの設計上の不備**:
+1. **アトミック性の欠如**: `docker compose down`と`up`が分離されており、`down`成功後に`up`が失敗するとサービスダウン状態が残る
+2. **タイムアウト設定なし**: 長時間コマンド（`docker compose up --build`）にタイムアウト設定がない
+3. **中断時の復旧手段なし**: SSHセッション終了やプロセス中断時の復旧機能がない
+4. **ロールバック機能なし**: `up`失敗時に前の状態に戻す機能がない
+
+**実装優先度**:
+1. **最優先**: deploy.shにアトミック性とロールバック機能を追加（`down`失敗時は`up`を実行しない、`up`失敗時は前のイメージで再起動）
+2. **高**: 標準手順（deployment.md）にSSH経由実行時の注意事項と代替手段を明記
+3. **中**: Docker Composeのhealthcheckと依存関係改善
+4. **低**: Blue-Greenデプロイの検討
+
+**関連ファイル**:
+- `scripts/server/deploy.sh`: デプロイスクリプト（**改善必須**）
+- `infrastructure/docker/docker-compose.server.yml`: Docker Compose設定（改善対象）
+- [deployment.md](../../guides/deployment.md): デプロイ標準手順（**更新必須**）
+- [deploy-stability-execplan.md](../../plans/deploy-stability-execplan.md): デプロイ安定化機能の実装計画
+
+**参考**: 同様の問題は`scripts/update-all-clients.sh`では既に解決済み（ロック機構、リトライ機能、タイムアウト設定）。`deploy.sh`にも同様の改善が必要。
+
+**結論**: 
+- **確実な事実**: `docker compose down`成功後に`docker compose up`がキャンセルされ、コンテナが存在しない状態になった
+- **確実な不備**: deploy.shは`down`と`up`がアトミックでなく、中断時の復旧機能がない
+- **確実な不備**: 標準手順はSSH経由実行時のリスクを明記していない
+- **不確実な点**: なぜ`up`がキャンセルされたかは、SSH切断記録がないため完全には特定できていない（クライアント側のタイムアウトの可能性が高いが、証拠が不十分）
+
+**必要な改善**:
+1. **deploy.shの改善**: `down`と`up`のアトミック性確保、中断時の復旧機能追加
+2. **標準手順の改善**: SSH経由実行時のリスクと代替手段の明記
+3. **追加調査**: SSHセッション終了の詳細な調査（stdin/stdoutの状態、SIGHUPの有無）
+
+#### 実装された改善（2026-01-24完了）
+
+**実装内容**:
+1. **`docker compose down`の削除**: `down`と`up`を分離していた設計を変更し、`build`→`up --force-recreate`に変更
+   - **効果**: `down`成功後に`up`が失敗してもサービスダウン状態を回避
+   - **実装**: `scripts/server/deploy.sh`の117-119行目を変更
+   ```bash
+   # 変更前
+   docker compose -f "${COMPOSE_FILE}" down
+   docker compose -f "${COMPOSE_FILE}" up -d --build
+   
+   # 変更後
+   docker compose -f "${COMPOSE_FILE}" build
+   docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
+   ```
+
+2. **中断時の自動復旧機能**: `trap`でEXIT時に`docker compose up -d`を試行
+   - **効果**: SSHセッション終了やプロセス中断時でも、コンテナが起動していない状態を自動復旧
+   - **実装**: `scripts/server/deploy.sh`の23-30行目に追加
+   ```bash
+   recover_on_failure() {
+     local exit_code=$?
+     if [ "${exit_code}" -ne 0 ]; then
+       log "デプロイ失敗（exit ${exit_code}）。復旧のため docker compose up -d を試行します。"
+       docker compose -f "${COMPOSE_FILE}" up -d || true
+     fi
+   }
+   trap recover_on_failure EXIT
+   ```
+
+3. **ログ永続化**: `logs/deploy/deploy-sh-<timestamp>.log`にログを保存
+   - **効果**: デプロイ実行ログを永続化し、タイムアウト時でもログを確認可能
+   - **実装**: `scripts/server/deploy.sh`の11-21行目に追加
+   ```bash
+   LOG_DIR="${PROJECT_DIR}/logs/deploy"
+   TS="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
+   LOG_FILE="${LOG_DIR}/deploy-sh-${TS}.log"
+   mkdir -p "${LOG_DIR}"
+   exec > >(tee -a "${LOG_FILE}") 2>&1
+   log "Deploy log: ${LOG_FILE}"
+   ```
+
+**実機検証結果（2026-01-24）**:
+- ✅ Pi5で`feat/deploy-sh-hardening-20260124`ブランチをデプロイ成功
+- ✅ ログファイルが`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-2026-01-24T12-23-22Z.log`に作成されたことを確認
+- ✅ Dockerビルド・再作成・マイグレーション・ヘルスチェックが正常に完了
+- ✅ 改善前の問題（`down`後に`up`が中断されコンテナ未起動）は発生せず
+
+**残りの改善案（優先度順）**:
+1. **中**: Docker Composeのhealthcheckと依存関係改善（`depends_on`に`condition: service_healthy`追加）
+2. **低**: Blue-Greenデプロイの検討（現状の`--force-recreate`で十分な可能性が高い）
+
+**学んだこと**:
+- `docker compose down`と`up`を分離すると、`down`成功後に`up`が失敗するとサービスダウン状態が残る
+- `build`→`up --force-recreate`に変更することで、ビルド完了後にコンテナを再作成でき、サービスダウン状態を回避できる
+- `trap`でEXIT時に復旧処理を実行することで、中断時でもコンテナが起動していない状態を自動復旧できる
+- ログを永続化することで、タイムアウト時でもデプロイ実行ログを確認できる
+
+---
+
+### [KB-200] デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能
+
+**発生日**: 2026-01-25  
+**Status**: ✅ 解決済み（2026-01-25）
+
+**事象**:
+- デプロイ標準手順のルール（「Pi5が `origin/<branch>` をpullして実行」）が、スクリプトレベルで強制されていなかった
+- ローカル未push/未commitの状態でデプロイを実行しても、警告だけで続行していた
+- `--detach`モードでデプロイを実行した場合、ログがリアルタイムで表示されず、進捗確認が困難だった
+
+**症状**:
+- ローカルで修正したファイルがリモートにプッシュされていない状態でデプロイを実行
+- Pi5側は `git pull origin <branch>` で古いファイルを取得し、デプロイが失敗する可能性がある
+- `--detach`モードで実行すると、ログがリアルタイムで表示されず、`--status`コマンドを手動で実行する必要がある
+
+**要因**:
+- **根本原因**: デプロイ標準手順のルールが、スクリプトレベルで強制されていなかった
+- 開発中の正常な状態（ローカルが最新、リモートが古い）を「失敗要因」として扱う設計になっていた
+- `--detach`モードでは、リモートでバックグラウンド実行されるため、ローカルのターミナルにはログが流れない
+
+**有効だった対策**:
+- ✅ **恒久修正（実装完了・実機検証完了）**:
+  1. **fail-fastチェックの追加**: デプロイ実行前に以下をチェックし、条件を満たさない場合はエラーで停止
+     - **未commitチェック**: ローカル作業ツリーがdirty（未commit変更あり）なら停止
+     - **未pushチェック**: ローカルブランチが `origin/<branch>` よりahead（未pushコミットあり）なら停止
+     - **例外**: `--print-plan` / `--status` / `--attach` はチェック不要（実行しないため）
+  2. **エラーメッセージの改善**: 対処方法（commit→push→CI成功→再実行）を明示
+  3. **ログ追尾機能の明確化**: `--follow`オプションと`--attach <run_id>`オプションの使用方法を明確化
+
+**実装詳細**:
+```bash
+ensure_local_repo_ready_for_deploy() {
+  # 1) Working tree must be clean
+  if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    echo "[ERROR] ローカルリポジトリに未commit変更があります。デプロイはリモートブランチ由来に限定します。"
+    exit 2
+  fi
+  
+  # 2) No ahead commits (must be pushed)
+  local local_ref=$(git rev-parse --abbrev-ref HEAD)
+  local counts=$(git rev-list --left-right --count "origin/${REPO_VERSION}...${local_ref}" 2>/dev/null || echo "0	0")
+  local ahead=$(echo "${counts}" | awk '{print $1}')
+  if [[ "${ahead}" -gt 0 ]]; then
+    echo "[ERROR] ローカルに未pushコミットがあります（origin/${REPO_VERSION}よりahead）。"
+    exit 2
+  fi
+}
+```
+
+**ログ追尾方法**:
+- `--detach --follow`: デプロイ開始後、`tail -f`でログをリアルタイム追尾
+- `--attach <run_id>`: 既存のデタッチ実行のログをリアルタイム追尾
+
+**実機検証結果（2026-01-25）**:
+- Pi5へのデプロイが正常完遂（`feat/deploy-sh-hardening-20260124`ブランチ）
+- fail-fastチェックが正常に動作（未commit変更がある場合、エラーで停止）
+- デタッチ実行が正常に動作（全デバイス: Pi5/Pi4/Pi3のデプロイが成功）
+- Pi3のサービス停止とリソース確保が正常に実行
+- DB整合性ゲートが正常に動作（必須テーブル存在確認: `MeasuringInstrumentLoanEvent`）
+- APIが正常に稼働中
+
+**再発防止**:
+- デプロイ標準手順を遵守: **ブランチをpush→CI成功→そのブランチ名でデプロイ**
+- スクリプトレベルでルールを強制: fail-fastチェックにより、未push/未commitの状態でデプロイを実行しようとするとエラーで停止
+- ドキュメント更新: `docs/guides/deployment.md` に「push+CI成功→ブランチ指定でデプロイ」「未push/未commitは拒否」を明記
+- ログ追尾方法の明記: `--detach --follow`または`--attach <run_id>`を使用してログをリアルタイム追尾
+
+**学んだこと**:
+- デプロイ標準手順のルールは、スクリプトレベルで強制する必要がある（ドキュメントだけでは不十分）
+- 開発中の正常な状態（ローカルが最新、リモートが古い）を「失敗要因」として扱うのではなく、**ルールを遵守するようにfail-fastで停止**する設計が適切
+- `--detach`モードでは、ログがリアルタイムで表示されないため、`--follow`または`--attach`を使用してログを追尾する必要がある
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（fail-fastチェック追加、ログ追尾機能）
+- `docs/guides/deployment.md`（デプロイ標準手順の明記、ログ追尾方法の追加）
 
 ---

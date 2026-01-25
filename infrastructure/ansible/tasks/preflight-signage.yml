@@ -13,6 +13,9 @@
   ansible.builtin.set_fact:
     device_type: "{{ device_type | default('default') }}"
     device_config: "{{ device_type_defaults[device_type] | default(device_type_defaults['default']) }}"
+
+- name: Expand device config for preflight checks
+  ansible.builtin.set_fact:
     memory_required_mb: "{{ device_config.memory_required_mb }}"
     stop_lightdm: "{{ device_config.stop_lightdm }}"
     services_to_stop: "{{ device_config.services_to_stop }}"
@@ -46,51 +49,6 @@
       ignore_errors: true
       when: stop_lightdm | default(false)
 
-    # region agent log
-    - name: Capture signage-lite unit file state after mask attempt
-      ansible.builtin.shell: |
-        set -euo pipefail
-        if [ -e /etc/systemd/system/signage-lite.service ]; then
-          if [ -L /etc/systemd/system/signage-lite.service ]; then
-            echo "symlink:$(readlink -f /etc/systemd/system/signage-lite.service)"
-          else
-            echo "file"
-          fi
-        else
-          echo "missing"
-        fi
-      register: signage_unit_state
-      changed_when: false
-
-    - name: Capture signage-lite systemd states
-      ansible.builtin.shell: |
-        set -euo pipefail
-        echo "enabled=$(systemctl is-enabled signage-lite.service 2>/dev/null || true)"
-        echo "active=$(systemctl is-active signage-lite.service 2>/dev/null || true)"
-        echo "update_enabled=$(systemctl is-enabled signage-lite-update.timer 2>/dev/null || true)"
-      register: signage_systemd_state
-      changed_when: false
-
-    - name: Log preflight systemd state
-      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /tmp/debug.log 2>/dev/null || true"
-      delegate_to: localhost
-      changed_when: false
-      ignore_errors: true
-      vars:
-        log_payload:
-          sessionId: "debug-session"
-          runId: "preflight"
-          hypothesisId: "H1"
-          location: "infrastructure/ansible/tasks/preflight-signage.yml"
-          message: "preflight_systemd_state"
-          data:
-            host: "{{ inventory_hostname }}"
-            device_type: "{{ device_type }}"
-            unit_file_state: "{{ signage_unit_state.stdout | default('') }}"
-            systemd_state: "{{ signage_systemd_state.stdout | default('') }}"
-          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
-    # endregion
-
     - name: Wait for services to fully stop
       ansible.builtin.pause:
         seconds: 3
@@ -118,27 +76,6 @@
     - name: Extract available memory value
       ansible.builtin.set_fact:
         available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
-    # region agent log
-    - name: Log preflight memory snapshot
-      ansible.builtin.shell: "printf '%s\n' {{ log_payload | to_json | quote }} >> /tmp/debug.log 2>/dev/null || true"
-      delegate_to: localhost
-      changed_when: false
-      ignore_errors: true
-      vars:
-        log_payload:
-          sessionId: "debug-session"
-          runId: "preflight"
-          hypothesisId: "H2"
-          location: "infrastructure/ansible/tasks/preflight-signage.yml"
-          message: "preflight_memory_snapshot"
-          data:
-            host: "{{ inventory_hostname }}"
-            device_type: "{{ device_type }}"
-            available_memory_mb: "{{ available_memory_mb | default(0) }}"
-            memory_required_mb: "{{ memory_required_mb }}"
-            raw_memory_stdout: "{{ available_memory_mb_raw.stdout | default('') }}"
-          timestamp: "{{ lookup('pipe', 'python3 -c \"import time;print(int(time.time()*1000))\"') }}"
-    # endregion
 
     - name: Fail if insufficient memory available
       ansible.builtin.fail:

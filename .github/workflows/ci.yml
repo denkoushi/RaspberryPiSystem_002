@@ -25,6 +25,13 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
+      - name: Validate deployment scripts
+        run: |
+          bash -n scripts/update-all-clients.sh
+          bash -n scripts/server/deploy.sh
+          bash -n scripts/server/deploy-detached.sh
+          bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

@@ -113,7 +113,8 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   ```
 - [ ] **コミット/プッシュ/CIの確認（重要）**:
   - `scripts/server/deploy.sh` は **`git pull origin <branch>` でリモートを取り込む**ため、ローカルで未pushの変更はデプロイされません。
-  - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) 参照）。
+  - `scripts/update-all-clients.sh` は **fail-fastチェック**により、未commit/未pushの状態でデプロイを実行しようとするとエラーで停止します。
+  - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)、[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) 参照）。
 - [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
   ```bash
   # Pi5上でbackup.jsonをバックアップ
@@ -247,6 +248,40 @@ cd /opt/RaspberryPiSystem_002
 # 特定のブランチをデプロイ
 ./scripts/server/deploy.sh feature/new-feature
 ```
+
+**デタッチ実行（長時間デプロイ向け）**:
+```bash
+# ラズパイ5で実行（デタッチ）
+cd /opt/RaspberryPiSystem_002
+bash ./scripts/server/deploy-detached.sh feature/new-feature
+
+# 実行状態はログ/ステータス/exitで確認
+ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | head -3
+```
+
+**Ansible経由デプロイのログ追尾**:
+`scripts/update-all-clients.sh`で`--detach`モードを使用する場合、ログはリアルタイムで表示されません。以下の方法でログを追尾できます：
+
+- **`--detach --follow`**: デプロイ開始後、`tail -f`でログをリアルタイム追尾
+  ```bash
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow
+  ```
+
+- **`--attach <run_id>`**: 既存のデタッチ実行のログをリアルタイム追尾
+  ```bash
+  ./scripts/update-all-clients.sh --attach 20260125-135737-15664
+  ```
+
+詳細は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) を参照してください。
+
+**deploy.shの改善機能（2026-01-24実装）**:
+- **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）
+- **中断時の自動復旧**: SSHセッション終了やプロセス中断時でも、`trap`でEXIT時に`docker compose up -d`を試行し、コンテナが起動していない状態を自動復旧します
+- **ログ永続化**: デプロイ実行ログを`logs/deploy/deploy-sh-<timestamp>.log`に保存し、タイムアウト時でもログを確認可能です
+
+**注意事項**:
+- SSH経由で長時間実行する場合（Dockerビルドが数分かかる）、クライアント側のタイムアウト設定に注意してください。タイムアウトが発生した場合でも、`trap`による自動復旧が動作しますが、ログファイルで実行状況を確認してください
+- デプロイログは`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-<timestamp>.log`に保存されます
 
 ### 方法2: 手動で更新
 
@@ -427,10 +462,33 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh feature/rigging-management infrastructure/ansible/inventory.yml
 ```
 
+#### デタッチ実行（長時間デプロイ向け・推奨）
+
+**ポイント**:
+- Mac/SSH経由の実行はクライアント側タイムアウトで「途中停止して見える」ことがあります。
+- `--detach` を使うと **Pi5側で処理が継続**し、ローカル切断の影響を受けません。
+- 進捗は `--attach` / `--status` で確認できます。
+
+```bash
+# 第2工場: デタッチ実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+# トークプラザ: デタッチ実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml --detach
+
+# ログ追尾（run_idを指定）
+./scripts/update-all-clients.sh --attach 20260125-123456-4242
+
+# 状態確認（run_idを指定）
+./scripts/update-all-clients.sh --status 20260125-123456-4242
+```
+
 **重要**: 
 - `scripts/update-all-clients.sh`はPi5も含めて更新します
 - デフォルトは`main`ブランチです
 - ブランチを指定する場合は引数として渡してください
+- **デプロイはPi5が `origin/<branch>` をpullして実行**します（ローカル未commit/未pushの変更はデプロイされません）。その状態で実行すると、スクリプトが **fail-fastで停止**します。
+  - 対処: 変更をcommit → push → GitHub Actions CIが成功 → そのブランチ名で再実行
 - **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
 
 #### デプロイ安定化機能（2026-01-17実装）
