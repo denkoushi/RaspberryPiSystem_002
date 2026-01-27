@@ -34,9 +34,37 @@ type DiffResult = {
   rowsSkipped: number;
 };
 
-const isCompleted = (rowData: Prisma.JsonValue, completedValue: string): boolean => {
-  const progress = (rowData as Record<string, unknown> | null | undefined)?.progress;
-  return typeof progress === 'string' && progress.trim() === completedValue;
+const parseJstDate = (value: unknown): Date | null => {
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const dateTimeMatch = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?$/);
+  if (!dateTimeMatch) {
+    return null;
+  }
+  const [, year, month, day, hour = '0', minute = '0'] = dateTimeMatch;
+  const yearNum = parseInt(year, 10);
+  const monthNum = parseInt(month, 10) - 1;
+  const dayNum = parseInt(day, 10);
+  const hourNum = parseInt(hour, 10);
+  const minuteNum = parseInt(minute, 10);
+  const localDate = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
+  if (isNaN(localDate.getTime())) {
+    return null;
+  }
+  return new Date(localDate.getTime() - 9 * 60 * 60 * 1000);
+};
+
+const resolveUpdatedAt = (rowData: Prisma.JsonValue, fallback: Date): Date => {
+  const updatedAt = (rowData as Record<string, unknown> | null | undefined)?.updatedAt;
+  return parseJstDate(updatedAt) ?? fallback;
 };
 
 export function computeCsvDashboardDedupDiff(params: {
@@ -45,7 +73,7 @@ export function computeCsvDashboardDedupDiff(params: {
   existingRows: ExistingRow[];
   completedValue: string;
 }): DiffResult {
-  const { dashboardId, incomingRows, existingRows, completedValue } = params;
+  const { dashboardId, incomingRows, existingRows } = params;
   const incomingByHash = new Map<string, { occurredAt: Date; data: NormalizedRowData }>();
   let rowsAdded = 0;
   let rowsSkipped = 0;
@@ -85,15 +113,9 @@ export function computeCsvDashboardDedupDiff(params: {
       continue;
     }
 
-    if (isCompleted(existing.rowData, completedValue)) {
-      rowsSkipped++;
-      continue;
-    }
-
-    const existingRowData = existing.rowData as unknown as NormalizedRowData;
-    const sameData = JSON.stringify(existingRowData) === JSON.stringify(incoming.data);
-    const sameOccurredAt = existing.occurredAt.getTime() === incoming.occurredAt.getTime();
-    if (sameData && sameOccurredAt) {
+    const incomingUpdatedAt = resolveUpdatedAt(incoming.data as Prisma.JsonValue, incoming.occurredAt);
+    const existingUpdatedAt = resolveUpdatedAt(existing.rowData, existing.occurredAt);
+    if (incomingUpdatedAt.getTime() <= existingUpdatedAt.getTime()) {
       rowsSkipped++;
       continue;
     }

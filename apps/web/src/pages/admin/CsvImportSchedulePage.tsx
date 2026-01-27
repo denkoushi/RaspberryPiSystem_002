@@ -197,7 +197,10 @@ export function CsvImportSchedulePage() {
       setScheduleEditWarning(null);
       refetch();
     } catch (error) {
-      // エラーはmutationのisErrorで表示
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        await refetch();
+        setValidationError(`スケジュールIDが既に存在します: ${formData.id ?? ''}`);
+      }
     }
   };
 

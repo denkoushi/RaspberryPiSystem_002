@@ -12,6 +12,7 @@ import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
  */
 export class CsvDashboardIngestor {
   private static readonly COMPLETED_PROGRESS_VALUE = '完了';
+  private static readonly PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -70,6 +71,9 @@ export class CsvDashboardIngestor {
         const row = rows[i];
         const normalized = this.normalizeRow(row, columnMapping);
         const occurredAt = this.extractOccurredAt(row, dateColumnIndex);
+        if (dashboardId === CsvDashboardIngestor.PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+          this.validateProductionScheduleRow(normalized, i);
+        }
 
         // 重複除去用のハッシュを計算（dedupモードの場合）
         let hash: string | undefined;
@@ -399,5 +403,23 @@ export class CsvDashboardIngestor {
     }
 
     return createHash('sha256').update(hashSource).digest('hex');
+  }
+
+  private validateProductionScheduleRow(normalized: NormalizedRowData, rowIndex: number): void {
+    const productNo = String(normalized.ProductNo ?? '').trim();
+    if (!/^\d{10}$/.test(productNo)) {
+      throw new ApiError(
+        400,
+        `ProductNoは10桁の数字である必要があります（行: ${rowIndex}）`
+      );
+    }
+
+    const seiban = String(normalized.FSEIBAN ?? '').trim();
+    if (!/^[A-Za-z0-9]{8}$/.test(seiban)) {
+      throw new ApiError(
+        400,
+        `FSEIBANは英数字8桁である必要があります（行: ${rowIndex}）`
+      );
+    }
   }
 }

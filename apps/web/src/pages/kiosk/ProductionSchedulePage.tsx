@@ -48,12 +48,12 @@ export function ProductionSchedulePage() {
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
       { key: 'FHINCD', label: '品番' },
-      { key: 'ProductNo', label: '製番' },
+      { key: 'ProductNo', label: '製造order番号' },
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
       { key: 'FKOJUN', label: '工順', dataType: 'number' },
-      { key: 'FSEIBAN', label: '製番末尾' }
+      { key: 'FSEIBAN', label: '製番' }
     ],
     []
   );
@@ -75,8 +75,6 @@ export function ProductionSchedulePage() {
     const sourceRows = scheduleQuery.data?.rows ?? [];
     return sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
-      const seibanMasked = '********';
-      const seibanLastDigits = String(d.FSEIBAN ?? '').slice(-3);
       const values = {
         FHINCD: String(d.FHINCD ?? ''),
         ProductNo: String(d.ProductNo ?? ''),
@@ -84,7 +82,7 @@ export function ProductionSchedulePage() {
         FSIGENCD: String(d.FSIGENCD ?? ''),
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
         FKOJUN: String(d.FKOJUN ?? ''),
-        FSEIBAN: `${seibanMasked} ${seibanLastDigits}`.trim()
+        FSEIBAN: String(d.FSEIBAN ?? '')
       };
       return {
         id: r.id,

@@ -121,9 +121,9 @@ async function main() {
       displayPeriodDays: 1,
       emptyMessage: '仕掛中のデータはありません',
       columnDefinitions: [
-        { internalName: 'ProductNo', displayName: '製番01', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
+        { internalName: 'ProductNo', displayName: '製造order番号', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
         { internalName: 'FSIGENMEI', displayName: '資源名', csvHeaderCandidates: ['FSIGENMEI'], dataType: 'string', order: 1 },
-        { internalName: 'FSEIBAN', displayName: '製番02', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+        { internalName: 'FSEIBAN', displayName: '製番', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
         { internalName: 'FHINCD', displayName: '製品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 3 },
         { internalName: 'FHINMEI', displayName: '品名', csvHeaderCandidates: ['FHINMEI'], dataType: 'string', order: 4 },
         { internalName: 'FSIGENCD', displayName: '資源コード', csvHeaderCandidates: ['FSIGENCD'], dataType: 'string', order: 5 },
@@ -133,13 +133,12 @@ async function main() {
         { internalName: 'updatedAt', displayName: '更新日時', csvHeaderCandidates: ['更新日時'], dataType: 'date', order: 9, required: false },
         { internalName: 'registeredAt', displayName: '登録日時', csvHeaderCandidates: ['登録日時'], dataType: 'date', order: 10, required: false }
       ],
-      templateType: 'CARD_GRID',
+      templateType: 'TABLE',
       templateConfig: {
-        cardsPerPage: 60,
+        rowsPerPage: 50,
         fontSize: 14,
-        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
-        gridColumns: 6,
-        gridRows: 10
+        displayColumns: ['FHINCD', 'ProductNo', 'FHINMEI', 'FSIGENCD', 'FSIGENSHOYORYO', 'FKOJUN', 'FSEIBAN'],
+        headerFixed: true
       }
     },
     create: {
@@ -154,9 +153,9 @@ async function main() {
       displayPeriodDays: 1,
       emptyMessage: '仕掛中のデータはありません',
       columnDefinitions: [
-        { internalName: 'ProductNo', displayName: '製番01', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
+        { internalName: 'ProductNo', displayName: '製造order番号', csvHeaderCandidates: ['ProductNo'], dataType: 'string', order: 0 },
         { internalName: 'FSIGENMEI', displayName: '資源名', csvHeaderCandidates: ['FSIGENMEI'], dataType: 'string', order: 1 },
-        { internalName: 'FSEIBAN', displayName: '製番02', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+        { internalName: 'FSEIBAN', displayName: '製番', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
         { internalName: 'FHINCD', displayName: '製品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 3 },
         { internalName: 'FHINMEI', displayName: '品名', csvHeaderCandidates: ['FHINMEI'], dataType: 'string', order: 4 },
         { internalName: 'FSIGENCD', displayName: '資源コード', csvHeaderCandidates: ['FSIGENCD'], dataType: 'string', order: 5 },
@@ -166,13 +165,12 @@ async function main() {
         { internalName: 'updatedAt', displayName: '更新日時', csvHeaderCandidates: ['更新日時'], dataType: 'date', order: 9, required: false },
         { internalName: 'registeredAt', displayName: '登録日時', csvHeaderCandidates: ['登録日時'], dataType: 'date', order: 10, required: false }
       ],
-      templateType: 'CARD_GRID',
+      templateType: 'TABLE',
       templateConfig: {
-        cardsPerPage: 60,
+        rowsPerPage: 50,
         fontSize: 14,
-        displayFields: ['FHINCD', 'FSEIBAN', 'ProductNo', 'FSIGENCD', 'FHINMEI', 'FSIGENSHOYORYO', 'FKOJUN'],
-        gridColumns: 6,
-        gridRows: 10
+        displayColumns: ['FHINCD', 'ProductNo', 'FHINMEI', 'FSIGENCD', 'FSIGENSHOYORYO', 'FKOJUN', 'FSEIBAN'],
+        headerFixed: true
       }
     }
   });
