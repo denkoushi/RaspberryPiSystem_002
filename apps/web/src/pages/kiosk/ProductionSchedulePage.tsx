@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCompleteKioskProductionScheduleRow, useKioskProductionSchedule } from '../../api/hooks';
+import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
@@ -28,20 +29,31 @@ const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 
 export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
-  const [activeQuery, setActiveQuery] = useState<string>('');
+  const [activeQueries, setActiveQueries] = useState<string[]>([]);
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardValue, setKeyboardValue] = useState('');
+
+  const normalizedActiveQueries = useMemo(() => {
+    const unique = new Set<string>();
+    activeQueries
+      .map((query) => query.trim())
+      .filter((query) => query.length > 0)
+      .forEach((query) => unique.add(query));
+    return Array.from(unique);
+  }, [activeQueries]);
 
   const queryParams = useMemo(
     () => ({
-      q: activeQuery.length > 0 ? activeQuery : undefined,
+      q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
       page: 1,
       pageSize: 400
     }),
-    [activeQuery]
+    [normalizedActiveQueries]
   );
-  const hasQuery = activeQuery.trim().length > 0;
+  const hasQuery = normalizedActiveQueries.length > 0;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
 
@@ -131,14 +143,43 @@ export function ProductionSchedulePage() {
 
   const applySearch = (value: string) => {
     const trimmed = value.trim();
-    setActiveQuery(trimmed);
     setInputQuery(trimmed);
+    setActiveQueries(trimmed.length > 0 ? [trimmed] : []);
     if (trimmed.length > 0) {
       setHistory((prev) => {
         const next = [trimmed, ...prev.filter((p) => p !== trimmed)].slice(0, 8);
         return next;
       });
     }
+  };
+
+  const toggleHistoryQuery = (value: string) => {
+    setActiveQueries((prev) => {
+      const exists = prev.includes(value);
+      if (exists) {
+        return prev.filter((item) => item !== value);
+      }
+      const next = [...prev, value];
+      return next.slice(0, 8);
+    });
+  };
+
+  const removeHistoryQuery = (value: string) => {
+    setHistory((prev) => prev.filter((item) => item !== value));
+    setActiveQueries((prev) => prev.filter((item) => item !== value));
+    if (inputQuery === value) {
+      setInputQuery('');
+    }
+  };
+
+  const openKeyboard = () => {
+    setKeyboardValue(inputQuery);
+    setIsKeyboardOpen(true);
+  };
+
+  const confirmKeyboard = () => {
+    setInputQuery(keyboardValue);
+    setIsKeyboardOpen(false);
   };
 
   const handleComplete = async (rowId: string) => {
@@ -157,6 +198,15 @@ export function ProductionSchedulePage() {
             placeholder="製造order番号 / 製番で検索"
             className="h-10 w-64 bg-white text-slate-900"
           />
+          <Button
+            variant="secondary"
+            className="h-10 px-3"
+            onClick={openKeyboard}
+            disabled={scheduleQuery.isFetching || completeMutation.isPending}
+            aria-label="キーボードを開く"
+          >
+            ⌨
+          </Button>
           <Button
             variant="primary"
             className="h-10"
@@ -177,38 +227,41 @@ export function ProductionSchedulePage() {
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {history.map((h) => (
-            <div
-              key={h}
-              role="button"
-              tabIndex={0}
-              onClick={() => applySearch(h)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  applySearch(h);
-                }
-              }}
-              className="relative cursor-pointer rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
-            >
-              {h}
-              <button
-                type="button"
-                aria-label={`履歴から削除: ${h}`}
-                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setHistory((prev) => prev.filter((item) => item !== h));
-                  if (activeQuery === h) {
-                    setActiveQuery('');
-                    setInputQuery('');
+          {history.map((h) => {
+            const isActive = normalizedActiveQueries.includes(h);
+            return (
+              <div
+                key={h}
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleHistoryQuery(h)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleHistoryQuery(h);
                   }
                 }}
+                className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                  isActive
+                    ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
+                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                }`}
               >
-                ×
-              </button>
-            </div>
-          ))}
+                {h}
+                <button
+                  type="button"
+                  aria-label={`履歴から削除: ${h}`}
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeHistoryQuery(h);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -265,8 +318,8 @@ export function ProductionSchedulePage() {
                   <tr key={`row-${left.id}`} className="border-b border-white/10">
                     <td className={`px-2 py-1 align-middle ${leftClass}`}>
                       <button
-                        className={`flex h-7 w-7 items-center justify-center rounded-full text-white shadow hover:opacity-80 disabled:opacity-60 ${
-                          left.isCompleted ? 'bg-gray-500 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+                        className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 disabled:opacity-60 ${
+                          left.isCompleted ? 'border-slate-400' : 'border-red-500'
                         }`}
                         aria-label={left.isCompleted ? '未完了に戻す' : '完了にする'}
                         onClick={() => handleComplete(left.id)}
@@ -288,8 +341,8 @@ export function ProductionSchedulePage() {
                         <td className={`px-2 py-1 align-middle ${rightClass}`}>
                           {right ? (
                             <button
-                              className={`flex h-7 w-7 items-center justify-center rounded-full text-white shadow hover:opacity-80 disabled:opacity-60 ${
-                                right.isCompleted ? 'bg-gray-500 hover:bg-gray-600' : 'bg-red-600 hover:bg-red-700'
+                              className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 disabled:opacity-60 ${
+                                right.isCompleted ? 'border-slate-400' : 'border-red-500'
                               }`}
                               aria-label={right.isCompleted ? '未完了に戻す' : '完了にする'}
                               onClick={() => handleComplete(right.id)}
@@ -319,6 +372,13 @@ export function ProductionSchedulePage() {
           </table>
         </div>
       )}
+      <KioskKeyboardModal
+        isOpen={isKeyboardOpen}
+        value={keyboardValue}
+        onChange={setKeyboardValue}
+        onCancel={() => setIsKeyboardOpen(false)}
+        onConfirm={confirmKeyboard}
+      />
     </div>
   );
 }

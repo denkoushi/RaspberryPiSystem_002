@@ -68,7 +68,7 @@ function checkRateLimit(clientKey: string): boolean {
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleQuerySchema = z.object({
     productNo: z.string().min(1).max(100).optional(),
-    q: z.string().min(1).max(100).optional(),
+    q: z.string().min(1).max(200).optional(),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(2000).optional(),
   });
@@ -122,25 +122,29 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const query = productionScheduleQuerySchema.parse(request.query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 400;
-    const queryText = (query.q ?? query.productNo)?.trim() ?? '';
+    const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
 
     const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
-    const hasQuery = queryText.length > 0;
-    const isNumeric = hasQuery && /^\d+$/.test(queryText);
-    const isFseiban = hasQuery && /^[A-Za-z0-9*]{8}$/.test(queryText);
-    const likeValue = hasQuery ? `%${queryText}%` : null;
+    const rawTokens = rawQueryText
+      .split(',')
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    const uniqueTokens = Array.from(new Set(rawTokens)).slice(0, 8);
 
     const queryConditions: Prisma.Sql[] = [];
-    if (hasQuery && isNumeric && likeValue) {
-      queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
-    }
-    if (hasQuery && isFseiban) {
-      queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${queryText}`);
-    }
-    if (hasQuery && !isNumeric && !isFseiban && likeValue) {
-      queryConditions.push(
-        Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
-      );
+    for (const token of uniqueTokens) {
+      const isNumeric = /^\d+$/.test(token);
+      const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
+      const likeValue = `%${token}%`;
+      if (isNumeric) {
+        queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+      } else if (isFseiban) {
+        queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
+      } else {
+        queryConditions.push(
+          Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+        );
+      }
     }
 
     const queryWhere =
