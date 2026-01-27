@@ -1831,3 +1831,132 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 
 ---
 
+### [KB-205] 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
+
+**実装日時**: 2026-01-26
+
+**事象**: 
+- 生産スケジュール画面で3000件のデータを表示する際、Pi4で初期表示に8秒、アイテム完了操作に23秒かかる問題が発生
+- 検索機能が「動作していない」と報告された
+- ユーザーの使い方は「検索窓で製番を入力→検索→履歴から選択」であり、最初は何も表示せず、検索したものだけ表示すれば事足りる
+
+**要因**: 
+- **API側**: クライアント側で全データを取得してからフィルタリング・ソート・ページングを行っていたため、3000件すべてを取得する必要があった
+- **検索機能**: `productNo`パラメータのみで、`FSEIBAN`（製番）での検索ができなかった
+- **初期表示**: 検索条件がない場合でも全データを取得していた
+
+**有効だった対策**: 
+- ✅ **API最適化（2026-01-26）**:
+  1. **`q`パラメータ追加**: `ProductNo`と`FSEIBAN`の統合検索パラメータを追加
+  2. **検索ロジックの改善**: 
+     - 数値のみの場合: `ProductNo`の部分一致検索（`ILIKE`）
+     - 8文字の英数字（`*`含む）の場合: `FSEIBAN`の完全一致検索
+     - その他: `ProductNo`または`FSEIBAN`の`ILIKE` OR検索
+  3. **SQLクエリの最適化**: 
+     - `$queryRaw`を使用してDB側でフィルタリング・ソート・ページングを実行
+     - `rowData`から必要なフィールドのみを選択（`jsonb_build_object`で最小限のデータのみ返却）
+     - ソート順の最適化（FSEIBAN → ProductNo → FKOJUN（数値） → FHINCD）
+  4. **デフォルト`pageSize`変更**: 2000から400に変更（初期表示の負荷軽減）
+  5. **インデックス活用**: 既存の`pg_trgm`インデックスとJSONBインデックスを活用
+- ✅ **カンマ区切りOR検索対応（2026-01-27）**:
+  1. **`q`パラメータの拡張**: カンマ区切りで複数の検索条件を受け取れるように拡張（最大長100→200）
+  2. **トークン解析**: `q`をカンマ区切りで分割し、各トークンをtrim・空除去・重複除去・最大8件に制限
+  3. **OR検索実装**: 各トークンに対して既存ヒューリスティック（数値→ProductNo ILIKE / 8桁→FSEIBAN = / その他→OR ILIKE）を適用し、トークン間はOR条件で結合
+  4. **統合テスト追加**: `q=A,B`のOR検索で両方ヒットすること、トークンのtrim/空要素除去が効くことを確認
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+const productionScheduleQuerySchema = z.object({
+  productNo: z.string().min(1).max(100).optional(),
+  q: z.string().min(1).max(200).optional(), // 新規追加（2026-01-27: カンマ区切りOR検索対応で200に拡張）
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(2000).optional(),
+});
+
+// カンマ区切りOR検索対応（2026-01-27）
+const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
+const rawTokens = rawQueryText
+  .split(',')
+  .map((token) => token.trim())
+  .filter((token) => token.length > 0);
+const uniqueTokens = Array.from(new Set(rawTokens)).slice(0, 8);
+
+const queryConditions: Prisma.Sql[] = [];
+for (const token of uniqueTokens) {
+  const isNumeric = /^\d+$/.test(token);
+  const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
+  const likeValue = `%${token}%`;
+  if (isNumeric) {
+    queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+  } else if (isFseiban) {
+    queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
+  } else {
+    queryConditions.push(
+      Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+    );
+  }
+}
+
+// OR条件で結合
+const queryWhere =
+  queryConditions.length > 0
+    ? Prisma.sql`AND (${Prisma.join(queryConditions, ' OR ')})`
+    : Prisma.empty;
+
+// 必要なフィールドのみを選択
+const rows = await prisma.$queryRaw<Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue }>>`
+  SELECT
+    id,
+    "occurredAt",
+    jsonb_build_object(
+      'ProductNo', "rowData"->>'ProductNo',
+      'FSEIBAN', "rowData"->>'FSEIBAN',
+      'FHINCD', "rowData"->>'FHINCD',
+      'FHINMEI', "rowData"->>'FHINMEI',
+      'FSIGENCD', "rowData"->>'FSIGENCD',
+      'FSIGENSHOYORYO', "rowData"->>'FSIGENSHOYORYO',
+      'FKOJUN', "rowData"->>'FKOJUN',
+      'progress', "rowData"->>'progress'
+    ) AS "rowData"
+  FROM "CsvDashboardRow"
+  WHERE ${baseWhere} ${queryWhere}
+  ORDER BY
+    ("rowData"->>'FSEIBAN') ASC,
+    ("rowData"->>'ProductNo') ASC,
+    (CASE
+      WHEN ("rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("rowData"->>'FKOJUN'))::int
+      ELSE NULL
+    END) ASC,
+    ("rowData"->>'FHINCD') ASC
+  LIMIT ${pageSize} OFFSET ${offset}
+`;
+```
+
+**トラブルシューティング**:
+1. **CIエラー**: `Prisma.join`で`Prisma.sql`OR``を使用していたが、型エラーが発生
+   - 原因: `Prisma.join`のセパレータは文字列リテラルである必要がある
+   - 対策: `Prisma.sql`OR``を`' OR '`（文字列リテラル）に変更
+
+**学んだこと**:
+- **DB側での処理**: フィルタリング・ソート・ページングをDB側で実行することで、ネットワーク転送量とクライアント側の処理負荷を大幅に削減できる
+- **検索ロジックの最適化**: 入力形式（数値/8文字英数字/その他）に応じて適切な検索方法を選択することで、検索精度とパフォーマンスを両立できる
+- **レスポンスサイズの最適化**: `rowData`から必要なフィールドのみを選択することで、ネットワーク転送量を削減できる
+- **インデックスの活用**: 既存の`pg_trgm`インデックスとJSONBインデックスを活用することで、検索パフォーマンスを向上できる
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ成功・実機検証完了**（2026-01-27）
+- 2026-01-26: 基本実装完了・CI成功・Mac実機検証完了
+- 2026-01-27: カンマ区切りOR検索対応追加・CI成功・デプロイ成功・実機検証完了（Mac・Pi4）
+
+**実機検証結果**: ✅ **Mac・Pi4で正常動作**（2026-01-27）
+- 検索機能が正常に動作することを確認（ProductNo部分一致、FSEIBAN完全一致、その他OR検索）
+- カンマ区切りOR検索が正常に動作することを確認（`q=A,B`で両方ヒット）
+- 初期表示が即座に「検索してください。」と表示されることを確認（API呼び出しなし）
+- 検索結果が正しく表示されることを確認
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`（`q`パラメータ追加、検索ロジック改善、SQLクエリ最適化、カンマ区切りOR検索対応）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（`q`パラメータのテスト追加、OR検索のテスト追加）
+
+---
+

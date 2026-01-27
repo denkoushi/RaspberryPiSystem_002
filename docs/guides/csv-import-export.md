@@ -115,10 +115,25 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
 ### APIエンドポイント
 
 **キオスク用エンドポイント**:
-- `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得（すべての行を返す、完了済みも含む）
+- `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得
+  - **クエリパラメータ**:
+    - `q`（推奨）: 検索文字列（`ProductNo`または`FSEIBAN`で検索）
+      - 数値のみの場合: `ProductNo`の部分一致検索（`ILIKE`）
+      - 8文字の英数字（`*`含む）の場合: `FSEIBAN`の完全一致検索
+      - その他: `ProductNo`または`FSEIBAN`の`ILIKE` OR検索
+    - `productNo`（後方互換）: `ProductNo`での検索（`q`パラメータを推奨）
+    - `page`: ページ番号（デフォルト: 1）
+    - `pageSize`: 1ページあたりの件数（デフォルト: 400、最大: 2000）
+  - **動作**: 検索条件がない場合は空の結果を返す（初期表示の負荷軽減）
+  - **完了済みも含む**: すべての行を返す（完了済みも含む、グレーアウト表示のため）
 - `PUT /api/kiosk/production-schedule/:rowId/complete`: 完了状態をトグル（完了→未完了、未完了→完了）
 
 **認証**: `x-client-key`ヘッダーが必要（キオスク用認証キー）
+
+**パフォーマンス最適化**:
+- DB側でフィルタリング・ソート・ページングを実行（`$queryRaw`を使用）
+- `rowData`から必要なフィールドのみを選択（レスポンスサイズの削減）
+- 既存の`pg_trgm`インデックスとJSONBインデックスを活用
 
 ### CSVフォーマット例
 
@@ -148,6 +163,8 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 - [KB-185: CSVダッシュボードのgmailSubjectPattern設定UI改善](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善)
 - [KB-201: 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（FSEIBANバリデーション修正: `********`を許可）
 - [KB-204: CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング](../knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング)
+- [KB-205: 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側)
+- [KB-206: 生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）](../knowledge-base/frontend.md#kb-206-生産スケジュール画面のパフォーマンス最適化と検索機能改善フロントエンド側)
 
 ## USBメモリ経由のCSVインポート
 

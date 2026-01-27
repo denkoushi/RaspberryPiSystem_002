@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 29件  
+**件数**: 32件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2037,5 +2037,299 @@ app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (reques
 - `apps/web/src/App.tsx`（ルーティング追加）
 - `apps/web/src/layouts/AdminLayout.tsx`（ナビゲーション追加）
 - `apps/api/src/routes/signage/render.ts`（APIエンドポイント、クエリパラメータサポートも追加）
+
+---
+
+### [KB-206] 生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）
+
+**実装日時**: 2026-01-26
+
+**事象**: 
+- 生産スケジュール画面で3000件のデータを表示する際、Pi4で初期表示に8秒、アイテム完了操作に23秒かかる問題が発生
+- 検索機能が「動作していない」と報告された
+- ユーザーの使い方は「検索窓で製番を入力→検索→履歴から選択」であり、最初は何も表示せず、検索したものだけ表示すれば事足りる
+- カラム幅計算が全データ行を走査しており、CPU負荷が高い
+
+**要因**: 
+- **初期表示**: 検索条件がない場合でも全データ（2000件）を取得していた
+- **検索機能**: `productNo`パラメータのみで、`FSEIBAN`（製番）での検索ができなかった
+- **カラム幅計算**: `computeColumnWidths`が全データ行を走査しており、3000件の場合にCPU負荷が高い
+- **検索履歴**: 履歴から削除する機能がなかった
+
+**有効だった対策**: 
+- ✅ **初期表示の最適化（2026-01-26）**:
+  1. **検索時のみデータ取得**: `useKioskProductionSchedule`に`enabled: hasQuery`オプションを追加し、検索条件がない場合はAPI呼び出しをスキップ
+  2. **初期表示メッセージ**: 検索条件がない場合は「検索してください。」と表示
+  3. **`pageSize`変更**: 2000から400に変更（API側と統一）
+- ✅ **検索機能の改善（2026-01-26）**:
+  1. **`q`パラメータ対応**: `inputProductNo`を`inputQuery`に変更し、`q`パラメータで検索
+  2. **プレースホルダー変更**: 「製造order番号 / 製番で検索」に変更
+  3. **検索履歴の削除機能**: 各履歴アイテムに黄色の「×」ボタンを追加し、クリックで履歴から削除
+  4. **検索履歴の動作改善**: 削除した履歴が現在の検索条件と一致する場合は、検索をクリア
+- ✅ **UI改善（2026-01-26）**:
+  1. **クリアボタンの視認性向上**: `variant="secondary"`に変更し、視認性を向上
+  2. **カラム幅計算の最適化**: `normalizedRows.slice(0, 80)`でサンプリングし、CPU負荷を削減
+  3. **検索履歴のUI改善**: 履歴アイテムをクリック可能な`div`に変更し、黄色の「×」ボタンを`absolute`配置
+
+**実装の詳細**:
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+const [inputQuery, setInputQuery] = useState('');
+const [activeQuery, setActiveQuery] = useState<string>('');
+
+const queryParams = useMemo(
+  () => ({
+    q: activeQuery.length > 0 ? activeQuery : undefined,
+    page: 1,
+    pageSize: 400 // 2000から400に変更
+  }),
+  [activeQuery]
+);
+
+const hasQuery = activeQuery.trim().length > 0;
+const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery }); // 検索時のみ取得
+
+// カラム幅計算のサンプリング
+const widthSampleRows = useMemo(
+  () => normalizedRows.slice(0, 80).map((row) => row.values), // 80件のみサンプリング
+  [normalizedRows]
+);
+
+// 検索履歴の削除機能
+{history.map((h) => (
+  <div
+    key={h}
+    role="button"
+    onClick={() => applySearch(h)}
+    className="relative cursor-pointer rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
+  >
+    {h}
+    <button
+      type="button"
+      aria-label={`履歴から削除: ${h}`}
+      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
+      onClick={(event) => {
+        event.stopPropagation();
+        setHistory((prev) => prev.filter((item) => item !== h));
+        if (activeQuery === h) {
+          setActiveQuery('');
+          setInputQuery('');
+        }
+      }}
+    >
+      ×
+    </button>
+  </div>
+))}
+
+// 初期表示
+{!hasQuery ? (
+  <p className="text-sm font-semibold text-white/80">検索してください。</p>
+) : scheduleQuery.isLoading ? (
+  <p className="text-sm font-semibold text-white/80">読み込み中...</p>
+) : normalizedRows.length === 0 ? (
+  <p className="text-sm font-semibold text-white/80">該当するデータはありません。</p>
+) : (
+  // テーブル表示
+)}
+```
+
+**学んだこと**:
+- **条件付きデータ取得**: `enabled`オプションを使用することで、不要なAPI呼び出しを防ぎ、初期表示のパフォーマンスを向上できる
+- **サンプリングによる最適化**: カラム幅計算など、全データを走査する必要がない処理はサンプリングすることで、CPU負荷を大幅に削減できる
+- **検索履歴のUX改善**: 履歴から削除する機能を追加することで、ユーザビリティが向上する
+- **`stopPropagation`の重要性**: 履歴アイテムの「×」ボタンで`stopPropagation()`を使用することで、親要素のクリックイベントを防げる
+
+**解決状況**: ✅ **実装完了・CI成功・Mac実機検証完了**（2026-01-26）
+- Pi4での実機検証は明日実施予定
+
+**実機検証結果**: ✅ **Macで正常動作**（2026-01-26）
+- 初期表示が即座に「検索してください。」と表示されることを確認（API呼び出しなし）
+- 検索機能が正常に動作することを確認（ProductNo/FSEIBANの統合検索）
+- 検索履歴の削除機能が正常に動作することを確認
+- クリアボタンが視認しやすくなっていることを確認
+- 検索結果が正しく表示されることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（初期表示最適化、検索機能改善、UI改善）
+- `apps/web/src/api/client.ts`（`getKioskProductionSchedule`関数に`q`パラメータ追加）
+- `apps/web/src/api/hooks.ts`（`useKioskProductionSchedule`フックに`enabled`オプション追加）
+
+---
+
+### [KB-207] 生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）
+
+**実装日時**: 2026-01-27
+
+**事象**: 
+- 完了チェックボタンの配色が赤背景/白✓で、視認性が低い
+- 検索履歴チップを複数選択してOR検索したいが、現在は単一選択のみ
+- 検索入力時に物理キーボードが使えない環境（タッチパネル）で入力が困難
+
+**要因**: 
+- **チェックボタン配色**: 未完了=赤背景/白✓、完了=灰背景/白✓で、状態識別が分かりにくい
+- **検索履歴**: 単一選択のみで、複数の製番を同時に検索できない
+- **ソフトキーボード**: 英数字入力用のソフトウェアキーボードが存在しない
+
+**有効だった対策**: 
+- ✅ **チェックボタン配色変更（2026-01-27）**:
+  1. **白背景・黒✓**: ボタン背景を常に白、チェック（✓）は常に黒に変更
+  2. **状態識別は枠色**: 未完了=赤枠（`border-red-500`）、完了=灰枠（`border-slate-400`）で状態を識別
+  3. **既存の行グレーアウトは維持**: 完了した行は`opacity-50 grayscale`で視覚的にグレーアウト
+- ✅ **検索履歴のトグル選択 + OR検索（2026-01-27）**:
+  1. **状態管理の変更**: `activeQuery: string`を`activeQueries: string[]`に変更し、複数選択を配列で保持
+  2. **トグル選択**: チップをクリックすると選択/解除がトグルされ、選択中は色が付く（`border-emerald-300 bg-emerald-400 text-slate-900`）
+  3. **OR検索**: 複数選択されたチップをカンマ区切りで`q`パラメータに結合し、API側でOR検索を実行
+  4. **検索ボタン**: 入力欄が空でない場合は、その文字列を履歴に追加しつつ単一選択として`activeQueries=[value]`にする
+  5. **クリア**: `activeQueries=[]`、入力欄も空に
+- ✅ **ソフトウェアキーボード実装（2026-01-27）**:
+  1. **新規コンポーネント**: `KioskKeyboardModal.tsx`を新規作成
+  2. **キーボードアイコン**: 検索入力欄の横にキーボードアイコン（⌨）ボタンを追加
+  3. **モーダル表示**: キーボードアイコンをクリックすると、ポップアップでソフトウェアキーボードを表示
+  4. **英数字入力**: A-Z（大文字固定）、0-9のキーを配置
+  5. **操作ボタン**: Backspace（1文字削除）、Clear（全削除）、Cancel（キャンセル）、OK（確定）ボタンを実装
+  6. **入力確定**: OKボタンで入力値を`inputQuery`に反映し、モーダルを閉じる
+
+**実装の詳細**:
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+const [activeQueries, setActiveQueries] = useState<string[]>([]);
+const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+const [keyboardValue, setKeyboardValue] = useState('');
+
+// 正規化（重複除去・空除去）
+const normalizedActiveQueries = useMemo(() => {
+  const unique = new Set<string>();
+  activeQueries
+    .map((query) => query.trim())
+    .filter((query) => query.length > 0)
+    .forEach((query) => unique.add(query));
+  return Array.from(unique);
+}, [activeQueries]);
+
+// OR検索用のqパラメータ（カンマ区切り）
+const queryParams = useMemo(
+  () => ({
+    q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
+    page: 1,
+    pageSize: 400
+  }),
+  [normalizedActiveQueries]
+);
+
+// トグル選択
+const toggleHistoryQuery = (value: string) => {
+  setActiveQueries((prev) => {
+    const exists = prev.includes(value);
+    if (exists) {
+      return prev.filter((item) => item !== value);
+    }
+    const next = [...prev, value];
+    return next.slice(0, 8); // 最大8件
+  });
+};
+
+// チェックボタンの配色変更
+<button
+  className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 disabled:opacity-60 ${
+    left.isCompleted ? 'border-slate-400' : 'border-red-500'
+  }`}
+  aria-label={left.isCompleted ? '未完了に戻す' : '完了にする'}
+  onClick={() => handleComplete(left.id)}
+  disabled={completeMutation.isPending}
+>
+  ✓
+</button>
+
+// 検索履歴チップ（トグル選択）
+{history.map((h) => {
+  const isActive = normalizedActiveQueries.includes(h);
+  return (
+    <div
+      key={h}
+      role="button"
+      onClick={() => toggleHistoryQuery(h)}
+      className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+        isActive
+          ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
+          : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+      }`}
+    >
+      {h}
+      {/* 削除ボタン */}
+    </div>
+  );
+})}
+
+// ソフトウェアキーボードモーダル
+<KioskKeyboardModal
+  isOpen={isKeyboardOpen}
+  value={keyboardValue}
+  onChange={setKeyboardValue}
+  onCancel={() => setIsKeyboardOpen(false)}
+  onConfirm={() => {
+    setInputQuery(keyboardValue);
+    setIsKeyboardOpen(false);
+  }}
+/>
+```
+
+**API側の実装**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+// qパラメータの最大長を200に緩和（複数選択対応）
+q: z.string().min(1).max(200).optional(),
+
+// カンマ区切りを解析してOR検索
+const rawTokens = rawQueryText
+  .split(',')
+  .map((token) => token.trim())
+  .filter((token) => token.length > 0);
+const uniqueTokens = Array.from(new Set(rawTokens)).slice(0, 8);
+
+const queryConditions: Prisma.Sql[] = [];
+for (const token of uniqueTokens) {
+  const isNumeric = /^\d+$/.test(token);
+  const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
+  const likeValue = `%${token}%`;
+  if (isNumeric) {
+    queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+  } else if (isFseiban) {
+    queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
+  } else {
+    queryConditions.push(
+      Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+    );
+  }
+}
+
+// OR条件で結合
+const queryWhere =
+  queryConditions.length > 0
+    ? Prisma.sql`AND (${Prisma.join(queryConditions, ' OR ')})`
+    : Prisma.empty;
+```
+
+**学んだこと**:
+- **状態管理の拡張**: 単一選択から複数選択への拡張は、`string`から`string[]`への変更で自然に実現できる
+- **UI状態の視覚的フィードバック**: 選択状態を色で表現することで、ユーザーが現在の選択状態を直感的に理解できる
+- **モーダルコンポーネントの分離**: ソフトウェアキーボードを独立したコンポーネントにすることで、再利用性と保守性が向上する
+- **APIパラメータの拡張**: カンマ区切りで複数の検索条件を受け取ることで、OR検索を実現できる
+
+**解決状況**: ✅ **解決済み**（2026-01-27）
+
+**実機検証**:
+- ✅ Macで動作確認完了
+- ✅ Pi4で動作確認完了
+- ✅ チェックボタンが白背景・黒✓で表示されることを確認
+- ✅ 検索履歴チップのトグル選択が正常に動作することを確認
+- ✅ 複数選択時のOR検索が正常に動作することを確認
+- ✅ ソフトウェアキーボードが正常に表示・入力・確定されることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（チェックボタン配色変更、検索履歴トグル選択、ソフトキーボード統合）
+- `apps/web/src/components/kiosk/KioskKeyboardModal.tsx`（新規: ソフトウェアキーボードコンポーネント）
+- `apps/api/src/routes/kiosk.ts`（`q`パラメータのカンマ区切りOR検索実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（OR検索の統合テスト追加）
 
 ---
