@@ -165,7 +165,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.FSEIBAN)).toEqual(['A', 'A', 'B']);
   });
 
-  it('filters by resourceCd and assigned-only with OR to q', async () => {
+  it('filters by resourceCd and assigned-only with AND to q', async () => {
     const rows = await prisma.csvDashboardRow.findMany({
       where: { csvDashboardId: DASHBOARD_ID },
       orderBy: { createdAt: 'asc' }
@@ -182,12 +182,12 @@ describe('Kiosk Production Schedule API', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/api/kiosk/production-schedule?q=B&resourceCds=1&resourceAssignedOnlyCds=1',
+      url: '/api/kiosk/production-schedule?q=A&resourceAssignedOnlyCds=1',
       headers: { 'x-client-key': CLIENT_KEY }
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FSEIBAN?: string } }> };
-    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001', '0002']);
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
   });
 
   it('reassigns order numbers within the same resourceCd on complete', async () => {

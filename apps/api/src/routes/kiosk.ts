@@ -175,24 +175,25 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
     const uniqueTokens = parseCsvList(rawQueryText).slice(0, 8);
 
-    const queryConditions: Prisma.Sql[] = [];
+    const textConditions: Prisma.Sql[] = [];
     for (const token of uniqueTokens) {
       const isNumeric = /^\d+$/.test(token);
       const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
       const likeValue = `%${token}%`;
       if (isNumeric) {
-        queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+        textConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
       } else if (isFseiban) {
-        queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
+        textConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
       } else {
-        queryConditions.push(
+        textConditions.push(
           Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
         );
       }
     }
 
+    const resourceConditions: Prisma.Sql[] = [];
     if (resourceCds.length > 0) {
-      queryConditions.push(
+      resourceConditions.push(
         Prisma.sql`("rowData"->>'FSIGENCD') IN (${Prisma.join(
           resourceCds.map((cd) => Prisma.sql`${cd}`),
           ','
@@ -201,7 +202,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (assignedOnlyCds.length > 0) {
-      queryConditions.push(
+      resourceConditions.push(
         Prisma.sql`id IN (
           SELECT "csvDashboardRowId"
           FROM "ProductionScheduleOrderAssignment"
@@ -215,10 +216,18 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       );
     }
 
+    const textWhere =
+      textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
+    const resourceWhere =
+      resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
     const queryWhere =
-      queryConditions.length > 0
-        ? Prisma.sql`AND (${Prisma.join(queryConditions, ' OR ')})`
-        : Prisma.empty;
+      textConditions.length > 0 && resourceConditions.length > 0
+        ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
+        : textConditions.length > 0
+          ? Prisma.sql`AND ${textWhere}`
+          : resourceConditions.length > 0
+            ? Prisma.sql`AND ${resourceWhere}`
+            : Prisma.empty;
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*)::bigint AS total

@@ -508,7 +508,6 @@ export function ProductionSchedulePage() {
                         {column.key === 'processingOrder' ? (
                           (() => {
                             const resourceCd = left.data.FSIGENCD ?? '';
-                            const colorClasses = getResourceColorClasses(resourceCd);
                             const options = getAvailableOrders(resourceCd, left.processingOrder);
                             return (
                               <select
@@ -520,7 +519,7 @@ export function ProductionSchedulePage() {
                                   resourceCd.length === 0 ||
                                   orderMutation.isPending
                                 }
-                                className={`h-7 w-16 rounded border px-2 text-sm ${colorClasses.border} ${colorClasses.text} bg-white`}
+                                className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                               >
                                 <option value="">-</option>
                                 {options.map((num) => (
@@ -561,7 +560,6 @@ export function ProductionSchedulePage() {
                               column.key === 'processingOrder' ? (
                                 (() => {
                                   const resourceCd = right.data.FSIGENCD ?? '';
-                                  const colorClasses = getResourceColorClasses(resourceCd);
                                   const options = getAvailableOrders(resourceCd, right.processingOrder);
                                   return (
                                     <select
@@ -573,7 +571,7 @@ export function ProductionSchedulePage() {
                                         resourceCd.length === 0 ||
                                         orderMutation.isPending
                                       }
-                                      className={`h-7 w-16 rounded border px-2 text-sm ${colorClasses.border} ${colorClasses.text} bg-white`}
+                                      className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                                     >
                                       <option value="">-</option>
                                       {options.map((num) => (
