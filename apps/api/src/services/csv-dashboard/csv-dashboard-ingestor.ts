@@ -415,11 +415,13 @@ export class CsvDashboardIngestor {
     }
 
     const seiban = String(normalized.FSEIBAN ?? '').trim();
-    // 割当がない場合は*を含む8桁も許可
-    if (!/^[A-Za-z0-9*]{8}$/.test(seiban)) {
+    // 割当がない場合は*のみの8桁も許可（例: ********）
+    // 英数字8桁、または*のみの8桁を許可
+    const isValidSeiban = /^[A-Za-z0-9]{8}$/.test(seiban) || /^\*{8}$/.test(seiban) || /^[A-Za-z0-9*]{8}$/.test(seiban);
+    if (!isValidSeiban || seiban.length !== 8) {
       throw new ApiError(
         400,
-        `FSEIBANは英数字8桁である必要があります（割当がない場合は*を含む8桁も可）（行: ${rowIndex}）`
+        `FSEIBANは英数字8桁である必要があります（割当がない場合は*のみの8桁も可）（行: ${rowIndex} / value: ${seiban} / length: ${seiban.length}）`
       );
     }
   }

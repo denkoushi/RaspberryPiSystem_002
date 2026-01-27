@@ -1403,6 +1403,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       }
       
       if (error instanceof Error) {
+        // 既に実行中の場合は409で返す
+        if (
+          error.message.includes('CSV import is already running') ||
+          error.message.includes('already running')
+        ) {
+          throw new ApiError(409, `インポートは既に実行中です: ${id}`);
+        }
         // スケジュールが見つからないエラーの場合のみ404
         // NOTE: 取り込み側（CSVダッシュボード列不足など）も「見つかりません」を含むため、誤判定しない
         if (

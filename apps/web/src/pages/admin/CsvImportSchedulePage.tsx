@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 
 import {
   useCsvImportSchedules,
@@ -41,6 +41,7 @@ export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+  const runningScheduleIdRef = useRef<string | null>(null); // 即座に反映される参照（競合防止用）
   const [runError, setRunError] = useState<Record<string, Error | null>>({});
   const [runSuccess, setRunSuccess] = useState<Record<string, boolean>>({});
   const { data: subjectPatternData, isLoading: isLoadingPatterns } = useCsvImportSubjectPatterns();
@@ -295,6 +296,14 @@ export function CsvImportSchedulePage() {
   };
 
   const handleRun = async (id: string) => {
+    // 既に実行中のスケジュールがある場合は早期リターン（useRefで即座にチェック）
+    if (runningScheduleIdRef.current !== null) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-blocked',hypothesisId:'H5',location:'CsvImportSchedulePage.tsx:handleRun',message:'run blocked - already running',data:{scheduleId:id,currentRunningId:runningScheduleIdRef.current},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+
     const schedule = schedules.find((s) => s.id === id);
     const scheduleName = schedule?.name || schedule?.id || 'このスケジュール';
     const provider = schedule?.provider ? schedule.provider.toUpperCase() : 'デフォルト';
@@ -315,10 +324,15 @@ export function CsvImportSchedulePage() {
       return;
     }
 
-    // 実行中のスケジュールIDを設定
+    // 実行中のスケジュールIDを設定（confirm後、実際の実行前に設定）
+    // useRefとuseStateの両方を更新（useRefは即座に反映、useStateはUI更新用）
+    runningScheduleIdRef.current = id;
     setRunningScheduleId(id);
     setRunError(prev => ({ ...prev, [id]: null }));
     setRunSuccess(prev => ({ ...prev, [id]: false }));
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-pre',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run confirmed',data:{scheduleId:id,provider,hasTargets:Array.isArray(schedule?.targets),targetsCount:schedule?.targets?.length ?? 0},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     try {
       // #region agent log
@@ -326,6 +340,9 @@ export function CsvImportSchedulePage() {
       // #endregion
 
       const response = await run.mutateAsync(id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-success',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,hasSummary:typeof (response as { summary?: unknown })?.summary !== 'undefined'},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,response},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
@@ -382,14 +399,18 @@ export function CsvImportSchedulePage() {
     } catch (error) {
       const err = error as {
         message?: string;
-        response?: { status?: number; data?: unknown };
+        response?: { status?: number; data?: { message?: unknown; errorCode?: unknown } | unknown };
       };
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error',data:{scheduleId:id,errorMessage:err?.message,axiosStatus:err?.response?.status,axiosData:err?.response?.data},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-error',hypothesisId:'H3',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error detail',data:{scheduleId:id,status:err?.response?.status ?? null,apiMessage:typeof (err?.response?.data as { message?: unknown })?.message === 'string' ? (err?.response?.data as { message?: string }).message : null,apiErrorCode:typeof (err?.response?.data as { errorCode?: unknown })?.errorCode === 'string' ? (err?.response?.data as { errorCode?: string }).errorCode : null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setRunError(prev => ({ ...prev, [id]: err as Error }));
     } finally {
-      // 実行中のスケジュールIDをクリア
+      // 実行中のスケジュールIDをクリア（useRefとuseStateの両方をクリア）
+      runningScheduleIdRef.current = null;
       setRunningScheduleId(null);
     }
   };
