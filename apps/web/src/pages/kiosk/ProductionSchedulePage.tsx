@@ -30,7 +30,6 @@ export function ProductionSchedulePage() {
   const [inputProductNo, setInputProductNo] = useState('');
   const [activeProductNo, setActiveProductNo] = useState<string>('');
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
-  const [isBlocking, setIsBlocking] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
 
@@ -138,24 +137,12 @@ export function ProductionSchedulePage() {
   };
 
   const handleComplete = async (rowId: string) => {
-    setIsBlocking(true);
-    try {
-      await completeMutation.mutateAsync(rowId);
-      await scheduleQuery.refetch();
-    } finally {
-      setIsBlocking(false);
-    }
+    // Optimistic Updateにより、UIは即座に更新される
+    await completeMutation.mutateAsync(rowId);
   };
 
   return (
     <div className="flex h-full flex-col gap-2" ref={containerRef}>
-      {isBlocking ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg bg-slate-900 px-6 py-4 text-white shadow-lg">
-            <p className="text-sm font-semibold">更新中...</p>
-          </div>
-        </div>
-      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +240,7 @@ export function ProductionSchedulePage() {
                         }`}
                         aria-label={left.isCompleted ? '未完了に戻す' : '完了にする'}
                         onClick={() => handleComplete(left.id)}
-                        disabled={isBlocking || completeMutation.isPending}
+                        disabled={completeMutation.isPending}
                       >
                         ✓
                       </button>
@@ -276,7 +263,7 @@ export function ProductionSchedulePage() {
                               }`}
                               aria-label={right.isCompleted ? '未完了に戻す' : '完了にする'}
                               onClick={() => handleComplete(right.id)}
-                              disabled={isBlocking || completeMutation.isPending}
+                              disabled={completeMutation.isPending}
                             >
                               ✓
                             </button>

@@ -199,7 +199,7 @@ export async function getKioskProductionSchedule(params?: { productNo?: string; 
 }
 
 export async function completeKioskProductionScheduleRow(rowId: string) {
-  const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean; rowData: Record<string, unknown> }>(`/kiosk/production-schedule/${rowId}/complete`, {});
   return data;
 }
 
