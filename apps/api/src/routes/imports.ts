@@ -800,7 +800,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const typeParam = (request.params as { type?: string }).type;
     
     // URLパス（ケバブケース）をキャメルケースに変換
-    const typeMap: Record<string, CsvImportType> = {
+    const typeMap: Record<string, Exclude<CsvImportType, 'csvDashboards'>> = {
       'employees': 'employees',
       'items': 'items',
       'measuring-instruments': 'measuringInstruments',
