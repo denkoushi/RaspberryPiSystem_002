@@ -40,6 +40,9 @@ const SUBJECT_PATTERN_TYPES: Array<{ value: CsvImportSubjectPatternType; label: 
 export function CsvImportSchedulePage() {
   const { data, isLoading, refetch } = useCsvImportSchedules();
   const { create, update, remove, run } = useCsvImportScheduleMutations();
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<Record<string, Error | null>>({});
+  const [runSuccess, setRunSuccess] = useState<Record<string, boolean>>({});
   const { data: subjectPatternData, isLoading: isLoadingPatterns } = useCsvImportSubjectPatterns();
   const { create: createPattern, update: updatePattern, remove: removePattern } =
     useCsvImportSubjectPatternMutations();
@@ -312,6 +315,11 @@ export function CsvImportSchedulePage() {
       return;
     }
 
+    // 実行中のスケジュールIDを設定
+    setRunningScheduleId(id);
+    setRunError(prev => ({ ...prev, [id]: null }));
+    setRunSuccess(prev => ({ ...prev, [id]: false }));
+
     try {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run requested',data:{scheduleId:id,provider:provider,targets:(schedule?.targets || []).map(t => ({ type: t.type, source: t.source }))},timestamp:Date.now()})}).catch(()=>{});
@@ -359,6 +367,16 @@ export function CsvImportSchedulePage() {
           `一部の取り込みに失敗しました。\n\n${failureMessages.join('\n')}\n\n安全のため、該当メールは未読のまま残しています（受信箱が空になりません）。CSV列定義（例: day列）を確認して再実行してください。`
         );
       }
+      // 成功状態を設定
+      setRunSuccess(prev => ({ ...prev, [id]: true }));
+      // 3秒後に成功メッセージを消す
+      setTimeout(() => {
+        setRunSuccess(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, 3000);
 
       refetch();
     } catch (error) {
@@ -369,7 +387,10 @@ export function CsvImportSchedulePage() {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error',data:{scheduleId:id,errorMessage:err?.message,axiosStatus:err?.response?.status,axiosData:err?.response?.data},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      // エラーはmutationのisErrorで表示
+      setRunError(prev => ({ ...prev, [id]: err as Error }));
+    } finally {
+      // 実行中のスケジュールIDをクリア
+      setRunningScheduleId(null);
     }
   };
 
@@ -1216,12 +1237,12 @@ export function CsvImportSchedulePage() {
                       </td>
                       <td className="px-2 py-1">
                         <div className="space-y-1">
-                          {run.isError && (
+                          {runError[schedule.id] && (
                             <div className="rounded-md border border-red-600 bg-red-50 p-1 text-xs text-red-700">
-                              実行エラー: {formatError(run.error)}
+                              実行エラー: {formatError(runError[schedule.id])}
                             </div>
                           )}
-                          {run.isSuccess && (
+                          {runSuccess[schedule.id] && (
                             <div className="rounded-md border border-emerald-600 bg-emerald-50 p-1 text-xs text-emerald-700">
                               実行しました
                             </div>
@@ -1235,15 +1256,15 @@ export function CsvImportSchedulePage() {
                             <Button
                               className="px-2 py-1 text-xs"
                               onClick={() => handleRun(schedule.id)}
-                              disabled={run.isPending || remove.isPending || update.isPending}
+                              disabled={runningScheduleId === schedule.id || runningScheduleId !== null || remove.isPending || update.isPending}
                             >
-                              {run.isPending ? '実行中...' : '実行'}
+                              {runningScheduleId === schedule.id ? '実行中...' : '実行'}
                             </Button>
                             <Button
                               className="px-2 py-1 text-xs"
                               variant="ghost"
                               onClick={() => startEdit(schedule)}
-                              disabled={run.isPending || remove.isPending || update.isPending}
+                              disabled={runningScheduleId !== null || remove.isPending || update.isPending}
                             >
                               編集
                             </Button>
@@ -1251,7 +1272,7 @@ export function CsvImportSchedulePage() {
                               className="px-2 py-1 text-xs"
                               variant="ghost"
                               onClick={() => handleDelete(schedule.id)}
-                              disabled={remove.isPending || run.isPending || update.isPending}
+                              disabled={remove.isPending || runningScheduleId !== null || update.isPending}
                             >
                               {remove.isPending ? '削除中...' : '削除'}
                             </Button>

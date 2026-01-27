@@ -415,10 +415,11 @@ export class CsvDashboardIngestor {
     }
 
     const seiban = String(normalized.FSEIBAN ?? '').trim();
-    if (!/^[A-Za-z0-9]{8}$/.test(seiban)) {
+    // 割当がない場合は*を含む8桁も許可
+    if (!/^[A-Za-z0-9*]{8}$/.test(seiban)) {
       throw new ApiError(
         400,
-        `FSEIBANは英数字8桁である必要があります（行: ${rowIndex}）`
+        `FSEIBANは英数字8桁である必要があります（割当がない場合は*を含む8桁も可）（行: ${rowIndex}）`
       );
     }
   }
