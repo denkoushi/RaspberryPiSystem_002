@@ -109,6 +109,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       activeQueries: z.array(z.string().max(200)).max(8).optional(),
       activeResourceCds: z.array(z.string().max(100)).max(100).optional(),
       activeResourceAssignedOnlyCds: z.array(z.string().max(100)).max(100).optional(),
+      history: z.array(z.string().max(200)).max(8).optional(),
     }),
   });
 

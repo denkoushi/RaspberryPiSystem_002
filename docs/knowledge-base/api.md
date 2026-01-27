@@ -1960,3 +1960,115 @@ const rows = await prisma.$queryRaw<Array<{ id: string; occurredAt: Date; rowDat
 
 ---
 
+### [KB-208] 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
+
+**実装日時**: 2026-01-27
+
+**事象**: 
+- 実機検証で、検索登録製番と資源CDを併用する検索機能がOR条件になっていたが、AND条件にしたい要望
+- 資源CDごとに加工順序番号（1-10）を割当し、完了時に自動で詰め替える機能が必要
+- 複数のPi4端末で同じ検索条件を同期したい要望
+
+**要因**: 
+- 検索条件の結合ロジックがOR条件（`queryConditions`を`OR`で結合）になっていた
+- 加工順序番号の管理が`rowData`に埋め込まれていなかった（正規化されていなかった）
+- 検索状態の同期機能が実装されていなかった
+
+**有効だった対策**: 
+- ✅ **検索条件のAND結合（2026-01-27）**:
+  1. **条件の分離**: テキスト検索条件（`textConditions`）と資源CD条件（`resourceConditions`）を分離
+  2. **AND結合**: 両方が存在する場合は`AND`で結合（`textConditions AND resourceConditions`）
+  3. **資源CD条件内はOR**: `resourceCds`と`resourceAssignedOnlyCds`は資源CD条件内でOR結合
+  4. **統合テスト更新**: テストケースをAND条件に合わせて更新（`q=A&resourceAssignedOnlyCds=1`で`['0000']`のみヒット）
+- ✅ **加工順序割当機能（2026-01-27）**:
+  1. **新規テーブル追加**: `ProductionScheduleOrderAssignment`テーブルを追加（`csvDashboardRowId` + `location` + `resourceCd` + `orderNumber`）
+  2. **一意制約**: `@@unique([csvDashboardId, location, resourceCd, orderNumber])`で同一資源CD内での重複を防止
+  3. **完了時の自動詰め替え**: 完了時に割当を削除し、同一資源CD内の後続番号を`orderNumber - 1`で更新（単一SQL update）
+  4. **APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/order`で割当/解除、`GET /kiosk/production-schedule/order-usage`で使用中番号取得
+- ✅ **検索状態同期機能（2026-01-27）**:
+  1. **新規テーブル追加**: `KioskProductionScheduleSearchState`テーブルを追加（`csvDashboardId` + `location` + `state`（JSON））
+  2. **location単位の同期**: `ClientDevice.location`をキーとして、同一locationの端末間で検索条件を共有
+  3. **APIエンドポイント追加**: `GET /kiosk/production-schedule/search-state`、`PUT /kiosk/production-schedule/search-state`
+  4. **フロントエンド同期**: 起動時に取得、debounce（400ms）で更新、poll（2-5秒）で他端末更新を反映
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+// 検索条件のAND結合
+const textConditions: Prisma.Sql[] = [];
+// ... テキスト検索条件を構築
+
+const resourceConditions: Prisma.Sql[] = [];
+if (resourceCds.length > 0) {
+  resourceConditions.push(Prisma.sql`("rowData"->>'FSIGENCD') IN (...)`);
+}
+if (assignedOnlyCds.length > 0) {
+  resourceConditions.push(Prisma.sql`id IN (SELECT ...)`);
+}
+
+const textWhere = textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
+const resourceWhere = resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
+const queryWhere =
+  textConditions.length > 0 && resourceConditions.length > 0
+    ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
+    : textConditions.length > 0
+      ? Prisma.sql`AND ${textWhere}`
+      : resourceConditions.length > 0
+        ? Prisma.sql`AND ${resourceWhere}`
+        : Prisma.empty;
+
+// 加工順序の取得（サブクエリ）
+SELECT
+  ...,
+  (
+    SELECT "orderNumber"
+    FROM "ProductionScheduleOrderAssignment"
+    WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "location" = ${locationKey}
+    LIMIT 1
+  ) AS "processingOrder"
+FROM "CsvDashboardRow"
+WHERE ...
+
+// 完了時の自動詰め替え（トランザクション）
+await prisma.$transaction(async (tx) => {
+  await tx.csvDashboardRow.update({ ... });
+  if (currentAssignment) {
+    await tx.productionScheduleOrderAssignment.delete({ ... });
+    await tx.productionScheduleOrderAssignment.updateMany({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        location: locationKey,
+        resourceCd: currentAssignment.resourceCd,
+        orderNumber: { gt: currentAssignment.orderNumber },
+      },
+      data: { orderNumber: { decrement: 1 } },
+    });
+  }
+});
+```
+
+**学んだこと**:
+- **検索条件の結合ロジック**: テキスト検索と資源CDフィルタはAND結合、資源CD条件内はOR結合という2層構造を明確に分離することで、意図通りの動作を実現できる
+- **正規化の重要性**: 加工順序番号を`rowData`に埋め込まず、独立したテーブルで管理することで、競合を防ぎ、スケーラビリティを向上できる
+- **自動詰め替えの実装**: 単一SQL update（`orderNumber - 1`）で後続番号を一括更新することで、トランザクション内で効率的に処理できる
+- **location単位の同期**: `ClientDevice.location`をキーとして、同一locationの端末間で検索条件を共有することで、現場での運用を支援できる
+
+**解決状況**: ✅ **解決済み**（2026-01-27）
+
+**実機検証**:
+- ✅ Macで動作確認完了
+- ✅ Pi4で動作確認完了
+- ✅ 検索登録製番と資源CDのAND検索が正常に動作することを確認
+- ✅ 加工順序番号の割当・解除・自動詰め替えが正常に動作することを確認
+- ✅ 検索状態の同期が正常に動作することを確認（複数端末間での同期）
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`ProductionScheduleOrderAssignment`、`KioskProductionScheduleSearchState`モデル追加）
+- `apps/api/prisma/migrations/20260127122147_add_production_schedule_ordering/migration.sql`（マイグレーション）
+- `apps/api/src/routes/kiosk.ts`（資源CDフィルタ、加工順序割当、検索状態同期、AND検索実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テスト追加）
+- `apps/web/src/features/kiosk/productionSchedule/resourceColors.ts`（新規: 資源CD色管理ユーティリティ）
+
+---
+

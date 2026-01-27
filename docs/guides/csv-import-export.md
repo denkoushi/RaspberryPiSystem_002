@@ -31,9 +31,12 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 ### 機能概要
 
 - **CSVダッシュボード**: Gmail経由で取得したCSVファイルをデータベースに保存し、キオスク画面で表示
-- **完了ボタン**: キオスク画面で完了ボタン（赤いボタン）を押すと、`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
+- **完了ボタン**: キオスク画面で完了ボタン（白背景・黒✓、枠色で状態表示）を押すと、`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
 - **グレーアウト表示**: 完了済みアイテム（`progress='完了'`）を`opacity-50 grayscale`で視覚的にグレーアウト
 - **トグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+- **資源CDフィルタ**: 各資源CDに2つのボタン（全件検索 / 割当済みのみ検索）を提供し、検索登録製番とAND条件で検索可能
+- **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
+- **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
 
 ### 設定手順
 
@@ -117,16 +120,26 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
 **キオスク用エンドポイント**:
 - `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得
   - **クエリパラメータ**:
-    - `q`（推奨）: 検索文字列（`ProductNo`または`FSEIBAN`で検索）
+    - `q`（推奨）: 検索文字列（`ProductNo`または`FSEIBAN`で検索、カンマ区切りでOR検索）
       - 数値のみの場合: `ProductNo`の部分一致検索（`ILIKE`）
       - 8文字の英数字（`*`含む）の場合: `FSEIBAN`の完全一致検索
       - その他: `ProductNo`または`FSEIBAN`の`ILIKE` OR検索
+      - カンマ区切りで複数指定可能（例: `q=A,B`でAまたはBにヒットする行を返す）
+    - `resourceCds`: 資源CDでフィルタ（カンマ区切り、例: `resourceCds=1,2`）
+    - `resourceAssignedOnlyCds`: 割当済みのみフィルタ（カンマ区切り、例: `resourceAssignedOnlyCds=1`）
     - `productNo`（後方互換）: `ProductNo`での検索（`q`パラメータを推奨）
     - `page`: ページ番号（デフォルト: 1）
     - `pageSize`: 1ページあたりの件数（デフォルト: 400、最大: 2000）
+  - **検索条件の結合**: `q`（テキスト検索）と`resourceCds`/`resourceAssignedOnlyCds`（資源CDフィルタ）は**AND条件**で結合
   - **動作**: 検索条件がない場合は空の結果を返す（初期表示の負荷軽減）
   - **完了済みも含む**: すべての行を返す（完了済みも含む、グレーアウト表示のため）
-- `PUT /api/kiosk/production-schedule/:rowId/complete`: 完了状態をトグル（完了→未完了、未完了→完了）
+  - **加工順序**: 各行に`processingOrder`（割当済み順番番号）を含む
+- `PUT /api/kiosk/production-schedule/:rowId/complete`: 完了状態をトグル（完了→未完了、未完了→完了）。完了時は加工順序割当を削除し、同一資源CD内の後続番号を自動で詰める
+- `PUT /api/kiosk/production-schedule/:rowId/order`: 加工順序番号を割当/解除（`resourceCd`と`orderNumber`（1-10またはnull）を指定）
+- `GET /api/kiosk/production-schedule/resources`: 全データから取得した資源CD一覧を返す
+- `GET /api/kiosk/production-schedule/order-usage`: 指定された資源CDの使用中順番番号を返す（`resourceCds`クエリパラメータでフィルタ可能）
+- `GET /api/kiosk/production-schedule/search-state`: 検索状態を取得（location単位）
+- `PUT /api/kiosk/production-schedule/search-state`: 検索状態を保存（location単位、`inputQuery`、`activeQueries`、`activeResourceCds`、`activeResourceAssignedOnlyCds`を含む）
 
 **認証**: `x-client-key`ヘッダーが必要（キオスク用認証キー）
 

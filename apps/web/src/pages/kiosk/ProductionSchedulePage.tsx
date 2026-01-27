@@ -60,6 +60,20 @@ export function ProductionSchedulePage() {
     return Array.from(unique);
   }, [activeQueries]);
 
+  const normalizedHistory = useMemo(() => {
+    const unique = new Set<string>();
+    const next: string[] = [];
+    history
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .forEach((item) => {
+        if (unique.has(item)) return;
+        unique.add(item);
+        next.push(item);
+      });
+    return next.slice(0, 8);
+  }, [history]);
+
   const normalizedResourceCds = useMemo(() => {
     const unique = new Set<string>();
     activeResourceCds
@@ -237,6 +251,14 @@ export function ProductionSchedulePage() {
     }
   };
 
+  const confirmRemoveHistoryQuery = (value: string) => {
+    const message = `検索履歴「${value}」を削除しますか？`;
+    if (!window.confirm(message)) {
+      return;
+    }
+    removeHistoryQuery(value);
+  };
+
   const toggleResourceCd = (value: string) => {
     setActiveResourceCds((prev) => {
       const exists = prev.includes(value);
@@ -285,8 +307,9 @@ export function ProductionSchedulePage() {
     setActiveQueries(state.activeQueries ?? []);
     setActiveResourceCds(state.activeResourceCds ?? []);
     setActiveResourceAssignedOnlyCds(state.activeResourceAssignedOnlyCds ?? []);
+    setHistory(state.history ?? []);
     searchStateUpdatedAtRef.current = updatedAt;
-  }, [searchStateQuery.data?.state, searchStateQuery.data?.updatedAt, searchStateQuery.isSuccess]);
+  }, [searchStateQuery.data?.state, searchStateQuery.data?.updatedAt, searchStateQuery.isSuccess, setHistory]);
 
   useEffect(() => {
     if (!hasLoadedSearchStateRef.current) return;
@@ -301,6 +324,7 @@ export function ProductionSchedulePage() {
           activeQueries: normalizedActiveQueries,
           activeResourceCds: normalizedResourceCds,
           activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
+          history: normalizedHistory,
         },
         {
           onSuccess: (data) => {
@@ -314,6 +338,7 @@ export function ProductionSchedulePage() {
     inputQuery,
     normalizedActiveQueries,
     normalizedAssignedOnlyCds,
+    normalizedHistory,
     normalizedResourceCds,
     searchStateMutation
   ]);
@@ -430,7 +455,7 @@ export function ProductionSchedulePage() {
                 className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
                 onClick={(event) => {
                   event.stopPropagation();
-                  removeHistoryQuery(h);
+                  confirmRemoveHistoryQuery(h);
                 }}
               >
                 ×

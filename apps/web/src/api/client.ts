@@ -239,6 +239,7 @@ export type ProductionScheduleSearchState = {
   activeQueries?: string[];
   activeResourceCds?: string[];
   activeResourceAssignedOnlyCds?: string[];
+  history?: string[];
 };
 
 export async function getKioskProductionScheduleSearchState() {
