@@ -11,8 +11,10 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 26件  
+**件数**: 27件  
 **索引**: [index.md](../index.md)
+
+**注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
 
@@ -63,6 +65,50 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - `infrastructure/ansible/verification-map.yml`
 - `scripts/deploy/verifier.sh`
 - `docs/guides/deployment.md`
+
+---
+
+### [KB-203] 本番環境でのprisma db seed失敗と直接SQL更新
+
+**発生日**: 2026-01-26  
+**Status**: ✅ 解決済み（2026-01-26）
+
+**事象**:
+- Raspberry Piの本番環境で`pnpm prisma:seed`を実行すると、`Error: Cannot find module '/app/apps/api/node_modules/tsx/dist/cli.mjs'`エラーが発生
+- `templateType`と`templateConfig`の更新が必要だったが、`prisma db seed`が実行できない
+
+**要因**:
+- **根本原因**: `tsx`がdev依存（`devDependencies`）のため、`NODE_ENV=production`ではインストールされていない
+- `prisma:seed`スクリプトは`tsx`を使用してTypeScriptファイルを実行するが、本番環境では`tsx`が存在しない
+
+**試行した対策**:
+- [試行1] `NODE_ENV=development`で`pnpm prisma:seed`を実行 → **失敗**（`pnpm install`がインタラクティブになる）
+- [試行2] `tsx`を手動でインストール → **失敗**（環境の問題でインストールできない）
+- [試行3] 直接SQLで`UPDATE`を実行 → **成功**
+
+**有効だった対策**:
+- ✅ **直接SQL更新（2026-01-26）**: `psql`コマンドで直接`UPDATE`を実行し、`templateType`と`templateConfig`を更新
+```sql
+UPDATE "CsvDashboard" 
+SET "templateType" = 'TABLE', 
+    "templateConfig" = '{"rowsPerPage": 50, "fontSize": 14, "displayColumns": ["FHINCD", "ProductNo", "FHINMEI", "FSIGENCD", "FSIGENSHOYORYO", "FKOJUN", "FSEIBAN"], "headerFixed": true}'::jsonb 
+WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+```
+
+**再発防止**:
+- 将来的には、本番環境でも`tsx`を使用可能にするか、シードスクリプトをJavaScriptに変換する必要がある
+- または、マイグレーションスクリプトとして実装し、`prisma migrate deploy`で実行できるようにする
+
+**学んだこと**:
+- **dev依存の制約**: `devDependencies`は本番環境ではインストールされないため、本番環境で実行するスクリプトは`dependencies`に含めるか、別の方法で実行する必要がある
+- **直接SQL更新**: `prisma db seed`が失敗する場合、直接SQLで更新することで回避できる
+- **マイグレーションスクリプト**: 将来的には、シードデータの更新をマイグレーションスクリプトとして実装することで、本番環境でも実行可能になる
+
+**解決状況**: ✅ **解決済み**（2026-01-26）
+
+**関連ファイル**:
+- `apps/api/prisma/seed.ts`（シードスクリプト）
+- `docs/plans/production-schedule-kiosk-execplan.md`（実行計画）
 
 ---
 

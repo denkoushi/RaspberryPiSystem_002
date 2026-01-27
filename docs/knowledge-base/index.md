@@ -81,6 +81,7 @@ update-frequency: high
 | [KB-189](./api.md#kb-189-gmailに同件名メールが溜まる場合のcsvダッシュボード取り込み仕様どの添付を取るか) | Gmailに同件名メールが溜まる場合のCSVダッシュボード取り込み仕様（どの添付を取るか） | ✅ 解決済み |
 | [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる) | Gmail OAuthのinvalid_grantでCSV取り込みが500になる | ✅ 解決済み |
 | [KB-191](./api.md#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) | CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定） | ✅ 解決済み |
+| [KB-201](./api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) | 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -136,6 +137,7 @@ update-frequency: high
 | [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
 | [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 | [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) | 管理コンソールのサイネージプレビュー機能実装とJWT認証問題 | ✅ 解決済み |
+| [KB-202](./frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) | 生産スケジュールキオスクページの列名変更とFSEIBAN全文表示 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -239,6 +241,7 @@ update-frequency: high
 | [KB-192](./infrastructure/ansible-deployment.md#kb-192-node_modulesがroot所有になりdeployshのpnpm-installが失敗する) | node_modulesがroot所有になり、deploy.shのpnpm installが失敗する | ✅ 解決済み |
 | [KB-193](./infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果) | デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果 | ✅ 解決済み |
 | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) | デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 | ✅ 解決済み |
+| [KB-203](./infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) | 本番環境でのprisma db seed失敗と直接SQL更新 | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -278,11 +281,11 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 117件 |
+| ✅ 解決済み | 120件 |
 | ✅ 実装完了 | 1件 |
 | ✅ 検証完了 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **127件** |
+| **合計** | **130件** |
 
 ---
 
@@ -376,3 +379,4 @@ update-frequency: high
 - 2026-01-23: KB-192を追加（node_modulesがroot所有になりdeploy.shのpnpm installが失敗する）
 - 2026-01-24: KB-193を追加（デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果）→ 2026-01-24に改善実装完了（down後回し、中断時復旧、ログ永続化）
 - 2026-01-25: KB-200を追加（デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能）→ 2026-01-25に実装完了・実機検証完了（Pi5/Pi4/Pi3へのデプロイ成功）
+- 2026-01-26: KB-201、KB-202、KB-203を追加（生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加、生産スケジュールキオスクページの列名変更とFSEIBAN全文表示、本番環境でのprisma db seed失敗と直接SQL更新）→ 2026-01-26に実装完了・実機検証完了

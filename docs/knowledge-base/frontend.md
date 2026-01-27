@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 28件  
+**件数**: 29件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1735,13 +1735,14 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 ### [KB-184] 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能
 
-**実装日時**: 2026-01-XX（初回実装）、2026-01-24（UI改善：テーブル形式化）
+**実装日時**: 2026-01-XX（初回実装）、2026-01-24（UI改善：テーブル形式化）、2026-01-26（列名変更・FSEIBAN全文表示）
 
 **事象**: 
 - PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装
 - CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示
 - 完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
 - **UI改善（2026-01-24）**: カード形式では表示数に限界があり、より多くのアイテムを表示するためにテーブル形式に変更
+- **列名変更・FSEIBAN全文表示（2026-01-26）**: `ProductNo`を「製造order番号」に変更、`FSEIBAN`を「製番」に変更し、`FSEIBAN`のマスクを削除して全文を表示
 
 **実装内容**: 
 - ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
@@ -1750,6 +1751,8 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
 - ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
 - ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
+- ✅ **列名変更（2026-01-26）**: `ProductNo`を「製造order番号」に変更、`FSEIBAN`を「製番」に変更
+- ✅ **FSEIBAN全文表示（2026-01-26）**: `FSEIBAN`のマスクを削除し、8文字の英数字を全文表示
 - ✅ **UI改善（2026-01-24）**: カード形式からテーブル形式に変更し、表示密度を向上
   - **1行2アイテム表示**: 幅1200px以上の画面で1行に2アイテムを表示（レスポンシブ対応）
   - **列幅自動調整**: CSVダッシュボードの列幅計算ロジックをフロントエンドに移植し、テキスト幅に応じて自動調整
@@ -1809,12 +1812,77 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - **UI改善後（2026-01-24）**: テーブル形式で正常表示、1行2アイテム表示（幅1200px以上）、列幅自動調整が正常動作することを確認
 
 **関連ファイル**:
-- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（キオスクページ実装、2026-01-24にテーブル形式化）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（キオスクページ実装、2026-01-24にテーブル形式化、2026-01-26に列名変更・FSEIBAN全文表示）
 - `apps/web/src/features/kiosk/columnWidth.ts`（列幅計算ヘルパー、2026-01-24に新規作成）
 - `apps/api/src/routes/kiosk.ts`（APIエンドポイント修正）
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（テスト更新）
-- `apps/api/prisma/seed.ts`（`enabled: true`追加）
+- `apps/api/prisma/seed.ts`（`enabled: true`追加、列名変更）
 - `apps/api/src/services/csv-dashboard/csv-dashboard-template-renderer.ts`（列幅計算ロジックの参考元）
+
+---
+
+### [KB-202] 生産スケジュールキオスクページの列名変更とFSEIBAN全文表示
+
+**実装日時**: 2026-01-26
+
+**事象**: 
+- キオスク画面の生産スケジュールページで、`ProductNo`が「製番01」と表示されていたが、実際は「製造order番号」（10桁数字）であるべき
+- `FSEIBAN`が「製番02」と表示されていたが、実際は「製番」（8文字英数字）であるべき
+- `FSEIBAN`がマスク表示（下3桁のみ）されていたが、全文表示が必要
+
+**要因**: 
+- **列名**: `seed.ts`の`displayName`が「製番01」「製番02」となっており、実際の仕様と不一致
+- **FSEIBAN表示**: `ProductionSchedulePage.tsx`で`FSEIBAN`をマスク表示していたが、仕様では全文表示が必要
+
+**有効だった対策**: 
+- ✅ **列名変更（2026-01-26）**:
+  1. `seed.ts`で`ProductNo`の`displayName`を「製造order番号」に変更
+  2. `seed.ts`で`FSEIBAN`の`displayName`を「製番」に変更
+  3. `ProductionSchedulePage.tsx`の`tableColumns`ラベルを更新
+- ✅ **FSEIBAN全文表示（2026-01-26）**:
+  1. `ProductionSchedulePage.tsx`から`seibanMasked`と`seibanLastDigits`のロジックを削除
+  2. `FSEIBAN`をそのまま表示（8文字の英数字）
+
+**実装の詳細**:
+```typescript
+// seed.ts
+{
+  key: 'ProductNo',
+  displayName: '製造order番号', // 変更前: '製番01'
+  // ...
+},
+{
+  key: 'FSEIBAN',
+  displayName: '製番', // 変更前: '製番02'
+  // ...
+}
+
+// ProductionSchedulePage.tsx
+const tableColumns = [
+  // ...
+  { key: 'ProductNo', label: '製造order番号' }, // 変更前: 'ProductNo'
+  // ...
+  { key: 'FSEIBAN', label: '製番' }, // 変更前: 'FSEIBAN'
+];
+
+// FSEIBAN表示（マスク削除）
+<td>{row.FSEIBAN}</td> // 変更前: {seibanMasked} ({seibanLastDigits})
+```
+
+**学んだこと**:
+- **列名の一貫性**: CSVダッシュボードの列名は、実際のデータ仕様と一致させる必要がある
+- **表示仕様**: マスク表示が必要な場合と全文表示が必要な場合を明確に区別する
+- **seed.tsの更新**: 列名変更は`seed.ts`とUIの両方で更新する必要がある
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26）
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-26）
+- キオスク画面で「製造order番号」「製番」が正しく表示されることを確認
+- `FSEIBAN`が8文字の英数字で全文表示されることを確認
+
+**関連ファイル**:
+- `apps/api/prisma/seed.ts`（列名変更）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（列名変更・FSEIBAN全文表示）
 
 ---
 

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 33件  
+**件数**: 34件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1662,6 +1662,111 @@ if (data.type === 'ping') {
 - `apps/api/src/routes/__tests__/imports-schedule.integration.test.ts`（API統合テスト）
 - `docs/guides/csv-import-export.md`（ドキュメント更新）
 - `docs/knowledge-base/api.md`（KB-189更新）
+
+---
+
+### [KB-201] 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加
+
+**実装日時**: 2026-01-26
+
+**事象**: 
+- 生産スケジュールCSVダッシュボードの差分ロジックが、完了状態のレコードをスキップしていた
+- PowerAppsと管理コンソールの両方で完了/未完了の切り替えが可能なため、タイミングによっては完了済みレコードが未完了に戻される可能性がある
+- CSV取り込み時に`ProductNo`と`FSEIBAN`のバリデーションがなく、不正なデータが取り込まれる可能性がある
+- CSVインポートスケジュール作成時に409エラーが発生するが、スケジュール一覧に表示されない
+
+**要因**: 
+- **差分ロジック**: `computeCsvDashboardDedupDiff`関数で、完了状態（`progress='完了'`）のレコードをスキップしていた
+- **バリデーション**: CSV取り込み時に`ProductNo`と`FSEIBAN`の形式チェックが実装されていなかった
+- **UI改善**: 409エラー発生時にスケジュール一覧を更新していなかった
+
+**有効だった対策**: 
+- ✅ **差分ロジック改善（2026-01-26）**:
+  1. `computeCsvDashboardDedupDiff`関数で`updatedAt`を優先的に使用（`occurredAt`はフォールバック）
+  2. 完了状態のスキップロジックを削除し、`updatedAt`の新旧のみで判定
+  3. `parseJstDate`関数を追加し、JST形式（`YYYY/MM/DD HH:mm`）の日付文字列をUTC `Date`オブジェクトに変換
+  4. テストを更新し、新しいロジックの動作を確認
+- ✅ **バリデーション追加（2026-01-26）**:
+  1. `CsvDashboardIngestor`に`validateProductionScheduleRow`メソッドを追加
+  2. `ProductNo`: 10桁の数字のみ（正規表現: `^[0-9]{10}$`）
+  3. `FSEIBAN`: 8文字の英数字（正規表現: `^[A-Za-z0-9]{8}$`）
+  4. バリデーション失敗時は`ApiError`（400 Bad Request）をスロー
+- ✅ **UI改善（2026-01-26）**:
+  1. `CsvImportSchedulePage.tsx`で409エラー発生時に`refetch()`を呼び出し、スケジュール一覧を更新
+  2. `validationError`メッセージを表示してユーザーに既存スケジュールの存在を通知
+
+**実装の詳細**:
+```typescript
+// csv-dashboard-diff.ts
+function parseJstDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+  // JST形式: "YYYY/MM/DD HH:mm"
+  const match = dateStr.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  // JST (UTC+9) として解釈し、UTCに変換
+  return new Date(Date.UTC(
+    parseInt(year, 10),
+    parseInt(month, 10) - 1,
+    parseInt(day, 10),
+    parseInt(hour, 10) - 9, // JSTからUTCへ
+    parseInt(minute, 10)
+  ));
+}
+
+function resolveUpdatedAt(rowData: Record<string, unknown>): Date {
+  const updatedAt = parseJstDate(rowData.updatedAt as string | undefined);
+  if (updatedAt) return updatedAt;
+  // フォールバック: occurredAt
+  return new Date(rowData.occurredAt as string);
+}
+
+// 差分判定: updatedAtが新しい方を優先
+const incomingUpdatedAt = resolveUpdatedAt(incomingRow.rowData);
+const existingUpdatedAt = resolveUpdatedAt(existingRow.rowData);
+if (incomingUpdatedAt.getTime() <= existingUpdatedAt.getTime()) {
+  // 既存レコードの方が新しいか同じ → スキップ
+  return { skip: true };
+}
+```
+
+```typescript
+// csv-dashboard-ingestor.ts
+const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+
+private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
+  if (this.dashboardId !== PRODUCTION_SCHEDULE_DASHBOARD_ID) return;
+  
+  const productNo = rowData.ProductNo as string | undefined;
+  if (productNo && !/^[0-9]{10}$/.test(productNo)) {
+    throw new ApiError(400, `ProductNoは10桁の数字である必要があります: ${productNo}`);
+  }
+  
+  const fseiban = rowData.FSEIBAN as string | undefined;
+  if (fseiban && !/^[A-Za-z0-9]{8}$/.test(fseiban)) {
+    throw new ApiError(400, `FSEIBANは8文字の英数字である必要があります: ${fseiban}`);
+  }
+}
+```
+
+**学んだこと**:
+- **差分ロジック**: 完了状態でも最新の`updatedAt`を持つレコードを優先することで、PowerAppsと管理コンソールの両方での編集に対応できる
+- **バリデーション**: CSV取り込み時にデータ形式をチェックすることで、不正なデータの取り込みを防止できる
+- **UI改善**: 409エラー発生時にスケジュール一覧を更新することで、ユーザーに既存スケジュールの存在を通知できる
+- **日付パース**: JST形式の日付文字列をUTC `Date`オブジェクトに変換する際は、タイムゾーンオフセット（+9時間）を考慮する必要がある
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26）
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-26）
+- 差分ロジックが`updatedAt`を優先的に使用し、完了状態でも最新レコードを採用することを確認
+- バリデーションが正常に動作し、不正なデータの取り込みを防止することを確認
+- CSVインポートスケジュール作成時の409エラーで、スケジュール一覧が更新されることを確認
+
+**関連ファイル**:
+- `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（差分ロジック改善）
+- `apps/api/src/services/csv-dashboard/diff/__tests__/csv-dashboard-diff.test.ts`（テスト更新）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（バリデーション追加）
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（UI改善）
 
 ---
 

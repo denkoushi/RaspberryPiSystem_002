@@ -85,6 +85,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
   - ⏳ **互換性維持中**: `backup-config.ts`の`csvImportSubjectPatterns`（旧設定）は後方互換のため残置（deprecate→移行→削除の段階的移行で安全に進める）
   - 詳細は [KB-186](../knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) を参照
 
+- [x] (2026-01-26) **生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。詳細は [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)、[KB-202](../knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示)、[KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能
@@ -165,6 +167,26 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 **関連ファイル**: `apps/api/prisma/seed.ts`
 
+### 本番環境での`prisma db seed`失敗と直接SQL更新
+
+**発見**: Raspberry Piの本番環境で`prisma db seed`が失敗。`tsx`がdev依存のため、`NODE_ENV=production`ではインストールされていない。`templateType`と`templateConfig`の更新が必要だった。
+
+**対策**: 直接SQLで`UPDATE`を実行して`templateType`と`templateConfig`を更新。将来的には、本番環境でも`tsx`を使用可能にするか、シードスクリプトをJavaScriptに変換する必要がある。
+
+**関連ファイル**: `apps/api/prisma/seed.ts`
+
+**詳細**: [KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新)
+
+### CSVインポートスケジュール作成時の409エラーとrefetch
+
+**発見**: CSVインポートスケジュール作成時に「already exists」（HTTP 409）エラーが発生するが、スケジュール一覧に表示されない。既存スケジュールが存在するが、UIが更新されていない。
+
+**対策**: `CsvImportSchedulePage.tsx`で409エラー発生時に`refetch()`を呼び出し、スケジュール一覧を更新。`validationError`メッセージを表示してユーザーに既存スケジュールの存在を通知。
+
+**関連ファイル**: `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+
+**詳細**: [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（CSVインポートスケジュールUI改善）
+
 ## Decision Log
 
 ### progressの優先順位（DB操作を優先して完了維持）
@@ -210,6 +232,52 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - ✅ `CsvImportSourceService` + `CsvImportSubjectPatternProvider` で候補生成と取得を分離（schedulerから詳細を排除）
 
 **関連ファイル**: `apps/api/prisma/schema.prisma`, `apps/api/prisma/seed.ts`, `apps/api/src/services/imports/csv-import-scheduler.ts`
+
+### 生産スケジュールCSVダッシュボードの差分ロジック改善
+
+**決定**: CSVダッシュボードの差分ロジック（DEDUPモード）で、`updatedAt`タイムスタンプを優先的に使用し、完了状態でも最新の`updatedAt`を持つレコードを採用する。
+
+**理由**: PowerAppsと管理コンソールの両方で完了/未完了の切り替えが可能なため、タイミングによっては完了済みレコードが未完了に戻される可能性がある。`updatedAt`が新しい方を優先することで、最新の状態を保持できる。
+
+**実装状況**:
+- ✅ `computeCsvDashboardDedupDiff`関数で`updatedAt`を優先的に使用（`occurredAt`はフォールバック）
+- ✅ 完了状態のスキップロジックを削除し、`updatedAt`の新旧のみで判定
+- ✅ `parseJstDate`関数を追加し、JST形式（`YYYY/MM/DD HH:mm`）の日付文字列をUTC `Date`オブジェクトに変換
+
+**関連ファイル**: `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`
+
+**詳細**: [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)
+
+### 生産スケジュールCSVダッシュボードのバリデーション追加
+
+**決定**: CSV取り込み時に`ProductNo`（10桁数字）と`FSEIBAN`（8文字英数字）のバリデーションを追加。
+
+**理由**: データ品質を保証し、不正なデータの取り込みを防止するため。
+
+**実装状況**:
+- ✅ `CsvDashboardIngestor`に`validateProductionScheduleRow`メソッドを追加
+- ✅ `ProductNo`: 10桁の数字のみ（正規表現: `^[0-9]{10}$`）
+- ✅ `FSEIBAN`: 8文字の英数字（正規表現: `^[A-Za-z0-9]{8}$`）
+- ✅ バリデーション失敗時は`ApiError`（400 Bad Request）をスロー
+
+**関連ファイル**: `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`
+
+**詳細**: [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)
+
+### 生産スケジュールCSVダッシュボードのテンプレート形式変更
+
+**決定**: `ProductionSchedule_Mishima_Grinding`の`templateType`を`CARD_GRID`から`TABLE`に変更し、管理コンソールで列の並び順変更・表示非表示機能を有効化。
+
+**理由**: 計測機器持出返却ダッシュボードと同様のUI機能を提供し、運用性を向上させるため。
+
+**実装状況**:
+- ✅ `seed.ts`で`templateType`を`TABLE`に変更
+- ✅ `templateConfig`に`displayColumns`を追加（列の並び順・表示非表示を管理）
+- ✅ 本番環境では直接SQLで`UPDATE`を実行（`prisma db seed`が失敗するため）
+
+**関連ファイル**: `apps/api/prisma/seed.ts`
+
+**詳細**: [KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新)
 
 ## Next Steps
 
