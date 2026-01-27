@@ -140,7 +140,19 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const rows = await prisma.$queryRaw<
       Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue }>
     >`
-      SELECT id, "occurredAt", "rowData"
+      SELECT
+        id,
+        "occurredAt",
+        jsonb_build_object(
+          'ProductNo', "rowData"->>'ProductNo',
+          'FSEIBAN', "rowData"->>'FSEIBAN',
+          'FHINCD', "rowData"->>'FHINCD',
+          'FHINMEI', "rowData"->>'FHINMEI',
+          'FSIGENCD', "rowData"->>'FSIGENCD',
+          'FSIGENSHOYORYO', "rowData"->>'FSIGENSHOYORYO',
+          'FKOJUN', "rowData"->>'FKOJUN',
+          'progress', "rowData"->>'progress'
+        ) AS "rowData"
       FROM "CsvDashboardRow"
       WHERE ${baseWhere} ${productNoWhere}
       ORDER BY
