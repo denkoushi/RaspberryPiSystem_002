@@ -145,7 +145,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     const queryWhere =
       queryConditions.length > 0
-        ? Prisma.sql`AND (${Prisma.join(queryConditions, Prisma.sql` OR `)})`
+        ? Prisma.sql`AND (${Prisma.join(queryConditions, ' OR ')})`
         : Prisma.empty;
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
