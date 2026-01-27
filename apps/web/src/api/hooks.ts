@@ -21,6 +21,9 @@ import {
   updateCsvImportSubjectPattern,
   deleteCsvImportSubjectPattern,
   reorderCsvImportSubjectPatterns,
+  getCsvImportConfigs,
+  getCsvImportConfig,
+  upsertCsvImportConfig,
   getGmailConfig,
   updateGmailConfig,
   deleteGmailConfig,
@@ -32,7 +35,10 @@ import {
   type RunBackupRequest,
   type GmailConfigUpdateRequest,
   type CsvImportSubjectPatternType,
-  type CsvImportSubjectPattern
+  type CsvImportSubjectPattern,
+  type CsvImportConfigType,
+  type CsvImportColumnDefinition,
+  type CsvImportStrategy
 } from './backup';
 import { getKioskEmployees, getKioskProductionSchedule, importMasterSingle } from './client';
 import {
@@ -756,10 +762,10 @@ export function useBackupConfig() {
   });
 }
 
-export function useCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType) {
+export function useCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType, dashboardId?: string) {
   return useQuery({
-    queryKey: ['csv-import-subject-patterns', importType],
-    queryFn: () => getCsvImportSubjectPatterns(importType)
+    queryKey: ['csv-import-subject-patterns', importType, dashboardId],
+    queryFn: () => getCsvImportSubjectPatterns(importType, dashboardId)
   });
 }
 
@@ -768,6 +774,7 @@ export function useCsvImportSubjectPatternMutations() {
   const create = useMutation({
     mutationFn: (payload: {
       importType: CsvImportSubjectPatternType;
+      dashboardId?: string | null;
       pattern: string;
       priority?: number;
       enabled?: boolean;
@@ -795,15 +802,54 @@ export function useCsvImportSubjectPatternMutations() {
   });
 
   const reorder = useMutation({
-    mutationFn: (payload: { importType: CsvImportSubjectPatternType; orderedIds: string[] }) =>
+    mutationFn: (payload: { importType: CsvImportSubjectPatternType; dashboardId?: string | null; orderedIds: string[] }) =>
       reorderCsvImportSubjectPatterns(payload),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns', variables.importType] });
+      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns', variables.importType, variables.dashboardId] });
       queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
     }
   });
 
   return { create, update, remove, reorder };
+}
+
+export function useCsvImportConfigs() {
+  return useQuery({
+    queryKey: ['csv-import-configs'],
+    queryFn: getCsvImportConfigs
+  });
+}
+
+export function useCsvImportConfig(importType: CsvImportConfigType) {
+  return useQuery({
+    queryKey: ['csv-import-config', importType],
+    queryFn: () => getCsvImportConfig(importType),
+  });
+}
+
+export function useCsvImportConfigMutations() {
+  const queryClient = useQueryClient();
+  const upsert = useMutation({
+    mutationFn: ({
+      importType,
+      payload
+    }: {
+      importType: CsvImportConfigType;
+      payload: {
+        enabled: boolean;
+        allowedManualImport: boolean;
+        allowedScheduledImport: boolean;
+        importStrategy: CsvImportStrategy;
+        columnDefinitions: CsvImportColumnDefinition[];
+      };
+    }) => upsertCsvImportConfig(importType, payload),
+    onSuccess: async (config) => {
+      await queryClient.invalidateQueries({ queryKey: ['csv-import-config', config.importType] });
+      await queryClient.invalidateQueries({ queryKey: ['csv-import-configs'] });
+    }
+  });
+
+  return { upsert };
 }
 
 export function useBackupConfigHealth() {

@@ -11,6 +11,7 @@ describe('CsvImportExecutionService', () => {
       configStore: { load: vi.fn(), save: vi.fn() },
       createCsvImportSourceService: () => ({ downloadMasterCsv: vi.fn() } as any),
       createCsvDashboardImportService: () => ({ ingestTargets: vi.fn() } as any),
+      createCsvImportConfigService: () => ({ getEffectiveConfig: vi.fn().mockResolvedValue(null) } as any),
       processCsvImportFromTargets: vi.fn() as any,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
@@ -74,6 +75,7 @@ describe('CsvImportExecutionService', () => {
       storageProviderFactory: { createFromConfig },
       createCsvDashboardImportService: () => ({ ingestTargets } as any),
       createCsvImportSourceService: () => ({ downloadMasterCsv } as any),
+      createCsvImportConfigService: () => ({ getEffectiveConfig: vi.fn().mockResolvedValue(null) } as any),
       processCsvImportFromTargets: processCsvImportFromTargets as any,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });

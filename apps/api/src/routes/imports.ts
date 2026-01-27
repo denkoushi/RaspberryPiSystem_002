@@ -18,6 +18,7 @@ import { GmailReauthRequiredError, isInvalidGrantMessage } from '../services/bac
 import { CsvImporterFactory } from '../services/imports/csv-importer-factory.js';
 import type { CsvImportTarget, CsvImportType, ImportSummary } from '../services/imports/csv-importer.types.js';
 import { writeDebugLog } from '../lib/debug-log.js';
+import { CsvImportConfigService } from '../services/imports/csv-import-config.service.js';
 
 const { EmployeeStatus, ItemStatus, ImportStatus } = pkg;
 
@@ -160,6 +161,16 @@ async function readFile(part: MultipartFile): Promise<Buffer> {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks);
+}
+
+async function assertManualImportAllowed(types: Array<Exclude<CsvImportType, 'csvDashboards'>>) {
+  const configService = new CsvImportConfigService();
+  for (const type of types) {
+    const config = await configService.getEffectiveConfig(type);
+    if (config && !config.allowedManualImport) {
+      throw new ApiError(400, `手動取り込みが無効なデータ種別です: ${type}`);
+    }
+  }
 }
 
 function parseCsvRows(buffer: Buffer): Record<string, string>[] {
@@ -773,6 +784,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
                            false;
 
+    const manualTypes: Array<Exclude<CsvImportType, 'csvDashboards'>> = [];
+    if (files.employees) manualTypes.push('employees');
+    if (files.items) manualTypes.push('items');
+    if (manualTypes.length > 0) {
+      await assertManualImportAllowed(manualTypes);
+    }
+
     const { summary } = await processCsvImport(files, replaceExisting, request.log);
     return { summary };
   });
@@ -846,6 +864,8 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
                            (typeof rawReplaceExisting === 'string' && rawReplaceExisting === '1') ||
                            false;
 
+    await assertManualImportAllowed([type]);
+
     // 新形式のtargets配列で処理
     const targets: CsvImportTarget[] = [{ type, source: `${type}.csv` }];
     const fileMap = new Map<string, Buffer>();
@@ -871,6 +891,13 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       if (provider !== 'dropbox' && provider !== 'gmail') {
         throw new ApiError(400, `このエンドポイントはdropbox/gmailのみ対応です（現在: ${provider}）`);
       }
+
+    const manualTypes: Array<Exclude<CsvImportType, 'csvDashboards'>> = [];
+    if (rawBody.employeesPath) manualTypes.push('employees');
+    if (rawBody.itemsPath) manualTypes.push('items');
+    if (manualTypes.length > 0) {
+      await assertManualImportAllowed(manualTypes);
+    }
 
       // providerに応じてパスをバリデーション
       const employeesPath = rawBody.employeesPath

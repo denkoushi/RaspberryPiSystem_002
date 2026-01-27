@@ -3,7 +3,7 @@
  * 状態遷移、startCall、クリーンアップ処理をテスト
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useWebRTC } from './useWebRTC';
@@ -138,9 +138,14 @@ describe('useWebRTC', () => {
 
     // fetchをモック（デバッグログ用）
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify('test-client-key'));
+    window.localStorage.setItem('kiosk-client-id', JSON.stringify('test-client-id'));
   });
 
   afterEach(() => {
+    window.localStorage.removeItem('kiosk-client-key');
+    window.localStorage.removeItem('kiosk-client-id');
     vi.clearAllMocks();
   });
 
@@ -194,7 +199,7 @@ describe('useWebRTC', () => {
     expect(typeof result.current.disableVideo).toBe('function');
   });
 
-  it('onLocalStreamコールバックが呼ばれる', async () => {
+  it('onLocalStreamコールバックを登録できる', () => {
     const onLocalStream = vi.fn();
     renderHook(() =>
       useWebRTC({
@@ -203,14 +208,9 @@ describe('useWebRTC', () => {
       })
     );
 
-    // getUserMediaが呼ばれることを確認（実装に依存）
-    await waitFor(() => {
-      expect(globalThis.navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
-    }, { timeout: 1000 });
-
-    // コールバックが呼ばれることを確認（実装に依存）
-    // このテストは構造の確認のみ
+    // 通話開始前はローカルストリーム取得を行わないため、コールバックは未呼び出し
     expect(onLocalStream).toBeDefined();
+    expect(onLocalStream).not.toHaveBeenCalled();
   });
 
   it('enabled=falseでクリーンアップされる', () => {

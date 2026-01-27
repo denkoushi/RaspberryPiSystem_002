@@ -33,7 +33,8 @@ const SUBJECT_PATTERN_TYPES: Array<{ value: CsvImportSubjectPatternType; label: 
   { value: 'employees', label: '従業員' },
   { value: 'items', label: 'アイテム' },
   { value: 'measuringInstruments', label: '計測機器' },
-  { value: 'riggingGears', label: '吊具' }
+  { value: 'riggingGears', label: '吊具' },
+  { value: 'csvDashboards', label: 'CSVダッシュボード' }
 ];
 
 export function CsvImportSchedulePage() {
@@ -48,6 +49,7 @@ export function CsvImportSchedulePage() {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const [patternDrafts, setPatternDrafts] = useState<CsvImportSubjectPattern[]>([]);
+  const [subjectPatternDashboardId, setSubjectPatternDashboardId] = useState<string>('');
   const [newPatternDrafts, setNewPatternDrafts] = useState<Record<CsvImportSubjectPatternType, {
     pattern: string;
     priority: number;
@@ -56,7 +58,8 @@ export function CsvImportSchedulePage() {
     employees: { pattern: '', priority: 0, enabled: true },
     items: { pattern: '', priority: 0, enabled: true },
     measuringInstruments: { pattern: '', priority: 0, enabled: true },
-    riggingGears: { pattern: '', priority: 0, enabled: true }
+    riggingGears: { pattern: '', priority: 0, enabled: true },
+    csvDashboards: { pattern: '', priority: 0, enabled: true }
   });
 
   const schedules = data?.schedules ?? [];
@@ -70,13 +73,21 @@ export function CsvImportSchedulePage() {
       employees: [],
       items: [],
       measuringInstruments: [],
-      riggingGears: []
+      riggingGears: [],
+      csvDashboards: []
     };
     for (const pattern of subjectPatterns) {
       grouped[pattern.importType].push(pattern);
     }
     return grouped;
   }, [subjectPatterns]);
+
+  useEffect(() => {
+    if (subjectPatternDashboardId) return;
+    if (csvDashboardsData && csvDashboardsData.length > 0) {
+      setSubjectPatternDashboardId(csvDashboardsData[0].id);
+    }
+  }, [csvDashboardsData, subjectPatternDashboardId]);
 
   useEffect(() => {
     setPatternDrafts(subjectPatterns.map((pattern) => ({ ...pattern })));
@@ -1264,11 +1275,34 @@ export function CsvImportSchedulePage() {
           ) : (
             <div className="space-y-6">
               {SUBJECT_PATTERN_TYPES.map((type) => {
-                const typePatterns = patternDrafts.filter((p) => p.importType === type.value);
+                const typePatterns = patternDrafts.filter((p) => {
+                  if (p.importType !== type.value) return false;
+                  if (type.value === 'csvDashboards') {
+                    return p.dashboardId === subjectPatternDashboardId;
+                  }
+                  return true;
+                });
                 const newDraft = newPatternDrafts[type.value];
                 return (
                   <div key={type.value} className="space-y-2">
                     <h4 className="text-sm font-semibold text-slate-700">{type.label}</h4>
+                    {type.value === 'csvDashboards' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-semibold text-slate-600">対象ダッシュボード</label>
+                        <select
+                          className="min-w-[220px] rounded-md border-2 border-slate-500 bg-white p-2 text-xs font-semibold text-slate-900"
+                          value={subjectPatternDashboardId}
+                          onChange={(e) => setSubjectPatternDashboardId(e.target.value)}
+                        >
+                          <option value="">選択してください</option>
+                          {(csvDashboardsData || []).map((dashboard) => (
+                            <option key={dashboard.id} value={dashboard.id}>
+                              {dashboard.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     {typePatterns.length === 0 ? (
                       <p className="text-xs text-slate-600">登録済みの件名パターンがありません</p>
                     ) : (
@@ -1396,8 +1430,13 @@ export function CsvImportSchedulePage() {
                             alert('件名パターンを入力してください');
                             return;
                           }
+                                if (type.value === 'csvDashboards' && !subjectPatternDashboardId) {
+                                  alert('CSVダッシュボードを選択してください');
+                                  return;
+                                }
                           await createPattern.mutateAsync({
                             importType: type.value,
+                                  dashboardId: type.value === 'csvDashboards' ? subjectPatternDashboardId : undefined,
                             pattern: newDraft.pattern.trim(),
                             priority: newDraft.priority,
                             enabled: newDraft.enabled

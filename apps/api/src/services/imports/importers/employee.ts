@@ -6,6 +6,8 @@ import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';
 import { buildUpdateDiff } from '../diff/master-data-diff.js';
+import { CsvImportConfigService } from '../csv-import-config.service.js';
+import { CsvRowMapper } from '../csv-row-mapper.js';
 
 const { EmployeeStatus } = pkg;
 
@@ -46,8 +48,30 @@ function parseCsvRows(buffer: Buffer): Record<string, string>[] {
  */
 export class EmployeeCsvImporter implements CsvImporter {
   readonly type = 'employees' as const;
+  private readonly configService: CsvImportConfigService;
+  private readonly rowMapper: CsvRowMapper;
+
+  constructor(
+    configService: CsvImportConfigService = new CsvImportConfigService(),
+    rowMapper: CsvRowMapper = new CsvRowMapper()
+  ) {
+    this.configService = configService;
+    this.rowMapper = rowMapper;
+  }
 
   async parse(buffer: Buffer): Promise<EmployeeCsvRow[]> {
+    const config = await this.configService.getEffectiveConfig(this.type);
+    if (config?.columnDefinitions?.length) {
+      const mappedRows = this.rowMapper.mapBuffer(buffer, config.columnDefinitions);
+      return mappedRows.map((row, index) => {
+        try {
+          return employeeCsvSchema.parse(row);
+        } catch (error) {
+          throw new ApiError(400, `従業員CSVの${index + 2}行目でエラー: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    }
+
     const parsedRows = parseCsvRows(buffer);
     return parsedRows.map((row, index) => {
       try {

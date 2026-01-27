@@ -51,14 +51,40 @@ export type CsvImportSubjectPatternType =
   | 'employees'
   | 'items'
   | 'measuringInstruments'
-  | 'riggingGears';
+  | 'riggingGears'
+  | 'csvDashboards';
 
 export interface CsvImportSubjectPattern {
   id: string;
   importType: CsvImportSubjectPatternType;
+  dashboardId?: string | null;
   pattern: string;
   priority: number;
   enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CsvImportConfigType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+export type CsvImportStrategy = 'UPSERT' | 'REPLACE';
+
+export interface CsvImportColumnDefinition {
+  internalName: string;
+  displayName: string;
+  csvHeaderCandidates: string[];
+  dataType: 'string' | 'number' | 'date' | 'boolean';
+  order: number;
+  required?: boolean;
+}
+
+export interface CsvImportConfig {
+  id: string;
+  importType: CsvImportConfigType;
+  enabled: boolean;
+  allowedManualImport: boolean;
+  allowedScheduledImport: boolean;
+  importStrategy: CsvImportStrategy;
+  columnDefinitions: CsvImportColumnDefinition[];
   createdAt: string;
   updatedAt: string;
 }
@@ -160,15 +186,16 @@ export async function runCsvImportSchedule(id: string): Promise<{ message: strin
   return data;
 }
 
-export async function getCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType) {
+export async function getCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType, dashboardId?: string) {
   const { data } = await api.get<{ patterns: CsvImportSubjectPattern[] }>('/csv-import-subject-patterns', {
-    params: importType ? { importType } : undefined
+    params: importType ? { importType, dashboardId } : dashboardId ? { dashboardId } : undefined
   });
   return data;
 }
 
 export async function createCsvImportSubjectPattern(payload: {
   importType: CsvImportSubjectPatternType;
+  dashboardId?: string | null;
   pattern: string;
   priority?: number;
   enabled?: boolean;
@@ -198,6 +225,7 @@ export async function deleteCsvImportSubjectPattern(id: string) {
 
 export async function reorderCsvImportSubjectPatterns(payload: {
   importType: CsvImportSubjectPatternType;
+  dashboardId?: string | null;
   orderedIds: string[];
 }) {
   const { data } = await api.post<{ patterns: CsvImportSubjectPattern[] }>(
@@ -205,6 +233,27 @@ export async function reorderCsvImportSubjectPatterns(payload: {
     payload
   );
   return data.patterns;
+}
+
+export async function getCsvImportConfigs() {
+  const { data } = await api.get<{ configs: CsvImportConfig[] }>('/csv-import-configs');
+  return data.configs;
+}
+
+export async function getCsvImportConfig(importType: CsvImportConfigType) {
+  const { data } = await api.get<{ config: CsvImportConfig | null }>(`/csv-import-configs/${importType}`);
+  return data.config;
+}
+
+export async function upsertCsvImportConfig(importType: CsvImportConfigType, payload: {
+  enabled: boolean;
+  allowedManualImport: boolean;
+  allowedScheduledImport: boolean;
+  importStrategy: CsvImportStrategy;
+  columnDefinitions: CsvImportColumnDefinition[];
+}) {
+  const { data } = await api.put<{ config: CsvImportConfig }>(`/csv-import-configs/${importType}`, payload);
+  return data.config;
 }
 
 // バックアップ設定の型定義

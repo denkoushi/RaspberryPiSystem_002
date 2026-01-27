@@ -494,6 +494,16 @@ enum CsvDashboardTemplateType {
   CARD_GRID // カードグリッド形式
 }
 
+enum CsvDashboardConfigType {
+  DASHBOARD
+  MASTER
+}
+
+enum CsvImportStrategy {
+  UPSERT
+  REPLACE
+}
+
 enum AlertSeverity {
   INFO
   WARNING
@@ -518,6 +528,11 @@ model CsvDashboard {
   id                String                   @id @default(uuid())
   name              String // ダッシュボード名
   description       String? // 説明
+  configType        CsvDashboardConfigType   @default(DASHBOARD) // 設定種別（ダッシュボード/マスター設定）
+  importType        String                   @default("csvDashboards") // インポートタイプ（employees/items/.../csvDashboards）
+  allowedManualImport Boolean                @default(true) // 手動取り込みを許可
+  allowedScheduledImport Boolean             @default(true) // 自動取り込みを許可
+  importStrategy    CsvImportStrategy        @default(UPSERT) // 取り込み戦略（主にマスターデータ用）
   columnDefinitions Json // 列定義（列名マッピング、順序、型、表示名など）
   dateColumnName    String? // 日付列の内部名（表示期間フィルタ用）
   displayPeriodDays Int                      @default(1) // 表示期間（日数、デフォルトは当日のみ）
@@ -538,6 +553,7 @@ model CsvDashboard {
   @@index([enabled])
   @@index([gmailScheduleId])
   @@index([gmailSubjectPattern])
+  @@index([configType, importType])
 }
 
 model CsvDashboardIngestRun {
@@ -594,7 +610,8 @@ model MeasuringInstrumentLoanEvent {
 // CSVインポート件名パターン（マスターデータ用）
 model CsvImportSubjectPattern {
   id          String   @id @default(uuid())
-  importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears）
+  importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears, csvDashboards）
+  dashboardId String?  // CSVダッシュボードID（csvDashboards用、任意）
   pattern     String   // Gmail件名パターン
   priority    Int      @default(0) // 優先順位（数値が小さいほど優先）
   enabled     Boolean  @default(true)
@@ -605,6 +622,7 @@ model CsvImportSubjectPattern {
   @@index([importType])
   @@index([importType, enabled])
   @@index([priority])
+  @@index([dashboardId])
 }
 
 model Alert {

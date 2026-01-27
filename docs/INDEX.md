@@ -28,6 +28,11 @@
 
 - **✅ CSVダッシュボードの列幅計算改善完了**: Pi3で表示中のサイネージのCSVダッシュボードで、フォントサイズ変更が反映されず、列幅が適切に追随しない問題を解決。列幅計算にフォントサイズを反映し、最初のページだけでなく全データ行を走査して最大文字列を考慮するように改善。日付列などフォーマット後の値で幅を計算するように修正。列名（ヘッダー）は`fontSize+4px`で太字表示されるため、列幅計算にも含めるように改善（太字係数1.06を適用）。列幅の合計がキャンバス幅を超える場合、比例的に縮小する機能を実装。仮説駆動デバッグ（fetchベースのNDJSONログ出力）により根本原因を特定。列幅計算の動作を検証するユニットテストを追加（5件すべてパス）。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-193を追加。詳細は [knowledge-base/infrastructure/signage.md#kb-193](./knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
+### 🆕 最新アップデート（2026-01-26）
+
+- **✅ 生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。CI成功、デプロイ成功。ナレッジベースにKB-201、KB-202、KB-203を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-202](./knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) / [knowledge-base/infrastructure/ansible-deployment.md#kb-203](./knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **✅ CSV取り込み統合設定の追加**: マスターデータの列定義（ColumnDefinition）と手動/自動の許可、取り込み戦略を管理コンソールで統一管理できるようにし、USB一括登録とCSVインポートスケジュールを統合ページに集約。Gmail件名パターンはcsvDashboards対応を追加。詳細は [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-XX）
 
 - **✅ 生産スケジュールキオスクページ実装・実機検証完了**: PowerAppsの生産スケジュールUIを参考に、キオスクページ（`/kiosk/production-schedule`）を実装。CSVダッシュボード（`ProductionSchedule_Mishima_Grinding`）のデータをキオスク画面で表示し、完了ボタン（赤いボタン）を押すと`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に。完了ボタンのグレーアウト・トグル機能を実装し、完了済みアイテムを`opacity-50 grayscale`で視覚的にグレーアウト。完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル。チェックマーク位置調整（`pr-11`でパディング追加）と`FSEIBAN`の下3桁表示を実装。CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソールに追加。`CsvImportSubjectPattern`モデルを追加し、マスターデータインポートの件名パターンをDB化（設計統一）。実機検証でCSVダッシュボードのデータがキオスク画面に表示され、完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。CI成功、デプロイ成功。ナレッジベースにKB-184、KB-185、KB-186を追加。詳細は [knowledge-base/frontend.md#kb-184](./knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [knowledge-base/api.md#kb-185](./knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) / [knowledge-base/api.md#kb-186](./knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
@@ -546,6 +551,7 @@ APIの概要と詳細。
 |---------|------|
 | [production-deployment-management-plan.md](./plans/production-deployment-management-plan.md) | プロダクション環境デプロイメント・更新・デバッグ管理計画 |
 | [production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) | クライアント状態可視化とデバッグ支援システム実行計画 |
+| [production-documents-feature-plan.md](./plans/production-documents-feature-plan.md) | **写真付きドキュメント表示機能の実装計画**（設計検討中） |
 | [stability-improvement-plan.md](./plans/stability-improvement-plan.md) | システム安定性向上計画 |
 | [ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) | **Ansible安定性・堅牢化・柔軟性向上計画** |
 | [ansible-phase9-role-execplan.md](./plans/ansible-phase9-role-execplan.md) | **Ansible Phase 9（ロール化）実行計画** |

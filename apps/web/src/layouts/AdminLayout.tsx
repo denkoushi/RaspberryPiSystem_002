@@ -50,8 +50,7 @@ export function AdminLayout() {
           { to: '/admin/tools/rigging-gears', label: '吊具' },
           { to: '/admin/tools/history', label: '履歴' },
           { to: '/admin/clients', label: 'クライアント端末' },
-          { to: '/admin/import', label: '一括登録' },
-          { to: '/admin/imports/schedule', label: 'CSVインポート' },
+          { to: '/admin/import', label: 'CSV取り込み' },
           { to: '/admin/gmail/config', label: 'Gmail設定' },
           { to: '/admin/backup/targets', label: 'バックアップ' },
           { to: '/admin/signage/schedules', label: 'サイネージ' },
@@ -121,10 +120,7 @@ export function AdminLayout() {
             クライアント端末
           </NavLink>
           <NavLink to="/admin/import" className={linkClass}>
-            一括登録
-          </NavLink>
-          <NavLink to="/admin/imports/schedule" className={linkClass}>
-            CSVインポート
+            CSV取り込み
           </NavLink>
           <NavLink to="/admin/csv-dashboards" className={linkClass}>
             CSVダッシュボード

@@ -6,6 +6,7 @@ import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
 import { NoMatchingMessageError } from '../backup/storage/gmail-storage.provider.js';
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
+import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-subject-pattern.provider.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -30,6 +31,7 @@ export class CsvDashboardImportService {
   private sourceService = new CsvDashboardSourceService();
   private ingestor = new CsvDashboardIngestor();
   private measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
+  private subjectPatternProvider = new PrismaCsvImportSubjectPatternProvider();
 
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
@@ -42,6 +44,19 @@ export class CsvDashboardImportService {
       trashMessage?: (messageId: string) => Promise<void>;
     };
     return typeof provider.markAsRead === 'function' && typeof provider.trashMessage === 'function';
+  }
+
+  private async resolveSubjectPatterns(dashboardId: string, legacyPattern?: string): Promise<string[]> {
+    const patterns = await this.subjectPatternProvider.listEnabledPatterns({
+      importType: 'csvDashboards',
+      dashboardId,
+    });
+    const candidates = patterns.filter((p) => p.trim().length > 0);
+    const legacy = legacyPattern?.trim();
+    if (legacy && !candidates.includes(legacy)) {
+      candidates.push(legacy);
+    }
+    return candidates;
   }
 
   /**
@@ -72,36 +87,48 @@ export class CsvDashboardImportService {
         continue;
       }
 
-      const gmailSubjectPattern = (dashboard as unknown as { gmailSubjectPattern?: string | null }).gmailSubjectPattern;
-      if (!gmailSubjectPattern || gmailSubjectPattern.trim().length === 0) {
+      const legacyPattern = (dashboard as unknown as { gmailSubjectPattern?: string | null }).gmailSubjectPattern;
+      const subjectPatterns = await this.resolveSubjectPatterns(dashboardId, legacyPattern ?? undefined);
+      if (subjectPatterns.length === 0) {
         logger?.warn(
           { dashboardId, provider },
-          '[CsvDashboardImportService] CSV dashboard gmailSubjectPattern is not set, skipping'
+          '[CsvDashboardImportService] CSV dashboard subject pattern is not set, skipping'
         );
         continue;
       }
 
       logger?.info(
-        { dashboardId, gmailSubjectPattern, provider },
+        { dashboardId, subjectPatterns, provider },
         '[CsvDashboardImportService] Processing CSV dashboard ingestion'
       );
 
-      let bufferResults: Array<{ buffer: Buffer; messageId?: string; messageSubject?: string }> = [];
-      try {
-        bufferResults = await this.sourceService.downloadCsv({
-          provider,
-          storageProvider,
-          gmailSubjectPattern,
-        });
-      } catch (error) {
-        if (error instanceof NoMatchingMessageError) {
-          logger?.info(
-            { dashboardId, gmailSubjectPattern, provider },
-            '[CsvDashboardImportService] No matching Gmail message, skipping'
-          );
-          continue;
+      const bufferResults: Array<{ buffer: Buffer; messageId?: string; messageSubject?: string }> = [];
+      for (const pattern of subjectPatterns) {
+        try {
+          const results = await this.sourceService.downloadCsv({
+            provider,
+            storageProvider,
+            gmailSubjectPattern: pattern,
+          });
+          bufferResults.push(...results);
+        } catch (error) {
+          if (error instanceof NoMatchingMessageError) {
+            logger?.info(
+              { dashboardId, subjectPattern: pattern, provider },
+              '[CsvDashboardImportService] No matching Gmail message, trying next pattern'
+            );
+            continue;
+          }
+          throw error;
         }
-        throw error;
+      }
+
+      if (bufferResults.length === 0) {
+        logger?.info(
+          { dashboardId, subjectPatterns, provider },
+          '[CsvDashboardImportService] No matching Gmail message, skipping'
+        );
+        continue;
       }
 
       // #region agent log

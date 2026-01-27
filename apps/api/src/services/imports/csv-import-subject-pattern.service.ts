@@ -1,10 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import type { CsvImportType } from './csv-importer.types.js';
 
 export type CsvImportSubjectPatternInput = {
-  importType: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  importType: CsvImportType;
   pattern: string;
+  dashboardId?: string | null;
   priority?: number | null;
   enabled?: boolean | null;
 };
@@ -14,9 +16,16 @@ export type CsvImportSubjectPatternUpdate = Partial<
 >;
 
 export class CsvImportSubjectPatternService {
-  async list(importType?: CsvImportSubjectPatternInput['importType']) {
+  async list(importType?: CsvImportSubjectPatternInput['importType'], dashboardId?: string | null) {
+    const where: Prisma.CsvImportSubjectPatternWhereInput = {};
+    if (importType) {
+      where.importType = importType;
+    }
+    if (importType === 'csvDashboards' && dashboardId !== undefined) {
+      where.dashboardId = dashboardId;
+    }
     return prisma.csvImportSubjectPattern.findMany({
-      where: importType ? { importType } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
     });
   }
@@ -26,6 +35,7 @@ export class CsvImportSubjectPatternService {
       return await prisma.csvImportSubjectPattern.create({
         data: {
           importType: input.importType,
+          dashboardId: input.dashboardId ?? null,
           pattern: input.pattern,
           priority: input.priority ?? 0,
           enabled: input.enabled ?? true,
@@ -70,9 +80,12 @@ export class CsvImportSubjectPatternService {
     await prisma.csvImportSubjectPattern.delete({ where: { id } });
   }
 
-  async reorder(importType: CsvImportSubjectPatternInput['importType'], orderedIds: string[]) {
+  async reorder(importType: CsvImportSubjectPatternInput['importType'], orderedIds: string[], dashboardId?: string | null) {
     const existing = await prisma.csvImportSubjectPattern.findMany({
-      where: { importType },
+      where: {
+        importType,
+        ...(importType === 'csvDashboards' && dashboardId !== undefined ? { dashboardId } : {}),
+      },
       select: { id: true },
     });
     const existingIds = new Set(existing.map((item) => item.id));
@@ -97,6 +110,6 @@ export class CsvImportSubjectPatternService {
       )
     );
 
-    return this.list(importType);
+    return this.list(importType, dashboardId);
   }
 }

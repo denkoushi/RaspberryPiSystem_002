@@ -7,6 +7,7 @@ import { processCsvImportFromTargets } from '../../routes/imports.js';
 import type { CsvImportTarget } from './csv-importer.types.js';
 import { CsvDashboardImportService } from '../csv-dashboard/csv-dashboard-import.service.js';
 import { CsvImportSourceService } from './csv-import-source.service.js';
+import { CsvImportConfigService } from './csv-import-config.service.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -44,6 +45,7 @@ type CsvImportExecutionDeps = {
   storageProviderFactory: StorageProviderFactoryLike;
   createCsvImportSourceService: () => CsvImportSourceService;
   createCsvDashboardImportService: () => CsvDashboardImportService;
+  createCsvImportConfigService: () => CsvImportConfigService;
   processCsvImportFromTargets: ProcessCsvImportFromTargetsFn;
   logger: LoggerLike;
 };
@@ -63,6 +65,7 @@ export class CsvImportExecutionService {
       },
       createCsvImportSourceService: () => new CsvImportSourceService(),
       createCsvDashboardImportService: () => new CsvDashboardImportService(),
+      createCsvImportConfigService: () => new CsvImportConfigService(),
       processCsvImportFromTargets,
       logger,
       ...overrides,
@@ -200,6 +203,31 @@ export class CsvImportExecutionService {
     if (targets.length === 0) {
       throw new Error('No CSV import targets specified in import schedule');
     }
+
+    const configService = this.deps.createCsvImportConfigService();
+    const filteredTargets: CsvImportTarget[] = [];
+    for (const target of targets) {
+      if (target.type === 'csvDashboards') {
+        filteredTargets.push(target);
+        continue;
+      }
+      const config = await configService.getEffectiveConfig(target.type);
+      if (config && !config.allowedScheduledImport) {
+        this.deps.logger?.warn?.(
+          { type: target.type },
+          '[CsvImportScheduler] Scheduled import disabled by config, skipping target'
+        );
+        continue;
+      }
+      filteredTargets.push(target);
+    }
+
+    if (filteredTargets.length === 0) {
+      this.deps.logger?.warn?.({}, '[CsvImportScheduler] All targets are skipped by config');
+      return {};
+    }
+
+    targets = filteredTargets;
 
     // CSVダッシュボード用のターゲットと通常のインポート用のターゲットを分離
     const csvDashboardTargets = targets.filter((t) => t.type === 'csvDashboards');

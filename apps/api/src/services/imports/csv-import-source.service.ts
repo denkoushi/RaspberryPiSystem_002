@@ -22,18 +22,19 @@ export class CsvImportSourceService {
   ) {}
 
   private async getCandidateGmailSubjectPatterns(params: {
-    importType: Exclude<CsvImportType, 'csvDashboards'>;
+    importType: CsvImportType;
+    dashboardId?: string | null;
     legacyPattern?: string;
     cache?: Map<string, string[]>;
   }): Promise<string[]> {
-    const { importType, legacyPattern, cache } = params;
+    const { importType, legacyPattern, cache, dashboardId } = params;
 
     if (cache?.has(importType)) {
       const cached = cache.get(importType);
       return cached ? [...cached] : [];
     }
 
-    const patterns = await this.subjectPatternProvider.listEnabledPatterns(importType);
+    const patterns = await this.subjectPatternProvider.listEnabledPatterns({ importType, dashboardId });
     const candidatePatterns = patterns.filter((p) => p.trim().length > 0);
 
     const legacy = legacyPattern?.trim();
@@ -68,6 +69,7 @@ export class CsvImportSourceService {
 
     const candidatePatterns = await this.getCandidateGmailSubjectPatterns({
       importType: target.type,
+      dashboardId: undefined,
       legacyPattern: target.source,
       cache: patternCache,
     });

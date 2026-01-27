@@ -8,13 +8,23 @@ const importTypeSchema = z.enum([
   'items',
   'measuringInstruments',
   'riggingGears',
+  'csvDashboards',
 ]);
 
 const createSchema = z.object({
   importType: importTypeSchema,
+  dashboardId: z.string().uuid().optional().nullable(),
   pattern: z.string().trim().min(1),
   priority: z.number().int().min(0).optional(),
   enabled: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.importType === 'csvDashboards' && !data.dashboardId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dashboardId'],
+      message: 'csvDashboardsの場合はdashboardIdが必須です',
+    });
+  }
 });
 
 const updateSchema = z.object({
@@ -25,7 +35,16 @@ const updateSchema = z.object({
 
 const reorderSchema = z.object({
   importType: importTypeSchema,
+  dashboardId: z.string().uuid().optional().nullable(),
   orderedIds: z.array(z.string().min(1)).min(1),
+}).superRefine((data, ctx) => {
+  if (data.importType === 'csvDashboards' && !data.dashboardId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dashboardId'],
+      message: 'csvDashboardsの場合はdashboardIdが必須です',
+    });
+  }
 });
 
 export function registerCsvImportSubjectPatternRoutes(app: FastifyInstance): void {
@@ -34,9 +53,14 @@ export function registerCsvImportSubjectPatternRoutes(app: FastifyInstance): voi
 
   // GET /api/csv-import-subject-patterns
   app.get('/csv-import-subject-patterns', { preHandler: mustBeAdmin }, async (request) => {
-    const query = request.query as { importType?: string };
-    const importType = query.importType ? importTypeSchema.parse(query.importType) : undefined;
-    const patterns = await service.list(importType);
+    const query = request.query as { importType?: string; dashboardId?: string };
+    const dashboardId = query.dashboardId ? z.string().uuid().parse(query.dashboardId) : undefined;
+    const importType = query.importType
+      ? importTypeSchema.parse(query.importType)
+      : dashboardId
+        ? 'csvDashboards'
+        : undefined;
+    const patterns = await service.list(importType, dashboardId);
     return { patterns };
   });
 
@@ -66,7 +90,7 @@ export function registerCsvImportSubjectPatternRoutes(app: FastifyInstance): voi
   // POST /api/csv-import-subject-patterns/reorder
   app.post('/csv-import-subject-patterns/reorder', { preHandler: mustBeAdmin }, async (request) => {
     const body = reorderSchema.parse(request.body ?? {});
-    const patterns = await service.reorder(body.importType, body.orderedIds);
+    const patterns = await service.reorder(body.importType, body.orderedIds, body.dashboardId ?? undefined);
     return { patterns };
   });
 }

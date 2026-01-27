@@ -18,6 +18,7 @@ export class CsvDashboardService {
    */
   async findAll(query: CsvDashboardQuery = {}): Promise<CsvDashboard[]> {
     const where: Prisma.CsvDashboardWhereInput = {
+      configType: 'DASHBOARD',
       ...(query.enabled !== undefined ? { enabled: query.enabled } : {}),
       ...(query.search
         ? {
@@ -39,8 +40,8 @@ export class CsvDashboardService {
    * IDでCSVダッシュボードを取得
    */
   async findById(id: string): Promise<CsvDashboard> {
-    const dashboard = await prisma.csvDashboard.findUnique({
-      where: { id },
+    const dashboard = await prisma.csvDashboard.findFirst({
+      where: { id, configType: 'DASHBOARD' },
     });
     if (!dashboard) {
       throw new ApiError(404, 'CSVダッシュボードが見つかりません');
@@ -60,6 +61,11 @@ export class CsvDashboardService {
       data: {
         name: input.name,
         description: input.description ?? null,
+        configType: 'DASHBOARD',
+        importType: 'csvDashboards',
+        allowedManualImport: false,
+        allowedScheduledImport: true,
+        importStrategy: 'UPSERT',
         columnDefinitions: input.columnDefinitions as unknown as Prisma.JsonArray,
         dateColumnName: input.dateColumnName ?? null,
         displayPeriodDays: input.displayPeriodDays ?? 1,

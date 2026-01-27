@@ -9,10 +9,9 @@ import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
 import { ClientsPage } from './pages/admin/ClientsPage';
 import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
-import { CsvImportSchedulePage } from './pages/admin/CsvImportSchedulePage';
+import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
-import { MasterImportPage } from './pages/admin/MasterImportPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
@@ -47,7 +46,7 @@ function App() {
         path="/preview"
         element={<AdminLayout />}
       >
-        <Route path="import" element={<MasterImportPage />} />
+        <Route path="import" element={<CsvImportPage />} />
       </Route>
       <Route element={<KioskLayout />}>
         <Route path="/kiosk" element={<KioskRedirect />} />
@@ -80,14 +79,14 @@ function App() {
         </Route>
         <Route path="clients" element={<ClientsPage />} />
         <Route path="security" element={<SecurityPage />} />
-        <Route path="import" element={<MasterImportPage />} />
+        <Route path="import" element={<CsvImportPage />} />
         <Route path="backup">
           <Route path="targets" element={<BackupTargetsPage />} />
           <Route path="history" element={<BackupHistoryPage />} />
           <Route path="restore" element={<BackupRestorePage />} />
         </Route>
         <Route path="imports">
-          <Route path="schedule" element={<CsvImportSchedulePage />} />
+          <Route path="schedule" element={<Navigate to="/admin/import" replace />} />
         </Route>
         <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
         <Route path="gmail">
