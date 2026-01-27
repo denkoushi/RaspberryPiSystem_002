@@ -137,6 +137,18 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
   });
 
+  it('filters by q for ProductNo or FSEIBAN', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FSEIBAN?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
+    expect(body.rows.map((r) => r.rowData.FSEIBAN)).toEqual(['A', 'A']);
+  });
+
   it('paginates results in sorted order', async () => {
     const res = await app.inject({
       method: 'GET',

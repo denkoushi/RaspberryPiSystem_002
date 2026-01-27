@@ -154,13 +154,17 @@ export function useKioskEmployees(clientKey?: string) {
   });
 }
 
-export function useKioskProductionSchedule(params?: { productNo?: string; page?: number; pageSize?: number }) {
+export function useKioskProductionSchedule(
+  params?: { productNo?: string; q?: string; page?: number; pageSize?: number },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['kiosk-production-schedule', params],
     queryFn: () => getKioskProductionSchedule(params),
     // 仕掛中が頻繁に変わるため軽く自動更新
     refetchInterval: 30000,
-    placeholderData: (previousData) => previousData
+    placeholderData: (previousData) => previousData,
+    enabled: options?.enabled ?? true
   });
 }
 

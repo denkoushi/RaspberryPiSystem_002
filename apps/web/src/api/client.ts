@@ -191,7 +191,12 @@ export interface ProductionScheduleListResponse {
   rows: ProductionScheduleRow[];
 }
 
-export async function getKioskProductionSchedule(params?: { productNo?: string; page?: number; pageSize?: number }) {
+export async function getKioskProductionSchedule(params?: {
+  productNo?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}) {
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', {
     params
   });

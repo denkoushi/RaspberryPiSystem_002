@@ -27,21 +27,22 @@ type NormalizedScheduleRow = {
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 
 export function ProductionSchedulePage() {
-  const [inputProductNo, setInputProductNo] = useState('');
-  const [activeProductNo, setActiveProductNo] = useState<string>('');
+  const [inputQuery, setInputQuery] = useState('');
+  const [activeQuery, setActiveQuery] = useState<string>('');
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
 
   const queryParams = useMemo(
     () => ({
-      productNo: activeProductNo.length > 0 ? activeProductNo : undefined,
+      q: activeQuery.length > 0 ? activeQuery : undefined,
       page: 1,
-      pageSize: 2000
+      pageSize: 400
     }),
-    [activeProductNo]
+    [activeQuery]
   );
-  const scheduleQuery = useKioskProductionSchedule(queryParams);
+  const hasQuery = activeQuery.trim().length > 0;
+  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
 
   const tableColumns: TableColumnDefinition[] = useMemo(
@@ -98,10 +99,14 @@ export function ProductionSchedulePage() {
   const itemWidth = isTwoColumn
     ? Math.floor((containerWidth - itemSeparatorWidth) / 2)
     : Math.floor(containerWidth);
+  const widthSampleRows = useMemo(
+    () => normalizedRows.slice(0, 80).map((row) => row.values),
+    [normalizedRows]
+  );
   const itemColumnWidths = useMemo(() => {
     return computeColumnWidths({
       columns: tableColumns,
-      rows: normalizedRows.map((row) => row.values),
+      rows: widthSampleRows,
       containerWidth: Math.max(0, itemWidth - checkWidth),
       fontSizePx: 12,
       formatCellValue: (column, value) => {
@@ -111,7 +116,7 @@ export function ProductionSchedulePage() {
         return String(value ?? '');
       }
     });
-  }, [tableColumns, normalizedRows, itemWidth]);
+  }, [tableColumns, widthSampleRows, itemWidth]);
 
   const rowPairs = useMemo(() => {
     if (!isTwoColumn) {
@@ -126,8 +131,8 @@ export function ProductionSchedulePage() {
 
   const applySearch = (value: string) => {
     const trimmed = value.trim();
-    setActiveProductNo(trimmed);
-    setInputProductNo(trimmed);
+    setActiveQuery(trimmed);
+    setInputQuery(trimmed);
     if (trimmed.length > 0) {
       setHistory((prev) => {
         const next = [trimmed, ...prev.filter((p) => p !== trimmed)].slice(0, 8);
@@ -147,49 +152,74 @@ export function ProductionSchedulePage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            value={inputProductNo}
-            onChange={(e) => setInputProductNo(e.target.value)}
-            placeholder="製番(ProductNo)で検索"
+            value={inputQuery}
+            onChange={(e) => setInputQuery(e.target.value)}
+            placeholder="製造order番号 / 製番で検索"
             className="h-10 w-64 bg-white text-slate-900"
           />
           <Button
             variant="primary"
             className="h-10"
-            onClick={() => applySearch(inputProductNo)}
+            onClick={() => applySearch(inputQuery)}
             disabled={scheduleQuery.isFetching || completeMutation.isPending}
           >
             検索
           </Button>
           <Button
-            variant="ghost"
+            variant="secondary"
             className="h-10"
             onClick={() => applySearch('')}
             disabled={scheduleQuery.isFetching || completeMutation.isPending}
           >
             クリア
           </Button>
-          {scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
+          {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           {history.map((h) => (
-            <button
+            <div
               key={h}
-              className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
+              role="button"
+              tabIndex={0}
               onClick={() => applySearch(h)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  applySearch(h);
+                }
+              }}
+              className="relative cursor-pointer rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
             >
               {h}
-            </button>
+              <button
+                type="button"
+                aria-label={`履歴から削除: ${h}`}
+                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setHistory((prev) => prev.filter((item) => item !== h));
+                  if (activeQuery === h) {
+                    setActiveQuery('');
+                    setInputQuery('');
+                  }
+                }}
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
       </div>
 
-      {scheduleQuery.isLoading ? (
+      {!hasQuery ? (
+        <p className="text-sm font-semibold text-white/80">検索してください。</p>
+      ) : scheduleQuery.isLoading ? (
         <p className="text-sm font-semibold text-white/80">読み込み中...</p>
       ) : scheduleQuery.isError ? (
         <p className="text-sm font-semibold text-rose-300">取得に失敗しました。</p>
       ) : normalizedRows.length === 0 ? (
-        <p className="text-sm font-semibold text-white/80">仕掛中のデータはありません。</p>
+        <p className="text-sm font-semibold text-white/80">該当するデータはありません。</p>
       ) : (
         <div className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-left text-xs text-white">

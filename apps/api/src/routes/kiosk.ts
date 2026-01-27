@@ -68,6 +68,7 @@ function checkRateLimit(clientKey: string): boolean {
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleQuerySchema = z.object({
     productNo: z.string().min(1).max(100).optional(),
+    q: z.string().min(1).max(100).optional(),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(2000).optional(),
   });
@@ -121,18 +122,36 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const query = productionScheduleQuerySchema.parse(request.query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 400;
-    const productNoFilter = query.productNo?.trim();
+    const queryText = (query.q ?? query.productNo)?.trim() ?? '';
 
-    const productNoLike = productNoFilter ? `%${productNoFilter}%` : null;
     const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
-    const productNoWhere = productNoLike
-      ? Prisma.sql`AND ("rowData"->>'ProductNo') ILIKE ${productNoLike}`
-      : Prisma.empty;
+    const hasQuery = queryText.length > 0;
+    const isNumeric = hasQuery && /^\d+$/.test(queryText);
+    const isFseiban = hasQuery && /^[A-Za-z0-9*]{8}$/.test(queryText);
+    const likeValue = hasQuery ? `%${queryText}%` : null;
+
+    const queryConditions: Prisma.Sql[] = [];
+    if (hasQuery && isNumeric && likeValue) {
+      queryConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+    }
+    if (hasQuery && isFseiban) {
+      queryConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${queryText}`);
+    }
+    if (hasQuery && !isNumeric && !isFseiban && likeValue) {
+      queryConditions.push(
+        Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+      );
+    }
+
+    const queryWhere =
+      queryConditions.length > 0
+        ? Prisma.sql`AND (${Prisma.join(queryConditions, Prisma.sql` OR `)})`
+        : Prisma.empty;
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*)::bigint AS total
       FROM "CsvDashboardRow"
-      WHERE ${baseWhere} ${productNoWhere}
+      WHERE ${baseWhere} ${queryWhere}
     `;
     const total = Number(countRows[0]?.total ?? 0n);
 
@@ -154,7 +173,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           'progress', "rowData"->>'progress'
         ) AS "rowData"
       FROM "CsvDashboardRow"
-      WHERE ${baseWhere} ${productNoWhere}
+      WHERE ${baseWhere} ${queryWhere}
       ORDER BY
         ("rowData"->>'FSEIBAN') ASC,
         ("rowData"->>'ProductNo') ASC,
