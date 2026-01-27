@@ -128,6 +128,15 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 製品コード2,製番2,0002,資源コード2,品名2,所要時間2,工順2
 ```
 
+**バリデーションルール**:
+- **ProductNo**: 10桁の数字のみ（例: `1234567890`）
+- **FSEIBAN**: 8文字の英数字（例: `ABC12345`）。割当がない場合は`********`（8個のアスタリスク）も許可されます
+- バリデーション失敗時は、CSV取り込みがエラーとなり、該当行が取り込まれません
+
+**注意事項**:
+- FSEIBANが`********`（8個のアスタリスク）の場合も正常に取り込まれます（割当がない場合の運用に対応）
+- バリデーションエラーの詳細は、エラーメッセージに`value`と`length`が含まれます（デバッグ用）
+
 ### 実機検証
 
 実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)を参照してください。
@@ -137,6 +146,8 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 - [CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)
 - [KB-184: 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能)
 - [KB-185: CSVダッシュボードのgmailSubjectPattern設定UI改善](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善)
+- [KB-201: 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（FSEIBANバリデーション修正: `********`を許可）
+- [KB-204: CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング](../knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング)
 
 ## USBメモリ経由のCSVインポート
 

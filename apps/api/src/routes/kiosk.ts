@@ -123,54 +123,42 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const pageSize = query.pageSize ?? 400;
     const productNoFilter = query.productNo?.trim();
 
-    // 一旦アプリ側でフィルタリング（progressはJSON内のため）
-    const allRows = await prisma.csvDashboardRow.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-      select: { id: true, occurredAt: true, rowData: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const productNoLike = productNoFilter ? `%${productNoFilter}%` : null;
+    const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    const productNoWhere = productNoLike
+      ? Prisma.sql`AND ("rowData"->>'ProductNo') ILIKE ${productNoLike}`
+      : Prisma.empty;
 
-    const filtered = allRows.filter((row) => {
-      const data = row.rowData as Record<string, unknown>;
-      // 完了状態のものも表示する（グレーアウト表示のため）
-      if (productNoFilter && productNoFilter.length > 0) {
-        return String(data.ProductNo ?? '').includes(productNoFilter);
-      }
-      return true;
-    });
+    const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+      SELECT COUNT(*)::bigint AS total
+      FROM "CsvDashboardRow"
+      WHERE ${baseWhere} ${productNoWhere}
+    `;
+    const total = Number(countRows[0]?.total ?? 0n);
 
-    // 表示順: 製番(FSEIBAN)→製品(ProductNo)→工順(FKOJUN)→品番(FHINCD)
-    filtered.sort((a, b) => {
-      const ad = a.rowData as Record<string, unknown>;
-      const bd = b.rowData as Record<string, unknown>;
-      const aSeiban = String(ad.FSEIBAN ?? '');
-      const bSeiban = String(bd.FSEIBAN ?? '');
-      if (aSeiban !== bSeiban) return aSeiban.localeCompare(bSeiban, 'ja');
-      const aProd = String(ad.ProductNo ?? '');
-      const bProd = String(bd.ProductNo ?? '');
-      if (aProd !== bProd) return aProd.localeCompare(bProd, 'ja');
-      const aKojun = String(ad.FKOJUN ?? '');
-      const bKojun = String(bd.FKOJUN ?? '');
-      if (aKojun !== bKojun) return aKojun.localeCompare(bKojun, 'ja');
-      const aHin = String(ad.FHINCD ?? '');
-      const bHin = String(bd.FHINCD ?? '');
-      return aHin.localeCompare(bHin, 'ja');
-    });
-
-    const total = filtered.length;
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    const pageRows = filtered.slice(start, end);
+    const offset = (page - 1) * pageSize;
+    const rows = await prisma.$queryRaw<
+      Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue }>
+    >`
+      SELECT id, "occurredAt", "rowData"
+      FROM "CsvDashboardRow"
+      WHERE ${baseWhere} ${productNoWhere}
+      ORDER BY
+        ("rowData"->>'FSEIBAN') ASC,
+        ("rowData"->>'ProductNo') ASC,
+        (CASE
+          WHEN ("rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("rowData"->>'FKOJUN'))::int
+          ELSE NULL
+        END) ASC,
+        ("rowData"->>'FHINCD') ASC
+      LIMIT ${pageSize} OFFSET ${offset}
+    `;
 
     return {
       page,
       pageSize,
       total,
-      rows: pageRows.map((r) => ({
-        id: r.id,
-        occurredAt: r.occurredAt,
-        rowData: r.rowData,
-      })),
+      rows,
     };
   });
 
@@ -201,7 +189,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       data: { rowData: nextRowData as Prisma.InputJsonValue },
     });
 
-    return { success: true, alreadyCompleted: false };
+    return { success: true, alreadyCompleted: false, rowData: nextRowData };
   });
 
   app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {

@@ -59,6 +59,12 @@ describe('Kiosk Production Schedule API', () => {
         {
           csvDashboardId: DASHBOARD_ID,
           occurredAt: new Date(),
+          dataHash: 'hash-0',
+          rowData: { ProductNo: '0000', FSEIBAN: 'A', FHINCD: 'Z', FSIGENCD: '1', FKOJUN: '5', progress: '' }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
           dataHash: 'hash-1',
           rowData: { ProductNo: '0001', FSEIBAN: 'A', FHINCD: 'X', FSIGENCD: '1', FKOJUN: '210', progress: '' }
         },
@@ -86,7 +92,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; progress?: string } }> };
     // 完了状態のものも含めて全て返す（グレーアウト表示のため）
-    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0001', '0002']);
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001', '0002']);
     // 完了状態のものはprogressが'完了'
     const completedRow = body.rows.find((r) => r.rowData.ProductNo === '0002');
     expect(completedRow?.rowData.progress).toBe('完了');
@@ -115,9 +121,31 @@ describe('Kiosk Production Schedule API', () => {
       headers: { 'x-client-key': CLIENT_KEY }
     });
     // 完了状態のものも含めて全て返す（グレーアウト表示のため）
-    expect((after.json() as any).rows).toHaveLength(2);
+    expect((after.json() as any).rows).toHaveLength(3);
     const completedRow = (after.json() as any).rows.find((r: any) => r.id === first.id);
     expect(completedRow.rowData.progress).toBe('完了');
+  });
+
+  it('filters by ProductNo partial match', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?productNo=0000',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
+  });
+
+  it('paginates results in sorted order', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?page=2&pageSize=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0001']);
   });
 });
 

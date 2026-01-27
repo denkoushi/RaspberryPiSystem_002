@@ -1691,6 +1691,13 @@ if (data.type === 'ping') {
   2. `ProductNo`: 10桁の数字のみ（正規表現: `^[0-9]{10}$`）
   3. `FSEIBAN`: 8文字の英数字（正規表現: `^[A-Za-z0-9]{8}$`）
   4. バリデーション失敗時は`ApiError`（400 Bad Request）をスロー
+- ✅ **FSEIBANバリデーション修正（2026-01-27）**:
+  1. `FSEIBAN`バリデーションを修正し、割当がない場合の`********`（8個のアスタリスク）を明示的に許可
+  2. 正規表現を3つのパターンに分離:
+     - `^[A-Za-z0-9]{8}$`: 英数字8桁
+     - `^\*{8}$`: アスタリスク8個（`********`）
+     - `^[A-Za-z0-9*]{8}$`: 英数字とアスタリスクの混合8桁
+  3. エラーメッセージに`value`と`length`を追加し、デバッグを容易に
 - ✅ **UI改善（2026-01-26）**:
   1. `CsvImportSchedulePage.tsx`で409エラー発生時に`refetch()`を呼び出し、スケジュール一覧を更新
   2. `validationError`メッセージを表示してユーザーに既存スケジュールの存在を通知
@@ -1738,13 +1745,19 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
   if (this.dashboardId !== PRODUCTION_SCHEDULE_DASHBOARD_ID) return;
   
   const productNo = rowData.ProductNo as string | undefined;
-  if (productNo && !/^[0-9]{10}$/.test(productNo)) {
-    throw new ApiError(400, `ProductNoは10桁の数字である必要があります: ${productNo}`);
+  if (productNo && !/^\d{10}$/.test(productNo)) {
+    throw new ApiError(400, `ProductNoは10桁の数字である必要があります（行: ${rowIndex}）`);
   }
   
-  const fseiban = rowData.FSEIBAN as string | undefined;
-  if (fseiban && !/^[A-Za-z0-9]{8}$/.test(fseiban)) {
-    throw new ApiError(400, `FSEIBANは8文字の英数字である必要があります: ${fseiban}`);
+  const seiban = String(rowData.FSEIBAN ?? '').trim();
+  // 割当がない場合は*のみの8桁も許可（例: ********）
+  // 英数字8桁、または*のみの8桁を許可
+  const isValidSeiban = /^[A-Za-z0-9]{8}$/.test(seiban) || /^\*{8}$/.test(seiban) || /^[A-Za-z0-9*]{8}$/.test(seiban);
+  if (!isValidSeiban || seiban.length !== 8) {
+    throw new ApiError(
+      400,
+      `FSEIBANは英数字8桁である必要があります（割当がない場合は*のみの8桁も可）（行: ${rowIndex} / value: ${seiban} / length: ${seiban.length}）`
+    );
   }
 }
 ```
@@ -1754,13 +1767,15 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - **バリデーション**: CSV取り込み時にデータ形式をチェックすることで、不正なデータの取り込みを防止できる
 - **UI改善**: 409エラー発生時にスケジュール一覧を更新することで、ユーザーに既存スケジュールの存在を通知できる
 - **日付パース**: JST形式の日付文字列をUTC `Date`オブジェクトに変換する際は、タイムゾーンオフセット（+9時間）を考慮する必要がある
+- **FSEIBANバリデーション**: 割当がない場合の`********`（8個のアスタリスク）を明示的に許可することで、実際の運用ケースに対応できる。エラーメッセージに`value`と`length`を含めることで、デバッグが容易になる
 
-**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26）
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26、2026-01-27 FSEIBANバリデーション修正）
 
-**実機検証結果**: ✅ **すべて正常動作**（2026-01-26）
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-26、2026-01-27 FSEIBANバリデーション修正後も正常動作）
 - 差分ロジックが`updatedAt`を優先的に使用し、完了状態でも最新レコードを採用することを確認
 - バリデーションが正常に動作し、不正なデータの取り込みを防止することを確認
 - CSVインポートスケジュール作成時の409エラーで、スケジュール一覧が更新されることを確認
+- **FSEIBANバリデーション修正後（2026-01-27）**: `********`（8個のアスタリスク）が正常に取り込まれることを確認（Gmail経由CSV取り込み成功）
 
 **関連ファイル**:
 - `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（差分ロジック改善）

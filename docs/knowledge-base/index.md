@@ -20,11 +20,10 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 34件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定 |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 29件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能 |
+| API関連 | [api.md](./api.md) | 35件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正 |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 30件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 5件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 28件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題 |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 71件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
@@ -82,6 +81,7 @@ update-frequency: high
 | [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる) | Gmail OAuthのinvalid_grantでCSV取り込みが500になる | ✅ 解決済み |
 | [KB-191](./api.md#kb-191-csvインポートスケジュールの間隔設定機能実装10分ごと等の細かい頻度設定) | CSVインポートスケジュールの間隔設定機能実装（10分ごと等の細かい頻度設定） | ✅ 解決済み |
 | [KB-201](./api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) | 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加 | ✅ 解決済み |
+| [KB-204](./frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) | CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング | ✅ 解決済み |
 
 ### データベース関連
 
@@ -138,6 +138,7 @@ update-frequency: high
 | [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 | [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) | 管理コンソールのサイネージプレビュー機能実装とJWT認証問題 | ✅ 解決済み |
 | [KB-202](./frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) | 生産スケジュールキオスクページの列名変更とFSEIBAN全文表示 | ✅ 解決済み |
+| [KB-204](./frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) | CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -281,11 +282,11 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 120件 |
+| ✅ 解決済み | 122件 |
 | ✅ 実装完了 | 1件 |
 | ✅ 検証完了 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **130件** |
+| **合計** | **132件** |
 
 ---
 
@@ -380,3 +381,4 @@ update-frequency: high
 - 2026-01-24: KB-193を追加（デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果）→ 2026-01-24に改善実装完了（down後回し、中断時復旧、ログ永続化）
 - 2026-01-25: KB-200を追加（デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能）→ 2026-01-25に実装完了・実機検証完了（Pi5/Pi4/Pi3へのデプロイ成功）
 - 2026-01-26: KB-201、KB-202、KB-203を追加（生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加、生産スケジュールキオスクページの列名変更とFSEIBAN全文表示、本番環境でのprisma db seed失敗と直接SQL更新）→ 2026-01-26に実装完了・実機検証完了
+- 2026-01-27: KB-201を更新（FSEIBANバリデーション修正: `********`（8個のアスタリスク）を明示的に許可）、KB-204を追加（CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング）→ 2026-01-27に実装完了・実機検証完了（Gmail経由CSV取り込み成功、`********`も正常に取得）

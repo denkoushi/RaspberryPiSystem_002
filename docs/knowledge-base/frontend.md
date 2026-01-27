@@ -1886,6 +1886,100 @@ const tableColumns = [
 
 ---
 
+### [KB-204] CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング
+
+**実装日時**: 2026-01-27
+
+**事象**: 
+- CSVインポートスケジュールページで、1つのスケジュールの「実行」ボタンを押すと、他のスケジュールのボタンも「実行中...」と表示されてしまう
+- 複数のスケジュールを同時に実行しようとすると、競合が発生する可能性がある
+- 既に実行中のスケジュールを再度実行しようとすると、500エラーが発生していた
+
+**要因**: 
+- **UI状態管理**: `useState`のみで実行中のスケジュールIDを管理していたため、非同期更新の遅延により、複数の`handleRun`呼び出しが同時に進行してしまっていた
+- **APIエラーハンドリング**: スケジューラーから「CSV import is already running」エラーが返された際、500エラーとして処理されていた
+
+**有効だった対策**: 
+- ✅ **useRefによる競合防止（2026-01-27）**:
+  1. `runningScheduleIdRef`（`useRef`）を追加し、実行中のスケジュールIDを即座に反映される参照で追跡
+  2. `handleRun`関数の先頭で`runningScheduleIdRef.current`をチェックし、既に実行中の場合は早期リターン
+  3. `useState`（`runningScheduleId`）はUI更新用として維持し、`useRef`と併用
+- ✅ **409エラーハンドリング（2026-01-27）**:
+  1. `apps/api/src/routes/imports.ts`の`POST /imports/schedule/:id/run`エンドポイントで、エラーメッセージに「CSV import is already running」が含まれる場合、409 `ApiError`を返すように修正
+  2. ユーザーフレンドリーなエラーメッセージ（`インポートは既に実行中です: ${id}`）を返す
+
+**実装の詳細**:
+```typescript
+// CsvImportSchedulePage.tsx
+const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+const runningScheduleIdRef = useRef<string | null>(null); // 即座に反映される参照（競合防止用）
+
+const handleRun = async (id: string) => {
+  // useRefで即座にチェック（useStateの非同期更新を待たない）
+  if (runningScheduleIdRef.current !== null) {
+    return; // 既に実行中
+  }
+
+  // confirm後、実際の実行前に設定
+  runningScheduleIdRef.current = id;
+  setRunningScheduleId(id);
+  
+  try {
+    await run.mutateAsync(id);
+    // ...
+  } catch (error) {
+    // ...
+  } finally {
+    // useRefとuseStateの両方をクリア
+    runningScheduleIdRef.current = null;
+    setRunningScheduleId(null);
+  }
+};
+```
+
+```typescript
+// apps/api/src/routes/imports.ts
+app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
+  try {
+    // ...
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    if (error instanceof Error) {
+      // 既に実行中の場合は409で返す
+      if (
+        error.message.includes('CSV import is already running') ||
+        error.message.includes('already running')
+      ) {
+        throw new ApiError(409, `インポートは既に実行中です: ${id}`);
+      }
+      // ...
+    }
+    throw error;
+  }
+});
+```
+
+**学んだこと**:
+- **React状態管理**: `useState`の非同期更新により、複数のイベントハンドラーが同時に実行される可能性がある。`useRef`を使用することで、即座に反映される参照で競合を防止できる
+- **エラーハンドリング**: スケジューラーからのエラーメッセージを適切に解釈し、ユーザーフレンドリーなHTTPステータスコード（409 Conflict）を返すことで、UIでのエラー表示が改善される
+- **競合防止**: 実行中の状態を`useRef`と`useState`の両方で管理することで、即座のチェックとUI更新の両方を実現できる
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-27）
+
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-27）
+- 1つのスケジュールの「実行」ボタンを押しても、他のスケジュールのボタンが「実行中...」と表示されないことを確認
+- 既に実行中のスケジュールを再度実行しようとすると、409エラーが返されることを確認
+- Gmail経由のCSV取り込みが正常に動作することを確認（`********`（8個のアスタリスク）も正常に取得）
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（useRefによる競合防止）
+- `apps/api/src/routes/imports.ts`（409エラーハンドリング）
+
+---
+
 ### [KB-192] 管理コンソールのサイネージプレビュー機能実装とJWT認証問題
 
 **日付**: 2026-01-23

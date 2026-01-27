@@ -28,6 +28,10 @@
 
 - **✅ CSVダッシュボードの列幅計算改善完了**: Pi3で表示中のサイネージのCSVダッシュボードで、フォントサイズ変更が反映されず、列幅が適切に追随しない問題を解決。列幅計算にフォントサイズを反映し、最初のページだけでなく全データ行を走査して最大文字列を考慮するように改善。日付列などフォーマット後の値で幅を計算するように修正。列名（ヘッダー）は`fontSize+4px`で太字表示されるため、列幅計算にも含めるように改善（太字係数1.06を適用）。列幅の合計がキャンバス幅を超える場合、比例的に縮小する機能を実装。仮説駆動デバッグ（fetchベースのNDJSONログ出力）により根本原因を特定。列幅計算の動作を検証するユニットテストを追加（5件すべてパス）。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-193を追加。詳細は [knowledge-base/infrastructure/signage.md#kb-193](./knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
+### 🆕 最新アップデート（2026-01-27）
+
+- **✅ CSVインポートスケジュール実行ボタンの競合防止とFSEIBANバリデーション修正完了**: CSVインポートスケジュールページで、1つのスケジュールの「実行」ボタンを押すと他のスケジュールのボタンも「実行中...」と表示される問題を解決。`useRef`（`runningScheduleIdRef`）を追加し、実行中のスケジュールIDを即座に反映される参照で追跡することで競合を防止。既に実行中のスケジュールを再度実行しようとした場合、500エラーではなく409エラー（Conflict）を返すように修正。FSEIBANバリデーションを修正し、割当がない場合の`********`（8個のアスタリスク）を明示的に許可。実機検証でGmail経由のCSV取り込みが正常に動作し、`********`も正常に取得できることを確認。CI成功、デプロイ成功。ナレッジベースにKB-201（更新）、KB-204を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-204](./knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-26）
 
 - **✅ 生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。CI成功、デプロイ成功。ナレッジベースにKB-201、KB-202、KB-203を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-202](./knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) / [knowledge-base/infrastructure/ansible-deployment.md#kb-203](./knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
