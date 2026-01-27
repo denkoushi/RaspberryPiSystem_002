@@ -254,78 +254,107 @@ export function CsvImportPage() {
             )}
 
             <div className="space-y-3">
+              {normalizedColumns.length > 0 && (
+                <div className="mb-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
+                  <p className="font-semibold mb-1">列定義の入力欄について:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li><strong>内部名</strong>: システム内部で使用する列名（例: employeeCode）</li>
+                    <li><strong>表示名</strong>: UIで表示する列名（例: 社員コード）</li>
+                    <li><strong>CSVヘッダー候補</strong>: CSVファイルのヘッダー行で使用される可能性のある列名（カンマ区切りで複数指定可能、例: employeeCode, 社員コード）</li>
+                  </ul>
+                </div>
+              )}
               {normalizedColumns.map((col, index) => (
-                <div key={`${col.internalName}-${index}`} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 p-2">
-                  <Input
-                    className="min-w-[160px]"
-                    placeholder="内部名"
-                    value={col.internalName}
-                    onChange={(e) => {
-                      const next = [...normalizedColumns];
-                      next[index] = { ...col, internalName: e.target.value };
-                      setColumnDefinitions(next);
-                    }}
-                  />
-                  <Input
-                    className="min-w-[160px]"
-                    placeholder="表示名"
-                    value={col.displayName}
-                    onChange={(e) => {
-                      const next = [...normalizedColumns];
-                      next[index] = { ...col, displayName: e.target.value };
-                      setColumnDefinitions(next);
-                    }}
-                  />
-                  <Input
-                    className="min-w-[240px]"
-                    placeholder="CSVヘッダー候補（カンマ区切り）"
-                    value={col.csvHeaderCandidates.join(', ')}
-                    onChange={(e) => {
-                      const candidates = e.target.value
-                        .split(',')
-                        .map((v) => v.trim())
-                        .filter(Boolean);
-                      const next = [...normalizedColumns];
-                      next[index] = { ...col, csvHeaderCandidates: candidates };
-                      setColumnDefinitions(next);
-                    }}
-                  />
-                  <select
-                    className="rounded-md border-2 border-slate-500 bg-white p-1 text-xs font-semibold text-slate-900"
-                    value={col.dataType}
-                    onChange={(e) => {
-                      const next = [...normalizedColumns];
-                      next[index] = { ...col, dataType: e.target.value as CsvImportColumnDefinition['dataType'] };
-                      setColumnDefinitions(next);
-                    }}
-                  >
-                    <option value="string">文字列</option>
-                    <option value="number">数値</option>
-                    <option value="date">日付</option>
-                    <option value="boolean">真偽</option>
-                  </select>
-                  <label className="flex items-center gap-1 text-xs text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={col.required !== false}
-                      onChange={(e) => {
-                        const next = [...normalizedColumns];
-                        next[index] = { ...col, required: e.target.checked };
-                        setColumnDefinitions(next);
-                      }}
-                    />
-                    必須
-                  </label>
-                  <Button
-                    variant="ghost"
-                    className="text-red-600"
-                    onClick={() => {
-                      const next = normalizedColumns.filter((_, i) => i !== index);
-                      setColumnDefinitions(next);
-                    }}
-                  >
-                    削除
-                  </Button>
+                <div key={`${col.internalName}-${index}`} className="rounded-md border border-slate-200 p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* 左列 */}
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-slate-600">内部名</label>
+                        <Input
+                          placeholder="例: employeeCode"
+                          value={col.internalName}
+                          onChange={(e) => {
+                            const next = [...normalizedColumns];
+                            next[index] = { ...col, internalName: e.target.value };
+                            setColumnDefinitions(next);
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-slate-600">表示名</label>
+                        <Input
+                          placeholder="例: 社員コード"
+                          value={col.displayName}
+                          onChange={(e) => {
+                            const next = [...normalizedColumns];
+                            next[index] = { ...col, displayName: e.target.value };
+                            setColumnDefinitions(next);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {/* 右列 */}
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-slate-600">CSVヘッダー候補</label>
+                        <Input
+                          placeholder="例: employeeCode, 社員コード"
+                          value={col.csvHeaderCandidates.join(', ')}
+                          onChange={(e) => {
+                            const candidates = e.target.value
+                              .split(',')
+                              .map((v) => v.trim())
+                              .filter(Boolean);
+                            const next = [...normalizedColumns];
+                            next[index] = { ...col, csvHeaderCandidates: candidates };
+                            setColumnDefinitions(next);
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <div className="flex flex-col gap-1 flex-1">
+                          <label className="text-xs font-semibold text-slate-600">データ型</label>
+                          <select
+                            className="rounded-md border-2 border-slate-500 bg-white p-1 text-xs font-semibold text-slate-900 w-full"
+                            value={col.dataType}
+                            onChange={(e) => {
+                              const next = [...normalizedColumns];
+                              next[index] = { ...col, dataType: e.target.value as CsvImportColumnDefinition['dataType'] };
+                              setColumnDefinitions(next);
+                            }}
+                          >
+                            <option value="string">文字列</option>
+                            <option value="number">数値</option>
+                            <option value="date">日付</option>
+                            <option value="boolean">真偽</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-slate-700 pb-1">
+                          <input
+                            type="checkbox"
+                            checked={col.required !== false}
+                            onChange={(e) => {
+                              const next = [...normalizedColumns];
+                              next[index] = { ...col, required: e.target.checked };
+                              setColumnDefinitions(next);
+                            }}
+                          />
+                          <label>必須</label>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          className="text-red-600"
+                          onClick={() => {
+                            const next = normalizedColumns.filter((_, i) => i !== index);
+                            setColumnDefinitions(next);
+                          }}
+                        >
+                          削除
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
               <Button
