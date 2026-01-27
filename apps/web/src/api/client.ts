@@ -182,6 +182,7 @@ export interface ProductionScheduleRow {
   id: string;
   occurredAt: string;
   rowData: Record<string, unknown>;
+  processingOrder?: number | null;
 }
 
 export interface ProductionScheduleListResponse {
@@ -194,6 +195,8 @@ export interface ProductionScheduleListResponse {
 export async function getKioskProductionSchedule(params?: {
   productNo?: string;
   q?: string;
+  resourceCds?: string;
+  resourceAssignedOnlyCds?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -205,6 +208,51 @@ export async function getKioskProductionSchedule(params?: {
 
 export async function completeKioskProductionScheduleRow(rowId: string) {
   const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean; rowData: Record<string, unknown> }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  return data;
+}
+
+export async function getKioskProductionScheduleResources() {
+  const { data } = await api.get<{ resources: string[] }>('/kiosk/production-schedule/resources');
+  return data.resources;
+}
+
+export async function getKioskProductionScheduleOrderUsage(params?: { resourceCds?: string }) {
+  const { data } = await api.get<{ usage: Record<string, number[]> }>('/kiosk/production-schedule/order-usage', {
+    params
+  });
+  return data.usage;
+}
+
+export async function updateKioskProductionScheduleOrder(
+  rowId: string,
+  payload: { resourceCd: string; orderNumber: number | null }
+) {
+  const { data } = await api.put<{ success: boolean; orderNumber: number | null }>(
+    `/kiosk/production-schedule/${rowId}/order`,
+    payload
+  );
+  return data;
+}
+
+export type ProductionScheduleSearchState = {
+  inputQuery?: string;
+  activeQueries?: string[];
+  activeResourceCds?: string[];
+  activeResourceAssignedOnlyCds?: string[];
+};
+
+export async function getKioskProductionScheduleSearchState() {
+  const { data } = await api.get<{ state: ProductionScheduleSearchState | null; updatedAt: string | null }>(
+    '/kiosk/production-schedule/search-state'
+  );
+  return data;
+}
+
+export async function setKioskProductionScheduleSearchState(state: ProductionScheduleSearchState) {
+  const { data } = await api.put<{ state: ProductionScheduleSearchState; updatedAt: string }>(
+    '/kiosk/production-schedule/search-state',
+    { state }
+  );
   return data;
 }
 

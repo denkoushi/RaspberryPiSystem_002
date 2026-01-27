@@ -7,6 +7,9 @@ import { sendSlackNotification } from '../services/notifications/slack-webhook.j
 
 const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 const COMPLETED_PROGRESS_VALUE = '完了';
+const ORDER_NUMBER_MIN = 1;
+const ORDER_NUMBER_MAX = 10;
+const DEFAULT_LOCATION = 'default';
 
 const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
@@ -65,16 +68,48 @@ function checkRateLimit(clientKey: string): boolean {
   return true;
 }
 
+const parseCsvList = (value: string | undefined): string[] => {
+  if (!value) return [];
+  return Array.from(
+    new Set(
+      value
+        .split(',')
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0)
+    )
+  );
+};
+
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleQuerySchema = z.object({
     productNo: z.string().min(1).max(100).optional(),
     q: z.string().min(1).max(200).optional(),
+    resourceCds: z.string().min(1).max(400).optional(),
+    resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(2000).optional(),
   });
 
   const productionScheduleCompleteParamsSchema = z.object({
     rowId: z.string().uuid(),
+  });
+
+  const productionScheduleOrderParamsSchema = z.object({
+    rowId: z.string().uuid(),
+  });
+
+  const productionScheduleOrderBodySchema = z.object({
+    resourceCd: z.string().min(1).max(100),
+    orderNumber: z.number().int().min(ORDER_NUMBER_MIN).max(ORDER_NUMBER_MAX).nullable(),
+  });
+
+  const productionScheduleSearchStateBodySchema = z.object({
+    state: z.object({
+      inputQuery: z.string().max(200).optional(),
+      activeQueries: z.array(z.string().max(200)).max(8).optional(),
+      activeResourceCds: z.array(z.string().max(100)).max(100).optional(),
+      activeResourceAssignedOnlyCds: z.array(z.string().max(100)).max(100).optional(),
+    }),
   });
 
   const requireClientDevice = async (rawClientKey: unknown) => {
@@ -90,6 +125,16 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
     }
     return { clientKey, clientDevice };
+  };
+
+  const resolveLocationKey = (clientDevice: { location?: string | null; name: string }) => {
+    if (clientDevice.location && clientDevice.location.trim().length > 0) {
+      return clientDevice.location.trim();
+    }
+    if (clientDevice.name && clientDevice.name.trim().length > 0) {
+      return clientDevice.name.trim();
+    }
+    return DEFAULT_LOCATION;
   };
 
   // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
@@ -117,19 +162,18 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   // 生産日程（研削工程）: 仕掛中のみ取得（x-client-key認証のみ）
   app.get('/kiosk/production-schedule', { config: { rateLimit: false } }, async (request) => {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
 
     const query = productionScheduleQuerySchema.parse(request.query);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 400;
     const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
+    const resourceCds = parseCsvList(query.resourceCds);
+    const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
 
     const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
-    const rawTokens = rawQueryText
-      .split(',')
-      .map((token) => token.trim())
-      .filter((token) => token.length > 0);
-    const uniqueTokens = Array.from(new Set(rawTokens)).slice(0, 8);
+    const uniqueTokens = parseCsvList(rawQueryText).slice(0, 8);
 
     const queryConditions: Prisma.Sql[] = [];
     for (const token of uniqueTokens) {
@@ -147,6 +191,30 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    if (resourceCds.length > 0) {
+      queryConditions.push(
+        Prisma.sql`("rowData"->>'FSIGENCD') IN (${Prisma.join(
+          resourceCds.map((cd) => Prisma.sql`${cd}`),
+          ','
+        )})`
+      );
+    }
+
+    if (assignedOnlyCds.length > 0) {
+      queryConditions.push(
+        Prisma.sql`id IN (
+          SELECT "csvDashboardRowId"
+          FROM "ProductionScheduleOrderAssignment"
+          WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND "location" = ${locationKey}
+            AND "resourceCd" IN (${Prisma.join(
+              assignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
+              ','
+            )})
+        )`
+      );
+    }
+
     const queryWhere =
       queryConditions.length > 0
         ? Prisma.sql`AND (${Prisma.join(queryConditions, ' OR ')})`
@@ -161,7 +229,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     const offset = (page - 1) * pageSize;
     const rows = await prisma.$queryRaw<
-      Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue }>
+      Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue; processingOrder: number | null }>
     >`
       SELECT
         id,
@@ -175,7 +243,14 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           'FSIGENSHOYORYO', "rowData"->>'FSIGENSHOYORYO',
           'FKOJUN', "rowData"->>'FKOJUN',
           'progress', "rowData"->>'progress'
-        ) AS "rowData"
+        ) AS "rowData",
+        (
+          SELECT "orderNumber"
+          FROM "ProductionScheduleOrderAssignment"
+          WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+            AND "location" = ${locationKey}
+          LIMIT 1
+        ) AS "processingOrder"
       FROM "CsvDashboardRow"
       WHERE ${baseWhere} ${queryWhere}
       ORDER BY
@@ -197,9 +272,55 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.get('/kiosk/production-schedule/resources', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
+      SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ("rowData"->>'FSIGENCD') IS NOT NULL
+        AND ("rowData"->>'FSIGENCD') <> ''
+      ORDER BY ("rowData"->>'FSIGENCD') ASC
+    `;
+    return { resources: resources.map((r) => r.resourceCd) };
+  });
+
+  app.get('/kiosk/production-schedule/order-usage', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const query = productionScheduleQuerySchema.parse(request.query);
+    const resourceCds = parseCsvList(query.resourceCds);
+
+    const usageRows = await prisma.$queryRaw<Array<{ resourceCd: string; orderNumbers: number[] }>>`
+      SELECT
+        "resourceCd" AS "resourceCd",
+        array_agg("orderNumber" ORDER BY "orderNumber") AS "orderNumbers"
+      FROM "ProductionScheduleOrderAssignment"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "location" = ${locationKey}
+        ${
+          resourceCds.length > 0
+            ? Prisma.sql`AND "resourceCd" IN (${Prisma.join(
+                resourceCds.map((cd) => Prisma.sql`${cd}`),
+                ','
+              )})`
+            : Prisma.empty
+        }
+      GROUP BY "resourceCd"
+    `;
+
+    return {
+      usage: usageRows.reduce<Record<string, number[]>>((acc, row) => {
+        acc[row.resourceCd] = row.orderNumbers ?? [];
+        return acc;
+      }, {})
+    };
+  });
+
   // 生産日程（研削工程）: 完了にする（x-client-key認証のみ）
   app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: false } }, async (request) => {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
     const params = productionScheduleCompleteParamsSchema.parse(request.params);
 
     const row = await prisma.csvDashboardRow.findFirst({
@@ -219,12 +340,149 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE,
     };
 
-    await prisma.csvDashboardRow.update({
-      where: { id: row.id },
-      data: { rowData: nextRowData as Prisma.InputJsonValue },
+    const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.csvDashboardRow.update({
+        where: { id: row.id },
+        data: { rowData: nextRowData as Prisma.InputJsonValue },
+      });
+
+      if (currentAssignment) {
+        await tx.productionScheduleOrderAssignment.delete({
+          where: {
+            csvDashboardRowId_location: {
+              csvDashboardRowId: row.id,
+              location: locationKey,
+            },
+          },
+        });
+
+        await tx.productionScheduleOrderAssignment.updateMany({
+          where: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: locationKey,
+            resourceCd: currentAssignment.resourceCd,
+            orderNumber: { gt: currentAssignment.orderNumber },
+          },
+          data: { orderNumber: { decrement: 1 } },
+        });
+      }
     });
 
     return { success: true, alreadyCompleted: false, rowData: nextRowData };
+  });
+
+  app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const params = productionScheduleOrderParamsSchema.parse(request.params);
+    const body = productionScheduleOrderBodySchema.parse(request.body);
+
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: { id: params.rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, rowData: true },
+    });
+    if (!row) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+
+    const rowData = row.rowData as Record<string, unknown>;
+    const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD : '';
+    if (rowResourceCd && rowResourceCd !== body.resourceCd) {
+      throw new ApiError(400, '資源CDが一致しません');
+    }
+
+    if (body.orderNumber === null) {
+      await prisma.productionScheduleOrderAssignment.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      });
+      return { success: true, orderNumber: null };
+    }
+
+    const conflicting = await prisma.productionScheduleOrderAssignment.findFirst({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        resourceCd: body.resourceCd,
+        orderNumber: body.orderNumber,
+        csvDashboardRowId: { not: row.id },
+      },
+    });
+    if (conflicting) {
+      throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');
+    }
+
+    await prisma.productionScheduleOrderAssignment.upsert({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      },
+      update: {
+        resourceCd: body.resourceCd,
+        orderNumber: body.orderNumber,
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: locationKey,
+        resourceCd: body.resourceCd,
+        orderNumber: body.orderNumber,
+      },
+    });
+
+    return { success: true, orderNumber: body.orderNumber };
+  });
+
+  app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const state = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: locationKey,
+        },
+      },
+    });
+    return { state: state?.state ?? null, updatedAt: state?.updatedAt ?? null };
+  });
+
+  app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const body = productionScheduleSearchStateBodySchema.parse(request.body);
+
+    const state = await prisma.kioskProductionScheduleSearchState.upsert({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: locationKey,
+        },
+      },
+      update: {
+        state: body.state as Prisma.InputJsonValue,
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        state: body.state as Prisma.InputJsonValue,
+      },
+    });
+
+    return { state: state.state, updatedAt: state.updatedAt };
   });
 
   app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {
