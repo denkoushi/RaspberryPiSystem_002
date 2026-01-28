@@ -14,12 +14,14 @@ import { logger } from '../../../lib/logger.js';
  * 現在の証明書情報:
  * - Issuer: DigiCert TLS RSA SHA256 2020 CA1
  * - 2025-01-19更新: api.dropboxapi.comの新しい証明書フィンガープリントを追加
+ * - 2026-01-28更新: content.dropboxapi.comの新しい証明書フィンガープリントを追加
  */
 const DROPBOX_CERTIFICATE_FINGERPRINTS = [
   'sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad', // api.dropboxapi.com (旧)
-  'sha256/4085a9c1e3f6bac2ae9e530e2679e2447655e840d07d7793b047a53ba760f9cc', // content.dropboxapi.com
+  'sha256/4085a9c1e3f6bac2ae9e530e2679e2447655e840d07d7793b047a53ba760f9cc', // content.dropboxapi.com (旧)
   'sha256/5712473809f6c0a24a9cf7cb74dca93d760fc4ee90de1e17fa0224b12b5fea59', // notify.dropboxapi.com
-  'sha256/9d6683591abfc0a0e0681152ed4577430bf5b00e7a3ff71b9f21098e2922a2e5'  // api.dropboxapi.com (新、2025-01-19確認)
+  'sha256/9d6683591abfc0a0e0681152ed4577430bf5b00e7a3ff71b9f21098e2922a2e5', // api.dropboxapi.com (新、2025-01-19確認)
+  'sha256/32350553629468be49a2780aa0b0c0b8d5e7474bac6cb44db128e1261bf8a991'  // content.dropboxapi.com (新、2026-01-28確認)
 ] as const;
 
 /**
