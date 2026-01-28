@@ -589,6 +589,7 @@ echo "画像バックアップのリストア完了"
 **エラーハンドリング**:
 - Dropbox APIのレート制限エラー（429）時は自動的にリトライされます（最大5回、指数バックオフ）
 - ネットワークエラー（タイムアウト、接続エラーなど）時も自動的にリトライされます
+- **証明書ピニング検証失敗（500エラー）**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります。この場合は、`apps/api/scripts/get-dropbox-cert-fingerprint.ts`で新しい証明書フィンガープリントを取得し、`apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`に追加してください。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください
 - 詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
 
 ### 4. Dockerボリュームのリストア
@@ -659,7 +660,7 @@ gunzip -c /opt/backups/db_backup_*.sql.gz | head -20
 - **バックアップの暗号化**: 機密情報を含むバックアップは暗号化することを推奨します
 - **リストア前の確認**: リストア前に現在のデータベースのバックアップを取得してください
 - **テストリストア**: 定期的にテストリストアを実行し、バックアップが正しく動作することを確認してください
-- **エラーハンドリング**: Dropbox APIのレート制限エラーやネットワークエラー時は自動的にリトライされます。詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
+- **エラーハンドリング**: Dropbox APIのレート制限エラーやネットワークエラー時は自動的にリトライされます。証明書ピニング検証失敗（500エラー）の場合は、証明書フィンガープリントの更新が必要です。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) と [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
 
 ---
 

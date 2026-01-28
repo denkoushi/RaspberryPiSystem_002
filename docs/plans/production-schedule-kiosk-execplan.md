@@ -87,6 +87,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-01-26) **生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。詳細は [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)、[KB-202](../knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示)、[KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) を参照。
 - [x] (2026-01-28) **検索状態の共有化**: 生産スケジュールの検索状態（製番・検索履歴・資源フィルタ）をキオスク間で共有するため、検索状態の保存先を共有キーに統一し、既存の端末別状態は初回取得時にフォールバックで読み込むように調整。
+- [x] (2026-01-28) **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決。実機検証で正常に動作することを確認。
 
 ## Surprises & Discoveries
 
@@ -205,9 +206,36 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - 共有キーの設計: locationに依存しない共有キー（`'shared'`）を使用することで、全キオスク間で検索状態を共有できる
 - API側の変更のみ: フロントエンドの同期ロジック（poll/debounce）は変更不要で、API側の変更のみで機能拡張できる
 
+**実機検証結果（2026-01-28）**: ✅ 複数キオスク間での検索状態共有が正常に動作することを確認
+
 **関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
 
 **詳細**: [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化)
+
+### 資源CD単独検索の無効化（Pi4の動作速度改善）
+
+**発見**: 資源CD単独で検索すると対象アイテムが多すぎてPi4で動作が緩慢になる問題が発生。全部表示→登録製番のみ表示に変更したところ、Pi4での動作が軽快になった。
+
+**対策**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。API側で`textConditions.length === 0 && resourceConditions.length > 0`の場合は早期リターンして空の結果を返すように実装。
+
+**実装の詳細**:
+- `apps/api/src/routes/kiosk.ts`: 資源CD単独の場合は早期リターン（検索しない）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: `hasQuery`を`normalizedActiveQueries.length > 0`のみに変更（資源CD単独では検索を実行しない）
+- 統合テストを追加して、資源CD単独では検索されないことを検証
+
+**学んだこと**:
+- パフォーマンス最適化: 全部表示→登録製番のみ表示に変更することで、Pi4での動作速度が大幅に改善
+- 検索条件の必須化: 登録製番（`q`パラメータ）が必須となり、資源CDのみでは検索されない設計にすることで、パフォーマンス問題を根本的に解決
+
+**実機検証結果（2026-01-28）**: ✅ Pi4で正常に動作することを確認
+- 資源CD単独では検索されない（検索結果が空になる）
+- 登録製番単独での検索が正常に動作
+- 登録製番と資源CDのAND検索が正常に動作
+- Pi4での動作速度が改善され、軽快に動作
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+**詳細**: [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側)
 
 ## Decision Log
 
@@ -312,10 +340,27 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - ✅ `GET /kiosk/production-schedule/search-state`: 共有状態を優先取得、存在しない場合は端末別状態をフォールバック（後方互換性維持）
 - ✅ `PUT /kiosk/production-schedule/search-state`: 共有キーで保存
 - ✅ 統合テストを更新して、異なるlocationのクライアント間で検索状態が共有されることを検証
+- ✅ 実機検証完了（2026-01-28）: 複数キオスク間での検索状態共有が正常に動作することを確認
 
 **関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
 
 **詳細**: [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化)
+
+### 資源CD単独検索の無効化（Pi4の動作速度改善）
+
+**決定**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。
+
+**理由**: 資源CD単独で検索すると対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決するため。全部表示→登録製番のみ表示に変更したところ、Pi4での動作が軽快になった。
+
+**実装状況**:
+- ✅ API側: 資源CD単独の場合は早期リターン（検索しない）
+- ✅ フロントエンド側: `hasQuery`を`normalizedActiveQueries.length > 0`のみに変更（資源CD単独では検索を実行しない）
+- ✅ 統合テストを追加して、資源CD単独では検索されないことを検証
+- ✅ 実機検証完了（2026-01-28）: Pi4で正常に動作することを確認
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+**詳細**: [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側)
 
 ## Next Steps
 

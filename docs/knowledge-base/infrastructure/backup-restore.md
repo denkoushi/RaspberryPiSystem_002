@@ -1917,7 +1917,9 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
   - `sha256/32350553629468be49a2780aa0b0c0b8d5e7474bac6cb44db128e1261bf8a991`（content.dropboxapi.com、2026-01-28確認）
 - Pi5でAPIコンテナを再ビルド・再起動して修正を反映
 
-**解決状況**: ✅ **解決済み**（2026-01-28）
+**解決状況**: ✅ **解決済み・実機検証完了**（2026-01-28）
+- 修正後、Pi5でAPIコンテナを再ビルド・再起動
+- 手動バックアップを実行し、成功を確認（証明書ピニング検証が正常に通過）
 
 **関連ファイル**:
 - `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
