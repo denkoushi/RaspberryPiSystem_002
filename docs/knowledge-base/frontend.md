@@ -2333,3 +2333,91 @@ const queryWhere =
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（OR検索の統合テスト追加）
 
 ---
+
+### [KB-208] 生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
+
+**実装日時**: 2026-01-27
+
+**事象**: 
+- 実機検証で、検索登録製番と資源CDを併用する検索機能がOR条件になっていたが、AND条件にしたい要望
+- ドロップダウン選択後の数字が背景色に埋もれて見えない問題
+
+**要因**: 
+- 検索条件の結合ロジックがOR条件（`queryConditions`を`OR`で結合）になっていた
+- ドロップダウンの文字色が資源CDの色と統一されていたため、背景色と同化して視認性が低下
+
+**有効だった対策**: 
+- ✅ **検索条件のAND結合（2026-01-27）**:
+  1. **条件の分離**: テキスト検索条件（`textConditions`）と資源CD条件（`resourceConditions`）を分離
+  2. **AND結合**: 両方が存在する場合は`AND`で結合（`textConditions AND resourceConditions`）
+  3. **資源CD条件内はOR**: `resourceCds`と`resourceAssignedOnlyCds`は資源CD条件内でOR結合
+  4. **統合テスト更新**: テストケースをAND条件に合わせて更新（`q=A&resourceAssignedOnlyCds=1`で`['0000']`のみヒット）
+- ✅ **ドロップダウン文字色の変更（2026-01-27）**:
+  1. **資源CD色の統一を解除**: ドロップダウンから`getResourceColorClasses`による色付けを削除
+  2. **文字色を黒に固定**: `text-black`を適用し、背景色（白）とのコントラストを確保
+  3. **枠線色は維持**: `border-slate-300`で枠線のみ色付け（視認性と統一性のバランス）
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+// テキスト条件と資源CD条件を分離
+const textConditions: Prisma.Sql[] = [];
+for (const token of uniqueTokens) {
+  // ... 既存のヒューリスティックロジック
+  textConditions.push(...);
+}
+
+const resourceConditions: Prisma.Sql[] = [];
+if (resourceCds.length > 0) {
+  resourceConditions.push(Prisma.sql`("rowData"->>'FSIGENCD') IN (...)`);
+}
+if (assignedOnlyCds.length > 0) {
+  resourceConditions.push(Prisma.sql`id IN (SELECT ...)`);
+}
+
+// AND結合（両方が存在する場合）
+const textWhere = textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
+const resourceWhere = resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
+const queryWhere =
+  textConditions.length > 0 && resourceConditions.length > 0
+    ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
+    : textConditions.length > 0
+      ? Prisma.sql`AND ${textWhere}`
+      : resourceConditions.length > 0
+        ? Prisma.sql`AND ${resourceWhere}`
+        : Prisma.empty;
+```
+
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+// ドロップダウンの文字色を黒に固定
+<select
+  className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+  // ...
+>
+  <option value="">-</option>
+  {options.map((num) => (
+    <option key={num} value={num}>{num}</option>
+  ))}
+</select>
+```
+
+**学んだこと**:
+- **検索条件の結合ロジック**: テキスト検索と資源CDフィルタはAND結合、資源CD条件内はOR結合という2層構造を明確に分離することで、意図通りの動作を実現できる
+- **UIの視認性**: 色の統一性よりも視認性を優先し、ドロップダウンは白背景・黒文字で統一することで、どの資源CDでも読みやすさを確保できる
+- **条件の分離**: `textConditions`と`resourceConditions`を分離することで、条件の組み合わせを柔軟に制御できる
+
+**解決状況**: ✅ **解決済み**（2026-01-27）
+
+**実機検証**:
+- ✅ Macで動作確認完了
+- ✅ Pi4で動作確認完了
+- ✅ 検索登録製番と資源CDのAND検索が正常に動作することを確認
+- ✅ ドロップダウンの文字が黒で視認性が向上したことを確認
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`（検索条件のAND結合実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（AND検索の統合テスト追加）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（ドロップダウン文字色を黒に変更）
+
+---

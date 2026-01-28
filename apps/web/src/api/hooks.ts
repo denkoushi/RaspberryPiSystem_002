@@ -40,7 +40,18 @@ import {
   type CsvImportColumnDefinition,
   type CsvImportStrategy
 } from './backup';
-import { getKioskEmployees, getKioskProductionSchedule, importMasterSingle } from './client';
+import {
+  getKioskEmployees,
+  getKioskProductionSchedule,
+  getKioskProductionScheduleOrderUsage,
+  getKioskProductionScheduleResources,
+  getKioskProductionScheduleSearchState,
+  getKioskProductionScheduleSearchHistory,
+  importMasterSingle,
+  setKioskProductionScheduleSearchState,
+  setKioskProductionScheduleSearchHistory,
+  updateKioskProductionScheduleOrder
+} from './client';
 import {
   borrowItem,
   cancelLoan,
@@ -155,7 +166,14 @@ export function useKioskEmployees(clientKey?: string) {
 }
 
 export function useKioskProductionSchedule(
-  params?: { productNo?: string; q?: string; page?: number; pageSize?: number },
+  params?: {
+    productNo?: string;
+    q?: string;
+    resourceCds?: string;
+    resourceAssignedOnlyCds?: string;
+    page?: number;
+    pageSize?: number;
+  },
   options?: { enabled?: boolean }
 ) {
   return useQuery({
@@ -168,13 +186,76 @@ export function useKioskProductionSchedule(
   });
 }
 
+export function useKioskProductionScheduleResources() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-resources'],
+    queryFn: getKioskProductionScheduleResources,
+    refetchInterval: 60000,
+  });
+}
+
+export function useKioskProductionScheduleOrderUsage(resourceCds?: string) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-order-usage', resourceCds],
+    queryFn: () => getKioskProductionScheduleOrderUsage(resourceCds ? { resourceCds } : undefined),
+    refetchInterval: 15000,
+  });
+}
+
+export function useKioskProductionScheduleSearchState() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-search-state'],
+    queryFn: getKioskProductionScheduleSearchState,
+    refetchInterval: 4000,
+  });
+}
+
+export function useKioskProductionScheduleSearchHistory() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-search-history'],
+    queryFn: getKioskProductionScheduleSearchHistory,
+    refetchInterval: 4000,
+  });
+}
+
+export function useUpdateKioskProductionScheduleSearchState() {
+  return useMutation({
+    mutationFn: (state: Parameters<typeof setKioskProductionScheduleSearchState>[0]) =>
+      setKioskProductionScheduleSearchState(state),
+  });
+}
+
+export function useUpdateKioskProductionScheduleSearchHistory() {
+  return useMutation({
+    mutationFn: (history: Parameters<typeof setKioskProductionScheduleSearchHistory>[0]) =>
+      setKioskProductionScheduleSearchHistory(history),
+  });
+}
+
+export function useUpdateKioskProductionScheduleOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, payload }: { rowId: string; payload: { resourceCd: string; orderNumber: number | null } }) =>
+      updateKioskProductionScheduleOrder(rowId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    },
+  });
+}
+
 export function useCompleteKioskProductionScheduleRow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (rowId: string) => completeKioskProductionScheduleRow(rowId),
     onSuccess: async (data, rowId) => {
       // Optimistic Update: キャッシュを直接更新して即座にUIを更新
-      queryClient.setQueriesData<{ page: number; pageSize: number; total: number; rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown }> }>(
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null }>;
+      }>(
         { queryKey: ['kiosk-production-schedule'] },
         (oldData) => {
           if (!oldData) return oldData;
@@ -190,6 +271,7 @@ export function useCompleteKioskProductionScheduleRow() {
       );
       // バックグラウンドで再取得（エラー時の整合性確保）
       await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     }
   });
 }

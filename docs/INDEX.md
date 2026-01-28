@@ -8,6 +8,14 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-28）
+
+- **✅ セキュリティ評価の実機検証完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいて実機検証を実施。ポート露出・fail2ban監視・security-monitorは正常動作を確認。バックアップ/復元検証は暗号化キー設定後に再実施が必要。USBオフライン運用はバックアップファイル生成後に再実施が必要。実機検証スクリプト（`scripts/security/verify-production-security.sh`）を作成し、証跡ファイルを構造化して保存。評価報告書を更新し、ギャップ一覧・トップリスク10を更新。ナレッジベースにKB-213を追加。詳細は [knowledge-base/infrastructure/security.md#kb-213](./knowledge-base/infrastructure/security.md#kb-213-セキュリティ評価の実機検証2026-01-28) / [security/evaluation-report.md](./security/evaluation-report.md) / [security/evidence/production-verification-guide.md](./security/evidence/production-verification-guide.md) を参照。
+
+### 🆕 最新アップデート（2026-01-28）
+
+- **✅ 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正完了**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた問題を修正。git履歴とドキュメントを確認して原因を特定し、フロントエンドを`search-state`エンドポイント使用に戻し、`activeQueries`（登録製番）を含む検索状態を端末間で共有できるように修正。資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有。デバッグログコードを削除。既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応。CI成功（全ジョブ成功）、デプロイ成功、実機検証完了（端末間共有が正常に動作）。ナレッジベースにKB-210を追加。詳細は [knowledge-base/api.md#kb-210](./knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-22）
 
 - **✅ デプロイ検証強化（DBゲート追加・fail-fast化）実装・実機検証完了**: デプロイが成功したように見えてもDBマイグレーション未適用でテーブル不存在エラーが発生する問題を根本解決。Pi5単体デプロイ（`deploy.sh`）にDB整合性ゲートを追加し、migrate失敗時にfail-fast。`verification-map.yml`にDBゲート（migrate status、`_prisma_migrations`存在、必須テーブル存在）を追加し、`verifier.sh`でSSH経由でPi5上のDBチェックを実行。`verifier.sh`にTLS自己署名対応（`insecure_tls`）とcommand変数展開を実装。`health-check.yml`にサーバー側DBチェックを追加。`backup.sh`をHTTPS対応に変更。`MeasuringInstrumentLoanEvent`マイグレーションを追加。実機検証で全DBゲート/HTTPゲート/スモークテストがpassすることを確認。デプロイタイムアウト問題（240秒不足）を発見し、`CI=1`で再実行して解決。ナレッジベースにKB-191を更新。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-191](./knowledge-base/infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) / [guides/deployment.md](./guides/deployment.md) を参照。
@@ -35,6 +43,8 @@
 ### 🆕 最新アップデート（2026-01-27）
 
 - **✅ 生産スケジュールUI改善完了（チェック配色/OR検索/ソフトキーボード）**: 完了チェックボタンの配色を白背景・黒✓に変更し、状態識別を枠色（未完了=赤枠、完了=灰枠）で表現するように改善。検索履歴チップをトグル選択化し、複数選択でOR検索が可能に。`activeQuery: string`を`activeQueries: string[]`に変更し、選択中の履歴を配列で保持。選択中は色が付き（`border-emerald-300 bg-emerald-400`）、クリックで選択/解除がトグル。複数選択されたチップはカンマ区切りで`q`パラメータに結合し、API側でOR検索を実行。ソフトウェアキーボードモーダル（`KioskKeyboardModal.tsx`）を新規実装し、キーボードアイコン（⌨）ボタンでポップアップ表示。英数字入力（A-Z、0-9）、Backspace/Clear/Cancel/OKボタンを実装。OKで入力確定→モーダル閉じる。API側で`q`パラメータのカンマ区切りを解析し、トークンごとに既存ヒューリスティック（数値→ProductNo ILIKE / 8桁→FSEIBAN = / その他→OR ILIKE）を適用し、OR条件で結合。`q`パラメータの最大長を100から200に緩和。統合テストにOR検索ケースを追加。CI成功、デプロイ成功、実機検証完了（Mac・Pi4）。ナレッジベースにKB-207を追加。詳細は [knowledge-base/frontend.md#kb-207](./knowledge-base/frontend.md#kb-207-生産スケジュールui改善チェック配色or検索ソフトキーボード) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+
+- **✅ 生産スケジュールUI改良完了（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）**: 資源CDフィルタ機能を追加し、各資源CDに2つのボタン（全件検索 / 割当済みのみ検索）を提供。検索登録製番と資源CDフィルタをAND条件で結合するように変更（テキスト条件と資源CD条件を分離し、AND結合）。加工順序番号（1-10）を資源CDごとに独立して割当可能にし、完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）。同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）。ドロップダウンの文字色を黒に固定し、視認性を向上。新規テーブル`ProductionScheduleOrderAssignment`と`KioskProductionScheduleSearchState`を追加。APIエンドポイント追加（`PUT /kiosk/production-schedule/:rowId/order`、`GET /kiosk/production-schedule/order-usage`、`GET/PUT /kiosk/production-schedule/search-state`）。CI成功、デプロイ成功、実機検証完了（Mac・Pi4）。ナレッジベースにKB-208を追加。詳細は [knowledge-base/frontend.md#kb-208](./knowledge-base/frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索) / [knowledge-base/api.md#kb-208](./knowledge-base/api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
 - **✅ CSVインポートスケジュール実行ボタンの競合防止とFSEIBANバリデーション修正完了**: CSVインポートスケジュールページで、1つのスケジュールの「実行」ボタンを押すと他のスケジュールのボタンも「実行中...」と表示される問題を解決。`useRef`（`runningScheduleIdRef`）を追加し、実行中のスケジュールIDを即座に反映される参照で追跡することで競合を防止。既に実行中のスケジュールを再度実行しようとした場合、500エラーではなく409エラー（Conflict）を返すように修正。FSEIBANバリデーションを修正し、割当がない場合の`********`（8個のアスタリスク）を明示的に許可。実機検証でGmail経由のCSV取り込みが正常に動作し、`********`も正常に取得できることを確認。CI成功、デプロイ成功。ナレッジベースにKB-201（更新）、KB-204を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-204](./knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
@@ -638,6 +648,8 @@ APIの概要と詳細。
 | [external-intrusion-risk-analysis.md](./security/external-intrusion-risk-analysis.md) | **外部侵入リスク分析レポート**（外部からの不正侵入リスクの詳細分析、2026-01-18作成） |
 | [urgent-security-measures.md](./security/urgent-security-measures.md) | **緊急に実装すべき安全対策機能**（USBメモリ運用予定がない前提での緊急実装項目、2026-01-18作成） |
 | [log-redaction-implementation.md](./security/log-redaction-implementation.md) | **ログの機密情報保護実装レポート**（x-client-keyのログ出力を[REDACTED]に置換する実装、2026-01-18実装完了） |
+| [system-inventory.md](./security/system-inventory.md) | **システム構造台帳**（評価対象/公開面/外部連携/秘密情報の所在、2026-01-28作成） |
+| [evidence/production-verification-guide.md](./security/evidence/production-verification-guide.md) | **実機検証実行ガイド**（Pi5本番でのセキュリティ評価実機検証手順、2026-01-28作成） |
 
 ### プレゼンテーション（presentations/）
 

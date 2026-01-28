@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useCompleteKioskProductionScheduleRow, useKioskProductionSchedule } from '../../api/hooks';
+import {
+  useCompleteKioskProductionScheduleRow,
+  useKioskProductionSchedule,
+  useKioskProductionScheduleOrderUsage,
+  useKioskProductionScheduleResources,
+  useKioskProductionScheduleSearchState,
+  useUpdateKioskProductionScheduleOrder,
+  useUpdateKioskProductionScheduleSearchState
+} from '../../api/hooks';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
+import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 type ScheduleRowData = {
@@ -23,18 +32,26 @@ type NormalizedScheduleRow = {
   isCompleted: boolean;
   data: ScheduleRowData;
   values: Record<string, string>;
+  processingOrder: number | null;
 };
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
+const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
 
 export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
   const [activeQueries, setActiveQueries] = useState<string[]>([]);
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
+  const [hiddenHistory, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
+  const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
+  const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
+  const searchStateUpdatedAtRef = useRef<string | null>(null);
+  const suppressSearchStateSyncRef = useRef(false);
+  const hasLoadedSearchStateRef = useRef(false);
 
   const normalizedActiveQueries = useMemo(() => {
     const unique = new Set<string>();
@@ -45,17 +62,63 @@ export function ProductionSchedulePage() {
     return Array.from(unique);
   }, [activeQueries]);
 
+  const normalizeHistoryList = (items: string[]) => {
+    const unique = new Set<string>();
+    const next: string[] = [];
+    items
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .forEach((item) => {
+        if (unique.has(item)) return;
+        unique.add(item);
+        next.push(item);
+      });
+    return next.slice(0, 8);
+  };
+
+  const normalizedHistory = useMemo(() => normalizeHistoryList(history), [history]);
+  const normalizedHiddenHistory = useMemo(() => normalizeHistoryList(hiddenHistory), [hiddenHistory]);
+  const visibleHistory = useMemo(
+    () => normalizedHistory.filter((item) => !normalizedHiddenHistory.includes(item)),
+    [normalizedHistory, normalizedHiddenHistory]
+  );
+
+  const normalizedResourceCds = useMemo(() => {
+    const unique = new Set<string>();
+    activeResourceCds
+      .map((cd) => cd.trim())
+      .filter((cd) => cd.length > 0)
+      .forEach((cd) => unique.add(cd));
+    return Array.from(unique);
+  }, [activeResourceCds]);
+
+  const normalizedAssignedOnlyCds = useMemo(() => {
+    const unique = new Set<string>();
+    activeResourceAssignedOnlyCds
+      .map((cd) => cd.trim())
+      .filter((cd) => cd.length > 0)
+      .forEach((cd) => unique.add(cd));
+    return Array.from(unique);
+  }, [activeResourceAssignedOnlyCds]);
+
   const queryParams = useMemo(
     () => ({
       q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
+      resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
+      resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
       page: 1,
       pageSize: 400
     }),
-    [normalizedActiveQueries]
+    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds]
   );
-  const hasQuery = normalizedActiveQueries.length > 0;
+  // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
+  const hasQuery = normalizedActiveQueries.length > 0 || normalizedAssignedOnlyCds.length > 0;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
+  const orderMutation = useUpdateKioskProductionScheduleOrder();
+  const resourcesQuery = useKioskProductionScheduleResources();
+  const searchStateQuery = useKioskProductionScheduleSearchState();
+  const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -63,6 +126,7 @@ export function ProductionSchedulePage() {
       { key: 'ProductNo', label: '製造order番号' },
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
+      { key: 'processingOrder', label: '順番', dataType: 'number' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
       { key: 'FKOJUN', label: '工順', dataType: 'number' },
       { key: 'FSEIBAN', label: '製番' }
@@ -87,11 +151,13 @@ export function ProductionSchedulePage() {
     const sourceRows = scheduleQuery.data?.rows ?? [];
     return sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
+      const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const values = {
         FHINCD: String(d.FHINCD ?? ''),
         ProductNo: String(d.ProductNo ?? ''),
         FHINMEI: String(d.FHINMEI ?? ''),
         FSIGENCD: String(d.FSIGENCD ?? ''),
+        processingOrder: processingOrder ? String(processingOrder) : '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
         FKOJUN: String(d.FKOJUN ?? ''),
         FSEIBAN: String(d.FSEIBAN ?? '')
@@ -100,10 +166,23 @@ export function ProductionSchedulePage() {
         id: r.id,
         isCompleted: d.progress === '完了',
         data: d,
-        values
+        values,
+        processingOrder
       };
     });
   }, [scheduleQuery.data?.rows]);
+
+  const resourceCdsInRows = useMemo(() => {
+    const unique = new Set<string>();
+    normalizedRows.forEach((row) => {
+      if (row.data.FSIGENCD) unique.add(row.data.FSIGENCD);
+    });
+    return Array.from(unique);
+  }, [normalizedRows]);
+
+  const orderUsageQuery = useKioskProductionScheduleOrderUsage(
+    resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined
+  );
 
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
@@ -146,11 +225,16 @@ export function ProductionSchedulePage() {
     setInputQuery(trimmed);
     setActiveQueries(trimmed.length > 0 ? [trimmed] : []);
     if (trimmed.length > 0) {
-      setHistory((prev) => {
-        const next = [trimmed, ...prev.filter((p) => p !== trimmed)].slice(0, 8);
-        return next;
-      });
+      setHistory((prev) => normalizeHistoryList([trimmed, ...prev]));
+      setHiddenHistory((prev) => prev.filter((item) => item.trim() !== trimmed));
     }
+  };
+
+  const clearAllFilters = () => {
+    setInputQuery('');
+    setActiveQueries([]);
+    setActiveResourceCds([]);
+    setActiveResourceAssignedOnlyCds([]);
   };
 
   const toggleHistoryQuery = (value: string) => {
@@ -165,13 +249,100 @@ export function ProductionSchedulePage() {
   };
 
   const removeHistoryQuery = (value: string) => {
-    setHistory((prev) => prev.filter((item) => item !== value));
     setActiveQueries((prev) => prev.filter((item) => item !== value));
+    setHiddenHistory((prev) => normalizeHistoryList([...prev, value]));
     if (inputQuery === value) {
       setInputQuery('');
     }
   };
 
+  const confirmRemoveHistoryQuery = (value: string) => {
+    const message = `検索履歴「${value}」を削除しますか？`;
+    if (!window.confirm(message)) {
+      return;
+    }
+    removeHistoryQuery(value);
+  };
+
+  const toggleResourceCd = (value: string) => {
+    setActiveResourceCds((prev) => {
+      const exists = prev.includes(value);
+      if (exists) {
+        return prev.filter((item) => item !== value);
+      }
+      return [...prev, value];
+    });
+  };
+
+  const toggleAssignedOnlyCd = (value: string) => {
+    setActiveResourceAssignedOnlyCds((prev) => {
+      const exists = prev.includes(value);
+      if (exists) {
+        return prev.filter((item) => item !== value);
+      }
+      return [...prev, value];
+    });
+  };
+
+  const getAvailableOrders = (resourceCd: string, current: number | null) => {
+    const usage = orderUsageQuery.data?.[resourceCd] ?? [];
+    return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
+  };
+
+  const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
+    const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
+    orderMutation.mutate({ rowId, payload: { resourceCd, orderNumber } });
+  };
+
+  useEffect(() => {
+    if (searchStateQuery.isSuccess) {
+      hasLoadedSearchStateRef.current = true;
+    }
+    const updatedAt = searchStateQuery.data?.updatedAt ?? null;
+    const incomingState = searchStateQuery.data?.state ?? null;
+    if (!updatedAt || !incomingState) return;
+
+    const lastUpdatedAt = searchStateUpdatedAtRef.current;
+    if (lastUpdatedAt && new Date(updatedAt).getTime() <= new Date(lastUpdatedAt).getTime()) {
+      return;
+    }
+
+    suppressSearchStateSyncRef.current = true;
+    const incomingHistory = normalizeHistoryList(incomingState.history ?? []);
+    setHistory((prev) => normalizeHistoryList([...prev, ...incomingHistory]));
+    searchStateUpdatedAtRef.current = updatedAt;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    searchStateQuery.data?.state,
+    searchStateQuery.data?.updatedAt,
+    searchStateQuery.isSuccess,
+    setHistory
+  ]);
+
+  useEffect(() => {
+    if (!hasLoadedSearchStateRef.current) return;
+    if (suppressSearchStateSyncRef.current) {
+      suppressSearchStateSyncRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchStateMutation.mutate(
+        {
+          // 入力中の文字列は端末ごとに異なるため共有しない
+          history: normalizedHistory
+        },
+        {
+          onSuccess: (data) => {
+            searchStateUpdatedAtRef.current = data.updatedAt;
+          }
+        }
+      );
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    normalizedHistory,
+    searchStateMutation
+  ]);
   const openKeyboard = () => {
     setKeyboardValue(inputQuery);
     setIsKeyboardOpen(true);
@@ -218,51 +389,81 @@ export function ProductionSchedulePage() {
           <Button
             variant="secondary"
             className="h-10"
-            onClick={() => applySearch('')}
+            onClick={clearAllFilters}
             disabled={scheduleQuery.isFetching || completeMutation.isPending}
           >
             クリア
           </Button>
           {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </div>
+      </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {history.map((h) => {
-            const isActive = normalizedActiveQueries.includes(h);
-            return (
-              <div
-                key={h}
-                role="button"
-                tabIndex={0}
-                onClick={() => toggleHistoryQuery(h)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    toggleHistoryQuery(h);
-                  }
-                }}
-                className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                  isActive
-                    ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
-                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-                }`}
+      <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
+        {(resourcesQuery.data ?? []).map((resourceCd) => {
+          const colorClasses = getResourceColorClasses(resourceCd);
+          const isActive = normalizedResourceCds.includes(resourceCd);
+          const isAssignedActive = normalizedAssignedOnlyCds.includes(resourceCd);
+          return (
+            <div key={resourceCd} className="flex items-center gap-1 whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => toggleResourceCd(resourceCd)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${colorClasses.border} ${
+                  isActive ? colorClasses.bgStrong : colorClasses.bgSoft
+                } ${colorClasses.text}`}
               >
-                {h}
-                <button
-                  type="button"
-                  aria-label={`履歴から削除: ${h}`}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    removeHistoryQuery(h);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                {resourceCd}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleAssignedOnlyCd(resourceCd)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${colorClasses.border} ${
+                  isAssignedActive ? colorClasses.bgStrong : colorClasses.bgSoft
+                } ${colorClasses.text}`}
+              >
+                {resourceCd} 割当
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {visibleHistory.map((h) => {
+          const isActive = normalizedActiveQueries.includes(h);
+          return (
+            <div
+              key={h}
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleHistoryQuery(h)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  toggleHistoryQuery(h);
+                }
+              }}
+              className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                isActive
+                  ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
+                  : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              {h}
+              <button
+                type="button"
+                aria-label={`履歴から削除: ${h}`}
+                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  confirmRemoveHistoryQuery(h);
+                }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {!hasQuery ? (
@@ -330,9 +531,36 @@ export function ProductionSchedulePage() {
                     </td>
                     {tableColumns.map((column) => (
                       <td key={`left-${left.id}-${column.key}`} className={`px-2 py-1 ${leftClass}`}>
-                        <span className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}>
-                          {left.values[column.key] || '-'}
-                        </span>
+                        {column.key === 'processingOrder' ? (
+                          (() => {
+                            const resourceCd = left.data.FSIGENCD ?? '';
+                            const options = getAvailableOrders(resourceCd, left.processingOrder);
+                            return (
+                              <select
+                                value={left.processingOrder ?? ''}
+                                onChange={(event) => handleOrderChange(left.id, resourceCd, event.target.value)}
+                                disabled={
+                                  completeMutation.isPending ||
+                                  left.isCompleted ||
+                                  resourceCd.length === 0 ||
+                                  orderMutation.isPending
+                                }
+                                className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+                              >
+                                <option value="">-</option>
+                                {options.map((num) => (
+                                  <option key={num} value={num}>
+                                    {num}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()
+                        ) : (
+                          <span className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}>
+                            {left.values[column.key] || '-'}
+                          </span>
+                        )}
                       </td>
                     ))}
                     {isTwoColumn ? <td className="px-2 py-1" /> : null}
@@ -355,11 +583,38 @@ export function ProductionSchedulePage() {
                         {tableColumns.map((column) => (
                           <td key={`right-${right?.id ?? 'empty'}-${column.key}`} className={`px-2 py-1 ${rightClass}`}>
                             {right ? (
-                              <span
-                                className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}
-                              >
-                                {right.values[column.key] || '-'}
-                              </span>
+                              column.key === 'processingOrder' ? (
+                                (() => {
+                                  const resourceCd = right.data.FSIGENCD ?? '';
+                                  const options = getAvailableOrders(resourceCd, right.processingOrder);
+                                  return (
+                                    <select
+                                      value={right.processingOrder ?? ''}
+                                      onChange={(event) => handleOrderChange(right.id, resourceCd, event.target.value)}
+                                      disabled={
+                                        completeMutation.isPending ||
+                                        right.isCompleted ||
+                                        resourceCd.length === 0 ||
+                                        orderMutation.isPending
+                                      }
+                                      className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+                                    >
+                                      <option value="">-</option>
+                                      {options.map((num) => (
+                                        <option key={num} value={num}>
+                                          {num}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()
+                              ) : (
+                                <span
+                                  className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}
+                                >
+                                  {right.values[column.key] || '-'}
+                                </span>
+                              )
                             ) : null}
                           </td>
                         ))}

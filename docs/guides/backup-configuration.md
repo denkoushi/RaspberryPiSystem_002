@@ -567,6 +567,9 @@ curl http://localhost:8080/api/backup \
 3. **バックアップの暗号化**: 機密情報を含むバックアップは暗号化することを推奨します
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
+   - **証明書更新時の対応**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります
+   - この場合は、`apps/api/scripts/get-dropbox-cert-fingerprint.ts`で新しい証明書フィンガープリントを取得し、`apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に追加してください
+   - 詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください
 
 ## 管理コンソールからの設定管理
 

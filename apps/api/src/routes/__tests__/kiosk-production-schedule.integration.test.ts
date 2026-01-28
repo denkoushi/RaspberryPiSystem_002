@@ -8,6 +8,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 const DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 const CLIENT_KEY = 'client-demo-key';
+const CLIENT_KEY_2 = 'client-demo-key-2';
 
 describe('Kiosk Production Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -21,12 +22,16 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
     if (closeServer) await closeServer();
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
 
@@ -35,6 +40,11 @@ describe('Kiosk Production Schedule API', () => {
       where: { apiKey: CLIENT_KEY },
       update: { name: 'Test Client', location: 'Test', defaultMode: 'TAG' },
       create: { apiKey: CLIENT_KEY, name: 'Test Client', location: 'Test', defaultMode: 'TAG' }
+    });
+    await prisma.clientDevice.upsert({
+      where: { apiKey: CLIENT_KEY_2 },
+      update: { name: 'Test Client 2', location: 'Other', defaultMode: 'TAG' },
+      create: { apiKey: CLIENT_KEY_2, name: 'Test Client 2', location: 'Other', defaultMode: 'TAG' }
     });
 
     await prisma.csvDashboard.create({
@@ -159,6 +169,153 @@ describe('Kiosk Production Schedule API', () => {
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FSEIBAN?: string } }> };
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001', '0002']);
     expect(body.rows.map((r) => r.rowData.FSEIBAN)).toEqual(['A', 'A', 'B']);
+  });
+
+  it('filters by resourceCd and assigned-only with AND to q', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { createdAt: 'asc' }
+    });
+    const target = rows.find((r) => (r.rowData as any).ProductNo === '0000');
+    expect(target).toBeDefined();
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${target?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '1', orderNumber: 1 }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A&resourceAssignedOnlyCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FSEIBAN?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
+  });
+
+  it('does not search when only resourceCd is specified (without query text)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    // 資源CD単独では検索されない（空の結果を返す）
+    expect(body.rows).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
+
+  it('searches when only resourceAssignedOnlyCds is specified (without query text)', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { createdAt: 'asc' }
+    });
+    const target = rows.find((r) => (r.rowData as any).ProductNo === '0000');
+    expect(target).toBeDefined();
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${target?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '1', orderNumber: 1 }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceAssignedOnlyCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
+  });
+
+  it('reassigns order numbers within the same resourceCd on complete', async () => {
+    const created = await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-3',
+          rowData: { ProductNo: '0003', FSEIBAN: 'C', FHINCD: 'W', FSIGENCD: '1', FKOJUN: '5', progress: '' }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-4',
+          rowData: { ProductNo: '0004', FSEIBAN: 'D', FHINCD: 'V', FSIGENCD: '1', FKOJUN: '5', progress: '' }
+        }
+      ]
+    });
+    expect(created.count).toBe(2);
+
+    const list = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { createdAt: 'asc' }
+    });
+    const row1 = list.find((r) => (r.rowData as any).ProductNo === '0000')!;
+    const row2 = list.find((r) => (r.rowData as any).ProductNo === '0001')!;
+    const row3 = list.find((r) => (r.rowData as any).ProductNo === '0003')!;
+    const row4 = list.find((r) => (r.rowData as any).ProductNo === '0004')!;
+
+    await app.inject({ method: 'PUT', url: `/api/kiosk/production-schedule/${row1.id}/order`, headers: { 'x-client-key': CLIENT_KEY }, payload: { resourceCd: '1', orderNumber: 1 } });
+    await app.inject({ method: 'PUT', url: `/api/kiosk/production-schedule/${row2.id}/order`, headers: { 'x-client-key': CLIENT_KEY }, payload: { resourceCd: '1', orderNumber: 2 } });
+    await app.inject({ method: 'PUT', url: `/api/kiosk/production-schedule/${row3.id}/order`, headers: { 'x-client-key': CLIENT_KEY }, payload: { resourceCd: '1', orderNumber: 3 } });
+    await app.inject({ method: 'PUT', url: `/api/kiosk/production-schedule/${row4.id}/order`, headers: { 'x-client-key': CLIENT_KEY }, payload: { resourceCd: '1', orderNumber: 4 } });
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row3.id}/complete`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+
+    const assignments = await prisma.productionScheduleOrderAssignment.findMany({
+      where: { csvDashboardId: DASHBOARD_ID, location: 'Test', resourceCd: '1' },
+      orderBy: { orderNumber: 'asc' }
+    });
+    expect(assignments.map((a) => a.orderNumber)).toEqual([1, 2, 3]);
+    const row4Assignment = assignments.find((a) => a.csvDashboardRowId === row4.id);
+    expect(row4Assignment?.orderNumber).toBe(3);
+  });
+
+  it('stores and returns shared search state across kiosks', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        state: {
+          history: ['A']
+        }
+      }
+    });
+    expect(putRes.statusCode).toBe(200);
+
+    const secondPut = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        state: {
+          history: ['B']
+        }
+      }
+    });
+    expect(secondPut.statusCode).toBe(200);
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+    expect(getRes.statusCode).toBe(200);
+    const body = getRes.json() as { state: { history?: string[]; inputQuery?: string } };
+    expect(body.state?.history).toEqual(['A', 'B']);
+    expect(body.state?.inputQuery).toBeUndefined();
   });
 
   it('paginates results in sorted order', async () => {

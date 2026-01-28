@@ -1,0 +1,37 @@
+=== バックアップ/復元検証 ===
+実施日時: 2026年  1月 28日 水曜日 21:40:15 JST
+
+--- 既存バックアップファイル確認 ---
+合計 7.5M
+-rw-rw-r--  1 denkon5sd02 denkon5sd02  956 12月  5 10:19 api_env_20251205_101902.env.gpg
+-rw-rw-r--  1 denkon5sd02 denkon5sd02  956 12月  5 17:02 api_env_20251205_170220.env.gpg
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月  8 16:08 api_env_20260108_160846.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 20 10:14 api_env_20260120_101428.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 07:40 api_env_20260123_074001.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 09:47 api_env_20260123_094730.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 11:19 api_env_20260123_111855.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 11:51 api_env_20260123_115154.env
+drwxrwxr-x  2 denkon5sd02 denkon5sd02 4.0K 12月  1 16:48 configs
+
+--- 暗号化バックアップ実行 ---
+警告: BACKUP_ENCRYPTION_KEYが設定されていません。
+暗号化なしでバックアップを続行しますか？ (yes/no): 
+バックアップスクリプトの実行に失敗
+
+--- バックアップファイル確認（実行後） ---
+合計 7.5M
+-rw-rw-r--  1 denkon5sd02 denkon5sd02  956 12月  5 10:19 api_env_20251205_101902.env.gpg
+-rw-rw-r--  1 denkon5sd02 denkon5sd02  956 12月  5 17:02 api_env_20251205_170220.env.gpg
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月  8 16:08 api_env_20260108_160846.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 20 10:14 api_env_20260120_101428.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 07:40 api_env_20260123_074001.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 09:47 api_env_20260123_094730.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 11:19 api_env_20260123_111855.env
+-rw-------  1 denkon5sd02 denkon5sd02  646  1月 23 11:51 api_env_20260123_115154.env
+drwxrwxr-x  2 denkon5sd02 denkon5sd02 4.0K 12月  1 16:48 configs
+
+--- 検証用DB作成 ---
+CREATE DATABASE
+
+--- 最新のバックアップファイルを特定 ---
+バックアップファイルが見つかりません

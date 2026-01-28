@@ -843,4 +843,303 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 ---
 
+## KB-210: Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題
+
+**発生日**: 2026-01-28
+
+**事象**:
+- Pi3やPi4で時々「Wi-Fiネットワークの認証が必要です」というダイアログが表示される
+- ユーザーが「スクリーンショットのポップアップ」と認識していたが、実際にはWi-Fi認証ダイアログ
+- 特定のWi-Fiネットワーク（例: `TP-Link_D2EC_5G_EXT`）への接続時にパスワード入力が求められる
+
+**症状**:
+- キオスク画面の上にWi-Fi認証ダイアログが表示される
+- パスワード入力フィールドと「接続」「取り消し」ボタンが表示される
+- ダイアログが表示されると、キオスク画面が操作できなくなる
+
+**調査過程**:
+1. **仮説1**: Chromiumブラウザの設定問題 → REJECTED（`GTK_USE_PORTAL=0`や`GNOME_KEYRING_CONTROL=""`は既に設定済み）
+2. **仮説2**: NetworkManagerの自動接続設定 → CONFIRMED（保存済みのWi-Fiネットワークへの自動接続時に認証情報が不足）
+3. **仮説3**: Wi-Fiパスワードが変更された → CONFIRMED（パスワード変更後、保存済みの認証情報が無効になっている可能性）
+
+**根本原因**:
+- **Pi3/Pi4は既にPi5へのWi-Fi接続が確立されている**が、NetworkManagerは複数のWi-Fiネットワークを管理している
+- 保存済みのネットワークのうち、**現在使用していないネットワーク（例: `TP-Link_D2EC_5G_EXT`）の認証情報が無効**になっている
+- NetworkManagerが以下のタイミングで、その保存済みネットワークへの接続を試みる:
+  - 接続が一時的に不安定になった際の再接続時
+  - 「より良い」ネットワークを探す際
+  - 定期的な接続状態の確認時
+- 認証情報が無効なネットワークに接続しようとすると、認証ダイアログが表示される
+- キオスクブラウザの環境変数設定だけでは、NetworkManagerの認証ダイアログを抑制できない
+
+**解決方法**:
+1. **NetworkManager設定の追加**（`infrastructure/ansible/roles/client/tasks/network.yml`）:
+   - **重要**: 既存のWi-Fi接続設定は一切変更しない（設置場所によって接続先が変わるため、柔軟性を維持）
+   - **重要**: 新しいネットワークへの自動接続も無効化しない（設置場所によって必要なネットワークが変わるため）
+   - NetworkManager.confに`auth-polkit=false`を追加（認証ダイアログを抑制する設定のみ）
+
+2. **キオスクブラウザの環境変数追加**:
+   - `kiosk-launch.sh.j2`と`kiosk-browser.service.j2`に以下を追加:
+     - `NM_CLI_NO_TERSE=1`
+     - `NM_CLI_NO_ASK_PASSWORD=1`
+
+3. **必要なWi-Fiネットワークの事前設定**:
+   - 使用するWi-Fiネットワークのパスワードを事前に設定し、自動接続を有効化
+   - 不要なWi-Fiネットワークは「忘れる」設定を行う
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/client/tasks/network.yml`（新規作成、NetworkManager設定）
+- `infrastructure/ansible/roles/client/tasks/main.yml`（network.ymlのインポート追加）
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`（環境変数追加）
+- `infrastructure/ansible/templates/kiosk-browser.service.j2`（環境変数追加）
+
+**再発防止策**:
+- Ansibleデプロイ時に自動的にNetworkManager設定を適用
+- **既存のWi-Fi接続設定は一切変更しない**（設置場所によって接続先が変わるため）
+- **新しいネットワークへの自動接続も無効化しない**（設置場所によって必要なネットワークが変わるため）
+- 認証ダイアログを抑制する設定のみを適用（`auth-polkit=false`、環境変数）
+- キオスクブラウザの環境変数でNetworkManagerの認証ダイアログを抑制
+
+**運用上の注意**:
+- **設置場所によって接続先が変わるため、不要なネットワークを固定で定義することはできない**
+- 新しいWi-Fiネットワークを使用する場合は、事前に`nmcli`コマンドで接続設定を行う
+- パスワードが変更された場合は、NetworkManagerの接続設定を更新する必要がある
+- **認証ダイアログが表示されないようにする**: `auth-polkit=false`と環境変数設定により、認証ダイアログが表示されなくなる
+- ダイアログが表示された場合は、「取り消し」を選択して、必要なネットワークのみを手動で設定する
+
+**補足説明**:
+- Pi3/Pi4は既にPi5への接続が確立されているため、Wi-Fi接続状態は維持されている
+- しかし、NetworkManagerは複数の保存済みネットワークを管理しており、そのうちの一部（例: `TP-Link_D2EC_5G_EXT`）は認証情報が無効になっている
+- NetworkManagerが接続を試みる際に、認証情報が無効なネットワークに対して認証ダイアログが表示される
+- この問題は、**現在使用しているネットワーク（Pi5への接続）とは別の、保存済みの不要なネットワーク**が原因
+
+**関連ナレッジ**:
+- KB-158: Macのstatus-agent未設定問題とmacOS対応
+
+---
+
+## KB-211: Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題
+
+**発生日**: 2026-01-28
+
+**事象**:
+- Pi4のキオスクブラウザで「サポートされていないコマンドライン フラグ `--ignore-certificate-errors` を使用しています。これにより、安全性とセキュリティが損なわれます。」という警告メッセージが表示される
+- 以前解決したが、Chromiumのバージョンアップにより再発
+
+**症状**:
+- キオスク画面の上部に白背景の警告メッセージが表示される
+- メッセージ内容: "サポートされていないコマンドライン フラグ `--ignore-certificate-errors` を使用しています。これにより、安全性とセキュリティが損なわれます。"
+- 警告メッセージが表示されると、キオスク画面の一部が隠れる
+
+**調査過程**:
+1. **仮説1**: `--disable-infobars`が効いていない → CONFIRMED（Chromiumの新しいバージョンでは`--disable-infobars`だけでは不十分）
+2. **仮説2**: Chromiumのバージョンアップにより警告抑制方法が変更された → CONFIRMED（`--test-type`フラグが必要）
+
+**根本原因**:
+- Chromiumの新しいバージョンでは、`--ignore-certificate-errors`などの「危険な」フラグを使用する際に警告メッセージが表示される
+- `--disable-infobars`だけでは、この警告メッセージを抑制できない
+- テストモードとして実行する`--test-type`フラグを追加することで、警告メッセージを抑制できる
+
+**解決方法**:
+1. **Chromium起動フラグの追加**（`infrastructure/ansible/templates/kiosk-launch.sh.j2`）:
+   - `--test-type`フラグを追加（テストモードとして実行し、コマンドラインフラグの警告を抑制）
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`（`--test-type`フラグ追加）
+
+**再発防止策**:
+- Ansibleデプロイ時に自動的に`--test-type`フラグが適用される
+- Chromiumのバージョンアップ時にも、警告メッセージが表示されないことを確認する
+
+**運用上の注意**:
+- `--test-type`フラグは、Chromiumをテストモードとして実行するため、一部の機能が制限される可能性がある
+- ただし、キオスクモードでの使用には問題ない（既存の機能は維持される）
+- 警告メッセージが表示された場合は、Ansibleデプロイを実行して`--test-type`フラグが適用されていることを確認する
+
+**補足説明**:
+- `--test-type`フラグは、Chromiumをテストモードとして実行するためのフラグ
+- テストモードでは、コマンドラインフラグに関する警告メッセージが表示されない
+- キオスクモードでの使用には問題ない（既存の機能は維持される）
+
+**関連ナレッジ**:
+- KB-210: Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題
+
+---
+
+## KB-212: Cursorチャットログの安全な削除手順（1週間より前のログ削除）
+
+**発生日**: 2026-01-28
+
+**事象**: 
+- Cursorのチャットログが約27GBと非常に大きくなり、ストレージを圧迫している
+- 1週間より前のチャットログを削除したい
+
+**要因**: 
+- Cursorは全てのチャット履歴をローカルのSQLiteデータベース（`state.vscdb`）に保存している
+- 自動削除機能がないため、手動でクリーンアップする必要がある
+- データベース内のJSONデータに直接的なタイムスタンプが含まれていない
+
+**調査過程**:
+1. **データベース構造の確認**: チャットログは`cursorDiskKV`テーブルに`bubbleId:`キーで保存されていることを確認
+2. **データ内容の確認**: JSONデータにタイムスタンプが直接含まれていないことを確認
+3. **保存場所の確認**: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`に約27GBのデータが保存されていることを確認
+
+**解決方法**:
+
+### 前提条件
+- Cursorを完全に終了していること
+- バックアップを取っていること
+- ターミナルでSQLiteコマンドが使用できること
+
+### 手順1: Cursorの完全終了確認
+
+```bash
+# macOS/Linux
+ps aux | grep -i cursor | grep -v grep
+
+# Windows (PowerShell)
+Get-Process | Where-Object {$_.ProcessName -like "*cursor*"}
+```
+
+Cursorプロセスが実行中の場合は、完全に終了してください。
+
+### 手順2: バックアップの作成
+
+```bash
+# macOS
+BACKUP_DIR="$HOME/Desktop/cursor_backup_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp -r ~/Library/Application\ Support/Cursor/User/globalStorage "$BACKUP_DIR/"
+
+# Windows (PowerShell)
+$backupDir = "$env:USERPROFILE\Desktop\cursor_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+New-Item -ItemType Directory -Path $backupDir
+Copy-Item "$env:APPDATA\Cursor\User\globalStorage" -Destination $backupDir -Recurse
+
+# Linux
+BACKUP_DIR="$HOME/Desktop/cursor_backup_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp -r ~/.config/Cursor/User/globalStorage "$BACKUP_DIR/"
+```
+
+### 手順3: データベースの確認（削除前の状態を記録）
+
+```bash
+# macOS/Linux
+DB_PATH="$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+
+# 現在のエントリ数を確認
+sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+
+# Windows (PowerShell)
+$dbPath = "$env:APPDATA\Cursor\User\globalStorage\state.vscdb"
+sqlite3 $dbPath "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+```
+
+### 手順4: 削除方法の選択
+
+**注意**: Cursorのチャットログには直接的なタイムスタンプが含まれていないため、以下の方法から選択してください。
+
+#### 方法A: 全チャットログの削除（最も安全）
+
+全てのチャットログを削除します。これは最も安全な方法ですが、全ての履歴が失われます。
+
+```bash
+# macOS/Linux
+sqlite3 "$DB_PATH" "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 "$DB_PATH" "VACUUM;"
+
+# Windows (PowerShell)
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 $dbPath "VACUUM;"
+```
+
+#### 方法B: 関連データの削除（推奨）
+
+チャットログに関連する全てのデータを削除します。これには以下が含まれます：
+- `bubbleId:` - チャット会話
+- `messageRequestContext` - メッセージリクエストコンテキスト
+- `codeBlockPartialInline` - コードブロック関連
+
+```bash
+# macOS/Linux
+sqlite3 "$DB_PATH" <<EOF
+DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';
+DELETE FROM cursorDiskKV WHERE key LIKE 'messageRequestContext%';
+DELETE FROM cursorDiskKV WHERE key LIKE 'codeBlockPartialInline%';
+VACUUM;
+EOF
+
+# Windows (PowerShell)
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'messageRequestContext%';"
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'codeBlockPartialInline%';"
+sqlite3 $dbPath "VACUUM;"
+```
+
+#### 方法C: 日付ベースの削除（高度・リスクあり）
+
+**警告**: この方法は実験的です。Cursorの内部データ構造に依存するため、予期しない動作を引き起こす可能性があります。
+
+Cursorは`History`ディレクトリに履歴を保存している可能性があります。このディレクトリの更新日時を確認して、古いエントリを特定できます。
+
+```bash
+# macOS/Linux: Historyディレクトリの確認
+ls -lt ~/Library/Application\ Support/Cursor/User/History/ | head -20
+
+# 7日より前のHistoryエントリを確認（参考情報のみ）
+find ~/Library/Application\ Support/Cursor/User/History/ -type d -mtime +7
+```
+
+ただし、`History`ディレクトリと`state.vscdb`の対応関係は明確ではないため、この方法は推奨されません。
+
+### 手順5: 削除後の確認
+
+```bash
+# 削除後のエントリ数を確認
+sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+
+# データベースサイズの確認
+ls -lh "$DB_PATH"
+```
+
+### 手順6: Cursorの再起動
+
+Cursorを再起動して、正常に動作することを確認してください。
+
+**解決状況**: ✅ **手順確立済み**（2026-01-28）
+
+**関連ファイル**: 
+- `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS)
+- `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (Windows)
+- `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux)
+
+**トラブルシューティング**:
+
+#### 問題: データベースがロックされている
+**解決策**: Cursorが完全に終了していることを確認してください。それでもロックされている場合は、システムを再起動してください。
+
+#### 問題: 削除後、Cursorが起動しない
+**解決策**: バックアップから復元してください：
+```bash
+# macOS
+cp -r "$BACKUP_DIR/globalStorage" ~/Library/Application\ Support/Cursor/User/
+```
+
+#### 問題: 削除してもサイズが減らない
+**解決策**: `VACUUM`コマンドを実行してください。これにより、データベースファイルが最適化され、サイズが減少します。
+
+**今後の対策**:
+1. **定期的なクリーンアップ**: 月に1回程度、古いチャットログを削除する
+2. **自動化スクリプト**: 定期的に実行するスクリプトを作成する（推奨）
+3. **Cursorの設定確認**: 将来のCursorバージョンで自動削除機能が追加される可能性があるため、設定を確認する
+
+**参考リンク**:
+- [Cursor Community Forum: How to bulk delete composer and chat history?](https://forum.cursor.com/t/how-to-bulk-delete-composer-and-chat-history/52658)
+- [Cursor Community Forum: How can I clear all history in Cursor at once?](https://forum.cursor.com/t/how-can-i-clear-all-history-in-cursor-at-once/79480)
+
 ---

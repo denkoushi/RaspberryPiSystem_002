@@ -1,0 +1,43 @@
+=== fail2ban監視確認 ===
+実施日時: 2026年  1月 28日 水曜日 21:20:36 JST
+
+--- fail2ban status ---
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed:	0
+|  |- Total failed:	13
+|  `- Journal matches:	_SYSTEMD_UNIT=ssh.service + _COMM=sshd
+`- Actions
+   |- Currently banned:	0
+   |- Total banned:	1
+   `- Banned IP list:	
+
+--- fail2ban log (最新20行) ---
+2026-01-25 00:53:58,489 fail2ban.server         [1027]: INFO    rollover performed on /var/log/fail2ban.log
+
+--- Ban IP設定: 203.0.113.50 ---
+1
+
+--- 15分待機中（security-monitor.timerの実行間隔） ---
+注意: 実際の検証では15分待機が必要ですが、ここでは短縮版として10秒待機します
+
+--- alerts/ ディレクトリ確認 ---
+合計 4936
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  297  1月 28 16:27 alert-20260128-162707.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  296  1月 28 15:16 alert-20260128-151600.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  296  1月 28 14:17 alert-20260128-141705.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  297  1月 28 10:48 alert-20260128-104802.json
+alerts/ ディレクトリが見つかりません
+
+--- 最新のアラートファイル ---
+{
+  "id": "20260128-162707",
+  "type": "ansible-update-success",
+  "message": "Ansible更新が完了しました",
+  "details": "ログファイル: /opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260128-160727-17491.log",
+  "timestamp": "2026-01-28T07:27:07Z",
+  "acknowledged": false
+}
+
+--- Ban解除: 203.0.113.50 ---
+1

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 34件  
+**件数**: 38件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -1954,9 +1954,307 @@ const rows = await prisma.$queryRaw<Array<{ id: string; occurredAt: Date; rowDat
 - 初期表示が即座に「検索してください。」と表示されることを確認（API呼び出しなし）
 - 検索結果が正しく表示されることを確認
 
+**課題解決（2026-01-28）**:
+- **全部表示→登録製番のみ表示**: 初期表示で全データを表示するロジックを削除し、登録製番（検索条件）がある場合のみ表示するように変更したところ、Pi4での動作が軽快になった
+- **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決
+
+**実機検証結果（2026-01-28）**: ✅ **Pi4で正常動作確認**
+- 資源CD単独では検索されないことを実機で確認（検索結果が空になる）
+- 登録製番単独での検索が正常に動作することを確認
+- 登録製番と資源CDのAND検索が正常に動作することを確認
+- Pi4での動作速度が改善され、軽快に動作することを確認
+
 **関連ファイル**:
-- `apps/api/src/routes/kiosk.ts`（`q`パラメータ追加、検索ロジック改善、SQLクエリ最適化、カンマ区切りOR検索対応）
-- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（`q`パラメータのテスト追加、OR検索のテスト追加）
+- `apps/api/src/routes/kiosk.ts`（`q`パラメータ追加、検索ロジック改善、SQLクエリ最適化、カンマ区切りOR検索対応、資源CD単独検索の無効化）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（`q`パラメータのテスト追加、OR検索のテスト追加、資源CD単独検索の無効化テスト追加）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（初期表示の改善、資源CD単独検索の無効化）
+
+---
+
+### [KB-208] 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
+
+**実装日時**: 2026-01-27
+
+**事象**: 
+- 実機検証で、検索登録製番と資源CDを併用する検索機能がOR条件になっていたが、AND条件にしたい要望
+- 資源CDごとに加工順序番号（1-10）を割当し、完了時に自動で詰め替える機能が必要
+- 複数のPi4端末で同じ検索条件を同期したい要望
+
+**要因**: 
+- 検索条件の結合ロジックがOR条件（`queryConditions`を`OR`で結合）になっていた
+- 加工順序番号の管理が`rowData`に埋め込まれていなかった（正規化されていなかった）
+- 検索状態の同期機能が実装されていなかった
+
+**有効だった対策**: 
+- ✅ **検索条件のAND結合（2026-01-27）**:
+  1. **条件の分離**: テキスト検索条件（`textConditions`）と資源CD条件（`resourceConditions`）を分離
+  2. **AND結合**: 両方が存在する場合は`AND`で結合（`textConditions AND resourceConditions`）
+  3. **資源CD条件内はOR**: `resourceCds`と`resourceAssignedOnlyCds`は資源CD条件内でOR結合
+  4. **統合テスト更新**: テストケースをAND条件に合わせて更新（`q=A&resourceAssignedOnlyCds=1`で`['0000']`のみヒット）
+- ✅ **加工順序割当機能（2026-01-27）**:
+  1. **新規テーブル追加**: `ProductionScheduleOrderAssignment`テーブルを追加（`csvDashboardRowId` + `location` + `resourceCd` + `orderNumber`）
+  2. **一意制約**: `@@unique([csvDashboardId, location, resourceCd, orderNumber])`で同一資源CD内での重複を防止
+  3. **完了時の自動詰め替え**: 完了時に割当を削除し、同一資源CD内の後続番号を`orderNumber - 1`で更新（単一SQL update）
+  4. **APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/order`で割当/解除、`GET /kiosk/production-schedule/order-usage`で使用中番号取得
+- ✅ **検索状態同期機能（2026-01-27）**:
+  1. **新規テーブル追加**: `KioskProductionScheduleSearchState`テーブルを追加（`csvDashboardId` + `location` + `state`（JSON））
+  2. **location単位の同期**: `ClientDevice.location`をキーとして、同一locationの端末間で検索条件を共有
+  3. **APIエンドポイント追加**: `GET /kiosk/production-schedule/search-state`、`PUT /kiosk/production-schedule/search-state`
+  4. **フロントエンド同期**: 起動時に取得、debounce（400ms）で更新、poll（2-5秒）で他端末更新を反映
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+// 検索条件のAND結合
+const textConditions: Prisma.Sql[] = [];
+// ... テキスト検索条件を構築
+
+const resourceConditions: Prisma.Sql[] = [];
+if (resourceCds.length > 0) {
+  resourceConditions.push(Prisma.sql`("rowData"->>'FSIGENCD') IN (...)`);
+}
+if (assignedOnlyCds.length > 0) {
+  resourceConditions.push(Prisma.sql`id IN (SELECT ...)`);
+}
+
+const textWhere = textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
+const resourceWhere = resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
+const queryWhere =
+  textConditions.length > 0 && resourceConditions.length > 0
+    ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
+    : textConditions.length > 0
+      ? Prisma.sql`AND ${textWhere}`
+      : resourceConditions.length > 0
+        ? Prisma.sql`AND ${resourceWhere}`
+        : Prisma.empty;
+
+// 加工順序の取得（サブクエリ）
+SELECT
+  ...,
+  (
+    SELECT "orderNumber"
+    FROM "ProductionScheduleOrderAssignment"
+    WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "location" = ${locationKey}
+    LIMIT 1
+  ) AS "processingOrder"
+FROM "CsvDashboardRow"
+WHERE ...
+
+// 完了時の自動詰め替え（トランザクション）
+await prisma.$transaction(async (tx) => {
+  await tx.csvDashboardRow.update({ ... });
+  if (currentAssignment) {
+    await tx.productionScheduleOrderAssignment.delete({ ... });
+    await tx.productionScheduleOrderAssignment.updateMany({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        location: locationKey,
+        resourceCd: currentAssignment.resourceCd,
+        orderNumber: { gt: currentAssignment.orderNumber },
+      },
+      data: { orderNumber: { decrement: 1 } },
+    });
+  }
+});
+```
+
+**学んだこと**:
+- **検索条件の結合ロジック**: テキスト検索と資源CDフィルタはAND結合、資源CD条件内はOR結合という2層構造を明確に分離することで、意図通りの動作を実現できる
+- **正規化の重要性**: 加工順序番号を`rowData`に埋め込まず、独立したテーブルで管理することで、競合を防ぎ、スケーラビリティを向上できる
+- **自動詰め替えの実装**: 単一SQL update（`orderNumber - 1`）で後続番号を一括更新することで、トランザクション内で効率的に処理できる
+- **location単位の同期**: `ClientDevice.location`をキーとして、同一locationの端末間で検索条件を共有することで、現場での運用を支援できる
+
+**解決状況**: ✅ **解決済み**（2026-01-27）
+
+**実機検証**:
+- ✅ Macで動作確認完了
+- ✅ Pi4で動作確認完了
+- ✅ 検索登録製番と資源CDのAND検索が正常に動作することを確認
+- ✅ 加工順序番号の割当・解除・自動詰め替えが正常に動作することを確認
+- ✅ 検索状態の同期が正常に動作することを確認（複数端末間での同期）
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`ProductionScheduleOrderAssignment`、`KioskProductionScheduleSearchState`モデル追加）
+- `apps/api/prisma/migrations/20260127122147_add_production_schedule_ordering/migration.sql`（マイグレーション）
+- `apps/api/src/routes/kiosk.ts`（資源CDフィルタ、加工順序割当、検索状態同期、AND検索実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テスト追加）
+- `apps/web/src/features/kiosk/productionSchedule/resourceColors.ts`（新規: 資源CD色管理ユーティリティ）
+
+---
+
+### [KB-209] 生産スケジュール検索状態の全キオスク間共有化
+
+**実装日時**: 2026-01-28
+
+**事象**: 
+- 複数のキオスク端末で、検索登録した製番を各キオスク間で共有したい要望
+- 現在はlocation単位で検索状態が同期されているが、全キオスク間で共有したい
+
+**要因**: 
+- KB-208で実装した検索状態同期機能は`ClientDevice.location`をキーとしており、location単位での同期に限定されていた
+- 全キオスク間で共有するには、locationに依存しない共有キーが必要
+
+**有効だった対策**: 
+- ✅ **検索状態の共有化（2026-01-28）**:
+  1. **共有キーの導入**: `SHARED_SEARCH_STATE_LOCATION = 'shared'`定数を追加し、検索状態の保存先を共有キーに統一
+  2. **フォールバック機能**: 初回取得時は共有状態を優先し、存在しない場合は端末別状態（`locationKey`）をフォールバックで読み込む（後方互換性維持）
+  3. **APIエンドポイントの変更**: 
+     - `GET /kiosk/production-schedule/search-state`: 共有状態を優先取得、存在しない場合は端末別状態をフォールバック
+     - `PUT /kiosk/production-schedule/search-state`: 共有キー（`'shared'`）で保存
+  4. **統合テスト更新**: 2台のクライアント（異なるlocation）間で検索状態が共有されることを検証
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+const SHARED_SEARCH_STATE_LOCATION = 'shared';
+
+// GET: 共有状態を優先、フォールバックで端末別状態
+app.get('/kiosk/production-schedule/search-state', async (request) => {
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  const locationKey = resolveLocationKey(clientDevice);
+  
+  // 共有状態を優先取得
+  const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
+    where: {
+      csvDashboardId_location: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: SHARED_SEARCH_STATE_LOCATION,
+      },
+    },
+  });
+  if (sharedState) {
+    return { state: sharedState.state ?? null, updatedAt: sharedState.updatedAt ?? null };
+  }
+
+  // フォールバック: 端末別状態
+  const fallbackState = await prisma.kioskProductionScheduleSearchState.findUnique({
+    where: {
+      csvDashboardId_location: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+      },
+    },
+  });
+  return { state: fallbackState?.state ?? null, updatedAt: fallbackState?.updatedAt ?? null };
+});
+
+// PUT: 共有キーで保存
+app.put('/kiosk/production-schedule/search-state', async (request) => {
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  const body = productionScheduleSearchStateBodySchema.parse(request.body);
+  
+  const state = await prisma.kioskProductionScheduleSearchState.upsert({
+    where: {
+      csvDashboardId_location: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: SHARED_SEARCH_STATE_LOCATION, // 共有キーで保存
+      },
+    },
+    update: { state: body.state as Prisma.InputJsonValue },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: SHARED_SEARCH_STATE_LOCATION, // 共有キーで作成
+      state: body.state as Prisma.InputJsonValue,
+    },
+  });
+  return { state: state.state, updatedAt: state.updatedAt };
+});
+```
+
+**学んだこと**:
+- **後方互換性の維持**: 既存の端末別状態をフォールバックで読み込むことで、既存データを失うことなく移行できる
+- **共有キーの設計**: locationに依存しない共有キー（`'shared'`）を使用することで、全キオスク間で検索状態を共有できる
+- **API側の変更のみ**: フロントエンドの同期ロジック（poll/debounce）は変更不要で、API側の変更のみで機能拡張できる
+
+**追加変更（2026-01-28）**:
+- **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決
+- **検索条件の必須化**: 登録製番（`q`パラメータ）が必須となり、資源CDのみでは検索されない
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**実機検証**:
+- ✅ ローカルテスト完了（統合テスト成功）
+- ✅ GitHub Actions CI成功
+- ✅ デプロイ成功（Pi5/Pi4/Pi3）
+- ✅ 実機検証完了（2026-01-28）:
+  - 複数キオスク間での検索状態共有が正常に動作することを確認
+  - 資源CD単独検索の無効化が正常に動作することを確認（検索結果が空になる）
+  - 登録製番単独・AND検索が正常に動作することを確認
+  - Pi4での動作速度が改善され、軽快に動作することを確認
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`（共有キー導入、フォールバック機能実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（共有動作の検証テスト追加）
+- `docs/plans/production-schedule-kiosk-execplan.md`（進捗追記）
+
+**関連KB**:
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
+- [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正): 検索状態共有機能の回帰修正
+
+---
+
+### [KB-210] 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正
+
+**実装日時**: 2026-01-28
+
+**事象**: 
+- 検索登録された製番が端末間で共有できなくなっていた
+- 以前のフェーズでは端末間で共有されていたが、現在は共有されない状態になっていた
+
+**要因**: 
+- KB-209で実装された検索状態共有機能（`search-state`エンドポイント使用）が、その後`search-history`エンドポイント + ローカル状態管理に変更されていた
+- フロントエンド（`ProductionSchedulePage.tsx`）が`useKioskProductionScheduleSearchHistory`を使用し、コメントに「検索実行は端末ローカルで管理」と記載されていた
+- `search-history`エンドポイントは端末別（`locationKey`）で保存するため、端末間で共有されない
+- `activeQueries`（登録製番）が共有対象に含まれていなかった
+
+**調査結果**:
+- git履歴を確認: `6f44e48 fix: share search history only by location` などで変更が行われていた
+- 以前のフェーズでは`search-state`エンドポイント（共有キー`'shared'`）を使用していた
+- ドキュメント（`docs/plans/production-schedule-kiosk-execplan.md`）に以前の共有実装の記録が残っていた
+
+**有効だった対策**: 
+- ✅ **仕様確定（2026-01-28）**: 共有対象を**history（登録製番リスト）のみ**に限定。押下状態・資源フィルタは端末ローカルで管理。ローカルでの履歴削除は`hiddenHistory`（localStorage）で管理し、共有される`history`には影響しない。
+- ✅ **API側の修正（2026-01-28）**:
+  1. `search-state`のGET/PUTで**historyのみ**を保存・返却（`state: { history }`に統一）
+  2. 「割当済み資源CD」は製番未入力でも単独検索可とするよう検索ロジックを調整（資源CD単独は従来どおり不可、割当済み資源CD単独は許可）
+  3. デバッグログコード・未使用変数の削除
+- ✅ **フロントエンドの修正（2026-01-28）**:
+  1. `useKioskProductionScheduleSearchHistory` → `useKioskProductionScheduleSearchState` に変更し、`search-state`でhistoryを端末間同期
+  2. ローカルでの履歴削除は`hiddenHistory`（`useLocalStorage(SEARCH_HISTORY_HIDDEN_KEY)`）で管理し、表示時は`history`から`hiddenHistory`に含まれるものを除外
+  3. デバッグログコードを削除
+
+**実装の詳細**:
+- **API** (`apps/api/src/routes/kiosk.ts`): GET `/kiosk/production-schedule/search-state` は `{ state: { history }, updatedAt }` のみ返却。PUT は `body.state.history` のみ受け取り、既存stateの`history`とマージして保存。検索APIは製番なしで`resourceAssignedOnlyCds`のみ指定された場合は単独検索を許可（`textConditions.length === 0`かつ`assignedOnlyCds.length > 0`の場合は早期returnしない）。
+- **フロント** (`apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`): `useKioskProductionScheduleSearchState`で共有historyを取得・更新。表示用の履歴は`history`のうち`hiddenHistory`に含まれないもの。ローカル削除時は`setHiddenHistory`で当該製番を`hiddenHistory`に追加するのみで、`search-state`のPUTは呼ばない。
+
+**学んだこと**:
+- **git履歴の重要性**: 以前の実装を確認することで、回帰の原因を特定できる
+- **ドキュメントの重要性**: ExecPlanに以前の実装記録が残っていたため、原因特定が容易だった
+- **エンドポイントの使い分け**: `search-history`は端末別、`search-state`は共有用（history専用）として設計
+- **共有範囲の限定**: 登録製番（history）のみ端末間共有し、押下状態・資源フィルタ・ローカル削除は端末ローカルにすることで、意図しない上書きを防ぐ
+- **最小変更の原則**: 既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、保存・返却をhistoryのみに統一することで最小変更で対応
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**実機検証**:
+- ✅ ローカルテスト完了（統合テスト成功）
+- ✅ GitHub Actions CI成功（全ジョブ成功）
+- ✅ デプロイ成功（Pi5）
+- ✅ 実機検証完了（2026-01-28）:
+  - 端末Aで製番を検索登録 → 数秒以内に端末Bに反映されることを確認
+  - `GET /api/kiosk/production-schedule/search-state`で`state.history`のみが返り端末間で共有されることを確認
+  - 割当済み資源CDのみで検索可能であることを確認
+  - ローカルでの履歴削除が他端末の表示に影響しないことを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（`search-state`でhistory同期、`hiddenHistory`でローカル削除管理）
+- `apps/api/src/routes/kiosk.ts`（search-stateはhistory専用、割当済み資源CD単独検索許可）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テストで共有動作を検証）
+
+**関連KB**:
+- [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態共有機能の初期実装（共有キー導入）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
 
 ---
 

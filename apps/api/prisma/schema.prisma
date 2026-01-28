@@ -584,10 +584,40 @@ model CsvDashboardRow {
   dataHash       String? // データのハッシュ（重複除去用、dedup時のみ使用）
   rowData        Json // 正規化された行データ（列マッピング適用後）
   createdAt      DateTime     @default(now())
+  orderAssignments ProductionScheduleOrderAssignment[]
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
+}
+
+model ProductionScheduleOrderAssignment {
+  id               String          @id @default(uuid())
+  csvDashboardId   String
+  csvDashboardRowId String
+  location         String
+  resourceCd       String
+  orderNumber      Int
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@index([csvDashboardId, location, resourceCd])
+  @@unique([csvDashboardId, location, resourceCd, orderNumber])
+  @@unique([csvDashboardRowId, location])
+}
+
+model KioskProductionScheduleSearchState {
+  id             String    @id @default(uuid())
+  csvDashboardId String
+  location       String
+  state          Json
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([csvDashboardId, location])
+  @@index([csvDashboardId])
 }
 
 model MeasuringInstrumentLoanEvent {

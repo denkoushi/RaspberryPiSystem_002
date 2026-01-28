@@ -111,6 +111,32 @@ Webアプリケーションの最も重大なセキュリティリスクを評�
 - 設定ファイルの確認（Docker Compose、Ansible、Caddy設定など）
 - コードレビュー（認証・認可ロジック、入力バリデーションなど）
 
+## 実施安全策（本番影響の最小化）
+
+### 負荷・レート制御
+
+- **検証環境で先行**: ZAP/ポートスキャン/負荷系は検証環境で実施し、再現できた手順のみ本番で縮小実施
+- **レート制限順守**: 認証10 req/min、全体120 req/minを上限としてZAPのスレッド/頻度を抑制
+- **対象の限定**: 非認証/認証済み/`x-client-key`系を分離し、必要最小限のURLだけを対象化
+
+### 停止条件（即時中断）
+
+- レート制限によるブロックが継続する
+- API応答が継続的に5xxになる
+- 監視アラートが急増する（`alerts/`の異常増加）
+- 既存業務フローに影響が出たと判断できる
+
+### 事前バックアップ
+
+- 本番実機は**評価開始前に暗号化バックアップを取得**
+- 手順: `scripts/server/backup-encrypted.sh`（詳細は [docs/guides/backup-and-restore.md](../guides/backup-and-restore.md)）
+
+## 証跡の保存方針
+
+- 保存先: `docs/security/evidence/`
+- 命名規則: `YYYYMMDD-HHMM_<env>_<category>_<detail>.<ext>`
+- 詳細ルール: [docs/security/evidence/README.md](./evidence/README.md)
+
 ### 2) 自動評価（脆弱性/設定）
 
 **目的**: 「人間が見落としやすい」脆弱性・設定不備を網羅的に拾う

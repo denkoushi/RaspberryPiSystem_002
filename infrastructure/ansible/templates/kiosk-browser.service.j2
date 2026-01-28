@@ -11,6 +11,9 @@ Environment=GTK_USE_PORTAL=0
 # キーリングを無効化（パスワードダイアログを表示しない）
 Environment=GNOME_KEYRING_CONTROL=""
 Environment=SSH_AUTH_SOCK=""
+# NetworkManagerの認証ダイアログを抑制
+Environment=NM_CLI_NO_TERSE=1
+Environment=NM_CLI_NO_ASK_PASSWORD=1
 ExecStart=/usr/local/bin/kiosk-launch.sh
 Restart=always
 RestartSec=5

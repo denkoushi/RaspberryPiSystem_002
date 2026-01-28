@@ -20,18 +20,18 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| API関連 | [api.md](./api.md) | 36件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側） |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 32件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード） |
+| API関連 | [api.md](./api.md) | 39件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正 |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 33件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索） |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 5件 | CIテスト失敗、E2Eテスト、バックアップ/リストア |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 71件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 27件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
-| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
+| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 11件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 18件 | その他のインフラ関連（ストレージ管理、macOS対応含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 21件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除含む） |
 
 ---
 
@@ -83,6 +83,9 @@ update-frequency: high
 | [KB-201](./api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) | 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加 | ✅ 解決済み |
 | [KB-204](./frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) | CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング | ✅ 解決済み |
 | [KB-205](./api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) | 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側） | ✅ 解決済み |
+| [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索) | 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索） | ✅ 解決済み |
+| [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化) | 生産スケジュール検索状態の全キオスク間共有化 | ✅ 解決済み |
+| [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) | 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -142,6 +145,7 @@ update-frequency: high
 | [KB-204](./frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) | CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング | ✅ 解決済み |
 | [KB-206](./frontend.md#kb-206-生産スケジュール画面のパフォーマンス最適化と検索機能改善フロントエンド側) | 生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側） | ✅ 解決済み |
 | [KB-207](./frontend.md#kb-207-生産スケジュールui改善チェック配色or検索ソフトキーボード) | 生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード） | ✅ 解決済み |
+| [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索) | 生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索） | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -246,6 +250,9 @@ update-frequency: high
 | [KB-193](./infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果) | デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果 | ✅ 解決済み |
 | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) | デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 | ✅ 解決済み |
 | [KB-203](./infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) | 本番環境でのprisma db seed失敗と直接SQL更新 | ✅ 解決済み |
+| [KB-210](./infrastructure/miscellaneous.md#kb-210-pi3pi4でwi-fi認証ダイアログが時々表示される問題) | Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題 | ✅ 解決済み |
+| [KB-211](./infrastructure/miscellaneous.md#kb-211-pi4キオスクでchromiumのサポートされていないコマンドラインフラグ警告メッセージが表示される問題) | Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題 | ✅ 解決済み |
+| [KB-212](./infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除) | Cursorチャットログの安全な削除手順（1週間より前のログ削除） | ✅ 手順確立済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -285,11 +292,12 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 124件 |
+| ✅ 解決済み | 128件 |
+| ✅ 手順確立済み | 1件 |
 | ✅ 実装完了 | 1件 |
-| ✅ 検証完了 | 1件 |
+| ✅ 検証完了 | 2件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **134件** |
+| **合計** | **140件** |
 
 ---
 
@@ -371,6 +379,8 @@ update-frequency: high
 - 2026-01-23: KB-195を追加（Dropbox 409 Conflictエラー：labelサニタイズ未実施によるパス不正）
 - 2026-01-24: KB-196を追加（旧キー自動削除機能の実装：backup.json保存時の自動クリーンアップ）
 - 2026-01-24: KB-197、KB-198を追加（Dropbox選択削除のパス正規化不整合、retention.maxBackupsの仕様/実装差）
+- 2026-01-28: KB-199を追加（Dropbox証明書ピニング検証失敗によるバックアップ500エラー）→ 2026-01-28に解決完了・実機検証完了（content.dropboxapi.comの新しい証明書フィンガープリント追加、手動バックアップ成功を確認）
+- 2026-01-28: KB-210を追加（Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題）→ 2026-01-28に解決完了（NetworkManager設定追加、キオスクブラウザ環境変数追加）、KB-211を追加（Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題）→ 2026-01-28に解決完了（`--test-type`フラグ追加）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）
@@ -387,3 +397,9 @@ update-frequency: high
 - 2026-01-27: KB-201を更新（FSEIBANバリデーション修正: `********`（8個のアスタリスク）を明示的に許可）、KB-204を追加（CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング）→ 2026-01-27に実装完了・実機検証完了（Gmail経由CSV取り込み成功、`********`も正常に取得）
 - 2026-01-26: KB-205、KB-206を追加（生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側・フロントエンド側））→ 2026-01-26に実装完了・CI成功・Mac実機検証完了（Pi4での実機検証は明日実施予定）
 - 2026-01-27: KB-207を追加（生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード））→ 2026-01-27に実装完了・CI成功・デプロイ成功・実機検証完了（Mac・Pi4）
+- 2026-01-27: KB-208を追加（生産スケジュールUI改良・API拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索））→ 2026-01-27に実装完了・CI成功・デプロイ成功・実機検証完了（Mac・Pi4）
+- 2026-01-28: KB-209を追加（生産スケジュール検索状態の全キオスク間共有化）→ 2026-01-28に実装完了・CI成功・デプロイ成功・実機検証完了（複数キオスク間での検索状態共有が正常に動作）
+- 2026-01-28: KB-205を更新（資源CD単独検索の無効化・Pi4の動作速度改善）→ 2026-01-28に実装完了・CI成功・デプロイ成功・実機検証完了（Pi4で正常に動作、動作速度が改善）
+- 2026-01-28: KB-210を追加（生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正）→ 2026-01-28に実装完了・CI成功・デプロイ成功・実機検証完了（端末間共有が正常に動作）
+- 2026-01-28: KB-212を追加（Cursorチャットログの安全な削除手順（1週間より前のログ削除））→ 2026-01-28に手順確立済み（バックアップ手順、削除方法、トラブルシューティングを含む完全な手順書を作成）
+- 2026-01-28: KB-213を追加（セキュリティ評価の実機検証（2026-01-28））→ 2026-01-28に検証完了（ポート露出・fail2ban・security-monitorは正常動作を確認、バックアップ/復元・USBオフライン運用は再実施が必要）

@@ -1,0 +1,134 @@
+{
+  "actions": [
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1112489,
+          "path": "apps__api>ts-node>diff",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "diff",
+      "target": "4.0.4",
+      "depth": 3
+    },
+    {
+      "action": "review",
+      "module": "esbuild",
+      "resolves": [
+        {
+          "id": 1102341,
+          "path": "apps__api>vitest>vite>esbuild",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    }
+  ],
+  "advisories": {
+    "1102341": {
+      "findings": [
+        {
+          "version": "0.21.5",
+          "paths": [
+            "apps/api > vitest@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/api > vitest@1.6.1 > vite-node@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/api > vitest@1.6.1 > @vitest/ui@1.6.1 > vitest@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/api > vitest@1.6.1 > @vitest/ui@1.6.1 > vitest@1.6.1 > vite-node@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > @vitejs/plugin-react@4.7.0 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > @vitest/ui@1.6.1 > vitest@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > @vitest/ui@1.6.1 > vitest@1.6.1 > vite-node@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > vitest@1.6.1 > vite@5.4.21 > esbuild@0.21.5",
+            "apps/web > vitest@1.6.1 > vite-node@1.6.1 > vite@5.4.21 > esbuild@0.21.5"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99\n- https://github.com/evanw/esbuild/commit/de85afd65edec9ebc44a11e245fd9e9a2e99760d\n- https://github.com/advisories/GHSA-67mh-4wv8-2f99",
+      "created": "2025-02-10T17:48:07.000Z",
+      "id": 1102341,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\nesbuild allows any websites to send any request to the development server and read the response due to default CORS settings.\n\n### Details\n\nesbuild sets `Access-Control-Allow-Origin: *` header to all requests, including the SSE connection, which allows any websites to send any request to the development server and read the response.\n\nhttps://github.com/evanw/esbuild/blob/df815ac27b84f8b34374c9182a93c94718f8a630/pkg/api/serve_other.go#L121\nhttps://github.com/evanw/esbuild/blob/df815ac27b84f8b34374c9182a93c94718f8a630/pkg/api/serve_other.go#L363\n\n**Attack scenario**:\n\n1. The attacker serves a malicious web page (`http://malicious.example.com`).\n1. The user accesses the malicious web page.\n1. The attacker sends a `fetch('http://127.0.0.1:8000/main.js')` request by JS in that malicious web page. This request is normally blocked by same-origin policy, but that's not the case for the reasons above.\n1. The attacker gets the content of `http://127.0.0.1:8000/main.js`.\n\nIn this scenario, I assumed that the attacker knows the URL of the bundle output file name. But the attacker can also get that information by\n\n- Fetching `/index.html`: normally you have a script tag here\n- Fetching `/assets`: it's common to have a `assets` directory when you have JS files and CSS files in a different directory and the directory listing feature tells the attacker the list of files\n- Connecting `/esbuild` SSE endpoint: the SSE endpoint sends the URL path of the changed files when the file is changed (`new EventSource('/esbuild').addEventListener('change', e => console.log(e.type, e.data))`)\n- Fetching URLs in the known file: once the attacker knows one file, the attacker can know the URLs imported from that file\n\nThe scenario above fetches the compiled content, but if the victim has the source map option enabled, the attacker can also get the non-compiled content by fetching the source map file.\n\n### PoC\n\n1. Download [reproduction.zip](https://github.com/user-attachments/files/18561484/reproduction.zip)\n2. Extract it and move to that directory\n1. Run `npm i`\n1. Run `npm run watch`\n1. Run `fetch('http://127.0.0.1:8000/app.js').then(r => r.text()).then(content => console.log(content))` in a different website's dev tools.\n\n![image](https://github.com/user-attachments/assets/08fc2e4d-e1ec-44ca-b0ea-78a73c3c40e9)\n\n### Impact\n\nUsers using the serve feature may get the source code stolen by malicious websites.",
+      "reported_by": null,
+      "title": "esbuild enables any website to send any requests to the development server and read the response",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "esbuild",
+      "vulnerable_versions": "<=0.24.2",
+      "github_advisory_id": "GHSA-67mh-4wv8-2f99",
+      "recommendation": "Upgrade to version 0.25.0 or later",
+      "patched_versions": ">=0.25.0",
+      "updated": "2025-02-10T17:48:08.000Z",
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+      },
+      "cwe": [
+        "CWE-346"
+      ],
+      "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
+    },
+    "1112489": {
+      "findings": [
+        {
+          "version": "4.0.2",
+          "paths": [
+            "apps/api > ts-node@10.9.2 > diff@4.0.2"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/kpdecker/jsdiff/security/advisories/GHSA-73rr-hh4g-fpgx\n- https://github.com/kpdecker/jsdiff/pull/649\n- https://github.com/kpdecker/jsdiff/commit/15a1585230748c8ae6f8274c202e0c87309142f5\n- https://github.com/kpdecker/jsdiff/issues/653\n- https://nvd.nist.gov/vuln/detail/CVE-2026-24001\n- https://github.com/advisories/GHSA-73rr-hh4g-fpgx",
+      "created": "2026-01-14T21:34:12.000Z",
+      "id": 1112489,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nAttempting to parse a patch whose filename headers contain the line break characters `\\r`, `\\u2028`, or `\\u2029` can cause the `parsePatch` method to enter an infinite loop. It then consumes memory without limit until the process crashes due to running out of memory.\n\nApplications are therefore likely to be vulnerable to a denial-of-service attack if they call `parsePatch` with a user-provided patch as input. A large payload is not needed to trigger the vulnerability, so size limits on user input do not provide any protection. Furthermore, some applications may be vulnerable even when calling `parsePatch` on a patch generated by the application itself if the user is nonetheless able to control the filename headers (e.g. by directly providing the filenames of the files to be diffed).\n\nThe `applyPatch` method is similarly affected if (and only if) called with a string representation of a patch as an argument, since under the hood it parses that string using `parsePatch`. Other methods of the library are unaffected.\n\nFinally, a second and lesser bug - a ReDOS - also exhibits when those same line break characters are present in a patch's *patch* header (also known as its \"leading garbage\"). A maliciously-crafted patch header of length *n* can take `parsePatch` O(*n*³) time to parse.\n\n### Patches\n\nAll vulnerabilities described are fixed in v8.0.3.\n\n### Workarounds\n\nIf using a version of jsdiff earlier than v8.0.3, do not attempt to parse patches that contain any of these characters: `\\r`, `\\u2028`, or `\\u2029`.\n\n### References\n\nPR that fixed the bug: https://github.com/kpdecker/jsdiff/pull/649\n\n\n### CVE Notes\n\nNote that although the advisory describes two bugs, they each enable exactly the same attack vector (that an attacker who controls input to `parsePatch` can cause a DOS). Fixing one bug without fixing the other therefore does not fix the vulnerability and does not provide any security benefit. Therefore we assume that the bugs cannot possibly constitute Independently Fixable Vulnerabilities in the sense of CVE CNA rule 4.2.11, but rather that this advisory is properly construed under the rules as describing a single Vulnerability.",
+      "reported_by": null,
+      "title": "jsdiff has a Denial of Service vulnerability in parsePatch and applyPatch",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-24001"
+      ],
+      "access": "public",
+      "severity": "low",
+      "module_name": "diff",
+      "vulnerable_versions": "<4.0.4",
+      "github_advisory_id": "GHSA-73rr-hh4g-fpgx",
+      "recommendation": "Upgrade to version 4.0.4 or later",
+      "patched_versions": ">=4.0.4",
+      "updated": "2026-01-22T15:44:41.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-400",
+        "CWE-1333"
+      ],
+      "url": "https://github.com/advisories/GHSA-73rr-hh4g-fpgx"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 1,
+      "moderate": 1,
+      "high": 0,
+      "critical": 0
+    },
+    "dependencies": 798,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 798
+  }
+}
