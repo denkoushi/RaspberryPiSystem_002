@@ -511,6 +511,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:512',message:'search-history:get',data:{locationKey,clientName:clientDevice.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     const stored = await prisma.kioskProductionScheduleSearchState.findUnique({
       where: {
         csvDashboardId_location: {
@@ -520,6 +523,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     const history = (stored?.state as { history?: string[] } | null)?.history ?? [];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:522',message:'search-history:get:result',data:{locationKey,historyCount:history.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     return { history, updatedAt: stored?.updatedAt ?? null };
   });
 
@@ -559,6 +565,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const locationKey = resolveLocationKey(clientDevice);
     const body = productionScheduleSearchHistoryBodySchema.parse(request.body);
     const history = normalizeSearchHistory(body.history);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:556',message:'search-history:put',data:{locationKey,clientName:clientDevice.name,historyCount:history.length,historySample:history.slice(0,2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
 
     const state = await prisma.kioskProductionScheduleSearchState.upsert({
       where: {
@@ -577,6 +586,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:578',message:'search-history:put:stored',data:{locationKey,updatedAt:state.updatedAt,storedHistoryCount:((state.state as { history?: string[] })?.history ?? []).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     return { history, updatedAt: state.updatedAt };
   });
 

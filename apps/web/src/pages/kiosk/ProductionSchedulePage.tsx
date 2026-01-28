@@ -301,6 +301,9 @@ export function ProductionSchedulePage() {
 
     suppressSearchStateSyncRef.current = true;
     // 検索実行は端末ローカルで管理し、共有状態は検索履歴のみ反映する
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:302',message:'search-history:incoming',data:{updatedAt,historyCount:searchHistoryQuery.data?.history?.length ?? 0,historySample:searchHistoryQuery.data?.history?.slice(0,2) ?? []},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     setHistory(searchHistoryQuery.data?.history ?? []);
     searchStateUpdatedAtRef.current = updatedAt;
   }, [searchHistoryQuery.data?.history, searchHistoryQuery.data?.updatedAt, searchHistoryQuery.isSuccess, setHistory]);
@@ -311,11 +314,17 @@ export function ProductionSchedulePage() {
       suppressSearchStateSyncRef.current = false;
       return;
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:312',message:'search-history:outgoing:scheduled',data:{hasLoaded:hasLoadedSearchStateRef.current,historyCount:normalizedHistory.length,historySample:normalizedHistory.slice(0,2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     const timer = setTimeout(() => {
       searchHistoryMutation.mutate(
         normalizedHistory,
         {
           onSuccess: (data) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:319',message:'search-history:outgoing:success',data:{updatedAt:data.updatedAt,historyCount:data.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             searchStateUpdatedAtRef.current = data.updatedAt;
           }
         }
