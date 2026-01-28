@@ -27,8 +27,10 @@ CHROMIUM_FLAGS=(
   --allow-insecure-localhost
   --ignore-certificate-errors
   --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }}
-  # 警告バーを非表示にする
+  # 警告バーを非表示にする（--ignore-certificate-errorsの警告も抑制）
   --disable-infobars
+  # テストモードとして実行（コマンドラインフラグの警告を抑制）
+  --test-type
   # キーリングを無効化（パスワードストアをbasicに設定）
   --password-store=basic
 )

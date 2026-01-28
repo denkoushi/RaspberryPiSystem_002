@@ -31,7 +31,7 @@ update-frequency: high
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 19件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 20件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制含む） |
 
 ---
 
@@ -250,6 +250,7 @@ update-frequency: high
 | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) | デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 | ✅ 解決済み |
 | [KB-203](./infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) | 本番環境でのprisma db seed失敗と直接SQL更新 | ✅ 解決済み |
 | [KB-210](./infrastructure/miscellaneous.md#kb-210-pi3pi4でwi-fi認証ダイアログが時々表示される問題) | Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題 | ✅ 解決済み |
+| [KB-211](./infrastructure/miscellaneous.md#kb-211-pi4キオスクでchromiumのサポートされていないコマンドラインフラグ警告メッセージが表示される問題) | Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題 | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -376,7 +377,7 @@ update-frequency: high
 - 2026-01-24: KB-196を追加（旧キー自動削除機能の実装：backup.json保存時の自動クリーンアップ）
 - 2026-01-24: KB-197、KB-198を追加（Dropbox選択削除のパス正規化不整合、retention.maxBackupsの仕様/実装差）
 - 2026-01-28: KB-199を追加（Dropbox証明書ピニング検証失敗によるバックアップ500エラー）→ 2026-01-28に解決完了・実機検証完了（content.dropboxapi.comの新しい証明書フィンガープリント追加、手動バックアップ成功を確認）
-- 2026-01-28: KB-210を追加（Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題）→ 2026-01-28に解決完了（NetworkManager設定追加、キオスクブラウザ環境変数追加）
+- 2026-01-28: KB-210を追加（Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題）→ 2026-01-28に解決完了（NetworkManager設定追加、キオスクブラウザ環境変数追加）、KB-211を追加（Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題）→ 2026-01-28に解決完了（`--test-type`フラグ追加）
 - 2026-01-05: KB-142を追加（Ansibleで`.env`再生成時に環境変数が消失する問題（Slack Webhook URL）と恒久対策）
 - 2026-01-06: KB-143を追加（Ansibleで`.env`再生成時にDropbox設定が消失する問題と恒久対策、`backup.json`の存在保証と健全性チェック、実機検証完了）、KB-145を追加（backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加）、KB-149を追加（バックアップ履歴ページに用途列を追加（UI改善）、実機検証完了）
 - 2026-01-16: KB-171を追加（WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）問題と解決策）
