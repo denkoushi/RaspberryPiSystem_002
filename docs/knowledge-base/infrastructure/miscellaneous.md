@@ -874,9 +874,9 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 **解決方法**:
 1. **NetworkManager設定の追加**（`infrastructure/ansible/roles/client/tasks/network.yml`）:
-   - **注意**: 既存のWi-Fi接続（Pi5への接続を含む）の自動接続は維持する
-   - NetworkManager.confに`no-auto-default=*`を追加（新しいネットワークへの自動接続を無効化）
-   - NetworkManager.confに`auth-polkit=false`を追加（認証ダイアログを抑制）
+   - **重要**: 既存のWi-Fi接続設定は一切変更しない（設置場所によって接続先が変わるため、柔軟性を維持）
+   - **重要**: 新しいネットワークへの自動接続も無効化しない（設置場所によって必要なネットワークが変わるため）
+   - NetworkManager.confに`auth-polkit=false`を追加（認証ダイアログを抑制する設定のみ）
 
 2. **キオスクブラウザの環境変数追加**:
    - `kiosk-launch.sh.j2`と`kiosk-browser.service.j2`に以下を追加:
@@ -897,14 +897,16 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 **再発防止策**:
 - Ansibleデプロイ時に自動的にNetworkManager設定を適用
-- **既存のWi-Fi接続（Pi5への接続を含む）は維持**し、新しいネットワークへの自動接続のみを無効化
-- 必要なWi-Fiネットワーク（Pi5への接続に使用するネットワーク）は事前に設定し、パスワードを保存
+- **既存のWi-Fi接続設定は一切変更しない**（設置場所によって接続先が変わるため）
+- **新しいネットワークへの自動接続も無効化しない**（設置場所によって必要なネットワークが変わるため）
+- 認証ダイアログを抑制する設定のみを適用（`auth-polkit=false`、環境変数）
 - キオスクブラウザの環境変数でNetworkManagerの認証ダイアログを抑制
 
 **運用上の注意**:
+- **設置場所によって接続先が変わるため、不要なネットワークを固定で定義することはできない**
 - 新しいWi-Fiネットワークを使用する場合は、事前に`nmcli`コマンドで接続設定を行う
 - パスワードが変更された場合は、NetworkManagerの接続設定を更新する必要がある
-- **不要なWi-Fiネットワークは削除する**: `nmcli connection delete <接続名>`で不要な接続設定を削除することで、ダイアログの発生を根本的に防げる
+- **認証ダイアログが表示されないようにする**: `auth-polkit=false`と環境変数設定により、認証ダイアログが表示されなくなる
 - ダイアログが表示された場合は、「取り消し」を選択して、必要なネットワークのみを手動で設定する
 
 **補足説明**:

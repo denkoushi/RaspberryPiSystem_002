@@ -1,9 +1,13 @@
 ---
-# NetworkManager Wi-Fi設定: 認証ダイアログを抑制（既存の接続は維持）
+# NetworkManager Wi-Fi設定: 認証ダイアログを抑制（既存の接続設定は一切変更しない）
 #
 # 原因: Pi3/Pi4は既にPi5へのWi-Fi接続が確立されているが、NetworkManagerは複数の保存済みネットワークを管理している
 # そのうちの一部（例: TP-Link_D2EC_5G_EXT）は認証情報が無効になっており、接続を試みる際に認証ダイアログが表示される
-# 解決策: 認証ダイアログを抑制する設定を追加し、新しいネットワークへの自動接続を無効化する
+# 
+# 解決策: 認証ダイアログを抑制する設定のみを適用
+# - 既存のWi-Fi接続設定は一切変更しない（設置場所によって接続先が変わるため）
+# - 新しいネットワークへの自動接続も無効化しない（柔軟性を維持）
+# - 認証ダイアログのみを抑制する（auth-polkit=false、環境変数）
 
 - name: Check if NetworkManager is installed
   ansible.builtin.command: which nmcli
@@ -11,8 +15,8 @@
   changed_when: false
   failed_when: false
 
-# 注意: すべてのWi-Fi接続の自動接続を無効化しない
-# Pi3/Pi4からPi5への接続は維持する必要があるため、認証ダイアログを抑制する設定のみを適用
+# 注意: 既存のWi-Fi接続設定は一切変更しない
+# 設置場所によって接続先が変わるため、柔軟性を維持する必要がある
 
 - name: Ensure NetworkManager.conf exists
   ansible.builtin.file:
@@ -30,17 +34,8 @@
   when: nmcli_check.rc == 0
   register: networkmanager_conf_check
 
-- name: Add no-auto-default configuration to NetworkManager
-  ansible.builtin.lineinfile:
-    path: /etc/NetworkManager/NetworkManager.conf
-    regexp: '^no-auto-default='
-    line: 'no-auto-default=*'
-    insertafter: '^\[main\]'
-    state: present
-  when:
-    - nmcli_check.rc == 0
-    - networkmanager_conf_check is defined
-
+# 認証ダイアログを抑制する設定のみを追加
+# 既存の接続設定や新しいネットワークへの自動接続は変更しない
 - name: Add auth-polkit=false to suppress password dialogs
   ansible.builtin.lineinfile:
     path: /etc/NetworkManager/NetworkManager.conf
