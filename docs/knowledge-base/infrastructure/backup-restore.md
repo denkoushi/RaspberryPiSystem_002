@@ -1887,3 +1887,49 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - 仕様ドキュメントを「実装と一致する形」に確定
 
 ---
+
+## KB-199: Dropbox証明書ピニング検証失敗によるバックアップ500エラー
+
+**発生日**: 2026-01-28
+
+**事象**:
+- 1/28 JSTの自動バックアップが失敗（500エラー）
+- 手動バックアップも2回失敗（同じ500エラー）
+- エラーメッセージ: `Request failed with status code 500`
+
+**症状**:
+- バックアップ実行時に `Certificate pinning failed for content.dropboxapi.com` エラーが発生
+- 実際の証明書フィンガープリント: `sha256/32:35:05:53:62:94:68:BE:49:A2:78:0A:A0:B0:C0:B8:D5:E7:47:4B:AC:6C:B4:4D:B1:28:E1:26:1B:F8:A9:91`
+- 期待値リストに含まれていないため、証明書ピニング検証が失敗
+
+**調査過程**:
+1. **仮説1**: トークンリフレッシュが効いていない → REJECTED（トークンリフレッシュは401エラー時のみ発動、500エラーでは発動しない）
+2. **仮説2**: Dropbox API側の500エラー → REJECTED（エラーメッセージから証明書ピニング失敗と判明）
+3. **仮説3**: Dropboxが証明書を更新した → CONFIRMED（2026-01-28に証明書が更新され、新しいフィンガープリントが期待値リストに含まれていなかった）
+
+**根本原因**:
+- Dropboxが2026-01-28に`content.dropboxapi.com`の証明書を更新した
+- 証明書ピニングの期待値リスト（`DROPBOX_CERTIFICATE_FINGERPRINTS`）に新しい証明書フィンガープリントが含まれていなかった
+- 証明書ピニング検証が失敗し、TLS接続が拒否された
+
+**解決方法**:
+- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に新しい証明書フィンガープリントを追加:
+  - `sha256/32350553629468be49a2780aa0b0c0b8d5e7474bac6cb44db128e1261bf8a991`（content.dropboxapi.com、2026-01-28確認）
+- Pi5でAPIコンテナを再ビルド・再起動して修正を反映
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
+- `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（証明書フィンガープリント取得スクリプト）
+
+**再発防止策**:
+- Dropboxが証明書を更新した場合は、`get-dropbox-cert-fingerprint.ts`スクリプトで新しいフィンガープリントを取得し、`dropbox-cert-pinning.ts`に追加する
+- 証明書更新の監視（Dropbox公式からの通知や定期的な検証）を検討
+- 証明書ピニング失敗時のエラーメッセージを明確化（「証明書が更新された可能性」を明記）
+
+**関連ナレッジ**:
+- KB-020: バックアップ・リストア機能の実装
+- KB-094: バックアップ履歴のファイル存在状態管理機能
+
+---
