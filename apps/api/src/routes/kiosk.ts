@@ -113,6 +113,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       history: z.array(z.string().max(200)).max(8).optional(),
     }),
   });
+  const productionScheduleSearchHistoryBodySchema = z.object({
+    history: z.array(z.string().max(200)).max(8),
+  });
 
   const requireClientDevice = async (rawClientKey: unknown) => {
     const clientKey = normalizeClientKey(rawClientKey);
@@ -137,6 +140,20 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       return clientDevice.name.trim();
     }
     return DEFAULT_LOCATION;
+  };
+
+  const normalizeSearchHistory = (history: string[]): string[] => {
+    const unique = new Set<string>();
+    const next: string[] = [];
+    history
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .forEach((item) => {
+        if (unique.has(item)) return;
+        unique.add(item);
+        next.push(item);
+      });
+    return next.slice(0, 8);
   };
 
   // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
@@ -491,6 +508,21 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     return { state: fallbackState?.state ?? null, updatedAt: fallbackState?.updatedAt ?? null };
   });
 
+  app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const stored = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: locationKey,
+        },
+      },
+    });
+    const history = (stored?.state as { history?: string[] } | null)?.history ?? [];
+    return { history, updatedAt: stored?.updatedAt ?? null };
+  });
+
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
@@ -520,6 +552,32 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:498',message:'search-state:put:stored',data:{locationKey,updatedAt:state.updatedAt,storedHistoryCount:((state.state as { history?: string[] })?.history ?? []).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
     // #endregion
     return { state: state.state, updatedAt: state.updatedAt };
+  });
+
+  app.put('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const body = productionScheduleSearchHistoryBodySchema.parse(request.body);
+    const history = normalizeSearchHistory(body.history);
+
+    const state = await prisma.kioskProductionScheduleSearchState.upsert({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: locationKey,
+        },
+      },
+      update: {
+        state: { history } as Prisma.InputJsonValue,
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        state: { history } as Prisma.InputJsonValue,
+      },
+    });
+
+    return { history, updatedAt: state.updatedAt };
   });
 
   app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {

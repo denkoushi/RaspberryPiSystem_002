@@ -5,9 +5,9 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
-  useKioskProductionScheduleSearchState,
+  useKioskProductionScheduleSearchHistory,
   useUpdateKioskProductionScheduleOrder,
-  useUpdateKioskProductionScheduleSearchState
+  useUpdateKioskProductionScheduleSearchHistory
 } from '../../api/hooks';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { Button } from '../../components/ui/Button';
@@ -108,8 +108,8 @@ export function ProductionSchedulePage() {
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const resourcesQuery = useKioskProductionScheduleResources();
-  const searchStateQuery = useKioskProductionScheduleSearchState();
-  const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
+  const searchHistoryQuery = useKioskProductionScheduleSearchHistory();
+  const searchHistoryMutation = useUpdateKioskProductionScheduleSearchHistory();
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -288,12 +288,11 @@ export function ProductionSchedulePage() {
   };
 
   useEffect(() => {
-    if (searchStateQuery.isSuccess) {
+    if (searchHistoryQuery.isSuccess) {
       hasLoadedSearchStateRef.current = true;
     }
-    const state = searchStateQuery.data?.state;
-    const updatedAt = searchStateQuery.data?.updatedAt ?? null;
-    if (!state || !updatedAt) return;
+    const updatedAt = searchHistoryQuery.data?.updatedAt ?? null;
+    if (!updatedAt) return;
 
     const lastUpdatedAt = searchStateUpdatedAtRef.current;
     if (lastUpdatedAt && new Date(updatedAt).getTime() <= new Date(lastUpdatedAt).getTime()) {
@@ -301,12 +300,10 @@ export function ProductionSchedulePage() {
     }
 
     suppressSearchStateSyncRef.current = true;
-    // 検索実行は端末ローカルで管理し、共有状態は履歴と絞り込みのみ反映する
-    setActiveResourceCds(state.activeResourceCds ?? []);
-    setActiveResourceAssignedOnlyCds(state.activeResourceAssignedOnlyCds ?? []);
-    setHistory(state.history ?? []);
+    // 検索実行は端末ローカルで管理し、共有状態は検索履歴のみ反映する
+    setHistory(searchHistoryQuery.data?.history ?? []);
     searchStateUpdatedAtRef.current = updatedAt;
-  }, [searchStateQuery.data?.state, searchStateQuery.data?.updatedAt, searchStateQuery.isSuccess, setHistory]);
+  }, [searchHistoryQuery.data?.history, searchHistoryQuery.data?.updatedAt, searchHistoryQuery.isSuccess, setHistory]);
 
   useEffect(() => {
     if (!hasLoadedSearchStateRef.current) return;
@@ -315,12 +312,8 @@ export function ProductionSchedulePage() {
       return;
     }
     const timer = setTimeout(() => {
-      searchStateMutation.mutate(
-        {
-          activeResourceCds: normalizedResourceCds,
-          activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
-          history: normalizedHistory
-        },
+      searchHistoryMutation.mutate(
+        normalizedHistory,
         {
           onSuccess: (data) => {
             searchStateUpdatedAtRef.current = data.updatedAt;
@@ -330,10 +323,8 @@ export function ProductionSchedulePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [
-    normalizedAssignedOnlyCds,
     normalizedHistory,
-    normalizedResourceCds,
-    searchStateMutation
+    searchHistoryMutation
   ]);
   const openKeyboard = () => {
     setKeyboardValue(inputQuery);

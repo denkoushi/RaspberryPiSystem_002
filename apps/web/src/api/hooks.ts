@@ -46,8 +46,10 @@ import {
   getKioskProductionScheduleOrderUsage,
   getKioskProductionScheduleResources,
   getKioskProductionScheduleSearchState,
+  getKioskProductionScheduleSearchHistory,
   importMasterSingle,
   setKioskProductionScheduleSearchState,
+  setKioskProductionScheduleSearchHistory,
   updateKioskProductionScheduleOrder
 } from './client';
 import {
@@ -208,10 +210,25 @@ export function useKioskProductionScheduleSearchState() {
   });
 }
 
+export function useKioskProductionScheduleSearchHistory() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-search-history'],
+    queryFn: getKioskProductionScheduleSearchHistory,
+    refetchInterval: 4000,
+  });
+}
+
 export function useUpdateKioskProductionScheduleSearchState() {
   return useMutation({
     mutationFn: (state: Parameters<typeof setKioskProductionScheduleSearchState>[0]) =>
       setKioskProductionScheduleSearchState(state),
+  });
+}
+
+export function useUpdateKioskProductionScheduleSearchHistory() {
+  return useMutation({
+    mutationFn: (history: Parameters<typeof setKioskProductionScheduleSearchHistory>[0]) =>
+      setKioskProductionScheduleSearchHistory(history),
   });
 }
 

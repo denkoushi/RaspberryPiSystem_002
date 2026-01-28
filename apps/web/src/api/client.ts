@@ -242,6 +242,11 @@ export type ProductionScheduleSearchState = {
   history?: string[];
 };
 
+export type ProductionScheduleSearchHistory = {
+  history: string[];
+  updatedAt: string | null;
+};
+
 export async function getKioskProductionScheduleSearchState() {
   const { data } = await api.get<{ state: ProductionScheduleSearchState | null; updatedAt: string | null }>(
     '/kiosk/production-schedule/search-state'
@@ -253,6 +258,19 @@ export async function setKioskProductionScheduleSearchState(state: ProductionSch
   const { data } = await api.put<{ state: ProductionScheduleSearchState; updatedAt: string }>(
     '/kiosk/production-schedule/search-state',
     { state }
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleSearchHistory() {
+  const { data } = await api.get<ProductionScheduleSearchHistory>('/kiosk/production-schedule/search-history');
+  return data;
+}
+
+export async function setKioskProductionScheduleSearchHistory(history: string[]) {
+  const { data } = await api.put<{ history: string[]; updatedAt: string }>(
+    '/kiosk/production-schedule/search-history',
+    { history }
   );
   return data;
 }
