@@ -240,8 +240,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const resourceWhere =
       resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
     // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
-    // 資源CD単独の場合は早期リターン（検索しない）
-    if (textConditions.length === 0 && resourceConditions.length > 0) {
+    // 割当のみは対象が少ないため単独検索を許可する
+    if (textConditions.length === 0 && resourceCds.length > 0 && assignedOnlyCds.length === 0) {
       return {
         page,
         pageSize,
@@ -254,7 +254,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
         : textConditions.length > 0
           ? Prisma.sql`AND ${textWhere}`
-          : Prisma.empty; // 検索条件なしの場合は全件を返す
+          : resourceConditions.length > 0
+            ? Prisma.sql`AND ${resourceWhere}`
+            : Prisma.empty; // 検索条件なしの場合は全件を返す
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*)::bigint AS total
@@ -494,7 +496,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (sharedState) {
-      return { state: sharedState.state ?? null, updatedAt: sharedState.updatedAt ?? null };
+      const history = normalizeSearchHistory(
+        ((sharedState.state as { history?: string[] } | null)?.history ?? []) as string[]
+      );
+      return { state: { history }, updatedAt: sharedState.updatedAt ?? null };
     }
 
     const fallbackState = await prisma.kioskProductionScheduleSearchState.findUnique({
@@ -505,7 +510,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     });
-    return { state: fallbackState?.state ?? null, updatedAt: fallbackState?.updatedAt ?? null };
+    const fallbackHistory = normalizeSearchHistory(
+      ((fallbackState?.state as { history?: string[] } | null)?.history ?? []) as string[]
+    );
+    return { state: { history: fallbackHistory }, updatedAt: fallbackState?.updatedAt ?? null };
   });
 
   app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
@@ -526,6 +534,19 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
+    const incomingHistory = normalizeSearchHistory(body.state.history ?? []);
+    const existingState = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: SHARED_SEARCH_STATE_LOCATION,
+        },
+      },
+    });
+    const existingHistory = normalizeSearchHistory(
+      ((existingState?.state as { history?: string[] } | null)?.history ?? []) as string[]
+    );
+    const mergedHistory = normalizeSearchHistory([...existingHistory, ...incomingHistory]);
 
     const state = await prisma.kioskProductionScheduleSearchState.upsert({
       where: {
@@ -535,15 +556,15 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         },
       },
       update: {
-        state: body.state as Prisma.InputJsonValue,
+        state: { history: mergedHistory } as Prisma.InputJsonValue,
       },
       create: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         location: SHARED_SEARCH_STATE_LOCATION,
-        state: body.state as Prisma.InputJsonValue,
+        state: { history: mergedHistory } as Prisma.InputJsonValue,
       },
     });
-    return { state: state.state, updatedAt: state.updatedAt };
+    return { state: { history: mergedHistory }, updatedAt: state.updatedAt };
   });
 
   app.put('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {

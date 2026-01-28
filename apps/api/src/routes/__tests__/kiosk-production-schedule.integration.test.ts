@@ -209,6 +209,31 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.total).toBe(0);
   });
 
+  it('searches when only resourceAssignedOnlyCds is specified (without query text)', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { createdAt: 'asc' }
+    });
+    const target = rows.find((r) => (r.rowData as any).ProductNo === '0000');
+    expect(target).toBeDefined();
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${target?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '1', orderNumber: 1 }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceAssignedOnlyCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
+  });
+
   it('reassigns order numbers within the same resourceCd on complete', async () => {
     const created = await prisma.csvDashboardRow.createMany({
       data: [
@@ -264,14 +289,23 @@ describe('Kiosk Production Schedule API', () => {
       headers: { 'x-client-key': CLIENT_KEY },
       payload: {
         state: {
-          inputQuery: 'A',
-          activeQueries: ['A'],
-          activeResourceCds: ['1'],
-          activeResourceAssignedOnlyCds: ['2']
+          history: ['A']
         }
       }
     });
     expect(putRes.statusCode).toBe(200);
+
+    const secondPut = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        state: {
+          history: ['B']
+        }
+      }
+    });
+    expect(secondPut.statusCode).toBe(200);
 
     const getRes = await app.inject({
       method: 'GET',
@@ -279,8 +313,9 @@ describe('Kiosk Production Schedule API', () => {
       headers: { 'x-client-key': CLIENT_KEY_2 }
     });
     expect(getRes.statusCode).toBe(200);
-    const body = getRes.json() as { state: { inputQuery?: string } };
-    expect(body.state?.inputQuery).toBe('A');
+    const body = getRes.json() as { state: { history?: string[]; inputQuery?: string } };
+    expect(body.state?.history).toEqual(['A', 'B']);
+    expect(body.state?.inputQuery).toBeUndefined();
   });
 
   it('paginates results in sorted order', async () => {

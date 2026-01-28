@@ -36,11 +36,13 @@ type NormalizedScheduleRow = {
 };
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
+const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
 
 export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
   const [activeQueries, setActiveQueries] = useState<string[]>([]);
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
+  const [hiddenHistory, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
   const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
   const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -60,10 +62,10 @@ export function ProductionSchedulePage() {
     return Array.from(unique);
   }, [activeQueries]);
 
-  const normalizedHistory = useMemo(() => {
+  const normalizeHistoryList = (items: string[]) => {
     const unique = new Set<string>();
     const next: string[] = [];
-    history
+    items
       .map((item) => item.trim())
       .filter((item) => item.length > 0)
       .forEach((item) => {
@@ -72,7 +74,14 @@ export function ProductionSchedulePage() {
         next.push(item);
       });
     return next.slice(0, 8);
-  }, [history]);
+  };
+
+  const normalizedHistory = useMemo(() => normalizeHistoryList(history), [history]);
+  const normalizedHiddenHistory = useMemo(() => normalizeHistoryList(hiddenHistory), [hiddenHistory]);
+  const visibleHistory = useMemo(
+    () => normalizedHistory.filter((item) => !normalizedHiddenHistory.includes(item)),
+    [normalizedHistory, normalizedHiddenHistory]
+  );
 
   const normalizedResourceCds = useMemo(() => {
     const unique = new Set<string>();
@@ -103,7 +112,7 @@ export function ProductionSchedulePage() {
     [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds]
   );
   // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
-  const hasQuery = normalizedActiveQueries.length > 0;
+  const hasQuery = normalizedActiveQueries.length > 0 || normalizedAssignedOnlyCds.length > 0;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
@@ -216,10 +225,8 @@ export function ProductionSchedulePage() {
     setInputQuery(trimmed);
     setActiveQueries(trimmed.length > 0 ? [trimmed] : []);
     if (trimmed.length > 0) {
-      setHistory((prev) => {
-        const next = [trimmed, ...prev.filter((p) => p !== trimmed)].slice(0, 8);
-        return next;
-      });
+      setHistory((prev) => normalizeHistoryList([trimmed, ...prev]));
+      setHiddenHistory((prev) => prev.filter((item) => item.trim() !== trimmed));
     }
   };
 
@@ -242,8 +249,8 @@ export function ProductionSchedulePage() {
   };
 
   const removeHistoryQuery = (value: string) => {
-    setHistory((prev) => prev.filter((item) => item !== value));
     setActiveQueries((prev) => prev.filter((item) => item !== value));
+    setHiddenHistory((prev) => normalizeHistoryList([...prev, value]));
     if (inputQuery === value) {
       setInputQuery('');
     }
@@ -301,10 +308,8 @@ export function ProductionSchedulePage() {
     }
 
     suppressSearchStateSyncRef.current = true;
-    setActiveQueries(incomingState.activeQueries ?? []);
-    setActiveResourceCds(incomingState.activeResourceCds ?? []);
-    setActiveResourceAssignedOnlyCds(incomingState.activeResourceAssignedOnlyCds ?? []);
-    setHistory(incomingState.history ?? []);
+    const incomingHistory = normalizeHistoryList(incomingState.history ?? []);
+    setHistory((prev) => normalizeHistoryList([...prev, ...incomingHistory]));
     searchStateUpdatedAtRef.current = updatedAt;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -324,9 +329,6 @@ export function ProductionSchedulePage() {
       searchStateMutation.mutate(
         {
           // 入力中の文字列は端末ごとに異なるため共有しない
-          activeQueries: normalizedActiveQueries,
-          activeResourceCds: normalizedResourceCds,
-          activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
           history: normalizedHistory
         },
         {
@@ -338,9 +340,6 @@ export function ProductionSchedulePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [
-    normalizedActiveQueries,
-    normalizedResourceCds,
-    normalizedAssignedOnlyCds,
     normalizedHistory,
     searchStateMutation
   ]);
@@ -430,7 +429,7 @@ export function ProductionSchedulePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {history.map((h) => {
+        {visibleHistory.map((h) => {
           const isActive = normalizedActiveQueries.includes(h);
           return (
             <div
