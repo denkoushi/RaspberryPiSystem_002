@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-01-28) **生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正完了**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた問題を修正。git履歴とドキュメントを確認して原因を特定し、フロントエンドを`search-state`エンドポイント使用に戻し、`activeQueries`（登録製番）を含む検索状態を端末間で共有できるように修正。資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有。デバッグログコードを削除。既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応。CI成功（全ジョブ成功）、デプロイ成功、実機検証完了（端末間共有が正常に動作）。ナレッジベースにKB-210を追加。詳細は [docs/knowledge-base/api.md#kb-210](./docs/knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
+- [x] (2026-01-28) **生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正・仕様確定・実機検証完了**: KB-209で実装された検索状態共有が`search-history`（端末別）に変更され端末間共有ができなくなっていた問題を修正。**仕様確定**: `search-state`は**history専用**で端末間共有（押下状態・資源フィルタは端末ローカル）。ローカルでの履歴削除は`hiddenHistory`（localStorage）で管理し共有historyに影響しない。APIは「割当済み資源CD」を製番未入力でも単独検索可とするよう調整。git履歴・ドキュメントで原因を特定し、APIは`search-state`の保存・返却を`history`のみに統一、フロントは`useKioskProductionScheduleSearchState`でhistoryを同期し`hiddenHistory`でローカル削除を管理。CI成功（全ジョブ成功）、デプロイ成功、実機検証完了（端末間で登録製番が共有され正常動作）。ナレッジベースにKB-210を追加・仕様確定を追記。詳細は [docs/knowledge-base/api.md#kb-210](./docs/knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
 
 - [x] (2026-01-23) **管理コンソールのサイネージプレビュー機能実装完了**: 管理コンソールに「サイネージプレビュー」タブを追加し、Pi3で表示中のサイネージ画像をプレビューできるように実装。30秒ごとの自動更新と手動更新ボタンを実装。最初は`fetch`で実装していたが、JWT認証ヘッダーが付与されず401エラーが発生。`axios(api)`クライアントに変更することで、JWT認証ヘッダーが自動付与され、正常に画像を取得・表示できるようになった。Blob取得と`URL.createObjectURL`による画像表示、メモリリーク防止のための`URL.revokeObjectURL`実装を完了。CI成功、デプロイ成功、実機検証完了。ナレッジベースにKB-192を追加。詳細は [docs/knowledge-base/frontend.md#kb-192](./docs/knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) / [docs/modules/signage/README.md](./docs/modules/signage/README.md) を参照。
 
@@ -614,6 +614,8 @@
   対応: Pi5上で直接Ansibleを実行する方法に切り替え（`ssh denkon5sd02@<Pi5のIP> "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-playbook ..."`）。または、`ansible_connection: local`を削除して通常のSSH接続を使用する方法もある。**[KB-176実機検証]**  
   エビデンス: `error: insufficient permission for adding an object to repository database`。`ls -la`で確認すると、`vault.yml`がroot:rootになっていた。  
   対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
+- 観測: 生産スケジュール検索状態共有の実装で、当初は「登録製番・資源フィルタも共有」としていたが、APIの保存・返却を**history専用**に統一し、ローカル削除を`hiddenHistory`で管理する仕様に確定した。実機検証ですべて正常動作を確認。  
+  対応: KB-210に仕様確定（history専用・割当済み資源CD単独検索可・hiddenHistoryでローカル削除）を追記。**[KB-210]**
 
 ## Decision Log
 
@@ -708,6 +710,9 @@
 - 決定: Dockerfileのランタイムステージでは、`apps/api`と`packages/shared-types`を丸ごとコピーし、`pnpm install --prod --recursive --frozen-lockfile`でワークスペース依存を解決する方式を採用する。  
   理由: ワークスペース依存を正しく解決するためには、ワークスペース全体の構造が必要。個別ファイルをコピーする方式では依存関係の解決が困難だったため。  
   日付/担当: 2025-11-23 / Dockerfile修正
+- 決定: 生産スケジュール検索状態の共有対象を**history（登録製番リスト）のみ**に限定する。押下状態・資源フィルタは端末ローカルで管理し、ローカルでの履歴削除は`hiddenHistory`（localStorage）で管理して共有historyに影響させない。また「割当済み資源CD」は製番未入力でも単独検索を許可する。  
+  理由: 端末間で意図しない上書きを防ぎつつ、登録製番の共有で運用要件を満たすため。割当済み資源CD単独検索は現場の利用パターンに対応するため。  
+  日付/担当: 2026-01-28 / KB-210 仕様確定・実機検証完了
 
 ## Outcomes & Retrospective
 
@@ -1354,3 +1359,4 @@
 変更履歴: 2026-01-18 — Pi5の不要ポート露出削減と `ports-unexpected` ノイズ低減（KB-177）を反映。Progress/Surprises/Next Stepsを更新。
 変更履歴: 2026-01-18 — ポート露出削減機能の実機検証完了を記録。デプロイ成功、Gmail/Dropbox設定維持確認、アラート新規発生なし確認を反映。Surprises & Discoveriesにデプロイ時のトラブルシューティングを追加。Next StepsのPort hardening候補を完了済みに更新。
 変更履歴: 2026-01-23 — CSVダッシュボードの列幅計算改善完了を記録。フォントサイズ反映・全行考慮・列名考慮の実装完了、仮説駆動デバッグ手法の確立、テスト追加を反映。ナレッジベースにKB-193を追加。Next StepsにCSVダッシュボード機能の改善候補を追加。
+変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
