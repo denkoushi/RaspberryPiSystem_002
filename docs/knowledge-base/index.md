@@ -31,7 +31,7 @@ update-frequency: high
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 10件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 18件 | その他のインフラ関連（ストレージ管理、macOS対応含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 19件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制含む） |
 
 ---
 
@@ -249,6 +249,7 @@ update-frequency: high
 | [KB-193](./infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果) | デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果 | ✅ 解決済み |
 | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) | デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 | ✅ 解決済み |
 | [KB-203](./infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) | 本番環境でのprisma db seed失敗と直接SQL更新 | ✅ 解決済み |
+| [KB-210](./infrastructure/miscellaneous.md#kb-210-pi3pi4でwi-fi認証ダイアログが時々表示される問題) | Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題 | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
