@@ -10,6 +10,7 @@ const COMPLETED_PROGRESS_VALUE = '完了';
 const ORDER_NUMBER_MIN = 1;
 const ORDER_NUMBER_MAX = 10;
 const DEFAULT_LOCATION = 'default';
+const SHARED_SEARCH_STATE_LOCATION = 'shared';
 
 const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
@@ -459,7 +460,19 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
-    const state = await prisma.kioskProductionScheduleSearchState.findUnique({
+    const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: SHARED_SEARCH_STATE_LOCATION,
+        },
+      },
+    });
+    if (sharedState) {
+      return { state: sharedState.state ?? null, updatedAt: sharedState.updatedAt ?? null };
+    }
+
+    const fallbackState = await prisma.kioskProductionScheduleSearchState.findUnique({
       where: {
         csvDashboardId_location: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -467,19 +480,22 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     });
-    return { state: state?.state ?? null, updatedAt: state?.updatedAt ?? null };
+    return { state: fallbackState?.state ?? null, updatedAt: fallbackState?.updatedAt ?? null };
   });
 
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:478',message:'search-state:put',data:{locationKey,sharedLocation:SHARED_SEARCH_STATE_LOCATION,historyCount:(body.state.history ?? []).length,activeQueries:body.state.activeQueries ?? []},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
 
     const state = await prisma.kioskProductionScheduleSearchState.upsert({
       where: {
         csvDashboardId_location: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          location: locationKey,
+          location: SHARED_SEARCH_STATE_LOCATION,
         },
       },
       update: {
@@ -487,11 +503,14 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
       create: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
+        location: SHARED_SEARCH_STATE_LOCATION,
         state: body.state as Prisma.InputJsonValue,
       },
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kiosk.ts:498',message:'search-state:put:stored',data:{locationKey,updatedAt:state.updatedAt,storedHistoryCount:((state.state as { history?: string[] })?.history ?? []).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
     return { state: state.state, updatedAt: state.updatedAt };
   });
 

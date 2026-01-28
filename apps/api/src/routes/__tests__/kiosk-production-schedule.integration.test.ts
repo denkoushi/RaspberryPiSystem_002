@@ -8,6 +8,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 const DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 const CLIENT_KEY = 'client-demo-key';
+const CLIENT_KEY_2 = 'client-demo-key-2';
 
 describe('Kiosk Production Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -39,6 +40,11 @@ describe('Kiosk Production Schedule API', () => {
       where: { apiKey: CLIENT_KEY },
       update: { name: 'Test Client', location: 'Test', defaultMode: 'TAG' },
       create: { apiKey: CLIENT_KEY, name: 'Test Client', location: 'Test', defaultMode: 'TAG' }
+    });
+    await prisma.clientDevice.upsert({
+      where: { apiKey: CLIENT_KEY_2 },
+      update: { name: 'Test Client 2', location: 'Other', defaultMode: 'TAG' },
+      create: { apiKey: CLIENT_KEY_2, name: 'Test Client 2', location: 'Other', defaultMode: 'TAG' }
     });
 
     await prisma.csvDashboard.create({
@@ -238,7 +244,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(row4Assignment?.orderNumber).toBe(3);
   });
 
-  it('stores and returns search state per location', async () => {
+  it('stores and returns shared search state across kiosks', async () => {
     const putRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/search-state',
@@ -257,7 +263,7 @@ describe('Kiosk Production Schedule API', () => {
     const getRes = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule/search-state',
-      headers: { 'x-client-key': CLIENT_KEY }
+      headers: { 'x-client-key': CLIENT_KEY_2 }
     });
     expect(getRes.statusCode).toBe(200);
     const body = getRes.json() as { state: { inputQuery?: string } };

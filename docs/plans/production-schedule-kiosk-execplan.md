@@ -86,6 +86,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
   - 詳細は [KB-186](../knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) を参照
 
 - [x] (2026-01-26) **生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。詳細は [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)、[KB-202](../knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示)、[KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) を参照。
+- [x] (2026-01-28) **検索状態の共有化**: 生産スケジュールの検索状態（製番・検索履歴・資源フィルタ）をキオスク間で共有するため、検索状態の保存先を共有キーに統一し、既存の端末別状態は初回取得時にフォールバックで読み込むように調整。
 
 ## Surprises & Discoveries
 
