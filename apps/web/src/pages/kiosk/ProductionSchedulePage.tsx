@@ -5,9 +5,9 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
-  useKioskProductionScheduleSearchHistory,
+  useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleOrder,
-  useUpdateKioskProductionScheduleSearchHistory
+  useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { Button } from '../../components/ui/Button';
@@ -108,8 +108,8 @@ export function ProductionSchedulePage() {
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const resourcesQuery = useKioskProductionScheduleResources();
-  const searchHistoryQuery = useKioskProductionScheduleSearchHistory();
-  const searchHistoryMutation = useUpdateKioskProductionScheduleSearchHistory();
+  const searchStateQuery = useKioskProductionScheduleSearchState();
+  const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -288,34 +288,31 @@ export function ProductionSchedulePage() {
   };
 
   useEffect(() => {
-    if (searchHistoryQuery.isSuccess) {
+    if (searchStateQuery.isSuccess) {
       hasLoadedSearchStateRef.current = true;
     }
-    const updatedAt = searchHistoryQuery.data?.updatedAt ?? null;
-    if (!updatedAt) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:295',message:'search-history:incoming:no-updatedAt',data:{hasData:!!searchHistoryQuery.data,historyCount:searchHistoryQuery.data?.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
-      return;
-    }
+    const updatedAt = searchStateQuery.data?.updatedAt ?? null;
+    const incomingState = searchStateQuery.data?.state ?? null;
+    if (!updatedAt || !incomingState) return;
 
     const lastUpdatedAt = searchStateUpdatedAtRef.current;
     if (lastUpdatedAt && new Date(updatedAt).getTime() <= new Date(lastUpdatedAt).getTime()) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:298',message:'search-history:incoming:skipped',data:{updatedAt,lastUpdatedAt,updatedAtTime:new Date(updatedAt).getTime(),lastUpdatedAtTime:new Date(lastUpdatedAt).getTime(),historyCount:searchHistoryQuery.data?.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     suppressSearchStateSyncRef.current = true;
-    // 検索実行は端末ローカルで管理し、共有状態は検索履歴のみ反映する
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:302',message:'search-history:incoming',data:{updatedAt,historyCount:searchHistoryQuery.data?.history?.length ?? 0,historySample:searchHistoryQuery.data?.history?.slice(0,2) ?? []},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
-    setHistory(searchHistoryQuery.data?.history ?? []);
+    setActiveQueries(incomingState.activeQueries ?? []);
+    setActiveResourceCds(incomingState.activeResourceCds ?? []);
+    setActiveResourceAssignedOnlyCds(incomingState.activeResourceAssignedOnlyCds ?? []);
+    setHistory(incomingState.history ?? []);
     searchStateUpdatedAtRef.current = updatedAt;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchHistoryQuery.data?.history, searchHistoryQuery.data?.updatedAt, searchHistoryQuery.isSuccess, setHistory]);
+  }, [
+    searchStateQuery.data?.state,
+    searchStateQuery.data?.updatedAt,
+    searchStateQuery.isSuccess,
+    setHistory
+  ]);
 
   useEffect(() => {
     if (!hasLoadedSearchStateRef.current) return;
@@ -323,17 +320,17 @@ export function ProductionSchedulePage() {
       suppressSearchStateSyncRef.current = false;
       return;
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:312',message:'search-history:outgoing:scheduled',data:{hasLoaded:hasLoadedSearchStateRef.current,historyCount:normalizedHistory.length,historySample:normalizedHistory.slice(0,2)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     const timer = setTimeout(() => {
-      searchHistoryMutation.mutate(
-        normalizedHistory,
+      searchStateMutation.mutate(
+        {
+          // 入力中の文字列は端末ごとに異なるため共有しない
+          activeQueries: normalizedActiveQueries,
+          activeResourceCds: normalizedResourceCds,
+          activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
+          history: normalizedHistory
+        },
         {
           onSuccess: (data) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:319',message:'search-history:outgoing:success',data:{updatedAt:data.updatedAt,historyCount:data.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-            // #endregion
             searchStateUpdatedAtRef.current = data.updatedAt;
           }
         }
@@ -341,8 +338,11 @@ export function ProductionSchedulePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [
+    normalizedActiveQueries,
+    normalizedResourceCds,
+    normalizedAssignedOnlyCds,
     normalizedHistory,
-    searchHistoryMutation
+    searchStateMutation
   ]);
   const openKeyboard = () => {
     setKeyboardValue(inputQuery);
