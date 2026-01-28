@@ -10,6 +10,9 @@ export CHROME_WRAPPER=/usr/bin/chromium-browser
 # キーリングを無効化（パスワードダイアログを表示しない）
 export GNOME_KEYRING_CONTROL=""
 export SSH_AUTH_SOCK=""
+# NetworkManagerの認証ダイアログを抑制
+export NM_CLI_NO_TERSE=1
+export NM_CLI_NO_ASK_PASSWORD=1
 
 CHROMIUM_FLAGS=(
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化

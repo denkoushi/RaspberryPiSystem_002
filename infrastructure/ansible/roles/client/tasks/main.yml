@@ -118,3 +118,6 @@
   retries: 3
   delay: 5
   until: client_service_health.rc == 0
+
+- name: Configure NetworkManager to prevent WiFi password dialogs
+  ansible.builtin.import_tasks: network.yml
