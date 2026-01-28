@@ -843,4 +843,65 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 ---
 
+## KB-210: Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題
+
+**発生日**: 2026-01-28
+
+**事象**:
+- Pi3やPi4で時々「Wi-Fiネットワークの認証が必要です」というダイアログが表示される
+- ユーザーが「スクリーンショットのポップアップ」と認識していたが、実際にはWi-Fi認証ダイアログ
+- 特定のWi-Fiネットワーク（例: `TP-Link_D2EC_5G_EXT`）への接続時にパスワード入力が求められる
+
+**症状**:
+- キオスク画面の上にWi-Fi認証ダイアログが表示される
+- パスワード入力フィールドと「接続」「取り消し」ボタンが表示される
+- ダイアログが表示されると、キオスク画面が操作できなくなる
+
+**調査過程**:
+1. **仮説1**: Chromiumブラウザの設定問題 → REJECTED（`GTK_USE_PORTAL=0`や`GNOME_KEYRING_CONTROL=""`は既に設定済み）
+2. **仮説2**: NetworkManagerの自動接続設定 → CONFIRMED（保存済みのWi-Fiネットワークへの自動接続時に認証情報が不足）
+3. **仮説3**: Wi-Fiパスワードが変更された → CONFIRMED（パスワード変更後、保存済みの認証情報が無効になっている可能性）
+
+**根本原因**:
+- NetworkManagerが保存済みのWi-Fiネットワークに自動接続を試みるが、認証情報が不足または無効
+- キオスクブラウザの環境変数設定だけでは、NetworkManagerの認証ダイアログを抑制できない
+- NetworkManagerの設定で、不要なネットワークへの自動接続が有効になっている
+
+**解決方法**:
+1. **NetworkManager設定の追加**（`infrastructure/ansible/roles/client/tasks/network.yml`）:
+   - すべてのWi-Fi接続の自動接続を無効化（`connection.autoconnect no`）
+   - NetworkManager.confに`no-auto-default=*`を追加（新しいネットワークへの自動接続を無効化）
+   - NetworkManager.confに`auth-polkit=false`を追加（認証ダイアログを抑制）
+
+2. **キオスクブラウザの環境変数追加**:
+   - `kiosk-launch.sh.j2`と`kiosk-browser.service.j2`に以下を追加:
+     - `NM_CLI_NO_TERSE=1`
+     - `NM_CLI_NO_ASK_PASSWORD=1`
+
+3. **必要なWi-Fiネットワークの事前設定**:
+   - 使用するWi-Fiネットワークのパスワードを事前に設定し、自動接続を有効化
+   - 不要なWi-Fiネットワークは「忘れる」設定を行う
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/client/tasks/network.yml`（新規作成、NetworkManager設定）
+- `infrastructure/ansible/roles/client/tasks/main.yml`（network.ymlのインポート追加）
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`（環境変数追加）
+- `infrastructure/ansible/templates/kiosk-browser.service.j2`（環境変数追加）
+
+**再発防止策**:
+- Ansibleデプロイ時に自動的にNetworkManager設定を適用
+- 不要なWi-Fiネットワークへの自動接続を無効化
+- 必要なWi-Fiネットワークのみを事前に設定し、パスワードを保存
+- キオスクブラウザの環境変数でNetworkManagerの認証ダイアログを抑制
+
+**運用上の注意**:
+- 新しいWi-Fiネットワークを使用する場合は、事前に`nmcli`コマンドで接続設定を行う
+- パスワードが変更された場合は、NetworkManagerの接続設定を更新する必要がある
+- ダイアログが表示された場合は、「取り消し」を選択して、必要なネットワークのみを手動で設定する
+
+**関連ナレッジ**:
+- KB-158: Macのstatus-agent未設定問題とmacOS対応
+
 ---
