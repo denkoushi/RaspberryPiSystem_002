@@ -1,0 +1,11 @@
+=== セキュリティ評価 実機検証開始 ===
+実施日時: 2026年  1月 28日 水曜日 21:20:36 JST
+証跡保存先: /opt/RaspberryPiSystem_002/docs/security/evidence
+
+1. ポート露出の確認...
+✅ ポート状態を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2120_prod_ports_status.txt
+
+2. fail2ban監視の確認...
+✅ fail2ban検証結果を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2120_prod_ops_fail2ban.txt
+
+3. security-monitor / マルウェアスキャンの確認...

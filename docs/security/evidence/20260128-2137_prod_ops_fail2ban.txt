@@ -1,0 +1,47 @@
+=== fail2ban監視確認 ===
+実施日時: 2026年  1月 28日 水曜日 21:37:54 JST
+
+--- fail2ban status ---
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed:	0
+|  |- Total failed:	13
+|  `- Journal matches:	_SYSTEMD_UNIT=ssh.service + _COMM=sshd
+`- Actions
+   |- Currently banned:	0
+   |- Total banned:	3
+   `- Banned IP list:	
+
+--- fail2ban log (最新20行) ---
+2026-01-25 00:53:58,489 fail2ban.server         [1027]: INFO    rollover performed on /var/log/fail2ban.log
+2026-01-28 21:20:37,096 fail2ban.actions        [1027]: NOTICE  [sshd] Ban 203.0.113.50
+2026-01-28 21:20:47,531 fail2ban.actions        [1027]: NOTICE  [sshd] Unban 203.0.113.50
+2026-01-28 21:32:38,648 fail2ban.actions        [1027]: NOTICE  [sshd] Ban 203.0.113.50
+2026-01-28 21:32:48,793 fail2ban.actions        [1027]: NOTICE  [sshd] Unban 203.0.113.50
+
+--- Ban IP設定: 203.0.113.50 ---
+1
+
+--- 15分待機中（security-monitor.timerの実行間隔） ---
+注意: 実際の検証では15分待機が必要ですが、ここでは短縮版として10秒待機します
+
+--- alerts/ ディレクトリ確認 ---
+合計 4952
+-rw-r--r-- 1 root        root         289  1月 28 21:32 alert-20260128-213248.json
+-rw-r--r-- 1 root        root         609  1月 28 21:32 alert-20260128-213213.json
+-rw-r--r-- 1 root        root        3827  1月 28 21:30 alert-20260128-213033.json
+-rw-r--r-- 1 root        root         289  1月 28 21:20 alert-20260128-212047.json
+alerts/ ディレクトリが見つかりません
+
+--- 最新のアラートファイル ---
+{
+  "id": "20260128-213248",
+  "type": "fail2ban-ban",
+  "message": "fail2banがIP 203.0.113.50 を遮断しました",
+  "details": "2026-01-28 21:32:38,648 fail2ban.actions        [1027]: NOTICE  [sshd] Ban 203.0.113.50",
+  "timestamp": "2026-01-28T12:32:48Z",
+  "acknowledged": false
+}
+
+--- Ban解除: 203.0.113.50 ---
+1

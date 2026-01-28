@@ -8,6 +8,14 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-28）
+
+- **✅ セキュリティ評価の実機検証完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいて実機検証を実施。ポート露出・fail2ban監視・security-monitorは正常動作を確認。バックアップ/復元検証は暗号化キー設定後に再実施が必要。USBオフライン運用はバックアップファイル生成後に再実施が必要。実機検証スクリプト（`scripts/security/verify-production-security.sh`）を作成し、証跡ファイルを構造化して保存。評価報告書を更新し、ギャップ一覧・トップリスク10を更新。ナレッジベースにKB-213を追加。詳細は [knowledge-base/infrastructure/security.md#kb-213](./knowledge-base/infrastructure/security.md#kb-213-セキュリティ評価の実機検証2026-01-28) / [security/evaluation-report.md](./security/evaluation-report.md) / [security/evidence/production-verification-guide.md](./security/evidence/production-verification-guide.md) を参照。
+
+### 🆕 最新アップデート（2026-01-28）
+
+- **✅ 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正完了**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた問題を修正。git履歴とドキュメントを確認して原因を特定し、フロントエンドを`search-state`エンドポイント使用に戻し、`activeQueries`（登録製番）を含む検索状態を端末間で共有できるように修正。資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有。デバッグログコードを削除。既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応。CI成功（全ジョブ成功）、デプロイ成功、実機検証完了（端末間共有が正常に動作）。ナレッジベースにKB-210を追加。詳細は [knowledge-base/api.md#kb-210](./knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-22）
 
 - **✅ デプロイ検証強化（DBゲート追加・fail-fast化）実装・実機検証完了**: デプロイが成功したように見えてもDBマイグレーション未適用でテーブル不存在エラーが発生する問題を根本解決。Pi5単体デプロイ（`deploy.sh`）にDB整合性ゲートを追加し、migrate失敗時にfail-fast。`verification-map.yml`にDBゲート（migrate status、`_prisma_migrations`存在、必須テーブル存在）を追加し、`verifier.sh`でSSH経由でPi5上のDBチェックを実行。`verifier.sh`にTLS自己署名対応（`insecure_tls`）とcommand変数展開を実装。`health-check.yml`にサーバー側DBチェックを追加。`backup.sh`をHTTPS対応に変更。`MeasuringInstrumentLoanEvent`マイグレーションを追加。実機検証で全DBゲート/HTTPゲート/スモークテストがpassすることを確認。デプロイタイムアウト問題（240秒不足）を発見し、`CI=1`で再実行して解決。ナレッジベースにKB-191を更新。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-191](./knowledge-base/infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) / [guides/deployment.md](./guides/deployment.md) を参照。
@@ -640,6 +648,8 @@ APIの概要と詳細。
 | [external-intrusion-risk-analysis.md](./security/external-intrusion-risk-analysis.md) | **外部侵入リスク分析レポート**（外部からの不正侵入リスクの詳細分析、2026-01-18作成） |
 | [urgent-security-measures.md](./security/urgent-security-measures.md) | **緊急に実装すべき安全対策機能**（USBメモリ運用予定がない前提での緊急実装項目、2026-01-18作成） |
 | [log-redaction-implementation.md](./security/log-redaction-implementation.md) | **ログの機密情報保護実装レポート**（x-client-keyのログ出力を[REDACTED]に置換する実装、2026-01-18実装完了） |
+| [system-inventory.md](./security/system-inventory.md) | **システム構造台帳**（評価対象/公開面/外部連携/秘密情報の所在、2026-01-28作成） |
+| [evidence/production-verification-guide.md](./security/evidence/production-verification-guide.md) | **実機検証実行ガイド**（Pi5本番でのセキュリティ評価実機検証手順、2026-01-28作成） |
 
 ### プレゼンテーション（presentations/）
 

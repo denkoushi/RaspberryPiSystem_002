@@ -1,0 +1,261 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.api
+#1 transferring dockerfile: 1.85kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 ...
+
+#3 [auth] docker/dockerfile:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 3.1s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/node:20-bookworm-slim
+#5 ...
+
+#6 [auth] library/node:pull token for registry-1.docker.io
+#6 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/node:20-bookworm-slim
+#5 DONE 2.3s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 2B 0.0s done
+#7 DONE 0.0s
+
+#8 [base  1/13] FROM docker.io/library/node:20-bookworm-slim@sha256:6c51af7dc83f4708aaac35991306bca8f478351cfd2bda35750a62d7efcf05bb
+#8 DONE 0.0s
+
+#9 [internal] load build context
+#9 transferring context: 6.60MB 0.3s done
+#9 DONE 0.3s
+
+#10 [base  2/13] WORKDIR /app
+#10 CACHED
+
+#11 [base  3/13] RUN apt-get update   && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible   && rm -rf /var/lib/apt/lists/*
+#11 CACHED
+
+#12 [base  4/13] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+#12 DONE 0.0s
+
+#13 [base  5/13] COPY apps ./apps
+#13 DONE 0.1s
+
+#14 [base  6/13] COPY packages ./packages
+#14 DONE 0.0s
+
+#15 [base  7/13] COPY scripts ./scripts
+#15 DONE 0.0s
+
+#16 [base  8/13] RUN corepack enable && pnpm install
+#16 0.261 ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.15.9.tgz
+#16 2.581 Scope: all 4 workspace projects
+#16 2.623 Lockfile is up to date, resolution step is skipped
+#16 2.657 Progress: resolved 1, reused 0, downloaded 0, added 0
+#16 2.739 Packages: +709
+#16 2.739 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#16 3.466 
+#16 3.466    ╭───────────────────────────────────────────────────────────────────╮
+#16 3.466    │                                                                   │
+#16 3.466    │                Update available! 9.15.9 → 10.28.2.                │
+#16 3.466    │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v10.28.2   │
+#16 3.466    │            Run "corepack use pnpm@10.28.2" to update.             │
+#16 3.466    │                                                                   │
+#16 3.466    ╰───────────────────────────────────────────────────────────────────╯
+#16 3.466 
+#16 3.658 Progress: resolved 709, reused 0, downloaded 11, added 11
+#16 4.660 Progress: resolved 709, reused 0, downloaded 40, added 40
+#16 5.661 Progress: resolved 709, reused 0, downloaded 70, added 70
+#16 6.665 Progress: resolved 709, reused 0, downloaded 95, added 95
+#16 7.666 Progress: resolved 709, reused 0, downloaded 131, added 131
+#16 8.667 Progress: resolved 709, reused 0, downloaded 150, added 150
+#16 9.667 Progress: resolved 709, reused 0, downloaded 191, added 191
+#16 10.67 Progress: resolved 709, reused 0, downloaded 200, added 200
+#16 11.67 Progress: resolved 709, reused 0, downloaded 219, added 219
+#16 12.67 Progress: resolved 709, reused 0, downloaded 239, added 239
+#16 13.67 Progress: resolved 709, reused 0, downloaded 259, added 259
+#16 14.67 Progress: resolved 709, reused 0, downloaded 294, added 293
+#16 15.67 Progress: resolved 709, reused 0, downloaded 328, added 328
+#16 16.67 Progress: resolved 709, reused 0, downloaded 371, added 371
+#16 17.67 Progress: resolved 709, reused 0, downloaded 404, added 404
+#16 18.67 Progress: resolved 709, reused 0, downloaded 443, added 444
+#16 19.68 Progress: resolved 709, reused 0, downloaded 456, added 458
+#16 20.68 Progress: resolved 709, reused 0, downloaded 466, added 468
+#16 21.68 Progress: resolved 709, reused 0, downloaded 477, added 480
+#16 22.68 Progress: resolved 709, reused 0, downloaded 500, added 503
+#16 23.68 Progress: resolved 709, reused 0, downloaded 515, added 518
+#16 24.68 Progress: resolved 709, reused 0, downloaded 533, added 536
+#16 25.68 Progress: resolved 709, reused 0, downloaded 542, added 545
+#16 26.68 Progress: resolved 709, reused 0, downloaded 557, added 560
+#16 27.68 Progress: resolved 709, reused 0, downloaded 579, added 582
+#16 28.68 Progress: resolved 709, reused 0, downloaded 593, added 596
+#16 29.68 Progress: resolved 709, reused 0, downloaded 617, added 620
+#16 30.69 Progress: resolved 709, reused 0, downloaded 629, added 632
+#16 31.69 Progress: resolved 709, reused 0, downloaded 655, added 658
+#16 32.69 Progress: resolved 709, reused 0, downloaded 687, added 690
+#16 33.69 Progress: resolved 709, reused 0, downloaded 703, added 706
+#16 34.69 Progress: resolved 709, reused 0, downloaded 704, added 707
+#16 35.70 Progress: resolved 709, reused 0, downloaded 705, added 708
+#16 42.04 Progress: resolved 709, reused 0, downloaded 706, added 708
+#16 42.08 Progress: resolved 709, reused 0, downloaded 706, added 709, done
+#16 42.24 .../node_modules/@prisma/engines postinstall$ node scripts/postinstall.js
+#16 42.25 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#16 42.25 .../esbuild@0.21.5/node_modules/esbuild postinstall$ node install.js
+#16 42.25 .../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+#16 42.28 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#16 42.29 .../esbuild@0.21.5/node_modules/esbuild postinstall: Done
+#16 42.30 .../sharp@0.34.5/node_modules/sharp install: Done
+#16 48.89 .../node_modules/@prisma/engines postinstall: Done
+#16 48.95 .../prisma@5.22.0/node_modules/prisma preinstall$ node scripts/preinstall-entry.js
+#16 48.97 .../prisma@5.22.0/node_modules/prisma preinstall: Done
+#16 49.01 .../node_modules/@prisma/client postinstall$ node scripts/postinstall.js
+#16 49.24 .../node_modules/@prisma/client postinstall: prisma:warn We could not find your Prisma schema in the default locations (see: https://pris.ly/d/prisma-schema-location).
+#16 49.24 .../node_modules/@prisma/client postinstall: If you have a Prisma schema file in a custom path, you will need to run
+#16 49.24 .../node_modules/@prisma/client postinstall: `prisma generate --schema=./path/to/your/schema.prisma` to generate Prisma Client.
+#16 49.24 .../node_modules/@prisma/client postinstall: If you do not have a Prisma schema file yet, you can ignore this message.
+#16 49.25 .../node_modules/@prisma/client postinstall: Done
+#16 49.37 
+#16 49.37 dependencies:
+#16 49.37 + node-cron 3.0.3
+#16 49.37 
+#16 49.37 devDependencies:
+#16 49.37 + @playwright/test 1.56.1
+#16 49.37 + husky 9.1.7
+#16 49.37 + playwright 1.56.1
+#16 49.37 
+#16 49.37 . prepare$ husky install || true
+#16 49.39 . prepare: husky - install command is DEPRECATED
+#16 49.40 . prepare: .git can't be found
+#16 49.40 . prepare: Done
+#16 49.41 Done in 47.1s using pnpm v9.15.9
+#16 DONE 49.7s
+
+#17 [base  9/13] WORKDIR /app/packages/shared-types
+#17 DONE 0.0s
+
+#18 [base 10/13] RUN pnpm build
+#18 0.258 
+#18 0.258 > @raspi-system/shared-types@0.1.0 build /app/packages/shared-types
+#18 0.258 > tsc
+#18 0.258 
+#18 DONE 0.6s
+
+#19 [base 11/13] WORKDIR /app/apps/api
+#19 DONE 0.2s
+
+#20 [base 12/13] RUN pnpm prisma generate
+#20 0.514 Environment variables loaded from .env
+#20 0.515 Prisma schema loaded from prisma/schema.prisma
+#20 1.006 
+#20 1.006 ✔ Generated Prisma Client (v5.22.0) to ./../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client in 194ms
+#20 1.006 
+#20 1.006 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#20 1.006 
+#20 1.006 Help us improve the Prisma ORM for everyone. Share your feedback in a short 2-min survey: https://pris.ly/orm/survey/release-5-22
+#20 1.006 
+#20 DONE 1.2s
+
+#21 [base 13/13] RUN pnpm run build
+#21 0.268 
+#21 0.268 > @raspi-system/api@0.1.0 build /app/apps/api
+#21 0.268 > tsc -p tsconfig.build.json
+#21 0.268 
+#21 DONE 7.5s
+
+#22 [api  4/14] COPY --from=base /app/package.json ./package.json
+#22 CACHED
+
+#23 [api  5/14] COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
+#23 DONE 0.0s
+
+#24 [api  6/14] COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+#24 DONE 0.0s
+
+#25 [api  7/14] COPY --from=base /app/apps/api ./apps/api
+#25 DONE 0.1s
+
+#26 [api  8/14] COPY --from=base /app/packages/shared-types ./packages/shared-types
+#26 DONE 0.0s
+
+#27 [api  9/14] COPY --from=base /app/scripts ./scripts
+#27 DONE 0.0s
+
+#28 [api 10/14] WORKDIR /app
+#28 DONE 0.0s
+
+#29 [api 11/14] RUN corepack enable   && pnpm install --prod --recursive --frozen-lockfile
+#29 0.140 ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.15.9.tgz
+#29 2.431 Scope: all 3 workspace projects
+#29 2.473 Lockfile is up to date, resolution step is skipped
+#29 2.485 Progress: resolved 1, reused 0, downloaded 0, added 0
+#29 2.519 .                                        | +214 +++++++++++++++++++++
+#29 3.319 
+#29 3.319    ╭───────────────────────────────────────────────────────────────────╮
+#29 3.319    │                                                                   │
+#29 3.319    │                Update available! 9.15.9 → 10.28.2.                │
+#29 3.319    │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v10.28.2   │
+#29 3.319    │            Run "corepack use pnpm@10.28.2" to update.             │
+#29 3.319    │                                                                   │
+#29 3.319    ╰───────────────────────────────────────────────────────────────────╯
+#29 3.319 
+#29 3.491 Progress: resolved 214, reused 0, downloaded 24, added 24
+#29 4.493 Progress: resolved 214, reused 0, downloaded 56, added 56
+#29 5.495 Progress: resolved 214, reused 0, downloaded 83, added 83
+#29 6.495 Progress: resolved 214, reused 0, downloaded 121, added 121
+#29 7.498 Progress: resolved 214, reused 0, downloaded 141, added 141
+#29 8.499 Progress: resolved 214, reused 0, downloaded 185, added 185
+#29 9.500 Progress: resolved 214, reused 0, downloaded 204, added 204
+#29 10.50 Progress: resolved 214, reused 0, downloaded 211, added 211
+#29 19.16 Progress: resolved 214, reused 0, downloaded 212, added 211
+#29 20.16 Progress: resolved 214, reused 0, downloaded 213, added 213
+#29 21.43 Progress: resolved 214, reused 0, downloaded 214, added 213
+#29 21.47 Progress: resolved 214, reused 0, downloaded 214, added 214, done
+#29 21.52 .../node_modules/@prisma/engines postinstall$ node scripts/postinstall.js
+#29 21.52 .../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+#29 21.55 .../sharp@0.34.5/node_modules/sharp install: Done
+#29 27.08 .../node_modules/@prisma/engines postinstall: Done
+#29 27.14 .../prisma@5.22.0/node_modules/prisma preinstall$ node scripts/preinstall-entry.js
+#29 27.17 .../prisma@5.22.0/node_modules/prisma preinstall: Done
+#29 27.20 .../node_modules/@prisma/client postinstall$ node scripts/postinstall.js
+#29 27.44 .../node_modules/@prisma/client postinstall: prisma:warn We could not find your Prisma schema in the default locations (see: https://pris.ly/d/prisma-schema-location).
+#29 27.44 .../node_modules/@prisma/client postinstall: If you have a Prisma schema file in a custom path, you will need to run
+#29 27.44 .../node_modules/@prisma/client postinstall: `prisma generate --schema=./path/to/your/schema.prisma` to generate Prisma Client.
+#29 27.44 .../node_modules/@prisma/client postinstall: If you do not have a Prisma schema file yet, you can ignore this message.
+#29 27.45 .../node_modules/@prisma/client postinstall: Done
+#29 27.53 . prepare$ husky install || true
+#29 27.53 . prepare: sh: 1: husky: not found
+#29 27.53 . prepare: Done
+#29 27.55 Done in 25.3s using pnpm v9.15.9
+#29 DONE 27.9s
+
+#30 [api 12/14] WORKDIR /app/apps/api
+#30 DONE 0.0s
+
+#31 [api 13/14] RUN pnpm prisma generate
+#31 0.478 Environment variables loaded from .env
+#31 0.480 Prisma schema loaded from prisma/schema.prisma
+#31 0.878 
+#31 0.878 ✔ Generated Prisma Client (v5.22.0) to ./../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client in 153ms
+#31 0.878 
+#31 0.878 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#31 0.878 
+#31 0.878 Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+#31 0.878 
+#31 DONE 1.1s
+
+#32 [api 14/14] RUN mkdir -p /app/storage/photos   /app/storage/thumbnails   /app/storage/pdfs   /app/storage/pdf-pages   /app/storage/signage-rendered   && rm -rf /usr/local/lib/node_modules/npm   && rm -rf /root/.cache/node/corepack
+#32 DONE 0.5s
+
+#33 exporting to image
+#33 exporting layers
+#33 exporting layers 1.0s done
+#33 writing image sha256:bba47e0e9e934d70045d8281c9cc94b765ba3c8ea13b9e1eabc46d99faa2ead9 done
+#33 naming to docker.io/library/raspisys-api:security-eval done
+#33 DONE 1.0s

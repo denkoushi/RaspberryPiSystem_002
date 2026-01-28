@@ -86,8 +86,9 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
   - 詳細は [KB-186](../knowledge-base/api.md#kb-186-csvimportsubjectpatternモデル追加による設計統一マスターデータインポートの件名パターンdb化) を参照
 
 - [x] (2026-01-26) **生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。詳細は [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)、[KB-202](../knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示)、[KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) を参照。
-- [x] (2026-01-28) **検索状態の共有化**: 生産スケジュールの検索状態（製番・検索履歴・資源フィルタ）をキオスク間で共有するため、検索状態の保存先を共有キーに統一し、既存の端末別状態は初回取得時にフォールバックで読み込むように調整。
-- [x] (2026-01-28) **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決。実機検証で正常に動作することを確認。
+- [x] (2026-01-28) **検索状態の共有化**: 生産スケジュールの検索状態（製番・検索履歴・資源フィルタ）をキオスク間で共有するため、検索状態の保存先を共有キーに統一し、既存の端末別状態は初回取得時にフォールバックで読み込むように調整。詳細は [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化) を参照。
+- [x] (2026-01-28) **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決。実機検証で正常に動作することを確認。詳細は [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) を参照。
+- [x] (2026-01-28) **検索登録製番の端末間共有ができなくなっていた問題の修正**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた問題を修正。フロントエンドを`search-state`エンドポイント使用に戻し、`activeQueries`（登録製番）を含む検索状態を端末間で共有できるように修正。git履歴とドキュメントを確認して原因を特定し、最小変更で対応。CI成功、デプロイ成功、実機検証完了。詳細は [KB-210](../knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) を参照。
 
 ## Surprises & Discoveries
 
@@ -195,6 +196,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 **対策**: 検索状態の保存先を共有キー（`'shared'`）に統一し、全キオスク間で検索状態を共有できるように変更。既存の端末別状態は初回取得時にフォールバックで読み込むことで、後方互換性を維持。
 
+**関連KB**: [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化)
+
 **実装の詳細**:
 - `SHARED_SEARCH_STATE_LOCATION = 'shared'`定数を追加
 - `GET /kiosk/production-schedule/search-state`: 共有状態を優先取得、存在しない場合は端末別状態をフォールバック
@@ -236,6 +239,46 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 **関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
 
 **詳細**: [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側)
+
+### 検索登録製番の端末間共有ができなくなっていた問題の修正
+
+**発見**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた。検索登録された製番が端末間で共有されない状態になっていた。
+
+**原因**: 
+- フロントエンド（`ProductionSchedulePage.tsx`）が`useKioskProductionScheduleSearchHistory`を使用し、`search-history`エンドポイント（端末別、`locationKey`）を使用していた
+- `search-history`エンドポイントは端末別で保存するため、端末間で共有されない
+- `activeQueries`（登録製番）が共有対象に含まれていなかった
+
+**調査結果**:
+- git履歴を確認: `6f44e48 fix: share search history only by location` などで変更が行われていた
+- 以前のフェーズでは`search-state`エンドポイント（共有キー`'shared'`）を使用していた
+- ドキュメント（`docs/plans/production-schedule-kiosk-execplan.md`）に以前の共有実装の記録が残っていた
+
+**対策**:
+- ✅ フロントエンドを`search-state`エンドポイント使用に戻し、`useKioskProductionScheduleSearchState`を使用
+- ✅ 共有対象に`activeQueries`（登録製番）を追加
+- ✅ 資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有
+- ✅ デバッグログコードを削除
+- ✅ API側の未使用変数`locationKey`を削除（lintエラー修正）
+
+**実装の詳細**:
+- 既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応
+- `activeQueries`、`activeResourceCds`、`activeResourceAssignedOnlyCds`、`history`を共有状態として同期
+- `inputQuery`（入力中の文字列）は端末ごとに異なるため共有しない
+
+**学んだこと**:
+- 回帰の原因特定: git履歴とドキュメントを確認することで、以前の実装を把握し、回帰の原因を特定できる。ExecPlanに以前の実装記録が残っていたため、原因特定が容易だった
+- 最小変更の原則: 既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応できる
+- エンドポイントの使い分け: `search-state`（共有）と`search-history`（端末別）の使い分けを明確にし、共有が必要な場合は`search-state`を使用する
+
+**実機検証結果（2026-01-28）**: ✅ 複数キオスク間での検索状態共有が正常に動作することを確認
+- 検索登録された製番が端末間で共有される
+- 資源フィルタも端末間で共有される
+- 検索履歴も端末間で共有される
+
+**関連ファイル**: `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`, `apps/api/src/routes/kiosk.ts`
+
+**詳細**: [KB-210](../knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正)
 
 ## Decision Log
 
@@ -440,6 +483,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - ✅ **ID自動生成機能**: CSVダッシュボード選択時にスケジュールIDと名前を自動生成し、ユーザー入力の手間を削減
 - ✅ **NoMatchingMessageErrorハンドリング**: メールがない場合でもエラーにならず、正常に完了するように改善
 - ✅ **ApiError statusCode尊重**: CSVインポート実行エンドポイントでApiErrorのstatusCodeを尊重し、適切なHTTPステータスコード（400/500）を返すように改善
+- ✅ **検索登録製番の端末間共有修正**: 回帰していた端末間共有機能を修正し、検索登録された製番が端末間で共有されるように改善
 
 ### 学んだこと
 
@@ -451,6 +495,10 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 6. **エラーハンドリングの粒度**: メールがないことは「エラー」ではなく「スキップ可能な状態」として扱うことで、UXが向上
 7. **シェル実行の安全性**: `exec(string)`はシェルエスケープが複雑になるため、`execFile`で引数配列を渡す方が安全
 8. **エラーハンドリングの階層**: `ApiError`の`statusCode`を尊重することで、適切なHTTPステータスコードを返せる。クライアント側の問題（400）とサーバー側の問題（500）を適切に区別することで、デバッグが容易になる
+9. **回帰の原因特定**: git履歴とドキュメントを確認することで、以前の実装を把握し、回帰の原因を特定できる。ExecPlanに以前の実装記録が残っていたため、原因特定が容易だった（KB-210）
+10. **最小変更の原則**: 既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応できる（KB-210）
+11. **エンドポイントの使い分け**: `search-state`（共有）と`search-history`（端末別）の使い分けを明確にし、共有が必要な場合は`search-state`を使用する。エンドポイントの設計意図を理解し、適切に使い分けることが重要（KB-210）
+12. **デバッグログコードの削除**: 開発中のデバッグログコード（`127.0.0.1:7242`への送信など）は本番環境に残さない。定期的にコードレビューを行い、不要なデバッグコードを削除する（KB-210）
 
 ### 今後の改善点
 

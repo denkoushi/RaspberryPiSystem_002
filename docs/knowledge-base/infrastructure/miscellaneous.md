@@ -969,3 +969,177 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 - KB-210: Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題
 
 ---
+
+## KB-212: Cursorチャットログの安全な削除手順（1週間より前のログ削除）
+
+**発生日**: 2026-01-28
+
+**事象**: 
+- Cursorのチャットログが約27GBと非常に大きくなり、ストレージを圧迫している
+- 1週間より前のチャットログを削除したい
+
+**要因**: 
+- Cursorは全てのチャット履歴をローカルのSQLiteデータベース（`state.vscdb`）に保存している
+- 自動削除機能がないため、手動でクリーンアップする必要がある
+- データベース内のJSONデータに直接的なタイムスタンプが含まれていない
+
+**調査過程**:
+1. **データベース構造の確認**: チャットログは`cursorDiskKV`テーブルに`bubbleId:`キーで保存されていることを確認
+2. **データ内容の確認**: JSONデータにタイムスタンプが直接含まれていないことを確認
+3. **保存場所の確認**: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`に約27GBのデータが保存されていることを確認
+
+**解決方法**:
+
+### 前提条件
+- Cursorを完全に終了していること
+- バックアップを取っていること
+- ターミナルでSQLiteコマンドが使用できること
+
+### 手順1: Cursorの完全終了確認
+
+```bash
+# macOS/Linux
+ps aux | grep -i cursor | grep -v grep
+
+# Windows (PowerShell)
+Get-Process | Where-Object {$_.ProcessName -like "*cursor*"}
+```
+
+Cursorプロセスが実行中の場合は、完全に終了してください。
+
+### 手順2: バックアップの作成
+
+```bash
+# macOS
+BACKUP_DIR="$HOME/Desktop/cursor_backup_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp -r ~/Library/Application\ Support/Cursor/User/globalStorage "$BACKUP_DIR/"
+
+# Windows (PowerShell)
+$backupDir = "$env:USERPROFILE\Desktop\cursor_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+New-Item -ItemType Directory -Path $backupDir
+Copy-Item "$env:APPDATA\Cursor\User\globalStorage" -Destination $backupDir -Recurse
+
+# Linux
+BACKUP_DIR="$HOME/Desktop/cursor_backup_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp -r ~/.config/Cursor/User/globalStorage "$BACKUP_DIR/"
+```
+
+### 手順3: データベースの確認（削除前の状態を記録）
+
+```bash
+# macOS/Linux
+DB_PATH="$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+
+# 現在のエントリ数を確認
+sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+
+# Windows (PowerShell)
+$dbPath = "$env:APPDATA\Cursor\User\globalStorage\state.vscdb"
+sqlite3 $dbPath "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+```
+
+### 手順4: 削除方法の選択
+
+**注意**: Cursorのチャットログには直接的なタイムスタンプが含まれていないため、以下の方法から選択してください。
+
+#### 方法A: 全チャットログの削除（最も安全）
+
+全てのチャットログを削除します。これは最も安全な方法ですが、全ての履歴が失われます。
+
+```bash
+# macOS/Linux
+sqlite3 "$DB_PATH" "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 "$DB_PATH" "VACUUM;"
+
+# Windows (PowerShell)
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 $dbPath "VACUUM;"
+```
+
+#### 方法B: 関連データの削除（推奨）
+
+チャットログに関連する全てのデータを削除します。これには以下が含まれます：
+- `bubbleId:` - チャット会話
+- `messageRequestContext` - メッセージリクエストコンテキスト
+- `codeBlockPartialInline` - コードブロック関連
+
+```bash
+# macOS/Linux
+sqlite3 "$DB_PATH" <<EOF
+DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';
+DELETE FROM cursorDiskKV WHERE key LIKE 'messageRequestContext%';
+DELETE FROM cursorDiskKV WHERE key LIKE 'codeBlockPartialInline%';
+VACUUM;
+EOF
+
+# Windows (PowerShell)
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'messageRequestContext%';"
+sqlite3 $dbPath "DELETE FROM cursorDiskKV WHERE key LIKE 'codeBlockPartialInline%';"
+sqlite3 $dbPath "VACUUM;"
+```
+
+#### 方法C: 日付ベースの削除（高度・リスクあり）
+
+**警告**: この方法は実験的です。Cursorの内部データ構造に依存するため、予期しない動作を引き起こす可能性があります。
+
+Cursorは`History`ディレクトリに履歴を保存している可能性があります。このディレクトリの更新日時を確認して、古いエントリを特定できます。
+
+```bash
+# macOS/Linux: Historyディレクトリの確認
+ls -lt ~/Library/Application\ Support/Cursor/User/History/ | head -20
+
+# 7日より前のHistoryエントリを確認（参考情報のみ）
+find ~/Library/Application\ Support/Cursor/User/History/ -type d -mtime +7
+```
+
+ただし、`History`ディレクトリと`state.vscdb`の対応関係は明確ではないため、この方法は推奨されません。
+
+### 手順5: 削除後の確認
+
+```bash
+# 削除後のエントリ数を確認
+sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%';"
+
+# データベースサイズの確認
+ls -lh "$DB_PATH"
+```
+
+### 手順6: Cursorの再起動
+
+Cursorを再起動して、正常に動作することを確認してください。
+
+**解決状況**: ✅ **手順確立済み**（2026-01-28）
+
+**関連ファイル**: 
+- `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (macOS)
+- `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (Windows)
+- `~/.config/Cursor/User/globalStorage/state.vscdb` (Linux)
+
+**トラブルシューティング**:
+
+#### 問題: データベースがロックされている
+**解決策**: Cursorが完全に終了していることを確認してください。それでもロックされている場合は、システムを再起動してください。
+
+#### 問題: 削除後、Cursorが起動しない
+**解決策**: バックアップから復元してください：
+```bash
+# macOS
+cp -r "$BACKUP_DIR/globalStorage" ~/Library/Application\ Support/Cursor/User/
+```
+
+#### 問題: 削除してもサイズが減らない
+**解決策**: `VACUUM`コマンドを実行してください。これにより、データベースファイルが最適化され、サイズが減少します。
+
+**今後の対策**:
+1. **定期的なクリーンアップ**: 月に1回程度、古いチャットログを削除する
+2. **自動化スクリプト**: 定期的に実行するスクリプトを作成する（推奨）
+3. **Cursorの設定確認**: 将来のCursorバージョンで自動削除機能が追加される可能性があるため、設定を確認する
+
+**参考リンク**:
+- [Cursor Community Forum: How to bulk delete composer and chat history?](https://forum.cursor.com/t/how-to-bulk-delete-composer-and-chat-history/52658)
+- [Cursor Community Forum: How can I clear all history in Cursor at once?](https://forum.cursor.com/t/how-can-i-clear-all-history-in-cursor-at-once/79480)
+
+---

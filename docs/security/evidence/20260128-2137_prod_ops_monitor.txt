@@ -1,0 +1,89 @@
+=== security-monitor / マルウェアスキャン確認 ===
+実施日時: 2026年  1月 28日 水曜日 21:38:04 JST
+
+--- security-monitor.sh 実行 ---
+2026-01-28 21:37:54,439 fail2ban.actions        [1027]: NOTICE  [sshd] Ban 203.0.113.50
+[INFO] Alert file created: /opt/RaspberryPiSystem_002/alerts/alert-20260128-213804.json
+/opt/RaspberryPiSystem_002/alerts/alert-20260128-213804.json
+
+--- ClamAVスキャン実行（タイムアウト: 60秒） ---
+clamav-scan.sh が見つかりません または タイムアウト
+
+--- Trivyスキャン実行（タイムアウト: 60秒） ---
+[INFO] Alert file created: /opt/RaspberryPiSystem_002/alerts/alert-20260128-213915.json
+/opt/RaspberryPiSystem_002/alerts/alert-20260128-213915.json
+
+--- rkhunterスキャン実行（タイムアウト: 60秒） ---
+rkhunter-scan.sh が見つかりません または タイムアウト
+
+--- alerts/ ディレクトリ確認（スキャン後） ---
+合計 4960
+-rw-r--r-- 1 root        root        3827  1月 28 21:39 alert-20260128-213915.json
+-rw-r--r-- 1 root        root         289  1月 28 21:38 alert-20260128-213804.json
+-rw-r--r-- 1 root        root         289  1月 28 21:32 alert-20260128-213248.json
+-rw-r--r-- 1 root        root         609  1月 28 21:32 alert-20260128-213213.json
+-rw-r--r-- 1 root        root        3827  1月 28 21:30 alert-20260128-213033.json
+-rw-r--r-- 1 root        root         289  1月 28 21:20 alert-20260128-212047.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  297  1月 28 16:27 alert-20260128-162707.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  296  1月 28 15:16 alert-20260128-151600.json
+-rw-rw-r-- 1 denkon5sd02 denkon5sd02  296  1月 28 14:17 alert-20260128-141705.json
+alerts/ ディレクトリが見つかりません
+
+--- 最新のアラートファイル（スキャン後） ---
+{
+  "id": "20260128-213915",
+  "type": "trivy-detection",
+  "message": "Trivyスキャンで脆弱性または秘密情報を検知しました",
+  "details": "────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-long-lived-api-token)
+════════════════════════════════════════
+Dropbox long lived API token
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:22
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-api-secret)
+════════════════════════════════════════
+Dropbox API secret/key
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:20
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-api-secret)
+════════════════════════════════════════
+Dropbox API secret/key
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:21
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-long-lived-api-token)
+════════════════════════════════════════
+Dropbox long lived API token
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:22
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-api-secret)
+════════════════════════════════════════
+Dropbox API secret/key
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:20
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-api-secret)
+════════════════════════════════════════
+Dropbox API secret/key
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:21
+────────────────────────────────────────
+--
+HIGH: Dropbox (dropbox-long-lived-api-token)
+════════════════════════════════════════
+Dropbox long lived API token
+────────────────────────────────────────
+ infrastructure/ansible/host_vars/raspberrypi5/vault.yml:22
+────────────────────────────────────────",
+  "timestamp": "2026-01-28T12:39:15Z",
+  "acknowledged": false
+}

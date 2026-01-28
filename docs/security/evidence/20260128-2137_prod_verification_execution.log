@@ -1,0 +1,35 @@
+=== セキュリティ評価 実機検証開始 ===
+実施日時: 2026年  1月 28日 水曜日 21:37:53 JST
+証跡保存先: /opt/RaspberryPiSystem_002/docs/security/evidence
+
+1. ポート露出の確認...
+✅ ポート状態を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ports_status.txt
+
+2. fail2ban監視の確認...
+✅ fail2ban検証結果を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ops_fail2ban.txt
+
+3. security-monitor / マルウェアスキャンの確認...
+✅ 監視検証結果を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ops_monitor.txt
+
+4. バックアップ/復元の実効性確認...
+✅ バックアップ/復元検証結果を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_backup_restore.txt
+
+5. USBオフライン運用の検証...
+USBデバイスを検出: /dev/sda1
+✅ USBオフライン運用検証結果を保存: /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_usb_restore.txt
+
+=== セキュリティ評価 実機検証完了 ===
+証跡は以下のディレクトリに保存されました:
+  /opt/RaspberryPiSystem_002/docs/security/evidence
+
+生成された証跡ファイル:
+-rw-r--r-- 1 root root 2.1K  1月 28 21:40 /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_backup_restore.txt
+-rw-r--r-- 1 root root 1.9K  1月 28 21:38 /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ops_fail2ban.txt
+-rw-r--r-- 1 root root 5.6K  1月 28 21:40 /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ops_monitor.txt
+-rw-r--r-- 1 root root 3.5K  1月 28 21:37 /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_ports_status.txt
+-rw-r--r-- 1 root root  304  1月 28 21:40 /opt/RaspberryPiSystem_002/docs/security/evidence/20260128-2137_prod_usb_restore.txt
+
+次のステップ:
+1. 証跡ファイルを確認
+2. 必要に応じて評価報告書を更新
+3. ギャップ一覧・トップリスク10を更新

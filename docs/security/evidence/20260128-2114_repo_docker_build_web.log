@@ -1,0 +1,192 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.web
+#1 transferring dockerfile: 1.82kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 1.1s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/caddy:2-alpine
+#4 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/node:20-alpine
+#5 DONE 2.5s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [stage-1 1/7] FROM docker.io/library/caddy:2-alpine
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 51.82kB 0.1s done
+#8 DONE 0.1s
+
+#9 [build  1/11] FROM docker.io/library/node:20-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8
+#9 resolve docker.io/library/node:20-alpine@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8 done
+#9 sha256:50638ff56f07a847f9e189b6242901ff52a9a8ff407de6db4dd22bb2739165e5 6.53kB / 6.53kB done
+#9 sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 0B / 4.20MB 0.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 0B / 43.12MB 0.2s
+#9 sha256:f3e17969cb2d3834a243108c5903feec6ca60dc3607b03867527e15914e86f6a 0B / 1.26MB 0.2s
+#9 sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8 7.67kB / 7.67kB done
+#9 sha256:1603befe1cc51010cac2453f3adc8083bf85aff3cc4d0aa421ae4e351ab67fd9 1.72kB / 1.72kB done
+#9 sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 1.05MB / 4.20MB 1.0s
+#9 sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 2.10MB / 4.20MB 1.4s
+#9 sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 3.15MB / 4.20MB 2.0s
+#9 sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 4.20MB / 4.20MB 2.6s done
+#9 extracting sha256:d8ad8cd72600f46cc068e16c39046ebc76526e41051f43a8c249884b200936c0 0.1s done
+#9 sha256:b84d38c2ed5610a9544ddba1a8feb24733822e5c9409816c26c858d2a270efa7 0B / 445B 2.7s
+#9 sha256:f3e17969cb2d3834a243108c5903feec6ca60dc3607b03867527e15914e86f6a 1.05MB / 1.26MB 3.0s
+#9 sha256:f3e17969cb2d3834a243108c5903feec6ca60dc3607b03867527e15914e86f6a 1.26MB / 1.26MB 3.1s done
+#9 sha256:b84d38c2ed5610a9544ddba1a8feb24733822e5c9409816c26c858d2a270efa7 445B / 445B 3.4s done
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 3.15MB / 43.12MB 3.7s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 6.29MB / 43.12MB 5.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 9.44MB / 43.12MB 6.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 12.58MB / 43.12MB 7.1s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 15.73MB / 43.12MB 8.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 18.87MB / 43.12MB 9.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 22.02MB / 43.12MB 10.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 25.17MB / 43.12MB 11.3s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 28.31MB / 43.12MB 12.4s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 31.46MB / 43.12MB 13.5s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 34.60MB / 43.12MB 14.8s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 37.75MB / 43.12MB 16.0s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 40.89MB / 43.12MB 17.2s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 43.12MB / 43.12MB 17.9s
+#9 sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 43.12MB / 43.12MB 17.9s done
+#9 extracting sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 0.1s
+#9 extracting sha256:8fb920e5d251bfb3a5bac54cb1ee6be01e588068fecdf867141fb05734cd3df8 0.9s done
+#9 extracting sha256:f3e17969cb2d3834a243108c5903feec6ca60dc3607b03867527e15914e86f6a 0.0s done
+#9 extracting sha256:b84d38c2ed5610a9544ddba1a8feb24733822e5c9409816c26c858d2a270efa7
+#9 extracting sha256:b84d38c2ed5610a9544ddba1a8feb24733822e5c9409816c26c858d2a270efa7 done
+#9 DONE 19.0s
+
+#10 [build  2/11] WORKDIR /app
+#10 DONE 0.1s
+
+#11 [build  3/11] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+#11 DONE 0.0s
+
+#12 [build  4/11] COPY apps/web/package.json apps/web/
+#12 DONE 0.0s
+
+#13 [build  5/11] COPY packages ./packages
+#13 DONE 0.0s
+
+#14 [build  6/11] RUN corepack enable && pnpm install --frozen-lockfile
+#14 0.154 ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.15.9.tgz
+#14 2.709 Scope: all 3 workspace projects
+#14 2.754 Lockfile is up to date, resolution step is skipped
+#14 2.788 Progress: resolved 1, reused 0, downloaded 0, added 0
+#14 2.851 Packages: +525
+#14 2.851 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#14 3.789 Progress: resolved 525, reused 0, downloaded 4, added 4
+#14 4.791 Progress: resolved 525, reused 0, downloaded 14, added 14
+#14 4.941 
+#14 4.941    ╭───────────────────────────────────────────────────────────────────╮
+#14 4.941    │                                                                   │
+#14 4.941    │                Update available! 9.15.9 → 10.28.2.                │
+#14 4.941    │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v10.28.2   │
+#14 4.941    │            Run "corepack use pnpm@10.28.2" to update.             │
+#14 4.941    │                                                                   │
+#14 4.941    ╰───────────────────────────────────────────────────────────────────╯
+#14 4.941 
+#14 5.791 Progress: resolved 525, reused 0, downloaded 34, added 34
+#14 6.792 Progress: resolved 525, reused 0, downloaded 55, added 54
+#14 7.792 Progress: resolved 525, reused 0, downloaded 78, added 77
+#14 8.792 Progress: resolved 525, reused 0, downloaded 151, added 151
+#14 9.793 Progress: resolved 525, reused 0, downloaded 220, added 220
+#14 10.79 Progress: resolved 525, reused 0, downloaded 273, added 273
+#14 11.80 Progress: resolved 525, reused 0, downloaded 292, added 292
+#14 12.80 Progress: resolved 525, reused 0, downloaded 312, added 312
+#14 13.80 Progress: resolved 525, reused 0, downloaded 366, added 366
+#14 14.80 Progress: resolved 525, reused 0, downloaded 422, added 422
+#14 15.80 Progress: resolved 525, reused 0, downloaded 462, added 462
+#14 16.80 Progress: resolved 525, reused 0, downloaded 496, added 496
+#14 17.81 Progress: resolved 525, reused 0, downloaded 520, added 520
+#14 18.81 Progress: resolved 525, reused 0, downloaded 523, added 523
+#14 19.81 Progress: resolved 525, reused 0, downloaded 524, added 524
+#14 23.08 Progress: resolved 525, reused 0, downloaded 525, added 524
+#14 23.09 Progress: resolved 525, reused 0, downloaded 525, added 525, done
+#14 23.20 .../esbuild@0.21.5/node_modules/esbuild postinstall$ node install.js
+#14 23.21 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#14 23.23 .../esbuild@0.21.5/node_modules/esbuild postinstall: Done
+#14 23.23 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#14 23.31 
+#14 23.31 dependencies:
+#14 23.31 + node-cron 3.0.3
+#14 23.31 
+#14 23.31 devDependencies:
+#14 23.31 + @playwright/test 1.56.1
+#14 23.31 + husky 9.1.7
+#14 23.31 + playwright 1.56.1
+#14 23.31 
+#14 23.32 . prepare$ husky install || true
+#14 23.34 . prepare: husky - install command is DEPRECATED
+#14 23.34 . prepare: .git can't be found
+#14 23.34 . prepare: Done
+#14 23.35 Done in 20.8s using pnpm v9.15.9
+#14 DONE 23.4s
+
+#15 [build  7/11] WORKDIR /app/packages/shared-types
+#15 DONE 0.0s
+
+#16 [build  8/11] RUN pnpm build
+#16 0.246 
+#16 0.246 > @raspi-system/shared-types@0.1.0 build /app/packages/shared-types
+#16 0.246 > tsc
+#16 0.246 
+#16 DONE 0.6s
+
+#17 [build  9/11] WORKDIR /app
+#17 DONE 0.1s
+
+#18 [build 10/11] COPY apps/web ./apps/web
+#18 DONE 0.0s
+
+#19 [build 11/11] RUN cd apps/web && pnpm run build
+#19 0.267 
+#19 0.267 > @raspi-system/web@0.1.0 build /app/apps/web
+#19 0.267 > tsc -b && vite build
+#19 0.267 
+#19 4.673 vite v5.4.21 building for production...
+#19 4.762 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+#19 4.816 transforming...
+#19 6.203 ✓ 213 modules transformed.
+#19 6.355 rendering chunks...
+#19 6.367 computing gzip size...
+#19 6.374 dist/index.html                   0.48 kB │ gzip:  0.34 kB
+#19 6.374 dist/assets/index-C3HawcBO.css   34.96 kB │ gzip:  6.79 kB
+#19 6.374 dist/assets/vendor-oGg73SO_.js  281.42 kB │ gzip: 92.87 kB
+#19 6.374 dist/assets/index-BAzWMFU-.js   336.74 kB │ gzip: 77.89 kB
+#19 6.374 ✓ built in 1.69s
+#19 DONE 6.4s
+
+#20 [stage-1 2/7] WORKDIR /srv
+#20 CACHED
+
+#21 [stage-1 3/7] RUN apk add --no-cache gettext
+#21 CACHED
+
+#22 [stage-1 4/7] COPY --from=build /app/apps/web/dist ./site
+#22 DONE 0.0s
+
+#23 [stage-1 5/7] COPY infrastructure/docker/Caddyfile ./Caddyfile
+#23 DONE 0.0s
+
+#24 [stage-1 6/7] COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production
+#24 DONE 0.0s
+
+#25 [stage-1 7/7] COPY infrastructure/docker/Caddyfile.local.template ./Caddyfile.local.template
+#25 DONE 0.0s
+
+#26 exporting to image
+#26 exporting layers 0.0s done
+#26 writing image sha256:c82f812d2a97ed1ddfe20a1ed1de30ed4dd786dace45af0dbcbd894fb58b52fd done
+#26 naming to docker.io/library/raspisys-web:security-eval done
+#26 DONE 0.0s

@@ -2190,6 +2190,97 @@ app.put('/kiosk/production-schedule/search-state', async (request) => {
 
 **関連KB**:
 - [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
+- [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正): 検索状態共有機能の回帰修正
+
+---
+
+### [KB-210] 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正
+
+**実装日時**: 2026-01-28
+
+**事象**: 
+- 検索登録された製番が端末間で共有できなくなっていた
+- 以前のフェーズでは端末間で共有されていたが、現在は共有されない状態になっていた
+
+**要因**: 
+- KB-209で実装された検索状態共有機能（`search-state`エンドポイント使用）が、その後`search-history`エンドポイント + ローカル状態管理に変更されていた
+- フロントエンド（`ProductionSchedulePage.tsx`）が`useKioskProductionScheduleSearchHistory`を使用し、コメントに「検索実行は端末ローカルで管理」と記載されていた
+- `search-history`エンドポイントは端末別（`locationKey`）で保存するため、端末間で共有されない
+- `activeQueries`（登録製番）が共有対象に含まれていなかった
+
+**調査結果**:
+- git履歴を確認: `6f44e48 fix: share search history only by location` などで変更が行われていた
+- 以前のフェーズでは`search-state`エンドポイント（共有キー`'shared'`）を使用していた
+- ドキュメント（`docs/plans/production-schedule-kiosk-execplan.md`）に以前の共有実装の記録が残っていた
+
+**有効だった対策**: 
+- ✅ **フロントエンドの修正（2026-01-28）**:
+  1. `useKioskProductionScheduleSearchHistory` → `useKioskProductionScheduleSearchState` に変更
+  2. 共有対象に`activeQueries`（登録製番）を追加
+  3. 資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有
+  4. デバッグログコード（`127.0.0.1:7242`への送信）を削除
+- ✅ **API側の修正（2026-01-28）**:
+  1. デバッグログコードを削除（挙動は変更なし）
+  2. 未使用変数`locationKey`を削除（lintエラー修正）
+
+**実装の詳細**:
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+// 変更前: search-historyエンドポイント使用
+const searchHistoryQuery = useKioskProductionScheduleSearchHistory();
+const searchHistoryMutation = useUpdateKioskProductionScheduleSearchHistory();
+
+// 変更後: search-stateエンドポイント使用
+const searchStateQuery = useKioskProductionScheduleSearchState();
+const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
+
+// 共有対象の追加
+useEffect(() => {
+  // ...
+  const incomingState = searchStateQuery.data?.state ?? null;
+  if (!updatedAt || !incomingState) return;
+  
+  suppressSearchStateSyncRef.current = true;
+  setActiveQueries(incomingState.activeQueries ?? []); // 登録製番を共有
+  setActiveResourceCds(incomingState.activeResourceCds ?? []);
+  setActiveResourceAssignedOnlyCds(incomingState.activeResourceAssignedOnlyCds ?? []);
+  setHistory(incomingState.history ?? []);
+  // ...
+}, [searchStateQuery.data?.state, searchStateQuery.data?.updatedAt, ...]);
+
+// 送信時もactiveQueriesを含める
+searchStateMutation.mutate({
+  activeQueries: normalizedActiveQueries, // 登録製番を共有
+  activeResourceCds: normalizedResourceCds,
+  activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
+  history: normalizedHistory
+});
+```
+
+**学んだこと**:
+- **git履歴の重要性**: 以前の実装を確認することで、回帰の原因を特定できる
+- **ドキュメントの重要性**: ExecPlanに以前の実装記録が残っていたため、原因特定が容易だった
+- **エンドポイントの使い分け**: `search-history`は端末別、`search-state`は共有用として設計されている
+- **最小変更の原則**: 既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応
+
+**解決状況**: ✅ **解決済み**（2026-01-28）
+
+**実機検証**:
+- ✅ ローカルテスト完了（統合テスト11件すべて成功）
+- ✅ GitHub Actions CI成功（全ジョブ成功）
+- ✅ デプロイ成功（Pi5）
+- ✅ 実機検証完了（2026-01-28）:
+  - 端末Aで製番を検索登録 → 数秒以内に端末Bに反映されることを確認
+  - `GET /api/kiosk/production-schedule/search-state`エンドポイントで`activeQueries`が共有されていることを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（`search-state`エンドポイント使用に変更、`activeQueries`共有追加）
+- `apps/api/src/routes/kiosk.ts`（デバッグログコード削除、未使用変数削除）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テストで共有動作を検証）
+
+**関連KB**:
+- [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態共有機能の初期実装（共有キー導入）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
 
 ---
 
