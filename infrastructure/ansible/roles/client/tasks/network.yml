@@ -1,5 +1,9 @@
 ---
 # NetworkManager Wi-Fi設定: 認証ダイアログを抑制（既存の接続は維持）
+#
+# 原因: Pi3/Pi4は既にPi5へのWi-Fi接続が確立されているが、NetworkManagerは複数の保存済みネットワークを管理している
+# そのうちの一部（例: TP-Link_D2EC_5G_EXT）は認証情報が無効になっており、接続を試みる際に認証ダイアログが表示される
+# 解決策: 認証ダイアログを抑制する設定を追加し、新しいネットワークへの自動接続を無効化する
 
 - name: Check if NetworkManager is installed
   ansible.builtin.command: which nmcli

@@ -863,9 +863,14 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 3. **仮説3**: Wi-Fiパスワードが変更された → CONFIRMED（パスワード変更後、保存済みの認証情報が無効になっている可能性）
 
 **根本原因**:
-- NetworkManagerが保存済みのWi-Fiネットワークに自動接続を試みるが、認証情報が不足または無効
+- **Pi3/Pi4は既にPi5へのWi-Fi接続が確立されている**が、NetworkManagerは複数のWi-Fiネットワークを管理している
+- 保存済みのネットワークのうち、**現在使用していないネットワーク（例: `TP-Link_D2EC_5G_EXT`）の認証情報が無効**になっている
+- NetworkManagerが以下のタイミングで、その保存済みネットワークへの接続を試みる:
+  - 接続が一時的に不安定になった際の再接続時
+  - 「より良い」ネットワークを探す際
+  - 定期的な接続状態の確認時
+- 認証情報が無効なネットワークに接続しようとすると、認証ダイアログが表示される
 - キオスクブラウザの環境変数設定だけでは、NetworkManagerの認証ダイアログを抑制できない
-- NetworkManagerの設定で、不要なネットワークへの自動接続が有効になっている
 
 **解決方法**:
 1. **NetworkManager設定の追加**（`infrastructure/ansible/roles/client/tasks/network.yml`）:
@@ -899,7 +904,14 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 **運用上の注意**:
 - 新しいWi-Fiネットワークを使用する場合は、事前に`nmcli`コマンドで接続設定を行う
 - パスワードが変更された場合は、NetworkManagerの接続設定を更新する必要がある
+- **不要なWi-Fiネットワークは削除する**: `nmcli connection delete <接続名>`で不要な接続設定を削除することで、ダイアログの発生を根本的に防げる
 - ダイアログが表示された場合は、「取り消し」を選択して、必要なネットワークのみを手動で設定する
+
+**補足説明**:
+- Pi3/Pi4は既にPi5への接続が確立されているため、Wi-Fi接続状態は維持されている
+- しかし、NetworkManagerは複数の保存済みネットワークを管理しており、そのうちの一部（例: `TP-Link_D2EC_5G_EXT`）は認証情報が無効になっている
+- NetworkManagerが接続を試みる際に、認証情報が無効なネットワークに対して認証ダイアログが表示される
+- この問題は、**現在使用しているネットワーク（Pi5への接続）とは別の、保存済みの不要なネットワーク**が原因
 
 **関連ナレッジ**:
 - KB-158: Macのstatus-agent未設定問題とmacOS対応
