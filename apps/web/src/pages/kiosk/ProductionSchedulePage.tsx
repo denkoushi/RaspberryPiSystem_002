@@ -292,10 +292,18 @@ export function ProductionSchedulePage() {
       hasLoadedSearchStateRef.current = true;
     }
     const updatedAt = searchHistoryQuery.data?.updatedAt ?? null;
-    if (!updatedAt) return;
+    if (!updatedAt) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:295',message:'search-history:incoming:no-updatedAt',data:{hasData:!!searchHistoryQuery.data,historyCount:searchHistoryQuery.data?.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     const lastUpdatedAt = searchStateUpdatedAtRef.current;
     if (lastUpdatedAt && new Date(updatedAt).getTime() <= new Date(lastUpdatedAt).getTime()) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProductionSchedulePage.tsx:298',message:'search-history:incoming:skipped',data:{updatedAt,lastUpdatedAt,updatedAtTime:new Date(updatedAt).getTime(),lastUpdatedAtTime:new Date(lastUpdatedAt).getTime(),historyCount:searchHistoryQuery.data?.history?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
       return;
     }
 
@@ -306,6 +314,7 @@ export function ProductionSchedulePage() {
     // #endregion
     setHistory(searchHistoryQuery.data?.history ?? []);
     searchStateUpdatedAtRef.current = updatedAt;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchHistoryQuery.data?.history, searchHistoryQuery.data?.updatedAt, searchHistoryQuery.isSuccess, setHistory]);
 
   useEffect(() => {
