@@ -102,10 +102,8 @@ export function ProductionSchedulePage() {
     }),
     [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds]
   );
-  const hasQuery =
-    normalizedActiveQueries.length > 0 ||
-    normalizedResourceCds.length > 0 ||
-    normalizedAssignedOnlyCds.length > 0;
+  // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
+  const hasQuery = normalizedActiveQueries.length > 0;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();

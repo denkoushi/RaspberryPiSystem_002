@@ -188,6 +188,27 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 **詳細**: [KB-201](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（CSVインポートスケジュールUI改善）
 
+### 検索状態の全キオスク間共有化
+
+**発見**: KB-208で実装した検索状態同期機能はlocation単位での同期に限定されており、全キオスク間で検索状態を共有したい要望があった。
+
+**対策**: 検索状態の保存先を共有キー（`'shared'`）に統一し、全キオスク間で検索状態を共有できるように変更。既存の端末別状態は初回取得時にフォールバックで読み込むことで、後方互換性を維持。
+
+**実装の詳細**:
+- `SHARED_SEARCH_STATE_LOCATION = 'shared'`定数を追加
+- `GET /kiosk/production-schedule/search-state`: 共有状態を優先取得、存在しない場合は端末別状態をフォールバック
+- `PUT /kiosk/production-schedule/search-state`: 共有キーで保存
+- 統合テストを更新して、異なるlocationのクライアント間で検索状態が共有されることを検証
+
+**学んだこと**:
+- 後方互換性の維持: 既存の端末別状態をフォールバックで読み込むことで、既存データを失うことなく移行できる
+- 共有キーの設計: locationに依存しない共有キー（`'shared'`）を使用することで、全キオスク間で検索状態を共有できる
+- API側の変更のみ: フロントエンドの同期ロジック（poll/debounce）は変更不要で、API側の変更のみで機能拡張できる
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+
+**詳細**: [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化)
+
 ## Decision Log
 
 ### progressの優先順位（DB操作を優先して完了維持）
@@ -279,6 +300,22 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 **関連ファイル**: `apps/api/prisma/seed.ts`
 
 **詳細**: [KB-203](../knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新)
+
+### 検索状態の全キオスク間共有化
+
+**決定**: 検索状態（製番・検索履歴・資源フィルタ）を全キオスク間で共有するため、検索状態の保存先を共有キー（`'shared'`）に統一。
+
+**理由**: 複数のキオスク端末で、検索登録した製番を各キオスク間で共有したい要望があった。KB-208で実装したlocation単位の同期では、異なるlocationの端末間で共有できないため、全キオスク間で共有できるように変更。
+
+**実装状況**:
+- ✅ `SHARED_SEARCH_STATE_LOCATION = 'shared'`定数を追加
+- ✅ `GET /kiosk/production-schedule/search-state`: 共有状態を優先取得、存在しない場合は端末別状態をフォールバック（後方互換性維持）
+- ✅ `PUT /kiosk/production-schedule/search-state`: 共有キーで保存
+- ✅ 統合テストを更新して、異なるlocationのクライアント間で検索状態が共有されることを検証
+
+**関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+
+**詳細**: [KB-209](../knowledge-base/api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化)
 
 ## Next Steps
 

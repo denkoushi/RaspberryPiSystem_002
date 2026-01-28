@@ -196,6 +196,19 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
   });
 
+  it('does not search when only resourceCd is specified (without query text)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    // 資源CD単独では検索されない（空の結果を返す）
+    expect(body.rows).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
+
   it('reassigns order numbers within the same resourceCd on complete', async () => {
     const created = await prisma.csvDashboardRow.createMany({
       data: [

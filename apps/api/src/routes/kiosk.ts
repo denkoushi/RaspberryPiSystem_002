@@ -222,14 +222,22 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
     const resourceWhere =
       resourceConditions.length > 0 ? Prisma.sql`(${Prisma.join(resourceConditions, ' OR ')})` : Prisma.empty;
+    // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
+    // 資源CD単独の場合は早期リターン（検索しない）
+    if (textConditions.length === 0 && resourceConditions.length > 0) {
+      return {
+        page,
+        pageSize,
+        total: 0,
+        rows: [],
+      };
+    }
     const queryWhere =
       textConditions.length > 0 && resourceConditions.length > 0
         ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
         : textConditions.length > 0
           ? Prisma.sql`AND ${textWhere}`
-          : resourceConditions.length > 0
-            ? Prisma.sql`AND ${resourceWhere}`
-            : Prisma.empty;
+          : Prisma.empty; // 検索条件なしの場合は全件を返す
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*)::bigint AS total
