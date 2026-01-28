@@ -1,5 +1,5 @@
 ---
-# NetworkManager Wi-Fi設定: 不要なネットワークへの自動接続を無効化し、認証ダイアログを抑制
+# NetworkManager Wi-Fi設定: 認証ダイアログを抑制（既存の接続は維持）
 
 - name: Check if NetworkManager is installed
   ansible.builtin.command: which nmcli
@@ -7,26 +7,8 @@
   changed_when: false
   failed_when: false
 
-- name: Disable auto-connect for unknown WiFi networks (prevent password dialogs)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    # すべてのWi-Fi接続を取得
-    connections=$(nmcli -t -f NAME,TYPE connection show | grep ':802-11-wireless' | cut -d: -f1 || true)
-    if [ -n "$connections" ]; then
-      while IFS= read -r conn_name; do
-        if [ -n "$conn_name" ]; then
-          # 自動接続を無効化（認証ダイアログを表示しない）
-          nmcli connection modify "$conn_name" connection.autoconnect no 2>/dev/null || true
-        fi
-      done <<< "$connections"
-    fi
-  args:
-    executable: /bin/bash
-  when:
-    - nmcli_check.rc == 0
-  changed_when: false
-  failed_when: false
-  register: disable_autoconnect_result
+# 注意: すべてのWi-Fi接続の自動接続を無効化しない
+# Pi3/Pi4からPi5への接続は維持する必要があるため、認証ダイアログを抑制する設定のみを適用
 
 - name: Ensure NetworkManager.conf exists
   ansible.builtin.file:

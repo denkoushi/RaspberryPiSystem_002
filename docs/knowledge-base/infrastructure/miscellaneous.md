@@ -869,7 +869,7 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 **解決方法**:
 1. **NetworkManager設定の追加**（`infrastructure/ansible/roles/client/tasks/network.yml`）:
-   - すべてのWi-Fi接続の自動接続を無効化（`connection.autoconnect no`）
+   - **注意**: 既存のWi-Fi接続（Pi5への接続を含む）の自動接続は維持する
    - NetworkManager.confに`no-auto-default=*`を追加（新しいネットワークへの自動接続を無効化）
    - NetworkManager.confに`auth-polkit=false`を追加（認証ダイアログを抑制）
 
@@ -892,8 +892,8 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 **再発防止策**:
 - Ansibleデプロイ時に自動的にNetworkManager設定を適用
-- 不要なWi-Fiネットワークへの自動接続を無効化
-- 必要なWi-Fiネットワークのみを事前に設定し、パスワードを保存
+- **既存のWi-Fi接続（Pi5への接続を含む）は維持**し、新しいネットワークへの自動接続のみを無効化
+- 必要なWi-Fiネットワーク（Pi5への接続に使用するネットワーク）は事前に設定し、パスワードを保存
 - キオスクブラウザの環境変数でNetworkManagerの認証ダイアログを抑制
 
 **運用上の注意**:
