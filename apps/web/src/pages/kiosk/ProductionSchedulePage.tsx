@@ -301,8 +301,7 @@ export function ProductionSchedulePage() {
     }
 
     suppressSearchStateSyncRef.current = true;
-    setInputQuery(state.inputQuery ?? '');
-    setActiveQueries(state.activeQueries ?? []);
+    // 検索実行は端末ローカルで管理し、共有状態は履歴と絞り込みのみ反映する
     setActiveResourceCds(state.activeResourceCds ?? []);
     setActiveResourceAssignedOnlyCds(state.activeResourceAssignedOnlyCds ?? []);
     setHistory(state.history ?? []);
@@ -318,11 +317,9 @@ export function ProductionSchedulePage() {
     const timer = setTimeout(() => {
       searchStateMutation.mutate(
         {
-          inputQuery,
-          activeQueries: normalizedActiveQueries,
           activeResourceCds: normalizedResourceCds,
           activeResourceAssignedOnlyCds: normalizedAssignedOnlyCds,
-          history: normalizedHistory,
+          history: normalizedHistory
         },
         {
           onSuccess: (data) => {
@@ -333,8 +330,6 @@ export function ProductionSchedulePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [
-    inputQuery,
-    normalizedActiveQueries,
     normalizedAssignedOnlyCds,
     normalizedHistory,
     normalizedResourceCds,
