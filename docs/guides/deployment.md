@@ -34,7 +34,7 @@ update-frequency: medium
 **⚠️ 注意**:
 - **運用の標準は`update-all-clients.sh`**。Pi5も含めて一括更新します（inventory必須）。
 - `deploy.sh`は**開発・緊急（Pi5単体）**の例外経路に限定します。
-- どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです。
+- **ブランチ指定は必須です**。デフォルトブランチはありません（誤デプロイ防止のため）。
 
 ### デプロイ成功条件（共通）
 
@@ -243,8 +243,8 @@ nano apps/api/.env
 # ラズパイ5で実行
 cd /opt/RaspberryPiSystem_002
 
-# mainブランチをデプロイ（デフォルト）
-./scripts/server/deploy.sh
+# mainブランチをデプロイ
+./scripts/server/deploy.sh main
 
 # 特定のブランチをデプロイ
 ./scripts/server/deploy.sh feature/new-feature
@@ -486,8 +486,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **重要**: 
 - `scripts/update-all-clients.sh`はPi5も含めて更新します
-- デフォルトは`main`ブランチです
-- ブランチを指定する場合は引数として渡してください
+- **ブランチ指定は必須です**（デフォルトブランチはありません。誤デプロイ防止のため）
 - **デプロイはPi5が `origin/<branch>` をpullして実行**します（ローカル未commit/未pushの変更はデプロイされません）。その状態で実行すると、スクリプトが **fail-fastで停止**します。
   - 対処: 変更をcommit → push → GitHub Actions CIが成功 → そのブランチ名で再実行
 - **スクリプト実行前に、Pi5上の`network_mode`設定が正しいことを確認してください**（スクリプトが自動チェックします）
@@ -636,8 +635,9 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 # Pi5から実行
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 
-# Pi3へのデプロイを実行（mainブランチ、デフォルト）
-ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
+# Pi3へのデプロイを実行（mainブランチを指定）
+ANSIBLE_REPO_VERSION=main \
+  ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
   ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
 
 # 特定のブランチでPi3を更新
