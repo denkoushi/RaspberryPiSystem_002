@@ -40,8 +40,9 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
   2. **DB整合性ゲートの追加**: `_prisma_migrations` の存在と必須テーブル（`MeasuringInstrumentLoanEvent`）の存在を検証
   3. **Ansible検証にDBゲートを統合**: `verification-map.yml` の `type: command` でDBチェックを実行（SSH経由でPi5上で実行）
   4. **health-check playbookにDBチェックを追加**（P2経路のfail-fast強化）
-  5. **verifier.shのTLS対応**: 自己署名証明書でも`http_get`が動作するように`insecure_tls`オプションを追加
-  6. **verifier.shのcommand変数展開**: `{{ server_ip }}`などの変数を`render_vars`で展開するように修正
+  5. **Ansible本体のデプロイ中にmigrate deployを実行**: `roles/server/tasks/main.yml` で `pnpm prisma migrate deploy` を実行し、未適用が残らないようにする
+  6. **verifier.shのTLS対応**: 自己署名証明書でも`http_get`が動作するように`insecure_tls`オプションを追加
+  7. **verifier.shのcommand変数展開**: `{{ server_ip }}`などの変数を`render_vars`で展開するように修正
 
 **実機検証結果（2026-01-22）**:
 - Pi5で`deploy.sh`実行後、DBゲートが正常に動作（`MeasuringInstrumentLoanEvent`テーブル存在確認: `t`）

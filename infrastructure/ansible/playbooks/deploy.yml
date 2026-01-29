@@ -156,18 +156,53 @@
 
   post_tasks:
     # Pi3はデプロイ中にlightdmを停止してメモリを確保しているため、
-    # デプロイ完了後に再起動してGUI（lightdm + signage-lite）を復活させる
-    - name: Reboot Pi3 after deployment to restore GUI and signage
-      ansible.builtin.reboot:
-        reboot_timeout: 120
-        msg: "Rebooting after deployment to restore lightdm and signage services"
+    # デプロイ完了後にlightdm + signage-liteを再開してGUIを復旧する
+    - name: Start lightdm after deployment to restore GUI
+      ansible.builtin.systemd:
+        name: lightdm
+        state: started
       when:
         - '"server" not in group_names'
         - manage_signage_lite | default(false) | bool
         - lightdm_stopped is defined
         - lightdm_stopped is changed
 
-    - name: Wait for Pi3 signage service to become active after reboot
+    - name: Wait for lightdm to become active
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if systemctl is-active lightdm.service >/dev/null 2>&1; then
+            echo "lightdm.service is active"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "lightdm.service did not become active within 60 seconds"
+        exit 1
+      register: lightdm_check
+      failed_when: false
+      changed_when: false
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Start signage services after lightdm restore
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - signage-lite.service
+        - signage-lite-update.timer
+        - signage-lite-watchdog.timer
+        - signage-daily-reboot.timer
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Wait for signage-lite service to become active after restore
       ansible.builtin.shell: |
         for i in {1..30}; do
           if systemctl is-active signage-lite.service >/dev/null 2>&1; then
@@ -187,12 +222,34 @@
         - lightdm_stopped is defined
         - lightdm_stopped is changed
 
-    - name: Report signage service status after reboot
-      ansible.builtin.debug:
-        msg: "{{ inventory_hostname }}: {{ signage_check.stdout | default('signage check skipped') }}"
+    - name: Capture lightdm status after restore attempt
+      ansible.builtin.shell: systemctl status lightdm --no-pager
+      register: lightdm_status
+      changed_when: false
+      failed_when: false
+      when:
+        - lightdm_check is defined
+        - lightdm_check.rc is defined
+        - lightdm_check.rc != 0
+
+    - name: Capture signage-lite status after restore attempt
+      ansible.builtin.shell: systemctl status signage-lite --no-pager
+      register: signage_status
+      changed_when: false
+      failed_when: false
       when:
         - signage_check is defined
-        - signage_check.stdout is defined
+        - signage_check.rc is defined
+        - signage_check.rc != 0
+
+    - name: Report signage service status after restore
+      ansible.builtin.debug:
+        msg:
+          - "{{ inventory_hostname }}: {{ signage_check.stdout | default('signage check skipped') }}"
+          - "{{ lightdm_status.stdout | default('lightdm status skipped') }}"
+          - "{{ signage_status.stdout | default('signage status skipped') }}"
+      when:
+        - signage_check is defined
 
     - name: Collect failed hosts summary
       ansible.builtin.debug:

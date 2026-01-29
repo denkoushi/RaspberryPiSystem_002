@@ -24,17 +24,17 @@ update-frequency: medium
 
 ## ⚠️ 重要な原則
 
-### デプロイ方法の使い分け
+### デプロイ方法の使い分け（運用標準を統一）
 
 | 用途 | スクリプト | 実行場所 | ブランチ指定 |
 |------|-----------|---------|------------|
-| **開発時（Pi5のみ）** | `scripts/server/deploy.sh` | Pi5上で直接実行 | ✅ 可能（引数で指定） |
-| **運用時（全デバイス）** | `scripts/update-all-clients.sh` | Macから実行 | ✅ 可能（ブランチ指定 + inventory指定が必要） |
+| **開発/緊急（Pi5のみ）** | `scripts/server/deploy.sh` | Pi5上で直接実行 | ✅ 可能（引数で指定） |
+| **運用標準（全デバイス）** | `scripts/update-all-clients.sh` | Macから実行 | ✅ 可能（ブランチ指定 + inventory指定が必要） |
 
-**⚠️ 注意**: 
-- Pi5のデプロイには`scripts/server/deploy.sh`を使用してください
-- `scripts/update-all-clients.sh`はクライアント（Pi3/Pi4）の一括更新用ですが、Pi5も含めて更新します
-- どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです
+**⚠️ 注意**:
+- **運用の標準は`update-all-clients.sh`**。Pi5も含めて一括更新します（inventory必須）。
+- `deploy.sh`は**開発・緊急（Pi5単体）**の例外経路に限定します。
+- どちらのスクリプトもブランチを指定できますが、デフォルトは`main`ブランチです。
 
 ### デプロイ成功条件（共通）
 
@@ -43,6 +43,7 @@ update-frequency: medium
 - **DB整合性**:
   - `pnpm prisma migrate status` が最新
   - 必須テーブル（例: `MeasuringInstrumentLoanEvent`）が存在
+  - **運用標準（Ansible経路）ではデプロイ中に `pnpm prisma migrate deploy` を実行**し、デプロイ後にhealth-checkでstatusを再確認
 - **API稼働**: `GET /api/system/health` が 200 で `status=ok`
 - **証跡**: デプロイログ/検証ログが残り、失敗理由が追跡できる
 
@@ -395,7 +396,7 @@ curl http://localhost:7071/api/agent/status
 
 ### デプロイ前の準備（自動化済み）
 
-**✅ 自動化**: サイネージ端末デプロイ時のプレフライトチェックと再起動は**自動的に実行**されます（2026-01-16更新）。以下の手順を手動で実行する必要はありません。
+**✅ 自動化**: サイネージ端末デプロイ時のプレフライトチェックと復旧（lightdm + signage-lite再開）は**自動的に実行**されます（2026-01-16更新）。以下の手順を手動で実行する必要はありません。
 
 **自動実行されるプレフライトチェック**:
 1. **コントロールノード側（Pi5上）**: Ansibleロールのテンプレートファイル存在確認（`roles/signage/templates/`）
@@ -407,8 +408,8 @@ curl http://localhost:7071/api/agent/status
    - メモリ閾値チェック（デバイスタイプごとの設定値、デフォルト: >= 120MB）
 
 **デプロイ完了後の自動処理（post_tasks）**:
-- **Pi3自動再起動**: lightdmを停止した場合、デプロイ完了後にPi3を自動的に再起動し、GUI（lightdm）とサイネージサービス（signage-lite.service）を復活させます
-- **サイネージサービス確認**: 再起動後、`signage-lite.service`がactiveになるまで最大60秒待機し、結果をログ出力します
+- **GUI/サイネージ自動復旧**: lightdmを停止した場合、デプロイ完了後に`lightdm`と`signage-lite.service`を再開して復旧します（reboot不要）
+- **サイネージサービス確認**: 復旧後、`signage-lite.service`がactiveになるまで最大60秒待機し、結果をログ出力します
 
 **プレフライトチェックが失敗した場合**:
 - メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
