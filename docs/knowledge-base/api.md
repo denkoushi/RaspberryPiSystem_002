@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2026-01-22
+last-verified: 2026-01-29
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 38件  
+**件数**: 40件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2372,6 +2372,78 @@ const saveNote = (rowId: string) => {
 
 **関連KB**:
 - [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュール機能の拡張（資源CDフィルタ・加工順序割当・検索状態同期）
+
+---
+
+### [KB-215] Gmail OAuthリフレッシュトークンの7日間制限問題（未検証アプリ）
+
+**日付**: 2026-01-29
+
+**事象**:
+- Gmail OAuth認証が約1週間で切れてしまい、手動で再認証が必要になる
+- 管理コンソール → Gmail設定 → OAuth認証を手動で実行すれば使えるようになるが、運用負荷が高い
+
+**要因**:
+- Google Cloud Consoleでアプリが「**本番モード（Production）**」だが「**未検証**」状態だった
+- Googleの仕様により、**未検証のアプリ**（機密性の高いスコープを使用）はリフレッシュトークンが**7日間で期限切れ**になる
+- 検証済みのアプリはリフレッシュトークンが**無期限**（6ヶ月間未使用で失効）
+- 当初「テストモード vs 本番モード」が原因と推測したが、実際は「**検証済み vs 未検証**」が問題だった
+
+**仕様（Googleの制限）**:
+| アプリの状態 | リフレッシュトークン有効期間 |
+|---|---|
+| 未検証（テストモードまたは本番モード） | **7日間** |
+| 検証済み（本番モード） | **無期限**（6ヶ月間未使用で失効） |
+
+**解決策（検証を完了する手順）**:
+1. **Google Cloud Console** → **Google Auth Platform** → **ブランディング** にアクセス
+2. 以下の情報を入力:
+   - **アプリケーションのホームページ**: `https://denkoushi.github.io/RaspberryPiSystem_002/`
+   - **プライバシーポリシーリンク**: `https://denkoushi.github.io/RaspberryPiSystem_002/privacy-policy.html`
+   - **承認済みドメイン**: `denkoushi.github.io` を追加
+3. 「保存」をクリック
+4. **検証センター** → 「**問題は修正した**」または「**検出された問題は正しくないと思う**」を選択して検証をリクエスト
+5. Googleの審査を待つ（数日〜数週間）
+
+**GitHub Pages用ファイル（作成済み）**:
+- `docs/index.html`: アプリケーションのホームページ（プライバシーポリシーへのリンク含む）
+- `docs/privacy-policy.html`: プライバシーポリシーページ
+
+**GitHub Pagesの設定手順**:
+1. GitHubリポジトリ → **Settings** → **Pages**
+2. **Source**: `main` ブランチ、`/docs` フォルダを選択
+3. **Save** をクリック
+4. 数分後、`https://denkoushi.github.io/RaspberryPiSystem_002/` でアクセス可能
+
+**検証リクエスト時の注意点**:
+- 「ウェブサイトが登録されていません」エラー: GitHub Pagesのドメイン所有権確認が求められる場合がある
+- **対処法1**: 「検出された問題は正しくないと思う」を選択し、GitHub Pagesを使用していることを説明
+- **対処法2**: Google Search Consoleでドメイン所有権を確認（HTMLメタタグを`index.html`に追加）
+
+**現在の状況**: 🔄 **検証リクエスト中**（2026-01-29）
+- プライバシーポリシーページとホームページを作成・公開済み
+- Google Cloud Consoleでブランディング情報を入力・保存済み
+- 検証センターで「検出された問題は正しくないと思う」を選択してリクエスト済み
+- Googleの審査待ち
+
+**検証完了後の手順**:
+1. 検証が完了したら、管理コンソール → Gmail設定 → 「**OAuth認証**」を1回実行
+2. 以後は自動リフレッシュで運用可能（手動再認証不要）
+
+**学んだこと**:
+- Google OAuthの7日間制限は「テストモード」だけでなく「未検証アプリ」にも適用される
+- 自分だけが使うアプリでも、機密性の高いスコープ（`gmail.readonly`, `gmail.modify`）を使用する場合は検証が必要
+- GitHub Pagesで簡易的なプライバシーポリシーページを公開することで検証要件を満たせる
+
+**関連ファイル**:
+- `docs/index.html`（GitHub Pages用ホームページ）
+- `docs/privacy-policy.html`（GitHub Pages用プライバシーポリシー）
+- `apps/api/src/services/backup/gmail-oauth.service.ts`（Gmail OAuth実装）
+- `apps/api/src/routes/gmail/oauth.ts`（Gmail OAuthルート）
+
+**関連KB**:
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー対応（再認可導線の整備）
+- [KB-123](./api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了): Gmail経由CSV取り込みの初期実装
 
 ---
 

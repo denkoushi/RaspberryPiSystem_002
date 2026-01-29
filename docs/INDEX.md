@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-01-29）
 
+- **🔄 Gmail OAuthリフレッシュトークンの7日間制限問題への対応中**: Gmail OAuth認証が約1週間で切れてしまう問題の根本原因を特定。Google Cloud Consoleでアプリが「未検証」状態のため、Googleの仕様によりリフレッシュトークンが7日間で期限切れになっていた。解決のため、GitHub Pagesでプライバシーポリシーページとホームページを作成・公開（`docs/privacy-policy.html`、`docs/index.html`）。Google Cloud Consoleでブランディング情報を入力し、検証をリクエスト済み。Googleの審査完了後、リフレッシュトークンが無期限になる予定。ナレッジベースにKB-215を追加。詳細は [knowledge-base/api.md#kb-215](./knowledge-base/api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) を参照。
+
 - **✅ デプロイ整備（KB-200）の全デバイス実機検証完了・ブランチ指定必須化**: デプロイ標準手順の安定性と安全性を向上させる「デプロイ整備」機能の全デバイス実機検証を完了。fail-fastチェック（未commit/未push防止）、デタッチモード（`--detach`）とログ追尾（`--attach`/`--follow`）、プレフライトチェック（Pi3のサービス停止・GUI停止）、リモートロック、`git reset --hard origin/<branch>`修正、**ブランチ指定必須化**（デフォルトmain削除で誤デプロイ防止）を実装。Pi5/Pi4/Pi3の全デバイスで実機検証成功。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-200](./knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) / [guides/deployment.md](./guides/deployment.md) を参照。
 
 - **✅ キオスク持出タブの持出中アイテムが端末間で共有されない問題の修正完了**: キオスクの持出タブ（NFCタブ・写真タブ）で表示する「持出中」一覧が端末ごとに分かれており、Pi4で持ち出したアイテムがMacブラウザで開いたキオスクに表示されない問題を修正。原因は`KioskPhotoBorrowPage.tsx`が`useActiveLoans(resolvedClientId, ...)`でローカル端末の`clientId`を渡しており、APIがその端末の貸出のみ返していたこと。`useActiveLoans(undefined, resolvedClientKey)`に変更し、持出タブ・返却一覧は全端末の持出中を表示するように統一。CI成功、デプロイ（Pi5・Pi4対象）、実機検証完了。ナレッジベースにKB-211を追加。詳細は [knowledge-base/frontend.md#kb-211](./knowledge-base/frontend.md#kb-211-キオスク持出タブの持出中アイテムが端末間で共有されない問題) / [guides/api-key-policy.md](./guides/api-key-policy.md) / [modules/tools/api.md](./modules/tools/api.md) を参照。
