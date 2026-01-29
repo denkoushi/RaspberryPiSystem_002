@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-29）
+
+- **✅ キオスク持出タブの持出中アイテムが端末間で共有されない問題の修正完了**: キオスクの持出タブ（NFCタブ・写真タブ）で表示する「持出中」一覧が端末ごとに分かれており、Pi4で持ち出したアイテムがMacブラウザで開いたキオスクに表示されない問題を修正。原因は`KioskPhotoBorrowPage.tsx`が`useActiveLoans(resolvedClientId, ...)`でローカル端末の`clientId`を渡しており、APIがその端末の貸出のみ返していたこと。`useActiveLoans(undefined, resolvedClientKey)`に変更し、持出タブ・返却一覧は全端末の持出中を表示するように統一。CI成功、デプロイ（Pi5・Pi4対象）、実機検証完了。ナレッジベースにKB-211を追加。詳細は [knowledge-base/frontend.md#kb-211](./knowledge-base/frontend.md#kb-211-キオスク持出タブの持出中アイテムが端末間で共有されない問題) / [guides/api-key-policy.md](./guides/api-key-policy.md) / [modules/tools/api.md](./modules/tools/api.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-28）
 
 - **✅ セキュリティ評価の実機検証完了・評価修正**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいて実機検証を実施。ポート露出・fail2ban監視・security-monitorは正常動作を確認。ルーター（IODATA UD-LTA/UE）のデフォルト設定を確認し、「外部露出」という表現を「ローカルネットワーク内での待受」に修正。ルーターのSPIファイアウォールが有効でポート転送が未設定の場合、インターネットからの直接アクセスはブロックされることを確認。バックアップ/復元検証は暗号化キー設定後に再実施が必要。USBオフライン運用はバックアップファイル生成後に再実施が必要。実機検証スクリプト（`scripts/security/verify-production-security.sh`）を作成し、証跡ファイルを構造化して保存。評価報告書を更新し、ギャップ一覧・トップリスク10を更新。ナレッジベースにKB-213、KB-214を追加。詳細は [knowledge-base/infrastructure/security.md#kb-213](./knowledge-base/infrastructure/security.md#kb-213-セキュリティ評価の実機検証2026-01-28) / [knowledge-base/infrastructure/security.md#kb-214](./knowledge-base/infrastructure/security.md#kb-214-ルーターのデフォルト設定によるポート露出評価の誤解解消) / [security/evaluation-report.md](./security/evaluation-report.md) / [security/evidence/production-verification-guide.md](./security/evidence/production-verification-guide.md) を参照。

@@ -7,6 +7,7 @@ import {
   useKioskProductionScheduleResources,
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleOrder,
+  useUpdateKioskProductionScheduleNote,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
@@ -27,16 +28,40 @@ type ScheduleRowData = {
   progress?: string;
 };
 
+const NOTE_MAX_LENGTH = 100;
+
 type NormalizedScheduleRow = {
   id: string;
   isCompleted: boolean;
   data: ScheduleRowData;
   values: Record<string, string>;
   processingOrder: number | null;
+  note: string | null;
 };
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
+const NOTE_COLUMN_WIDTH = 140;
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
 
 export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
@@ -45,6 +70,9 @@ export function ProductionSchedulePage() {
   const [hiddenHistory, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
   const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
   const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
+  const [hasNoteOnlyFilter, setHasNoteOnlyFilter] = useState(false);
+  const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
+  const [editingNoteValue, setEditingNoteValue] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -52,6 +80,7 @@ export function ProductionSchedulePage() {
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const suppressSearchStateSyncRef = useRef(false);
   const hasLoadedSearchStateRef = useRef(false);
+  const isCancellingNoteRef = useRef(false);
 
   const normalizedActiveQueries = useMemo(() => {
     const unique = new Set<string>();
@@ -106,16 +135,21 @@ export function ProductionSchedulePage() {
       q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
+      hasNoteOnly: hasNoteOnlyFilter || undefined,
       page: 1,
       pageSize: 400
     }),
-    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds]
+    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds, hasNoteOnlyFilter]
   );
-  // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
-  const hasQuery = normalizedActiveQueries.length > 0 || normalizedAssignedOnlyCds.length > 0;
+  // 資源CD単独では検索しない（登録製番単独・AND検索は維持）。備考ありのみは単独で有効
+  const hasQuery =
+    normalizedActiveQueries.length > 0 ||
+    normalizedAssignedOnlyCds.length > 0 ||
+    hasNoteOnlyFilter;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
+  const noteMutation = useUpdateKioskProductionScheduleNote();
   const resourcesQuery = useKioskProductionScheduleResources();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -152,6 +186,7 @@ export function ProductionSchedulePage() {
     return sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
+      const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const values = {
         FHINCD: String(d.FHINCD ?? ''),
         ProductNo: String(d.ProductNo ?? ''),
@@ -167,7 +202,8 @@ export function ProductionSchedulePage() {
         isCompleted: d.progress === '完了',
         data: d,
         values,
-        processingOrder
+        processingOrder,
+        note
       };
     });
   }, [scheduleQuery.data?.rows]);
@@ -235,6 +271,31 @@ export function ProductionSchedulePage() {
     setActiveQueries([]);
     setActiveResourceCds([]);
     setActiveResourceAssignedOnlyCds([]);
+    setHasNoteOnlyFilter(false);
+  };
+
+  const startNoteEdit = (rowId: string, currentNote: string | null) => {
+    setEditingNoteRowId(rowId);
+    setEditingNoteValue(currentNote ?? '');
+  };
+
+  const saveNote = (rowId: string) => {
+    const value = editingNoteValue.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
+    if (noteMutation.isPending) return;
+    noteMutation.mutate(
+      { rowId, note: value },
+      {
+        onSettled: () => {
+          setEditingNoteRowId(null);
+          setEditingNoteValue('');
+        }
+      }
+    );
+  };
+
+  const cancelNoteEdit = () => {
+    setEditingNoteRowId(null);
+    setEditingNoteValue('');
   };
 
   const toggleHistoryQuery = (value: string) => {
@@ -394,6 +455,15 @@ export function ProductionSchedulePage() {
           >
             クリア
           </Button>
+          <Button
+            variant="secondary"
+            className={`h-10 ${hasNoteOnlyFilter ? 'ring-2 ring-emerald-400' : ''}`}
+            onClick={() => setHasNoteOnlyFilter((v) => !v)}
+            disabled={scheduleQuery.isFetching || completeMutation.isPending}
+            aria-pressed={hasNoteOnlyFilter}
+          >
+            備考あり
+          </Button>
           {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </div>
       </div>
@@ -482,6 +552,7 @@ export function ProductionSchedulePage() {
               {itemColumnWidths.map((width, index) => (
                 <col key={`left-${tableColumns[index]?.key ?? index}`} style={{ width }} />
               ))}
+              <col style={{ width: NOTE_COLUMN_WIDTH }} />
               {isTwoColumn ? <col style={{ width: itemSeparatorWidth }} /> : null}
               {isTwoColumn
                 ? [<col key="right-check" style={{ width: checkWidth }} />]
@@ -490,6 +561,7 @@ export function ProductionSchedulePage() {
                         <col key={`right-${tableColumns[index]?.key ?? index}`} style={{ width }} />
                       ))
                     )
+                    .concat([<col key="right-note" style={{ width: NOTE_COLUMN_WIDTH }} />])
                 : null}
             </colgroup>
             <thead className="sticky top-0 bg-slate-900">
@@ -500,6 +572,7 @@ export function ProductionSchedulePage() {
                     {column.label}
                   </th>
                 ))}
+                <th className="px-2 py-2">備考</th>
                 {isTwoColumn ? <th aria-hidden className="px-2 py-2" /> : null}
                 {isTwoColumn ? <th className="px-2 py-2 text-center">完了</th> : null}
                 {isTwoColumn
@@ -509,6 +582,7 @@ export function ProductionSchedulePage() {
                       </th>
                     ))
                   : null}
+                {isTwoColumn ? <th className="px-2 py-2">備考</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -563,6 +637,51 @@ export function ProductionSchedulePage() {
                         )}
                       </td>
                     ))}
+                    <td className={`px-2 py-1 align-middle ${leftClass}`}>
+                      {editingNoteRowId === left.id ? (
+                        <input
+                          type="text"
+                          value={editingNoteValue}
+                          onChange={(e) => setEditingNoteValue(e.target.value)}
+                          onBlur={() => {
+                            if (isCancellingNoteRef.current) {
+                              isCancellingNoteRef.current = false;
+                              return;
+                            }
+                            saveNote(left.id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              saveNote(left.id);
+                            }
+                            if (e.key === 'Escape') {
+                              isCancellingNoteRef.current = true;
+                              cancelNoteEdit();
+                            }
+                          }}
+                          maxLength={NOTE_MAX_LENGTH}
+                          className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-xs text-black"
+                          autoFocus
+                          aria-label="備考を編集"
+                        />
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <span className="min-w-0 truncate text-white/90" title={left.note ?? undefined}>
+                            {left.note ? (left.note.length > 18 ? `${left.note.slice(0, 18)}…` : left.note) : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => startNoteEdit(left.id, left.note)}
+                            disabled={noteMutation.isPending}
+                            className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                            aria-label="備考を編集"
+                          >
+                            <PencilIcon />
+                          </button>
+                        </span>
+                      )}
+                    </td>
                     {isTwoColumn ? <td className="px-2 py-1" /> : null}
                     {isTwoColumn ? (
                       <>
@@ -618,6 +737,53 @@ export function ProductionSchedulePage() {
                             ) : null}
                           </td>
                         ))}
+                        <td className={`px-2 py-1 align-middle ${rightClass}`}>
+                          {right ? (
+                            editingNoteRowId === right.id ? (
+                              <input
+                                type="text"
+                                value={editingNoteValue}
+                                onChange={(e) => setEditingNoteValue(e.target.value)}
+                                onBlur={() => {
+                                  if (isCancellingNoteRef.current) {
+                                    isCancellingNoteRef.current = false;
+                                    return;
+                                  }
+                                  saveNote(right.id);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    saveNote(right.id);
+                                  }
+                                  if (e.key === 'Escape') {
+                                    isCancellingNoteRef.current = true;
+                                    cancelNoteEdit();
+                                  }
+                                }}
+                                maxLength={NOTE_MAX_LENGTH}
+                                className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-xs text-black"
+                                autoFocus
+                                aria-label="備考を編集"
+                              />
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <span className="min-w-0 truncate text-white/90" title={right.note ?? undefined}>
+                                  {right.note ? (right.note.length > 18 ? `${right.note.slice(0, 18)}…` : right.note) : ''}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => startNoteEdit(right.id, right.note)}
+                                  disabled={noteMutation.isPending}
+                                  className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                                  aria-label="備考を編集"
+                                >
+                                  <PencilIcon />
+                                </button>
+                              </span>
+                            )
+                          ) : null}
+                        </td>
                       </>
                     ) : null}
                   </tr>

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 32件  
+**件数**: 33件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2419,5 +2419,31 @@ const queryWhere =
 - `apps/api/src/routes/kiosk.ts`（検索条件のAND結合実装）
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（AND検索の統合テスト追加）
 - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（ドロップダウン文字色を黒に変更）
+
+---
+
+### [KB-211] キオスク持出タブの持出中アイテムが端末間で共有されない問題
+
+**Context**: キオスクの持出タブ（NFCタブ・写真タブ）で表示する「持出中」一覧が、端末ごとに分かれており、Pi4で持ち出したアイテムがMacブラウザで開いたキオスクに表示されない。
+
+**Symptoms**:
+- Pi4で持ち出したアイテムが、別端末（Macブラウザ等）で開いたキオスクの持出タブに表示されない
+- 持出タブは全端末で同一の「持出中」一覧を表示する仕様であるべき
+
+**Investigation**:
+- **仮説1**: APIがクライアントキーやclientIdでフィルタしている → API側は `clientId` がクエリで**明示指定された場合のみ**フィルタし、省略時は全件返す仕様（CONFIRMED: APIは正しい）
+- **仮説2**: フロントで `useActiveLoans(clientId, ...)` にローカル端末の `clientId` を渡している → **CONFIRMED**: `KioskPhotoBorrowPage.tsx` のみ `useActiveLoans(resolvedClientId, resolvedClientKey)` としており、`KioskBorrowPage.tsx` は `useActiveLoans(undefined, resolvedClientKey)` で全件取得していた
+
+**Root cause**: `KioskPhotoBorrowPage.tsx` がローカル端末の `clientId` を `useActiveLoans` に渡していたため、APIに `?clientId=...` が付き、その端末の貸出のみ返っていた。
+
+**Fix**: `KioskPhotoBorrowPage.tsx` で `useActiveLoans(resolvedClientId, ...)` を `useActiveLoans(undefined, resolvedClientKey)` に変更。返却一覧・持出タブは全クライアント分を表示するため、`clientId` を送らない。
+
+**Prevention**:
+- 持出タブ・返却一覧で「全端末の持出中」を表示する画面では、必ず `useActiveLoans(undefined, clientKey)` を渡す（[api-key-policy.md](../guides/api-key-policy.md) 参照）
+- 新規キオスクページでアクティブ貸出一覧を使う場合は、`KioskBorrowPage` / `KioskPhotoBorrowPage` の呼び出し方を参照する
+
+**References**: `docs/guides/api-key-policy.md`, `apps/api/src/routes/tools/loans/active.ts`, `apps/web/src/api/client.ts`（`getActiveLoans`）
+
+**解決状況**: ✅ **解決済み**（2026-01-29）。CI成功、デプロイ（Pi5・Pi4対象）、実機検証完了。
 
 ---

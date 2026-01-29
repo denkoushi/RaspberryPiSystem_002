@@ -22,6 +22,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -30,6 +31,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -327,6 +329,80 @@ describe('Kiosk Production Schedule API', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0001']);
+  });
+
+  it('saves and returns row note (PUT note, GET includes note)', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const list = (listRes.json() as { rows: Array<{ id: string; note?: string | null }> }).rows;
+    const rowId = list[0].id;
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: 'テスト備考' }
+    });
+    expect(putRes.statusCode).toBe(200);
+    expect((putRes.json() as { success: boolean; note: string | null }).note).toBe('テスト備考');
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rows = (getRes.json() as { rows: Array<{ id: string; note?: string | null }> }).rows;
+    const row = rows.find((r) => r.id === rowId);
+    expect(row?.note).toBe('テスト備考');
+
+    const putEmptyRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '   ' }
+    });
+    expect(putEmptyRes.statusCode).toBe(200);
+    expect((putEmptyRes.json() as { note: string | null }).note).toBeNull();
+
+    const getAfterRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rowsAfter = (getAfterRes.json() as { rows: Array<{ id: string; note?: string | null }> }).rows;
+    expect(rowsAfter.find((r) => r.id === rowId)?.note).toBeNull();
+  });
+
+  it('hasNoteOnly=true returns only rows with a note', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string; rowData: { ProductNo?: string } }> }).rows;
+    const row0 = list.find((r) => r.rowData.ProductNo === '0000')!;
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row0.id}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '備考あり' }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?hasNoteOnly=true',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ id: string; rowData: { ProductNo?: string } }> };
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0].id).toBe(row0.id);
+    expect(body.rows[0].rowData.ProductNo).toBe('0000');
   });
 });
 
