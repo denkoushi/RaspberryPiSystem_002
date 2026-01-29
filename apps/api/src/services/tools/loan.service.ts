@@ -1,5 +1,5 @@
 import type { Loan } from '@prisma/client';
-import { ItemStatus, TransactionAction } from '@prisma/client';
+import { ItemStatus, MeasuringInstrumentStatus, RiggingStatus, TransactionAction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -109,7 +109,7 @@ export class LoanService {
     }
 
     const existingLoan = await prisma.loan.findFirst({
-      where: { itemId: item.id, returnedAt: null }
+      where: { itemId: item.id, returnedAt: null, cancelledAt: null }
     });
     if (existingLoan) {
       logger.warn(
@@ -246,9 +246,21 @@ export class LoanService {
         include: { item: true, employee: true, client: true }
       });
 
-      // アイテムが関連付けられている場合のみ、ステータスを更新
+      // 関連付けられている資産のステータスを更新
       if (loan.itemId) {
         await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
+      }
+      if (loan.riggingGearId) {
+        await tx.riggingGear.update({
+          where: { id: loan.riggingGearId },
+          data: { status: RiggingStatus.AVAILABLE }
+        });
+      }
+      if (loan.measuringInstrumentId) {
+        await tx.measuringInstrument.update({
+          where: { id: loan.measuringInstrumentId },
+          data: { status: MeasuringInstrumentStatus.AVAILABLE }
+        });
       }
 
       await tx.transaction.create({
@@ -526,9 +538,21 @@ export class LoanService {
         include: { item: true, employee: true, client: true }
       });
 
-      // アイテムが関連付けられている場合、ステータスをAVAILABLEに戻す
+      // 関連付けられている資産のステータスをAVAILABLEに戻す
       if (loan.itemId) {
         await tx.item.update({ where: { id: loan.itemId }, data: { status: ItemStatus.AVAILABLE } });
+      }
+      if (loan.riggingGearId) {
+        await tx.riggingGear.update({
+          where: { id: loan.riggingGearId },
+          data: { status: RiggingStatus.AVAILABLE }
+        });
+      }
+      if (loan.measuringInstrumentId) {
+        await tx.measuringInstrument.update({
+          where: { id: loan.measuringInstrumentId },
+          data: { status: MeasuringInstrumentStatus.AVAILABLE }
+        });
       }
 
       // Transactionレコードを作成（取消履歴を記録）

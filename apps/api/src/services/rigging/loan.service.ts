@@ -68,7 +68,7 @@ export class RiggingLoanService {
     }
 
     const existingLoan = await prisma.loan.findFirst({
-      where: { riggingGearId: gear.id, returnedAt: null }
+      where: { riggingGearId: gear.id, returnedAt: null, cancelledAt: null }
     });
     if (existingLoan) {
       throw new ApiError(400, 'この吊具はすでに貸出中です');

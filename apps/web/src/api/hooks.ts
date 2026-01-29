@@ -50,7 +50,8 @@ import {
   importMasterSingle,
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
-  updateKioskProductionScheduleOrder
+  updateKioskProductionScheduleOrder,
+  updateKioskProductionScheduleNote
 } from './client';
 import {
   borrowItem,
@@ -171,6 +172,7 @@ export function useKioskProductionSchedule(
     q?: string;
     resourceCds?: string;
     resourceAssignedOnlyCds?: string;
+    hasNoteOnly?: boolean;
     page?: number;
     pageSize?: number;
   },
@@ -244,6 +246,31 @@ export function useUpdateKioskProductionScheduleOrder() {
   });
 }
 
+export function useUpdateKioskProductionScheduleNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, note }: { rowId: string; note: string }) =>
+      updateKioskProductionScheduleNote(rowId, { note }),
+    onSuccess: async (data, { rowId }) => {
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null; note?: string | null }>;
+      }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          rows: oldData.rows.map((row) =>
+            row.id === rowId ? { ...row, note: data.note } : row
+          )
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
 export function useCompleteKioskProductionScheduleRow() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -254,7 +281,7 @@ export function useCompleteKioskProductionScheduleRow() {
         page: number;
         pageSize: number;
         total: number;
-        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null }>;
+        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null; note?: string | null }>;
       }>(
         { queryKey: ['kiosk-production-schedule'] },
         (oldData) => {

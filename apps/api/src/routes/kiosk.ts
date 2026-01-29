@@ -87,6 +87,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     q: z.string().min(1).max(200).optional(),
     resourceCds: z.string().min(1).max(400).optional(),
     resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
+    hasNoteOnly: z
+      .string()
+      .optional()
+      .transform((v) => v === 'true' || v === '1'),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(2000).optional(),
   });
@@ -102,6 +106,16 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleOrderBodySchema = z.object({
     resourceCd: z.string().min(1).max(100),
     orderNumber: z.number().int().min(ORDER_NUMBER_MIN).max(ORDER_NUMBER_MAX).nullable(),
+  });
+
+  const productionScheduleNoteParamsSchema = z.object({
+    rowId: z.string().uuid(),
+  });
+  const productionScheduleNoteBodySchema = z.object({
+    note: z
+      .string()
+      .max(100)
+      .transform((s) => s.replace(/\r?\n/g, '').trim()),
   });
 
   const productionScheduleSearchStateBodySchema = z.object({
@@ -190,8 +204,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
     const resourceCds = parseCsvList(query.resourceCds);
     const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
+    const hasNoteOnly = query.hasNoteOnly === true;
 
-    const baseWhere = Prisma.sql`"csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    const baseWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
     const uniqueTokens = parseCsvList(rawQueryText).slice(0, 8);
 
     const textConditions: Prisma.Sql[] = [];
@@ -200,12 +215,12 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
       const likeValue = `%${token}%`;
       if (isNumeric) {
-        textConditions.push(Prisma.sql`("rowData"->>'ProductNo') ILIKE ${likeValue}`);
+        textConditions.push(Prisma.sql`("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue}`);
       } else if (isFseiban) {
-        textConditions.push(Prisma.sql`("rowData"->>'FSEIBAN') = ${token}`);
+        textConditions.push(Prisma.sql`("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${token}`);
       } else {
         textConditions.push(
-          Prisma.sql`(("rowData"->>'ProductNo') ILIKE ${likeValue} OR ("rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+          Prisma.sql`(("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FSEIBAN') ILIKE ${likeValue})`
         );
       }
     }
@@ -213,7 +228,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const resourceConditions: Prisma.Sql[] = [];
     if (resourceCds.length > 0) {
       resourceConditions.push(
-        Prisma.sql`("rowData"->>'FSIGENCD') IN (${Prisma.join(
+        Prisma.sql`("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(
           resourceCds.map((cd) => Prisma.sql`${cd}`),
           ','
         )})`
@@ -222,7 +237,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     if (assignedOnlyCds.length > 0) {
       resourceConditions.push(
-        Prisma.sql`id IN (
+        Prisma.sql`"CsvDashboardRow"."id" IN (
           SELECT "csvDashboardRowId"
           FROM "ProductionScheduleOrderAssignment"
           WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -249,7 +264,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         rows: [],
       };
     }
-    const queryWhere =
+    let queryWhere =
       textConditions.length > 0 && resourceConditions.length > 0
         ? Prisma.sql`AND ${textWhere} AND ${resourceWhere}`
         : textConditions.length > 0
@@ -257,6 +272,15 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           : resourceConditions.length > 0
             ? Prisma.sql`AND ${resourceWhere}`
             : Prisma.empty; // 検索条件なしの場合は全件を返す
+
+    if (hasNoteOnly) {
+      queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
+        SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
+        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          AND "location" = ${locationKey}
+          AND TRIM("note") <> ''
+      )`;
+    }
 
     const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*)::bigint AS total
@@ -267,20 +291,26 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     const offset = (page - 1) * pageSize;
     const rows = await prisma.$queryRaw<
-      Array<{ id: string; occurredAt: Date; rowData: Prisma.JsonValue; processingOrder: number | null }>
+      Array<{
+        id: string;
+        occurredAt: Date;
+        rowData: Prisma.JsonValue;
+        processingOrder: number | null;
+        note: string | null;
+      }>
     >`
       SELECT
-        id,
-        "occurredAt",
+        "CsvDashboardRow"."id",
+        "CsvDashboardRow"."occurredAt",
         jsonb_build_object(
-          'ProductNo', "rowData"->>'ProductNo',
-          'FSEIBAN', "rowData"->>'FSEIBAN',
-          'FHINCD', "rowData"->>'FHINCD',
-          'FHINMEI', "rowData"->>'FHINMEI',
-          'FSIGENCD', "rowData"->>'FSIGENCD',
-          'FSIGENSHOYORYO', "rowData"->>'FSIGENSHOYORYO',
-          'FKOJUN', "rowData"->>'FKOJUN',
-          'progress', "rowData"->>'progress'
+          'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
+          'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
+          'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
+          'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
+          'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
+          'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
+          'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
+          'progress', "CsvDashboardRow"."rowData"->>'progress'
         ) AS "rowData",
         (
           SELECT "orderNumber"
@@ -288,17 +318,22 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
             AND "location" = ${locationKey}
           LIMIT 1
-        ) AS "processingOrder"
+        ) AS "processingOrder",
+        "n"."note" AS "note"
       FROM "CsvDashboardRow"
+      LEFT JOIN "ProductionScheduleRowNote" AS "n"
+        ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "n"."location" = ${locationKey}
+        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       WHERE ${baseWhere} ${queryWhere}
       ORDER BY
-        ("rowData"->>'FSEIBAN') ASC,
-        ("rowData"->>'ProductNo') ASC,
+        ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
+        ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
         (CASE
-          WHEN ("rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("rowData"->>'FKOJUN'))::int
+          WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
           ELSE NULL
         END) ASC,
-        ("rowData"->>'FHINCD') ASC
+        ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
 
@@ -416,6 +451,50 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { success: true, alreadyCompleted: false, rowData: nextRowData };
+  });
+
+  // 生産日程（研削工程）: 行ごとの備考を保存（x-client-key認証のみ、100文字以内・改行不可）
+  app.put('/kiosk/production-schedule/:rowId/note', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const params = productionScheduleNoteParamsSchema.parse(request.params);
+    const body = productionScheduleNoteBodySchema.parse(request.body);
+
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: { id: params.rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+
+    const note = body.note.slice(0, 100).trim();
+    if (note.length === 0) {
+      await prisma.productionScheduleRowNote.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      });
+      return { success: true, note: null };
+    }
+    await prisma.productionScheduleRowNote.upsert({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: locationKey,
+        note,
+      },
+      update: { note },
+    });
+
+    return { success: true, note };
   });
 
   app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {

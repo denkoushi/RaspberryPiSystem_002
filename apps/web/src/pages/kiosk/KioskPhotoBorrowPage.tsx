@@ -27,7 +27,8 @@ export function KioskPhotoBorrowPage() {
   const [clientId] = useLocalStorage('kiosk-client-id', '');
   const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
   const resolvedClientId = clientId || undefined;
-  const loansQuery = useActiveLoans(resolvedClientId, resolvedClientKey);
+  // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
+  const loansQuery = useActiveLoans(undefined, resolvedClientKey);
   const photoBorrowMutation = usePhotoBorrowMutation(resolvedClientKey);
   // スコープ分離: このページがアクティブな場合のみNFCを有効にする
   const isActiveRoute = useMatch('/kiosk/photo');

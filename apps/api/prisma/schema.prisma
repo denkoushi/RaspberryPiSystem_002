@@ -585,10 +585,26 @@ model CsvDashboardRow {
   rowData        Json // 正規化された行データ（列マッピング適用後）
   createdAt      DateTime     @default(now())
   orderAssignments ProductionScheduleOrderAssignment[]
+  rowNotes       ProductionScheduleRowNote[]
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
+}
+
+model ProductionScheduleRowNote {
+  id               String         @id @default(uuid())
+  csvDashboardId   String
+  csvDashboardRowId String
+  location         String
+  note             String         @db.VarChar(100) // 現場リーダー備考、100文字以内・改行不可
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  csvDashboardRow   CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardRowId, location])
+  @@index([csvDashboardId, location])
 }
 
 model ProductionScheduleOrderAssignment {

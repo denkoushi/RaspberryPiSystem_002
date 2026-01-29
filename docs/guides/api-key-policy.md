@@ -114,6 +114,8 @@ app.get('/active', async (request, reply) => {
 
 ### キオスク画面での使用
 
+持出タブ・返却一覧では**全端末の持出中**を表示するため、`useActiveLoans` の第一引数は必ず `undefined` にすること。`KioskBorrowPage`・`KioskReturnPage`・`KioskPhotoBorrowPage` のいずれも同じとする（KB-211 参照）。
+
 ```typescript
 // apps/web/src/pages/kiosk/KioskReturnPage.tsx
 const [localClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
@@ -121,6 +123,12 @@ const [localClientId] = useLocalStorage('kiosk-client-id', '');
 
 // clientIdは送信しない（全件表示のため）
 const loansQuery = useActiveLoans(undefined, localClientKey);
+```
+
+```typescript
+// apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx（写真タブ・持出一覧）
+// 返却一覧は全クライアント分を表示（端末間共有のため）
+const loansQuery = useActiveLoans(undefined, resolvedClientKey);
 ```
 
 ## 今後の改善案

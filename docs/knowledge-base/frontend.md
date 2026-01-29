@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 32件  
+**件数**: 33件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2419,5 +2419,161 @@ const queryWhere =
 - `apps/api/src/routes/kiosk.ts`（検索条件のAND結合実装）
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（AND検索の統合テスト追加）
 - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（ドロップダウン文字色を黒に変更）
+
+---
+
+### [KB-211] キオスク持出タブの持出中アイテムが端末間で共有されない問題
+
+**Context**: キオスクの持出タブ（NFCタブ・写真タブ）で表示する「持出中」一覧が、端末ごとに分かれており、Pi4で持ち出したアイテムがMacブラウザで開いたキオスクに表示されない。
+
+**Symptoms**:
+- Pi4で持ち出したアイテムが、別端末（Macブラウザ等）で開いたキオスクの持出タブに表示されない
+- 持出タブは全端末で同一の「持出中」一覧を表示する仕様であるべき
+
+**Investigation**:
+- **仮説1**: APIがクライアントキーやclientIdでフィルタしている → API側は `clientId` がクエリで**明示指定された場合のみ**フィルタし、省略時は全件返す仕様（CONFIRMED: APIは正しい）
+- **仮説2**: フロントで `useActiveLoans(clientId, ...)` にローカル端末の `clientId` を渡している → **CONFIRMED**: `KioskPhotoBorrowPage.tsx` のみ `useActiveLoans(resolvedClientId, resolvedClientKey)` としており、`KioskBorrowPage.tsx` は `useActiveLoans(undefined, resolvedClientKey)` で全件取得していた
+
+**Root cause**: `KioskPhotoBorrowPage.tsx` がローカル端末の `clientId` を `useActiveLoans` に渡していたため、APIに `?clientId=...` が付き、その端末の貸出のみ返っていた。
+
+**Fix**: `KioskPhotoBorrowPage.tsx` で `useActiveLoans(resolvedClientId, ...)` を `useActiveLoans(undefined, resolvedClientKey)` に変更。返却一覧・持出タブは全クライアント分を表示するため、`clientId` を送らない。
+
+**Prevention**:
+- 持出タブ・返却一覧で「全端末の持出中」を表示する画面では、必ず `useActiveLoans(undefined, clientKey)` を渡す（[api-key-policy.md](../guides/api-key-policy.md) 参照）
+- 新規キオスクページでアクティブ貸出一覧を使う場合は、`KioskBorrowPage` / `KioskPhotoBorrowPage` の呼び出し方を参照する
+
+**References**: `docs/guides/api-key-policy.md`, `apps/api/src/routes/tools/loans/active.ts`, `apps/web/src/api/client.ts`（`getActiveLoans`）
+
+**解決状況**: ✅ **解決済み**（2026-01-29）。CI成功、デプロイ（Pi5・Pi4対象）、実機検証完了。
+
+---
+
+### [KB-212] 生産スケジュール行ごとの備考欄追加機能
+
+**実装日時**: 2026-01-29
+
+**事象**: 
+- 生産スケジュールの各行に現場リーダーが備考を記入できる機能が必要
+- 備考はlocation単位で管理し、同一locationの端末間で共有される必要がある
+
+**要因**: 
+- 生産スケジュールの各行に備考を記入する機能が実装されていなかった
+- 現場での作業指示や注意事項を記録する手段がなかった
+
+**有効だった対策**: 
+- ✅ **備考欄追加機能（2026-01-29）**:
+  1. **UI実装**: `ProductionSchedulePage.tsx`に備考編集機能を追加
+  2. **インライン編集**: テーブル内で直接編集できるUIを実装（編集モードと表示モードの切り替え）
+  3. **キーボード操作**: Enterキーで保存、Escapeキーでキャンセル
+  4. **バリデーション**: 100文字以内・改行不可の制限を実装（`NOTE_MAX_LENGTH = 100`）
+  5. **改行削除**: 入力時に改行を自動削除（`replace(/\r?\n/g, '')`）
+
+**実装の詳細**:
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+const NOTE_MAX_LENGTH = 100;
+
+const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
+const [editingNoteValue, setEditingNoteValue] = useState('');
+const isCancellingNoteRef = useRef(false);
+
+const startNoteEdit = (rowId: string, currentNote: string | null) => {
+  setEditingNoteRowId(rowId);
+  setEditingNoteValue(currentNote ?? '');
+};
+
+const saveNote = (rowId: string) => {
+  const value = editingNoteValue.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
+  noteMutation.mutate(
+    { rowId, note: value || null },
+    {
+      onSuccess: () => {
+        cancelNoteEdit();
+        scheduleQuery.refetch();
+      },
+    }
+  );
+};
+
+const cancelNoteEdit = () => {
+  setEditingNoteRowId(null);
+  setEditingNoteValue('');
+  isCancellingNoteRef.current = false;
+};
+
+// UI実装（インライン編集）
+{editingNoteRowId === left.id ? (
+  <input
+    type="text"
+    value={editingNoteValue}
+    onChange={(e) => setEditingNoteValue(e.target.value)}
+    onBlur={() => {
+      if (isCancellingNoteRef.current) {
+        isCancellingNoteRef.current = false;
+        return;
+      }
+      saveNote(left.id);
+    }}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveNote(left.id);
+      }
+      if (e.key === 'Escape') {
+        isCancellingNoteRef.current = true;
+        cancelNoteEdit();
+      }
+    }}
+    maxLength={NOTE_MAX_LENGTH}
+    className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-xs text-black"
+    autoFocus
+    aria-label="備考を編集"
+  />
+) : (
+  <span className="flex items-center gap-1">
+    <span className="min-w-0 truncate text-white/90" title={left.note ?? undefined}>
+      {left.note ? (left.note.length > 18 ? `${left.note.slice(0, 18)}…` : left.note) : ''}
+    </span>
+    <button
+      type="button"
+      onClick={() => startNoteEdit(left.id, left.note)}
+      disabled={noteMutation.isPending}
+      className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+      aria-label="備考を編集"
+    >
+      <PencilIcon />
+    </button>
+  </span>
+)}
+```
+
+**学んだこと**:
+- **インライン編集**: テーブル内で直接編集できるUIを実装することで、操作性が向上する
+- **キーボード操作**: Enterキーで保存、Escapeキーでキャンセルを実装することで、マウス操作なしで編集できる
+- **改行削除**: 入力時に改行を自動削除することで、100文字以内の制限と改行不可の制限を両立できる
+- **視覚的フィードバック**: 編集モードと表示モードを明確に分離することで、ユーザーが現在の状態を理解しやすくなる
+- **文字数制限の表示**: 18文字を超える場合は省略表示（`…`）し、`title`属性で全文を表示することで、長い備考も確認できる
+
+**解決状況**: ✅ **解決済み**（2026-01-29）
+
+**実機検証**:
+- ✅ 統合テスト成功（備考の保存・削除・取得が正常に動作）
+- ✅ GitHub Actions CI成功
+- ✅ デプロイ成功（Pi5/Pi4/Pi3）
+- ✅ 実機検証完了（2026-01-29）:
+  - 備考の保存・削除が正常に動作することを確認
+  - 100文字以内の制限が正常に動作することを確認
+  - 改行が削除されることを確認
+  - インライン編集が正常に動作することを確認（Enter/Escapeキー対応）
+  - 備考の表示・編集が正常に動作することを確認
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（備考編集UI実装）
+- `apps/web/src/api/hooks.ts`（`useUpdateKioskProductionScheduleNote`フック追加）
+- `apps/api/src/routes/kiosk.ts`（備考保存・削除エンドポイント実装）
+
+**関連KB**:
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュールUIの改良（資源CDフィルタ・加工順序割当・検索状態同期）
+- [KB-212](./api.md#kb-212-生産スケジュール行ごとの備考欄追加機能): API側の備考欄追加機能実装
 
 ---

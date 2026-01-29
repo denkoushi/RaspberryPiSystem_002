@@ -363,6 +363,47 @@
   when:
     - docker_env_result.changed | default(false)
 
+- name: Run Prisma migrations on server (fail-fast)
+  block:
+    - name: Run prisma migrate deploy
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }}
+        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+      args:
+        executable: /bin/bash
+      register: prisma_migrate_deploy_result
+      retries: 3
+      delay: 5
+      until: prisma_migrate_deploy_result is succeeded
+      changed_when: false
+
+    - name: Run prisma migrate status
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }}
+        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+      args:
+        executable: /bin/bash
+      register: prisma_migrate_status_result
+      changed_when: false
+  rescue:
+    - name: Capture docker compose logs after migration failure
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path }}
+        docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=80 api db
+      args:
+        executable: /bin/bash
+      register: prisma_migrate_logs
+      changed_when: false
+
+    - name: Fail current host due to migration failure
+      ansible.builtin.fail:
+        msg: >
+          Prisma migration failed on {{ inventory_hostname }}.
+          See captured logs above for details.
+
 - name: Wait for API health endpoint to recover
   ansible.builtin.uri:
     url: "{{ api_healthcheck_url }}"

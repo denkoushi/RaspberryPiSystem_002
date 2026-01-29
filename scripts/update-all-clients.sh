@@ -75,8 +75,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# デフォルト値の設定
-REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-main}}"
+# ブランチ指定の検証（--attach/--status/--print-planの場合はブランチ指定不要）
+if [[ -z "${ATTACH_RUN_ID}" && -z "${STATUS_RUN_ID}" && ${PRINT_PLAN} -eq 0 ]]; then
+  # 通常のデプロイ実行時はブランチ指定が必須（誤デプロイ防止のため）
+  if [[ -z "${REPO_VERSION}" && -z "${ANSIBLE_REPO_VERSION}" ]]; then
+    echo "[ERROR] ブランチ指定が必須です。使用方法: ./scripts/update-all-clients.sh <branch> <inventory_path>" >&2
+    usage
+    exit 2
+  fi
+fi
+
+REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-}}"
 
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 

@@ -183,6 +183,7 @@ export interface ProductionScheduleRow {
   occurredAt: string;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
+  note?: string | null;
 }
 
 export interface ProductionScheduleListResponse {
@@ -197,6 +198,7 @@ export async function getKioskProductionSchedule(params?: {
   q?: string;
   resourceCds?: string;
   resourceAssignedOnlyCds?: string;
+  hasNoteOnly?: boolean;
   page?: number;
   pageSize?: number;
 }) {
@@ -229,6 +231,14 @@ export async function updateKioskProductionScheduleOrder(
 ) {
   const { data } = await api.put<{ success: boolean; orderNumber: number | null }>(
     `/kiosk/production-schedule/${rowId}/order`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleNote(rowId: string, payload: { note: string }) {
+  const { data } = await api.put<{ success: boolean; note: string | null }>(
+    `/kiosk/production-schedule/${rowId}/note`,
     payload
   );
   return data;

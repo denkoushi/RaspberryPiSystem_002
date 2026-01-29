@@ -34,6 +34,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 - **完了ボタン**: キオスク画面で完了ボタン（白背景・黒✓、枠色で状態表示）を押すと、`progress`フィールドに「完了」が入り、完了した部品を視覚的に識別可能に
 - **グレーアウト表示**: 完了済みアイテム（`progress='完了'`）を`opacity-50 grayscale`で視覚的にグレーアウト
 - **トグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+- **備考欄**: 各行に備考列を表示。鉛筆アイコンを押すと編集モード（インライン入力、物理キーボード想定）。100文字以内・改行不可。拠点ごとに保存。誰でも編集可。「備考あり」ボタンで備考が入っている行のみ表示
 - **資源CDフィルタ**: 各資源CDに2つのボタン（全件検索 / 割当済みのみ検索）を提供し、検索登録製番とAND条件で検索可能
 - **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
 - **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
@@ -118,9 +119,10 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
 ### APIエンドポイント
 
 **キオスク用エンドポイント**:
-- `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得
+- `GET /api/kiosk/production-schedule`: 生産スケジュールデータを取得（各行に`note`（備考）を含む）
   - **クエリパラメータ**:
     - `q`（推奨）: 検索文字列（`ProductNo`または`FSEIBAN`で検索、カンマ区切りでOR検索）
+    - `hasNoteOnly`: `true` で備考が入っている行のみ返す
       - 数値のみの場合: `ProductNo`の部分一致検索（`ILIKE`）
       - 8文字の英数字（`*`含む）の場合: `FSEIBAN`の完全一致検索
       - その他: `ProductNo`または`FSEIBAN`の`ILIKE` OR検索
@@ -136,6 +138,8 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
   - **加工順序**: 各行に`processingOrder`（割当済み順番番号）を含む
 - `PUT /api/kiosk/production-schedule/:rowId/complete`: 完了状態をトグル（完了→未完了、未完了→完了）。完了時は加工順序割当を削除し、同一資源CD内の後続番号を自動で詰める
 - `PUT /api/kiosk/production-schedule/:rowId/order`: 加工順序番号を割当/解除（`resourceCd`と`orderNumber`（1-10またはnull）を指定）
+- `PUT /api/kiosk/production-schedule/:rowId/note`: 行ごとの備考を保存（`note` 100文字以内・改行不可、拠点ごと）。空文字で削除
+- `GET /api/kiosk/production-schedule` のクエリ: `hasNoteOnly=true` で備考が入っている行のみ取得
 - `GET /api/kiosk/production-schedule/resources`: 全データから取得した資源CD一覧を返す
 - `GET /api/kiosk/production-schedule/order-usage`: 指定された資源CDの使用中順番番号を返す（`resourceCds`クエリパラメータでフィルタ可能）
 - `GET /api/kiosk/production-schedule/search-state`: 検索状態を取得（location単位）

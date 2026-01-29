@@ -2258,3 +2258,120 @@ app.put('/kiosk/production-schedule/search-state', async (request) => {
 
 ---
 
+### [KB-212] 生産スケジュール行ごとの備考欄追加機能
+
+**実装日時**: 2026-01-29
+
+**事象**: 
+- 生産スケジュールの各行に現場リーダーが備考を記入できる機能が必要
+- 備考はlocation単位で管理し、同一locationの端末間で共有される必要がある
+
+**要因**: 
+- 生産スケジュールの各行に備考を記入する機能が実装されていなかった
+- 現場での作業指示や注意事項を記録する手段がなかった
+
+**有効だった対策**: 
+- ✅ **備考欄追加機能（2026-01-29）**:
+  1. **新規テーブル追加**: `ProductionScheduleRowNote`テーブルを追加（`csvDashboardRowId` + `location` + `note`（100文字以内））
+  2. **一意制約**: `@@unique([csvDashboardRowId, location])`で同一行・同一locationでの重複を防止
+  3. **APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/note`で備考の保存・削除
+  4. **バリデーション**: 100文字以内・改行不可の制限を実装
+  5. **フロントエンド実装**: `ProductionSchedulePage.tsx`に備考編集機能を追加（インライン編集、Enter/Escapeキー対応）
+
+**実装の詳細**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+// 備考の保存・削除
+app.put('/kiosk/production-schedule/:rowId/note', async (request) => {
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  const locationKey = resolveLocationKey(clientDevice);
+  const params = productionScheduleNoteParamsSchema.parse(request.params);
+  const body = productionScheduleNoteBodySchema.parse(request.body);
+
+  const note = body.note.slice(0, 100).trim();
+  if (note.length === 0) {
+    // 空文字の場合は削除
+    await prisma.productionScheduleRowNote.deleteMany({
+      where: {
+        csvDashboardRowId: row.id,
+        location: locationKey,
+      },
+    });
+    return { success: true, note: null };
+  }
+  
+  // upsertで保存
+  await prisma.productionScheduleRowNote.upsert({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey,
+      },
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      location: locationKey,
+      note,
+    },
+    update: { note },
+  });
+  return { success: true, note };
+});
+```
+
+```typescript
+// apps/web/src/pages/kiosk/ProductionSchedulePage.tsx
+const NOTE_MAX_LENGTH = 100;
+
+const startNoteEdit = (rowId: string, currentNote: string | null) => {
+  setEditingNoteRowId(rowId);
+  setEditingNoteValue(currentNote ?? '');
+};
+
+const saveNote = (rowId: string) => {
+  const value = editingNoteValue.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
+  noteMutation.mutate(
+    { rowId, note: value || null },
+    {
+      onSuccess: () => {
+        cancelNoteEdit();
+        scheduleQuery.refetch();
+      },
+    }
+  );
+};
+```
+
+**学んだこと**:
+- **location単位の管理**: 備考はlocation単位で管理することで、同一locationの端末間で共有され、異なるlocation間では独立して管理できる
+- **インライン編集**: テーブル内で直接編集できるUIを実装することで、操作性が向上する
+- **改行削除**: フロントエンド側で改行を削除することで、100文字以内の制限と改行不可の制限を両立できる
+- **空文字の扱い**: 空文字の場合は削除することで、備考をクリアする操作を直感的に実現できる
+
+**解決状況**: ✅ **解決済み**（2026-01-29）
+
+**実機検証**:
+- ✅ 統合テスト成功（備考の保存・削除・取得が正常に動作）
+- ✅ GitHub Actions CI成功
+- ✅ デプロイ成功（Pi5/Pi4/Pi3）
+- ✅ 実機検証完了（2026-01-29）:
+  - 備考の保存・削除が正常に動作することを確認
+  - 100文字以内の制限が正常に動作することを確認
+  - 改行が削除されることを確認
+  - location単位で管理されることを確認
+  - インライン編集が正常に動作することを確認（Enter/Escapeキー対応）
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`ProductionScheduleRowNote`モデル追加）
+- `apps/api/prisma/migrations/20260129120000_add_production_schedule_row_note/migration.sql`（マイグレーション）
+- `apps/api/src/routes/kiosk.ts`（備考保存・削除エンドポイント実装）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テスト追加）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（備考編集UI実装）
+- `apps/web/src/api/hooks.ts`（`useUpdateKioskProductionScheduleNote`フック追加）
+
+**関連KB**:
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュール機能の拡張（資源CDフィルタ・加工順序割当・検索状態同期）
+
+---
+

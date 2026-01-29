@@ -146,10 +146,10 @@ x-client-key: <client_api_key>
 
 ### GET /api/tools/loans/active
 
-アクティブな貸出一覧を取得します。
+アクティブな貸出一覧を取得します。キオスクの持出タブ・返却一覧では**全端末の持出中**を表示するため、`clientId` を省略して呼び出す（省略時は全件返却）。`clientId` を指定した場合のみ、そのクライアントの貸出に絞る。
 
 **クエリパラメータ**:
-- `clientId` (uuid, optional): クライアントIDでフィルタ
+- `clientId` (uuid, optional): 指定時のみそのクライアントでフィルタ。省略時は全件
 
 **レスポンス**:
 ```json

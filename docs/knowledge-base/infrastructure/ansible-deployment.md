@@ -40,8 +40,9 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
   2. **DB整合性ゲートの追加**: `_prisma_migrations` の存在と必須テーブル（`MeasuringInstrumentLoanEvent`）の存在を検証
   3. **Ansible検証にDBゲートを統合**: `verification-map.yml` の `type: command` でDBチェックを実行（SSH経由でPi5上で実行）
   4. **health-check playbookにDBチェックを追加**（P2経路のfail-fast強化）
-  5. **verifier.shのTLS対応**: 自己署名証明書でも`http_get`が動作するように`insecure_tls`オプションを追加
-  6. **verifier.shのcommand変数展開**: `{{ server_ip }}`などの変数を`render_vars`で展開するように修正
+  5. **Ansible本体のデプロイ中にmigrate deployを実行**: `roles/server/tasks/main.yml` で `pnpm prisma migrate deploy` を実行し、未適用が残らないようにする
+  6. **verifier.shのTLS対応**: 自己署名証明書でも`http_get`が動作するように`insecure_tls`オプションを追加
+  7. **verifier.shのcommand変数展開**: `{{ server_ip }}`などの変数を`render_vars`で展開するように修正
 
 **実機検証結果（2026-01-22）**:
 - Pi5で`deploy.sh`実行後、DBゲートが正常に動作（`MeasuringInstrumentLoanEvent`テーブル存在確認: `t`）
@@ -2556,6 +2557,16 @@ ensure_local_repo_ready_for_deploy() {
 - Pi3のサービス停止とリソース確保が正常に実行
 - DB整合性ゲートが正常に動作（必須テーブル存在確認: `MeasuringInstrumentLoanEvent`）
 - APIが正常に稼働中
+
+**追加実機検証結果（2026-01-29）**:
+- **通常モードでのデプロイ検証**: Pi5のみで通常モード（`--detach`なし）でデプロイを実行し、タイムアウトが発生しないことを確認
+- **リポジトリ更新の修正**: `git reset --hard origin/{{ repo_version }}`に修正し、リモートブランチの最新状態に確実にリセットされるように改善
+- **デプロイ整備の完成**: 通常モードでのデプロイが正常に完了し、デプロイ整備機能が実運用で使用可能であることを確認
+- **Pi4のデプロイ整備実機検証**: リポジトリ更新修正後のコードでPi4へのデプロイを実行し、リポジトリが最新状態（`a998117`）に更新されることを確認
+- **Pi3のデプロイ整備実機検証**: リポジトリ更新修正後のコードでPi3へのデプロイを実行し、以下を確認
+  - プレフライトチェック（サービス停止とGUI停止）が正常に実行される（`changed`）
+  - リポジトリが最新状態（`a998117`）に更新される
+  - デプロイが成功する（`ok=108, changed=21, failed=0`）
 
 **再発防止**:
 - デプロイ標準手順を遵守: **ブランチをpush→CI成功→そのブランチ名でデプロイ**
