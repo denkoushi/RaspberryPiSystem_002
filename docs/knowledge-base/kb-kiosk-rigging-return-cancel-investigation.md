@@ -27,7 +27,7 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
 | 吊具     | POST `/rigging-gears/borrow`  | 上と同じ return       | 上と同じ cancel        | `riggingGearId` + `returnedAt: null` のみ |
 | 計測機器 | POST `/measuring-instruments/borrow` | 上と同じ return | 上と同じ cancel        | `measuringInstrumentId` + `returnedAt: null` のみ |
 
-- **「持ち出し中」一覧（アクティブ貸出）**: GET `/tools/loans/active` → `LoanService.findActive()` は **`returnedAt: null` かつ `cancelledAt: null`** で取得。返却済み・取消済みは一覧から除外されている。
+- **「持ち出し中」一覧（アクティブ貸出）**: GET `/tools/loans/active` → `LoanService.findActive()` は **`returnedAt: null` かつ `cancelledAt: null`** で取得。返却済み・取消済みは一覧から除外されている。持出タブでは**全端末で同一一覧**を表示するため、フロントは `clientId` を送らず全件取得する（[KB-211](../knowledge-base/frontend.md#kb-211-キオスク持出タブの持出中アイテムが端末間で共有されない問題) 参照）。
 
 ---
 
