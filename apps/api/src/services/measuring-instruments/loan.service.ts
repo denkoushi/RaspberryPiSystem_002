@@ -76,7 +76,7 @@ export class MeasuringInstrumentLoanService {
     }
 
     const existingLoan = await prisma.loan.findFirst({
-      where: { measuringInstrumentId: instrument.id, returnedAt: null }
+      where: { measuringInstrumentId: instrument.id, returnedAt: null, cancelledAt: null }
     });
     if (existingLoan) {
       throw new ApiError(400, 'この計測機器はすでに貸出中です');

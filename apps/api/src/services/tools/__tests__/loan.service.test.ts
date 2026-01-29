@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ItemStatus, TransactionAction } from '@prisma/client';
+import { ItemStatus, MeasuringInstrumentStatus, RiggingStatus, TransactionAction } from '@prisma/client';
 import { LoanService } from '../loan.service.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -191,7 +191,7 @@ describe('LoanService', () => {
       expect(mockItemService.findByNfcTagUid).toHaveBeenCalledWith('04DE8366BC2A81');
       expect(mockEmployeeService.findByNfcTagUid).toHaveBeenCalledWith('04C362E1330289');
       expect(prisma.loan.findFirst).toHaveBeenCalledWith({
-        where: { itemId: 'item-123', returnedAt: null },
+        where: { itemId: 'item-123', returnedAt: null, cancelledAt: null },
       });
     });
 
@@ -261,6 +261,40 @@ describe('LoanService', () => {
         'このアイテムはすでに貸出中です',
       );
     });
+
+    it('取消済みLoanがある場合は貸出可能', async () => {
+      const input = {
+        itemTagUid: '04DE8366BC2A81',
+        employeeTagUid: '04C362E1330289',
+      };
+      vi.mocked(mockItemService.findByNfcTagUid).mockResolvedValue(mockItem as any);
+      vi.mocked(mockEmployeeService.findByNfcTagUid).mockResolvedValue(mockEmployee as any);
+      vi.mocked(prisma.loan.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          loan: {
+            create: vi.fn().mockResolvedValue(mockLoan),
+          },
+          item: {
+            update: vi.fn().mockResolvedValue(mockItem),
+          },
+          transaction: {
+            create: vi.fn().mockResolvedValue({
+              id: 'transaction-123',
+              loanId: 'loan-123',
+              action: TransactionAction.BORROW,
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await loanService.borrow(input, 'client-123');
+      expect(result).toEqual(mockLoan);
+      expect(prisma.loan.findFirst).toHaveBeenCalledWith({
+        where: { itemId: 'item-123', returnedAt: null, cancelledAt: null },
+      });
+    });
   });
 
   describe('return', () => {
@@ -329,6 +363,120 @@ describe('LoanService', () => {
       });
     });
 
+    it('吊具の返却で吊具ステータスをAVAILABLEに戻す', async () => {
+      const input = { loanId: 'loan-123' };
+      const riggingLoan = {
+        ...mockLoan,
+        itemId: null,
+        riggingGearId: 'rigging-123',
+        item: null,
+      };
+      const returnedLoan = {
+        ...riggingLoan,
+        returnedAt: new Date(),
+        client: { id: 'client-123', name: 'Test Client', location: null },
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(riggingLoan as any);
+      const itemUpdate = vi.fn();
+      const riggingUpdate = vi.fn().mockResolvedValue({
+        id: 'rigging-123',
+        status: RiggingStatus.AVAILABLE,
+      });
+      const instrumentUpdate = vi.fn();
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          loan: {
+            update: vi.fn().mockResolvedValue(returnedLoan),
+          },
+          item: {
+            update: itemUpdate,
+          },
+          riggingGear: {
+            update: riggingUpdate,
+          },
+          measuringInstrument: {
+            update: instrumentUpdate,
+          },
+          transaction: {
+            create: vi.fn().mockResolvedValue({
+              id: 'transaction-123',
+              loanId: 'loan-123',
+              action: TransactionAction.RETURN,
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await loanService.return(input, 'client-123');
+      expect(result).toEqual(returnedLoan);
+      expect(riggingUpdate).toHaveBeenCalledWith({
+        where: { id: 'rigging-123' },
+        data: { status: RiggingStatus.AVAILABLE },
+      });
+      expect(itemUpdate).not.toHaveBeenCalled();
+      expect(instrumentUpdate).not.toHaveBeenCalled();
+    });
+
+    it('計測機器の返却で計測機器ステータスをAVAILABLEに戻す', async () => {
+      const input = { loanId: 'loan-123' };
+      const instrumentLoan = {
+        ...mockLoan,
+        itemId: null,
+        measuringInstrumentId: 'instrument-123',
+        item: null,
+      };
+      const returnedLoan = {
+        ...instrumentLoan,
+        returnedAt: new Date(),
+        client: { id: 'client-123', name: 'Test Client', location: null },
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(instrumentLoan as any);
+      const itemUpdate = vi.fn();
+      const riggingUpdate = vi.fn();
+      const instrumentUpdate = vi.fn().mockResolvedValue({
+        id: 'instrument-123',
+        status: MeasuringInstrumentStatus.AVAILABLE,
+      });
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          loan: {
+            update: vi.fn().mockResolvedValue(returnedLoan),
+          },
+          item: {
+            update: itemUpdate,
+          },
+          riggingGear: {
+            update: riggingUpdate,
+          },
+          measuringInstrument: {
+            update: instrumentUpdate,
+          },
+          transaction: {
+            create: vi.fn().mockResolvedValue({
+              id: 'transaction-123',
+              loanId: 'loan-123',
+              action: TransactionAction.RETURN,
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await loanService.return(input, 'client-123');
+      expect(result).toEqual(returnedLoan);
+      expect(instrumentUpdate).toHaveBeenCalledWith({
+        where: { id: 'instrument-123' },
+        data: { status: MeasuringInstrumentStatus.AVAILABLE },
+      });
+      expect(itemUpdate).not.toHaveBeenCalled();
+      expect(riggingUpdate).not.toHaveBeenCalled();
+    });
+
     it('貸出レコードが見つからない場合、404エラーを投げる', async () => {
       const input = {
         loanId: 'non-existent',
@@ -354,6 +502,134 @@ describe('LoanService', () => {
 
       await expect(loanService.return(input)).rejects.toThrow(ApiError);
       await expect(loanService.return(input)).rejects.toThrow('すでに返却済みです');
+    });
+  });
+
+  describe('cancel', () => {
+    const mockLoan = {
+      id: 'loan-123',
+      itemId: null,
+      measuringInstrumentId: null,
+      riggingGearId: null,
+      employeeId: 'employee-123',
+      clientId: 'client-123',
+      returnedAt: null,
+      cancelledAt: null,
+      item: null,
+      employee: {
+        id: 'employee-123',
+        employeeCode: 'EMP001',
+        displayName: 'Test Employee',
+        nfcTagUid: '04C362E1330289',
+      },
+    };
+
+    it('吊具の取消で吊具ステータスをAVAILABLEに戻す', async () => {
+      const riggingLoan = {
+        ...mockLoan,
+        riggingGearId: 'rigging-123',
+      };
+      const cancelledLoan = {
+        ...riggingLoan,
+        cancelledAt: new Date(),
+        client: { id: 'client-123', name: 'Test Client', location: null },
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(riggingLoan as any);
+      const itemUpdate = vi.fn();
+      const riggingUpdate = vi.fn().mockResolvedValue({
+        id: 'rigging-123',
+        status: RiggingStatus.AVAILABLE,
+      });
+      const instrumentUpdate = vi.fn();
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          loan: {
+            update: vi.fn().mockResolvedValue(cancelledLoan),
+          },
+          item: {
+            update: itemUpdate,
+          },
+          riggingGear: {
+            update: riggingUpdate,
+          },
+          measuringInstrument: {
+            update: instrumentUpdate,
+          },
+          transaction: {
+            create: vi.fn().mockResolvedValue({
+              id: 'transaction-123',
+              loanId: 'loan-123',
+              action: TransactionAction.CANCEL,
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await loanService.cancel('loan-123', 'client-123', 'user-123');
+      expect(result).toEqual(cancelledLoan);
+      expect(riggingUpdate).toHaveBeenCalledWith({
+        where: { id: 'rigging-123' },
+        data: { status: RiggingStatus.AVAILABLE },
+      });
+      expect(itemUpdate).not.toHaveBeenCalled();
+      expect(instrumentUpdate).not.toHaveBeenCalled();
+    });
+
+    it('計測機器の取消で計測機器ステータスをAVAILABLEに戻す', async () => {
+      const instrumentLoan = {
+        ...mockLoan,
+        measuringInstrumentId: 'instrument-123',
+      };
+      const cancelledLoan = {
+        ...instrumentLoan,
+        cancelledAt: new Date(),
+        client: { id: 'client-123', name: 'Test Client', location: null },
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(instrumentLoan as any);
+      const itemUpdate = vi.fn();
+      const riggingUpdate = vi.fn();
+      const instrumentUpdate = vi.fn().mockResolvedValue({
+        id: 'instrument-123',
+        status: MeasuringInstrumentStatus.AVAILABLE,
+      });
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          loan: {
+            update: vi.fn().mockResolvedValue(cancelledLoan),
+          },
+          item: {
+            update: itemUpdate,
+          },
+          riggingGear: {
+            update: riggingUpdate,
+          },
+          measuringInstrument: {
+            update: instrumentUpdate,
+          },
+          transaction: {
+            create: vi.fn().mockResolvedValue({
+              id: 'transaction-123',
+              loanId: 'loan-123',
+              action: TransactionAction.CANCEL,
+            }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await loanService.cancel('loan-123', 'client-123', 'user-123');
+      expect(result).toEqual(cancelledLoan);
+      expect(instrumentUpdate).toHaveBeenCalledWith({
+        where: { id: 'instrument-123' },
+        data: { status: MeasuringInstrumentStatus.AVAILABLE },
+      });
+      expect(itemUpdate).not.toHaveBeenCalled();
+      expect(riggingUpdate).not.toHaveBeenCalled();
     });
   });
 
