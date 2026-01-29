@@ -236,6 +236,11 @@ export function ProductionSchedulePage() {
       rows: widthSampleRows,
       containerWidth: Math.max(0, itemWidth - checkWidth),
       fontSizePx: 12,
+      scale: 0.5, // 列間パディングを半分に
+      fixedWidths: {
+        ProductNo: 115, // 製造order番号列を固定幅（8-10桁想定、パディング最小限）
+        FSEIBAN: 90 // 製番列を固定幅（桁数固定前提で最小限）
+      },
       formatCellValue: (column, value) => {
         if (column.key === 'FSEIBAN') {
           return String(value ?? '');
@@ -566,23 +571,23 @@ export function ProductionSchedulePage() {
             </colgroup>
             <thead className="sticky top-0 bg-slate-900">
               <tr className="border-b border-white/20 text-xs font-semibold text-white/80">
-                <th className="px-2 py-2 text-center">完了</th>
+                <th className="px-2 py-3 text-center">完了</th>
                 {tableColumns.map((column) => (
-                  <th key={`head-left-${column.key}`} className="px-2 py-2">
+                  <th key={`head-left-${column.key}`} className="px-2 py-3">
                     {column.label}
                   </th>
                 ))}
-                <th className="px-2 py-2">備考</th>
-                {isTwoColumn ? <th aria-hidden className="px-2 py-2" /> : null}
-                {isTwoColumn ? <th className="px-2 py-2 text-center">完了</th> : null}
+                <th className="px-2 py-3">備考</th>
+                {isTwoColumn ? <th aria-hidden className="px-2 py-3" /> : null}
+                {isTwoColumn ? <th className="px-2 py-3 text-center">完了</th> : null}
                 {isTwoColumn
                   ? tableColumns.map((column) => (
-                      <th key={`head-right-${column.key}`} className="px-2 py-2">
+                      <th key={`head-right-${column.key}`} className="px-2 py-3">
                         {column.label}
                       </th>
                     ))
                   : null}
-                {isTwoColumn ? <th className="px-2 py-2">備考</th> : null}
+                {isTwoColumn ? <th className="px-2 py-3">備考</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -591,7 +596,7 @@ export function ProductionSchedulePage() {
                 const rightClass = right?.isCompleted ? 'opacity-50 grayscale' : '';
                 return (
                   <tr key={`row-${left.id}`} className="border-b border-white/10">
-                    <td className={`px-2 py-1 align-middle ${leftClass}`}>
+                    <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
                       <button
                         className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 disabled:opacity-60 ${
                           left.isCompleted ? 'border-slate-400' : 'border-red-500'
@@ -604,7 +609,7 @@ export function ProductionSchedulePage() {
                       </button>
                     </td>
                     {tableColumns.map((column) => (
-                      <td key={`left-${left.id}-${column.key}`} className={`px-2 py-1 ${leftClass}`}>
+                      <td key={`left-${left.id}-${column.key}`} className={`px-2 py-1.5 ${leftClass}`}>
                         {column.key === 'processingOrder' ? (
                           (() => {
                             const resourceCd = left.data.FSIGENCD ?? '';
@@ -637,7 +642,7 @@ export function ProductionSchedulePage() {
                         )}
                       </td>
                     ))}
-                    <td className={`px-2 py-1 align-middle ${leftClass}`}>
+                    <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
                       {editingNoteRowId === left.id ? (
                         <input
                           type="text"
@@ -682,10 +687,10 @@ export function ProductionSchedulePage() {
                         </span>
                       )}
                     </td>
-                    {isTwoColumn ? <td className="px-2 py-1" /> : null}
+                    {isTwoColumn ? <td className="px-2 py-1.5" /> : null}
                     {isTwoColumn ? (
                       <>
-                        <td className={`px-2 py-1 align-middle ${rightClass}`}>
+                        <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
                           {right ? (
                             <button
                               className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 disabled:opacity-60 ${
@@ -700,7 +705,7 @@ export function ProductionSchedulePage() {
                           ) : null}
                         </td>
                         {tableColumns.map((column) => (
-                          <td key={`right-${right?.id ?? 'empty'}-${column.key}`} className={`px-2 py-1 ${rightClass}`}>
+                          <td key={`right-${right?.id ?? 'empty'}-${column.key}`} className={`px-2 py-1.5 ${rightClass}`}>
                             {right ? (
                               column.key === 'processingOrder' ? (
                                 (() => {
@@ -737,7 +742,7 @@ export function ProductionSchedulePage() {
                             ) : null}
                           </td>
                         ))}
-                        <td className={`px-2 py-1 align-middle ${rightClass}`}>
+                        <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
                           {right ? (
                             editingNoteRowId === right.id ? (
                               <input

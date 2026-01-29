@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生産スケジュール - 備考欄レイアウト確認</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(to bottom, #0f172a, #1e293b);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .note-column {
+      width: 140px;
+    }
+    .pencil-icon {
+      width: 14px;
+      height: 14px;
+    }
+  </style>
+</head>
+<body class="text-white">
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6 text-white">生産スケジュール - 備考欄レイアウト確認</h1>
+    
+    <div class="bg-slate-800 rounded-lg p-4 mb-6">
+      <h2 class="text-lg font-semibold mb-4">備考欄の仕様（列高さ1.5倍・列幅最適化適用済み）</h2>
+      <ul class="list-disc list-inside space-y-2 text-sm">
+        <li>備考欄の列幅: 140px（固定）</li>
+        <li>製造order番号列: 115px（固定幅、パディング最小限）</li>
+        <li>製番列: 90px（固定幅、間隔を詰める）</li>
+        <li>その他列のパディング: 半分に削減（scale: 0.5）</li>
+        <li>列高さ: 1.5倍（ヘッダー: py-3、データ行: py-1.5）</li>
+        <li>通常表示: 備考テキスト（最大18文字、超過は「…」で省略）+ 鉛筆アイコンボタン</li>
+        <li>編集モード: テキスト入力フィールド（高さ28px、最大100文字）</li>
+        <li>保存: Enterキーまたはフォーカスアウト時</li>
+        <li>キャンセル: Escapeキー</li>
+      </ul>
+    </div>
+
+    <div class="bg-slate-900 rounded-lg overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left text-xs text-white">
+          <colgroup>
+            <col style="width: 36px;" />
+            <col style="width: 80px;" />
+            <col style="width: 115px;" />
+            <col style="width: 120px;" />
+            <col style="width: 60px;" />
+            <col style="width: 50px;" />
+            <col style="width: 50px;" />
+            <col style="width: 50px;" />
+            <col style="width: 90px;" />
+            <col style="width: 140px;" />
+          </colgroup>
+          <thead class="sticky top-0 bg-slate-900">
+            <tr class="border-b border-white/20 text-xs font-semibold text-white/80">
+              <th class="px-1 py-3 text-center">完了</th>
+              <th class="px-1 py-3">品番</th>
+              <th class="px-1 py-3">製造order番号</th>
+              <th class="px-1 py-3">品名</th>
+              <th class="px-1 py-3">資源CD</th>
+              <th class="px-1 py-3">順番</th>
+              <th class="px-1 py-3">所要</th>
+              <th class="px-1 py-3">工順</th>
+              <th class="px-1 py-3">製番</th>
+              <th class="px-1 py-3">備考</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 行1: 備考なし -->
+            <tr class="border-b border-white/10">
+              <td class="px-1 py-1.5 align-middle">
+                <button class="flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 border-red-500">
+                  ✓
+                </button>
+              </td>
+              <td class="px-1 py-1.5 font-mono">ABC-123</td>
+              <td class="px-1 py-1.5 font-mono">P00123456</td>
+              <td class="px-1 py-1.5">サンプル品名1</td>
+              <td class="px-1 py-1.5">RES001</td>
+              <td class="px-1 py-1.5">
+                <select class="h-7 w-12 rounded border border-slate-300 bg-white px-1 text-sm text-black">
+                  <option value="">-</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </td>
+              <td class="px-1 py-1.5">100</td>
+              <td class="px-1 py-1.5">1</td>
+              <td class="px-1 py-1.5 font-mono">S001234</td>
+              <td class="px-1 py-1.5 align-middle note-column">
+                <span class="flex items-center gap-1">
+                  <span class="min-w-0 truncate text-white/90"></span>
+                  <button type="button" class="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white" aria-label="備考を編集">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pencil-icon">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
+                </span>
+              </td>
+            </tr>
+
+            <!-- 行2: 備考あり（短い） -->
+            <tr class="border-b border-white/10">
+              <td class="px-1 py-1.5 align-middle">
+                <button class="flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 border-red-500">
+                  ✓
+                </button>
+              </td>
+              <td class="px-1 py-1.5 font-mono">ABC-124</td>
+              <td class="px-1 py-1.5 font-mono">P00123567</td>
+              <td class="px-1 py-1.5">サンプル品名2</td>
+              <td class="px-1 py-1.5">RES002</td>
+              <td class="px-1 py-1.5">
+                <select class="h-7 w-12 rounded border border-slate-300 bg-white px-1 text-sm text-black">
+                  <option value="">-</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </td>
+              <td class="px-1 py-1.5">200</td>
+              <td class="px-1 py-1.5">2</td>
+              <td class="px-1 py-1.5 font-mono">S001235</td>
+              <td class="px-1 py-1.5 align-middle note-column">
+                <span class="flex items-center gap-1">
+                  <span class="min-w-0 truncate text-white/90" title="優先対応">優先対応</span>
+                  <button type="button" class="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white" aria-label="備考を編集">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pencil-icon">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
+                </span>
+              </td>
+            </tr>
+
+            <!-- 行3: 備考あり（長い、省略表示） -->
+            <tr class="border-b border-white/10">
+              <td class="px-1 py-1.5 align-middle">
+                <button class="flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 border-red-500">
+                  ✓
+                </button>
+              </td>
+              <td class="px-1 py-1.5 font-mono">ABC-125</td>
+              <td class="px-1 py-1.5 font-mono">P00123678</td>
+              <td class="px-1 py-1.5">サンプル品名3</td>
+              <td class="px-1 py-1.5">RES003</td>
+              <td class="px-1 py-1.5">
+                <select class="h-7 w-12 rounded border border-slate-300 bg-white px-1 text-sm text-black">
+                  <option value="">-</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </td>
+              <td class="px-1 py-1.5">300</td>
+              <td class="px-1 py-1.5">3</td>
+              <td class="px-1 py-1.5 font-mono">S001236</td>
+              <td class="px-1 py-1.5 align-middle note-column">
+                <span class="flex items-center gap-1">
+                  <span class="min-w-0 truncate text-white/90" title="この備考は18文字を超えているので省略表示されます">この備考は18文字を超え…</span>
+                  <button type="button" class="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white" aria-label="備考を編集">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pencil-icon">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
+                </span>
+              </td>
+            </tr>
+
+            <!-- 行4: 編集モード -->
+            <tr class="border-b border-white/10 bg-slate-800/50">
+              <td class="px-1 py-1.5 align-middle">
+                <button class="flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 border-red-500">
+                  ✓
+                </button>
+              </td>
+              <td class="px-1 py-1.5 font-mono">ABC-126</td>
+              <td class="px-1 py-1.5 font-mono">P00123789</td>
+              <td class="px-1 py-1.5">サンプル品名4</td>
+              <td class="px-1 py-1.5">RES004</td>
+              <td class="px-1 py-1.5">
+                <select class="h-7 w-12 rounded border border-slate-300 bg-white px-1 text-sm text-black">
+                  <option value="">-</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </td>
+              <td class="px-1 py-1.5">400</td>
+              <td class="px-1 py-1.5">4</td>
+              <td class="px-1 py-1.5 font-mono">S001237</td>
+              <td class="px-1 py-1.5 align-middle note-column">
+                <input
+                  type="text"
+                  value="編集中の備考テキスト"
+                  maxlength="100"
+                  class="h-7 w-full rounded border border-slate-300 bg-white px-1 text-xs text-black"
+                  placeholder="備考を入力（最大100文字）"
+                />
+                <div class="text-[10px] text-white/50 mt-1">Enter: 保存 / Escape: キャンセル</div>
+              </td>
+            </tr>
+
+            <!-- 行5: 完了済み（グレーアウト） -->
+            <tr class="border-b border-white/10 opacity-50 grayscale">
+              <td class="px-1 py-1.5 align-middle">
+                <button class="flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-black shadow hover:bg-slate-100 border-slate-400">
+                  ✓
+                </button>
+              </td>
+              <td class="px-1 py-1.5 font-mono">ABC-127</td>
+              <td class="px-1 py-1.5 font-mono">P00123890</td>
+              <td class="px-1 py-1.5">サンプル品名5</td>
+              <td class="px-1 py-1.5">RES005</td>
+              <td class="px-1 py-1.5">
+                <select class="h-7 w-12 rounded border border-slate-300 bg-white px-1 text-sm text-black" disabled>
+                  <option value="1">1</option>
+                </select>
+              </td>
+              <td class="px-1 py-1.5">500</td>
+              <td class="px-1 py-1.5">5</td>
+              <td class="px-1 py-1.5 font-mono">S001238</td>
+              <td class="px-1 py-1.5 align-middle note-column">
+                <span class="flex items-center gap-1">
+                  <span class="min-w-0 truncate text-white/90" title="完了済みの備考">完了済みの備考</span>
+                  <button type="button" class="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white" aria-label="備考を編集" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pencil-icon">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-6 bg-slate-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-4">備考欄の動作</h2>
+      <div class="space-y-3 text-sm">
+        <div>
+          <strong class="text-emerald-400">通常表示:</strong>
+          <ul class="list-disc list-inside ml-4 mt-1 space-y-1">
+            <li>備考がない場合: 空欄 + 鉛筆アイコン</li>
+            <li>備考がある場合: テキスト（最大18文字） + 鉛筆アイコン</li>
+            <li>18文字を超える場合: 最初の18文字 + 「…」で省略</li>
+            <li>ホバー時: 鉛筆アイコンが強調表示（`hover:text-white`）</li>
+          </ul>
+        </div>
+        <div>
+          <strong class="text-emerald-400">編集モード:</strong>
+          <ul class="list-disc list-inside ml-4 mt-1 space-y-1">
+            <li>鉛筆アイコンをクリック → 入力フィールドに切り替え</li>
+            <li>入力フィールド: 白背景、黒テキスト、高さ28px</li>
+            <li>最大100文字まで入力可能</li>
+            <li>Enterキーまたはフォーカスアウトで保存</li>
+            <li>Escapeキーでキャンセル（変更を破棄）</li>
+          </ul>
+        </div>
+        <div>
+          <strong class="text-emerald-400">完了済み行:</strong>
+          <ul class="list-disc list-inside ml-4 mt-1 space-y-1">
+            <li>グレーアウト表示（`opacity-50 grayscale`）</li>
+            <li>備考欄も同様にグレーアウト</li>
+            <li>編集は可能だが、視覚的に完了済みであることが分かる</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 bg-slate-800 rounded-lg p-4">
+      <h2 class="text-lg font-semibold mb-4">「備考あり」フィルタボタン</h2>
+      <div class="flex items-center gap-4">
+        <button class="h-10 px-4 rounded bg-slate-700 text-white hover:bg-slate-600 border border-white/20">
+          備考あり
+        </button>
+        <button class="h-10 px-4 rounded bg-slate-700 text-white hover:bg-slate-600 border-2 border-emerald-400 ring-2 ring-emerald-400">
+          備考あり（アクティブ）
+        </button>
+      </div>
+      <p class="text-sm text-white/70 mt-2">
+        このボタンをクリックすると、備考が入力されている行のみが表示されます。
+      </p>
+    </div>
+  </div>
+</body>
+</html>
