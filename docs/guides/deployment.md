@@ -412,6 +412,17 @@ curl http://localhost:7071/api/agent/status
 - **GUI/サイネージ自動復旧**: lightdmを停止した場合、デプロイ完了後に`lightdm`と`signage-lite.service`を再開して復旧します（reboot不要）
 - **サイネージサービス確認**: 復旧後、`signage-lite.service`がactiveになるまで最大60秒待機し、結果をログ出力します
 
+**⚠️ Pi3デプロイ時の`unreachable=1`について（2026-01-30追記）**:
+- Pi3デプロイ実行後、`PLAY RECAP`で`raspberrypi3: unreachable=1`が表示される場合があります
+- これは`post_tasks`フェーズの最後の2タスク（`signage-lite-watchdog.timer`、`signage-daily-reboot.timer`）で一時的なSSH接続問題が発生したことを示します
+- **重要**: デプロイ全体が`failed=0`で`state: success`なら、主要目的（コード更新、サービス再起動、GUI/サイネージ復旧）は達成されています
+- サービス状態は`systemctl is-active`で直接確認してください（ログの`unreachable`だけでは判断しない）
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "ssh pi@100.106.158.3 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  # 結果が "active active" なら正常動作中
+  ```
+- 詳細は [KB-216](../knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照してください
+
 **プレフライトチェックが失敗した場合**:
 - メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
 - テンプレートファイル不足: デプロイ開始前にfail-fastし、エラーメッセージにファイル配置場所が表示されます

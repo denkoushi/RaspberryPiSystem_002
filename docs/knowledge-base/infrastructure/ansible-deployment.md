@@ -2584,3 +2584,63 @@ ensure_local_repo_ready_for_deploy() {
 - `docs/guides/deployment.md`（デプロイ標準手順の明記、ログ追尾方法の追加）
 
 ---
+
+### [KB-216] Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している
+
+**発生日**: 2026-01-30  
+**Status**: ✅ 調査完了・対応不要（サービス正常動作）
+
+**事象**:
+- Pi3へのデプロイ実行後、`PLAY RECAP`で`raspberrypi3: unreachable=1`が表示される
+- 具体的には`post_tasks`フェーズで以下の2つのタスクで`unreachable`が発生:
+  - `signage-lite-watchdog.timer`: "Timeout (12s) waiting for privilege escalation prompt"
+  - `signage-daily-reboot.timer`: "Connection reset by peer"
+- しかし、デプロイ全体は`failed=0`で`state: success / exitCode: 0`となっている
+
+**症状**:
+- Ansibleログに`unreachable=1`が記録されるが、実際のサービス状態を確認すると正常動作している
+- `systemctl is-active signage-lite-watchdog.timer` → `active`
+- `systemctl is-active signage-daily-reboot.timer` → `active`
+- デプロイの主要目的（コード更新、サービス再起動、GUI/サイネージ復旧）は達成されている
+
+**要因**:
+- **根本原因**: 一時的なSSH接続問題
+  1. **sudoプロンプトタイムアウト**: `signage-lite-watchdog.timer`の再起動時に、Ansibleがsudoプロンプトを待機中に12秒でタイムアウト
+  2. **SSH接続リセット**: `signage-daily-reboot.timer`の再起動時に、SSH接続がリセット（"Connection reset by peer"）
+- **サービス起動への影響**: なし（systemdが正常にサービスを起動）
+- **デプロイ全体への影響**: なし（主要タスクは完了、`failed=0`）
+
+**調査結果（2026-01-30）**:
+- デプロイログ（`/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260130-170740-3634.log`）を分析
+- `post_tasks`フェーズの最後の2タスクで`unreachable`が発生
+- デプロイ直後にPi3にSSH接続してサービス状態を確認:
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "ssh pi@100.106.158.3 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  # 結果: active active
+  ```
+- GUI/サイネージサービスも正常に稼働中（`lightdm`と`signage-lite.service`が`active`）
+
+**有効だった対策**:
+- ✅ **即座の修正は不要**: サービスは正常動作しており、デプロイの主要目的は達成されている
+- 🔄 **将来の堅牢性向上（オプション）**:
+  1. **タイムアウト調整**: `ansible_command_timeout`をPi3用に延長（例: 15秒→20秒）
+  2. **リトライロジック**: `post_tasks`にリトライを追加（例: `retries: 2`）
+  3. **サービス状態確認**: `post_tasks`後にサービス状態を再確認するタスクを追加
+
+**再発防止**:
+- `unreachable=1`が発生しても、デプロイ全体が`failed=0`で`state: success`なら、主要目的は達成されている
+- サービス状態は`systemctl is-active`で直接確認する（ログの`unreachable`だけでは判断しない）
+- デプロイ後の検証（health-check）でサービス状態を確認する
+
+**学んだこと**:
+- Ansibleの`unreachable`は、SSH接続の問題を示すが、サービス起動自体には影響しない場合がある
+- `post_tasks`での`unreachable`は、デプロイの主要タスク完了後に発生するため、影響が限定的
+- デプロイ成功の判断は、`failed=0`と`state: success`を優先し、`unreachable`は補助的な情報として扱う
+- Pi3のリソース制約により、デプロイ終盤のSSH接続が不安定になる可能性がある
+
+**関連ファイル**:
+- `infrastructure/ansible/playbooks/deploy.yml`（post_tasksの定義）
+- `infrastructure/ansible/inventory.yml`（`ansible_command_timeout`の設定）
+- `docs/guides/deployment.md`（デプロイ後の検証手順）
+
+---

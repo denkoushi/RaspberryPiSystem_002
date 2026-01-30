@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-30）
+
+- **✅ Tailscale主運用への移行計画の実機検証完了**: Tailscaleを主（通常運用）とし、local（LAN）を緊急時のみに限定する方針で実装した計画の実機検証を完了。Pi5/Pi4/Pi3の全デバイスでデプロイが成功し、Tailscale経由での接続が正常に動作することを確認。Pi3デプロイ時に`post_tasks`で`unreachable=1`が発生したが、実際にはサービス（`signage-lite-watchdog.timer`、`signage-daily-reboot.timer`）は正常動作しており、デプロイ全体は成功（`failed=0`、`state: success`）。これは一時的なSSH接続問題であり、サービス起動には影響していない。ナレッジベースにKB-216を追加、デプロイガイドに注意事項を追記。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) / [guides/deployment.md](./guides/deployment.md) / [decisions/ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-29）
 
 - **🔄 Gmail OAuthリフレッシュトークンの7日間制限問題への対応中**: Gmail OAuth認証が約1週間で切れてしまう問題の根本原因を特定。Google Cloud Consoleでアプリが「未検証」状態のため、Googleの仕様によりリフレッシュトークンが7日間で期限切れになっていた。解決のため、GitHub Pagesでプライバシーポリシーページとホームページを作成・公開（`docs/privacy-policy.html`、`docs/index.html`）。Google Cloud Consoleでブランディング情報を入力し、検証をリクエスト済み。Googleの審査完了後、リフレッシュトークンが無期限になる予定。ナレッジベースにKB-215を追加。詳細は [knowledge-base/api.md#kb-215](./knowledge-base/api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) を参照。

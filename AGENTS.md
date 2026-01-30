@@ -44,6 +44,7 @@
 このプロジェクト固有の文脈（デプロイ手順・運用・KB等）は `docs/` 配下にあります。網羅的な入口は `docs/INDEX.md` です。
 
 - **ドキュメント入口**: `docs/INDEX.md`
+- **設計決定（ADR）**: `docs/decisions/`
 - **デプロイ標準手順**: `docs/guides/deployment.md`
 - **ナレッジベース索引**: `docs/knowledge-base/index.md`
 - **CIトラブルシュート**: `docs/guides/ci-troubleshooting.md`
