@@ -92,6 +92,12 @@
       run_once: true
 
   tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
     # Preflight: signage-specific preflight checks (device-type agnostic)
     # Stops services, checks memory, cleans up stale processes
     # Device-specific settings are loaded from device_type_defaults based on device_type variable

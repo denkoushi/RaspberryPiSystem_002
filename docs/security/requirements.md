@@ -8,21 +8,21 @@
 
 ## 運用環境
 
-- **通常運用**: ローカルネットワークのみ（インターネット接続なし）
-- **メンテナンス時**: インターネット接続が必要（MacからRaspberry Piへ指令、GitHubからpull）
+- **通常運用（標準）**: Tailscale経由（常時接続）
+- **緊急時のみ**: ローカルネットワーク（Tailscale障害/認証不能時）
 
 ## セキュリティ要件の分類
 
-### 1. メンテナンス時のセキュリティ
+### 1. 通常運用（Tailscale）時のセキュリティ
 
-**要件**: メンテナンス時にインターネット経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開せず、安全に接続できること。
+**要件**: 通常運用時にTailscale経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開せず、安全に接続できること。
 
 **対策**:
-- TailscaleなどのVPNを導入し、メンテナンス時にTailscale経由でSSH接続する
-- 通常運用時はローカルネットワークのIPアドレスを使用する
+- TailscaleなどのVPNを導入し、通常運用はTailscale経由でSSH接続する
+- localは緊急時のみ使用する
 - SSH接続設定を2つ用意（Tailscale IP用とローカルIP用）
 
-**優先度**: 最高（メンテナンス時にインターネット経由でAnsibleを実行する場合）
+**優先度**: 最高（通常運用でTailscale経由のAnsibleを実行するため）
 
 **関連要件**: [IPアドレス管理](#6-ipアドレス管理)
 
@@ -150,8 +150,8 @@
 **現状の問題**:
 - IPアドレスが複数の設定ファイルに直接記述されている
 - ネットワーク環境が変わった際に、複数箇所を手動で修正する必要がある
-- メンテナンス時と通常運用時の切り替えが煩雑
-- 現在の運用モード（ローカル/メンテナンス）が分からない
+- 通常運用（Tailscale）と緊急時（local）の切り替えが煩雑
+- 現在の運用モード（Tailscale/ローカル緊急）が分からない
 
 **対策**:
 - Ansibleの`group_vars/all.yml`にIPアドレス変数を定義
@@ -163,21 +163,21 @@
 **運用モードの可視化**:
 - **要件**: 管理画面のヘッダーまたはダッシュボードに現在のモードを表示する
 - **自動検出**: インターネット接続の有無で判定
-  - インターネット接続あり → 「メンテナンスモード」
-  - インターネット接続なし → 「ローカル運用モード」
+  - インターネット接続あり → 「Tailscale通常運用」（API上は maintenance 表記）
+  - インターネット接続なし → 「ローカル緊急モード」
 - **表示内容**:
   - 現在のモード（バッジやアイコンで表示）
   - ネットワーク状態（インターネット接続の有無）
   - 最後のメンテナンス日時（オプション）
 - **切り替え方法**: UIでの切り替えは実装しない。Ansible変数（`group_vars/all.yml`の`network_mode`）で管理する
-- **理由**: メンテナンスは頻度が低く、UIでの切り替えは誤操作リスクがあるため
+- **理由**: 緊急時のみ切り替える想定のため、UIでの切り替えは誤操作リスクがある
 
 **実装内容**:
 
 1. **Ansibleの変数定義** (`infrastructure/ansible/group_vars/all.yml`)
    ```yaml
-   # ネットワークモード: local または tailscale
-   network_mode: "local"
+  # ネットワークモード: tailscale または local
+  network_mode: "tailscale"
    
    # ローカルネットワーク用IPアドレス
    local_network:
@@ -185,11 +185,11 @@
      raspberrypi4_ip: "192.168.10.223"
      raspberrypi3_ip: "192.168.10.109"
    
-   # Tailscale用IPアドレス（メンテナンス時のみ使用）
-   # 注意: Tailscale IPアドレスは動的に割り当てられるが、デバイスごとに固定される
-   # メンテナンス時に `tailscale status` で確認して設定する
+  # Tailscale用IPアドレス（通常運用の標準）
+  # 注意: Tailscale IPアドレスは動的に割り当てられるが、デバイスごとに固定される
+  # `tailscale status` で確認して設定する
    tailscale_network:
-     raspberrypi5_ip: ""  # メンテナンス時に確認して設定
+    raspberrypi5_ip: ""  # 通常運用で使用
      raspberrypi4_ip: ""
      raspberrypi3_ip: ""
    
@@ -214,18 +214,18 @@
 
 **検証状況（2025-12-05）**:
 - ✅ `ansible raspberrypi5 ... -e network_mode={local,tailscale}` で `server_ip/kiosk_ip/signage_ip` が期待通りに切り替わることを確認
-- ✅ `/api/system/network-mode` エンドポイントが `detectedMode=maintenance` / `configuredMode=local` / `status=internet_connected` を返し、Network Mode Badgeが実際の回線状態を表示することを確認
+- ✅ `/api/system/network-mode` エンドポイントが `detectedMode=maintenance` / `configuredMode=local` / `status=internet_connected` を返し、Network Mode Badgeが実際の回線状態を表示することを確認（**運用上は maintenance=通常(Tailscale)** として扱う）
 
-**優先度**: 高（メンテナンス時の運用効率化のため）
+**優先度**: 高（通常運用の安定化のため）
 
-**関連要件**: [メンテナンス時のセキュリティ](#1-メンテナンス時のセキュリティ)
+**関連要件**: [通常運用（Tailscale）時のセキュリティ](#1-通常運用tailscale時のセキュリティ)
 
 ## デバイス別のセキュリティ要件
 
 ### Raspberry Pi 5（サーバー）
 
 **必須の対策**:
-- Tailscale導入（メンテナンス時のみ使用、インターネット接続あり）
+- Tailscale導入（通常運用・標準）
 - ファイアウォール設定（ufw）
 - HTTPS強制設定
 - fail2ban導入
@@ -244,8 +244,8 @@
 - ClamAV導入（軽量設定、週1回スキャン）
 - rkhunter導入（システム整合性チェック）
 
-**不要な対策**:
-- Tailscale導入（ローカルネットワークのみ）
+**必須の対策**:
+- Tailscale導入（通常運用・標準）
 - ファイアウォール設定（ローカルネットワークのみ）
 - HTTPS強制設定（サーバー側で対応）
 
@@ -253,7 +253,6 @@
 
 **不要な対策**:
 - セキュリティソフト導入（リソース不足のため）
-- Tailscale導入（ローカルネットワークのみ）
 - ファイアウォール設定（ローカルネットワークのみ）
 
 **代替対策**:
@@ -265,7 +264,7 @@
 ### 最優先（即座に実施）
 
 1. バックアップ暗号化・オフライン保存
-2. Tailscale導入（メンテナンス時のみ使用）
+2. Tailscale導入（通常運用の標準）
 3. IPアドレス管理の変数化（運用効率化のため）
 
 ### 優先度: 高（1週間以内）

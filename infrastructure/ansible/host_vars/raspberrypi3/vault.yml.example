@@ -3,4 +3,6 @@
 
 vault_status_agent_client_key: "client-key-raspberrypi3-signage1"
 vault_signage_client_key: "client-key-raspberrypi3-signage1"
+# Tailscale preauth key (reusable, tagged推奨)
+vault_tailscale_auth_key: ""
 

@@ -53,10 +53,10 @@ hostname -I
 **Macのターミナルで実行**:
 
 ```bash
-# Pi5のTailscale IPで接続テスト（推奨）
+# Pi5のTailscale IPで接続テスト（標準）
 ssh denkon5sd02@100.106.158.2
 
-# または、ローカルIPで接続テスト（オフィスネットワークの場合）
+# または、ローカルIPで接続テスト（緊急時のみ）
 # ssh denkon5sd02@192.168.10.230
 
 # 接続成功したら、Pi5のシェルが起動します
@@ -82,11 +82,11 @@ ssh denkon5sd02@100.106.158.2 "nano /opt/RaspberryPiSystem_002/infrastructure/an
 
 1. **ネットワークモードの選択**:
    ```yaml
-   # オフィスネットワークの場合
-   network_mode: "local"
-   
-   # 自宅ネットワーク/リモートアクセスの場合（推奨）
+   # 通常運用（標準）
    network_mode: "tailscale"
+   
+   # 緊急時のみ（Tailscale障害/認証不能時）
+   network_mode: "local"
    ```
 
 2. **ローカルネットワークIPの更新**（`network_mode: "local"`の場合）:
@@ -115,9 +115,9 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 ```
 
 **⚠️ 注意**: 
-- `network_mode: "local"`の場合、ローカルIPが使われます（オフィスネットワーク用）
-- `network_mode: "tailscale"`の場合、Tailscale IPが使われます（自宅ネットワーク/リモートアクセス用、推奨）
-- ネットワーク環境に応じた設定でないと、接続エラーが発生します
+- `network_mode: "tailscale"`が標準です（通常運用）
+- `network_mode: "local"`は緊急時のみ使用してください
+- 設定が合っていないと、接続エラーが発生します
 
 ### Step 4: 旧方法（inventory.yml直接編集）
 
@@ -146,10 +146,10 @@ cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@100.106.158.2 "sudo t
 **Macのターミナルで実行**:
 
 ```bash
-# Pi5からPi4への接続テスト（Tailscale IPを使用、推奨）
+# Pi5からPi4への接続テスト（Tailscale IPを使用、標準）
 ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 "echo Pi4接続成功 && hostname"'
 
-# Pi5からPi3への接続テスト（Tailscale IPを使用、推奨）
+# Pi5からPi3への接続テスト（Tailscale IPを使用、標準）
 ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 "echo Pi3接続成功 && hostname"'
 
 # または、Ansible接続テスト（推奨、実際に使われるIPでテスト）
@@ -232,9 +232,9 @@ raspberrypi3 | SUCCESS => {
 ```bash
 # Macのターミナルで実行
 cd /Users/tsudatakashi/RaspberryPiSystem_002
-# Tailscale経由の場合（推奨）
+# Tailscale経由の場合（標準）
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-# ローカルネットワークの場合: export RASPI_SERVER_HOST="denkon5sd02@<pi5のIP>"
+# ローカルネットワークの場合（緊急時のみ）: export RASPI_SERVER_HOST="denkon5sd02@<pi5のIP>"
 # inventory指定が必須（誤デプロイ防止）
 # 第2工場（既存）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
@@ -262,8 +262,8 @@ raspberrypi3                : ok=XX    changed=X    unreachable=0    failed=0
 **解決方法**:
 ```bash
 # Macから実行: sudoを使用してコピー（実際のPi5のIPアドレスに置き換える）
-# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
-# ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
+# Tailscale経由の場合（標準）: ssh denkon5sd02@100.106.158.2
+# ローカルネットワークの場合（緊急時のみ）: ssh denkon5sd02@<pi5のIP>
 cat infrastructure/ansible/inventory.yml | ssh denkon5sd02@<pi5のIP> "sudo tee /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml > /dev/null && sudo chown denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/infrastructure/ansible/inventory.yml"
 ```
 
@@ -364,7 +364,7 @@ ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \
 
 環境構築が完了したら、以下のチェックリストを確認してください：
 
-- [ ] MacからPi5にSSH接続できる（Tailscale IP推奨）
+- [ ] MacからPi5にSSH接続できる（Tailscale IPが標準）
 - [ ] Pi5からPi4/3にSSH接続できる（SSH鍵認証）
 - [ ] Pi5上の`group_vars/all.yml`の`network_mode`が適切に設定されている（`local`または`tailscale`）
 - [ ] Pi5上の`group_vars/all.yml`のIP設定が正しい（`local_network`または`tailscale_network`）

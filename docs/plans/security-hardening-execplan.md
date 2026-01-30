@@ -1,23 +1,25 @@
 # セキュリティ強化 ExecPlan
 
+**⚠️ 方針更新（2026-01-30）**: 運用方針は [ADR-20260130-tailscale-primary-operations](../decisions/ADR-20260130-tailscale-primary-operations.md) により**Tailscale主（通常運用）/ local緊急時のみ**へ変更済み。本書中の「メンテナンス時のみTailscale」表現は**歴史的経緯**として読み替えること。
+
 このExecPlanは `.agent/PLANS.md` の方針に従い、セキュリティ強化の実装前の調査・設計・検証手順を完全自走できるよう自律的に更新される生きたドキュメントとして維持する。
 
-**役割**: このExecPlanは、メンテナンス時のセキュリティ対策、通常運用時のセキュリティ対策、ランサムウェア対策、マルウェア対策、監視・アラート、IPアドレス管理の詳細計画を担当する。
+**役割**: このExecPlanは、通常運用（Tailscale主）/緊急時（local）のセキュリティ対策、ランサムウェア対策、マルウェア対策、監視・アラート、IPアドレス管理の詳細計画を担当する。
 
 ## Purpose / Big Picture
 
 Raspberry Pi 5サーバーの運用環境において、以下のセキュリティリスクに対処する：
-1. **メンテナンス時のリスク**: インターネット経由でAnsible実行・GitHubからpullする際のSSHポート公開による不正アクセス
-2. **通常運用時のリスク**: ローカルネットワーク内での管理画面への不正アクセス、API経由の攻撃
+1. **通常運用時のリスク**: Tailscale経由のAnsible実行・GitHubからpullする際の誤設定や認証不備
+2. **緊急時のリスク**: local切替時の誤操作による接続失敗やアクセス制御の緩み
 3. **ランサムウェアリスク**: データベース・ファイルの暗号化による業務停止
 4. **マルウェアリスク**: ファイルアップロード、Dockerイメージ経由の感染
 5. **運用効率のリスク**: IPアドレス管理の煩雑さによる設定ミス・運用負荷
 
 **運用環境の前提**:
-- **通常運用**: ローカルネットワークのみ（インターネット接続なし）
-- **メンテナンス時**: インターネット接続が必要（MacからRaspberry Piへ指令、GitHubからpull）
+- **通常運用（標準）**: Tailscale経由（常時接続）
+- **緊急時のみ**: ローカルネットワーク（Tailscale障害/認証不能時）
 
-この計画が完了すると、メンテナンス時にインターネット経由でも安全にAnsibleを実行でき、通常運用時も適切なセキュリティ対策が実装され、ランサムウェアやマルウェアからシステムを保護でき、IPアドレス管理が効率化される。
+この計画が完了すると、通常運用でTailscale経由でも安全にAnsibleを実行でき、緊急時のlocal運用にも対応し、適切なセキュリティ対策が実装され、ランサムウェアやマルウェアからシステムを保護でき、IPアドレス管理が効率化される。
 
 **Phase 9/10実装完了（2025-12-14）**: インターネット接続時の追加防御（管理画面IP制限、Webhookアラート、セキュリティヘッダー、レート制限）と認証・監視強化（MFA、リアルタイム監視、権限監査）を実装完了。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細仕様は [security/phase9-10-specifications.md](../security/phase9-10-specifications.md) を参照。
 
@@ -37,7 +39,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-04) 運用モード自動検出APIの実装（インターネット接続の有無で判定）
 - [x] (2025-12-04) 管理画面での運用モード表示（ヘッダーまたはダッシュボード）
 
-### Phase 2: メンテナンス時の安全化（Tailscale導入）
+### Phase 2: 通常運用の安全化（Tailscale導入）
 - [x] (2025-12-04) MacのTailscale設定確認（✅ 完了済み）
 - [x] (2025-12-04) Raspberry Pi 5にTailscaleクライアントをインストール・認証
 - [x] (2025-12-04) Raspberry Pi 4にTailscaleクライアントをインストール・認証
@@ -237,12 +239,13 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 ## Decision Log
 
 - Decision: TailscaleをVPNソリューションとして採用。
-  Rationale: WireGuardベースで暗号化が強固、設定が簡単、無料プランで100デバイスまで利用可能、SSHポートをインターネットに公開する必要がない。メンテナンス時にインターネット接続する際に使用し、通常運用時はローカルネットワークのIPアドレスを使用する。
+  Rationale: WireGuardベースで暗号化が強固、設定が簡単、無料プランで100デバイスまで利用可能、SSHポートをインターネットに公開する必要がない。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
+  Status: superseded by ADR-20260130-tailscale-primary-operations
 
-- Decision: Tailscaleはメンテナンス時のみ使用し、通常運用時はローカルネットワークのIPアドレスを使用する。
-  Rationale: 通常運用時はインターネット接続がないため、Tailscaleは使用できない。メンテナンス時にインターネット接続する際にTailscaleを使用して安全にSSH接続する。
-  Date/Author: 2025-12-04 / GPT-5.1 Codex
+- Decision: Tailscaleは通常運用の標準とし、localは緊急時のみ使用する。
+  Rationale: 運用経路を一本化してAnsibleの疎通失敗を防止し、セキュリティを常時確保するため。
+  Date/Author: 2026-01-30 / GPT-5.2 Codex
 
 - Decision: Raspberry Pi 3にはセキュリティソフトを導入しない。
   Rationale: リソース不足、サイネージが常時起動、インターネット接続なし、Pi5で対策していればリスクは低い。
@@ -253,11 +256,11 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
 - Decision: IPアドレス管理をAnsibleの`group_vars/all.yml`で変数化する。
-  Rationale: ネットワーク環境変更時に一箇所の修正で済む、メンテナンス時と通常運用時の切り替えが容易、設定ミスを防げる。
+  Rationale: ネットワーク環境変更時に一箇所の修正で済む、通常運用（Tailscale）と緊急時（local）の切り替えが容易、設定ミスを防げる。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
 - Decision: 運用モードの可視化は自動検出APIとUI表示で実装する。UIでの切り替えは実装しない。
-  Rationale: メンテナンスは頻度が低く、UIでの切り替えは誤操作リスクがある。DNSルックアップで自動検出し、管理画面で表示する方が安全。
+  Rationale: 緊急時のみ切り替える想定のため、UIでの切り替えは誤操作リスクがある。DNSルックアップで自動検出し、管理画面で表示する方が安全。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
 - Decision: Tailscale導入はPi5経由でPi4/Pi3にもインストールする。認証は手動で行う。
@@ -268,8 +271,8 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   Rationale: Pi3はリソースが限られており、サイネージ稼働中にインストール処理を実行するとリソース競合が発生する可能性がある。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
-- Decision: SSH接続設定は`~/.ssh/config`に2つ用意する（ローカル用とTailscale用）。
-  Rationale: 通常運用時とメンテナンス時で使い分けができる。`IdentityFile`は実際に使用されている鍵を指定する必要がある。
+- Decision: SSH接続設定は`~/.ssh/config`に2つ用意する（Tailscale用とlocal用）。
+  Rationale: 通常運用（Tailscale）と緊急時（local）で使い分けができる。`IdentityFile`は実際に使用されている鍵を指定する必要がある。
   Date/Author: 2025-12-04 / GPT-5.1 Codex
 
 - Decision: Caddyアクセスログをホストに出力し、fail2banでHTTP/APIリクエストを監視する。
@@ -305,9 +308,9 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 **成果**:
 - ネットワーク環境変更時の修正箇所が1箇所に集約された
-- メンテナンス時と通常運用時の切り替えが容易になった
+- 通常運用（Tailscale）と緊急時（local）の切り替えが容易になった
 - 現在の運用モードが視覚的に確認できるようになった
-- メンテナンス時にSSHポートをインターネットに公開する必要がなくなった
+- 通常運用でSSHポートをインターネットに公開する必要がなくなった
 
 **学んだこと**:
 - DNSルックアップは軽量で、インターネット接続検出に適している
@@ -452,16 +455,16 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 5. **切り替えテスト**
    - `network_mode: "local"`で動作確認
-   - `network_mode: "tailscale"`で動作確認（メンテナンス時）
+  - `network_mode: "tailscale"`で動作確認（通常運用）
 
-### Phase 2: メンテナンス時の安全化（Tailscale導入）
+### Phase 2: 通常運用の安全化（Tailscale導入）
 
-1. **Raspberry Pi 5にTailscaleクライアントをインストール（メンテナンス時）**
+1. **Raspberry Pi 5にTailscaleクライアントをインストール（通常運用）**
    - Pi5にSSH接続（ローカルネットワーク経由）
    - Tailscaleのインストール
    - Tailscaleを起動して認証
 
-2. **Raspberry Pi 4/3にTailscaleクライアントをインストール（メンテナンス時、必要に応じて）**
+2. **Raspberry Pi 4/3にTailscaleクライアントをインストール（通常運用、必要に応じて）**
    - Pi4/3にSSH接続（ローカルネットワーク経由）
    - Tailscaleのインストール
    - Tailscaleを起動して認証
@@ -469,10 +472,10 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 3. **SSH接続設定を2つ用意**
    - Mac側の`~/.ssh/config`に2つの設定を追加
    - 通常運用時用（ローカルネットワーク）
-   - メンテナンス時用（Tailscale経由）
+  - 通常運用用（Tailscale経由）
 
 4. **運用フローの確立**
-   - メンテナンス時の手順を文書化
+  - 緊急時（local）の手順を文書化
    - 通常運用時の手順を文書化
 
 ### Phase 3: バックアップ暗号化・オフライン保存
@@ -605,11 +608,11 @@ local_network:
   raspberrypi4_ip: "192.168.10.223"
   raspberrypi3_ip: "192.168.10.109"
 
-# Tailscale用IPアドレス（メンテナンス時のみ使用）
+# Tailscale用IPアドレス（通常運用の標準）
 # 注意: Tailscale IPアドレスは動的に割り当てられるが、デバイスごとに固定される
-# メンテナンス時に `tailscale status` で確認して設定する
+# `tailscale status` で確認して設定する
 tailscale_network:
-  raspberrypi5_ip: ""  # メンテナンス時に確認して設定
+  raspberrypi5_ip: ""  # 通常運用で使用
   raspberrypi4_ip: ""
   raspberrypi3_ip: ""
 
@@ -623,10 +626,10 @@ EOF
 # 5. 切り替えテスト
 ```
 
-### Phase 2: メンテナンス時の安全化（Tailscale導入）
+### Phase 2: 通常運用の安全化（Tailscale導入）
 
 ```bash
-# Raspberry Pi 5にTailscaleクライアントをインストール（メンテナンス時）
+# Raspberry Pi 5にTailscaleクライアントをインストール（通常運用）
 ssh denkon5sd02@192.168.10.230
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
@@ -669,7 +672,7 @@ sudo freshclam
 ### Phase 1: IPアドレス管理の変数化と運用モード可視化テスト
 
 - [ ] `network_mode: "local"`でAnsibleが正常に動作することを確認
-- [ ] `network_mode: "tailscale"`でAnsibleが正常に動作することを確認（メンテナンス時）
+- [ ] `network_mode: "tailscale"`でAnsibleが正常に動作することを確認（通常運用）
 - [ ] テンプレートファイルが正しく変数を参照することを確認
 - [ ] `scripts/register-clients.sh`が正しく動作することを確認
 - [ ] 運用モード自動検出APIが正しく動作することを確認（インターネット接続あり/なし）
@@ -678,10 +681,10 @@ sudo freshclam
 
 ### Phase 2: Tailscale導入テスト
 
-- [ ] MacからTailscale IP経由でPi5にSSH接続できること（メンテナンス時、インターネット接続あり）
-- [ ] 通常運用時はローカルネットワークのIPアドレスでSSH接続できること
-- [ ] メンテナンス時にインターネット経由でAnsibleを実行できること
-- [ ] メンテナンス時にGitHubからpullできること
+- [ ] MacからTailscale IP経由でPi5にSSH接続できること（通常運用）
+- [ ] 緊急時のみローカルネットワークのIPアドレスでSSH接続できること
+- [ ] Tailscale経由でAnsibleを実行できること
+- [ ] Tailscale経由でGitHubからpullできること
 
 ### Phase 3: バックアップ暗号化・オフライン保存テスト
 

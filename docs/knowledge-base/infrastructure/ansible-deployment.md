@@ -359,7 +359,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 **事象**: 
 - IPアドレスが複数の設定ファイルに直接記述されている
 - ネットワーク環境が変わった際に、複数箇所を手動で修正する必要がある
-- メンテナンス時と通常運用時の切り替えが煩雑
+- 通常運用（Tailscale）と緊急時（local）の切り替えが煩雑
 - `inventory.yml`、テンプレートファイル（`.j2`）、スクリプトなどにIPアドレスが散在している
 
 **要因**: 
@@ -385,7 +385,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 - `group_vars/all.yml`に以下の変数を定義:
   - `network_mode`: `"local"`または`"tailscale"`
   - `local_network`: ローカルネットワーク用IPアドレス（`raspberrypi5_ip`, `raspberrypi4_ip`, `raspberrypi3_ip`）
-  - `tailscale_network`: Tailscale用IPアドレス（メンテナンス時のみ使用）
+- `tailscale_network`: Tailscale用IPアドレス（通常運用の標準）
   - `current_network`: `network_mode`に基づいて自動選択
   - `server_ip`, `kiosk_ip`, `signage_ip`: 共通変数として定義
   - `api_base_url`, `websocket_agent_url`など: よく使うURLを共通変数として定義
@@ -394,7 +394,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 
 **学んだこと**: 
 - Ansibleの`group_vars/all.yml`を使用することで、IPアドレスを一元管理できる
-- `network_mode`で切り替え可能にすることで、メンテナンス時と通常運用時の切り替えが容易になる
+- `network_mode`で切り替え可能にすることで、通常運用（Tailscale）と緊急時（local）の切り替えが容易になる
 - 変数化により、ネットワーク環境変更時の修正箇所が1箇所に集約される
 - デフォルト値に古いIPアドレスを残さないことで、設定ミスを防げる
 

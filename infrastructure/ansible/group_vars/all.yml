@@ -1,6 +1,6 @@
 # ネットワークモードを切り替えることで、Ansibleが参照するIPアドレスを変更できます。
-# - local: ローカルネットワークのIPを使用（通常運用）
-# - tailscale: Tailscale経由のIPを使用（メンテナンス時）
+# - tailscale: Tailscale経由のIPを使用（通常運用・標準）
+# - local: ローカルネットワークのIPを使用（緊急時のみ）
 network_mode: "tailscale"
 
 # ローカルネットワークで使用するIPアドレス
@@ -9,7 +9,7 @@ local_network:
   raspberrypi4_ip: "192.168.10.224"
   raspberrypi3_ip: "192.168.128.152"
 
-# メンテナンス時（Tailscale経由）に使用するIPアドレス
+# 通常運用（Tailscale経由）に使用するIPアドレス
 # Tailscaleで割り当てられるIPを確認して設定してください。
 tailscale_network:
   raspberrypi5_ip: "100.106.158.2"
@@ -42,9 +42,9 @@ status_agent_api_base_url: "{{ api_base_url }}"
 nfc_agent_api_base_url: "{{ api_base_url }}"
 docker_server_ip: "{{ server_ip }}"
 
-# Tailscale設定（デフォルトでは無効、ホスト側で上書き）
-tailscale_enabled: false
-tailscale_auth_key: ""
+# Tailscale設定（通常運用で有効）
+tailscale_enabled: true
+tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
 tailscale_extra_args: "--ssh"
 tailscale_install_script: "https://tailscale.com/install.sh"
 

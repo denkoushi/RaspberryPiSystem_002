@@ -3,4 +3,6 @@
 
 vault_status_agent_client_key: "client-key-raspberrypi4-kiosk1"
 vault_nfc_agent_client_secret: "client-key-raspberrypi4-kiosk1"
+# Tailscale preauth key (reusable, tagged推奨)
+vault_tailscale_auth_key: ""
 

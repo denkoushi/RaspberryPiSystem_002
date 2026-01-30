@@ -49,14 +49,14 @@ update-frequency: medium
 
 ## 🌐 ネットワーク環境の確認（デプロイ前必須）
 
-**重要**: デプロイ前に、現在のネットワーク環境（オフィス/自宅）を確認し、Pi5上の`group_vars/all.yml`の`network_mode`を適切に設定してください。これがデプロイ成功の最重要ポイントです。
+**重要**: デプロイ前に、Pi5上の`group_vars/all.yml`の`network_mode`が**Tailscale主運用**の前提に合っているか確認してください。これがデプロイ成功の最重要ポイントです。
 
 ### ネットワークモードの選択
 
 | ネットワーク環境 | network_mode | 使用IP | 用途 |
 |----------------|-------------|--------|------|
-| オフィス（ローカルネットワーク） | `local` | ローカルIP（192.168.x.x） | 同一ネットワーク内からのアクセス |
-| 自宅/リモートアクセス | `tailscale` | Tailscale IP（100.x.x.x） | リモートアクセス、異なるネットワーク環境 |
+| **通常運用（標準）** | `tailscale` | Tailscale IP（100.x.x.x） | 安全な通常運用（常時接続） |
+| **緊急時のみ** | `local` | ローカルIP（192.168.x.x） | Tailscale障害/認証不能時の緊急対応 |
 
 ### ネットワークモード設定の確認・変更
 
@@ -68,10 +68,10 @@ ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/
 
 **2. 設定を変更（必要に応じて）**:
 ```bash
-# Tailscaleモードに変更（自宅ネットワーク/リモートアクセスの場合）
+# Tailscaleモードに変更（通常運用・標準）
 ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 
-# Localモードに変更（オフィスネットワークの場合）
+# Localモードに変更（緊急時のみ）
 ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"tailscale\"/network_mode: \"local\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
@@ -82,11 +82,12 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 ```
 
 **⚠️ 注意**: 
-- `network_mode`が`local`の場合、ローカルIPが使われます（`hostname -I`で取得した値を使用）
 - `network_mode`が`tailscale`の場合、Tailscale IPが使われます（`tailscale status`で確認）
-- 現在のネットワーク環境に応じた設定でないと、接続エラーが発生します
+- `network_mode`が`local`の場合、ローカルIPが使われます（`hostname -I`で取得した値を使用）
+- **Tailscale主運用のため、`local`は緊急時のみ許可**としてください
+  - `scripts/update-all-clients.sh` で`local`を使う場合は `ALLOW_LOCAL_EMERGENCY=1` を明示
 - ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
-- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`local`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
+- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`tailscale`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
 
 詳細は [環境構築ガイド](./environment-setup.md) を参照してください。
 

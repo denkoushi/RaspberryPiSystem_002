@@ -517,9 +517,9 @@ update-frequency: medium
 **EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
 
 **事象**: 
-- 現在の運用モード（ローカル/メンテナンス）が分からない
+- 現在の運用モード（Tailscale/ローカル緊急）が分からない
 - インターネット接続の有無が分からない
-- メンテナンス時に誤ってローカルネットワーク設定で操作してしまうリスクがある
+- 緊急時に誤って運用モードを取り違えるリスクがある
 
 **要因**: 
 1. **可視化の不足**: 現在のネットワーク状態を表示する機能がなかった
@@ -535,11 +535,13 @@ update-frequency: medium
   1. `/api/system/network-mode`エンドポイントを実装
   2. DNSルックアップ（`github.com`, `tailscale.com`, `cloudflare.com`）でインターネット接続を自動検出
   3. 接続あり → `{ mode: "maintenance", status: "internet_connected" }`
+     - **運用上は maintenance=通常運用（Tailscale）として扱う**
   4. 接続なし → `{ mode: "local", status: "local_network_only" }`
+     - **運用上は local=緊急時のみとして扱う**
   5. 環境変数`NETWORK_STATUS_OVERRIDE`でテスト時に上書き可能にする
   6. 管理画面のヘッダーに`NetworkModeBadge`コンポーネントを追加
   7. React Queryで30秒ごとに自動更新
-  8. バッジやアイコンで視覚的に表示（ローカル: 緑、メンテナンス: オレンジ）
+  8. バッジやアイコンで視覚的に表示（Tailscale/通常: 緑、local/緊急: オレンジ）
 
 **実装の詳細**:
 - API側（`apps/api/src/routes/system/network-mode.ts`）:

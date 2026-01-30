@@ -50,11 +50,13 @@
     - tailscale_auth_key | default('') | length > 0
   no_log: true
 
-- name: Inform when manual tailscale up is required
-  ansible.builtin.debug:
+- name: Fail when tailscale_auth_key is missing and Tailscale is not connected
+  ansible.builtin.fail:
     msg: >-
-      tailscale_auth_key が設定されていないため、{{ inventory_hostname }} で
-      `sudo tailscale up` を実行してログインしてください。
+      tailscale_auth_key が未設定のため、{{ inventory_hostname }} で
+      Tailscale を自動で有効化できません。
+      先に vault_tailscale_auth_key を設定するか、
+      既に接続済みであることを確認してください。
   when:
     - (tailscale_connected | default(false)) | bool == false
     - tailscale_auth_key | default('') | length == 0

@@ -43,7 +43,7 @@
 - **Dropbox**: バックアップ保存/復元
 - **Gmail**: CSV自動インポート
 - **Slack**: キオスク問い合わせ通知
-- **Tailscale**: メンテナンス時の安全なリモート接続
+- **Tailscale**: 通常運用の安全な接続経路（localは緊急時のみ）
 
 参考: [docs/guides/external-integration-ledger.md](../guides/external-integration-ledger.md)
 

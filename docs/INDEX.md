@@ -499,7 +499,7 @@
 | ドキュメント | 説明 |
 |-------------|------|
 | [presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md) | **セキュリティ対策プレゼンテーション資料**（アサヒビールのランサムウェア被害を踏まえた対策と評価） |
-| [security/requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
+| [security/requirements.md](./security/requirements.md) | **セキュリティ要件定義**（Tailscale主運用、IPアドレス管理、ランサムウェア対策など） |
 | [security/implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
 | [guides/ansible-best-practices.md](./guides/ansible-best-practices.md) | Ansibleベストプラクティス |
 
@@ -645,7 +645,7 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
-| [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（メンテナンス時のセキュリティ、IPアドレス管理、ランサムウェア対策など） |
+| [requirements.md](./security/requirements.md) | **セキュリティ要件定義**（Tailscale主運用、IPアドレス管理、ランサムウェア対策など） |
 | [validation-review.md](./security/validation-review.md) | バリデーションレビュー |
 | [implementation-assessment.md](./security/implementation-assessment.md) | **セキュリティ実装の妥当性評価**（現状の評価と残タスク） |
 | [incident-response.md](./security/incident-response.md) | **インシデント対応手順**（侵入・マルウェア検知時の初動・封じ込め・復旧手順） |

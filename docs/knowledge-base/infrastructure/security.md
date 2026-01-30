@@ -20,7 +20,9 @@ update-frequency: medium
 
 ### [KB-071] Tailscale導入とSSH接続設定
 
-**EXEC_PLAN.md参照**: Phase 2 メンテナンス時の安全化（Tailscale導入）（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**⚠️ 更新（2026-01-30）**: 本KBの結論は [ADR-20260130-tailscale-primary-operations](../../decisions/ADR-20260130-tailscale-primary-operations.md) により**置き換え**られました。現在の正本は「Tailscale主（通常運用）、localは緊急時のみ」です。
+
+**EXEC_PLAN.md参照**: Phase 2（旧: メンテナンス時の安全化/Tailscale導入, 2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
 
 **事象**: 
 - メンテナンス時にインターネット経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開する必要がある
@@ -44,8 +46,8 @@ update-frequency: medium
   4. 各デバイスで`sudo tailscale up`を実行して認証
   5. Tailscale IPアドレスを`group_vars/all.yml`に設定
   6. Mac側の`~/.ssh/config`に2つの接続設定を追加:
-     - `raspi5-local`: 通常運用時（ローカルネットワーク `192.168.10.230`）
-     - `raspi5-tailscale`: メンテナンス時（Tailscale経由 `100.106.158.2`）
+     - `raspi5-tailscale`: 通常運用（Tailscale経由 `100.106.158.2`）
+     - `raspi5-local`: 緊急時のみ（ローカルネットワーク `192.168.10.230`）
   7. Ansibleタスク（`roles/common/tasks/tailscale.yml`）を作成し、自動インストール可能にする
 
 **実装の詳細**:
@@ -67,7 +69,7 @@ update-frequency: medium
 - WireGuardベースで暗号化が強固
 - 動的IPアドレスでも固定IPのように接続可能
 - SSHポートをインターネットに公開する必要がない
-- メンテナンス時のみ使用し、通常運用時はローカルネットワークを使用する運用が適切
+- **Tailscaleを通常運用の標準**とし、**localは緊急時のみ**に限定するのが適切
 - Pi3はリソースが限られているため、サイネージサービスを停止してからインストールする必要がある
 
 **解決状況**: ✅ **解決済み**（2025-12-04）

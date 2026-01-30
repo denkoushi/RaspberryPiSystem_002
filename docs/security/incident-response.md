@@ -42,9 +42,9 @@
 **確認コマンド**:
 ```bash
 # Pi5にSSH接続
+ssh denkon5sd02@100.106.158.2   # Tailscale経由（通常運用）
+# 緊急時のみ
 ssh denkon5sd02@192.168.10.230  # ローカルネットワーク経由
-# または
-ssh denkon5sd02@100.106.158.2   # Tailscale経由（メンテナンス時）
 
 # 最新のアラートを確認
 ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5

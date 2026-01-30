@@ -38,9 +38,9 @@ update-frequency: high
    # Pi5上のnetwork_modeを確認
    ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
    ```
-   - `network_mode: "local"` → オフィスネットワーク用
-   - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用（推奨）
-   - 現在のネットワーク環境に応じて設定を変更（[デプロイメントガイド](./deployment.md#ネットワーク環境の確認デプロイ前必須)を参照）
+  - `network_mode: "tailscale"` → 通常運用の標準
+  - `network_mode: "local"` → 緊急時のみ
+  - 設定変更は [デプロイメントガイド](./deployment.md#ネットワーク環境の確認デプロイ前必須) を参照
 
 2. **デプロイ先inventoryの確認**（誤デプロイ防止）
    - 第2工場: `infrastructure/ansible/inventory.yml`
@@ -57,7 +57,7 @@ update-frequency: high
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 # 環境変数を設定（Pi5のTailscale IPを指定）
-# 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
+# 注意: 通常運用はTailscaleを使用
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）

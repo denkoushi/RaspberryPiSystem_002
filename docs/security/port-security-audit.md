@@ -65,7 +65,7 @@ UFWで遮断されていても LISTEN している限り、攻撃面・監視ノ
 
 1. **ネットワーク層の防御**
    - ✅ UFWファイアウォール（デフォルト拒否、HTTP/HTTPSのみ許可）
-   - ✅ Tailscale VPN（メンテナンス時の安全なSSH接続）
+  - ✅ Tailscale VPN（通常運用の標準接続経路）
 
 2. **アプリケーション層の防御**
    - ✅ HTTPS強制（CaddyによるHTTP→HTTPSリダイレクト）

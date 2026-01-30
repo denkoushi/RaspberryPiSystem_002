@@ -34,14 +34,14 @@
    - [ ] ハードコードされたIPアドレスが削除されている
 
 5. **切り替えテスト**
-   - [ ] `network_mode: "local"`でAnsibleが正常に動作する
-   - [ ] `network_mode: "tailscale"`でAnsibleが正常に動作する（メンテナンス時）
+   - [ ] `network_mode: "tailscale"`でAnsibleが正常に動作する（通常運用）
+   - [ ] `network_mode: "local"`でAnsibleが正常に動作する（緊急時のみ）
    - [ ] テンプレートファイルが正しくレンダリングされる
    - [ ] `scripts/register-clients.sh`が正しく動作する
 
 6. **運用モード自動検出APIのテスト**
    - [ ] `/api/system/network-mode`エンドポイントが存在する
-   - [ ] インターネット接続ありの場合、`{ mode: "maintenance", status: "internet_connected" }`が返る
+   - [ ] インターネット接続ありの場合、`{ mode: "maintenance", status: "internet_connected" }`が返る（運用上はTailscale通常運用として扱う）
    - [ ] インターネット接続なしの場合、`{ mode: "local", status: "local_network_only" }`が返る
    - [ ] APIのレスポンス時間が適切（5秒以内）
 
@@ -70,7 +70,7 @@ grep -r "192\.168\.\d+\.\d+" scripts/register-clients.sh
 cd infrastructure/ansible
 ansible-playbook -i inventory.yml playbooks/ping.yml
 
-# 6. 切り替えテスト（Tailscale、メンテナンス時）
+# 6. 切り替えテスト（Tailscale、通常運用）
 # network_modeをtailscaleに変更してから実行
 ansible-playbook -i inventory.yml playbooks/ping.yml
 
@@ -83,7 +83,7 @@ curl http://192.168.10.230:8080/api/system/network-mode
 # インターネット接続を有効/無効にして、表示が切り替わることを確認
 ```
 
-### Phase 2: メンテナンス時の安全化（Tailscale導入）
+### Phase 2: 通常運用の安全化（Tailscale導入）
 
 #### テスト項目
 
@@ -92,16 +92,16 @@ curl http://192.168.10.230:8080/api/system/network-mode
    - [ ] Raspberry Pi 4/3にTailscaleクライアントがインストールされている（必要に応じて）
 
 2. **Tailscale接続確認**
-   - [ ] MacからTailscale IP経由でPi5にSSH接続できる（メンテナンス時、インターネット接続あり）
-   - [ ] Pi5からTailscale IP経由でPi4/3にSSH接続できる（メンテナンス時、必要に応じて）
+   - [ ] MacからTailscale IP経由でPi5にSSH接続できる（通常運用）
+   - [ ] Pi5からTailscale IP経由でPi4/3にSSH接続できる（通常運用）
 
-3. **通常運用時の接続確認**
-   - [ ] 通常運用時はローカルネットワークのIPアドレスでSSH接続できる
-   - [ ] ローカルネットワーク経由でAnsibleを実行できる
+3. **緊急時の接続確認**
+   - [ ] 緊急時のみローカルネットワークのIPアドレスでSSH接続できる
+   - [ ] 緊急時のみローカルネットワーク経由でAnsibleを実行できる
 
-4. **メンテナンス時の運用確認**
-   - [ ] メンテナンス時にインターネット経由でAnsibleを実行できる
-   - [ ] メンテナンス時にGitHubからpullできる
+4. **通常運用の運用確認**
+   - [ ] Tailscale経由でAnsibleを実行できる
+   - [ ] Tailscale経由でGitHubからpullできる
 
 #### テスト手順
 
@@ -109,14 +109,14 @@ curl http://192.168.10.230:8080/api/system/network-mode
 # 1. Tailscaleクライアントのインストール確認
 ssh denkon5sd02@192.168.10.230 "tailscale version"
 
-# 2. Tailscale接続確認（メンテナンス時）
+# 2. Tailscale接続確認（通常運用）
 tailscale status
 ssh raspi5-tailscale
 
-# 3. 通常運用時の接続確認
+# 3. 緊急時の接続確認（local）
 ssh raspi5-local
 
-# 4. メンテナンス時の運用確認
+# 4. 通常運用の運用確認
 ssh raspi5-tailscale "cd /opt/RaspberryPiSystem_002 && git pull"
 ```
 

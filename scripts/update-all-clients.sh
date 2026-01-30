@@ -8,6 +8,8 @@ set -euo pipefail
 #
 # ⚠️ 安全のため inventory は必須（誤デプロイ防止）
 # 環境変数 ANSIBLE_REPO_VERSION でも指定可能（引数より優先度低い）
+# ⚠️ Tailscale主運用: network_mode=local は緊急時のみ許可
+#    - localを使う場合は ALLOW_LOCAL_EMERGENCY=1 を明示すること
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
@@ -349,41 +351,68 @@ print("\n".join(sorted(hosts)))
 PY
 }
 
+NETWORK_MODE=""
+
 check_network_mode() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
   fi
 
   echo "[INFO] Checking network_mode configuration on Pi5..."
-  local network_mode
-  network_mode=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml 2>/dev/null | awk '{print \$2}' | tr -d '\"'" || echo "")
+  NETWORK_MODE=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml 2>/dev/null | awk '{print \$2}' | tr -d '\"'" || echo "")
 
-  if [[ "${REQUIRE_TAILSCALE:-0}" == "1" && "${network_mode}" != "tailscale" ]]; then
-    echo "[ERROR] network_mode must be 'tailscale' for this deployment (REQUIRE_TAILSCALE=1)." >&2
-    exit 1
-  fi
-
-  if [[ "${network_mode}" = "local" ]]; then
-    echo "⚠️  警告: Pi5上のnetwork_modeが'local'です"
-    echo "   現在のネットワーク環境を確認してください:"
-    echo "   - オフィスネットワーク: network_mode=local でOK"
-    echo "   - 自宅ネットワーク/リモートアクセス: network_mode=tailscale に変更が必要"
-    echo ""
-    echo "   変更方法:"
-    echo "   ssh ${REMOTE_HOST} \"sed -i 's/network_mode: \\\"local\\\"/network_mode: \\\"tailscale\\\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml\""
-    echo ""
-    read -p "続行しますか？ (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-      echo "[INFO] デプロイをキャンセルしました"
-      exit 1
-    fi
-  elif [[ "${network_mode}" = "tailscale" ]]; then
-    echo "[INFO] network_mode='tailscale' が設定されています（リモートアクセス用）"
-  else
-    echo "⚠️  警告: network_modeの設定を確認できませんでした（${network_mode}）"
+  if [[ -z "${NETWORK_MODE}" ]]; then
+    echo "⚠️  警告: network_modeの設定を確認できませんでした"
     echo "   手動で確認してください:"
     echo "   ssh ${REMOTE_HOST} \"cat /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml | grep network_mode\""
+    return 0
+  fi
+
+  if [[ "${NETWORK_MODE}" = "local" ]]; then
+    if [[ "${ALLOW_LOCAL_EMERGENCY:-0}" != "1" ]]; then
+      echo "[ERROR] network_mode='local' は緊急時のみ許可です。続行には ALLOW_LOCAL_EMERGENCY=1 を指定してください。" >&2
+      exit 1
+    fi
+    echo "⚠️  警告: network_mode='local'（緊急時モード）で続行します"
+    echo "   Tailscale主運用が標準です。復旧後は network_mode=tailscale へ戻してください。"
+  elif [[ "${NETWORK_MODE}" = "tailscale" ]]; then
+    echo "[INFO] network_mode='tailscale' が設定されています（標準運用）"
+  else
+    echo "⚠️  警告: network_modeの設定を確認できませんでした（${NETWORK_MODE}）"
+    echo "   手動で確認してください:"
+    echo "   ssh ${REMOTE_HOST} \"cat /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml | grep network_mode\""
+  fi
+}
+
+check_tailscale_on_pi5() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  if [[ "${NETWORK_MODE}" != "tailscale" ]]; then
+    return 0
+  fi
+
+  echo "[INFO] Checking tailscaled status on Pi5..."
+  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl is-active tailscaled" >/dev/null 2>&1; then
+    exit_with_error 3 "Preflight failed: tailscaled is not active on ${REMOTE_HOST}."
+  fi
+
+  local ts_json
+  ts_json=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "tailscale status --json 2>/dev/null" || echo "")
+  if [[ -z "${ts_json}" ]]; then
+    exit_with_error 3 "Preflight failed: tailscale status --json returned empty output on ${REMOTE_HOST}."
+  fi
+
+  if ! python3 - <<'PY' "${ts_json}"
+import json, sys
+data = json.loads(sys.argv[1])
+state = data.get("BackendState", "")
+if state != "Running":
+    print(state)
+    sys.exit(1)
+PY
+  then
+    exit_with_error 3 "Preflight failed: Tailscale BackendState is not Running on ${REMOTE_HOST}."
   fi
 }
 
@@ -397,6 +426,8 @@ run_preflight_remotely() {
   if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "echo ok" >/dev/null 2>&1; then
     exit_with_error 3 "Preflight failed: cannot reach ${REMOTE_HOST} via SSH."
   fi
+
+  check_tailscale_on_pi5
 
   local inventory_basename
   inventory_basename=$(basename "${INVENTORY_PATH}")

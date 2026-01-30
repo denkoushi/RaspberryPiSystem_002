@@ -1,0 +1,20 @@
+---
+- name: Check tailscaled service state
+  ansible.builtin.command: systemctl is-active tailscaled
+  register: tailscaled_state
+  changed_when: false
+  failed_when: tailscaled_state.stdout | trim != "active"
+
+- name: Check Tailscale backend state
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: >-
+    tailscale_status.rc != 0 or
+    ((tailscale_status.stdout | default('{}')) | from_json).BackendState | default('') != "Running"
+
+- name: Check tailscale0 interface exists
+  ansible.builtin.command: ip -brief addr show tailscale0
+  register: tailscale_iface
+  changed_when: false
+  failed_when: tailscale_iface.rc != 0
