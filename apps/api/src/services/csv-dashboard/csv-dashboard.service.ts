@@ -303,7 +303,8 @@ export class CsvDashboardService {
     const nowJst = new Date(nowUtc.getTime() + jstOffset);
     const startOfTodayJst = new Date(nowJst);
     startOfTodayJst.setHours(0, 0, 0, 0);
-    const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffset - (displayPeriodDays - 1) * 24 * 60 * 60 * 1000);
+    // displayPeriodDays日間のデータを取得（今日を含む）
+    const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffset - displayPeriodDays * 24 * 60 * 60 * 1000);
     
     // JSTでの「今日の23:59:59」をUTCで表現 → UTC 翌日14:59:59
     const endOfTodayJst = new Date(nowJst);
