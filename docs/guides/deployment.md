@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-22（デプロイ検証強化: DBゲート追加・fail-fast化）
+最終更新: 2026-01-31（Docker build最適化: `.dockerignore`に`tsbuildinfo`除外を追加）
 
 ## 概要
 
@@ -331,6 +331,9 @@ tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
 
 **方針**:
 - リポジトリルートの `.dockerignore` により、`node_modules/`, `logs/`, `storage/`, `alerts/`, `certs/`, `docs/` など **ビルド不要なディレクトリを除外**します。
+- **重要**: `**/tsconfig.tsbuildinfo` と `**/*.tsbuildinfo` も除外します（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない)参照）。
+  - TypeScriptのインクリメンタルビルド情報（`tsbuildinfo`）がDockerにコピーされると、`tsc`が「変更なし」と判断してビルドをスキップし、`dist`が生成されない問題が発生します。
+  - Docker内では常に新しいビルドを実行するため、`tsbuildinfo`を除外する必要があります。
 - これにより **Pi5上のDocker buildが安定・短縮** します。
 
 ### 方法2: 手動で更新

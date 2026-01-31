@@ -2759,3 +2759,82 @@ ensure_local_repo_ready_for_deploy() {
 - `docs/guides/deployment.md`（デプロイ標準手順）
 
 ---
+
+### [KB-218] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- CIで`apps/web`のDocker buildが失敗する（`Cannot find module '@raspi-system/shared-types'`）
+- ローカルでもDocker buildが失敗する
+- `packages/shared-types`の`pnpm build`（`tsc`）は成功しているように見えるが、`dist`ディレクトリが生成されない
+- `WORKDIR /app/packages/shared-types`で`pnpm build`を実行しても、`WORKDIR /app`に戻った時点で`packages/shared-types/dist`が存在しない
+
+**要因**:
+- **根本原因**: `.dockerignore`で`**/dist`を除外していたが、`**/tsconfig.tsbuildinfo`は除外していなかった
+- Docker build contextに`tsconfig.tsbuildinfo`がコピーされていた
+- コンテナ内で`tsc`を実行すると、`tsconfig.tsbuildinfo`を見て「変更なし」と判断し、インクリメンタルビルドで何もビルドしない
+- 結果として`dist`ディレクトリが生成されず、`apps/web`のビルド時に`@raspi-system/shared-types`が見つからない
+
+**試行した対策**:
+- [試行1] `Dockerfile.web`に確認ステップを追加 → **失敗**（`dist`が存在しないため確認ステップ自体が失敗）
+- [試行2] `apps/web`コピー後に`pnpm install`を再実行 → **失敗**（`dist`が存在しないため解決されない）
+- [試行3] 確認ステップを削除してCIを通す → **失敗**（テストの実効性が確保されない）
+- [試行4] `.dockerignore`に`tsbuildinfo`除外を追加 → **成功**
+
+**有効だった対策**:
+- ✅ **`.dockerignore`に`tsbuildinfo`除外を追加（2026-01-31）**:
+  1. **`.dockerignore`の修正**: `**/tsconfig.tsbuildinfo`と`**/*.tsbuildinfo`を追加
+  2. **Docker内で常に新しいビルドを実行**: `tsbuildinfo`がコピーされないため、`tsc`は常にフルビルドを実行し、`dist`が確実に生成される
+  3. **テストの実効性確保**: ローカルでのDocker buildテストで、`dist`が正しく生成されることを確認
+
+**実装詳細**:
+- **`.dockerignore`の修正**:
+  ```dockerignore
+  # Node/JS build artifacts
+  **/node_modules
+  **/.pnpm-store
+  **/.turbo
+  **/.cache
+  **/dist
+  **/build
+  **/.next
+  **/coverage
+  # TypeScript incremental build info (forces fresh build in Docker)
+  **/tsconfig.tsbuildinfo
+  **/*.tsbuildinfo
+  ```
+
+- **Dockerfile.webの構造**:
+  ```dockerfile
+  WORKDIR /app/packages/shared-types
+  RUN pnpm build  # tsbuildinfoがないため、常にフルビルドが実行される
+  WORKDIR /app
+  COPY apps/web ./apps/web
+  RUN cd apps/web && pnpm run build  # shared-types/distが存在するため成功
+  ```
+
+**実機検証結果（2026-01-31）**:
+- **ローカルDocker build**: ✅ 成功（`dist`が正しく生成され、`apps/web`のビルドが成功）
+- **CI**: ✅ 成功（全ジョブが成功）
+- **Pi5へのデプロイ**: ✅ 成功（最新コミット`f960e4a`が反映され、APIヘルスチェックが`ok`）
+
+**学んだこと**:
+- `.dockerignore`で`dist`を除外する場合、`tsbuildinfo`も除外する必要がある
+- TypeScriptのインクリメンタルビルド（`tsbuildinfo`）は、Docker内では常に新しいビルドを実行するために除外すべき
+- Docker buildのテストの実効性を確保するには、根本原因を特定し、対処療法ではなく根本的な修正を行う必要がある
+- CIを通すことが目的ではなく、テストの実効性を確保することが重要
+
+**再発防止**:
+- `.dockerignore`に`tsbuildinfo`除外が含まれていることを確認する
+- Docker buildのテストで、`dist`が正しく生成されることを確認する
+- インクリメンタルビルド情報（`tsbuildinfo`）は、Docker内では常に除外する
+
+**関連ファイル**:
+- `.dockerignore`（`tsbuildinfo`除外追加）
+- `infrastructure/docker/Dockerfile.web`（`shared-types`ビルド）
+- `packages/shared-types/tsconfig.json`（`composite: true`設定）
+- `apps/web/tsconfig.json`（`references`で`shared-types`を参照）
+
+---
