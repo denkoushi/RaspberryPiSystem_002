@@ -10,6 +10,7 @@ import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRequestLogger } from './plugins/request-logger.js';
 import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
+import { initializeVisualizationModules } from './services/visualization/index.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
 import { SignageRenderStorage } from './lib/signage-render-storage.js';
@@ -87,6 +88,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   
   // CSVインポータを初期化
   initializeCsvImporters();
+  initializeVisualizationModules();
   app.log.info('CSV importers initialized');
   
   // ルートを登録

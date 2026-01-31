@@ -98,6 +98,7 @@ import {
   setSignageEmergency,
   getSignageContent,
   getCsvDashboards,
+  getVisualizationDashboards,
   type SignageSchedule,
   type SignagePdf,
   type ClientLogLevel,
@@ -778,6 +779,13 @@ export function useCsvDashboards(filters?: { enabled?: boolean; search?: string 
   return useQuery({
     queryKey: ['csv-dashboards', filters],
     queryFn: () => getCsvDashboards(filters)
+  });
+}
+
+export function useVisualizationDashboards(filters?: { enabled?: boolean; search?: string }) {
+  return useQuery({
+    queryKey: ['visualization-dashboards', filters],
+    queryFn: () => getVisualizationDashboards(filters)
   });
 }
 

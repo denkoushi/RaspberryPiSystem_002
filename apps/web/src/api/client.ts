@@ -968,13 +968,14 @@ export async function getDeployStatus(): Promise<DeployStatus> {
 export interface SignageSlotConfig {
   pdfId?: string;
   csvDashboardId?: string;
+  visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
 }
 
 export interface SignageSlot {
   position: 'FULL' | 'LEFT' | 'RIGHT';
-  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'message';
+  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'visualization' | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
 
@@ -1194,6 +1195,19 @@ export interface CsvDashboard {
   updatedAt: string;
 }
 
+export interface VisualizationDashboard {
+  id: string;
+  name: string;
+  description: string | null;
+  dataSourceType: string;
+  rendererType: string;
+  dataSourceConfig: Record<string, unknown>;
+  rendererConfig: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CsvPreviewResult {
   headers: string[];
   sampleRows: Array<Record<string, unknown>>;
@@ -1209,6 +1223,18 @@ export async function getCsvDashboards(filters?: { enabled?: boolean; search?: s
     params.append('search', filters.search);
   }
   const { data } = await api.get<{ dashboards: CsvDashboard[] }>(`/csv-dashboards?${params.toString()}`);
+  return data.dashboards;
+}
+
+export async function getVisualizationDashboards(filters?: { enabled?: boolean; search?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.enabled !== undefined) {
+    params.append('enabled', String(filters.enabled));
+  }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
+  const { data } = await api.get<{ dashboards: VisualizationDashboard[] }>(`/visualizations?${params.toString()}`);
   return data.dashboards;
 }
 

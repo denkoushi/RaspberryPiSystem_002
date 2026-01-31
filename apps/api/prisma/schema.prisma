@@ -484,6 +484,23 @@ model SignageEmergency {
   @@index([expiresAt])
 }
 
+model VisualizationDashboard {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  dataSourceType   String
+  rendererType     String
+  dataSourceConfig Json
+  rendererConfig   Json
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([dataSourceType])
+  @@index([rendererType])
+}
+
 enum CsvDashboardIngestMode {
   APPEND // 追加（重複無視）
   DEDUP // 重複除去

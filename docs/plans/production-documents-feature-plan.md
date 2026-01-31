@@ -2,13 +2,13 @@
 
 ## ゴール
 
-生産スケジュールの各アイテム（FHINCD + FSIGENCD）に紐づく写真付きドキュメントをキオスクに表示する機能を追加する。
+生産スケジュールの各アイテム（**`FHINCD + 工程キー（仮）`**）に紐づく写真付きドキュメント（今後は「**要領書**」と呼称）をキオスクに表示する機能を追加する。
 
 - データソース: GmailのCSV出力（PowerAutomate経由）
-- 表示方法（Phase 1）: 生産スケジュール画面でアイコン表示 → クリックで全画面モーダル表示
+- 表示方法（Phase 1）: 生産スケジュール画面でアイコン表示 → クリックで**左半分**にモーダル表示（生産スケジュールは操作不可）
 - 表示方法（Phase 2・将来）: USB接続のハンディリーダーでバーコード（FHINCD）スキャン → ドキュメント表示
 - ストレージ: Pi5のストレージに保存、各クライアントがリクエストして取得表示
-- 画像最適化: Pi5サーバー保存時に実施（20インチFullHDの半分サイズ、約100KB目標）
+- 画像最適化: Pi5サーバー保存時に実施（JPEG、**約100KB目標**、拡大表示しても荒くならない解像度）
 
 ## 現状の理解
 
@@ -23,19 +23,23 @@
 ### 要件の確定事項
 
 1. **データモデル**: 新規テーブル`ProductionDocument`を作成（疎結合・モジュール化）
-2. **紐づけキー**: `FHINCD` + `FSIGENCD`（工程ごとのドキュメント）
+2. **紐づけキー**: `FHINCD` + **工程キー（未確定）**
+   - `FHINCD` は確定
+   - 工程キーは未確定（例: 加工機ごとの`FSIGENCD` / 工程グループ単位（例: 研削工程）など）。**確定後に実装開始**
 3. **画像数**: 1アイテムあたり約8枚の写真 + テキスト
 4. **更新方式**: **変更されたアイテムのみを送る差分取得**（計測機器持出返却とは異なる方式）
 5. **取得頻度**: SharePointリストの変更時にリアルタイムでGmail送信（PowerAutomateトリガー）
 6. **データソース**: SharePointリスト（全アイテムを保存、変更検知で差分送信）
-6. **表示UI（Phase 1）**: 生産スケジュール画面のアイコン → 全画面モーダル → バツボタンで戻る
-7. **表示UI（Phase 2・将来）**: USB接続のハンディリーダーでバーコード（FHINCD）スキャン → ドキュメント表示
-7. **画像サイズ**: 20インチFullHDの右/左半分に表示、縦スクロール
+6. **表示UI（Phase 1）**: 生産スケジュール画面のアイコン → **左半分モーダル** → **バツボタンで閉じる**（ブラウザ戻るは前提にしない）
+7. **表示UI（Phase 2・将来）**: USB接続のハンディリーダーでバーコード（FHINCD）スキャン → **全画面**でドキュメント表示（縦スクロール）
+7. **画像表示**:
+   - 要領書（左半分）: 写真+テキストを縦スクロールで表示（各写真に説明テキストを付ける。テキスト無し＝`null`）
+   - 写真クリック: **全画面拡大**（画像移動は不要、バツで閉じる）
 8. **CSV構造**: パターンA（1行に1枚の画像+テキスト）
 9. **差分管理**: CSVに含まれない既存ドキュメントは削除する
 10. **画像追い番号**: 1始まり（画像が減った場合の既存ファイルも削除）
-11. **画像最適化**: 同期処理、失敗時は元画像を保存せず再度実施かアラートで止める
-12. **自動削除**: ドキュメントは自動削除しない
+11. **画像最適化**: 同期処理（`sharp`想定）。**1920px幅**、JPEG品質75-80%、約100KB目標（500KB以下を許容）。失敗時は当該行をスキップして続行
+12. **保持方針（履歴）**: **最新だけ保持**（過去版は保持しない。更新により削除される）
 13. **バックアップ**: 当初はDropboxバックアップ対象外だが、バックアップ可能な状態で保持
 
 ## データモデル設計案
@@ -64,14 +68,16 @@ model ProductionDocument {
 ### 画像ファイル命名規則
 
 ```
-documents/images/{YYYY}/{MM}/{FHINCD}_{FSIGENCD}_{imageIndex}.jpg
-例: documents/images/2026/01/ABC123_001_1.jpg
-   documents/images/2026/01/ABC123_001_2.jpg
+documents/images/{YYYY}/{MM}/{FHINCD}_{processKey}_{imageIndex}.jpg
+例: documents/images/2026/01/ABC123_<processKey>_1.jpg
+   documents/images/2026/01/ABC123_<processKey>_2.jpg
    ...
-   documents/images/2026/01/ABC123_001_8.jpg
+   documents/images/2026/01/ABC123_<processKey>_8.jpg
 ```
 
 **注意**: `imageIndex`は1始まりです。画像が減った場合（例: 8枚→5枚）、既存ファイル（index 6,7,8）は削除されます。
+
+**注意（未確定）**: `processKey`（工程キー）は未確定（加工機ごとの`FSIGENCD`/工程グループ単位など）。確定後に命名規則を最終決定する。
 
 ## 未確定事項・質問事項
 
@@ -339,9 +345,9 @@ ABC123,001,3,手順3の説明,base64data...
   - CSVに存在しないが既存DBに存在する → **削除しない**（既存データを保持）
 
 **重要な変更点**:
-- 計測機器持出返却とは異なり、**CSVに含まれない既存ドキュメントは削除しない**
-- 変更されたアイテムのみがCSVに含まれるため、削除処理は不要
-- 削除が必要な場合は、PowerAutomate側で明示的に削除フラグを送るか、別の仕組みを検討
+- 計測機器持出返却とは異なり、**変更があったアイテム（`FHINCD + 工程キー`）のみ**をCSVで送る（PowerAutomate）
+- ただし、**そのアイテム内の削除（例: 画像2だけ削除）を反映するため**、PowerAutomateは「変更があったアイテム」については**そのアイテムの現行セット（最大8行）をまとめて送る**前提とする
+- Pi5側は、受信したCSVを「そのアイテムの現行の正」とみなし、**CSVに含まれない`imageIndex`は削除**する（そのアイテム内のみ）
 
 **具体例**:
 
@@ -374,7 +380,7 @@ ABC123,001,3,手順3の説明,base64data...
 
 **重要なポイント**:
 - `imageIndex`は**リナンバリングしない**（CSVの`imageIndex`の値をそのまま使用）
-- **変更されたアイテムのみがCSVに含まれる**ため、CSVに含まれる`(FHINCD, FSIGENCD)`の組み合わせのドキュメントのみを更新
+- **変更されたアイテムのみがCSVに含まれる**ため、CSVに含まれる`(FHINCD, 工程キー)`の組み合わせのドキュメントのみを更新
 - CSVに含まれない`imageIndex`のドキュメントは削除される（**そのアイテムの更新として扱う**）
 - 画像の順序はCSVの`imageIndex`の値で決まる（連番である必要はない）
 - **他のアイテム（CSVに含まれない）の既存データは保持される**
@@ -398,17 +404,18 @@ ABC123,001,3,手順3の説明,base64data...
 
 #### 4. 全画面モーダルの実装方法 ✅ 確定
 
-**決定事項**: 方法A（URLパスで管理）を採用
+**決定事項**: 方法A（URLで管理）を採用（**クエリパラメータ方式**）
 
 **実装方針**:
 - React Routerの`useNavigate`を使用
-- パス: `/kiosk/production-schedule/:fhincd/:fsigencd/documents`
-- メリット: ブラウザの戻るボタンで戻れる、URL共有可能、既存のキオスクページの実装パターンに一致
+- パス: `/kiosk/production-schedule?docFhincd=...&docProcessKey=...`
+- メリット: URL共有可能、既存ページの上にモーダル状態を重ねられる（検索状態を維持しやすい）
+- **注意**: 操作イメージは「×で閉じる」。ブラウザの戻るボタン動作は前提にしない
 
 **実装詳細**:
-- 生産スケジュール画面のアイコンクリック → `navigate(/kiosk/production-schedule/${fhincd}/${fsigencd}/documents)`
-- ドキュメント表示ページでバツボタンクリック → `navigate(-1)` または `navigate(/kiosk/production-schedule)`
-- ルーティング設定: `apps/web/src/App.tsx`に新規ルートを追加
+- 生産スケジュール画面のアイコンクリック → `navigate(/kiosk/production-schedule?docFhincd=...&docProcessKey=...)`
+- ドキュメント表示（左半分モーダル）でバツボタンクリック → クエリを除去して同じ画面に戻す
+- ルーティング設定: `apps/web/src/App.tsx`の追加は不要（同一ページ内の状態として扱う）
 
 ---
 
@@ -431,24 +438,25 @@ ABC123,001,3,手順3の説明,base64data...
 
 #### 6. エラーハンドリング ✅ 確定
 
-**決定事項**: 全部成功しない限り失敗とみなす
+**決定事項**: **行単位でスキップして続行**（部分成功を許容）
 
 **実装方針**:
-- Base64デコード失敗、画像取得失敗、画像最適化失敗など、いずれかのエラーが発生した場合は全体を失敗とする
-- 部分成功は許容しない
-- エラー時はインポートジョブを失敗状態にし、エラーログを記録
-- エラーメッセージに詳細な情報（どの行で失敗したか、エラーの種類など）を含める
+- Base64デコード失敗、画像取得失敗、画像最適化失敗などが発生した行は **その行だけスキップ**して続行する
+- スキップした行は、エラーログに詳細（行番号、`FHINCD`、工程キー、`imageIndex`、原因）を残す
+- インポート全体としては「成功」扱いにする（ただし、運用上の検知が必要なら**警告レベル**を検討）
 
 ---
 
 #### 7. ストレージ容量管理 ✅ 確定
 
-**決定事項**: ドキュメントは自動削除しない
+**決定事項**:
+- 期限ベースの自動削除はしない（TTL等は持たない）
+- ただし、**履歴は保持しない（最新のみ保持）**ため、更新により過去版が削除されることはある
 
 **実装方針**:
-- 自動削除機能は実装しない
-- 手動削除のみ対応（管理画面から削除可能にする）
+- 期限ベースの自動削除機能は実装しない
 - 将来的に自動削除が必要になった場合は、別途実装を検討
+- 容量について: ストレージ1TB（現状約9%使用）で、想定運用では十分な余裕がある見込み
 
 ---
 
@@ -640,7 +648,7 @@ export class ProductionDocumentService {
 
 #### 3. 画像最適化処理の拡張
 
-**現在**: JPEG形式、960px幅、100KB目標
+**現在**: JPEG形式、**1920px幅**、約100KB目標（500KB以下を許容）
 **将来の拡張**:
 - WebP形式対応
 - 複数の最適化プロファイル（サムネイル、中サイズ、大サイズ）
@@ -835,9 +843,9 @@ describe('ProductionDocumentService', () => {
 - `DocumentStorage`インターフェース定義（ストレージ抽象化）
 - `FileSystemDocumentStorage`クラス実装（`PhotoStorage`を参考）
 - Base64デコード処理（JPEG形式）
-- 画像最適化ロジック（JPEG入力、960px幅、100KB目標、同期処理、JPEG品質75-80%）
-- 画像最適化失敗時のエラーハンドリング（元画像を保存せず、エラーログとアラート、全体を失敗とする）
-- 画像ファイル保存（`documents/images/{YYYY}/{MM}/{FHINCD}_{FSIGENCD}_{imageIndex}.jpg`、imageIndexは1始まり、JPEG形式）
+- 画像最適化ロジック（JPEG入力、**1920px幅**、100KB目標、同期処理、JPEG品質75-80%、500KB以下を許容）
+- 画像最適化失敗時のエラーハンドリング（**該当行をスキップ**し、エラーログを記録）
+- 画像ファイル保存（`/opt/RaspberryPiSystem_002/storage/documents/images/{YYYY}/{MM}/{FHINCD}_{processKey}_{imageIndex}.jpg`、imageIndexは1始まり、JPEG形式）
 
 **成果物**:
 - `apps/api/src/lib/document-storage.ts`（インターフェース）
@@ -856,10 +864,10 @@ describe('ProductionDocumentService', () => {
 - `CsvImporter`インターフェースを実装した新規インポーター（`production-documents`タイプ）
 - `CsvImporterRegistry`に新規インポーターを登録
 - `ProductionDocumentService`の作成（ビジネスロジック層）
-- 差分反映ロジック（dedupKeyColumns: `['FHINCD', 'FSIGENCD', 'imageIndex']`）
-- **変更されたアイテムのみを更新するロジック**（CSVに含まれる`(FHINCD, FSIGENCD)`の組み合わせのみ）
-- CSVに含まれない既存ドキュメントの削除処理（**そのアイテムの更新として扱う**、DBレコードとファイルの両方を削除）
-- エラーハンドリング（全部成功しない限り失敗、部分成功は許容しない）
+- 差分反映ロジック（キー: `FHINCD + processKey + imageIndex`、ハッシュ: `imageBase64 + textContent`）
+- **変更されたアイテムのみを更新するロジック**（CSVに含まれる`(FHINCD, processKey)`の組み合わせのみ）
+- CSVに含まれない既存ドキュメントの削除処理（**そのアイテムの更新として扱う**、DBレコードとファイルの両方を削除、トランザクション内）
+- エラーハンドリング（Base64デコード失敗/画像最適化失敗などは**行単位でスキップ**）
 - Gmail取得処理（件名パターン: `段取写真_三島研削`）
 - `CsvImportSubjectPattern`に新規タイプ追加（件名パターン: `段取写真_三島研削`）
 
@@ -878,8 +886,9 @@ describe('ProductionDocumentService', () => {
 ### Phase 4: API実装（レイヤー分離）
 
 **作業内容**:
-- `GET /api/kiosk/production-schedule/:fhincd/:fsigencd/documents`（キオスク用）
-- 画像配信API（既存`/api/storage/photos`を参考）
+- `POST /api/kiosk/production-documents/availability`（キオスク用: 有無照会、バッチ）
+- `GET /api/kiosk/production-documents?fhincd=...&processKey=...`（キオスク用: 詳細取得）
+- 画像配信API（`/api/storage/documents/*`、既存`/api/storage/photos`を参考）
 - エラーハンドリング
 - ルートハンドラーからサービス層への依存（実装詳細に依存しない）
 
@@ -887,7 +896,7 @@ describe('ProductionDocumentService', () => {
 - `apps/api/src/routes/documents/production-documents/index.ts`（ルート登録）
 - `apps/api/src/routes/documents/production-documents/get.ts`（GET処理）
 - `apps/api/src/routes/documents/production-documents/schemas.ts`（バリデーション）
-- `apps/api/src/routes/kiosk.ts`の更新（キオスク用エンドポイント）
+ - `apps/api/src/routes/kiosk.ts`の更新（キオスク用エンドポイント）
 - `apps/api/src/routes/storage.ts`の更新（画像配信）
 
 **設計ポイント**:
@@ -901,17 +910,17 @@ describe('ProductionDocumentService', () => {
 
 **作業内容**:
 - 生産スケジュールページにドキュメントアイコン追加
-- 新規ページ実装（`/kiosk/production-schedule/:fhincd/:fsigencd/documents`）
-- バツボタンで戻る機能（`navigate(-1)`）
-- 画像とテキストの表示（縦スクロール）
-- ルーティング設定（`App.tsx`に新規ルート追加）
+- 生産スケジュール画面の**左半分モーダル**で要領書を表示（生産スケジュールは操作不可）
+- 表示状態はURLクエリで管理（例: `/kiosk/production-schedule?docFhincd=...&docProcessKey=...`）
+- バツボタンで閉じる（クエリを除去）
+- 画像とテキストの表示（縦スクロール、テキスト無しは`null`）
+- 画像クリックで全画面拡大（画像移動不要、バツで閉じる）
 - コンポーネントの分離（再利用可能な設計）
 
 **成果物**:
 - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`の更新（アイコン追加）
-- `apps/web/src/pages/kiosk/ProductionDocumentPage.tsx`（新規、全画面表示）
 - `apps/web/src/components/documents/ProductionDocumentViewer.tsx`（再利用可能なコンポーネント）
-- `apps/web/src/App.tsx`の更新（ルーティング追加）
+- `apps/web/src/components/documents/ProductionDocumentModal.tsx`（左半分モーダル、想定）
 - `apps/web/src/api/client.ts`の更新（API呼び出し）
 
 **設計ポイント**:
@@ -962,12 +971,12 @@ describe('ProductionDocumentService', () => {
 ### 画像最適化の実装（拡張可能な設計）
 
 **要件**:
-- 20インチFullHDの半分（960px幅程度）
-- 約100KB目標
+- 20インチFullHDで拡大表示しても荒くならない解像度（**1920px幅**を想定）
+- 約100KB目標（**500KB以下を許容**）
 
 **実装方針**:
 - 入力形式: JPEG（PowerAutomateから送られてくる形式）
-- リサイズ: 最大幅960px、縦横比維持
+- リサイズ: 最大幅1920px、縦横比維持
 - 圧縮: JPEG品質75-80%
 - 出力形式: JPEG（WebPは将来検討）
 
@@ -1090,10 +1099,8 @@ describe('ProductionDocumentService', () => {
    - Pi5側で最適化処理を行う際、JPEG形式として処理する
 
 3. **エラーハンドリングの方針** ✅ 確定
-   - **方針**: 全部成功しない限り失敗とみなす
-   - Base64デコード失敗、画像取得失敗、画像最適化失敗など、いずれかのエラーが発生した場合は全体を失敗とする
-   - 部分成功は許容しない
-   - エラー時はインポートジョブを失敗状態にし、エラーログを記録
+   - **方針**: 行単位でスキップして続行（部分成功を許容）
+   - Base64デコード失敗、画像取得失敗、画像最適化失敗などが発生した行はスキップし、エラーログを記録
 
 ### 🔴 未確定（明後日決定）
 
@@ -1122,6 +1129,7 @@ describe('ProductionDocumentService', () => {
 - 2026-01-25: 確定事項の反映（CSV構造、差分管理、追い番号、画像最適化、自動削除、バックアップ）
 - 2026-01-25: CSV構造の推奨案追加（システム側から見た最適案）、全画面モーダル実装方法確定（URLパスで管理）
 - 2026-01-25: 差分反映ロジックの具体例追加（中間・末尾・先頭の画像削除ケース、リナンバリングしないことを明記）
+- 2026-01-31: 決定事項の更新（要領書呼称、工程キー未確定に伴う設計待ち、UI: 生産スケジュールは左半分モーダル＋全画面拡大、閉じ方は×のみ、差分ハッシュは画像+テキスト、エラーは行単位スキップ、画像最適化は1920px幅・100KB目標/500KB許容、履歴は最新のみ保持）
 - 2026-01-25: **設計変更**: 変更されたアイテムのみを送る方式に変更、PowerAutomate実装方法の検討、CSV vs メール本文の比較追加
 - 2026-01-25: **PowerAutomate実装手順の詳細化**: 「Create CSV Table」アクションを使用した実装手順を追加、画像取得とBase64変換の方法を明記
 - 2026-01-25: **SharePointリストの非正規化構造への対応**: 横に広がる構造（画像1〜8、テキスト1〜8）から縦に長い構造への変換処理を追加、実装例を明記
