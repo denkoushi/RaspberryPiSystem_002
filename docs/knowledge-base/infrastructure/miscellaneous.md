@@ -760,6 +760,63 @@ const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
   3. **ストレージ使用量の監視**: 管理コンソールでストレージ使用量を監視し、70%で警告、80%でアラート、90%でクリティカルアラートを生成（`monitor.sh`で自動検知、ファイルベースアラート経由で管理コンソールに表示）。
   4. **自動メンテナンス**: `storage-maintenance.sh`がsystemd timerで毎日実行され、signage履歴画像の削除と月1回のbuild cache削除を自動実行。失敗時は`storage-maintenance-failed`アラートを生成。
 
+#### 追加調査・対策（2026-01-31）
+
+**事象**:
+- Pi5のストレージ使用量が再び24%（約233GB）に増加
+- `storage-maintenance.sh`が毎日実行されているにもかかわらず、`signage_*.jpg`ファイルが22,412件（8.2GB）蓄積
+
+**要因**:
+1. **`storage-maintenance.sh`のfindコマンドの論理バグ**: `find ... -delete -print | wc -l`の順序問題により、削除対象ファイルがあっても「削除対象の履歴画像はありませんでした」と報告されていた
+2. **Docker Build Cacheの蓄積**: 196.1GBのreclaimable cacheが蓄積（月初のみ削除のため）
+3. **未使用Dockerイメージの蓄積**: 182.4GBの未使用イメージが蓄積
+
+**調査手順**:
+1. `df -h /`でディスク使用量を確認: 24%（233GB）
+2. `docker builder du`でDocker Build Cacheを確認: 196.1GB
+3. `docker system df`でDockerの使用量を確認: Images 182.4GB
+4. `ls -la /opt/RaspberryPiSystem_002/storage/signage-rendered/ | wc -l`でファイル数を確認: 22,412件
+5. `du -sh /opt/RaspberryPiSystem_002/storage/signage-rendered/`でサイズを確認: 8.2GB
+6. `storage-maintenance.sh`のログを確認: 「削除対象の履歴画像はありませんでした」と報告されていたが、実際にはファイルが存在
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-01-31）:
+  1. **手動クリーンアップ**:
+     - `docker builder prune -a --force`: 196.1GB → 0B（削除に約16分）
+     - `docker image prune -a --force`: 182.4GB削除
+     - `rm /opt/RaspberryPiSystem_002/storage/signage-rendered/signage_*.jpg`: 22,412件（8.2GB）削除
+  2. **`storage-maintenance.sh`の修正**:
+     - **findコマンドの修正**: ファイル数を先にカウントしてから削除するように変更
+       ```bash
+       # 修正前（バグあり）
+       if find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' 2>/dev/null | grep -q .; then
+         deleted_count=$(find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' -delete -print | wc -l)
+       
+       # 修正後（正常動作）
+       deleted_count=$(find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' 2>/dev/null | wc -l)
+       if [ "${deleted_count}" -gt 0 ]; then
+         find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' -delete 2>/dev/null || true
+       ```
+     - **Docker builder duのサイズ取得改善**: `grep -E '^Total:'`を優先し、フォールバックで`tail -n 1`を使用
+       ```bash
+       before_size=$(docker builder du 2>/dev/null | grep -E '^Total:' | awk '{print $2}' || echo "0B")
+       if [ "${before_size}" = "0B" ]; then
+         before_size=$(docker builder du 2>/dev/null | tail -n 1 | awk '{print $NF}' || echo "0B")
+       fi
+       ```
+
+**結果**:
+- ディスク使用量: 24%（233GB）→ 2%（約20GB）に改善
+- Docker Build Cache: 196.1GB → 0B（完全削除）
+- Docker Images: 182.4GB削除
+- signage-rendered: 8.2GB → 1.9MB（current.jpgのみ保持）
+- `storage-maintenance.sh`の修正がCIを通過し、次回から正常に自動削除される
+
+**学んだこと**: 
+- `find -delete -print | wc -l`の出力は環境やタイミングによって不安定になる可能性がある。削除前にカウントし、その後削除する方が確実
+- `docker builder du`の出力形式はDocker版やOS環境で異なる可能性があるため、複数のパース方法をフォールバックとして用意すべき
+- 自動メンテナンススクリプトが「削除対象なし」と報告していても、実際にファイルが存在する可能性があるため、定期的な手動確認が必要
+
 ---
 
 ### [KB-158] Macのstatus-agent未設定問題とmacOS対応

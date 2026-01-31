@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-01-31）
+
+- **✅ Pi5ストレージメンテナンススクリプト修正完了（KB-130追加調査）**: Pi5のストレージ使用量が再び24%（約233GB）に増加した問題を調査・解決。`storage-maintenance.sh`の`find -delete -print | wc -l`の順序問題により、`signage_*.jpg`ファイルが22,412件（8.2GB）削除されずに蓄積していた。Docker Build Cache 196.1GB、未使用Docker Images 182.4GBも蓄積。手動クリーンアップ実行後、スクリプトを修正（ファイル数を先にカウントしてから削除、`docker builder du`のサイズ取得のフォールバック追加）。ストレージ使用量24%→2%に改善、CI成功。詳細は [knowledge-base/infrastructure/miscellaneous.md#kb-130](./knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [guides/operation-manual.md](./guides/operation-manual.md) を参照。
+
 ### 🆕 最新アップデート（2026-01-30）
 
 - **✅ Tailscale主運用への移行計画の実機検証完了**: Tailscaleを主（通常運用）とし、local（LAN）を緊急時のみに限定する方針で実装した計画の実機検証を完了。Pi5/Pi4/Pi3の全デバイスでデプロイが成功し、Tailscale経由での接続が正常に動作することを確認。Pi3デプロイ時に`post_tasks`で`unreachable=1`が発生したが、実際にはサービス（`signage-lite-watchdog.timer`、`signage-daily-reboot.timer`）は正常動作しており、デプロイ全体は成功（`failed=0`、`state: success`）。これは一時的なSSH接続問題であり、サービス起動には影響していない。ナレッジベースにKB-216を追加、デプロイガイドに注意事項を追記。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) / [guides/deployment.md](./guides/deployment.md) / [decisions/ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) を参照。
@@ -628,6 +632,7 @@ APIの概要と詳細。
 | [ansible-error-handling.md](./guides/ansible-error-handling.md) | **Ansibleエラーハンドリングガイド** |
 | [ansible-best-practices.md](./guides/ansible-best-practices.md) | **Ansibleベストプラクティス** |
 | [git-clean-safety.md](./guides/git-clean-safety.md) | **git cleanの安全な使用方法** |
+| [mac-storage-migration.md](./guides/mac-storage-migration.md) | **Macストレージ圧迫対策: Docker/Cursorデータの外付けSSD移行とGoogleドライブバックアップ** |
 
 ### トラブルシューティング（knowledge-base/, troubleshooting/）
 
