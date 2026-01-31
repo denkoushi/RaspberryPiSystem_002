@@ -484,16 +484,84 @@ release_remote_lock() {
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_LOCK_FILE}\"" >/dev/null 2>&1 || true
 }
 
-# Pi4デプロイ時のメンテナンスフラグ管理（--limit raspberrypi4 のときのみ）
+KIOSK_MAINTENANCE_ENABLED=0
+
+# キオスク端末（Pi4等: manage_kiosk_browser=true）がデプロイ対象に含まれる場合、
+# デプロイ中はユーザー操作を防ぐためメンテナンス画面を表示する。
+#
+# NOTE:
+# - `serial: 1` によりデプロイは順次実行されるが、フラグは「デプロイ開始〜終了」までONにする。
+# - `--limit` 指定時も、対象ホストにキオスク端末が含まれる場合はONにする。
+should_enable_kiosk_maintenance() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 1
+  fi
+  if [[ -z "${INVENTORY_PATH}" ]]; then
+    return 1
+  fi
+
+  local inventory_basename
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+
+  # Determine target hosts (honor --limit) and intersect with kiosk hosts
+  local limit_arg=""
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+
+  local selected_hosts
+  selected_hosts=$(
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} 'server:clients' --list-hosts ${limit_arg} 2>/dev/null" \
+      | python3 - <<'PY'
+import re, sys
+text = sys.stdin.read()
+hosts = []
+for line in text.splitlines():
+    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
+    if m:
+        hosts.append(m.group(1))
+print("\n".join(hosts))
+PY
+  )
+  if [[ -z "${selected_hosts}" ]]; then
+    return 1
+  fi
+
+  # Read kiosk hosts (manage_kiosk_browser=true) from inventory hostvars
+  local kiosk_hosts
+  kiosk_hosts=$(
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-inventory -i ${inventory_basename} --list" \
+      | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+print("\n".join(sorted(kiosk)))
+PY
+  )
+
+  if [[ -z "${kiosk_hosts}" ]]; then
+    return 1
+  fi
+
+  # Intersect: if any selected host is a kiosk host, enable maintenance
+  python3 - <<'PY' "${selected_hosts}" "${kiosk_hosts}" || return 1
+import sys
+selected = set([h for h in sys.argv[1].splitlines() if h.strip()])
+kiosk = set([h for h in sys.argv[2].splitlines() if h.strip()])
+sys.exit(0 if (selected & kiosk) else 1)
+PY
+}
+
 set_pi4_maintenance_flag() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
   fi
 
-  # --limit raspberrypi4 のときだけフラグをON
-  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
-    echo "[INFO] Setting Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
-    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"raspberrypi4\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
+  if should_enable_kiosk_maintenance; then
+    echo "[INFO] Setting kiosk maintenance flag on ${REMOTE_HOST}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
+    KIOSK_MAINTENANCE_ENABLED=1
   fi
 }
 
@@ -502,9 +570,8 @@ clear_pi4_maintenance_flag() {
     return 0
   fi
 
-  # --limit raspberrypi4 のときだけフラグをOFF
-  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
-    echo "[INFO] Clearing Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
+  if [[ "${KIOSK_MAINTENANCE_ENABLED}" == "1" ]]; then
+    echo "[INFO] Clearing kiosk maintenance flag on ${REMOTE_HOST}"
     ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\"" >/dev/null 2>&1 || true
   fi
 }
@@ -670,6 +737,71 @@ if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
 fi
 
+MAINTENANCE_FLAG_SET=0
+
+should_enable_kiosk_maintenance() {
+  local limit_arg=""
+  if [ -n "${LIMIT_HOSTS}" ]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+
+  local selected_hosts
+  selected_hosts=$(
+    ansible -i "${INVENTORY_BASENAME}" 'server:clients' --list-hosts ${limit_arg} 2>/dev/null \
+      | python3 - <<'PY'
+import re, sys
+text = sys.stdin.read()
+hosts = []
+for line in text.splitlines():
+    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
+    if m:
+        hosts.append(m.group(1))
+print("\n".join(hosts))
+PY
+  )
+  if [ -z "${selected_hosts}" ]; then
+    return 1
+  fi
+
+  local kiosk_hosts
+  kiosk_hosts=$(
+    ansible-inventory -i "${INVENTORY_BASENAME}" --list \
+      | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+print("\n".join(sorted(kiosk)))
+PY
+  )
+  if [ -z "${kiosk_hosts}" ]; then
+    return 1
+  fi
+
+  python3 - <<'PY' "${selected_hosts}" "${kiosk_hosts}"
+import sys
+selected = set([h for h in sys.argv[1].splitlines() if h.strip()])
+kiosk = set([h for h in sys.argv[2].splitlines() if h.strip()])
+sys.exit(0 if (selected & kiosk) else 1)
+PY
+}
+
+set_kiosk_maintenance_flag() {
+  if should_enable_kiosk_maintenance; then
+    echo "[INFO] Setting kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
+    mkdir -p "$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")" || true
+    echo "{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "${REMOTE_DEPLOY_STATUS_FILE}" || true
+    MAINTENANCE_FLAG_SET=1
+  fi
+}
+
+clear_kiosk_maintenance_flag() {
+  if [ "${MAINTENANCE_FLAG_SET}" = "1" ]; then
+    echo "[INFO] Clearing kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
+    rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
+  fi
+}
+
 write_status() {
   local state="$1"
   local exit_code="${2:-}"
@@ -750,13 +882,12 @@ PY
 cleanup() {
   local exit_code=$?
   echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
-  if [ "${LIMIT_HOSTS}" = "raspberrypi4" ]; then
-    rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
-  fi
+  clear_kiosk_maintenance_flag
   rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
+set_kiosk_maintenance_flag
 write_status running
 echo "[INFO] Detach run started: ${RUN_ID}"
 echo "[INFO] Log: ${REMOTE_RUN_LOG}"
