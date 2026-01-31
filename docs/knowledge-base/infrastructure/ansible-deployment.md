@@ -1525,6 +1525,15 @@ cat ~/.status-agent.conf
    - Pi5: 15分
    - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
 
+**所要時間の目安（運用基準）**:
+- Pi5（サーバー）: 10分前後（上限15分）
+- Pi4（キオスク）: 5〜10分（上限10分）
+- Pi3（サイネージ）: 10〜15分（上限30分）
+
+**運用判断**:
+- 上限内に完了しない場合は「遅延」としてログを確認
+- `context canceled` / `rpc error` が出た場合はビルド中断の可能性が高い
+
 6. **通知（alerts一次情報 + Slackは二次経路）**:
    - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成
    - `scripts/generate-alert.sh`を再利用して alerts ファイルを生成
@@ -2550,6 +2559,10 @@ ensure_local_repo_ready_for_deploy() {
 - `--detach --follow`: デプロイ開始後、`tail -f`でログをリアルタイム追尾
 - `--attach <run_id>`: 既存のデタッチ実行のログをリアルタイム追尾
 
+**ジョブ実行（systemd-run）**:
+- `--job --follow`: Pi5上でジョブ化して実行し、`journalctl`で追尾（ログファイルも併用可）
+- `--status <run_id>`: ジョブのunitステータス（Active/SubState/ExitCode）を確認
+
 **実機検証結果（2026-01-25）**:
 - Pi5へのデプロイが正常完遂（`feat/deploy-sh-hardening-20260124`ブランチ）
 - fail-fastチェックが正常に動作（未commit変更がある場合、エラーで停止）
@@ -2642,5 +2655,107 @@ ensure_local_repo_ready_for_deploy() {
 - `infrastructure/ansible/playbooks/deploy.yml`（post_tasksの定義）
 - `infrastructure/ansible/inventory.yml`（`ansible_command_timeout`の設定）
 - `docs/guides/deployment.md`（デプロイ後の検証手順）
+
+---
+
+### [KB-217] デプロイプロセスのコード変更検知とDocker再ビルド確実化
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- コード変更をデプロイしても、Dockerコンテナが再ビルドされず、変更が反映されない
+- デプロイは成功するが、実際には古いコードが動作し続ける
+- 特に`api`と`web`コンテナで、コード変更が反映されない問題が発生
+
+**要因**:
+- **根本原因**: Ansibleの`roles/server/tasks/main.yml`で、リポジトリの変更を検知する仕組みがなく、常にDockerコンテナを再ビルドしていなかった
+- 以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった
+- `scripts/update-all-clients.sh`の`git rev-list`解析で、タブ文字を含む場合にシェル式の構文エラーが発生する可能性があった
+
+**試行した対策**:
+- [試行1] ネットワーク設定変更検知ロジックを追加 → **部分的成功**（ネットワーク変更時のみ再ビルド）
+- [試行2] 常に再ビルドするように変更 → **失敗**（不要な再ビルドが発生し、デプロイ時間が長くなる）
+- [試行3] リポジトリ変更検知（`repo_changed`）を実装 → **成功**
+
+**有効だった対策**:
+- ✅ **リポジトリ変更検知の実装（2026-01-31）**:
+  1. **Ansibleでリポジトリ変更検知**: `roles/common/tasks/main.yml`で、`git pull`前後のHEADを比較し、`repo_changed`ファクトを設定
+  2. **コード変更時のDocker再ビルド**: `roles/server/tasks/main.yml`で、`repo_changed`が`true`の場合のみ`api/web`を`--force-recreate --build`で再作成
+  3. **git rev-list解析の改善**: `scripts/update-all-clients.sh`で、`awk`を使用してタブ文字を含む場合でも正常に解析できるように修正
+  4. **数値検証の追加**: `behind`と`ahead`が数値であることを検証し、解析失敗時にエラーで停止
+
+**実装詳細**:
+- **リポジトリ変更検知**:
+  ```yaml
+  - name: Capture current repo HEAD (if exists)
+    ansible.builtin.shell: |
+      cd "{{ repo_path }}"
+      git rev-parse HEAD
+    register: repo_prev_head
+    changed_when: false
+  
+  - name: Sync repository to desired state
+    # ... git pull/reset ...
+  
+  - name: Capture repo HEAD after sync
+    ansible.builtin.shell: |
+      cd "{{ repo_path }}"
+      git rev-parse HEAD
+    register: repo_new_head
+    changed_when: false
+  
+  - name: Determine if repo changed
+    ansible.builtin.set_fact:
+      repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
+  ```
+
+- **Docker再ビルド**:
+  ```yaml
+  - name: Rebuild and restart Docker services on server when repo changed
+    block:
+      - name: Rebuild/Restart docker compose services
+        ansible.builtin.shell: |
+          cd {{ repo_path }}
+          docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
+    when: repo_changed | default(false)
+  ```
+
+- **git rev-list解析の改善**:
+  ```bash
+  # 改善前（タブ文字でエラー）
+  behind="${counts%% *}"
+  ahead="${counts##* }"
+  
+  # 改善後（awkで確実に解析）
+  read -r behind ahead <<<"$(echo "${counts}" | awk '{print $1, $2}')"
+  if [[ -n "${behind}" && ! "${behind}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました" >&2
+    exit 2
+  fi
+  ```
+
+**実機検証結果（2026-01-31）**:
+- **正のテスト（コード変更あり）**: Pi5でコード変更をデプロイ → `repo_changed=true`が検知され、`api/web`が`--force-recreate --build`で再作成されることを確認
+- **負のテスト（コード変更なし）**: Pi5でコード変更なしでデプロイ → `repo_changed=false`となり、Docker再ビルドがスキップされることを確認
+- **git rev-list解析**: タブ文字を含む場合でも正常に解析されることを確認
+- **デプロイ成功**: Pi5でデプロイ成功（`ok=108, changed=21, failed=0`）、サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認
+
+**学んだこと**:
+- デプロイ成功＝変更が反映済み、という前提を保証するには、コード変更検知とDocker再ビルドの確実な実行が必要
+- リポジトリ変更検知により、不要な再ビルドを避けつつ、必要な再ビルドを確実に実行できる
+- `git rev-list`の出力はタブ文字を含む可能性があるため、`awk`で確実に解析する必要がある
+- デプロイプロセスの各ステップで、前提条件（コード変更検知）を明確にし、検証可能にする必要がある
+
+**再発防止**:
+- `repo_changed`ファクトは、デプロイ後の検証でも確認可能（Ansibleログに出力される）
+- Docker再ビルドのログは`docker compose logs`で確認可能
+- デプロイ後の検証（health-check）で、実際に変更が反映されていることを確認する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/common/tasks/main.yml`（リポジトリ変更検知）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（Docker再ビルド）
+- `scripts/update-all-clients.sh`（git rev-list解析改善）
+- `docs/guides/deployment.md`（デプロイ標準手順）
 
 ---

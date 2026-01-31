@@ -1,0 +1,30 @@
+.git
+.gitignore
+.cursor
+.vscode
+.DS_Store
+
+# Node/JS build artifacts
+**/node_modules
+**/.pnpm-store
+**/.turbo
+**/.cache
+**/dist
+**/build
+**/.next
+**/coverage
+
+# Logs and temp files
+logs
+**/*.log
+**/*.tmp
+**/*.swp
+tmp
+**/tmp
+
+# Runtime data (not needed for image builds)
+storage
+alerts
+certs
+backups
+docs

@@ -34,6 +34,7 @@ LIMIT_HOSTS=""
 INVENTORY_PATH=""
 REPO_VERSION=""
 DETACH_MODE=0
+JOB_MODE=0
 FOLLOW_MODE=0
 ATTACH_RUN_ID=""
 STATUS_RUN_ID=""
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --detach)
       DETACH_MODE=1
+      shift
+      ;;
+    --job)
+      JOB_MODE=1
       shift
       ;;
     --follow)
@@ -97,6 +102,7 @@ usage() {
   cat >&2 <<'USAGE'
 Usage:
   ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
   ./scripts/update-all-clients.sh --attach <run_id>
   ./scripts/update-all-clients.sh --status <run_id>
   ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
@@ -113,6 +119,9 @@ Examples:
 
   # デタッチ実行（Pi5側で継続実行）
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+  # ジョブ実行（systemd-run）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
 
   # デタッチ実行のログ追尾
   ./scripts/update-all-clients.sh --attach 20260125-123456-4242
@@ -514,6 +523,12 @@ remote_status() {
   remote_run_paths "${run_id}"
   echo "[INFO] Remote status for ${run_id} on ${REMOTE_HOST}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then cat \"${REMOTE_RUN_STATUS}\"; else echo \"{\\\"error\\\":\\\"status not found\\\",\\\"runId\\\":\\\"${run_id}\\\"}\"; fi"
+  local unit_name
+  unit_name=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then sed -n 's/.*\"unitName\":\"\\([^\"]*\\)\".*/\\1/p' \"${REMOTE_RUN_STATUS}\" | head -n 1; fi" || echo "")
+  if [[ -n "${unit_name}" ]]; then
+    echo "[INFO] Unit status: ${unit_name}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl show -p ActiveState -p SubState -p ExecMainStatus \"${unit_name}\"" || true
+  fi
   if ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; then
     local exit_code
     exit_code=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_EXIT}\"" || echo "unknown")
@@ -531,7 +546,13 @@ remote_attach() {
     echo "[ERROR] Remote log not found: ${REMOTE_RUN_LOG}"
     exit 2
   fi
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "tail -f \"${REMOTE_RUN_LOG}\"" &
+  local unit_name
+  unit_name=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then sed -n 's/.*\"unitName\":\"\\([^\"]*\\)\".*/\\1/p' \"${REMOTE_RUN_STATUS}\" | head -n 1; fi" || echo "")
+  if [[ -n "${unit_name}" ]] && ssh ${SSH_OPTS} "${REMOTE_HOST}" "command -v journalctl >/dev/null 2>&1"; then
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "journalctl -u \"${unit_name}\" -f" &
+  else
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "tail -f \"${REMOTE_RUN_LOG}\"" &
+  fi
   local tail_pid=$!
   while ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; do
     sleep 5
@@ -578,6 +599,13 @@ print_plan() {
       echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
       echo "[PLAN] Remote pid: ${REMOTE_RUN_PID}"
     fi
+    if [[ ${JOB_MODE} -eq 1 ]]; then
+      echo "[PLAN] Job: enabled (systemd-run)"
+      echo "[PLAN] Remote log: ${REMOTE_RUN_LOG}"
+      echo "[PLAN] Remote status: ${REMOTE_RUN_STATUS}"
+      echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
+      echo "[PLAN] Remote pid: ${REMOTE_RUN_PID}"
+    fi
   else
     echo "[PLAN] Mode: local"
     echo "[PLAN] Command: ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}"
@@ -588,27 +616,25 @@ if [[ ${PRINT_PLAN} -eq 1 ]]; then
   exit 0
 fi
 
+if [[ ${DETACH_MODE} -eq 1 && ${JOB_MODE} -eq 1 ]]; then
+  echo "[ERROR] --detach and --job are mutually exclusive." >&2
+  exit 2
+fi
+
 if [[ ${DETACH_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
   echo "[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5)." >&2
   exit 2
 fi
 
+if [[ ${JOB_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
+  echo "[ERROR] --job requires RASPI_SERVER_HOST (remote Pi5)." >&2
+  exit 2
+fi
 
-start_remote_detached() {
+
+write_remote_runner_script() {
   local run_id="$1"
-  local inventory_basename
-  local playbook_basename
-  local playbook_relative
-  local limit_arg=""
-  inventory_basename=$(basename "${INVENTORY_PATH}")
-  playbook_basename=$(basename "${PLAYBOOK_PATH}")
-  playbook_relative="playbooks/${playbook_basename}"
-  if [[ -n "${LIMIT_HOSTS}" ]]; then
-    limit_arg="--limit ${LIMIT_HOSTS}"
-  fi
   remote_run_paths "${run_id}"
-  local INVENTORY_BASENAME="${inventory_basename}"
-  local PLAYBOOK_RELATIVE="${playbook_relative}"
 
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat > /tmp/ansible-update-${run_id}.sh" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
@@ -626,6 +652,8 @@ REPO_VERSION="${REPO_VERSION}"
 INVENTORY_BASENAME="${INVENTORY_BASENAME}"
 PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
 LIMIT_HOSTS="${LIMIT_HOSTS}"
+UNIT_NAME="${UNIT_NAME}"
+RUNNER="${RUNNER}"
 
 mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
@@ -645,9 +673,9 @@ fi
 write_status() {
   local state="$1"
   local exit_code="${2:-}"
-  python3 - <<'PY' "${REMOTE_RUN_STATUS}" "${RUN_ID}" "${REPO_VERSION}" "${INVENTORY_BASENAME}" "${LIMIT_HOSTS}" "${state}" "${exit_code}"
+  python3 - <<'PY' "${REMOTE_RUN_STATUS}" "${RUN_ID}" "${REPO_VERSION}" "${INVENTORY_BASENAME}" "${LIMIT_HOSTS}" "${state}" "${exit_code}" "${UNIT_NAME}" "${RUNNER}"
 import json, sys, time
-path, run_id, repo_version, inventory, limit_hosts, state, exit_code = sys.argv[1:]
+path, run_id, repo_version, inventory, limit_hosts, state, exit_code, unit_name, runner = sys.argv[1:]
 data = {
     "runId": run_id,
     "branch": repo_version,
@@ -661,6 +689,10 @@ if state == "running":
 if state in ("success", "failed"):
     data["endedAt"] = data["updatedAt"]
     data["exitCode"] = exit_code
+if unit_name:
+    data["unitName"] = unit_name
+if runner:
+    data["runner"] = runner
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False)
 PY
@@ -775,9 +807,60 @@ else
 fi
 exit ${exit_code}
 REMOTE_SCRIPT
+}
+
+start_remote_detached() {
+  local run_id="$1"
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  local INVENTORY_BASENAME="${inventory_basename}"
+  local PLAYBOOK_RELATIVE="${playbook_relative}"
+  local UNIT_NAME=""
+  local RUNNER="nohup"
+
+  write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Detach run started: ${run_id}"
+  echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
+  echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
+  echo "[INFO] Remote exit: ${REMOTE_RUN_EXIT}"
+  echo "[INFO] Remote pid: ${REMOTE_RUN_PID}"
+  if [[ ${FOLLOW_MODE} -eq 1 ]]; then
+    remote_attach "${run_id}"
+  fi
+}
+
+start_remote_job() {
+  local run_id="$1"
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  local INVENTORY_BASENAME="${inventory_basename}"
+  local PLAYBOOK_RELATIVE="${playbook_relative}"
+  local UNIT_NAME="ansible-update-${run_id}"
+  local RUNNER="systemd-run"
+
+  write_remote_runner_script "${run_id}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
+  echo "[INFO] Job run started: ${run_id}"
+  echo "[INFO] Unit: ${UNIT_NAME}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
   echo "[INFO] Remote exit: ${REMOTE_RUN_EXIT}"
@@ -920,11 +1003,16 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   notify_start
   check_network_mode
   acquire_remote_lock
-  if [[ ${DETACH_MODE} -eq 0 ]]; then
+  if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
     trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
   fi
   set_pi4_maintenance_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
+  if [[ ${JOB_MODE} -eq 1 ]]; then
+    RUN_ID="$(build_run_id)"
+    start_remote_job "${RUN_ID}"
+    exit 0
+  fi
   if [[ ${DETACH_MODE} -eq 1 ]]; then
     RUN_ID="$(build_run_id)"
     start_remote_detached "${RUN_ID}"

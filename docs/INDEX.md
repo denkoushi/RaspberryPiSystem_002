@@ -10,8 +10,9 @@
 
 ### 🆕 最新アップデート（2026-01-31）
 
+- **✅ サイネージ可視化ダッシュボード機能実装・デプロイ再整備完了**: サイネージに可視化ダッシュボード機能を統合し、デプロイプロセスでコード変更時のDocker再ビルドを確実化。**可視化ダッシュボード機能**: データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）をFactory/Registryパターンで実装し、疎結合・モジュール化・スケーラビリティを確保。サイネージスロットに`visualization`を追加し、`layoutConfig`で可視化ダッシュボードを指定可能に。管理コンソールで可視化ダッシュボードのCRUD UIを実装。**デプロイ再整備**: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証でコード変更時のDocker再ビルドが正常に動作することを確認（正のテスト: コード変更→再ビルド、負のテスト: コード変更なし→再ビルドなし）。サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認。CI成功。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-217](./knowledge-base/infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) / [modules/signage/README.md](./modules/signage/README.md) / [guides/deployment.md](./guides/deployment.md) を参照。
+
 - **✅ Pi5ストレージメンテナンススクリプト修正完了（KB-130追加調査）**: Pi5のストレージ使用量が再び24%（約233GB）に増加した問題を調査・解決。`storage-maintenance.sh`の`find -delete -print | wc -l`の順序問題により、`signage_*.jpg`ファイルが22,412件（8.2GB）削除されずに蓄積していた。Docker Build Cache 196.1GB、未使用Docker Images 182.4GBも蓄積。手動クリーンアップ実行後、スクリプトを修正（ファイル数を先にカウントしてから削除、`docker builder du`のサイズ取得のフォールバック追加）。ストレージ使用量24%→2%に改善、CI成功。詳細は [knowledge-base/infrastructure/miscellaneous.md#kb-130](./knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [guides/operation-manual.md](./guides/operation-manual.md) を参照。
-- **✅ 可視化ダッシュボード機能の管理UI追加**: サイネージ向け可視化ダッシュボードを管理コンソールからCRUDできるようにし、CSVダッシュボード行をテーブル表示するデータソースとテーブルレンダラーを追加。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-30）
 

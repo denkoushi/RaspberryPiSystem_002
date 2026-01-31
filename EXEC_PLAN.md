@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-01-31) **サイネージ可視化ダッシュボード機能実装・デプロイ再整備完了**: サイネージに可視化ダッシュボード機能を統合し、デプロイプロセスでコード変更時のDocker再ビルドを確実化。**可視化ダッシュボード機能**: データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）をFactory/Registryパターンで実装し、疎結合・モジュール化・スケーラビリティを確保。サイネージスロットに`visualization`を追加し、`layoutConfig`で可視化ダッシュボードを指定可能に。管理コンソールで可視化ダッシュボードのCRUD UIを実装。**デプロイ再整備**: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。**実機検証結果**: Pi5でデプロイ成功、コード変更時のDocker再ビルドが正常に動作（正のテスト: コード変更→再ビルド、負のテスト: コード変更なし→再ビルドなし）。サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認。CI成功。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) / [docs/modules/signage/README.md](./docs/modules/signage/README.md) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-01-31) **Pi5ストレージメンテナンススクリプト修正完了（KB-130追加調査）**: Pi5のストレージ使用量が再び24%（約233GB）に増加した問題を調査・解決。**原因**: `storage-maintenance.sh`の`find -delete -print | wc -l`の順序問題により、`signage_*.jpg`ファイルが22,412件（8.2GB）削除されずに蓄積。Docker Build Cache 196.1GB、未使用Docker Images 182.4GBも蓄積。**対策**: 手動クリーンアップ実行後、`storage-maintenance.sh`を修正（ファイル数を先にカウントしてから削除、`docker builder du`のサイズ取得のフォールバック追加）。**結果**: ストレージ使用量24%→2%に改善、CI成功。詳細は [docs/knowledge-base/infrastructure/miscellaneous.md#kb-130](./docs/knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [docs/guides/operation-manual.md](./docs/guides/operation-manual.md) を参照。
 
 - [x] (2026-01-29) **デプロイ整備（KB-200）の全デバイス実機検証完了・ブランチ指定必須化**: デプロイ標準手順の安定性と安全性を向上させる「デプロイ整備」機能の全デバイス実機検証を完了。**実装内容**: fail-fastチェック（未commit/未push防止）、デタッチモード（`--detach`）とログ追尾（`--attach`/`--follow`）、プレフライトチェック（Pi3のサービス停止・GUI停止）、リモートロック、`git reset --hard origin/<branch>`修正（リモートブランチの最新状態に確実にリセット）、**ブランチ指定必須化**（デフォルトmain削除で誤デプロイ防止）。**実機検証結果**: Pi5で通常モードデプロイ成功（タイムアウトなし）、Pi4でリポジトリ更新成功（`a998117`に更新）、Pi3でプレフライトチェック（サービス停止・GUI停止）動作確認、リポジトリ更新成功（`a998117`）、デプロイ成功（`ok=108, changed=21, failed=0`）。**ドキュメント更新**: `docs/guides/deployment.md`からデフォルトmainブランチの記述を削除、`scripts/update-all-clients.sh`でブランチ未指定時はエラーで停止するように変更。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-200](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
@@ -620,6 +622,9 @@
   対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
 - 観測: 生産スケジュール検索状態共有の実装で、当初は「登録製番・資源フィルタも共有」としていたが、APIの保存・返却を**history専用**に統一し、ローカル削除を`hiddenHistory`で管理する仕様に確定した。実機検証ですべて正常動作を確認。  
   対応: KB-210に仕様確定（history専用・割当済み資源CD単独検索可・hiddenHistoryでローカル削除）を追記。**[KB-210]**
+- 観測: デプロイプロセスでコード変更を検知する仕組みがなく、コード変更をデプロイしてもDockerコンテナが再ビルドされず、変更が反映されない問題が発生した。以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった。  
+  エビデンス: コード変更をデプロイしても、実際には古いコードが動作し続ける。デプロイは成功するが、変更が反映されない。  
+  対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
 
@@ -717,6 +722,12 @@
 - 決定: 生産スケジュール検索状態の共有対象を**history（登録製番リスト）のみ**に限定する。押下状態・資源フィルタは端末ローカルで管理し、ローカルでの履歴削除は`hiddenHistory`（localStorage）で管理して共有historyに影響させない。また「割当済み資源CD」は製番未入力でも単独検索を許可する。  
   理由: 端末間で意図しない上書きを防ぎつつ、登録製番の共有で運用要件を満たすため。割当済み資源CD単独検索は現場の利用パターンに対応するため。  
   日付/担当: 2026-01-28 / KB-210 仕様確定・実機検証完了
+- 決定: サイネージ可視化ダッシュボード機能をFactory/Registryパターンで実装し、データソースとレンダラーを疎結合・モジュール化・スケーラブルに設計する。データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）を独立したモジュールとして実装し、新規追加が容易になるようにする。  
+  理由: ユーザー要件「自由度が欲しい。現場は常に動いてるので、どんな可視化ビジュアルが必要かは都度変わる」に対応し、将来のドラスティックな変更に耐える構造にするため。既存システムを破壊しないモジュール化と疎結合を確保するため。  
+  日付/担当: 2026-01-31 / サイネージ可視化ダッシュボード機能実装
+- 決定: デプロイプロセスでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正する。コード変更がない場合は再ビルドをスキップし、デプロイ時間を短縮する。  
+  理由: デプロイ成功＝変更が反映済み、という前提を保証するため。以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった問題を解決するため。  
+  日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
 

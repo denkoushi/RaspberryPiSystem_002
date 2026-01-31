@@ -260,6 +260,8 @@ bash ./scripts/server/deploy-detached.sh feature/new-feature
 # 実行状態はログ/ステータス/exitで確認
 ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | head -3
 ```
+**補足**:
+- `deploy-detached.sh` は systemd-run が利用可能な場合は **ジョブ化して実行**します（不可の場合は `nohup` にフォールバック）
 
 **Ansible経由デプロイのログ追尾**:
 `scripts/update-all-clients.sh`で`--detach`モードを使用する場合、ログはリアルタイムで表示されません。以下の方法でログを追尾できます：
@@ -274,7 +276,41 @@ ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | he
   ./scripts/update-all-clients.sh --attach 20260125-135737-15664
   ```
 
+**ジョブ実行（systemd-run）**:
+長時間デプロイを **端末切断に強く** 実行したい場合は `--job` を使用します。
+- **`--job --follow`**: Pi5上でジョブ化して実行し、追尾する
+  ```bash
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
+  ```
+- **`--status <run_id>`**: ジョブの状態とunitステータスを確認
+  ```bash
+  ./scripts/update-all-clients.sh --status 20260125-135737-15664
+  ```
+
 詳細は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) を参照してください。
+
+### 所要時間の目安と判定（運用目線）
+
+**目安（通常時）**:
+- **Pi5（サーバー）**: 10分前後（上限15分）
+- **Pi4（キオスク）**: 5〜10分（上限10分）
+- **Pi3（サイネージ）**: 10〜15分（上限30分）
+
+**判定ルール（最低限）**:
+- 上限内に完了しない場合は**「遅延」**として扱い、ログを確認する
+- **`context canceled`** や `rpc error` が出た場合はビルド中断の可能性が高い
+
+**ログからの所要時間確認**:
+- `logs/ansible-history.jsonl` に **実行単位の所要時間** が記録されます（`durationSeconds`）。
+```bash
+# 直近の所要時間を確認（秒）
+tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
+```
+
+**補足**:
+- 目安は「通常のコード変更＋Docker buildあり」を前提にした基準です
+- 大きな差分や初回ビルド時は長くなる場合があります
+  - 例: Docker build cacheの欠如、依存関係の追加など
 
 **重要（反映漏れ防止）**:
 - Ansible標準経路では、**コード更新があった場合に `api/web` を `--force-recreate --build` で再作成**します。
@@ -288,6 +324,14 @@ ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | he
 **注意事項**:
 - SSH経由で長時間実行する場合（Dockerビルドが数分かかる）、クライアント側のタイムアウト設定に注意してください。タイムアウトが発生した場合でも、`trap`による自動復旧が動作しますが、ログファイルで実行状況を確認してください
 - デプロイログは`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-<timestamp>.log`に保存されます
+
+### ビルド時間短縮（任意・推奨）
+
+**目的**: Docker buildのコンテキスト転送量を削減し、ビルド時間と`context canceled`のリスクを下げる。
+
+**方針**:
+- リポジトリルートの `.dockerignore` により、`node_modules/`, `logs/`, `storage/`, `alerts/`, `certs/`, `docs/` など **ビルド不要なディレクトリを除外**します。
+- これにより **Pi5上のDocker buildが安定・短縮** します。
 
 ### 方法2: 手動で更新
 
