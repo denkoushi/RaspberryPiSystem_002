@@ -1208,6 +1208,26 @@ export interface VisualizationDashboard {
   updatedAt: string;
 }
 
+export interface VisualizationDashboardCreateInput {
+  name: string;
+  description?: string | null;
+  dataSourceType: string;
+  rendererType: string;
+  dataSourceConfig: Record<string, unknown>;
+  rendererConfig: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface VisualizationDashboardUpdateInput {
+  name?: string;
+  description?: string | null;
+  dataSourceType?: string;
+  rendererType?: string;
+  dataSourceConfig?: Record<string, unknown>;
+  rendererConfig?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
 export interface CsvPreviewResult {
   headers: string[];
   sampleRows: Array<Record<string, unknown>>;
@@ -1236,6 +1256,26 @@ export async function getVisualizationDashboards(filters?: { enabled?: boolean; 
   }
   const { data } = await api.get<{ dashboards: VisualizationDashboard[] }>(`/visualizations?${params.toString()}`);
   return data.dashboards;
+}
+
+export async function getVisualizationDashboard(id: string) {
+  const { data } = await api.get<{ dashboard: VisualizationDashboard }>(`/visualizations/${id}`);
+  return data.dashboard;
+}
+
+export async function createVisualizationDashboard(payload: VisualizationDashboardCreateInput) {
+  const { data } = await api.post<{ dashboard: VisualizationDashboard }>('/visualizations', payload);
+  return data.dashboard;
+}
+
+export async function updateVisualizationDashboard(id: string, payload: VisualizationDashboardUpdateInput) {
+  const { data } = await api.put<{ dashboard: VisualizationDashboard }>(`/visualizations/${id}`, payload);
+  return data.dashboard;
+}
+
+export async function deleteVisualizationDashboard(id: string) {
+  const { data } = await api.delete<{ success: true }>(`/visualizations/${id}`);
+  return data;
 }
 
 export async function getCsvDashboard(id: string) {

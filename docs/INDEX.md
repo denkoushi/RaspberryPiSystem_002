@@ -11,6 +11,7 @@
 ### 🆕 最新アップデート（2026-01-31）
 
 - **✅ Pi5ストレージメンテナンススクリプト修正完了（KB-130追加調査）**: Pi5のストレージ使用量が再び24%（約233GB）に増加した問題を調査・解決。`storage-maintenance.sh`の`find -delete -print | wc -l`の順序問題により、`signage_*.jpg`ファイルが22,412件（8.2GB）削除されずに蓄積していた。Docker Build Cache 196.1GB、未使用Docker Images 182.4GBも蓄積。手動クリーンアップ実行後、スクリプトを修正（ファイル数を先にカウントしてから削除、`docker builder du`のサイズ取得のフォールバック追加）。ストレージ使用量24%→2%に改善、CI成功。詳細は [knowledge-base/infrastructure/miscellaneous.md#kb-130](./knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [guides/operation-manual.md](./guides/operation-manual.md) を参照。
+- **✅ 可視化ダッシュボード機能の管理UI追加**: サイネージ向け可視化ダッシュボードを管理コンソールからCRUDできるようにし、CSVダッシュボード行をテーブル表示するデータソースとテーブルレンダラーを追加。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-30）
 

@@ -99,6 +99,10 @@ import {
   getSignageContent,
   getCsvDashboards,
   getVisualizationDashboards,
+  getVisualizationDashboard,
+  createVisualizationDashboard,
+  updateVisualizationDashboard,
+  deleteVisualizationDashboard,
   type SignageSchedule,
   type SignagePdf,
   type ClientLogLevel,
@@ -787,6 +791,39 @@ export function useVisualizationDashboards(filters?: { enabled?: boolean; search
     queryKey: ['visualization-dashboards', filters],
     queryFn: () => getVisualizationDashboards(filters)
   });
+}
+
+export function useVisualizationDashboard(id?: string | null) {
+  return useQuery({
+    queryKey: ['visualization-dashboard', id],
+    queryFn: () => getVisualizationDashboard(id!),
+    enabled: Boolean(id)
+  });
+}
+
+export function useVisualizationDashboardMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: createVisualizationDashboard,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateVisualizationDashboard>[1] }) =>
+      updateVisualizationDashboard(id, payload),
+    onSuccess: (dashboard) => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboard', dashboard.id] });
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteVisualizationDashboard(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  return { create, update, remove };
 }
 
 export function useUnifiedItems(params?: UnifiedListParams) {

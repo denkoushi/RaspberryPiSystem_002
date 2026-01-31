@@ -17,6 +17,7 @@ import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
+import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
@@ -89,6 +90,7 @@ function App() {
           <Route path="schedule" element={<Navigate to="/admin/import" replace />} />
         </Route>
         <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
+        <Route path="visualization-dashboards" element={<VisualizationDashboardsPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
         </Route>
