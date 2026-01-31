@@ -291,6 +291,9 @@ export class CsvDashboardService {
     pageNumber: number,
     displayPeriodDays: number = 1
   ): Promise<DashboardPageData> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard.service.ts:293',message:'getPageData entry',data:{dashboardId,pageNumber,displayPeriodDays},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const dashboard = await this.findById(dashboardId);
     const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
 
@@ -304,12 +307,16 @@ export class CsvDashboardService {
     const startOfTodayJst = new Date(nowJst);
     startOfTodayJst.setHours(0, 0, 0, 0);
     // displayPeriodDays日間のデータを取得（今日を含む）
-    const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffset - displayPeriodDays * 24 * 60 * 60 * 1000);
+    const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffset - (displayPeriodDays - 1) * 24 * 60 * 60 * 1000);
     
     // JSTでの「今日の23:59:59」をUTCで表現 → UTC 翌日14:59:59
     const endOfTodayJst = new Date(nowJst);
     endOfTodayJst.setHours(23, 59, 59, 999);
     const endDateUtc = new Date(endOfTodayJst.getTime() - jstOffset);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'csv-dashboard.service.ts:311',message:'date window computed',data:{startDateUtc:startDateUtc.toISOString(),endDateUtc:endDateUtc.toISOString()},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // 期間内の行データを取得
     const rows = await prisma.csvDashboardRow.findMany({
@@ -322,6 +329,9 @@ export class CsvDashboardService {
       },
       orderBy: { occurredAt: 'desc' },
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'csv-dashboard.service.ts:325',message:'rows fetched',data:{rowsLen:rows.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // ページネーション
     const rowsPerPage =

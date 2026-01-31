@@ -448,15 +448,41 @@ export class SignageService {
   private async getCsvDashboardData(
     csvDashboardId: string
   ): Promise<{ id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | null> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'signage.service.ts:449',message:'getCsvDashboardData entry',data:{csvDashboardId},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const dashboard = await prisma.csvDashboard.findUnique({
       where: { id: csvDashboardId },
     });
     if (!dashboard || !dashboard.enabled) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'signage.service.ts:456',message:'dashboard missing or disabled',data:{csvDashboardId,hasDashboard:!!dashboard,enabled:dashboard?.enabled ?? null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return null;
     }
 
     if (csvDashboardId === SignageService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'signage.service.ts:462',message:'special measuring instrument branch',data:{csvDashboardId,displayPeriodDays:dashboard.displayPeriodDays},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const rows = await this.measuringInstrumentLoanEventService.getTodayBorrowedRowsJst();
+      if (rows.length === 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'signage.service.ts:468',message:'special branch empty -> fallback to csv rows',data:{csvDashboardId,displayPeriodDays:dashboard.displayPeriodDays ?? 1},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        const pageData = await this.csvDashboardService.getPageData(
+          csvDashboardId,
+          1,
+          dashboard.displayPeriodDays ?? 1
+        );
+        return {
+          id: dashboard.id,
+          name: dashboard.name,
+          pageNumber: pageData.pageNumber,
+          totalPages: pageData.totalPages,
+          rows: pageData.rows,
+        };
+      }
       const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
       const rowsPerPage =
         dashboard.templateType === 'TABLE'
@@ -464,6 +490,9 @@ export class SignageService {
           : templateConfig.cardsPerPage || 9;
       const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
       const pageRows = rows.slice(0, rowsPerPage);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'signage.service.ts:475',message:'special branch rows',data:{rowsLen:rows.length,rowsPerPage,totalPages,pageRowsLen:pageRows.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return {
         id: dashboard.id,
         name: dashboard.name,
@@ -478,6 +507,9 @@ export class SignageService {
       1,
       dashboard.displayPeriodDays ?? 1
     );
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'signage.service.ts:489',message:'pageData result',data:{csvDashboardId,displayPeriodDays:dashboard.displayPeriodDays ?? 1,pageRowsLen:pageData.rows.length,totalPages:pageData.totalPages},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return {
       id: dashboard.id,
       name: dashboard.name,
