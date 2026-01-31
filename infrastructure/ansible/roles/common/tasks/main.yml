@@ -96,6 +96,18 @@
     - ansible_user is defined
   become: true
 
+- name: Capture current repo HEAD (if exists)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}"
+    git rev-parse HEAD
+  args:
+    executable: /bin/bash
+  register: repo_prev_head
+  changed_when: false
+  failed_when: false
+  when: repo_git_stat.stat.exists | default(false)
+
 - name: Sync repository to desired state (with retries)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -115,6 +127,22 @@
   retries: 3
   delay: 10
   until: git_result.rc == 0
+
+- name: Capture repo HEAD after sync
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}"
+    git rev-parse HEAD
+  args:
+    executable: /bin/bash
+  register: repo_new_head
+  changed_when: false
+
+- name: Determine if repo changed
+  ansible.builtin.set_fact:
+    repo_prev_head: "{{ repo_prev_head.stdout | default('') }}"
+    repo_new_head: "{{ repo_new_head.stdout | default('') }}"
+    repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
 
 - name: Remove unnecessary documentation directory to save storage
   ansible.builtin.file:

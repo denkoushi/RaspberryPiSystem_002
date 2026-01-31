@@ -172,8 +172,17 @@ ensure_local_repo_ready_for_deploy() {
   local behind=""
   local ahead=""
   if [[ -n "${counts}" ]]; then
-    behind="${counts%% *}"
-    ahead="${counts##* }"
+    read -r behind ahead <<<"$(echo "${counts}" | awk '{print $1, $2}')"
+  fi
+  if [[ -n "${behind}" && ! "${behind}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました（behind='${behind}', counts='${counts}'）。" >&2
+    echo "        対処: push/CI成功を確認後に再実行してください。" >&2
+    exit 2
+  fi
+  if [[ -n "${ahead}" && ! "${ahead}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました（ahead='${ahead}', counts='${counts}'）。" >&2
+    echo "        対処: push/CI成功を確認後に再実行してください。" >&2
+    exit 2
   fi
   if [[ -n "${ahead}" && "${ahead}" != "${behind}" && "${ahead}" -gt 0 ]]; then
     echo "[ERROR] ローカル(${local_ref})に未pushコミットがあります（origin/${REPO_VERSION}よりahead）。" >&2

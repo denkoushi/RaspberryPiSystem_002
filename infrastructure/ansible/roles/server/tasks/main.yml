@@ -304,19 +304,13 @@
 - name: Configure security monitoring
   ansible.builtin.import_tasks: monitoring.yml
 
-- name: Rebuild and restart Docker services on server (auto-detect network changes)
+- name: Rebuild and restart Docker services on server when repo changed
   block:
     - name: Rebuild/Restart docker compose services
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path }}
-        CURRENT_IP="{{ docker_server_ip }}"
-        COMPOSE_IP=$(grep -E '^\s*NFC_AGENT_HOST:' infrastructure/docker/docker-compose.server.yml | sed 's/.*NFC_AGENT_HOST:\s*"\([^"]*\)".*/\1/' || echo "")
-        if [ "$CURRENT_IP" != "$COMPOSE_IP" ] && [ -n "$COMPOSE_IP" ]; then
-          echo "[INFO] Network change detected: rebuilding containers"
-          docker compose -f infrastructure/docker/docker-compose.server.yml build api web
-        fi
-        docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
+        docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
       args:
         executable: /bin/bash
       register: docker_restart_result
@@ -352,6 +346,7 @@
         msg: >
           Docker Compose restart failed on {{ inventory_hostname }}.
           See captured logs above for details.
+  when: repo_changed | default(false)
 
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |
