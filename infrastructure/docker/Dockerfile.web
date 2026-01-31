@@ -9,16 +9,12 @@ WORKDIR /app/packages/shared-types
 RUN pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
-# apps/webをコピーした後、workspace解決を確実にするためpnpm installを再実行
-RUN pnpm install --frozen-lockfile
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
 # ラズパイ5のAPIサーバーのURLをビルド時に設定可能にする
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-# apps/webのビルド前にshared-typesのdistが存在することを確認
-RUN test -d packages/shared-types/dist || (echo "ERROR: shared-types/dist not found before web build" && exit 1)
 RUN cd apps/web && pnpm run build
 
 FROM caddy:2-alpine
