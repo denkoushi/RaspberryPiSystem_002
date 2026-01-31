@@ -8,8 +8,6 @@ RUN corepack enable && pnpm install --frozen-lockfile
 WORKDIR /app/packages/shared-types
 RUN pnpm build
 WORKDIR /app
-# shared-typesのビルド結果を確認（デバッグ用）
-RUN test -d packages/shared-types/dist || (echo "ERROR: shared-types/dist not found" && exit 1)
 COPY apps/web ./apps/web
 # apps/webをコピーした後、workspace解決を確実にするためpnpm installを再実行
 RUN pnpm install --frozen-lockfile
