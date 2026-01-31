@@ -13,6 +13,9 @@
 **/build
 **/.next
 **/coverage
+# TypeScript incremental build info (forces fresh build in Docker)
+**/tsconfig.tsbuildinfo
+**/*.tsbuildinfo
 
 # Logs and temp files
 logs
