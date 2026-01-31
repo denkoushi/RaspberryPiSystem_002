@@ -41,9 +41,6 @@ export class CsvDashboardTemplateRenderer {
     emptyMessage?: string | null,
     context?: Partial<CsvDashboardRenderContext>
   ): string {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H5',location:'csv-dashboard-template-renderer.ts:44',message:'renderTable entry',data:{rowsLen:rows.length,displayColumnsLen:config.displayColumns?.length ?? null,rowsPerPageConfig:config.rowsPerPage ?? null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (rows.length === 0) {
       return this.renderEmptyMessage(dashboardName, emptyMessage || 'データがありません');
     }
@@ -52,30 +49,6 @@ export class CsvDashboardTemplateRenderer {
     const canvasWidth = context?.canvasWidth ?? DEFAULT_CANVAS_WIDTH;
     const canvasHeight = context?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT;
     const scale = canvasWidth / DEFAULT_CANVAS_WIDTH;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'X',
-        location: 'csv-dashboard-template-renderer.ts:renderTable',
-        message: 'renderTable entry',
-        data: {
-          canvasWidth,
-          canvasHeight,
-          scale,
-          rowsLen: rows.length,
-          rowsPerPageConfig: config.rowsPerPage,
-          fontSize: config.fontSize,
-          displayColumnsLen: config.displayColumns?.length ?? null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     const selectedColumnDefs = config.displayColumns
       .map((internalName) => columnDefinitions.find((col) => col.internalName === internalName))

@@ -291,9 +291,6 @@ export class CsvDashboardService {
     pageNumber: number,
     displayPeriodDays: number = 1
   ): Promise<DashboardPageData> {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard.service.ts:293',message:'getPageData entry',data:{dashboardId,pageNumber,displayPeriodDays},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const dashboard = await this.findById(dashboardId);
     const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
 
@@ -314,10 +311,6 @@ export class CsvDashboardService {
     endOfTodayJst.setHours(23, 59, 59, 999);
     const endDateUtc = new Date(endOfTodayJst.getTime() - jstOffset);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'csv-dashboard.service.ts:311',message:'date window computed',data:{startDateUtc:startDateUtc.toISOString(),endDateUtc:endDateUtc.toISOString()},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     // 期間内の行データを取得
     const rows = await prisma.csvDashboardRow.findMany({
       where: {
@@ -329,9 +322,6 @@ export class CsvDashboardService {
       },
       orderBy: { occurredAt: 'desc' },
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'csv-dashboard.service.ts:325',message:'rows fetched',data:{rowsLen:rows.length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // ページネーション
     const rowsPerPage =
