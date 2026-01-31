@@ -39,9 +39,10 @@ if [ -d "${SIGNAGE_RENDER_DIR}" ]; then
   log "signage-renderedディレクトリの履歴画像を削除中..."
   
   # current.jpgを除くsignage_*.jpgファイルを削除
-  deleted_count=0
-  if find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' 2>/dev/null | grep -q .; then
-    deleted_count=$(find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' -delete -print | wc -l)
+  # 先にファイル数をカウントしてから削除（-deleteと-printの順序問題を回避）
+  deleted_count=$(find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' 2>/dev/null | wc -l)
+  if [ "${deleted_count}" -gt 0 ]; then
+    find "${SIGNAGE_RENDER_DIR}" -type f -name 'signage_*.jpg' -delete 2>/dev/null || true
     log "履歴画像 ${deleted_count} 件を削除しました"
   else
     log "削除対象の履歴画像はありませんでした"
@@ -63,12 +64,20 @@ if [ "${CURRENT_DAY}" = "01" ]; then
   log "月初のため、Docker Build Cacheを削除します"
   
   # 削除前の状態を確認
-  before_size=$(docker builder du 2>/dev/null | tail -n 1 | awk '{print $NF}' || echo "0B")
+  before_size=$(docker builder du 2>/dev/null | grep -E '^Total:' | awk '{print $2}' || echo "0B")
+  if [ "${before_size}" = "0B" ]; then
+    # フォールバック: 最後の行からサイズを取得
+    before_size=$(docker builder du 2>/dev/null | tail -n 1 | awk '{print $NF}' || echo "0B")
+  fi
   log "削除前のBuild Cacheサイズ: ${before_size}"
   
   # Build Cacheを削除（稼働中のコンテナには影響しない）
   if docker builder prune -a --force >/dev/null 2>&1; then
-    after_size=$(docker builder du 2>/dev/null | tail -n 1 | awk '{print $NF}' || echo "0B")
+    after_size=$(docker builder du 2>/dev/null | grep -E '^Total:' | awk '{print $2}' || echo "0B")
+    if [ "${after_size}" = "0B" ]; then
+      # フォールバック: 最後の行からサイズを取得
+      after_size=$(docker builder du 2>/dev/null | tail -n 1 | awk '{print $NF}' || echo "0B")
+    fi
     log "削除後のBuild Cacheサイズ: ${after_size}"
     log "Docker Build Cacheの削除が完了しました"
   else
