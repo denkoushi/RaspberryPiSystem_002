@@ -53,8 +53,8 @@ export class MeasuringInstrumentsDataSource implements DataSource {
         borrowedAt: { gte: startDate },
         cancelledAt: null,
       },
-      _count: { _all: true },
-      orderBy: { _count: { _all: 'desc' } },
+      _count: true,
+      orderBy: { _count: { measuringInstrumentId: 'desc' } },
       take: topN,
     });
 
@@ -80,7 +80,7 @@ export class MeasuringInstrumentsDataSource implements DataSource {
       return parts.length > 0 ? parts.join(' ') : instrument.id;
     });
 
-    const values = usage.map((row) => row._count?._all ?? 0);
+    const values = usage.map((row) => row._count ?? 0);
 
     return {
       kind: 'series',
