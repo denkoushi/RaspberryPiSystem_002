@@ -183,7 +183,9 @@ export interface ProductionScheduleRow {
   occurredAt: string;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
+  processingType?: string | null;
   note?: string | null;
+  dueDate?: string | null;
 }
 
 export interface ProductionScheduleListResponse {
@@ -199,6 +201,7 @@ export async function getKioskProductionSchedule(params?: {
   resourceCds?: string;
   resourceAssignedOnlyCds?: string;
   hasNoteOnly?: boolean;
+  hasDueDateOnly?: boolean;
   page?: number;
   pageSize?: number;
 }) {
@@ -239,6 +242,25 @@ export async function updateKioskProductionScheduleOrder(
 export async function updateKioskProductionScheduleNote(rowId: string, payload: { note: string }) {
   const { data } = await api.put<{ success: boolean; note: string | null }>(
     `/kiosk/production-schedule/${rowId}/note`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
+  const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
+    `/kiosk/production-schedule/${rowId}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleProcessing(
+  rowId: string,
+  payload: { processingType: string }
+) {
+  const { data } = await api.put<{ success: boolean; processingType: string | null }>(
+    `/kiosk/production-schedule/${rowId}/processing`,
     payload
   );
   return data;
@@ -968,13 +990,14 @@ export async function getDeployStatus(): Promise<DeployStatus> {
 export interface SignageSlotConfig {
   pdfId?: string;
   csvDashboardId?: string;
+  visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
 }
 
 export interface SignageSlot {
   position: 'FULL' | 'LEFT' | 'RIGHT';
-  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'message';
+  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'visualization' | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
 
@@ -1194,6 +1217,39 @@ export interface CsvDashboard {
   updatedAt: string;
 }
 
+export interface VisualizationDashboard {
+  id: string;
+  name: string;
+  description: string | null;
+  dataSourceType: string;
+  rendererType: string;
+  dataSourceConfig: Record<string, unknown>;
+  rendererConfig: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VisualizationDashboardCreateInput {
+  name: string;
+  description?: string | null;
+  dataSourceType: string;
+  rendererType: string;
+  dataSourceConfig: Record<string, unknown>;
+  rendererConfig: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface VisualizationDashboardUpdateInput {
+  name?: string;
+  description?: string | null;
+  dataSourceType?: string;
+  rendererType?: string;
+  dataSourceConfig?: Record<string, unknown>;
+  rendererConfig?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
 export interface CsvPreviewResult {
   headers: string[];
   sampleRows: Array<Record<string, unknown>>;
@@ -1210,6 +1266,38 @@ export async function getCsvDashboards(filters?: { enabled?: boolean; search?: s
   }
   const { data } = await api.get<{ dashboards: CsvDashboard[] }>(`/csv-dashboards?${params.toString()}`);
   return data.dashboards;
+}
+
+export async function getVisualizationDashboards(filters?: { enabled?: boolean; search?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.enabled !== undefined) {
+    params.append('enabled', String(filters.enabled));
+  }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
+  const { data } = await api.get<{ dashboards: VisualizationDashboard[] }>(`/visualizations?${params.toString()}`);
+  return data.dashboards;
+}
+
+export async function getVisualizationDashboard(id: string) {
+  const { data } = await api.get<{ dashboard: VisualizationDashboard }>(`/visualizations/${id}`);
+  return data.dashboard;
+}
+
+export async function createVisualizationDashboard(payload: VisualizationDashboardCreateInput) {
+  const { data } = await api.post<{ dashboard: VisualizationDashboard }>('/visualizations', payload);
+  return data.dashboard;
+}
+
+export async function updateVisualizationDashboard(id: string, payload: VisualizationDashboardUpdateInput) {
+  const { data } = await api.put<{ dashboard: VisualizationDashboard }>(`/visualizations/${id}`, payload);
+  return data.dashboard;
+}
+
+export async function deleteVisualizationDashboard(id: string) {
+  const { data } = await api.delete<{ success: true }>(`/visualizations/${id}`);
+  return data;
 }
 
 export async function getCsvDashboard(id: string) {

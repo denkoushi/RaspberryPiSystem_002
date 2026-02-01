@@ -456,6 +456,7 @@ export class SignageService {
     }
 
     if (csvDashboardId === SignageService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
+      // 計測機器持出返却（MeasuringInstrumentLoans）は「今日」の持出状況のみを表示する（0件なら空）
       const rows = await this.measuringInstrumentLoanEventService.getTodayBorrowedRowsJst();
       const templateConfig = dashboard.templateConfig as { rowsPerPage?: number; cardsPerPage?: number };
       const rowsPerPage =

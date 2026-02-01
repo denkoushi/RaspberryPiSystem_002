@@ -15,9 +15,56 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
 HEALTH_PLAYBOOK_PATH="infrastructure/ansible/playbooks/health-check.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"
-REMOTE_HOST="${RASPI_SERVER_HOST:-}"
+REMOTE_HOST_RAW="${RASPI_SERVER_HOST:-}"
 SSH_OPTS=${RASPI_SERVER_SSH_OPTS:-""}
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# REMOTE_HOSTの正規化: ユーザー名が含まれていない場合、inventory.ymlから取得して自動付与
+normalize_remote_host() {
+  local host="${REMOTE_HOST_RAW}"
+  if [[ -z "${host}" ]]; then
+    echo ""
+    return 0
+  fi
+  
+  # 既にユーザー名が含まれている場合（@が含まれている）はそのまま使用
+  if [[ "${host}" == *"@"* ]]; then
+    echo "${host}"
+    return 0
+  fi
+  
+  # ユーザー名が含まれていない場合、inventory.ymlから取得
+  if [[ -n "${INVENTORY_PATH:-}" && -f "${PROJECT_ROOT}/${INVENTORY_PATH}" ]]; then
+    local ansible_user
+    ansible_user=$(python3 - <<'PY' "${PROJECT_ROOT}/${INVENTORY_PATH}"
+import yaml
+import sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as f:
+        inv = yaml.safe_load(f)
+        # serverグループのraspberrypi5ホストからansible_userを取得
+        server_hosts = inv.get('all', {}).get('children', {}).get('server', {}).get('hosts', {})
+        if 'raspberrypi5' in server_hosts:
+            user = server_hosts['raspberrypi5'].get('ansible_user')
+            if user:
+                print(user)
+                sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PY
+    )
+    
+    if [[ -n "${ansible_user}" ]]; then
+      echo "${ansible_user}@${host}"
+      return 0
+    fi
+  fi
+  
+  # inventory.ymlから取得できない場合、デフォルトユーザー名を使用
+  echo "denkon5sd02@${host}"
+}
+
 LOG_FILE="${LOG_DIR}/ansible-update-${TIMESTAMP}.log"
 SUMMARY_FILE="${LOG_DIR}/ansible-update-${TIMESTAMP}.summary.json"
 HEALTH_LOG_FILE="${LOG_DIR}/ansible-health-${TIMESTAMP}.log"
@@ -34,6 +81,7 @@ LIMIT_HOSTS=""
 INVENTORY_PATH=""
 REPO_VERSION=""
 DETACH_MODE=0
+JOB_MODE=0
 FOLLOW_MODE=0
 ATTACH_RUN_ID=""
 STATUS_RUN_ID=""
@@ -48,6 +96,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --detach)
       DETACH_MODE=1
+      shift
+      ;;
+    --job)
+      JOB_MODE=1
       shift
       ;;
     --follow)
@@ -93,10 +145,14 @@ export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 
 mkdir -p "${LOG_DIR}"
 
+# REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
+REMOTE_HOST=$(normalize_remote_host)
+
 usage() {
   cat >&2 <<'USAGE'
 Usage:
   ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
   ./scripts/update-all-clients.sh --attach <run_id>
   ./scripts/update-all-clients.sh --status <run_id>
   ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
@@ -113,6 +169,9 @@ Examples:
 
   # デタッチ実行（Pi5側で継続実行）
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+  # ジョブ実行（systemd-run）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
 
   # デタッチ実行のログ追尾
   ./scripts/update-all-clients.sh --attach 20260125-123456-4242
@@ -172,8 +231,17 @@ ensure_local_repo_ready_for_deploy() {
   local behind=""
   local ahead=""
   if [[ -n "${counts}" ]]; then
-    behind="${counts%% *}"
-    ahead="${counts##* }"
+    read -r behind ahead <<<"$(echo "${counts}" | awk '{print $1, $2}')"
+  fi
+  if [[ -n "${behind}" && ! "${behind}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました（behind='${behind}', counts='${counts}'）。" >&2
+    echo "        対処: push/CI成功を確認後に再実行してください。" >&2
+    exit 2
+  fi
+  if [[ -n "${ahead}" && ! "${ahead}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました（ahead='${ahead}', counts='${counts}'）。" >&2
+    echo "        対処: push/CI成功を確認後に再実行してください。" >&2
+    exit 2
   fi
   if [[ -n "${ahead}" && "${ahead}" != "${behind}" && "${ahead}" -gt 0 ]]; then
     echo "[ERROR] ローカル(${local_ref})に未pushコミットがあります（origin/${REPO_VERSION}よりahead）。" >&2
@@ -351,6 +419,64 @@ print("\n".join(sorted(hosts)))
 PY
 }
 
+# デプロイ前チェック: Git権限とfail2ban Banの確認
+pre_deploy_checks() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  
+  local checks_failed=0
+
+  # aptリポジトリチェック（NodeSourceのGPG署名キー問題を事前検知）
+  # 2026-02-01以降、NodeSourceの署名がSHA1由来で拒否され、apt update_cacheが失敗してデプロイが中断するケースがある（KB-220）
+  echo "[INFO] Checking apt repositories on ${REMOTE_HOST} (NodeSource)..."
+  local nodesource_exists
+  nodesource_exists=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f /etc/apt/sources.list.d/nodesource.list && echo 'yes' || echo 'no'" || echo "no")
+  if [[ "${nodesource_exists}" == "yes" ]]; then
+    echo "[ERROR] NodeSource apt repository exists on ${REMOTE_HOST} (/etc/apt/sources.list.d/nodesource.list)." >&2
+    echo "[ERROR] This can break apt cache updates due to GPG signature policy (SHA1) and will abort deployments." >&2
+    echo "[ERROR] See KB-220: docs/knowledge-base/infrastructure/ansible-deployment.md" >&2
+    echo "[ERROR] Fix with: ssh ${REMOTE_HOST} 'sudo rm -f /etc/apt/sources.list.d/nodesource.list && sudo apt-get update'" >&2
+    checks_failed=$((checks_failed + 1))
+  fi
+  
+  # Git権限チェック
+  echo "[INFO] Checking Git directory permissions on ${REMOTE_HOST}..."
+  local git_owner
+  git_owner=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "ls -ld /opt/RaspberryPiSystem_002/.git 2>/dev/null | awk '{print \$3}'" || echo "")
+  if [[ -n "${git_owner}" && "${git_owner}" != "denkon5sd02" ]]; then
+    echo "[WARN] Git directory is owned by ${git_owner} (expected: denkon5sd02)" >&2
+    echo "[WARN] This may cause permission errors during detached execution." >&2
+    echo "[WARN] Fix with: ssh ${REMOTE_HOST} 'sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git'" >&2
+    checks_failed=$((checks_failed + 1))
+  fi
+  
+  # fail2ban Banチェック（MacのTailscale IPを確認）
+  if command -v tailscale >/dev/null 2>&1; then
+    local mac_ip
+    mac_ip=$(tailscale ip -4 2>/dev/null || echo "")
+    if [[ -n "${mac_ip}" ]]; then
+      echo "[INFO] Checking fail2ban ban status for ${mac_ip} on ${REMOTE_HOST}..."
+      local banned
+      banned=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "sudo fail2ban-client status sshd 2>/dev/null | grep -q '${mac_ip}' && echo 'yes' || echo 'no'" || echo "no")
+      if [[ "${banned}" == "yes" ]]; then
+        echo "[ERROR] Your IP ${mac_ip} is banned by fail2ban on ${REMOTE_HOST}" >&2
+        echo "[ERROR] Unban with: ssh ${REMOTE_HOST} 'sudo fail2ban-client set sshd unbanip ${mac_ip}'" >&2
+        echo "[ERROR] Or use RealVNC to access Pi5 desktop and unban manually." >&2
+        checks_failed=$((checks_failed + 1))
+      fi
+    fi
+  fi
+  
+  if [[ ${checks_failed} -gt 0 ]]; then
+    echo "[ERROR] Pre-deploy checks failed. Please fix the issues above before proceeding." >&2
+    return 1
+  fi
+  
+  echo "[INFO] Pre-deploy checks passed."
+  return 0
+}
+
 NETWORK_MODE=""
 
 check_network_mode() {
@@ -466,16 +592,93 @@ release_remote_lock() {
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_LOCK_FILE}\"" >/dev/null 2>&1 || true
 }
 
-# Pi4デプロイ時のメンテナンスフラグ管理（--limit raspberrypi4 のときのみ）
+KIOSK_MAINTENANCE_ENABLED=0
+
+# キオスク端末（Pi4等: manage_kiosk_browser=true）がデプロイ対象に含まれる場合、
+# デプロイ中はユーザー操作を防ぐためメンテナンス画面を表示する。
+#
+# NOTE:
+# - `serial: 1` によりデプロイは順次実行されるが、フラグは「デプロイ開始〜終了」までONにする。
+# - `--limit` 指定時も、対象ホストにキオスク端末が含まれる場合はONにする。
+should_enable_kiosk_maintenance() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 1
+  fi
+  if [[ -z "${INVENTORY_PATH}" ]]; then
+    return 1
+  fi
+
+  local inventory_basename
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+
+  # Determine target hosts (honor --limit) and intersect with kiosk hosts
+  local limit_arg=""
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+    # Fast-path: common limits that definitely include Pi4 kiosks
+    case "${LIMIT_HOSTS}" in
+      *raspberrypi4*|clients|server:clients|all)
+        return 0
+        ;;
+    esac
+  else
+    # No --limit means full deploy (server + clients). If kiosks exist, they are included.
+    return 0
+  fi
+
+  local selected_hosts
+  selected_hosts=$(
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} 'server:clients' --list-hosts ${limit_arg} 2>/dev/null" \
+      | python3 - <<'PY'
+import re, sys
+text = sys.stdin.read()
+hosts = []
+for line in text.splitlines():
+    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
+    if m:
+        hosts.append(m.group(1))
+print("\n".join(hosts))
+PY
+  )
+  if [[ -z "${selected_hosts}" ]]; then
+    return 1
+  fi
+
+  # Read kiosk hosts (manage_kiosk_browser=true) from inventory hostvars
+  local kiosk_hosts
+  kiosk_hosts=$(
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-inventory -i ${inventory_basename} --list" \
+      | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+print("\n".join(sorted(kiosk)))
+PY
+  )
+
+  if [[ -z "${kiosk_hosts}" ]]; then
+    return 1
+  fi
+
+  # Intersect: if any selected host is a kiosk host, enable maintenance
+  python3 - <<'PY' "${selected_hosts}" "${kiosk_hosts}" || return 1
+import sys
+selected = set([h for h in sys.argv[1].splitlines() if h.strip()])
+kiosk = set([h for h in sys.argv[2].splitlines() if h.strip()])
+sys.exit(0 if (selected & kiosk) else 1)
+PY
+}
+
 set_pi4_maintenance_flag() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
   fi
 
-  # --limit raspberrypi4 のときだけフラグをON
-  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
-    echo "[INFO] Setting Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
-    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"raspberrypi4\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
+  if should_enable_kiosk_maintenance; then
+    echo "[INFO] Setting kiosk maintenance flag on ${REMOTE_HOST}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
+    KIOSK_MAINTENANCE_ENABLED=1
   fi
 }
 
@@ -484,9 +687,8 @@ clear_pi4_maintenance_flag() {
     return 0
   fi
 
-  # --limit raspberrypi4 のときだけフラグをOFF
-  if [[ "${LIMIT_HOSTS}" == "raspberrypi4" ]]; then
-    echo "[INFO] Clearing Pi4 kiosk maintenance flag on ${REMOTE_HOST}"
+  if [[ "${KIOSK_MAINTENANCE_ENABLED}" == "1" ]]; then
+    echo "[INFO] Clearing kiosk maintenance flag on ${REMOTE_HOST}"
     ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\"" >/dev/null 2>&1 || true
   fi
 }
@@ -505,6 +707,12 @@ remote_status() {
   remote_run_paths "${run_id}"
   echo "[INFO] Remote status for ${run_id} on ${REMOTE_HOST}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then cat \"${REMOTE_RUN_STATUS}\"; else echo \"{\\\"error\\\":\\\"status not found\\\",\\\"runId\\\":\\\"${run_id}\\\"}\"; fi"
+  local unit_name
+  unit_name=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then sed -n 's/.*\"unitName\":\"\\([^\"]*\\)\".*/\\1/p' \"${REMOTE_RUN_STATUS}\" | head -n 1; fi" || echo "")
+  if [[ -n "${unit_name}" ]]; then
+    echo "[INFO] Unit status: ${unit_name}"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl show -p ActiveState -p SubState -p ExecMainStatus \"${unit_name}\"" || true
+  fi
   if ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; then
     local exit_code
     exit_code=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_EXIT}\"" || echo "unknown")
@@ -522,7 +730,13 @@ remote_attach() {
     echo "[ERROR] Remote log not found: ${REMOTE_RUN_LOG}"
     exit 2
   fi
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "tail -f \"${REMOTE_RUN_LOG}\"" &
+  local unit_name
+  unit_name=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then sed -n 's/.*\"unitName\":\"\\([^\"]*\\)\".*/\\1/p' \"${REMOTE_RUN_STATUS}\" | head -n 1; fi" || echo "")
+  if [[ -n "${unit_name}" ]] && ssh ${SSH_OPTS} "${REMOTE_HOST}" "command -v journalctl >/dev/null 2>&1"; then
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "journalctl -u \"${unit_name}\" -f" &
+  else
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "tail -f \"${REMOTE_RUN_LOG}\"" &
+  fi
   local tail_pid=$!
   while ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_EXIT}\""; do
     sleep 5
@@ -569,6 +783,13 @@ print_plan() {
       echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
       echo "[PLAN] Remote pid: ${REMOTE_RUN_PID}"
     fi
+    if [[ ${JOB_MODE} -eq 1 ]]; then
+      echo "[PLAN] Job: enabled (systemd-run)"
+      echo "[PLAN] Remote log: ${REMOTE_RUN_LOG}"
+      echo "[PLAN] Remote status: ${REMOTE_RUN_STATUS}"
+      echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
+      echo "[PLAN] Remote pid: ${REMOTE_RUN_PID}"
+    fi
   else
     echo "[PLAN] Mode: local"
     echo "[PLAN] Command: ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}"
@@ -579,27 +800,25 @@ if [[ ${PRINT_PLAN} -eq 1 ]]; then
   exit 0
 fi
 
+if [[ ${DETACH_MODE} -eq 1 && ${JOB_MODE} -eq 1 ]]; then
+  echo "[ERROR] --detach and --job are mutually exclusive." >&2
+  exit 2
+fi
+
 if [[ ${DETACH_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
   echo "[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5)." >&2
   exit 2
 fi
 
+if [[ ${JOB_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
+  echo "[ERROR] --job requires RASPI_SERVER_HOST (remote Pi5)." >&2
+  exit 2
+fi
 
-start_remote_detached() {
+
+write_remote_runner_script() {
   local run_id="$1"
-  local inventory_basename
-  local playbook_basename
-  local playbook_relative
-  local limit_arg=""
-  inventory_basename=$(basename "${INVENTORY_PATH}")
-  playbook_basename=$(basename "${PLAYBOOK_PATH}")
-  playbook_relative="playbooks/${playbook_basename}"
-  if [[ -n "${LIMIT_HOSTS}" ]]; then
-    limit_arg="--limit ${LIMIT_HOSTS}"
-  fi
   remote_run_paths "${run_id}"
-  local INVENTORY_BASENAME="${inventory_basename}"
-  local PLAYBOOK_RELATIVE="${playbook_relative}"
 
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat > /tmp/ansible-update-${run_id}.sh" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
@@ -617,6 +836,8 @@ REPO_VERSION="${REPO_VERSION}"
 INVENTORY_BASENAME="${INVENTORY_BASENAME}"
 PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
 LIMIT_HOSTS="${LIMIT_HOSTS}"
+UNIT_NAME="${UNIT_NAME}"
+RUNNER="${RUNNER}"
 
 mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
@@ -633,12 +854,86 @@ if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
 fi
 
+MAINTENANCE_FLAG_SET=0
+
+should_enable_kiosk_maintenance() {
+  local limit_arg=""
+  if [ -n "${LIMIT_HOSTS}" ]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+    # Fast-path: common limits that definitely include Pi4 kiosks
+    case "${LIMIT_HOSTS}" in
+      *raspberrypi4*|clients|server:clients|all)
+        return 0
+        ;;
+    esac
+  else
+    # No --limit means full deploy (server + clients). If kiosks exist, they are included.
+    return 0
+  fi
+
+  local selected_hosts
+  selected_hosts=$(
+    ansible -i "${INVENTORY_BASENAME}" 'server:clients' --list-hosts ${limit_arg} 2>/dev/null \
+      | python3 - <<'PY'
+import re, sys
+text = sys.stdin.read()
+hosts = []
+for line in text.splitlines():
+    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
+    if m:
+        hosts.append(m.group(1))
+print("\n".join(hosts))
+PY
+  )
+  if [ -z "${selected_hosts}" ]; then
+    return 1
+  fi
+
+  local kiosk_hosts
+  kiosk_hosts=$(
+    ansible-inventory -i "${INVENTORY_BASENAME}" --list \
+      | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+print("\n".join(sorted(kiosk)))
+PY
+  )
+  if [ -z "${kiosk_hosts}" ]; then
+    return 1
+  fi
+
+  python3 - <<'PY' "${selected_hosts}" "${kiosk_hosts}"
+import sys
+selected = set([h for h in sys.argv[1].splitlines() if h.strip()])
+kiosk = set([h for h in sys.argv[2].splitlines() if h.strip()])
+sys.exit(0 if (selected & kiosk) else 1)
+PY
+}
+
+set_kiosk_maintenance_flag() {
+  if should_enable_kiosk_maintenance; then
+    echo "[INFO] Setting kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
+    mkdir -p "$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")" || true
+    echo "{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "${REMOTE_DEPLOY_STATUS_FILE}" || true
+    MAINTENANCE_FLAG_SET=1
+  fi
+}
+
+clear_kiosk_maintenance_flag() {
+  if [ "${MAINTENANCE_FLAG_SET}" = "1" ]; then
+    echo "[INFO] Clearing kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
+    rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
+  fi
+}
+
 write_status() {
   local state="$1"
   local exit_code="${2:-}"
-  python3 - <<'PY' "${REMOTE_RUN_STATUS}" "${RUN_ID}" "${REPO_VERSION}" "${INVENTORY_BASENAME}" "${LIMIT_HOSTS}" "${state}" "${exit_code}"
+  python3 - <<'PY' "${REMOTE_RUN_STATUS}" "${RUN_ID}" "${REPO_VERSION}" "${INVENTORY_BASENAME}" "${LIMIT_HOSTS}" "${state}" "${exit_code}" "${UNIT_NAME}" "${RUNNER}"
 import json, sys, time
-path, run_id, repo_version, inventory, limit_hosts, state, exit_code = sys.argv[1:]
+path, run_id, repo_version, inventory, limit_hosts, state, exit_code, unit_name, runner = sys.argv[1:]
 data = {
     "runId": run_id,
     "branch": repo_version,
@@ -652,6 +947,10 @@ if state == "running":
 if state in ("success", "failed"):
     data["endedAt"] = data["updatedAt"]
     data["exitCode"] = exit_code
+if unit_name:
+    data["unitName"] = unit_name
+if runner:
+    data["runner"] = runner
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False)
 PY
@@ -709,13 +1008,12 @@ PY
 cleanup() {
   local exit_code=$?
   echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
-  if [ "${LIMIT_HOSTS}" = "raspberrypi4" ]; then
-    rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
-  fi
+  clear_kiosk_maintenance_flag
   rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
+set_kiosk_maintenance_flag
 write_status running
 echo "[INFO] Detach run started: ${RUN_ID}"
 echo "[INFO] Log: ${REMOTE_RUN_LOG}"
@@ -766,9 +1064,60 @@ else
 fi
 exit ${exit_code}
 REMOTE_SCRIPT
+}
+
+start_remote_detached() {
+  local run_id="$1"
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  local INVENTORY_BASENAME="${inventory_basename}"
+  local PLAYBOOK_RELATIVE="${playbook_relative}"
+  local UNIT_NAME=""
+  local RUNNER="nohup"
+
+  write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Detach run started: ${run_id}"
+  echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
+  echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
+  echo "[INFO] Remote exit: ${REMOTE_RUN_EXIT}"
+  echo "[INFO] Remote pid: ${REMOTE_RUN_PID}"
+  if [[ ${FOLLOW_MODE} -eq 1 ]]; then
+    remote_attach "${run_id}"
+  fi
+}
+
+start_remote_job() {
+  local run_id="$1"
+  local inventory_basename
+  local playbook_basename
+  local playbook_relative
+  local limit_arg=""
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  playbook_basename=$(basename "${PLAYBOOK_PATH}")
+  playbook_relative="playbooks/${playbook_basename}"
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    limit_arg="--limit ${LIMIT_HOSTS}"
+  fi
+  local INVENTORY_BASENAME="${inventory_basename}"
+  local PLAYBOOK_RELATIVE="${playbook_relative}"
+  local UNIT_NAME="ansible-update-${run_id}"
+  local RUNNER="systemd-run"
+
+  write_remote_runner_script "${run_id}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
+  echo "[INFO] Job run started: ${run_id}"
+  echo "[INFO] Unit: ${UNIT_NAME}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
   echo "[INFO] Remote exit: ${REMOTE_RUN_EXIT}"
@@ -908,14 +1257,20 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   ensure_local_repo_ready_for_deploy
+  pre_deploy_checks || exit_with_error 3 "Pre-deploy checks failed. Please fix the issues above."
   notify_start
   check_network_mode
   acquire_remote_lock
-  if [[ ${DETACH_MODE} -eq 0 ]]; then
+  if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
     trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
   fi
   set_pi4_maintenance_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
+  if [[ ${JOB_MODE} -eq 1 ]]; then
+    RUN_ID="$(build_run_id)"
+    start_remote_job "${RUN_ID}"
+    exit 0
+  fi
   if [[ ${DETACH_MODE} -eq 1 ]]; then
     RUN_ID="$(build_run_id)"
     start_remote_detached "${RUN_ID}"

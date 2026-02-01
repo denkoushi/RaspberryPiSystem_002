@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-22（デプロイ検証強化: DBゲート追加・fail-fast化）
+最終更新: 2026-02-01（NodeSourceリポジトリGPG署名キー問題の解決、aptリポジトリ確認をデプロイ前チェックリストに追加）
 
 ## 概要
 
@@ -144,6 +144,25 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # 修正が必要な場合
   ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
   ```
+- [ ] **Git権限の確認**: `.git`ディレクトリが`denkon5sd02`所有であることを確認（デタッチ実行に必要、[KB-219](../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題gitディレクトリがroot所有でデタッチ実行が失敗)参照）
+  ```bash
+  # Pi5上で実行（root所有を検出）
+  ssh denkon5sd02@raspberrypi.local "ls -ld /opt/RaspberryPiSystem_002/.git"
+  # 修正が必要な場合（root所有の場合）
+  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git"
+  ```
+- [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
+  ```bash
+  # Macから実行（接続テスト）
+  ssh denkon5sd02@100.106.158.2 "echo 'SSH接続成功'"
+  # 接続できない場合、fail2ban Banの可能性があるため、RealVNC経由でPi5にアクセスしてBanを解除
+  ```
+- [ ] **aptリポジトリの確認**: NodeSourceリポジトリが存在する場合、GPG署名キー問題の可能性があるため確認（[KB-220](../knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される)参照）
+  ```bash
+  # Pi5上で実行（NodeSourceリポジトリの存在確認）
+  ls -la /etc/apt/sources.list.d/nodesource.list 2>/dev/null || echo "NodeSourceリポジトリは存在しません"
+  # 存在する場合、apt-get updateでGPG署名エラーが発生する可能性があるため、削除を検討
+  ```
 - [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
 
 ### デプロイ後チェックリスト
@@ -164,13 +183,20 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか
   - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
-- [ ] **DB整合性チェック**: マイグレーション適用と必須テーブルの存在を確認
+- [ ] **DB整合性チェック（重要）**: マイグレーション適用と必須テーブルの存在を確認。**デプロイ完了後、必ずマイグレーション状態を確認すること**（[KB-224](../knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題)参照）。未適用のマイグレーションがある場合は、手動で`pnpm prisma migrate deploy`を実行する。
   ```bash
-  # Pi5上で実行
+  # Pi5上で実行（マイグレーション状態の確認）
   cd /opt/RaspberryPiSystem_002
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+  
+  # 未適用のマイグレーションがある場合、手動で適用
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+  
+  # マイグレーション履歴の確認
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
     psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";"
+  
+  # 必須テーブルの存在確認（例: MeasuringInstrumentLoanEvent）
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
     psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;"
   ```
@@ -260,6 +286,8 @@ bash ./scripts/server/deploy-detached.sh feature/new-feature
 # 実行状態はログ/ステータス/exitで確認
 ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | head -3
 ```
+**補足**:
+- `deploy-detached.sh` は systemd-run が利用可能な場合は **ジョブ化して実行**します（不可の場合は `nohup` にフォールバック）
 
 **Ansible経由デプロイのログ追尾**:
 `scripts/update-all-clients.sh`で`--detach`モードを使用する場合、ログはリアルタイムで表示されません。以下の方法でログを追尾できます：
@@ -274,7 +302,45 @@ ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | he
   ./scripts/update-all-clients.sh --attach 20260125-135737-15664
   ```
 
+**ジョブ実行（systemd-run）**:
+長時間デプロイを **端末切断に強く** 実行したい場合は `--job` を使用します。
+- **`--job --follow`**: Pi5上でジョブ化して実行し、追尾する
+  ```bash
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
+  ```
+- **`--status <run_id>`**: ジョブの状態とunitステータスを確認
+  ```bash
+  ./scripts/update-all-clients.sh --status 20260125-135737-15664
+  ```
+
 詳細は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) を参照してください。
+
+### 所要時間の目安と判定（運用目線）
+
+**目安（通常時）**:
+- **Pi5（サーバー）**: 10分前後（上限15分）
+- **Pi4（キオスク）**: 5〜10分（上限10分）
+- **Pi3（サイネージ）**: 10〜15分（上限30分）
+
+**判定ルール（最低限）**:
+- 上限内に完了しない場合は**「遅延」**として扱い、ログを確認する
+- **`context canceled`** や `rpc error` が出た場合はビルド中断の可能性が高い
+
+**ログからの所要時間確認**:
+- `logs/ansible-history.jsonl` に **実行単位の所要時間** が記録されます（`durationSeconds`）。
+```bash
+# 直近の所要時間を確認（秒）
+tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
+```
+
+**補足**:
+- 目安は「通常のコード変更＋Docker buildあり」を前提にした基準です
+- 大きな差分や初回ビルド時は長くなる場合があります
+  - 例: Docker build cacheの欠如、依存関係の追加など
+
+**重要（反映漏れ防止）**:
+- Ansible標準経路では、**コード更新があった場合に `api/web` を `--force-recreate --build` で再作成**します。
+- これが「デプロイ成功＝変更が反映済み」の前提条件です。ビルドが重い場合は完了まで待機し、ログ/ステータスで確認してください。
 
 **deploy.shの改善機能（2026-01-24実装）**:
 - **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）
@@ -284,6 +350,17 @@ ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | he
 **注意事項**:
 - SSH経由で長時間実行する場合（Dockerビルドが数分かかる）、クライアント側のタイムアウト設定に注意してください。タイムアウトが発生した場合でも、`trap`による自動復旧が動作しますが、ログファイルで実行状況を確認してください
 - デプロイログは`/opt/RaspberryPiSystem_002/logs/deploy/deploy-sh-<timestamp>.log`に保存されます
+
+### ビルド時間短縮（任意・推奨）
+
+**目的**: Docker buildのコンテキスト転送量を削減し、ビルド時間と`context canceled`のリスクを下げる。
+
+**方針**:
+- リポジトリルートの `.dockerignore` により、`node_modules/`, `logs/`, `storage/`, `alerts/`, `certs/`, `docs/` など **ビルド不要なディレクトリを除外**します。
+- **重要**: `**/tsconfig.tsbuildinfo` と `**/*.tsbuildinfo` も除外します（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない)参照）。
+  - TypeScriptのインクリメンタルビルド情報（`tsbuildinfo`）がDockerにコピーされると、`tsc`が「変更なし」と判断してビルドをスキップし、`dist`が生成されない問題が発生します。
+  - Docker内では常に新しいビルドを実行するため、`tsbuildinfo`を除外する必要があります。
+- これにより **Pi5上のDocker buildが安定・短縮** します。
 
 ### 方法2: 手動で更新
 
@@ -463,7 +540,14 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 # 環境変数を設定（Pi5のTailscale IPを指定）
 # 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
+# 環境変数の設定（Pi5のTailscale IPを指定）
+# ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
+# ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
+# inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+
+# または、ユーザー名を省略した形式（スクリプトが自動補完）
+# export RASPI_SERVER_HOST="100.106.158.2"  # スクリプトが自動的に denkon5sd02@100.106.158.2 に変換
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（第2工場）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml

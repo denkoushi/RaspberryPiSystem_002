@@ -51,7 +51,9 @@ import {
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
   updateKioskProductionScheduleOrder,
-  updateKioskProductionScheduleNote
+  updateKioskProductionScheduleNote,
+  updateKioskProductionScheduleDueDate,
+  updateKioskProductionScheduleProcessing
 } from './client';
 import {
   borrowItem,
@@ -98,6 +100,11 @@ import {
   setSignageEmergency,
   getSignageContent,
   getCsvDashboards,
+  getVisualizationDashboards,
+  getVisualizationDashboard,
+  createVisualizationDashboard,
+  updateVisualizationDashboard,
+  deleteVisualizationDashboard,
   type SignageSchedule,
   type SignagePdf,
   type ClientLogLevel,
@@ -256,13 +263,85 @@ export function useUpdateKioskProductionScheduleNote() {
         page: number;
         pageSize: number;
         total: number;
-        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null; note?: string | null }>;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
       }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
         if (!oldData) return oldData;
         return {
           ...oldData,
           rows: oldData.rows.map((row) =>
             row.id === rowId ? { ...row, note: data.note } : row
+          )
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueDate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string }) =>
+      updateKioskProductionScheduleDueDate(rowId, { dueDate }),
+    onSuccess: async (data, { rowId }) => {
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
+      }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          rows: oldData.rows.map((row) =>
+            row.id === rowId ? { ...row, dueDate: data.dueDate } : row
+          )
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleProcessing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, processingType }: { rowId: string; processingType: string }) =>
+      updateKioskProductionScheduleProcessing(rowId, { processingType }),
+    onSuccess: async (data, { rowId }) => {
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          processingType?: string | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
+      }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          rows: oldData.rows.map((row) =>
+            row.id === rowId ? { ...row, processingType: data.processingType } : row
           )
         };
       });
@@ -779,6 +858,46 @@ export function useCsvDashboards(filters?: { enabled?: boolean; search?: string 
     queryKey: ['csv-dashboards', filters],
     queryFn: () => getCsvDashboards(filters)
   });
+}
+
+export function useVisualizationDashboards(filters?: { enabled?: boolean; search?: string }) {
+  return useQuery({
+    queryKey: ['visualization-dashboards', filters],
+    queryFn: () => getVisualizationDashboards(filters)
+  });
+}
+
+export function useVisualizationDashboard(id?: string | null) {
+  return useQuery({
+    queryKey: ['visualization-dashboard', id],
+    queryFn: () => getVisualizationDashboard(id!),
+    enabled: Boolean(id)
+  });
+}
+
+export function useVisualizationDashboardMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: createVisualizationDashboard,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateVisualizationDashboard>[1] }) =>
+      updateVisualizationDashboard(id, payload),
+    onSuccess: (dashboard) => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboard', dashboard.id] });
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteVisualizationDashboard(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visualization-dashboards'] });
+    }
+  });
+  return { create, update, remove };
 }
 
 export function useUnifiedItems(params?: UnifiedListParams) {

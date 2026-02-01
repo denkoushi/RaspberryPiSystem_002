@@ -145,7 +145,9 @@ pnpm test:e2e:headed
   curl -fsSL https://get.docker.com | sh
   sudo usermod -aG docker $USER
   ```
-- Node.js 20 系（`nvm` もしくは `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
+- Node.js 20 系（推奨: `nvm`）
+  - ⚠️ NodeSource（`deb.nodesource.com`）はOS側のGPG/署名ポリシー変更で `apt update` が失敗し、デプロイが中断する場合があります（例: 2026-02-01以降のSHA1拒否。詳細はKB-220）。
+  - `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -` を使う場合は、`/etc/apt/sources.list.d/nodesource.list` が残り続ける点に注意してください。
 - pnpm (`corepack enable`)
 - Python 3.11 + Poetry（クライアント開発や手元検証用）
 

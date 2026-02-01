@@ -18,11 +18,22 @@ const csvDashboardSlotConfigSchema = z
   })
   .strict();
 
-const slotConfigSchema = z.union([pdfSlotConfigSchema, loansSlotConfigSchema, csvDashboardSlotConfigSchema]);
+const visualizationSlotConfigSchema = z
+  .object({
+    visualizationDashboardId: z.string().uuid(),
+  })
+  .strict();
+
+const slotConfigSchema = z.union([
+  pdfSlotConfigSchema,
+  loansSlotConfigSchema,
+  csvDashboardSlotConfigSchema,
+  visualizationSlotConfigSchema,
+]);
 
 const slotSchema = z.object({
   position: z.enum(['FULL', 'LEFT', 'RIGHT']),
-  kind: z.enum(['pdf', 'loans', 'csv_dashboard']),
+  kind: z.enum(['pdf', 'loans', 'csv_dashboard', 'visualization']),
   config: slotConfigSchema,
 });
 

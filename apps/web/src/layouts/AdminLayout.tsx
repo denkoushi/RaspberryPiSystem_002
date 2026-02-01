@@ -51,6 +51,8 @@ export function AdminLayout() {
           { to: '/admin/tools/history', label: '履歴' },
           { to: '/admin/clients', label: 'クライアント端末' },
           { to: '/admin/import', label: 'CSV取り込み' },
+          { to: '/admin/csv-dashboards', label: 'CSVダッシュボード' },
+          { to: '/admin/visualization-dashboards', label: '可視化ダッシュボード' },
           { to: '/admin/gmail/config', label: 'Gmail設定' },
           { to: '/admin/backup/targets', label: 'バックアップ' },
           { to: '/admin/signage/schedules', label: 'サイネージ' },
@@ -124,6 +126,9 @@ export function AdminLayout() {
           </NavLink>
           <NavLink to="/admin/csv-dashboards" className={linkClass}>
             CSVダッシュボード
+          </NavLink>
+          <NavLink to="/admin/visualization-dashboards" className={linkClass}>
+            可視化ダッシュボード
           </NavLink>
           <NavLink to="/admin/gmail/config" className={linkClass}>
             Gmail設定

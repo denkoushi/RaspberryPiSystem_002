@@ -44,7 +44,7 @@ export function RiggingGearsPage() {
   // 管理コンソールでのUID自動入力（Pi4のNFCリーダー）
   useEffect(() => {
     if (nfcEvent?.uid) {
-      setForm((prev) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
+      setForm((prev: FormState) => ({ ...prev, rfidTagUid: nfcEvent.uid }));
     }
   }, [nfcEvent]);
 
@@ -222,27 +222,27 @@ export function RiggingGearsPage() {
           <div className="flex flex-col gap-2">
             <Input
               value={form.name ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, name: e.target.value }))}
               placeholder="名称（必須）"
             />
             <Input
               value={form.managementNumber ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, managementNumber: e.target.value }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, managementNumber: e.target.value }))}
               placeholder="管理番号（必須）"
             />
             <Input
               value={form.storageLocation ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, storageLocation: e.target.value }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, storageLocation: e.target.value }))}
               placeholder="保管場所"
             />
             <Input
               value={form.department ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, department: e.target.value }))}
               placeholder="部署"
             />
             <Input
               value={form.maxLoadTon ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, maxLoadTon: e.target.value ? Number(e.target.value) : null }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, maxLoadTon: e.target.value ? Number(e.target.value) : null }))}
               placeholder="最大使用荷重(t)"
               type="number"
             />
@@ -250,33 +250,33 @@ export function RiggingGearsPage() {
           <div className="flex flex-col gap-2">
             <Input
               value={form.lengthMm ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, lengthMm: e.target.value ? Number(e.target.value) : null }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, lengthMm: e.target.value ? Number(e.target.value) : null }))}
               placeholder="長さ(mm)"
               type="number"
             />
             <Input
               value={form.widthMm ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, widthMm: e.target.value ? Number(e.target.value) : null }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, widthMm: e.target.value ? Number(e.target.value) : null }))}
               placeholder="幅(mm)"
               type="number"
             />
             <Input
               value={form.thicknessMm ?? ''}
               onChange={(e) =>
-                setForm((f) => ({ ...f, thicknessMm: e.target.value ? Number(e.target.value) : null }))
+                setForm((f: FormState) => ({ ...f, thicknessMm: e.target.value ? Number(e.target.value) : null }))
               }
               placeholder="厚み(mm)"
               type="number"
             />
             <Input
               value={form.startedAt ? String(form.startedAt).substring(0, 10) : ''}
-              onChange={(e) => setForm((f) => ({ ...f, startedAt: e.target.value || null }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, startedAt: e.target.value || null }))}
               placeholder="使用開始日"
               type="date"
             />
             <Input
               value={form.rfidTagUid ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, rfidTagUid: e.target.value || undefined }))}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, rfidTagUid: e.target.value || undefined }))}
               placeholder="RFIDタグUID（任意・上書き登録）"
             />
           </div>

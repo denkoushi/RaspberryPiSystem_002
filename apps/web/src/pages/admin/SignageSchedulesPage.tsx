@@ -6,13 +6,21 @@ import {
   useSignagePdfs,
   useSignageRenderMutation,
   useSignageRenderStatus,
-  useCsvDashboards
+  useCsvDashboards,
+  useVisualizationDashboards
 } from '../../api/hooks';
 import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
-import type { SignageSchedule, SignagePdf, SignageLayoutConfig, SignageSlot, CsvDashboard } from '../../api/client';
+import type {
+  SignageSchedule,
+  SignagePdf,
+  SignageLayoutConfig,
+  SignageSlot,
+  CsvDashboard,
+  VisualizationDashboard
+} from '../../api/client';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: '日' },
@@ -28,6 +36,7 @@ export function SignageSchedulesPage() {
   const schedulesQuery = useSignageSchedules();
   const pdfsQuery = useSignagePdfs();
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
+  const visualizationDashboardsQuery = useVisualizationDashboards({ enabled: true });
   const { create, update, remove } = useSignageScheduleMutations();
   const renderMutation = useSignageRenderMutation();
   const renderStatusQuery = useSignageRenderStatus();
@@ -46,15 +55,18 @@ export function SignageSchedulesPage() {
   });
   const [useNewLayout, setUseNewLayout] = useState(false); // 新形式を使用するか
   const [layoutType, setLayoutType] = useState<'FULL' | 'SPLIT'>('FULL'); // レイアウトタイプ
-  const [leftSlotKind, setLeftSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard'>('loans'); // 左スロットの種類
-  const [rightSlotKind, setRightSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard'>('pdf'); // 右スロットの種類
+  const [leftSlotKind, setLeftSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('loans'); // 左スロットの種類
+  const [rightSlotKind, setRightSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('pdf'); // 右スロットの種類
   const [leftPdfId, setLeftPdfId] = useState<string | null>(null); // 左スロットのPDF（kind='pdf'の場合）
   const [rightPdfId, setRightPdfId] = useState<string | null>(null); // 右スロットのPDF（kind='pdf'の場合）
   const [leftCsvDashboardId, setLeftCsvDashboardId] = useState<string | null>(null); // 左スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
   const [rightCsvDashboardId, setRightCsvDashboardId] = useState<string | null>(null); // 右スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
-  const [fullSlotKind, setFullSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard'>('loans'); // 全体スロットの種類
+  const [leftVisualizationDashboardId, setLeftVisualizationDashboardId] = useState<string | null>(null); // 左スロットの可視化（kind='visualization'の場合）
+  const [rightVisualizationDashboardId, setRightVisualizationDashboardId] = useState<string | null>(null); // 右スロットの可視化（kind='visualization'の場合）
+  const [fullSlotKind, setFullSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
+  const [fullVisualizationDashboardId, setFullVisualizationDashboardId] = useState<string | null>(null); // 全体スロットの可視化（kind='visualization'の場合）
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -69,6 +81,9 @@ export function SignageSchedulesPage() {
     setFullCsvDashboardId(null);
     setLeftCsvDashboardId(null);
     setRightCsvDashboardId(null);
+    setFullVisualizationDashboardId(null);
+    setLeftVisualizationDashboardId(null);
+    setRightVisualizationDashboardId(null);
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -102,10 +117,19 @@ export function SignageSchedulesPage() {
             setFullSlotKind('csv_dashboard');
             setFullCsvDashboardId('csvDashboardId' in slot.config ? slot.config.csvDashboardId ?? null : null);
             setFullPdfId(null);
+            setFullVisualizationDashboardId(null);
+          } else if (slot.kind === 'visualization') {
+            setFullSlotKind('visualization');
+            setFullVisualizationDashboardId(
+              'visualizationDashboardId' in slot.config ? slot.config.visualizationDashboardId ?? null : null
+            );
+            setFullPdfId(null);
+            setFullCsvDashboardId(null);
           } else {
             setFullSlotKind('loans');
             setFullPdfId(null);
             setFullCsvDashboardId(null);
+            setFullVisualizationDashboardId(null);
           }
         }
       } else {
@@ -120,10 +144,19 @@ export function SignageSchedulesPage() {
             setLeftSlotKind('csv_dashboard');
             setLeftCsvDashboardId('csvDashboardId' in leftSlot.config ? leftSlot.config.csvDashboardId ?? null : null);
             setLeftPdfId(null);
+            setLeftVisualizationDashboardId(null);
+          } else if (leftSlot.kind === 'visualization') {
+            setLeftSlotKind('visualization');
+            setLeftVisualizationDashboardId(
+              'visualizationDashboardId' in leftSlot.config ? leftSlot.config.visualizationDashboardId ?? null : null
+            );
+            setLeftPdfId(null);
+            setLeftCsvDashboardId(null);
           } else {
             setLeftSlotKind('loans');
             setLeftPdfId(null);
             setLeftCsvDashboardId(null);
+            setLeftVisualizationDashboardId(null);
           }
         }
         if (rightSlot) {
@@ -131,14 +164,24 @@ export function SignageSchedulesPage() {
             setRightSlotKind('pdf');
             setRightPdfId('pdfId' in rightSlot.config ? rightSlot.config.pdfId ?? null : null);
             setRightCsvDashboardId(null);
+            setRightVisualizationDashboardId(null);
           } else if (rightSlot.kind === 'csv_dashboard') {
             setRightSlotKind('csv_dashboard');
             setRightCsvDashboardId('csvDashboardId' in rightSlot.config ? rightSlot.config.csvDashboardId ?? null : null);
             setRightPdfId(null);
+            setRightVisualizationDashboardId(null);
+          } else if (rightSlot.kind === 'visualization') {
+            setRightSlotKind('visualization');
+            setRightVisualizationDashboardId(
+              'visualizationDashboardId' in rightSlot.config ? rightSlot.config.visualizationDashboardId ?? null : null
+            );
+            setRightPdfId(null);
+            setRightCsvDashboardId(null);
           } else {
             setRightSlotKind('loans');
             setRightPdfId(null);
             setRightCsvDashboardId(null);
+            setRightVisualizationDashboardId(null);
           }
         }
       }
@@ -157,6 +200,9 @@ export function SignageSchedulesPage() {
         setRightSlotKind('pdf');
         setRightPdfId(schedule.pdfId);
       }
+      setFullVisualizationDashboardId(null);
+      setLeftVisualizationDashboardId(null);
+      setRightVisualizationDashboardId(null);
     }
     
     setFormData({
@@ -207,6 +253,19 @@ export function SignageSchedulesPage() {
             },
           ],
         };
+      } else if (fullSlotKind === 'visualization' && fullVisualizationDashboardId) {
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'visualization',
+              config: {
+                visualizationDashboardId: fullVisualizationDashboardId,
+              },
+            },
+          ],
+        };
       } else {
         return {
           layout: 'FULL',
@@ -243,6 +302,14 @@ export function SignageSchedulesPage() {
             csvDashboardId: leftCsvDashboardId,
           },
         });
+      } else if (leftSlotKind === 'visualization' && leftVisualizationDashboardId) {
+        slots.push({
+          position: 'LEFT',
+          kind: 'visualization',
+          config: {
+            visualizationDashboardId: leftVisualizationDashboardId,
+          },
+        });
       } else {
         slots.push({
           position: 'LEFT',
@@ -269,6 +336,14 @@ export function SignageSchedulesPage() {
           kind: 'csv_dashboard',
           config: {
             csvDashboardId: rightCsvDashboardId,
+          },
+        });
+      } else if (rightSlotKind === 'visualization' && rightVisualizationDashboardId) {
+        slots.push({
+          position: 'RIGHT',
+          kind: 'visualization',
+          config: {
+            visualizationDashboardId: rightVisualizationDashboardId,
           },
         });
       } else {
@@ -347,6 +422,9 @@ export function SignageSchedulesPage() {
       setFullPdfId(null);
       setLeftPdfId(null);
       setRightPdfId(null);
+      setFullVisualizationDashboardId(null);
+      setLeftVisualizationDashboardId(null);
+      setRightVisualizationDashboardId(null);
       setFormData({
         name: '',
         contentType: 'TOOLS',
@@ -374,6 +452,9 @@ export function SignageSchedulesPage() {
     setFullPdfId(null);
     setLeftPdfId(null);
     setRightPdfId(null);
+    setFullVisualizationDashboardId(null);
+    setLeftVisualizationDashboardId(null);
+    setRightVisualizationDashboardId(null);
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -480,14 +561,20 @@ export function SignageSchedulesPage() {
                       <select
                         value={fullSlotKind}
                         onChange={(e) => {
-                          setFullSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard');
+                          setFullSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard' | 'visualization');
                           if (e.target.value === 'loans') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
+                            setFullVisualizationDashboardId(null);
                           } else if (e.target.value === 'pdf') {
                             setFullCsvDashboardId(null);
+                            setFullVisualizationDashboardId(null);
                           } else if (e.target.value === 'csv_dashboard') {
                             setFullPdfId(null);
+                            setFullVisualizationDashboardId(null);
+                          } else if (e.target.value === 'visualization') {
+                            setFullPdfId(null);
+                            setFullCsvDashboardId(null);
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -495,6 +582,7 @@ export function SignageSchedulesPage() {
                         <option value="loans">持出一覧</option>
                         <option value="pdf">PDF</option>
                         <option value="csv_dashboard">CSVダッシュボード</option>
+                        <option value="visualization">可視化</option>
                       </select>
                     </div>
                     {fullSlotKind === 'pdf' && (
@@ -531,6 +619,23 @@ export function SignageSchedulesPage() {
                         </select>
                       </div>
                     )}
+                    {fullSlotKind === 'visualization' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">可視化</label>
+                        <select
+                          value={fullVisualizationDashboardId || ''}
+                          onChange={(e) => setFullVisualizationDashboardId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
+                            <option key={dashboard.id} value={dashboard.id}>
+                              {dashboard.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -539,14 +644,20 @@ export function SignageSchedulesPage() {
                       <select
                         value={leftSlotKind}
                         onChange={(e) => {
-                          setLeftSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard');
+                          setLeftSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard' | 'visualization');
                           if (e.target.value === 'loans') {
                             setLeftPdfId(null);
                             setLeftCsvDashboardId(null);
+                            setLeftVisualizationDashboardId(null);
                           } else if (e.target.value === 'pdf') {
                             setLeftCsvDashboardId(null);
+                            setLeftVisualizationDashboardId(null);
                           } else if (e.target.value === 'csv_dashboard') {
                             setLeftPdfId(null);
+                            setLeftVisualizationDashboardId(null);
+                          } else if (e.target.value === 'visualization') {
+                            setLeftPdfId(null);
+                            setLeftCsvDashboardId(null);
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -554,6 +665,7 @@ export function SignageSchedulesPage() {
                         <option value="loans">持出一覧</option>
                         <option value="pdf">PDF</option>
                         <option value="csv_dashboard">CSVダッシュボード</option>
+                        <option value="visualization">可視化</option>
                       </select>
                     </div>
                     {leftSlotKind === 'pdf' && (
@@ -590,19 +702,42 @@ export function SignageSchedulesPage() {
                         </select>
                       </div>
                     )}
+                    {leftSlotKind === 'visualization' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">左側の可視化</label>
+                        <select
+                          value={leftVisualizationDashboardId || ''}
+                          onChange={(e) => setLeftVisualizationDashboardId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
+                            <option key={dashboard.id} value={dashboard.id}>
+                              {dashboard.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-sm font-semibold text-slate-700">右側の表示コンテンツ</label>
                       <select
                         value={rightSlotKind}
                         onChange={(e) => {
-                          setRightSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard');
+                          setRightSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard' | 'visualization');
                           if (e.target.value === 'loans') {
                             setRightPdfId(null);
                             setRightCsvDashboardId(null);
+                            setRightVisualizationDashboardId(null);
                           } else if (e.target.value === 'pdf') {
                             setRightCsvDashboardId(null);
+                            setRightVisualizationDashboardId(null);
                           } else if (e.target.value === 'csv_dashboard') {
                             setRightPdfId(null);
+                            setRightVisualizationDashboardId(null);
+                          } else if (e.target.value === 'visualization') {
+                            setRightPdfId(null);
+                            setRightCsvDashboardId(null);
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -610,6 +745,7 @@ export function SignageSchedulesPage() {
                         <option value="loans">持出一覧</option>
                         <option value="pdf">PDF</option>
                         <option value="csv_dashboard">CSVダッシュボード</option>
+                        <option value="visualization">可視化</option>
                       </select>
                     </div>
                     {rightSlotKind === 'pdf' && (
@@ -639,6 +775,23 @@ export function SignageSchedulesPage() {
                         >
                           <option value="">選択してください</option>
                           {csvDashboardsQuery.data?.map((dashboard: CsvDashboard) => (
+                            <option key={dashboard.id} value={dashboard.id}>
+                              {dashboard.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {rightSlotKind === 'visualization' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">右側の可視化</label>
+                        <select
+                          value={rightVisualizationDashboardId || ''}
+                          onChange={(e) => setRightVisualizationDashboardId(e.target.value || null)}
+                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                        >
+                          <option value="">選択してください</option>
+                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
                             <option key={dashboard.id} value={dashboard.id}>
                               {dashboard.name}
                             </option>

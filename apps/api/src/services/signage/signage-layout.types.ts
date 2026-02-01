@@ -6,7 +6,7 @@ export type SignageLayoutType = 'FULL' | 'SPLIT';
 
 export type SignageSlotPosition = 'FULL' | 'LEFT' | 'RIGHT';
 
-export type SignageSlotKind = 'pdf' | 'loans' | 'csv_dashboard';
+export type SignageSlotKind = 'pdf' | 'loans' | 'csv_dashboard' | 'visualization';
 
 /**
  * PDFスロットの設定
@@ -32,12 +32,19 @@ export interface CsvDashboardSlotConfig {
 }
 
 /**
+ * 可視化スロットの設定
+ */
+export interface VisualizationSlotConfig {
+  visualizationDashboardId: string;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
   position: SignageSlotPosition;
   kind: SignageSlotKind;
-  config: PdfSlotConfig | LoansSlotConfig | CsvDashboardSlotConfig;
+  config: PdfSlotConfig | LoansSlotConfig | CsvDashboardSlotConfig | VisualizationSlotConfig;
 }
 
 /**

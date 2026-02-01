@@ -9,6 +9,14 @@
 
 ## Progress
 
+- [x] (2026-02-01) **生産スケジュール備考のモーダル編集化と処理列追加完了・デプロイ成功・実機検証完了**: キオスクの生産スケジュールUIを大幅に改善し、操作性と視認性を向上。**UI改善内容**: 備考欄のモーダル編集化（`KioskNoteModal`コンポーネント新規作成、`textarea`で最大100文字入力、文字数カウント表示、保存時は改行削除して単一行として保存）、備考の2行表示（`line-clamp:2`で視認性向上）、処理列の追加（`processingType`フィールド追加、ドロップダウンで`塗装/カニゼン/LSLH/その他01/その他02`を選択可能、未選択状態も許可）、品番/製造order番号の折り返し対応（`break-all`クラス追加、`ProductNo`の固定幅削除で動的幅調整に参加）。**データベーススキーマ変更**: `ProductionScheduleRowNote`モデルに`processingType String? @db.VarChar(20)`フィールドを追加。**APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/processing`を追加。**データ整合性の考慮**: `note`、`dueDate`、`processingType`の3フィールドがすべて空/nullの場合のみレコードを削除するロジックを実装。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（マイグレーション適用済み）。**デプロイ時のトラブルシューティング**: デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用。**実機検証結果**: 備考モーダルが正常に開き全文を確認しながら編集できること、備考が2行まで折り返して表示されること、処理列のドロップダウンが正常に動作し選択・未選択状態が正しく保存されること、品番/製造order番号が長い場合でも折り返されて表示されること、備考・納期・処理の3フィールドが独立して動作することを確認。ナレッジベースにKB-223（備考モーダル編集化と処理列追加）、KB-224（デプロイ時のマイグレーション未適用問題）を追加。詳細は [docs/knowledge-base/frontend.md#kb-223](./docs/knowledge-base/frontend.md#kb-223-生産スケジュール備考のモーダル編集化と処理列追加) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
+
+- [x] (2026-02-01) **生産スケジュール納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。ナレッジベースにKB-221（納期日UI改善）、KB-222（デプロイ時のinventory混同）を追加。詳細は [docs/knowledge-base/frontend.md#kb-221](./docs/knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
+
+- [x] (2026-02-01) **NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了**: NodeSourceリポジトリのGPG署名キーがSHA1を使用しており、2026-02-01以降のDebianセキュリティポリシーで拒否される問題を解決。**問題**: デプロイ実行時に`apt-get update`が失敗し、Ansibleの`apt`モジュールが警告でも失敗として扱いデプロイが中断。**解決策**: NodeSourceリポジトリを削除（`/etc/apt/sources.list.d/nodesource.list`）。Node.jsは既にインストール済みのため、通常の運用には影響なし。**恒久対策**: `scripts/update-all-clients.sh`の`pre_deploy_checks()`にNodeSourceリポジトリ検知を追加（fail-fast）、`README.md`にNodeSource使用時の注意書きを追加、デプロイ標準手順にaptリポジトリ確認を追加。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: 全3ホスト（Pi5/Pi4/Pi3）で`failed=0`、デプロイ成功。**実機検証結果**: Pi5サーバー（APIヘルスチェック`status: ok`、DB整合性27マイグレーション適用済み・必須テーブル存在確認、Dockerコンテナすべて起動中、ポート公開状況正常、セキュリティ監視有効）、Pi4キオスク（systemdサービスすべてactive、API正常応答）、Pi3サイネージ（systemdサービスactive、API正常応答）すべて正常動作を確認。ナレッジベースにKB-220を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
+- [x] (2026-01-31) **サイネージ可視化ダッシュボード機能実装・デプロイ再整備完了**: サイネージに可視化ダッシュボード機能を統合し、デプロイプロセスでコード変更時のDocker再ビルドを確実化。**可視化ダッシュボード機能**: データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）をFactory/Registryパターンで実装し、疎結合・モジュール化・スケーラビリティを確保。サイネージスロットに`visualization`を追加し、`layoutConfig`で可視化ダッシュボードを指定可能に。管理コンソールで可視化ダッシュボードのCRUD UIを実装。**デプロイ再整備**: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。**実機検証結果**: Pi5でデプロイ成功、コード変更時のDocker再ビルドが正常に動作（正のテスト: コード変更→再ビルド、負のテスト: コード変更なし→再ビルドなし）。サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認。CI成功。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) / [docs/modules/signage/README.md](./docs/modules/signage/README.md) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-01-31) **Pi5ストレージメンテナンススクリプト修正完了（KB-130追加調査）**: Pi5のストレージ使用量が再び24%（約233GB）に増加した問題を調査・解決。**原因**: `storage-maintenance.sh`の`find -delete -print | wc -l`の順序問題により、`signage_*.jpg`ファイルが22,412件（8.2GB）削除されずに蓄積。Docker Build Cache 196.1GB、未使用Docker Images 182.4GBも蓄積。**対策**: 手動クリーンアップ実行後、`storage-maintenance.sh`を修正（ファイル数を先にカウントしてから削除、`docker builder du`のサイズ取得のフォールバック追加）。**結果**: ストレージ使用量24%→2%に改善、CI成功。詳細は [docs/knowledge-base/infrastructure/miscellaneous.md#kb-130](./docs/knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) / [docs/guides/operation-manual.md](./docs/guides/operation-manual.md) を参照。
 
 - [x] (2026-01-29) **デプロイ整備（KB-200）の全デバイス実機検証完了・ブランチ指定必須化**: デプロイ標準手順の安定性と安全性を向上させる「デプロイ整備」機能の全デバイス実機検証を完了。**実装内容**: fail-fastチェック（未commit/未push防止）、デタッチモード（`--detach`）とログ追尾（`--attach`/`--follow`）、プレフライトチェック（Pi3のサービス停止・GUI停止）、リモートロック、`git reset --hard origin/<branch>`修正（リモートブランチの最新状態に確実にリセット）、**ブランチ指定必須化**（デフォルトmain削除で誤デプロイ防止）。**実機検証結果**: Pi5で通常モードデプロイ成功（タイムアウトなし）、Pi4でリポジトリ更新成功（`a998117`に更新）、Pi3でプレフライトチェック（サービス停止・GUI停止）動作確認、リポジトリ更新成功（`a998117`）、デプロイ成功（`ok=108, changed=21, failed=0`）。**ドキュメント更新**: `docs/guides/deployment.md`からデフォルトmainブランチの記述を削除、`scripts/update-all-clients.sh`でブランチ未指定時はエラーで停止するように変更。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-200](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
@@ -620,6 +628,9 @@
   対応: `sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml`でファイル権限を修正してから`git pull`を実行。**[KB-176]**
 - 観測: 生産スケジュール検索状態共有の実装で、当初は「登録製番・資源フィルタも共有」としていたが、APIの保存・返却を**history専用**に統一し、ローカル削除を`hiddenHistory`で管理する仕様に確定した。実機検証ですべて正常動作を確認。  
   対応: KB-210に仕様確定（history専用・割当済み資源CD単独検索可・hiddenHistoryでローカル削除）を追記。**[KB-210]**
+- 観測: デプロイプロセスでコード変更を検知する仕組みがなく、コード変更をデプロイしてもDockerコンテナが再ビルドされず、変更が反映されない問題が発生した。以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった。  
+  エビデンス: コード変更をデプロイしても、実際には古いコードが動作し続ける。デプロイは成功するが、変更が反映されない。  
+  対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
 
@@ -717,6 +728,12 @@
 - 決定: 生産スケジュール検索状態の共有対象を**history（登録製番リスト）のみ**に限定する。押下状態・資源フィルタは端末ローカルで管理し、ローカルでの履歴削除は`hiddenHistory`（localStorage）で管理して共有historyに影響させない。また「割当済み資源CD」は製番未入力でも単独検索を許可する。  
   理由: 端末間で意図しない上書きを防ぎつつ、登録製番の共有で運用要件を満たすため。割当済み資源CD単独検索は現場の利用パターンに対応するため。  
   日付/担当: 2026-01-28 / KB-210 仕様確定・実機検証完了
+- 決定: サイネージ可視化ダッシュボード機能をFactory/Registryパターンで実装し、データソースとレンダラーを疎結合・モジュール化・スケーラブルに設計する。データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）を独立したモジュールとして実装し、新規追加が容易になるようにする。  
+  理由: ユーザー要件「自由度が欲しい。現場は常に動いてるので、どんな可視化ビジュアルが必要かは都度変わる」に対応し、将来のドラスティックな変更に耐える構造にするため。既存システムを破壊しないモジュール化と疎結合を確保するため。  
+  日付/担当: 2026-01-31 / サイネージ可視化ダッシュボード機能実装
+- 決定: デプロイプロセスでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正する。コード変更がない場合は再ビルドをスキップし、デプロイ時間を短縮する。  
+  理由: デプロイ成功＝変更が反映済み、という前提を保証するため。以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった問題を解決するため。  
+  日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
 
@@ -1345,6 +1362,53 @@
 
 **詳細**: [docs/knowledge-base/infrastructure/signage.md#kb-193](./docs/knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮)
 
+### デプロイ前チェックのさらなる強化（推奨）
+
+**概要**: NodeSourceリポジトリ問題の恒久対策実装を機に、デプロイ前チェックをさらに強化する
+
+**候補タスク**:
+1. **他のaptリポジトリ問題の検知**（優先度: 中）
+   - サードパーティリポジトリのGPG署名キー問題の自動検知
+   - 古いGPGキー（SHA1など）の使用状況の定期チェック
+   - リポジトリ設定の整合性確認（存在するが使用されていないリポジトリの検出）
+
+2. **デプロイ前チェックの拡張**（優先度: 低）
+   - システムパッケージの更新状況確認（`apt list --upgradable`）
+   - セキュリティ更新の有無確認（`unattended-upgrades`の状態）
+   - ディスク容量の事前確認（デプロイ実行前の容量チェック）
+
+3. **チェック結果の可視化**（優先度: 低）
+   - デプロイ前チェック結果のサマリー表示
+   - 警告とエラーの明確な区別
+   - チェック結果のログファイル出力
+
+**現状**: NodeSourceリポジトリ問題の恒久対策は完了し、デプロイ前チェックにNodeSourceリポジトリ検知を追加済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [docs/guides/deployment.md](./docs/guides/deployment.md)
+
+### Node.jsインストール方法の移行（将来の検討事項）
+
+**概要**: NodeSourceリポジトリ問題を機に、Node.jsのインストール方法をnvmや公式バイナリに移行することを検討
+
+**背景**:
+- NodeSourceリポジトリのGPG署名キー問題により、将来的なNode.js更新が困難になる可能性
+- nvmや公式バイナリを使用することで、OSのセキュリティポリシー変更の影響を受けにくくなる
+
+**候補タスク**:
+1. **nvmへの移行**（優先度: 低）
+   - Pi5/Pi4でのnvmインストール手順の確立
+   - 既存のNode.js環境からの移行手順
+   - デプロイスクリプトでのnvm使用の統合
+
+2. **公式バイナリの使用**（優先度: 低）
+   - Node.js公式バイナリのインストール手順
+   - システムパスへの追加方法
+   - バージョン管理の方法
+
+**現状**: Node.jsは既にインストール済みで正常に動作しているため、緊急の対応は不要。将来的なNode.js更新が必要になった際に検討。
+
+**詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [README.md](./README.md)
+
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
@@ -1364,3 +1428,4 @@
 変更履歴: 2026-01-18 — ポート露出削減機能の実機検証完了を記録。デプロイ成功、Gmail/Dropbox設定維持確認、アラート新規発生なし確認を反映。Surprises & Discoveriesにデプロイ時のトラブルシューティングを追加。Next StepsのPort hardening候補を完了済みに更新。
 変更履歴: 2026-01-23 — CSVダッシュボードの列幅計算改善完了を記録。フォントサイズ反映・全行考慮・列名考慮の実装完了、仮説駆動デバッグ手法の確立、テスト追加を反映。ナレッジベースにKB-193を追加。Next StepsにCSVダッシュボード機能の改善候補を追加。
 変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
+変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 27件  
+**件数**: 35件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -1525,6 +1525,15 @@ cat ~/.status-agent.conf
    - Pi5: 15分
    - タイムアウト設定は`infrastructure/ansible/inventory.yml`の`ansible_command_timeout`で管理
 
+**所要時間の目安（運用基準）**:
+- Pi5（サーバー）: 10分前後（上限15分）
+- Pi4（キオスク）: 5〜10分（上限10分）
+- Pi3（サイネージ）: 10〜15分（上限30分）
+
+**運用判断**:
+- 上限内に完了しない場合は「遅延」としてログを確認
+- `context canceled` / `rpc error` が出た場合はビルド中断の可能性が高い
+
 6. **通知（alerts一次情報 + Slackは二次経路）**:
    - デプロイ開始/成功/失敗/ホスト単位失敗のタイミングで **`alerts/alert-*.json`（一次情報）** を生成
    - `scripts/generate-alert.sh`を再利用して alerts ファイルを生成
@@ -2274,15 +2283,25 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 
 **実装詳細**:
 - **APIエンドポイント**: `GET /api/system/deploy-status` が `kioskMaintenance: boolean` を返す
-- **フラグファイル**: `deploy-status.json` は `{"kioskMaintenance": true, "scope": "raspberrypi4", "startedAt": "2026-01-19T05:25:44Z"}` 形式
+- **フラグファイル**: `deploy-status.json` は `{"kioskMaintenance": true, "scope": "kiosk", "startedAt": "2026-01-19T05:25:44Z"}` 形式
 - **ポーリング間隔**: 5秒間隔でポーリング（`refetchInterval: 5000`）
-- **スコープ**: Pi4デプロイ時のみフラグを設定（`--limit raspberrypi4`使用時）
+- **スコープ**: キオスククライアント（Pi4）がデプロイ対象に含まれる場合にフラグを設定（`--limit raspberrypi4`だけでなく、`--limit clients`や`--limit all`でも自動検出）
 
-**実機検証完了（2026-01-19）**:
-- ✅ Pi4デプロイ時にメンテナンス画面が表示されることを確認
-- ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認
-- ✅ Webコンテナの再ビルドが必要であることを確認
-- ✅ ブラウザのキャッシュクリアが必要な場合があることを確認
+**修正履歴（2026-01-31）**:
+- **問題**: `--limit raspberrypi4`を明示的に指定しない場合、メンテナンス画面が表示されなかった
+- **原因**: `set_pi4_maintenance_flag()`関数が`--limit raspberrypi4`のときのみフラグを設定していた
+- **解決策**: `should_enable_kiosk_maintenance()`関数を追加し、デプロイ対象ホストにキオスククライアントが含まれるかを動的に判定するように改善
+  - Fast-path: 一般的な`--limit`パターン（`*raspberrypi4*`, `clients`, `server:clients`, `all`）では即座に有効化
+  - 詳細判定: Fast-pathに該当しない場合は、Ansible inventoryを解析してキオスククライアントが含まれるかを確認
+- **スコープ変更**: `scope`を`raspberrypi4`から`kiosk`に変更（汎用化）
+
+**実機検証完了（2026-01-19, 2026-01-31）**:
+- ✅ Pi4デプロイ時にメンテナンス画面が表示されることを確認（2026-01-19）
+- ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認（2026-01-19）
+- ✅ Webコンテナの再ビルドが必要であることを確認（2026-01-19）
+- ✅ ブラウザのキャッシュクリアが必要な場合があることを確認（2026-01-19）
+- ✅ `--limit raspberrypi4`以外でもメンテナンス画面が表示されることを確認（2026-01-31）
+- ✅ デプロイ中に`/api/system/deploy-status`が`kioskMaintenance:true`へ遷移し、終了後`false`に戻ることを確認（2026-01-31）
 
 ---
 
@@ -2550,6 +2569,10 @@ ensure_local_repo_ready_for_deploy() {
 - `--detach --follow`: デプロイ開始後、`tail -f`でログをリアルタイム追尾
 - `--attach <run_id>`: 既存のデタッチ実行のログをリアルタイム追尾
 
+**ジョブ実行（systemd-run）**:
+- `--job --follow`: Pi5上でジョブ化して実行し、`journalctl`で追尾（ログファイルも併用可）
+- `--status <run_id>`: ジョブのunitステータス（Active/SubState/ExitCode）を確認
+
 **実機検証結果（2026-01-25）**:
 - Pi5へのデプロイが正常完遂（`feat/deploy-sh-hardening-20260124`ブランチ）
 - fail-fastチェックが正常に動作（未commit変更がある場合、エラーで停止）
@@ -2642,5 +2665,526 @@ ensure_local_repo_ready_for_deploy() {
 - `infrastructure/ansible/playbooks/deploy.yml`（post_tasksの定義）
 - `infrastructure/ansible/inventory.yml`（`ansible_command_timeout`の設定）
 - `docs/guides/deployment.md`（デプロイ後の検証手順）
+
+---
+
+### [KB-217] デプロイプロセスのコード変更検知とDocker再ビルド確実化
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- コード変更をデプロイしても、Dockerコンテナが再ビルドされず、変更が反映されない
+- デプロイは成功するが、実際には古いコードが動作し続ける
+- 特に`api`と`web`コンテナで、コード変更が反映されない問題が発生
+
+**要因**:
+- **根本原因**: Ansibleの`roles/server/tasks/main.yml`で、リポジトリの変更を検知する仕組みがなく、常にDockerコンテナを再ビルドしていなかった
+- 以前はネットワーク設定変更時のみ再ビルドしていたが、コード変更時の再ビルドが確実に実行されていなかった
+- `scripts/update-all-clients.sh`の`git rev-list`解析で、タブ文字を含む場合にシェル式の構文エラーが発生する可能性があった
+
+**試行した対策**:
+- [試行1] ネットワーク設定変更検知ロジックを追加 → **部分的成功**（ネットワーク変更時のみ再ビルド）
+- [試行2] 常に再ビルドするように変更 → **失敗**（不要な再ビルドが発生し、デプロイ時間が長くなる）
+- [試行3] リポジトリ変更検知（`repo_changed`）を実装 → **成功**
+
+**有効だった対策**:
+- ✅ **リポジトリ変更検知の実装（2026-01-31）**:
+  1. **Ansibleでリポジトリ変更検知**: `roles/common/tasks/main.yml`で、`git pull`前後のHEADを比較し、`repo_changed`ファクトを設定
+  2. **コード変更時のDocker再ビルド**: `roles/server/tasks/main.yml`で、`repo_changed`が`true`の場合のみ`api/web`を`--force-recreate --build`で再作成
+  3. **git rev-list解析の改善**: `scripts/update-all-clients.sh`で、`awk`を使用してタブ文字を含む場合でも正常に解析できるように修正
+  4. **数値検証の追加**: `behind`と`ahead`が数値であることを検証し、解析失敗時にエラーで停止
+
+**実装詳細**:
+- **リポジトリ変更検知**:
+  ```yaml
+  - name: Capture current repo HEAD (if exists)
+    ansible.builtin.shell: |
+      cd "{{ repo_path }}"
+      git rev-parse HEAD
+    register: repo_prev_head
+    changed_when: false
+  
+  - name: Sync repository to desired state
+    # ... git pull/reset ...
+  
+  - name: Capture repo HEAD after sync
+    ansible.builtin.shell: |
+      cd "{{ repo_path }}"
+      git rev-parse HEAD
+    register: repo_new_head
+    changed_when: false
+  
+  - name: Determine if repo changed
+    ansible.builtin.set_fact:
+      repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
+  ```
+
+- **Docker再ビルド**:
+  ```yaml
+  - name: Rebuild and restart Docker services on server when repo changed
+    block:
+      - name: Rebuild/Restart docker compose services
+        ansible.builtin.shell: |
+          cd {{ repo_path }}
+          docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
+    when: repo_changed | default(false)
+  ```
+
+- **git rev-list解析の改善**:
+  ```bash
+  # 改善前（タブ文字でエラー）
+  behind="${counts%% *}"
+  ahead="${counts##* }"
+  
+  # 改善後（awkで確実に解析）
+  read -r behind ahead <<<"$(echo "${counts}" | awk '{print $1, $2}')"
+  if [[ -n "${behind}" && ! "${behind}" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] ブランチ差分の判定に失敗しました" >&2
+    exit 2
+  fi
+  ```
+
+**実機検証結果（2026-01-31）**:
+- **正のテスト（コード変更あり）**: Pi5でコード変更をデプロイ → `repo_changed=true`が検知され、`api/web`が`--force-recreate --build`で再作成されることを確認
+- **負のテスト（コード変更なし）**: Pi5でコード変更なしでデプロイ → `repo_changed=false`となり、Docker再ビルドがスキップされることを確認
+- **git rev-list解析**: タブ文字を含む場合でも正常に解析されることを確認
+- **デプロイ成功**: Pi5でデプロイ成功（`ok=108, changed=21, failed=0`）、サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認
+
+**学んだこと**:
+- デプロイ成功＝変更が反映済み、という前提を保証するには、コード変更検知とDocker再ビルドの確実な実行が必要
+- リポジトリ変更検知により、不要な再ビルドを避けつつ、必要な再ビルドを確実に実行できる
+- `git rev-list`の出力はタブ文字を含む可能性があるため、`awk`で確実に解析する必要がある
+- デプロイプロセスの各ステップで、前提条件（コード変更検知）を明確にし、検証可能にする必要がある
+
+**再発防止**:
+- `repo_changed`ファクトは、デプロイ後の検証でも確認可能（Ansibleログに出力される）
+- Docker再ビルドのログは`docker compose logs`で確認可能
+- デプロイ後の検証（health-check）で、実際に変更が反映されていることを確認する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/common/tasks/main.yml`（リポジトリ変更検知）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（Docker再ビルド）
+- `scripts/update-all-clients.sh`（git rev-list解析改善）
+- `docs/guides/deployment.md`（デプロイ標準手順）
+
+---
+
+### [KB-218] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- CIで`apps/web`のDocker buildが失敗する（`Cannot find module '@raspi-system/shared-types'`）
+- ローカルでもDocker buildが失敗する
+- `packages/shared-types`の`pnpm build`（`tsc`）は成功しているように見えるが、`dist`ディレクトリが生成されない
+- `WORKDIR /app/packages/shared-types`で`pnpm build`を実行しても、`WORKDIR /app`に戻った時点で`packages/shared-types/dist`が存在しない
+
+**要因**:
+- **根本原因**: `.dockerignore`で`**/dist`を除外していたが、`**/tsconfig.tsbuildinfo`は除外していなかった
+- Docker build contextに`tsconfig.tsbuildinfo`がコピーされていた
+- コンテナ内で`tsc`を実行すると、`tsconfig.tsbuildinfo`を見て「変更なし」と判断し、インクリメンタルビルドで何もビルドしない
+- 結果として`dist`ディレクトリが生成されず、`apps/web`のビルド時に`@raspi-system/shared-types`が見つからない
+
+**試行した対策**:
+- [試行1] `Dockerfile.web`に確認ステップを追加 → **失敗**（`dist`が存在しないため確認ステップ自体が失敗）
+- [試行2] `apps/web`コピー後に`pnpm install`を再実行 → **失敗**（`dist`が存在しないため解決されない）
+- [試行3] 確認ステップを削除してCIを通す → **失敗**（テストの実効性が確保されない）
+- [試行4] `.dockerignore`に`tsbuildinfo`除外を追加 → **成功**
+
+**有効だった対策**:
+- ✅ **`.dockerignore`に`tsbuildinfo`除外を追加（2026-01-31）**:
+  1. **`.dockerignore`の修正**: `**/tsconfig.tsbuildinfo`と`**/*.tsbuildinfo`を追加
+  2. **Docker内で常に新しいビルドを実行**: `tsbuildinfo`がコピーされないため、`tsc`は常にフルビルドを実行し、`dist`が確実に生成される
+  3. **テストの実効性確保**: ローカルでのDocker buildテストで、`dist`が正しく生成されることを確認
+
+**実装詳細**:
+- **`.dockerignore`の修正**:
+  ```dockerignore
+  # Node/JS build artifacts
+  **/node_modules
+  **/.pnpm-store
+  **/.turbo
+  **/.cache
+  **/dist
+  **/build
+  **/.next
+  **/coverage
+  # TypeScript incremental build info (forces fresh build in Docker)
+  **/tsconfig.tsbuildinfo
+  **/*.tsbuildinfo
+  ```
+
+- **Dockerfile.webの構造**:
+  ```dockerfile
+  WORKDIR /app/packages/shared-types
+  RUN pnpm build  # tsbuildinfoがないため、常にフルビルドが実行される
+  WORKDIR /app
+  COPY apps/web ./apps/web
+  RUN cd apps/web && pnpm run build  # shared-types/distが存在するため成功
+  ```
+
+**実機検証結果（2026-01-31）**:
+- **ローカルDocker build**: ✅ 成功（`dist`が正しく生成され、`apps/web`のビルドが成功）
+- **CI**: ✅ 成功（全ジョブが成功）
+- **Pi5へのデプロイ**: ✅ 成功（最新コミット`f960e4a`が反映され、APIヘルスチェックが`ok`）
+
+**学んだこと**:
+- `.dockerignore`で`dist`を除外する場合、`tsbuildinfo`も除外する必要がある
+- TypeScriptのインクリメンタルビルド（`tsbuildinfo`）は、Docker内では常に新しいビルドを実行するために除外すべき
+- Docker buildのテストの実効性を確保するには、根本原因を特定し、対処療法ではなく根本的な修正を行う必要がある
+- CIを通すことが目的ではなく、テストの実効性を確保することが重要
+
+**再発防止**:
+- `.dockerignore`に`tsbuildinfo`除外が含まれていることを確認する
+- Docker buildのテストで、`dist`が正しく生成されることを確認する
+- インクリメンタルビルド情報（`tsbuildinfo`）は、Docker内では常に除外する
+
+**関連ファイル**:
+- `.dockerignore`（`tsbuildinfo`除外追加）
+- `infrastructure/docker/Dockerfile.web`（`shared-types`ビルド）
+- `packages/shared-types/tsconfig.json`（`composite: true`設定）
+- `apps/web/tsconfig.json`（`references`で`shared-types`を参照）
+
+---
+
+### [KB-218] SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行）
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- MacからPi5へのSSH接続が`Connection refused`エラーで失敗
+- `ssh: connect to host 100.106.158.2 port 22: Connection refused`
+- 管理コンソール（HTTPS）は正常にアクセス可能
+
+**症状**:
+1. **SSH接続失敗**: MacのTailscale IP（`100.64.230.31`）からPi5へのSSH接続が拒否される
+2. **HTTPSは正常**: ブラウザから`https://100.106.158.2/admin`にはアクセス可能
+3. **fail2banのBan確認**: `sudo fail2ban-client status sshd`で`Banned IP list: 100.64.230.31`が確認される
+
+**根本原因の特定（2026-01-31実施）**:
+
+#### 時系列分析（auth.log / journalctl）
+
+| 時刻 | イベント | 詳細 |
+|------|---------|------|
+| 09:30頃 | SSH認証失敗の連続発生 | `tsudatakashi`という存在しないユーザーでの認証試行が複数回発生 |
+| 09:30:14 | fail2ban Ban | `sshd` jailが`100.64.230.31`をBan（10分/5回の閾値） |
+| 09:50頃 | SSH接続試行 | MacからPi5へのSSH接続が`Connection refused`で失敗 |
+
+#### 根本原因（確定）
+
+**原因は「Pi5へ`tsudatakashi`という存在しないユーザーでSSH認証が複数回試行された」ことです。**
+
+- 正しいユーザー名は`denkon5sd02`だが、AIエージェントが誤って`tsudatakashi`を使用
+- fail2banの`sshd` jailが**10分/5回**の閾値で**Tailscale端末IP `100.64.230.31` をBan**
+- fail2banはSSHのみをBanするため、HTTPS（443）は正常にアクセス可能
+
+**有効だった対策**:
+- ✅ **fail2banのBan解除（2026-01-31）**: Pi5で`sudo fail2ban-client set sshd unbanip 100.64.230.31`を実行
+- ✅ **Ban解除の確認**: `sudo fail2ban-client status sshd`で`Banned IP list`が空であることを確認
+- ✅ **正しいユーザー名の使用**: 以降は`denkon5sd02`を使用してSSH接続
+
+**学んだこと**:
+- **fail2banの動作**: SSH認証失敗が閾値（10分/5回）を超えると、IPアドレスをBanする
+- **Banの範囲**: fail2banはSSH（22）のみをBanし、HTTPS（443）には影響しない
+- **正しいユーザー名の確認**: SSH接続時は、inventoryファイルやドキュメントで正しいユーザー名を確認する必要がある
+- **RealVNC経由の復旧**: Tailscale経由でRealVNC（5900）を使用してPi5のデスクトップにアクセスし、fail2banのBanを解除できる
+
+**再発防止**:
+- SSH接続時は、正しいユーザー名（`denkon5sd02`）を使用する
+- デプロイ標準手順（`docs/guides/deployment.md`）を参照し、正しい接続方法を確認する
+- fail2banのBanが発生した場合は、RealVNC経由でPi5にアクセスしてBanを解除する
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory.yml`: 正しいユーザー名（`ansible_user: denkon5sd02`）
+- `docs/guides/mac-ssh-access.md`: MacからPi5へのSSH接続ガイド
+- `docs/security/incident-response.md`: インシデント対応手順（fail2ban Ban解除）
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+sudo fail2ban-client status sshd
+sudo fail2ban-client set sshd unbanip 100.64.230.31
+sudo fail2ban-client status sshd  # Banned IP listが空であることを確認
+```
+
+---
+
+### [KB-219] Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- デタッチモード（`--detach`）でのデプロイ実行時に、リモートランナーが失敗
+- エラー: `error: cannot update the ref ... 許可がありません`（permission denied）
+- 対象ファイル: `.git/logs/refs/remotes/origin/feature/signage-visualization`
+
+**症状**:
+1. **Git操作の失敗**: リモートランナー（`denkon5sd02`ユーザー）がGit refsを更新できない
+2. **権限エラー**: `.git`ディレクトリとその配下が`root`所有になっている
+3. **デタッチ実行の中断**: Git操作の失敗により、デプロイが中断される
+
+**根本原因の特定（2026-01-31実施）**:
+
+#### 権限確認
+
+```bash
+# Pi5上で実行
+ls -la /opt/RaspberryPiSystem_002/.git | head -20
+# 結果: 多くのファイルがroot所有
+
+# リモートランナーのユーザー確認
+whoami  # denkon5sd02
+```
+
+#### 根本原因（確定）
+
+**原因は「過去のAnsible実行で`become: true`を使用したタスクが`.git`ディレクトリ配下のファイルを作成・更新した」ことです。**
+
+- Ansibleタスクで`become: true`を使用すると、root権限でファイルが作成される
+- `.git/logs/refs/remotes/origin/feature/signage-visualization`などのGit refsファイルがroot所有になっていた
+- リモートランナー（`denkon5sd02`）は通常ユーザー権限のため、root所有のファイルを更新できない
+
+**有効だった対策**:
+- ✅ **Git権限の修正（2026-01-31）**: Pi5で`sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git`を実行
+- ✅ **権限修正の確認**: `ls -la /opt/RaspberryPiSystem_002/.git`で所有権が`denkon5sd02`になっていることを確認
+- ✅ **デプロイ再実行**: 権限修正後、デプロイが正常に完了することを確認
+
+**学んだこと**:
+- **Ansibleの`become: true`の影響**: root権限で実行されるタスクは、作成・更新したファイルがroot所有になる
+- **Gitディレクトリの所有権**: `.git`ディレクトリは、リポジトリを操作するユーザー（`denkon5sd02`）が所有すべき
+- **デタッチ実行の前提条件**: デタッチ実行が正常に動作するには、Git操作が可能な権限が必要
+
+**再発防止**:
+- Ansibleタスクで`.git`ディレクトリ配下のファイルを操作する場合は、`become: false`を使用するか、操作後に所有権を修正する
+- デプロイ前チェックリストに「`.git`ディレクトリの所有権確認」を追加する
+- 定期的に`.git`ディレクトリの所有権を確認し、root所有のファイルがあれば修正する
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`: デタッチ実行スクリプト
+- `infrastructure/ansible/roles/server/tasks/main.yml`: サーバーロールのタスク（`become: true`の使用箇所を確認）
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git
+ls -la /opt/RaspberryPiSystem_002/.git | head -20  # 所有権を確認
+```
+
+---
+
+### [KB-220] NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイ実行時に`apt-get update`が失敗
+- エラー: `Failed to update apt cache after 5 retries`
+- NodeSourceリポジトリのGPG署名検証が失敗
+
+**症状**:
+1. **apt-get updateの失敗**: Ansibleの`apt`モジュールが`update_cache: true`で失敗
+2. **GPG署名検証エラー**: NodeSourceリポジトリのGPGキーがSHA1を使用しており、2026-02-01以降のDebianセキュリティポリシーで拒否される
+3. **デプロイの中断**: セキュリティパッケージ（`ufw`, `fail2ban`）のインストールタスクが失敗
+
+**エラーメッセージ**:
+```
+エラー:2 https://deb.nodesource.com/node_20.x nodistro InRelease
+  Sub-process /usr/bin/sqv returned an error code (1), error message is:
+  Signing key on 6F71F525282841EEDAF851B42F59B5F99B1BE0B4 is not bound:
+    No binding signature at time 2026-01-19T15:27:46Z
+    because: Policy rejected non-revocation signature (PositiveCertification)
+             requiring second pre-image resistance
+    because: SHA1 is not considered secure since 2026-02-01T00:00:00Z
+```
+
+**根本原因**:
+- **Debianセキュリティポリシーの変更**: 2026年2月1日以降、SHA1ハッシュアルゴリズムを使用するGPG署名キーが安全でないと判断され、署名検証が拒否される
+- **NodeSourceリポジトリのGPGキー**: NodeSourceが提供するGPG署名キーがSHA1を使用しており、新しいポリシーに準拠していない
+- **aptモジュールの動作**: Ansibleの`apt`モジュールは警告でも失敗として扱うため、デプロイが中断される
+
+**有効だった対策**:
+- ✅ **NodeSourceリポジトリの削除（2026-02-01）**: `/etc/apt/sources.list.d/nodesource.list`を削除
+- ✅ **apt-get updateの確認**: NodeSourceリポジトリ削除後、他のリポジトリは正常に更新可能であることを確認
+- ✅ **デプロイ再実行**: NodeSourceリポジトリ削除後、デプロイが正常に完了することを確認
+
+**影響範囲**:
+- **Node.jsのインストール**: Node.jsは既にインストール済みのため、通常の運用には影響なし
+- **将来的なNode.js更新**: NodeSourceリポジトリが新しいGPGキーを提供するか、別の方法（nvmや公式バイナリなど）で更新する必要がある
+
+**学んだこと**:
+- **Debianセキュリティポリシーの変更**: セキュリティポリシーは定期的に更新され、古いアルゴリズム（SHA1など）が段階的に廃止される
+- **サードパーティリポジトリの依存**: サードパーティリポジトリは、OSのセキュリティポリシー変更に追従できない場合がある
+- **aptモジュールの動作**: Ansibleの`apt`モジュールは警告でも失敗として扱うため、リポジトリの設定を適切に管理する必要がある
+
+**再発防止**:
+- ✅ **デプロイ前チェックの自動化（2026-02-01）**: `scripts/update-all-clients.sh`の`pre_deploy_checks()`にNodeSourceリポジトリ検知を追加。NodeSourceリポジトリが存在する場合、デプロイを開始前にfail-fastで停止し、削除コマンドを提示
+- ✅ **README.mdの更新（2026-02-01）**: Node.jsインストール手順にNodeSource使用時の注意書きを追加。KB-220への参照を追加
+- ✅ **デプロイ標準手順の更新（2026-02-01）**: `docs/guides/deployment.md`のデプロイ前チェックリストに「aptリポジトリの確認」を追加
+- NodeSourceリポジトリが新しいGPGキーを提供したら、再追加を検討する
+- 将来的には、Node.jsのインストール方法をnvmや公式バイナリに移行することを検討する
+
+**実機検証結果（2026-02-01）**:
+- ✅ **デプロイ成功**: 全3ホスト（Pi5/Pi4/Pi3）で`failed=0`、デプロイ成功を確認
+- ✅ **Pi5サーバー検証**: APIヘルスチェック（`status: ok`）、DB整合性（27マイグレーション適用済み、必須テーブル存在確認）、Dockerコンテナ（api/web/dbすべて起動中）、ポート公開状況（80/443のみ公開、正常）、セキュリティ監視（`security-monitor.timer` enabled/active）を確認
+- ✅ **Pi4キオスク検証**: systemdサービス（`kiosk-browser.service`, `status-agent.timer`すべてactive）、API動作確認（`/api/tools/loans/active`正常応答）を確認
+- ✅ **Pi3サイネージ検証**: systemdサービス（`signage-lite.service` active）、API動作確認（`/api/signage/content`正常応答）を確認
+- ✅ **恒久対策の動作確認**: デプロイ前チェックでNodeSourceリポジトリが検知されないことを確認（リポジトリ削除済み）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/server/tasks/security.yml`: セキュリティパッケージのインストールタスク
+- `/etc/apt/sources.list.d/nodesource.list`: NodeSourceリポジトリの設定ファイル（削除済み）
+- `scripts/update-all-clients.sh`: デプロイ前チェックにNodeSourceリポジトリ検知を追加
+- `README.md`: Node.jsインストール手順にNodeSource使用時の注意書きを追加
+- `docs/guides/deployment.md`: デプロイ前チェックリストにaptリポジトリ確認を追加
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+# NodeSourceリポジトリを削除
+sudo rm -f /etc/apt/sources.list.d/nodesource.list
+
+# apt-get updateを実行して確認
+sudo apt-get update 2>&1 | grep -E '(ヒット|取得|エラー|W:)'
+
+# デプロイを再実行
+```
+
+**参考情報**:
+- NodeSourceリポジトリは、Node.jsの公式パッケージをDebian/Ubuntu向けに提供するサードパーティのリポジトリ
+
+---
+
+### [KB-222] デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイ実行時に`inventory-talkplaza.yml`（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
+- DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗
+- `sudo: a password is required`エラーが発生し、デプロイが中断
+
+**症状**:
+1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って`inventory-talkplaza.yml`を使用
+2. **DNS名前解決失敗**: `pi5.talkplaza.local`がMac側で名前解決できず、SSH接続失敗
+3. **デプロイ中断**: デプロイスクリプトの事前チェックでSSH接続失敗により中断
+
+**エラーメッセージ**:
+```
+ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provided, or not known
+```
+
+**根本原因**:
+- **inventoryの混同**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用の論理ホスト名」として定義されているが、実機が存在しない可能性がある（KB-159参照）
+- **DNS名の使用**: `group_vars/talkplaza.yml`でDNS運用前提（`pi5.talkplaza.local`）が設定されているが、Mac側では名前解決できない
+- **標準手順の未遵守**: `docs/guides/deployment.md`の標準手順（Tailscale IP経由）を遵守せず、DNS名を使用した
+
+**有効だった対策**:
+- ✅ **標準手順への回帰（2026-02-01）**: `inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイを実行
+- ✅ **デプロイ成功**: 標準手順に従ったデプロイが正常に完了（`failed=0`）
+- ✅ **Webコンテナの再ビルド**: デプロイ後、コード変更があったためWebコンテナを明示的に再ビルドして変更を反映
+
+**学んだこと**:
+- **inventoryの確認**: デプロイ前に必ず対象inventoryを確認し、標準手順を遵守する
+- **Tailscale IPの使用**: DNS名ではなく、Tailscale IPを使用してSSH接続する（標準手順）
+- **デプロイ後の確認**: デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
+- **inventory-talkplaza.ymlの用途**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であり、第2工場のPi5には使用しない
+
+**再発防止**:
+- デプロイ前に必ず対象inventoryを確認し、標準手順（`docs/guides/deployment.md`）を遵守する
+- DNS名ではなく、Tailscale IPを使用してSSH接続する
+- デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
+- `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であることを明確に理解する
+
+**実機検証結果（2026-02-01）**:
+- ✅ Tailscale IP経由でSSH接続成功
+- ✅ `inventory.yml`の`raspberrypi5`に対してデプロイ成功（`failed=0`）
+- ✅ Webコンテナの再ビルドが正常に完了
+- ✅ 実機検証で納期日機能のUI改善が正常に動作することを確認
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`: デプロイスクリプト
+- `infrastructure/ansible/inventory.yml`: 第2工場用inventory
+- `infrastructure/ansible/inventory-talkplaza.yml`: トークプラザ工場用inventory（別拠点）
+- `docs/guides/deployment.md`: デプロイ標準手順
+
+**復旧手順（参考）**:
+```bash
+# 標準手順に従ったデプロイ（第2工場のPi5）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feature/signage-visualization infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+
+# Webコンテナの再ビルド（コード変更があった場合）
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+```
+
+**参考情報**:
+- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ工場へのマルチサイト対応実装
+- [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
+- 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
+- この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
+
+---
+
+### [KB-224] デプロイ時のマイグレーション未適用問題
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイが完了し、Dockerコンテナが正常に起動しているにもかかわらず、新規追加したマイグレーション（`20260201055642_add_production_schedule_processing_type`）が適用されていない
+- `pnpm prisma migrate status`で「Following migration have not yet been applied」と表示される
+- APIは正常に動作しているが、新機能（処理列）が使用できない
+
+**要因**:
+- **Ansibleデプロイプロセスの問題**: `roles/server/tasks/main.yml`で`pnpm prisma migrate deploy`を実行しているが、デプロイが完了した後にマイグレーションが適用されていない
+- **デプロイ後の検証不足**: デプロイ後チェックリストにマイグレーション状態の確認が含まれているが、デプロイ完了直後に確認していなかった
+- **タイミングの問題**: Dockerコンテナの再作成とマイグレーション実行のタイミングがずれている可能性
+
+**有効だった対策**:
+- ✅ **手動マイグレーション適用（2026-02-01）**: デプロイ完了後、手動で`pnpm prisma migrate deploy`を実行してマイグレーションを適用
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy"
+  ```
+- ✅ **マイグレーション状態の確認**: `pnpm prisma migrate status`でマイグレーションが正常に適用されたことを確認
+
+**再発防止**:
+- ✅ **デプロイ後チェックリストの徹底**: デプロイ完了後、必ず`pnpm prisma migrate status`でマイグレーション状態を確認する
+- ✅ **Ansibleデプロイプロセスの確認**: `roles/server/tasks/main.yml`で`pnpm prisma migrate deploy`が正しく実行されているか確認する
+- ✅ **デプロイログの確認**: デプロイログでマイグレーション実行の記録を確認する
+
+**学んだこと**:
+- **デプロイ後の検証の重要性**: デプロイが完了しても、マイグレーションが適用されていない場合があるため、必ずマイグレーション状態を確認する必要がある
+- **Ansibleデプロイプロセスの確認**: Ansibleでマイグレーションを実行している場合でも、デプロイ完了後に状態を確認することが重要
+- **手動適用の必要性**: デプロイプロセスでマイグレーションが適用されなかった場合、手動で適用することで問題を解決できる
+
+**実機検証結果（2026-02-01）**:
+- ✅ **マイグレーション適用成功**: 手動で`pnpm prisma migrate deploy`を実行し、マイグレーションが正常に適用されたことを確認
+- ✅ **マイグレーション状態確認**: `pnpm prisma migrate status`で「Database schema is up to date!」と表示され、すべてのマイグレーションが適用済みであることを確認
+- ✅ **新機能の動作確認**: 処理列のドロップダウンが正常に動作し、選択・未選択状態が正しく保存されることを確認
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/server/tasks/main.yml`: Ansibleデプロイプロセスのマイグレーション実行タスク
+- `apps/api/prisma/migrations/20260201055642_add_production_schedule_processing_type/`: 未適用だったマイグレーション
+- `docs/guides/deployment.md`: デプロイ後チェックリスト（マイグレーション状態確認を含む）
+
+**復旧手順（参考）**:
+```bash
+# Pi5上で実行
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+
+# マイグレーション状態の確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+```
+
+**関連KB**:
+- [KB-191](./ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在): デプロイ成功時のDB整合性問題（類似の問題）
 
 ---
