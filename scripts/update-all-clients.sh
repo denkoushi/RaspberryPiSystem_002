@@ -135,25 +135,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ブランチ指定の検証（--attach/--status/--print-planの場合はブランチ指定不要）
-if [[ -z "${ATTACH_RUN_ID}" && -z "${STATUS_RUN_ID}" && ${PRINT_PLAN} -eq 0 ]]; then
-  # 通常のデプロイ実行時はブランチ指定が必須（誤デプロイ防止のため）
-  if [[ -z "${REPO_VERSION}" && -z "${ANSIBLE_REPO_VERSION}" ]]; then
-    echo "[ERROR] ブランチ指定が必須です。使用方法: ./scripts/update-all-clients.sh <branch> <inventory_path>" >&2
-    usage
-    exit 2
-  fi
-fi
-
-REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-}}"
-
-export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
-
-mkdir -p "${LOG_DIR}"
-
-# REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
-REMOTE_HOST=$(normalize_remote_host)
-
 usage() {
   cat >&2 <<'USAGE'
 Usage:
@@ -190,6 +171,25 @@ Examples:
   ./scripts/update-all-clients.sh --status 20260125-123456-4242
 USAGE
 }
+
+# ブランチ指定の検証（--attach/--status/--print-planの場合はブランチ指定不要）
+if [[ -z "${ATTACH_RUN_ID}" && -z "${STATUS_RUN_ID}" && ${PRINT_PLAN} -eq 0 ]]; then
+  # 通常のデプロイ実行時はブランチ指定が必須（誤デプロイ防止のため）
+  if [[ -z "${REPO_VERSION}" && -z "${ANSIBLE_REPO_VERSION}" ]]; then
+    echo "[ERROR] ブランチ指定が必須です。使用方法: ./scripts/update-all-clients.sh <branch> <inventory_path>" >&2
+    usage
+    exit 2
+  fi
+fi
+
+REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-}}"
+
+export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
+
+mkdir -p "${LOG_DIR}"
+
+# REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
+REMOTE_HOST=$(normalize_remote_host)
 
 if [[ -n "${REMOTE_HOST}" && ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 && ${FOREGROUND_MODE} -eq 0 ]]; then
   DETACH_MODE=1
