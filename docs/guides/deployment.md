@@ -563,15 +563,32 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **ポイント**:
 - Mac/SSH経由の実行はクライアント側タイムアウトで「途中停止して見える」ことがあります。
-- `--detach` を使うと **Pi5側で処理が継続**し、ローカル切断の影響を受けません。
+- `scripts/update-all-clients.sh` の **リモート実行はデフォルトでデタッチ**されます（Pi5側で処理が継続）。
+- 前景で実行したい場合は **`--foreground` を明示**してください（長時間は非推奨）。
 - 進捗は `--attach` / `--status` で確認できます。
 
-```bash
-# 第2工場: デタッチ実行
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+**デプロイモードの判断基準（2026-02-01更新）**:
+- **Pi5のみ**: 前景実行も可能（短時間のみ。原則はデタッチ）
+- **Pi5 + Pi4以上**: `--detach --follow`必須（15-20分以上かかるためタイムアウトする）
+- **全デバイス**: `--detach --follow`必須（30分以上かかるためタイムアウトする）
 
-# トークプラザ: デタッチ実行
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml --detach
+**デプロイ対象の判断基準（2026-02-01更新）**:
+- **Webアプリのみ**: Pi5 + Pi4（`--limit "raspberrypi5:raspberrypi4"`）
+- **API/DBのみ**: Pi5のみ（`--limit raspberrypi5`）
+- **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
+- **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
+
+詳細は [KB-226](../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。
+
+```bash
+# 第2工場: デタッチ実行（デフォルトでデタッチ）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+# トークプラザ: デタッチ実行（デフォルトでデタッチ）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+
+# 前景実行（短時間のみ。長時間は非推奨）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --foreground
 
 # ログ追尾（run_idを指定）
 ./scripts/update-all-clients.sh --attach 20260125-123456-4242
