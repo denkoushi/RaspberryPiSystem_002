@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 33件  
+**件数**: 34件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3057,6 +3057,76 @@ sudo apt-get update 2>&1 | grep -E '(ヒット|取得|エラー|W:)'
 
 **参考情報**:
 - NodeSourceリポジトリは、Node.jsの公式パッケージをDebian/Ubuntu向けに提供するサードパーティのリポジトリ
+
+---
+
+### [KB-222] デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイ実行時に`inventory-talkplaza.yml`（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
+- DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗
+- `sudo: a password is required`エラーが発生し、デプロイが中断
+
+**症状**:
+1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って`inventory-talkplaza.yml`を使用
+2. **DNS名前解決失敗**: `pi5.talkplaza.local`がMac側で名前解決できず、SSH接続失敗
+3. **デプロイ中断**: デプロイスクリプトの事前チェックでSSH接続失敗により中断
+
+**エラーメッセージ**:
+```
+ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provided, or not known
+```
+
+**根本原因**:
+- **inventoryの混同**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用の論理ホスト名」として定義されているが、実機が存在しない可能性がある（KB-159参照）
+- **DNS名の使用**: `group_vars/talkplaza.yml`でDNS運用前提（`pi5.talkplaza.local`）が設定されているが、Mac側では名前解決できない
+- **標準手順の未遵守**: `docs/guides/deployment.md`の標準手順（Tailscale IP経由）を遵守せず、DNS名を使用した
+
+**有効だった対策**:
+- ✅ **標準手順への回帰（2026-02-01）**: `inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイを実行
+- ✅ **デプロイ成功**: 標準手順に従ったデプロイが正常に完了（`failed=0`）
+- ✅ **Webコンテナの再ビルド**: デプロイ後、コード変更があったためWebコンテナを明示的に再ビルドして変更を反映
+
+**学んだこと**:
+- **inventoryの確認**: デプロイ前に必ず対象inventoryを確認し、標準手順を遵守する
+- **Tailscale IPの使用**: DNS名ではなく、Tailscale IPを使用してSSH接続する（標準手順）
+- **デプロイ後の確認**: デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
+- **inventory-talkplaza.ymlの用途**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であり、第2工場のPi5には使用しない
+
+**再発防止**:
+- デプロイ前に必ず対象inventoryを確認し、標準手順（`docs/guides/deployment.md`）を遵守する
+- DNS名ではなく、Tailscale IPを使用してSSH接続する
+- デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
+- `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であることを明確に理解する
+
+**実機検証結果（2026-02-01）**:
+- ✅ Tailscale IP経由でSSH接続成功
+- ✅ `inventory.yml`の`raspberrypi5`に対してデプロイ成功（`failed=0`）
+- ✅ Webコンテナの再ビルドが正常に完了
+- ✅ 実機検証で納期日機能のUI改善が正常に動作することを確認
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`: デプロイスクリプト
+- `infrastructure/ansible/inventory.yml`: 第2工場用inventory
+- `infrastructure/ansible/inventory-talkplaza.yml`: トークプラザ工場用inventory（別拠点）
+- `docs/guides/deployment.md`: デプロイ標準手順
+
+**復旧手順（参考）**:
+```bash
+# 標準手順に従ったデプロイ（第2工場のPi5）
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feature/signage-visualization infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+
+# Webコンテナの再ビルド（コード変更があった場合）
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+```
+
+**参考情報**:
+- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ工場へのマルチサイト対応実装
+- [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
 - 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
 - この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
 

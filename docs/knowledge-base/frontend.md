@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 33件  
+**件数**: 34件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2575,5 +2575,89 @@ const cancelNoteEdit = () => {
 **関連KB**:
 - [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュールUIの改良（資源CDフィルタ・加工順序割当・検索状態同期）
 - [KB-212](./api.md#kb-212-生産スケジュール行ごとの備考欄追加機能): API側の備考欄追加機能実装
+
+---
+
+### [KB-221] 生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装）
+
+**実装日時**: 2026-02-01
+
+**事象**: 
+- 納期日機能の初期実装では`<input type="date">`を使用していたが、操作性が低かった
+- 特に「今日」「明日」「明後日」などの頻繁に使用する日付の選択が煩雑だった
+- 日付選択後にOKボタンを押す必要があり、操作ステップが多かった
+
+**要因**: 
+- ブラウザ標準の`<input type="date">`は操作性が限定的で、頻繁に使用する日付の選択が効率的でない
+- 日付選択後の確定操作が必要で、操作ステップが増える
+
+**有効だった対策**: 
+- ✅ **カスタムカレンダーUI実装（2026-02-01）**:
+  1. **カスタムカレンダーグリッド**: `<input type="date">`から置き換え、7列×6行のグリッドでカレンダーを表示
+  2. **今日/明日/明後日ボタン**: 頻繁に使用する日付をワンクリックで選択可能に
+  3. **自動確定**: 日付選択時に自動的に確定し、OKボタン不要に
+  4. **月ナビゲーション**: 前月/次月ボタンで月を移動可能に
+  5. **今日の日付の強調表示**: 現在の日付を視覚的に識別可能に
+  6. **初期表示月の調整**: 既に設定済みの納期日の月を初期表示（未設定時は現在の月）
+
+**実装の詳細**:
+```typescript
+// apps/web/src/components/kiosk/KioskDatePickerModal.tsx
+export function KioskDatePickerModal({
+  isOpen,
+  value,
+  onCancel,
+  onCommit
+}: KioskDatePickerModalProps) {
+  // React Hooksはearly returnの前に配置（ルール違反修正）
+  const today = useMemo(() => new Date(), []);
+  const todayKey = toYmd(today);
+  const selectedDate = useMemo(() => parseYmd(value), [value]);
+  const [displayMonth, setDisplayMonth] = useState<Date>(
+    () => getMonthStart(selectedDate ?? today)
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDisplayMonth(getMonthStart(selectedDate ?? today));
+  }, [isOpen, selectedDate, today]);
+
+  if (!isOpen) return null; // early returnはhooksの後
+
+  // カレンダーグリッドのレンダリング
+  // 今日/明日/明後日ボタンの実装
+  // 月ナビゲーションの実装
+}
+```
+
+**技術的修正**: 
+- **React Hooksのルール違反修正**: `useMemo`/`useState`/`useEffect`をearly return（`if (!isOpen) return null;`）の前に移動。ESLintの`react-hooks/rules-of-hooks`エラーを解消。
+
+**学んだこと**:
+- **カスタムUIコンポーネント**: ブラウザ標準の`<input type="date">`からカスタムカレンダーUIに置き換えることで、操作性を大幅に改善できる
+- **React Hooksのルール**: React Hooksは常にコンポーネントのトップレベルで呼び出す必要がある（early returnの前に配置）
+- **頻繁な操作の最適化**: 頻繁に使用する操作（今日/明日/明後日）をワンクリックで選択できるようにすることで、ユーザー体験が向上する
+- **自動確定の実装**: 日付選択時に自動的に確定することで、操作ステップを削減できる
+
+**解決状況**: ✅ **解決済み**（2026-02-01）
+
+**実機検証**:
+- ✅ 統合テスト成功（納期日の保存・削除・取得が正常に動作）
+- ✅ GitHub Actions CI成功
+- ✅ デプロイ成功（Pi5）
+- ✅ 実機検証完了（2026-02-01）:
+  - カレンダー表示が正常に動作することを確認
+  - 日付選択時に自動的に確定されることを確認
+  - 今日/明日/明後日ボタンが正常に動作することを確認
+  - 月ナビゲーションが正常に動作することを確認
+  - 既に設定済みの納期日の月が初期表示されることを確認
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskDatePickerModal.tsx`（カスタムカレンダーUI実装）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（納期日編集UI統合）
+- `apps/web/src/features/kiosk/productionSchedule/formatDueDate.ts`（日付フォーマットユーティリティ）
+
+**関連KB**:
+- [KB-212](./frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能): 生産スケジュール行ごとの備考欄追加機能（納期日機能の前段階実装）
 
 ---

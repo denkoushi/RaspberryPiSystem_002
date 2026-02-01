@@ -90,6 +90,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - [x] (2026-01-28) **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決。実機検証で正常に動作することを確認。詳細は [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) を参照。
 - [x] (2026-01-28) **検索登録製番の端末間共有ができなくなっていた問題の修正・仕様確定・実機検証完了**: KB-209で実装された検索状態共有が`search-history`（端末別）に変更され端末間共有ができなくなっていた問題を修正。**仕様確定**: `search-state`は**history専用**で端末間共有。ローカル削除は`hiddenHistory`で管理。割当済み資源CDは製番未入力でも単独検索可。CI成功、デプロイ成功、実機検証完了。詳細は [KB-210](../knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) を参照。
 
+- [x] (2026-02-01) **納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。詳細は [KB-221](../knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能
@@ -279,6 +281,62 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 **関連ファイル**: `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`, `apps/api/src/routes/kiosk.ts`
 
 **詳細**: [KB-210](../knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正)
+
+### 納期日機能のUI改善（カスタムカレンダーUI実装）
+
+**発見**: 納期日機能の初期実装では`<input type="date">`を使用していたが、操作性が低く、特に「今日」「明日」「明後日」などの頻繁に使用する日付の選択が煩雑だった。また、日付選択後にOKボタンを押す必要があり、操作ステップが多かった。
+
+**対策**: カスタムカレンダーUIを実装し、操作性を大幅に改善。
+1. **カスタムカレンダーグリッド**: `<input type="date">`から置き換え、7列×6行のグリッドでカレンダーを表示
+2. **今日/明日/明後日ボタン**: 頻繁に使用する日付をワンクリックで選択可能に
+3. **自動確定**: 日付選択時に自動的に確定し、OKボタン不要に
+4. **月ナビゲーション**: 前月/次月ボタンで月を移動可能に
+5. **今日の日付の強調表示**: 現在の日付を視覚的に識別可能に
+6. **初期表示月の調整**: 既に設定済みの納期日の月を初期表示（未設定時は現在の月）
+
+**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。ESLintの`react-hooks/rules-of-hooks`エラーを解消。
+
+**学んだこと**:
+- カスタムUIコンポーネントの実装により、操作性を大幅に改善できる
+- React Hooksは常にコンポーネントのトップレベルで呼び出す必要がある（early returnの前に配置）
+- 頻繁に使用する操作（今日/明日/明後日）をワンクリックで選択できるようにすることで、ユーザー体験が向上する
+
+**実機検証結果（2026-02-01）**: ✅ 納期日機能のUI改善が正常に動作することを確認
+- カレンダー表示が正常に動作する
+- 日付選択時に自動的に確定される
+- 今日/明日/明後日ボタンが正常に動作する
+- 月ナビゲーションが正常に動作する
+- 既に設定済みの納期日の月が初期表示される
+
+**関連ファイル**: `apps/web/src/components/kiosk/KioskDatePickerModal.tsx`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+**詳細**: [KB-221](../knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装)
+
+### デプロイ時のinventory混同問題
+
+**発見**: デプロイ実行時に`inventory-talkplaza.yml`（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同し、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗した。
+
+**原因**: 
+- `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用の論理ホスト名」として定義されているが、実機が存在しない可能性がある
+- 第2工場のPi5にデプロイすべきところで、誤って`inventory-talkplaza.yml`を使用した
+- DNS名（`.local`）はMac側で名前解決できない（Tailscale IPを使用すべき）
+
+**対策**: 標準手順（`docs/guides/deployment.md`）に従い、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイを実行。デプロイ成功後、Webコンテナを明示的に再ビルドして変更を反映。
+
+**学んだこと**: 
+- デプロイ前に必ず対象inventoryを確認し、標準手順を遵守する
+- DNS名ではなく、Tailscale IPを使用してSSH接続する
+- デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
+
+**実機検証結果（2026-02-01）**: ✅ 標準手順に従ったデプロイが正常に完了
+- Tailscale IP経由でSSH接続成功
+- `inventory.yml`の`raspberrypi5`に対してデプロイ成功（`failed=0`）
+- Webコンテナの再ビルドが正常に完了
+- 実機検証で納期日機能のUI改善が正常に動作することを確認
+
+**関連ファイル**: `scripts/update-all-clients.sh`, `infrastructure/ansible/inventory.yml`, `infrastructure/ansible/inventory-talkplaza.yml`
+
+**詳細**: [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同)
 
 ## Decision Log
 
