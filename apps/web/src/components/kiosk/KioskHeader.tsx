@@ -1,6 +1,8 @@
 import clsx from 'clsx';
+import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
+import { isValidApiKey, isValidUuid } from '../../utils/validation';
 import { Row } from '../layout/Row';
 import { Input } from '../ui/Input';
 
@@ -37,13 +39,35 @@ export function KioskHeader({
   pathname
 }: KioskHeaderProps) {
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
+  const [apiKeyError, setApiKeyError] = useState<string>('');
+  const [clientIdError, setClientIdError] = useState<string>('');
 
   const handleClientKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onClientKeyChange(event.target.value);
+    const newValue = event.target.value;
+    
+    // リアルタイムバリデーション
+    if (newValue && !isValidApiKey(newValue)) {
+      setApiKeyError('APIキーの形式が正しくありません（英数字、ハイフン、アンダースコアのみ、8-100文字）');
+      // エラーがある場合は保存しない（useLocalStorageApiKeyが自動修復する）
+    } else {
+      setApiKeyError('');
+      // バリデーションが通った場合のみ保存
+      onClientKeyChange(newValue);
+    }
   };
 
   const handleClientIdChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onClientIdChange(event.target.value);
+    const newValue = event.target.value;
+    
+    // リアルタイムバリデーション（空文字列も許可）
+    if (newValue && !isValidUuid(newValue)) {
+      setClientIdError('IDはUUID形式（xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx）である必要があります');
+      // エラーがある場合は保存しない（useLocalStorageUuidが自動修復する）
+    } else {
+      setClientIdError('');
+      // バリデーションが通った場合のみ保存
+      onClientIdChange(newValue);
+    }
   };
 
   return (
@@ -90,23 +114,45 @@ export function KioskHeader({
       <Row className="gap-3 min-w-0 flex-1" justify="end">
         <Row className="gap-2 text-xs shrink-0">
           <span className="text-white/70">キオスク端末</span>
-          <label className="flex items-center gap-1 text-white/70">
-            APIキー:
-            <Input
-              value={clientKey}
-              onChange={handleClientKeyChange}
-              placeholder="client-demo-key"
-              className="h-6 w-32 px-2 text-xs"
-            />
+          <label className="flex flex-col gap-0.5 text-white/70">
+            <div className="flex items-center gap-1">
+              APIキー:
+              <Input
+                value={clientKey}
+                onChange={handleClientKeyChange}
+                placeholder="client-demo-key"
+                className={clsx(
+                  'h-6 w-32 px-2 text-xs',
+                  apiKeyError && 'border-red-500 focus:border-red-500'
+                )}
+                title={apiKeyError || 'APIキー（英数字、ハイフン、アンダースコアのみ）'}
+              />
+            </div>
+            {apiKeyError && (
+              <span className="text-red-400 text-[10px] max-w-32 truncate" title={apiKeyError}>
+                {apiKeyError}
+              </span>
+            )}
           </label>
-          <label className="flex items-center gap-1 text-white/70">
-            ID:
-            <Input
-              value={clientId}
-              onChange={handleClientIdChange}
-              placeholder="UUID"
-              className="h-6 w-24 px-2 text-xs"
-            />
+          <label className="flex flex-col gap-0.5 text-white/70">
+            <div className="flex items-center gap-1">
+              ID:
+              <Input
+                value={clientId}
+                onChange={handleClientIdChange}
+                placeholder="UUID"
+                className={clsx(
+                  'h-6 w-24 px-2 text-xs',
+                  clientIdError && 'border-red-500 focus:border-red-500'
+                )}
+                title={clientIdError || 'UUID形式（オプショナル）'}
+              />
+            </div>
+            {clientIdError && (
+              <span className="text-red-400 text-[10px] max-w-24 truncate" title={clientIdError}>
+                {clientIdError}
+              </span>
+            )}
           </label>
         </Row>
         <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">

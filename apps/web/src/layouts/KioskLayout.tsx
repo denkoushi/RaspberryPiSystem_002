@@ -7,11 +7,11 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useLocalStorageApiKey, useLocalStorageUuid } from '../hooks/useLocalStorage';
 
 export function KioskLayout() {
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const [clientKey, setClientKey] = useLocalStorageApiKey('kiosk-client-key', DEFAULT_CLIENT_KEY);
+  const [clientId, setClientId] = useLocalStorageUuid('kiosk-client-id', '');
   const { data: kioskConfig } = useKioskConfig();
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
