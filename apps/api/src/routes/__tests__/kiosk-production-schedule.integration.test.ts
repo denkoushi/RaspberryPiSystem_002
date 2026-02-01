@@ -377,6 +377,100 @@ describe('Kiosk Production Schedule API', () => {
     expect(rowsAfter.find((r) => r.id === rowId)?.note).toBeNull();
   });
 
+  it('saves and returns row due date (PUT due-date, GET includes dueDate)', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string }> }).rows;
+    const rowId = list[0].id;
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/due-date`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-02-01' }
+    });
+    expect(putRes.statusCode).toBe(200);
+    expect((putRes.json() as { success: boolean; dueDate: string | null }).dueDate).toContain('2026-02-01');
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rows = (getRes.json() as { rows: Array<{ id: string; dueDate?: string | null }> }).rows;
+    const row = rows.find((r) => r.id === rowId);
+    expect(row?.dueDate).toContain('2026-02-01');
+  });
+
+  it('keeps dueDate when note is cleared', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string }> }).rows;
+    const rowId = list[0].id;
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '備考あり' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/due-date`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-02-02' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '   ' }
+    });
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rows = (getRes.json() as { rows: Array<{ id: string; note?: string | null; dueDate?: string | null }> }).rows;
+    const row = rows.find((r) => r.id === rowId);
+    expect(row?.note).toBeNull();
+    expect(row?.dueDate).toContain('2026-02-02');
+  });
+
+  it('hasDueDateOnly=true returns only rows with a dueDate', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string; rowData: { ProductNo?: string } }> }).rows;
+    const row0 = list.find((r) => r.rowData.ProductNo === '0000')!;
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row0.id}/due-date`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-02-03' }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?hasDueDateOnly=true',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ id: string; rowData: { ProductNo?: string } }> };
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0].id).toBe(row0.id);
+  });
+
   it('hasNoteOnly=true returns only rows with a note', async () => {
     const listRes = await app.inject({
       method: 'GET',

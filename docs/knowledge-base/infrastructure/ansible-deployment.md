@@ -3023,13 +3023,25 @@ ls -la /opt/RaspberryPiSystem_002/.git | head -20  # 所有権を確認
 - **aptモジュールの動作**: Ansibleの`apt`モジュールは警告でも失敗として扱うため、リポジトリの設定を適切に管理する必要がある
 
 **再発防止**:
-- デプロイ前チェックリストに「aptリポジトリの状態確認」を追加する
+- ✅ **デプロイ前チェックの自動化（2026-02-01）**: `scripts/update-all-clients.sh`の`pre_deploy_checks()`にNodeSourceリポジトリ検知を追加。NodeSourceリポジトリが存在する場合、デプロイを開始前にfail-fastで停止し、削除コマンドを提示
+- ✅ **README.mdの更新（2026-02-01）**: Node.jsインストール手順にNodeSource使用時の注意書きを追加。KB-220への参照を追加
+- ✅ **デプロイ標準手順の更新（2026-02-01）**: `docs/guides/deployment.md`のデプロイ前チェックリストに「aptリポジトリの確認」を追加
 - NodeSourceリポジトリが新しいGPGキーを提供したら、再追加を検討する
 - 将来的には、Node.jsのインストール方法をnvmや公式バイナリに移行することを検討する
+
+**実機検証結果（2026-02-01）**:
+- ✅ **デプロイ成功**: 全3ホスト（Pi5/Pi4/Pi3）で`failed=0`、デプロイ成功を確認
+- ✅ **Pi5サーバー検証**: APIヘルスチェック（`status: ok`）、DB整合性（27マイグレーション適用済み、必須テーブル存在確認）、Dockerコンテナ（api/web/dbすべて起動中）、ポート公開状況（80/443のみ公開、正常）、セキュリティ監視（`security-monitor.timer` enabled/active）を確認
+- ✅ **Pi4キオスク検証**: systemdサービス（`kiosk-browser.service`, `status-agent.timer`すべてactive）、API動作確認（`/api/tools/loans/active`正常応答）を確認
+- ✅ **Pi3サイネージ検証**: systemdサービス（`signage-lite.service` active）、API動作確認（`/api/signage/content`正常応答）を確認
+- ✅ **恒久対策の動作確認**: デプロイ前チェックでNodeSourceリポジトリが検知されないことを確認（リポジトリ削除済み）
 
 **関連ファイル**:
 - `infrastructure/ansible/roles/server/tasks/security.yml`: セキュリティパッケージのインストールタスク
 - `/etc/apt/sources.list.d/nodesource.list`: NodeSourceリポジトリの設定ファイル（削除済み）
+- `scripts/update-all-clients.sh`: デプロイ前チェックにNodeSourceリポジトリ検知を追加
+- `README.md`: Node.jsインストール手順にNodeSource使用時の注意書きを追加
+- `docs/guides/deployment.md`: デプロイ前チェックリストにaptリポジトリ確認を追加
 
 **復旧手順（参考）**:
 ```bash

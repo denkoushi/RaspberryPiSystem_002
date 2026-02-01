@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-02-01) **NodeSourceリポジトリGPG署名キー問題の解決・デプロイ成功・実機検証完了**: NodeSourceリポジトリのGPG署名キーがSHA1を使用しており、2026-02-01以降のDebianセキュリティポリシーで拒否される問題を解決。**問題**: デプロイ実行時に`apt-get update`が失敗し、Ansibleの`apt`モジュールが警告でも失敗として扱いデプロイが中断。**解決策**: NodeSourceリポジトリを削除（`/etc/apt/sources.list.d/nodesource.list`）。Node.jsは既にインストール済みのため、通常の運用には影響なし。**デプロイ結果**: 全3ホスト（Pi5/Pi4/Pi3）で`failed=0`、デプロイ成功。**実機検証結果**: サーバーAPIヘルスチェック、キオスク用API、サイネージ用API、systemdサービス、DB整合性チェックすべて正常動作を確認。ナレッジベースにKB-220を追加、デプロイ標準手順にaptリポジトリ確認を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+- [x] (2026-02-01) **NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了**: NodeSourceリポジトリのGPG署名キーがSHA1を使用しており、2026-02-01以降のDebianセキュリティポリシーで拒否される問題を解決。**問題**: デプロイ実行時に`apt-get update`が失敗し、Ansibleの`apt`モジュールが警告でも失敗として扱いデプロイが中断。**解決策**: NodeSourceリポジトリを削除（`/etc/apt/sources.list.d/nodesource.list`）。Node.jsは既にインストール済みのため、通常の運用には影響なし。**恒久対策**: `scripts/update-all-clients.sh`の`pre_deploy_checks()`にNodeSourceリポジトリ検知を追加（fail-fast）、`README.md`にNodeSource使用時の注意書きを追加、デプロイ標準手順にaptリポジトリ確認を追加。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: 全3ホスト（Pi5/Pi4/Pi3）で`failed=0`、デプロイ成功。**実機検証結果**: Pi5サーバー（APIヘルスチェック`status: ok`、DB整合性27マイグレーション適用済み・必須テーブル存在確認、Dockerコンテナすべて起動中、ポート公開状況正常、セキュリティ監視有効）、Pi4キオスク（systemdサービスすべてactive、API正常応答）、Pi3サイネージ（systemdサービスactive、API正常応答）すべて正常動作を確認。ナレッジベースにKB-220を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
 
 - [x] (2026-01-31) **サイネージ可視化ダッシュボード機能実装・デプロイ再整備完了**: サイネージに可視化ダッシュボード機能を統合し、デプロイプロセスでコード変更時のDocker再ビルドを確実化。**可視化ダッシュボード機能**: データソース（計測機器、CSVダッシュボード行）とレンダラー（KPIカード、棒グラフ、テーブル）をFactory/Registryパターンで実装し、疎結合・モジュール化・スケーラビリティを確保。サイネージスロットに`visualization`を追加し、`layoutConfig`で可視化ダッシュボードを指定可能に。管理コンソールで可視化ダッシュボードのCRUD UIを実装。**デプロイ再整備**: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。**実機検証結果**: Pi5でデプロイ成功、コード変更時のDocker再ビルドが正常に動作（正のテスト: コード変更→再ビルド、負のテスト: コード変更なし→再ビルドなし）。サイネージプレビューで可視化ダッシュボードが正常に表示されることを確認。CI成功。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) / [docs/modules/signage/README.md](./docs/modules/signage/README.md) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
 
@@ -1358,6 +1358,53 @@
 
 **詳細**: [docs/knowledge-base/infrastructure/signage.md#kb-193](./docs/knowledge-base/infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮)
 
+### デプロイ前チェックのさらなる強化（推奨）
+
+**概要**: NodeSourceリポジトリ問題の恒久対策実装を機に、デプロイ前チェックをさらに強化する
+
+**候補タスク**:
+1. **他のaptリポジトリ問題の検知**（優先度: 中）
+   - サードパーティリポジトリのGPG署名キー問題の自動検知
+   - 古いGPGキー（SHA1など）の使用状況の定期チェック
+   - リポジトリ設定の整合性確認（存在するが使用されていないリポジトリの検出）
+
+2. **デプロイ前チェックの拡張**（優先度: 低）
+   - システムパッケージの更新状況確認（`apt list --upgradable`）
+   - セキュリティ更新の有無確認（`unattended-upgrades`の状態）
+   - ディスク容量の事前確認（デプロイ実行前の容量チェック）
+
+3. **チェック結果の可視化**（優先度: 低）
+   - デプロイ前チェック結果のサマリー表示
+   - 警告とエラーの明確な区別
+   - チェック結果のログファイル出力
+
+**現状**: NodeSourceリポジトリ問題の恒久対策は完了し、デプロイ前チェックにNodeSourceリポジトリ検知を追加済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [docs/guides/deployment.md](./docs/guides/deployment.md)
+
+### Node.jsインストール方法の移行（将来の検討事項）
+
+**概要**: NodeSourceリポジトリ問題を機に、Node.jsのインストール方法をnvmや公式バイナリに移行することを検討
+
+**背景**:
+- NodeSourceリポジトリのGPG署名キー問題により、将来的なNode.js更新が困難になる可能性
+- nvmや公式バイナリを使用することで、OSのセキュリティポリシー変更の影響を受けにくくなる
+
+**候補タスク**:
+1. **nvmへの移行**（優先度: 低）
+   - Pi5/Pi4でのnvmインストール手順の確立
+   - 既存のNode.js環境からの移行手順
+   - デプロイスクリプトでのnvm使用の統合
+
+2. **公式バイナリの使用**（優先度: 低）
+   - Node.js公式バイナリのインストール手順
+   - システムパスへの追加方法
+   - バージョン管理の方法
+
+**現状**: Node.jsは既にインストール済みで正常に動作しているため、緊急の対応は不要。将来的なNode.js更新が必要になった際に検討。
+
+**詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [README.md](./README.md)
+
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
@@ -1377,3 +1424,4 @@
 変更履歴: 2026-01-18 — ポート露出削減機能の実機検証完了を記録。デプロイ成功、Gmail/Dropbox設定維持確認、アラート新規発生なし確認を反映。Surprises & Discoveriesにデプロイ時のトラブルシューティングを追加。Next StepsのPort hardening候補を完了済みに更新。
 変更履歴: 2026-01-23 — CSVダッシュボードの列幅計算改善完了を記録。フォントサイズ反映・全行考慮・列名考慮の実装完了、仮説駆動デバッグ手法の確立、テスト追加を反映。ナレッジベースにKB-193を追加。Next StepsにCSVダッシュボード機能の改善候補を追加。
 変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
+変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。

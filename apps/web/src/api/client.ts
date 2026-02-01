@@ -184,6 +184,7 @@ export interface ProductionScheduleRow {
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
   note?: string | null;
+  dueDate?: string | null;
 }
 
 export interface ProductionScheduleListResponse {
@@ -199,6 +200,7 @@ export async function getKioskProductionSchedule(params?: {
   resourceCds?: string;
   resourceAssignedOnlyCds?: string;
   hasNoteOnly?: boolean;
+  hasDueDateOnly?: boolean;
   page?: number;
   pageSize?: number;
 }) {
@@ -239,6 +241,14 @@ export async function updateKioskProductionScheduleOrder(
 export async function updateKioskProductionScheduleNote(rowId: string, payload: { note: string }) {
   const { data } = await api.put<{ success: boolean; note: string | null }>(
     `/kiosk/production-schedule/${rowId}/note`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
+  const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
+    `/kiosk/production-schedule/${rowId}/due-date`,
     payload
   );
   return data;

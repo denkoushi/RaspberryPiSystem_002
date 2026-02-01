@@ -51,7 +51,8 @@ import {
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
   updateKioskProductionScheduleOrder,
-  updateKioskProductionScheduleNote
+  updateKioskProductionScheduleNote,
+  updateKioskProductionScheduleDueDate
 } from './client';
 import {
   borrowItem,
@@ -261,13 +262,52 @@ export function useUpdateKioskProductionScheduleNote() {
         page: number;
         pageSize: number;
         total: number;
-        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null; note?: string | null }>;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
       }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
         if (!oldData) return oldData;
         return {
           ...oldData,
           rows: oldData.rows.map((row) =>
             row.id === rowId ? { ...row, note: data.note } : row
+          )
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueDate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string }) =>
+      updateKioskProductionScheduleDueDate(rowId, { dueDate }),
+    onSuccess: async (data, { rowId }) => {
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
+      }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          rows: oldData.rows.map((row) =>
+            row.id === rowId ? { ...row, dueDate: data.dueDate } : row
           )
         };
       });

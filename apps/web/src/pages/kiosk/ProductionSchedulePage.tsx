@@ -8,12 +8,15 @@ import {
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleNote,
+  useUpdateKioskProductionScheduleDueDate,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
+import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
+import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
@@ -37,11 +40,13 @@ type NormalizedScheduleRow = {
   values: Record<string, string>;
   processingOrder: number | null;
   note: string | null;
+  dueDate: string | null;
 };
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
 const NOTE_COLUMN_WIDTH = 140;
+const DUE_DATE_COLUMN_WIDTH = 110;
 
 function PencilIcon({ className }: { className?: string }) {
   return (
@@ -63,6 +68,30 @@ function PencilIcon({ className }: { className?: string }) {
   );
 }
 
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+
 export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
   const [activeQueries, setActiveQueries] = useState<string[]>([]);
@@ -71,8 +100,12 @@ export function ProductionSchedulePage() {
   const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
   const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
   const [hasNoteOnlyFilter, setHasNoteOnlyFilter] = useState(false);
+  const [hasDueDateOnlyFilter, setHasDueDateOnlyFilter] = useState(false);
   const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = useState('');
+  const [editingDueDateRowId, setEditingDueDateRowId] = useState<string | null>(null);
+  const [editingDueDateValue, setEditingDueDateValue] = useState('');
+  const [isDueDatePickerOpen, setIsDueDatePickerOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -136,20 +169,23 @@ export function ProductionSchedulePage() {
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
       hasNoteOnly: hasNoteOnlyFilter || undefined,
+      hasDueDateOnly: hasDueDateOnlyFilter || undefined,
       page: 1,
       pageSize: 400
     }),
-    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds, hasNoteOnlyFilter]
+    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds, hasNoteOnlyFilter, hasDueDateOnlyFilter]
   );
   // 資源CD単独では検索しない（登録製番単独・AND検索は維持）。備考ありのみは単独で有効
   const hasQuery =
     normalizedActiveQueries.length > 0 ||
     normalizedAssignedOnlyCds.length > 0 ||
-    hasNoteOnlyFilter;
+    hasNoteOnlyFilter ||
+    hasDueDateOnlyFilter;
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const noteMutation = useUpdateKioskProductionScheduleNote();
+  const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
   const resourcesQuery = useKioskProductionScheduleResources();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -187,6 +223,7 @@ export function ProductionSchedulePage() {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
+      const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
       const values = {
         FHINCD: String(d.FHINCD ?? ''),
         ProductNo: String(d.ProductNo ?? ''),
@@ -203,7 +240,8 @@ export function ProductionSchedulePage() {
         data: d,
         values,
         processingOrder,
-        note
+        note,
+        dueDate
       };
     });
   }, [scheduleQuery.data?.rows]);
@@ -277,11 +315,42 @@ export function ProductionSchedulePage() {
     setActiveResourceCds([]);
     setActiveResourceAssignedOnlyCds([]);
     setHasNoteOnlyFilter(false);
+    setHasDueDateOnlyFilter(false);
   };
 
   const startNoteEdit = (rowId: string, currentNote: string | null) => {
     setEditingNoteRowId(rowId);
     setEditingNoteValue(currentNote ?? '');
+  };
+
+  const normalizeDueDateInput = (value: string | null) => {
+    if (!value) return '';
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+  };
+
+  const openDueDatePicker = (rowId: string, currentDueDate: string | null) => {
+    setEditingDueDateRowId(rowId);
+    setEditingDueDateValue(normalizeDueDateInput(currentDueDate));
+    setIsDueDatePickerOpen(true);
+  };
+
+  const closeDueDatePicker = () => {
+    setIsDueDatePickerOpen(false);
+    setEditingDueDateRowId(null);
+    setEditingDueDateValue('');
+  };
+
+  const confirmDueDate = () => {
+    if (!editingDueDateRowId || dueDateMutation.isPending) return;
+    dueDateMutation.mutate(
+      { rowId: editingDueDateRowId, dueDate: editingDueDateValue },
+      {
+        onSettled: () => {
+          closeDueDatePicker();
+        }
+      }
+    );
   };
 
   const saveNote = (rowId: string) => {
@@ -469,6 +538,15 @@ export function ProductionSchedulePage() {
           >
             備考あり
           </Button>
+          <Button
+            variant="secondary"
+            className={`h-10 ${hasDueDateOnlyFilter ? 'ring-2 ring-emerald-400' : ''}`}
+            onClick={() => setHasDueDateOnlyFilter((v) => !v)}
+            disabled={scheduleQuery.isFetching || completeMutation.isPending}
+            aria-pressed={hasDueDateOnlyFilter}
+          >
+            納期日あり
+          </Button>
           {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </div>
       </div>
@@ -557,6 +635,7 @@ export function ProductionSchedulePage() {
               {itemColumnWidths.map((width, index) => (
                 <col key={`left-${tableColumns[index]?.key ?? index}`} style={{ width }} />
               ))}
+            <col style={{ width: DUE_DATE_COLUMN_WIDTH }} />
               <col style={{ width: NOTE_COLUMN_WIDTH }} />
               {isTwoColumn ? <col style={{ width: itemSeparatorWidth }} /> : null}
               {isTwoColumn
@@ -566,7 +645,10 @@ export function ProductionSchedulePage() {
                         <col key={`right-${tableColumns[index]?.key ?? index}`} style={{ width }} />
                       ))
                     )
-                    .concat([<col key="right-note" style={{ width: NOTE_COLUMN_WIDTH }} />])
+                  .concat([
+                    <col key="right-due-date" style={{ width: DUE_DATE_COLUMN_WIDTH }} />,
+                    <col key="right-note" style={{ width: NOTE_COLUMN_WIDTH }} />
+                  ])
                 : null}
             </colgroup>
             <thead className="sticky top-0 bg-slate-900">
@@ -577,6 +659,7 @@ export function ProductionSchedulePage() {
                     {column.label}
                   </th>
                 ))}
+                <th className="px-2 py-3">納期日</th>
                 <th className="px-2 py-3">備考</th>
                 {isTwoColumn ? <th aria-hidden className="px-2 py-3" /> : null}
                 {isTwoColumn ? <th className="px-2 py-3 text-center">完了</th> : null}
@@ -587,6 +670,7 @@ export function ProductionSchedulePage() {
                       </th>
                     ))
                   : null}
+                {isTwoColumn ? <th className="px-2 py-3">納期日</th> : null}
                 {isTwoColumn ? <th className="px-2 py-3">備考</th> : null}
               </tr>
             </thead>
@@ -642,6 +726,25 @@ export function ProductionSchedulePage() {
                         )}
                       </td>
                     ))}
+                    <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="min-w-0 truncate text-white/90"
+                          title={left.dueDate ? formatDueDate(left.dueDate) : undefined}
+                        >
+                          {formatDueDate(left.dueDate)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openDueDatePicker(left.id, left.dueDate)}
+                          disabled={dueDateMutation.isPending}
+                          className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                          aria-label="納期日を編集"
+                        >
+                          <CalendarIcon />
+                        </button>
+                      </span>
+                    </td>
                     <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
                       {editingNoteRowId === left.id ? (
                         <input
@@ -744,6 +847,27 @@ export function ProductionSchedulePage() {
                         ))}
                         <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
                           {right ? (
+                            <span className="flex items-center gap-1">
+                              <span
+                                className="min-w-0 truncate text-white/90"
+                                title={right.dueDate ? formatDueDate(right.dueDate) : undefined}
+                              >
+                                {formatDueDate(right.dueDate)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openDueDatePicker(right.id, right.dueDate)}
+                                disabled={dueDateMutation.isPending}
+                                className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                                aria-label="納期日を編集"
+                              >
+                                <CalendarIcon />
+                              </button>
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
+                          {right ? (
                             editingNoteRowId === right.id ? (
                               <input
                                 type="text"
@@ -798,6 +922,14 @@ export function ProductionSchedulePage() {
           </table>
         </div>
       )}
+      <KioskDatePickerModal
+        isOpen={isDueDatePickerOpen}
+        value={editingDueDateValue}
+        onChange={setEditingDueDateValue}
+        onClear={() => setEditingDueDateValue('')}
+        onCancel={closeDueDatePicker}
+        onConfirm={confirmDueDate}
+      />
       <KioskKeyboardModal
         isOpen={isKeyboardOpen}
         value={keyboardValue}
