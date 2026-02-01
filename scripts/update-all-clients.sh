@@ -154,11 +154,6 @@ mkdir -p "${LOG_DIR}"
 # REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
 REMOTE_HOST=$(normalize_remote_host)
 
-if [[ -n "${REMOTE_HOST}" && ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 && ${FOREGROUND_MODE} -eq 0 ]]; then
-  DETACH_MODE=1
-  AUTO_DETACH_MODE=1
-fi
-
 usage() {
   cat >&2 <<'USAGE'
 Usage:
@@ -195,6 +190,11 @@ Examples:
   ./scripts/update-all-clients.sh --status 20260125-123456-4242
 USAGE
 }
+
+if [[ -n "${REMOTE_HOST}" && ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 && ${FOREGROUND_MODE} -eq 0 ]]; then
+  DETACH_MODE=1
+  AUTO_DETACH_MODE=1
+fi
 
 ensure_local_repo_ready_for_deploy() {
   # Skip checks for read-only operations
