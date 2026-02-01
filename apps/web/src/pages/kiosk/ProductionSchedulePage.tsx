@@ -341,10 +341,11 @@ export function ProductionSchedulePage() {
     setEditingDueDateValue('');
   };
 
-  const confirmDueDate = () => {
+  const commitDueDate = (nextValue: string) => {
     if (!editingDueDateRowId || dueDateMutation.isPending) return;
+    setEditingDueDateValue(nextValue);
     dueDateMutation.mutate(
-      { rowId: editingDueDateRowId, dueDate: editingDueDateValue },
+      { rowId: editingDueDateRowId, dueDate: nextValue },
       {
         onSettled: () => {
           closeDueDatePicker();
@@ -925,10 +926,8 @@ export function ProductionSchedulePage() {
       <KioskDatePickerModal
         isOpen={isDueDatePickerOpen}
         value={editingDueDateValue}
-        onChange={setEditingDueDateValue}
-        onClear={() => setEditingDueDateValue('')}
         onCancel={closeDueDatePicker}
-        onConfirm={confirmDueDate}
+        onCommit={commitDueDate}
       />
       <KioskKeyboardModal
         isOpen={isKeyboardOpen}
