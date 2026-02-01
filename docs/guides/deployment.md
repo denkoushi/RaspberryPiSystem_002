@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-31（SSH接続時のユーザー名自動検証機能追加、デプロイ前チェック自動化、Git権限自動修正）
+最終更新: 2026-02-01（NodeSourceリポジトリGPG署名キー問題の解決、aptリポジトリ確認をデプロイ前チェックリストに追加）
 
 ## 概要
 
@@ -156,6 +156,12 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # Macから実行（接続テスト）
   ssh denkon5sd02@100.106.158.2 "echo 'SSH接続成功'"
   # 接続できない場合、fail2ban Banの可能性があるため、RealVNC経由でPi5にアクセスしてBanを解除
+  ```
+- [ ] **aptリポジトリの確認**: NodeSourceリポジトリが存在する場合、GPG署名キー問題の可能性があるため確認（[KB-220](../knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される)参照）
+  ```bash
+  # Pi5上で実行（NodeSourceリポジトリの存在確認）
+  ls -la /etc/apt/sources.list.d/nodesource.list 2>/dev/null || echo "NodeSourceリポジトリは存在しません"
+  # 存在する場合、apt-get updateでGPG署名エラーが発生する可能性があるため、削除を検討
   ```
 - [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
 

@@ -426,6 +426,19 @@ pre_deploy_checks() {
   fi
   
   local checks_failed=0
+
+  # aptリポジトリチェック（NodeSourceのGPG署名キー問題を事前検知）
+  # 2026-02-01以降、NodeSourceの署名がSHA1由来で拒否され、apt update_cacheが失敗してデプロイが中断するケースがある（KB-220）
+  echo "[INFO] Checking apt repositories on ${REMOTE_HOST} (NodeSource)..."
+  local nodesource_exists
+  nodesource_exists=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f /etc/apt/sources.list.d/nodesource.list && echo 'yes' || echo 'no'" || echo "no")
+  if [[ "${nodesource_exists}" == "yes" ]]; then
+    echo "[ERROR] NodeSource apt repository exists on ${REMOTE_HOST} (/etc/apt/sources.list.d/nodesource.list)." >&2
+    echo "[ERROR] This can break apt cache updates due to GPG signature policy (SHA1) and will abort deployments." >&2
+    echo "[ERROR] See KB-220: docs/knowledge-base/infrastructure/ansible-deployment.md" >&2
+    echo "[ERROR] Fix with: ssh ${REMOTE_HOST} 'sudo rm -f /etc/apt/sources.list.d/nodesource.list && sudo apt-get update'" >&2
+    checks_failed=$((checks_failed + 1))
+  fi
   
   # Git権限チェック
   echo "[INFO] Checking Git directory permissions on ${REMOTE_HOST}..."

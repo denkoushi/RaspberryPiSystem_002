@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 27件  
+**件数**: 33件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -2974,5 +2974,78 @@ whoami  # denkon5sd02
 sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git
 ls -la /opt/RaspberryPiSystem_002/.git | head -20  # 所有権を確認
 ```
+
+---
+
+### [KB-220] NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイ実行時に`apt-get update`が失敗
+- エラー: `Failed to update apt cache after 5 retries`
+- NodeSourceリポジトリのGPG署名検証が失敗
+
+**症状**:
+1. **apt-get updateの失敗**: Ansibleの`apt`モジュールが`update_cache: true`で失敗
+2. **GPG署名検証エラー**: NodeSourceリポジトリのGPGキーがSHA1を使用しており、2026-02-01以降のDebianセキュリティポリシーで拒否される
+3. **デプロイの中断**: セキュリティパッケージ（`ufw`, `fail2ban`）のインストールタスクが失敗
+
+**エラーメッセージ**:
+```
+エラー:2 https://deb.nodesource.com/node_20.x nodistro InRelease
+  Sub-process /usr/bin/sqv returned an error code (1), error message is:
+  Signing key on 6F71F525282841EEDAF851B42F59B5F99B1BE0B4 is not bound:
+    No binding signature at time 2026-01-19T15:27:46Z
+    because: Policy rejected non-revocation signature (PositiveCertification)
+             requiring second pre-image resistance
+    because: SHA1 is not considered secure since 2026-02-01T00:00:00Z
+```
+
+**根本原因**:
+- **Debianセキュリティポリシーの変更**: 2026年2月1日以降、SHA1ハッシュアルゴリズムを使用するGPG署名キーが安全でないと判断され、署名検証が拒否される
+- **NodeSourceリポジトリのGPGキー**: NodeSourceが提供するGPG署名キーがSHA1を使用しており、新しいポリシーに準拠していない
+- **aptモジュールの動作**: Ansibleの`apt`モジュールは警告でも失敗として扱うため、デプロイが中断される
+
+**有効だった対策**:
+- ✅ **NodeSourceリポジトリの削除（2026-02-01）**: `/etc/apt/sources.list.d/nodesource.list`を削除
+- ✅ **apt-get updateの確認**: NodeSourceリポジトリ削除後、他のリポジトリは正常に更新可能であることを確認
+- ✅ **デプロイ再実行**: NodeSourceリポジトリ削除後、デプロイが正常に完了することを確認
+
+**影響範囲**:
+- **Node.jsのインストール**: Node.jsは既にインストール済みのため、通常の運用には影響なし
+- **将来的なNode.js更新**: NodeSourceリポジトリが新しいGPGキーを提供するか、別の方法（nvmや公式バイナリなど）で更新する必要がある
+
+**学んだこと**:
+- **Debianセキュリティポリシーの変更**: セキュリティポリシーは定期的に更新され、古いアルゴリズム（SHA1など）が段階的に廃止される
+- **サードパーティリポジトリの依存**: サードパーティリポジトリは、OSのセキュリティポリシー変更に追従できない場合がある
+- **aptモジュールの動作**: Ansibleの`apt`モジュールは警告でも失敗として扱うため、リポジトリの設定を適切に管理する必要がある
+
+**再発防止**:
+- デプロイ前チェックリストに「aptリポジトリの状態確認」を追加する
+- NodeSourceリポジトリが新しいGPGキーを提供したら、再追加を検討する
+- 将来的には、Node.jsのインストール方法をnvmや公式バイナリに移行することを検討する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/server/tasks/security.yml`: セキュリティパッケージのインストールタスク
+- `/etc/apt/sources.list.d/nodesource.list`: NodeSourceリポジトリの設定ファイル（削除済み）
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+# NodeSourceリポジトリを削除
+sudo rm -f /etc/apt/sources.list.d/nodesource.list
+
+# apt-get updateを実行して確認
+sudo apt-get update 2>&1 | grep -E '(ヒット|取得|エラー|W:)'
+
+# デプロイを再実行
+```
+
+**参考情報**:
+- NodeSourceリポジトリは、Node.jsの公式パッケージをDebian/Ubuntu向けに提供するサードパーティのリポジトリ
+- 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
+- この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
 
 ---
