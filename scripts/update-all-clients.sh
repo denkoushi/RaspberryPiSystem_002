@@ -15,9 +15,56 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
 HEALTH_PLAYBOOK_PATH="infrastructure/ansible/playbooks/health-check.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"
-REMOTE_HOST="${RASPI_SERVER_HOST:-}"
+REMOTE_HOST_RAW="${RASPI_SERVER_HOST:-}"
 SSH_OPTS=${RASPI_SERVER_SSH_OPTS:-""}
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# REMOTE_HOSTの正規化: ユーザー名が含まれていない場合、inventory.ymlから取得して自動付与
+normalize_remote_host() {
+  local host="${REMOTE_HOST_RAW}"
+  if [[ -z "${host}" ]]; then
+    echo ""
+    return 0
+  fi
+  
+  # 既にユーザー名が含まれている場合（@が含まれている）はそのまま使用
+  if [[ "${host}" == *"@"* ]]; then
+    echo "${host}"
+    return 0
+  fi
+  
+  # ユーザー名が含まれていない場合、inventory.ymlから取得
+  if [[ -n "${INVENTORY_PATH:-}" && -f "${PROJECT_ROOT}/${INVENTORY_PATH}" ]]; then
+    local ansible_user
+    ansible_user=$(python3 - <<'PY' "${PROJECT_ROOT}/${INVENTORY_PATH}"
+import yaml
+import sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as f:
+        inv = yaml.safe_load(f)
+        # serverグループのraspberrypi5ホストからansible_userを取得
+        server_hosts = inv.get('all', {}).get('children', {}).get('server', {}).get('hosts', {})
+        if 'raspberrypi5' in server_hosts:
+            user = server_hosts['raspberrypi5'].get('ansible_user')
+            if user:
+                print(user)
+                sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PY
+    )
+    
+    if [[ -n "${ansible_user}" ]]; then
+      echo "${ansible_user}@${host}"
+      return 0
+    fi
+  fi
+  
+  # inventory.ymlから取得できない場合、デフォルトユーザー名を使用
+  echo "denkon5sd02@${host}"
+}
+
 LOG_FILE="${LOG_DIR}/ansible-update-${TIMESTAMP}.log"
 SUMMARY_FILE="${LOG_DIR}/ansible-update-${TIMESTAMP}.summary.json"
 HEALTH_LOG_FILE="${LOG_DIR}/ansible-health-${TIMESTAMP}.log"
@@ -97,6 +144,9 @@ REPO_VERSION="${REPO_VERSION:-${ANSIBLE_REPO_VERSION:-}}"
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
 
 mkdir -p "${LOG_DIR}"
+
+# REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
+REMOTE_HOST=$(normalize_remote_host)
 
 usage() {
   cat >&2 <<'USAGE'
@@ -367,6 +417,51 @@ if not hosts:
     sys.exit(0)
 print("\n".join(sorted(hosts)))
 PY
+}
+
+# デプロイ前チェック: Git権限とfail2ban Banの確認
+pre_deploy_checks() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  
+  local checks_failed=0
+  
+  # Git権限チェック
+  echo "[INFO] Checking Git directory permissions on ${REMOTE_HOST}..."
+  local git_owner
+  git_owner=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "ls -ld /opt/RaspberryPiSystem_002/.git 2>/dev/null | awk '{print \$3}'" || echo "")
+  if [[ -n "${git_owner}" && "${git_owner}" != "denkon5sd02" ]]; then
+    echo "[WARN] Git directory is owned by ${git_owner} (expected: denkon5sd02)" >&2
+    echo "[WARN] This may cause permission errors during detached execution." >&2
+    echo "[WARN] Fix with: ssh ${REMOTE_HOST} 'sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git'" >&2
+    checks_failed=$((checks_failed + 1))
+  fi
+  
+  # fail2ban Banチェック（MacのTailscale IPを確認）
+  if command -v tailscale >/dev/null 2>&1; then
+    local mac_ip
+    mac_ip=$(tailscale ip -4 2>/dev/null || echo "")
+    if [[ -n "${mac_ip}" ]]; then
+      echo "[INFO] Checking fail2ban ban status for ${mac_ip} on ${REMOTE_HOST}..."
+      local banned
+      banned=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "sudo fail2ban-client status sshd 2>/dev/null | grep -q '${mac_ip}' && echo 'yes' || echo 'no'" || echo "no")
+      if [[ "${banned}" == "yes" ]]; then
+        echo "[ERROR] Your IP ${mac_ip} is banned by fail2ban on ${REMOTE_HOST}" >&2
+        echo "[ERROR] Unban with: ssh ${REMOTE_HOST} 'sudo fail2ban-client set sshd unbanip ${mac_ip}'" >&2
+        echo "[ERROR] Or use RealVNC to access Pi5 desktop and unban manually." >&2
+        checks_failed=$((checks_failed + 1))
+      fi
+    fi
+  fi
+  
+  if [[ ${checks_failed} -gt 0 ]]; then
+    echo "[ERROR] Pre-deploy checks failed. Please fix the issues above before proceeding." >&2
+    return 1
+  fi
+  
+  echo "[INFO] Pre-deploy checks passed."
+  return 0
 }
 
 NETWORK_MODE=""
@@ -1149,6 +1244,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Branch: ${REPO_VERSION}"
   echo "[INFO] This will update both server (Raspberry Pi 5) and clients (Raspberry Pi 3/4)"
   ensure_local_repo_ready_for_deploy
+  pre_deploy_checks || exit_with_error 3 "Pre-deploy checks failed. Please fix the issues above."
   notify_start
   check_network_mode
   acquire_remote_lock

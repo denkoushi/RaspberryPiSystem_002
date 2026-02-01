@@ -144,6 +144,20 @@
     repo_new_head: "{{ repo_new_head.stdout | default('') }}"
     repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
 
+- name: Fix .git directory ownership (prevent detached execution failures)
+  ansible.builtin.file:
+    path: "{{ repo_path }}/.git"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
+    state: directory
+  when:
+    - repo_git_stat.stat.exists | default(false)
+    - ansible_user is defined
+  changed_when: false
+  # Note: This task ensures .git directory is owned by ansible_user to prevent
+  # permission errors during detached execution (KB-219)
+
 - name: Remove unnecessary documentation directory to save storage
   ansible.builtin.file:
     path: "{{ repo_path }}/docs"

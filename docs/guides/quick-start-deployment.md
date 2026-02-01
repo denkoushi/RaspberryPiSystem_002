@@ -57,8 +57,14 @@ update-frequency: high
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 # 環境変数を設定（Pi5のTailscale IPを指定）
+# ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
+# ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
+# inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
 # 注意: 通常運用はTailscaleを使用
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+
+# または、ユーザー名を省略した形式（スクリプトが自動補完）
+# export RASPI_SERVER_HOST="100.106.158.2"  # スクリプトが自動的に denkon5sd02@100.106.158.2 に変換
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（デフォルト）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml

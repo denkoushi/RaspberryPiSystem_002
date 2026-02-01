@@ -10,7 +10,7 @@ update-frequency: medium
 
 # MacからRaspberry Pi 5へのSSH接続ガイド
 
-最終更新: 2025-12-01
+最終更新: 2026-01-31（RealVNC経由のPi5アクセス手順を追加、fail2ban Ban対処手順を追加）
 
 ## 概要
 
@@ -306,6 +306,7 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 2. Raspberry Pi 5が起動しているか
 3. SSHサーバーが起動しているか
 4. ファイアウォール設定が正しいか
+5. **fail2banによるBanが発生していないか**（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
 
 **解決方法:**
 ```bash
@@ -316,6 +317,52 @@ ping -c 1 192.168.128.131
 ssh -v denkon5sd02@192.168.128.131
 ```
 
+### fail2banによるBanが発生した場合
+
+**症状**:
+- `ssh: connect to host 100.106.158.2 port 22: Connection refused`エラーが発生
+- 管理コンソール（HTTPS）は正常にアクセス可能
+- 正しいユーザー名（`denkon5sd02`）を使用しているにもかかわらず接続できない
+
+**原因**:
+- fail2banがSSH認証失敗を検知し、IPアドレスをBanしている
+- 誤ったユーザー名（例: `tsudatakashi`）での認証試行が閾値（10分/5回）を超えた
+
+**解決方法（RealVNC経由）**:
+
+1. **RealVNCでPi5のデスクトップにアクセス**:
+   ```bash
+   # MacからRealVNC接続（Tailscale経由）
+   # RealVNC Viewerで 100.106.158.2:5900 に接続
+   ```
+
+2. **Pi5のターミナルでfail2banのBanを確認**:
+   ```bash
+   sudo fail2ban-client status sshd
+   # Banned IP list: 100.64.230.31 などが表示される
+   ```
+
+3. **Banを解除**:
+   ```bash
+   # MacのTailscale IPをBan解除（例: 100.64.230.31）
+   sudo fail2ban-client set sshd unbanip 100.64.230.31
+   
+   # Ban解除の確認
+   sudo fail2ban-client status sshd
+   # Banned IP list: （空）であることを確認
+   ```
+
+4. **SSH接続を再試行**:
+   ```bash
+   # Macから実行
+   ssh denkon5sd02@100.106.158.2
+   ```
+
+**再発防止**:
+- SSH接続時は、正しいユーザー名（`denkon5sd02`）を使用する
+- inventoryファイル（`infrastructure/ansible/inventory.yml`）で正しいユーザー名を確認する
+- デプロイ標準手順（`docs/guides/deployment.md`）を参照する
+
 ### 接続が途中で切れる場合
 
 **解決方法:**
@@ -325,6 +372,97 @@ ssh -v denkon5sd02@192.168.128.131
 
 **解決方法:**
 - SSH鍵認証を設定（Step 1.3を参照）
+
+---
+
+## RealVNC経由でのPi5アクセス（Tailscale経由）
+
+### 概要
+
+SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5のデスクトップにアクセスして復旧作業を行うことができます。
+
+### 前提条件
+
+- TailscaleがMacとPi5の両方で有効になっていること
+- Pi5でRealVNC Serverが起動していること（ポート5900）
+- RealVNC ViewerがMacにインストールされていること
+
+### セットアップ手順
+
+1. **RealVNC Viewerのインストール**:
+   ```bash
+   # Macで実行
+   brew install --cask realvnc-viewer
+   ```
+
+2. **Pi5のTailscale IPアドレスを確認**:
+   ```bash
+   # Pi5で実行（または管理コンソールで確認）
+   tailscale status
+   # 例: 100.106.158.2
+   ```
+
+3. **RealVNC Viewerで接続**:
+   - RealVNC Viewerを起動
+   - 接続先: `100.106.158.2:5900`（Tailscale IP:ポート5900）
+   - 認証情報を入力して接続
+
+### セキュリティに関する注意事項
+
+**⚠️ ポート5900のリスク評価**:
+
+- **リスクレベル**: 中〜高
+- **理由**:
+  - Tailscaleネットワーク内からのみアクセス可能なため、インターネット直接公開よりは安全
+  - ただし、Tailscaleアカウントが侵害された場合、5900経由でデスクトップアクセスが可能
+  - RealVNCの認証が弱い場合、リスクが高まる
+
+**推奨対策**:
+
+1. **RealVNCの認証強化**:
+   - 強力なパスワードを設定（MFAがあれば有効化）
+   - VNC認証方式を確認（システム認証を使用）
+
+2. **Tailscale ACLの設定**（推奨）:
+   - Tailscale ACLで5900へのアクセスを特定IP/デバイスに制限
+   - 例: MacのTailscale IPのみ許可
+
+3. **SSH経由のポートフォワーディング**（代替案）:
+   ```bash
+   # Macから実行（SSH経由でポートフォワーディング）
+   ssh -L 5900:localhost:5900 denkon5sd02@100.106.158.2
+   # その後、RealVNC Viewerで localhost:5900 に接続
+   ```
+
+### よくある用途
+
+- **fail2ban Ban解除**: SSH接続が失敗した場合、RealVNC経由でPi5にアクセスしてBanを解除
+- **Git権限修正**: `.git`ディレクトリの所有権を修正
+- **緊急時の復旧作業**: SSH接続ができない場合の代替アクセス手段
+
+### トラブルシューティング
+
+**RealVNC接続が失敗する場合**:
+
+1. **Tailscale接続の確認**:
+   ```bash
+   # Macで実行
+   tailscale status
+   # Pi5が表示されていることを確認
+   ```
+
+2. **ポート5900の確認**:
+   ```bash
+   # Macで実行
+   nc -vz -w 3 100.106.158.2 5900
+   # Connection succeeded が表示されることを確認
+   ```
+
+3. **Pi5でRealVNC Serverの状態確認**:
+   ```bash
+   # Pi5で実行（RealVNC経由でアクセス後）
+   sudo systemctl status vncserver-x11-serviced
+   ```
 
 ---
 

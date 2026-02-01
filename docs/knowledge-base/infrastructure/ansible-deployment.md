@@ -2283,15 +2283,25 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 
 **実装詳細**:
 - **APIエンドポイント**: `GET /api/system/deploy-status` が `kioskMaintenance: boolean` を返す
-- **フラグファイル**: `deploy-status.json` は `{"kioskMaintenance": true, "scope": "raspberrypi4", "startedAt": "2026-01-19T05:25:44Z"}` 形式
+- **フラグファイル**: `deploy-status.json` は `{"kioskMaintenance": true, "scope": "kiosk", "startedAt": "2026-01-19T05:25:44Z"}` 形式
 - **ポーリング間隔**: 5秒間隔でポーリング（`refetchInterval: 5000`）
-- **スコープ**: Pi4デプロイ時のみフラグを設定（`--limit raspberrypi4`使用時）
+- **スコープ**: キオスククライアント（Pi4）がデプロイ対象に含まれる場合にフラグを設定（`--limit raspberrypi4`だけでなく、`--limit clients`や`--limit all`でも自動検出）
 
-**実機検証完了（2026-01-19）**:
-- ✅ Pi4デプロイ時にメンテナンス画面が表示されることを確認
-- ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認
-- ✅ Webコンテナの再ビルドが必要であることを確認
-- ✅ ブラウザのキャッシュクリアが必要な場合があることを確認
+**修正履歴（2026-01-31）**:
+- **問題**: `--limit raspberrypi4`を明示的に指定しない場合、メンテナンス画面が表示されなかった
+- **原因**: `set_pi4_maintenance_flag()`関数が`--limit raspberrypi4`のときのみフラグを設定していた
+- **解決策**: `should_enable_kiosk_maintenance()`関数を追加し、デプロイ対象ホストにキオスククライアントが含まれるかを動的に判定するように改善
+  - Fast-path: 一般的な`--limit`パターン（`*raspberrypi4*`, `clients`, `server:clients`, `all`）では即座に有効化
+  - 詳細判定: Fast-pathに該当しない場合は、Ansible inventoryを解析してキオスククライアントが含まれるかを確認
+- **スコープ変更**: `scope`を`raspberrypi4`から`kiosk`に変更（汎用化）
+
+**実機検証完了（2026-01-19, 2026-01-31）**:
+- ✅ Pi4デプロイ時にメンテナンス画面が表示されることを確認（2026-01-19）
+- ✅ デプロイ完了後にメンテナンス画面が自動的に消えることを確認（2026-01-19）
+- ✅ Webコンテナの再ビルドが必要であることを確認（2026-01-19）
+- ✅ ブラウザのキャッシュクリアが必要な場合があることを確認（2026-01-19）
+- ✅ `--limit raspberrypi4`以外でもメンテナンス画面が表示されることを確認（2026-01-31）
+- ✅ デプロイ中に`/api/system/deploy-status`が`kioskMaintenance:true`へ遷移し、終了後`false`に戻ることを確認（2026-01-31）
 
 ---
 
@@ -2836,5 +2846,133 @@ ensure_local_repo_ready_for_deploy() {
 - `infrastructure/docker/Dockerfile.web`（`shared-types`ビルド）
 - `packages/shared-types/tsconfig.json`（`composite: true`設定）
 - `apps/web/tsconfig.json`（`references`で`shared-types`を参照）
+
+---
+
+### [KB-218] SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行）
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- MacからPi5へのSSH接続が`Connection refused`エラーで失敗
+- `ssh: connect to host 100.106.158.2 port 22: Connection refused`
+- 管理コンソール（HTTPS）は正常にアクセス可能
+
+**症状**:
+1. **SSH接続失敗**: MacのTailscale IP（`100.64.230.31`）からPi5へのSSH接続が拒否される
+2. **HTTPSは正常**: ブラウザから`https://100.106.158.2/admin`にはアクセス可能
+3. **fail2banのBan確認**: `sudo fail2ban-client status sshd`で`Banned IP list: 100.64.230.31`が確認される
+
+**根本原因の特定（2026-01-31実施）**:
+
+#### 時系列分析（auth.log / journalctl）
+
+| 時刻 | イベント | 詳細 |
+|------|---------|------|
+| 09:30頃 | SSH認証失敗の連続発生 | `tsudatakashi`という存在しないユーザーでの認証試行が複数回発生 |
+| 09:30:14 | fail2ban Ban | `sshd` jailが`100.64.230.31`をBan（10分/5回の閾値） |
+| 09:50頃 | SSH接続試行 | MacからPi5へのSSH接続が`Connection refused`で失敗 |
+
+#### 根本原因（確定）
+
+**原因は「Pi5へ`tsudatakashi`という存在しないユーザーでSSH認証が複数回試行された」ことです。**
+
+- 正しいユーザー名は`denkon5sd02`だが、AIエージェントが誤って`tsudatakashi`を使用
+- fail2banの`sshd` jailが**10分/5回**の閾値で**Tailscale端末IP `100.64.230.31` をBan**
+- fail2banはSSHのみをBanするため、HTTPS（443）は正常にアクセス可能
+
+**有効だった対策**:
+- ✅ **fail2banのBan解除（2026-01-31）**: Pi5で`sudo fail2ban-client set sshd unbanip 100.64.230.31`を実行
+- ✅ **Ban解除の確認**: `sudo fail2ban-client status sshd`で`Banned IP list`が空であることを確認
+- ✅ **正しいユーザー名の使用**: 以降は`denkon5sd02`を使用してSSH接続
+
+**学んだこと**:
+- **fail2banの動作**: SSH認証失敗が閾値（10分/5回）を超えると、IPアドレスをBanする
+- **Banの範囲**: fail2banはSSH（22）のみをBanし、HTTPS（443）には影響しない
+- **正しいユーザー名の確認**: SSH接続時は、inventoryファイルやドキュメントで正しいユーザー名を確認する必要がある
+- **RealVNC経由の復旧**: Tailscale経由でRealVNC（5900）を使用してPi5のデスクトップにアクセスし、fail2banのBanを解除できる
+
+**再発防止**:
+- SSH接続時は、正しいユーザー名（`denkon5sd02`）を使用する
+- デプロイ標準手順（`docs/guides/deployment.md`）を参照し、正しい接続方法を確認する
+- fail2banのBanが発生した場合は、RealVNC経由でPi5にアクセスしてBanを解除する
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory.yml`: 正しいユーザー名（`ansible_user: denkon5sd02`）
+- `docs/guides/mac-ssh-access.md`: MacからPi5へのSSH接続ガイド
+- `docs/security/incident-response.md`: インシデント対応手順（fail2ban Ban解除）
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+sudo fail2ban-client status sshd
+sudo fail2ban-client set sshd unbanip 100.64.230.31
+sudo fail2ban-client status sshd  # Banned IP listが空であることを確認
+```
+
+---
+
+### [KB-219] Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗
+
+**発生日**: 2026-01-31  
+**Status**: ✅ 解決済み（2026-01-31）
+
+**事象**:
+- デタッチモード（`--detach`）でのデプロイ実行時に、リモートランナーが失敗
+- エラー: `error: cannot update the ref ... 許可がありません`（permission denied）
+- 対象ファイル: `.git/logs/refs/remotes/origin/feature/signage-visualization`
+
+**症状**:
+1. **Git操作の失敗**: リモートランナー（`denkon5sd02`ユーザー）がGit refsを更新できない
+2. **権限エラー**: `.git`ディレクトリとその配下が`root`所有になっている
+3. **デタッチ実行の中断**: Git操作の失敗により、デプロイが中断される
+
+**根本原因の特定（2026-01-31実施）**:
+
+#### 権限確認
+
+```bash
+# Pi5上で実行
+ls -la /opt/RaspberryPiSystem_002/.git | head -20
+# 結果: 多くのファイルがroot所有
+
+# リモートランナーのユーザー確認
+whoami  # denkon5sd02
+```
+
+#### 根本原因（確定）
+
+**原因は「過去のAnsible実行で`become: true`を使用したタスクが`.git`ディレクトリ配下のファイルを作成・更新した」ことです。**
+
+- Ansibleタスクで`become: true`を使用すると、root権限でファイルが作成される
+- `.git/logs/refs/remotes/origin/feature/signage-visualization`などのGit refsファイルがroot所有になっていた
+- リモートランナー（`denkon5sd02`）は通常ユーザー権限のため、root所有のファイルを更新できない
+
+**有効だった対策**:
+- ✅ **Git権限の修正（2026-01-31）**: Pi5で`sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git`を実行
+- ✅ **権限修正の確認**: `ls -la /opt/RaspberryPiSystem_002/.git`で所有権が`denkon5sd02`になっていることを確認
+- ✅ **デプロイ再実行**: 権限修正後、デプロイが正常に完了することを確認
+
+**学んだこと**:
+- **Ansibleの`become: true`の影響**: root権限で実行されるタスクは、作成・更新したファイルがroot所有になる
+- **Gitディレクトリの所有権**: `.git`ディレクトリは、リポジトリを操作するユーザー（`denkon5sd02`）が所有すべき
+- **デタッチ実行の前提条件**: デタッチ実行が正常に動作するには、Git操作が可能な権限が必要
+
+**再発防止**:
+- Ansibleタスクで`.git`ディレクトリ配下のファイルを操作する場合は、`become: false`を使用するか、操作後に所有権を修正する
+- デプロイ前チェックリストに「`.git`ディレクトリの所有権確認」を追加する
+- 定期的に`.git`ディレクトリの所有権を確認し、root所有のファイルがあれば修正する
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`: デタッチ実行スクリプト
+- `infrastructure/ansible/roles/server/tasks/main.yml`: サーバーロールのタスク（`become: true`の使用箇所を確認）
+
+**復旧手順（参考）**:
+```bash
+# Pi5のデスクトップ（RealVNC経由）で実行
+sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git
+ls -la /opt/RaspberryPiSystem_002/.git | head -20  # 所有権を確認
+```
 
 ---

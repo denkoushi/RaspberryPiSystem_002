@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-01-31（Docker build最適化: `.dockerignore`に`tsbuildinfo`除外を追加）
+最終更新: 2026-01-31（SSH接続時のユーザー名自動検証機能追加、デプロイ前チェック自動化、Git権限自動修正）
 
 ## 概要
 
@@ -143,6 +143,19 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && find node_modules packages -type d -name '.bin' -user root -maxdepth 4 | head -n 5"
   # 修正が必要な場合
   ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
+  ```
+- [ ] **Git権限の確認**: `.git`ディレクトリが`denkon5sd02`所有であることを確認（デタッチ実行に必要、[KB-219](../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題gitディレクトリがroot所有でデタッチ実行が失敗)参照）
+  ```bash
+  # Pi5上で実行（root所有を検出）
+  ssh denkon5sd02@raspberrypi.local "ls -ld /opt/RaspberryPiSystem_002/.git"
+  # 修正が必要な場合（root所有の場合）
+  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git"
+  ```
+- [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
+  ```bash
+  # Macから実行（接続テスト）
+  ssh denkon5sd02@100.106.158.2 "echo 'SSH接続成功'"
+  # 接続できない場合、fail2ban Banの可能性があるため、RealVNC経由でPi5にアクセスしてBanを解除
   ```
 - [ ] **標準手順の確認**: 本ドキュメントの標準デプロイ手順を必ず確認
 
@@ -514,7 +527,14 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 # 環境変数を設定（Pi5のTailscale IPを指定）
 # 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
+# 環境変数の設定（Pi5のTailscale IPを指定）
+# ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
+# ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
+# inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+
+# または、ユーザー名を省略した形式（スクリプトが自動補完）
+# export RASPI_SERVER_HOST="100.106.158.2"  # スクリプトが自動的に denkon5sd02@100.106.158.2 に変換
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（第2工場）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
