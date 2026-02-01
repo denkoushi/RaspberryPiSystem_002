@@ -15,8 +15,8 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
@@ -519,70 +519,20 @@ export function ProductionSchedulePage() {
   return (
     <div className="flex h-full flex-col gap-2" ref={containerRef}>
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 shrink-0">
-          <Input
-            value={inputQuery}
-            onChange={(e) => setInputQuery(e.target.value)}
-            placeholder="製造order番号 / 製番で検索"
-            className="h-10 w-64 bg-white text-slate-900"
-          />
-          <Button
-            variant="secondary"
-            className="h-10 px-3"
-            onClick={openKeyboard}
-            disabled={scheduleQuery.isFetching || completeMutation.isPending}
-            aria-label="キーボードを開く"
-          >
-            ⌨
-          </Button>
-        </div>
-        <div className="flex items-center justify-end gap-2 shrink-0">
-          <Button
-            variant="primary"
-            className="h-10"
-            onClick={() => applySearch(inputQuery)}
-            disabled={scheduleQuery.isFetching || completeMutation.isPending}
-          >
-            検索
-          </Button>
-          <Button
-            variant="secondary"
-            className="h-10"
-            onClick={clearAllFilters}
-            disabled={scheduleQuery.isFetching || completeMutation.isPending}
-          >
-            クリア
-          </Button>
-          <button
-            type="button"
-            onClick={() => setHasNoteOnlyFilter((v) => !v)}
-            disabled={scheduleQuery.isFetching || completeMutation.isPending}
-            aria-pressed={hasNoteOnlyFilter}
-            className={`h-10 rounded-full border px-3 text-xs font-semibold transition-colors ${
-              hasNoteOnlyFilter
-                ? 'border-emerald-300 bg-emerald-500 text-white'
-                : 'border-white/30 bg-white/5 text-white/80 hover:bg-white/10'
-            }`}
-          >
-            備考あり
-          </button>
-          <button
-            type="button"
-            onClick={() => setHasDueDateOnlyFilter((v) => !v)}
-            disabled={scheduleQuery.isFetching || completeMutation.isPending}
-            aria-pressed={hasDueDateOnlyFilter}
-            className={`h-10 rounded-full border px-3 text-xs font-semibold transition-colors ${
-              hasDueDateOnlyFilter
-                ? 'border-emerald-300 bg-emerald-500 text-white'
-                : 'border-white/30 bg-white/5 text-white/80 hover:bg-white/10'
-            }`}
-          >
-            納期日あり
-          </button>
-          {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
-        </div>
-      </div>
+      <ProductionScheduleToolbar
+        inputQuery={inputQuery}
+        onInputChange={setInputQuery}
+        onOpenKeyboard={openKeyboard}
+        onSearch={() => applySearch(inputQuery)}
+        onClear={clearAllFilters}
+        hasNoteOnly={hasNoteOnlyFilter}
+        onToggleHasNoteOnly={() => setHasNoteOnlyFilter((value) => !value)}
+        hasDueDateOnly={hasDueDateOnlyFilter}
+        onToggleHasDueDateOnly={() => setHasDueDateOnlyFilter((value) => !value)}
+        disabled={scheduleQuery.isFetching || completeMutation.isPending}
+        isFetching={scheduleQuery.isFetching}
+        showFetching={hasQuery}
+      />
 
       <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
         {(resourcesQuery.data ?? []).map((resourceCd) => {
@@ -591,24 +541,20 @@ export function ProductionSchedulePage() {
           const isAssignedActive = normalizedAssignedOnlyCds.includes(resourceCd);
           return (
             <div key={resourceCd} className="flex items-center gap-1 whitespace-nowrap">
-              <button
-                type="button"
+              <PillButton
                 onClick={() => toggleResourceCd(resourceCd)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${colorClasses.border} ${
-                  isActive ? colorClasses.bgStrong : colorClasses.bgSoft
-                } ${colorClasses.text}`}
+                className={`${colorClasses.border} ${isActive ? colorClasses.bgStrong : colorClasses.bgSoft} ${colorClasses.text}`}
               >
                 {resourceCd}
-              </button>
-              <button
-                type="button"
+              </PillButton>
+              <PillButton
                 onClick={() => toggleAssignedOnlyCd(resourceCd)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${colorClasses.border} ${
+                className={`${colorClasses.border} ${
                   isAssignedActive ? colorClasses.bgStrong : colorClasses.bgSoft
                 } ${colorClasses.text}`}
               >
                 {resourceCd} 割当
-              </button>
+              </PillButton>
             </div>
           );
         })}
