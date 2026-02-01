@@ -38,22 +38,32 @@ export function ProductionScheduleToolbar({
         value={inputQuery}
         onChange={(event) => onInputChange(event.target.value)}
         placeholder="製造order番号 / 製番で検索"
-        className="h-10 w-64 bg-white text-slate-900"
+        className="h-10 !w-36 shrink-0 bg-white text-slate-900"
       />
       <Row className="gap-2 min-w-0">
         <Button
           variant="secondary"
-          className="h-10 px-3"
+          className="h-10 px-3 whitespace-nowrap shrink-0"
           onClick={onOpenKeyboard}
           disabled={disabled}
           aria-label="キーボードを開く"
         >
           ⌨
         </Button>
-        <Button variant="primary" className="h-10" onClick={onSearch} disabled={disabled}>
+        <Button
+          variant="primary"
+          className="h-10 whitespace-nowrap shrink-0"
+          onClick={onSearch}
+          disabled={disabled}
+        >
           検索
         </Button>
-        <Button variant="secondary" className="h-10" onClick={onClear} disabled={disabled}>
+        <Button
+          variant="secondary"
+          className="h-10 whitespace-nowrap shrink-0"
+          onClick={onClear}
+          disabled={disabled}
+        >
           クリア
         </Button>
         <PillToggle
@@ -61,7 +71,7 @@ export function ProductionScheduleToolbar({
           onClick={onToggleHasNoteOnly}
           disabled={disabled}
           size="md"
-          className="h-10"
+          className="h-10 whitespace-nowrap shrink-0"
           activeClassName="border-emerald-300 bg-emerald-500 text-white"
           inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
         >
@@ -72,7 +82,7 @@ export function ProductionScheduleToolbar({
           onClick={onToggleHasDueDateOnly}
           disabled={disabled}
           size="md"
-          className="h-10"
+          className="h-10 whitespace-nowrap shrink-0"
           activeClassName="border-emerald-300 bg-emerald-500 text-white"
           inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
         >

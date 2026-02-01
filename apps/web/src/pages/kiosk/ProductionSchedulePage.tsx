@@ -746,10 +746,9 @@ export function ProductionSchedulePage() {
                       </span>
                     </td>
                     <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
-                      <span className="flex items-center gap-1">
+                      <span className="flex w-full items-center gap-1 min-w-0" title={left.note ?? undefined}>
                         <span
-                          className="min-w-0 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
-                          title={left.note ?? undefined}
+                          className="min-w-0 flex-1 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
                         >
                           {left.note ?? ''}
                         </span>
@@ -861,10 +860,9 @@ export function ProductionSchedulePage() {
                         </td>
                         <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
                           {right ? (
-                            <span className="flex items-center gap-1">
+                            <span className="flex w-full items-center gap-1 min-w-0" title={right.note ?? undefined}>
                               <span
-                                className="min-w-0 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
-                                title={right.note ?? undefined}
+                                className="min-w-0 flex-1 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
                               >
                                 {right.note ?? ''}
                               </span>
