@@ -9,10 +9,12 @@ import {
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleNote,
   useUpdateKioskProductionScheduleDueDate,
+  useUpdateKioskProductionScheduleProcessing,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
+import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
@@ -32,6 +34,7 @@ type ScheduleRowData = {
 };
 
 const NOTE_MAX_LENGTH = 100;
+const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
 
 type NormalizedScheduleRow = {
   id: string;
@@ -39,6 +42,7 @@ type NormalizedScheduleRow = {
   data: ScheduleRowData;
   values: Record<string, string>;
   processingOrder: number | null;
+  processingType: string | null;
   note: string | null;
   dueDate: string | null;
 };
@@ -103,6 +107,7 @@ export function ProductionSchedulePage() {
   const [hasDueDateOnlyFilter, setHasDueDateOnlyFilter] = useState(false);
   const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = useState('');
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingDueDateRowId, setEditingDueDateRowId] = useState<string | null>(null);
   const [editingDueDateValue, setEditingDueDateValue] = useState('');
   const [isDueDatePickerOpen, setIsDueDatePickerOpen] = useState(false);
@@ -113,7 +118,6 @@ export function ProductionSchedulePage() {
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const suppressSearchStateSyncRef = useRef(false);
   const hasLoadedSearchStateRef = useRef(false);
-  const isCancellingNoteRef = useRef(false);
 
   const normalizedActiveQueries = useMemo(() => {
     const unique = new Set<string>();
@@ -184,6 +188,7 @@ export function ProductionSchedulePage() {
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
+  const processingMutation = useUpdateKioskProductionScheduleProcessing();
   const noteMutation = useUpdateKioskProductionScheduleNote();
   const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
   const resourcesQuery = useKioskProductionScheduleResources();
@@ -197,6 +202,7 @@ export function ProductionSchedulePage() {
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
       { key: 'processingOrder', label: '順番', dataType: 'number' },
+      { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
       { key: 'FKOJUN', label: '工順', dataType: 'number' },
       { key: 'FSEIBAN', label: '製番' }
@@ -222,6 +228,7 @@ export function ProductionSchedulePage() {
     return sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
+      const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
       const values = {
@@ -230,6 +237,7 @@ export function ProductionSchedulePage() {
         FHINMEI: String(d.FHINMEI ?? ''),
         FSIGENCD: String(d.FSIGENCD ?? ''),
         processingOrder: processingOrder ? String(processingOrder) : '',
+        processingType: processingType ?? '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
         FKOJUN: String(d.FKOJUN ?? ''),
         FSEIBAN: String(d.FSEIBAN ?? '')
@@ -240,6 +248,7 @@ export function ProductionSchedulePage() {
         data: d,
         values,
         processingOrder,
+        processingType,
         note,
         dueDate
       };
@@ -276,7 +285,6 @@ export function ProductionSchedulePage() {
       fontSizePx: 12,
       scale: 0.5, // 列間パディングを半分に
       fixedWidths: {
-        ProductNo: 115, // 製造order番号列を固定幅（8-10桁想定、パディング最小限）
         FSEIBAN: 90 // 製番列を固定幅（桁数固定前提で最小限）
       },
       formatCellValue: (column, value) => {
@@ -321,6 +329,7 @@ export function ProductionSchedulePage() {
   const startNoteEdit = (rowId: string, currentNote: string | null) => {
     setEditingNoteRowId(rowId);
     setEditingNoteValue(currentNote ?? '');
+    setIsNoteModalOpen(true);
   };
 
   const normalizeDueDateInput = (value: string | null) => {
@@ -354,8 +363,9 @@ export function ProductionSchedulePage() {
     );
   };
 
-  const saveNote = (rowId: string) => {
-    const value = editingNoteValue.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
+  const saveNote = (rowId: string, nextValue?: string) => {
+    const valueSource = typeof nextValue === 'string' ? nextValue : editingNoteValue;
+    const value = valueSource.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
     if (noteMutation.isPending) return;
     noteMutation.mutate(
       { rowId, note: value },
@@ -363,6 +373,7 @@ export function ProductionSchedulePage() {
         onSettled: () => {
           setEditingNoteRowId(null);
           setEditingNoteValue('');
+          setIsNoteModalOpen(false);
         }
       }
     );
@@ -371,6 +382,13 @@ export function ProductionSchedulePage() {
   const cancelNoteEdit = () => {
     setEditingNoteRowId(null);
     setEditingNoteValue('');
+    setIsNoteModalOpen(false);
+  };
+
+  const commitNote = (nextValue: string) => {
+    if (!editingNoteRowId) return;
+    setEditingNoteValue(nextValue);
+    saveNote(editingNoteRowId, nextValue);
   };
 
   const toggleHistoryQuery = (value: string) => {
@@ -428,6 +446,10 @@ export function ProductionSchedulePage() {
   const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
     const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
     orderMutation.mutate({ rowId, payload: { resourceCd, orderNumber } });
+  };
+
+  const handleProcessingChange = (rowId: string, nextValue: string) => {
+    processingMutation.mutate({ rowId, processingType: nextValue });
   };
 
   useEffect(() => {
@@ -720,8 +742,29 @@ export function ProductionSchedulePage() {
                               </select>
                             );
                           })()
+                        ) : column.key === 'processingType' ? (
+                          <select
+                            value={left.processingType ?? ''}
+                            onChange={(event) => handleProcessingChange(left.id, event.target.value)}
+                            disabled={completeMutation.isPending || left.isCompleted || processingMutation.isPending}
+                            className="h-7 w-24 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+                          >
+                            <option value="">-</option>
+                            {PROCESSING_TYPES.map((value) => (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            ))}
+                          </select>
                         ) : (
-                          <span className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}>
+                          <span
+                            className={[
+                              column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : '',
+                              column.key === 'ProductNo' || column.key === 'FHINCD' ? 'break-all' : ''
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
                             {left.values[column.key] || '-'}
                           </span>
                         )}
@@ -747,49 +790,23 @@ export function ProductionSchedulePage() {
                       </span>
                     </td>
                     <td className={`px-2 py-1.5 align-middle ${leftClass}`}>
-                      {editingNoteRowId === left.id ? (
-                        <input
-                          type="text"
-                          value={editingNoteValue}
-                          onChange={(e) => setEditingNoteValue(e.target.value)}
-                          onBlur={() => {
-                            if (isCancellingNoteRef.current) {
-                              isCancellingNoteRef.current = false;
-                              return;
-                            }
-                            saveNote(left.id);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              saveNote(left.id);
-                            }
-                            if (e.key === 'Escape') {
-                              isCancellingNoteRef.current = true;
-                              cancelNoteEdit();
-                            }
-                          }}
-                          maxLength={NOTE_MAX_LENGTH}
-                          className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-xs text-black"
-                          autoFocus
-                          aria-label="備考を編集"
-                        />
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <span className="min-w-0 truncate text-white/90" title={left.note ?? undefined}>
-                            {left.note ? (left.note.length > 18 ? `${left.note.slice(0, 18)}…` : left.note) : ''}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => startNoteEdit(left.id, left.note)}
-                            disabled={noteMutation.isPending}
-                            className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
-                            aria-label="備考を編集"
-                          >
-                            <PencilIcon />
-                          </button>
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="min-w-0 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
+                          title={left.note ?? undefined}
+                        >
+                          {left.note ?? ''}
                         </span>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => startNoteEdit(left.id, left.note)}
+                          disabled={noteMutation.isPending}
+                          className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                          aria-label="備考を編集"
+                        >
+                          <PencilIcon />
+                        </button>
+                      </span>
                     </td>
                     {isTwoColumn ? <td className="px-2 py-1.5" /> : null}
                     {isTwoColumn ? (
@@ -836,9 +853,28 @@ export function ProductionSchedulePage() {
                                     </select>
                                   );
                                 })()
+                              ) : column.key === 'processingType' ? (
+                                <select
+                                  value={right.processingType ?? ''}
+                                  onChange={(event) => handleProcessingChange(right.id, event.target.value)}
+                                  disabled={completeMutation.isPending || right.isCompleted || processingMutation.isPending}
+                                  className="h-7 w-24 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+                                >
+                                  <option value="">-</option>
+                                  {PROCESSING_TYPES.map((value) => (
+                                    <option key={value} value={value}>
+                                      {value}
+                                    </option>
+                                  ))}
+                                </select>
                               ) : (
                                 <span
-                                  className={column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : ''}
+                                  className={[
+                                    column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : '',
+                                    column.key === 'ProductNo' || column.key === 'FHINCD' ? 'break-all' : ''
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' ')}
                                 >
                                   {right.values[column.key] || '-'}
                                 </span>
@@ -869,49 +905,23 @@ export function ProductionSchedulePage() {
                         </td>
                         <td className={`px-2 py-1.5 align-middle ${rightClass}`}>
                           {right ? (
-                            editingNoteRowId === right.id ? (
-                              <input
-                                type="text"
-                                value={editingNoteValue}
-                                onChange={(e) => setEditingNoteValue(e.target.value)}
-                                onBlur={() => {
-                                  if (isCancellingNoteRef.current) {
-                                    isCancellingNoteRef.current = false;
-                                    return;
-                                  }
-                                  saveNote(right.id);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    saveNote(right.id);
-                                  }
-                                  if (e.key === 'Escape') {
-                                    isCancellingNoteRef.current = true;
-                                    cancelNoteEdit();
-                                  }
-                                }}
-                                maxLength={NOTE_MAX_LENGTH}
-                                className="h-7 w-full rounded border border-slate-300 bg-white px-2 text-xs text-black"
-                                autoFocus
-                                aria-label="備考を編集"
-                              />
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <span className="min-w-0 truncate text-white/90" title={right.note ?? undefined}>
-                                  {right.note ? (right.note.length > 18 ? `${right.note.slice(0, 18)}…` : right.note) : ''}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => startNoteEdit(right.id, right.note)}
-                                  disabled={noteMutation.isPending}
-                                  className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
-                                  aria-label="備考を編集"
-                                >
-                                  <PencilIcon />
-                                </button>
+                            <span className="flex items-center gap-1">
+                              <span
+                                className="min-w-0 text-white/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden whitespace-normal break-words"
+                                title={right.note ?? undefined}
+                              >
+                                {right.note ?? ''}
                               </span>
-                            )
+                              <button
+                                type="button"
+                                onClick={() => startNoteEdit(right.id, right.note)}
+                                disabled={noteMutation.isPending}
+                                className="flex shrink-0 items-center justify-center rounded p-1 text-white/70 hover:bg-white/20 hover:text-white disabled:opacity-50"
+                                aria-label="備考を編集"
+                              >
+                                <PencilIcon />
+                              </button>
+                            </span>
                           ) : null}
                         </td>
                       </>
@@ -928,6 +938,13 @@ export function ProductionSchedulePage() {
         value={editingDueDateValue}
         onCancel={closeDueDatePicker}
         onCommit={commitDueDate}
+      />
+      <KioskNoteModal
+        isOpen={isNoteModalOpen}
+        value={editingNoteValue}
+        maxLength={NOTE_MAX_LENGTH}
+        onCancel={cancelNoteEdit}
+        onCommit={commitNote}
       />
       <KioskKeyboardModal
         isOpen={isKeyboardOpen}

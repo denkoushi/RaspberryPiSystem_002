@@ -615,6 +615,7 @@ model ProductionScheduleRowNote {
   csvDashboardRowId String
   location         String
   note             String         @db.VarChar(100) // 現場リーダー備考、100文字以内・改行不可
+  processingType   String?        @db.VarChar(20) // 処理種別（未選択可）
   dueDate          DateTime?      @db.Date // 納期日（年なし表示、日付のみ）
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

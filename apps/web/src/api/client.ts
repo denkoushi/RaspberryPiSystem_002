@@ -183,6 +183,7 @@ export interface ProductionScheduleRow {
   occurredAt: string;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
+  processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
 }
@@ -249,6 +250,17 @@ export async function updateKioskProductionScheduleNote(rowId: string, payload: 
 export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
   const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
     `/kiosk/production-schedule/${rowId}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleProcessing(
+  rowId: string,
+  payload: { processingType: string }
+) {
+  const { data } = await api.put<{ success: boolean; processingType: string | null }>(
+    `/kiosk/production-schedule/${rowId}/processing`,
     payload
   );
   return data;

@@ -377,6 +377,91 @@ describe('Kiosk Production Schedule API', () => {
     expect(rowsAfter.find((r) => r.id === rowId)?.note).toBeNull();
   });
 
+  it('saves and returns row processing type (PUT processing, GET includes processingType)', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string }> }).rows;
+    const rowId = list[0].id;
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/processing`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { processingType: '塗装' }
+    });
+    expect(putRes.statusCode).toBe(200);
+    expect((putRes.json() as { success: boolean; processingType: string | null }).processingType).toBe('塗装');
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rows = (getRes.json() as { rows: Array<{ id: string; processingType?: string | null }> }).rows;
+    const row = rows.find((r) => r.id === rowId);
+    expect(row?.processingType).toBe('塗装');
+  });
+
+  it('keeps processingType when note is cleared', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string }> }).rows;
+    const rowId = list[0].id;
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/processing`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { processingType: 'カニゼン' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '備考あり' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '   ' }
+    });
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const rows = (getRes.json() as { rows: Array<{ id: string; note?: string | null; processingType?: string | null }> }).rows;
+    const row = rows.find((r) => r.id === rowId);
+    expect(row?.note).toBeNull();
+    expect(row?.processingType).toBe('カニゼン');
+  });
+
+  it('rejects invalid processing type', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const list = (listRes.json() as { rows: Array<{ id: string }> }).rows;
+    const rowId = list[0].id;
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/processing`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { processingType: 'INVALID' }
+    });
+    expect(putRes.statusCode).toBe(400);
+  });
+
   it('saves and returns row due date (PUT due-date, GET includes dueDate)', async () => {
     const listRes = await app.inject({
       method: 'GET',

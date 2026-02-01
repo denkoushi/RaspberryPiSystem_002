@@ -9,6 +9,7 @@ const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 const COMPLETED_PROGRESS_VALUE = '完了';
 const ORDER_NUMBER_MIN = 1;
 const ORDER_NUMBER_MAX = 10;
+const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
 const DEFAULT_LOCATION = 'default';
 const SHARED_SEARCH_STATE_LOCATION = 'shared';
 
@@ -126,6 +127,15 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   });
   const productionScheduleDueDateBodySchema = z.object({
     dueDate: z.string().max(20).transform((s) => s.trim()),
+  });
+  const productionScheduleProcessingParamsSchema = z.object({
+    rowId: z.string().uuid(),
+  });
+  const productionScheduleProcessingBodySchema = z.object({
+    processingType: z
+      .string()
+      .optional()
+      .transform((value) => (typeof value === 'string' ? value.trim() : '')),
   });
 
   const productionScheduleSearchStateBodySchema = z.object({
@@ -316,6 +326,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         rowData: Prisma.JsonValue;
         processingOrder: number | null;
         note: string | null;
+        processingType: string | null;
         dueDate: Date | null;
       }>
     >`
@@ -340,6 +351,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           LIMIT 1
         ) AS "processingOrder",
         NULLIF(TRIM("n"."note"), '') AS "note",
+        "n"."processingType" AS "processingType",
         "n"."dueDate" AS "dueDate"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleRowNote" AS "n"
@@ -499,7 +511,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (note.length === 0) {
-      if (existing?.dueDate) {
+      if (existing?.dueDate || (existing?.processingType && existing.processingType.trim().length > 0)) {
         await prisma.productionScheduleRowNote.update({
           where: {
             csvDashboardRowId_location: {
@@ -565,7 +577,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
     if (dueDateText.length === 0) {
       const existingNote = existing?.note?.trim() ?? '';
-      if (existingNote.length === 0) {
+      const existingProcessing = existing?.processingType?.trim() ?? '';
+      if (existingNote.length === 0 && existingProcessing.length === 0) {
         await prisma.productionScheduleRowNote.deleteMany({
           where: {
             csvDashboardRowId: row.id,
@@ -609,6 +622,80 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { success: true, dueDate };
+  });
+
+  // 生産日程（研削工程）: 行ごとの処理種別を保存（x-client-key認証のみ）
+  app.put('/kiosk/production-schedule/:rowId/processing', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const params = productionScheduleProcessingParamsSchema.parse(request.params);
+    const body = productionScheduleProcessingBodySchema.parse(request.body);
+
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: { id: params.rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+
+    const incomingType = body.processingType ?? '';
+    if (incomingType.length > 0 && !PROCESSING_TYPES.includes(incomingType as typeof PROCESSING_TYPES[number])) {
+      throw new ApiError(400, '無効な処理種別です');
+    }
+
+    const existing = await prisma.productionScheduleRowNote.findUnique({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      },
+    });
+
+    if (incomingType.length === 0) {
+      const existingNote = existing?.note?.trim() ?? '';
+      const existingDueDate = existing?.dueDate ?? null;
+      if (existingNote.length === 0 && !existingDueDate) {
+        await prisma.productionScheduleRowNote.deleteMany({
+          where: {
+            csvDashboardRowId: row.id,
+            location: locationKey,
+          },
+        });
+      } else {
+        await prisma.productionScheduleRowNote.update({
+          where: {
+            csvDashboardRowId_location: {
+              csvDashboardRowId: row.id,
+              location: locationKey,
+            },
+          },
+          data: { processingType: null },
+        });
+      }
+      return { success: true, processingType: null };
+    }
+
+    await prisma.productionScheduleRowNote.upsert({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey,
+        },
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: locationKey,
+        note: existing?.note?.trim() ?? '',
+        dueDate: existing?.dueDate ?? null,
+        processingType: incomingType,
+      },
+      update: { processingType: incomingType },
+    });
+
+    return { success: true, processingType: incomingType };
   });
 
   app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {

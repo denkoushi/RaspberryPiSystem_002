@@ -52,7 +52,8 @@ import {
   setKioskProductionScheduleSearchHistory,
   updateKioskProductionScheduleOrder,
   updateKioskProductionScheduleNote,
-  updateKioskProductionScheduleDueDate
+  updateKioskProductionScheduleDueDate,
+  updateKioskProductionScheduleProcessing
 } from './client';
 import {
   borrowItem,
@@ -308,6 +309,39 @@ export function useUpdateKioskProductionScheduleDueDate() {
           ...oldData,
           rows: oldData.rows.map((row) =>
             row.id === rowId ? { ...row, dueDate: data.dueDate } : row
+          )
+        };
+      });
+      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleProcessing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, processingType }: { rowId: string; processingType: string }) =>
+      updateKioskProductionScheduleProcessing(rowId, { processingType }),
+    onSuccess: async (data, { rowId }) => {
+      queryClient.setQueriesData<{
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: Array<{
+          id: string;
+          occurredAt: string | Date;
+          rowData: unknown;
+          processingOrder?: number | null;
+          processingType?: string | null;
+          note?: string | null;
+          dueDate?: string | null;
+        }>;
+      }>({ queryKey: ['kiosk-production-schedule'] }, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          rows: oldData.rows.map((row) =>
+            row.id === rowId ? { ...row, processingType: data.processingType } : row
           )
         };
       });
