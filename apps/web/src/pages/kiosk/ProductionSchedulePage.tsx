@@ -519,7 +519,7 @@ export function ProductionSchedulePage() {
   return (
     <div className="flex h-full flex-col gap-2" ref={containerRef}>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={inputQuery}
@@ -536,6 +536,8 @@ export function ProductionSchedulePage() {
           >
             ⌨
           </Button>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="primary"
             className="h-10"
@@ -552,24 +554,32 @@ export function ProductionSchedulePage() {
           >
             クリア
           </Button>
-          <Button
-            variant="secondary"
-            className={`h-10 ${hasNoteOnlyFilter ? 'ring-2 ring-emerald-400' : ''}`}
+          <button
+            type="button"
             onClick={() => setHasNoteOnlyFilter((v) => !v)}
             disabled={scheduleQuery.isFetching || completeMutation.isPending}
             aria-pressed={hasNoteOnlyFilter}
+            className={`h-10 rounded-full border px-3 text-xs font-semibold transition-colors ${
+              hasNoteOnlyFilter
+                ? 'border-emerald-300 bg-emerald-500 text-white'
+                : 'border-white/30 bg-white/5 text-white/80 hover:bg-white/10'
+            }`}
           >
             備考あり
-          </Button>
-          <Button
-            variant="secondary"
-            className={`h-10 ${hasDueDateOnlyFilter ? 'ring-2 ring-emerald-400' : ''}`}
+          </button>
+          <button
+            type="button"
             onClick={() => setHasDueDateOnlyFilter((v) => !v)}
             disabled={scheduleQuery.isFetching || completeMutation.isPending}
             aria-pressed={hasDueDateOnlyFilter}
+            className={`h-10 rounded-full border px-3 text-xs font-semibold transition-colors ${
+              hasDueDateOnlyFilter
+                ? 'border-emerald-300 bg-emerald-500 text-white'
+                : 'border-white/30 bg-white/5 text-white/80 hover:bg-white/10'
+            }`}
           >
             納期日あり
-          </Button>
+          </button>
           {hasQuery && scheduleQuery.isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </div>
       </div>

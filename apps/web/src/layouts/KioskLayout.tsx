@@ -47,37 +47,9 @@ export function KioskLayout() {
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
       <header className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3">
-          {/* 上段: タイトルとステーション設定 */}
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
-            </div>
-            {/* ステーション設定（小さく） */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-white/70">キオスク端末</span>
-              <label className="flex items-center gap-1 text-white/70">
-                APIキー:
-                <Input
-                  value={clientKey}
-                  onChange={(e) => setClientKey(e.target.value)}
-                  placeholder="client-demo-key"
-                  className="h-6 w-32 px-2 text-xs"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-white/70">
-                ID:
-                <Input
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="UUID"
-                  className="h-6 w-24 px-2 text-xs"
-                />
-              </label>
-            </div>
-          </div>
-          {/* 下段: CPU情報とナビゲーション */}
-          <div className="flex items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
             {/* CPU温度・負荷モニター（自端末のClientStatusから取得） */}
             {kioskConfig?.clientStatus && (
               <div className="flex items-center gap-3 text-xs shrink-0">
@@ -113,6 +85,30 @@ export function KioskLayout() {
                 </div>
               </div>
             )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3 min-w-0">
+            {/* ステーション設定（小さく） */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-white/70">キオスク端末</span>
+              <label className="flex items-center gap-1 text-white/70">
+                APIキー:
+                <Input
+                  value={clientKey}
+                  onChange={(e) => setClientKey(e.target.value)}
+                  placeholder="client-demo-key"
+                  className="h-6 w-32 px-2 text-xs"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-white/70">
+                ID:
+                <Input
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="UUID"
+                  className="h-6 w-24 px-2 text-xs"
+                />
+              </label>
+            </div>
             {/* ナビゲーション（折り返し可能、横スクロールなし） */}
             <nav className="flex items-center gap-2 flex-wrap justify-end min-w-0 flex-1">
               <NavLink
@@ -170,7 +166,7 @@ export function KioskLayout() {
           </div>
         </div>
       </header>
-      <main className="flex h-[calc(100vh-7rem)] flex-col gap-4 px-4 py-4">
+      <main className="flex h-[calc(100vh-6rem)] flex-col gap-4 px-4 py-4">
         <Outlet />
       </main>
       <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />
