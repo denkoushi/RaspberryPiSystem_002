@@ -2684,13 +2684,37 @@ export function KioskDatePickerModal({
 
 **解決状況**: ✅ **解決済み**（2026-02-01）
 
+**実装の詳細**:
+- **備考モーダル**: `KioskNoteModal`コンポーネントを新規作成。`textarea`で最大100文字の入力を受け付け、文字数カウントを表示。保存時は改行を削除して単一行として保存。
+- **処理列**: `ProductionScheduleRowNote`モデルに`processingType`フィールドを追加（`String? @db.VarChar(20)`）。APIエンドポイント`PUT /kiosk/production-schedule/:rowId/processing`を追加。フロントエンドにドロップダウンを実装（未選択状態も許可）。
+- **折り返し対応**: `ProductNo`と`FHINCD`列に`break-all`クラスを追加し、長い文字列でも折り返されるように改善。`computeColumnWidths`から`ProductNo`の固定幅を削除し、動的幅調整に参加させる。
+
+**学んだこと**:
+- **モーダルUIの実装**: 頻繁に編集する項目は、セル内編集ではなくモーダルで全文を確認できるようにすることで、ユーザー体験が大幅に向上する
+- **データ整合性の考慮**: `note`、`dueDate`、`processingType`の3フィールドがすべて空/nullの場合のみレコードを削除するロジックを実装し、データの整合性を維持
+- **列幅の動的調整**: 固定幅を削除し、テキスト内容に応じて動的に調整することで、レイアウトの詰まりを緩和できる
+
+**実機検証結果（2026-02-01）**:
+- ✅ **統合テスト成功**: 備考の保存・取得、処理種別の保存・取得が正常に動作することを確認
+- ✅ **GitHub Actions CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+- ✅ **デプロイ成功**: Pi5でデプロイ成功（マイグレーション適用済み）
+- ✅ **実機検証完了（2026-02-01）**:
+  - 備考モーダルが正常に開き、全文を確認しながら編集できることを確認
+  - 備考が2行まで折り返して表示されることを確認
+  - 処理列のドロップダウンが正常に動作し、選択・未選択状態が正しく保存されることを確認
+  - 品番/製造order番号が長い場合でも折り返されて表示されることを確認
+  - 備考・納期・処理の3フィールドが独立して動作することを確認
+
 **関連ファイル**:
 - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（備考モーダル・処理列・折り返し対応）
 - `apps/web/src/components/kiosk/KioskNoteModal.tsx`（備考モーダル）
 - `apps/api/src/routes/kiosk.ts`（処理種別エンドポイント）
+- `apps/api/prisma/schema.prisma`（`processingType`フィールド追加）
+- `apps/api/prisma/migrations/20260201055642_add_production_schedule_processing_type/`（マイグレーション）
 
 **関連KB**:
 - [KB-212](./frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能): 備考欄追加の初期実装
 - [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装): 納期日UI改善
+- [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題): デプロイ時のマイグレーション未適用問題
 
 ---

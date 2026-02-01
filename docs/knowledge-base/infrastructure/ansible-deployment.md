@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 34件  
+**件数**: 35件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3129,5 +3129,62 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 - [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
 - 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
 - この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
+
+---
+
+### [KB-224] デプロイ時のマイグレーション未適用問題
+
+**発生日**: 2026-02-01  
+**Status**: ✅ 解決済み（2026-02-01）
+
+**事象**:
+- デプロイが完了し、Dockerコンテナが正常に起動しているにもかかわらず、新規追加したマイグレーション（`20260201055642_add_production_schedule_processing_type`）が適用されていない
+- `pnpm prisma migrate status`で「Following migration have not yet been applied」と表示される
+- APIは正常に動作しているが、新機能（処理列）が使用できない
+
+**要因**:
+- **Ansibleデプロイプロセスの問題**: `roles/server/tasks/main.yml`で`pnpm prisma migrate deploy`を実行しているが、デプロイが完了した後にマイグレーションが適用されていない
+- **デプロイ後の検証不足**: デプロイ後チェックリストにマイグレーション状態の確認が含まれているが、デプロイ完了直後に確認していなかった
+- **タイミングの問題**: Dockerコンテナの再作成とマイグレーション実行のタイミングがずれている可能性
+
+**有効だった対策**:
+- ✅ **手動マイグレーション適用（2026-02-01）**: デプロイ完了後、手動で`pnpm prisma migrate deploy`を実行してマイグレーションを適用
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy"
+  ```
+- ✅ **マイグレーション状態の確認**: `pnpm prisma migrate status`でマイグレーションが正常に適用されたことを確認
+
+**再発防止**:
+- ✅ **デプロイ後チェックリストの徹底**: デプロイ完了後、必ず`pnpm prisma migrate status`でマイグレーション状態を確認する
+- ✅ **Ansibleデプロイプロセスの確認**: `roles/server/tasks/main.yml`で`pnpm prisma migrate deploy`が正しく実行されているか確認する
+- ✅ **デプロイログの確認**: デプロイログでマイグレーション実行の記録を確認する
+
+**学んだこと**:
+- **デプロイ後の検証の重要性**: デプロイが完了しても、マイグレーションが適用されていない場合があるため、必ずマイグレーション状態を確認する必要がある
+- **Ansibleデプロイプロセスの確認**: Ansibleでマイグレーションを実行している場合でも、デプロイ完了後に状態を確認することが重要
+- **手動適用の必要性**: デプロイプロセスでマイグレーションが適用されなかった場合、手動で適用することで問題を解決できる
+
+**実機検証結果（2026-02-01）**:
+- ✅ **マイグレーション適用成功**: 手動で`pnpm prisma migrate deploy`を実行し、マイグレーションが正常に適用されたことを確認
+- ✅ **マイグレーション状態確認**: `pnpm prisma migrate status`で「Database schema is up to date!」と表示され、すべてのマイグレーションが適用済みであることを確認
+- ✅ **新機能の動作確認**: 処理列のドロップダウンが正常に動作し、選択・未選択状態が正しく保存されることを確認
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/server/tasks/main.yml`: Ansibleデプロイプロセスのマイグレーション実行タスク
+- `apps/api/prisma/migrations/20260201055642_add_production_schedule_processing_type/`: 未適用だったマイグレーション
+- `docs/guides/deployment.md`: デプロイ後チェックリスト（マイグレーション状態確認を含む）
+
+**復旧手順（参考）**:
+```bash
+# Pi5上で実行
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+
+# マイグレーション状態の確認
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+```
+
+**関連KB**:
+- [KB-191](./ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在): デプロイ成功時のDB整合性問題（類似の問題）
 
 ---

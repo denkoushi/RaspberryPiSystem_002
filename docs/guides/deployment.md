@@ -183,13 +183,20 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか
   - 黄色の警告が表示されていないか（[KB-168](../knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)参照）
-- [ ] **DB整合性チェック**: マイグレーション適用と必須テーブルの存在を確認
+- [ ] **DB整合性チェック（重要）**: マイグレーション適用と必須テーブルの存在を確認。**デプロイ完了後、必ずマイグレーション状態を確認すること**（[KB-224](../knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題)参照）。未適用のマイグレーションがある場合は、手動で`pnpm prisma migrate deploy`を実行する。
   ```bash
-  # Pi5上で実行
+  # Pi5上で実行（マイグレーション状態の確認）
   cd /opt/RaspberryPiSystem_002
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+  
+  # 未適用のマイグレーションがある場合、手動で適用
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+  
+  # マイグレーション履歴の確認
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
     psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT COUNT(*) FROM \"_prisma_migrations\";"
+  
+  # 必須テーブルの存在確認（例: MeasuringInstrumentLoanEvent）
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
     psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -tAc "SELECT to_regclass('public.\"MeasuringInstrumentLoanEvent\"') IS NOT NULL;"
   ```
