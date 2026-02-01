@@ -507,6 +507,15 @@ should_enable_kiosk_maintenance() {
   local limit_arg=""
   if [[ -n "${LIMIT_HOSTS}" ]]; then
     limit_arg="--limit ${LIMIT_HOSTS}"
+    # Fast-path: common limits that definitely include Pi4 kiosks
+    case "${LIMIT_HOSTS}" in
+      *raspberrypi4*|clients|server:clients|all)
+        return 0
+        ;;
+    esac
+  else
+    # No --limit means full deploy (server + clients). If kiosks exist, they are included.
+    return 0
   fi
 
   local selected_hosts
@@ -743,6 +752,15 @@ should_enable_kiosk_maintenance() {
   local limit_arg=""
   if [ -n "${LIMIT_HOSTS}" ]; then
     limit_arg="--limit ${LIMIT_HOSTS}"
+    # Fast-path: common limits that definitely include Pi4 kiosks
+    case "${LIMIT_HOSTS}" in
+      *raspberrypi4*|clients|server:clients|all)
+        return 0
+        ;;
+    esac
+  else
+    # No --limit means full deploy (server + clients). If kiosks exist, they are included.
+    return 0
   fi
 
   local selected_hosts
