@@ -519,8 +519,8 @@ export function ProductionSchedulePage() {
   return (
     <div className="flex h-full flex-col gap-2" ref={containerRef}>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <Input
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
@@ -537,7 +537,7 @@ export function ProductionSchedulePage() {
             ⌨
           </Button>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 shrink-0">
           <Button
             variant="primary"
             className="h-10"

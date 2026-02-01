@@ -47,8 +47,8 @@ export function KioskLayout() {
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
       <header className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
+          <div className="flex items-center gap-4 shrink-0">
             <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
             {/* CPU温度・負荷モニター（自端末のClientStatusから取得） */}
             {kioskConfig?.clientStatus && (
@@ -86,9 +86,9 @@ export function KioskLayout() {
               </div>
             )}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3 min-w-0">
+          <div className="flex items-center justify-end gap-3 min-w-0 flex-1">
             {/* ステーション設定（小さく） */}
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-xs shrink-0">
               <span className="text-white/70">キオスク端末</span>
               <label className="flex items-center gap-1 text-white/70">
                 APIキー:
@@ -110,7 +110,7 @@ export function KioskLayout() {
               </label>
             </div>
             {/* ナビゲーション（折り返し可能、横スクロールなし） */}
-            <nav className="flex items-center gap-2 flex-wrap justify-end min-w-0 flex-1">
+            <nav className="flex items-center gap-2 flex-wrap justify-end min-w-0">
               <NavLink
                 to="/kiosk"
                 className={() => {
