@@ -9,6 +9,8 @@ type ProductionScheduleToolbarProps = {
   onOpenKeyboard: () => void;
   onSearch: () => void;
   onClear: () => void;
+  completedCount: number;
+  incompleteCount: number;
   hasNoteOnly: boolean;
   onToggleHasNoteOnly: () => void;
   hasDueDateOnly: boolean;
@@ -24,6 +26,8 @@ export function ProductionScheduleToolbar({
   onOpenKeyboard,
   onSearch,
   onClear,
+  completedCount,
+  incompleteCount,
   hasNoteOnly,
   onToggleHasNoteOnly,
   hasDueDateOnly,
@@ -33,63 +37,74 @@ export function ProductionScheduleToolbar({
   showFetching = false
 }: ProductionScheduleToolbarProps) {
   return (
-    <Row className="gap-2 min-w-0">
-      <Input
-        value={inputQuery}
-        onChange={(event) => onInputChange(event.target.value)}
-        placeholder="製造order番号 / 製番で検索"
-        className="h-10 !w-36 shrink-0 bg-white text-slate-900"
-      />
+    <Row className="gap-2 min-w-0 w-full">
       <Row className="gap-2 min-w-0">
-        <Button
-          variant="secondary"
-          className="h-10 px-3 whitespace-nowrap shrink-0"
-          onClick={onOpenKeyboard}
-          disabled={disabled}
-          aria-label="キーボードを開く"
-        >
-          ⌨
-        </Button>
-        <Button
-          variant="primary"
-          className="h-10 whitespace-nowrap shrink-0"
-          onClick={onSearch}
-          disabled={disabled}
-        >
-          検索
-        </Button>
-        <Button
-          variant="secondary"
-          className="h-10 whitespace-nowrap shrink-0"
-          onClick={onClear}
-          disabled={disabled}
-        >
-          クリア
-        </Button>
-        <PillToggle
-          isActive={hasNoteOnly}
-          onClick={onToggleHasNoteOnly}
-          disabled={disabled}
-          size="md"
-          className="h-10 whitespace-nowrap shrink-0"
-          activeClassName="border-emerald-300 bg-emerald-500 text-white"
-          inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
-        >
-          備考あり
-        </PillToggle>
-        <PillToggle
-          isActive={hasDueDateOnly}
-          onClick={onToggleHasDueDateOnly}
-          disabled={disabled}
-          size="md"
-          className="h-10 whitespace-nowrap shrink-0"
-          activeClassName="border-emerald-300 bg-emerald-500 text-white"
-          inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
-        >
-          納期日あり
-        </PillToggle>
-        {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
+        <Input
+          value={inputQuery}
+          onChange={(event) => onInputChange(event.target.value)}
+          placeholder="製造order番号 / 製番で検索"
+          className="h-10 !w-36 shrink-0 bg-white text-slate-900"
+        />
+        <Row className="gap-2 min-w-0">
+          <Button
+            variant="secondary"
+            className="h-10 px-3 whitespace-nowrap shrink-0"
+            onClick={onOpenKeyboard}
+            disabled={disabled}
+            aria-label="キーボードを開く"
+          >
+            ⌨
+          </Button>
+          <Button
+            variant="primary"
+            className="h-10 whitespace-nowrap shrink-0"
+            onClick={onSearch}
+            disabled={disabled}
+          >
+            検索
+          </Button>
+          <Button
+            variant="secondary"
+            className="h-10 whitespace-nowrap shrink-0"
+            onClick={onClear}
+            disabled={disabled}
+          >
+            クリア
+          </Button>
+          <PillToggle
+            isActive={hasNoteOnly}
+            onClick={onToggleHasNoteOnly}
+            disabled={disabled}
+            size="md"
+            className="h-10 whitespace-nowrap shrink-0"
+            activeClassName="border-emerald-300 bg-emerald-500 text-white"
+            inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
+          >
+            備考あり
+          </PillToggle>
+          <PillToggle
+            isActive={hasDueDateOnly}
+            onClick={onToggleHasDueDateOnly}
+            disabled={disabled}
+            size="md"
+            className="h-10 whitespace-nowrap shrink-0"
+            activeClassName="border-emerald-300 bg-emerald-500 text-white"
+            inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
+          >
+            納期日あり
+          </PillToggle>
+          {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
+        </Row>
       </Row>
+      <div className="ml-auto flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
+        <span className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+          完了 {completedCount}
+        </span>
+        <span className="text-white/70">/</span>
+        <span className="text-red-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+          未完 {incompleteCount}
+        </span>
+      </div>
     </Row>
   );
 }

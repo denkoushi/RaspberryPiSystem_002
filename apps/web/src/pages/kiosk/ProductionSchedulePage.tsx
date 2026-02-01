@@ -255,6 +255,14 @@ export function ProductionSchedulePage() {
     });
   }, [scheduleQuery.data?.rows]);
 
+  const { completedCount, incompleteCount } = useMemo(() => {
+    const completed = normalizedRows.filter((row) => row.isCompleted).length;
+    return {
+      completedCount: completed,
+      incompleteCount: normalizedRows.length - completed
+    };
+  }, [normalizedRows]);
+
   const resourceCdsInRows = useMemo(() => {
     const unique = new Set<string>();
     normalizedRows.forEach((row) => {
@@ -525,6 +533,8 @@ export function ProductionSchedulePage() {
         onOpenKeyboard={openKeyboard}
         onSearch={() => applySearch(inputQuery)}
         onClear={clearAllFilters}
+        completedCount={completedCount}
+        incompleteCount={incompleteCount}
         hasNoteOnly={hasNoteOnlyFilter}
         onToggleHasNoteOnly={() => setHasNoteOnlyFilter((value) => !value)}
         hasDueDateOnly={hasDueDateOnlyFilter}
