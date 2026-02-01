@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-01) **リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了**: デプロイスクリプトのリモート実行をデフォルトでデタッチモードに変更し、クライアント側の監視打ち切りによる中断リスクを排除。**実装内容**: `REMOTE_HOST`が設定されている場合、`--detach`、`--job`、`--foreground`が明示指定されていない限り、自動的にデタッチモードで実行されるように変更。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。`usage`関数の定義位置を修正し、エラーハンドリングを改善。**KB-226の更新**: 「約60秒」という不確実な記述を削除し、事実ベースの表現に修正（「クライアント側の監視打ち切り: 実行環境側のコマンド監視が短く（値は環境依存で未確定）」）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデフォルトデタッチモードでデプロイ成功（`failed=0`, exit code: 0）。**実機検証結果**: リモート実行時に自動的にデタッチモードで実行されること、`--attach`でログ追尾が正常に動作すること、`--status`で状態確認が正常に動作すること、APIヘルスチェック（`status: ok`）、DB整合性（29マイグレーション適用済み）、Dockerコンテナ（すべて起動中）を確認。ナレッジベースにKB-226を更新。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-02-01) **生産スケジュール備考のモーダル編集化と処理列追加完了・デプロイ成功・実機検証完了**: キオスクの生産スケジュールUIを大幅に改善し、操作性と視認性を向上。**UI改善内容**: 備考欄のモーダル編集化（`KioskNoteModal`コンポーネント新規作成、`textarea`で最大100文字入力、文字数カウント表示、保存時は改行削除して単一行として保存）、備考の2行表示（`line-clamp:2`で視認性向上）、処理列の追加（`processingType`フィールド追加、ドロップダウンで`塗装/カニゼン/LSLH/その他01/その他02`を選択可能、未選択状態も許可）、品番/製造order番号の折り返し対応（`break-all`クラス追加、`ProductNo`の固定幅削除で動的幅調整に参加）。**データベーススキーマ変更**: `ProductionScheduleRowNote`モデルに`processingType String? @db.VarChar(20)`フィールドを追加。**APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/processing`を追加。**データ整合性の考慮**: `note`、`dueDate`、`processingType`の3フィールドがすべて空/nullの場合のみレコードを削除するロジックを実装。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（マイグレーション適用済み）。**デプロイ時のトラブルシューティング**: デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用。**実機検証結果**: 備考モーダルが正常に開き全文を確認しながら編集できること、備考が2行まで折り返して表示されること、処理列のドロップダウンが正常に動作し選択・未選択状態が正しく保存されること、品番/製造order番号が長い場合でも折り返されて表示されること、備考・納期・処理の3フィールドが独立して動作することを確認。ナレッジベースにKB-223（備考モーダル編集化と処理列追加）、KB-224（デプロイ時のマイグレーション未適用問題）を追加。詳細は [docs/knowledge-base/frontend.md#kb-223](./docs/knowledge-base/frontend.md#kb-223-生産スケジュール備考のモーダル編集化と処理列追加) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
 
 - [x] (2026-02-01) **生産スケジュール納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。ナレッジベースにKB-221（納期日UI改善）、KB-222（デプロイ時のinventory混同）を追加。詳細は [docs/knowledge-base/frontend.md#kb-221](./docs/knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
@@ -484,6 +486,10 @@
   対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
 - 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
   対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
+- 観測: クライアント側のコマンド監視が短く（値は環境依存で未確定）、Pi5+Pi4の長時間デプロイ（15-20分）では途中で「停止して見える」状態になりやすい。  
+  対応: **リモート実行をデフォルトでデタッチモードに変更**し、クライアント側の監視打ち切りによる中断リスクを排除。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。**[KB-226]**
+- 発見: `usage`関数が呼び出しより後に定義されていたため、エラーハンドリング時に`usage: command not found`エラーが発生。  
+  対応: `usage`関数を引数解析直後に移動し、エラーメッセージが正常に表示されるように修正。
 - 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。  
   エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
   対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
@@ -637,7 +643,11 @@
 - 決定: サーバー（Pi5）は Docker Compose で PostgreSQL・API・Web サーバーを構成し、将来の機能追加でも同一手順でデプロイできるようにする。  
   理由: Raspberry Pi OS 64bit に標準で含まれ、再起動や依存関係管理が容易なため。  
   日付/担当: 2024-05-27 / Codex
-- 決定: Pi4 では `pyscard` を用いた軽量Pythonサービスを作り、`localhost` WebSocket/REST を提供してブラウザUIがNFCイベントを購読できるようにする（ブラウザ標準のNFC APIには依存しない）。  
+- 決定: Pi4 では `pyscard` を用いた軽量Pythonサービスを作り、`localhost` WebSocket/REST を提供してブラウザUIがNFCイベントを購読できるようにする（ブラウザ標準のNFC APIには依存しない）。
+- 決定: リモート実行（`REMOTE_HOST`が設定されている場合）はデフォルトでデタッチモードで実行する。  
+  理由: クライアント側の監視打ち切りによる中断リスクを排除し、長時間デプロイの安全性を向上させるため。前景実行が必要な場合は`--foreground`オプションで明示的に指定可能（短時間のみ推奨）。  
+  日付/担当: 2026-02-01 / Codex  
+  参照: [KB-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須)  
   理由: Raspberry Pi のChromiumにはNFC APIが実装されておらず、ローカルWebSocketであればCORS問題なくUSB処理をフロントから切り離せるため。  
   日付/担当: 2024-05-27 / Codex
 - 決定: データストアは PostgreSQL とし、社員レコードをUUID主体で設計して将来他モジュールが参照しやすい構造にする。  
@@ -1429,3 +1439,4 @@
 変更履歴: 2026-01-23 — CSVダッシュボードの列幅計算改善完了を記録。フォントサイズ反映・全行考慮・列名考慮の実装完了、仮説駆動デバッグ手法の確立、テスト追加を反映。ナレッジベースにKB-193を追加。Next StepsにCSVダッシュボード機能の改善候補を追加。
 変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
 変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。
+変更履歴: 2026-02-01 — リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了を反映。Progressにリモート実行のデフォルトデタッチ化、`--foreground`オプション追加、`usage`関数の定義位置修正を追加。KB-226に実装の詳細と実機検証結果を追加。Surprises & Discoveriesにクライアント側監視打ち切り問題と`usage`関数の定義位置問題を追加。Decision Logにリモート実行のデフォルトデタッチ化決定を追加。
