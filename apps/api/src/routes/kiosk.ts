@@ -4,9 +4,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { sendSlackNotification } from '../services/notifications/slack-webhook.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../services/production-schedule/constants.js';
 
-const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
-const COMPLETED_PROGRESS_VALUE = '完了';
 const ORDER_NUMBER_MIN = 1;
 const ORDER_NUMBER_MAX = 10;
 const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;

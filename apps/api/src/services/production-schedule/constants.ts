@@ -1,0 +1,2 @@
+export const PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+export const COMPLETED_PROGRESS_VALUE = '完了';

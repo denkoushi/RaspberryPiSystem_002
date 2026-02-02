@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生産スケジュール進捗可視化</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background: #020617;
+      color: #f8fafc;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      padding: 24px;
+      overflow-x: hidden;
+    }
+    
+    .header {
+      margin-bottom: 32px;
+    }
+    
+    .title {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .subtitle {
+      font-size: 24px;
+      color: #94a3b8;
+    }
+    
+    .stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+    }
+    
+    .stat-card {
+      background: rgba(255, 255, 255, 0.06);
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 20px 32px;
+      min-width: 200px;
+    }
+    
+    .stat-label {
+      font-size: 20px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+    
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+    }
+    
+    .stat-value.completed {
+      color: #10b981;
+    }
+    
+    .stat-value.incomplete {
+      color: #ef4444;
+    }
+    
+    .stat-value.total {
+      color: #38bdf8;
+    }
+    
+    .progress-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+      gap: 24px;
+    }
+    
+    .progress-card {
+      background: rgba(255, 255, 255, 0.06);
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      transition: transform 0.2s;
+    }
+    
+    .progress-card.completed {
+      border-color: #10b981;
+      opacity: 0.7;
+    }
+    
+    .progress-card.incomplete {
+      border-color: #ef4444;
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .seiban {
+      font-size: 32px;
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
+      color: #f8fafc;
+    }
+    
+    .status-badge {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .status-badge.completed {
+      background: #10b981;
+      color: #020617;
+    }
+    
+    .status-badge.incomplete {
+      background: #ef4444;
+      color: #f8fafc;
+    }
+    
+    .product-info {
+      margin-bottom: 16px;
+    }
+    
+    .product-name {
+      font-size: 24px;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+    
+    .product-code {
+      font-size: 18px;
+      color: #94a3b8;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .progress-bar-container {
+      margin-top: 16px;
+    }
+    
+    .progress-label {
+      font-size: 20px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .progress-percentage {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 32px;
+      background: #1e293b;
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      border-radius: 16px;
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #020617;
+    }
+    
+    .progress-fill.completed {
+      background: #10b981;
+    }
+    
+    .progress-fill.incomplete {
+      background: #ef4444;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #94a3b8;
+      font-size: 32px;
+    }
+    
+    @media (max-width: 1200px) {
+      .progress-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 class="title">生産スケジュール進捗状況</h1>
+    <p class="subtitle">検索登録製番の進捗可視化</p>
+  </div>
+  
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">総製番数</div>
+      <div class="stat-value total" id="total-count">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">完了数</div>
+      <div class="stat-value completed" id="completed-count">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">未完了数</div>
+      <div class="stat-value incomplete" id="incomplete-count">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">進捗率</div>
+      <div class="stat-value total" id="progress-rate">0%</div>
+    </div>
+  </div>
+  
+  <div class="progress-list" id="progress-list">
+    <!-- ダミーデータ -->
+    <div class="progress-card completed">
+      <div class="card-header">
+        <div class="seiban">ABC12345</div>
+        <div class="status-badge completed">完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品A</div>
+        <div class="product-code">ProductNo: 2024001</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">100%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill completed" style="width: 100%">100%</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-card incomplete">
+      <div class="card-header">
+        <div class="seiban">DEF67890</div>
+        <div class="status-badge incomplete">未完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品B</div>
+        <div class="product-code">ProductNo: 2024002</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">60%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill incomplete" style="width: 60%">60%</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-card incomplete">
+      <div class="card-header">
+        <div class="seiban">GHI11111</div>
+        <div class="status-badge incomplete">未完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品C</div>
+        <div class="product-code">ProductNo: 2024003</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">30%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill incomplete" style="width: 30%">30%</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-card incomplete">
+      <div class="card-header">
+        <div class="seiban">JKL22222</div>
+        <div class="status-badge incomplete">未完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品D</div>
+        <div class="product-code">ProductNo: 2024004</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill incomplete" style="width: 0%">0%</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-card completed">
+      <div class="card-header">
+        <div class="seiban">MNO33333</div>
+        <div class="status-badge completed">完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品E</div>
+        <div class="product-code">ProductNo: 2024005</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">100%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill completed" style="width: 100%">100%</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-card incomplete">
+      <div class="card-header">
+        <div class="seiban">PQR44444</div>
+        <div class="status-badge incomplete">未完了</div>
+      </div>
+      <div class="product-info">
+        <div class="product-name">製品F</div>
+        <div class="product-code">ProductNo: 2024006</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-label">
+          <span>進捗</span>
+          <span class="progress-percentage">80%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill incomplete" style="width: 80%">80%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // 統計情報を更新
+    function updateStats() {
+      const cards = document.querySelectorAll('.progress-card');
+      const total = cards.length;
+      const completed = document.querySelectorAll('.progress-card.completed').length;
+      const incomplete = total - completed;
+      const progressRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+      
+      document.getElementById('total-count').textContent = total;
+      document.getElementById('completed-count').textContent = completed;
+      document.getElementById('incomplete-count').textContent = incomplete;
+      document.getElementById('progress-rate').textContent = progressRate + '%';
+    }
+    
+    // 初期化
+    updateStats();
+    
+    // 10分ごとに更新（実際の実装ではAPIからデータを取得）
+    setInterval(() => {
+      console.log('更新時刻:', new Date().toLocaleString('ja-JP'));
+      // 実際の実装ではここでAPIからデータを取得して更新
+      // updateStats();
+    }, 10 * 60 * 1000);
+  </script>
+</body>
+</html>
