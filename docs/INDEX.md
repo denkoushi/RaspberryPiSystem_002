@@ -11,6 +11,7 @@
 ### 🆕 最新アップデート（2026-02-02）
 
 - **✅ キオスク入力フィールド保護ルールの実装・実機検証完了**: キーボード誤入力によるAPIキー/IDの破損問題を根本解決。**実装内容**: `KioskHeader.tsx`の入力フィールドを完全削除し、`<span>`要素による表示のみに変更。各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除し、`DEFAULT_CLIENT_KEY`を直接使用。`client.ts`の初期化時に`localStorage`に`DEFAULT_CLIENT_KEY`を強制設定し、`axios` response interceptorで401エラー（`INVALID_CLIENT_KEY`）を検知して自動復旧機能を実装。**実機検証結果**: IDとAPIキーが編集不可に改善されていることを確認、生産スケジュールの値が正常に表示されることを確認。自動復旧機能は後日検証予定。デプロイ後の入力欄が残る問題はWebコンテナの再ビルドが必要であることを確認。詳細は [knowledge-base/frontend.md#kb-225](./knowledge-base/frontend.md#kb-225-キオスク入力フィールド保護ルールの実装と実機検証) / [knowledge-base/kiosk-input-protection-investigation.md](./knowledge-base/kiosk-input-protection-investigation.md) / [guides/api-key-policy.md](./guides/api-key-policy.md) を参照。
+- **🔄 Fastify脆弱性により`pnpm audit`がCIをブロックする（影響範囲調査）**: Fastify v4の監査highが原因でCIがfailする事象について、Fastify v5移行に必要な互換点（`reply.getResponseTime()`削除、`setErrorHandler`の`unknown`対応、@fastify/*の整合等）を全体調査として整理。詳細は [knowledge-base/ci-cd.md#kb-227](./knowledge-base/ci-cd.md#kb-227-pnpm-audit-のhighでciが失敗するfastify脆弱性--fastify-v5移行の影響範囲調査) を参照。
 
 ### 🆕 最新アップデート（2026-01-31）
 
