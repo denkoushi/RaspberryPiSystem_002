@@ -2,9 +2,6 @@ import clsx from 'clsx';
 import { Link, NavLink } from 'react-router-dom';
 
 import { Row } from '../layout/Row';
-import { Input } from '../ui/Input';
-
-import type { ChangeEvent } from 'react';
 
 type ClientStatus = {
   temperature: number | null;
@@ -14,8 +11,6 @@ type ClientStatus = {
 type KioskHeaderProps = {
   clientKey: string;
   clientId: string;
-  onClientKeyChange: (nextValue: string) => void;
-  onClientIdChange: (nextValue: string) => void;
   onOpenSupport: () => void;
   clientStatus?: ClientStatus | null;
   pathname: string;
@@ -30,20 +25,15 @@ const navClass = (isActive: boolean, activeClassName: string) =>
 export function KioskHeader({
   clientKey,
   clientId,
-  onClientKeyChange,
-  onClientIdChange,
   onOpenSupport,
   clientStatus,
   pathname
 }: KioskHeaderProps) {
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
-
-  const handleClientKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onClientKeyChange(event.target.value);
-  };
-
-  const handleClientIdChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onClientIdChange(event.target.value);
+  const formatKey = (value: string) => {
+    if (!value) return '未設定';
+    if (value.length <= 8) return value;
+    return `${value.slice(0, 4)}…${value.slice(-4)}`;
   };
 
   return (
@@ -90,24 +80,12 @@ export function KioskHeader({
       <Row className="gap-3 min-w-0 flex-1" justify="end">
         <Row className="gap-2 text-xs shrink-0">
           <span className="text-white/70">キオスク端末</span>
-          <label className="flex items-center gap-1 text-white/70">
-            APIキー:
-            <Input
-              value={clientKey}
-              onChange={handleClientKeyChange}
-              placeholder="client-demo-key"
-              className="h-6 w-32 px-2 text-xs"
-            />
-          </label>
-          <label className="flex items-center gap-1 text-white/70">
-            ID:
-            <Input
-              value={clientId}
-              onChange={handleClientIdChange}
-              placeholder="UUID"
-              className="h-6 w-24 px-2 text-xs"
-            />
-          </label>
+          <span className="text-white/70">
+            APIキー: <span className="font-mono text-white/90">{formatKey(clientKey)}</span>
+          </span>
+          <span className="text-white/70">
+            ID: <span className="font-mono text-white/90">{formatKey(clientId)}</span>
+          </span>
         </Row>
         <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">
           <NavLink to="/kiosk" className={() => navClass(isBorrowActive, 'bg-emerald-500 text-white')}>

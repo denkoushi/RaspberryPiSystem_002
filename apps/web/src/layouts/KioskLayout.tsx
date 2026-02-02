@@ -7,11 +7,11 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useLocalStorageUuid } from '../hooks/useLocalStorage';
 
 export function KioskLayout() {
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId, setClientId] = useLocalStorage('kiosk-client-id', '');
+  const clientKey = DEFAULT_CLIENT_KEY;
+  const [clientId] = useLocalStorageUuid('kiosk-client-id', '');
   const { data: kioskConfig } = useKioskConfig();
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
@@ -19,13 +19,8 @@ export function KioskLayout() {
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
-    if (!clientKey || clientKey === 'client-demo-key') {
-      setClientKey(DEFAULT_CLIENT_KEY);
-      setClientKeyHeader(DEFAULT_CLIENT_KEY);
-    } else {
-      setClientKeyHeader(clientKey);
-    }
-  }, [clientKey, setClientKey]);
+    setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  }, []);
 
   // 直近のキオスクパスを記録し、/kiosk リロード時に復元できるようにする
   useEffect(() => {
@@ -48,8 +43,6 @@ export function KioskLayout() {
         <KioskHeader
           clientKey={clientKey}
           clientId={clientId}
-          onClientKeyChange={setClientKey}
-          onClientIdChange={setClientId}
           onOpenSupport={() => setShowSupportModal(true)}
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}

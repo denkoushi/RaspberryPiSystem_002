@@ -83,6 +83,8 @@ REPO_VERSION=""
 DETACH_MODE=0
 JOB_MODE=0
 FOLLOW_MODE=0
+FOREGROUND_MODE=0
+AUTO_DETACH_MODE=0
 ATTACH_RUN_ID=""
 STATUS_RUN_ID=""
 PRINT_PLAN=0
@@ -104,6 +106,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --follow)
       FOLLOW_MODE=1
+      shift
+      ;;
+    --foreground)
+      FOREGROUND_MODE=1
       shift
       ;;
     --attach)
@@ -129,6 +135,43 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] --foreground
+  ./scripts/update-all-clients.sh --attach <run_id>
+  ./scripts/update-all-clients.sh --status <run_id>
+  ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
+
+Examples:
+  # 第2工場（既存）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+
+  # トークプラザ（新拠点）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
+
+  # Pi3を除外してデプロイ
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
+
+  # デタッチ実行（Pi5側で継続実行）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
+
+  # 前景実行（長時間は非推奨）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --foreground
+
+  # ジョブ実行（systemd-run）
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
+
+  # デタッチ実行のログ追尾
+  ./scripts/update-all-clients.sh --attach 20260125-123456-4242
+
+  # 状態確認
+  ./scripts/update-all-clients.sh --status 20260125-123456-4242
+USAGE
+}
+
 # ブランチ指定の検証（--attach/--status/--print-planの場合はブランチ指定不要）
 if [[ -z "${ATTACH_RUN_ID}" && -z "${STATUS_RUN_ID}" && ${PRINT_PLAN} -eq 0 ]]; then
   # 通常のデプロイ実行時はブランチ指定が必須（誤デプロイ防止のため）
@@ -148,38 +191,10 @@ mkdir -p "${LOG_DIR}"
 # REMOTE_HOSTを正規化（INVENTORY_PATHが設定された後）
 REMOTE_HOST=$(normalize_remote_host)
 
-usage() {
-  cat >&2 <<'USAGE'
-Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
-  ./scripts/update-all-clients.sh --attach <run_id>
-  ./scripts/update-all-clients.sh --status <run_id>
-  ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
-
-Examples:
-  # 第2工場（既存）
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-
-  # トークプラザ（新拠点）
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
-
-  # Pi3を除外してデプロイ
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
-
-  # デタッチ実行（Pi5側で継続実行）
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
-
-  # ジョブ実行（systemd-run）
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
-
-  # デタッチ実行のログ追尾
-  ./scripts/update-all-clients.sh --attach 20260125-123456-4242
-
-  # 状態確認
-  ./scripts/update-all-clients.sh --status 20260125-123456-4242
-USAGE
-}
+if [[ -n "${REMOTE_HOST}" && ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 && ${FOREGROUND_MODE} -eq 0 ]]; then
+  DETACH_MODE=1
+  AUTO_DETACH_MODE=1
+fi
 
 ensure_local_repo_ready_for_deploy() {
   # Skip checks for read-only operations
@@ -777,7 +792,11 @@ print_plan() {
     echo "[PLAN] Run ID: ${planned_run_id}"
     echo "[PLAN] Command: ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}"
     if [[ ${DETACH_MODE} -eq 1 ]]; then
-      echo "[PLAN] Detach: enabled"
+      if [[ ${AUTO_DETACH_MODE} -eq 1 ]]; then
+        echo "[PLAN] Detach: enabled (auto)"
+      else
+        echo "[PLAN] Detach: enabled"
+      fi
       echo "[PLAN] Remote log: ${REMOTE_RUN_LOG}"
       echo "[PLAN] Remote status: ${REMOTE_RUN_STATUS}"
       echo "[PLAN] Remote exit: ${REMOTE_RUN_EXIT}"
@@ -813,6 +832,10 @@ fi
 if [[ ${JOB_MODE} -eq 1 && -z "${REMOTE_HOST}" ]]; then
   echo "[ERROR] --job requires RASPI_SERVER_HOST (remote Pi5)." >&2
   exit 2
+fi
+
+if [[ ${AUTO_DETACH_MODE} -eq 1 ]]; then
+  echo "[INFO] Remote execution defaults to detach mode. Use --foreground to run in the foreground."
 fi
 
 

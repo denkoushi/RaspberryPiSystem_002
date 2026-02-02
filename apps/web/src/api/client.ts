@@ -69,44 +69,21 @@ export function setClientKeyHeader(key?: string) {
   api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : DEFAULT_CLIENT_KEY;
 }
 
+const resetKioskClientKey = () => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem('kiosk-client-key');
+  window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
+  setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  if (window.location.pathname.startsWith('/kiosk')) {
+    window.location.reload();
+  }
+};
+
 // 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
-  // URL パラメータでクライアント識別を上書きできるようにする（現場での切り分け用）
-  // - 例: /kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
-  // NOTE: 値そのもの（キー/ID）はログに出さない（秘匿情報扱い）
-  const params = new URLSearchParams(window.location.search);
-  const urlClientKey = params.get('clientKey') ?? undefined;
-  const urlClientId = params.get('clientId') ?? undefined;
-  if (urlClientKey && urlClientKey.length > 0) {
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(urlClientKey));
-  }
-  if (urlClientId && urlClientId.length > 0) {
-    window.localStorage.setItem('kiosk-client-id', JSON.stringify(urlClientId));
-  }
-
-  const savedKey = window.localStorage.getItem('kiosk-client-key') ?? undefined;
-  let parsedKey: string | undefined;
-  
-  // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
-  if (savedKey) {
-    try {
-      const parsed = JSON.parse(savedKey);
-      if (typeof parsed === 'string') {
-        parsedKey = parsed;
-      }
-    } catch {
-      // JSON.parseに失敗した場合は生の値をそのまま使用（古い形式との互換性）
-      parsedKey = savedKey;
-    }
-  }
-  
-  const normalizedKey =
-    !parsedKey || parsedKey === 'client-demo-key' ? DEFAULT_CLIENT_KEY : parsedKey;
-  
-  // useLocalStorageと同じ形式（JSON.stringify）で保存して互換性を保つ
-  window.localStorage.setItem('kiosk-client-key', JSON.stringify(normalizedKey));
-  setClientKeyHeader(normalizedKey);
+  window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
+  setClientKeyHeader(DEFAULT_CLIENT_KEY);
 }
 
 // すべてのリクエストで client-key を付与
@@ -118,6 +95,24 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const code = error?.response?.data?.code;
+    const message = error?.response?.data?.message;
+    const isInvalidClientKey =
+      code === 'INVALID_CLIENT_KEY' ||
+      code === 'CLIENT_KEY_INVALID' ||
+      (typeof message === 'string' && message.includes('無効なクライアントキー')) ||
+      (typeof message === 'string' && message.includes('Invalid client key'));
+    if (status === 401 && isInvalidClientKey) {
+      resetKioskClientKey();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export function getWebSocketUrl(path: string) {
   if (path.startsWith('ws')) return path;
