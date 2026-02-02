@@ -1,7 +1,8 @@
-# KB-XXX: キオスク入力フィールド保護ルールの調査と提案
+# KB-225: キオスク入力フィールド保護ルールの実装と実機検証
 
 **作成日**: 2026-02-02  
-**状態**: 調査完了・提案準備中  
+**更新日**: 2026-02-02  
+**状態**: ✅ 実装完了・実機検証完了  
 **関連**: [api-key-policy.md](../guides/api-key-policy.md), [frontend.md](./frontend.md)
 
 ## Context
@@ -98,73 +99,104 @@ Raspberry Pi 4を再起動した後、APIキーとIDがランダムな文字列�
    - エラーメッセージの表示
    - オプションAを採用する場合は`readOnly`属性を追加
 
-## 実装の優先順位
+## 実装方針の変更
 
-1. **高**: 読み込み時の検証と自動修復（再発防止）✅ 実装完了
-2. **中**: 入力値のバリデーション（ユーザー体験向上）✅ 実装完了
-3. **低**: キオスクモードでの編集不可（運用方針による）⏸️ 未実装（必要に応じて追加可能）
+初期提案では入力フィールドのバリデーション強化を検討していたが、ユーザー要件（「入力も削除も自在にできる。入力欄を設けず、表示だけにすればいいのに」）を踏まえ、**入力フィールドを完全に削除し、表示のみに変更**する方針に変更した。
 
 ## 実装内容
 
-### 1. バリデーション関数の作成 ✅
-
-`apps/web/src/utils/validation.ts`を作成し、以下の関数を実装：
-- `isValidApiKey(apiKey: string)`: APIキーの形式チェック
-- `isValidUuid(uuid: string)`: UUID形式のチェック
-- `validateAndSanitizeApiKey(apiKey, defaultValue)`: APIキーの検証と自動修復
-- `validateAndSanitizeUuid(uuid)`: UUIDの検証と自動修復
-
-### 2. useLocalStorageの拡張 ✅
-
-`apps/web/src/hooks/useLocalStorage.ts`に以下を追加：
-- `useLocalStorageApiKey(key, defaultValue)`: APIキー用のバリデーション付きフック
-- `useLocalStorageUuid(key, defaultValue)`: UUID用のバリデーション付きフック
-
-両フックは以下の機能を提供：
-- 読み込み時の自動バリデーションと修復
-- 保存時の自動バリデーション
-- 不正値の自動修復（デフォルト値または空文字列に置換）
-
-### 3. KioskLayoutの更新 ✅
-
-`apps/web/src/layouts/KioskLayout.tsx`を更新：
-- `useLocalStorage`を`useLocalStorageApiKey`と`useLocalStorageUuid`に置き換え
-- 自動バリデーションと修復が有効化
-
-### 4. KioskHeaderの更新 ✅
+### 1. KioskHeaderの入力フィールド削除 ✅
 
 `apps/web/src/components/kiosk/KioskHeader.tsx`を更新：
-- リアルタイムバリデーション機能を追加
-- エラーメッセージの表示機能を追加
-- 入力フィールドにエラー時の視覚的フィードバック（赤枠）を追加
+- `<Input>`コンポーネントを削除し、`<span>`要素による表示のみに変更
+- APIキーとIDを編集不可にし、マスク表示（例: `clie…k1`）で表示
+- `onClientKeyChange`、`onClientIdChange`、`handleClientKeyChange`、`handleClientIdChange`などの編集関連関数を削除
 
-## 動作確認
+### 2. localStorageへの書き込み無効化 ✅
 
-### 読み込み時の自動修復
-- localStorageに不正な値が保存されている場合、読み込み時に自動的にデフォルト値に修復される
-- 開発環境ではコンソールに警告が表示される
+各キオスクページ（`KioskBorrowPage.tsx`、`KioskPhotoBorrowPage.tsx`、`KioskRiggingBorrowPage.tsx`、`KioskInstrumentBorrowPage.tsx`、`KioskReturnPage.tsx`、`KioskCallPage.tsx`、`KioskSupportModal.tsx`）を更新：
+- `useLocalStorage('kiosk-client-key')`の使用を削除
+- `resolvedClientKey`を`DEFAULT_CLIENT_KEY`に直接設定
+- `resolvedClientId`を`undefined`または`DEFAULT_CLIENT_KEY`から派生する値に設定
+- localStorageへの書き戻しパスを完全に削除
 
-### 入力時のバリデーション
-- APIキー入力時にリアルタイムで形式チェック
-- UUID入力時にリアルタイムで形式チェック
-- エラーがある場合は赤枠とエラーメッセージを表示
-- バリデーションが通った場合のみ保存
+### 3. 起動時防御の実装 ✅
+
+`apps/web/src/api/client.ts`を更新：
+- 初期化時に`kiosk-client-key`を`localStorage`に`DEFAULT_CLIENT_KEY`として強制設定
+- URLパラメータによるクライアント識別の上書きを削除
+- `resolveClientKey()`関数を削除し、常に`DEFAULT_CLIENT_KEY`を使用
+
+`apps/web/src/layouts/KioskLayout.tsx`を更新：
+- `clientKey`を`DEFAULT_CLIENT_KEY`に直接設定
+- `useLocalStorageApiKey`の使用を削除
+- `useEffect`による`clientKey`復元処理を削除（`client.ts`の初期化に依存）
+
+### 4. 自動復旧機能の実装 ✅
+
+`apps/web/src/api/client.ts`に以下を追加：
+- `resetKioskClientKey()`関数: `kiosk-client-key`を`localStorage`から削除し、`DEFAULT_CLIENT_KEY`を設定してヘッダーを更新、キオスクパスの場合はページをリロード
+- `axios` response interceptor: 401エラーで`INVALID_CLIENT_KEY`または`CLIENT_KEY_INVALID`コード/メッセージを検出した場合、`resetKioskClientKey()`を自動実行
+
+## 実機検証結果（2026-02-02）
+
+### 検証項目
+
+1. **IDとAPIキーの編集不可化** ✅
+   - ヘッダーのAPIキー/IDが表示のみで編集できないことを確認
+   - マスク表示（例: `clie…k1`）が正しく表示されることを確認
+
+2. **生産スケジュールの表示** ✅
+   - 生産スケジュール画面で値が正常に表示されることを確認
+
+3. **自動復旧機能** ⏸️
+   - 後日検証予定（開発者ツールでlocalStorageを手動で不正な値に変更し、APIアクセス時の自動復旧を確認）
+
+### 検証結果サマリー
+
+- ✅ **IDとAPIキーが編集不可に改善されている**
+- ✅ **生産スケジュールの値が表示されている**
+- ⏸️ **自動復旧機能は後日試す予定**
+
+## トラブルシューティング
+
+### デプロイ後の入力欄が残る問題
+
+**症状**: 実機で入力欄が表示され、編集可能な状態が残る
+
+**原因**: Webコンテナが再ビルドされていない（古いビルドが動いている）
+
+**解決策**:
+```bash
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache web && docker compose -f infrastructure/docker/docker-compose.server.yml up -d web"
+```
+
+**確認方法**:
+- `KioskHeader.tsx`のコードで`<Input>`コンポーネントが存在しないことを確認
+- ブラウザのハードリロード（Ctrl+Shift+R / Cmd+Shift+R）を実行
 
 ## 関連ファイル
 
-- `apps/web/src/utils/validation.ts`: バリデーション関数（新規作成）
-- `apps/web/src/components/kiosk/KioskHeader.tsx`: 入力フィールドの実装（更新）
-- `apps/web/src/hooks/useLocalStorage.ts`: localStorage管理フック（拡張）
-- `apps/web/src/layouts/KioskLayout.tsx`: レイアウトコンポーネント（更新）
-- `apps/web/src/api/client.ts`: DEFAULT_CLIENT_KEYの定義
+- `apps/web/src/components/kiosk/KioskHeader.tsx`: 入力フィールド削除・表示のみに変更
+- `apps/web/src/api/client.ts`: 起動時防御・自動復旧機能の実装
+- `apps/web/src/layouts/KioskLayout.tsx`: `DEFAULT_CLIENT_KEY`固定化
+- `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`: localStorage使用削除
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`: localStorage使用削除
+- `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`: localStorage使用削除
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`: localStorage使用削除
+- `apps/web/src/pages/kiosk/KioskReturnPage.tsx`: localStorage使用削除
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`: localStorage使用削除
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`: localStorage使用削除
 - `docs/guides/api-key-policy.md`: APIキーの方針ドキュメント
 
-## 今後の改善案
+## 学んだこと
 
-1. **キオスクモードでの編集不可**: 必要に応じて、キオスクモードでは入力フィールドを`readOnly`にする
-2. **管理コンソールでの編集**: 管理コンソールでは編集可能な専用画面を提供する
-3. **バリデーションルールの拡張**: 必要に応じて、より厳密なバリデーションルールを追加する
+1. **UIロックの重要性**: 入力フィールドを削除することで、誤入力の根本原因を排除できる
+2. **localStorageへの依存削減**: 固定値（`DEFAULT_CLIENT_KEY`）を直接使用することで、状態の不整合を防げる
+3. **自動復旧の実装**: APIエラー（401/INVALID_CLIENT_KEY）を検知して自動的に復旧することで、運用負荷を軽減できる
+4. **デプロイ時の再ビルド確認**: コード変更時はWebコンテナの再ビルドが必要であり、デプロイログで確認すべき
 
 ## 参考
 
-- [KB-XXX: キーボード誤入力によるlocalStorage破損問題](./frontend.md#kb-xxx-キーボード誤入力によるlocalstorage破損問題)
+- [KB-010: client-key未設定で401エラーが発生する](./api.md#kb-010-client-key未設定で401エラーが発生する)
+- [KB-171: WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定)

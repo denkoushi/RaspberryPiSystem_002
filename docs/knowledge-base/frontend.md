@@ -1733,6 +1733,69 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 ---
 
+### [KB-225] キオスク入力フィールド保護ルールの実装と実機検証
+
+**実装日時**: 2026-02-02
+
+**事象**: 
+- Raspberry Pi 4を再起動した後、APIキーとIDがランダムな文字列（`QAZwsxedcrftvgbuyhnk,olp.;` と `q3artf5uyh7p;.z BNM,..`）に置き換わり、データベースにアクセスできなくなった
+- キーボードにジュースをこぼして拭いた際に、キーボードのキーが誤って押され、入力フィールドにランダムな文字列が入力された
+- この値が`localStorage`に保存され、再起動後もその値が読み込まれた
+
+**要因**: 
+- `KioskHeader.tsx`の入力フィールドが編集可能で、任意の文字列が入力可能だった
+- `useLocalStorage`フックが`value`が変更されるたびに自動的に`localStorage`に保存し、不正な値でも保存されてしまった
+- 読み込み時の検証が不足しており、不正な形式の値でもそのまま使用されていた
+
+**実施した対策**: 
+- ✅ **入力フィールドの完全削除**: `KioskHeader.tsx`の`<Input>`コンポーネントを削除し、`<span>`要素による表示のみに変更
+- ✅ **localStorageへの書き込み無効化**: 各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除し、`DEFAULT_CLIENT_KEY`を直接使用
+- ✅ **起動時防御の実装**: `client.ts`の初期化時に`kiosk-client-key`を`localStorage`に`DEFAULT_CLIENT_KEY`として強制設定
+- ✅ **自動復旧機能の実装**: `axios` response interceptorで401エラー（`INVALID_CLIENT_KEY`）を検知し、自動的に`DEFAULT_CLIENT_KEY`に復元してページをリロード
+
+**実装の詳細**:
+1. **`KioskHeader.tsx`の修正**: `<Input>`コンポーネントを`<span>`に変更し、編集不可に
+   ```typescript
+   <span className="text-white/70">
+     APIキー: <span className="font-mono text-white/90">{formatKey(clientKey)}</span>
+   </span>
+   ```
+2. **各キオスクページの修正**: `useLocalStorage`の使用を削除し、`resolvedClientKey`を`DEFAULT_CLIENT_KEY`に直接設定
+3. **`client.ts`の修正**: 初期化時に`localStorage`に`DEFAULT_CLIENT_KEY`を強制設定、`resetKioskClientKey()`関数と`axios` interceptorを追加
+
+**実機検証結果（2026-02-02）**:
+- ✅ **IDとAPIキーが編集不可に改善されている**: ヘッダーのAPIキー/IDが表示のみで編集できないことを確認
+- ✅ **生産スケジュールの値が表示されている**: 生産スケジュール画面で値が正常に表示されることを確認
+- ⏸️ **自動復旧機能は後日試す予定**: 開発者ツールでlocalStorageを手動で不正な値に変更し、APIアクセス時の自動復旧を確認予定
+
+**トラブルシューティング**:
+- **デプロイ後の入力欄が残る問題**: Webコンテナが再ビルドされていない場合、古いビルドが動いている可能性がある。`docker compose build --no-cache web && docker compose up -d web`で再ビルドが必要
+
+**学んだこと**:
+1. **UIロックの重要性**: 入力フィールドを削除することで、誤入力の根本原因を排除できる
+2. **localStorageへの依存削減**: 固定値（`DEFAULT_CLIENT_KEY`）を直接使用することで、状態の不整合を防げる
+3. **自動復旧の実装**: APIエラー（401/INVALID_CLIENT_KEY）を検知して自動的に復旧することで、運用負荷を軽減できる
+4. **デプロイ時の再ビルド確認**: コード変更時はWebコンテナの再ビルドが必要であり、デプロイログで確認すべき
+
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-02-02）
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskHeader.tsx`（入力フィールド削除・表示のみに変更）
+- `apps/web/src/api/client.ts`（起動時防御・自動復旧機能の実装）
+- `apps/web/src/layouts/KioskLayout.tsx`（`DEFAULT_CLIENT_KEY`固定化）
+- `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`（localStorage使用削除）
+- `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`（localStorage使用削除）
+- `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`（localStorage使用削除）
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`（localStorage使用削除）
+- `apps/web/src/pages/kiosk/KioskReturnPage.tsx`（localStorage使用削除）
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`（localStorage使用削除）
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`（localStorage使用削除）
+
+**参考**:
+- [KB-225: キオスク入力フィールド保護ルールの実装と実機検証](./kiosk-input-protection-investigation.md)
+
+---
+
 ### [KB-184] 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能
 
 **実装日時**: 2026-01-XX（初回実装）、2026-01-24（UI改善：テーブル形式化）、2026-01-26（列名変更・FSEIBAN全文表示）
