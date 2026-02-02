@@ -312,7 +312,7 @@ export class ProgressListRenderer implements Renderer {
     const table = data as TableVisualizationData;
     const width = config.width;
     const height = config.height;
-    const title = config.title ?? '生産スケジュール進捗状況';
+    const title = config.title ?? '生産進捗';
     const rows = table.rows ?? [];
 
     if (rows.length === 0) {
@@ -335,7 +335,7 @@ export class ProgressListRenderer implements Renderer {
     const fixedColumns = columnsRaw != null ? clampNumber(columnsRaw, 1, 4) : null;
 
     const gridTop = padding + headerHeight + gap;
-    const gridHeight = height - gridTop - padding;
+    const gridHeight = (height - gridTop - padding) * 0.7;
     const cardGap = Math.round(24 * scale);
 
     // 可読性下限（ユーザー指定）を守りつつ、可能な限り表示数を増やす
@@ -408,13 +408,14 @@ export class ProgressListRenderer implements Renderer {
       { label: '進捗率', value: `${progressRate}%`, color: NEUTRAL_COLOR },
     ];
 
-    const titleFont = Math.max(28, Math.round(48 * scale));
+    const titleFont = Math.max(20, Math.round(34 * scale));
     const titleWidth = estimateTextWidth(title, titleFont);
     const kpiStartX = padding + titleWidth + Math.round(24 * scale);
+    const titleY = padding + Math.round(titleFont * 0.8);
     const kpiInlineSvg = buildKpiInlineSvg({
       xStart: Math.min(kpiStartX, width - padding),
       xEnd: width - padding,
-      yBaseline: padding + Math.round(40 * scale),
+      yBaseline: titleY,
       scale,
       stats,
     });
@@ -549,8 +550,8 @@ export class ProgressListRenderer implements Renderer {
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
-        <text x="${padding}" y="${padding + Math.round(40 * scale)}"
-          font-size="${titleFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+        <text x="${padding}" y="${titleY}"
+          font-size="${titleFont}" font-weight="500" fill="${TEXT_COLOR}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${kpiInlineSvg}
