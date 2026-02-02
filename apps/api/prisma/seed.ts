@@ -361,8 +361,34 @@ async function main() {
     });
   }
 
+  // 生産スケジュール進捗可視化ダッシュボードを作成（デフォルト）
+  const productionScheduleVisualizationDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+  await prisma.visualizationDashboard.upsert({
+    where: { id: productionScheduleVisualizationDashboardId },
+    update: {
+      name: '生産スケジュール進捗',
+      description: '検索登録製番の進捗状況を可視化',
+      dataSourceType: 'production_schedule',
+      rendererType: 'progress_list',
+      dataSourceConfig: {},
+      rendererConfig: {},
+      enabled: true,
+    },
+    create: {
+      id: productionScheduleVisualizationDashboardId,
+      name: '生産スケジュール進捗',
+      description: '検索登録製番の進捗状況を可視化',
+      dataSourceType: 'production_schedule',
+      rendererType: 'progress_list',
+      dataSourceConfig: {},
+      rendererConfig: {},
+      enabled: true,
+    },
+  });
+
   console.log('Seed data inserted. 管理者アカウント: admin / admin1234');
   console.log('計測機器テストデータ: MI-001（期限切れ）, MI-002（期限間近）, MI-003（正常）');
+  console.log('可視化ダッシュボード: 生産スケジュール進捗（デフォルト）');
 }
 
 main()
