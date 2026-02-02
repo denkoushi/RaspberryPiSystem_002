@@ -4,7 +4,6 @@ import { api, DEFAULT_CLIENT_KEY, postClientLogs } from '../../api/client';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -18,10 +17,8 @@ interface KioskReturnPageProps {
 
 export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
   // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
-  const [localClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = providedClientKey || localClientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = clientId || undefined;
+  const resolvedClientKey = providedClientKey || DEFAULT_CLIENT_KEY;
+  const resolvedClientId = undefined;
   // 返却一覧は全件表示（clientIdで絞らない）
   
   // propsで提供されている場合はuseActiveLoansを呼び出さない（重複リクエストを防ぐ）

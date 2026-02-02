@@ -5,21 +5,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { DEFAULT_CLIENT_KEY } from '../../api/client';
 import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useWebRTC } from '../../features/webrtc/hooks/useWebRTC';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
-
 export function KioskCallPage() {
-  // clientKeyとclientIdをlocalStorageから取得（WebRTCシグナリングに必要）
-  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  // NOTE: 値自体はここでは参照しないが、デフォルト値の永続化/整合性のためにフックを評価する
-  void clientKey;
-  void clientId;
-  
   const callTargetsQuery = useKioskCallTargets();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);

@@ -7,14 +7,12 @@ import {
   getMeasuringInstrumentByTagUid,
   getRiggingGearByTagUid,
   getUnifiedItems,
-  postClientLogs,
-  setClientKeyHeader
+  postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import { KioskReturnPage } from './KioskReturnPage';
@@ -24,10 +22,8 @@ import type { AxiosError } from 'axios';
 
 export function KioskBorrowPage() {
   useKioskConfig(); // 初期設定取得（キャッシュ用途）
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = clientId || undefined;
+  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientId = undefined;
   const navigate = useNavigate();
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
   // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
@@ -42,16 +38,6 @@ export function KioskBorrowPage() {
   const [tagTypeMap, setTagTypeMap] = useState<
     Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'>
   >({});
-
-  // client-key が空になってもデフォルトを自動で復元する
-  useEffect(() => {
-    if (!clientKey || clientKey === 'client-demo-key') {
-      setClientKey(DEFAULT_CLIENT_KEY);
-      setClientKeyHeader(DEFAULT_CLIENT_KEY);
-    } else {
-      setClientKeyHeader(clientKey);
-    }
-  }, [clientKey, setClientKey]);
 
   // タグの種別マップを取得（工具/計測機器の判定を高速化）
   useEffect(() => {
@@ -82,7 +68,7 @@ export function KioskBorrowPage() {
     const payload = {
       itemTagUid: state.context.itemTagUid ?? '',
       employeeTagUid: state.context.employeeTagUid ?? '',
-      clientId: clientId || undefined
+      clientId: resolvedClientId
     };
 
     // デバッグログをサーバーに送信（ブラウザコンソールが見られない環境向け）
@@ -197,7 +183,7 @@ export function KioskBorrowPage() {
 
         send({ type: 'FAIL', message: message ?? '登録エラーが発生しました' });
       });
-  }, [borrowMutation, clientId, resolvedClientId, resolvedClientKey, send, state]);
+  }, [borrowMutation, resolvedClientId, resolvedClientKey, send, state]);
 
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）

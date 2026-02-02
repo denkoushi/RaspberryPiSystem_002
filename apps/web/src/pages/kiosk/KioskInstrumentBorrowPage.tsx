@@ -14,7 +14,6 @@ import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
@@ -27,10 +26,8 @@ export function KioskInstrumentBorrowPage() {
   const { data: kioskConfig } = useKioskConfig();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = clientId || undefined;
+  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientId = undefined;
 
   // defaultModeに基づいて戻り先を決定
   const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';

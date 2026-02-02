@@ -6,13 +6,11 @@ import {
   DEFAULT_CLIENT_KEY,
   borrowRiggingGear,
   getRiggingGearByTagUid,
-  postClientLogs,
-  setClientKeyHeader
+  postClientLogs
 } from '../../api/client';
 import { useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 export function KioskRiggingBorrowPage() {
@@ -24,10 +22,8 @@ export function KioskRiggingBorrowPage() {
   const { data: kioskConfig } = useKioskConfig();
   const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
 
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = clientId || undefined;
+  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientId = undefined;
 
   const [riggingTagUid, setRiggingTagUid] = useState(searchParams.get('tagUid') ?? '');
   const [employeeTagUid, setEmployeeTagUid] = useState('');
@@ -35,15 +31,6 @@ export function KioskRiggingBorrowPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const processingRef = useRef(false);
-
-  useEffect(() => {
-    if (!clientKey || clientKey === 'client-demo-key') {
-      setClientKey(DEFAULT_CLIENT_KEY);
-      setClientKeyHeader(DEFAULT_CLIENT_KEY);
-    } else {
-      setClientKeyHeader(clientKey);
-    }
-  }, [clientKey, setClientKey]);
 
   // NFCイベント: 1枚目=吊具タグ, 2枚目=従業員タグ
   useEffect(() => {

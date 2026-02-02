@@ -6,13 +6,11 @@ import {
   getMeasuringInstrumentByTagUid,
   getUnifiedItems,
   getRiggingGearByTagUid,
-  postClientLogs,
-  setClientKeyHeader
+  postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import { captureAndCompressPhoto } from '../../utils/camera';
 
@@ -23,10 +21,8 @@ import type { AxiosError } from 'axios';
 
 export function KioskPhotoBorrowPage() {
   useKioskConfig(); // 初期設定取得（キャッシュ用途）
-  const [clientKey, setClientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
-  const [clientId] = useLocalStorage('kiosk-client-id', '');
-  const resolvedClientKey = clientKey || DEFAULT_CLIENT_KEY;
-  const resolvedClientId = clientId || undefined;
+  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientId = undefined;
   // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
   const loansQuery = useActiveLoans(undefined, resolvedClientKey);
   const photoBorrowMutation = usePhotoBorrowMutation(resolvedClientKey);
@@ -40,15 +36,6 @@ export function KioskPhotoBorrowPage() {
     Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'>
   >({});
   const navigate = useNavigate();
-  useEffect(() => {
-    if (!clientKey || clientKey === 'client-demo-key') {
-      setClientKey(DEFAULT_CLIENT_KEY);
-      setClientKeyHeader(DEFAULT_CLIENT_KEY);
-    } else {
-      setClientKeyHeader(clientKey);
-    }
-  }, [clientKey, setClientKey]);
-
   // タグの種別マップを取得（工具/計測機器の判定を高速化）
   useEffect(() => {
     let cancelled = false;

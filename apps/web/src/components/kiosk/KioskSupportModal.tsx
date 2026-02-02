@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, postKioskSupport } from '../../api/client';
 import { useKioskEmployees } from '../../api/hooks';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
@@ -17,9 +16,8 @@ const requestTypes = [
 ];
 
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
-  const [clientKey] = useLocalStorage('kiosk-client-key', DEFAULT_CLIENT_KEY);
   const location = useLocation();
-  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(clientKey || DEFAULT_CLIENT_KEY);
+  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(DEFAULT_CLIENT_KEY);
   
   // デフォルト日時を現在の日時に設定
   const getDefaultDate = () => {
@@ -84,7 +82,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
           message: userMessage,
           page: location.pathname
         },
-        clientKey || DEFAULT_CLIENT_KEY
+        DEFAULT_CLIENT_KEY
       );
 
       // 成功後、フォームをリセットして閉じる
