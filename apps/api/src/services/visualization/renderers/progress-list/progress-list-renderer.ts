@@ -7,8 +7,10 @@ const TEXT_COLOR = '#f8fafc';
 const SUB_TEXT_COLOR = '#94a3b8';
 const BORDER_COLOR = '#334155';
 const CARD_BG = 'rgba(255,255,255,0.06)';
-const COMPLETE_COLOR = '#10b981';
-const INCOMPLETE_COLOR = '#ef4444';
+const COMPLETE_COLOR = '#10b981'; // 100%
+const PROGRESS_BLUE = '#3b82f6'; // 71-99%
+const PROGRESS_YELLOW = '#f59e0b'; // 31-70%
+const INCOMPLETE_COLOR = '#ef4444'; // 0-30%
 const NEUTRAL_COLOR = '#38bdf8';
 const BAR_BG = '#1e293b';
 
@@ -47,6 +49,25 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function accentForPercent(percentRaw: number): string {
+  const percent = clampNumber(Math.round(percentRaw), 0, 100);
+  if (percent >= 100) return COMPLETE_COLOR;
+  if (percent >= 71) return PROGRESS_BLUE;
+  if (percent >= 31) return PROGRESS_YELLOW;
+  return INCOMPLETE_COLOR;
+}
+
+function badgeTextColorForAccent(accent: string): string {
+  // 明るい背景色（緑/黄）は黒文字の方が視認性が高い
+  if (accent === COMPLETE_COLOR || accent === PROGRESS_YELLOW) return '#020617';
+  return TEXT_COLOR;
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
 export class ProgressListRenderer implements Renderer {
   readonly type = 'progress_list';
 
@@ -75,10 +96,10 @@ export class ProgressListRenderer implements Renderer {
     const statsHeight = Math.round(100 * scale);
     const gap = Math.round(24 * scale);
 
-    const totalCount = rows.length;
-    const completedCount = rows.filter((row) => String(row.status ?? '') === '完了').length;
-    const incompleteCount = totalCount - completedCount;
-    const progressRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    const totalSeibanCount = rows.length;
+    const totalParts = rows.reduce((sum, row) => sum + (toNumber(row.total) ?? 0), 0);
+    const completedParts = rows.reduce((sum, row) => sum + (toNumber(row.completed) ?? 0), 0);
+    const progressRate = totalParts > 0 ? Math.round((completedParts / totalParts) * 100) : 0;
 
     const columnsRaw = toNumber(config.columns);
     const columns = clampNumber(columnsRaw ?? (width >= 1600 ? 2 : 1), 1, 4);
@@ -94,9 +115,9 @@ export class ProgressListRenderer implements Renderer {
     const statsCardWidth = Math.floor((width - padding * 2 - statsCardGap * 3) / 4);
 
     const stats = [
-      { label: '総製番数', value: String(totalCount), color: NEUTRAL_COLOR },
-      { label: '完了数', value: String(completedCount), color: COMPLETE_COLOR },
-      { label: '未完了数', value: String(incompleteCount), color: INCOMPLETE_COLOR },
+      { label: '総製番数', value: String(totalSeibanCount), color: NEUTRAL_COLOR },
+      { label: '総部品数', value: String(totalParts), color: NEUTRAL_COLOR },
+      { label: '完了部品数', value: String(completedParts), color: COMPLETE_COLOR },
       { label: '進捗率', value: `${progressRate}%`, color: NEUTRAL_COLOR },
     ];
 
@@ -130,21 +151,21 @@ export class ProgressListRenderer implements Renderer {
         const x = padding + column * (cardWidth + cardGap);
         const y = gridTop + rowIndex * (cardHeight + cardGap);
 
-        const fseiban = String(row.FSEIBAN ?? '');
-        const productName = String(row.FHINMEI ?? '');
-        const productNo = String(row.ProductNo ?? '');
+        const rowRecord = row as Record<string, unknown>;
+        const fseiban = String(rowRecord.FSEIBAN ?? '');
+        const incompleteParts = String(rowRecord.INCOMPLETE_PARTS ?? rowRecord.incompleteParts ?? '');
         const completed = toNumber(row.completed) ?? 0;
         const total = toNumber(row.total) ?? 0;
         const percent = toNumber(row.percent) ?? (total > 0 ? Math.round((completed / total) * 100) : 0);
         const status = String(row.status ?? '未完了');
 
         const isCompleted = status === '完了';
-        const accent = isCompleted ? COMPLETE_COLOR : INCOMPLETE_COLOR;
+        const accent = accentForPercent(percent);
+        const badgeTextColor = badgeTextColorForAccent(accent);
 
         const seibanFont = Math.max(24, Math.round(32 * scale));
         const statusFont = Math.max(14, Math.round(18 * scale));
-        const nameFont = Math.max(18, Math.round(22 * scale));
-        const codeFont = Math.max(14, Math.round(16 * scale));
+        const partsFont = Math.max(14, Math.round(18 * scale));
         const percentFont = Math.max(18, Math.round(22 * scale));
         const barHeight = Math.max(20, Math.round(32 * scale));
         const barWidth = Math.floor(cardWidth - Math.round(32 * scale));
@@ -155,6 +176,8 @@ export class ProgressListRenderer implements Renderer {
         const badgeTextWidth = Math.round(status.length * statusFont * 0.6) + badgePaddingX * 2;
 
         const fillWidth = Math.round((barWidth * clampNumber(percent, 0, 100)) / 100);
+        const partsLabel = isCompleted ? '未完部品: なし' : `未完部品: ${incompleteParts || '(不明)'}`;
+        const partsText = truncateText(partsLabel, Math.max(24, Math.round(cardWidth / (partsFont * 0.55))));
 
         return `
           <g>
@@ -168,17 +191,13 @@ export class ProgressListRenderer implements Renderer {
               width="${badgeTextWidth}" height="${Math.round(statusFont * 1.6)}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}"
               fill="${accent}" />
             <text x="${x + cardWidth - badgeTextWidth - Math.round(16 * scale) + badgePaddingX}" y="${y + Math.round(16 * scale) + Math.round(statusFont * 1.2)}"
-              font-size="${statusFont}" font-weight="700" fill="${isCompleted ? '#020617' : TEXT_COLOR}" font-family="sans-serif">
+              font-size="${statusFont}" font-weight="700" fill="${badgeTextColor}" font-family="sans-serif">
               ${escapeXml(status)}
             </text>
 
             <text x="${x + Math.round(16 * scale)}" y="${y + Math.round(72 * scale)}"
-              font-size="${nameFont}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
-              ${escapeXml(productName)}
-            </text>
-            <text x="${x + Math.round(16 * scale)}" y="${y + Math.round(96 * scale)}"
-              font-size="${codeFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="monospace">
-              ${escapeXml(productNo ? `ProductNo: ${productNo}` : '')}
+              font-size="${partsFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+              ${escapeXml(partsText)}
             </text>
 
             <text x="${barX}" y="${barY - Math.round(10 * scale)}"

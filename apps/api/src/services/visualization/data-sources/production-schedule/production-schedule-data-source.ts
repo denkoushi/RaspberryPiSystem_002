@@ -9,10 +9,9 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 
 type ProgressRow = {
   fseiban: string;
-  productNo: string | null;
-  productName: string | null;
   total: number;
   completed: number;
+  incompleteProductNames: string[] | null;
 };
 
 function normalizeHistory(values: string[]): string[] {
@@ -66,8 +65,7 @@ export class ProductionScheduleDataSource implements DataSource {
 
     const columns: TableVisualizationData['columns'] = [
       'FSEIBAN',
-      'FHINMEI',
-      'ProductNo',
+      'INCOMPLETE_PARTS',
       'completed',
       'total',
       'percent',
@@ -91,8 +89,6 @@ export class ProductionScheduleDataSource implements DataSource {
     const rows = await prisma.$queryRaw<ProgressRow[]>`
       SELECT
         ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-        MAX("CsvDashboardRow"."rowData"->>'ProductNo') AS "productNo",
-        MAX("CsvDashboardRow"."rowData"->>'FHINMEI') AS "productName",
         COUNT(*)::int AS "total",
         SUM(
           CASE
@@ -101,6 +97,12 @@ export class ProductionScheduleDataSource implements DataSource {
             ELSE 0
           END
         )::int AS "completed"
+        ,
+        ARRAY_AGG(DISTINCT ("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
+          WHERE ("CsvDashboardRow"."rowData"->>'progress') IS DISTINCT FROM ${COMPLETED_PROGRESS_VALUE}
+            AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
+            AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
+        ) AS "incompleteProductNames"
       FROM "CsvDashboardRow"
       WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
@@ -119,11 +121,11 @@ export class ProductionScheduleDataSource implements DataSource {
       const completed = row?.completed ?? 0;
       const percent = toPercent(completed, total);
       const status = total > 0 && completed === total ? '完了' : '未完了';
+      const incompleteParts = (row?.incompleteProductNames ?? []).join(', ');
 
       return {
         FSEIBAN: fseiban,
-        FHINMEI: row?.productName ?? '',
-        ProductNo: row?.productNo ?? '',
+        INCOMPLETE_PARTS: incompleteParts,
         completed,
         total,
         percent,

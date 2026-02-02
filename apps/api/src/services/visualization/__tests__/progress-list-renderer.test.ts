@@ -7,12 +7,11 @@ describe('ProgressListRenderer', () => {
     const output = await renderer.render(
       {
         kind: 'table',
-        columns: ['FSEIBAN', 'FHINMEI', 'ProductNo', 'completed', 'total', 'percent', 'status'],
+        columns: ['FSEIBAN', 'INCOMPLETE_PARTS', 'completed', 'total', 'percent', 'status'],
         rows: [
           {
             FSEIBAN: 'ABC12345',
-            FHINMEI: '製品A',
-            ProductNo: '2024001',
+            INCOMPLETE_PARTS: '',
             completed: 5,
             total: 5,
             percent: 100,
@@ -20,8 +19,7 @@ describe('ProgressListRenderer', () => {
           },
           {
             FSEIBAN: 'DEF67890',
-            FHINMEI: '製品B',
-            ProductNo: '2024002',
+            INCOMPLETE_PARTS: '部品A, 部品B',
             completed: 3,
             total: 5,
             percent: 60,
