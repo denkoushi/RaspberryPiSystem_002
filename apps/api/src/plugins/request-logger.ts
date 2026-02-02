@@ -25,7 +25,7 @@ export function registerRequestLogger(app: FastifyInstance): void {
 
   app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
     const statusCode = reply.statusCode;
-    const responseTime = reply.getResponseTime();
+    const responseTime = reply.elapsedTime;
     
     // 429エラーや404エラーの場合は詳細ログを出力
     if (statusCode === 429 || statusCode === 404) {

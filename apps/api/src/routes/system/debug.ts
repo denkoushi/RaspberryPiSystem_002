@@ -28,7 +28,7 @@ export function registerDebugRoutes(app: FastifyInstance): void {
   // ログを記録するためのフック
   app.addHook('onResponse', async (request, reply) => {
     const statusCode = reply.statusCode;
-    const responseTime = reply.getResponseTime();
+    const responseTime = reply.elapsedTime;
     
     // エラーログを記録（429, 404, 500など）
     if (statusCode >= 400) {
