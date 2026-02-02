@@ -62,10 +62,32 @@ function truncateText(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+function estimateTextWidth(text: string, fontPx: number): number {
+  return Math.round(text.length * fontPx * 0.6);
+}
+
 function estimateMaxCharsPerLine(availableWidthPx: number, fontPx: number): number {
   // SVGのsans-serifを前提とした雑な近似。見積りがズレても、最終的に…で破綻を防ぐ。
   const approxCharWidth = Math.max(6, fontPx * 0.55);
   return Math.max(6, Math.floor(availableWidthPx / approxCharWidth));
+}
+
+function splitByDelimiters(value: string): string[] {
+  return value
+    .split(/[、,，]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function splitLongToken(token: string, maxCharsPerLine: number): string[] {
+  if (token.length <= maxCharsPerLine) return [token];
+  const parts: string[] = [];
+  let rest = token;
+  while (rest.length > 0) {
+    parts.push(rest.slice(0, maxCharsPerLine));
+    rest = rest.slice(maxCharsPerLine);
+  }
+  return parts;
 }
 
 function wrapCommaSeparatedToLines(
@@ -77,10 +99,8 @@ function wrapCommaSeparatedToLines(
   if (!normalized) return { lines: [''], truncated: false };
 
   // 例: "部品A, 部品B, 部品C" を優先的に分割し、行長の見積り内に収める
-  const tokens = normalized
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
+  const rawTokens = splitByDelimiters(normalized);
+  const tokens = rawTokens.flatMap((token) => splitLongToken(token, maxCharsPerLine));
 
   // カンマが無い/分割できない場合はフォールバック（文字数で強制分割）
   if (tokens.length <= 1) {
@@ -124,86 +144,159 @@ function fitAndWrapPartsText(options: {
   preferredFontPx: number;
   minFontPx: number;
   maxLines: number;
-}): { fontPx: number; lines: string[] } {
+}): { fontPx: number; label: string; lines: string[]; truncated: boolean } {
   const label = options.isCompleted ? '未完部品: なし' : '未完部品:';
   const body = options.isCompleted ? '' : (options.incompleteParts || '(不明)');
 
-  // 先頭行にラベル+本文を詰め、残り行で続き（必要なら…）
   // NOTE: 省略せずに収めたい要求があるが、最終的に読めない状態は避けるため…を許容する。
   let fontPx = options.preferredFontPx;
   for (; fontPx >= options.minFontPx; fontPx -= 1) {
     const maxChars = estimateMaxCharsPerLine(options.availableWidthPx, fontPx);
     if (options.isCompleted) {
       const line = truncateText(label, maxChars);
-      return { fontPx, lines: [line] };
+      return { fontPx, label: line, lines: [], truncated: false };
     }
 
-    const firstCandidate = `${label} ${body}`.trim();
-    const wrapped = wrapCommaSeparatedToLines(firstCandidate, maxChars, options.maxLines);
+    const wrapped = wrapCommaSeparatedToLines(body, maxChars, options.maxLines);
     if (!wrapped.truncated && wrapped.lines.length <= options.maxLines) {
-      return { fontPx, lines: wrapped.lines };
+      return { fontPx, label, lines: wrapped.lines, truncated: false };
     }
   }
 
   // 下限でも収まらない場合は最後の行を…で切る
   const maxChars = estimateMaxCharsPerLine(options.availableWidthPx, options.minFontPx);
   if (options.isCompleted) {
-    return { fontPx: options.minFontPx, lines: [truncateText(label, maxChars)] };
+    return { fontPx: options.minFontPx, label: truncateText(label, maxChars), lines: [], truncated: false };
   }
-  const fallback = wrapCommaSeparatedToLines(`${label} ${body}`.trim(), maxChars, options.maxLines);
+  const fallback = wrapCommaSeparatedToLines(body, maxChars, options.maxLines);
   const lines = fallback.lines.slice(0, options.maxLines);
   if (lines.length > 0 && fallback.truncated) {
     lines[lines.length - 1] = truncateText(lines[lines.length - 1], Math.max(6, maxChars));
   }
-  return { fontPx: options.minFontPx, lines };
+  return { fontPx: options.minFontPx, label, lines, truncated: true };
 }
 
 function buildKpiInlineSvg(options: {
-  xRight: number;
+  xStart: number;
+  xEnd: number;
   yBaseline: number;
   scale: number;
   stats: Array<{ label: string; value: string; color: string }>;
 }): string {
-  // タイトル右横に横並び。文字数が増えても壊れないよう、右寄せで詰めていく。
-  const chipGap = Math.round(12 * options.scale);
+  // タイトル右隣から左→右に流し、余白が増えたら間隔を広げる（重なりゼロ）
+  const labelShortMap: Record<string, string> = {
+    総製番数: '製番',
+    総部品数: '部品',
+    完了部品数: '完了',
+    進捗率: '率',
+  };
+  const labelFontMax = Math.max(14, Math.round(16 * options.scale));
+  const valueFontMax = Math.max(18, Math.round(22 * options.scale));
+  const labelFontMin = Math.max(12, Math.round(12 * options.scale));
+  const valueFontMin = Math.max(16, Math.round(18 * options.scale));
   const chipPaddingX = Math.round(10 * options.scale);
   const chipPaddingY = Math.round(6 * options.scale);
-  const labelFont = Math.max(14, Math.round(16 * options.scale));
-  const valueFont = Math.max(18, Math.round(22 * options.scale));
-  const chipHeight = Math.round(valueFont * 1.2) + chipPaddingY * 2;
+  const gapMax = Math.round(16 * options.scale);
+  const gapMin = Math.round(6 * options.scale);
 
-  let cursorRight = options.xRight;
-  const chips: string[] = [];
+  const availableWidth = Math.max(0, options.xEnd - options.xStart);
 
-  for (let i = options.stats.length - 1; i >= 0; i -= 1) {
-    const stat = options.stats[i]!;
-    const text = `${stat.label} ${stat.value}`;
-    const approxWidth = Math.round(text.length * valueFont * 0.55) + chipPaddingX * 2;
-    const chipWidth = Math.max(Math.round(92 * options.scale), approxWidth);
-    const x = cursorRight - chipWidth;
+  const attemptLayouts = [
+    { labelFont: labelFontMax, valueFont: valueFontMax, gap: gapMax, useShortLabel: false },
+    { labelFont: labelFontMax, valueFont: valueFontMax, gap: gapMin, useShortLabel: false },
+    { labelFont: labelFontMin, valueFont: valueFontMin, gap: gapMin, useShortLabel: false },
+    { labelFont: labelFontMin, valueFont: valueFontMin, gap: gapMin, useShortLabel: true },
+  ];
+
+  for (const attempt of attemptLayouts) {
+    const chipHeight = Math.round(attempt.valueFont * 1.2) + chipPaddingY * 2;
+    const chipDefs = options.stats.map((stat) => {
+      const labelText = attempt.useShortLabel ? (labelShortMap[stat.label] ?? stat.label) : stat.label;
+      const labelWidth = estimateTextWidth(labelText, attempt.labelFont);
+      const valueWidth = estimateTextWidth(stat.value, attempt.valueFont);
+      const labelValueGap = Math.round(6 * options.scale);
+      const chipWidth =
+        chipPaddingX * 2 + labelWidth + labelValueGap + valueWidth;
+      return {
+        labelText,
+        valueText: stat.value,
+        color: stat.color,
+        width: Math.max(Math.round(88 * options.scale), chipWidth),
+        height: chipHeight,
+        labelFont: attempt.labelFont,
+        valueFont: attempt.valueFont,
+      };
+    });
+
+    const totalChipsWidth = chipDefs.reduce((sum, chip) => sum + chip.width, 0);
+    const gapsCount = Math.max(0, chipDefs.length - 1);
+    const totalGapWidth = gapsCount * attempt.gap;
+    const neededWidth = totalChipsWidth + totalGapWidth;
+
+    if (neededWidth <= availableWidth) {
+      const extra = availableWidth - neededWidth;
+      const gap = gapsCount > 0 ? attempt.gap + extra / gapsCount : attempt.gap;
+      let cursorX = options.xStart;
+      const chips = chipDefs.map((chip) => {
+        const x = Math.round(cursorX);
+        const y = options.yBaseline - Math.round(22 * options.scale) - chipPaddingY;
+        cursorX += chip.width + gap;
+        const labelX = x + chipPaddingX;
+        const valueX = labelX + estimateTextWidth(chip.labelText, chip.labelFont) + Math.round(6 * options.scale);
+        return `
+          <g>
+            <rect x="${x}" y="${y}" width="${chip.width}" height="${chip.height}"
+              rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
+              fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
+            <text x="${labelX}" y="${y + chipPaddingY + Math.round(chip.valueFont * 0.95)}"
+              font-size="${chip.labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+              ${escapeXml(chip.labelText)}
+            </text>
+            <text x="${valueX}" y="${y + chipPaddingY + Math.round(chip.valueFont * 0.95)}"
+              font-size="${chip.valueFont}" font-weight="800" fill="${chip.color}" font-family="sans-serif">
+              ${escapeXml(chip.valueText)}
+            </text>
+          </g>
+        `;
+      });
+      return chips.join('\n');
+    }
+  }
+
+  // どうしても収まらない場合は、最小構成で詰めて描画
+  let cursorX = options.xStart;
+  const fallbackGap = gapMin;
+  const fallbackLabelFont = labelFontMin;
+  const fallbackValueFont = valueFontMin;
+  const chipHeight = Math.round(fallbackValueFont * 1.2) + chipPaddingY * 2;
+  const chips = options.stats.map((stat) => {
+    const labelText = labelShortMap[stat.label] ?? stat.label;
+    const labelWidth = estimateTextWidth(labelText, fallbackLabelFont);
+    const valueWidth = estimateTextWidth(stat.value, fallbackValueFont);
+    const labelValueGap = Math.round(6 * options.scale);
+    const chipWidth = chipPaddingX * 2 + labelWidth + labelValueGap + valueWidth;
+    const x = Math.round(cursorX);
     const y = options.yBaseline - Math.round(22 * options.scale) - chipPaddingY;
-
-    chips.push(`
+    cursorX += chipWidth + fallbackGap;
+    const labelX = x + chipPaddingX;
+    const valueX = labelX + labelWidth + Math.round(6 * options.scale);
+    return `
       <g>
         <rect x="${x}" y="${y}" width="${chipWidth}" height="${chipHeight}"
           rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
           fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
-        <text x="${x + chipPaddingX}" y="${y + chipPaddingY + Math.round(valueFont * 0.95)}"
-          font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-          ${escapeXml(stat.label)}
+        <text x="${labelX}" y="${y + chipPaddingY + Math.round(fallbackValueFont * 0.95)}"
+          font-size="${fallbackLabelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+          ${escapeXml(labelText)}
         </text>
-        <text x="${x + chipPaddingX + Math.round(stat.label.length * labelFont * 0.55) + Math.round(6 * options.scale)}"
-          y="${y + chipPaddingY + Math.round(valueFont * 0.95)}"
-          font-size="${valueFont}" font-weight="800" fill="${stat.color}" font-family="sans-serif">
+        <text x="${valueX}" y="${y + chipPaddingY + Math.round(fallbackValueFont * 0.95)}"
+          font-size="${fallbackValueFont}" font-weight="800" fill="${stat.color}" font-family="sans-serif">
           ${escapeXml(stat.value)}
         </text>
       </g>
-    `);
-
-    cursorRight = x - chipGap;
-  }
-
-  return chips.reverse().join('\n');
+    `;
+  });
+  return chips.join('\n');
 }
 
 export class ProgressListRenderer implements Renderer {
@@ -315,8 +408,12 @@ export class ProgressListRenderer implements Renderer {
       { label: '進捗率', value: `${progressRate}%`, color: NEUTRAL_COLOR },
     ];
 
+    const titleFont = Math.max(28, Math.round(48 * scale));
+    const titleWidth = estimateTextWidth(title, titleFont);
+    const kpiStartX = padding + titleWidth + Math.round(24 * scale);
     const kpiInlineSvg = buildKpiInlineSvg({
-      xRight: width - padding,
+      xStart: Math.min(kpiStartX, width - padding),
+      xEnd: width - padding,
       yBaseline: padding + Math.round(40 * scale),
       scale,
       stats,
@@ -361,8 +458,6 @@ export class ProgressListRenderer implements Renderer {
         const barHeight = Math.max(10, Math.round(16 * effectiveScale)); // 以前の約半分
         const barWidth = Math.floor(cardWidth - Math.round(32 * scale));
         const barX = x + Math.round(16 * scale);
-        const barY = y + cardHeight - Math.round(20 * scale) - barHeight;
-
         const fillWidth = Math.round((barWidth * clampNumber(percent, 0, 100)) / 100);
         const partsAvailableWidth = Math.max(1, cardWidth - Math.round(32 * scale));
         const partsFit = fitAndWrapPartsText({
@@ -373,9 +468,20 @@ export class ProgressListRenderer implements Renderer {
           minFontPx: minPartsFont,
           maxLines: 3,
         });
+        const labelFont = Math.max(12, Math.round(14 * effectiveScale));
         const partsLineHeight = Math.round(partsFit.fontPx * 1.25);
-        const partsStartY = y + Math.round(72 * scale);
+        const labelLineHeight = Math.round(labelFont * 1.2);
         const partsX = x + Math.round(16 * scale);
+
+        const cardTopPadding = Math.round(12 * scale);
+        const blockGap = Math.round(6 * scale);
+        const labelGap = Math.round(4 * scale);
+        const percentGap = Math.round(6 * scale);
+
+        const seibanY = y + cardTopPadding + seibanFont;
+        const labelY = seibanY + blockGap + labelLineHeight;
+        const partsStartY = labelY + labelGap + partsLineHeight;
+
         const partsLinesSvg = partsFit.lines
           .slice(0, 3)
           .map((line, i) => {
@@ -389,17 +495,30 @@ export class ProgressListRenderer implements Renderer {
           })
           .join('\n');
 
-        return `
-          <g>
-            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${Math.round(12 * scale)}" ry="${Math.round(12 * scale)}" fill="${CARD_BG}" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
-            <text x="${x + Math.round(16 * scale)}" y="${y + Math.round(36 * scale)}"
+        const partsBlockEndY =
+          partsFit.lines.length > 0
+            ? partsStartY + (partsFit.lines.length - 1) * partsLineHeight
+            : labelY;
+
+        const desiredBarY = partsBlockEndY + percentGap + percentFont + Math.round(4 * scale);
+        const minBarY = y + Math.round(16 * scale);
+        const maxBarY = y + cardHeight - Math.round(12 * scale) - barHeight;
+        const barY = clampNumber(Math.round(desiredBarY), Math.round(minBarY), Math.round(maxBarY));
+
+        const clipId = `card-clip-${index}`;
+        const contentSvg = `
+          <g clip-path="url(#${clipId})">
+            <text x="${x + Math.round(16 * scale)}" y="${seibanY}"
               font-size="${seibanFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
               ${escapeXml(fseiban)}
             </text>
+            <text x="${partsX}" y="${labelY}"
+              font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+              ${escapeXml(partsFit.label)}
+            </text>
             ${partsLinesSvg}
 
-            <text x="${barX}" y="${barY - Math.round(8 * scale)}"
+            <text x="${barX}" y="${barY - Math.round(6 * scale)}"
               font-size="${percentFont}" font-weight="700" fill="${accent}" font-family="sans-serif">
               ${escapeXml(`${percent}%`)}
             </text>
@@ -410,6 +529,20 @@ export class ProgressListRenderer implements Renderer {
               fill="${accent}" />
           </g>
         `;
+
+        return `
+          <g>
+            <defs>
+              <clipPath id="${clipId}">
+                <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
+                  rx="${Math.round(12 * scale)}" ry="${Math.round(12 * scale)}" />
+              </clipPath>
+            </defs>
+            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
+              rx="${Math.round(12 * scale)}" ry="${Math.round(12 * scale)}" fill="${CARD_BG}" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
+            ${contentSvg}
+          </g>
+        `;
       })
       .join('\n');
 
@@ -417,7 +550,7 @@ export class ProgressListRenderer implements Renderer {
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="${BACKGROUND}" />
         <text x="${padding}" y="${padding + Math.round(40 * scale)}"
-          font-size="${Math.max(28, Math.round(48 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${titleFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${kpiInlineSvg}
