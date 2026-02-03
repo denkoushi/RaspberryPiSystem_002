@@ -341,6 +341,7 @@ tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
 **重要（反映漏れ防止）**:
 - Ansible標準経路では、**コード更新があった場合に `api/web` を `--force-recreate --build` で再作成**します。
 - これが「デプロイ成功＝変更が反映済み」の前提条件です。ビルドが重い場合は完了まで待機し、ログ/ステータスで確認してください。
+- **Web bundleデプロイ修正（2026-02-03）**: `scripts/update-all-clients.sh`が`git pull`前後でHEADを比較し、変更があれば`force_docker_rebuild`フラグを設定します。これにより、Ansibleの`repo_changed`判定だけでは検出できないコード更新時でも、確実にDockerコンテナが再ビルドされます（[KB-227](../knowledge-base/infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正コード更新時のdocker再ビルド確実化)参照）。
 
 **deploy.shの改善機能（2026-01-24実装）**:
 - **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）

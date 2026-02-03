@@ -21,14 +21,14 @@ update-frequency: high
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
 | キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](./kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／返却後に再スキャンで使用中アラートが出る事象の調査（取消との混在有無） |
-| API関連 | [api.md](./api.md) | 40件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正 |
+| API関連 | [api.md](./api.md) | 41件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入） |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 36件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 6件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit） |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 72件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 35件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題 |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 36件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 12件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 13件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -87,6 +87,7 @@ update-frequency: high
 | [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索) | 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索） | ✅ 解決済み |
 | [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化) | 生産スケジュール検索状態の全キオスク間共有化 | ✅ 解決済み |
 | [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) | 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正 | ✅ 解決済み |
+| [KB-211](./api.md#kb-211-生産スケジュール検索登録製番の削除追加が巻き戻る競合問題cas導入) | 生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入） | ✅ 解決済み |
 | [KB-212](./api.md#kb-212-生産スケジュール行ごとの備考欄追加機能) | 生産スケジュール行ごとの備考欄追加機能 | ✅ 解決済み |
 | [KB-215](./api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ) | Gmail OAuthリフレッシュトークンの7日間制限問題（未検証アプリ） | 🔄 検証リクエスト中 |
 | [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) | 生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装） | ✅ 解決済み |
@@ -270,6 +271,8 @@ update-frequency: high
 | [KB-220](./infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) | NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される | ✅ 解決済み |
 | [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) | デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同 | ✅ 解決済み |
 | [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) | デプロイ時のマイグレーション未適用問題 | ✅ 解決済み |
+| [KB-226](./infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) | デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須） | ✅ 解決済み |
+| [KB-227](./infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正コード更新時のdocker再ビルド確実化) | Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化 | ✅ 解決済み |
 | [KB-141](./infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題) | CaddyがすべてのAPI要求にWebSocketアップグレードヘッダーを強制する問題 | ✅ 解決済み |
 
 ---
@@ -434,3 +437,5 @@ update-frequency: high
 - 2026-02-01: KB-223を追加（生産スケジュール備考のモーダル編集化と処理列追加）→ 2026-02-01に実装完了・CI成功・デプロイ成功・実機検証完了（備考モーダル編集化、備考2行表示、処理列追加、品番/製造order番号折り返し対応、データ整合性考慮）
 - 2026-02-01: KB-224を追加（デプロイ時のマイグレーション未適用問題）→ 2026-02-01に解決完了（デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用、デプロイ後チェックリストの徹底を確認）
 - 2026-02-02: KB-225を追加（キオスク入力フィールド保護ルールの実装と実機検証）→ 2026-02-02に実装完了・実機検証完了（入力フィールド削除・localStorage無効化・起動時防御・自動復旧機能を実装、IDとAPIキーが編集不可に改善、生産スケジュールの値が表示されることを確認）
+- 2026-02-03: KB-211を追加（生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入））→ 2026-02-03に実装完了・CI成功・デプロイ成功・実機検証完了（ETag/If-Matchによる楽観的ロック実装、409 Conflict時の自動再試行、登録製番同期・登録・削除がすべて正常動作、サイネージへの反映も正常動作）
+- 2026-02-03: KB-227を追加（Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化）→ 2026-02-03に実装完了・デプロイ成功・実機検証完了（`force_docker_rebuild`フラグ導入、`git pull`前後でHEAD比較、Ansibleへの変数渡し、Docker再ビルドタスクの`when`条件修正、Web bundleが確実に再ビルドされることを確認）

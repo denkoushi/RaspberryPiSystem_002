@@ -3274,3 +3274,67 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pn
 - クライアント側の監視打ち切りは正常な動作として扱い、リモートジョブは継続実行される
 
 ---
+
+### [KB-227] Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化
+
+**実装日時**: 2026-02-03
+
+**事象**:
+- Webアプリのコード変更（例: If-Matchヘッダー対応）をデプロイしても、Pi4のキオスクブラウザに反映されない
+- APIは`428 Precondition Required`エラーを返し続ける（If-Matchヘッダーが送信されていない）
+- デプロイログでは`repo_changed=false`となり、Dockerコンテナが再ビルドされない
+
+**要因**:
+- `scripts/update-all-clients.sh`がPi5上で`git pull`を実行してからAnsibleが実行される
+- Ansibleの`roles/common`が`repo_changed`を判定する際、既に`git pull`でリポジトリが更新済みのため、HEAD比較で差分が検出されない
+- Docker再ビルドタスクが`repo_changed`のみに依存していたため、コード更新があっても再ビルドされない
+
+**有効だった対策**:
+- ✅ **`force_docker_rebuild`フラグの導入（2026-02-03）**:
+  1. **`scripts/update-all-clients.sh`の修正**: `git pull`前後でHEADを比較し、変更があれば`FORCE_DOCKER_REBUILD="true"`を設定
+  2. **Ansibleへの変数渡し**: `force_docker_rebuild`をextra variableとしてAnsibleに渡す
+  3. **`roles/server/tasks/main.yml`の修正**: Docker再ビルドタスクの`when`条件を`(repo_changed | default(false)) or (force_docker_rebuild | default(false) | bool)`に変更
+  4. **型変換の追加**: Ansibleの`when`条件で文字列`"true"`をbooleanに変換するため`| bool`フィルタを追加
+
+**実装の詳細**:
+```bash
+# scripts/update-all-clients.sh
+FORCE_DOCKER_REBUILD="false"
+prev_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
+git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
+new_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
+if [ -n "${prev_head}" ] && [ -n "${new_head}" ] && [ "${prev_head}" != "${new_head}" ]; then
+  FORCE_DOCKER_REBUILD="true"
+fi
+# ...
+ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
+```
+
+```yaml
+# infrastructure/ansible/roles/server/tasks/main.yml
+- name: Rebuild and restart Docker services on server when repo changed
+  # ...
+  when: (repo_changed | default(false)) or (force_docker_rebuild | default(false) | bool)
+```
+
+**実機検証結果（2026-02-03）**:
+- ✅ **Web bundleデプロイ成功**: Pi5+Pi4デプロイ後、Pi4のキオスクブラウザに最新のweb bundle（If-Match対応）が反映された
+- ✅ **APIエラー解消**: `428 Precondition Required`エラーが解消され、登録製番の追加/削除が正常に動作
+- ✅ **Docker再ビルド確実化**: コード更新時に確実に`web`コンテナが再ビルドされることを確認
+
+**解決状況**: ✅ **解決済み**（2026-02-03）
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`: `force_docker_rebuild`フラグの検出とAnsibleへの変数渡し
+- `infrastructure/ansible/roles/server/tasks/main.yml`: Docker再ビルドタスクの`when`条件修正
+
+**関連KB**:
+- [KB-211](../api.md#kb-211-生産スケジュール検索登録製番の削除追加が巻き戻る競合問題cas導入): 競合制御の実装（ETag/If-Match）
+- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+
+**再発防止**:
+- コード更新時は必ずDockerコンテナが再ビルドされることを確認する
+- `repo_changed`だけでなく、`force_docker_rebuild`フラグも考慮する設計を維持する
+- デプロイ後は実機で動作確認を行い、期待される変更が反映されていることを検証する
+
+---
