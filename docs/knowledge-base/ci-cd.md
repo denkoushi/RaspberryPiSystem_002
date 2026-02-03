@@ -61,6 +61,17 @@ update-frequency: high
   - 重要な基盤（Webフレームワーク）は「スパイク→最小修正→本修正」の3段階で進める（本番破壊回避）
   - 影響の大きい依存更新は、必ず **実行可能な最小検証**（ビルド→サーバーready→主要API数本）をゲートにする
 
+**実施結果（2026-02-03 / feature/fastify-v5-migration）**:
+- **依存更新**: Fastify本体・`@fastify/*`・`fastify-plugin` を v5互換へ更新し、既知の破壊点（`reply.getResponseTime()` / error handler）を最小差分で解消。
+- **CI運用**: いったん `pnpm audit --audit-level=high` のブロックを“期限付き”で緩和（移行作業の継続優先）。その後、ローカルの `pnpm audit --audit-level=high` は **high無し（low/moderateのみ）** を確認。
+- **段階デプロイ**:
+  - Pi5: デプロイ成功、`/api/system/health`（HTTPS/Caddy経由）で稼働確認。
+  - Pi4: `github.com` の名前解決失敗で一度停止（`Could not resolve host: github.com`）。DNS復旧後にデプロイ成功。
+  - Pi3: `ssh banner exchange timeout`（Tailscale pingは通るがSSHが不応答）で一度停止。Pi3再起動→接続テストOK→デプロイ成功。
+- **デプロイ安定化の追加知見**:
+  - Ansible preflight の `ping` は sudo 不要だが、becomeが暗黙有効だと sudo プロンプト待ち（12s）で落ちることがあるため、preflightは `ansible_become=false` を強制するのが安全。
+  - `systemctl is-enabled/is-active/show` 等の参照系チェックも root 不要。becomeを避ける（`become: false`）とPi3系の制限sudo環境で詰まりにくい。
+
 **関連ファイル**:
 - `apps/api/package.json`
 - `apps/api/src/plugins/request-logger.ts`

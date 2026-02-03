@@ -350,7 +350,7 @@ update-frequency: medium
 
 **事象**:
 - Raspberry Pi 3 の軽量クライアントが `/api/signage/current-image` の取得に失敗し、`feh: No loadable images specified` でサービスが再起動を繰り返す
-- `journalctl -u signage-lite` では `Failed to update image, using cached version` が連続し、`/var/cache/signage/current.jpg` が生成されない
+- `journalctl -u signage-lite` では `Failed to update image, using cached version` が連続し、`/run/signage/current.jpg`（tmpfsキャッシュ）が生成されない
 
 **要因**:
 - サーバー (Raspberry Pi 5) が自己署名証明書を使用しており、`signage-update.sh` の `curl` が証明書検証で失敗していた
