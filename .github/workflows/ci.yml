@@ -36,12 +36,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Security scan (pnpm audit, high+)
-        # TEMP: Fastify v5移行のため一時的にnon-blocking化
-        # TODO: Fastify v5移行完了後にブロッキングへ戻す
         run: |
           pnpm audit --audit-level=high || {
-            echo "Security scan failed (non-blocking during Fastify v5 migration)"
-            exit 0
+            echo "Security scan failed!"
+            exit 1
           }
 
       - name: Run lint
