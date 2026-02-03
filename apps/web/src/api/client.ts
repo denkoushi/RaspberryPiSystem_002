@@ -274,19 +274,46 @@ export type ProductionScheduleSearchHistory = {
   updatedAt: string | null;
 };
 
-export async function getKioskProductionScheduleSearchState() {
-  const { data } = await api.get<{ state: ProductionScheduleSearchState | null; updatedAt: string | null }>(
+export type ProductionScheduleSearchStateResponse = {
+  state: ProductionScheduleSearchState | null;
+  updatedAt: string | null;
+  etag: string | null;
+};
+
+export async function getKioskProductionScheduleSearchState(): Promise<ProductionScheduleSearchStateResponse> {
+  const response = await api.get<{ state: ProductionScheduleSearchState | null; updatedAt: string | null }>(
     '/kiosk/production-schedule/search-state'
   );
-  return data;
+  const etag = (response.headers?.etag as string | undefined) ?? null;
+  return { ...response.data, etag };
 }
 
-export async function setKioskProductionScheduleSearchState(state: ProductionScheduleSearchState) {
-  const { data } = await api.put<{ state: ProductionScheduleSearchState; updatedAt: string }>(
+export type ProductionScheduleSearchStateUpdatePayload = {
+  state: ProductionScheduleSearchState;
+  ifMatch: string;
+};
+
+export type ProductionScheduleSearchStateUpdateResponse = {
+  state: ProductionScheduleSearchState;
+  updatedAt: string;
+  etag: string | null;
+};
+
+export async function setKioskProductionScheduleSearchState(
+  payload: ProductionScheduleSearchStateUpdatePayload
+): Promise<ProductionScheduleSearchStateUpdateResponse> {
+  const { state, ifMatch } = payload;
+  const response = await api.put<{ state: ProductionScheduleSearchState; updatedAt: string }>(
     '/kiosk/production-schedule/search-state',
-    { state }
+    { state },
+    {
+      headers: {
+        'If-Match': ifMatch,
+      },
+    }
   );
-  return data;
+  const etag = (response.headers?.etag as string | undefined) ?? null;
+  return { ...response.data, etag };
 }
 
 export async function getKioskProductionScheduleSearchHistory() {

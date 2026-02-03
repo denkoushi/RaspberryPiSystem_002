@@ -285,10 +285,19 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   it('stores and returns shared search state across kiosks', async () => {
+    const initialGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(initialGet.statusCode).toBe(200);
+    const initialEtag = initialGet.headers['etag'];
+    expect(initialEtag).toBeTruthy();
+
     const putRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/search-state',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': initialEtag },
       payload: {
         state: {
           history: ['A']
@@ -296,11 +305,13 @@ describe('Kiosk Production Schedule API', () => {
       }
     });
     expect(putRes.statusCode).toBe(200);
+    const updatedEtag = putRes.headers['etag'];
+    expect(updatedEtag).toBeTruthy();
 
     const secondPut = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/search-state',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': updatedEtag },
       payload: {
         state: {
           history: ['B']
@@ -318,6 +329,46 @@ describe('Kiosk Production Schedule API', () => {
     const body = getRes.json() as { state: { history?: string[]; inputQuery?: string } };
     expect(body.state?.history).toEqual(['B']);
     expect(body.state?.inputQuery).toBeUndefined();
+  });
+
+  it('rejects search-state update without If-Match', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        state: {
+          history: ['C']
+        }
+      }
+    });
+    expect(res.statusCode).toBe(428);
+  });
+
+  it('returns conflict when If-Match is stale', async () => {
+    const initialGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const initialEtag = initialGet.headers['etag'];
+    expect(initialEtag).toBeTruthy();
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': initialEtag },
+      payload: { state: { history: ['X'] } }
+    });
+    expect(putRes.statusCode).toBe(200);
+
+    const stalePut = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': initialEtag },
+      payload: { state: { history: ['Y'] } }
+    });
+    expect(stalePut.statusCode).toBe(409);
   });
 
   it('paginates results in sorted order', async () => {

@@ -2258,6 +2258,43 @@ app.put('/kiosk/production-schedule/search-state', async (request) => {
 
 ---
 
+### [KB-211] 生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）
+
+**実装日時**: 2026-02-03
+
+**事象**:
+- 登録製番の削除がすぐ復活する
+- 追加が反映されない、または揺れる
+
+**要因**:
+- `search-state` が **全量PUT** で保存され、**競合制御がない**ため、複数端末/複数タブの更新が **last-write-wins** で巻き戻る
+- サイネージは shared state を読んで描画するため、shared が揺れると表示も安定しない
+
+**対策**:
+- ✅ **ETag/If-Match（楽観ロック）必須化**:
+  - `GET /kiosk/production-schedule/search-state` の `ETag` を **If-Match** として `PUT` に必須で送る
+  - 一致しない更新は **409 Conflict** で拒否し、最新state/updatedAt/etagを返却
+- ✅ **フロントは自動再試行**:
+  - 409時に最新stateへ操作（add/remove）を再適用して再PUT
+
+**実装の詳細**:
+- **API** (`apps/api/src/routes/kiosk.ts`)
+  - `GET /kiosk/production-schedule/search-state` が `ETag` を返却
+  - `PUT /kiosk/production-schedule/search-state` は `If-Match` 必須化、CAS更新、409で最新stateを返却
+- **フロント** (`apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`)
+  - 追加/削除を操作単位でCAS更新
+  - 409時は最新を取得して再適用
+- **APIテスト** (`apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`)
+  - If-Match必須・409競合の再現テスト
+
+**実機検証の注意**:
+- デプロイ後は **Pi4の `kiosk-browser.service` を再起動**して旧JSを排除
+- Macブラウザは **古いタブを閉じて再読込**
+
+**解決状況**: ⬜ 未確認（実機で削除/追加が安定することを確認後、更新）
+
+---
+
 ### [KB-212] 生産スケジュール行ごとの備考欄追加機能
 
 **実装日時**: 2026-01-29

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useCompleteKioskProductionScheduleRow,
@@ -58,6 +59,20 @@ const isSameHistory = (a: string[], b: string[]) => {
     if (a[i] !== b[i]) return false;
   }
   return true;
+};
+
+const normalizeHistoryList = (items: string[]) => {
+  const unique = new Set<string>();
+  const next: string[] = [];
+  items
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .forEach((item) => {
+      if (unique.has(item)) return;
+      unique.add(item);
+      next.push(item);
+    });
+  return next.slice(0, 8);
 };
 
 function PencilIcon({ className }: { className?: string }) {
@@ -124,8 +139,7 @@ export function ProductionSchedulePage() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
   const searchStateUpdatedAtRef = useRef<string | null>(null);
-  const suppressSearchStateSyncRef = useRef(false);
-  const hasLoadedSearchStateRef = useRef(false);
+  const searchStateEtagRef = useRef<string | null>(null);
 
   const normalizedActiveQueries = useMemo(() => {
     const unique = new Set<string>();
@@ -135,20 +149,6 @@ export function ProductionSchedulePage() {
       .forEach((query) => unique.add(query));
     return Array.from(unique);
   }, [activeQueries]);
-
-  const normalizeHistoryList = (items: string[]) => {
-    const unique = new Set<string>();
-    const next: string[] = [];
-    items
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0)
-      .forEach((item) => {
-        if (unique.has(item)) return;
-        unique.add(item);
-        next.push(item);
-      });
-    return next.slice(0, 8);
-  };
 
   const normalizedHistory = useMemo(() => normalizeHistoryList(history), [history]);
   // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
@@ -321,13 +321,64 @@ export function ProductionSchedulePage() {
     return pairs;
   }, [normalizedRows, isTwoColumn]);
 
+  type SearchStateOperation = { type: 'add' | 'remove'; value: string };
+
+  const updateSharedSearchState = useCallback(
+    async (nextHistory: string[], operation: SearchStateOperation, attempt = 0) => {
+      if (!searchStateEtagRef.current) {
+        await searchStateQuery.refetch();
+      }
+      const ifMatch = searchStateEtagRef.current;
+      if (!ifMatch) {
+        return;
+      }
+      try {
+        const result = await searchStateMutation.mutateAsync({
+          state: { history: nextHistory },
+          ifMatch,
+        });
+        searchStateUpdatedAtRef.current = result.updatedAt;
+        if (result.etag) {
+          searchStateEtagRef.current = result.etag;
+        }
+      } catch (error) {
+        if (isAxiosError(error) && error.response?.status === 409 && attempt < 2) {
+          const details = (error.response?.data?.details ?? {}) as {
+            state?: { history?: string[] };
+            updatedAt?: string | null;
+            etag?: string | null;
+          };
+          const latestHistory = normalizeHistoryList(details.state?.history ?? []);
+          const rebasedHistory =
+            operation.type === 'add'
+              ? normalizeHistoryList([operation.value, ...latestHistory])
+              : latestHistory.filter((item) => item !== operation.value);
+          setHistory(rebasedHistory);
+          setHiddenHistory((prev) => prev.filter((item) => item !== operation.value));
+          if (details.updatedAt) {
+            searchStateUpdatedAtRef.current = details.updatedAt;
+          }
+          if (details.etag) {
+            searchStateEtagRef.current = details.etag;
+          }
+          await updateSharedSearchState(rebasedHistory, operation, attempt + 1);
+          return;
+        }
+        throw error;
+      }
+    },
+    [searchStateMutation, searchStateQuery, setHiddenHistory, setHistory]
+  );
+
   const applySearch = (value: string) => {
     const trimmed = value.trim();
     setInputQuery(trimmed);
     setActiveQueries(trimmed.length > 0 ? [trimmed] : []);
     if (trimmed.length > 0) {
-      setHistory((prev) => normalizeHistoryList([trimmed, ...prev]));
+      const nextHistory = normalizeHistoryList([trimmed, ...normalizedHistory]);
+      setHistory(nextHistory);
       setHiddenHistory((prev) => prev.filter((item) => item.trim() !== trimmed));
+      void updateSharedSearchState(nextHistory, { type: 'add', value: trimmed });
     }
   };
 
@@ -420,11 +471,13 @@ export function ProductionSchedulePage() {
     setActiveQueries((prev) => prev.filter((item) => item !== value));
     // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
     // そのため削除は端末ローカル非表示（hiddenHistory）ではなく shared history を更新する。
-    setHistory((prev) => prev.filter((item) => item !== value));
+    const nextHistory = normalizedHistory.filter((item) => item !== value);
+    setHistory(nextHistory);
     setHiddenHistory((prev) => prev.filter((item) => item !== value));
     if (inputQuery === value) {
       setInputQuery('');
     }
+    void updateSharedSearchState(nextHistory, { type: 'remove', value });
 
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:remove-history',message:'history item removed (shared)',data:{removed:value},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-delete-not-propagating'})}).catch(()=>{});
@@ -474,11 +527,12 @@ export function ProductionSchedulePage() {
   };
 
   useEffect(() => {
-    if (searchStateQuery.isSuccess) {
-      hasLoadedSearchStateRef.current = true;
-    }
     const updatedAt = searchStateQuery.data?.updatedAt ?? null;
     const incomingState = searchStateQuery.data?.state ?? null;
+    const incomingEtag = searchStateQuery.data?.etag ?? null;
+    if (incomingEtag) {
+      searchStateEtagRef.current = incomingEtag;
+    }
     if (!updatedAt || !incomingState) return;
 
     const lastUpdatedAt = searchStateUpdatedAtRef.current;
@@ -494,7 +548,6 @@ export function ProductionSchedulePage() {
 
     // サーバー側のshared historyを正とし、縮退（削除）も反映する
     if (!isSameHistory(incomingHistory, normalizedHistory)) {
-      suppressSearchStateSyncRef.current = true;
       setHistory(incomingHistory);
       // 端末ローカルの非表示は同期の妨げになるためクリア（残っていてもUIには使わないが誤解を避ける）
       setHiddenHistory([]);
@@ -504,37 +557,9 @@ export function ProductionSchedulePage() {
   }, [
     searchStateQuery.data?.state,
     searchStateQuery.data?.updatedAt,
-    searchStateQuery.isSuccess,
+    searchStateQuery.data?.etag,
     normalizedHistory,
     setHistory
-  ]);
-
-  useEffect(() => {
-    if (!hasLoadedSearchStateRef.current) return;
-    if (suppressSearchStateSyncRef.current) {
-      suppressSearchStateSyncRef.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:search-state-put',message:'search-state PUT scheduled',data:{historyCount:normalizedHistory.length,history:normalizedHistory},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-delete-not-propagating'})}).catch(()=>{});
-      // #endregion agent log
-      searchStateMutation.mutate(
-        {
-          // 入力中の文字列は端末ごとに異なるため共有しない
-          history: normalizedHistory
-        },
-        {
-          onSuccess: (data) => {
-            searchStateUpdatedAtRef.current = data.updatedAt;
-          }
-        }
-      );
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [
-    normalizedHistory,
-    searchStateMutation
   ]);
   const openKeyboard = () => {
     setKeyboardValue(inputQuery);

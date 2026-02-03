@@ -189,6 +189,33 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     return next.slice(0, 8);
   };
 
+  const SEARCH_STATE_MISSING_ETAG = 'missing';
+
+  const buildSearchStateEtag = (value: string): string => `W/"${value}"`;
+
+  const normalizeIfMatchValue = (raw: string): string => {
+    let value = raw.trim();
+    if (value.startsWith('W/')) {
+      value = value.slice(2).trim();
+    }
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    }
+    return value;
+  };
+
+  const parseIfMatch = (header: unknown): string | null => {
+    const raw = Array.isArray(header) ? header[0] : header;
+    if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+    const first = raw.split(',')[0]?.trim();
+    if (!first) return null;
+    return normalizeIfMatchValue(first);
+  };
+
+  const extractSearchHistory = (state: Prisma.JsonValue | null | undefined): string[] => {
+    return normalizeSearchHistory(((state as { history?: string[] } | null)?.history ?? []) as string[]);
+  };
+
   // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
   app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
     const rawClientKey = request.headers['x-client-key'];
@@ -763,7 +790,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     return { success: true, orderNumber: body.orderNumber };
   });
 
-  app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
     const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
@@ -775,9 +802,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (sharedState) {
-      const history = normalizeSearchHistory(
-        ((sharedState.state as { history?: string[] } | null)?.history ?? []) as string[]
-      );
+      const history = extractSearchHistory(sharedState.state);
+      const etagValue = sharedState.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+      reply.header('ETag', buildSearchStateEtag(etagValue));
       return { state: { history }, updatedAt: sharedState.updatedAt ?? null };
     }
 
@@ -789,9 +816,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     });
-    const fallbackHistory = normalizeSearchHistory(
-      ((fallbackState?.state as { history?: string[] } | null)?.history ?? []) as string[]
-    );
+    const fallbackHistory = extractSearchHistory(fallbackState?.state ?? null);
+    const fallbackEtagValue = fallbackState?.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+    reply.header('ETag', buildSearchStateEtag(fallbackEtagValue));
     return { state: { history: fallbackHistory }, updatedAt: fallbackState?.updatedAt ?? null };
   });
 
@@ -810,29 +837,125 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     return { history, updatedAt: stored?.updatedAt ?? null };
   });
 
-  app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request) => {
-    await requireClientDevice(request.headers['x-client-key']);
+  app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const ifMatch = parseIfMatch(request.headers['if-match']);
+    if (!ifMatch) {
+      throw new ApiError(
+        428,
+        'If-Matchヘッダーが必要です。再読込してから再実行してください。',
+        undefined,
+        'SEARCH_STATE_PRECONDITION_REQUIRED',
+      );
+    }
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
     const incomingHistory = normalizeSearchHistory(body.state.history ?? []);
     const mergedHistory = incomingHistory;
 
-    const state = await prisma.kioskProductionScheduleSearchState.upsert({
+    const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
       where: {
         csvDashboardId_location: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           location: SHARED_SEARCH_STATE_LOCATION,
         },
       },
-      update: {
-        state: { history: mergedHistory } as Prisma.InputJsonValue,
-      },
-      create: {
+    });
+
+    const buildConflictError = (latest: typeof sharedState | null) => {
+      const latestHistory = extractSearchHistory(latest?.state ?? null);
+      const latestUpdatedAt = latest?.updatedAt ?? null;
+      const etagValue = latestUpdatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+      return new ApiError(
+        409,
+        '検索登録製番が他の端末で更新されています。再読込してやり直してください。',
+        {
+          state: { history: latestHistory },
+          updatedAt: latestUpdatedAt,
+          etag: buildSearchStateEtag(etagValue),
+        },
+        'SEARCH_STATE_CONFLICT',
+      );
+    };
+
+    if (!sharedState) {
+      const fallbackState = await prisma.kioskProductionScheduleSearchState.findUnique({
+        where: {
+          csvDashboardId_location: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: locationKey,
+          },
+        },
+      });
+      const fallbackEtag = fallbackState?.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+      if (ifMatch !== fallbackEtag) {
+        throw buildConflictError(fallbackState);
+      }
+      try {
+        const created = await prisma.kioskProductionScheduleSearchState.create({
+          data: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: SHARED_SEARCH_STATE_LOCATION,
+            state: { history: mergedHistory } as Prisma.InputJsonValue,
+          },
+        });
+        const createdEtag = created.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+        reply.header('ETag', buildSearchStateEtag(createdEtag));
+        return { state: { history: mergedHistory }, updatedAt: created.updatedAt };
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          const latest = await prisma.kioskProductionScheduleSearchState.findUnique({
+            where: {
+              csvDashboardId_location: {
+                csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+                location: SHARED_SEARCH_STATE_LOCATION,
+              },
+            },
+          });
+          throw buildConflictError(latest);
+        }
+        throw error;
+      }
+    }
+
+    const sharedEtag = sharedState.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+    if (ifMatch !== sharedEtag) {
+      throw buildConflictError(sharedState);
+    }
+
+    const updateResult = await prisma.kioskProductionScheduleSearchState.updateMany({
+      where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         location: SHARED_SEARCH_STATE_LOCATION,
+        updatedAt: sharedState.updatedAt,
+      },
+      data: {
         state: { history: mergedHistory } as Prisma.InputJsonValue,
       },
     });
-    return { state: { history: mergedHistory }, updatedAt: state.updatedAt };
+    if (updateResult.count === 0) {
+      const latest = await prisma.kioskProductionScheduleSearchState.findUnique({
+        where: {
+          csvDashboardId_location: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: SHARED_SEARCH_STATE_LOCATION,
+          },
+        },
+      });
+      throw buildConflictError(latest);
+    }
+
+    const updated = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: SHARED_SEARCH_STATE_LOCATION,
+        },
+      },
+    });
+    const updatedEtag = updated?.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
+    reply.header('ETag', buildSearchStateEtag(updatedEtag));
+    return { state: { history: mergedHistory }, updatedAt: updated?.updatedAt ?? null };
   });
 
   app.put('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
