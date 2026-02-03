@@ -52,6 +52,14 @@ const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
 const NOTE_COLUMN_WIDTH = 140;
 const DUE_DATE_COLUMN_WIDTH = 110;
 
+const isSameHistory = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
 function PencilIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -100,7 +108,7 @@ export function ProductionSchedulePage() {
   const [inputQuery, setInputQuery] = useState('');
   const [activeQueries, setActiveQueries] = useState<string[]>([]);
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
-  const [hiddenHistory, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
+  const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
   const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
   const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
   const [hasNoteOnlyFilter, setHasNoteOnlyFilter] = useState(false);
@@ -143,11 +151,9 @@ export function ProductionSchedulePage() {
   };
 
   const normalizedHistory = useMemo(() => normalizeHistoryList(history), [history]);
-  const normalizedHiddenHistory = useMemo(() => normalizeHistoryList(hiddenHistory), [hiddenHistory]);
-  const visibleHistory = useMemo(
-    () => normalizedHistory.filter((item) => !normalizedHiddenHistory.includes(item)),
-    [normalizedHistory, normalizedHiddenHistory]
-  );
+  // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
+  // そのため hiddenHistory（端末ローカル非表示）よりも shared history を優先し、表示はsharedをそのまま使う。
+  const visibleHistory = normalizedHistory;
 
   const normalizedResourceCds = useMemo(() => {
     const unique = new Set<string>();
@@ -412,10 +418,17 @@ export function ProductionSchedulePage() {
 
   const removeHistoryQuery = (value: string) => {
     setActiveQueries((prev) => prev.filter((item) => item !== value));
-    setHiddenHistory((prev) => normalizeHistoryList([...prev, value]));
+    // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
+    // そのため削除は端末ローカル非表示（hiddenHistory）ではなく shared history を更新する。
+    setHistory((prev) => prev.filter((item) => item !== value));
+    setHiddenHistory((prev) => prev.filter((item) => item !== value));
     if (inputQuery === value) {
       setInputQuery('');
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:remove-history',message:'history item removed (shared)',data:{removed:value},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-delete-not-propagating'})}).catch(()=>{});
+    // #endregion agent log
   };
 
   const confirmRemoveHistoryQuery = (value: string) => {
@@ -473,15 +486,26 @@ export function ProductionSchedulePage() {
       return;
     }
 
-    suppressSearchStateSyncRef.current = true;
     const incomingHistory = normalizeHistoryList(incomingState.history ?? []);
-    setHistory((prev) => normalizeHistoryList([...prev, ...incomingHistory]));
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:search-state-sync',message:'search-state received',data:{updatedAt,incomingHistoryCount:incomingHistory.length,localHistoryCount:normalizedHistory.length,isSame:isSameHistory(incomingHistory,normalizedHistory)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-stale-overwrite'})}).catch(()=>{});
+    // #endregion agent log
+
+    // サーバー側のshared historyを正とし、縮退（削除）も反映する
+    if (!isSameHistory(incomingHistory, normalizedHistory)) {
+      suppressSearchStateSyncRef.current = true;
+      setHistory(incomingHistory);
+      // 端末ローカルの非表示は同期の妨げになるためクリア（残っていてもUIには使わないが誤解を避ける）
+      setHiddenHistory([]);
+    }
     searchStateUpdatedAtRef.current = updatedAt;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     searchStateQuery.data?.state,
     searchStateQuery.data?.updatedAt,
     searchStateQuery.isSuccess,
+    normalizedHistory,
     setHistory
   ]);
 
@@ -492,6 +516,9 @@ export function ProductionSchedulePage() {
       return;
     }
     const timer = setTimeout(() => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:search-state-put',message:'search-state PUT scheduled',data:{historyCount:normalizedHistory.length,history:normalizedHistory},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-delete-not-propagating'})}).catch(()=>{});
+      // #endregion agent log
       searchStateMutation.mutate(
         {
           // 入力中の文字列は端末ごとに異なるため共有しない
