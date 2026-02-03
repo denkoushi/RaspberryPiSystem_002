@@ -869,15 +869,21 @@ mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 export ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
+FORCE_DOCKER_REBUILD="false"
 if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   if ! git -C /opt/RaspberryPiSystem_002 diff --quiet \
     || ! git -C /opt/RaspberryPiSystem_002 diff --cached --quiet \
     || [ -n "$(git -C /opt/RaspberryPiSystem_002 ls-files --others --exclude-standard)" ]; then
     git -C /opt/RaspberryPiSystem_002 stash push -u -m "Auto-stash before ansible update $(date +%Y%m%d_%H%M%S)" || true
   fi
+  prev_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
   git -C /opt/RaspberryPiSystem_002 fetch origin
   git -C /opt/RaspberryPiSystem_002 checkout "${REPO_VERSION}"
   git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
+  new_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
+  if [ -n "${prev_head}" ] && [ -n "${new_head}" ] && [ "${prev_head}" != "${new_head}" ]; then
+    FORCE_DOCKER_REBUILD="true"
+  fi
 fi
 
 MAINTENANCE_FLAG_SET=0
@@ -1050,9 +1056,9 @@ max_attempts=3
 while [ ${attempt} -le ${max_attempts} ]; do
   echo "[INFO] Running ansible-playbook (attempt ${attempt}/${max_attempts})"
   if [ -n "${LIMIT_HOSTS}" ]; then
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
   else
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
   fi
   generate_summary "${REMOTE_RUN_LOG}" "${summary_file}"
   retry_hosts=$(get_retry_hosts_if_unreachable_only "${summary_file}")
