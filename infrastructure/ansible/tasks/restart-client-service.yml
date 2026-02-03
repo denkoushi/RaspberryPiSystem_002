@@ -2,6 +2,7 @@
 - name: Check if {{ service_name }} exists
   ansible.builtin.command: "systemctl list-unit-files {{ service_name }} --no-pager"
   register: service_exists_check
+  become: false
   changed_when: false
   failed_when: false
 
@@ -9,6 +10,7 @@
     - name: Check if {{ service_name }} is enabled
       ansible.builtin.command: "systemctl is-enabled {{ service_name }}"
       register: service_enabled_check
+      become: false
       changed_when: false
       failed_when: false
 
@@ -35,6 +37,7 @@
     - name: Check if {{ service_name }} is a oneshot service
       ansible.builtin.command: "systemctl show {{ service_name }} --property=Type --value"
       register: service_type_check
+      become: false
       changed_when: false
       failed_when: false
       when: service_name is match('.*\\.service$')
@@ -42,6 +45,7 @@
     - name: Verify {{ service_name }} is active (for non-oneshot services)
       ansible.builtin.command: "systemctl is-active {{ service_name }}"
       register: client_service_status
+      become: false
       changed_when: false
       failed_when: client_service_status.stdout.strip() not in ['active', 'activating']
       retries: 3
@@ -54,6 +58,7 @@
     - name: Ensure {{ service_name }} result is success
       ansible.builtin.command: "systemctl show {{ service_name }} --property=Result --value"
       register: client_service_result
+      become: false
       changed_when: false
       failed_when: client_service_result.stdout.strip() not in ['success', 'none', 'na']
       when: service_name is match('.*\\.service$')
@@ -61,6 +66,7 @@
     - name: Ensure {{ service_name }} is not in failed state
       ansible.builtin.command: "systemctl is-failed {{ service_name }}"
       register: client_service_failed_check
+      become: false
       changed_when: false
       failed_when: client_service_failed_check.rc == 0
       when: service_name is match('.*\\.service$')
@@ -83,6 +89,7 @@
       args:
         executable: /bin/bash
       register: client_service_logs
+      become: false
       changed_when: false
       when: service_exists_check.rc == 0
 

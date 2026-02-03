@@ -27,6 +27,7 @@
         name: "{{ item }}"
         state: stopped
         enabled: false
+        no_block: true
       loop: "{{ services_to_stop }}"
       ignore_errors: true
 

@@ -11,8 +11,77 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 5件  
+**件数**: 6件  
 **索引**: [index.md](./index.md)
+
+---
+
+### [KB-227] `pnpm audit` のhighでCIが失敗する（fastify脆弱性 / Fastify v5移行の影響範囲調査）
+
+**事象**:
+- GitHub Actions CIのセキュリティジョブ（`pnpm audit`）が **high** を検出して失敗する
+- コード変更（サイネージ等）とは無関係に、依存関係の脆弱性でCIが落ちる状態になる
+
+**背景（重要）**:
+- これは「GitHub側の障害」ではなく、依存パッケージの脆弱性検出（`pnpm audit`）が **CIポリシー上ブロック** している状態
+- `pnpm audit`の結果は **レジストリのセキュリティDB更新により変動** するため、過去に通っていたCIが突然落ちることがある
+
+**要因（根本原因）**:
+- `fastify@4.29.1` が監査でhighとして検出され、CIがfail-fastする設定になっている
+
+**調査（影響範囲の全体把握 / Fastify v5移行スパイク）**:
+- **A) Fastify利用箇所のスキャン**:
+  - APIルート群に`schema:`定義が多数存在する（FastifyのJSON Schema検証が関与）
+  - スキーマは多くが`type: 'object'`を持ち、即死する「完全欠落」パターンは限定的だが、`properties/required`の粒度は箇所により不均一（v5の厳格化で痛点になり得る）
+- **B) プラグイン互換性の調査**:
+  - Fastify v5へ上げる場合、`@fastify/*`系プラグインもv5互換系へ揃える必要がある（メジャーアップが前提）
+  - 対象例: `@fastify/cors`, `@fastify/helmet`, `@fastify/multipart`, `@fastify/rate-limit`, `@fastify/swagger`, `@fastify/websocket`, `fastify-plugin`
+- **C) 既知の破壊的変更点（コードレベルで検出済み）**:
+  - `reply.getResponseTime()`が存在しない（v5で削除）。代替は`reply.elapsedTime`。
+    - 該当: `apps/api/src/plugins/request-logger.ts`
+    - 該当: `apps/api/src/routes/system/debug.ts`
+  - `setErrorHandler`の`error`型が`unknown`寄りになり、既存の`Error`前提コードがTypeScriptで落ちる可能性がある
+    - 該当: `apps/api/src/plugins/error-handler.ts`（`error.validation`/`error.statusCode`等の参照が型的に不整合になり得る）
+- **D) 最小ビルド検証（スパイク）**:
+  - Fastify本体と関連プラグインをv5互換系へ上げた状態で `pnpm --filter api build` を実行すると、上記の型エラーでビルドが失敗することを確認
+  - つまり、依存更新だけでは通らず、**最低限のコード修正**（`getResponseTime`置換、error型の安全な扱い）が必須
+
+**修正方針（システム破壊を避ける最小構成）**:
+- 目的は「Fastify v5へ一気に上げる」より先に、**CIブロッカー（high）を解消しつつ、既存動作を壊さない**こと
+- 推奨は「段階移行」:
+  1. 依存更新（Fastify + プラグイン整合）を行う
+  2. `reply.getResponseTime()`を`reply.elapsedTime`へ置換（最小差分）
+  3. `setErrorHandler`で`unknown`を安全に扱う（型ガード or narrowing）
+  4. APIのビルド/テスト/起動確認（`buildServer().ready()`まで）
+  5. 既存の主要フロー（ログイン、管理コンソールAPI、サイネージレンダリング、バックアップ系の代表エンドポイント）をスモーク確認
+
+**再発防止**:
+- セキュリティ監査を「落ちたら直す」ではなく、以下で安定化する:
+  - 依存更新の頻度（例: 月次）を決め、CIでの監査結果変動に追随する
+  - 重要な基盤（Webフレームワーク）は「スパイク→最小修正→本修正」の3段階で進める（本番破壊回避）
+  - 影響の大きい依存更新は、必ず **実行可能な最小検証**（ビルド→サーバーready→主要API数本）をゲートにする
+
+**実施結果（2026-02-03 / feature/fastify-v5-migration）**:
+- **依存更新**: Fastify本体・`@fastify/*`・`fastify-plugin` を v5互換へ更新し、既知の破壊点（`reply.getResponseTime()` / error handler）を最小差分で解消。
+- **CI運用**: いったん `pnpm audit --audit-level=high` のブロックを“期限付き”で緩和（移行作業の継続優先）。その後、ローカルの `pnpm audit --audit-level=high` は **high無し（low/moderateのみ）** を確認。
+- **段階デプロイ**:
+  - Pi5: デプロイ成功、`/api/system/health`（HTTPS/Caddy経由）で稼働確認。
+  - Pi4: `github.com` の名前解決失敗で一度停止（`Could not resolve host: github.com`）。DNS復旧後にデプロイ成功。
+  - Pi3: `ssh banner exchange timeout`（Tailscale pingは通るがSSHが不応答）で一度停止。Pi3再起動→接続テストOK→デプロイ成功。
+- **デプロイ安定化の追加知見**:
+  - Ansible preflight の `ping` は sudo 不要だが、becomeが暗黙有効だと sudo プロンプト待ち（12s）で落ちることがあるため、preflightは `ansible_become=false` を強制するのが安全。
+  - `systemctl is-enabled/is-active/show` 等の参照系チェックも root 不要。becomeを避ける（`become: false`）とPi3系の制限sudo環境で詰まりにくい。
+- **CIゲート復帰と完了確認（2026-02-03）**:
+  - `.github/workflows/ci.yml` の `pnpm audit --audit-level=high` をブロッキングに復帰（`exit 0` → `exit 1`）。
+  - GitHub Actions CI実行（Run ID: 21614498898）で全ステップ成功を確認。`Security scan (pnpm audit, high+)` ステップも成功（high脆弱性0件）。
+  - Fastify v5移行は完了し、CIも正常に動作していることを確認。
+
+**関連ファイル**:
+- `apps/api/package.json`
+- `apps/api/src/plugins/request-logger.ts`
+- `apps/api/src/routes/system/debug.ts`
+- `apps/api/src/plugins/error-handler.ts`
+- `.github/workflows/ci.yml`
 
 ---
 

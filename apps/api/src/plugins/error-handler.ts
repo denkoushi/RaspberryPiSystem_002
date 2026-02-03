@@ -87,6 +87,22 @@ type PrismaLikeError = {
 const isPrismaLikeError = (value: unknown): value is PrismaLikeError =>
   isRecord(value) && typeof (value as Record<string, unknown>).code === 'string';
 
+const hasValidation = (value: unknown): value is { validation: unknown } =>
+  isRecord(value) && 'validation' in value;
+
+const getStatusCode = (value: unknown): number | undefined =>
+  isRecord(value) && typeof value.statusCode === 'number' ? value.statusCode : undefined;
+
+const getMessage = (value: unknown): string | undefined =>
+  isRecord(value) && typeof value.message === 'string' ? value.message : undefined;
+
+const toError = (value: unknown): Error => {
+  if (value instanceof Error) {
+    return value;
+  }
+  return new Error(getMessage(value) ?? 'Unknown error');
+};
+
 type StructuredErrorLog = {
   requestId: string | number;
   method: string;
@@ -157,10 +173,11 @@ export function registerErrorHandler(app: FastifyInstance): void {
     const url = request.url;
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
+    const normalizedError = toError(error);
     
 
     // Fastifyのスキーマ検証エラーを処理
-    if (error.validation) {
+    if (hasValidation(error)) {
       const validationErrors = error.validation;
       request.log.warn(
         buildStructuredErrorLog(
@@ -168,7 +185,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           method,
           url,
           'SCHEMA_VALIDATION_ERROR',
-          error,
+          normalizedError,
           {
             userId,
             validationErrors,
@@ -348,7 +365,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
             method,
             url,
             errorCode,
-            error as Error,
+            normalizedError,
             {
               userId,
               errorCode,
@@ -379,7 +396,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
             method,
             url,
             errorCode,
-            error as Error,
+            normalizedError,
             {
               userId,
               errorCode,
@@ -406,8 +423,8 @@ export function registerErrorHandler(app: FastifyInstance): void {
         requestId,
         method,
         url,
-        error.statusCode ? `HTTP_${error.statusCode}` : 'UNHANDLED_ERROR',
-        error,
+        getStatusCode(error) ? `HTTP_${getStatusCode(error)}` : 'UNHANDLED_ERROR',
+        normalizedError,
         {
           userId,
           userAgent,
@@ -416,14 +433,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
       'Unhandled error',
     );
     
-    const statusCode = error.statusCode ?? 500;
-    const message = error.message || 'サーバーエラー';
+    const statusCode = getStatusCode(error) ?? 500;
+    const message = getMessage(error) || 'サーバーエラー';
     
     reply
       .status(statusCode)
       .send(
         buildErrorResponse(requestId, message, {
-          errorCode: error.statusCode ? `HTTP_${error.statusCode}` : 'UNHANDLED_ERROR',
+          errorCode: getStatusCode(error) ? `HTTP_${getStatusCode(error)}` : 'UNHANDLED_ERROR',
         }),
       );
   });

@@ -770,7 +770,8 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-acti
 # → active を確認（Ansibleが自動的に再有効化している）
 
 # 画像が更新されていることを確認
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache/signage/current.jpg'"
+# 注意: 軽量サイネージは tmpfs の `/run/signage/current.jpg` を表示・更新します（SD書込み削減）。
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /run/signage/current.jpg'"
 ```
 
 **重要**: 
@@ -1139,7 +1140,8 @@ NETWORK_MODE=tailscale \
    ```bash
    # Pi5側のサイネージレンダラーが更新されていることを確認
    # Pi3のサイネージ画像を確認（左ペインタイトルが「持出中アイテム」、温度表示が追加されている）
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
+   # 注意: 軽量サイネージは tmpfs の `/run/signage/current.jpg` を表示・更新します（SD書込み削減）。
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /run/signage/current.jpg"'
    # → 画像ファイルが更新されていることを確認（タイムスタンプが最新）
    ```
    
@@ -1159,7 +1161,7 @@ NETWORK_MODE=tailscale \
    # → active を確認（Ansibleが自動的に再有効化している）
    
    # 画像が更新されていることを確認
-   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /var/cache/signage/current.jpg"'
+   ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /run/signage/current.jpg"'
    ```
    - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
 

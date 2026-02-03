@@ -397,6 +397,13 @@ const textX = x + textAreaX;
 - 再デプロイ時に `status-agent.timer` もパスワードなしで再起動可能となり、タイムアウトは再現しなくなった
 - 既存ノウハウ（サイネージ停止→Ansible→サービス再起動）の中で sudo 権限定の抜け漏れを防止できるようになった
 
+**追加知見（2026-02-03）**:
+- `scripts/update-all-clients.sh` の **preflight（`ansible -m ping`）は本来sudo不要**。しかし、環境によっては「becomeが暗黙に有効」だと **sudoプロンプト待ち（12秒）でpreflightが落ちる**ことがある。
+  - 対策: **preflightのpingは `ansible_become=false` で強制**し、sudoプロンプト待ちを回避（スクリプト側で固定）。
+- `restart-client-service.yml` の **参照系（`systemctl is-enabled/is-active/show`）は root 権限が不要**。ここでbecomeが走ると、同様にsudoプロンプト待ちになり得る。
+  - 対策: 参照系チェックは **`become: false` を明示**して堅牢化。
+- なお、Pi3で **SSHが `banner exchange timeout`** になる場合（Tailscale pingは通るがSSHだけ不応答）は、Pi3側で `sshd` が応答不能になっている可能性が高く、**再起動で復旧**するケースがある（デプロイを続行する前に接続テストを通す）。
+
 **関連ファイル**:
 - `infrastructure/ansible/inventory.yml`（`sudo_nopasswd_commands`）
 - `infrastructure/ansible/roles/client/tasks/main.yml`
