@@ -252,8 +252,8 @@ export class ProgressListRenderer implements Renderer {
     const table = data as TableVisualizationData;
     const width = config.width;
     const height = config.height;
-    // HTMLのスタイルに合わせてタイトルテキストを「生産スケジュール進捗状況」に変更
-    const title = config.title ?? '生産スケジュール進捗状況';
+    // タイトルを「生産進捗」に変更
+    const title = config.title ?? '生産進捗';
     const rows = table.rows ?? [];
 
     if (rows.length === 0) {
@@ -264,8 +264,8 @@ export class ProgressListRenderer implements Renderer {
 
     const scale = width / 1920;
     const padding = Math.round(24 * scale);
-    // HTMLのスタイルに合わせてヘッダー高さを調整（タイトル48px + サブタイトル24px + 余白）
-    const headerHeight = Math.round(100 * scale);
+    // タイトルのみのヘッダー高さに調整（サブタイトル削除）
+    const headerHeight = Math.round(80 * scale);
     const gap = Math.round(24 * scale);
 
     const totalSeibanCount = rows.length;
@@ -352,17 +352,12 @@ export class ProgressListRenderer implements Renderer {
 
     // HTMLのスタイルに合わせてタイトルフォントサイズを48pxに変更（以前は34px）
     const titleFont = Math.max(20, Math.round(48 * scale));
-    const titleWidth = estimateTextWidth(title, titleFont);
-    const kpiStartX = padding + titleWidth + Math.round(24 * scale);
     const titleY = padding + Math.round(titleFont * 0.8);
-    // HTMLのスタイルに合わせてサブタイトルを追加
-    const subtitleFont = Math.max(16, Math.round(24 * scale));
-    const subtitleY = titleY + Math.round(subtitleFont * 1.2);
-    const subtitle = '検索登録製番の進捗可視化';
+    // KPIチップを右端に配置（タイトルとの重なりを防ぐ）
     const kpiInlineSvg = buildKpiInlineSvg({
-      xStart: Math.min(kpiStartX, width - padding),
+      xStart: width - padding - Math.round(400 * scale), // 右端から400px以内（必要に応じて調整）
       xEnd: width - padding,
-      yBaseline: titleY, // タイトル右横にまとめチップを配置
+      yBaseline: titleY,
       scale,
       stats,
     });
@@ -405,14 +400,16 @@ export class ProgressListRenderer implements Renderer {
         const percentFont = Math.max(minPrimaryFont, Math.round(22 * effectiveScale));
         // HTMLのスタイルに合わせて進捗バーの高さを32px相当に変更（以前の約半分から戻す）
         const barHeight = Math.max(16, Math.round(32 * effectiveScale));
-        const barWidth = Math.floor(cardWidth - Math.round(32 * scale));
-        const barX = x + Math.round(16 * scale);
+        // 左右パディングを統一（各16px）
+        const cardPaddingX = Math.round(16 * scale);
+        const barWidth = Math.floor(cardWidth - cardPaddingX * 2);
+        const barX = x + cardPaddingX;
         const fillWidth = Math.round((barWidth * clampNumber(percent, 0, 100)) / 100);
-        const partsAvailableWidth = Math.max(1, cardWidth - Math.round(32 * scale));
+        const partsAvailableWidth = Math.max(1, cardWidth - cardPaddingX * 2);
         const labelFont = Math.max(12, Math.round(14 * effectiveScale));
         const labelLineHeight = Math.round(labelFont * 1.2);
         const partsLineHeight = Math.round(partsFontPreferred * 1.25);
-        const partsX = x + Math.round(16 * scale);
+        const partsX = x + cardPaddingX;
 
         const cardTopPadding = Math.round(12 * scale);
         const blockGap = Math.round(6 * scale);
@@ -452,7 +449,7 @@ export class ProgressListRenderer implements Renderer {
         const clipId = `card-clip-${index}`;
         const contentSvg = `
           <g clip-path="url(#${clipId})">
-            <text x="${x + Math.round(16 * scale)}" y="${seibanY}"
+            <text x="${x + cardPaddingX}" y="${seibanY}"
               font-size="${seibanFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
               ${escapeXml(fseiban)}
             </text>
@@ -499,10 +496,6 @@ export class ProgressListRenderer implements Renderer {
         <text x="${padding}" y="${titleY}"
           font-size="${titleFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
           ${escapeXml(title)}
-        </text>
-        <text x="${padding}" y="${subtitleY}"
-          font-size="${subtitleFont}" font-weight="400" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-          ${escapeXml(subtitle)}
         </text>
         ${kpiInlineSvg}
         ${cardsSvg}
