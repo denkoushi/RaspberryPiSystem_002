@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 12件  
+**件数**: 13件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -1030,6 +1030,73 @@ const textX = x + textAreaX;
 - `apps/api/src/services/csv-dashboard/csv-dashboard-template-renderer.ts`（列幅計算改善）
 - `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-template-renderer.test.ts`（テスト追加）
 - `docs/modules/signage/README.md`（CSVダッシュボード仕様更新）
+
+---
+
+### [KB-228] 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一）
+
+**実装日時**: 2026-02-03
+
+**事象**:
+- 生産スケジュールサイネージのタイトル「生産スケジュール進捗状況」が長すぎる
+- KPIチップがタイトルと重なって表示される（「捗」の文字がKPIチップに隠れる）
+- サブタイトル「検索登録製番の進捗可視化」が不要
+- カードの右パディングがゼロで、左パディングと不統一
+
+**要因**:
+- タイトルテキストが長く、KPIチップの開始位置計算が不正確だった
+- `estimateTextWidth`関数が日本語文字の幅を正確に見積もれていなかった
+- カード内の要素（進捗バー、テキスト）のパディング計算で右側が考慮されていなかった
+
+**有効だった対策**:
+- ✅ **タイトルを「生産進捗」に変更**: より簡潔で視認性向上
+- ✅ **KPIチップを右端に配置**: `xStart: width - padding - Math.round(400 * scale)`で右端から400px以内に配置し、タイトルとの重なりを防止
+- ✅ **サブタイトルを削除**: ヘッダー高さを100px→80pxに調整
+- ✅ **カードの左右パディングを統一**: `cardPaddingX = Math.round(16 * scale)`を導入し、すべての要素（進捗バー、テキスト）で左右16pxに統一
+
+**実装の詳細**:
+- **タイトル変更** (`apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`):
+  ```typescript
+  const title = config.title ?? '生産進捗';
+  ```
+- **KPIチップの右端配置**:
+  ```typescript
+  const kpiInlineSvg = buildKpiInlineSvg({
+    xStart: width - padding - Math.round(400 * scale), // 右端から400px以内
+    xEnd: width - padding,
+    yBaseline: titleY,
+    scale,
+    stats,
+  });
+  ```
+- **サブタイトル削除**: SVGからサブタイトルの`<text>`要素を削除
+- **パディング統一**:
+  ```typescript
+  const cardPaddingX = Math.round(16 * scale);
+  const barWidth = Math.floor(cardWidth - cardPaddingX * 2);
+  const barX = x + cardPaddingX;
+  const partsX = x + cardPaddingX;
+  ```
+
+**実機検証結果（2026-02-03）**:
+- ✅ **タイトル表示**: 「生産進捗」が正しく表示される
+- ✅ **KPIチップ配置**: 右端に配置され、タイトルとの重なりがない
+- ✅ **サブタイトル削除**: サブタイトルが表示されない
+- ✅ **カードパディング**: 左右16pxで統一され、視認性が向上
+
+**解決状況**: ✅ **解決済み**（2026-02-03）
+
+**関連ファイル**:
+- `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`: SVGレンダラーの修正
+- `production-schedule-progress-preview.html`: HTMLプレビューファイルの更新
+
+**関連KB**:
+- [KB-193](./signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮): CSVダッシュボードの列幅計算改善
+
+**再発防止**:
+- サイネージデザイン変更時は、HTMLプレビューファイルとSVGレンダラーの両方を更新する
+- タイトルとKPIチップの配置は、実際の文字幅を考慮して安全マージンを設ける
+- カード内の要素のパディングは統一変数（`cardPaddingX`）を使用して一貫性を保つ
 
 ---
 
