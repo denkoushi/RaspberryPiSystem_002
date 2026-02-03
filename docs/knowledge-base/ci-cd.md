@@ -71,6 +71,10 @@ update-frequency: high
 - **デプロイ安定化の追加知見**:
   - Ansible preflight の `ping` は sudo 不要だが、becomeが暗黙有効だと sudo プロンプト待ち（12s）で落ちることがあるため、preflightは `ansible_become=false` を強制するのが安全。
   - `systemctl is-enabled/is-active/show` 等の参照系チェックも root 不要。becomeを避ける（`become: false`）とPi3系の制限sudo環境で詰まりにくい。
+- **CIゲート復帰と完了確認（2026-02-03）**:
+  - `.github/workflows/ci.yml` の `pnpm audit --audit-level=high` をブロッキングに復帰（`exit 0` → `exit 1`）。
+  - GitHub Actions CI実行（Run ID: 21614498898）で全ステップ成功を確認。`Security scan (pnpm audit, high+)` ステップも成功（high脆弱性0件）。
+  - Fastify v5移行は完了し、CIも正常に動作していることを確認。
 
 **関連ファイル**:
 - `apps/api/package.json`
