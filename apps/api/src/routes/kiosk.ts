@@ -814,18 +814,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     await requireClientDevice(request.headers['x-client-key']);
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
     const incomingHistory = normalizeSearchHistory(body.state.history ?? []);
-    const existingState = await prisma.kioskProductionScheduleSearchState.findUnique({
-      where: {
-        csvDashboardId_location: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          location: SHARED_SEARCH_STATE_LOCATION,
-        },
-      },
-    });
-    const existingHistory = normalizeSearchHistory(
-      ((existingState?.state as { history?: string[] } | null)?.history ?? []) as string[]
-    );
-    const mergedHistory = normalizeSearchHistory([...existingHistory, ...incomingHistory]);
+    const mergedHistory = incomingHistory;
 
     const state = await prisma.kioskProductionScheduleSearchState.upsert({
       where: {

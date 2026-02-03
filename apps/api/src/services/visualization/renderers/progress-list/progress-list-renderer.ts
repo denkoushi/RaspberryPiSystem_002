@@ -183,120 +183,60 @@ function buildKpiInlineSvg(options: {
   scale: number;
   stats: Array<{ label: string; value: string; color: string }>;
 }): string {
-  // タイトル右隣から左→右に流し、余白が増えたら間隔を広げる（重なりゼロ）
   const labelShortMap: Record<string, string> = {
     総製番数: '製番',
     総部品数: '部品',
     完了部品数: '完了',
     進捗率: '率',
   };
-  const labelFontMax = Math.max(14, Math.round(16 * options.scale));
-  const valueFontMax = Math.max(18, Math.round(22 * options.scale));
-  const labelFontMin = Math.max(12, Math.round(12 * options.scale));
-  const valueFontMin = Math.max(16, Math.round(18 * options.scale));
-  const chipPaddingX = Math.round(10 * options.scale);
-  const chipPaddingY = Math.round(6 * options.scale);
-  const gapMax = Math.round(16 * options.scale);
-  const gapMin = Math.round(6 * options.scale);
-
   const availableWidth = Math.max(0, options.xEnd - options.xStart);
+  if (availableWidth <= 0) return '';
 
-  const attemptLayouts = [
-    { labelFont: labelFontMax, valueFont: valueFontMax, gap: gapMax, useShortLabel: false },
-    { labelFont: labelFontMax, valueFont: valueFontMax, gap: gapMin, useShortLabel: false },
-    { labelFont: labelFontMin, valueFont: valueFontMin, gap: gapMin, useShortLabel: false },
-    { labelFont: labelFontMin, valueFont: valueFontMin, gap: gapMin, useShortLabel: true },
-  ];
+  const summaryText = options.stats
+    .map((stat) => {
+      const label = labelShortMap[stat.label] ?? stat.label;
+      return `${label} ${stat.value}`;
+    })
+    .join(' / ');
 
-  for (const attempt of attemptLayouts) {
-    const chipHeight = Math.round(attempt.valueFont * 1.2) + chipPaddingY * 2;
-    const chipDefs = options.stats.map((stat) => {
-      const labelText = attempt.useShortLabel ? (labelShortMap[stat.label] ?? stat.label) : stat.label;
-      const labelWidth = estimateTextWidth(labelText, attempt.labelFont);
-      const valueWidth = estimateTextWidth(stat.value, attempt.valueFont);
-      const labelValueGap = Math.round(6 * options.scale);
-      const chipWidth =
-        chipPaddingX * 2 + labelWidth + labelValueGap + valueWidth;
-      return {
-        labelText,
-        valueText: stat.value,
-        color: stat.color,
-        width: Math.max(Math.round(88 * options.scale), chipWidth),
-        height: chipHeight,
-        labelFont: attempt.labelFont,
-        valueFont: attempt.valueFont,
-      };
-    });
+  const fontMax = Math.max(14, Math.round(20 * options.scale));
+  const fontMin = Math.max(12, Math.round(14 * options.scale));
+  const chipPaddingX = Math.round(12 * options.scale);
+  const chipPaddingY = Math.round(6 * options.scale);
 
-    const totalChipsWidth = chipDefs.reduce((sum, chip) => sum + chip.width, 0);
-    const gapsCount = Math.max(0, chipDefs.length - 1);
-    const totalGapWidth = gapsCount * attempt.gap;
-    const neededWidth = totalChipsWidth + totalGapWidth;
-
-    if (neededWidth <= availableWidth) {
-      const extra = availableWidth - neededWidth;
-      const gap = gapsCount > 0 ? attempt.gap + extra / gapsCount : attempt.gap;
-      let cursorX = options.xStart;
-      const chips = chipDefs.map((chip) => {
-        const x = Math.round(cursorX);
-        const y = options.yBaseline - Math.round(22 * options.scale) - chipPaddingY;
-        cursorX += chip.width + gap;
-        const labelX = x + chipPaddingX;
-        const valueX = labelX + estimateTextWidth(chip.labelText, chip.labelFont) + Math.round(6 * options.scale);
-        return `
-          <g>
-            <rect x="${x}" y="${y}" width="${chip.width}" height="${chip.height}"
-              rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
-              fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
-            <text x="${labelX}" y="${y + chipPaddingY + Math.round(chip.valueFont * 0.95)}"
-              font-size="${chip.labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-              ${escapeXml(chip.labelText)}
-            </text>
-            <text x="${valueX}" y="${y + chipPaddingY + Math.round(chip.valueFont * 0.95)}"
-              font-size="${chip.valueFont}" font-weight="800" fill="${chip.color}" font-family="sans-serif">
-              ${escapeXml(chip.valueText)}
-            </text>
-          </g>
-        `;
-      });
-      return chips.join('\n');
+  let fontSize = fontMax;
+  let displayText = summaryText;
+  for (; fontSize >= fontMin; fontSize -= 1) {
+    const width = estimateTextWidth(displayText, fontSize) + chipPaddingX * 2;
+    if (width <= availableWidth) {
+      break;
     }
   }
 
-  // どうしても収まらない場合は、最小構成で詰めて描画
-  let cursorX = options.xStart;
-  const fallbackGap = gapMin;
-  const fallbackLabelFont = labelFontMin;
-  const fallbackValueFont = valueFontMin;
-  const chipHeight = Math.round(fallbackValueFont * 1.2) + chipPaddingY * 2;
-  const chips = options.stats.map((stat) => {
-    const labelText = labelShortMap[stat.label] ?? stat.label;
-    const labelWidth = estimateTextWidth(labelText, fallbackLabelFont);
-    const valueWidth = estimateTextWidth(stat.value, fallbackValueFont);
-    const labelValueGap = Math.round(6 * options.scale);
-    const chipWidth = chipPaddingX * 2 + labelWidth + labelValueGap + valueWidth;
-    const x = Math.round(cursorX);
-    const y = options.yBaseline - Math.round(22 * options.scale) - chipPaddingY;
-    cursorX += chipWidth + fallbackGap;
-    const labelX = x + chipPaddingX;
-    const valueX = labelX + labelWidth + Math.round(6 * options.scale);
-    return `
-      <g>
-        <rect x="${x}" y="${y}" width="${chipWidth}" height="${chipHeight}"
-          rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
-          fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
-        <text x="${labelX}" y="${y + chipPaddingY + Math.round(fallbackValueFont * 0.95)}"
-          font-size="${fallbackLabelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-          ${escapeXml(labelText)}
-        </text>
-        <text x="${valueX}" y="${y + chipPaddingY + Math.round(fallbackValueFont * 0.95)}"
-          font-size="${fallbackValueFont}" font-weight="800" fill="${stat.color}" font-family="sans-serif">
-          ${escapeXml(stat.value)}
-        </text>
-      </g>
-    `;
-  });
-  return chips.join('\n');
+  if (estimateTextWidth(displayText, fontSize) + chipPaddingX * 2 > availableWidth) {
+    const maxChars = estimateMaxCharsPerLine(availableWidth - chipPaddingX * 2, fontSize);
+    displayText = truncateText(displayText, maxChars);
+  }
+
+  const textWidth = estimateTextWidth(displayText, fontSize);
+  const chipWidth = Math.max(Math.round(140 * options.scale), Math.min(availableWidth, textWidth + chipPaddingX * 2));
+  const chipHeight = Math.round(fontSize * 1.2) + chipPaddingY * 2;
+  const chipX = Math.round(options.xStart);
+  const chipY = Math.round(options.yBaseline - Math.round(fontSize * 0.9) - chipPaddingY);
+  const textX = chipX + chipPaddingX;
+  const textY = chipY + chipPaddingY + Math.round(fontSize * 0.95);
+
+  return `
+    <g>
+      <rect x="${chipX}" y="${chipY}" width="${chipWidth}" height="${chipHeight}"
+        rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
+        fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
+      <text x="${textX}" y="${textY}"
+        font-size="${fontSize}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+        ${escapeXml(displayText)}
+      </text>
+    </g>
+  `;
 }
 
 export class ProgressListRenderer implements Renderer {
@@ -422,7 +362,7 @@ export class ProgressListRenderer implements Renderer {
     const kpiInlineSvg = buildKpiInlineSvg({
       xStart: Math.min(kpiStartX, width - padding),
       xEnd: width - padding,
-      yBaseline: subtitleY, // サブタイトルとKPIを垂直センタリング
+      yBaseline: titleY, // タイトル右横にまとめチップを配置
       scale,
       stats,
     });
@@ -469,32 +409,37 @@ export class ProgressListRenderer implements Renderer {
         const barX = x + Math.round(16 * scale);
         const fillWidth = Math.round((barWidth * clampNumber(percent, 0, 100)) / 100);
         const partsAvailableWidth = Math.max(1, cardWidth - Math.round(32 * scale));
+        const labelFont = Math.max(12, Math.round(14 * effectiveScale));
+        const labelLineHeight = Math.round(labelFont * 1.2);
+        const partsLineHeight = Math.round(partsFontPreferred * 1.25);
+        const partsX = x + Math.round(16 * scale);
+
+        const cardTopPadding = Math.round(12 * scale);
+        const blockGap = Math.round(6 * scale);
+        const labelGap = Math.round(4 * scale);
+        const seibanY = y + cardTopPadding + seibanFont;
+        const labelY = seibanY + blockGap + labelLineHeight;
+        const partsStartY = labelY + labelGap + partsLineHeight;
+
+        const barBottomPadding = Math.round(12 * scale);
+        const percentTextGap = Math.round(6 * scale);
+        const percentTextY = y + cardHeight - barBottomPadding - barHeight - percentTextGap;
+        const barY = y + cardHeight - barBottomPadding - barHeight;
+        const availableTextHeight = Math.max(0, percentTextY - partsStartY);
+        const maxLinesParts = clampNumber(Math.floor(availableTextHeight / partsLineHeight), 0, 3);
         const partsFit = fitAndWrapPartsText({
           isCompleted,
           incompleteParts,
           availableWidthPx: partsAvailableWidth,
           preferredFontPx: partsFontPreferred,
           minFontPx: minPartsFont,
-          maxLines: 3,
+          maxLines: maxLinesParts,
         });
-        const labelFont = Math.max(12, Math.round(14 * effectiveScale));
-        const partsLineHeight = Math.round(partsFit.fontPx * 1.25);
-        const labelLineHeight = Math.round(labelFont * 1.2);
-        const partsX = x + Math.round(16 * scale);
-
-        const cardTopPadding = Math.round(12 * scale);
-        const blockGap = Math.round(6 * scale);
-        const labelGap = Math.round(4 * scale);
-        const percentGap = Math.round(6 * scale);
-
-        const seibanY = y + cardTopPadding + seibanFont;
-        const labelY = seibanY + blockGap + labelLineHeight;
-        const partsStartY = labelY + labelGap + partsLineHeight;
-
+        const resolvedPartsLineHeight = Math.round(partsFit.fontPx * 1.25);
         const partsLinesSvg = partsFit.lines
           .slice(0, 3)
           .map((line, i) => {
-            const yy = partsStartY + i * partsLineHeight;
+            const yy = partsStartY + i * resolvedPartsLineHeight;
             return `
               <text x="${partsX}" y="${yy}"
                 font-size="${partsFit.fontPx}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
@@ -503,16 +448,6 @@ export class ProgressListRenderer implements Renderer {
             `;
           })
           .join('\n');
-
-        const partsBlockEndY =
-          partsFit.lines.length > 0
-            ? partsStartY + (partsFit.lines.length - 1) * partsLineHeight
-            : labelY;
-
-        const desiredBarY = partsBlockEndY + percentGap + percentFont + Math.round(4 * scale);
-        const minBarY = y + Math.round(16 * scale);
-        const maxBarY = y + cardHeight - Math.round(12 * scale) - barHeight;
-        const barY = clampNumber(Math.round(desiredBarY), Math.round(minBarY), Math.round(maxBarY));
 
         const clipId = `card-clip-${index}`;
         const contentSvg = `
@@ -527,7 +462,7 @@ export class ProgressListRenderer implements Renderer {
             </text>
             ${partsLinesSvg}
 
-            <text x="${barX}" y="${barY - Math.round(6 * scale)}"
+            <text x="${barX}" y="${percentTextY}"
               font-size="${percentFont}" font-weight="700" fill="${accent}" font-family="sans-serif">
               ${escapeXml(`${percent}%`)}
             </text>

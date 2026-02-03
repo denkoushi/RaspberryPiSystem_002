@@ -115,7 +115,9 @@ export class ProductionScheduleDataSource implements DataSource {
 
     const rowMap = toRowMap(rows);
 
-    const normalizedRows: TableVisualizationData['rows'] = history.map((fseiban) => {
+    const normalizedRows: TableVisualizationData['rows'] = history
+      .filter((fseiban) => rowMap.has(fseiban))
+      .map((fseiban) => {
       const row = rowMap.get(fseiban);
       const total = row?.total ?? 0;
       const completed = row?.completed ?? 0;
@@ -131,7 +133,7 @@ export class ProductionScheduleDataSource implements DataSource {
         percent,
         status,
       };
-    });
+      });
 
     const data: TableVisualizationData = {
       kind: 'table',

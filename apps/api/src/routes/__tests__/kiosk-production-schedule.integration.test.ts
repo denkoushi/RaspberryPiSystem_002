@@ -316,7 +316,7 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(getRes.statusCode).toBe(200);
     const body = getRes.json() as { state: { history?: string[]; inputQuery?: string } };
-    expect(body.state?.history).toEqual(['A', 'B']);
+    expect(body.state?.history).toEqual(['B']);
     expect(body.state?.inputQuery).toBeUndefined();
   });
 
