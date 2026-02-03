@@ -576,7 +576,10 @@ run_preflight_remotely() {
   if [[ -n "${limit_hosts}" ]]; then
     limit_arg="--limit ${limit_hosts}"
   fi
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} all -m ping ${limit_arg}" \
+  # Preflight ping should not require privilege escalation. Some client hosts intentionally restrict sudo
+  # to a narrow allowlist; if "become" is enabled globally, ad-hoc ping can hang waiting for a sudo prompt.
+  # Force become=false only for this preflight connectivity check.
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_BECOME=false ansible -i ${inventory_basename} all -m ping ${limit_arg} -e ansible_become=false" \
     | tee "${PREFLIGHT_LOG_FILE}" || exit_code=$?
 
   local duration=$(( $(date +%s) - start_time ))
