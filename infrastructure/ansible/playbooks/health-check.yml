@@ -70,7 +70,7 @@
       - name: disk usage
         cmd: df -h /opt
   tasks:
-    - name: Run health command {{ item.name }}
+    - name: Run health command
       ansible.builtin.shell: |
         set -euo pipefail
         {{ item.cmd }}
@@ -78,6 +78,8 @@
         executable: /bin/bash
       register: command_output
       loop: "{{ health_commands_signage if inventory_hostname == 'raspberrypi3' else health_commands_kiosk }}"
+      loop_control:
+        label: "{{ item.name }}"
       changed_when: false
 
     - name: Display outputs
