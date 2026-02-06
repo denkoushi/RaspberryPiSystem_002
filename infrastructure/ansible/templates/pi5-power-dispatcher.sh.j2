@@ -76,23 +76,36 @@ PY
     continue
   fi
 
+  # ansible-inventoryの出力を一時ファイルに保存してから読み込む（パイプの問題を回避）
+  TMP_INV=$(mktemp)
+  ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
+    ansible-inventory -i "${INVENTORY}" --list > "${TMP_INV}" 2>&1 || {
+    rm -f "${TMP_INV}"
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  }
+
   HOST=$(
-    ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
-    ansible-inventory -i "${INVENTORY}" --list | \
-    python3 - <<'PY' "${CLIENT_KEY}"
+    python3 - <<'PY' "${CLIENT_KEY}" "${TMP_INV}"
 import json
 import sys
 
 client_key = sys.argv[1]
-data = json.load(sys.stdin)
-hostvars = data.get("_meta", {}).get("hostvars", {})
-for host, vars in hostvars.items():
-    if vars.get("status_agent_client_key") == client_key or vars.get("nfc_agent_client_secret") == client_key:
-        print(host)
-        raise SystemExit(0)
-raise SystemExit(1)
+inv_file = sys.argv[2]
+try:
+    with open(inv_file, 'r') as f:
+        data = json.load(f)
+    hostvars = data.get("_meta", {}).get("hostvars", {})
+    for host, vars in hostvars.items():
+        if vars.get("status_agent_client_key") == client_key or vars.get("nfc_agent_client_secret") == client_key:
+            print(host)
+            raise SystemExit(0)
+    raise SystemExit(1)
+except Exception:
+    raise SystemExit(1)
 PY
   )
+  rm -f "${TMP_INV}"
 
   if [[ -z "${HOST}" ]]; then
     mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
