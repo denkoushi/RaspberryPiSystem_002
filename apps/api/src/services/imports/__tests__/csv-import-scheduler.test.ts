@@ -27,12 +27,48 @@ vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Prismaのモック（Gmail OAuth expired alertテスト用）
+const mockCreateAlert = vi.fn();
+const mockCreateAlertDelivery = vi.fn();
+vi.mock('../../../lib/prisma.js', () => ({
+  prisma: {
+    alert: {
+      create: mockCreateAlert,
+    },
+    alertDelivery: {
+      create: mockCreateAlertDelivery,
+    },
+  },
+}));
+
+// alerts-configのモック
+vi.mock('../../alerts/alerts-config.js', async () => {
+  const actual = await vi.importActual('../../alerts/alerts-config.js');
+  return {
+    ...actual,
+    loadAlertsDispatcherConfig: vi.fn().mockResolvedValue({
+      routing: {
+        byTypePrefix: {
+          'gmail-oauth-': 'ops',
+        },
+        defaultRoute: 'ops',
+      },
+    }),
+    resolveRouteKey: vi.fn((type: string) => {
+      if (type?.startsWith('gmail-oauth-')) return 'ops';
+      return 'ops';
+    }),
+  };
+});
+
 describe('CsvImportScheduler (DI-friendly)', () => {
   beforeEach(() => {
     callbacksBySchedule.clear();
     scheduleMock.mockClear();
     validateMock.mockClear();
     loadMock.mockReset();
+    mockCreateAlert.mockReset();
+    mockCreateAlertDelivery.mockReset();
   });
 
   it('should register cron tasks (import + cleanup + retention)', async () => {
@@ -200,6 +236,115 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     await retentionCb?.();
 
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('scheduled execution should generate Gmail OAuth expired alert when GmailReauthRequiredError occurs', async () => {
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    const { GmailReauthRequiredError } = await import('../../backup/gmail-oauth.service.js');
+
+    loadMock.mockResolvedValue({
+      storage: { provider: 'dropbox', options: { dropbox: { accessToken: 'dummy' } } },
+      csvImports: [
+        {
+          id: 'test-1',
+          name: 'Test Import',
+          targets: [{ type: 'csvDashboards', source: 'gmail' }],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false,
+        },
+      ],
+    });
+
+    const executionExecute = vi.fn().mockRejectedValue(new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）'));
+    const mockGenerateFailureAlert = vi.fn().mockResolvedValue(undefined);
+    mockCreateAlert.mockResolvedValue({ id: 'alert-1' });
+    mockCreateAlertDelivery.mockResolvedValue({ id: 'delivery-1' });
+
+    const scheduler = new CsvImportScheduler({
+      historyService: {
+        createHistory: vi.fn().mockResolvedValue('history-1'),
+        completeHistory: vi.fn(),
+        failHistory: vi.fn(),
+        cleanupOldHistory: vi.fn(),
+      } as any,
+      alertService: {
+        generateFailureAlert: mockGenerateFailureAlert,
+        generateConsecutiveFailureAlert: vi.fn(),
+      } as any,
+      createExecutionService: () => ({ execute: executionExecute } as any),
+    });
+
+    await scheduler.start();
+    const cb = callbacksBySchedule.get('0 4 * * *')?.[0];
+    expect(cb).toBeDefined();
+
+    await expect(cb?.()).rejects.toThrow();
+
+    // 通常の失敗アラートは生成される
+    expect(mockGenerateFailureAlert).toHaveBeenCalledTimes(1);
+    // Gmail認証切れアラートも生成される（定期実行時のみ）
+    expect(mockCreateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'gmail-oauth-expired',
+          message: 'Gmail認証が切れています。管理コンソールの「OAuth認証」を実行してください。',
+        }),
+      })
+    );
+    expect(mockCreateAlertDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          routeKey: 'ops',
+          channel: 'SLACK',
+          status: 'PENDING',
+        }),
+      })
+    );
+  });
+
+  it('manual execution should NOT generate Gmail OAuth expired alert', async () => {
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    const { GmailReauthRequiredError } = await import('../../backup/gmail-oauth.service.js');
+
+    loadMock.mockResolvedValue({
+      storage: { provider: 'dropbox', options: { dropbox: { accessToken: 'dummy' } } },
+      csvImports: [
+        {
+          id: 'test-1',
+          name: 'Test Import',
+          targets: [{ type: 'csvDashboards', source: 'gmail' }],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false,
+        },
+      ],
+    });
+
+    const executionExecute = vi.fn().mockRejectedValue(new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）'));
+    const mockGenerateFailureAlert = vi.fn().mockResolvedValue(undefined);
+
+    const scheduler = new CsvImportScheduler({
+      historyService: {
+        createHistory: vi.fn().mockResolvedValue('history-1'),
+        completeHistory: vi.fn(),
+        failHistory: vi.fn(),
+        cleanupOldHistory: vi.fn(),
+      } as any,
+      alertService: {
+        generateFailureAlert: mockGenerateFailureAlert,
+        generateConsecutiveFailureAlert: vi.fn(),
+      } as any,
+      createExecutionService: () => ({ execute: executionExecute } as any),
+    });
+
+    // 手動実行
+    await expect(scheduler.runImport('test-1')).rejects.toThrow();
+
+    // 通常の失敗アラートは生成される
+    expect(mockGenerateFailureAlert).toHaveBeenCalledTimes(1);
+    // Gmail認証切れアラートは生成されない（手動実行時）
+    expect(mockCreateAlert).not.toHaveBeenCalled();
   });
 });
 

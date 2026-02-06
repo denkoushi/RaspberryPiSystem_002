@@ -10,6 +10,11 @@ import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js'
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
 import { MeasuringInstrumentLoanRetentionService } from '../measuring-instruments/measuring-instrument-loan-retention.service.js';
+import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail-oauth.service.js';
+import { prisma } from '../../lib/prisma.js';
+import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
+import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
+import crypto from 'crypto';
 
 /**
  * CSVインポートスケジューラー
@@ -172,6 +177,19 @@ export class CsvImportScheduler {
         { err: error, taskId, name: importSchedule.name },
         isManual ? '[CsvImportScheduler] Manual CSV import failed' : '[CsvImportScheduler] Scheduled CSV import failed'
       );
+
+      // Gmail認証切れの検知（定期実行のみ）
+      if (!isManual && (error instanceof GmailReauthRequiredError || isInvalidGrantMessage(errorMessage))) {
+        try {
+          await this.generateGmailOAuthExpiredAlert();
+        } catch (alertError) {
+          // アラート生成の失敗はログに記録するが、例外は投げない（インポート処理を中断しない）
+          logger?.error(
+            { err: alertError, taskId },
+            '[CsvImportScheduler] Failed to generate Gmail OAuth expired alert'
+          );
+        }
+      }
 
       // インポート履歴を失敗として更新
       if (historyId) {
@@ -589,6 +607,56 @@ export class CsvImportScheduler {
     // #endregion
     const executionService = this.createExecutionService();
     return await executionService.execute({ config, importSchedule, skipRetry });
+  }
+
+  /**
+   * Gmail認証切れアラートを生成（定期実行時のみ）
+   */
+  private async generateGmailOAuthExpiredAlert(): Promise<void> {
+    const alertType = 'gmail-oauth-expired';
+    const message = 'Gmail認証が切れています。管理コンソールの「OAuth認証」を実行してください。';
+    const alertId = crypto.randomUUID();
+    const timestamp = new Date();
+
+    try {
+      const config = await loadAlertsDispatcherConfig();
+      const routeKey = resolveRouteKey(alertType, config.routing);
+
+      // アラートをDBに作成
+      await prisma.alert.create({
+        data: {
+          id: alertId,
+          type: alertType,
+          severity: AlertSeverity.WARNING,
+          message,
+          timestamp,
+          acknowledged: false,
+          fingerprint: crypto.createHash('sha256').update(`${alertType}:${message}`).digest('hex')
+        }
+      });
+
+      // AlertDeliveryを作成（Dispatcherが配送する）
+      await prisma.alertDelivery.create({
+        data: {
+          alertId,
+          channel: AlertChannel.SLACK,
+          routeKey,
+          status: AlertDeliveryStatus.PENDING,
+          attemptCount: 0
+        }
+      });
+
+      logger?.info(
+        { alertId, routeKey },
+        '[CsvImportScheduler] Gmail OAuth expired alert generated'
+      );
+    } catch (error) {
+      logger?.error(
+        { err: error, alertId },
+        '[CsvImportScheduler] Failed to create Gmail OAuth expired alert'
+      );
+      throw error;
+    }
   }
 
 }
