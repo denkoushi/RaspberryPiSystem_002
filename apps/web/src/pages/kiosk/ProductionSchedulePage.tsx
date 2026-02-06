@@ -72,7 +72,7 @@ const normalizeHistoryList = (items: string[]) => {
       unique.add(item);
       next.push(item);
     });
-  return next.slice(0, 8);
+  return next.slice(0, 20);
 };
 
 function PencilIcon({ className }: { className?: string }) {
@@ -463,7 +463,7 @@ export function ProductionSchedulePage() {
         return prev.filter((item) => item !== value);
       }
       const next = [...prev, value];
-      return next.slice(0, 8);
+      return next.slice(0, 20);
     });
   };
 

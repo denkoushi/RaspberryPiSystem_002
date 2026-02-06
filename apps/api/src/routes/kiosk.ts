@@ -140,14 +140,14 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleSearchStateBodySchema = z.object({
     state: z.object({
       inputQuery: z.string().max(200).optional(),
-      activeQueries: z.array(z.string().max(200)).max(8).optional(),
+      activeQueries: z.array(z.string().max(200)).max(20).optional(),
       activeResourceCds: z.array(z.string().max(100)).max(100).optional(),
       activeResourceAssignedOnlyCds: z.array(z.string().max(100)).max(100).optional(),
-      history: z.array(z.string().max(200)).max(8).optional(),
+      history: z.array(z.string().max(200)).max(20).optional(),
     }),
   });
   const productionScheduleSearchHistoryBodySchema = z.object({
-    history: z.array(z.string().max(200)).max(8),
+    history: z.array(z.string().max(200)).max(20),
   });
 
   const requireClientDevice = async (rawClientKey: unknown) => {
@@ -186,7 +186,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         unique.add(item);
         next.push(item);
       });
-    return next.slice(0, 8);
+    return next.slice(0, 20);
   };
 
   const SEARCH_STATE_MISSING_ETAG = 'missing';
