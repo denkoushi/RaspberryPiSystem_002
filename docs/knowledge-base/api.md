@@ -2487,6 +2487,125 @@ const saveNote = (rowId: string) => {
 **関連KB**:
 - [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー対応（再認可導線の整備）
 - [KB-123](./api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了): Gmail経由CSV取り込みの初期実装
+- [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+- [KB-230](./api.md#kb-230-gmail認証切れの実機調査と回復): Gmail認証切れの実機調査と回復
+
+---
+
+### [KB-229] Gmail認証切れ時のSlack通知機能追加
+
+**日付**: 2026-02-06
+
+**Context**:
+- CSVインポート定期実行時にGmail認証切れが発生しても、管理者に通知されず、CSV取り込みが失敗し続けていた
+- 手動実行時はエラーメッセージが返るが、定期実行時はログに記録されるのみで、運用者が気づきにくかった
+
+**Symptoms**:
+- CSVインポートスケジュールの実行履歴で連続失敗が発生
+- エラーメッセージ: `"Gmailの再認可が必要です（invalid_grant）"`
+- Gmailの受信ボックスに未読メールが蓄積（CSV取り込みが失敗している）
+
+**Investigation**:
+- CSVインポート履歴（`/api/imports/schedule/csv-import-measuringinstrumentloans/history`）を確認
+- 最後の10回のスケジュール実行がすべて`FAILED`状態
+- エラーメッセージはすべて`"Gmailの再認可が必要です（invalid_grant）"`
+- Gmail OAuth設定（`/api/gmail/config`）で`accessToken`と`refreshToken`が`False`を確認
+- 最後の成功実行は`2026-02-05T12:00:00Z`（21:00 JST）で、その後すべて失敗
+
+**Root cause**:
+- Gmail OAuth認証トークン（accessToken/refreshToken）が期限切れまたは無効化されていた
+- 定期実行時のエラーがSlackに通知されていなかったため、運用者が気づくのが遅れた
+
+**Fix**:
+- CSVインポートスケジューラー（`CsvImportScheduler`）にGmail認証切れ検知機能を追加
+- 定期実行時（`isManual: false`）に`GmailReauthRequiredError`または`invalid_grant`エラーを検知
+- 検知時にAlerts Platform経由でSlack通知を送信
+- アラートタイプ: `gmail-oauth-expired`
+- ルーティング: `ops`チャンネル（`#rps-ops`）
+- メッセージ: 「Gmail認証が切れています。管理コンソールの「OAuth認証」を実行してください。」
+- 重複抑制: fingerprintベースのdedupeで連続通知を抑制（1回のみ通知）
+- 手動実行時は通知しない（定期実行のみ）
+
+**Prevention**:
+- 定期実行時のGmail認証切れを自動検知し、Slack通知で運用者に即座に通知
+- dedupeにより、同じエラーが連続発生しても1回のみ通知され、運用ノイズを削減
+- アラート生成の失敗はログに記録するが、インポート処理を中断しない（エラー処理の堅牢性）
+
+**実装ファイル**:
+- `apps/api/src/services/imports/csv-import-scheduler.ts`: Gmail認証切れ検知とアラート生成ロジック
+- `apps/api/src/services/alerts/alerts-config.ts`: `gmail-oauth-expired`のルーティング設定
+- `apps/api/src/services/imports/__tests__/csv-import-scheduler.test.ts`: テストコード追加
+
+**関連KB**:
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー対応（再認可導線の整備）
+- [KB-215](./api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ): Gmail OAuthリフレッシュトークンの7日間制限問題
+- [KB-230](./api.md#kb-230-gmail認証切れの実機調査と回復): Gmail認証切れの実機調査と回復
+
+**解決状況**: ✅ **実装完了・デプロイ完了**（2026-02-06）
+
+---
+
+### [KB-230] Gmail認証切れの実機調査と回復
+
+**日付**: 2026-02-06
+
+**Context**:
+- Pi3のサイネージ右ペイン（計測機器持出返却）が更新されていない
+- Gmailの受信ボックスにメールが残っており、CSV取り込みが失敗している可能性
+
+**Symptoms**:
+- サイネージ右ペイン（計測機器持出返却）に最新データが表示されない
+- Gmailの受信ボックスに未読メールが蓄積
+- CSVインポートスケジュールの実行履歴で連続失敗が発生
+- エラーメッセージ: `"Gmailの再認可が必要です（invalid_grant）"`
+
+**Investigation**:
+1. **CSVインポート履歴の確認**:
+   - `/api/imports/schedule/csv-import-measuringinstrumentloans/history`を確認
+   - 最後の10回のスケジュール実行がすべて`FAILED`状態
+   - エラーメッセージはすべて`"Gmailの再認可が必要です（invalid_grant）"`
+
+2. **Gmail OAuth設定の確認**:
+   - `/api/gmail/config`を確認
+   - `accessToken`: `False`
+   - `refreshToken`: `False`
+   - `clientId`: `True`
+   - `clientSecret`: `True`
+
+3. **最後の成功実行時刻の確認**:
+   - 最後の成功実行: `2026-02-05T12:00:00Z`（21:00 JST）
+   - その後、すべての実行が失敗
+
+4. **今日の貸出イベント数の確認**:
+   - `/api/measuring-instruments/loan-events/today-borrowed`: 0件
+   - CSV取り込みが失敗しているため、データが更新されていない
+
+**Root cause**:
+- Gmail OAuth認証トークン（accessToken/refreshToken）が期限切れまたは無効化されていた
+- KB-215で説明されている7日間制限問題により、リフレッシュトークンが無効化された可能性
+
+**Fix**:
+- 管理コンソール → Gmail設定 → 「OAuth認証」を実行してGmailの再認可を実施
+- 再認可後、手動実行でCSV取り込みをテスト
+- 手動実行で189行が正常に追加されることを確認
+- ただし、今日の貸出イベント数は0件（CSVの日付が今日の日付ではないため）
+
+**Prevention**:
+- KB-229で実装したSlack通知機能により、今後はGmail認証切れを自動検知して通知
+- 定期実行時に認証切れが発生した場合、`#rps-ops`チャンネルにSlack通知が送信される
+- dedupeにより、連続通知を抑制し、運用ノイズを削減
+
+**学んだこと**:
+- Gmail認証切れは定期的に発生する可能性があるため、自動検知と通知機能が重要
+- 手動実行時はエラーメッセージが返るが、定期実行時はログに記録されるのみで気づきにくい
+- Slack通知により、運用者が即座に問題を把握できるようになった
+
+**関連KB**:
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー対応（再認可導線の整備）
+- [KB-215](./api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ): Gmail OAuthリフレッシュトークンの7日間制限問題
+- [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+
+**解決状況**: ✅ **調査完了・回復完了**（2026-02-06）
 
 ---
 

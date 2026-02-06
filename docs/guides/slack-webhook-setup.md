@@ -173,6 +173,43 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
 - ✅ `#rps-security`: `role_change`アラート
 - ✅ `#rps-support`: `kiosk-support-test`アラート
 
+## Gmail認証切れ通知機能（2026-02-06実装）
+
+CSVインポート定期実行時にGmail認証切れが発生した場合、自動的に`#rps-ops`チャンネルにSlack通知が送信されます。
+
+### 動作仕様
+
+- **通知タイミング**: CSVインポート定期実行時のみ（手動実行時は通知されない）
+- **検知条件**: `GmailReauthRequiredError`または`invalid_grant`エラーが発生した場合
+- **アラートタイプ**: `gmail-oauth-expired`
+- **ルーティング**: `ops`チャンネル（`#rps-ops`）
+- **メッセージ**: 「Gmail認証が切れています。管理コンソールの「OAuth認証」を実行してください。」
+- **重複抑制**: fingerprintベースのdedupeで連続通知を抑制（1回のみ通知）
+
+### 確認方法
+
+Gmail認証切れが発生した場合、`#rps-ops`チャンネルに以下のような通知が表示されます：
+
+```
+🔔 Alert (ops)
+*Type*: gmail-oauth-expired
+*Severity*: WARNING
+*Message*: Gmail認証が切れています。管理コンソールの「OAuth認証」を実行してください。
+```
+
+### 対応手順
+
+1. 管理コンソール → Gmail設定 → 「OAuth認証」を実行
+2. Gmailの認証画面で許可を実行
+3. 再認証後、次回のCSVインポート定期実行で正常に動作することを確認
+
+### 関連KB
+
+- [KB-229](../knowledge-base/api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+- [KB-230](../knowledge-base/api.md#kb-230-gmail認証切れの実機調査と回復): Gmail認証切れの実機調査と回復
+- [KB-190](../knowledge-base/api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー対応
+- [KB-215](../knowledge-base/api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ): Gmail OAuthリフレッシュトークンの7日間制限問題
+
 ## 関連ドキュメント
 
 - [デプロイガイド](./deployment.md#slack通知のチャンネル分離2026-01-18実装)
