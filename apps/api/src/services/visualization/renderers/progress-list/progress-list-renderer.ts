@@ -1,7 +1,8 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
-import { layoutTextInBounds } from '../_text/text-layout.js';
+import { estimateMaxCharsPerLine, truncateToFit } from '../_text/text-fit.js';
+import { insetRect } from '../_layout/rect.js';
 
 const BACKGROUND = '#020617';
 const TEXT_COLOR = '#f8fafc';
@@ -14,6 +15,14 @@ const PROGRESS_YELLOW = '#f59e0b'; // 31-70%
 const INCOMPLETE_COLOR = '#ef4444'; // 0-30%
 const NEUTRAL_COLOR = '#38bdf8';
 const BAR_BG = '#1e293b';
+const DEFAULT_MAX_INCOMPLETE_PARTS_PER_CARD = 6;
+const DEFAULT_SHOW_INCOMPLETE_PARTS = true;
+const DEFAULT_INCOMPLETE_LINE_STYLE = 'bullets';
+
+type ProgressListMetadata = {
+  incompletePartsBySeiban?: Record<string, string[]>;
+  incompletePartsTotalBySeiban?: Record<string, number>;
+};
 
 function escapeXml(value: string): string {
   return value
@@ -67,12 +76,13 @@ function estimateTextWidth(text: string, fontPx: number): number {
   return Math.round(text.length * fontPx * 0.6);
 }
 
-function estimateMaxCharsPerLine(availableWidthPx: number, fontPx: number): number {
-  // SVGのsans-serifを前提とした雑な近似。見積りがズレても、最終的に…で破綻を防ぐ。
-  const approxCharWidth = Math.max(6, fontPx * 0.55);
-  return Math.max(6, Math.floor(availableWidthPx / approxCharWidth));
+function parsePartsFromText(value: string): string[] {
+  const normalized = value
+    .split(/[、,，]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return Array.from(new Set(normalized)).sort((a, b) => a.localeCompare(b, 'ja'));
 }
-
 
 function buildKpiInlineSvg(options: {
   xStart: number;
@@ -153,6 +163,15 @@ export class ProgressListRenderer implements Renderer {
     // タイトルを「生産進捗」に変更
     const title = config.title ?? '生産進捗';
     const rows = table.rows ?? [];
+    const metadata = (table.metadata ?? {}) as ProgressListMetadata;
+    const showIncompleteParts = config.showIncompleteParts === undefined
+      ? DEFAULT_SHOW_INCOMPLETE_PARTS
+      : Boolean(config.showIncompleteParts);
+    const maxIncompletePartsPerCard = Number.isFinite(config.maxIncompletePartsPerCard)
+      ? Math.max(0, Math.floor(Number(config.maxIncompletePartsPerCard)))
+      : DEFAULT_MAX_INCOMPLETE_PARTS_PER_CARD;
+    const incompleteLineStyle =
+      config.incompleteLineStyle === 'comma' ? 'comma' : DEFAULT_INCOMPLETE_LINE_STYLE;
 
     if (rows.length === 0) {
       const svg = buildMessageSvg('登録製番がありません', width, height);
@@ -288,6 +307,11 @@ export class ProgressListRenderer implements Renderer {
 
         const isCompleted = status === '完了';
         const accent = accentForPercent(percent);
+        const partsFromMetadata = metadata.incompletePartsBySeiban?.[fseiban];
+        const fallbackParts = parsePartsFromText(incompleteParts);
+        const partsList = partsFromMetadata ?? fallbackParts;
+        const totalIncompleteParts =
+          metadata.incompletePartsTotalBySeiban?.[fseiban] ?? partsList.length;
 
         // カードが小さくなる場合でも下限を守る（カード高さを半分にしたので基準値も半分に）
         const cardScale = Math.min(1, cardWidth / Math.round(540 * scale), cardHeight / Math.round(130 * scale));
@@ -321,29 +345,52 @@ export class ProgressListRenderer implements Renderer {
         const percentTextY = y + cardHeight - barBottomPadding - barHeight - percentTextGap;
         const barY = y + cardHeight - barBottomPadding - barHeight;
         const availableTextHeight = Math.max(0, percentTextY - partsStartY);
-        const maxLinesParts = clampNumber(Math.floor(availableTextHeight / partsLineHeight), 0, 3);
-        const partsLabel = isCompleted ? '未完部品: なし' : '未完部品:';
+        const partsArea = insetRect(
+          { x: partsX, y: partsStartY, width: partsAvailableWidth, height: availableTextHeight },
+          0
+        );
+        const maxItemLines = clampNumber(Math.floor(partsArea.height / partsLineHeight), 0, 6);
         const labelMaxChars = estimateMaxCharsPerLine(partsAvailableWidth, labelFont);
-        const labelText = truncateText(partsLabel, labelMaxChars);
-        const partsBody = isCompleted ? '' : (incompleteParts || '(不明)');
-        const partsSafetyChars = 1;
-        const partsLayout =
-          !isCompleted && maxLinesParts > 0
-            ? layoutTextInBounds(partsBody, {
-                availableWidthPx: partsAvailableWidth,
-                fontPx: partsFontPreferred,
-                maxLines: maxLinesParts,
-                safetyChars: partsSafetyChars,
-              })
-            : { lines: [], truncated: false, maxCharsPerLine: 0 };
+
+        let labelText = '';
+        let itemLines: string[] = [];
+
+        if (!showIncompleteParts) {
+          labelText = '';
+        } else if (isCompleted || totalIncompleteParts === 0) {
+          labelText = truncateToFit('未完部品: なし', labelMaxChars);
+        } else if (maxItemLines === 0) {
+          labelText = truncateToFit(`未完部品: +残り${totalIncompleteParts}件`, labelMaxChars);
+        } else {
+          labelText = truncateToFit('未完部品:', labelMaxChars);
+          const reserveLineForRemaining = totalIncompleteParts > maxIncompletePartsPerCard;
+          const itemLineLimit = Math.max(0, maxItemLines - (reserveLineForRemaining ? 1 : 0));
+          const maxItems = Math.min(maxIncompletePartsPerCard, itemLineLimit);
+          const itemsToShow = partsList.slice(0, maxItems);
+          const remainingCount = Math.max(0, totalIncompleteParts - itemsToShow.length);
+
+          if (incompleteLineStyle === 'comma') {
+            const combined = itemsToShow.join(', ');
+            itemLines = combined ? [combined] : [];
+          } else {
+            itemLines = itemsToShow.map((part) => `・${part}`);
+          }
+
+          if (remainingCount > 0) {
+            itemLines = [...itemLines, `+残り${remainingCount}件`];
+          }
+        }
+
+        const itemMaxChars = estimateMaxCharsPerLine(partsAvailableWidth, partsFontPreferred);
         const resolvedPartsLineHeight = Math.round(partsFontPreferred * 1.25);
-        const partsLinesSvg = partsLayout.lines
+        const partsLinesSvg = itemLines
           .map((line, i) => {
-            const yy = partsStartY + i * resolvedPartsLineHeight;
+            const yy = partsArea.y + i * resolvedPartsLineHeight;
+            const textValue = truncateToFit(line, itemMaxChars);
             return `
-              <text x="${partsX}" y="${yy}"
+              <text x="${partsArea.x}" y="${yy}"
                 font-size="${partsFontPreferred}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-                ${escapeXml(line)}
+                ${escapeXml(textValue)}
               </text>
             `;
           })
@@ -356,10 +403,14 @@ export class ProgressListRenderer implements Renderer {
               font-size="${seibanFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
               ${escapeXml(fseiban)}
             </text>
-            <text x="${partsX}" y="${labelY}"
-              font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-              ${escapeXml(labelText)}
-            </text>
+            ${
+              labelText
+                ? `<text x="${partsX}" y="${labelY}"
+                    font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+                    ${escapeXml(labelText)}
+                  </text>`
+                : ''
+            }
             ${partsLinesSvg}
 
             <text x="${barX}" y="${percentTextY}"

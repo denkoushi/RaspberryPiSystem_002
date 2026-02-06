@@ -26,8 +26,16 @@ describe('ProgressListRenderer', () => {
             status: '未完了',
           },
         ],
+        metadata: {
+          incompletePartsBySeiban: {
+            DEF67890: ['部品A', '部品B', '部品C', '部品D'],
+          },
+          incompletePartsTotalBySeiban: {
+            DEF67890: 12,
+          },
+        },
       },
-      { width: 800, height: 450, title: 'Test Progress' }
+      { width: 800, height: 450, title: 'Test Progress', maxIncompletePartsPerCard: 3 }
     );
 
     expect(output.contentType).toBe('image/jpeg');

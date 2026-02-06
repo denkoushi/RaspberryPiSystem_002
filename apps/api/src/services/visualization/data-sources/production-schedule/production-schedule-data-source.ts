@@ -6,6 +6,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../.
 
 const SHARED_LOCATION_KEY = 'shared';
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const MAX_INCOMPLETE_PARTS_STORED = 50;
 
 type ProgressRow = {
   fseiban: string;
@@ -35,6 +36,12 @@ function toRowMap(rows: ProgressRow[]): Map<string, ProgressRow> {
 function toPercent(completed: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((completed / total) * 100);
+}
+
+function normalizeParts(values: (string | null)[]): string[] {
+  const trimmed = values.map((value) => (value ?? '').trim()).filter((value) => value.length > 0);
+  const unique = Array.from(new Set(trimmed));
+  return unique.sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
 export class ProductionScheduleDataSource implements DataSource {
@@ -115,6 +122,9 @@ export class ProductionScheduleDataSource implements DataSource {
 
     const rowMap = toRowMap(rows);
 
+    const incompletePartsBySeiban: Record<string, string[]> = {};
+    const incompletePartsTotalBySeiban: Record<string, number> = {};
+
     const normalizedRows: TableVisualizationData['rows'] = history
       .filter((fseiban) => rowMap.has(fseiban))
       .map((fseiban) => {
@@ -123,7 +133,11 @@ export class ProductionScheduleDataSource implements DataSource {
       const completed = row?.completed ?? 0;
       const percent = toPercent(completed, total);
       const status = total > 0 && completed === total ? '完了' : '未完了';
-      const incompleteParts = (row?.incompleteProductNames ?? []).join(', ');
+      const normalizedParts = normalizeParts(row?.incompleteProductNames ?? []);
+      const storedParts = normalizedParts.slice(0, MAX_INCOMPLETE_PARTS_STORED);
+      incompletePartsBySeiban[fseiban] = storedParts;
+      incompletePartsTotalBySeiban[fseiban] = normalizedParts.length;
+      const incompleteParts = storedParts.join(', ');
 
       return {
         FSEIBAN: fseiban,
@@ -142,6 +156,9 @@ export class ProductionScheduleDataSource implements DataSource {
       metadata: {
         updatedAt: sharedState?.updatedAt ?? null,
         cacheTtlSeconds: CACHE_TTL_MS / 1000,
+        incompletePartsBySeiban,
+        incompletePartsTotalBySeiban,
+        maxIncompletePartsStored: MAX_INCOMPLETE_PARTS_STORED,
       },
     };
 

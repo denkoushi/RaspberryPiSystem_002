@@ -24,6 +24,18 @@ category: guides
 - **レンダラータイプ**: `progress_list`
 - **データソース設定（JSON）**: `{}`（現時点は空でOK）
 - **レンダラー設定（JSON）**: `{}`（現時点は空でOK）
+  - 未完部品名の表示を制御したい場合は、以下のキーを使用できます。
+    - `maxIncompletePartsPerCard`（デフォルト: 6）
+    - `showIncompleteParts`（デフォルト: true）
+    - `incompleteLineStyle`（`bullets` | `comma`、デフォルト: `bullets`）
+  - 例:
+    ```json
+    {
+      "maxIncompletePartsPerCard": 6,
+      "showIncompleteParts": true,
+      "incompleteLineStyle": "bullets"
+    }
+    ```
 - **有効**: ON
 
 ## サイネージスケジュールでの割り当て
@@ -45,6 +57,7 @@ category: guides
 
 - 上部: 総製番数 / 完了数 / 未完了数 / 進捗率
 - 下部: 製番ごとのカード（FSEIBAN、完了/未完了、進捗%バー）
+  - 未完部品名は **上位N件を表示し、残りは `+残りM件`** として表示されます
 
 ## トラブルシュート
 
