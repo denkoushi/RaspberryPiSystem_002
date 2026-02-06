@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
+import { layoutTextInBounds } from '../_text/text-layout.js';
 
 const BACKGROUND = '#020617';
 const TEXT_COLOR = '#f8fafc';
@@ -72,109 +73,6 @@ function estimateMaxCharsPerLine(availableWidthPx: number, fontPx: number): numb
   return Math.max(6, Math.floor(availableWidthPx / approxCharWidth));
 }
 
-function splitByDelimiters(value: string): string[] {
-  return value
-    .split(/[、,，]/)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
-function splitLongToken(token: string, maxCharsPerLine: number): string[] {
-  if (token.length <= maxCharsPerLine) return [token];
-  const parts: string[] = [];
-  let rest = token;
-  while (rest.length > 0) {
-    parts.push(rest.slice(0, maxCharsPerLine));
-    rest = rest.slice(maxCharsPerLine);
-  }
-  return parts;
-}
-
-function wrapCommaSeparatedToLines(
-  text: string,
-  maxCharsPerLine: number,
-  maxLines: number
-): { lines: string[]; truncated: boolean } {
-  const normalized = text.trim();
-  if (!normalized) return { lines: [''], truncated: false };
-
-  // 例: "部品A, 部品B, 部品C" を優先的に分割し、行長の見積り内に収める
-  const rawTokens = splitByDelimiters(normalized);
-  const tokens = rawTokens.flatMap((token) => splitLongToken(token, maxCharsPerLine));
-
-  // カンマが無い/分割できない場合はフォールバック（文字数で強制分割）
-  if (tokens.length <= 1) {
-    const raw: string[] = [];
-    let rest = normalized;
-    while (rest.length > 0) {
-      raw.push(rest.slice(0, maxCharsPerLine));
-      rest = rest.slice(maxCharsPerLine);
-      if (raw.length >= maxLines) break;
-    }
-    const truncated = rest.length > 0;
-    return { lines: raw, truncated };
-  }
-
-  const lines: string[] = [];
-  let current = '';
-  for (const token of tokens) {
-    const next = current.length === 0 ? token : `${current}, ${token}`;
-    if (next.length <= maxCharsPerLine || current.length === 0) {
-      current = next;
-      continue;
-    }
-    lines.push(current);
-    current = token;
-    if (lines.length >= maxLines) break;
-  }
-  if (lines.length < maxLines) {
-    lines.push(current);
-  }
-
-  const allJoinedCount = tokens.join(', ').length;
-  const usedJoinedCount = lines.join(', ').length;
-  const truncated = usedJoinedCount < allJoinedCount;
-  return { lines: lines.slice(0, maxLines), truncated };
-}
-
-function fitAndWrapPartsText(options: {
-  isCompleted: boolean;
-  incompleteParts: string;
-  availableWidthPx: number;
-  preferredFontPx: number;
-  minFontPx: number;
-  maxLines: number;
-}): { fontPx: number; label: string; lines: string[]; truncated: boolean } {
-  const label = options.isCompleted ? '未完部品: なし' : '未完部品:';
-  const body = options.isCompleted ? '' : (options.incompleteParts || '(不明)');
-
-  // NOTE: 省略せずに収めたい要求があるが、最終的に読めない状態は避けるため…を許容する。
-  let fontPx = options.preferredFontPx;
-  for (; fontPx >= options.minFontPx; fontPx -= 1) {
-    const maxChars = estimateMaxCharsPerLine(options.availableWidthPx, fontPx);
-    if (options.isCompleted) {
-      const line = truncateText(label, maxChars);
-      return { fontPx, label: line, lines: [], truncated: false };
-    }
-
-    const wrapped = wrapCommaSeparatedToLines(body, maxChars, options.maxLines);
-    if (!wrapped.truncated && wrapped.lines.length <= options.maxLines) {
-      return { fontPx, label, lines: wrapped.lines, truncated: false };
-    }
-  }
-
-  // 下限でも収まらない場合は最後の行を…で切る
-  const maxChars = estimateMaxCharsPerLine(options.availableWidthPx, options.minFontPx);
-  if (options.isCompleted) {
-    return { fontPx: options.minFontPx, label: truncateText(label, maxChars), lines: [], truncated: false };
-  }
-  const fallback = wrapCommaSeparatedToLines(body, maxChars, options.maxLines);
-  const lines = fallback.lines.slice(0, options.maxLines);
-  if (lines.length > 0 && fallback.truncated) {
-    lines[lines.length - 1] = truncateText(lines[lines.length - 1], Math.max(6, maxChars));
-  }
-  return { fontPx: options.minFontPx, label, lines, truncated: true };
-}
 
 function buildKpiInlineSvg(options: {
   xStart: number;
@@ -424,24 +322,27 @@ export class ProgressListRenderer implements Renderer {
         const barY = y + cardHeight - barBottomPadding - barHeight;
         const availableTextHeight = Math.max(0, percentTextY - partsStartY);
         const maxLinesParts = clampNumber(Math.floor(availableTextHeight / partsLineHeight), 0, 3);
-        const partsFit = fitAndWrapPartsText({
-          isCompleted,
-          incompleteParts,
-          availableWidthPx: partsAvailableWidth,
-          preferredFontPx: partsFontPreferred,
-          minFontPx: minPartsFont,
-          maxLines: maxLinesParts,
-        });
-        const resolvedPartsLineHeight = Math.round(partsFit.fontPx * 1.25);
-        const partsLinesSvg = partsFit.lines
-          .slice(0, 3)
+        const partsLabel = isCompleted ? '未完部品: なし' : '未完部品:';
+        const labelMaxChars = estimateMaxCharsPerLine(partsAvailableWidth, labelFont);
+        const labelText = truncateText(partsLabel, labelMaxChars);
+        const partsBody = isCompleted ? '' : (incompleteParts || '(不明)');
+        const partsSafetyChars = 1;
+        const partsLayout =
+          !isCompleted && maxLinesParts > 0
+            ? layoutTextInBounds(partsBody, {
+                availableWidthPx: partsAvailableWidth,
+                fontPx: partsFontPreferred,
+                maxLines: maxLinesParts,
+                safetyChars: partsSafetyChars,
+              })
+            : { lines: [], truncated: false, maxCharsPerLine: 0 };
+        const resolvedPartsLineHeight = Math.round(partsFontPreferred * 1.25);
+        const partsLinesSvg = partsLayout.lines
           .map((line, i) => {
             const yy = partsStartY + i * resolvedPartsLineHeight;
-            // 右端を超えないようにtextLengthで制限（左端と同じロジック）
             return `
               <text x="${partsX}" y="${yy}"
-                font-size="${partsFit.fontPx}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif"
-                textLength="${partsAvailableWidth}" lengthAdjust="spacing">
+                font-size="${partsFontPreferred}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
                 ${escapeXml(line)}
               </text>
             `;
@@ -457,7 +358,7 @@ export class ProgressListRenderer implements Renderer {
             </text>
             <text x="${partsX}" y="${labelY}"
               font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-              ${escapeXml(partsFit.label)}
+              ${escapeXml(labelText)}
             </text>
             ${partsLinesSvg}
 
