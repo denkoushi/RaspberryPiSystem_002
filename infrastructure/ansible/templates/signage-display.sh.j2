@@ -4,8 +4,9 @@ set -euo pipefail
 export DISPLAY=:0
 export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
 
-# 画面上部のパネルを非表示にする
-pkill -x lxpanel || true
+# 画面上部のパネルを非表示にする（labwc + wf-panel-pi）
+pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true
+pkill -x wf-panel-pi || true
 
 CACHE_DIR="/run/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"

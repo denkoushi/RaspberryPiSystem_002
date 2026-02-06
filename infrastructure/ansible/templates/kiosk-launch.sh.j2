@@ -14,8 +14,9 @@ export SSH_AUTH_SOCK=""
 export NM_CLI_NO_TERSE=1
 export NM_CLI_NO_ASK_PASSWORD=1
 
-# 画面上部のパネルを非表示にする
-pkill -x lxpanel || true
+# 画面上部のパネルを非表示にする（labwc + wf-panel-pi）
+pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true
+pkill -x wf-panel-pi || true
 
 CHROMIUM_FLAGS=(
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化

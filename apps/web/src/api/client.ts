@@ -793,6 +793,20 @@ export async function postKioskSupport(
   return data;
 }
 
+export async function postKioskPower(
+  payload: { action: 'reboot' | 'poweroff' },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ requestId: string; action: string; status: string }>(
+    '/kiosk/power',
+    payload,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
 export interface FileAlert {
   id: string;
   type: string;

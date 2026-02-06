@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
@@ -34,11 +36,18 @@ const supportMessageSchema = z.object({
   message: z.string().min(1).max(1000),
   page: z.string().min(1).max(200)
 });
+const powerActionSchema = z.object({
+  action: z.enum(['reboot', 'poweroff'])
+});
 
 // シンプルなメモリベースのレート制限（1分に最大3件）
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
 const RATE_LIMIT_MAX_REQUESTS = 3;
+const powerRateLimitMap = new Map<string, number[]>();
+const POWER_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
+const POWER_RATE_LIMIT_MAX_REQUESTS = 1;
+const POWER_ACTIONS_DIR = process.env.POWER_ACTIONS_DIR ?? '/app/power-actions';
 
 function checkRateLimit(clientKey: string): boolean {
   const now = Date.now();
@@ -66,6 +75,32 @@ function checkRateLimit(clientKey: string): boolean {
     }
   }
   
+  return true;
+}
+
+function checkPowerRateLimit(clientKey: string): boolean {
+  const now = Date.now();
+  const requests = powerRateLimitMap.get(clientKey) || [];
+  const recentRequests = requests.filter((timestamp) => now - timestamp < POWER_RATE_LIMIT_WINDOW_MS);
+
+  if (recentRequests.length >= POWER_RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  recentRequests.push(now);
+  powerRateLimitMap.set(clientKey, recentRequests);
+
+  if (powerRateLimitMap.size > 100) {
+    for (const [key, timestamps] of powerRateLimitMap.entries()) {
+      const filtered = timestamps.filter((ts) => now - ts < 5 * 60 * 1000);
+      if (filtered.length === 0) {
+        powerRateLimitMap.delete(key);
+      } else {
+        powerRateLimitMap.set(key, filtered);
+      }
+    }
+  }
+
   return true;
 }
 
@@ -1209,5 +1244,37 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { requestId: request.id };
+  });
+
+  app.post('/kiosk/power', { config: { rateLimit: false } }, async (request) => {
+    const { clientKey, clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const allowed = checkPowerRateLimit(clientKey);
+    if (!allowed) {
+      throw new ApiError(429, '操作が多すぎます。しばらく待ってから再度お試しください。', undefined, 'POWER_RATE_LIMIT');
+    }
+
+    const body = powerActionSchema.parse(request.body);
+    const requestedAt = new Date().toISOString();
+    const safeTimestamp = requestedAt.replace(/[:.]/g, '-');
+    const filename = `${safeTimestamp}-${clientKey}.json`;
+
+    await fs.mkdir(POWER_ACTIONS_DIR, { recursive: true });
+    await fs.writeFile(
+      path.join(POWER_ACTIONS_DIR, filename),
+      JSON.stringify(
+        {
+          action: body.action,
+          clientKey,
+          clientDeviceId: clientDevice.id,
+          requestId: request.id,
+          requestedAt
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    return { requestId: request.id, action: body.action, status: 'accepted' };
   });
 }

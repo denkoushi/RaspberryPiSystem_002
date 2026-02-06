@@ -1,0 +1,7 @@
+[Unit]
+Description=Pi5 power action dispatcher
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pi5-power-dispatcher.sh %f

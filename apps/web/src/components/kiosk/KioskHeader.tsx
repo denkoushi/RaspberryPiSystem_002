@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
+import { postKioskPower } from '../../api/client';
 import { Row } from '../layout/Row';
 
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
@@ -43,10 +44,9 @@ export function KioskHeader({
 
   const handlePowerConfirm = async () => {
     if (!pendingAction) return;
-    const endpoint = pendingAction === 'reboot' ? 'reboot' : 'poweroff';
     setIsPowerProcessing(true);
     try {
-      await fetch(`http://localhost:7071/api/agent/${endpoint}`, { method: 'POST' });
+      await postKioskPower({ action: pendingAction });
     } catch (error) {
       console.error('Failed to request power action:', error);
     } finally {

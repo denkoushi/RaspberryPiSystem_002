@@ -1,0 +1,26 @@
+---
+- name: Execute power action on target client
+  hosts: clients
+  gather_facts: false
+  become: true
+  vars:
+    power_action: "{{ power_action | default('') }}"
+  tasks:
+    - name: Validate power_action
+      ansible.builtin.assert:
+        that:
+          - power_action in ['reboot', 'poweroff']
+        fail_msg: "power_action must be 'reboot' or 'poweroff'"
+
+    - name: Reboot target client
+      ansible.builtin.reboot:
+        msg: "Power action requested from kiosk"
+        connect_timeout: 5
+        reboot_timeout: 300
+      when: power_action == 'reboot'
+
+    - name: Poweroff target client
+      ansible.builtin.command: /usr/bin/systemctl poweroff
+      async: 10
+      poll: 0
+      when: power_action == 'poweroff'

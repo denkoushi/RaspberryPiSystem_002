@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch power action queue
+
+[Path]
+PathExistsGlob=/opt/RaspberryPiSystem_002/power-actions/*.json
+Unit=pi5-power-dispatcher.service
+
+[Install]
+WantedBy=multi-user.target
