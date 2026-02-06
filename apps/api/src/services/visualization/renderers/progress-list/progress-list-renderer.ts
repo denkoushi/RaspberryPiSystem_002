@@ -284,7 +284,7 @@ export class ProgressListRenderer implements Renderer {
     const minPrimaryFont = 18;
     const minPartsFont = 14;
     const minCardWidth = Math.round(360 * scale);
-    const minCardHeight = Math.round(210 * scale);
+    const minCardHeight = Math.round(105 * scale); // 20件表示対応のため高さを半分に
 
     const maxColumns = 4;
 
@@ -391,8 +391,8 @@ export class ProgressListRenderer implements Renderer {
         const isCompleted = status === '完了';
         const accent = accentForPercent(percent);
 
-        // カードが小さくなる場合でも下限を守る
-        const cardScale = Math.min(1, cardWidth / Math.round(540 * scale), cardHeight / Math.round(260 * scale));
+        // カードが小さくなる場合でも下限を守る（カード高さを半分にしたので基準値も半分に）
+        const cardScale = Math.min(1, cardWidth / Math.round(540 * scale), cardHeight / Math.round(130 * scale));
         const effectiveScale = scale * cardScale;
 
         const seibanFont = Math.max(minPrimaryFont, Math.round(32 * effectiveScale));

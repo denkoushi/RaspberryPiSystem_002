@@ -25,7 +25,7 @@ function normalizeHistory(values: string[]): string[] {
       unique.add(value);
       next.push(value);
     });
-  return next.slice(0, 8);
+  return next.slice(0, 20);
 }
 
 function toRowMap(rows: ProgressRow[]): Map<string, ProgressRow> {
