@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-06）
 
+- **✅ 生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化**: 生産スケジュールの登録製番上限を8件から20件に拡張し、サイネージに20件を表示できるように最適化。**実装内容**: API側（Zodスキーマ・正規化関数）、フロントエンド側（正規化関数）、サイネージ側（データソース・レンダラー）のすべての箇所で上限を20件に統一。サイネージのカード高さを`210 * scale`から`105 * scale`（半分）に変更し、20件表示でも画面に収まるように最適化。カードスケールの基準値も`260 * scale`から`130 * scale`（半分）に変更。20件表示のテストケースを追加し、CI成功・デプロイ成功・動作確認完了。**学んだこと**: 制限値が複数箇所に分散している場合は、すべての箇所を同時に更新する必要がある。初回実装ではサイネージ側のみを変更したが、キオスクUI側の制限が残っていたため、API側とフロントエンド側も変更が必要だった。詳細は [knowledge-base/api.md#kb-231](./knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) / [knowledge-base/infrastructure/signage.md#kb-231](./knowledge-base/infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) を参照。
+
 - **✅ Gmail認証切れ時のSlack通知機能追加・実機調査と回復**: CSVインポート定期実行時にGmail認証切れが発生しても、管理者に通知されずCSV取り込みが失敗し続けていた問題を解決。**実装内容**: CSVインポートスケジューラーにGmail認証切れ検知機能を追加し、定期実行時（手動実行時は通知しない）に`GmailReauthRequiredError`または`invalid_grant`エラーを検知してAlerts Platform経由でSlack通知を送信。アラートタイプ`gmail-oauth-expired`を`ops`チャンネル（`#rps-ops`）にルーティングし、fingerprintベースのdedupeで連続通知を抑制（1回のみ通知）。**実機調査**: Pi3のサイネージ右ペイン（計測機器持出返却）が更新されていない問題を調査し、Gmail OAuth認証トークンが期限切れであることを確認。管理コンソールでOAuth再認証を実行して回復し、手動実行で189行が正常に追加されることを確認。詳細は [knowledge-base/api.md#kb-229](./knowledge-base/api.md#kb-229-gmail認証切れ時のslack通知機能追加) / [knowledge-base/api.md#kb-230](./knowledge-base/api.md#kb-230-gmail認証切れの実機調査と回復) / [guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md#gmail認証切れ通知機能2026-02-06実装) を参照。
 
 ### 🆕 最新アップデート（2026-02-03）

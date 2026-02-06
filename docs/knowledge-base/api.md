@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
-last-verified: 2026-01-29
+last-verified: 2026-02-06
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - API関連
 
 **カテゴリ**: API関連  
-**件数**: 40件  
+**件数**: 44件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2606,6 +2606,73 @@ const saveNote = (rowId: string) => {
 - [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
 
 **解決状況**: ✅ **調査完了・回復完了**（2026-02-06）
+
+---
+
+### [KB-231] 生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化
+
+**日付**: 2026-02-06
+
+**Context**:
+- 生産スケジュールの登録製番上限が8件に制限されており、より多くの製番を登録・表示したい要望があった
+- サイネージに20件を表示する場合、現在のカード高さでは画面に収まらないため、カード高さを最適化する必要があった
+
+**Symptoms**:
+- キオスクの生産スケジュール画面で、登録製番が8件を超えると追加できない
+- APIのバリデーションで`max(8)`が設定されており、9件目以降が拒否される
+- サイネージに20件を表示する場合、カードが大きすぎて画面に収まらない
+
+**Investigation**:
+1. **API側の制限確認**:
+   - `apps/api/src/routes/kiosk.ts`のZodスキーマで`activeQueries`と`history`が`max(8)`に設定されている
+   - `normalizeSearchHistory`関数で`slice(0, 8)`が実行されている
+2. **フロントエンド側の制限確認**:
+   - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`の`normalizeHistoryList`と`toggleHistoryQuery`で`slice(0, 8)`が実行されている
+3. **サイネージ側の制限確認**:
+   - `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`の`normalizeHistory`で`slice(0, 8)`が実行されている
+   - `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`の`minCardHeight`が`210 * scale`に設定されており、20件表示には大きすぎる
+4. **初回実装の問題**:
+   - 最初はサイネージ側（データソースとレンダラー）のみを変更したが、キオスクUI側の制限が残っていた
+   - APIのバリデーションとフロントエンドの正規化ロジックが8件のままだったため、キオスクで20件登録できなかった
+
+**Root cause**:
+- 登録製番上限が複数箇所（APIバリデーション、API正規化、フロントエンド正規化、サイネージデータソース）に分散しており、一部のみを変更しても全体が機能しなかった
+- サイネージのカード高さが20件表示に適していなかった
+
+**Fix**:
+1. **API側の変更**:
+   - `apps/api/src/routes/kiosk.ts`のZodスキーマで`activeQueries`と`history`を`max(20)`に変更
+   - `normalizeSearchHistory`関数で`slice(0, 20)`に変更
+2. **フロントエンド側の変更**:
+   - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`の`normalizeHistoryList`と`toggleHistoryQuery`で`slice(0, 20)`に変更
+3. **サイネージ側の変更**:
+   - `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`の`normalizeHistory`で`slice(0, 20)`に変更（既に実施済み）
+   - `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`の`minCardHeight`を`105 * scale`（210の半分）に変更
+   - カードスケールの基準値も`130 * scale`（260の半分）に変更
+4. **テスト追加**:
+   - `apps/api/src/services/visualization/__tests__/progress-list-renderer.test.ts`に20件表示のテストケースを追加
+   - `apps/api/src/services/visualization/data-sources/production-schedule/__tests__/production-schedule-data-source.test.ts`に20件制限のテストケースを追加
+
+**Prevention**:
+- 制限値が複数箇所に分散している場合は、すべての箇所を同時に更新する必要があることを認識
+- サイネージのカード高さは表示件数に応じて調整可能にする設計を維持
+- テストで上限値の動作を検証し、変更漏れを防止
+
+**実装ファイル**:
+- `apps/api/src/routes/kiosk.ts`: Zodスキーマと`normalizeSearchHistory`関数の上限変更
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: フロントエンド側の上限変更
+- `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`: サイネージデータソースの上限変更（既に実施済み）
+- `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`: サイネージレンダラーのカード高さ最適化
+- `apps/api/src/services/visualization/__tests__/progress-list-renderer.test.ts`: 20件表示のテスト追加
+- `apps/api/src/services/visualization/data-sources/production-schedule/__tests__/production-schedule-data-source.test.ts`: 20件制限のテスト追加
+
+**関連KB**:
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
+- [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 生産スケジュール検索状態の全キオスク間共有化
+- [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正): 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正
+- [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・動作確認完了**（2026-02-06）
 
 ---
 

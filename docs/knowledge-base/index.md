@@ -21,7 +21,7 @@ update-frequency: high
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
 | キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](./kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／返却後に再スキャンで使用中アラートが出る事象の調査（取消との混在有無） |
-| API関連 | [api.md](./api.md) | 43件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）、Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復 |
+| API関連 | [api.md](./api.md) | 44件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）、Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復、生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化 |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 36件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 6件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit） |
@@ -30,7 +30,7 @@ update-frequency: high
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 36件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 12件 | セキュリティ対策と監視 |
-| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 14件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正 |
+| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 15件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応） |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 21件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除含む） |
 
@@ -93,6 +93,7 @@ update-frequency: high
 | [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) | 生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装） | ✅ 解決済み |
 | [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加) | Gmail認証切れ時のSlack通知機能追加 | ✅ 解決済み |
 | [KB-230](./api.md#kb-230-gmail認証切れの実機調査と回復) | Gmail認証切れの実機調査と回復 | ✅ 解決済み |
+| [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) | 生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -226,6 +227,7 @@ update-frequency: high
 | [KB-156](./infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) | 複数スケジュールの順番切り替え機能実装 | ✅ 解決済み |
 | [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一) | 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一） | ✅ 解決済み |
+| [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応） | ✅ 解決済み |
 | [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
@@ -315,13 +317,13 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 130件 |
+| ✅ 解決済み | 132件 |
 | ✅ 手順確立済み | 1件 |
 | ✅ 実装完了・実機検証完了 | 2件 |
 | ✅ 検証完了 | 2件 |
 | ✅ 調査完了・対応不要 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **146件** |
+| **合計** | **148件** |
 
 ---
 
@@ -444,3 +446,4 @@ update-frequency: high
 - 2026-02-03: KB-227を追加（Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化）→ 2026-02-03に実装完了・デプロイ成功・実機検証完了（`force_docker_rebuild`フラグ導入、`git pull`前後でHEAD比較、Ansibleへの変数渡し、Docker再ビルドタスクの`when`条件修正、Web bundleが確実に再ビルドされることを確認）
 - 2026-02-03: KB-228を追加（生産スケジュールサイネージデザイン修正: タイトル・KPI配置・パディング統一）→ 2026-02-03に実装完了・CI成功・デプロイ成功・実機検証完了（タイトル「生産進捗」に変更、KPIチップ右端配置で重なり防止、サブタイトル削除、カード左右パディング16px統一、視認性向上を確認）
 - 2026-02-06: KB-229、KB-230を追加（Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復）→ 2026-02-06に実装完了・CI成功・デプロイ成功（CSVインポート定期実行時にGmail認証切れを検知してSlack通知、opsチャンネルにルーティング、dedupeで連続通知を抑制、手動実行時は通知しない）
+- 2026-02-06: KB-231を追加（生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化）→ 2026-02-06に実装完了・CI成功・デプロイ成功・動作確認完了（API側・フロントエンド側・サイネージ側の上限を20件に統一、サイネージカード高さを半分に最適化、20件表示が正常に動作することを確認）
