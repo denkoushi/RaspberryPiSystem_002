@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-QUEUE_FILE="${1:-}"
-if [[ -z "${QUEUE_FILE}" || ! -f "${QUEUE_FILE}" ]]; then
+TRIGGER_PATH="${1:-}"
+if [[ -z "${TRIGGER_PATH}" ]]; then
   exit 0
 fi
 
@@ -11,13 +11,42 @@ ANSIBLE_DIR="${REPO_ROOT}/infrastructure/ansible"
 INVENTORY="${ANSIBLE_DIR}/inventory.yml"
 PLAYBOOK="${ANSIBLE_DIR}/playbooks/power-control.yml"
 LOG_DIR="${REPO_ROOT}/logs/power-actions"
+QUEUE_DIR="${REPO_ROOT}/power-actions"
 PROCESSED_DIR="${REPO_ROOT}/power-actions/processed"
 FAILED_DIR="${REPO_ROOT}/power-actions/failed"
 
 mkdir -p "${LOG_DIR}" "${PROCESSED_DIR}" "${FAILED_DIR}"
 
-read_action_and_key() {
-  python3 - <<'PY' "${QUEUE_FILE}"
+# ディレクトリが渡された場合、ディレクトリ内のすべてのJSONファイルを処理
+# 処理済み/失敗フォルダ内のファイルは除外
+if [[ -d "${TRIGGER_PATH}" ]]; then
+  QUEUE_FILES=()
+  while IFS= read -r -d '' file; do
+    QUEUE_FILES+=("${file}")
+  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
+else
+  # ファイルが渡された場合（後方互換性のため）
+  if [[ -f "${TRIGGER_PATH}" ]]; then
+    QUEUE_FILES=("${TRIGGER_PATH}")
+  else
+    exit 0
+  fi
+fi
+
+# 処理するファイルがない場合は終了
+if [[ ${#QUEUE_FILES[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+# 各ファイルを処理
+for QUEUE_FILE in "${QUEUE_FILES[@]}"; do
+  # 処理済み/失敗フォルダ内のファイルはスキップ
+  if [[ "${QUEUE_FILE}" == "${PROCESSED_DIR}"/* ]] || [[ "${QUEUE_FILE}" == "${FAILED_DIR}"/* ]]; then
+    continue
+  fi
+
+  read_action_and_key() {
+    python3 - <<'PY' "${QUEUE_FILE}"
 import json
 import sys
 from pathlib import Path
@@ -31,25 +60,25 @@ if action not in ("reboot", "poweroff") or not client_key:
 print(action)
 print(client_key)
 PY
-}
+  }
 
-if ! mapfile -t parsed < <(read_action_and_key); then
-  mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
-  exit 1
-fi
+  if ! mapfile -t parsed < <(read_action_and_key); then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
 
-ACTION="${parsed[0]}"
-CLIENT_KEY="${parsed[1]}"
+  ACTION="${parsed[0]}"
+  CLIENT_KEY="${parsed[1]}"
 
-if ! command -v ansible-inventory >/dev/null 2>&1; then
-  mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
-  exit 1
-fi
+  if ! command -v ansible-inventory >/dev/null 2>&1; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
 
-HOST=$(
-  ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
-  ansible-inventory -i "${INVENTORY}" --list | \
-  python3 - <<'PY' "${CLIENT_KEY}"
+  HOST=$(
+    ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
+    ansible-inventory -i "${INVENTORY}" --list | \
+    python3 - <<'PY' "${CLIENT_KEY}"
 import json
 import sys
 
@@ -62,25 +91,26 @@ for host, vars in hostvars.items():
         raise SystemExit(0)
 raise SystemExit(1)
 PY
-)
+  )
 
-if [[ -z "${HOST}" ]]; then
-  mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
-  exit 1
-fi
+  if [[ -z "${HOST}" ]]; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
 
-LOG_FILE="${LOG_DIR}/$(basename "${QUEUE_FILE}").log"
+  LOG_FILE="${LOG_DIR}/$(basename "${QUEUE_FILE}").log"
 
-set +e
-ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
-ansible-playbook "${PLAYBOOK}" -i "${INVENTORY}" --limit "${HOST}" -e "power_action=${ACTION}" \
-  >> "${LOG_FILE}" 2>&1
-rc=$?
-set -e
+  set +e
+  ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
+  ansible-playbook "${PLAYBOOK}" -i "${INVENTORY}" --limit "${HOST}" -e "power_action=${ACTION}" \
+    >> "${LOG_FILE}" 2>&1
+  rc=$?
+  set -e
 
-if [[ $rc -ne 0 ]]; then
-  mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
-  exit $rc
-fi
+  if [[ $rc -ne 0 ]]; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
 
-mv "${QUEUE_FILE}" "${PROCESSED_DIR}/$(basename "${QUEUE_FILE}")" || true
+  mv "${QUEUE_FILE}" "${PROCESSED_DIR}/$(basename "${QUEUE_FILE}")" || true
+done
