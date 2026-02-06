@@ -1,7 +1,10 @@
 import clsx from 'clsx';
+import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
 import { Row } from '../layout/Row';
+
+import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
 
 type ClientStatus = {
   temperature: number | null;
@@ -29,6 +32,8 @@ export function KioskHeader({
   clientStatus,
   pathname
 }: KioskHeaderProps) {
+  const [pendingAction, setPendingAction] = useState<'reboot' | 'poweroff' | null>(null);
+  const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -36,10 +41,37 @@ export function KioskHeader({
     return `${value.slice(0, 4)}…${value.slice(-4)}`;
   };
 
+  const handlePowerConfirm = async () => {
+    if (!pendingAction) return;
+    const endpoint = pendingAction === 'reboot' ? 'reboot' : 'poweroff';
+    setIsPowerProcessing(true);
+    try {
+      await fetch(`http://localhost:7071/api/agent/${endpoint}`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to request power action:', error);
+    } finally {
+      setIsPowerProcessing(false);
+      setPendingAction(null);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
-      <Row className="gap-4 shrink-0">
-        <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
+      <Row className="gap-3 shrink-0">
+        <button
+          type="button"
+          onClick={() => setPendingAction('reboot')}
+          className="rounded-md bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-600"
+        >
+          再起動
+        </button>
+        <button
+          type="button"
+          onClick={() => setPendingAction('poweroff')}
+          className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+        >
+          シャットダウン
+        </button>
         {clientStatus ? (
           <Row className="gap-3 text-xs shrink-0">
             {clientStatus.temperature !== null ? (
@@ -124,6 +156,13 @@ export function KioskHeader({
           </button>
         </nav>
       </Row>
+      <KioskPowerConfirmModal
+        isOpen={pendingAction !== null}
+        action={pendingAction ?? 'reboot'}
+        isProcessing={isPowerProcessing}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={handlePowerConfirm}
+      />
     </div>
   );
 }

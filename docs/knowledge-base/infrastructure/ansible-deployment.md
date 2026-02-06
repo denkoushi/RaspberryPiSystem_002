@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 35件  
+**件数**: 36件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3336,5 +3336,67 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - コード更新時は必ずDockerコンテナが再ビルドされることを確認する
 - `repo_changed`だけでなく、`force_docker_rebuild`フラグも考慮する設計を維持する
 - デプロイ後は実機で動作確認を行い、期待される変更が反映されていることを検証する
+
+---
+
+### [KB-233] デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合）
+
+**発生日**: 2026-02-06
+
+**Context**:
+- `scripts/update-all-clients.sh`でPi5にデプロイする際、`ansible_connection: local`が設定されているにもかかわらず、`sudo: a password is required`エラーが発生した
+- Pi5上ではsudoパスワードなしで実行できる設定になっているはずだった
+
+**Symptoms**:
+- デプロイ実行時に`sudo: a password is required`エラーが発生
+- エラーメッセージ: `Task failed: Premature end of stream waiting for become success.`
+- エラー発生タスク: `common : Ensure repository parent directory exists`（`become: true`が設定されているタスク）
+
+**Investigation**:
+- **CONFIRMED**: Pi5上で`sudo -n echo 'sudo passwordless OK'`が成功することを確認（sudoパスワードなしで実行可能）
+- **CONFIRMED**: Pi5上の`ansible.cfg`で`become_ask_pass = False`が設定されていることを確認
+- **CONFIRMED**: `ansible_connection: local`でも、Mac側から`ansible-playbook`を実行すると、Mac側のsudoパスワードが求められる
+- **CONFIRMED**: `RASPI_SERVER_HOST`環境変数を設定してPi5上でリモート実行すると、Pi5上の`ansible.cfg`が正しく読み込まれ、sudoパスワードなしで実行できる
+
+**Root cause**:
+- `ansible_connection: local`は「Pi5上でローカル実行」を意味するが、Mac側から`ansible-playbook`を実行すると、Mac側で実行されるため、Mac側のsudoパスワードが求められる
+- Pi5上で実行するには、`RASPI_SERVER_HOST`環境変数を設定してリモート実行（SSH経由）する必要がある
+- `scripts/update-all-clients.sh`は`REMOTE_HOST`が設定されている場合、Pi5上でリモート実行する設計になっている
+
+**Fix**:
+- ✅ **解決済み（2026-02-06）**: `RASPI_SERVER_HOST`環境変数を設定してPi5上でリモート実行するように変更
+  ```bash
+  RASPI_SERVER_HOST=100.106.158.2 bash scripts/update-all-clients.sh feat/signage-visualization-layout-improvement infrastructure/ansible/inventory.yml --limit raspberrypi5
+  ```
+- Pi5上でリモート実行すると、Pi5上の`ansible.cfg`（`become_ask_pass = False`）が正しく読み込まれ、sudoパスワードなしで実行できる
+- デプロイは成功し、`exitCode: 0`で完了
+
+**実機検証結果（2026-02-06）**:
+- ✅ **リモート実行**: `RASPI_SERVER_HOST`設定でPi5上でリモート実行が成功
+- ✅ **sudoパスワードなし**: Pi5上の`ansible.cfg`が正しく読み込まれ、sudoパスワードなしで実行できる
+- ✅ **デプロイ成功**: `ok=102 changed=3 unreachable=0 failed=0`でデプロイが完了
+
+**学んだこと**:
+- `ansible_connection: local`は「ターゲットホスト上でローカル実行」を意味するが、実行元がMac側の場合はMac側で実行される
+- Pi5上で実行するには、`RASPI_SERVER_HOST`環境変数を設定してリモート実行（SSH経由）する必要がある
+- `scripts/update-all-clients.sh`は`REMOTE_HOST`が設定されている場合、Pi5上でリモート実行する設計になっている
+- Pi5上の`ansible.cfg`はリモート実行時に正しく読み込まれる
+
+**再発防止**:
+- Pi5へのデプロイ時は、必ず`RASPI_SERVER_HOST`環境変数を設定してリモート実行する
+- デプロイ標準手順（`docs/guides/deployment.md`）に`RASPI_SERVER_HOST`設定の重要性を明記する
+- `ansible_connection: local`の動作を理解し、実行元とターゲットホストの違いを認識する
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`
+- `infrastructure/ansible/ansible.cfg`
+- `infrastructure/ansible/inventory.yml`
+- `docs/guides/deployment.md`
+
+**関連KB**:
+- [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能
+- [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
+
+**解決状況**: ✅ **解決済み**（2026-02-06）
 
 ---

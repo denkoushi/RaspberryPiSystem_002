@@ -14,6 +14,9 @@ export SSH_AUTH_SOCK=""
 export NM_CLI_NO_TERSE=1
 export NM_CLI_NO_ASK_PASSWORD=1
 
+# 画面上部のパネルを非表示にする
+pkill -x lxpanel || true
+
 CHROMIUM_FLAGS=(
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
   --app="{{ kiosk_url }}"
@@ -25,8 +28,9 @@ CHROMIUM_FLAGS=(
   --overscroll-history-navigation=0
   --use-fake-ui-for-media-stream
   --allow-insecure-localhost
+  --allow-running-insecure-content
   --ignore-certificate-errors
-  --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }}
+  --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
   # 警告バーを非表示にする（--ignore-certificate-errorsの警告も抑制）
   --disable-infobars
   # テストモードとして実行（コマンドラインフラグの警告を抑制）

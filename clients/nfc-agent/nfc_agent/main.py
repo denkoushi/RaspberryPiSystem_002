@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import subprocess
 from typing import Any, Dict, Optional
 
 import uvicorn
@@ -85,6 +86,28 @@ def create_app(
         ids = [event_id for event_id, _ in events]
         queue_store.delete(ids)
         return {"flushed": len(ids)}
+
+    def run_systemctl(action: str) -> None:
+        try:
+            subprocess.Popen(
+                ["sudo", "/usr/bin/systemctl", action],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            LOGGER.exception("Failed to run systemctl %s", action)
+
+    @app.post("/api/agent/reboot")
+    async def reboot_device() -> Dict[str, Any]:
+        # 先にレスポンスを返せるよう、非同期で実行する
+        run_systemctl("reboot")
+        return {"status": "accepted", "action": "reboot"}
+
+    @app.post("/api/agent/poweroff")
+    async def poweroff_device() -> Dict[str, Any]:
+        # 先にレスポンスを返せるよう、非同期で実行する
+        run_systemctl("poweroff")
+        return {"status": "accepted", "action": "poweroff"}
 
     @app.websocket("/stream")
     async def websocket_stream(websocket: WebSocket) -> None:

@@ -65,6 +65,8 @@ all:
             - /usr/bin/systemctl start kiosk-browser.service
             - /usr/bin/systemctl stop kiosk-browser.service
             - /usr/bin/systemctl restart kiosk-browser.service
+            - /usr/bin/systemctl reboot
+            - /usr/bin/systemctl poweroff
             - /usr/bin/systemctl start status-agent.service
             - /usr/bin/systemctl stop status-agent.service
             - /usr/bin/systemctl restart status-agent.service

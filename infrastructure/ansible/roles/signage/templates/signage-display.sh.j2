@@ -4,6 +4,9 @@ set -euo pipefail
 export DISPLAY=:0
 export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
 
+# 画面上部のパネルを非表示にする
+pkill -x lxpanel || true
+
 CACHE_DIR="/run/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_SCRIPT="/usr/local/bin/signage-update.sh"

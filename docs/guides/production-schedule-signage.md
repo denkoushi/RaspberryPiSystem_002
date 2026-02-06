@@ -2,7 +2,7 @@
 title: 生産スケジュール進捗サイネージ可視化ガイド
 tags: [サイネージ, 可視化, 生産スケジュール]
 audience: [運用者, 開発者]
-last-verified: 2026-02-02
+last-verified: 2026-02-06
 category: guides
 ---
 
@@ -58,6 +58,34 @@ category: guides
 - 上部: 総製番数 / 完了数 / 未完了数 / 進捗率
 - 下部: 製番ごとのカード（FSEIBAN、完了/未完了、進捗%バー）
   - 未完部品名は **上位N件を表示し、残りは `+残りM件`** として表示されます
+
+### 未完部品表示の詳細
+
+未完部品名の表示は、以下のロジックで制御されます：
+
+1. **データソース側の処理**:
+   - 未完部品名を正規化（trim、重複除去、部品名昇順ソート）
+   - `metadata`に構造化データ（`incompletePartsBySeiban`、`incompletePartsTotalBySeiban`）を追加
+   - 保存上限は50件（`MAX_INCOMPLETE_PARTS_STORED`）
+
+2. **レンダラー側の処理**:
+   - 利用可能な高さに基づいて動的に行数を計算
+   - `maxIncompletePartsPerCard`設定（デフォルト: 6）に従って表示件数を制御
+   - 表示パターン:
+     - 完了または未完部品なし: 「未完部品: なし」
+     - 利用可能な高さが0行かつ未完部品あり: 「未完部品: +残りM件」
+     - それ以外: 「未完部品:」+ 部品名リスト（`maxIncompletePartsPerCard`または利用可能行数まで）+ 残り件数（`remainingCount > 0`の場合）
+
+3. **表示スタイル**:
+   - `incompleteLineStyle`設定で変更可能:
+     - `bullets`（デフォルト）: 箇条書き形式（`• 部品名1`）
+     - `comma`: カンマ区切り形式（`部品名1, 部品名2`）
+
+4. **テキストフィッティング**:
+   - 全テキスト行が表示領域内に収まるように、`truncateToFit`で自動的に切り詰められます
+   - 右端で切れることはありません
+
+詳細は [knowledge-base/infrastructure/signage.md#kb-232](../knowledge-base/infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト) を参照してください。
 
 ## トラブルシュート
 

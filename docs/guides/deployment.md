@@ -437,6 +437,13 @@ curl http://localhost:8080/api/system/health
   - デプロイ完了後、メンテナンス画面は自動的に消えます（最大5秒以内）
   - 詳細は [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
+**重要（2026-02-06更新）**:
+- **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します
+  - `POST http://localhost:7071/api/agent/reboot`
+  - `POST http://localhost:7071/api/agent/poweroff`
+- **Mixed Content回避**: キオスクは `https://<Pi5>/kiosk` で開くため、Pi4のChromium起動フラグに `--allow-running-insecure-content` と `--unsafely-treat-insecure-origin-as-secure=http://localhost:7071` を設定します
+- **OS権限**: Pi4のAnsible設定で `sudo_nopasswd_commands` に `/usr/bin/systemctl reboot` と `/usr/bin/systemctl poweroff` を含めてください
+
 ```bash
 # 1. リポジトリを更新
 cd /opt/RaspberryPiSystem_002
@@ -545,6 +552,10 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
 # ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
 # inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
+# ⚠️ 必須: Pi5へのデプロイ時は、必ずRASPI_SERVER_HOSTを設定してリモート実行してください
+# ansible_connection: localでも、Mac側からansible-playbookを実行するとMac側のsudoパスワードが求められます
+# RASPI_SERVER_HOSTを設定することで、Pi5上でリモート実行され、Pi5上のansible.cfgが正しく読み込まれます
+# 詳細は [KB-233](../knowledge-base/infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) を参照
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # または、ユーザー名を省略した形式（スクリプトが自動補完）

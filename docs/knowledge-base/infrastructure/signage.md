@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 15件  
+**件数**: 16件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -1140,6 +1140,96 @@ const textX = x + textAreaX;
 - [KB-228](./signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了・動作確認完了**（2026-02-06）
+
+---
+
+### [KB-232] サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト）
+
+**実装日時**: 2026-02-06
+
+**Context**:
+- サイネージの生産スケジュール進捗表示で、未完部品名の表示が制御されておらず、右端で切れたり、10件以上あるのに3つしか表示されなかったり、表示順序が一貫していなかった
+- データソース側とレンダラー側の責務が混在しており、表示ロジックが散在していた
+
+**Symptoms**:
+- 未完部品名が右端で切れる（テキストオーバーフロー）
+- 10件以上あるのに3つしか表示されない（表示件数制限が不適切）
+- 表示順序が一貫していない（ソートされていない）
+- レイアウトが動的でなく、固定行数で表示される
+
+**Root cause**:
+- データソース側で未完部品名をカンマ区切り文字列として結合しており、レンダラー側で表示制御が困難だった
+- レンダラー側で`maxLinesParts`が固定値（0-3行）で、動的な行数計算ができていなかった
+- 未完部品名の正規化（trim、重複除去、ソート）が行われていなかった
+- テキストフィッティングロジックがレンダラー内に散在していた
+
+**Investigation**:
+- **CONFIRMED**: データソース側で未完部品名を構造化データとして提供することで、レンダラー側の表示制御が容易になる
+- **CONFIRMED**: 未完部品名を部品名昇順でソートすることで、表示順序が一貫する
+- **CONFIRMED**: レンダラー側で利用可能な高さに基づいて動的に行数を計算することで、表示件数を最適化できる
+- **CONFIRMED**: テキストフィッティングロジックを共通ユーティリティに分離することで、再利用性が向上する
+
+**Fix**:
+- ✅ **データソース側の改善** (`apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`):
+  - `normalizeParts`関数を追加: trim、重複除去、部品名昇順ソート（日本語ロケール）
+  - `MAX_INCOMPLETE_PARTS_STORED = 50`定数を追加（保存上限）
+  - `metadata`に`incompletePartsBySeiban`（上位N件、ソート済み）と`incompletePartsTotalBySeiban`（総件数）を追加
+  - `rows`の`incompleteParts`は後方互換性のため保持（スライス版）
+- ✅ **レンダラー側の改善** (`apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`):
+  - `ProgressListMetadata`型を追加して`metadata`を適切に読み取る
+  - `parsePartsFromText`関数を追加（後方互換性のため）
+  - 設定パラメータ追加: `maxIncompletePartsPerCard`（デフォルト: 6）、`showIncompleteParts`（デフォルト: true）、`incompleteLineStyle`（`bullets` | `comma`、デフォルト: `bullets`）
+  - 動的行数計算: 利用可能な高さに基づいて`maxItemLines`を計算
+  - 表示ロジック改善: 「未完部品: なし」/「未完部品: +残りM件」/「未完部品: 部品名リスト +残りM件」の3パターンに対応
+  - `insetRect`を使用して部品表示領域を定義
+  - `truncateToFit`で全テキスト行のオーバーフローを防止
+- ✅ **共通ユーティリティの追加**:
+  - `apps/api/src/services/visualization/renderers/_layout/rect.ts`: `Rect`型と`insetRect`関数
+  - `apps/api/src/services/visualization/renderers/_text/text-fit.ts`: `estimateMaxCharsPerLine`と`truncateToFit`関数
+
+**実装の詳細**:
+- **データソース側の正規化**:
+  ```typescript
+  function normalizeParts(parts: string[]): string[] {
+    return [...new Set(parts.map(p => p.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'ja'));
+  }
+  ```
+- **レンダラー側の動的行数計算**:
+  ```typescript
+  const availableHeight = partsRect.height - titleHeight - remainingHeight;
+  const maxItemLines = Math.max(0, Math.floor(availableHeight / lineHeight));
+  ```
+- **表示ロジック**:
+  - 完了または未完部品なし: 「未完部品: なし」
+  - `maxItemLines === 0`かつ未完部品あり: 「未完部品: +残りM件」
+  - それ以外: 「未完部品:」+ 部品名リスト（`maxIncompletePartsPerCard`または`itemLineLimit`まで）+ 残り件数（`remainingCount > 0`の場合）
+
+**実機検証結果（2026-02-06）**:
+- ✅ **表示制御**: 未完部品名が適切に表示され、右端で切れない
+- ✅ **表示件数**: `maxIncompletePartsPerCard`設定に従って表示件数が制御される
+- ✅ **表示順序**: 部品名が昇順でソートされて表示される
+- ✅ **動的レイアウト**: 利用可能な高さに基づいて行数が動的に計算される
+- ✅ **後方互換性**: 既存の`INCOMPLETE_PARTS`文字列も`parsePartsFromText`で解析可能
+
+**学んだこと**:
+- データソース側とレンダラー側の責務を分離することで、表示ロジックの柔軟性が向上する
+- 構造化データ（配列）を提供することで、レンダラー側の表示制御が容易になる
+- 共通ユーティリティ（`_layout/rect.ts`, `_text/text-fit.ts`）を分離することで、再利用性が向上する
+- 後方互換性を維持しながら、新しい機能を追加できる（`metadata`と`rows.incompleteParts`の併用）
+
+**関連KB**:
+- [KB-231](./signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応): 生産スケジュールサイネージアイテム高さの最適化
+- [KB-228](./signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
+
+**関連ファイル**:
+- `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`
+- `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`
+- `apps/api/src/services/visualization/renderers/_layout/rect.ts`
+- `apps/api/src/services/visualization/renderers/_text/text-fit.ts`
+- `docs/guides/production-schedule-signage.md`
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-06）
 
 ---
 
