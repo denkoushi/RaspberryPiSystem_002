@@ -2,9 +2,6 @@
 set -euo pipefail
 
 TRIGGER_PATH="${1:-}"
-if [[ -z "${TRIGGER_PATH}" ]]; then
-  exit 0
-fi
 
 REPO_ROOT="/opt/RaspberryPiSystem_002"
 ANSIBLE_DIR="${REPO_ROOT}/infrastructure/ansible"
@@ -16,6 +13,10 @@ PROCESSED_DIR="${REPO_ROOT}/power-actions/processed"
 FAILED_DIR="${REPO_ROOT}/power-actions/failed"
 
 mkdir -p "${LOG_DIR}" "${PROCESSED_DIR}" "${FAILED_DIR}"
+
+if [[ -z "${TRIGGER_PATH}" ]]; then
+  TRIGGER_PATH="${QUEUE_DIR}"
+fi
 
 # ディレクトリが渡された場合、ディレクトリ内のすべてのJSONファイルを処理
 # 処理済み/失敗フォルダ内のファイルは除外
