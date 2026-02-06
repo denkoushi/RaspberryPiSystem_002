@@ -437,9 +437,11 @@ export class ProgressListRenderer implements Renderer {
           .slice(0, 3)
           .map((line, i) => {
             const yy = partsStartY + i * resolvedPartsLineHeight;
+            // 右端を超えないようにtextLengthで制限（左端と同じロジック）
             return `
               <text x="${partsX}" y="${yy}"
-                font-size="${partsFit.fontPx}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+                font-size="${partsFit.fontPx}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif"
+                textLength="${partsAvailableWidth}" lengthAdjust="spacing">
                 ${escapeXml(line)}
               </text>
             `;
