@@ -354,7 +354,7 @@
         msg: >
           Docker Compose restart failed on {{ inventory_hostname }}.
           See captured logs above for details.
-  when: (repo_changed | default(false)) or (force_docker_rebuild | default(false) | bool)
+  when: (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
 
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |

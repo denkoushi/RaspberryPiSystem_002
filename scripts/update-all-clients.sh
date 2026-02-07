@@ -895,8 +895,27 @@ if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   git -C /opt/RaspberryPiSystem_002 checkout "${REPO_VERSION}"
   git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
   new_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
-  if [ -n "${prev_head}" ] && [ -n "${new_head}" ] && [ "${prev_head}" != "${new_head}" ]; then
+  if [ -z "${prev_head}" ] || [ -z "${new_head}" ]; then
     FORCE_DOCKER_REBUILD="true"
+    echo "[INFO] Docker rebuild: true (missing repo head)"
+  elif [ "${prev_head}" = "${new_head}" ]; then
+    FORCE_DOCKER_REBUILD="false"
+    echo "[INFO] Docker rebuild: false (no repo change)"
+  else
+    diff_files="$(git -C /opt/RaspberryPiSystem_002 diff --name-only "${prev_head}" "${new_head}" || true)"
+    diff_count="$(printf '%s\n' "${diff_files}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    echo "[INFO] Repo diff files count: ${diff_count}"
+    if [ -n "${diff_files}" ]; then
+      echo "[INFO] Repo diff files (first 50):"
+      printf '%s\n' "${diff_files}" | awk 'NR<=50{print}'
+    fi
+    if printf '%s\n' "${diff_files}" | grep -Eq '^(apps/(api|web)/|packages/|pnpm-lock\\.yaml|package\\.json|pnpm-workspace\\.yaml|infrastructure/docker/|apps/api/prisma/)'; then
+      FORCE_DOCKER_REBUILD="true"
+      echo "[INFO] Docker rebuild: true (docker-related changes detected)"
+    else
+      FORCE_DOCKER_REBUILD="false"
+      echo "[INFO] Docker rebuild: false (no docker-related changes)"
+    fi
   fi
 fi
 
