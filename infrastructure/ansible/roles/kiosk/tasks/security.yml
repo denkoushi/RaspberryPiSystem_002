@@ -31,6 +31,7 @@
     clamav_log_dir: "{{ clamav_kiosk_log_dir }}"
     clamav_log_file: "{{ clamav_kiosk_log_file }}"
     clamav_scan_paths: "{{ clamav_kiosk_scan_paths }}"
+  register: clamav_kiosk_script_deployed
   when: clamav_kiosk_enabled | default(false)
 
 - name: Schedule kiosk ClamAV scan
@@ -43,7 +44,9 @@
     month: "{{ clamav_kiosk_scan_cron.split()[3] }}"
     weekday: "{{ clamav_kiosk_scan_cron.split()[4] }}"
     job: "/usr/local/bin/clamav-kiosk-scan.sh >/dev/null 2>&1"
-  when: clamav_kiosk_enabled | default(false)
+  when:
+    - clamav_kiosk_enabled | default(false)
+    - clamav_kiosk_script_deployed.changed | default(true)
 
 - name: Install rkhunter on kiosk
   ansible.builtin.apt:
@@ -63,6 +66,7 @@
   vars:
     rkhunter_log_dir: "{{ rkhunter_kiosk_log_dir }}"
     rkhunter_log_file: "{{ rkhunter_kiosk_log_file }}"
+  register: rkhunter_kiosk_script_deployed
   when: rkhunter_kiosk_enabled | default(false)
 
 - name: Schedule kiosk rkhunter scan
@@ -75,5 +79,7 @@
     month: "{{ rkhunter_kiosk_cron.split()[3] }}"
     weekday: "{{ rkhunter_kiosk_cron.split()[4] }}"
     job: "/usr/local/bin/rkhunter-kiosk-scan.sh >/dev/null 2>&1"
-  when: rkhunter_kiosk_enabled | default(false)
+  when:
+    - rkhunter_kiosk_enabled | default(false)
+    - rkhunter_kiosk_script_deployed.changed | default(true)
 

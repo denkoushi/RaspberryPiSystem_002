@@ -463,6 +463,12 @@ curl http://localhost:8080/api/system/health
   - 判定ロジックは `scripts/update-all-clients.sh` と `infrastructure/ansible/roles/common/tasks/main.yml` の両方で実装（二重安全）
   - 判定できない場合は安全側でbuild実行（初回clone/HEAD不明など）
   - 効果: カナリアで **6分34秒 → 3分11秒（約3分23秒短縮）**を確認（[KB-235](../knowledge-base/infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定)参照）
+- **apt cache最適化**: 同一デプロイ内で`apt update`が複数回実行される無駄を削減します
+  - `group_vars/all.yml`の`apt_cache_valid_time_seconds: 3600`により、最後の`apt update`から1時間以内はキャッシュが有効
+  - `ansible.builtin.apt`タスクに`cache_valid_time`を追加し、`update_cache: true`は維持（判定不能時は安全側で更新）
+  - 対象: kiosk/serverのセキュリティ系パッケージ（ClamAV/rkhunter/ufw/fail2ban）
+  - 効果: 同一デプロイ内で最初の`apt update`以降はキャッシュが有効になり、apt関連タスクが若干短縮（例: `server : Install security packages` 4.51s → 3.46s）
+  - 詳細は [KB-234](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照
 
 **重要（2026-02-06更新）**:
 - **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します
