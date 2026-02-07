@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-02-07）
 
-- **✅ 全並行デプロイ実機検証完了（メンテナンスフラグタイミング問題の発見）**: 全台対象（Pi5 + Pi4 kiosk + Pi3 signage）での並行デプロイを実機検証。**結果**: 成功（exit=0）、所要時間14分50秒。Pi4完了（約3分31秒）後も、Pi3完了（約11分19秒）までメンテナンス画面が表示され続ける問題を発見。**原因**: メンテナンスフラグのクリアが最後に1回だけ実行される仕様。**影響**: Pi4のユーザービリティが低下（Pi3はサイネージ用途のため、長時間見れなくても支障はない）。**改善案**: Pi4のデプロイ完了時に即座にメンテナンスフラグを解除し、Pi3のデプロイは非同期で継続。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
+- **✅ 全並行デプロイ実機検証完了（メンテナンスフラグ早期解除の実装/検証）**: 全台対象（Pi5 + Pi4 kiosk + Pi3 signage）での並行デプロイを実機検証。**結果**: 成功（exit=0）、所要時間13分03秒。**改善**: Pi5完了後、Pi4プレイ内でメンテナンスフラグが解除され、Pi3完了を待たずにPi4のメンテナンス表示が終了することを確認。**従来問題**: Pi4完了後もPi3完了までメンテナンス画面が表示され続けていた。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
 
 - **✅ Trivy cronスキップ + パッケージインストールスキップ最適化**: Trivyのcron再設定を抑制し、ClamAV/rkhunterの再インストールを回避する最適化を実装。**実装内容**: Trivyスクリプト配備に`register`を追加し、cron再設定は変更時のみ実行。ClamAV/rkhunterのインストール前に`dpkg-query`で存在確認し、既に入っていればスキップ。**効果**: カナリアでTrivy cronとClamAV/rkhunterインストールタスクが**skipping**になることを確認。所要時間2分54秒（前回3分13秒から約19秒短縮）。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
 
