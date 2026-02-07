@@ -14,10 +14,10 @@ UPDATE_SCRIPT="/usr/local/bin/signage-update.sh"
 STOP_SCRIPT="/usr/local/bin/signage-stop.sh"
 MAX_RETRIES=12  # 最大60秒待機（5秒×12回）
 
-# 画面の自動オフを無効化
-xset s off
-xset -dpms
-xset s noblank
+# 画面の自動オフを無効化（エラーが発生しても処理を続行）
+xset s off || echo "$(date): WARNING: xset s off failed, continuing..."
+xset -dpms || echo "$(date): WARNING: xset -dpms failed (DPMS extension may not be available), continuing..."
+xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 
 # 初回画像取得（存在しない場合は即時取得を試行）
 if [[ ! -s "${CURRENT_IMAGE}" ]]; then
