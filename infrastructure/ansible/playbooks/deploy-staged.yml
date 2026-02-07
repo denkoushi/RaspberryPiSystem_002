@@ -135,7 +135,7 @@
         content: |
           {
             "completed": true,
-            "completedAt": "{{ ansible_date_time.iso8601 }}",
+            "completedAt": "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}",
             "host": "{{ inventory_hostname }}"
           }
         dest: /opt/RaspberryPiSystem_002/config/server-deployment-completed.json
