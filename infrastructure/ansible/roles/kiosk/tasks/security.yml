@@ -10,6 +10,22 @@
     - "{{ clamav_kiosk_log_dir }}"
     - "{{ rkhunter_kiosk_log_dir }}"
 
+- name: Check if ClamAV packages are already installed (kiosk)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dpkg-query -W -f='${Status}\n' clamav clamav-freshclam 2>/dev/null | grep -q "install ok installed"
+  args:
+    executable: /bin/bash
+  register: clamav_kiosk_pkg_check
+  changed_when: false
+  failed_when: false
+  when: clamav_kiosk_enabled | default(false)
+
+- name: Determine if ClamAV install is needed (kiosk)
+  ansible.builtin.set_fact:
+    clamav_kiosk_not_installed: "{{ (clamav_kiosk_pkg_check.rc | default(1)) != 0 }}"
+  when: clamav_kiosk_enabled | default(false)
+
 - name: Install ClamAV on kiosk
   ansible.builtin.apt:
     name:
@@ -18,7 +34,9 @@
     state: present
     update_cache: true
     cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
-  when: clamav_kiosk_enabled | default(false)
+  when:
+    - clamav_kiosk_enabled | default(false)
+    - clamav_kiosk_not_installed | default(true)
 
 - name: Deploy kiosk ClamAV scan script
   ansible.builtin.template:
@@ -48,13 +66,31 @@
     - clamav_kiosk_enabled | default(false)
     - clamav_kiosk_script_deployed.changed | default(true)
 
+- name: Check if rkhunter is already installed (kiosk)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dpkg-query -W -f='${Status}\n' rkhunter 2>/dev/null | grep -q "install ok installed"
+  args:
+    executable: /bin/bash
+  register: rkhunter_kiosk_pkg_check
+  changed_when: false
+  failed_when: false
+  when: rkhunter_kiosk_enabled | default(false)
+
+- name: Determine if rkhunter install is needed (kiosk)
+  ansible.builtin.set_fact:
+    rkhunter_kiosk_not_installed: "{{ (rkhunter_kiosk_pkg_check.rc | default(1)) != 0 }}"
+  when: rkhunter_kiosk_enabled | default(false)
+
 - name: Install rkhunter on kiosk
   ansible.builtin.apt:
     name: rkhunter
     state: present
     update_cache: true
     cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
-  when: rkhunter_kiosk_enabled | default(false)
+  when:
+    - rkhunter_kiosk_enabled | default(false)
+    - rkhunter_kiosk_not_installed | default(true)
 
 - name: Deploy kiosk rkhunter scan script
   ansible.builtin.template:
