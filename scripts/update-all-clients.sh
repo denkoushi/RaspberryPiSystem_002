@@ -872,7 +872,9 @@ PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
 LIMIT_HOSTS="${LIMIT_HOSTS}"
 UNIT_NAME="${UNIT_NAME}"
 RUNNER="${RUNNER}"
-PROFILE_MODE="${PROFILE_MODE}"
+# NOTE: This script is executed on Pi5 with `set -u`.
+# PROFILE_MODE must be passed from the caller; default to 0 for safety.
+PROFILE_MODE="${PROFILE_MODE:-0}"
 
 mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
@@ -1129,7 +1131,7 @@ start_remote_detached() {
 
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Detach run started: ${run_id}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
@@ -1159,7 +1161,7 @@ start_remote_job() {
 
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Job run started: ${run_id}"
   echo "[INFO] Unit: ${UNIT_NAME}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
