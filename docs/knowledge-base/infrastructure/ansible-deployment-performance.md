@@ -103,6 +103,33 @@ update-frequency: high
 - `ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer` を使い、「何が何秒」かをログで確定する
 - カナリア（`--limit "server:kiosk_canary"`）で1回だけ計測し、支配的なボトルネックを特定してから全体へ広げる
 
+#### 計測結果（profile_tasks/timer）
+
+**実行**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: `server:kiosk_canary`（Pi5 + Pi4 1台）
+- **runId**: `20260207-173545-16604`
+- **結果**: **success（exit=0）**
+- **所要時間**: **6分34秒**
+
+**TASKS RECAP（上位）**:
+- `server : Rebuild/Restart docker compose services` **181.23s**
+- `server : Install security packages` **13.70s**
+- `kiosk : Install ClamAV on kiosk` **12.86s**
+- `kiosk : Install rkhunter on kiosk` **5.48s**
+- `common : Check systemd service files to back up` **4.28s**
+- `server : Run prisma migrate deploy` **4.03s**
+- `Verify required signage role template files exist` **4.03s**
+
+**示唆（次に削るべき“主犯”）**:
+- **Docker composeの`--build`が支配的**（約3分）。変更がドキュメント/Ansibleのみの時にまで毎回ビルドしていると、Pi4が増えた際の全体時間が伸びる。
+- 次点は **セキュリティ系（ClamAV/rkhunter/apt系）**。`update_cache`の頻度・必要性の見直し（例: `cache_valid_time`）で短縮余地がある。
+
+**運用メモ（今回つまずいた点）**:
+- `100.x`（Tailscale）宛のSSHは、Mac側のTailscaleが停止しているとタイムアウトする（デプロイ前に接続状態を確認する）。
+- 事前疎通チェックは、Pi5がブランチ更新する前のinventoryを参照するため、**新規追加したgroup（例: `kiosk_canary`）が見えない警告**が出得る（デプロイ本体は更新後inventoryで実行されるため致命ではない）。
+
 **運用（推奨コマンド例）**:
 - カナリア: `--limit "server:kiosk_canary"`
 - ロールアウト: `--limit "server:kiosk:!kiosk_canary"`
