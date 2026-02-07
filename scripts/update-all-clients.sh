@@ -1089,9 +1089,13 @@ max_attempts=3
 while [ ${attempt} -le ${max_attempts} ]; do
   echo "[INFO] Running ansible-playbook (attempt ${attempt}/${max_attempts})"
   if [ -n "${LIMIT_HOSTS}" ]; then
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" \
+      -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" \
+      -e "server_docker_build_needed=${FORCE_DOCKER_REBUILD}" || true
   else
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" \
+      -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" \
+      -e "server_docker_build_needed=${FORCE_DOCKER_REBUILD}" || true
   fi
   generate_summary "${REMOTE_RUN_LOG}" "${summary_file}"
   retry_hosts=$(get_retry_hosts_if_unreachable_only "${summary_file}")
