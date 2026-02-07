@@ -169,10 +169,32 @@ update-frequency: high
 - `server : Run prisma migrate deploy` **2.85s**
 - `server : Install rkhunter` **2.84s**
 
+**改善後（cronスキップ適用後の再計測）**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: `server:kiosk_canary`（Pi5 + Pi4 1台）
+- **runId**: `20260207-200055-30275`
+- **結果**: **success（exit=0）**
+- **所要時間**: **3分13秒**
+
+**TASKS RECAP（上位）**:
+- `kiosk : Install ClamAV on kiosk` **5.78s**
+- `kiosk : Install rkhunter on kiosk` **5.78s**
+- `server : Install security packages` **5.42s**
+- `common : Check systemd service files to back up` **4.35s**
+- `Verify required signage role template files exist` **3.97s**
+
+**cronスキップ確認**:
+- `server : Schedule ClamAV scan cron` → **skipping**
+- `server : Schedule rkhunter scan cron` → **skipping**
+- `kiosk : Schedule kiosk ClamAV scan` → **skipping**
+- `kiosk : Schedule kiosk rkhunter scan` → **skipping**
+
 **Before / After**:
 - **6分34秒 → 3分11秒（約3分23秒短縮）**（Docker build最適化）
 - `server : Rebuild/Restart docker compose services` が **TASKS RECAPから消失**（実行スキップ）
 - **apt cache最適化**: `cache_valid_time`適用により、同一デプロイ内の重複`apt update`が抑制され、apt関連タスクが若干短縮（例: `server : Install security packages` 4.51s → 3.46s）
+ - **cronスキップ**: スクリプト未変更時はcron再設定をスキップ（ログでskippingを確認）
 
 **示唆（次に削るべき“主犯”）**:
 - **Docker composeの`--build`が支配的**（約3分）。変更がドキュメント/Ansibleのみの時にまで毎回ビルドしていると、Pi4が増えた際の全体時間が伸びる。
@@ -203,6 +225,17 @@ update-frequency: high
   - `cache_valid_time`により、同一デプロイ内の重複`apt update`を抑制できる
   - `update_cache: true`を維持することで、判定不能時も安全側で更新される
   - インストール自体の時間は残るため、次の短縮は「インストール頻度」「対象パッケージの見直し」が焦点
+
+**cronスキップ最適化（スクリプト変更検知）**:
+- **実装日**: 2026-02-07
+- **目的**: スクリプト未変更時のcron再設定をスキップし、無駄なタスク実行を削減
+- **実装内容**:
+  - `ansible.builtin.template` に `register` を追加
+  - `ansible.builtin.cron` に `when: <register>.changed | default(true)` を追加
+  - 対象タスク: `kiosk/security.yml`（ClamAV/rkhunter）、`server/malware.yml`（ClamAV/rkhunter）
+- **効果**:
+  - 変更なしの再デプロイでcron再設定が **skipping** になることを確認
+  - 体感短縮は小さいが、ログノイズと冗長実行が減る
 
 **運用メモ（今回つまずいた点）**:
 - `100.x`（Tailscale）宛のSSHは、Mac側のTailscaleが停止しているとタイムアウトする（デプロイ前に接続状態を確認する）。
