@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-07）
+
+- **🔄 Ansibleデプロイ性能の調査（段階展開: カナリア→ロールアウト / Pi4並行・Pi3単独 / 重複タスク排除）**: Pi4が将来20台規模に増える前提で、デプロイを「1台カナリア→成功確認→全台」へ移行できるように構造を整備しつつ、遅さの原因（逐次実行固定、重複タスク、Tailscale再インストール、実態と合わないpnpmタスク、計測欠如）を調査・暫定対策を実施。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
+
 ### 🆕 最新アップデート（2026-02-06）
 
 - **✅ サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト）**: サイネージの生産スケジュール進捗表示で、未完部品名の表示が制御されておらず、右端で切れたり、10件以上あるのに3つしか表示されなかったり、表示順序が一貫していなかった問題を解決。**実装内容**: データソース側で未完部品名を正規化（trim、重複除去、部品名昇順ソート）し、`metadata`に構造化データ（`incompletePartsBySeiban`、`incompletePartsTotalBySeiban`）を追加。レンダラー側で利用可能な高さに基づいて動的に行数を計算し、`maxIncompletePartsPerCard`設定に従って表示件数を制御。共通ユーティリティ（`_layout/rect.ts`、`_text/text-fit.ts`）を追加してテキストフィッティングロジックを分離。**学んだこと**: データソース側とレンダラー側の責務を分離することで、表示ロジックの柔軟性が向上する。構造化データ（配列）を提供することで、レンダラー側の表示制御が容易になる。後方互換性を維持しながら、新しい機能を追加できる（`metadata`と`rows.incompleteParts`の併用）。詳細は [knowledge-base/infrastructure/signage.md#kb-232](./knowledge-base/infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト) / [guides/production-schedule-signage.md](./guides/production-schedule-signage.md) を参照。

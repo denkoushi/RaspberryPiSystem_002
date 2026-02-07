@@ -89,12 +89,17 @@ ATTACH_RUN_ID=""
 STATUS_RUN_ID=""
 PRINT_PLAN=0
 RUN_ID=""
+PROFILE_MODE=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --limit)
       LIMIT_HOSTS="$2"
       shift 2
+      ;;
+    --profile)
+      PROFILE_MODE=1
+      shift
       ;;
     --detach)
       DETACH_MODE=1
@@ -138,9 +143,9 @@ done
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] --foreground
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--job] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] --foreground
   ./scripts/update-all-clients.sh --attach <run_id>
   ./scripts/update-all-clients.sh --status <run_id>
   ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
@@ -154,6 +159,9 @@ Examples:
 
   # Pi3を除外してデプロイ
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
+
+  # 計測（profile_tasks/timer）を有効化してデプロイ
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --profile
 
   # デタッチ実行（Pi5側で継続実行）
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
@@ -864,11 +872,15 @@ PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
 LIMIT_HOSTS="${LIMIT_HOSTS}"
 UNIT_NAME="${UNIT_NAME}"
 RUNNER="${RUNNER}"
+PROFILE_MODE="${PROFILE_MODE}"
 
 mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 export ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
+if [[ "${PROFILE_MODE}" = "1" ]]; then
+  export ANSIBLE_CALLBACKS_ENABLED="profile_tasks,timer"
+fi
 FORCE_DOCKER_REBUILD="false"
 if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   if ! git -C /opt/RaspberryPiSystem_002 diff --quiet \
@@ -1164,7 +1176,11 @@ run_locally() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ANSIBLE_ROLES_PATH="${PROJECT_ROOT}/infrastructure/ansible/roles" ANSIBLE_REPO_VERSION="${REPO_VERSION}" ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  local profile_env=""
+  if [[ "${PROFILE_MODE}" = "1" ]]; then
+    profile_env="ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer"
+  fi
+  ANSIBLE_ROLES_PATH="${PROJECT_ROOT}/infrastructure/ansible/roles" ANSIBLE_REPO_VERSION="${REPO_VERSION}" ${profile_env} ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "local"
@@ -1188,7 +1204,11 @@ run_remotely() {
   if [[ -n "${limit_hosts}" ]]; then
     limit_arg="--limit ${limit_hosts}"
   fi
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}" | tee "${log_file}" || exit_code=$?
+  local profile_env=""
+  if [[ "${PROFILE_MODE}" = "1" ]]; then
+    profile_env="ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer"
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ${profile_env} ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}" | tee "${log_file}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${log_file}" "${summary_file}"
   append_history "${summary_file}" "${log_file}" "${exit_code}" "update" "${duration}" "${REMOTE_HOST}"
@@ -1257,11 +1277,16 @@ PY
 }
 
 run_health_check_locally() {
+  local limit_hosts="${1:-}"
   cd "${PROJECT_ROOT}"
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ansible-playbook -i "${INVENTORY_PATH}" "${HEALTH_PLAYBOOK_PATH}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  local limit_arg=""
+  if [[ -n "${limit_hosts}" ]]; then
+    limit_arg="--limit ${limit_hosts}"
+  fi
+  ansible-playbook -i "${INVENTORY_PATH}" "${HEALTH_PLAYBOOK_PATH}" ${limit_arg} | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "local"
@@ -1269,6 +1294,7 @@ run_health_check_locally() {
 }
 
 run_health_check_remotely() {
+  local limit_hosts="${1:-}"
   local exit_code=0
   local start_time
   start_time=$(date +%s)
@@ -1276,7 +1302,11 @@ run_health_check_remotely() {
   local inventory_basename=$(basename "${INVENTORY_PATH}")
   local health_playbook_basename=$(basename "${HEALTH_PLAYBOOK_PATH}")
   local health_playbook_relative="playbooks/${health_playbook_basename}"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${inventory_basename} ${health_playbook_relative}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  local limit_arg=""
+  if [[ -n "${limit_hosts}" ]]; then
+    limit_arg="--limit ${limit_hosts}"
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${inventory_basename} ${health_playbook_relative} ${limit_arg}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "${REMOTE_HOST}"
@@ -1330,7 +1360,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   fi
 
   echo "[INFO] Running post-deploy health check on ${REMOTE_HOST}"
-  if ! run_health_check_remotely; then
+  if ! run_health_check_remotely "${LIMIT_HOSTS}"; then
     send_alert "ansible-health-check-failed" "Ansibleヘルスチェックが失敗しました" "ログファイル: ${HEALTH_LOG_FILE}"
     exit_with_error 2 "Post-deploy health check failed. Check ${HEALTH_LOG_FILE} for details."
   fi
@@ -1350,7 +1380,7 @@ else
   fi
 
   echo "[INFO] Running post-deploy health check locally"
-  if ! run_health_check_locally; then
+  if ! run_health_check_locally "${LIMIT_HOSTS}"; then
     send_alert "ansible-health-check-failed" "Ansibleヘルスチェックが失敗しました" "ログファイル: ${HEALTH_LOG_FILE}"
     exit_with_error 2 "Post-deploy health check failed. Check ${HEALTH_LOG_FILE} for details."
   fi

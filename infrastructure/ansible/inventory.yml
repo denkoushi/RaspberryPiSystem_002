@@ -44,74 +44,89 @@ all:
           status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi5-server') }}"
           status_agent_api_base_url: "{{ api_base_url }}"
     clients:
-      hosts:
-        raspberrypi4:
-          ansible_host: "{{ kiosk_ip }}"
-          ansible_user: tools03
-          tailscale_enabled: true
-          ansible_command_timeout: 600
-          status_agent_client_id: raspberrypi4-kiosk1
-          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
-          status_agent_location: "ラズパイ4 - キオスク1"
-          kiosk_url: "{{ kiosk_full_url }}"
-          # kiosk-browser.serviceを管理対象にする
-          manage_kiosk_browser: true
-          # このホストで再起動するサービスリスト
-          services_to_restart:
-            - kiosk-browser.service
-            - status-agent.service
-            - status-agent.timer
-          sudo_nopasswd_commands:
-            - /usr/bin/systemctl start kiosk-browser.service
-            - /usr/bin/systemctl stop kiosk-browser.service
-            - /usr/bin/systemctl restart kiosk-browser.service
-            - /usr/bin/systemctl reboot
-            - /usr/bin/systemctl poweroff
-            - /usr/bin/systemctl start status-agent.service
-            - /usr/bin/systemctl stop status-agent.service
-            - /usr/bin/systemctl restart status-agent.service
-            - /usr/bin/systemctl start status-agent.timer
-            - /usr/bin/systemctl stop status-agent.timer
-            - /usr/bin/systemctl restart status-agent.timer
-          # NFCエージェント環境変数
-          nfc_agent_api_base_url: "{{ api_base_url }}"
-          nfc_agent_client_id: "raspberrypi4-kiosk1"
-          nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
-        raspberrypi3:
-          ansible_host: "{{ signage_ip }}"
-          ansible_user: signageras3
-          tailscale_enabled: true
-          ansible_command_timeout: 1800
-          # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
-          device_type: "pi3"
-          status_agent_client_id: raspberrypi3-signage1
-          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
-          status_agent_location: "ラズパイ3 - サイネージ1"
-          signage_server_url: "{{ server_base_url }}"
-          signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
-          # signage-lite.serviceを管理対象にする
-          manage_signage_lite: true
-          # このホストで再起動するサービスリスト
-          services_to_restart:
-            - signage-lite.service
-            - signage-lite-update.timer
-            - status-agent.service
-            - status-agent.timer
-          sudo_nopasswd_commands:
-            - /usr/bin/systemctl start signage-lite.service
-            - /usr/bin/systemctl stop signage-lite.service
-            - /usr/bin/systemctl restart signage-lite.service
-            - /usr/bin/systemctl start signage-lite-update.timer
-            - /usr/bin/systemctl stop signage-lite-update.timer
-            - /usr/bin/systemctl restart signage-lite-update.timer
-            - /usr/bin/systemctl start status-agent.service
-            - /usr/bin/systemctl stop status-agent.service
-            - /usr/bin/systemctl restart status-agent.service
-            - /usr/bin/systemctl start status-agent.timer
-            - /usr/bin/systemctl stop status-agent.timer
-            - /usr/bin/systemctl restart status-agent.timer
+      # clientsは子グループ（kiosk/signage）に分割して管理する。
+      # 目的: 段階展開（カナリア→全台）と、Pi4並行 / Pi3単独運用を安全に実現する。
+      children:
+        kiosk:
+          hosts:
+            raspberrypi4:
+              ansible_host: "{{ kiosk_ip }}"
+              ansible_user: tools03
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspberrypi4-kiosk1
+              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
+              status_agent_location: "ラズパイ4 - キオスク1"
+              kiosk_url: "{{ kiosk_full_url }}"
+              # kiosk-browser.serviceを管理対象にする
+              manage_kiosk_browser: true
+              # このホストで再起動するサービスリスト
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              # NFCエージェント環境変数
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspberrypi4-kiosk1"
+              nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
+        signage:
+          hosts:
+            raspberrypi3:
+              ansible_host: "{{ signage_ip }}"
+              ansible_user: signageras3
+              tailscale_enabled: true
+              ansible_command_timeout: 1800
+              # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
+              device_type: "pi3"
+              status_agent_client_id: raspberrypi3-signage1
+              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
+              status_agent_location: "ラズパイ3 - サイネージ1"
+              signage_server_url: "{{ server_base_url }}"
+              signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
+              # signage-lite.serviceを管理対象にする
+              manage_signage_lite: true
+              # このホストで再起動するサービスリスト
+              services_to_restart:
+                - signage-lite.service
+                - signage-lite-update.timer
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start signage-lite.service
+                - /usr/bin/systemctl stop signage-lite.service
+                - /usr/bin/systemctl restart signage-lite.service
+                - /usr/bin/systemctl start signage-lite-update.timer
+                - /usr/bin/systemctl stop signage-lite-update.timer
+                - /usr/bin/systemctl restart signage-lite-update.timer
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"
+
+    # 段階展開用グループ（初期は各1台）
+    # NOTE: 台数増加時はここを“カナリア1台”に固定し、ロールアウトで除外できるようにする。
+    kiosk_canary:
+      hosts:
+        raspberrypi4:
+    signage_canary:
+      hosts:
+        raspberrypi3:

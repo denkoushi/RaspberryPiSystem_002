@@ -1,0 +1,375 @@
+---
+# 段階展開（カナリア→ロールアウト）と、Pi4並行 / Pi3単独を両立するデプロイPlaybook。
+# - server → kiosk(Pi4) → signage(Pi3) の順で実行
+# - kioskは並行実行（forksに従う）
+# - signageは常に単独（serial: 1）
+#
+# 重要: 互換性事故を避けるため、各段階で server も limit に含める運用を推奨。
+
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi server
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
+    server_services_to_restart:
+      - docker
+  pre_tasks:
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
+
+    # Preflight: Check Ansible role structure before deployment (fail-fast on controller)
+    - name: Check if any client has manage_signage_lite enabled
+      ansible.builtin.set_fact:
+        has_signage_clients: "{{ groups.clients | default([]) | map('extract', hostvars) | selectattr('manage_signage_lite', 'defined') | selectattr('manage_signage_lite', 'equalto', true) | list | length > 0 }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Verify signage role templates directory exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/signage/templates"
+      register: signage_templates_dir
+      delegate_to: localhost
+      run_once: true
+      when: has_signage_clients | default(false)
+
+    - name: Fail if signage role templates directory is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: signage role templates directory not found at {{ playbook_dir }}/../roles/signage/templates.
+          This will cause deployment failure on Pi3. Please ensure all template files are in the correct location.
+          See KB-153 for details.
+      when:
+        - has_signage_clients | default(false)
+        - not signage_templates_dir.stat.exists | default(false)
+      delegate_to: localhost
+      run_once: true
+
+    - name: Verify required signage role template files exist
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/signage/templates/{{ item }}"
+      register: signage_template_files
+      delegate_to: localhost
+      run_once: true
+      loop:
+        - signage-lite.tmpfiles.conf.j2
+        - signage-update.sh.j2
+        - signage-display.sh.j2
+        - signage-stop.sh.j2
+        - signage-lite-watchdog.sh.j2
+        - signage-lite.service.j2
+        - signage-lite-update.service.j2
+        - signage-lite-update.timer.j2
+        - signage-lite-watchdog.service.j2
+        - signage-lite-watchdog.timer.j2
+        - signage-daily-reboot.service.j2
+        - signage-daily-reboot.timer.j2
+      when:
+        - has_signage_clients | default(false)
+        - signage_templates_dir.stat.exists | default(false)
+
+    - name: Fail if required signage role template files are missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL: Required signage role template file missing: {{ item.item }}.
+          This will cause deployment failure on Pi3. Please ensure all template files are in {{ playbook_dir }}/../roles/signage/templates/.
+          See KB-153 for details.
+      when:
+        - has_signage_clients | default(false)
+        - signage_templates_dir.stat.exists | default(false)
+        - not item.stat.exists | default(false)
+      loop: "{{ signage_template_files.results | default([]) }}"
+      delegate_to: localhost
+      run_once: true
+
+  tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
+    - name: Execute deployment with automatic rollback (server)
+      block:
+        - name: Apply server-specific deployment tasks
+          ansible.builtin.import_role:
+            name: server
+
+        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
+      rescue:
+        - name: Record deployment failure reason
+          ansible.builtin.set_fact:
+            deployment_failed: true
+            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
+
+        - name: Fail host after rollback (server)
+          ansible.builtin.fail:
+            msg: >
+              Deployment failed on {{ inventory_hostname }}.
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+
+
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi 4 kiosks (parallel)
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  order: inventory
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
+  pre_tasks:
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
+
+  tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Run signage preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-signage.yml"
+      when:
+        - manage_signage_lite | default(false) | bool
+
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
+    - name: Execute deployment with automatic rollback (kiosk)
+      block:
+        - name: Apply client-specific deployment tasks
+          ansible.builtin.import_role:
+            name: client
+
+        - name: Apply kiosk-specific deployment tasks
+          ansible.builtin.import_role:
+            name: kiosk
+          when: manage_kiosk_browser | default(false) | bool
+
+        - name: Apply signage-specific deployment tasks (if enabled)
+          ansible.builtin.import_role:
+            name: signage
+          when: manage_signage_lite | default(false) | bool
+
+        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
+      rescue:
+        - name: Record deployment failure reason
+          ansible.builtin.set_fact:
+            deployment_failed: true
+            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
+
+        - name: Run rollback tasks on clients
+          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
+
+        - name: Fail host after rollback (kiosk)
+          ansible.builtin.fail:
+            msg: >
+              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+
+
+- name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi 3 signage (serial)
+  hosts: signage
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
+  pre_tasks:
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
+
+  tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Run signage preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-signage.yml"
+      when:
+        - manage_signage_lite | default(false) | bool
+
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
+    - name: Execute deployment with automatic rollback (signage)
+      block:
+        - name: Apply client-specific deployment tasks
+          ansible.builtin.import_role:
+            name: client
+
+        - name: Apply signage-specific deployment tasks
+          ansible.builtin.import_role:
+            name: signage
+          when: manage_signage_lite | default(false) | bool
+
+        - name: Apply kiosk-specific deployment tasks (if enabled)
+          ansible.builtin.import_role:
+            name: kiosk
+          when: manage_kiosk_browser | default(false) | bool
+
+        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
+      rescue:
+        - name: Record deployment failure reason
+          ansible.builtin.set_fact:
+            deployment_failed: true
+            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
+
+        - name: Run rollback tasks on clients
+          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
+
+        - name: Fail host after rollback (signage)
+          ansible.builtin.fail:
+            msg: >
+              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted
+
+  post_tasks:
+    # Pi3はデプロイ中にlightdmを停止してメモリを確保しているため、
+    # デプロイ完了後にlightdm + signage-liteを再開してGUIを復旧する
+    - name: Start lightdm after deployment to restore GUI
+      ansible.builtin.systemd:
+        name: lightdm
+        state: started
+      when:
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Wait for lightdm to become active
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if systemctl is-active lightdm.service >/dev/null 2>&1; then
+            echo "lightdm.service is active"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "lightdm.service did not become active within 60 seconds"
+        exit 1
+      register: lightdm_check
+      failed_when: false
+      changed_when: false
+      when:
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Start signage services after lightdm restore
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - signage-lite.service
+        - signage-lite-update.timer
+        - signage-lite-watchdog.timer
+        - signage-daily-reboot.timer
+      when:
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Wait for signage-lite service to become active after restore
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if systemctl is-active signage-lite.service >/dev/null 2>&1; then
+            echo "signage-lite.service is active"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "signage-lite.service did not become active within 60 seconds"
+        exit 1
+      register: signage_check
+      failed_when: false
+      changed_when: false
+      when:
+        - manage_signage_lite | default(false) | bool
+        - lightdm_stopped is defined
+        - lightdm_stopped is changed
+
+    - name: Capture lightdm status after restore attempt
+      ansible.builtin.shell: systemctl status lightdm --no-pager
+      register: lightdm_status
+      changed_when: false
+      failed_when: false
+      when:
+        - lightdm_check is defined
+        - lightdm_check.rc is defined
+        - lightdm_check.rc != 0
+
+    - name: Capture signage-lite status after restore attempt
+      ansible.builtin.shell: systemctl status signage-lite --no-pager
+      register: signage_status
+      changed_when: false
+      failed_when: false
+      when:
+        - signage_check is defined
+        - signage_check.rc is defined
+        - signage_check.rc != 0
+
+    - name: Report signage service status after restore
+      ansible.builtin.debug:
+        msg:
+          - "{{ inventory_hostname }}: {{ signage_check.stdout | default('signage check skipped') }}"
+          - "{{ lightdm_status.stdout | default('lightdm status skipped') }}"
+          - "{{ signage_status.stdout | default('signage status skipped') }}"
+      when:
+        - signage_check is defined
+

@@ -39,9 +39,16 @@
         seconds: 3
       when: signage_service_stopped.changed | default(false)
 
-- name: Install production dependencies (optional)
+# NOTE:
+# - Pi3/Pi4のsignage-liteは feh + shell scripts で動作するため、pnpm依存のインストールは不要。
+# - 過去互換のため“オプション”として残すが、デフォルトでは実行しない（安全性/正確性のため）。
+- name: Install signage-lite-client production dependencies (optional, disabled by default)
   ansible.builtin.shell: |
     set -euo pipefail
+    if ! command -v pnpm >/dev/null 2>&1; then
+      echo "[WARN] pnpm not found. Skipping dependency install."
+      exit 0
+    fi
     cd {{ repo_path }} && pnpm install --filter signage-lite-client --prod
   args:
     executable: /bin/bash
@@ -50,6 +57,7 @@
   failed_when: false
   become: false
   become_user: "{{ ansible_user }}"
+  when: signage_lite_client_deps_enabled | default(false) | bool
 
 - name: Install tmpfiles configuration for /run/signage
   ansible.builtin.template:

@@ -437,6 +437,25 @@ curl http://localhost:8080/api/system/health
   - デプロイ完了後、メンテナンス画面は自動的に消えます（最大5秒以内）
   - 詳細は [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
+**重要（2026-02-07更新）**:
+- **段階展開（カナリア→全台）**を推奨します（Pi4が増えた場合の安全策）
+  - inventoryに `kiosk` / `signage` / `kiosk_canary` / `signage_canary` グループを用意しています
+  - **カナリア成功後はPi4全台を並行デプロイ**、**Pi3は常時単独**の運用を想定しています
+  - `scripts/update-all-clients.sh` のデプロイ後ヘルスチェックは `--limit` に追従します（カナリア時に全台チェックで時間が伸びるのを防止）
+
+例（推奨）:
+
+```bash
+# Stage 0: カナリア（server + kiosk_canary）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk_canary"
+
+# Stage 1: ロールアウト（server + kiosk 全台、カナリア除外）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk:!kiosk_canary"
+
+# Pi3（signage）は常時単独で実行（server + signage）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:signage"
+```
+
 **重要（2026-02-06更新）**:
 - **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します
   - `POST http://localhost:7071/api/agent/reboot`
@@ -503,7 +522,8 @@ curl http://localhost:7071/api/agent/status
 - **重要**: デプロイ全体が`failed=0`で`state: success`なら、主要目的（コード更新、サービス再起動、GUI/サイネージ復旧）は達成されています
 - サービス状態は`systemctl is-active`で直接確認してください（ログの`unreachable`だけでは判断しない）
   ```bash
-  ssh denkon5sd02@100.106.158.2 "ssh pi@100.106.158.3 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  # NOTE: Pi3のTailscale IPは変わることがあるため、到達先はPi5の`tailscale status`で確認してください
+  ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
   # 結果が "active active" なら正常動作中
   ```
 - 詳細は [KB-216](../knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照してください
@@ -608,6 +628,20 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 # 状態確認（run_idを指定）
 ./scripts/update-all-clients.sh --status 20260125-123456-4242
 ```
+
+#### デプロイの所要時間を計測する（profile_tasks/timer）
+
+「どのタスクが遅いか」を秒で確定したい場合は、`--profile` を付けて実行します。
+通常のデプロイ挙動は変えず、**出力にタスクごとの所要時間（上位）が追加**されます。
+
+```bash
+# 例: カナリア（server + kiosk_canary）を計測付きで実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk_canary" --profile
+```
+
+読み方（目安）:
+- `profile_tasks` の出力で **上位（遅い順）に並ぶタスク**が“時間の主犯”
+- 主犯が `apt update` / `docker build` / `git fetch` / `uri health check` / `tailscale` などのどれかを確定してから、最小変更で削減する
 
 **重要**: 
 - `scripts/update-all-clients.sh`はPi5も含めて更新します

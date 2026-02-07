@@ -11,13 +11,19 @@
     state: present
   when: curl_check.rc != 0
 
+- name: Check if tailscaled is already installed
+  ansible.builtin.command: tailscaled --version
+  register: tailscaled_version
+  failed_when: false
+  changed_when: false
+
 - name: Install Tailscale package
   ansible.builtin.shell: |
     set -euo pipefail
     curl -fsSL {{ tailscale_install_script }} | sh
   args:
     executable: /bin/bash
-    creates: /usr/sbin/tailscaled
+  when: tailscaled_version.rc != 0
 
 - name: Ensure tailscaled service is enabled and started
   ansible.builtin.service:
