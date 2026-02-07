@@ -17,6 +17,7 @@
       - clamav-freshclam
     state: present
     update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
   when: clamav_kiosk_enabled | default(false)
 
 - name: Deploy kiosk ClamAV scan script
@@ -49,6 +50,7 @@
     name: rkhunter
     state: present
     update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
   when: rkhunter_kiosk_enabled | default(false)
 
 - name: Deploy kiosk rkhunter scan script

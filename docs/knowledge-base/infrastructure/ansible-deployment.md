@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 36件  
+**件数**: 37件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3398,5 +3398,64 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
 
 **解決状況**: ✅ **解決済み**（2026-02-06）
+
+---
+
+### [KB-235] Docker build最適化（変更ファイルに基づくbuild判定）
+
+**発生日**: 2026-02-07  
+**Status**: ✅ 解決済み（2026-02-07）
+
+**Context**:
+- カナリア計測（runId `20260207-173545-16604`）で `server : Rebuild/Restart docker compose services` が **181.23秒**（最大ボトルネック）を占めていた
+- 変更が `docs/` や `infrastructure/ansible/` のみでも、`repo_changed` が true になり毎回Docker buildが実行されていた
+- Pi4が20台規模に増えた際、不要なbuildが累積してデプロイ時間が伸びる懸念があった
+
+**Symptoms**:
+- カナリア（Pi5+Pi4）で6分34秒かかる（Docker build 181秒が支配的）
+- `repo_changed` は「Git HEADが変わったか」のみを判定し、変更内容を考慮していない
+- `scripts/update-all-clients.sh` の `FORCE_DOCKER_REBUILD` も同様にHEAD差分のみで判定
+
+**Investigation**:
+- **CONFIRMED**: `server : Rebuild/Restart docker compose services` が181.23秒で最大ボトルネック
+- **CONFIRMED**: `repo_changed` は変更ファイルの内容を考慮せず、HEAD差分のみで判定
+- **CONFIRMED**: `scripts/update-all-clients.sh` も `prev_head != new_head` で `FORCE_DOCKER_REBUILD=true` を設定
+
+**Root cause**:
+- Docker buildが必要な変更（`apps/api/**`, `apps/web/**`, `infrastructure/docker/**` 等）と不要な変更（`docs/**`, `infrastructure/ansible/**` 等）を区別していなかった
+- `repo_changed` だけで判定していたため、ドキュメント更新でも毎回buildが実行されていた
+
+**Fix**:
+- ✅ **解決済み（2026-02-07）**:
+  1. **common roleで差分ファイル一覧とbuild判定を追加**: `git diff --name-only` で変更ファイルを取得し、Docker buildが必要なパターン（`apps/api/**`, `apps/web/**`, `packages/**`, `pnpm-lock.yaml`, `infrastructure/docker/**`, `apps/api/prisma/**`）にマッチするか判定
+  2. **server roleの実行条件を変更**: `when: (force_docker_rebuild|bool) or (server_docker_build_needed | default(repo_changed)|bool)` に変更し、`server_docker_build_needed` を優先（安全フォールバックとして `repo_changed` も残す）
+  3. **update-all-clients.shで差分ログと判定を追加**: `git diff --name-only` で変更ファイルを取得し、Docker buildが必要か判定してログ出力。`server_docker_build_needed` を extra var でAnsibleに渡す（二重安全）
+
+**実機検証結果（2026-02-07）**:
+- ✅ **改善後カナリア（runId `20260207-183219-7788`）**: 3分11秒で完了（**6分34秒 → 3分11秒、約3分23秒短縮**）
+- ✅ **Docker buildスキップ**: `server : Rebuild/Restart docker compose services` がTASKS RECAPから消失（実行されず）
+- ✅ **判定ログ**: `[INFO] Docker rebuild: false (no docker-related changes)` が正しく出力
+- ✅ **差分ファイル**: `scripts/update-all-clients.sh` のみの変更で、buildがスキップされたことを確認
+
+**学んだこと**:
+- 変更ファイルの内容を考慮したbuild判定により、不要なbuildをスキップできる
+- `server_docker_build_needed` を extra var で渡すことで、common roleの計算結果とスクリプト側の判定を一致させられる（二重安全）
+- 安全フォールバック（`default(repo_changed)`）により、判定ロジックに誤りがあってもbuild実行側に倒せる
+
+**再発防止**:
+- 変更ファイルに基づくbuild判定を維持し、Docker buildが必要なパターンは保守的に判定する
+- 判定ロジックに誤りがあっても、安全フォールバックでbuild実行側に倒す設計を維持する
+- カナリア計測で定期的にボトルネックを確認し、不要なbuildが実行されていないか検証する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/common/tasks/main.yml`: 差分ファイル一覧と `server_docker_build_needed` の算出
+- `infrastructure/ansible/roles/server/tasks/main.yml`: Docker build実行条件の変更
+- `scripts/update-all-clients.sh`: 差分ログと `server_docker_build_needed` の extra var 渡し
+
+**関連KB**:
+- [KB-234](./ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策): デプロイ性能の調査と暫定対策
+- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+
+**解決状況**: ✅ **解決済み**（2026-02-07）
 
 ---

@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-02-01（NodeSourceリポジトリGPG署名キー問題の解決、aptリポジトリ確認をデプロイ前チェックリストに追加）
+最終更新: 2026-02-07（Docker build最適化の実装、段階展開の推奨手順追加、profileオプションの説明追加）
 
 ## 概要
 
@@ -455,6 +455,14 @@ curl http://localhost:8080/api/system/health
 # Pi3（signage）は常時単独で実行（server + signage）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:signage"
 ```
+
+**重要（2026-02-07更新）**:
+- **Docker build最適化**: 変更ファイルに基づいてDocker buildの必要性を判定し、不要なbuildをスキップします
+  - **buildが必要な変更**: `apps/api/**`, `apps/web/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `infrastructure/docker/**`, `apps/api/prisma/**`
+  - **build不要な変更**: `docs/**`, `infrastructure/ansible/**`（`infrastructure/docker/**` を除く）, `scripts/**`（Dockerに影響しない場合）
+  - 判定ロジックは `scripts/update-all-clients.sh` と `infrastructure/ansible/roles/common/tasks/main.yml` の両方で実装（二重安全）
+  - 判定できない場合は安全側でbuild実行（初回clone/HEAD不明など）
+  - 効果: カナリアで **6分34秒 → 3分11秒（約3分23秒短縮）**を確認（[KB-235](../knowledge-base/infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定)参照）
 
 **重要（2026-02-06更新）**:
 - **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します

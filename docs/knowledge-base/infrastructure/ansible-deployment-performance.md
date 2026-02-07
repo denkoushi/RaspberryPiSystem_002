@@ -173,5 +173,6 @@ update-frequency: high
 - Script
   - `scripts/update-all-clients.sh`
 - Related KB
+  - [KB-235: Docker build最適化（変更ファイルに基づくbuild判定）](./ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定)
   - `docs/knowledge-base/infrastructure/ansible-deployment.md`
 

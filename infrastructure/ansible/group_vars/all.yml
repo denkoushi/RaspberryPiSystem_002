@@ -78,6 +78,11 @@ fail2ban_http_maxretry: 15
 fail2ban_http_findtime: "15m"
 fail2ban_http_bantime: "1h"
 
+# apt cacheの再取得を抑制（同一デプロイ内の重複apt updateを削減）
+# - cache_valid_timeの単位は秒
+# - update_cache: trueは維持し、判定不能時は安全側で更新
+apt_cache_valid_time_seconds: 3600
+
 # 不要サービス停止（ポート閉塞）
 # VNCは残す運用だが、不要な常駐サービスは止めて攻撃面を減らす
 server_disable_unused_services: true
