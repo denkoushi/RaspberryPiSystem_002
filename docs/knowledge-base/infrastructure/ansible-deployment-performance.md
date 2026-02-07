@@ -122,9 +122,37 @@ update-frequency: high
 - `server : Run prisma migrate deploy` **4.03s**
 - `Verify required signage role template files exist` **4.03s**
 
+**改善後（docker build判定導入後の再計測）**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: `server:kiosk_canary`（Pi5 + Pi4 1台）
+- **runId**: `20260207-183219-7788`
+- **結果**: **success（exit=0）**
+- **所要時間**: **3分11秒**
+
+**TASKS RECAP（上位）**:
+- `kiosk : Install ClamAV on kiosk` **5.67s**
+- `kiosk : Install rkhunter on kiosk` **5.61s**
+- `server : Install security packages` **4.46s**
+- `common : Check systemd service files to back up` **4.30s**
+- `Verify required signage role template files exist` **4.01s**
+
+**Before / After**:
+- **6分34秒 → 3分11秒（約3分23秒短縮）**
+- `server : Rebuild/Restart docker compose services` が **TASKS RECAPから消失**（実行スキップ）
+
 **示唆（次に削るべき“主犯”）**:
 - **Docker composeの`--build`が支配的**（約3分）。変更がドキュメント/Ansibleのみの時にまで毎回ビルドしていると、Pi4が増えた際の全体時間が伸びる。
 - 次点は **セキュリティ系（ClamAV/rkhunter/apt系）**。`update_cache`の頻度・必要性の見直し（例: `cache_valid_time`）で短縮余地がある。
+
+**最終判断ルール（build必要判定）**:
+- 差分に以下が含まれる場合は **build必要**:
+  - `apps/api/**`, `apps/web/**`, `packages/**`
+  - `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`
+  - `infrastructure/docker/**`
+  - `apps/api/prisma/**`
+- 差分が取得できない場合は **安全側でbuild実行**（初回clone/HEAD不明など）
+- 判定は `scripts/update-all-clients.sh` がログ出力し、`server_docker_build_needed` としてAnsibleへ渡す
 
 **運用メモ（今回つまずいた点）**:
 - `100.x`（Tailscale）宛のSSHは、Mac側のTailscaleが停止しているとタイムアウトする（デプロイ前に接続状態を確認する）。
