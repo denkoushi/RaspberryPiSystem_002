@@ -719,6 +719,20 @@ clear_pi4_maintenance_flag() {
   fi
 }
 
+clear_pi4_maintenance_flag_if_needed() {
+  if ! should_enable_kiosk_maintenance; then
+    clear_pi4_maintenance_flag
+  fi
+}
+
+clear_server_deployment_flag() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  echo "[INFO] Clearing server deployment completed flag on ${REMOTE_HOST}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"/opt/RaspberryPiSystem_002/config/server-deployment-completed.json\"" >/dev/null 2>&1 || true
+}
+
 remote_run_paths() {
   local run_id="$1"
   REMOTE_RUN_ID="${run_id}"
@@ -993,6 +1007,11 @@ clear_kiosk_maintenance_flag() {
   fi
 }
 
+clear_server_deployment_flag() {
+  echo "[INFO] Clearing server deployment completed flag"
+  rm -f "/opt/RaspberryPiSystem_002/config/server-deployment-completed.json" >/dev/null 2>&1 || true
+}
+
 write_status() {
   local state="$1"
   local exit_code="${2:-}"
@@ -1073,12 +1092,15 @@ PY
 cleanup() {
   local exit_code=$?
   echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
-  clear_kiosk_maintenance_flag
+  if ! should_enable_kiosk_maintenance; then
+    clear_kiosk_maintenance_flag
+  fi
   rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 set_kiosk_maintenance_flag
+clear_server_deployment_flag
 write_status running
 echo "[INFO] Detach run started: ${RUN_ID}"
 echo "[INFO] Log: ${REMOTE_RUN_LOG}"
@@ -1349,9 +1371,10 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   check_network_mode
   acquire_remote_lock
   if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
-    trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
+    trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed' EXIT
   fi
   set_pi4_maintenance_flag
+  clear_server_deployment_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
   if [[ ${JOB_MODE} -eq 1 ]]; then
     RUN_ID="$(build_run_id)"

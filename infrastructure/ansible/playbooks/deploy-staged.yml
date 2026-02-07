@@ -129,6 +129,20 @@
         name: pcscd
         state: restarted
 
+  post_tasks:
+    - name: Mark server deployment as completed
+      ansible.builtin.copy:
+        content: |
+          {
+            "completed": true,
+            "completedAt": "{{ ansible_date_time.iso8601 }}",
+            "host": "{{ inventory_hostname }}"
+          }
+        dest: /opt/RaspberryPiSystem_002/config/server-deployment-completed.json
+        mode: "0644"
+      run_once: true
+      when: deployment_failed is not defined or not deployment_failed
+
 
 - name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi 4 kiosks (parallel)
   hosts: kiosk
@@ -203,6 +217,24 @@
       ansible.builtin.systemd:
         name: pcscd
         state: restarted
+
+  post_tasks:
+    - name: Check if server deployment is completed
+      ansible.builtin.stat:
+        path: /opt/RaspberryPiSystem_002/config/server-deployment-completed.json
+      delegate_to: "{{ groups['server'][0] }}"
+      register: server_deployment_flag
+      run_once: true
+
+    - name: Clear kiosk maintenance flag if server deployment completed
+      ansible.builtin.file:
+        path: /opt/RaspberryPiSystem_002/config/deploy-status.json
+        state: absent
+      delegate_to: "{{ groups['server'][0] }}"
+      run_once: true
+      when:
+        - server_deployment_flag.stat.exists | default(false)
+        - deployment_failed is not defined or not deployment_failed
 
 
 - name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi 3 signage (serial)

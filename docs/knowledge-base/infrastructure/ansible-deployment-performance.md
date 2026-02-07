@@ -272,6 +272,37 @@ update-frequency: high
   - ClamAV/rkhunterのインストールタスクが **skipping** になることを確認
   - 再インストールによる待ち時間を削減
 
+**全並行デプロイ実機検証（全台対象）**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: なし（全台対象: Pi5 + Pi4 kiosk + Pi3 signage）
+- **runId**: `20260207-205151-25035`
+- **結果**: **success（exit=0）**
+- **所要時間**: **14分50秒**
+- **開始時刻**: 20:52:28
+- **完了時刻**: 21:07:20
+
+**各デバイスのデプロイ状況**:
+- **Pi5サーバー**: 完了（ok=111, changed=22, failed=0）
+- **Pi4 kiosk**: 完了（ok=85, changed=8, failed=0）
+  - 完了時刻: 約20:56:01（開始から約3分31秒）
+- **Pi3 signage**: 完了（ok=111, changed=22, failed=0）
+  - 開始時刻: 20:56:01
+  - 完了時刻: 21:07:20（約11分19秒）
+
+**TASKS RECAP（上位）**:
+- `Stop and disable signage services and timers`: **115.37s**
+- `Start signage services after lightdm restore`: **49.20s**
+- `Start signage-lite service`: **36.32s**
+- `Check tailscaled service state`: **31.16s**
+- `common : Check systemd service files to back up`: **19.01s**
+
+**発見事項（メンテナンスフラグのタイミング問題）**:
+- **問題**: Pi4のデプロイ完了（20:56:01）後も、Pi3の完了（21:07:20）まで約11分19秒、メンテナンス画面が表示され続けていた
+- **原因**: メンテナンスフラグのクリアが最後に1回だけ実行される仕様（`Clearing kiosk maintenance flag`）
+- **影響**: Pi4のユーザービリティが低下（Pi3はサイネージ用途のため、長時間見れなくても支障はない）
+- **改善案**: Pi4のデプロイ完了時に即座にメンテナンスフラグを解除し、Pi3のデプロイは非同期で継続（Pi4の解除に影響しない）
+
 **運用メモ（今回つまずいた点）**:
 - `100.x`（Tailscale）宛のSSHは、Mac側のTailscaleが停止しているとタイムアウトする（デプロイ前に接続状態を確認する）。
 - 事前疎通チェックは、Pi5がブランチ更新する前のinventoryを参照するため、**新規追加したgroup（例: `kiosk_canary`）が見えない警告**が出得る（デプロイ本体は更新後inventoryで実行されるため致命ではない）。
