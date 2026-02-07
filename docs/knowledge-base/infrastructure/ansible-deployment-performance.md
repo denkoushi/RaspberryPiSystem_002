@@ -137,6 +137,21 @@ update-frequency: high
 - `common : Check systemd service files to back up` **4.30s**
 - `Verify required signage role template files exist` **4.01s**
 
+**改善後（apt cache_valid_time適用後の再計測）**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: `server:kiosk_canary`（Pi5 + Pi4 1台）
+- **runId**: `20260207-191713-14804`
+- **結果**: **success（exit=0）**
+- **所要時間**: **3分15秒**
+
+**TASKS RECAP（上位）**:
+- `kiosk : Install ClamAV on kiosk` **6.31s**
+- `kiosk : Install rkhunter on kiosk` **5.52s**
+- `server : Install security packages` **4.51s**
+- `server : Install ClamAV packages` **2.99s**
+- `server : Install rkhunter` **2.92s**
+
 **Before / After**:
 - **6分34秒 → 3分11秒（約3分23秒短縮）**
 - `server : Rebuild/Restart docker compose services` が **TASKS RECAPから消失**（実行スキップ）
@@ -144,6 +159,7 @@ update-frequency: high
 **示唆（次に削るべき“主犯”）**:
 - **Docker composeの`--build`が支配的**（約3分）。変更がドキュメント/Ansibleのみの時にまで毎回ビルドしていると、Pi4が増えた際の全体時間が伸びる。
 - 次点は **セキュリティ系（ClamAV/rkhunter/apt系）**。`update_cache`の頻度・必要性の見直し（例: `cache_valid_time`）で短縮余地がある。
+  - `cache_valid_time`適用後も、**インストール自体の時間**が上位に残るため、次の短縮は「インストール頻度」「対象パッケージの見直し」が焦点になる。
 
 **最終判断ルール（build必要判定）**:
 - 差分に以下が含まれる場合は **build必要**:
