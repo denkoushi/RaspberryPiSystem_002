@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 16件  
+**件数**: 17件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -1230,6 +1230,84 @@ const textX = x + textAreaX;
 - `docs/guides/production-schedule-signage.md`
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-06）
+
+---
+
+### [KB-236] Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ
+
+**発生日**: 2026-02-07
+
+**Context**:
+- Pi3の`signage-lite.service`が起動時に`xset: unable to open display ":0"`エラーで失敗し、自動再起動を繰り返す問題が発生
+- 最終的には正常起動するが、起動時に10-30秒の遅延が発生
+- デプロイ時にサービス再起動が失敗し、rollbackが実行された
+
+**Symptoms**:
+- `journalctl -u signage-lite.service`で`xset: unable to open display ":0"`エラーが確認される
+- サービスが`FAILED`状態になり、`RestartSec=10`により10秒後に自動再起動
+- デプロイ時のログで`systemctl show signage-lite.service --property=Result --value`が`exit-code`を返す
+- デプロイは失敗（`failed=1`）となり、rollbackが実行される
+
+**Investigation**:
+- **H1: `xset`コマンドが失敗している**
+  - 検証: `signage-display.sh`の18-20行目で`xset s off`, `xset -dpms`, `xset s noblank`を実行
+  - 結果: **CONFIRMED** - `set -euo pipefail`により、`xset`が失敗するとスクリプト全体が即座に終了
+- **H2: `ExecStartPre`でXサーバーの準備を待機しているが、タイミングによっては`xset`が失敗する**
+  - 検証: `signage-lite.service`の`ExecStartPre`で30秒間Xサーバーの準備を待機
+  - 結果: **CONFIRMED** - タイミングによっては`xset`が失敗することがある
+- **H3: デプロイ時のサービス再起動失敗は一時的なもの**
+  - 検証: デプロイ後、サービスが正常に起動していることを確認（`active (running)`, `Result=success`）
+  - 結果: **CONFIRMED** - デプロイ時の再起動失敗は一時的なもので、修正後のスクリプトはデプロイ済み
+
+**Root cause**:
+- `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了
+- `ExecStartPre`でXサーバーの準備を待機しているが、タイミングによっては`xset`が失敗することがある
+- デプロイ時のサービス再起動は、修正前のスクリプトが実行された可能性がある
+
+**Fix**:
+- `infrastructure/ansible/roles/signage/templates/signage-display.sh.j2`の18-20行目の`xset`コマンドに`|| true`を追加してエラーで終了しないように修正
+- `infrastructure/ansible/templates/signage-display.sh.j2`も同様に修正（重複ファイルの可能性）
+- エラーが発生した場合は警告ログを出力するが、処理は続行するように変更
+
+**修正前**:
+```bash
+# 画面の自動オフを無効化
+xset s off
+xset -dpms
+xset s noblank
+```
+
+**修正後**:
+```bash
+# 画面の自動オフを無効化（エラーが発生しても処理を続行）
+xset s off || echo "$(date): WARNING: xset s off failed, continuing..."
+xset -dpms || echo "$(date): WARNING: xset -dpms failed (DPMS extension may not be available), continuing..."
+xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
+```
+
+**Validation**:
+- ✅ CI成功（Run ID: `21780516145`, 12分0秒）
+- ✅ 修正後のスクリプトがデプロイ済み（Pi3上で確認）
+- ✅ サービスは現在正常動作中（`active (running)`, `Result=success`）
+- ⚠️ デプロイ時の再起動失敗は一時的なもの（修正後のスクリプトはデプロイ済み）
+
+**Prevention**:
+- `xset`コマンドは必須ではないため、エラーで終了しないようにする（`|| true`）
+- `ExecStartPre`でのXサーバー待機処理は維持（タイミング問題の緩和）
+- 既存の`pkill`コマンド（8-9行目）も同様に`|| true`でエラーハンドリングされているため、一貫性がある
+
+**学んだこと**:
+- `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする
+- デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある
+- Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/signage/templates/signage-display.sh.j2`
+- `infrastructure/ansible/templates/signage-display.sh.j2`
+- `infrastructure/ansible/templates/signage-lite.service.j2`
+- `docs/guides/deployment.md`
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-07）
 
 ---
 

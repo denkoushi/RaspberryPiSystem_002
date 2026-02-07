@@ -330,6 +330,9 @@ update-frequency: high
 - ロールアウト: `--limit "server:kiosk:!kiosk_canary"`
 - Pi3単独: `--limit "server:signage"`
 
+**追加知見（2026-02-07）**:
+- **Pi3 signage xsetエラーハンドリング修正**: `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了する問題を修正。`xset`コマンドに`|| true`を追加してエラーで終了しないように変更。**学んだこと**: `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする。デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
+
 ---
 
 #### References
