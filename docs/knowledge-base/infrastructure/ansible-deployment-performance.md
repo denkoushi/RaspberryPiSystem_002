@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ性能（調査）
 tags: [トラブルシューティング, インフラ, Ansible, デプロイ, パフォーマンス]
 audience: [開発者, 運用者]
-last-verified: 2026-02-07
+last-verified: 2026-02-08
 related:
   - ../index.md
   - ../../guides/deployment.md
@@ -332,6 +332,9 @@ update-frequency: high
 
 **追加知見（2026-02-07）**:
 - **Pi3 signage xsetエラーハンドリング修正**: `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了する問題を修正。`xset`コマンドに`|| true`を追加してエラーで終了しないように変更。**学んだこと**: `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする。デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
+
+**追加知見（2026-02-08）**:
+- **Pi3デプロイ時のサービス再起動成功を確認**: xsetエラーハンドリング修正後のデプロイ（runId: `20260208-082138-11782`）で、サービス再起動が正常に完了することを確認。**確認内容**: Pi3標準手順（preflightチェック）に従ってデプロイを実行し、preflightチェック（サービス停止、lightdm停止、メモリチェック）が正しく実行された。サービス再起動は`Result=success`で完了し、xsetエラーが発生しても警告ログが出力され、サービスが継続することを確認。**学んだこと**: Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）。preflightチェックは自動実行されるが、デプロイ実行時に標準手順を遵守することが重要。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
 
 ---
 

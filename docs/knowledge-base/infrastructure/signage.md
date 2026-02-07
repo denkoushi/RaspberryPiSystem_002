@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-06
+last-verified: 2026-02-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -1289,7 +1289,12 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - ✅ CI成功（Run ID: `21780516145`, 12分0秒）
 - ✅ 修正後のスクリプトがデプロイ済み（Pi3上で確認）
 - ✅ サービスは現在正常動作中（`active (running)`, `Result=success`）
-- ⚠️ デプロイ時の再起動失敗は一時的なもの（修正後のスクリプトはデプロイ済み）
+- ✅ **デプロイ時のサービス再起動成功を確認**（2026-02-08, runId: `20260208-082138-11782`）
+  - Pi3標準手順（preflightチェック）に従ってデプロイを実行
+  - preflightチェックが正しく実行された（サービス停止、lightdm停止、メモリチェック）
+  - サービス再起動が正常に完了（`Result=success`, `ActiveState=active`, `SubState=running`）
+  - xsetエラーが発生しても警告ログが出力され、サービスが継続（`WARNING: xset s off failed, continuing...`等）
+  - `feh`プロセスが正常に実行中
 
 **Prevention**:
 - `xset`コマンドは必須ではないため、エラーで終了しないようにする（`|| true`）
@@ -1307,7 +1312,24 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `infrastructure/ansible/templates/signage-lite.service.j2`
 - `docs/guides/deployment.md`
 
-**解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-07）
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-08）
+
+**実機検証結果（2026-02-08）**:
+- **デプロイ実行**: `--limit "server:signage"`でPi3デプロイを実行（runId: `20260208-082138-11782`）
+- **preflightチェック**: 標準手順に従って実行された
+  - サービス停止・無効化: ✅ 実行済み（signage-lite.service, signage-lite-update.timer等）
+  - サービスmask: ✅ 実行済み（自動再起動防止）
+  - lightdm停止: ✅ 実行済み（メモリ確保）
+  - メモリチェック: ✅ 実行済み（120MB以上）
+- **デプロイ結果**: `ok=111 changed=22 unreachable=0 failed=0`（成功）
+- **サービス再起動**: ✅ 正常に完了
+  - `Result=success` - サービスが正常に起動
+  - `ActiveState=active`, `SubState=running` - サービスが実行中
+  - `feh`プロセスが実行中（PID: 14441）
+- **xsetエラーハンドリング**: ✅ 機能確認
+  - xsetエラーが発生しても警告ログが出力され、サービスが継続
+  - ログ例: `WARNING: xset s off failed, continuing...`
+  - 修正が適用済み（`|| echo`によるエラーハンドリング）
 
 ---
 
