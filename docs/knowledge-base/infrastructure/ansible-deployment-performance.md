@@ -190,6 +190,29 @@ update-frequency: high
 - `kiosk : Schedule kiosk ClamAV scan` → **skipping**
 - `kiosk : Schedule kiosk rkhunter scan` → **skipping**
 
+**改善後（Trivy cronスキップ + パッケージインストールスキップ）**:
+- **日時**: 2026-02-07
+- **ブランチ**: `feat/signage-visualization-layout-improvement`
+- **limit**: `server:kiosk_canary`（Pi5 + Pi4 1台）
+- **runId**: `20260207-203058-23822`
+- **結果**: **success（exit=0）**
+- **所要時間**: **2分54秒**
+
+**TASKS RECAP（上位）**:
+- `Verify required signage role template files exist` **5.04s**
+- `common : Check systemd service files to back up` **4.34s**
+- `server : Install security packages` **3.56s**
+- `client : Restart status-agent.service on client` **3.39s**
+- `server : Configure UFW default incoming policy` **3.27s**
+
+**スキップ確認**:
+- `server : Schedule Trivy scan cron` → **skipping**
+- `server : Schedule Trivy image scan cron` → **skipping**
+- `server : Install ClamAV packages` → **skipping**
+- `server : Install rkhunter` → **skipping**
+- `kiosk : Install ClamAV on kiosk` → **skipping**
+- `kiosk : Install rkhunter on kiosk` → **skipping**
+
 **Before / After**:
 - **6分34秒 → 3分11秒（約3分23秒短縮）**（Docker build最適化）
 - `server : Rebuild/Restart docker compose services` が **TASKS RECAPから消失**（実行スキップ）
@@ -237,6 +260,18 @@ update-frequency: high
   - 変更なしの再デプロイでcron再設定が **skipping** になることを確認
   - 体感短縮は小さいが、ログノイズと冗長実行が減る
 
+**Trivy cronスキップ + パッケージインストールスキップ**:
+- **実装日**: 2026-02-07
+- **目的**: Trivyのcron再設定を抑制し、ClamAV/rkhunterの再インストールを回避
+- **実装内容**:
+  - Trivyスクリプト配備に `register` を追加し、cron再設定は変更時のみ実行
+  - ClamAV/rkhunterのインストール前に `dpkg-query` で存在確認し、既に入っていればスキップ
+  - 対象タスク: `server/malware.yml`（Trivy cron/ClamAV/rkhunter install）、`kiosk/security.yml`（ClamAV/rkhunter install）
+- **効果**:
+  - Trivy cronが **skipping** になることを確認
+  - ClamAV/rkhunterのインストールタスクが **skipping** になることを確認
+  - 再インストールによる待ち時間を削減
+
 **運用メモ（今回つまずいた点）**:
 - `100.x`（Tailscale）宛のSSHは、Mac側のTailscaleが停止しているとタイムアウトする（デプロイ前に接続状態を確認する）。
 - 事前疎通チェックは、Pi5がブランチ更新する前のinventoryを参照するため、**新規追加したgroup（例: `kiosk_canary`）が見えない警告**が出得る（デプロイ本体は更新後inventoryで実行されるため致命ではない）。
@@ -262,6 +297,8 @@ update-frequency: high
   - `infrastructure/ansible/roles/kiosk/tasks/security.yml`（apt cache_valid_time適用）
   - `infrastructure/ansible/roles/server/tasks/security.yml`（apt cache_valid_time適用）
   - `infrastructure/ansible/roles/server/tasks/malware.yml`（apt cache_valid_time適用）
+  - `infrastructure/ansible/templates/trivy-scan.sh.j2`（Trivy scanスクリプト）
+  - `infrastructure/ansible/templates/trivy-image-scan.sh.j2`（Trivy image scanスクリプト）
 - Related KB
   - [KB-235: Docker build最適化（変更ファイルに基づくbuild判定）](./ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定)
   - `docs/knowledge-base/infrastructure/ansible-deployment.md`
