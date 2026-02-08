@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { api } from '../../api/client';
 import { Button } from '../ui/Button';
@@ -79,13 +80,13 @@ export function KioskSignagePreviewModal({ isOpen, onClose }: KioskSignagePrevie
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   const handleBackdropMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
 
-  return (
+  if (!isOpen) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       role="dialog"
@@ -151,6 +152,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose }: KioskSignagePrevie
           </div>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body
   );
 }

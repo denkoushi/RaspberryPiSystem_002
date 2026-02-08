@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
@@ -31,11 +33,11 @@ export function KioskPowerConfirmModal({
   onCancel,
   onConfirm
 }: KioskPowerConfirmModalProps) {
-  if (!isOpen) return null;
-
   const copy = actionCopy[action];
 
-  return (
+  if (!isOpen) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
       <Card className="w-full max-w-md max-h-[calc(100vh-2rem)] my-4">
         <div className="mb-3">
@@ -62,6 +64,7 @@ export function KioskPowerConfirmModal({
           </Button>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body
   );
 }

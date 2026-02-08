@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -25,13 +26,13 @@ export function KioskPowerMenuModal({ isOpen, onClose, onSelect }: KioskPowerMen
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   const handleBackdropMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
 
-  return (
+  if (!isOpen) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       role="dialog"
@@ -75,6 +76,7 @@ export function KioskPowerMenuModal({ isOpen, onClose, onSelect }: KioskPowerMen
           </div>
         </div>
       </Card>
-    </div>
+    </div>,
+    document.body
   );
 }
