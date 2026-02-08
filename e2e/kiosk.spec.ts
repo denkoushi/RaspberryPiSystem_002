@@ -26,6 +26,44 @@ test.describe('キオスク画面', () => {
     await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
   });
 
+  test('サイネージプレビューと電源メニューのモーダルが開閉できる', async ({ page }) => {
+    // KioskRedirectを避けるため、直接/kiosk/tagにアクセス
+    await page.goto('/kiosk/tag', { waitUntil: 'networkidle' });
+    await expect(page).toHaveURL(/\/kiosk\/tag/);
+    
+    // ヘッダーが表示されるまで待つ
+    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
+
+    // サイネージボタンをクリックしてモーダルを開く
+    const signageButton = page.getByRole('button', { name: 'サイネージ' });
+    await signageButton.waitFor({ state: 'attached' });
+    // ページ遷移が完了するまで待つ
+    await page.waitForLoadState('networkidle');
+    await signageButton.click({ force: true });
+    await expect(page.getByText('サイネージプレビュー')).toBeVisible({ timeout: 10000 });
+    
+    // モーダルを閉じる
+    const closeButton = page.getByRole('button', { name: '閉じる' }).first();
+    await closeButton.waitFor({ state: 'visible' });
+    await closeButton.click();
+    await expect(page.getByText('サイネージプレビュー')).toBeHidden({ timeout: 5000 });
+
+    // 電源メニューを開く
+    const powerButton = page.getByLabel('電源メニュー');
+    await powerButton.waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    await powerButton.click({ force: true });
+    await expect(page.getByRole('button', { name: '再起動' })).toBeVisible({ timeout: 10000 });
+    
+    // 再起動を選択して確認モーダルを開く
+    await page.getByRole('button', { name: '再起動' }).click();
+    await expect(page.getByText('端末を再起動しますか？')).toBeVisible({ timeout: 10000 });
+    
+    // 確認モーダルをキャンセル
+    await page.getByRole('button', { name: 'キャンセル' }).click();
+    await expect(page.getByText('端末を再起動しますか？')).toBeHidden({ timeout: 5000 });
+  });
+
   // 注意: NFCスキャンのE2EテストはCI環境では実行しない
   // 理由:
   // 1. CI環境には物理的なNFCリーダーが存在しない
