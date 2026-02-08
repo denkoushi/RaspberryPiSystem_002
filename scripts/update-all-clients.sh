@@ -1360,7 +1360,30 @@ run_health_check_remotely() {
   return ${exit_code}
 }
 
+require_remote_host_for_pi5() {
+  if [[ -n "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  if [[ -z "${INVENTORY_PATH}" ]]; then
+    return 0
+  fi
+
+  local needs_pi5=0
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    if [[ "${LIMIT_HOSTS}" == *"raspberrypi5"* ]] || [[ "${LIMIT_HOSTS}" == *"server"* ]]; then
+      needs_pi5=1
+    fi
+  else
+    needs_pi5=1
+  fi
+
+  if [[ ${needs_pi5} -eq 1 ]]; then
+    exit_with_error 2 "RASPI_SERVER_HOST is required when targeting raspberrypi5 (ansible_connection: local). Set RASPI_SERVER_HOST (e.g., export RASPI_SERVER_HOST=100.106.158.2)."
+  fi
+}
+
 # メイン処理
+require_remote_host_for_pi5
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   echo "[INFO] Branch: ${REPO_VERSION}"
