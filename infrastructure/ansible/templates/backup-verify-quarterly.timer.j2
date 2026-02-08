@@ -1,0 +1,10 @@
+[Unit]
+Description=Run backup verification (quarterly)
+
+[Timer]
+OnCalendar={{ backup_verify_quarterly_oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

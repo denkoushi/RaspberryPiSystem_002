@@ -33,10 +33,11 @@ update-frequency: medium
    - **保存先**: `/opt/backups/`
 
 3. **証明書ファイル**
-   - **場所**: `/opt/RaspberryPiSystem_002/certs/`
-   - **バックアップ方法**: 手動でコピー（バックアップスクリプトに含まれていない）
-   - **頻度**: 証明書生成時（一度だけ）
-   - **保存先**: USBメディアまたは安全な場所
+   - **場所**: `/opt/RaspberryPiSystem_002/certs/`（コンテナ内パス: `/app/host/certs`）
+   - **バックアップ方法**: `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`）
+   - **頻度**: 週次（推奨: `schedule="0 4 * * 0"`）
+   - **保存先**: Dropbox（推奨）またはローカルストレージ
+   - **追加方法**: [バックアップ設定ガイド](./backup-configuration.md#証明書ディレクトリのバックアップ推奨) を参照
 
 4. **写真・PDFファイル**
    - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/pdfs`
@@ -59,7 +60,7 @@ update-frequency: medium
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
 | **環境変数ファイル** | `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env` | ✅ **必須** | `.env.example`をコピーして作成、バックアップスクリプトで自動バックアップ |
-| **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | 自己署名証明書を生成、手動でバックアップ |
+| **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`） |
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
 | **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
 | **写真・PDFファイル** | `/opt/RaspberryPiSystem_002/storage/` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
@@ -423,7 +424,7 @@ cp clients/nfc-agent/.env "${BACKUP_DIR}/nfc_agent_env_${DATE}.env" 2>/dev/null 
 
 ### 3. 証明書ファイルのバックアップ
 
-証明書ファイルはバックアップスクリプトに含まれていないため、手動でバックアップする必要があります：
+証明書ファイルはバックアップスクリプトに含まれていないため、以下のいずれかでバックアップします。
 
 ```bash
 # Pi5上で実行
@@ -435,6 +436,11 @@ tar -czf "${BACKUP_DIR}/certs_backup_${DATE}.tar.gz" -C /opt/RaspberryPiSystem_0
 # cp "${BACKUP_DIR}/certs_backup_${DATE}.tar.gz" /mnt/usb/
 # sudo umount /mnt/usb
 ```
+
+**自動バックアップ（推奨）**:
+- 既存のバックアップ機能に証明書ディレクトリを追加できます。
+- 管理コンソールの「バックアップ」タブから `kind=directory` / `source=/app/host/certs` を追加してください。
+  - `/app/host/certs` はホスト側の `/opt/RaspberryPiSystem_002/certs` をマウントしたパスです。
 
 **重要**: 証明書ファイルを失うと、HTTPS接続ができなくなります。証明書生成時（一度だけ）に必ずバックアップを取得してください。
 
@@ -493,6 +499,9 @@ sudo crontab -e
 
 ## リストア手順
 
+- **事前バックアップ（安全策）**: データベースのリストアは既定で事前バックアップを作成し、失敗時はリストアを中断する。
+- **ドライラン**: `/api/backup/restore/dry-run` で対象・サイズ・存在確認を事前に取得できる。
+
 ### 1. データベースのリストア
 
 ```bash
@@ -520,7 +529,29 @@ cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/
 docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 ```
 
-### 3. 画像バックアップのリストア
+### 3. 証明書ファイルのリストア
+
+**Dropbox経由でのリストア（推奨）**:
+1. 管理コンソールの「バックアップ」タブ → 「リストア」セクション
+2. 証明書ディレクトリのバックアップを選択
+3. 「リストア」ボタンをクリック
+4. リストア完了後、Caddyを再起動
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
+```
+
+**手動でのリストア**:
+1. Dropboxから証明書バックアップファイル（`tar.gz`）をダウンロード
+2. Pi5上で展開
+
+```bash
+tar -xzf certs_backup_YYYYMMDD_HHMMSS.tar.gz -C /opt/RaspberryPiSystem_002/
+sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
+docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
+```
+
+### 4. 画像バックアップのリストア
 
 画像バックアップは`tar.gz`形式で保存されています。リストア時には`tar.gz`を展開して、写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）に復元します。
 
@@ -592,7 +623,7 @@ echo "画像バックアップのリストア完了"
 - **証明書ピニング検証失敗（500エラー）**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります。この場合は、`apps/api/scripts/get-dropbox-cert-fingerprint.ts`で新しい証明書フィンガープリントを取得し、`apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`に追加してください。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください
 - 詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
 
-### 4. Dockerボリュームのリストア
+### 5. Dockerボリュームのリストア
 
 ```bash
 # Dockerボリュームをリストア
@@ -626,18 +657,51 @@ docker run --rm \
 # 4. 環境変数ファイルをリストア
 cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/.env
 
-# 5. Dockerコンテナを起動
+# 5. 証明書ファイルをリストア
+tar -xzf /opt/backups/certs_backup_20250101_020000.tar.gz -C /opt/RaspberryPiSystem_002/
+sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
+
+# 6. Dockerコンテナを起動
 docker compose -f infrastructure/docker/docker-compose.server.yml up -d
 
-# 6. データベースマイグレーションを実行（必要に応じて）
+# 7. データベースマイグレーションを実行（必要に応じて）
 docker compose -f infrastructure/docker/docker-compose.server.yml exec api \
   pnpm prisma migrate deploy
 
-# 7. データベースをリストア
+# 8. データベースをリストア
 gunzip -c /opt/backups/db_backup_20250101_020000.sql.gz | \
   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
   psql -U postgres -d borrow_return
 ```
+
+## backup.jsonが失われた場合の復元手順
+
+`backup.json`が削除・破損した場合、Dropboxから復元できます。
+
+### 復元手順
+
+1. **最新のbackup.jsonバックアップを特定**:
+   - 管理コンソールの「バックアップ履歴」から、`backup.json`の最新バックアップを確認
+   - または、Dropbox上で `/backups/file/backup.json/` 配下の最新ファイルを確認
+2. **バックアップファイルをダウンロード**:
+   - 管理コンソールからダウンロード、またはDropboxから直接ダウンロード
+3. **backup.jsonを復元**:
+   ```bash
+   # Pi5上で実行
+   sudo nano /opt/RaspberryPiSystem_002/config/backup.json
+   # ダウンロードしたバックアップの内容を貼り付け
+   ```
+4. **APIを再起動**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml restart api
+   ```
+5. **Gmail設定の復元（必要に応じて）**:
+   - [KB-166](../knowledge-base/infrastructure/backup-restore.md#kb-166-gmail-oauth設定の復元方法) を参照
+   - 管理コンソールの「バックアップ」タブ → 「Gmail設定」セクションからOAuth認証を実行
+
+**関連ナレッジ**:
+- [KB-165](../knowledge-base/infrastructure/backup-restore.md#kb-165-dropboxからのbackupjson復元方法)
+- [KB-166](../knowledge-base/infrastructure/backup-restore.md#kb-166-gmail-oauth設定の復元方法)
 
 ## バックアップの検証
 

@@ -4,6 +4,7 @@ import {
   getBackupHistory,
   getBackupHistoryById,
   restoreFromDropbox,
+  restoreDryRun,
   getCsvImportSchedules,
   createCsvImportSchedule,
   updateCsvImportSchedule,
@@ -16,6 +17,10 @@ import {
   deleteBackupTarget,
   runBackup,
   getBackupConfigHealth,
+  getBackupConfigHistory,
+  getBackupConfigHistoryById,
+  getBackupTargetTemplates,
+  addBackupTargetFromTemplate,
   getCsvImportSubjectPatterns,
   createCsvImportSubjectPattern,
   updateCsvImportSubjectPattern,
@@ -994,6 +999,12 @@ export function useRestoreFromDropbox() {
   });
 }
 
+export function useRestoreDryRun() {
+  return useMutation({
+    mutationFn: (request: Parameters<typeof restoreDryRun>[0]) => restoreDryRun(request)
+  });
+}
+
 // CSVインポートスケジュールフック
 export function useCsvImportSchedules() {
   return useQuery({
@@ -1108,6 +1119,28 @@ export function useBackupConfigHealth() {
   });
 }
 
+export function useBackupTargetTemplates() {
+  return useQuery({
+    queryKey: ['backup-target-templates'],
+    queryFn: getBackupTargetTemplates
+  });
+}
+
+export function useBackupConfigHistory(params?: { offset?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ['backup-config-history', params],
+    queryFn: () => getBackupConfigHistory(params)
+  });
+}
+
+export function useBackupConfigHistoryById(id?: string) {
+  return useQuery({
+    queryKey: ['backup-config-history', id],
+    queryFn: () => getBackupConfigHistoryById(id!),
+    enabled: Boolean(id)
+  });
+}
+
 export function useBackupConfigMutations() {
   const queryClient = useQueryClient();
   const updateConfig = useMutation({
@@ -1146,7 +1179,15 @@ export function useBackupConfigMutations() {
       queryClient.invalidateQueries({ queryKey: ['backup-config'] });
     }
   });
-  return { updateConfig, addTarget, updateTarget, deleteTarget, runBackup: runBackupMutation };
+  const addFromTemplate = useMutation({
+    mutationFn: (params: Parameters<typeof addBackupTargetFromTemplate>[0]) => addBackupTargetFromTemplate(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+      queryClient.invalidateQueries({ queryKey: ['backup-target-templates'] });
+    }
+  });
+  return { updateConfig, addTarget, addFromTemplate, updateTarget, deleteTarget, runBackup: runBackupMutation };
 }
 
 export function useCsvImportScheduleMutations() {

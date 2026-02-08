@@ -1,5 +1,3 @@
-import { promises as fs } from 'fs';
-import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -23,20 +21,15 @@ export class DirectoryBackupTarget implements BackupTarget {
   }
 
   async createBackup(): Promise<Buffer> {
-    const tmpFile = path.join(
-      os.tmpdir(),
-      `backup-${Date.now()}-${Math.random().toString(16).slice(2)}.tar.gz`
+    const { stdout } = await execFileAsync(
+      'tar',
+      ['-czf', '-', '-C', this.dirPath, '.'],
+      {
+        maxBuffer: 1024 * 1024 * 200,
+        encoding: 'buffer'
+      }
     );
-
-    try {
-      await execFileAsync('tar', ['-czf', tmpFile, '-C', this.dirPath, '.'], {
-        maxBuffer: 1024 * 1024 * 200
-      });
-      const data = await fs.readFile(tmpFile);
-      return data;
-    } finally {
-      await fs.rm(tmpFile, { force: true }).catch(() => {});
-    }
+    return stdout as Buffer;
   }
 }
 

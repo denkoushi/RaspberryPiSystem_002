@@ -11,6 +11,8 @@
 
 - [x] (2026-02-01) **リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了**: デプロイスクリプトのリモート実行をデフォルトでデタッチモードに変更し、クライアント側の監視打ち切りによる中断リスクを排除。**実装内容**: `REMOTE_HOST`が設定されている場合、`--detach`、`--job`、`--foreground`が明示指定されていない限り、自動的にデタッチモードで実行されるように変更。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。`usage`関数の定義位置を修正し、エラーハンドリングを改善。**KB-226の更新**: 「約60秒」という不確実な記述を削除し、事実ベースの表現に修正（「クライアント側の監視打ち切り: 実行環境側のコマンド監視が短く（値は環境依存で未確定）」）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデフォルトデタッチモードでデプロイ成功（`failed=0`, exit code: 0）。**実機検証結果**: リモート実行時に自動的にデタッチモードで実行されること、`--attach`でログ追尾が正常に動作すること、`--status`で状態確認が正常に動作すること、APIヘルスチェック（`status: ok`）、DB整合性（29マイグレーション適用済み）、Dockerコンテナ（すべて起動中）を確認。ナレッジベースにKB-226を更新。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
 
+- [x] (2026-02-08) **証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加するスクリプトを作成し、Pi5上で実行して既存設定を確認。**実装内容**: `scripts/server/add-cert-backup-target.mjs`（Node.jsスクリプト、ESMモジュール）、`infrastructure/ansible/playbooks/add-cert-backup-target.yml`（Ansible Playbook）を作成。スクリプトは既存のターゲットをチェックし、重複追加を防止。**実行結果**: Pi5上でスクリプトを実行し、既に証明書ディレクトリのバックアップターゲットが存在することを確認（`schedule: "0 2 * * 0"`, `retention.days: 14`, `retention.maxBackups: 4`）。既存設定を維持。**トラブルシューティング**: Dockerコンテナ内でスクリプトを実行する必要があるため、ホスト側からコンテナ内へのファイルコピー方法を確立（`scp`でホスト側にコピー→`docker compose exec`でコンテナ内にコピー）。**ドキュメント更新**: `docs/guides/backup-configuration.md`に追加方法を記載、`docs/guides/backup-and-restore.md`の証明書バックアップ方法を更新、`docs/knowledge-base/infrastructure/backup-restore.md`にKB-200を追加。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) を参照。
+
 - [x] (2026-02-01) **生産スケジュール備考のモーダル編集化と処理列追加完了・デプロイ成功・実機検証完了**: キオスクの生産スケジュールUIを大幅に改善し、操作性と視認性を向上。**UI改善内容**: 備考欄のモーダル編集化（`KioskNoteModal`コンポーネント新規作成、`textarea`で最大100文字入力、文字数カウント表示、保存時は改行削除して単一行として保存）、備考の2行表示（`line-clamp:2`で視認性向上）、処理列の追加（`processingType`フィールド追加、ドロップダウンで`塗装/カニゼン/LSLH/その他01/その他02`を選択可能、未選択状態も許可）、品番/製造order番号の折り返し対応（`break-all`クラス追加、`ProductNo`の固定幅削除で動的幅調整に参加）。**データベーススキーマ変更**: `ProductionScheduleRowNote`モデルに`processingType String? @db.VarChar(20)`フィールドを追加。**APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/processing`を追加。**データ整合性の考慮**: `note`、`dueDate`、`processingType`の3フィールドがすべて空/nullの場合のみレコードを削除するロジックを実装。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（マイグレーション適用済み）。**デプロイ時のトラブルシューティング**: デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用。**実機検証結果**: 備考モーダルが正常に開き全文を確認しながら編集できること、備考が2行まで折り返して表示されること、処理列のドロップダウンが正常に動作し選択・未選択状態が正しく保存されること、品番/製造order番号が長い場合でも折り返されて表示されること、備考・納期・処理の3フィールドが独立して動作することを確認。ナレッジベースにKB-223（備考モーダル編集化と処理列追加）、KB-224（デプロイ時のマイグレーション未適用問題）を追加。詳細は [docs/knowledge-base/frontend.md#kb-223](./docs/knowledge-base/frontend.md#kb-223-生産スケジュール備考のモーダル編集化と処理列追加) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
 
 - [x] (2026-02-01) **生産スケジュール納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。ナレッジベースにKB-221（納期日UI改善）、KB-222（デプロイ時のinventory混同）を追加。詳細は [docs/knowledge-base/frontend.md#kb-221](./docs/knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
@@ -1419,6 +1421,40 @@
 
 **詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [README.md](./README.md)
 
+### バックアップ・リストア機能の継続的改善（推奨）
+
+**概要**: 証明書ディレクトリのバックアップターゲット追加スクリプト作成を機に、バックアップ・リストア機能の継続的改善を検討
+
+**完了した改善**:
+- ✅ 証明書ディレクトリのバックアップターゲット追加スクリプト作成（KB-200）
+- ✅ バックアップ検証チェックリストの作成（月次・四半期検証）
+- ✅ 証明書バックアップの自動化（`backup.json`設定）
+
+**次の改善候補**:
+1. **バックアップ検証の自動化**（優先度: 中）
+   - 月次検証チェックリストの自動実行スクリプト作成
+   - バックアップファイルの整合性検証の自動化
+   - 検証結果のレポート生成とSlack通知
+
+2. **バックアップ設定の管理改善**（優先度: 低）
+   - バックアップターゲット追加スクリプトの汎用化（他のディレクトリにも対応）
+   - バックアップ設定のテンプレート化
+   - 設定変更履歴の追跡（Git管理の検討）
+
+3. **リストア機能の改善**（優先度: 低）
+   - リストア前の自動バックアップ（現在の状態を保存）
+   - リストア時の影響範囲確認機能
+   - 部分リストア機能（特定ファイル/ディレクトリのみ）
+
+4. **バックアップパフォーマンスの最適化**（優先度: 低）
+   - 増分バックアップの実装（変更ファイルのみ）
+   - バックアップの並列実行（複数ターゲットの同時バックアップ）
+   - バックアップファイルの圧縮率改善
+
+**現状**: 証明書ディレクトリのバックアップターゲット追加スクリプトは作成済みで、既存設定の確認も完了。バックアップ検証チェックリストも作成済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) / [docs/guides/backup-verification-checklist.md](./docs/guides/backup-verification-checklist.md)
+
 ---
 
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
@@ -1440,3 +1476,4 @@
 変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
 変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。
 変更履歴: 2026-02-01 — リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了を反映。Progressにリモート実行のデフォルトデタッチ化、`--foreground`オプション追加、`usage`関数の定義位置修正を追加。KB-226に実装の詳細と実機検証結果を追加。Surprises & Discoveriesにクライアント側監視打ち切り問題と`usage`関数の定義位置問題を追加。Decision Logにリモート実行のデフォルトデタッチ化決定を追加。
+変更履歴: 2026-02-08 — 証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了を反映。Progressにスクリプト作成とPi5上での実行結果を追加。KB-200を追加し、Dockerコンテナ内実行時の注意点を記録。関連ドキュメント（backup-configuration.md、backup-and-restore.md）を更新。Next Stepsにバックアップ・リストア機能の継続的改善候補を追加。

@@ -4,6 +4,7 @@ import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
+import { BackupConfigHistoryPage } from './pages/admin/BackupConfigHistoryPage';
 import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
@@ -83,6 +84,7 @@ function App() {
         <Route path="import" element={<CsvImportPage />} />
         <Route path="backup">
           <Route path="targets" element={<BackupTargetsPage />} />
+          <Route path="config-history" element={<BackupConfigHistoryPage />} />
           <Route path="history" element={<BackupHistoryPage />} />
           <Route path="restore" element={<BackupRestorePage />} />
         </Route>

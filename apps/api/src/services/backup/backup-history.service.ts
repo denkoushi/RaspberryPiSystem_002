@@ -7,6 +7,8 @@ export interface BackupSummary {
   sizeBytes?: number;
   hash?: string;
   path?: string;
+  durationMs?: number;
+  provider?: string;
 }
 
 /**

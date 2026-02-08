@@ -281,6 +281,94 @@ PostgreSQLデータベースをバックアップする場合：
 - `schedule`: cron形式のスケジュール
 - `enabled`: `true` で有効化
 
+#### 証明書ディレクトリのバックアップ（推奨）
+
+Pi5の証明書ディレクトリ（`/opt/RaspberryPiSystem_002/certs/`）をバックアップする場合は、APIコンテナから参照可能なパス（`/app/host/certs`）を指定します。
+
+```json
+{
+  "kind": "directory",
+  "source": "/app/host/certs",
+  "schedule": "0 4 * * 0",
+  "enabled": true,
+  "storage": {
+    "provider": "dropbox"
+  },
+  "retention": {
+    "days": 90,
+    "maxBackups": 10
+  }
+}
+```
+
+**証明書ディレクトリのバックアップターゲット追加方法**:
+
+証明書ディレクトリのバックアップターゲットを追加するには、以下のいずれかの方法を使用できます：
+
+**方法1: Node.jsスクリプトを使用（推奨）**
+
+Pi5上で以下のコマンドを実行：
+
+```bash
+cd /opt/RaspberryPiSystem_002
+# Dockerコンテナ内で実行
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api node /app/scripts/server/add-cert-backup-target.mjs
+```
+
+スクリプトは自動的に`backup.json`に証明書ディレクトリのバックアップターゲットを追加します。
+
+**方法2: Ansible Playbookを使用**
+
+Macから実行：
+
+```bash
+cd infrastructure/ansible
+ansible-playbook -i inventory.yml playbooks/add-cert-backup-target.yml
+```
+
+**方法3: 管理コンソールから手動追加**
+
+1. 管理コンソールの「バックアップ」タブにアクセス
+2. 「バックアップ対象を追加」ボタンをクリック
+3. 以下の設定を入力：
+   - **種類**: `directory`
+   - **ソース**: `/app/host/certs`
+   - **スケジュール**: `0 4 * * 0`（週次、日曜日4時）
+   - **ストレージプロバイダー**: `dropbox`
+   - **保持期間**: 90日
+   - **最大保持数**: 10件
+4. 「追加」ボタンをクリック
+
+**追加後の確認**:
+
+追加後、以下の手順で動作確認を行ってください：
+
+1. **設定の確認**:
+   ```bash
+   # Pi5上で実行
+   cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.targets[] | select(.source == "/app/host/certs")'
+   ```
+
+2. **手動バックアップの実行**:
+   - 管理コンソールの「バックアップ」タブから手動実行
+   - または、API経由で実行（JWTトークンが必要）：
+     ```bash
+     curl -k -X POST https://localhost/api/backup \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer <your-token>" \
+       -d '{"kind": "directory", "source": "/app/host/certs"}'
+     ```
+
+3. **バックアップ履歴の確認**:
+   - 管理コンソールの「バックアップ履歴」タブで確認
+   - Dropbox上にバックアップファイルが作成されていることを確認
+```
+
+**ポイント**:
+- `/app/host/certs` はホスト側の `/opt/RaspberryPiSystem_002/certs` をマウントしたパスです。
+- 証明書は変更頻度が低いため週次バックアップで十分です。
+- 紛失時の影響が大きいため、保持期間は長めを推奨します。
+
 ## スケジュール設定（cron形式）
 
 スケジュールはcron形式で指定します：
@@ -429,6 +517,19 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
       "source": "photo-storage",
       "schedule": "0 6 * * *",
       "enabled": true
+    },
+    {
+      "kind": "directory",
+      "source": "/app/host/certs",
+      "schedule": "0 4 * * 0",
+      "enabled": true,
+      "storage": {
+        "provider": "dropbox"
+      },
+      "retention": {
+        "days": 90,
+        "maxBackups": 10
+      }
     }
   ],
   "retention": {
@@ -580,6 +681,7 @@ curl http://localhost:8080/api/backup \
 **機能**:
 - **一覧表示**: 現在の`targets`配列の内容を表示
 - **追加**: 新しい`target`を追加（`kind`、`source`、`schedule`、`enabled`を設定）
+- **テンプレート追加**: 代表的な対象をテンプレートから追加（必要なら`source`を上書き）
 - **編集**: 既存の`target`の`schedule`や`enabled`状態を編集
 - **削除**: 不要な`target`を削除
 - **有効/無効切り替え**: 各対象の`enabled`フラグをトグルスイッチで切り替え
@@ -595,6 +697,7 @@ curl http://localhost:8080/api/backup \
 - 管理コンソールでの変更は即座に設定ファイル（`backup.json`）に反映される
 - `backup.sh`スクリプトは設定ファイルの`targets`配列を参照してバックアップを実行する
 - 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
+- 設定変更履歴は`/admin/backup/config-history`で確認できる（秘匿情報はredact済み）
 
 詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
 

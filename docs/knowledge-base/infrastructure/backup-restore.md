@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 27件  
+**件数**: 28件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -1933,5 +1933,67 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 **関連ナレッジ**:
 - KB-020: バックアップ・リストア機能の実装
 - KB-094: バックアップ履歴のファイル存在状態管理機能
+
+---
+
+## KB-200: 証明書ディレクトリのバックアップターゲット追加スクリプト作成とDockerコンテナ内実行時の注意点
+
+**問題**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加する際、Dockerコンテナ内でスクリプトを実行する必要があるが、ファイルパスの扱いや実行方法に注意が必要だった。
+
+**症状**:
+- Pi5上で証明書ディレクトリのバックアップターゲットを追加しようとした
+- スクリプトをDockerコンテナ内で実行する必要があるが、ファイルパスの扱いが複雑
+- ホスト側の`/tmp`とコンテナ内の`/tmp`は別のボリュームのため、ファイルコピーに工夫が必要
+
+**調査過程**:
+1. **仮説1**: スクリプトをホスト側に配置して実行 → REJECTED（`BackupConfigLoader`はコンテナ内のパス（`/app/config/backup.json`）を参照するため、コンテナ内で実行が必要）
+2. **仮説2**: スクリプトをコンテナ内に直接コピー → CONFIRMED（`docker compose exec`でコンテナ内にファイルをコピーして実行）
+
+**根本原因**:
+- `BackupConfigLoader`は環境変数`BACKUP_CONFIG_PATH`またはデフォルトで`/app/config/backup.json`を参照する
+- このパスはDockerコンテナ内のパスであり、ホスト側から直接アクセスできない
+- スクリプトは`BackupConfigLoader`を使用するため、コンテナ内で実行する必要がある
+- Dockerコンテナのボリュームマウントにより、ホスト側の`/tmp`とコンテナ内の`/tmp`は別物
+
+**解決方法**:
+1. **スクリプトファイルの作成**: `scripts/server/add-cert-backup-target.mjs`を作成（ESMモジュールとして`.mjs`拡張子を使用）
+2. **ファイルのコピー方法**:
+   - ホスト側に`scp`でファイルをコピー: `scp script.mjs user@host:/tmp/script.mjs`
+   - コンテナ内にコピー: `docker compose exec -T api sh -c 'cat > /app/scripts/server/script.mjs' < /tmp/script.mjs`
+   - または、ホスト側のプロジェクトディレクトリにコピーしてから、コンテナ内のマウントされたパス経由でアクセス
+3. **実行方法**:
+   ```bash
+   docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api node /app/scripts/server/add-cert-backup-target.mjs
+   ```
+
+**実装詳細**:
+- `scripts/server/add-cert-backup-target.mjs`: 証明書ディレクトリのバックアップターゲットを追加するNode.jsスクリプト
+- `infrastructure/ansible/playbooks/add-cert-backup-target.yml`: Ansible Playbook（Macから実行可能）
+- スクリプトは既存のターゲットをチェックし、既に存在する場合は追加をスキップ
+
+**学んだこと**:
+- Dockerコンテナ内で実行するスクリプトは、コンテナ内のパスを参照する必要がある
+- ホスト側とコンテナ内のファイルシステムは分離されているため、ファイルコピー方法に注意が必要
+- `docker compose exec`の`-T`オプションで標準入出力を無効化し、パイプ経由でファイルをコピーできる
+- ESMモジュールとして実行する場合は`.mjs`拡張子を使用する必要がある
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+- スクリプトを作成し、Pi5上で実行して既存設定を確認
+- 既に証明書ディレクトリのバックアップターゲットが存在することを確認（設定は既存のまま維持）
+
+**関連ファイル**:
+- `scripts/server/add-cert-backup-target.mjs`（証明書ディレクトリのバックアップターゲット追加スクリプト）
+- `infrastructure/ansible/playbooks/add-cert-backup-target.yml`（Ansible Playbook）
+- `docs/guides/backup-configuration.md`（バックアップ設定ガイド、追加方法を記載）
+
+**再発防止策**:
+- スクリプトの実行方法をドキュメント化（`docs/guides/backup-configuration.md`）
+- Ansible Playbookを作成し、Macから実行可能にした
+- スクリプトは既存のターゲットをチェックし、重複追加を防止
+
+**関連ナレッジ**:
+- KB-144: バックアップ手動実行時の500エラー（client-directory kind追加とbackup.json正規化）
+- KB-165: Dropboxからのbackup.json復元方法
+- KB-166: Gmail OAuth設定の復元方法
 
 ---

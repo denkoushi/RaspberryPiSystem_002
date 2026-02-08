@@ -2,9 +2,11 @@ import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useRestoreFromDropbox, useBackupHistory } from '../../api/hooks';
+import { useRestoreFromDropbox, useBackupHistory, useRestoreDryRun } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+
+import type { RestoreDryRunResponse } from '../../api/backup';
 
 export function BackupRestorePage() {
   const [targetKind, setTargetKind] = useState<'database' | 'csv'>('csv');
@@ -12,9 +14,12 @@ export function BackupRestorePage() {
   const [selectedBackupPath, setSelectedBackupPath] = useState<string>('');
   const [showExistsOnly, setShowExistsOnly] = useState(false);
   const [verifyIntegrity, setVerifyIntegrity] = useState(true);
+  const [preBackup, setPreBackup] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<RestoreDryRunResponse | null>(null);
 
   const restoreMutation = useRestoreFromDropbox();
+  const dryRunMutation = useRestoreDryRun();
   const { refetch: refetchRestoreHistory } = useBackupHistory({ operationType: 'RESTORE', limit: 5 });
   const backupHistoryQuery = useBackupHistory({
     operationType: 'BACKUP',
@@ -61,6 +66,8 @@ export function BackupRestorePage() {
   );
 
   useEffect(() => {
+    setPreBackup(targetKind === 'database');
+    setDryRunResult(null);
     if (!backupHistoryQuery.data) return;
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
@@ -135,7 +142,7 @@ export function BackupRestorePage() {
 
     if (
       !confirm(
-        `以下のバックアップをリストアしますか？\n\n対象: ${targetKind === 'database' ? 'データベース' : 'CSV'}\nパス: ${selectedBackupPath}\n整合性検証: ${verifyIntegrity ? '有効' : '無効'}`
+        `以下のバックアップをリストアしますか？\n\n対象: ${targetKind === 'database' ? 'データベース' : 'CSV'}\nパス: ${selectedBackupPath}\n整合性検証: ${verifyIntegrity ? '有効' : '無効'}\n事前バックアップ: ${preBackup ? '有効' : '無効'}`
       )
     ) {
       return;
@@ -146,17 +153,37 @@ export function BackupRestorePage() {
       await restoreMutation.mutateAsync({
         backupPath: selectedBackupPath.trim(),
         targetKind,
-        verifyIntegrity
+        verifyIntegrity,
+        preBackup: targetKind === 'database' ? preBackup : false
       });
       alert('リストアが完了しました');
       setSelectedBackupPath('');
       setSelectedHistoryId('');
+      setDryRunResult(null);
       refetchRestoreHistory();
     } catch (error) {
       const errorMessage = formatRestoreError(error);
       alert(`リストアに失敗しました: ${errorMessage}`);
     } finally {
       setIsRestoring(false);
+    }
+  };
+
+  const handleDryRun = async () => {
+    if (!selectedBackupPath.trim()) {
+      alert('リストアするバックアップを選択してください');
+      return;
+    }
+    try {
+      const result = await dryRunMutation.mutateAsync({
+        backupPath: selectedBackupPath.trim(),
+        targetKind,
+        storage: { provider: 'dropbox' }
+      });
+      setDryRunResult(result);
+    } catch (error) {
+      const errorMessage = formatRestoreError(error);
+      alert(`ドライランに失敗しました: ${errorMessage}`);
     }
   };
 
@@ -300,17 +327,50 @@ export function BackupRestorePage() {
           <p className="mt-1 text-xs text-slate-600">
             バックアップファイルのハッシュ値とファイルサイズを検証します
           </p>
+          <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={preBackup}
+              onChange={(e) => setPreBackup(e.target.checked)}
+              disabled={isRestoring || targetKind !== 'database'}
+              className="rounded border-2 border-slate-500"
+            />
+            リストア前に事前バックアップを作成（DBのみ既定ON）
+          </label>
+          <p className="mt-1 text-xs text-slate-600">
+            事前バックアップが失敗した場合はリストアを中断します
+          </p>
         </div>
 
         <div className="pt-4">
-          <Button
-            onClick={handleRestore}
-            disabled={isRestoring || !selectedBackupPath.trim()}
-            className="w-full md:w-auto"
-          >
-            {isRestoring ? 'リストア中...' : 'リストア実行'}
-          </Button>
+          <div className="flex flex-col gap-2 md:flex-row">
+            <Button
+              variant="secondary"
+              onClick={handleDryRun}
+              disabled={isRestoring || dryRunMutation.isPending || !selectedBackupPath.trim()}
+              className="w-full md:w-auto"
+            >
+              ドライラン
+            </Button>
+            <Button
+              onClick={handleRestore}
+              disabled={isRestoring || !selectedBackupPath.trim()}
+              className="w-full md:w-auto"
+            >
+              {isRestoring ? 'リストア中...' : 'リストア実行'}
+            </Button>
+          </div>
         </div>
+
+        {dryRunResult && (
+          <div className="rounded-md border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
+            <div className="font-semibold text-slate-900">ドライラン結果</div>
+            <div>対象: {dryRunResult.targetKind} / {dryRunResult.targetSource}</div>
+            <div>存在確認: {dryRunResult.exists ? 'OK' : '未検出'}</div>
+            <div>サイズ: {dryRunResult.sizeBytes ?? '-'}</div>
+            <div>事前バックアップ既定: {dryRunResult.preBackupDefault ? '有効' : '無効'}</div>
+          </div>
+        )}
 
         {restoreMutation.isError && (
           <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">

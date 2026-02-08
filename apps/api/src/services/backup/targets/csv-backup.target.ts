@@ -38,51 +38,79 @@ export class CsvBackupTarget implements BackupTarget {
    * 従業員データをCSV形式でエクスポート
    */
   private async createEmployeesCsv(): Promise<Buffer> {
-    const employees = await prisma.employee.findMany({
-      orderBy: { employeeCode: 'asc' }
-    });
+    const batchSize = 1000;
+    let offset = 0;
+    let isFirstBatch = true;
+    const chunks: string[] = [];
 
-    const rows = employees.map(emp => ({
-      employeeCode: emp.employeeCode,
-      displayName: emp.displayName,
-      nfcTagUid: emp.nfcTagUid || '',
-      department: emp.department || '',
-      contact: emp.contact || '',
-      status: emp.status
-    }));
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const employees = await prisma.employee.findMany({
+        orderBy: { employeeCode: 'asc' },
+        skip: offset,
+        take: batchSize
+      });
+      if (employees.length === 0) break;
 
-    const csv = stringify(rows, {
-      header: true,
-      columns: ['employeeCode', 'displayName', 'nfcTagUid', 'department', 'contact', 'status']
-    });
+      const rows = employees.map(emp => ({
+        employeeCode: emp.employeeCode,
+        displayName: emp.displayName,
+        nfcTagUid: emp.nfcTagUid || '',
+        department: emp.department || '',
+        contact: emp.contact || '',
+        status: emp.status
+      }));
 
-    return Buffer.from(csv, 'utf-8');
+      const csvChunk = stringify(rows, {
+        header: isFirstBatch,
+        columns: ['employeeCode', 'displayName', 'nfcTagUid', 'department', 'contact', 'status']
+      });
+      chunks.push(csvChunk);
+      isFirstBatch = false;
+      offset += employees.length;
+    }
+
+    return Buffer.from(chunks.join(''), 'utf-8');
   }
 
   /**
    * アイテムデータをCSV形式でエクスポート
    */
   private async createItemsCsv(): Promise<Buffer> {
-    const items = await prisma.item.findMany({
-      orderBy: { itemCode: 'asc' }
-    });
+    const batchSize = 1000;
+    let offset = 0;
+    let isFirstBatch = true;
+    const chunks: string[] = [];
 
-    const rows = items.map(item => ({
-      itemCode: item.itemCode,
-      name: item.name,
-      nfcTagUid: item.nfcTagUid || '',
-      category: item.category || '',
-      storageLocation: item.storageLocation || '',
-      status: item.status,
-      notes: item.notes || ''
-    }));
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const items = await prisma.item.findMany({
+        orderBy: { itemCode: 'asc' },
+        skip: offset,
+        take: batchSize
+      });
+      if (items.length === 0) break;
 
-    const csv = stringify(rows, {
-      header: true,
-      columns: ['itemCode', 'name', 'nfcTagUid', 'category', 'storageLocation', 'status', 'notes']
-    });
+      const rows = items.map(item => ({
+        itemCode: item.itemCode,
+        name: item.name,
+        nfcTagUid: item.nfcTagUid || '',
+        category: item.category || '',
+        storageLocation: item.storageLocation || '',
+        status: item.status,
+        notes: item.notes || ''
+      }));
 
-    return Buffer.from(csv, 'utf-8');
+      const csvChunk = stringify(rows, {
+        header: isFirstBatch,
+        columns: ['itemCode', 'name', 'nfcTagUid', 'category', 'storageLocation', 'status', 'notes']
+      });
+      chunks.push(csvChunk);
+      isFirstBatch = false;
+      offset += items.length;
+    }
+
+    return Buffer.from(chunks.join(''), 'utf-8');
   }
 
   async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {

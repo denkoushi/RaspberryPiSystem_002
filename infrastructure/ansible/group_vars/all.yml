@@ -183,6 +183,14 @@ security_monitor_allowed_listen_ports: "22 80 443 5900"
 security_monitor_ignore_processes: "tailscaled"
 security_monitor_ignore_addr_prefixes: "127.0.0.1 ::1 100. fd7a: fe80:"
 
+# バックアップ検証（自動化）
+backup_verify_enabled: true
+backup_verify_monthly_oncalendar: "Sun *-*-01 03:30:00"
+backup_verify_quarterly_oncalendar: "Sun *-01,04,07,10-01 04:00:00"
+backup_verify_monthly_max_age_days: 35
+backup_verify_quarterly_max_age_days: 110
+backup_verify_max_download_mb: 50
+
 # デバイスタイプごとのデフォルト設定（preflightチェック用）
 # 新しいデバイスタイプを追加する場合は、この設定に追加してください
 device_type_defaults:

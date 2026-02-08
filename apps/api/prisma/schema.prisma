@@ -433,6 +433,20 @@ model BackupHistory {
   @@index([completedAt])
 }
 
+model BackupConfigChange {
+  id               String   @id @default(uuid())
+  actionType       String
+  actorUserId      String?
+  actorUsername    String?
+  summary          String?
+  diff             Json?
+  snapshotRedacted Json
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actionType])
+}
+
 model SignageSchedule {
   id           String             @id @default(uuid())
   name         String

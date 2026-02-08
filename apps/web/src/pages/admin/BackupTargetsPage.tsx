@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth } from '../../api/hooks';
+import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth, useBackupTargetTemplates } from '../../api/hooks';
 import { BackupTargetForm } from '../../components/backup/BackupTargetForm';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -11,12 +11,17 @@ import type { BackupTarget } from '../../api/backup';
 export function BackupTargetsPage() {
   const { data: config, isLoading } = useBackupConfig();
   const { data: health, isLoading: isHealthLoading } = useBackupConfigHealth();
-  const { addTarget, updateTarget, deleteTarget, runBackup } = useBackupConfigMutations();
+  const { addTarget, addFromTemplate, updateTarget, deleteTarget, runBackup } = useBackupConfigMutations();
+  const { data: templatesData } = useBackupTargetTemplates();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [runningIndex, setRunningIndex] = useState<number | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [templateSourceOverride, setTemplateSourceOverride] = useState<string>('');
 
   const targets = config?.targets ?? [];
+  const templates = templatesData?.templates ?? [];
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   // #region agent log
   useEffect(() => {
@@ -80,6 +85,18 @@ export function BackupTargetsPage() {
   const handleAdd = async (target: Omit<BackupTarget, 'enabled'> & { enabled?: boolean }) => {
     await addTarget.mutateAsync(target);
     setIsAdding(false);
+  };
+
+  const handleAddFromTemplate = async () => {
+    if (!selectedTemplateId) return;
+    await addFromTemplate.mutateAsync({
+      templateId: selectedTemplateId,
+      overrides: templateSourceOverride.trim()
+        ? { source: templateSourceOverride.trim() }
+        : undefined
+    });
+    setSelectedTemplateId('');
+    setTemplateSourceOverride('');
   };
 
   const handleEdit = async (index: number, target: Partial<BackupTarget>) => {
@@ -262,6 +279,9 @@ export function BackupTargetsPage() {
       title="バックアップ対象管理"
       action={
         <div className="flex gap-2">
+          <Link to="/admin/backup/config-history">
+            <Button variant="secondary">設定履歴</Button>
+          </Link>
           <Link to="/admin/backup/history">
             <Button variant="secondary">履歴</Button>
           </Link>
@@ -302,6 +322,42 @@ export function BackupTargetsPage() {
       {isAdding && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-50 p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">新しいバックアップ対象を追加</h3>
+          {templates.length > 0 && (
+            <div className="mb-4 rounded-md border border-slate-300 bg-white p-3">
+              <div className="mb-2 text-sm font-semibold text-slate-700">テンプレートから追加</div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <select
+                  className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm font-semibold text-slate-900 md:w-auto"
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                >
+                  <option value="">テンプレートを選択...</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="ソース上書き（任意）"
+                  className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-sm text-slate-900 md:w-72"
+                  value={templateSourceOverride}
+                  onChange={(e) => setTemplateSourceOverride(e.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={handleAddFromTemplate}
+                  disabled={!selectedTemplateId || addFromTemplate.isPending}
+                >
+                  テンプレから追加
+                </Button>
+              </div>
+              {selectedTemplate?.description && (
+                <p className="mt-2 text-xs text-slate-600">{selectedTemplate.description}</p>
+              )}
+            </div>
+          )}
           <BackupTargetForm
             onSubmit={handleAdd}
             onCancel={() => setIsAdding(false)}
