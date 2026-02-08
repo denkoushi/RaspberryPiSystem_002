@@ -31,9 +31,9 @@ if [[ -d "${TRIGGER_PATH}" ]]; then
     exit 0
   fi
   QUEUE_FILES=()
-  while IFS= read -r -d '' file; do
+  {% raw %}while IFS= read -r -d '' file; do
     QUEUE_FILES+=("${file}")
-  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
+  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true){% endraw %}
 else
   # ファイルが渡された場合（後方互換性のため）
   if [[ -f "${TRIGGER_PATH}" ]]; then
