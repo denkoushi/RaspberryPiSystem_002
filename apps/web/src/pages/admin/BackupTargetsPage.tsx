@@ -5,6 +5,7 @@ import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth, useBa
 import { BackupTargetForm } from '../../components/backup/BackupTargetForm';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 import type { BackupTarget } from '../../api/backup';
 
@@ -13,6 +14,7 @@ export function BackupTargetsPage() {
   const { data: health, isLoading: isHealthLoading } = useBackupConfigHealth();
   const { addTarget, addFromTemplate, updateTarget, deleteTarget, runBackup } = useBackupConfigMutations();
   const { data: templatesData } = useBackupTargetTemplates();
+  const confirm = useConfirm();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [runningIndex, setRunningIndex] = useState<number | null>(null);
@@ -59,7 +61,14 @@ export function BackupTargetsPage() {
 
   const handleDelete = async (index: number) => {
     const target = targets[index];
-    if (!confirm(`以下のバックアップ対象を削除しますか？\n\n種類: ${target.kind}\nソース: ${target.source}`)) {
+    const shouldDelete = await confirm({
+      title: 'バックアップ対象を削除しますか？',
+      description: `種類: ${target.kind}\nソース: ${target.source}`,
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) {
       return;
     }
     await deleteTarget.mutateAsync(index);
