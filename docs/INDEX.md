@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-08）
 
+- **✅ キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）**: キオスクヘッダーのUI改善とモーダル表示位置問題を解決。**UI改善内容**: 管理コンソールボタンを歯車アイコンに変更、サイネージプレビューボタン追加（歯車アイコン付き）、再起動/シャットダウンボタンを電源アイコン1つに統合しポップアップメニューで選択可能に。**モーダル表示位置問題**: `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されており、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にするため、モーダルが画面上辺を超えて見切れていた。**解決策**: React Portal（`createPortal`）を使用し、モーダルを`document.body`に直接レンダリングすることで、DOM階層の制約を回避。モーダルスタイリングを改善（`overflow-y-auto`、`items-start`、`max-h-[calc(100vh-2rem)]`、サイネージプレビューは全幅表示）。**E2Eテストの安定化**: `scrollIntoViewIfNeeded()`とEscキー操作（`page.keyboard.press('Escape')`）でビューポート外エラーを回避。**実機検証結果**: 管理コンソールボタンが歯車アイコンに変更されスペースが確保されたこと、サイネージプレビューボタンが追加されモーダルでサイネージ画像が正常に表示されること、電源アイコンをクリックするとメニューが表示され再起動/シャットダウンが選択できること、モーダルが画面全体に正しく表示され画面上辺を超えて見切れないこと、サイネージプレビューが全画面表示されることを確認。詳細は [knowledge-base/frontend.md#kb-239](./knowledge-base/frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) を参照。
+
 - **✅ Pi3デプロイ時のサービス再起動成功を確認（xsetエラーハンドリング修正の実機検証）**: xsetエラーハンドリング修正後のデプロイ（runId: `20260208-082138-11782`）で、サービス再起動が正常に完了することを確認。**確認内容**: Pi3標準手順（preflightチェック）に従って`--limit "server:signage"`でデプロイを実行。preflightチェック（サービス停止、lightdm停止、メモリチェック）が正しく実行され、サービス再起動は`Result=success`で完了。xsetエラーが発生しても警告ログが出力され、サービスが継続することを確認。**学んだこと**: Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）。preflightチェックは自動実行されるが、デプロイ実行時に標準手順を遵守することが重要。詳細は [knowledge-base/infrastructure/signage.md#kb-236](./knowledge-base/infrastructure/signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) / [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
 
 ### 🆕 最新アップデート（2026-02-07）

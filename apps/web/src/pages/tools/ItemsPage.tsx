@@ -6,6 +6,7 @@ import { useItemMutations, useItems } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { Item } from '../../api/types';
@@ -21,6 +22,7 @@ const initialItem = {
 export function ItemsPage() {
   const { data, isLoading } = useItems();
   const { create, update, remove } = useItemMutations();
+  const confirm = useConfirm();
   const [form, setForm] = useState(initialItem);
   const [editingId, setEditingId] = useState<string | null>(null);
   // スコープ分離: このページがアクティブな場合のみNFCを有効にする
@@ -72,17 +74,23 @@ export function ItemsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('このアイテムを削除しますか？')) {
-      try {
-        await remove.mutateAsync(id);
-        if (editingId === id) {
-          setEditingId(null);
-          setForm(initialItem);
-        }
-      } catch (error) {
-        // エラーはReact Queryが自動的に処理する（remove.errorに設定される）
-        console.error('Delete error:', error);
+    const shouldDelete = await confirm({
+      title: 'このアイテムを削除しますか？',
+      description: '削除すると元に戻せません。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) return;
+    try {
+      await remove.mutateAsync(id);
+      if (editingId === id) {
+        setEditingId(null);
+        setForm(initialItem);
       }
+    } catch (error) {
+      // エラーはReact Queryが自動的に処理する（remove.errorに設定される）
+      console.error('Delete error:', error);
     }
   };
 

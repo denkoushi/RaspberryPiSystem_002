@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+import { clickByRoleSafe, closeDialogWithEscape } from './helpers';
+
 test.describe('キオスク画面', () => {
   test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
@@ -45,7 +47,7 @@ test.describe('キオスク画面', () => {
     await expect(page.getByText('サイネージプレビュー')).toBeVisible({ timeout: 10000 });
     
     // モーダルを閉じる
-    await page.keyboard.press('Escape');
+    await closeDialogWithEscape(page);
     await expect(page.getByText('サイネージプレビュー')).toBeHidden({ timeout: 5000 });
 
     // 電源メニューを開く
@@ -60,7 +62,7 @@ test.describe('キオスク画面', () => {
     await expect(page.getByText('端末を再起動しますか？')).toBeVisible({ timeout: 10000 });
     
     // 確認モーダルをキャンセル
-    await page.getByRole('button', { name: 'キャンセル' }).click();
+    await clickByRoleSafe(page, 'button', 'キャンセル');
     await expect(page.getByText('端末を再起動しますか？')).toBeHidden({ timeout: 5000 });
   });
 

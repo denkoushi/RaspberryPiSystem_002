@@ -1,10 +1,10 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { DEFAULT_CLIENT_KEY, postKioskSupport } from '../../api/client';
 import { useKioskEmployees } from '../../api/hooks';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { Dialog } from '../ui/Dialog';
 
 interface KioskSupportModalProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ const requestTypes = [
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   const location = useLocation();
   const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(DEFAULT_CLIENT_KEY);
+  const senderSelectRef = useRef<HTMLSelectElement | null>(null);
   
   // デフォルト日時を現在の日時に設定
   const getDefaultDate = () => {
@@ -49,8 +50,6 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
       setMeetingTime(getDefaultTime());
     }
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -102,20 +101,30 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-md">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900">お問い合わせ</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-500 hover:text-slate-700"
-            disabled={isSubmitting}
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabel="お問い合わせ"
+      size="md"
+      closeOnEsc={!isSubmitting}
+      closeOnBackdrop={!isSubmitting}
+      initialFocusRef={senderSelectRef}
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-900">お問い合わせ</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="閉じる"
+          title="閉じる"
+          className="text-slate-500 hover:text-slate-700"
+          disabled={isSubmitting}
+        >
+          ✕
+        </button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
           {/* 送信者選択 */}
           <div>
             <label htmlFor="sender" className="mb-2 block text-sm font-semibold text-slate-700">
@@ -123,6 +132,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
             </label>
             <select
               id="sender"
+              ref={senderSelectRef}
               value={selectedSender}
               onChange={(e) => setSelectedSender(e.target.value)}
               className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
@@ -227,8 +237,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
             </Button>
           </div>
         </form>
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 

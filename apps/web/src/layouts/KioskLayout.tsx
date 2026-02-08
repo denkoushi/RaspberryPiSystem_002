@@ -49,6 +49,7 @@ export function KioskLayout() {
         />
       </header>
       <main className="flex h-[calc(100vh-6rem)] flex-col gap-4 px-4 py-4">
+        <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>
       <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, setAuthToken } from './helpers';
+import { clickByRoleSafe, login, setAuthToken } from './helpers';
 
 test.describe('管理画面', () => {
   let authToken: string | null = null;
@@ -163,9 +163,6 @@ test.describe('管理画面', () => {
       const deleteButtonCount = await deleteButtons.count();
       
       if (deleteButtonCount > 0) {
-        // 確認ダイアログを自動承認
-        page.on('dialog', dialog => dialog.accept());
-        
         // 削除ボタンをクリックし、APIレスポンスを待機
         // DELETE /api/backup/config/targets/:index のレスポンスを待機
         const deletePromise = page.waitForResponse(
@@ -177,7 +174,10 @@ test.describe('管理画面', () => {
           },
           { timeout: 15000 }
         );
-        await deleteButtons.first().click();
+        await clickByRoleSafe(page, 'button', /削除/i);
+        const confirmDialog = page.getByRole('dialog');
+        await expect(confirmDialog).toBeVisible({ timeout: 5000 });
+        await confirmDialog.getByRole('button', { name: '削除' }).click();
         await deletePromise;
         
         // UIが更新されるのを待機
@@ -286,9 +286,6 @@ test.describe('管理画面', () => {
       const deleteButton = page.getByRole('button', { name: /削除/i });
       await expect(deleteButton).toBeVisible({ timeout: 5000 });
 
-      // 確認ダイアログを自動承認
-      page.on('dialog', dialog => dialog.accept());
-
       // 削除ボタンをクリックし、APIレスポンスを待機
       const deletePromise = page.waitForResponse(
         response => {
@@ -299,7 +296,10 @@ test.describe('管理画面', () => {
         },
         { timeout: 15000 }
       );
-      await deleteButton.click();
+      await clickByRoleSafe(page, 'button', /削除/i);
+      const confirmDialog = page.getByRole('dialog');
+      await expect(confirmDialog).toBeVisible({ timeout: 5000 });
+      await confirmDialog.getByRole('button', { name: '削除' }).click();
       await deletePromise;
 
       // UIが更新されるのを待機

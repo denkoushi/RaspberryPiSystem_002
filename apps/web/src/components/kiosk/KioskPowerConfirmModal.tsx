@@ -1,7 +1,5 @@
-import { createPortal } from 'react-dom';
-
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { Dialog } from '../ui/Dialog';
 
 type PowerAction = 'reboot' | 'poweroff';
 
@@ -35,36 +33,33 @@ export function KioskPowerConfirmModal({
 }: KioskPowerConfirmModalProps) {
   const copy = actionCopy[action];
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
-      <Card className="w-full max-w-md max-h-[calc(100vh-2rem)] my-4">
-        <div className="mb-3">
-          <h2 className="text-lg font-semibold text-slate-900">{copy.title}</h2>
-          <p className="mt-2 text-sm text-slate-600">{copy.description}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onCancel}
-            disabled={isProcessing}
-            className="flex-1 !text-slate-700 hover:!text-slate-900"
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="button"
-            onClick={onConfirm}
-            disabled={isProcessing}
-            className="flex-1 bg-red-600 text-white hover:bg-red-700"
-          >
-            {isProcessing ? '実行中...' : copy.confirmLabel}
-          </Button>
-        </div>
-      </Card>
-    </div>,
-    document.body
+  return (
+    <Dialog
+      isOpen={isOpen}
+      onClose={onCancel}
+      title={copy.title}
+      description={copy.description}
+      size="md"
+    >
+      <div className="mt-4 flex gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onCancel}
+          disabled={isProcessing}
+          className="flex-1 !text-slate-700 hover:!text-slate-900"
+        >
+          キャンセル
+        </Button>
+        <Button
+          type="button"
+          onClick={onConfirm}
+          disabled={isProcessing}
+          className="flex-1 bg-red-600 text-white hover:bg-red-700"
+        >
+          {isProcessing ? '実行中...' : copy.confirmLabel}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

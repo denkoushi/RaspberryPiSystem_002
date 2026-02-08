@@ -8,10 +8,12 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 export function InstrumentTagsPage() {
   const [instrumentId, setInstrumentId] = useState('');
   const [tagUid, setTagUid] = useState('');
+  const confirm = useConfirm();
 
   const { data: instrument } = useMeasuringInstrument(instrumentId || undefined);
   const { data: tags } = useInstrumentTags(instrumentId || undefined);
@@ -25,9 +27,15 @@ export function InstrumentTagsPage() {
   };
 
   const handleDelete = async (tagId: string) => {
-    if (window.confirm('このRFIDタグ紐付けを削除しますか？')) {
-      await mutations.remove.mutateAsync(tagId);
-    }
+    const shouldDelete = await confirm({
+      title: 'このRFIDタグ紐付けを削除しますか？',
+      description: '削除すると元に戻せません。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) return;
+    await mutations.remove.mutateAsync(tagId);
   };
 
   return (

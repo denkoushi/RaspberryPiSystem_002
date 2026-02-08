@@ -10,6 +10,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { MeasuringInstrument, MeasuringInstrumentStatus } from '../../api/types';
@@ -30,6 +31,7 @@ const initialForm = {
 export function MeasuringInstrumentsPage() {
   const { data, isLoading } = useMeasuringInstruments();
   const { create, update, remove } = useMeasuringInstrumentMutations();
+  const confirm = useConfirm();
   const { data: departmentsData } = useDepartments();
   const departments = departmentsData?.departments ?? [];
   const [form, setForm] = useState(initialForm);
@@ -106,12 +108,18 @@ export function MeasuringInstrumentsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('この計測機器を削除しますか？')) {
-      await remove.mutateAsync(id);
-      if (editingId === id) {
-        setEditingId(null);
-        setForm(initialForm);
-      }
+    const shouldDelete = await confirm({
+      title: 'この計測機器を削除しますか？',
+      description: '削除すると元に戻せません。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) return;
+    await remove.mutateAsync(id);
+    if (editingId === id) {
+      setEditingId(null);
+      setForm(initialForm);
     }
   };
 

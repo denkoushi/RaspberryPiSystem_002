@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 35件  
+**件数**: 36件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2779,5 +2779,79 @@ export function KioskDatePickerModal({
 - [KB-212](./frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能): 備考欄追加の初期実装
 - [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装): 納期日UI改善
 - [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題): デプロイ時のマイグレーション未適用問題
+
+---
+
+### [KB-239] キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）
+
+**実装日時**: 2026-02-08
+
+**事象**:
+- キオスクヘッダーの「管理コンソール」ボタンがテキストで表示され、スペースを占有していた
+- サイネージプレビュー機能が管理コンソール内にのみ存在し、キオスクから直接確認できなかった
+- 再起動/シャットダウンボタンが2つ並んでおり、スペースを占有していた
+- モーダル（サイネージプレビュー、電源メニュー）が画面上辺を超えて見切れ、画面全体に表示されなかった
+
+**要因**:
+- **UIデザイン**: テキストボタンがスペースを占有し、アイコン化でスペースを確保できる
+- **機能配置**: サイネージプレビューが管理コンソール専用で、キオスクからアクセスできなかった
+- **モーダル表示位置問題**: 
+  - `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されていた
+  - CSS仕様により、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にする（`transform`や`filter`が新しい包含ブロックを作成）
+  - モーダルが`KioskHeader`内でレンダリングされていたため、親要素のDOM階層制約を受けていた
+
+**有効だった対策**:
+- ✅ **管理コンソールボタンのアイコン化**: テキスト「管理コンソール」を歯車アイコン（`GearIcon`）に変更し、`aria-label`でアクセシビリティを確保
+- ✅ **サイネージプレビュー機能の追加**: キオスクヘッダーに「サイネージ」ボタン（歯車アイコン付き）を追加し、モーダルでサイネージプレビューを表示
+- ✅ **電源メニューの統合**: 再起動/シャットダウンボタンを電源アイコン（`PowerIcon`）1つに統合し、クリックでポップアップメニューを表示
+- ✅ **React Portalの導入**: モーダルコンポーネント（`KioskSignagePreviewModal`、`KioskPowerMenuModal`、`KioskPowerConfirmModal`）を`createPortal(..., document.body)`で`document.body`に直接レンダリングし、DOM階層の制約を回避
+- ✅ **モーダルスタイリングの改善**: 
+  - 外側divに`overflow-y-auto`を追加してスクロール可能に
+  - `items-center`を`items-start`に変更して上端揃え
+  - Cardに`max-h-[calc(100vh-2rem)] my-4`を追加して垂直方向のサイズ制御
+  - サイネージプレビューは`w-[calc(100vw-2rem)] max-w-none`で全幅表示
+- ✅ **E2Eテストの安定化**: 
+  - `scrollIntoViewIfNeeded()`で要素をビューポート内に確実に表示
+  - Escキー（`page.keyboard.press('Escape')`）でモーダルを閉じる方式に変更し、ビューポート外エラーを回避
+  - `waitForLoadState('networkidle')`でページ読み込み完了を待機
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+**実装の詳細**:
+- **React Portal**: `react-dom`の`createPortal`を使用し、モーダルを`document.body`に直接レンダリングすることで、親要素のCSS `filter`（`backdrop-blur`）の影響を回避
+- **モーダルコンポーネント**: 
+  - `KioskSignagePreviewModal`: サイネージ画像を30秒ごとに自動更新、手動更新ボタン、Blob取得と`URL.createObjectURL`/`URL.revokeObjectURL`によるメモリリーク防止
+  - `KioskPowerMenuModal`: 電源操作選択メニュー（再起動/シャットダウン）
+  - `KioskPowerConfirmModal`: 電源操作の確認ダイアログ
+- **アクセシビリティ**: アイコンボタンに`aria-label`と`title`属性を追加し、スクリーンリーダー対応
+- **E2Eテスト**: Playwrightの`getByRole`セレクタとEscキー操作で安定性を向上
+
+**学んだこと**:
+- **CSS `filter`プロパティの影響**: `backdrop-blur`などの`filter`プロパティは、子要素の`position: fixed`を親要素基準にする。モーダルを画面全体に表示するには、React PortalでDOM階層を回避する必要がある
+- **React Portalの活用**: `createPortal`を使用することで、DOM階層の制約を回避し、モーダルを画面全体に正しく表示できる
+- **E2Eテストの安定化**: ビューポート外エラーを避けるため、`scrollIntoViewIfNeeded()`とEscキー操作を活用する
+- **アクセシビリティ**: アイコンボタンには必ず`aria-label`や`title`を追加し、スクリーンリーダー対応を確保する
+
+**実機検証結果（2026-02-08）**:
+- ✅ **統合テスト成功**: モーダルの開閉、サイネージ画像の取得・表示、電源操作の確認が正常に動作することを確認
+- ✅ **GitHub Actions CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功
+- ✅ **実機検証完了（2026-02-08）**:
+  - 管理コンソールボタンが歯車アイコンに変更され、スペースが確保されたことを確認
+  - サイネージプレビューボタンが追加され、モーダルでサイネージ画像が正常に表示されることを確認
+  - 電源アイコンをクリックするとメニューが表示され、再起動/シャットダウンが選択できることを確認
+  - モーダルが画面全体に正しく表示され、画面上辺を超えて見切れないことを確認
+  - サイネージプレビューが全画面表示されることを確認
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskHeader.tsx`（ヘッダーコンポーネント、アイコン化、モーダル統合）
+- `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx`（サイネージプレビューモーダル、React Portal使用）
+- `apps/web/src/components/kiosk/KioskPowerMenuModal.tsx`（電源メニューモーダル、React Portal使用）
+- `apps/web/src/components/kiosk/KioskPowerConfirmModal.tsx`（電源確認モーダル、React Portal使用）
+- `apps/web/src/layouts/KioskLayout.tsx`（`backdrop-blur`が適用されている親要素）
+- `e2e/kiosk.spec.ts`（E2Eテスト、Escキー操作と`scrollIntoViewIfNeeded`使用）
+
+**関連KB**:
+- [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題): 管理コンソールのサイネージプレビュー機能実装（キオスクへの統合前）
 
 ---
