@@ -11,17 +11,20 @@ test.describe('キオスク画面', () => {
   });
 
   test('持出と吊具持出のナビゲーションが動作する', async ({ page }) => {
-    await page.goto('/kiosk/tag');
+    await page.goto('/kiosk/tag', { waitUntil: 'networkidle' });
+    await expect(page).toHaveURL(/\/kiosk\/tag/);
 
     // 吊具持出へ遷移
-    const riggingLink = page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first();
+    const riggingLink = page.getByRole('link', { name: '吊具 持出' }).first();
     await riggingLink.waitFor({ state: 'visible' });
+    await riggingLink.scrollIntoViewIfNeeded();
     await riggingLink.click();
     await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
     // 持出（タグまたはフォト）へ戻れることを確認
-    const borrowLink = page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first();
+    const borrowLink = page.getByRole('link', { name: '持出' }).first();
     await borrowLink.waitFor({ state: 'visible' });
+    await borrowLink.scrollIntoViewIfNeeded();
     await borrowLink.click();
     await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
   });
@@ -45,6 +48,7 @@ test.describe('キオスク画面', () => {
     // モーダルを閉じる
     const closeButton = page.getByRole('button', { name: '閉じる' }).first();
     await closeButton.waitFor({ state: 'visible' });
+    await closeButton.scrollIntoViewIfNeeded();
     await closeButton.click();
     await expect(page.getByText('サイネージプレビュー')).toBeHidden({ timeout: 5000 });
 
