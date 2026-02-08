@@ -182,12 +182,11 @@ test.describe('管理画面', () => {
         await confirmDialog.getByRole('button', { name: '削除' }).click();
         await deletePromise;
         
-        // UIが更新されるのを待機
-        await page.waitForLoadState('networkidle');
-        
-        // 削除ボタンの数が減ったことを確認
-        const newDeleteButtonCount = await page.getByRole('button', { name: /削除/i }).count();
-        expect(newDeleteButtonCount).toBeLessThan(deleteButtonCount);
+        // UIが更新されるのを待機（ポーリングで確認）
+        await expect.poll(
+          async () => await page.getByRole('button', { name: /削除/i }).count(),
+          { timeout: 10000, message: '削除後にボタン数が減ることを期待' }
+        ).toBeLessThan(deleteButtonCount);
       }
     });
   });
