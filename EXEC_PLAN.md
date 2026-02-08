@@ -9,6 +9,10 @@
 
 ## Progress
 
+- [x] (2026-02-08) **update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功**: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する問題を解決。**原因**: `raspberrypi5`は`ansible_connection: local`のため、`REMOTE_HOST`未設定時にMac側で実行されるとsudoパスワードが求められる。**修正内容**: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）成功。**実機検証結果**: `RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、エラーで停止することを確認。ナレッジベースにKB-238を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) を参照。
+
+- [x] (2026-02-08) **Pi4キオスクの再起動/シャットダウンボタンが機能しない問題の修正・デプロイ成功・実機検証完了**: Pi4キオスクの再起動/シャットダウンボタンが機能しない問題を調査・修正。**原因**: 3つの問題を発見（Jinja2テンプレート展開の問題、systemd serviceの実行ユーザー問題、ディレクトリ所有権の問題）。**修正内容**: `pi5-power-dispatcher.sh.j2`にJinja2テンプレートからデフォルト値を抽出するロジックを追加、`cd "${ANSIBLE_DIR}"`を追加。`pi5-power-dispatcher.service.j2`に`User=denkon5sd02`、`WorkingDirectory`、`StandardOutput/StandardError=journal`を追加。**CI実行**: 全ジョブ成功。**デプロイ結果**: Pi5でデプロイ成功（`failed=0`）。**実機検証結果**: Pi4キオスクの再起動ボタンを押すと、正常に再起動が実行されることを確認。ナレッジベースにKB-237を追加、`docs/guides/deployment.md`の電源操作に関する記述を修正。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-237](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-02-01) **リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了**: デプロイスクリプトのリモート実行をデフォルトでデタッチモードに変更し、クライアント側の監視打ち切りによる中断リスクを排除。**実装内容**: `REMOTE_HOST`が設定されている場合、`--detach`、`--job`、`--foreground`が明示指定されていない限り、自動的にデタッチモードで実行されるように変更。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。`usage`関数の定義位置を修正し、エラーハンドリングを改善。**KB-226の更新**: 「約60秒」という不確実な記述を削除し、事実ベースの表現に修正（「クライアント側の監視打ち切り: 実行環境側のコマンド監視が短く（値は環境依存で未確定）」）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデフォルトデタッチモードでデプロイ成功（`failed=0`, exit code: 0）。**実機検証結果**: リモート実行時に自動的にデタッチモードで実行されること、`--attach`でログ追尾が正常に動作すること、`--status`で状態確認が正常に動作すること、APIヘルスチェック（`status: ok`）、DB整合性（29マイグレーション適用済み）、Dockerコンテナ（すべて起動中）を確認。ナレッジベースにKB-226を更新。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
 
 - [x] (2026-02-08) **証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加するスクリプトを作成し、Pi5上で実行して既存設定を確認。**実装内容**: `scripts/server/add-cert-backup-target.mjs`（Node.jsスクリプト、ESMモジュール）、`infrastructure/ansible/playbooks/add-cert-backup-target.yml`（Ansible Playbook）を作成。スクリプトは既存のターゲットをチェックし、重複追加を防止。**実行結果**: Pi5上でスクリプトを実行し、既に証明書ディレクトリのバックアップターゲットが存在することを確認（`schedule: "0 2 * * 0"`, `retention.days: 14`, `retention.maxBackups: 4`）。既存設定を維持。**トラブルシューティング**: Dockerコンテナ内でスクリプトを実行する必要があるため、ホスト側からコンテナ内へのファイルコピー方法を確立（`scp`でホスト側にコピー→`docker compose exec`でコンテナ内にコピー）。**ドキュメント更新**: `docs/guides/backup-configuration.md`に追加方法を記載、`docs/guides/backup-and-restore.md`の証明書バックアップ方法を更新、`docs/knowledge-base/infrastructure/backup-restore.md`にKB-200を追加。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) を参照。
@@ -492,7 +496,15 @@
   対応: **リモート実行をデフォルトでデタッチモードに変更**し、クライアント側の監視打ち切りによる中断リスクを排除。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。**[KB-226]**
 - 発見: `usage`関数が呼び出しより後に定義されていたため、エラーハンドリング時に`usage: command not found`エラーが発生。  
   対応: `usage`関数を引数解析直後に移動し、エラーメッセージが正常に表示されるように修正。
-- 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。  
+- 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。
+- 発見: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する。エラーが100%発生する場合は、原因を潰すべき（fail-fast）。  
+  対応: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐため、早期にエラーを検出するガードを追加。**[KB-238]**
+- 発見: `ansible-inventory --list` はJinja2テンプレートを展開しないため、`{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}` が文字列のまま残り、`client-key-raspberrypi4-kiosk1` と一致しない。  
+  対応: `extract_default_value()` 関数を追加し、テンプレート文字列から `default('value')` パターンを抽出してデフォルト値と比較するように修正。**[KB-237]**
+- 発見: systemd serviceに `User=` が未指定の場合、rootで実行される。SSH鍵アクセスが必要な場合は、適切なユーザー（`denkon5sd02`）を指定する必要がある。  
+  対応: `pi5-power-dispatcher.service.j2` に `User=denkon5sd02` を追加し、SSH鍵アクセスを可能にした。**[KB-237]**
+- 発見: systemd経由で実行されるスクリプトは、カレントディレクトリが不定になり得る。`ansible.cfg` の相対パス設定（`vault_password_file=.vault-pass`）が機能しない場合がある。  
+  対応: `pi5-power-dispatcher.service.j2` に `WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible` を追加し、スクリプト内でも `cd "${ANSIBLE_DIR}"` を実行するように修正。**[KB-237]**  
   エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
   対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
 - 観測: `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある。  
@@ -1477,3 +1489,4 @@
 変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。
 変更履歴: 2026-02-01 — リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了を反映。Progressにリモート実行のデフォルトデタッチ化、`--foreground`オプション追加、`usage`関数の定義位置修正を追加。KB-226に実装の詳細と実機検証結果を追加。Surprises & Discoveriesにクライアント側監視打ち切り問題と`usage`関数の定義位置問題を追加。Decision Logにリモート実行のデフォルトデタッチ化決定を追加。
 変更履歴: 2026-02-08 — 証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了を反映。Progressにスクリプト作成とPi5上での実行結果を追加。KB-200を追加し、Dockerコンテナ内実行時の注意点を記録。関連ドキュメント（backup-configuration.md、backup-and-restore.md）を更新。Next Stepsにバックアップ・リストア機能の継続的改善候補を追加。
+変更履歴: 2026-02-08 — update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功を反映。Progressに`require_remote_host_for_pi5()`関数の追加とCI実行・実機検証結果を追加。KB-238を追加し、エラーが100%発生する場合は原因を潰すべき（fail-fast）という知見を記録。Surprises & Discoveriesに標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐためのガード追加を追加。ナレッジベース更新（39件）。

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 37件  
+**件数**: 39件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3457,5 +3457,137 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
 
 **解決状況**: ✅ **解決済み**（2026-02-07）
+
+---
+
+### [KB-237] Pi4キオスクの再起動/シャットダウンボタンが機能しない問題
+
+**発生日**: 2026-02-08  
+**Status**: ✅ 解決済み（2026-02-08）
+
+**Context**:
+- Pi4キオスク画面の「再起動」「シャットダウン」ボタンを押しても、Pi4が再起動・シャットダウンされない
+- ボタンを押すとAPIリクエストは成功するが、実際の電源操作が実行されない
+
+**Symptoms**:
+- Pi4キオスクのWeb UIから「再起動」「シャットダウン」ボタンを押すと、APIリクエストは成功（`status: accepted`）するが、Pi4が再起動・シャットダウンされない
+- `journalctl -u pi5-power-dispatcher.service` でログを確認すると、`status=1/FAILURE` で失敗している
+- `/opt/RaspberryPiSystem_002/power-actions/failed/` にJSONファイルが移動されていない（処理されていない）
+
+**Investigation**:
+- **CONFIRMED**: Pi5 API (`POST /kiosk/power`) は正常にJSONファイルを書き込んでいる
+- **CONFIRMED**: `pi5-power-dispatcher.path` は active (waiting) で正常動作中
+- **CONFIRMED**: `pi5-power-dispatcher.service` が起動して失敗（`status=1/FAILURE`）
+- **CONFIRMED**: 手動でスクリプトを実行すると、`HOST=` が空になり、ホスト特定に失敗
+- **CONFIRMED**: `ansible-inventory --list` の出力で、`status_agent_client_key` が `{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}` というテンプレート文字列のまま（展開されていない）
+- **CONFIRMED**: Pythonコードが `client-key-raspberrypi4-kiosk1` とテンプレート文字列を直接比較しているため、一致しない
+- **CONFIRMED**: systemd serviceに `User=` が未指定で、rootで実行されていた
+- **CONFIRMED**: rootにはSSH鍵がないため、Pi4へのAnsible接続に失敗
+- **CONFIRMED**: `power-actions` と `logs/power-actions` ディレクトリがroot所有で、`denkon5sd02`ユーザーが書き込めない
+
+**Root cause**:
+1. **Jinja2テンプレート展開の問題**: `ansible-inventory --list` はJinja2テンプレートを展開しないため、`{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}` が文字列のまま残り、`client-key-raspberrypi4-kiosk1` と一致しない
+2. **systemd serviceの実行ユーザー問題**: systemd serviceに `User=` が未指定でrootで実行されていたが、rootにはSSH鍵がないため、Pi4へのAnsible接続に失敗
+3. **ディレクトリ所有権の問題**: `power-actions` と `logs/power-actions` ディレクトリがroot所有で、`denkon5sd02`ユーザーが書き込めない
+
+**Fix**:
+- ✅ **解決済み（2026-02-08）**:
+  1. **pi5-power-dispatcher.sh.j2**: Jinja2テンプレートからデフォルト値を抽出するロジックを追加
+     - `extract_default_value()` 関数を追加し、`default('value')` パターンから値を抽出
+     - `status_key_resolved` と `nfc_secret_resolved` を計算し、デフォルト値と比較
+     - `cd "${ANSIBLE_DIR}"` を追加（WorkingDirectory設定のため）
+  2. **pi5-power-dispatcher.service.j2**: systemd serviceの実行環境を改善
+     - `User=denkon5sd02` を追加（SSH鍵アクセスのため）
+     - `WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible` を追加（ansible.cfgの相対パス設定を安定化）
+     - `StandardOutput=journal` と `StandardError=journal` を追加（ログ確認のため）
+  3. **ディレクトリ所有権の修正**: `power-actions` と `logs/power-actions` の所有権を `denkon5sd02:denkon5sd02` に変更
+
+**実機検証結果（2026-02-08）**:
+- ✅ **修正後の動作確認**: Pi4キオスクの再起動ボタンを押すと、正常に再起動が実行されることを確認
+- ✅ **ホスト特定**: `extract_default_value()` 関数により、`raspberrypi4` が正しく特定されることを確認
+- ✅ **Ansible実行**: `ansible-playbook power-control.yml` が正常に実行され、`changed=1` で成功することを確認
+- ✅ **systemdサービス**: `pi5-power-dispatcher.path` が active (waiting) で正常動作中、`pi5-power-dispatcher.service` が正常に実行されることを確認
+
+**学んだこと**:
+- `ansible-inventory --list` はJinja2テンプレートを展開しないため、テンプレート文字列からデフォルト値を抽出する必要がある
+- systemd serviceは `User=` が未指定の場合、rootで実行される。SSH鍵アクセスが必要な場合は、適切なユーザーを指定する必要がある
+- systemd経由で実行されるスクリプトは、カレントディレクトリが不定になり得るため、`WorkingDirectory` を明示的に設定する必要がある
+- ディレクトリの所有権は、実行ユーザーが書き込めるように設定する必要がある
+
+**再発防止**:
+- `ansible-inventory` の出力を扱う際は、テンプレート文字列の展開を考慮する
+- systemd serviceでSSH接続が必要な場合は、`User=` を明示的に指定する
+- systemd serviceで相対パスを使用する場合は、`WorkingDirectory` を明示的に設定する
+- ディレクトリの所有権は、実行ユーザーが書き込めるように設定する
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`
+- `infrastructure/ansible/templates/pi5-power-dispatcher.service.j2`
+- `infrastructure/ansible/roles/server/tasks/main.yml`（pi5-power-dispatcherのデプロイタスク）
+
+**関連KB**:
+- [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デプロイ標準手順の改善
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+---
+
+### [KB-238] update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加
+
+**発生日**: 2026-02-08  
+**Status**: ✅ 解決済み（2026-02-08）
+
+**Context**:
+- `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象（`--limit raspberrypi5`または全ホスト対象）にした場合、Mac側でローカル実行になり、sudoパスワードエラーが発生する
+- このエラーが毎回発生し、標準手順を無視して独自判断で`deploy.sh`を実行する問題が発生していた
+
+**Symptoms**:
+- `RASPI_SERVER_HOST`未設定で`update-all-clients.sh`を実行すると、`raspberrypi5`が対象の場合にMac側でローカル実行になる
+- `raspberrypi5`は`ansible_connection: local`のため、Mac側でAnsibleを実行するとsudoパスワードが求められる
+- エラーメッセージ: `sudo: a password is required`
+
+**Investigation**:
+- **CONFIRMED**: `update-all-clients.sh`は`REMOTE_HOST`（`RASPI_SERVER_HOST`から正規化）が未設定の場合、`run_locally()`を呼び出してMac側で実行する
+- **CONFIRMED**: `inventory.yml`で`raspberrypi5`は`ansible_connection: local`に設定されている
+- **CONFIRMED**: Mac側で`ansible_connection: local`のホストに対してAnsibleを実行すると、sudoパスワードが求められる
+- **CONFIRMED**: 標準手順（`docs/guides/deployment.md`）では、`update-all-clients.sh`を使う場合は`RASPI_SERVER_HOST`を設定してPi5上でAnsibleを実行する想定
+
+**Root cause**:
+- `raspberrypi5`が対象の場合、`RASPI_SERVER_HOST`が必須であることをチェックするロジックが存在しない
+- `REMOTE_HOST`未設定時にローカル実行にフォールバックするため、`raspberrypi5`が対象でもMac側で実行されてしまう
+
+**Fix**:
+- ✅ **解決済み（2026-02-08）**:
+  1. **require_remote_host_for_pi5()関数を追加**: `raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック
+     - `LIMIT_HOSTS`に`raspberrypi5`または`server`が含まれている場合、`REMOTE_HOST`未設定でエラーで停止
+     - `LIMIT_HOSTS`が空の場合（全ホスト対象）、`raspberrypi5`が含まれる可能性があるため、`REMOTE_HOST`未設定でエラーで停止
+  2. **メイン処理の前にチェック**: `require_remote_host_for_pi5()`をメイン処理の前に呼び出し、早期にエラーを検出
+
+**実機検証結果（2026-02-08）**:
+- ✅ **修正後の動作確認**: `RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、エラーで停止することを確認
+  ```bash
+  $ bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
+  [ERROR] RASPI_SERVER_HOST is required when targeting raspberrypi5 (ansible_connection: local). Set RASPI_SERVER_HOST (e.g., export RASPI_SERVER_HOST=100.106.158.2).
+  ```
+- ✅ **CI実行**: 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）成功
+
+**学んだこと**:
+- `ansible_connection: local`のホストは、コントロールノード（Mac）側で実行されるため、リモート実行が必要な場合は`REMOTE_HOST`を設定する必要がある
+- エラーが100%発生する場合は、原因を潰すべき（fail-fast）
+- 標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐため、早期にエラーを検出するガードを追加する
+
+**再発防止**:
+- `raspberrypi5`が対象の場合、`RASPI_SERVER_HOST`が必須であることをスクリプトレベルでチェック
+- 標準手順（`docs/guides/deployment.md`）に従って、`RASPI_SERVER_HOST`を設定してから`update-all-clients.sh`を実行する
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（`require_remote_host_for_pi5()`関数）
+- `infrastructure/ansible/inventory.yml`（`raspberrypi5`の`ansible_connection: local`設定）
+- `docs/guides/deployment.md`（デプロイ標準手順）
+
+**関連KB**:
+- [KB-237](./ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題): Pi4キオスクの電源操作に関する問題
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
 
 ---
