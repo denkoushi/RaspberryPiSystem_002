@@ -30,6 +30,12 @@ if [[ -d "${TRIGGER_PATH}" ]]; then
   while IFS= read -r -d '' file; do
     QUEUE_FILES+=("${file}")
   done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
+  # 処理するファイルがない場合は終了
+  {% raw %}QUEUE_COUNT=0{% endraw %}
+  {% raw %}for _f in "${QUEUE_FILES[@]}"; do QUEUE_COUNT=$((QUEUE_COUNT + 1)); done{% endraw %}
+  {% raw %}if [ ${QUEUE_COUNT} -eq 0 ]; then{% endraw %}
+    exit 0
+  fi
 else
   # ファイルが渡された場合（後方互換性のため）
   if [[ -f "${TRIGGER_PATH}" ]]; then
@@ -37,12 +43,6 @@ else
   else
     exit 0
   fi
-fi
-
-# 処理するファイルがない場合は終了
-{% raw %}QUEUE_FIRST="${QUEUE_FILES[0]:-}"{% endraw %}
-{% raw %}if [ -z "${QUEUE_FIRST}" ]; then{% endraw %}
-  exit 0
 fi
 
 # 各ファイルを処理
