@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-25
+last-verified: 2026-02-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 39件  
+**件数**: 40件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3587,6 +3587,43 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-237](./ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題): Pi4キオスクの電源操作に関する問題
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+---
+
+### [KB-239] Ansibleテンプレート内の`{{`混入でSyntax error in templateが発生しデプロイが失敗する
+
+**発生日**: 2026-02-08  
+**Status**: ✅ 解決済み（2026-02-08）
+
+**Context**:
+- `scripts/update-all-clients.sh`（標準デプロイ）で、Pi5のデプロイが同じ箇所で繰り返し失敗した
+- 失敗箇所は `server : Deploy Pi5 power dispatcher script`
+
+**Symptoms**:
+- エラー例:
+  - `Syntax error in template: expected token 'end of print statement', got 'r'`
+  - `Origin: .../infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`
+- デプロイはロールバック扱いになり、再実行しても同様に失敗する
+
+**Root cause**:
+- `pi5-power-dispatcher.sh.j2` の中に、**Jinja2の開始記号 `{{` が「説明コメント/文字列」として混入**していた
+- Ansibleは`.j2`をJinja2テンプレートとして解釈するため、意図しない `{{` があると**テンプレ構文としてパース**されて構文エラーになる
+
+**Fix**:
+- ✅ `pi5-power-dispatcher.sh.j2` 内から **`{{` / `{%` を含む表現を除去**（コメントの言い回し変更、`'{{'`のような文字列リテラルを回避）
+- その後、標準手順でのデプロイが完走（`failed=0`）することを確認
+
+**Prevention**:
+- `.j2`テンプレート内に「文字としての `{{` / `{%`」を書かない（必要なら **分割して生成**する）
+  - 例: `'{' * 2` のように実行時に組み立てる、またはJinjaで `{{ '{{' }}` のように安全に出力する
+- テンプレートにPython/シェル等のコードを埋め込む場合、**コメント例・サンプル文字列**にテンプレ記号を含めない
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`
+- `infrastructure/ansible/roles/server/tasks/main.yml`
+- `scripts/update-all-clients.sh`
 
 **解決状況**: ✅ **解決済み**（2026-02-08）
 

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - バックアップ・リストア関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-06
+last-verified: 2026-02-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 28件  
+**件数**: 30件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報

@@ -23,6 +23,24 @@ sudo journalctl -u backup-verify-monthly.service -n 200
 sudo journalctl -u backup-verify-quarterly.service -n 200
 ```
 
+### 手動実行（必要時）
+
+systemdを待たずに、APIコンテナ内で検証スクリプトを直接実行できます。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  node /app/apps/api/dist/scripts/verify-backups.js --mode=monthly --max-age-days=35 --max-download-mb=50
+```
+
+四半期モード例:
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  node /app/apps/api/dist/scripts/verify-backups.js --mode=quarterly --max-age-days=110 --max-download-mb=50
+```
+
 ## 月次検証（毎月1回）
 
 ### 1. バックアップ履歴の確認（管理コンソール）

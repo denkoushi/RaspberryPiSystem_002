@@ -2,7 +2,7 @@
 title: バックアップ設定ガイド
 tags: [運用, バックアップ, 設定, Dropbox]
 audience: [運用者, 開発者]
-last-verified: 2025-12-14
+last-verified: 2026-02-08
 related: [backup-and-restore.md, dropbox-setup-guide.md, monitoring.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,43 @@ update-frequency: medium
 
 # バックアップ設定ガイド
 
-最終更新: 2025-12-29（エラーハンドリング改善を追加）
+最終更新: 2026-02-08（バックアップ改善1–4: 自動検証、設定履歴、リストア安全策、性能/計測を追加）
+
+## バックアップ改善1–4（2026-02-08）
+
+本プロジェクトのバックアップは `backup.json`（端末固有・Git管理外）を正として運用します。改善1–4では「設定の監査性」「復元の安全性」「性能」「定期検証」を強化しました。
+
+### 1) 自動バックアップ検証（systemd timer）
+
+- **月次**: `backup-verify-monthly.timer`（履歴とファイル存在の確認、非破壊）
+- **四半期**: `backup-verify-quarterly.timer`（必要に応じて小さな検証用ダウンロードを実施）
+
+ログ確認例:
+
+```bash
+sudo journalctl -u backup-verify-monthly.service -n 200
+sudo journalctl -u backup-verify-quarterly.service -n 200
+```
+
+詳細は [バックアップ検証チェックリスト](./backup-verification-checklist.md) を参照してください。
+
+### 2) 設定変更履歴（監査・秘匿）
+
+- **管理UI**: `/admin/backup/config-history` で設定変更履歴を閲覧可能
+- **注意**: 履歴に保存されるスナップショットは **秘匿情報（token/secret等）をredact** して保存します（生値は保存しません）
+
+### 3) リストア安全策（事前バックアップ/ドライラン）
+
+- **事前バックアップ（preBackup）**: データベースのリストアは既定で事前バックアップを作成し、失敗時はリストアを中断します
+- **ドライラン**: 実行前に対象・存在・サイズ等の確認を行うAPIを追加（破壊的操作なし）
+
+詳細は [バックアップ・リストア手順](./backup-and-restore.md) を参照してください。
+
+### 4) 性能/計測（運用で効く最小改善）
+
+- **CSVバックアップ**: ページングで生成し、メモリ使用量のスパイクを抑制
+- **directoryバックアップ**: `tar -czf -` のストリーミングで一時ファイルI/Oを削減
+- **履歴への計測**: バックアップ履歴に `durationMs` や `provider` を記録（遅延/劣化の検知に利用）
 
 ## アーキテクチャ改善（2025-12-19）
 

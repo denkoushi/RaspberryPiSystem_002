@@ -2,7 +2,7 @@
 title: バックアップ・リストア手順
 tags: [運用, バックアップ, PostgreSQL, ラズパイ5]
 audience: [運用者, 開発者]
-last-verified: 2025-11-27
+last-verified: 2026-02-08
 related: [monitoring.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
-最終更新: 2025-12-29（エラーハンドリング改善とバックアップスクリプト整合性確認を追加）
+最終更新: 2026-02-08（リストア安全策: 事前バックアップ/ドライランを追記）
 
 ## 概要
 
@@ -499,8 +499,28 @@ sudo crontab -e
 
 ## リストア手順
 
-- **事前バックアップ（安全策）**: データベースのリストアは既定で事前バックアップを作成し、失敗時はリストアを中断する。
-- **ドライラン**: `/api/backup/restore/dry-run` で対象・サイズ・存在確認を事前に取得できる。
+- **事前バックアップ（安全策）**: データベースのリストアは既定で事前バックアップを作成し、失敗時はリストアを中断する（`preBackup: true`）。
+- **ドライラン**: `/api/backup/restore/dry-run` で対象・サイズ・存在確認を事前に取得できる（破壊的操作なし）。
+
+### 推奨フロー（安全）
+
+1. **ドライラン**で、対象パス・種類・サイズ・存在を確認する  
+2. **リストア（preBackup有効）**で実行する  
+3. 完了後にヘルスチェック（`/api/system/health`）と主要画面を確認する
+
+ドライラン例:
+
+```bash
+curl -k -X POST https://<pi5>/api/backup/restore/dry-run \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -d '{
+    "backupPath": "/backups/database/2026-02-08T00-00-00-000Z/borrow_return.sql.gz",
+    "targetKind": "database"
+  }'
+```
+
+※ 例の `backupPath` は環境に合わせて置き換えてください（管理コンソールの履歴からコピーするのが確実）。
 
 ### 1. データベースのリストア
 

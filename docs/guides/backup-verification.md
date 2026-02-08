@@ -2,7 +2,7 @@
 title: バックアップ機能実機検証ガイド
 tags: [検証, バックアップ, 実機テスト]
 audience: [運用者, 開発者]
-last-verified: 2025-12-14
+last-verified: 2026-02-08
 related: [backup-configuration.md, backup-and-restore.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ機能実機検証ガイド
 
-最終更新: 2025-12-14
+最終更新: 2026-02-08（自動検証/設定履歴/リストア安全策を反映）
 
 ## 概要
 
@@ -65,6 +65,15 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 **期待結果**: 
 - 設定ファイルが存在する場合は内容が表示される
 - 存在しない場合はデフォルト設定が使用される（ログに警告が表示される）
+
+#### 3-a. 設定ヘルスチェック（推奨）
+
+管理コンソール（バックアップ設定の健全性表示）またはAPIで、設定の衝突/欠落を事前に検知できます。
+
+```bash
+curl http://localhost:8080/api/backup/config/health \
+  -H "Authorization: Bearer <your-admin-token>"
+```
 
 ### 4. 手動バックアップの実行
 
