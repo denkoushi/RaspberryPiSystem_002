@@ -26,16 +26,14 @@ cd "${ANSIBLE_DIR}"
 # ディレクトリが渡された場合、ディレクトリ内のすべてのJSONファイルを処理
 # 処理済み/失敗フォルダ内のファイルは除外
 if [[ -d "${TRIGGER_PATH}" ]]; then
+  # findコマンドでファイルが見つからない場合は終了
+  if ! find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null | grep -qz .; then
+    exit 0
+  fi
   QUEUE_FILES=()
   while IFS= read -r -d '' file; do
     QUEUE_FILES+=("${file}")
   done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
-  # 処理するファイルがない場合は終了
-  {% raw %}QUEUE_COUNT=0{% endraw %}
-  {% raw %}for _f in "${QUEUE_FILES[@]}"; do QUEUE_COUNT=$((QUEUE_COUNT + 1)); done{% endraw %}
-  {% raw %}if [ ${QUEUE_COUNT} -eq 0 ]; then{% endraw %}
-    exit 0
-  fi
 else
   # ファイルが渡された場合（後方互換性のため）
   if [[ -f "${TRIGGER_PATH}" ]]; then
