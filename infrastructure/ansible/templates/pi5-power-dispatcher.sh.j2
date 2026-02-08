@@ -31,9 +31,9 @@ if [[ -d "${TRIGGER_PATH}" ]]; then
     exit 0
   fi
   QUEUE_FILES=()
-  {% raw %}while IFS= read -r -d '' file; do
+  while IFS= read -r -d '' file; do
     QUEUE_FILES+=("${file}")
-  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true){% endraw %}
+  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
 else
   # ファイルが渡された場合（後方互換性のため）
   if [[ -f "${TRIGGER_PATH}" ]]; then
@@ -102,12 +102,12 @@ def extract_default_value(template_str):
     """Jinja2テンプレート文字列からdefault()の値を抽出"""
     if not isinstance(template_str, str):
         return None
-    # {{ vault_xxx | default('value') }} から 'value' を抽出
+    # 例: "vault_xxx | default('value')" の default 値を抽出
     match = re.search(r"default\(['\"]([^'\"]+)['\"]\)", template_str)
     if match:
         return match.group(1)
     # テンプレートでない場合はそのまま返す
-    if not template_str.startswith('{{'):
+    if not template_str.startswith('{' * 2):
         return template_str
     return None
 
