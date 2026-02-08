@@ -397,7 +397,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // Phase 3: バックアップ実行後にクリーンアップを実行（手動実行時も自動削除を実行）
     if (targetConfig) {
       const retention = targetConfig.retention || config.retention;
-      if (retention && retention.days) {
+      if (retention && (retention.days || retention.maxBackups)) {
         const successfulProvider = providers.find((p, i) => results[i]?.success);
         if (successfulProvider) {
           const targetWithProvider = {
@@ -427,10 +427,24 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           // BackupSchedulerのcleanupOldBackupsメソッドと同じロジックを実行
           try {
             const backups = await backupService.listBackups({ prefix });
-            // ターゲットのソース名に一致するバックアップのみ対象とする
-            const targetBackups = backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`));
             const now = new Date();
-            const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
+            const retentionDate = retention.days
+              ? new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000)
+              : null;
+
+            // ターゲットのソース名に一致するバックアップのみ対象とする（DB/CSVは拡張子まで含めて一致させる）
+            const matchesSource = (p: string | null | undefined): boolean => {
+              if (!sourceForPrefix) return true;
+              if (!p) return false;
+              if (body.kind === 'database') {
+                return p.endsWith(`/${sourceForPrefix}.sql.gz`) || p.endsWith(`/${sourceForPrefix}.sql`);
+              }
+              if (body.kind === 'csv') {
+                return p.endsWith(`/${sourceForPrefix}.csv`);
+              }
+              return p.endsWith(`/${sourceForPrefix}`);
+            };
+            const targetBackups = backups.filter((b) => matchesSource(b.path));
             
             // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
             if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
@@ -461,28 +475,30 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             }
             
             // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
-            const sortedBackups = targetBackups
-              .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
-              .sort((a, b) => {
-                if (!a.modifiedAt || !b.modifiedAt) return 0;
-                return a.modifiedAt.getTime() - b.modifiedAt.getTime();
-              });
-            for (const backup of sortedBackups) {
-              if (!backup.path) continue;
-              try {
-                await backupService.deleteBackup(backup.path);
-                // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+            if (retentionDate) {
+              const sortedBackups = targetBackups
+                .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
+                .sort((a, b) => {
+                  if (!a.modifiedAt || !b.modifiedAt) return 0;
+                  return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+                });
+              for (const backup of sortedBackups) {
+                if (!backup.path) continue;
                 try {
-                  const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
-                  if (updatedCount > 0) {
-                    logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                  await backupService.deleteBackup(backup.path);
+                  // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+                  try {
+                    const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+                    if (updatedCount > 0) {
+                      logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                    }
+                  } catch (error) {
+                    logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
                   }
+                  logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
                 } catch (error) {
-                  logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
+                  logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
                 }
-                logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
-              } catch (error) {
-                logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
               }
             }
             

@@ -1867,24 +1867,22 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - 実際: 削除が走らない（ログにも削除が出ない）
 
 **根本原因**:
-- 現行実装の `BackupScheduler.cleanupOldBackups()` は `retention.days` が未設定の場合に早期returnしており、`maxBackups`のみの設定ではクリーンアップが実行されない。
+- クリーンアップ処理の呼び出しが `retention.days` の有無でガードされており、`retention.maxBackups` のみを指定した場合にクリーンアップが実行されなかった。
+- さらに手動バックアップ経路（`POST /api/backup/internal`）では、DB/CSVのバックアップパスを拡張子まで含めて一致判定しておらず、対象バックアップの絞り込みが外れて削除されないケースがあった。
 
-**暫定回避策**:
-- `maxBackups` を使う場合でも、**必ず `days` を併記**する（例: `days: 3650, maxBackups: 30`）。
+**対策**:
+- `retention.days` または `retention.maxBackups` のいずれかが設定されていればクリーンアップを実行するよう修正。
+- DB/CSVバックアップの一致判定を拡張子（`.sql(.gz)` / `.csv`）まで含めた形に修正。
 
-**解決状況**: ⚠️ **仕様/実装の差を確認し、暫定回避策をドキュメント化**（恒久修正は別タスク）
+**解決状況**: ✅ **解決済み**（2026-02-08）
 
 **関連ファイル**:
 - `apps/api/src/services/backup/backup-scheduler.ts`（`cleanupOldBackups`）
+- `apps/api/src/routes/backup.ts`（手動バックアップ後のクリーンアップ）
 
 **関連ドキュメント**:
 - `docs/api/backup.md`（保持期間設定の注意）
 - `docs/guides/backup-configuration.md`（保持期間設定の注意）
-
-**恒久対策（計画）**:
-- `retention.maxBackups` 単独でもクリーンアップが動作するよう、`cleanupOldBackups()` の条件を見直し
-- ユニットテスト追加（`days`無しでも `maxBackups` が効くこと）
-- 仕様ドキュメントを「実装と一致する形」に確定
 
 ---
 

@@ -440,9 +440,8 @@ ansible-playbook -i inventory.yml playbooks/add-cert-backup-target.yml
 - `maxBackups`: 最大バックアップ数（オプション）
 
 **重要（実装上の注意）**:
-- 現行実装では、保持期間のクリーンアップ処理は `retention.days` が設定されている場合にのみ実行されます。
-- そのため、**`maxBackups`のみで運用したい場合でも、暫定的に`days`を併記**してください（例: `days: 3650, maxBackups: 10`）。
-  - ※ `maxBackups`単独でも動くべきですが、現時点では仕様と実装に差があります（改善計画で扱います）。
+- 保持期間のクリーンアップ処理は `retention.days` または `retention.maxBackups` のいずれかが設定されている場合に実行されます。
+- `days` を未設定で `maxBackups` のみを指定した場合、**件数ベースの削除のみ**が行われます（期間ベースの削除は行われません）。
 
 ## バックアップパス構造の仕様
 

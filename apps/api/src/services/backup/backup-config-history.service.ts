@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 import type { BackupConfig } from './backup-config.js';
+import { logger } from '../../lib/logger.js';
 
 export type BackupConfigChangeAction =
   | 'config_update'
@@ -51,15 +52,24 @@ export class BackupConfigHistoryService {
     diff?: Record<string, unknown>;
     snapshotRedacted: BackupConfig;
   }): Promise<void> {
-    await prisma.backupConfigChange.create({
-      data: {
-        actionType: params.actionType,
-        actorUserId: params.actorUserId,
-        actorUsername: params.actorUsername,
-        summary: params.summary,
-        diff: params.diff as Prisma.InputJsonValue | undefined,
-        snapshotRedacted: params.snapshotRedacted as Prisma.InputJsonValue
+    try {
+      await prisma.backupConfigChange.create({
+        data: {
+          actionType: params.actionType,
+          actorUserId: params.actorUserId,
+          actorUsername: params.actorUsername,
+          summary: params.summary,
+          diff: params.diff as Prisma.InputJsonValue | undefined,
+          snapshotRedacted: params.snapshotRedacted as Prisma.InputJsonValue
+        }
+      });
+    } catch (error) {
+      // 履歴は補助情報のため、DB未整備（migration未適用）では本処理を落とさない
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+        logger?.warn({ err: error }, '[BackupConfigHistoryService] BackupConfigChange table missing; skipping history record');
+        return;
       }
-    });
+      throw error;
+    }
   }
 }
