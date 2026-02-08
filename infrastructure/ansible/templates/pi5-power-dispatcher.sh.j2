@@ -40,7 +40,8 @@ else
 fi
 
 # 処理するファイルがない場合は終了
-if [ -z "{{ '${QUEUE_FILES[0]:-}' }}" ]; then
+{% raw %}QUEUE_FIRST="${QUEUE_FILES[0]:-}"{% endraw %}
+{% raw %}if [ -z "${QUEUE_FIRST}" ]; then{% endraw %}
   exit 0
 fi
 
