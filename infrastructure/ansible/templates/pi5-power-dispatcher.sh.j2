@@ -40,7 +40,7 @@ else
 fi
 
 # 処理するファイルがない場合は終了
-{% raw %}if [ -z "${QUEUE_FILES[0]:-}" ]; then{% endraw %}
+if [ -z "{{ '${QUEUE_FILES[0]:-}' }}" ]; then
   exit 0
 fi
 
