@@ -39,24 +39,20 @@ test.describe('キオスク画面', () => {
 
     // サイネージボタンをクリックしてモーダルを開く
     const signageButton = page.getByRole('button', { name: 'サイネージ' });
-    await signageButton.waitFor({ state: 'attached' });
-    // ページ遷移が完了するまで待つ
-    await page.waitForLoadState('networkidle');
-    await signageButton.click({ force: true });
+    await signageButton.waitFor({ state: 'visible' });
+    await signageButton.scrollIntoViewIfNeeded();
+    await signageButton.click();
     await expect(page.getByText('サイネージプレビュー')).toBeVisible({ timeout: 10000 });
     
     // モーダルを閉じる
-    const closeButton = page.getByRole('button', { name: '閉じる' }).first();
-    await closeButton.waitFor({ state: 'visible' });
-    await closeButton.scrollIntoViewIfNeeded();
-    await closeButton.click();
+    await page.keyboard.press('Escape');
     await expect(page.getByText('サイネージプレビュー')).toBeHidden({ timeout: 5000 });
 
     // 電源メニューを開く
     const powerButton = page.getByLabel('電源メニュー');
-    await powerButton.waitFor({ state: 'attached' });
-    await page.waitForLoadState('networkidle');
-    await powerButton.click({ force: true });
+    await powerButton.waitFor({ state: 'visible' });
+    await powerButton.scrollIntoViewIfNeeded();
+    await powerButton.click();
     await expect(page.getByRole('button', { name: '再起動' })).toBeVisible({ timeout: 10000 });
     
     // 再起動を選択して確認モーダルを開く

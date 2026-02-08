@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
@@ -10,11 +12,35 @@ type KioskPowerMenuModalProps = {
 };
 
 export function KioskPowerMenuModal({ isOpen, onClose, onSelect }: KioskPowerMenuModalProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <Card className="w-full max-w-md">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="電源操作"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <Card
+        className="w-full max-w-md"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">電源操作</h2>
           <button
