@@ -87,14 +87,15 @@ export function KioskSignagePreviewModal({ isOpen, onClose }: KioskSignagePrevie
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label="サイネージプレビュー"
       onMouseDown={handleBackdropMouseDown}
     >
-      <Card className="w-full max-w-3xl">
+      <Card className="w-[calc(100vw-2rem)] max-w-none max-h-[calc(100vh-2rem)] my-4 flex flex-col">
         <div
+          className="flex-1 overflow-y-auto"
           onMouseDown={(e) => {
             e.stopPropagation();
           }}

@@ -36,8 +36,8 @@ export function KioskPowerConfirmModal({
   const copy = actionCopy[action];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <Card className="w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+      <Card className="w-full max-w-md max-h-[calc(100vh-2rem)] my-4">
         <div className="mb-3">
           <h2 className="text-lg font-semibold text-slate-900">{copy.title}</h2>
           <p className="mt-2 text-sm text-slate-600">{copy.description}</p>

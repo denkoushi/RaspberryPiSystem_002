@@ -33,13 +33,13 @@ export function KioskPowerMenuModal({ isOpen, onClose, onSelect }: KioskPowerMen
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label="電源操作"
       onMouseDown={handleBackdropMouseDown}
     >
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md max-h-[calc(100vh-2rem)] my-4">
         <div
           onMouseDown={(e) => {
             e.stopPropagation();
