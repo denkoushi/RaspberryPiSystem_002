@@ -40,7 +40,8 @@ else
 fi
 
 # 処理するファイルがない場合は終了
-{% raw %}if [[ ${#QUEUE_FILES[@]} -eq 0 ]]; then{% endraw %}
+{% raw %}QUEUE_COUNT=$(echo "${QUEUE_FILES[@]}" | wc -w){% endraw %}
+{% raw %}if [[ ${QUEUE_COUNT} -eq 0 ]]; then{% endraw %}
   exit 0
 fi
 
