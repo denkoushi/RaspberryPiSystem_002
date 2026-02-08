@@ -158,7 +158,7 @@ test.describe('管理画面', () => {
       // 削除ボタンが表示されるまで待機
       await expect(page.getByRole('button', { name: /削除/i }).first()).toBeVisible({ timeout: 5000 });
 
-      // 最初の「削除」ボタンをクリック
+      // 最初の「削除」ボタンをクリック（複数あるため先頭を指定）
       const deleteButtons = page.getByRole('button', { name: /削除/i });
       const deleteButtonCount = await deleteButtons.count();
       
@@ -174,7 +174,9 @@ test.describe('管理画面', () => {
           },
           { timeout: 15000 }
         );
-        await clickByRoleSafe(page, 'button', /削除/i);
+        const firstDeleteButton = deleteButtons.first();
+        await firstDeleteButton.scrollIntoViewIfNeeded();
+        await firstDeleteButton.click();
         const confirmDialog = page.getByRole('dialog');
         await expect(confirmDialog).toBeVisible({ timeout: 5000 });
         await confirmDialog.getByRole('button', { name: '削除' }).click();
