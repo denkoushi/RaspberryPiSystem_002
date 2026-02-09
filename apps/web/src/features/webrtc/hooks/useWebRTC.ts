@@ -293,9 +293,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   startCallRef.current = startCall;
 
   // 発信
-  const call = useCallback(async (to: string) => {
+  const call = useCallback(async (to: string): Promise<void> => {
     if (callState !== 'idle') {
-      return;
+      throw new Error('Call already in progress');
+    }
+
+    // WebSocket接続を確認
+    if (!signaling.isConnected) {
+      const error = new Error('WebSocket not connected');
+      onErrorRef.current?.(error);
+      throw error;
     }
 
     const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -303,12 +310,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setCallState('ringing');
 
     // 発信メッセージを送信
+    // エラーはWebSocket経由でonErrorハンドラーに通知される
+    // サーバー側でhasCalleeSocket: falseの場合、エラーメッセージが返される
     signaling.sendMessage({
       type: 'invite',
       to,
       callId
     });
     // 相手が受話するまで待機（onCallAcceptedでstartCallが呼ばれる）
+    // エラーはWebSocket経由でonErrorハンドラーに通知される
   }, [callState, signaling]);
 
   // 受話
