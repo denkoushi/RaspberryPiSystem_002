@@ -79,11 +79,18 @@ const resetKioskClientKey = () => {
   }
 };
 
-// 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
+// 初期読み込み時:
+// - localStorage が未設定/空の場合のみデフォルトを設定（誤って他端末のキーを上書きしない）
+// - 既に保存済みのキーがあればそれを適用する
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
-  window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
-  setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  const existing = window.localStorage.getItem('kiosk-client-key');
+  if (!existing || existing.length === 0) {
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
+    setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  } else {
+    setClientKeyHeader(resolveClientKey());
+  }
 }
 
 // すべてのリクエストで client-key を付与
