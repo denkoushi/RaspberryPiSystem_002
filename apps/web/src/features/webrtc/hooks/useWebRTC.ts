@@ -32,6 +32,9 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const callStateRef = useRef<CallState>('idle');
   const currentCallIdRef = useRef<string | null>(null);
   const hasIncomingRef = useRef(false);
+  
+  // call関数のエラーハンドリング用：エラーレスポンスを待機するためのPromise
+  const callErrorPromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
   // 外部コールバックはref化して、useCallback依存で関数同一性が変わらないようにする
   const onLocalStreamRef = useRef<UseWebRTCOptions['onLocalStream']>(onLocalStream);
@@ -75,6 +78,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setIncomingCallInfo(null);
     pcConnectionStartTimeRef.current = null;
     pcIceConnectionStartTimeRef.current = null;
+    // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+    if (callErrorPromiseRef.current) {
+      callErrorPromiseRef.current.resolve();
+      callErrorPromiseRef.current = null;
+    }
   }, []);
 
   // シグナリング（ref化してhandlersから参照可能にする）
@@ -92,6 +100,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       setCallState('incoming');
     },
     onCallAccepted: async (callId: string) => {
+      // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+      if (callErrorPromiseRef.current) {
+        callErrorPromiseRef.current.resolve();
+        callErrorPromiseRef.current = null;
+      }
       currentCallIdRef.current = callId;
       setCurrentCallId(callId);
       setCallState('connecting');
@@ -102,11 +115,21 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     },
     onCallRejected: (callId: string) => {
       if (callId === currentCallIdRef.current) {
+        // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.resolve();
+          callErrorPromiseRef.current = null;
+        }
         cleanup();
       }
     },
     onCallCancelled: (callId: string) => {
       if (callId === currentCallIdRef.current) {
+        // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.resolve();
+          callErrorPromiseRef.current = null;
+        }
         cleanup();
       }
     },
@@ -182,6 +205,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
     },
     onError: (error: Error) => {
+      // 発信中（ringing）の状態でエラーが発生した場合、idleに戻す
+      if (callStateRef.current === 'ringing') {
+        cleanup();
+        // call関数のエラーハンドリング用：エラーレスポンスを待機している場合はreject
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.reject(error);
+          callErrorPromiseRef.current = null;
+        }
+      }
       onErrorRef.current?.(error);
     }
   }), [cleanup]);
@@ -307,18 +339,52 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
     const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     setCurrentCallId(callId);
-    setCallState('ringing');
+    
+    // エラーレスポンスを待機するためのPromiseを作成
+    const errorPromise = new Promise<void>((resolve, reject) => {
+      callErrorPromiseRef.current = { resolve, reject };
+    });
 
-    // 発信メッセージを送信
+    // 発信メッセージを送信（エラーが発生した場合はthrow）
     // エラーはWebSocket経由でonErrorハンドラーに通知される
     // サーバー側でhasCalleeSocket: falseの場合、エラーメッセージが返される
-    signaling.sendMessage({
-      type: 'invite',
-      to,
-      callId
-    });
+    try {
+      signaling.sendMessage({
+        type: 'invite',
+        to,
+        callId
+      });
+      // メッセージ送信が成功した場合のみringing状態に設定
+      setCallState('ringing');
+    } catch (error) {
+      // sendMessageでエラーが発生した場合、Promiseをクリアしてエラーをthrow
+      callErrorPromiseRef.current = null;
+      throw error;
+    }
+
+    // エラーレスポンスを待機（最大1秒）
+    // エラーが発生した場合はreject、エラーが発生しない場合はresolve
+    try {
+      await Promise.race([
+        errorPromise,
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            // 1秒以内にエラーが発生しなかった場合、エラーレスポンス待機を解除
+            if (callErrorPromiseRef.current) {
+              callErrorPromiseRef.current.resolve();
+              callErrorPromiseRef.current = null;
+            }
+            resolve();
+          }, 1000);
+        })
+      ]);
+    } catch (error) {
+      // エラーが発生した場合はthrow
+      callErrorPromiseRef.current = null;
+      throw error;
+    }
+    
     // 相手が受話するまで待機（onCallAcceptedでstartCallが呼ばれる）
-    // エラーはWebSocket経由でonErrorハンドラーに通知される
   }, [callState, signaling]);
 
   // 受話

@@ -327,19 +327,23 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     connect();
   }, [connect, disconnect, enabled, isConnectionStale]);
 
-  const sendMessage = useCallback((message: SignalingMessage) => {
+  const sendMessage = useCallback((message: SignalingMessage): void => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       try {
         socketRef.current.send(JSON.stringify(message));
       } catch (error) {
         setIsConnected(false);
-        onError?.(error instanceof Error ? error : new Error('WebSocket send failed'));
+        const err = error instanceof Error ? error : new Error('WebSocket send failed');
+        onError?.(err);
         reconnectIfNeeded();
+        throw err; // エラーをthrowして呼び出し側で処理できるようにする
       }
     } else {
       console.warn('WebRTC signaling: socket not connected');
-      onError?.(new Error('WebSocket not connected'));
+      const err = new Error('WebSocket not connected');
+      onError?.(err);
       reconnectIfNeeded();
+      throw err; // エラーをthrowして呼び出し側で処理できるようにする
     }
   }, [onError, reconnectIfNeeded]);
 
