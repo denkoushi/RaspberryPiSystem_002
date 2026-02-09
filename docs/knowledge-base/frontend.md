@@ -1712,6 +1712,8 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 **追記（2026-02-09）**:
 - 通話IDは`ClientDevice.id`（UUID）に統一し、`kiosk-client-id`（localStorage）は不要になった
 - `KioskLayout`/`KioskHeader`はAPI由来の`selfClientId`を表示する
+- `/kiosk/*`や`/signage`表示中でも着信できるよう、WebRTCシグナリング接続をページから分離し常時保持（着信時に`/kiosk/call`へ自動切替、終了後に元画面へ復帰）
+- Pi3は通話対象から除外（`/api/kiosk/call/targets`で除外フィルタ適用）
 
 **実装の詳細**:
 1. **`KioskCallPage.tsx`の修正**: `useLocalStorage`フックを追加し、`clientKey`と`clientId`を取得

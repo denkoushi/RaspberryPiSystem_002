@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
+import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
 import { BackupConfigHistoryPage } from './pages/admin/BackupConfigHistoryPage';
@@ -42,22 +43,24 @@ function App() {
     <Routes>
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/signage" element={<SignageDisplayPage />} />
+      <Route element={<CallAutoSwitchLayout />}>
+        <Route path="/signage" element={<SignageDisplayPage />} />
+        <Route element={<KioskLayout />}>
+          <Route path="/kiosk" element={<KioskRedirect />} />
+          <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
+          <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
+          <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
+          <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
+          <Route path="/kiosk/call" element={<KioskCallPage />} />
+          <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
+        </Route>
+      </Route>
       {/* 開発用: UI確認のための一時的なルート */}
       <Route
         path="/preview"
         element={<AdminLayout />}
       >
         <Route path="import" element={<CsvImportPage />} />
-      </Route>
-      <Route element={<KioskLayout />}>
-        <Route path="/kiosk" element={<KioskRedirect />} />
-        <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
-        <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
-        <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
-        <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
-        <Route path="/kiosk/call" element={<KioskCallPage />} />
-        <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
       </Route>
       <Route
         path="/admin"

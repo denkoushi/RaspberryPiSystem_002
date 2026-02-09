@@ -148,7 +148,7 @@ update-frequency: high
 | [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止) | WebRTCシグナリングのWebSocket接続管理（重複接続防止） | ✅ 解決済み |
 | [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 | [KB-149](./frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) | バックアップ履歴ページに用途列を追加（UI改善） | ✅ 解決済み |
-| [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
+| [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定、着信自動切替・Pi3除外の追記） | ✅ 解決済み |
 | [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 | [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) | 管理コンソールのサイネージプレビュー機能実装とJWT認証問題 | ✅ 解決済み |
 | [KB-202](./frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) | 生産スケジュールキオスクページの列名変更とFSEIBAN全文表示 | ✅ 解決済み |

@@ -11,6 +11,7 @@
 ### 🆕 最新アップデート（2026-02-09）
 
 - **✅ キオスク通話のID統一・疎通前提の明文化**: WebRTC通話の識別子を`ClientDevice.id`（UUID）に統一し、`statusClientId`依存を解消。`/api/kiosk/call/targets`の`selfClientId`を通話IDとして扱うように整理し、`/api/kiosk/config`でのオンライン更新（`lastSeenAt`）を明確化。検証手順とKBを更新し、localStorageの`kiosk-client-id`は通話に不要であることを明記。詳細は [guides/webrtc-verification.md](./guides/webrtc-verification.md) / [knowledge-base/kiosk-video-call-health-check.md](./knowledge-base/kiosk-video-call-health-check.md) / [knowledge-base/kiosk-input-protection-investigation.md](./knowledge-base/kiosk-input-protection-investigation.md) を参照。
+- **✅ キオスク/サイネージ表示中の着信自動切替**: `/kiosk/*` と `/signage` 表示中でもWebRTCシグナリングを常時接続し、着信時は`/kiosk/call`へ自動切替、終了後に元画面へ復帰。Pi3は通話対象から除外。手順と注意点は [guides/webrtc-verification.md](./guides/webrtc-verification.md) / [knowledge-base/frontend.md#kb-171](./knowledge-base/frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) を参照。
 
 ### 🆕 最新アップデート（2026-02-08）
 

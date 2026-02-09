@@ -129,64 +129,21 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 
 1. 発信先一覧に以下の端末が表示されること：
    - `raspberrypi5-server`（Pi5サーバー）
-   - `raspberrypi3-signage1`（Pi3サイネージ）
    - `raspberrypi4-kiosk1`（Pi4キオスク、自分自身は除外される）
 
 2. 各発信先に「📞 発信」ボタンが表示されること
 
 **注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
 
-### 3. Pi4でのキオスク通話画面の確認
+### 3. Pi4の着信待機（常時接続）の確認
 
-**重要**: Pi4でも通話画面を開いておく必要があります。WebRTC通話は双方向の接続が必要で、発信先もWebSocketシグナリングに接続している必要があります。
+**重要**: Pi4は`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信があれば`/kiosk/call`へ自動切替します。
 
-#### 3.1 Pi4のキオスクブラウザで通話画面を開く
+#### 3.1 接続状態の確認
 
-Pi4のキオスクブラウザは通常 `/kiosk` にアクセスしていますが、通話画面（`/kiosk/call`）にアクセスする必要があります。
-
-**方法1: キオスク画面のナビゲーションから（推奨）**
-
-1. Pi4のキオスクブラウザで現在の画面を確認
-2. 画面上部のナビゲーションで「📞 通話」タブをクリック
-3. 通話画面（`/kiosk/call`）が表示されることを確認
-4. 画面上部に「接続済み」と表示されることを確認
-
-**方法2: 直接URLを入力（キオスクブラウザがフルスクリーンでない場合）**
-
-1. Pi4のキオスクブラウザでアドレスバーに `https://100.106.158.2/kiosk/call` を入力
-2. Enterキーを押してアクセス
-
-**方法3: キオスクブラウザを一時的に終了して手動起動**
-
-```bash
-# Pi4で実行（VNC接続または直接Pi4で実行）
-# キオスクブラウザを一時停止
-sudo systemctl stop kiosk-browser.service
-
-# Chromiumを手動で起動（通話画面を開く）
-chromium-browser --app="https://100.106.158.2/kiosk/call" \
-  --start-maximized \
-  --noerrdialogs \
-  --disable-session-crashed-bubble \
-  --autoplay-policy=no-user-gesture-required \
-  --disable-translate \
-  --overscroll-history-navigation=0 \
-  --use-fake-ui-for-media-stream \
-  --allow-insecure-localhost \
-  --ignore-certificate-errors \
-  --unsafely-treat-insecure-origin-as-secure=https://100.106.158.2
-```
-
-**注意**: 方法3を使用した場合、検証後に元のキオスクブラウザを再起動してください：
-```bash
-sudo systemctl start kiosk-browser.service
-```
-
-#### 3.2 WebSocket接続の確認
-
-1. Pi4のブラウザで開発者ツールを開く（可能な場合、F12キー）
-2. Consoleタブで `WebRTC signaling connected` が表示されることを確認
-3. 画面上部に「接続済み」と表示されることを確認
+1. Pi4で任意のキオスク画面（例: `/kiosk/tag` や `/kiosk/production-schedule`）を表示
+2. 画面上部のヘッダーで「接続中」と表示されること
+3. 開発者ツールのConsoleで `WebRTC signaling connected` が表示されること
 
 #### 3.3 クライアントキーの確認（clientIdは不要）
 
@@ -255,18 +212,11 @@ localStorage.getItem('kiosk-client-key')
 
 3. **通話中の確認**: 4.1と同様
 
-#### 4.3 Pi4からPi3への発信
+#### 4.3 Pi4からの発信対象について
 
-1. **Pi4側**:
-   - 発信先一覧から `raspberrypi3-signage1` を選択
-   - 「📞 発信」ボタンをクリック
+Pi3は通話対象外です。`/api/kiosk/call/targets` から除外されるため、発信先一覧には表示されません。
 
-2. **Pi3側**:
-   - Pi3のブラウザで `https://100.106.158.2/kiosk/call` を開く
-   - 着信モーダルが表示されること
-   - 「受話」ボタンで受話
-
-3. **通話中の確認**: 4.1と同様
+**除外設定**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`（CSV）に対象の`ClientDevice.id`を指定します。
 
 ### 5. エラーケースの確認
 
@@ -290,7 +240,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 #### 5.2 発信先がオフラインの場合
 
-1. 対象端末（Pi3/Pi4/Mac）のキオスク画面を閉じる、または端末をオフラインにする
+1. 対象端末（Pi4/Mac）のキオスク画面を閉じる、または端末をオフラインにする
 
 2. 数分待ってから、Macのキオスク画面で発信先一覧を確認：
    - 対象端末が`stale: true`として表示される、または一覧から除外されること

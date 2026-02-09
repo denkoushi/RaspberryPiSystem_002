@@ -116,6 +116,9 @@ const parseCsvList = (value: string | undefined): string[] => {
   );
 };
 
+const getWebRTCCallExcludeClientIds = (): Set<string> =>
+  new Set(parseCsvList(process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS));
+
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleQuerySchema = z.object({
     productNo: z.string().min(1).max(100).optional(),
@@ -1148,6 +1151,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const now = Date.now();
     const selfClientId = selfDevice.id;
 
+    const excludedClientIds = getWebRTCCallExcludeClientIds();
     return {
       selfClientId,
       targets: devices
@@ -1166,6 +1170,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
           };
         })
         .filter((t) => t.clientId !== selfClientId)
+        .filter((t) => !excludedClientIds.has(t.clientId))
     };
   });
 
