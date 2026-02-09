@@ -2677,3 +2677,41 @@ const saveNote = (rowId: string) => {
 
 ---
 
+### [KB-242] history-progressエンドポイント追加と製番進捗集計サービス
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- キオスクの生産スケジュール画面で、登録製番の×削除ボタンを進捗に応じて白/グレー白縁に切替える機能を実装する必要があった
+- サイネージの`ProductionScheduleDataSource`は既に製番進捗を集計していたが、キオスクUI用のエンドポイントがなかった
+
+**Decision**:
+- `SeibanProgressService`を新設し、既存の製番進捗集計SQLを移植
+- `GET /kiosk/production-schedule/history-progress`エンドポイントを追加（shared historyから進捗マップを返す）
+- `ProductionScheduleDataSource`を`SeibanProgressService`を利用するように切替（重複ロジック排除）
+
+**実装内容**:
+1. **SeibanProgressService**: `progressBySeiban(fseibans: string[])`メソッドで、指定された製番リストに対する進捗マップ（`{ [fseiban]: { completed, total, pct } }`）を返す
+2. **history-progressエンドポイント**: shared `search-state`の`history`から製番リストを取得し、`SeibanProgressService`で進捗を集計して返す
+3. **ProductionScheduleDataSource**: 自前のSQLを削除し、`SeibanProgressService`を利用するように変更
+
+**レスポンス形式**:
+```json
+{
+  "progressBySeiban": {
+    "ABC12345": { "completed": 3, "total": 3, "pct": 100 },
+    "DEF67890": { "completed": 1, "total": 2, "pct": 50 }
+  }
+}
+```
+
+**テスト**:
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`にhistory-progressエンドポイントの統合テストを追加
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・キオスク動作検証OK**（2026-02-10）
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 生産スケジュール登録製番削除ボタンの進捗連動UI改善（フロントエンド側）
+
+---
+

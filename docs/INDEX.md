@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-10）
+
+- **✅ 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OK**: キオスクの生産スケジュール画面で、登録製番ボタン右上の×削除ボタンを進捗で白（100%完了）/グレー白縁（未完了）に切替える機能を実装。**実装内容**: APIに`SeibanProgressService`を新設し、`GET /kiosk/production-schedule/history-progress`を追加。`ProductionScheduleDataSource`を共通サービス利用へ切替。Webに`useProductionScheduleHistoryProgress`フックを追加。**デプロイ**: Pi5＋Pi4でデプロイ成功（Run ID: 20260210-080354-23118）。**キオスク動作検証**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作。詳細は [knowledge-base/frontend.md#kb-242](./knowledge-base/frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) / [knowledge-base/api.md#kb-242](./knowledge-base/api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-09）
 
 - **✅ WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功**: Pi4が`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信時に自動的に`/kiosk/call`へ切り替わる機能を実装。**実装内容**: `WebRTCCallProvider`（React Context）を作成し、`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用。着信時（`callState === 'incoming'`）に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移。通話終了時（`callState === 'idle' || 'ended'`）に元のパスへ自動復帰。Pi3の通話対象除外機能を実装（`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数で除外フィルタ適用）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（`failed=0`）。**APIレベルでの動作確認**: 発信先一覧APIが正常に動作し、Pi3が除外されることを確認。**実機検証待ち**: MacからPi4への通話テスト、着信時の自動切り替え、通話終了後の自動復帰の動作確認が必要。詳細は [knowledge-base/frontend.md#kb-241](./knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) / [guides/webrtc-verification.md](./guides/webrtc-verification.md) を参照。

@@ -52,6 +52,7 @@ category: guides
 
 - サイネージのレンダリングは既存のスケジューラで実行されます。
 - 進捗データは **10分以内に反映**されるよう、データソース側で10分TTLキャッシュを採用しています。
+- キオスクUI用の進捗データは`GET /kiosk/production-schedule/history-progress`で取得可能（shared historyから進捗マップを返す、`SeibanProgressService`を利用）。サイネージの`ProductionScheduleDataSource`も同じサービスを利用。
 
 ## 表示される内容
 

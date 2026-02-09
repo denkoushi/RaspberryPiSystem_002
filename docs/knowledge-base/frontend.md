@@ -3062,3 +3062,46 @@ return {
 - [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止): WebRTCシグナリングのWebSocket接続管理（重複接続防止）
 
 ---
+
+### [KB-242] 生産スケジュール登録製番削除ボタンの進捗連動UI改善
+
+**実装日時**: 2026-02-10
+
+**事象**: 
+- 登録製番ボタン右上の×削除ボタンが、進捗状態に関係なく常に同じ見た目で表示されていた
+- 完了済み製番と未完了製番の識別が削除ボタン上では困難だった
+
+**要望**: 
+- 進捗100%の製番は削除ボタンを白で表示（削除可能であることを明確に）
+- 未完了の製番は削除ボタンをグレー白縁で表示（視覚的に区別）
+
+**有効だった対策**: 
+- ✅ **進捗連動UIの実装（2026-02-10）**:
+  1. **API**: `GET /kiosk/production-schedule/history-progress`エンドポイントを追加（shared historyから進捗マップを返す）
+  2. **Service**: `SeibanProgressService`を新設し、既存の製番進捗集計SQLを移植
+  3. **DataSource**: `ProductionScheduleDataSource`を共通サービス利用へ切替（重複ロジック排除）
+  4. **Web**: `useProductionScheduleHistoryProgress`フックを追加し、進捗マップを取得
+  5. **UI**: 削除ボタンのスタイルを進捗に応じて切替（100%完了=白、未完了=グレー白縁）
+
+**実装ファイル**:
+- `apps/web/src/api/hooks.ts`: `useProductionScheduleHistoryProgress`フック
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: 削除ボタンのスタイル切替
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`: 製番進捗集計サービス
+- `apps/api/src/routes/kiosk.ts`: history-progressエンドポイント
+- `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`: 共通サービス利用へ切替
+
+**学んだこと**:
+- **進捗マップの共有**: キオスクUIとサイネージの両方で同じ進捗データが必要な場合、サービス層を共通化することで整合性と保守性を確保できる
+- **視覚的フィードバック**: 削除ボタンの色を進捗で変えることで、ユーザーが状態を直感的に把握できる
+
+**解決状況**: ✅ **解決済み**（2026-02-10）
+
+**実機検証結果**:
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260210-080354-23118）
+- ✅ **キオスク動作検証OK**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作
+
+**関連KB**:
+- [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化): 生産スケジュール登録製番上限の拡張
+- [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト): サイネージ未完部品表示ロジック改善
+
+---
