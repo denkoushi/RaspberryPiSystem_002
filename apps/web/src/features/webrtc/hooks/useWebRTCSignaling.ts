@@ -12,18 +12,38 @@ import type { IncomingCallPayload, SignalingMessage } from '../types';
 
 const resolveClientKey = (): string => {
   if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
-  const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return DEFAULT_CLIENT_KEY;
   
+  // Mac環境を検出（User-Agentから）
+  const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const macDefaultKey = 'client-key-mac-kiosk1';
+  
+  const savedKey = window.localStorage.getItem('kiosk-client-key');
+  if (!savedKey || savedKey.length === 0) {
+    // localStorageが空の場合、Mac環境ならMac用のキーを返す
+    return isMac ? macDefaultKey : DEFAULT_CLIENT_KEY;
+  }
+  
+  let parsedKey: string | null = null;
   try {
     const parsed = JSON.parse(savedKey);
     if (typeof parsed === 'string' && parsed.length > 0) {
-      return parsed;
+      parsedKey = parsed;
     }
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
+    parsedKey = savedKey;
   }
-  return savedKey || DEFAULT_CLIENT_KEY;
+  
+  const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
+  
+  // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
+  if (isMac && resolvedKey === 'client-key-raspberrypi4-kiosk1') {
+    // localStorageを修正
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
+    return macDefaultKey;
+  }
+  
+  return resolvedKey;
 };
 
 const PONG_STALE_MS = 90_000;

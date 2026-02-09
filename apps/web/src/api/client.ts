@@ -40,21 +40,42 @@ export const api = axios.create({
 
 // 各リクエストで確実に client-key を付与するためのヘルパー
 // useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
+// Mac環境を検出して適切なデフォルト値を返す
 const resolveClientKey = () => {
   if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
+  
+  // Mac環境を検出（User-Agentから）
+  const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const macDefaultKey = 'client-key-mac-kiosk1';
+  
   const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return DEFAULT_CLIENT_KEY;
+  if (!savedKey || savedKey.length === 0) {
+    // localStorageが空の場合、Mac環境ならMac用のキーを返す
+    return isMac ? macDefaultKey : DEFAULT_CLIENT_KEY;
+  }
   
   // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
+  let parsedKey: string | null = null;
   try {
     const parsed = JSON.parse(savedKey);
     if (typeof parsed === 'string' && parsed.length > 0) {
-      return parsed;
+      parsedKey = parsed;
     }
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
+    parsedKey = savedKey;
   }
-  return savedKey || DEFAULT_CLIENT_KEY;
+  
+  const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
+  
+  // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
+  if (isMac && resolvedKey === 'client-key-raspberrypi4-kiosk1') {
+    // localStorageを修正
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
+    return macDefaultKey;
+  }
+  
+  return resolvedKey;
 };
 
 export function getResolvedClientKey() {
@@ -86,12 +107,16 @@ const resetKioskClientKey = () => {
 // 初期読み込み時:
 // - localStorage が未設定/空の場合のみデフォルトを設定（誤って他端末のキーを上書きしない）
 // - 既に保存済みのキーがあればそれを適用する
+// - Mac環境を検出して適切なデフォルト値を設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
   const existing = window.localStorage.getItem('kiosk-client-key');
   if (!existing || existing.length === 0) {
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
-    setClientKeyHeader(DEFAULT_CLIENT_KEY);
+    // Mac環境を検出（User-Agentから）
+    const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+    const defaultKey = isMac ? 'client-key-mac-kiosk1' : DEFAULT_CLIENT_KEY;
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
+    setClientKeyHeader(defaultKey);
   } else {
     setClientKeyHeader(resolveClientKey());
   }
