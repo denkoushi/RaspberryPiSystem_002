@@ -100,6 +100,27 @@ describe('useWebRTCSignaling', () => {
     expect(result.current.isConnecting).toBe(false);
   });
 
+  it('kiosk-client-idが無くてもWebSocket接続を開始する', async () => {
+    const getItemMock = window.localStorage.getItem as unknown as ReturnType<typeof vi.fn>;
+    getItemMock.mockImplementation((key: string) => {
+      if (key === 'kiosk-client-key') {
+        return JSON.stringify('test-client-key');
+      }
+      if (key === 'kiosk-client-id') {
+        return null;
+      }
+      return null;
+    });
+
+    const { result } = renderHook(() => useWebRTCSignaling({ enabled: true }));
+
+    expect(result.current.isConnecting).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.isConnected).toBe(true);
+    }, { timeout: 1000 });
+  });
+
   it('onIncomingCallコールバックが呼ばれる', async () => {
     const onIncomingCall = vi.fn();
     const { result } = renderHook(() =>

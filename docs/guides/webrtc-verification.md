@@ -93,21 +93,20 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 2. 自己署名証明書の警告が出る場合は「詳細設定」→「続行」を選択
 3. ブラウザの開発者ツール（F12）を開き、Consoleタブを表示
 
-#### 2.2 クライアントキーとIDの設定確認
+#### 2.2 クライアントキーの設定確認（clientIdは任意）
 
 1. ブラウザの開発者ツールで以下を実行：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+localStorage.getItem('kiosk-client-id') // 任意
 ```
 
-2. 設定されていない場合、以下を実行：
+2. `kiosk-client-key` が未設定の場合、以下を実行：
 ```javascript
 localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
-localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 ```
 
-**重要**: `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用してください。
+**補足**: `kiosk-client-id` は通話のWebSocket接続には必須ではありません。必要な場合のみ設定してください。
 
 3. ページをリロード（Cmd+R）
 
@@ -187,16 +186,16 @@ sudo systemctl start kiosk-browser.service
 2. Consoleタブで `WebRTC signaling connected` が表示されることを確認
 3. 画面上部に「接続済み」と表示されることを確認
 
-#### 3.3 クライアントキーとIDの確認
+#### 3.3 クライアントキーの確認（clientIdは任意）
 
-Pi4のキオスクブラウザでは、通常以下のクライアントキーとIDが設定されています：
+Pi4のキオスクブラウザでは、通常以下のクライアントキーが設定されています：
 - `kiosk-client-key`: `client-key-raspberrypi4-kiosk1`
-- `kiosk-client-id`: `raspberrypi4-kiosk1`（または設定された値）
+（`kiosk-client-id` は任意）
 
 開発者ツールのConsoleで確認：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+localStorage.getItem('kiosk-client-id') // 任意
 ```
 
 ### 4. 通話機能の実機検証
@@ -345,18 +344,17 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 
 ### 発信先一覧にPi4が表示されない
 
-1. **MacのlocalStorage設定を確認**:
+1. **MacのlocalStorage設定を確認（clientKey必須）**:
 ```javascript
 // ブラウザの開発者ツールで実行
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+localStorage.getItem('kiosk-client-id') // 任意
 ```
 
-2. **正しい形式で設定**:
+2. **正しい形式で設定（clientKeyのみ）**:
 ```javascript
 // useLocalStorageフックはJSON形式で保存するため、JSON.stringify()を使用
 localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
-localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 ```
 
 3. **ページをリロード**:

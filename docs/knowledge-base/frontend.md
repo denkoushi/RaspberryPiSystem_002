@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 36件  
+**件数**: 37件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -2853,5 +2853,101 @@ export function KioskDatePickerModal({
 
 **関連KB**:
 - [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題): 管理コンソールのサイネージプレビュー機能実装（キオスクへの統合前）
+
+---
+
+### [KB-240] モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化
+
+**EXEC_PLAN.md参照**: Progress (2026-02-08)
+
+**事象**: 
+- キオスクと管理コンソールでモーダル実装が分散しており、アクセシビリティ対応が不統一
+- E2Eテストが不安定で、strict mode violationやタイミング問題が発生
+- サイネージプレビューが全画面表示に対応していない
+- 管理コンソールで`window.confirm`を使用しており、アクセシビリティに問題がある
+
+**要因**: 
+- モーダルコンポーネントが各ページで個別実装されており、共通ロジックが重複
+- ARIA属性、フォーカストラップ、スクロールロックなどのアクセシビリティ機能が統一されていない
+- E2Eテストで要素の可視性確認やタイミング待機が不十分
+- Fullscreen APIを使用した全画面表示機能が未実装
+- ネイティブ`window.confirm`はアクセシビリティに問題があり、カスタムUIに置き換えが必要
+
+**有効だった対策**: 
+- ✅ **共通Dialogコンポーネントの作成**: `apps/web/src/components/ui/Dialog.tsx`を作成し、Portal、ARIA属性、Escキー処理、バックドロップクリック、スクロールロック、フォーカストラップ、フォーカス復元を統合実装
+- ✅ **キオスク全モーダルの統一**: `KioskPowerMenuModal`、`KioskPowerConfirmModal`、`KioskSignagePreviewModal`、`KioskSupportModal`、`KioskNoteModal`、`KioskDatePickerModal`、`KioskKeyboardModal`をDialogベースに統一
+- ✅ **サイネージプレビューの全画面対応**: Fullscreen API（`element.requestFullscreen()`、`document.exitFullscreen()`、`fullscreenchange`イベント）を実装し、Escキーで全画面解除→モーダル閉じるの優先順位を実装
+- ✅ **ConfirmDialogとuseConfirmの実装**: `ConfirmDialog.tsx`と`ConfirmContext.tsx`（`useConfirm`フック）を作成し、Promiseベースの確認ダイアログを実装
+- ✅ **管理コンソールのwindow.confirm置換**: `EmployeesPage`、`ItemsPage`、`MeasuringInstrumentsPage`、`InstrumentTagsPage`、`InspectionItemsPage`、`GmailConfigPage`、`BackupTargetsPage`で`window.confirm`を`useConfirm`に置換
+- ✅ **アクセシビリティ標準化**: 
+  - `KioskLayout`に`sr-only`の`<h1>`を追加（ページタイトル）
+  - アイコンボタンとダイアログに適切な`aria-label`属性を追加
+  - `initialFocusRef`でモーダル開閉時のフォーカス管理を実装
+- ✅ **E2Eテストの安定化**: 
+  - `e2e/helpers.ts`に`clickByRoleSafe`（`scrollIntoViewIfNeeded` + `click`）と`closeDialogWithEscape`（Escキー操作）を追加
+  - `e2e/kiosk.spec.ts`と`e2e/admin.spec.ts`でヘルパー関数を使用
+  - `expect.poll()`でUI更新をポーリング待機（バックアップ削除テスト）
+- ✅ **CIの修正**: 
+  - import順序のlintエラー修正（`Dialog.tsx`、`AdminLayout.tsx`）
+  - `.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加
+  - E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+**実装の詳細**:
+- **Dialogコンポーネント**: 
+  - React Portal（`createPortal`）で`document.body`に直接レンダリング
+  - ARIA属性（`role="dialog"`、`aria-modal="true"`、`aria-labelledby`、`aria-describedby`）を自動設定
+  - Escキー処理（`closeOnEsc`）、バックドロップクリック（`closeOnBackdrop`）、スクロールロック（`lockScroll`）、フォーカストラップ（`trapFocus`）、フォーカス復元（`returnFocus`）を実装
+  - `initialFocusRef`でモーダル開閉時の初期フォーカスを制御
+  - サイズ指定（`sm`、`md`、`lg`、`full`）に対応
+- **ConfirmDialogコンポーネント**: 
+  - Dialogをベースに、確認/キャンセルボタンを標準化
+  - `tone`プロパティ（`danger`/`primary`）でボタンの色を制御
+- **ConfirmContext**: 
+  - React ContextでPromiseベースの確認ダイアログを提供
+  - `useConfirm`フックで任意のコンポーネントから確認ダイアログを呼び出し可能
+  - `AdminLayout`に`ConfirmProvider`を追加し、管理コンソール全体で利用可能に
+- **Fullscreen API**: 
+  - `KioskSignagePreviewModal`に全画面表示ボタンを追加
+  - `isFullscreen`状態で全画面状態を管理
+  - `fullscreenchange`イベントで状態を同期
+  - Escキーで全画面解除→モーダル閉じるの優先順位を実装
+
+**学んだこと**:
+- **モーダルの共通化**: Portal、ARIA属性、フォーカス管理などのアクセシビリティ機能を共通コンポーネントに集約することで、一貫性と保守性が向上する
+- **Promiseベースの確認ダイアログ**: `useConfirm`フックにより、非同期処理と確認ダイアログを自然に統合できる
+- **Fullscreen API**: ブラウザネイティブのFullscreen APIを使用することで、カスタム実装よりも安定した全画面表示が可能
+- **E2Eテストの安定化**: `scrollIntoViewIfNeeded()`と`expect.poll()`を使用することで、タイミング問題を回避できる
+- **アクセシビリティ標準**: `sr-only`見出し、`aria-label`属性、フォーカス管理により、スクリーンリーダー対応が向上する
+
+**実機検証結果（2026-02-08）**:
+- ✅ **GitHub Actions CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+- ✅ **デプロイ成功**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）
+- ✅ **ヘルスチェック成功**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認
+
+**関連ファイル**:
+- `apps/web/src/components/ui/Dialog.tsx`（共通Dialogコンポーネント）
+- `apps/web/src/components/ui/ConfirmDialog.tsx`（確認ダイアログコンポーネント）
+- `apps/web/src/contexts/ConfirmContext.tsx`（useConfirmフック）
+- `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx`（Fullscreen API実装）
+- `apps/web/src/components/kiosk/KioskPowerMenuModal.tsx`（Dialogベースに統一）
+- `apps/web/src/components/kiosk/KioskPowerConfirmModal.tsx`（Dialogベースに統一）
+- `apps/web/src/pages/admin/GmailConfigPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/EmployeesPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/ItemsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/InstrumentTagsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/InspectionItemsPage.tsx`（useConfirm使用）
+- `apps/web/src/layouts/AdminLayout.tsx`（ConfirmProvider追加）
+- `apps/web/src/layouts/KioskLayout.tsx`（sr-only見出し追加）
+- `e2e/helpers.ts`（clickByRoleSafe、closeDialogWithEscape追加）
+- `e2e/kiosk.spec.ts`（ヘルパー関数使用）
+- `e2e/admin.spec.ts`（ヘルパー関数使用、expect.poll使用）
+- `.trivyignore`（Caddy依存関係の脆弱性追加）
+
+**関連KB**:
+- [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入): キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）
 
 ---

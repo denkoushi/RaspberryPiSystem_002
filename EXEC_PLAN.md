@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-08) **モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功**: キオスクと管理コンソールのモーダル実装を共通化し、アクセシビリティ標準を統一。**実装内容**: 共通`Dialog`コンポーネント（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）を作成し、キオスク全モーダル（7種類）をDialogベースに統一。サイネージプレビューにFullscreen API対応を追加。`ConfirmDialog`と`useConfirm`フックを作成し、管理コンソールの`window.confirm`（6ページ）を置換。アクセシビリティ標準化（`sr-only`見出し、`aria-label`追加）。E2Eテスト安定化（`clickByRoleSafe`、`closeDialogWithEscape`ヘルパー追加、`expect.poll()`でUI更新ポーリング待機）。**CI修正**: import順序のlintエラー修正、`.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加、E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）。**ヘルスチェック結果**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認。ナレッジベースにKB-240を追加。詳細は [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) を参照。
+
 - [x] (2026-02-08) **キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）・デプロイ成功・実機検証完了**: キオスクヘッダーのUI改善とモーダル表示位置問題を解決。**UI改善内容**: 管理コンソールボタンを歯車アイコンに変更、サイネージプレビューボタン追加（歯車アイコン付き）、再起動/シャットダウンボタンを電源アイコン1つに統合しポップアップメニューで選択可能に。**モーダル表示位置問題**: `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されており、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にするため、モーダルが画面上辺を超えて見切れていた。**解決策**: React Portal（`createPortal`）を使用し、モーダルを`document.body`に直接レンダリングすることで、DOM階層の制約を回避。モーダルスタイリングを改善（`overflow-y-auto`、`items-start`、`max-h-[calc(100vh-2rem)]`、サイネージプレビューは全幅表示）。**E2Eテストの安定化**: `scrollIntoViewIfNeeded()`とEscキー操作（`page.keyboard.press('Escape')`）でビューポート外エラーを回避。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功。**実機検証結果**: 管理コンソールボタンが歯車アイコンに変更されスペースが確保されたこと、サイネージプレビューボタンが追加されモーダルでサイネージ画像が正常に表示されること、電源アイコンをクリックするとメニューが表示され再起動/シャットダウンが選択できること、モーダルが画面全体に正しく表示され画面上辺を超えて見切れないこと、サイネージプレビューが全画面表示されることを確認。ナレッジベースにKB-239を追加。詳細は [docs/knowledge-base/frontend.md#kb-239](./docs/knowledge-base/frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) を参照。
 
 - [x] (2026-02-08) **update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功**: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する問題を解決。**原因**: `raspberrypi5`は`ansible_connection: local`のため、`REMOTE_HOST`未設定時にMac側で実行されるとsudoパスワードが求められる。**修正内容**: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）成功。**実機検証結果**: `RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、エラーで停止することを確認。ナレッジベースにKB-238を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) を参照。
@@ -1256,6 +1258,71 @@
 
 ## Next Steps（将来のタスク）
 
+### アクセシビリティの継続的改善（推奨）
+
+**概要**: モーダル共通化・アクセシビリティ標準化を機に、アクセシビリティの継続的改善を検討
+
+**完了した改善**:
+- ✅ 共通Dialogコンポーネントによるモーダルの統一（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）
+- ✅ キオスク全モーダル（7種類）のDialogベース統一
+- ✅ 管理コンソールの`window.confirm`置換（6ページ）
+- ✅ `sr-only`見出しの追加（KioskLayout）
+- ✅ アイコンボタンとダイアログの`aria-label`属性追加
+
+**次の改善候補**:
+1. **キーボードナビゲーションの強化**（優先度: 中）
+   - タブ順序の最適化（論理的な順序）
+   - ショートカットキーの追加（例: `Ctrl+K`で検索、`Ctrl+S`で保存）
+   - フォーカスインジケーターの視認性向上
+
+2. **スクリーンリーダー対応の拡充**（優先度: 中）
+   - 動的コンテンツの変更通知（`aria-live`属性）
+   - フォームエラーメッセージの関連付け（`aria-describedby`）
+   - 画像の代替テキスト（`alt`属性）の充実
+
+3. **色のコントラスト比の確認**（優先度: 低）
+   - WCAG 2.1 AA準拠の確認（コントラスト比4.5:1以上）
+   - カラーユニバーサルデザインの考慮（色だけでなく形状・テキストでも情報を伝える）
+
+4. **モーダル以外のUIコンポーネントの共通化**（優先度: 低）
+   - トースト通知コンポーネントの作成
+   - ドロップダウンメニューコンポーネントの作成
+   - ツールチップコンポーネントの作成
+
+**現状**: モーダル共通化とアクセシビリティ標準化は完了し、基本的なアクセシビリティ機能は実装済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化)
+
+### E2Eテストのさらなる安定化（推奨）
+
+**概要**: E2Eテスト安定化を機に、テストの信頼性と保守性をさらに向上させる
+
+**完了した改善**:
+- ✅ `clickByRoleSafe`ヘルパー関数の追加（`scrollIntoViewIfNeeded` + `click`）
+- ✅ `closeDialogWithEscape`ヘルパー関数の追加（Escキー操作）
+- ✅ `expect.poll()`によるUI更新のポーリング待機
+- ✅ strict mode violationの修正（`first()`で先頭要素を明示指定）
+
+**次の改善候補**:
+1. **テストヘルパー関数の拡充**（優先度: 中）
+   - フォーム入力ヘルパー（`fillForm`）
+   - 待機ヘルパー（`waitForElement`、`waitForNetworkIdle`）
+   - アサーションヘルパー（`expectElementVisible`、`expectElementNotVisible`）
+
+2. **テストデータ管理の改善**（優先度: 低）
+   - テストデータのファクトリー関数化
+   - テストデータのクリーンアップ自動化
+   - テストデータの再利用性向上
+
+3. **テスト実行の最適化**（優先度: 低）
+   - 並列実行の最適化（依存関係の整理）
+   - テスト実行時間の短縮（不要な待機時間の削減）
+   - テスト結果の可視化（レポート生成）
+
+**現状**: 基本的なE2Eテスト安定化は完了し、CIで安定して動作するようになった。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化)
+
 ### Alerts Platform Phase3（候補）
 
 **概要**: scriptsもAPI経由でAlert作成に寄せる
@@ -1494,3 +1561,5 @@
 変更履歴: 2026-02-08 — キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）・デプロイ成功・実機検証完了を反映。ProgressにUI改善（アイコン化、サイネージプレビュー追加、電源メニュー統合）とReact Portal導入によるモーダル表示位置問題の解決を追加。KB-239を追加し、CSS `filter`プロパティが`position: fixed`に与える影響とReact Portalによる回避方法を記録。E2Eテストの安定化（`scrollIntoViewIfNeeded`とEscキー操作）も記録。ナレッジベース更新（36件）。
 
 変更履歴: 2026-02-08 — update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功を反映。Progressに`require_remote_host_for_pi5()`関数の追加とCI実行・実機検証結果を追加。KB-238を追加し、エラーが100%発生する場合は原因を潰すべき（fail-fast）という知見を記録。Surprises & Discoveriesに標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐためのガード追加を追加。ナレッジベース更新（39件）。
+
+変更履歴: 2026-02-08 — モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功を反映。Progressに共通Dialogコンポーネント作成、キオスク全モーダル統一、サイネージプレビューのFullscreen API対応、ConfirmDialogとuseConfirm実装、管理コンソールのwindow.confirm置換、アクセシビリティ標準化、E2Eテスト安定化を追加。CI修正（import順序、Trivy脆弱性、E2Eテストstrict mode violation）も記録。KB-240を追加し、モーダル共通化による保守性向上とアクセシビリティ標準化の重要性を記録。ナレッジベース更新（37件）。
