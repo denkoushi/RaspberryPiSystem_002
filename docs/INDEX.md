@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-09）
+
+- **✅ キオスク通話のID統一・疎通前提の明文化**: WebRTC通話の識別子を`ClientDevice.id`（UUID）に統一し、`statusClientId`依存を解消。`/api/kiosk/call/targets`の`selfClientId`を通話IDとして扱うように整理し、`/api/kiosk/config`でのオンライン更新（`lastSeenAt`）を明確化。検証手順とKBを更新し、localStorageの`kiosk-client-id`は通話に不要であることを明記。詳細は [guides/webrtc-verification.md](./guides/webrtc-verification.md) / [knowledge-base/kiosk-video-call-health-check.md](./knowledge-base/kiosk-video-call-health-check.md) / [knowledge-base/kiosk-input-protection-investigation.md](./knowledge-base/kiosk-input-protection-investigation.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-08）
 
 - **✅ モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化**: キオスクと管理コンソールのモーダル実装を共通化し、アクセシビリティ標準を統一。**実装内容**: 共通`Dialog`コンポーネント（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）を作成し、キオスク全モーダル（7種類）をDialogベースに統一。サイネージプレビューにFullscreen API対応を追加。`ConfirmDialog`と`useConfirm`フックを作成し、管理コンソールの`window.confirm`（6ページ）を置換。アクセシビリティ標準化（`sr-only`見出し、`aria-label`追加）。E2Eテスト安定化（`clickByRoleSafe`、`closeDialogWithEscape`ヘルパー追加、`expect.poll()`でUI更新ポーリング待機）。**CI修正**: import順序のlintエラー修正、`.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加、E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）。**ヘルスチェック結果**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認。詳細は [knowledge-base/frontend.md#kb-240](./knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) を参照。

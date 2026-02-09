@@ -1706,8 +1706,12 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - `connect()`内で`clientKey`または`clientId`が空のため、93行目で早期リターンし、WebSocket接続が試行されない
 
 **実施した対策**: 
-- ✅ **`KioskCallPage.tsx`に`useLocalStorage`を追加**: `clientKey`と`clientId`を`localStorage`から取得して保持し、シグナリング接続の前提条件を満たすように修正
-- ✅ **`resolveClientKey`関数の改善**: `apps/web/src/api/client.ts`の`resolveClientKey`関数で`DEFAULT_CLIENT_KEY`をフォールバックとして使用するように修正
+- ✅ **（当時）`KioskCallPage.tsx`に`useLocalStorage`を追加**: `clientKey`と`clientId`を`localStorage`から取得して保持
+- ✅ **（当時）`resolveClientKey`関数の改善**: `DEFAULT_CLIENT_KEY`フォールバックを追加
+
+**追記（2026-02-09）**:
+- 通話IDは`ClientDevice.id`（UUID）に統一し、`kiosk-client-id`（localStorage）は不要になった
+- `KioskLayout`/`KioskHeader`はAPI由来の`selfClientId`を表示する
 
 **実装の詳細**:
 1. **`KioskCallPage.tsx`の修正**: `useLocalStorage`フックを追加し、`clientKey`と`clientId`を取得
@@ -1719,10 +1723,9 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 2. **`resolveClientKey`関数の改善**: `localStorage`に値がない場合や空文字の場合、`DEFAULT_CLIENT_KEY`を返すように修正
 
 **学んだこと**:
-1. **WebRTCシグナリングに必要な設定**: WebRTCシグナリングには`clientKey`と`clientId`が必要で、これらは`localStorage`に保存される必要がある
-2. **既存ページとの整合性**: `KioskBorrowPage.tsx`や`KioskReturnPage.tsx`では設定されていたが、`KioskCallPage.tsx`では設定漏れがあった
-3. **新しいページ追加時の注意**: 新しいページを追加する際は、必要な設定（`clientKey`、`clientId`など）を確認する必要がある
-4. **デバッグログの活用**: デバッグログを追加することで、WebSocket接続が試行されない原因を特定できた
+1. **通話IDの単一ソース化が重要**: 複数系統のID（localStorage、statusClientId）を混在させると疎通が破綻しやすい
+2. **`x-client-key`の一貫性**: UI表示・APIヘッダー・WebSocket接続で同じキーを使う必要がある
+3. **新しいページ追加時の注意**: 通話/疎通に関わるIDとキーの取得元を明文化してから実装する
 
 **解決状況**: ✅ **解決済み**（2026-01-16）
 
@@ -1749,9 +1752,9 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 **実施した対策**: 
 - ✅ **入力フィールドの完全削除**: `KioskHeader.tsx`の`<Input>`コンポーネントを削除し、`<span>`要素による表示のみに変更
-- ✅ **localStorageへの書き込み無効化**: 各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除し、`DEFAULT_CLIENT_KEY`を直接使用
-- ✅ **起動時防御の実装**: `client.ts`の初期化時に`kiosk-client-key`を`localStorage`に`DEFAULT_CLIENT_KEY`として強制設定
-- ✅ **自動復旧機能の実装**: `axios` response interceptorで401エラー（`INVALID_CLIENT_KEY`）を検知し、自動的に`DEFAULT_CLIENT_KEY`に復元してページをリロード
+- ✅ **localStorageへの書き込み抑制**: 各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除
+- ✅ **起動時防御の実装**: `kiosk-client-key`が未設定/空の場合のみ`DEFAULT_CLIENT_KEY`を設定（既存キーは保持）
+- ✅ **自動復旧機能の実装**: 401（`INVALID_CLIENT_KEY`）時に自動的に`DEFAULT_CLIENT_KEY`へ復元してページをリロード
 
 **実装の詳細**:
 1. **`KioskHeader.tsx`の修正**: `<Input>`コンポーネントを`<span>`に変更し、編集不可に
@@ -1761,19 +1764,22 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
    </span>
    ```
 2. **各キオスクページの修正**: `useLocalStorage`の使用を削除し、`resolvedClientKey`を`DEFAULT_CLIENT_KEY`に直接設定
-3. **`client.ts`の修正**: 初期化時に`localStorage`に`DEFAULT_CLIENT_KEY`を強制設定、`resetKioskClientKey()`関数と`axios` interceptorを追加
+3. **`client.ts`の修正**: 未設定時のみ`DEFAULT_CLIENT_KEY`を設定、`resetKioskClientKey()`関数と`axios` interceptorを追加
 
 **実機検証結果（2026-02-02）**:
 - ✅ **IDとAPIキーが編集不可に改善されている**: ヘッダーのAPIキー/IDが表示のみで編集できないことを確認
 - ✅ **生産スケジュールの値が表示されている**: 生産スケジュール画面で値が正常に表示されることを確認
 - ⏸️ **自動復旧機能は後日試す予定**: 開発者ツールでlocalStorageを手動で不正な値に変更し、APIアクセス時の自動復旧を確認予定
 
+**追記（2026-02-09）**:
+- 通話IDは`ClientDevice.id`（UUID）に統一し、`kiosk-client-id`（localStorage）は通話に不要
+
 **トラブルシューティング**:
 - **デプロイ後の入力欄が残る問題**: Webコンテナが再ビルドされていない場合、古いビルドが動いている可能性がある。`docker compose build --no-cache web && docker compose up -d web`で再ビルドが必要
 
 **学んだこと**:
 1. **UIロックの重要性**: 入力フィールドを削除することで、誤入力の根本原因を排除できる
-2. **localStorageへの依存削減**: 固定値（`DEFAULT_CLIENT_KEY`）を直接使用することで、状態の不整合を防げる
+2. **localStorageへの依存削減**: 入力UIからの書き込みを排除し、必要最低限の保存に限定する
 3. **自動復旧の実装**: APIエラー（401/INVALID_CLIENT_KEY）を検知して自動的に復旧することで、運用負荷を軽減できる
 4. **デプロイ時の再ビルド確認**: コード変更時はWebコンテナの再ビルドが必要であり、デプロイログで確認すべき
 
@@ -1782,7 +1788,7 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 **関連ファイル**:
 - `apps/web/src/components/kiosk/KioskHeader.tsx`（入力フィールド削除・表示のみに変更）
 - `apps/web/src/api/client.ts`（起動時防御・自動復旧機能の実装）
-- `apps/web/src/layouts/KioskLayout.tsx`（`DEFAULT_CLIENT_KEY`固定化）
+- `apps/web/src/layouts/KioskLayout.tsx`（表示/APIヘッダーを実際に利用するキーに統一）
 - `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`（localStorage使用削除）
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`（localStorage使用削除）
 - `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`（localStorage使用削除）

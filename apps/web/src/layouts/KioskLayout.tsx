@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
-import { DEFAULT_CLIENT_KEY, setClientKeyHeader } from '../api/client';
-import { useDeployStatus, useKioskConfig } from '../api/hooks';
+import { getResolvedClientKey, setClientKeyHeader } from '../api/client';
+import { useDeployStatus, useKioskCallTargets, useKioskConfig } from '../api/hooks';
 import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
-import { useLocalStorageUuid } from '../hooks/useLocalStorage';
 
 export function KioskLayout() {
-  const clientKey = DEFAULT_CLIENT_KEY;
-  const [clientId] = useLocalStorageUuid('kiosk-client-id', '');
+  const clientKey = getResolvedClientKey();
+  const callTargetsQuery = useKioskCallTargets();
+  const selfClientId = callTargetsQuery.data?.selfClientId ?? '';
   const { data: kioskConfig } = useKioskConfig();
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
@@ -19,7 +19,7 @@ export function KioskLayout() {
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
-    setClientKeyHeader(DEFAULT_CLIENT_KEY);
+    setClientKeyHeader(getResolvedClientKey());
   }, []);
 
   // 直近のキオスクパスを記録し、/kiosk リロード時に復元できるようにする
@@ -42,7 +42,7 @@ export function KioskLayout() {
       <header className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur">
         <KioskHeader
           clientKey={clientKey}
-          clientId={clientId}
+          clientId={selfClientId}
           onOpenSupport={() => setShowSupportModal(true)}
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}

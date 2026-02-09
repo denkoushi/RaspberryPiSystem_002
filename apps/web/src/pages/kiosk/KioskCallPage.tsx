@@ -11,6 +11,7 @@ import { Card } from '../../components/ui/Card';
 import { useWebRTC } from '../../features/webrtc/hooks/useWebRTC';
 export function KioskCallPage() {
   const callTargetsQuery = useKioskCallTargets();
+  const selfClientId = callTargetsQuery.data?.selfClientId ?? null;
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
@@ -104,6 +105,7 @@ export function KioskCallPage() {
     const targets = callTargetsQuery.data?.targets ?? [];
     return targets
       .filter((t) => !t.stale)
+      .filter((t) => (selfClientId ? t.clientId !== selfClientId : true))
       .map((t) => ({
         clientId: t.clientId,
         name: t.name || t.hostname,
@@ -119,7 +121,7 @@ export function KioskCallPage() {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [callTargetsQuery.data]);
+  }, [callTargetsQuery.data, selfClientId]);
 
   const handleCall = async (to: string) => {
     // #region agent log

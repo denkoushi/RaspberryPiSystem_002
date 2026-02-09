@@ -1801,18 +1801,19 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - ✅ **解決済み**（2026-01-05）: キオスク専用の通話候補取得エンドポイントを追加
 - `GET /api/kiosk/call/targets`: `x-client-key`認証で通話可能なクライアント一覧を返す
 - 自分自身を除外、staleなクライアントを除外
-- `ClientDevice`情報（`location`等）を付加して返却
+- **通話IDは`ClientDevice.id`（UUID）に統一**
+- `ClientStatus`は補助情報（hostname/IP）として利用
 
 **実装詳細**:
 ```typescript
 // apps/api/src/routes/kiosk.ts
 app.get('/kiosk/call/targets', async (request, reply) => {
   const clientKey = await allowClientKey(request);
-  const selfClient = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
-  const statuses = await prisma.clientStatus.findMany({
-    where: { stale: false, clientId: { not: selfClient?.statusClientId } }
-  });
-  // ...
+  const selfDevice = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+  const devices = await prisma.clientDevice.findMany({ orderBy: { name: 'asc' } });
+  // 通話IDは ClientDevice.id を返す
+  // stale 判定は ClientDevice.lastSeenAt を優先
+  // ClientStatus は補助情報として付与
 });
 ```
 
@@ -1820,7 +1821,7 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 - キオスク向けAPIは`x-client-key`認証で設計する
 - 既存の管理者向けAPIを流用せず、キオスク専用のエンドポイントを作成する
 - 自端末を除外するロジックを含めることで、不正な自己発信を防止
-- `stale`フラグでオフライン端末を除外し、発信可能な端末のみを返す
+- `stale`フラグは`ClientDevice.lastSeenAt`を基準にし、ブラウザ起動時の疎通も反映できる
 
 **解決状況**: ✅ **解決済み**（2026-01-05）
 

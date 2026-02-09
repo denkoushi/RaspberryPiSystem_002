@@ -8,6 +8,12 @@
 
 キオスクのビデオ通話機能の実装を確認し、既存の仕様ドキュメントとコードを参照してロジックを把握した上で、健全性を評価しました。
 
+## 追記（2026-02-09）
+
+- **通話IDを`ClientDevice.id`（UUID）へ統一**し、`statusClientId`依存を解消
+- `kiosk-client-id`（localStorage）は通話に不要になり、`selfClientId`をAPIから取得して表示/接続に利用
+- `/api/kiosk/config` で `ClientDevice.lastSeenAt` を更新し、ブラウザ起動=オンライン扱いを強化
+
 ## 確認した実装
 
 ### 主要コンポーネント
@@ -35,70 +41,31 @@
 
 ## 発見された潜在的な問題
 
-### 🔴 問題1: useWebRTCSignaling.tsのresolveClientKey()がDEFAULT_CLIENT_KEYをフォールバックとして使用していない
+### ✅ 問題1（解消）: clientKeyフォールバックの不整合
 
-**場所**: `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts:12-26`
-
-**問題の詳細**:
-- `useWebRTCSignaling.ts`の`resolveClientKey()`関数は、`localStorage`に値がない場合に空文字列を返す
-- 一方、`apps/web/src/api/client.ts`の`resolveClientKey()`は`DEFAULT_CLIENT_KEY`をフォールバックとして使用している
-- KB-225でlocalStorageへの書き込みが無効化され、`DEFAULT_CLIENT_KEY`を直接使用するように変更されたが、`useWebRTCSignaling.ts`はこの変更に対応していない
-
-**影響**:
-- `localStorage`に`kiosk-client-key`が設定されていない場合、WebSocket接続が確立されない
-- `connect()`関数の97行目で`if (!clientKey || !clientId)`により早期リターンし、接続が試行されない
-
-**現在の実装**:
-```typescript
-const resolveClientKey = (): string => {
-  if (typeof window === 'undefined') return '';
-  const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return '';  // ← 空文字列を返す
-  // ...
-};
-```
-
-**推奨される修正**:
-```typescript
-import { DEFAULT_CLIENT_KEY } from '../../api/client';
-
-const resolveClientKey = (): string => {
-  if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
-  const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return DEFAULT_CLIENT_KEY;  // ← フォールバック追加
-  // ...
-};
-```
-
-### 🟡 問題2: clientIdの初期化が不十分
-
-**場所**: `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts:28-42`
+**場所**: `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
 
 **問題の詳細**:
-- `resolveClientId()`関数は`localStorage`に`kiosk-client-id`が設定されていない場合、`null`を返す
-- `client.ts`では`kiosk-client-key`は初期化されているが、`kiosk-client-id`の初期化は行われていない
-- KB-225でlocalStorageへの書き込みが無効化されたため、`clientId`が設定されない可能性がある
+- 旧仕様では`localStorage`依存の差分があり、フォールバック不整合が生じていた
 
 **影響**:
-- `clientId`が`null`の場合、WebSocket接続が確立されない（97行目で早期リターン）
-- ただし、`client.ts`の初期化（85行目）で`kiosk-client-key`は設定されているため、`clientId`のみが問題となる
+- 旧仕様ではWebSocket接続が試行されないケースがあった
 
-**現在の実装**:
-```typescript
-const resolveClientId = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const savedId = window.localStorage.getItem('kiosk-client-id');
-  if (!savedId || savedId.length === 0) return null;  // ← nullを返す
-  // ...
-};
-```
+**現状**:
+- `DEFAULT_CLIENT_KEY`へのフォールバックを統一し解消
 
-**推奨される対応**:
-1. **オプションA**: `clientId`をAPIから取得する（`statusClientId`をクライアントデバイステーブルから取得）
-2. **オプションB**: 環境変数から`DEFAULT_CLIENT_ID`を定義し、フォールバックとして使用
-3. **オプションC**: `client.ts`の初期化時に`clientId`も設定する（ただし、KB-225の方針と矛盾する可能性がある）
+### ✅ 問題2（解消）: clientIdの初期化が不十分
 
-**注意**: KB-225でlocalStorageへの書き込みが無効化されたため、`clientId`の取得方法を再検討する必要がある。
+**場所**: `apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
+
+**問題の詳細**:
+- 旧仕様では`kiosk-client-id`が必須で、未設定時に接続できない可能性があった
+
+**影響**:
+- 旧仕様では`clientId`未設定で接続できないケースがあった
+
+**現状**:
+- 通話IDは`ClientDevice.id`に統一し、`kiosk-client-id`は不要
 
 ### 🟢 問題3: デバッグログの残存
 

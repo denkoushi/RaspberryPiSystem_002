@@ -1064,6 +1064,12 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         found: !!client, 
         defaultMode: client?.defaultMode 
       }, 'Client device lookup result');
+      if (client) {
+        await prisma.clientDevice.update({
+          where: { id: client.id },
+          data: { lastSeenAt: new Date() }
+        });
+      }
       if (client?.defaultMode) {
         defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
       }
@@ -1102,7 +1108,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   /**
    * キオスク通話向けの発信先一覧
    * - x-client-key 認証のみ（管理ユーザーのJWTは不要）
-   * - ClientStatus(clientId) と ClientDevice(statusClientId) を突き合わせて location を付与
+   * - 通話IDは ClientDevice.id を使用
+   * - ClientStatus は補助情報として利用
    */
   app.get('/kiosk/call/targets', { config: { rateLimit: false } }, async (request) => {
     const clientKey = normalizeClientKey(request.headers['x-client-key']);
@@ -1120,41 +1127,42 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const statuses = await prisma.clientStatus.findMany({
       orderBy: { hostname: 'asc' }
     });
-    const statusClientIds = statuses.map((s) => s.clientId);
+    const statusByClientId = new Map(
+      statuses.map((status) => [status.clientId, status])
+    );
 
-    const deviceByStatusId = new Map<string, { name: string; location: string | null }>();
-    if (statusClientIds.length > 0) {
-      const devices = await prisma.clientDevice.findMany({
-        where: { statusClientId: { in: statusClientIds } },
-        select: { statusClientId: true, name: true, location: true }
-      });
-      for (const d of devices) {
-        if (d.statusClientId) {
-          deviceByStatusId.set(d.statusClientId, { name: d.name, location: d.location ?? null });
-        }
+    const devices = await prisma.clientDevice.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        location: true,
+        statusClientId: true,
+        lastSeenAt: true,
+        updatedAt: true
       }
-    }
+    });
 
     // 既存の /clients/status と同じ閾値（12時間）
     const staleThresholdMs = 1000 * 60 * 60 * 12;
     const now = Date.now();
-    const selfClientId = selfDevice.statusClientId ?? null;
+    const selfClientId = selfDevice.id;
 
     return {
       selfClientId,
-      targets: statuses
-        .map((status) => {
-          const lastSeen = status.lastSeen ?? status.updatedAt;
+      targets: devices
+        .map((device) => {
+          const status = device.statusClientId ? statusByClientId.get(device.statusClientId) : undefined;
+          const lastSeen = device.lastSeenAt ?? status?.lastSeen ?? status?.updatedAt ?? device.updatedAt;
           const stale = now - lastSeen.getTime() > staleThresholdMs;
-          const device = deviceByStatusId.get(status.clientId);
           return {
-            clientId: status.clientId,
-            hostname: status.hostname,
-            ipAddress: status.ipAddress,
+            clientId: device.id,
+            hostname: status?.hostname ?? device.name,
+            ipAddress: status?.ipAddress ?? 'unknown',
             lastSeen,
             stale,
-            name: device?.name ?? status.hostname,
-            location: device?.location ?? null
+            name: device.name,
+            location: device.location ?? null
           };
         })
         .filter((t) => t.clientId !== selfClientId)

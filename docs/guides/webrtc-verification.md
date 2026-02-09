@@ -32,6 +32,8 @@
 - Pi5: `client-key-raspberrypi5-server`
 - Mac: `client-key-mac-kiosk1`（ブラウザのlocalStorageに設定）
 
+**補足**: 通話の識別子は`ClientDevice.id`（UUID）であり、`selfClientId`としてAPIから返却されます。`kiosk-client-id`（localStorage）は通話に不要です。
+
 ### WebRTC機能の有効化確認
 
 ```bash
@@ -93,12 +95,12 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 2. 自己署名証明書の警告が出る場合は「詳細設定」→「続行」を選択
 3. ブラウザの開発者ツール（F12）を開き、Consoleタブを表示
 
-#### 2.2 クライアントキーの設定確認（clientIdは任意）
+#### 2.2 クライアントキーの設定確認（clientIdは不要）
 
 1. ブラウザの開発者ツールで以下を実行：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id') // 任意
+// kiosk-client-id は通話に不要
 ```
 
 2. `kiosk-client-key` が未設定の場合、以下を実行：
@@ -106,7 +108,7 @@ localStorage.getItem('kiosk-client-id') // 任意
 localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
 ```
 
-**補足**: `kiosk-client-id` は通話のWebSocket接続には必須ではありません。必要な場合のみ設定してください。
+**補足**: 通話の識別子は`ClientDevice.id`（UUID）であり、APIの`selfClientId`として返却されます。
 
 3. ページをリロード（Cmd+R）
 
@@ -186,16 +188,16 @@ sudo systemctl start kiosk-browser.service
 2. Consoleタブで `WebRTC signaling connected` が表示されることを確認
 3. 画面上部に「接続済み」と表示されることを確認
 
-#### 3.3 クライアントキーの確認（clientIdは任意）
+#### 3.3 クライアントキーの確認（clientIdは不要）
 
 Pi4のキオスクブラウザでは、通常以下のクライアントキーが設定されています：
 - `kiosk-client-key`: `client-key-raspberrypi4-kiosk1`
-（`kiosk-client-id` は任意）
+（`kiosk-client-id` は不要）
 
 開発者ツールのConsoleで確認：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id') // 任意
+// kiosk-client-id は通話に不要
 ```
 
 ### 4. 通話機能の実機検証
@@ -288,18 +290,12 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 #### 5.2 発信先がオフラインの場合
 
-1. Pi3のstatus-agentを停止：
-```bash
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop status-agent.timer'"
-```
+1. 対象端末（Pi3/Pi4/Mac）のキオスク画面を閉じる、または端末をオフラインにする
 
 2. 数分待ってから、Macのキオスク画面で発信先一覧を確認：
-   - Pi3が`stale: true`として表示される、または一覧から除外されること
+   - 対象端末が`stale: true`として表示される、または一覧から除外されること
 
-3. Pi3のstatus-agentを再起動：
-```bash
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl start status-agent.timer'"
-```
+3. 対象端末のキオスク画面を再度開く
 
 ## トラブルシューティング
 
@@ -338,9 +334,9 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
    - 設定されているキーがデータベースに存在すること
    - `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用すること
 
-3. **status-agentの動作確認**:
-   - 各端末のstatus-agentが正常に動作していること
-   - `ClientStatus`テーブルに最新データが記録されていること
+3. **オンライン判定の確認**:
+   - `/api/kiosk/config` が定期的に呼ばれていること（`ClientDevice.lastSeenAt`が更新される）
+   - status-agentは補助情報（hostname/IP）に利用されるが、通話の必須条件ではない
 
 ### 発信先一覧にPi4が表示されない
 
@@ -348,7 +344,7 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 ```javascript
 // ブラウザの開発者ツールで実行
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id') // 任意
+// kiosk-client-id は通話に不要
 ```
 
 2. **正しい形式で設定（clientKeyのみ）**:
@@ -364,11 +360,8 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
    - ブラウザの開発者ツールのNetworkタブで`/api/kiosk/call/targets`のレスポンスを確認
    - Pi4が`targets`配列に含まれていることを確認
 
-5. **デバッグ用URLパラメータ**:
-   - クライアントキーの問題を切り分けるため、URLパラメータで一時的に上書き可能
-```
-https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
-```
+5. **APIレスポンスの確認**:
+   - `selfClientId` と `targets[].clientId` がUUIDで返っていること
 
 ### 通話が開始されない / 着信モーダルが表示されない
 

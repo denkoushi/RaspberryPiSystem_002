@@ -154,7 +154,7 @@ export function KioskHeader({
             APIキー: <span className="font-mono text-white/90">{formatKey(clientKey)}</span>
           </span>
           <span className="text-white/70">
-            ID: <span className="font-mono text-white/90">{formatKey(clientId)}</span>
+            通話ID: <span className="font-mono text-white/90">{formatKey(clientId)}</span>
           </span>
         </Row>
         <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">

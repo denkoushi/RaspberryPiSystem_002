@@ -57,6 +57,10 @@ const resolveClientKey = () => {
   return savedKey || DEFAULT_CLIENT_KEY;
 };
 
+export function getResolvedClientKey() {
+  return resolveClientKey();
+}
+
 export function setAuthToken(token?: string) {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
