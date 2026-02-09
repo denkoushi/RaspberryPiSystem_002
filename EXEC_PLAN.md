@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-09) **WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功**: Pi4が`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信時に自動的に`/kiosk/call`へ切り替わる機能を実装。**実装内容**: `WebRTCCallProvider`（React Context）を作成し、`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用。着信時（`callState === 'incoming'`）に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移。通話終了時（`callState === 'idle' || 'ended'`）に元のパスへ自動復帰。Pi3の通話対象除外機能を実装（`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数で除外フィルタ適用）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（`failed=0`）。**APIレベルでの動作確認**: 発信先一覧APIが正常に動作し、Pi3が除外されることを確認。**実機検証待ち**: MacからPi4への通話テスト、着信時の自動切り替え、通話終了後の自動復帰の動作確認が必要。ナレッジベースにKB-241を追加、`docs/guides/webrtc-verification.md`を更新。詳細は [docs/knowledge-base/frontend.md#kb-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) / [docs/guides/webrtc-verification.md](./docs/guides/webrtc-verification.md) を参照。
+
 - [x] (2026-02-08) **モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功**: キオスクと管理コンソールのモーダル実装を共通化し、アクセシビリティ標準を統一。**実装内容**: 共通`Dialog`コンポーネント（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）を作成し、キオスク全モーダル（7種類）をDialogベースに統一。サイネージプレビューにFullscreen API対応を追加。`ConfirmDialog`と`useConfirm`フックを作成し、管理コンソールの`window.confirm`（6ページ）を置換。アクセシビリティ標準化（`sr-only`見出し、`aria-label`追加）。E2Eテスト安定化（`clickByRoleSafe`、`closeDialogWithEscape`ヘルパー追加、`expect.poll()`でUI更新ポーリング待機）。**CI修正**: import順序のlintエラー修正、`.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加、E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）。**ヘルスチェック結果**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認。ナレッジベースにKB-240を追加。詳細は [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) を参照。
 
 - [x] (2026-02-08) **キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）・デプロイ成功・実機検証完了**: キオスクヘッダーのUI改善とモーダル表示位置問題を解決。**UI改善内容**: 管理コンソールボタンを歯車アイコンに変更、サイネージプレビューボタン追加（歯車アイコン付き）、再起動/シャットダウンボタンを電源アイコン1つに統合しポップアップメニューで選択可能に。**モーダル表示位置問題**: `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されており、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にするため、モーダルが画面上辺を超えて見切れていた。**解決策**: React Portal（`createPortal`）を使用し、モーダルを`document.body`に直接レンダリングすることで、DOM階層の制約を回避。モーダルスタイリングを改善（`overflow-y-auto`、`items-start`、`max-h-[calc(100vh-2rem)]`、サイネージプレビューは全幅表示）。**E2Eテストの安定化**: `scrollIntoViewIfNeeded()`とEscキー操作（`page.keyboard.press('Escape')`）でビューポート外エラーを回避。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功。**実機検証結果**: 管理コンソールボタンが歯車アイコンに変更されスペースが確保されたこと、サイネージプレビューボタンが追加されモーダルでサイネージ画像が正常に表示されること、電源アイコンをクリックするとメニューが表示され再起動/シャットダウンが選択できること、モーダルが画面全体に正しく表示され画面上辺を超えて見切れないこと、サイネージプレビューが全画面表示されることを確認。ナレッジベースにKB-239を追加。詳細は [docs/knowledge-base/frontend.md#kb-239](./docs/knowledge-base/frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) を参照。
@@ -508,7 +510,9 @@
 - 発見: systemd serviceに `User=` が未指定の場合、rootで実行される。SSH鍵アクセスが必要な場合は、適切なユーザー（`denkon5sd02`）を指定する必要がある。  
   対応: `pi5-power-dispatcher.service.j2` に `User=denkon5sd02` を追加し、SSH鍵アクセスを可能にした。**[KB-237]**
 - 発見: systemd経由で実行されるスクリプトは、カレントディレクトリが不定になり得る。`ansible.cfg` の相対パス設定（`vault_password_file=.vault-pass`）が機能しない場合がある。  
-  対応: `pi5-power-dispatcher.service.j2` に `WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible` を追加し、スクリプト内でも `cd "${ANSIBLE_DIR}"` を実行するように修正。**[KB-237]**  
+  対応: `pi5-power-dispatcher.service.j2` に `WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible` を追加し、スクリプト内でも `cd "${ANSIBLE_DIR}"` を実行するように修正。**[KB-237]**
+- 発見: Pi4が`/kiosk/*`や`/signage`表示中にWebSocket接続が確立されていないため、発信側が「Callee is not connected」エラーで通話できない。  
+  対応: `WebRTCCallProvider`を`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用し、シグナリング接続を常時維持。着信時は`sessionStorage`に現在のパスを保存し、`/kiosk/call`へ自動遷移。通話終了後は元のパスへ自動復帰。Pi3は`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で通話対象から除外。**[KB-241]**  
   エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
   対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
 - 観測: `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある。  
@@ -665,7 +669,11 @@
 - 決定: リモート実行（`REMOTE_HOST`が設定されている場合）はデフォルトでデタッチモードで実行する。  
   理由: クライアント側の監視打ち切りによる中断リスクを排除し、長時間デプロイの安全性を向上させるため。前景実行が必要な場合は`--foreground`オプションで明示的に指定可能（短時間のみ推奨）。  
   日付/担当: 2026-02-01 / Codex  
-  参照: [KB-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須)  
+  参照: [KB-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須)
+- 決定: WebRTCシグナリング接続を常時維持し、`/kiosk/*`や`/signage`表示中でも着信を受けられるようにする。着信時は自動的に`/kiosk/call`へ切り替え、通話終了後は元の画面へ自動復帰する。  
+  理由: ユーザーが通話画面を開いていなくても着信を受けられるようにし、作業の中断を最小限に抑えるため。Pi3はサイネージ機能特化のため、通話対象から除外する。  
+  日付/担当: 2026-02-09 / Codex  
+  参照: [KB-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装)  
   理由: Raspberry Pi のChromiumにはNFC APIが実装されておらず、ローカルWebSocketであればCORS問題なくUSB処理をフロントから切り離せるため。  
   日付/担当: 2024-05-27 / Codex
 - 決定: データストアは PostgreSQL とし、社員レコードをUUID主体で設計して将来他モジュールが参照しやすい構造にする。  
@@ -1356,6 +1364,40 @@
 
 **詳細**: [KB-177](../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
 
+### WebRTCビデオ通話機能の実機検証（必須）
+
+**概要**: WebRTCビデオ通話の常時接続と着信自動切り替え機能の実機検証を実施
+
+**実装完了内容**:
+- ✅ `WebRTCCallProvider`と`CallAutoSwitchLayout`の実装完了
+- ✅ `/kiosk/*`と`/signage`の全ルートでシグナリング接続を常時維持
+- ✅ 着信時に`/kiosk/call`へ自動遷移、通話終了後に元のパスへ自動復帰
+- ✅ Pi3の通話対象除外機能（`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`）
+- ✅ CI成功、デプロイ成功（Pi5とPi4）
+
+**実機検証が必要な項目**:
+1. **MacからPi4への通話テスト**（優先度: 高）
+   - Pi4が任意のキオスク画面（`/kiosk/tag`、`/kiosk/production-schedule`など）表示中にMacから発信
+   - Pi4側で着信モーダルが表示され、自動的に`/kiosk/call`へ切り替わることを確認
+   - 通話終了後に元の画面へ自動復帰することを確認
+
+2. **Pi4からMacへの通話テスト**（優先度: 高）
+   - Pi4がサイネージ画面（`/signage`）表示中にMacから発信
+   - Pi4側で着信モーダルが表示され、自動的に`/kiosk/call`へ切り替わることを確認
+   - 通話終了後にサイネージ画面へ自動復帰することを確認
+
+3. **Pi3の通話対象除外確認**（優先度: 中）
+   - MacやPi4の発信先一覧にPi3が表示されないことを確認
+   - `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数が正しく機能していることを確認
+
+4. **長時間接続の安定性確認**（優先度: 中）
+   - Pi4が任意のキオスク画面を5分以上表示し続けても、WebSocket接続が維持されることを確認
+   - 着信時に正常に通話画面へ切り替わることを確認
+
+**検証手順**: [docs/guides/webrtc-verification.md](./docs/guides/webrtc-verification.md) を参照
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装)
+
 ### 運用安定性の継続的改善（推奨）
 
 **概要**: ポート露出削減機能の実装完了を機に、運用安定性を継続的に改善する
@@ -1563,3 +1605,4 @@
 変更履歴: 2026-02-08 — update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功を反映。Progressに`require_remote_host_for_pi5()`関数の追加とCI実行・実機検証結果を追加。KB-238を追加し、エラーが100%発生する場合は原因を潰すべき（fail-fast）という知見を記録。Surprises & Discoveriesに標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐためのガード追加を追加。ナレッジベース更新（39件）。
 
 変更履歴: 2026-02-08 — モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功を反映。Progressに共通Dialogコンポーネント作成、キオスク全モーダル統一、サイネージプレビューのFullscreen API対応、ConfirmDialogとuseConfirm実装、管理コンソールのwindow.confirm置換、アクセシビリティ標準化、E2Eテスト安定化を追加。CI修正（import順序、Trivy脆弱性、E2Eテストstrict mode violation）も記録。KB-240を追加し、モーダル共通化による保守性向上とアクセシビリティ標準化の重要性を記録。ナレッジベース更新（37件）。
+変更履歴: 2026-02-09 — WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功を反映。Progressに`WebRTCCallProvider`と`CallAutoSwitchLayout`の実装、着信時の自動切り替え・通話終了後の自動復帰、Pi3の通話対象除外機能を追加。Decision Logに常時接続と自動切り替えの決定を追加。Surprises & Discoveriesに「Callee is not connected」エラーの原因と解決策を追加。KB-241を追加し、React Contextによる状態共有と自動画面切り替えの重要性を記録。`docs/guides/webrtc-verification.md`を更新し、常時接続機能とPi3除外の実装詳細を追記。ナレッジベース更新（38件）。

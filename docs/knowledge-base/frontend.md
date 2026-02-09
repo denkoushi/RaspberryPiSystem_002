@@ -2959,3 +2959,106 @@ export function KioskDatePickerModal({
 - [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入): キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）
 
 ---
+
+### [KB-241] WebRTCビデオ通話の常時接続と着信自動切り替え機能実装
+
+**実装日時**: 2026-02-09
+
+**事象**: 
+- Pi4が`/kiosk/*`や`/signage`表示中に着信を受けられない
+- 発信側が「Callee is not connected」エラーで通話できない
+- 通話画面（`/kiosk/call`）を開いていないとWebSocket接続が確立されない
+
+**要因**: 
+- WebRTCシグナリング接続が`KioskCallPage`内でのみ確立されていた
+- 他のキオスク画面やサイネージ画面では接続が維持されていなかった
+- 着信時に自動的に通話画面へ切り替わる機能がなかった
+
+**有効だった対策**: 
+- ✅ **常時接続機能の実装（2026-02-09）**:
+  1. **`WebRTCCallProvider`の作成**: React ContextでWebRTC状態を全ルートで共有
+  2. **`CallAutoSwitchLayout`の作成**: `/kiosk/*`と`/signage`の全ルートをラップ
+  3. **`App.tsx`のルーティング修正**: `CallAutoSwitchLayout`を`/kiosk/*`と`/signage`に適用
+  4. **着信時の自動切り替え**: `callState === 'incoming'`時に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移
+  5. **通話終了後の自動復帰**: `callState === 'idle' || 'ended'`時に元のパスへ自動復帰
+  6. **Pi3の通話対象除外**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数で除外フィルタを実装
+
+**実装の詳細**:
+```typescript
+// apps/web/src/features/webrtc/context/WebRTCCallContext.tsx
+export function WebRTCCallProvider({ children }: PropsWithChildren) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const webrtc = useWebRTC({ enabled: true });
+
+  // 着信時の自動切り替え
+  useEffect(() => {
+    if (webrtc.callState !== 'incoming') return;
+    if (location.pathname === '/kiosk/call') return;
+
+    const returnPath = `${location.pathname}${location.search}`;
+    window.sessionStorage.setItem(RETURN_PATH_KEY, returnPath);
+    navigate('/kiosk/call');
+  }, [webrtc.callState, location.pathname, location.search, navigate]);
+
+  // 通話終了後の自動復帰
+  useEffect(() => {
+    if (!shouldReturnOnCallState(webrtc.callState)) return;
+    const returnPath = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    if (returnPath && returnPath !== location.pathname) {
+      navigate(returnPath, { replace: true });
+    }
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+  }, [webrtc.callState, location.pathname, navigate]);
+}
+
+// apps/web/src/App.tsx
+<Route element={<CallAutoSwitchLayout />}>
+  <Route path="/signage" element={<SignageDisplayPage />} />
+  <Route element={<KioskLayout />}>
+    <Route path="/kiosk/*" ... />
+  </Route>
+</Route>
+```
+
+**API側の実装**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+const getWebRTCCallExcludeClientIds = (): Set<string> =>
+  new Set(parseCsvList(process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS));
+
+// GET /kiosk/call/targets
+const excludedClientIds = getWebRTCCallExcludeClientIds();
+return {
+  targets: devices
+    .filter((t) => t.clientId !== selfClientId)
+    .filter((t) => !excludedClientIds.has(t.clientId))
+};
+```
+
+**学んだこと**:
+- **React Contextによる状態共有**: 複数のルートで同じWebRTCインスタンスを共有することで、接続を常時維持できる
+- **自動画面切り替えの実装**: `useEffect`で`callState`を監視し、着信時に自動的に通話画面へ遷移することで、ユーザー体験が向上する
+- **`sessionStorage`による復帰パス管理**: 通話終了後に元の画面へ戻ることで、作業の中断を最小限に抑えられる
+- **環境変数による柔軟な除外設定**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で特定のクライアントを除外することで、用途に応じた設定が可能
+
+**解決状況**: ✅ **解決済み**（2026-02-09）
+
+**実機検証結果**:
+- ✅ **APIレベルでの動作確認**: 発信先一覧APIが正常に動作し、Pi3が除外されることを確認
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功
+- ⏸️ **実機検証待ち**: MacからPi4への通話テスト、着信時の自動切り替え、通話終了後の自動復帰の動作確認が必要
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/context/WebRTCCallContext.tsx`（WebRTC Context Provider、自動切り替え・復帰ロジック）
+- `apps/web/src/features/webrtc/components/CallAutoSwitchLayout.tsx`（Layoutコンポーネント）
+- `apps/web/src/App.tsx`（ルーティング設定）
+- `apps/api/src/routes/kiosk.ts`（Pi3除外フィルタ）
+- `apps/api/src/routes/__tests__/kiosk.integration.test.ts`（除外ロジックの統合テスト）
+
+**関連KB**:
+- [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定): WebRTCビデオ通話機能の初期実装（clientKey/clientId未設定問題）
+- [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題): useWebRTCフックのcleanup関数が早期実行される問題
+- [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止): WebRTCシグナリングのWebSocket接続管理（重複接続防止）
+
+---

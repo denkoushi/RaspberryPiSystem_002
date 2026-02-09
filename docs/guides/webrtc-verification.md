@@ -1,6 +1,6 @@
 # WebRTCビデオ通話機能 実機検証手順
 
-最終更新: 2026-01-04
+最終更新: 2026-02-09
 
 ## 概要
 
@@ -11,7 +11,7 @@
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI、WebRTCシグナリングサーバー）
 - **Raspberry Pi 4**: クライアント（キオスク、通話端末1）
 - **Mac**: クライアント（キオスク、通話端末2）
-- **Raspberry Pi 3**: サイネージ（通話端末としても使用可能）
+- **Raspberry Pi 3**: サイネージ（通話端末として除外）
 
 ## 前提条件
 
@@ -139,6 +139,12 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 
 **重要**: Pi4は`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信があれば`/kiosk/call`へ自動切替します。
 
+**実装詳細（2026-02-09）**:
+- `WebRTCCallProvider`が`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用される
+- 着信時（`callState === 'incoming'`）に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移
+- 通話終了時（`callState === 'idle' || 'ended'`）に元のパスへ自動復帰
+- シグナリング接続は`useWebRTC({ enabled: true })`により常時維持される
+
 #### 3.1 接続状態の確認
 
 1. Pi4で任意のキオスク画面（例: `/kiosk/tag` や `/kiosk/production-schedule`）を表示
@@ -217,6 +223,12 @@ localStorage.getItem('kiosk-client-key')
 Pi3は通話対象外です。`/api/kiosk/call/targets` から除外されるため、発信先一覧には表示されません。
 
 **除外設定**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`（CSV）に対象の`ClientDevice.id`を指定します。
+
+**実装詳細（2026-02-09）**:
+- Pi3はサイネージ機能特化のため、ビデオ通話機能は不要と判断
+- `getWebRTCCallExcludeClientIds()`関数で環境変数から除外対象を取得
+- `/api/kiosk/call/targets`エンドポイントで除外フィルタを適用
+- 統合テスト（`kiosk.integration.test.ts`）で除外ロジックを検証
 
 ### 5. エラーケースの確認
 
@@ -375,10 +387,14 @@ ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep 
 1. **原因**: 発信先のクライアントがWebSocketシグナリングサーバーに接続していない
 
 2. **確認事項**:
-   - 発信先（Pi4など）で通話画面（`/kiosk/call`）を開いているか
+   - 発信先（Pi4など）で任意のキオスク画面（`/kiosk/*`）またはサイネージ画面（`/signage`）を開いているか
    - 発信先でWebSocket接続が確立されているか（コンソールで`WebRTC signaling connected`を確認）
+   - 画面上部のヘッダーで「接続済み」と表示されているか
 
-3. **対処**: 発信先でも通話画面を開いてWebSocket接続を確立する
+3. **対処（2026-02-09更新）**: 
+   - **常時接続機能により自動対応**: `/kiosk/*`や`/signage`表示中でもシグナリング接続が維持されるため、通話画面を開く必要はない
+   - 着信時は自動的に`/kiosk/call`へ切り替わる
+   - 接続が確立されていない場合は、ページをリロードして再接続を試みる
 
 ## IPアドレスについて
 
@@ -410,9 +426,13 @@ status-agentは以下の方法でIPアドレスを取得します：
 
 - [ ] Macでキオスク通話画面が表示される
 - [ ] MacでWebSocket接続が確立される
-- [ ] Macで発信先一覧が表示される（Pi4、Pi3、Pi5が含まれる）
+- [ ] Macで発信先一覧が表示される（Pi4、Pi5が含まれる、Pi3は除外される）
 - [ ] Pi4でキオスク通話画面が表示される
 - [ ] Pi4でWebSocket接続が確立される
+- [ ] Pi4で任意のキオスク画面（`/kiosk/tag`、`/kiosk/production-schedule`など）表示中でもWebSocket接続が維持される
+- [ ] Pi4でサイネージ画面（`/signage`）表示中でもWebSocket接続が維持される
+- [ ] 着信時に自動的に`/kiosk/call`へ切り替わる
+- [ ] 通話終了後に元の画面へ自動復帰する
 
 ### 音声通話
 
@@ -476,6 +496,14 @@ status-agentは以下の方法でIPアドレスを取得します：
 
 - **`srcObject`は要素存在時に設定**: `useEffect`で両方が利用可能な時にバインド
 - **`video.play()`は必ず呼び出す**: autoplay policyへの対応
+
+### 8. 常時接続と自動切り替え機能（2026-02-09実装）
+
+- **WebRTCシグナリング接続の常時維持**: `WebRTCCallProvider`により`/kiosk/*`と`/signage`の全ルートで接続を維持
+- **着信時の自動画面切り替え**: `callState === 'incoming'`時に現在のパスを保存し、`/kiosk/call`へ自動遷移
+- **通話終了後の自動復帰**: `callState === 'idle' || 'ended'`時に元のパスへ自動復帰
+- **`sessionStorage`による復帰パス管理**: `webrtc-call-return-path`キーで復帰先を保存
+- **Pi3の通話対象除外**: サイネージ機能特化のため、`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で除外
 
 ## 関連ドキュメント
 
