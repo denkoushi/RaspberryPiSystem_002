@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { sendSlackNotification } from '../services/notifications/slack-webhook.js';
+import { fetchSeibanProgressRows } from '../services/production-schedule/seiban-progress.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../services/production-schedule/constants.js';
 
 const ORDER_NUMBER_MIN = 1;
@@ -858,6 +859,45 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const fallbackEtagValue = fallbackState?.updatedAt?.toISOString() ?? SEARCH_STATE_MISSING_ETAG;
     reply.header('ETag', buildSearchStateEtag(fallbackEtagValue));
     return { state: { history: fallbackHistory }, updatedAt: fallbackState?.updatedAt ?? null };
+  });
+
+  app.get('/kiosk/production-schedule/history-progress', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: SHARED_SEARCH_STATE_LOCATION,
+        },
+      },
+    });
+    const fallbackState = sharedState
+      ? null
+      : await prisma.kioskProductionScheduleSearchState.findUnique({
+          where: {
+            csvDashboardId_location: {
+              csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+              location: locationKey,
+            },
+          },
+        });
+    const effectiveState = sharedState ?? fallbackState;
+    const history = extractSearchHistory(effectiveState?.state ?? null);
+
+    const progressRows = await fetchSeibanProgressRows(history);
+    const progressMap = new Map(progressRows.map((row) => [row.fseiban, row]));
+    const progressBySeiban = Object.fromEntries(
+      history.map((fseiban) => {
+        const row = progressMap.get(fseiban);
+        const total = row?.total ?? 0;
+        const completed = row?.completed ?? 0;
+        const status = total > 0 && completed === total ? 'complete' : 'incomplete';
+        return [fseiban, { total, completed, status }];
+      })
+    );
+
+    return { history, progressBySeiban, updatedAt: effectiveState?.updatedAt ?? null };
   });
 
   app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {

@@ -1,8 +1,8 @@
-import { Prisma } from '@prisma/client';
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { prisma } from '../../../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../../../production-schedule/constants.js';
+import { fetchSeibanProgressRows } from '../../../production-schedule/seiban-progress.service.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../../production-schedule/constants.js';
 
 const SHARED_LOCATION_KEY = 'shared';
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -93,32 +93,7 @@ export class ProductionScheduleDataSource implements DataSource {
       return emptyData;
     }
 
-    const rows = await prisma.$queryRaw<ProgressRow[]>`
-      SELECT
-        ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-        COUNT(*)::int AS "total",
-        SUM(
-          CASE
-            WHEN ("CsvDashboardRow"."rowData"->>'progress') = ${COMPLETED_PROGRESS_VALUE}
-            THEN 1
-            ELSE 0
-          END
-        )::int AS "completed"
-        ,
-        ARRAY_AGG(DISTINCT ("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
-          WHERE ("CsvDashboardRow"."rowData"->>'progress') IS DISTINCT FROM ${COMPLETED_PROGRESS_VALUE}
-            AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
-            AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
-        ) AS "incompleteProductNames"
-      FROM "CsvDashboardRow"
-      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
-          history.map((value) => Prisma.sql`${value}`),
-          ','
-        )})
-      GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
-      ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
-    `;
+    const rows = await fetchSeibanProgressRows(history);
 
     const rowMap = toRowMap(rows);
 

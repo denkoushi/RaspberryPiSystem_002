@@ -6,6 +6,7 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
+  useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleNote,
@@ -199,7 +200,9 @@ export function ProductionSchedulePage() {
   const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
   const resourcesQuery = useKioskProductionScheduleResources();
   const searchStateQuery = useKioskProductionScheduleSearchState();
+  const historyProgressQuery = useKioskProductionScheduleHistoryProgress();
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
+  const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -625,6 +628,7 @@ export function ProductionSchedulePage() {
       <div className="flex flex-wrap items-center justify-end gap-2">
         {visibleHistory.map((h) => {
           const isActive = normalizedActiveQueries.includes(h);
+          const isComplete = progressBySeiban[h]?.status === 'complete';
           return (
             <div
               key={h}
@@ -647,7 +651,12 @@ export function ProductionSchedulePage() {
               <button
                 type="button"
                 aria-label={`履歴から削除: ${h}`}
-                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-slate-900 shadow hover:bg-amber-300"
+                title={isComplete ? '完了' : '未完'}
+                className={`absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 shadow box-border ${
+                  isComplete
+                    ? 'bg-slate-300 border-2 border-white hover:bg-slate-200'
+                    : 'bg-white border-2 border-transparent hover:bg-slate-100'
+                }`}
                 onClick={(event) => {
                   event.stopPropagation();
                   confirmRemoveHistoryQuery(h);

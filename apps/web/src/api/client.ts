@@ -310,6 +310,18 @@ export type ProductionScheduleSearchHistory = {
   updatedAt: string | null;
 };
 
+export type ProductionScheduleHistoryProgressEntry = {
+  total: number;
+  completed: number;
+  status: 'complete' | 'incomplete';
+};
+
+export type ProductionScheduleHistoryProgressResponse = {
+  history: string[];
+  progressBySeiban: Record<string, ProductionScheduleHistoryProgressEntry>;
+  updatedAt: string | null;
+};
+
 export type ProductionScheduleSearchStateResponse = {
   state: ProductionScheduleSearchState | null;
   updatedAt: string | null;
@@ -354,6 +366,11 @@ export async function setKioskProductionScheduleSearchState(
 
 export async function getKioskProductionScheduleSearchHistory() {
   const { data } = await api.get<ProductionScheduleSearchHistory>('/kiosk/production-schedule/search-history');
+  return data;
+}
+
+export async function getKioskProductionScheduleHistoryProgress() {
+  const { data } = await api.get<ProductionScheduleHistoryProgressResponse>('/kiosk/production-schedule/history-progress');
   return data;
 }
 

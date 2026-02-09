@@ -52,6 +52,7 @@ import {
   getKioskProductionScheduleResources,
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
+  getKioskProductionScheduleHistoryProgress,
   importMasterSingle,
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
@@ -228,6 +229,14 @@ export function useKioskProductionScheduleSearchHistory() {
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-history'],
     queryFn: getKioskProductionScheduleSearchHistory,
+    refetchInterval: 4000,
+  });
+}
+
+export function useKioskProductionScheduleHistoryProgress() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-history-progress'],
+    queryFn: getKioskProductionScheduleHistoryProgress,
     refetchInterval: 4000,
   });
 }
