@@ -237,7 +237,7 @@ export function useKioskProductionScheduleHistoryProgress() {
   return useQuery({
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
-    refetchInterval: 4000,
+    refetchInterval: 30000,
   });
 }
 
