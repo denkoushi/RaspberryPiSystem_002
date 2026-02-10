@@ -8,7 +8,6 @@ import { logger } from '../../lib/logger.js';
 type GmailTrashCleanupCapableProvider = {
   cleanupProcessedTrash: (params?: {
     processedLabelName?: string;
-    minAgeQuery?: string;
   }) => Promise<GmailTrashCleanupResult>;
 };
 
@@ -42,7 +41,6 @@ function hasRequiredGmailSettings(config: BackupConfig): boolean {
 export class GmailTrashCleanupService {
   async cleanup(params?: {
     processedLabelName?: string;
-    minAgeQuery?: string;
   }): Promise<GmailTrashCleanupResult | null> {
     const latestConfig = await BackupConfigLoader.load();
     if (!hasRequiredGmailSettings(latestConfig)) {

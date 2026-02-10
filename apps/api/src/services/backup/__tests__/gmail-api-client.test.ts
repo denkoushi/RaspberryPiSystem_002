@@ -425,13 +425,12 @@ describe('GmailApiClient', () => {
       mockGmailMessages.delete.mockRejectedValueOnce(new Error('delete failed'));
 
       const result = await gmailClient.cleanupProcessedTrash({
-        processedLabelName: 'rps_processed',
-        minAgeQuery: 'older_than:30m'
+        processedLabelName: 'rps_processed'
       });
 
       expect(mockGmailMessages.list).toHaveBeenCalledWith({
         userId: 'me',
-        q: 'label:TRASH label:rps_processed older_than:30m',
+        q: 'in:trash label:rps_processed',
         maxResults: 100,
         pageToken: undefined
       });
@@ -446,7 +445,7 @@ describe('GmailApiClient', () => {
       expect(result.totalMatched).toBe(2);
       expect(result.deletedCount).toBe(1);
       expect(result.errors).toHaveLength(1);
-      expect(result.query).toBe('label:TRASH label:rps_processed older_than:30m');
+      expect(result.query).toBe('in:trash label:rps_processed');
     });
   });
 });

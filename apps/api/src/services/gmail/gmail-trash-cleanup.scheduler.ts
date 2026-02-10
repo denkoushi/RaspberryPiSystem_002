@@ -38,7 +38,6 @@ export class GmailTrashCleanupScheduler {
         try {
           const result = await this.cleanupService.cleanup({
             processedLabelName: env.GMAIL_TRASH_CLEANUP_LABEL,
-            minAgeQuery: env.GMAIL_TRASH_CLEANUP_MIN_AGE,
           });
 
           if (!result) {
@@ -69,7 +68,6 @@ export class GmailTrashCleanupScheduler {
       {
         schedule: cleanupSchedule,
         label: env.GMAIL_TRASH_CLEANUP_LABEL,
-        minAgeQuery: env.GMAIL_TRASH_CLEANUP_MIN_AGE,
       },
       '[GmailTrashCleanupScheduler] Scheduler started'
     );

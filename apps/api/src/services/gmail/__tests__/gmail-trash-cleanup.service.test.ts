@@ -41,7 +41,7 @@ describe('GmailTrashCleanupService', () => {
 
   it('should run cleanup via Gmail provider', async () => {
     const cleanupProcessedTrash = vi.fn().mockResolvedValue({
-      query: 'label:TRASH label:rps_processed older_than:30m',
+      query: 'in:trash label:rps_processed',
       totalMatched: 2,
       deletedCount: 2,
       errors: [],
@@ -69,13 +69,11 @@ describe('GmailTrashCleanupService', () => {
 
     const result = await service.cleanup({
       processedLabelName: 'rps_processed',
-      minAgeQuery: 'older_than:30m',
     });
 
     expect(StorageProviderFactory.createFromConfig).toHaveBeenCalled();
     expect(cleanupProcessedTrash).toHaveBeenCalledWith({
       processedLabelName: 'rps_processed',
-      minAgeQuery: 'older_than:30m',
     });
     expect(result?.deletedCount).toBe(2);
   });

@@ -461,7 +461,6 @@ export class GmailStorageProvider implements StorageProvider {
    */
   async cleanupProcessedTrash(params?: {
     processedLabelName?: string;
-    minAgeQuery?: string;
   }): Promise<GmailTrashCleanupResult> {
     return this.handleAuthError(async () => this.gmailClient.cleanupProcessedTrash(params));
   }

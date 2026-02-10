@@ -2799,9 +2799,9 @@ const saveNote = (rowId: string) => {
    - `users.messages.delete`で個別に完全削除する必要がある
    - `users.messages.list`でゴミ箱内のメールを検索可能（`label:TRASH`）
 2. **削除タイミングの検討**:
-   - 最初は「30分後に自動削除」を検討したが、Gmailの`internalDate`は受信時刻であり、ゴミ箱移動時刻ではない
+   - 当初は「30分後に自動削除」を検討したが、Gmail検索演算子の`older_than`は分単位をサポートしない
    - カスタムラベル（`rps_processed`）を付与し、ゴミ箱移動時にラベルを付与することで処理済みメールを識別可能に
-   - Gmailの`older_than:30m`検索演算子を使用して、30分以上経過したメールを検索
+   - 深夜バッチで`in:trash label:rps_processed`を全削除する方式に変更
 3. **スケジューリングの検討**:
    - `node-cron`を使用して深夜（デフォルト: 3:00 JST）に1日1回実行
    - 既存の`CsvImportScheduler`と同様のパターンを採用
@@ -2817,27 +2817,26 @@ const saveNote = (rowId: string) => {
    - `ensureLabel(labelName: string): Promise<string>`: ラベルの作成（存在しない場合）
    - `trashMessage`メソッドを修正し、ゴミ箱移動前に`rps_processed`ラベルを付与
 2. **ゴミ箱クリーンアップ機能の追加** (`apps/api/src/services/backup/gmail-api-client.ts`):
-   - `cleanupProcessedTrash(params?: { processedLabelName?: string; minAgeQuery?: string; }): Promise<GmailTrashCleanupResult>`: ゴミ箱内の処理済みメールを検索して削除
-   - Gmail検索クエリ: `label:TRASH label:rps_processed older_than:30m`
+   - `cleanupProcessedTrash(params?: { processedLabelName?: string; }): Promise<GmailTrashCleanupResult>`: ゴミ箱内の処理済みメールを検索して削除
+   - Gmail検索クエリ: `in:trash label:rps_processed`
    - 検索結果の各メールを`users.messages.delete`で完全削除
 3. **サービス層の追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`):
    - `GmailTrashCleanupService`: 設定読み込み、`GmailStorageProvider`の解決、クリーンアップ実行
    - Gmail設定が不完全な場合はスキップ
 4. **スケジューラーの追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`):
    - `GmailTrashCleanupScheduler`: `node-cron`を使用して深夜に実行
-   - 環境変数で有効/無効、実行時刻、ラベル名、最小経過時間を設定可能
+   - 環境変数で有効/無効、実行時刻、ラベル名を設定可能
 5. **環境変数の追加** (`apps/api/src/config/env.ts`):
    - `GMAIL_TRASH_CLEANUP_ENABLED`（デフォルト: `true`）
    - `GMAIL_TRASH_CLEANUP_CRON`（デフォルト: `0 3 * * *`）
    - `GMAIL_TRASH_CLEANUP_LABEL`（デフォルト: `rps_processed`）
-   - `GMAIL_TRASH_CLEANUP_MIN_AGE`（デフォルト: `older_than:30m`）
 6. **メインアプリケーションへの統合** (`apps/api/src/main.ts`):
    - `GmailTrashCleanupScheduler`を起動（`csvImportScheduler.start()`の後）
    - グレースフルシャットダウン時にスケジューラーを停止
 
 **Prevention**:
 - 環境変数で動作を制御可能にし、必要に応じて無効化可能
-- ラベル名と最小経過時間を環境変数で設定可能にし、運用要件に応じて調整可能
+- ラベル名を環境変数で設定可能にし、運用要件に応じて調整可能
 - ユニットテストでラベル管理とクリーンアップロジックを検証
 
 **実装ファイル**:
@@ -2854,7 +2853,7 @@ const saveNote = (rowId: string) => {
 **学んだこと**:
 - Gmail APIには一括削除APIが存在しないため、検索→個別削除のパターンが必要
 - カスタムラベルを使用することで、アプリが処理したメールを識別可能に
-- `older_than:30m`のようなGmail検索演算子を活用することで、時間ベースのフィルタリングが可能
+- Gmail検索演算子の`older_than`は分単位をサポートしないため、分単位条件を要件にする場合は別実装が必要
 - `node-cron`を使用したスケジューリングは、既存の`CsvImportScheduler`と同様のパターンで実装可能
 
 **関連KB**:

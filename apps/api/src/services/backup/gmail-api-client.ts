@@ -306,15 +306,9 @@ export class GmailApiClient {
 
   async cleanupProcessedTrash(params?: {
     processedLabelName?: string;
-    minAgeQuery?: string;
   }): Promise<GmailTrashCleanupResult> {
     const processedLabelName = (params?.processedLabelName || process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
-    const minAgeQuery = (params?.minAgeQuery || process.env.GMAIL_TRASH_CLEANUP_MIN_AGE || 'older_than:30m').trim();
-    const queryParts = ['label:TRASH', `label:${processedLabelName}`];
-    if (minAgeQuery.length > 0) {
-      queryParts.push(minAgeQuery);
-    }
-    const query = queryParts.join(' ');
+    const query = `in:trash label:${processedLabelName}`;
 
     try {
       const messageIds = await this.searchMessagesAll(query);

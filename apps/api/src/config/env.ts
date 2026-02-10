@@ -85,10 +85,6 @@ const envSchema = z.object({
   GMAIL_TRASH_CLEANUP_LABEL: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() : v),
     z.string().min(1).default('rps_processed')
-  ),
-  GMAIL_TRASH_CLEANUP_MIN_AGE: z.preprocess(
-    (v) => (typeof v === 'string' ? v.trim() : v),
-    z.string().min(1).default('older_than:30m')
   )
 });
 

@@ -270,7 +270,7 @@ CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移�
 
 - 削除対象: アプリがゴミ箱へ移動したメール（`rps_processed` ラベル付き）
 - 実行タイミング: 毎日深夜（デフォルト: `0 3 * * *` / Asia/Tokyo）
-- 削除条件: `older_than:30m`（30分より古いメール）
+- 削除条件: なし（対象ラベル付きメールを深夜バッチで一括削除）
 - 削除方式: ゴミ箱から完全削除（復元不可）
 
 必要に応じて環境変数で調整できます。
@@ -278,7 +278,6 @@ CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移�
 - `GMAIL_TRASH_CLEANUP_ENABLED`（`true`/`false`、デフォルト: `true`）
 - `GMAIL_TRASH_CLEANUP_CRON`（デフォルト: `0 3 * * *`）
 - `GMAIL_TRASH_CLEANUP_LABEL`（デフォルト: `rps_processed`）
-- `GMAIL_TRASH_CLEANUP_MIN_AGE`（デフォルト: `older_than:30m`）
 
 ## トラブルシューティング
 
