@@ -26,6 +26,47 @@
     group: "{{ ansible_user }}"
     mode: '0644'
 
+- name: Persist IBus engine order and hotkey for kiosk user
+  ansible.builtin.shell: |
+    set -eu
+    uid="$(id -u)"
+    runtime_dir="/run/user/${uid}"
+    bus="${runtime_dir}/bus"
+    if [ ! -S "${bus}" ]; then
+      echo "skip:no-user-bus"
+      exit 0
+    fi
+
+    export XDG_RUNTIME_DIR="${runtime_dir}"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+
+    changed=0
+    desired_engines="['xkb:jp::jpn', 'mozc-jp']"
+    current_engines="$(gsettings get org.freedesktop.ibus.general engines-order || true)"
+    if [ "${current_engines}" != "${desired_engines}" ]; then
+      gsettings set org.freedesktop.ibus.general engines-order "${desired_engines}"
+      changed=1
+    fi
+
+    desired_triggers="['<Control>space']"
+    current_triggers="$(gsettings get org.freedesktop.ibus.general.hotkey triggers || true)"
+    if [ "${current_triggers}" != "${desired_triggers}" ]; then
+      gsettings set org.freedesktop.ibus.general.hotkey triggers "${desired_triggers}"
+      changed=1
+    fi
+
+    if [ "${changed}" -eq 1 ]; then
+      echo "changed:ibus-settings"
+    else
+      echo "ok:ibus-settings"
+    fi
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: "{{ ansible_user }}"
+  changed_when: "'changed:ibus-settings' in ibus_settings_result.stdout"
+  register: ibus_settings_result
+
 - name: Deploy kiosk-launch script
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
