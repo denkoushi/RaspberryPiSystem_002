@@ -1316,9 +1316,19 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const safeTimestamp = requestedAt.replace(/[:.]/g, '-');
     const filename = `${safeTimestamp}-${clientKey}.json`;
 
-    await fs.mkdir(POWER_ACTIONS_DIR, { recursive: true });
+    // ディレクトリが存在しない場合は作成（ボリュームマウントされている場合は既に存在する）
+    try {
+      await fs.mkdir(POWER_ACTIONS_DIR, { recursive: true });
+    } catch (error) {
+      // ディレクトリが既に存在する場合はエラーを無視
+      if (error instanceof Error && 'code' in error && error.code !== 'EEXIST') {
+        throw error;
+      }
+    }
+
+    const filePath = path.join(POWER_ACTIONS_DIR, filename);
     await fs.writeFile(
-      path.join(POWER_ACTIONS_DIR, filename),
+      filePath,
       JSON.stringify(
         {
           action: body.action,
