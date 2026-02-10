@@ -74,6 +74,11 @@ const logListQuerySchema = z.object({
 });
 
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
+const clientDisplayNameSchema = z
+  .string()
+  .max(100)
+  .transform((value) => value.trim())
+  .refine((value) => value.length > 0, 'name is required');
 
 export async function registerClientRoutes(app: FastifyInstance): Promise<void> {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
@@ -85,7 +90,6 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     const client = await prisma.clientDevice.upsert({
       where: { apiKey: body.apiKey },
       update: {
-        name: body.name,
         location: body.location ?? undefined,
         lastSeenAt: new Date()
       },
@@ -106,6 +110,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
   });
 
   const updateClientSchema = z.object({
+    name: clientDisplayNameSchema.optional(),
     defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable()
   });
 
@@ -117,6 +122,7 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
       const client = await prisma.clientDevice.update({
         where: { id },
         data: {
+          name: body.name ?? undefined,
           defaultMode: body.defaultMode ?? undefined
         }
       });
@@ -143,7 +149,6 @@ export async function registerClientRoutes(app: FastifyInstance): Promise<void> 
     const clientDevice = await prisma.clientDevice.upsert({
       where: { apiKey: clientKey },
       update: {
-        name: metrics.hostname,
         statusClientId: metrics.clientId, // x-client-key と status-agent の clientId を紐づけ
         lastSeenAt: now
       },

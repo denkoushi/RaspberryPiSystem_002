@@ -661,7 +661,8 @@ export function useClients() {
 export function useClientMutations() {
   const queryClient = useQueryClient();
   const update = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: { defaultMode?: 'PHOTO' | 'TAG' | null } }) => updateClient(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null } }) =>
+      updateClient(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });

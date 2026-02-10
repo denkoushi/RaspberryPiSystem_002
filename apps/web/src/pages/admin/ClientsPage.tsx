@@ -9,6 +9,8 @@ import { Input } from '../../components/ui/Input';
 
 import type { ClientDevice, ClientLogLevel } from '../../api/client';
 
+const MAX_CLIENT_NAME_LENGTH = 100;
+
 function formatUptime(seconds?: number | null) {
   if (!seconds) return '-';
   const hours = Math.floor(seconds / 3600);
@@ -33,7 +35,9 @@ export function ClientsPage() {
   const logsQuery = useClientLogs(logFilters);
   const { update } = useClientMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const [selectedMode, setSelectedMode] = useState<'PHOTO' | 'TAG' | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat('ja-JP', {
@@ -51,21 +55,41 @@ export function ClientsPage() {
 
   const handleEdit = (client: ClientDevice) => {
     setEditingId(client.id);
+    setEditingName(client.name);
     setSelectedMode(client.defaultMode ?? 'TAG');
+    setEditError(null);
   };
 
   const handleSave = async (id: string) => {
-    await update.mutateAsync({
-      id,
-      payload: { defaultMode: selectedMode }
-    });
-    setEditingId(null);
-    setSelectedMode(null);
+    const normalizedName = editingName.trim();
+    if (normalizedName.length === 0) {
+      setEditError('名前を入力してください。');
+      return;
+    }
+    if (normalizedName.length > MAX_CLIENT_NAME_LENGTH) {
+      setEditError(`名前は${MAX_CLIENT_NAME_LENGTH}文字以内で入力してください。`);
+      return;
+    }
+
+    try {
+      await update.mutateAsync({
+        id,
+        payload: { name: normalizedName, defaultMode: selectedMode }
+      });
+      setEditingId(null);
+      setEditingName('');
+      setSelectedMode(null);
+      setEditError(null);
+    } catch {
+      setEditError('保存に失敗しました。時間をおいて再試行してください。');
+    }
   };
 
   const handleCancel = () => {
     setEditingId(null);
+    setEditingName('');
     setSelectedMode(null);
+    setEditError(null);
   };
 
   const formatDateTime = (iso?: string | null) => (iso ? dateFormatter.format(new Date(iso)) : '-');
@@ -279,7 +303,18 @@ export function ClientsPage() {
               <tbody>
                 {clientsQuery.data.map((client: ClientDevice) => (
                   <tr key={client.id} className="border-b border-slate-500">
-                    <td className="px-4 py-2 font-bold text-base text-slate-900">{client.name}</td>
+                    <td className="px-4 py-2 font-bold text-base text-slate-900">
+                      {editingId === client.id ? (
+                        <Input
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          maxLength={MAX_CLIENT_NAME_LENGTH}
+                          aria-label="クライアント名"
+                        />
+                      ) : (
+                        client.name
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
                     <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
                     <td className="px-4 py-2">
@@ -299,22 +334,25 @@ export function ClientsPage() {
                     <td className="px-4 py-2 text-sm font-semibold text-slate-700">{formatDateTime(client.lastSeenAt)}</td>
                     <td className="px-4 py-2">
                       {editingId === client.id ? (
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => handleSave(client.id)}
-                            disabled={update.isPending}
-                            className="px-3 py-1 text-sm"
-                          >
-                            保存
-                          </Button>
-                          <Button
-                            onClick={handleCancel}
-                            disabled={update.isPending}
-                            variant="ghost"
-                            className="px-3 py-1 text-sm"
-                          >
-                            キャンセル
-                          </Button>
+                        <div className="space-y-1">
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => handleSave(client.id)}
+                              disabled={update.isPending}
+                              className="px-3 py-1 text-sm"
+                            >
+                              保存
+                            </Button>
+                            <Button
+                              onClick={handleCancel}
+                              disabled={update.isPending}
+                              variant="ghost"
+                              className="px-3 py-1 text-sm"
+                            >
+                              キャンセル
+                            </Button>
+                          </div>
+                          {editError ? <p className="text-xs font-semibold text-red-600">{editError}</p> : null}
                         </div>
                       ) : (
                         <Button onClick={() => handleEdit(client)} className="px-3 py-1 text-sm">

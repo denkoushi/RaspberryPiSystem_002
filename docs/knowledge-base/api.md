@@ -1855,6 +1855,41 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 
 ---
 
+### [KB-206] クライアント表示名を status-agent が上書きする問題
+
+**日付**: 2026-02-09
+
+**事象**:
+- 管理コンソールでクライアント端末名を変更しても、しばらくすると元に戻る
+- ビデオ通話の着信名（`callerName`）や発信先一覧で表示名が安定しない
+
+**要因**:
+- `POST /api/clients/status` が `ClientDevice.name = metrics.hostname` で毎回更新していた
+- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた
+- 一方で機械名は `ClientStatus.hostname` にすでに保持されており、`ClientDevice.name` と役割が混在していた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-02-09）:
+  1. `ClientDevice.name` を「表示名（手動編集）」として定義
+  2. `POST /api/clients/status` は `update` で `name` を更新せず、`statusClientId` と `lastSeenAt` のみ更新
+  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新
+  4. `PUT /api/clients/:id` で `name` を更新可能に拡張
+  5. 機械名は `ClientStatus.hostname` を参照する運用に統一
+
+**学んだこと**:
+- 表示名（運用者が編集）と機械名（端末が自己申告）は同一フィールドに載せない方が安全
+- `ClientDevice`（台帳）と `ClientStatus`（テレメトリ）の責務分離により、通話UIや履歴表示の安定性が上がる
+- 既存データ互換を守るには、`create` 時だけ初期値として hostname を使い、`update` では上書きしない方針が有効
+
+**関連ファイル**:
+- `apps/api/src/routes/clients.ts`
+- `apps/api/src/routes/webrtc/signaling.ts`
+- `apps/api/src/routes/kiosk.ts`
+- `apps/web/src/pages/admin/ClientsPage.tsx`
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`
+
+---
+
 ### [KB-205] 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
 
 **実装日時**: 2026-01-26
@@ -2827,4 +2862,3 @@ const saveNote = (rowId: string) => {
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
 
 ---
-

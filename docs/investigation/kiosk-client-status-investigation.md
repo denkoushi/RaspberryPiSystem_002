@@ -81,7 +81,7 @@ LOCATION="工場1階ラインA"
 
 ### POST /api/clients/status
 
-**現在の実装**:
+**現在の実装（2026-02 更新）**:
 ```typescript
 app.post('/clients/status', async (request) => {
   const clientKey = normalizeClientKey(request.headers['x-client-key']);
@@ -89,8 +89,8 @@ app.post('/clients/status', async (request) => {
   // ClientDeviceをupsert（apiKeyで特定）
   const clientDevice = await prisma.clientDevice.upsert({
     where: { apiKey: clientKey },
-    update: { name: metrics.hostname, lastSeenAt: now },
-    create: { name: metrics.hostname, apiKey: clientKey, lastSeenAt: now }
+    update: { statusClientId: metrics.clientId, lastSeenAt: now },
+    create: { name: metrics.hostname, apiKey: clientKey, statusClientId: metrics.clientId, lastSeenAt: now }
   });
 
   // ClientStatusをupsert（clientIdで特定）
@@ -102,9 +102,10 @@ app.post('/clients/status', async (request) => {
 });
 ```
 
-**問題点**:
-- `ClientDevice`と`ClientStatus`が独立して保存される
-- `x-client-key`から`ClientStatus`を直接取得できない
+**補足**:
+- `ClientDevice.name` は表示名として扱い、`status-agent` の hostname で上書きしない
+- 機械名は `ClientStatus.hostname` を参照する
+- `x-client-key` からは `ClientDevice.statusClientId` を経由して `ClientStatus` を特定する
 
 ### GET /api/clients/status
 
@@ -156,19 +157,19 @@ app.get('/system/system-info', async (request, reply) => {
 
 ## 紐づけ方法の調査
 
-### 現状の紐づけ方法
+### 現状の紐づけ方法（2026-02 更新）
 
-1. **`hostname`で紐づける**（`GET /clients/status`で使用）
-   - `ClientDevice.name` = `ClientStatus.hostname`
-   - 問題: `hostname`は変更可能で、一意性が保証されない
+1. **表示名と機械名を分離**
+   - `ClientDevice.name` = 管理画面で編集する表示名
+   - `ClientStatus.hostname` = status-agent が送る機械名
 
 2. **`clientId`で紐づける**（`POST /clients/status`で使用）
    - `ClientStatus.clientId` = status-agentの`CLIENT_ID`
-   - 問題: `ClientDevice.id`とは別物
+   - `ClientDevice.statusClientId` と対応付けることで参照可能
 
 3. **`apiKey`で紐づける**（`POST /clients/status`で使用）
-   - `ClientDevice.apiKey` = `x-client-key`
-   - 問題: `ClientStatus`に`apiKey`フィールドがない
+   - `ClientDevice.apiKey` = `x-client-key`（認証キー）
+   - `apiKey -> ClientDevice -> statusClientId -> ClientStatus` で辿る
 
 ## Pi3の1台がステータス情報を取得できていない原因の仮説
 

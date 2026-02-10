@@ -96,8 +96,10 @@ APIの大部分のエンドポイントは認証が必要です。JWT（JSON Web
 
 ### クライアント
 
-- `POST /api/clients/heartbeat` - クライアントデバイスのハートビート
+- `POST /api/clients/heartbeat` - クライアントデバイスのハートビート（既存端末では `name` は上書きせず、`location`/`lastSeenAt` を更新）
+- `POST /api/clients/status` - status-agent メトリクス登録（`ClientStatus`更新 + `ClientDevice.statusClientId` 紐付け）
 - `GET /api/clients` - クライアントデバイス一覧取得（管理者のみ）
+- `PUT /api/clients/:id` - クライアント端末の表示名/初期表示モードを更新（管理者のみ）
 
 ## エラーレスポンス
 

@@ -756,7 +756,7 @@ export async function getClients() {
   return data.clients;
 }
 
-export async function updateClient(id: string, payload: { defaultMode?: 'PHOTO' | 'TAG' | null }) {
+export async function updateClient(id: string, payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null }) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;
 }
