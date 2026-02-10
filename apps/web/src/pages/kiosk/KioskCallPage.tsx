@@ -3,11 +3,12 @@
  * クライアント一覧から相手を選んで発信、着信対応、通話中UI
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Dialog } from '../../components/ui/Dialog';
 import { useWebRTCCall } from '../../features/webrtc/context/WebRTCCallContext';
 export function KioskCallPage() {
   const callTargetsQuery = useKioskCallTargets();
@@ -15,7 +16,40 @@ export function KioskCallPage() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
-  const lastAlertAtRef = useRef<number>(0);
+  const [errorDialog, setErrorDialog] = useState<{ title: string; description?: string } | null>(null);
+
+  const toUserFacingError = useCallback((error: Error): { title: string; description?: string } => {
+    const msg = error.message || '';
+    if (/Callee is not connected/i.test(msg)) {
+      return {
+        title: '相手のキオスクが起動していません',
+        description:
+          '相手端末が通話待機状態ではないため、発信できません。相手端末の電源が入っていること、ブラウザが起動していること、キオスク画面/サイネージ画面が表示されていることを確認してから再試行してください。',
+      };
+    }
+    if (/WebSocket not connected/i.test(msg)) {
+      return {
+        title: '通話サーバーに接続できません',
+        description: 'ネットワーク接続を確認して、しばらく待ってから再試行してください。',
+      };
+    }
+    if (/already in a call/i.test(msg)) {
+      return {
+        title: '相手は通話中です',
+        description: '相手端末が別の通話中のため発信できません。時間をおいて再試行してください。',
+      };
+    }
+    if (/Other participant not connected/i.test(msg)) {
+      return {
+        title: '相手が切断されました',
+        description: '相手端末との接続が切れました。相手端末の状態を確認してから再試行してください。',
+      };
+    }
+    return {
+      title: '通話エラー',
+      description: msg ? `エラーが発生しました: ${msg}` : 'エラーが発生しました。',
+    };
+  }, []);
 
   const {
     callState,
@@ -46,13 +80,9 @@ export function KioskCallPage() {
   useEffect(() => {
     if (!lastError) return;
     console.error('WebRTC error:', lastError);
-    const now = Date.now();
-    if (now - lastAlertAtRef.current > 3000) {
-      lastAlertAtRef.current = now;
-      alert(`エラーが発生しました: ${lastError.message}`);
-    }
+    setErrorDialog(toUserFacingError(lastError));
     clearLastError();
-  }, [lastError, clearLastError]);
+  }, [lastError, clearLastError, toUserFacingError]);
 
   // video要素が「後から」マウントされるケース（条件レンダリング）に備えて、ストリームを再バインドする
   useEffect(() => {
@@ -110,7 +140,7 @@ export function KioskCallPage() {
       await call(to);
     } catch (error) {
       console.error('Failed to call:', error);
-      alert(`発信に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -123,7 +153,7 @@ export function KioskCallPage() {
       setShowIncomingModal(false);
     } catch (error) {
       console.error('Failed to accept:', error);
-      alert(`受話に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -144,7 +174,7 @@ export function KioskCallPage() {
       await enableVideo();
     } catch (error) {
       console.error('Failed to enable video:', error);
-      alert(`ビデオの有効化に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -289,6 +319,22 @@ export function KioskCallPage() {
           </Card>
         </div>
       )}
+
+      {/* エラーダイアログ（ユーザー向け） */}
+      <Dialog
+        isOpen={Boolean(errorDialog)}
+        onClose={() => setErrorDialog(null)}
+        title={errorDialog?.title}
+        description={errorDialog?.description}
+        ariaLabel="通話エラー"
+        size="md"
+      >
+        <div className="mt-4 flex justify-end">
+          <Button type="button" onClick={() => setErrorDialog(null)}>
+            OK
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }
