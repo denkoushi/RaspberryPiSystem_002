@@ -510,6 +510,8 @@
   対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
 - 観測: クライアント側のコマンド監視が短く（値は環境依存で未確定）、Pi5+Pi4の長時間デプロイ（15-20分）では途中で「停止して見える」状態になりやすい。  
   対応: **リモート実行をデフォルトでデタッチモードに変更**し、クライアント側の監視打ち切りによる中断リスクを排除。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。**[KB-226]**
+- 観測: Mac開発環境では、**Cursorの`User/globalStorage`が肥大化しやすく（数十GB）**、Docker Desktopのデータも`Docker.raw`に集約されやすい。加えて、macOS標準の`rsync`が古い場合があり `--info=progress2` で失敗する。  
+  対応: 外付けSSD（例: `/Volumes/SSD01`）へ **Docker DesktopのDisk image location移動**、Cursorデータは **symlink方式**で移動し、切替フェーズは「CursorをQuitする必要があるため外部ターミナルで実行」へ寄せる。手順・検証・復旧・トラブルシューティングは `docs/guides/mac-storage-migration.md` に集約。
 - 発見: `usage`関数が呼び出しより後に定義されていたため、エラーハンドリング時に`usage: command not found`エラーが発生。  
   対応: `usage`関数を引数解析直後に移動し、エラーメッセージが正常に表示されるように修正。
 - 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。
@@ -1275,6 +1277,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Mac開発環境: ストレージ運用（推奨）
+
+**概要**: Macのストレージ逼迫による開発停止（Cursorクラッシュ、Docker不調）を防ぐ
+
+**次の改善候補**:
+- **SSD常時接続の運用ガード**: SSD01未接続時にCursor/Dockerを起動しない運用に揃える（スリープ/ケーブル/ハブ起因の切断も含めて注意喚起）
+- **バックアップの自動化**: `docs/guides/mac-storage-migration.md` のGoogleドライブバックアップ（launchd）を導入して、SSD障害時の復旧導線を作る
+- **（任意）rsync更新**: `brew install rsync` を導入し、転送の進捗/再開性を改善（ただし手順は `--progress` で成立するため必須ではない）
+
+**詳細**: [docs/guides/mac-storage-migration.md](./docs/guides/mac-storage-migration.md)
 
 ### アクセシビリティの継続的改善（推奨）
 
