@@ -46,7 +46,7 @@ export function KioskCallPage() {
       };
     }
     return {
-      title: '通話エラー',
+      title: 'エラー',
       description: msg ? `エラーが発生しました: ${msg}` : 'エラーが発生しました。',
     };
   }, []);
