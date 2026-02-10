@@ -1875,11 +1875,17 @@ app.get('/kiosk/call/targets', async (request, reply) => {
   3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新
   4. `PUT /api/clients/:id` で `name` を更新可能に拡張
   5. 機械名は `ClientStatus.hostname` を参照する運用に統一
+- ✅ **実機検証完了**（2026-02-10）:
+  - 管理画面で名前フィールドを編集可能であることを確認
+  - 名前変更後、他の端末（Pi4/Pi3）でも反映されることを確認
+  - ビデオ通話画面、履歴画面、Slack通知など、すべての機能が正常に動作することを確認
 
 **学んだこと**:
 - 表示名（運用者が編集）と機械名（端末が自己申告）は同一フィールドに載せない方が安全
 - `ClientDevice`（台帳）と `ClientStatus`（テレメトリ）の責務分離により、通話UIや履歴表示の安定性が上がる
 - 既存データ互換を守るには、`create` 時だけ初期値として hostname を使い、`update` では上書きしない方針が有効
+- 名前変更は即座に反映されなくても問題ない（最大60秒の遅延は許容範囲）。システム全体の正常動作が最優先
+- Transactionはリレーションで取得するため、名前変更後も正しく参照される（スナップショットではない）
 
 **関連ファイル**:
 - `apps/api/src/routes/clients.ts`

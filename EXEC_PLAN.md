@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-10) **クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了**: 管理コンソールでクライアント端末名を編集可能にし、`status-agent`や`heartbeat`による自動上書きを防止する機能を実装。**実装内容**: `ClientDevice.name`を「表示名（手動編集）」として定義し、`POST /api/clients/status`と`POST /api/clients/heartbeat`の`update`処理から`name`更新を除去（`create`時のみ初期値としてhostnameを使用）。`PUT /api/clients/:id`に`name`更新機能を追加（Zodスキーマで100文字以内・空文字列不可・trim処理）。管理画面`ClientsPage.tsx`で名前をインライン編集可能に（`Input`コンポーネント、バリデーション、エラーメッセージ表示）。統合テストで`name`上書きが起きないこと、`PUT`で更新できることを固定。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（Run ID: 20260210-211119-16770, ok=111, changed=4, failed=0）。**実機検証結果**: 管理画面で名前フィールドが編集可能であることを確認、名前変更後、他の端末（Pi4/Pi3）でも反映されることを確認、ビデオ通話画面、履歴画面、Slack通知など、すべての機能が正常に動作することを確認。**ドキュメント更新**: KB-206に実機検証完了を追記、調査ドキュメント（`docs/investigation/kiosk-client-status-investigation.md`）に表示名とhostname分離の仕様を反映、API概要ドキュメント（`docs/api/overview.md`）に`PUT /api/clients/:id`の説明を追加。詳細は [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md) を参照。
+
 - [x] (2026-02-10) **生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化・デプロイ完了**: 生産スケジュール画面で、登録製番ボタン右上の×削除ボタンの応答性が若干落ちた気がするという報告を受け、調査・修正を実施。**原因**: KB-242で実装した完未完判定機能（`useKioskProductionScheduleHistoryProgress()`）が4秒ごとにポーリングを実行し、最大400行の巨大テーブルを含む`ProductionSchedulePage`が頻繁に再レンダーされていた。React Queryの`refetchInterval`はデータが同じでも`isFetching`が変動し、ページ全体の再レンダーが発生しやすい。また、API側でも4秒ごとにJSON列抽出＋集計SQL（式インデックスなし）が実行され、DB負荷/遅延が増えるとフロント側の更新が増える。**修正内容**: `useKioskProductionScheduleHistoryProgress()`の`refetchInterval`を`4000`→`30000`（30秒）に変更。`useKioskProductionScheduleSearchState()`と`useKioskProductionScheduleSearchHistory()`は4秒のまま維持（端末間同期の速さを維持）。完未完表示の更新間隔は最大30秒の遅延となるが、応答性改善を優先。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi4キオスクにデプロイ成功（Run ID: 20260210-175259-15669, ok=91, changed=9, failed=0）。**実装ファイル**: `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleHistoryProgress()`の`refetchInterval`変更）。**ドキュメント更新**: ナレッジベースにKB-247を追加。詳細は [docs/knowledge-base/frontend.md#kb-247](./docs/knowledge-base/frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化) を参照。
 
 - [x] (2026-02-10) **Gmailゴミ箱自動削除機能（深夜バッチ）実装・CI成功・デプロイ完了**: CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移動した後、自動的に削除する機能を実装。**実装内容**: `GmailApiClient`にラベル管理機能（`findLabelIdByName`、`ensureLabel`）を追加し、`trashMessage`メソッドでゴミ箱移動前に`rps_processed`ラベルを付与。`cleanupProcessedTrash`メソッドでゴミ箱内の処理済みメール（`label:TRASH label:rps_processed older_than:30m`）を検索して完全削除。`GmailTrashCleanupService`と`GmailTrashCleanupScheduler`を新設し、`node-cron`で深夜（デフォルト: 3:00 JST）に1日1回実行。環境変数（`GMAIL_TRASH_CLEANUP_ENABLED`、`GMAIL_TRASH_CLEANUP_CRON`、`GMAIL_TRASH_CLEANUP_LABEL`、`GMAIL_TRASH_CLEANUP_MIN_AGE`）で動作を制御可能。`main.ts`でスケジューラーを起動・停止。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（Run ID: 20260210-173239-17094, ok=111, changed=4, failed=0）。**実装ファイル**: `apps/api/src/services/backup/gmail-api-client.ts`（ラベル管理・クリーンアップ）、`apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`（サービス層）、`apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`（スケジューラー）、`apps/api/src/config/env.ts`（環境変数）、`apps/api/src/main.ts`（統合）、ユニットテスト追加。**ドキュメント更新**: `docs/guides/gmail-setup-guide.md`に「4. ゴミ箱自動削除（深夜1回）」セクションを追加。ナレッジベースにKB-246を追加。詳細は [docs/knowledge-base/api.md#kb-246](./docs/knowledge-base/api.md#kb-246-gmailゴミ箱自動削除機能深夜バッチ) / [docs/guides/gmail-setup-guide.md](./docs/guides/gmail-setup-guide.md#4-ゴミ箱自動削除深夜1回) を参照。
@@ -1590,8 +1592,43 @@
 
 **詳細**: [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) / [docs/guides/backup-verification-checklist.md](./docs/guides/backup-verification-checklist.md)
 
+### クライアント端末管理機能の継続的改善（候補）
+
+**概要**: クライアント端末の表示名編集機能実装を機に、クライアント端末管理機能の継続的改善を検討
+
+**完了した改善**:
+- ✅ クライアント端末名のインライン編集機能（KB-206）
+- ✅ `status-agent`や`heartbeat`による自動上書き防止
+- ✅ `PUT /api/clients/:id`での`name`更新機能
+- ✅ 表示名と機械名の分離（`ClientDevice.name` vs `ClientStatus.hostname`）
+
+**次の改善候補**:
+1. **クライアント端末名の変更履歴記録**（優先度: 低）
+   - 変更者・変更日時・変更前後の値を記録
+   - 監査ログとしての活用
+   - 管理画面での変更履歴表示
+
+2. **クライアント端末名の一括編集機能**（優先度: 低）
+   - 複数端末の名前を一括で変更
+   - CSVインポート/エクスポート機能
+   - テンプレート機能（命名規則の統一）
+
+3. **クライアント端末名の検索・フィルタ機能**（優先度: 低）
+   - 名前での検索機能
+   - 場所・ステータスでのフィルタ機能
+   - ソート機能の拡充
+
+4. **クライアント端末名の重複チェック**（優先度: 低）
+   - 名前の重複を警告（必須ではない）
+   - 重複時の推奨名の提案
+
+**現状**: クライアント端末名の編集機能は実装済みで、実機検証も完了。システム全体が正常に動作することを確認済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md)
+
 ---
 
+変更履歴: 2026-02-10 — クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了を記録。KB-206に実機検証完了を追記。Next Stepsセクションにクライアント端末管理機能の継続的改善候補を追加。
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
 変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補を追加。
