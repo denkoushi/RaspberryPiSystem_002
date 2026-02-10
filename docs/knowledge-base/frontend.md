@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 39件  
+**件数**: 40件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -3256,5 +3256,72 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-241](./frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装): WebRTCビデオ通話の常時接続と着信自動切り替え機能実装
 - [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題): useWebRTCフックのcleanup関数が早期実行される問題
 - [KB-138](./frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題): ビデオ通話時のDOM要素へのsrcObjectバインディング問題
+
+---
+
+### [KB-244] Pi4キオスクの備考欄に日本語入力状態インジケーターを追加
+
+**発生日**: 2026-02-10
+
+**Context**:
+- Pi4キオスクの備考欄で日本語入力が可能になったが、全画面表示のためシステムレベルのIMEインジケーターが見えない
+- ユーザーが現在の入力モード（日本語/英字）を確認できない
+- キーボードからの日本語入力切り替え（Ctrl+Space）ができない問題も発見
+
+**Symptoms**:
+- 備考欄にアルファベットしか入力できない
+- 現在の入力モードが分からない（全画面表示でシステムインジケーターが非表示）
+- Ctrl+SpaceやAlt+`で日本語入力に切り替えられない
+
+**Investigation**:
+- **仮説1**: IBus設定が不適切（CONFIRMED）
+  - `gsettings get org.freedesktop.ibus.general engines-order`が`@as []`（空）
+  - `ibus engine`実行時に「エンジンが設定されていません」と表示
+  - `gsettings get org.freedesktop.ibus.general.hotkey triggers`が`['<Super>space']`（Ctrl+Spaceではない）
+- **仮説2**: Chromiumの全画面モードでIMEショートカットがブロックされる（INCONCLUSIVE）
+  - Chromiumのkioskモードではキーボードショートカットが制限される可能性がある
+  - ただし、IBus設定が空のため、設定修正後の動作は未確認
+- **仮説3**: WebアプリからOSのIMEを直接制御できない（CONFIRMED）
+  - ブラウザからOSのIME（ibus/mozc）を直接切り替える標準APIは存在しない
+  - `compositionstart`/`compositionend`イベントで入力モードを検出することは可能
+
+**Root cause**:
+1. **IBus設定の未設定**: `engines-order`が空で、切替対象エンジンが設定されていない
+2. **ホットキー設定の不一致**: デフォルトが`<Super>space`で、ユーザーが期待する`Ctrl+Space`ではない
+3. **全画面表示による視認性の問題**: システムレベルのIMEインジケーターが非表示
+
+**Fix**:
+- ✅ **アプリケーションレベルのIMEインジケーター追加**（2026-02-10）:
+  1. `KioskNoteModal.tsx`に`isComposing` stateを追加
+  2. `compositionstart`/`compositionend`イベントで入力モードを検出
+  3. インジケーターを追加（日本語入力中: 「あ 日本語」、英字入力中: 「A 英字」）
+  4. 切り替え方法（Ctrl+Space または Alt+`）を画面下部に表示
+- ✅ **IBus設定の永続化**（2026-02-10）:
+  1. Ansibleロール（`kiosk/tasks/main.yml`）にIBus設定タスクを追加
+  2. `engines-order`を`['xkb:jp::jpn', 'mozc-jp']`に設定
+  3. `hotkey triggers`を`['<Control>space']`に設定
+  4. DBusユーザーバスが無い場合は安全にスキップ（デプロイ失敗回避）
+  5. 冪等性を確保（差分がある時だけchanged）
+- ✅ **Pi4再起動ボタンのエラーハンドリング改善**（2026-02-10）:
+  1. `apps/api/src/routes/kiosk.ts`の`fs.mkdir`に`EEXIST`エラーハンドリングを追加
+  2. ボリュームマウントされたディレクトリでも正常に動作するように修正
+
+**Prevention**:
+- AnsibleでIBus設定を永続化することで、Pi4再起動後も設定が維持される
+- デプロイ時に自動的にIBus設定が適用されるため、手動設定が不要
+- アプリケーションレベルのインジケーターにより、全画面表示でも入力モードが確認可能
+
+**実機検証結果**:
+- ✅ **インジケーター表示**: 備考欄に「あ 日本語」/「A 英字」が表示されることを確認
+- ✅ **IBus設定**: `engines-order`と`hotkey triggers`が正しく設定されることを確認
+- ✅ **デプロイ成功**: Pi4でデプロイ成功（Run ID: 20260210-123251-3565, 20260210-124817-3570）
+- ⚠️ **キーボード切り替え**: Ctrl+Spaceでの切り替えは実機検証待ち（IBus設定反映後）
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskNoteModal.tsx`（IMEインジケーター追加）
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（IBus設定永続化）
+- `apps/api/src/routes/kiosk.ts`（再起動ボタンのエラーハンドリング改善）
+
+**解決状況**: ✅ **解決済み**（2026-02-10）
 
 ---
