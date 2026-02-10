@@ -53,6 +53,7 @@ export function ClientsPage() {
     [statusData]
   );
 
+
   const handleEdit = (client: ClientDevice) => {
     setEditingId(client.id);
     setEditingName(client.name);
@@ -301,10 +302,12 @@ export function ClientsPage() {
                 </tr>
               </thead>
               <tbody>
-                {clientsQuery.data.map((client: ClientDevice) => (
+                {clientsQuery.data.map((client: ClientDevice) => {
+                  const isEditing = editingId === client.id;
+                  return (
                   <tr key={client.id} className="border-b border-slate-500">
                     <td className="px-4 py-2 font-bold text-base text-slate-900">
-                      {editingId === client.id ? (
+                      {isEditing ? (
                         <Input
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
@@ -337,6 +340,7 @@ export function ClientsPage() {
                         <div className="space-y-1">
                           <div className="flex gap-2">
                             <Button
+                              type="button"
                               onClick={() => handleSave(client.id)}
                               disabled={update.isPending}
                               className="px-3 py-1 text-sm"
@@ -344,6 +348,7 @@ export function ClientsPage() {
                               保存
                             </Button>
                             <Button
+                              type="button"
                               onClick={handleCancel}
                               disabled={update.isPending}
                               variant="ghost"
@@ -355,13 +360,18 @@ export function ClientsPage() {
                           {editError ? <p className="text-xs font-semibold text-red-600">{editError}</p> : null}
                         </div>
                       ) : (
-                        <Button onClick={() => handleEdit(client)} className="px-3 py-1 text-sm">
+                        <Button
+                          type="button"
+                          onClick={() => handleEdit(client)}
+                          className="px-3 py-1 text-sm"
+                        >
                           編集
                         </Button>
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
