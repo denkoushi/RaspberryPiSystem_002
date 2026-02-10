@@ -1,6 +1,6 @@
 # WebRTCビデオ通話機能 実機検証手順
 
-最終更新: 2026-02-09
+最終更新: 2026-02-10
 
 ## 概要
 
@@ -505,6 +505,15 @@ status-agentは以下の方法でIPアドレスを取得します：
 - **`sessionStorage`による復帰パス管理**: `webrtc-call-return-path`キーで復帰先を保存
 - **Pi3の通話対象除外**: サイネージ機能特化のため、`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で除外
 
+### 9. 映像不安定問題の修正とエラーダイアログ改善（2026-02-10実装）
+
+- **`localStream`/`remoteStream`のstate化**: `useWebRTC`でstateを保持し、`ontrack`更新時にUI再描画を確実化
+- **受信トラックの単一MediaStream集約**: `pc.ontrack`で`event.streams[0]`依存をやめ、受信トラックを単一のMediaStreamに集約（音声/映像で別streamになる環境での不安定を回避）
+- **`disableVideo()`の改善**: trackをstop/removeせず`enabled=false`に変更（相手側フリーズ回避）
+- **`enableVideo()`の改善**: 既存trackがあれば再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`を使用
+- **接続状態監視とICE restart**: `connectionState`/`iceConnectionState`が`disconnected/failed`に寄った場合、少し待ってからICE restartのofferを送る最小の復旧処理
+- **エラーダイアログ改善**: `alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換
+
 ## 関連ドキュメント
 
 - [デプロイメントガイド](./deployment.md)
@@ -522,3 +531,5 @@ status-agentは以下の方法でIPアドレスを取得します：
 - [KB-139: WebSocket接続管理（重複接続防止）](../knowledge-base/frontend.md#kb-139)
 - [KB-140: useLocalStorageとの互換性](../knowledge-base/frontend.md#kb-140)
 - [KB-141: CaddyのWebSocketアップグレードヘッダー問題](../knowledge-base/infrastructure/docker-caddy.md#kb-141)
+- [KB-241: WebRTCビデオ通話の常時接続と着信自動切り替え機能実装](../knowledge-base/frontend.md#kb-241)
+- [KB-243: WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善](../knowledge-base/frontend.md#kb-243)

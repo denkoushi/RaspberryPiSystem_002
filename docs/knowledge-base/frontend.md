@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 37件  
+**件数**: 39件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -3103,5 +3103,158 @@ return {
 **関連KB**:
 - [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化): 生産スケジュール登録製番上限の拡張
 - [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト): サイネージ未完部品表示ロジック改善
+
+---
+
+### [KB-243] WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善
+
+**実装日時**: 2026-02-10
+
+**事象**: 
+- 相手側の動画が最初取得できない（通話開始直後に映像が表示されない）
+- 「ビデオを有効/無効」を切り替えると相手側の画像が止まる
+- しばらく無操作すると相手側の画像が止まる
+- 相手キオスク未起動時にエラーメッセージがユーザビリティ悪い（`alert()`で生のエラーメッセージを表示）
+
+**要因**: 
+1. **`useWebRTC`が`localStream`/`remoteStream`をrefで保持して返すだけ**で、`ontrack`で更新されてもReactが再描画せずUIが更新されない
+2. **`disableVideo()`がtrackを`stop/remove`**しており、相手側が最後のフレームで停止しやすい
+3. **`enableVideo()`で`addTrack`時に別の`MediaStream`を渡す**ことで、相手側の`ontrack`が別streamを参照し、音声/映像で別streamになる環境で不安定
+4. **PeerConnectionの接続状態監視（`disconnected/failed`検知・復旧）が無い**ため、無操作で接続が劣化しても復旧しない
+5. **エラーメッセージが`alert()`で生表示**されており、ユーザー向けの説明が不足
+
+**有効だった対策**: 
+- ✅ **映像不安定問題の修正（2026-02-10）**:
+  1. **`localStream`/`remoteStream`をstateで保持**: `useWebRTC`にstateを追加し、`ontrack`更新時にUI再描画を確実化
+  2. **受信トラックを単一MediaStreamに集約**: `pc.ontrack`で`event.streams[0]`依存をやめ、受信トラックを単一のMediaStreamに集約してUIに渡す（音声/映像で別streamになる環境での不安定を回避）
+  3. **`disableVideo()`でtrackをstop/removeしない**: `enabled=false`に変更（送信停止はするがtrackは生かす）ことで、相手側のフリーズを回避
+  4. **`enableVideo()`の改善**: 既存trackがliveなら再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`を使用
+  5. **接続状態監視とICE restart**: `connectionState`/`iceConnectionState`が`disconnected/failed`に寄った場合、少し待ってからICE restartのofferを送る最小の復旧処理を追加
+- ✅ **エラーダイアログ改善（2026-02-10）**:
+  1. **`alert()`を`Dialog`に置換**: `KioskCallPage`の`alert()`連発をやめ、`Dialog`コンポーネントで統一
+  2. **エラーメッセージのユーザー向け変換**: `Callee is not connected`を「相手のキオスクが起動していません」という説明ダイアログに変換
+
+**実装の詳細**:
+```typescript
+// apps/web/src/features/webrtc/hooks/useWebRTC.ts
+// localStream/remoteStreamをstateで保持
+const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+// toUiStream: track追加/削除があってもReactの再描画が走るように、毎回新しいMediaStreamを作る
+const toUiStream = useCallback((stream: MediaStream | null): MediaStream | null => {
+  if (!stream) return null;
+  return new MediaStream(stream.getTracks());
+}, []);
+
+// pc.ontrack: 受信トラックを単一MediaStreamに集約
+pc.ontrack = (event) => {
+  const existing = remoteStreamRef.current ?? new MediaStream();
+  const track = event.track;
+  if (!existing.getTracks().some((t) => t.id === track.id)) {
+    existing.addTrack(track);
+  }
+  remoteStreamRef.current = existing;
+  setRemoteStream(toUiStream(existing)); // state更新でUI再描画
+};
+
+// disableVideo: trackをstop/removeしない
+const disableVideo = useCallback(() => {
+  localStreamRef.current?.getVideoTracks().forEach((track) => {
+    track.enabled = false; // stop/removeではなくenabled=false
+  });
+  setLocalStream(toUiStream(localStreamRef.current));
+  setIsVideoEnabled(false);
+}, [isVideoEnabled, toUiStream]);
+
+// enableVideo: 既存trackがあれば再有効化、新規はreplaceTrack
+const enableVideo = useCallback(async () => {
+  const existingVideo = localStreamRef.current?.getVideoTracks()?.[0] ?? null;
+  if (existingVideo && existingVideo.readyState === 'live') {
+    existingVideo.enabled = true; // 再有効化
+    setIsVideoEnabled(true);
+    return;
+  }
+  // 新規track追加時はreplaceTrackを使用（再ネゴ不要）
+  if (videoSenderRef.current) {
+    await videoSenderRef.current.replaceTrack(videoTrack);
+  } else {
+    videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, localStreamRef.current);
+    await renegotiate('enableVideo');
+  }
+}, [currentCallId, isVideoEnabled, renegotiate, toUiStream]);
+
+// 接続状態監視とICE restart
+pc.onconnectionstatechange = () => {
+  const state = pc.connectionState;
+  if (state === 'failed' || state === 'disconnected') {
+    scheduleIceRestart(); // 2.5秒後にICE restart
+  }
+};
+
+pc.oniceconnectionstatechange = () => {
+  const ice = pc.iceConnectionState;
+  if (ice === 'failed' || ice === 'disconnected') {
+    scheduleIceRestart();
+  }
+};
+```
+
+```typescript
+// apps/web/src/pages/kiosk/KioskCallPage.tsx
+// エラーダイアログのユーザー向け変換
+const toUserFacingError = useCallback((error: Error): { title: string; description?: string } => {
+  const msg = error.message || '';
+  if (/Callee is not connected/i.test(msg)) {
+    return {
+      title: '相手のキオスクが起動していません',
+      description: '相手端末が通話待機状態ではないため、発信できません。相手端末の電源が入っていること、ブラウザが起動していること、キオスク画面/サイネージ画面が表示されていることを確認してから再試行してください。',
+    };
+  }
+  // その他のエラーもユーザー向けに変換
+  return { title: 'エラー', description: msg ? `エラーが発生しました: ${msg}` : 'エラーが発生しました。' };
+}, []);
+
+// Dialogコンポーネントで表示
+<Dialog
+  isOpen={Boolean(errorDialog)}
+  onClose={() => setErrorDialog(null)}
+  title={errorDialog?.title}
+  description={errorDialog?.description}
+  ariaLabel="通話エラー"
+  size="md"
+>
+  <div className="mt-4 flex justify-end">
+    <Button type="button" onClick={() => setErrorDialog(null)}>OK</Button>
+  </div>
+</Dialog>
+```
+
+**学んだこと**:
+- **React stateとrefの使い分け**: UIに反映させる必要がある値はstateで保持し、refだけでは再描画が走らない
+- **MediaStreamの扱い**: `ontrack`で`event.streams[0]`に依存すると、音声/映像で別streamが届く環境で不安定になる。受信トラックを単一のMediaStreamに集約することで安定化
+- **WebRTC trackの停止方法**: `stop/remove`すると相手側が最後のフレームで停止しやすい。`enabled=false`で送信を止めることで、相手側のフリーズを回避
+- **`replaceTrack`の活用**: 既存senderがある場合は`replaceTrack`を使用することで、再ネゴシエーションを避けられる
+- **接続状態監視の重要性**: PeerConnectionの接続状態を監視し、劣化時にICE restartすることで、無操作による接続切断を防げる
+- **エラーメッセージのユーザビリティ**: 技術的なエラーメッセージをユーザー向けの説明に変換することで、ユーザー体験が向上する
+
+**解決状況**: ✅ **解決済み**（2026-02-10）
+
+**実機検証結果**:
+- ✅ **通話開始直後に相手映像が表示される**: トグル無しで正常に映像が表示されることを確認
+- ✅ **ビデオON/OFF時の相手側フリーズ回避**: 切り替えても相手側の映像が固まらないことを確認
+- ✅ **無操作時の接続維持**: 数分放置しても相手側の映像が止まらないことを確認
+- ✅ **エラーダイアログの改善**: 相手キオスク未起動時に分かりやすい説明ダイアログが表示されることを確認
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260210-105120-4601）
+- ✅ **CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTC.ts`（localStream/remoteStreamのstate化、track集約、disableVideo/enableVideo改善、接続状態監視）
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`（エラーダイアログ改善）
+
+**関連KB**:
+- [KB-241](./frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装): WebRTCビデオ通話の常時接続と着信自動切り替え機能実装
+- [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題): useWebRTCフックのcleanup関数が早期実行される問題
+- [KB-138](./frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題): ビデオ通話時のDOM要素へのsrcObjectバインディング問題
 
 ---

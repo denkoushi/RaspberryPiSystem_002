@@ -165,6 +165,7 @@ update-frequency: high
 | [KB-240](./frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) | モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化 | ✅ 解決済み |
 | [KB-241](./frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) | WebRTCビデオ通話の常時接続と着信自動切り替え機能実装 | ✅ 解決済み |
 | [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) | 生産スケジュール登録製番削除ボタンの進捗連動UI改善 | ✅ 解決済み |
+| [KB-243](./frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善) | WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -468,3 +469,4 @@ update-frequency: high
 - 2026-02-08: KB-240を追加（モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化）→ 2026-02-08に実装完了・CI成功・デプロイ成功（共通Dialogコンポーネント作成、キオスク全モーダル統一、サイネージプレビューのFullscreen API対応、ConfirmDialogとuseConfirm実装、管理コンソールのwindow.confirm置換、アクセシビリティ標準化、E2Eテスト安定化。CI修正（import順序、Trivy脆弱性、E2Eテストstrict mode violation）も完了）
 - 2026-02-09: KB-241を追加（WebRTCビデオ通話の常時接続と着信自動切り替え機能実装）→ 2026-02-09に実装完了・CI成功・デプロイ成功（`WebRTCCallProvider`と`CallAutoSwitchLayout`を実装し、`/kiosk/*`と`/signage`の全ルートでシグナリング接続を常時維持。着信時に`/kiosk/call`へ自動遷移、通話終了後に元のパスへ自動復帰。Pi3の通話対象除外機能を実装。APIレベルでの動作確認完了、実機検証待ち）
 - 2026-02-10: KB-242を追加（生産スケジュール登録製番削除ボタンの進捗連動UI改善）→ 2026-02-10に実装完了・CI成功・デプロイ成功・キオスク動作検証OK（`SeibanProgressService`を新設、`GET /kiosk/production-schedule/history-progress`を追加、`ProductionScheduleDataSource`を共通サービス利用へ切替、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを実装。Pi5＋Pi4でデプロイ成功、登録製番の進捗表示と削除ボタンの色切替が正常に動作）
+- 2026-02-10: KB-243を追加（WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善）→ 2026-02-10に実装完了・CI成功・デプロイ成功・実機検証完了（`useWebRTC`で`localStream`/`remoteStream`をstateで保持し、`ontrack`更新時にUI再描画を確実化。`pc.ontrack`で受信トラックを単一MediaStreamに集約。`disableVideo()`でtrackをstop/removeせず`enabled=false`に変更。`enableVideo()`で既存trackがあれば再有効化、新規は`replaceTrack`使用。`connectionState`/`iceConnectionState`の`disconnected/failed`検知時にICE restartで復旧。`KioskCallPage`で`alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換。Pi5＋Pi4でデプロイ成功、通話開始直後に相手映像が表示されること、ビデオON/OFF時の相手側フリーズ回避、無操作時の接続維持、エラーダイアログの改善を確認）

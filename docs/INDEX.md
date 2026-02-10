@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-10）
 
+- **✅ WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善・デプロイ成功・実機検証完了**: ビデオ通話の映像不安定問題（相手側の動画が最初取得できない、ビデオON/OFF時に相手側の画像が止まる、無操作で相手側の画像が止まる）とエラーダイアログ改善を実装。**実装内容**: `useWebRTC`で`localStream`/`remoteStream`をstateで保持し、`ontrack`更新時にUI再描画を確実化。`pc.ontrack`で受信トラックを単一MediaStreamに集約（音声/映像で別streamになる環境での不安定を回避）。`disableVideo()`でtrackをstop/removeせず`enabled=false`に変更（相手側フリーズ回避）。`enableVideo()`で既存trackがあれば再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`使用。`connectionState`/`iceConnectionState`の`disconnected/failed`検知時にICE restartで復旧。`KioskCallPage`で`alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換。**デプロイ**: Pi5＋Pi4でデプロイ成功（Run ID: 20260210-105120-4601）。**実機検証**: 通話開始直後に相手映像が表示されること、ビデオON/OFF時の相手側フリーズ回避、無操作時の接続維持、エラーダイアログの改善を確認。詳細は [knowledge-base/frontend.md#kb-243](./knowledge-base/frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善) / [guides/webrtc-verification.md](./guides/webrtc-verification.md) を参照。
+
 - **✅ 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OK**: キオスクの生産スケジュール画面で、登録製番ボタン右上の×削除ボタンを進捗で白（100%完了）/グレー白縁（未完了）に切替える機能を実装。**実装内容**: APIに`SeibanProgressService`を新設し、`GET /kiosk/production-schedule/history-progress`を追加。`ProductionScheduleDataSource`を共通サービス利用へ切替。Webに`useProductionScheduleHistoryProgress`フックを追加。**デプロイ**: Pi5＋Pi4でデプロイ成功（Run ID: 20260210-080354-23118）。**キオスク動作検証**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作。詳細は [knowledge-base/frontend.md#kb-242](./knowledge-base/frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) / [knowledge-base/api.md#kb-242](./knowledge-base/api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
 
 ### 🆕 最新アップデート（2026-02-09）
