@@ -13,6 +13,10 @@ export SSH_AUTH_SOCK=""
 # NetworkManagerの認証ダイアログを抑制
 export NM_CLI_NO_TERSE=1
 export NM_CLI_NO_ASK_PASSWORD=1
+# 日本語入力環境変数
+export GTK_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+export QT_IM_MODULE=ibus
 
 # 画面上部のパネルを非表示にする（labwc + wf-panel-pi）
 pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true

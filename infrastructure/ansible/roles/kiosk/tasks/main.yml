@@ -1,4 +1,31 @@
 ---
+- name: Install Japanese input method (ibus-mozc)
+  ansible.builtin.apt:
+    name:
+      - ibus-mozc
+      - ibus-gtk
+      - ibus-gtk3
+      - ibus-gtk4
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Create ibus autostart directory
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/autostart"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Deploy ibus autostart desktop file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/ibus-autostart.desktop.j2"
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+
 - name: Deploy kiosk-launch script
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
