@@ -226,14 +226,15 @@
       register: server_deployment_flag
       run_once: true
 
-    - name: Clear kiosk maintenance flag if server deployment completed
+    - name: Clear kiosk maintenance flag if deployment succeeded
       ansible.builtin.file:
         path: /opt/RaspberryPiSystem_002/config/deploy-status.json
         state: absent
       delegate_to: "{{ groups['server'][0] }}"
       run_once: true
       when:
-        - server_deployment_flag.stat.exists | default(false)
+        # Clear flag if deployment succeeded (either server deployment completed OR kiosk-only deployment succeeded)
+        - (server_deployment_flag.stat.exists | default(false)) or (server_deployment_flag.stat.exists is defined and not server_deployment_flag.stat.exists)
         - deployment_failed is not defined or not deployment_failed
 
 
