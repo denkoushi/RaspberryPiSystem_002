@@ -2738,3 +2738,93 @@ const saveNote = (rowId: string) => {
 
 ---
 
+### [KB-246] Gmailゴミ箱自動削除機能（深夜バッチ）
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移動する機能は実装済みだったが、ゴミ箱内のメールが蓄積され続ける問題があった
+- Gmail APIには`users.trash.empty`のような一括削除APIが存在しないため、個別に削除する必要があった
+- ユーザーが手動で削除したメールと区別するため、処理済みメールにラベルを付与する必要があった
+
+**Symptoms**:
+- CSV取り込み後にゴミ箱へ移動したメールが蓄積され続ける
+- 手動で削除する必要があり、運用負荷が高い
+- ゴミ箱の容量が増加し続ける
+
+**Investigation**:
+1. **Gmail APIの調査**:
+   - `users.trash.empty`のような一括削除APIは存在しない
+   - `users.messages.delete`で個別に完全削除する必要がある
+   - `users.messages.list`でゴミ箱内のメールを検索可能（`label:TRASH`）
+2. **削除タイミングの検討**:
+   - 最初は「30分後に自動削除」を検討したが、Gmailの`internalDate`は受信時刻であり、ゴミ箱移動時刻ではない
+   - カスタムラベル（`rps_processed`）を付与し、ゴミ箱移動時にラベルを付与することで処理済みメールを識別可能に
+   - Gmailの`older_than:30m`検索演算子を使用して、30分以上経過したメールを検索
+3. **スケジューリングの検討**:
+   - `node-cron`を使用して深夜（デフォルト: 3:00 JST）に1日1回実行
+   - 既存の`CsvImportScheduler`と同様のパターンを採用
+
+**Root cause**:
+- Gmail APIに一括削除APIが存在しない
+- 処理済みメールを識別する仕組みがなかった
+- 自動削除のスケジューリング機能がなかった
+
+**Fix**:
+1. **ラベル管理機能の追加** (`apps/api/src/services/backup/gmail-api-client.ts`):
+   - `findLabelIdByName(labelName: string): Promise<string | undefined>`: 既存ラベルの検索
+   - `ensureLabel(labelName: string): Promise<string>`: ラベルの作成（存在しない場合）
+   - `trashMessage`メソッドを修正し、ゴミ箱移動前に`rps_processed`ラベルを付与
+2. **ゴミ箱クリーンアップ機能の追加** (`apps/api/src/services/backup/gmail-api-client.ts`):
+   - `cleanupProcessedTrash(params?: { processedLabelName?: string; minAgeQuery?: string; }): Promise<GmailTrashCleanupResult>`: ゴミ箱内の処理済みメールを検索して削除
+   - Gmail検索クエリ: `label:TRASH label:rps_processed older_than:30m`
+   - 検索結果の各メールを`users.messages.delete`で完全削除
+3. **サービス層の追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`):
+   - `GmailTrashCleanupService`: 設定読み込み、`GmailStorageProvider`の解決、クリーンアップ実行
+   - Gmail設定が不完全な場合はスキップ
+4. **スケジューラーの追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`):
+   - `GmailTrashCleanupScheduler`: `node-cron`を使用して深夜に実行
+   - 環境変数で有効/無効、実行時刻、ラベル名、最小経過時間を設定可能
+5. **環境変数の追加** (`apps/api/src/config/env.ts`):
+   - `GMAIL_TRASH_CLEANUP_ENABLED`（デフォルト: `true`）
+   - `GMAIL_TRASH_CLEANUP_CRON`（デフォルト: `0 3 * * *`）
+   - `GMAIL_TRASH_CLEANUP_LABEL`（デフォルト: `rps_processed`）
+   - `GMAIL_TRASH_CLEANUP_MIN_AGE`（デフォルト: `older_than:30m`）
+6. **メインアプリケーションへの統合** (`apps/api/src/main.ts`):
+   - `GmailTrashCleanupScheduler`を起動（`csvImportScheduler.start()`の後）
+   - グレースフルシャットダウン時にスケジューラーを停止
+
+**Prevention**:
+- 環境変数で動作を制御可能にし、必要に応じて無効化可能
+- ラベル名と最小経過時間を環境変数で設定可能にし、運用要件に応じて調整可能
+- ユニットテストでラベル管理とクリーンアップロジックを検証
+
+**実装ファイル**:
+- `apps/api/src/services/backup/gmail-api-client.ts`: ラベル管理とゴミ箱クリーンアップ機能
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`: `cleanupProcessedTrash`メソッドの追加
+- `apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`: サービス層
+- `apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`: スケジューラー
+- `apps/api/src/config/env.ts`: 環境変数定義
+- `apps/api/src/main.ts`: スケジューラーの起動・停止
+- `apps/api/src/services/backup/__tests__/gmail-api-client.test.ts`: ユニットテスト追加
+- `apps/api/src/services/gmail/__tests__/gmail-trash-cleanup.service.test.ts`: サービス層のユニットテスト
+- `docs/guides/gmail-setup-guide.md`: ドキュメント更新
+
+**学んだこと**:
+- Gmail APIには一括削除APIが存在しないため、検索→個別削除のパターンが必要
+- カスタムラベルを使用することで、アプリが処理したメールを識別可能に
+- `older_than:30m`のようなGmail検索演算子を活用することで、時間ベースのフィルタリングが可能
+- `node-cron`を使用したスケジューリングは、既存の`CsvImportScheduler`と同様のパターンで実装可能
+
+**関連KB**:
+- [KB-123](./api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了): Gmail経由CSV取り込み（手動実行）の実機検証完了
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantでCSV取り込みが500になる
+- [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+
+**関連ドキュメント**:
+- [docs/guides/gmail-setup-guide.md](../guides/gmail-setup-guide.md#4-ゴミ箱自動削除深夜1回): Gmailセットアップガイド（ゴミ箱自動削除セクション）
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
+
+---
+
