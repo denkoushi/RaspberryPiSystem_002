@@ -3335,3 +3335,61 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-02-10、実機検証完了）
 
 ---
+
+### [KB-247] 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- 生産スケジュール画面で、登録製番ボタン右上の×削除ボタンの応答性が若干落ちた気がするという報告があった
+- KB-242で実装した完未完判定機能（`useKioskProductionScheduleHistoryProgress()`）が追加され、4秒ごとにポーリングが実行されていた
+
+**Symptoms**:
+- ×ボタンを押したときの反応が若干遅い気がする
+- クリックの取りこぼしや反応の遅れが発生する可能性がある
+
+**Investigation**:
+1. **仮説1**: 完未完判定ロジック（`isComplete = progressBySeiban[h]?.status === 'complete'`）が重い（REJECTED）
+   - このロジック自体はO(1)の軽量な処理で、体感劣化の原因にはなりにくい
+2. **仮説2**: `history-progress`の4秒ポーリングが原因（CONFIRMED）
+   - `useKioskProductionScheduleHistoryProgress()`が`refetchInterval: 4000`で常時実行
+   - React Queryの`refetchInterval`は、データが同じでも`isFetching`が変動し、ページ全体の再レンダーが発生しやすい
+   - `ProductionSchedulePage`は最大400行の巨大テーブルを含むため、再レンダーコストが高い
+   - 4秒ごとに2回（フェッチ開始・完了）の再レンダーが発生し、Pi4等の非力端末でメインスレッドが詰まりやすい
+3. **仮説3**: API側の重い集計SQLが原因（CONFIRMED）
+   - `/kiosk/production-schedule/history-progress`エンドポイントが4秒ごとに実行
+   - `fetchSeibanProgressRows()`がJSON列抽出（`rowData->>'FSEIBAN'`、`rowData->>'progress'`）とGROUP BYを実行
+   - 式インデックスが存在しないため、データ件数が増えるとDB負荷が高くなる
+   - DB負荷/遅延が増えると、フロント側のフェッチ状態変動・更新が増えやすい
+
+**Root cause**:
+1. **フロント側**: `history-progress`の4秒ポーリングにより、重い`ProductionSchedulePage`（最大400行）が頻繁に再レンダーされる
+2. **サーバー/DB側**: 4秒ごとにJSON抽出＋集計SQL（式インデックスなし）が実行され、DB負荷/遅延が増えるとフロント側の更新が増える
+
+**Fix**:
+- ✅ **ポーリング間隔の最適化**（2026-02-10）:
+  1. `useKioskProductionScheduleHistoryProgress()`の`refetchInterval`を`4000`→`30000`（30秒）に変更
+  2. `useKioskProductionScheduleSearchState()`と`useKioskProductionScheduleSearchHistory()`は4秒のまま維持（端末間同期の速さを維持）
+  3. 完未完表示の更新間隔は最大30秒の遅延となるが、応答性改善を優先
+
+**Prevention**:
+- ポーリング間隔は用途に応じて適切に設定する（同期が必要なものは短く、表示のみのものは長く）
+- 重いページ（大量のDOM要素を含む）では、ポーリング間隔を長めに設定する
+- DB側の式インデックス検討（将来的な最適化候補）
+
+**実装ファイル**:
+- `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleHistoryProgress()`の`refetchInterval`変更）
+
+**学んだこと**:
+- **React Queryの`refetchInterval`はデータが同じでも再レンダーを発生させる**: `isFetching`の変動により、データが変わらなくても再レンダーが発生する
+- **重いページではポーリング間隔の影響が大きい**: 最大400行のテーブルを含むページでは、4秒ごとの再レンダーが体感劣化の原因になる
+- **用途に応じたポーリング間隔の設定**: 端末間同期が必要なもの（`search-state`）は短く、表示のみのもの（`history-progress`）は長く設定する
+- **DB側の最適化も重要**: JSON列抽出＋集計SQLは式インデックスがないと重くなるため、将来的な最適化候補として検討する
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 生産スケジュール登録製番削除ボタンの進捗連動UI改善
+- [KB-205](./api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側): 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
+
+**解決状況**: ✅ **解決済み**（2026-02-10、デプロイ完了）
+
+---
