@@ -1701,6 +1701,10 @@ if (data.type === 'ping') {
 - ✅ **UI改善（2026-01-26）**:
   1. `CsvImportSchedulePage.tsx`で409エラー発生時に`refetch()`を呼び出し、スケジュール一覧を更新
   2. `validationError`メッセージを表示してユーザーに既存スケジュールの存在を通知
+- ✅ **製造order番号繰り上がりルール追加（2026-02-10）**:
+  1. 重複単位を`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`に定義
+  2. 同一キーで`ProductNo`が複数ある場合は、数値が大きい行のみを有効とする
+  3. 取り込み時（`CsvDashboardIngestor`）と表示時（`/kiosk/production-schedule`、`SeibanProgressService`）の両方で適用
 
 **実装の詳細**:
 ```typescript
@@ -1768,6 +1772,7 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - **UI改善**: 409エラー発生時にスケジュール一覧を更新することで、ユーザーに既存スケジュールの存在を通知できる
 - **日付パース**: JST形式の日付文字列をUTC `Date`オブジェクトに変換する際は、タイムゾーンオフセット（+9時間）を考慮する必要がある
 - **FSEIBANバリデーション**: 割当がない場合の`********`（8個のアスタリスク）を明示的に許可することで、実際の運用ケースに対応できる。エラーメッセージに`value`と`length`を含めることで、デバッグが容易になる
+- **製造order番号繰り上がり対応**: 表示時だけでなく取り込み時にも同ルールを適用することで、DB保存データと表示結果の整合性を維持できる
 
 **解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26、2026-01-27 FSEIBANバリデーション修正）
 
@@ -1781,6 +1786,9 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（差分ロジック改善）
 - `apps/api/src/services/csv-dashboard/diff/__tests__/csv-dashboard-diff.test.ts`（テスト更新）
 - `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（バリデーション追加）
+- `apps/api/src/services/production-schedule/row-resolver/`（製造order番号繰り上がり対応ロジック）
+- `apps/api/src/routes/kiosk.ts`（有効行フィルタ適用）
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`（集計時の有効行フィルタ適用）
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（UI改善）
 
 ---

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 export type SeibanProgressRow = {
   fseiban: string;
@@ -52,6 +53,7 @@ export async function fetchSeibanProgressRows(
       ) AS "incompleteProductNames"
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${csvDashboardId}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
         normalized.map((value) => Prisma.sql`${value}`),
         ','

@@ -38,6 +38,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 - **資源CDフィルタ**: 各資源CDに2つのボタン（全件検索 / 割当済みのみ検索）を提供し、検索登録製番とAND条件で検索可能
 - **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
 - **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
+- **製造order番号の繰り上がりルール**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、**数字が大きい方のみ有効**として扱う（インポート時・表示時の両方で適用）
 
 ### 設定手順
 
@@ -140,7 +141,7 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
 - `PUT /api/kiosk/production-schedule/:rowId/order`: 加工順序番号を割当/解除（`resourceCd`と`orderNumber`（1-10またはnull）を指定）
 - `PUT /api/kiosk/production-schedule/:rowId/note`: 行ごとの備考を保存（`note` 100文字以内・改行不可、拠点ごと）。空文字で削除
 - `GET /api/kiosk/production-schedule` のクエリ: `hasNoteOnly=true` で備考が入っている行のみ取得
-- `GET /api/kiosk/production-schedule/resources`: 全データから取得した資源CD一覧を返す
+- `GET /api/kiosk/production-schedule/resources`: 有効行（同一キーで最大`ProductNo`）から取得した資源CD一覧を返す
 - `GET /api/kiosk/production-schedule/order-usage`: 指定された資源CDの使用中順番番号を返す（`resourceCds`クエリパラメータでフィルタ可能）
 - `GET /api/kiosk/production-schedule/search-state`: 検索状態を取得（location単位）
 - `PUT /api/kiosk/production-schedule/search-state`: 検索状態を保存（location単位、`inputQuery`、`activeQueries`、`activeResourceCds`、`activeResourceAssignedOnlyCds`を含む）
@@ -168,6 +169,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 **注意事項**:
 - FSEIBANが`********`（8個のアスタリスク）の場合も正常に取り込まれます（割当がない場合の運用に対応）
 - バリデーションエラーの詳細は、エラーメッセージに`value`と`length`が含まれます（デバッグ用）
+- 同一キーで`ProductNo`が繰り上がるケースでは、小さい`ProductNo`は表示対象から除外されます（最大`ProductNo`のみ返却）
 
 ### 実機検証
 

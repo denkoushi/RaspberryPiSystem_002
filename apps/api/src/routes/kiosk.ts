@@ -8,6 +8,7 @@ import { ApiError } from '../lib/errors.js';
 import { sendSlackNotification } from '../services/notifications/slack-webhook.js';
 import { fetchSeibanProgressRows } from '../services/production-schedule/seiban-progress.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../services/production-schedule/constants.js';
+import { buildMaxProductNoWinnerCondition } from '../services/production-schedule/row-resolver/index.js';
 
 const ORDER_NUMBER_MIN = 1;
 const ORDER_NUMBER_MAX = 10;
@@ -292,7 +293,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const hasNoteOnly = query.hasNoteOnly === true;
     const hasDueDateOnly = query.hasDueDateOnly === true;
 
-    const baseWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    const baseWhere = Prisma.sql`
+      "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+    `;
     const uniqueTokens = parseCsvList(rawQueryText).slice(0, 8);
 
     const textConditions: Prisma.Sql[] = [];
@@ -449,6 +453,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
         AND ("rowData"->>'FSIGENCD') IS NOT NULL
         AND ("rowData"->>'FSIGENCD') <> ''
       ORDER BY ("rowData"->>'FSIGENCD') ASC

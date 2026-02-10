@@ -110,6 +110,36 @@ describe('Kiosk Production Schedule API', () => {
     expect(completedRow?.rowData.progress).toBe('完了');
   });
 
+  it('keeps only the larger ProductNo for the same seiban+process key', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-older-duplicate',
+          rowData: { ProductNo: '0003', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-newer-duplicate',
+          rowData: { ProductNo: '0009', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
+        },
+      ],
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=BA1S2320',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0]?.rowData.ProductNo).toBe('0009');
+  });
+
   it('completes a row and keeps it in list (grayed out)', async () => {
     const list = await app.inject({
       method: 'GET',

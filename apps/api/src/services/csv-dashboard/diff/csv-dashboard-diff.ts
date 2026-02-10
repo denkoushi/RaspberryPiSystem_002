@@ -34,6 +34,11 @@ type DiffResult = {
   rowsSkipped: number;
 };
 
+type MaxProductNoDiffOptions = {
+  maxProductNoWins?: boolean;
+  productNoColumn?: string;
+};
+
 const parseJstDate = (value: unknown): Date | null => {
   if (value instanceof Date) {
     return value;
@@ -67,13 +72,35 @@ const resolveUpdatedAt = (rowData: Prisma.JsonValue, fallback: Date): Date => {
   return parseJstDate(updatedAt) ?? fallback;
 };
 
+const resolveProductNo = (rowData: Prisma.JsonValue, productNoColumn: string): bigint | null => {
+  const value = (rowData as Record<string, unknown> | null | undefined)?.[productNoColumn];
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  try {
+    return BigInt(trimmed);
+  } catch {
+    return null;
+  }
+};
+
 export function computeCsvDashboardDedupDiff(params: {
   dashboardId: string;
   incomingRows: IncomingRow[];
   existingRows: ExistingRow[];
   completedValue: string;
+  options?: MaxProductNoDiffOptions;
 }): DiffResult {
-  const { dashboardId, incomingRows, existingRows } = params;
+  const { dashboardId, incomingRows, existingRows, options } = params;
+  const productNoColumn = options?.productNoColumn ?? 'ProductNo';
+  const maxProductNoWins = options?.maxProductNoWins === true;
   const incomingByHash = new Map<string, { occurredAt: Date; data: NormalizedRowData }>();
   let rowsAdded = 0;
   let rowsSkipped = 0;
@@ -111,6 +138,26 @@ export function computeCsvDashboardDedupDiff(params: {
       });
       rowsAdded++;
       continue;
+    }
+
+    if (maxProductNoWins) {
+      const incomingProductNo = resolveProductNo(incoming.data as Prisma.JsonValue, productNoColumn);
+      const existingProductNo = resolveProductNo(existing.rowData, productNoColumn);
+      if (incomingProductNo !== null && existingProductNo !== null) {
+        if (incomingProductNo < existingProductNo) {
+          rowsSkipped++;
+          continue;
+        }
+        if (incomingProductNo > existingProductNo) {
+          updates.push({
+            id: existing.id,
+            occurredAt: incoming.occurredAt,
+            rowData: incoming.data as Prisma.InputJsonValue
+          });
+          rowsAdded++;
+          continue;
+        }
+      }
     }
 
     const incomingUpdatedAt = resolveUpdatedAt(incoming.data as Prisma.JsonValue, incoming.occurredAt);
