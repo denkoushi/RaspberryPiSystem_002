@@ -74,7 +74,22 @@ const envSchema = z.object({
     z.enum(['true', 'false']).default('false')
   ),
   ALERTS_DB_INGEST_INTERVAL_SECONDS: z.coerce.number().min(10).max(3600).default(60),
-  ALERTS_DB_INGEST_LIMIT: z.coerce.number().min(1).max(1000).default(50)
+  ALERTS_DB_INGEST_LIMIT: z.coerce.number().min(1).max(1000).default(50),
+
+  // Gmail trash cleanup (processed label in trash -> hard delete)
+  GMAIL_TRASH_CLEANUP_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('true')
+  ),
+  GMAIL_TRASH_CLEANUP_CRON: z.string().default('0 3 * * *'),
+  GMAIL_TRASH_CLEANUP_LABEL: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : v),
+    z.string().min(1).default('rps_processed')
+  ),
+  GMAIL_TRASH_CLEANUP_MIN_AGE: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : v),
+    z.string().min(1).default('older_than:30m')
+  )
 });
 
 export const env = envSchema.parse(process.env);

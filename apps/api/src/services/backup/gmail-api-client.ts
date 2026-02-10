@@ -37,6 +37,13 @@ export interface GmailMessage {
   };
 }
 
+export interface GmailTrashCleanupResult {
+  query: string;
+  totalMatched: number;
+  deletedCount: number;
+  errors: Array<{ messageId: string; error: string }>;
+}
+
 /**
  * Gmail APIクライアント
  * Gmail APIを使用してメール検索、添付ファイル取得、メールアーカイブを行う
@@ -48,6 +55,34 @@ export class GmailApiClient {
   constructor(oauth2Client: OAuth2Client) {
     this.oauth2Client = oauth2Client;
     this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  }
+
+  private async findLabelIdByName(labelName: string): Promise<string | undefined> {
+    const response = await this.gmail.users.labels.list({ userId: 'me' });
+    const labels = response.data.labels || [];
+    const found = labels.find((label) => label.name === labelName);
+    return found?.id || undefined;
+  }
+
+  private async ensureLabel(labelName: string): Promise<string> {
+    const existingId = await this.findLabelIdByName(labelName);
+    if (existingId) {
+      return existingId;
+    }
+
+    const created = await this.gmail.users.labels.create({
+      userId: 'me',
+      requestBody: {
+        name: labelName,
+        labelListVisibility: 'labelShow',
+        messageListVisibility: 'show',
+      },
+    });
+
+    if (!created.data.id) {
+      throw new Error(`Failed to create Gmail label: ${labelName}`);
+    }
+    return created.data.id;
   }
 
   /**
@@ -240,9 +275,20 @@ export class GmailApiClient {
   async trashMessage(messageId: string): Promise<void> {
     try {
       const safeMessageId = messageId ? messageId.slice(-6) : null;
+      const processedLabelName = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
+      const processedLabelId = await this.ensureLabel(processedLabelName);
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:trashMessage',message:'trashMessage called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
+
+      await this.gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          addLabelIds: [processedLabelId],
+        },
+      });
+
       await this.gmail.users.messages.trash({
         userId: 'me',
         id: messageId,
@@ -255,6 +301,53 @@ export class GmailApiClient {
         '[GmailApiClient] Failed to trash message'
       );
       throw new Error(`Failed to trash message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async cleanupProcessedTrash(params?: {
+    processedLabelName?: string;
+    minAgeQuery?: string;
+  }): Promise<GmailTrashCleanupResult> {
+    const processedLabelName = (params?.processedLabelName || process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
+    const minAgeQuery = (params?.minAgeQuery || process.env.GMAIL_TRASH_CLEANUP_MIN_AGE || 'older_than:30m').trim();
+    const queryParts = ['label:TRASH', `label:${processedLabelName}`];
+    if (minAgeQuery.length > 0) {
+      queryParts.push(minAgeQuery);
+    }
+    const query = queryParts.join(' ');
+
+    try {
+      const messageIds = await this.searchMessagesAll(query);
+      const errors: Array<{ messageId: string; error: string }> = [];
+      let deletedCount = 0;
+
+      for (const messageId of messageIds) {
+        try {
+          await this.gmail.users.messages.delete({
+            userId: 'me',
+            id: messageId,
+          });
+          deletedCount += 1;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          errors.push({ messageId, error: errorMessage });
+        }
+      }
+
+      return {
+        query,
+        totalMatched: messageIds.length,
+        deletedCount,
+        errors,
+      };
+    } catch (error) {
+      logger?.error(
+        { err: error, query },
+        '[GmailApiClient] Failed to cleanup processed trash messages'
+      );
+      throw new Error(
+        `Failed to cleanup processed trash messages: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
