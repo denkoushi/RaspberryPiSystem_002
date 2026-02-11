@@ -1429,6 +1429,26 @@ export async function getCsvDashboard(id: string) {
   return data.dashboard;
 }
 
+export interface CsvDashboardCreateInput {
+  name: string;
+  description?: string | null;
+  columnDefinitions: CsvDashboard['columnDefinitions'];
+  dateColumnName?: string | null;
+  displayPeriodDays?: number;
+  emptyMessage?: string | null;
+  ingestMode?: 'APPEND' | 'DEDUP';
+  dedupKeyColumns?: string[];
+  gmailScheduleId?: string | null;
+  gmailSubjectPattern?: string | null;
+  templateType?: 'TABLE' | 'CARD_GRID';
+  templateConfig: Record<string, unknown>;
+}
+
+export async function createCsvDashboard(payload: CsvDashboardCreateInput) {
+  const { data } = await api.post<{ dashboard: CsvDashboard }>('/csv-dashboards', payload);
+  return data.dashboard;
+}
+
 export async function updateCsvDashboard(
   id: string,
   payload: Partial<Pick<CsvDashboard, 'name' | 'description' | 'columnDefinitions' | 'dateColumnName' | 'displayPeriodDays' | 'emptyMessage' | 'ingestMode' | 'dedupKeyColumns' | 'gmailScheduleId' | 'gmailSubjectPattern' | 'templateType' | 'templateConfig' | 'enabled'>>
