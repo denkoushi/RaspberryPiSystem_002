@@ -3053,3 +3053,49 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 **解決状況**: ✅ **実装完了・テスト成功**（2026-02-11）
 
 ---
+
+### [KB-253] 加工機CSVインポートのデフォルト列定義とDB設定不整合問題
+
+**日付**: 2026-02-11
+
+**事象**: 
+- 加工機CSVインポート時に「加工機CSVの2行目でエラー: equipmentManagementNumber と name が undefined」が発生
+- DBに列定義が登録されていない場合でも、デフォルト列定義を使用するように実装したが、エラーが続いた
+- 実際のCSVファイル（`加工機_マスター.csv`）はローカルテストでは正常にパースできた
+
+**要因**: 
+- **根本原因**: DB側の`master-config-machines`レコードの`columnDefinitions`で、`internalName`が壊れていた
+  - 正しい値: `equipmentManagementNumber`, `name`
+  - 実際の値: `設備管理番号`, `加工機_名称`（日本語ヘッダーがそのまま`internalName`になっていた）
+- このため、`CsvRowMapper`がマッピングした結果、`equipmentManagementNumber`と`name`が`undefined`になり、Zodスキーマのバリデーションでエラーが発生
+
+**試行した対策**: 
+- [試行1] デフォルト列定義を`MachineCsvImporter`に追加 → ローカルテストでは成功したが、本番環境ではDB側の設定が優先され、壊れた設定が使用されていた
+- [試行2] CSVインポートのエラーメッセージを改善（実際のCSVヘッダーを表示） → デバッグしやすくなったが、根本原因は解決していなかった
+
+**有効だった対策**: 
+- ✅ **DB側の列定義を直接修正（2026-02-11）**:
+  - `CsvDashboard`テーブルの`master-config-machines`レコードの`columnDefinitions`を正しい`internalName`に更新
+  - SQLで直接修正: `UPDATE "CsvDashboard" SET "columnDefinitions" = '[...]'::jsonb WHERE id = 'master-config-machines'`
+  - 修正後、CSVインポートが正常に動作することを確認
+
+**学んだこと**: 
+- **DB側の設定が優先される**: `getEffectiveConfig`が`null`を返さない場合、DB側の設定が使用される。デフォルト列定義は「DB側に設定がない場合」のフォールバック
+- **列定義の`internalName`は英語キーである必要がある**: `internalName`はシステム内部で使用するキー名であり、日本語ヘッダーとは別物。`csvHeaderCandidates`で日本語ヘッダーとマッピングする
+- **DB設定の検証**: 列定義を設定する際は、`internalName`が正しい英語キーであることを確認する必要がある
+- **エラーメッセージの重要性**: 実際のCSVヘッダーを表示することで、デバッグが容易になる
+
+**再発防止**: 
+- 列定義を設定する際は、`internalName`が正しい英語キーであることを確認する
+- 管理コンソールの「CSV取り込み」→「取り込み設定（列定義・許可・戦略）」で列定義を設定する際、デフォルト値が正しく読み込まれることを確認する
+- DB側の設定を直接確認する方法をドキュメント化する
+
+**関連ファイル**: 
+- `apps/api/src/services/imports/importers/machine.ts`（デフォルト列定義の追加）
+- `apps/api/src/services/imports/csv-row-mapper.ts`（エラーメッセージ改善）
+- `apps/api/src/services/imports/csv-import-config.service.ts`（列定義取得）
+
+**解決状況**: ✅ **解決済み**（2026-02-11）
+- DB側の列定義を修正し、CSVインポートが正常に動作することを確認
+
+---

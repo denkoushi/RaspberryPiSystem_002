@@ -454,6 +454,28 @@ equipmentManagementNumber,name,shortName,classification,operatingStatus,ncManual
 - `equipmentManagementNumber`: 1文字以上（一意）
 - `name`: 1文字以上
 
+#### 日本語ヘッダー対応
+
+加工機CSVは日本語ヘッダー（`加工機_名称`, `設備管理番号`など）でも取り込み可能です。
+
+**デフォルト列定義**:
+- DBに列定義が登録されていない場合、デフォルトの列定義が自動的に使用されます
+- デフォルト列定義では、以下の日本語ヘッダーがサポートされています:
+  - `加工機_名称` → `name`
+  - `設備管理番号` → `equipmentManagementNumber`
+  - `加工機_略称` → `shortName`
+  - `加工機分類` → `classification`
+  - `稼働状態` → `operatingStatus`
+  - `NC_Manual` → `ncManual`
+  - `maker` → `maker`
+  - `工程分類` → `processClassification`
+  - `クーラント` → `coolant`
+
+**列定義の設定**:
+- 管理コンソールの「CSV取り込み」→「取り込み設定（列定義・許可・戦略）」で列定義を設定できます
+- 列定義を設定する際は、`internalName`が正しい英語キーであることを確認してください（例: `equipmentManagementNumber`, `name`）
+- `csvHeaderCandidates`に日本語ヘッダーを追加することで、複数のヘッダー形式に対応できます
+
 ## インポート処理の動作
 
 ### 通常インポート（`replaceExisting: false`）
@@ -488,6 +510,38 @@ equipmentManagementNumber,name,shortName,classification,operatingStatus,ncManual
 - `nfcTagUid="..."は既にitemCode="..."で使用されています。itemCode="..."では使用できません。`: 既存の工具が同じ`nfcTagUid`を使用している
 - `CSV内でnfcTagUidが重複しています: ...`: CSV内で同じ`nfcTagUid`が複数回使用されている
 - `従業員とアイテムで同じnfcTagUidが使用されています: ...`: 従業員CSVと工具CSV間で`nfcTagUid`が重複している
+
+### 列定義エラー
+
+- `CSVファイルの列構成が設定と一致しません。見つからなかった列: ...`: CSVヘッダーと列定義の候補が一致しない
+  - **対処法**: エラーメッセージに表示されている「実際のCSVヘッダー」を確認し、管理コンソールで列定義の候補を追加する
+  - **例**: `加工機_名称`が候補に含まれていない場合、列定義の`csvHeaderCandidates`に`加工機_名称`を追加する
+
+### 加工機CSVインポートのトラブルシューティング
+
+**エラー**: `equipmentManagementNumber と name が undefined`
+
+**原因**: DB側の列定義（`master-config-machines`）で`internalName`が壊れている可能性があります。
+
+**確認方法**:
+```sql
+SELECT id, "columnDefinitions"->0->>'internalName' AS c0, "columnDefinitions"->1->>'internalName' AS c1
+FROM "CsvDashboard" WHERE id='master-config-machines';
+```
+
+**期待される値**:
+- `c0`: `equipmentManagementNumber`
+- `c1`: `name`
+
+**壊れている場合の値**:
+- `c0`: `設備管理番号`（日本語ヘッダーがそのまま`internalName`になっている）
+- `c1`: `加工機_名称`（日本語ヘッダーがそのまま`internalName`になっている）
+
+**修正方法**:
+1. 管理コンソールの「CSV取り込み」→「取り込み設定（列定義・許可・戦略）」で列定義を確認・修正
+2. または、DB側で直接修正（[KB-253](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)参照）
+
+**関連KB**: [KB-253: 加工機CSVインポートのデフォルト列定義とDB設定不整合問題](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)
 
 ## CSVエクスポート仕様
 
@@ -840,5 +894,7 @@ CSVフォーマット仕様実装の実機検証手順は、[検証チェック�
 - [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
 - [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-003-p2002エラーnfctaguidの重複が発生する)
+- [KB-253: 加工機CSVインポートのデフォルト列定義とDB設定不整合問題](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)
+- [KB-254: 加工機マスタのメンテナンスページ追加（CRUD機能）](../knowledge-base/frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能)
 - [検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)
 
