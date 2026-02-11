@@ -45,7 +45,7 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
  * @param stream MediaStream
  * @returns 撮影した画像のBlob（JPEG形式）
  */
-const DEFAULT_MIN_FRAME_BRIGHTNESS = 8; // 0-255 スケール（暗めでも撮影を許容する）
+const DEFAULT_MIN_FRAME_BRIGHTNESS = 1; // 0-255 スケール（暗めでも撮影を許容する）
 
 function resolveMinFrameBrightness(): number {
   // ビルド時環境変数（Vite）で上書き可能にする
