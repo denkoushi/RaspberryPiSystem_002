@@ -1,0 +1,345 @@
+import { Prisma } from '@prisma/client';
+
+import { prisma } from '../../lib/prisma.js';
+import { ApiError } from '../../lib/errors.js';
+import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+
+const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
+
+export async function completeProductionScheduleRow(params: {
+  rowId: string;
+  locationKey: string;
+}): Promise<{ success: true; alreadyCompleted: false; rowData: Record<string, unknown> }> {
+  const { rowId, locationKey } = params;
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { id: true, rowData: true }
+  });
+  if (!row) {
+    throw new ApiError(404, '対象の行が見つかりません');
+  }
+
+  const current = row.rowData as Record<string, unknown>;
+  const currentProgress = typeof current.progress === 'string' ? current.progress.trim() : '';
+
+  // トグル動作: 既に完了している場合は未完了に戻す
+  const nextRowData: Record<string, unknown> = {
+    ...current,
+    progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE
+  };
+
+  const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    }
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.csvDashboardRow.update({
+      where: { id: row.id },
+      data: { rowData: nextRowData as Prisma.InputJsonValue }
+    });
+
+    if (currentAssignment) {
+      await tx.productionScheduleOrderAssignment.delete({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: row.id,
+            location: locationKey
+          }
+        }
+      });
+
+      await tx.productionScheduleOrderAssignment.updateMany({
+        where: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: locationKey,
+          resourceCd: currentAssignment.resourceCd,
+          orderNumber: { gt: currentAssignment.orderNumber }
+        },
+        data: { orderNumber: { decrement: 1 } }
+      });
+    }
+  });
+
+  return { success: true, alreadyCompleted: false, rowData: nextRowData };
+}
+
+export async function upsertProductionScheduleNote(params: {
+  rowId: string;
+  note: string;
+  locationKey: string;
+}): Promise<{ success: true; note: string | null }> {
+  const { rowId, note, locationKey } = params;
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { id: true }
+  });
+  if (!row) {
+    throw new ApiError(404, '対象の行が見つかりません');
+  }
+
+  const trimmedNote = note.slice(0, 100).trim();
+  const existing = await prisma.productionScheduleRowNote.findUnique({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    }
+  });
+  if (trimmedNote.length === 0) {
+    if (existing?.dueDate || (existing?.processingType && existing.processingType.trim().length > 0)) {
+      await prisma.productionScheduleRowNote.update({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: row.id,
+            location: locationKey
+          }
+        },
+        data: { note: '' }
+      });
+    } else {
+      await prisma.productionScheduleRowNote.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          location: locationKey
+        }
+      });
+    }
+    return { success: true, note: null };
+  }
+  await prisma.productionScheduleRowNote.upsert({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      location: locationKey,
+      note: trimmedNote
+    },
+    update: { note: trimmedNote }
+  });
+
+  return { success: true, note: trimmedNote };
+}
+
+export async function upsertProductionScheduleDueDate(params: {
+  rowId: string;
+  dueDateText: string;
+  locationKey: string;
+}): Promise<{ success: true; dueDate: Date | null }> {
+  const { rowId, dueDateText, locationKey } = params;
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { id: true }
+  });
+  if (!row) {
+    throw new ApiError(404, '対象の行が見つかりません');
+  }
+
+  const dueDateValue = dueDateText.trim();
+  const existing = await prisma.productionScheduleRowNote.findUnique({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    }
+  });
+
+  if (dueDateValue.length === 0) {
+    const existingNote = existing?.note?.trim() ?? '';
+    const existingProcessing = existing?.processingType?.trim() ?? '';
+    if (existingNote.length === 0 && existingProcessing.length === 0) {
+      await prisma.productionScheduleRowNote.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          location: locationKey
+        }
+      });
+    } else {
+      await prisma.productionScheduleRowNote.update({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: row.id,
+            location: locationKey
+          }
+        },
+        data: { dueDate: null }
+      });
+    }
+    return { success: true, dueDate: null };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
+    throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
+  }
+
+  const dueDate = new Date(`${dueDateValue}T00:00:00.000Z`);
+  await prisma.productionScheduleRowNote.upsert({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      location: locationKey,
+      note: existing?.note?.trim() ?? '',
+      dueDate
+    },
+    update: { dueDate }
+  });
+
+  return { success: true, dueDate };
+}
+
+export async function upsertProductionScheduleProcessingType(params: {
+  rowId: string;
+  processingType: string;
+  locationKey: string;
+}): Promise<{ success: true; processingType: string | null }> {
+  const { rowId, processingType, locationKey } = params;
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { id: true }
+  });
+  if (!row) {
+    throw new ApiError(404, '対象の行が見つかりません');
+  }
+
+  const incomingType = processingType ?? '';
+  if (incomingType.length > 0 && !PROCESSING_TYPES.includes(incomingType as (typeof PROCESSING_TYPES)[number])) {
+    throw new ApiError(400, '無効な処理種別です');
+  }
+
+  const existing = await prisma.productionScheduleRowNote.findUnique({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    }
+  });
+
+  if (incomingType.length === 0) {
+    const existingNote = existing?.note?.trim() ?? '';
+    const existingDueDate = existing?.dueDate ?? null;
+    if (existingNote.length === 0 && !existingDueDate) {
+      await prisma.productionScheduleRowNote.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          location: locationKey
+        }
+      });
+    } else {
+      await prisma.productionScheduleRowNote.update({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: row.id,
+            location: locationKey
+          }
+        },
+        data: { processingType: null }
+      });
+    }
+    return { success: true, processingType: null };
+  }
+
+  await prisma.productionScheduleRowNote.upsert({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      location: locationKey,
+      note: existing?.note?.trim() ?? '',
+      dueDate: existing?.dueDate ?? null,
+      processingType: incomingType
+    },
+    update: { processingType: incomingType }
+  });
+
+  return { success: true, processingType: incomingType };
+}
+
+export async function upsertProductionScheduleOrder(params: {
+  rowId: string;
+  resourceCd: string;
+  orderNumber: number | null;
+  locationKey: string;
+}): Promise<{ success: true; orderNumber: number | null }> {
+  const { rowId, resourceCd, orderNumber, locationKey } = params;
+  const row = await prisma.csvDashboardRow.findFirst({
+    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    select: { id: true, rowData: true }
+  });
+  if (!row) {
+    throw new ApiError(404, '対象の行が見つかりません');
+  }
+
+  const rowData = row.rowData as Record<string, unknown>;
+  const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD : '';
+  if (rowResourceCd && rowResourceCd !== resourceCd) {
+    throw new ApiError(400, '資源CDが一致しません');
+  }
+
+  if (orderNumber === null) {
+    await prisma.productionScheduleOrderAssignment.deleteMany({
+      where: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    });
+    return { success: true, orderNumber: null };
+  }
+
+  const conflicting = await prisma.productionScheduleOrderAssignment.findFirst({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: locationKey,
+      resourceCd,
+      orderNumber,
+      csvDashboardRowId: { not: row.id }
+    }
+  });
+  if (conflicting) {
+    throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');
+  }
+
+  await prisma.productionScheduleOrderAssignment.upsert({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    },
+    update: {
+      resourceCd,
+      orderNumber
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      location: locationKey,
+      resourceCd,
+      orderNumber
+    }
+  });
+
+  return { success: true, orderNumber };
+}

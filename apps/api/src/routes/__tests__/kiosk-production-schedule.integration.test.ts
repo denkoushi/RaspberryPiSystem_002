@@ -266,6 +266,68 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
   });
 
+  it('returns production-schedule resources in ascending order', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/resources',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json() as { resources: string[] };
+    expect(body.resources).toEqual(['1', '2']);
+  });
+
+  it('returns order usage grouped by resourceCd and supports resource filter', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { createdAt: 'asc' }
+    });
+    const row1 = rows.find((r) => (r.rowData as any).ProductNo === '0000');
+    const row2 = rows.find((r) => (r.rowData as any).ProductNo === '0001');
+    const row3 = rows.find((r) => (r.rowData as any).ProductNo === '0002');
+    expect(row1).toBeDefined();
+    expect(row2).toBeDefined();
+    expect(row3).toBeDefined();
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row1?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '1', orderNumber: 1 }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row2?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '1', orderNumber: 2 }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${row3?.id}/order`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { resourceCd: '2', orderNumber: 1 }
+    });
+
+    const filteredRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/order-usage?resourceCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(filteredRes.statusCode).toBe(200);
+    const filteredBody = filteredRes.json() as { usage: Record<string, number[]> };
+    expect(filteredBody.usage).toEqual({ '1': [1, 2] });
+
+    const allRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/order-usage',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(allRes.statusCode).toBe(200);
+    const allBody = allRes.json() as { usage: Record<string, number[]> };
+    expect(allBody.usage).toEqual({ '1': [1, 2], '2': [1] });
+  });
+
   it('reassigns order numbers within the same resourceCd on complete', async () => {
     const created = await prisma.csvDashboardRow.createMany({
       data: [
