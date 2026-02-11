@@ -2867,3 +2867,118 @@ const saveNote = (rowId: string) => {
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
 
 ---
+
+### [KB-248] 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）
+
+**実装日時**: 2026-02-11
+
+**事象**: 
+- 生産スケジュール検索画面で、資源CDの検索ボタン（資源CDピルボタン群）が表示されるまでに時間がかかるようになった
+- ページマウント時に資源CDボタンが表示されず、数秒〜数十秒待たされる体感があった
+
+**要因**: 
+- **根本原因**: `GET /kiosk/production-schedule/resources` エンドポイントの実行時間が約29秒と非常に遅かった
+- **直接原因**: コミット `fb95b9c`（2026-02-10）で `buildMaxProductNoWinnerCondition`（相関サブクエリ）が `resources` エンドポイントに追加され、DB負荷が増加
+- **技術的詳細**:
+  1. 資源CDボタン群は `resourcesQuery` の結果で描画されるため、API応答が遅いと「ボタン登場」が遅くなる
+  2. `buildMaxProductNoWinnerCondition` は行ごとに「同一論理キーの中で最大ProductNoの行ID」を選ぶ相関サブクエリで、`CsvDashboardRow` 全件に対して実行される
+  3. 相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン（合計約14,422行スキャン）
+  4. `rowData->>'FSIGENCD'` に対する式インデックスが存在せず、`DISTINCT/ORDER BY` もフルスキャンに依存
+
+**Investigation**:
+1. **仮説1: scheduleQueryの応答遅延** → REJECTED（検索時のみ実行、初期表示には影響しない）
+2. **仮説2: search-state/history-progressの遅延** → REJECTED（KB-247でhistory-progressは30秒に変更済み、search-stateはシンプルなPK検索）
+3. **仮説3: UIの待機条件** → REJECTED（ツールバーは`resourcesQuery`に依存せず即時レンダリング）
+4. **仮説4: 資源CDピルの描画待ち** → CONFIRMED（`resourcesQuery.data`が来るまで何も表示されない）
+5. **仮説5: resources APIの重いクエリ** → CONFIRMED（`EXPLAIN (ANALYZE, BUFFERS)`で約29秒を確認）
+
+**Root cause**:
+- `buildMaxProductNoWinnerCondition` の相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン
+- `rowData->>'FSIGENCD'` に対する式インデックスが存在せず、`DISTINCT/ORDER BY` もフルスキャンに依存
+- 相関サブクエリのプランナーが部分インデックスを十分に活用できず、非部分インデックスが必要だった
+
+**Fix**:
+1. **式インデックス追加（2026-02-11）**:
+   - `csv_dashboard_row_prod_schedule_resource_cd_idx`: 資源CD抽出用（部分インデックス、NULL/空文字除外）
+   - `csv_dashboard_row_prod_schedule_logical_key_idx`: 論理キー一致用（部分インデックス）
+   - `csv_dashboard_row_prod_schedule_winner_lookup_idx`: winner探索+ORDER BY対応（部分インデックス）
+   - `csv_dashboard_row_winner_lookup_global_idx`: 相関サブクエリ用（非部分インデックス、プランナーが確実に拾うため）
+
+2. **計測による検証**:
+   - 本番DBで `EXPLAIN (ANALYZE, BUFFERS)` を取得し、ボトルネックを特定
+   - 変更前: `Execution Time: 29299.650 ms`（約29.3秒）
+   - 変更後: `Execution Time: 81.947 ms`（約0.082秒）
+   - **改善率: 約357倍高速化**
+
+3. **マイグレーション実装**:
+   - `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`
+   - `IF NOT EXISTS` で安全に適用可能
+   - 本番DBには直接DDL適用済み、リポジトリにはマイグレーションファイルとして記録
+
+**実装の詳細**:
+```sql
+-- 資源CD抽出用（部分インデックス）
+CREATE INDEX IF NOT EXISTS "csv_dashboard_row_prod_schedule_resource_cd_idx"
+  ON "CsvDashboardRow" (
+    "csvDashboardId",
+    ("rowData"->>'FSIGENCD')
+  )
+  WHERE "csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+    AND ("rowData"->>'FSIGENCD') IS NOT NULL
+    AND ("rowData"->>'FSIGENCD') <> '';
+
+-- 相関サブクエリ用（非部分インデックス、プランナーが確実に拾うため）
+CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
+  ON "CsvDashboardRow" (
+    "csvDashboardId",
+    (COALESCE("rowData"->>'FSEIBAN', '')),
+    (COALESCE("rowData"->>'FHINCD', '')),
+    (COALESCE("rowData"->>'FSIGENCD', '')),
+    (COALESCE("rowData"->>'FKOJUN', '')),
+    (CASE
+      WHEN ("rowData"->>'ProductNo') ~ '^[0-9]+$' THEN (("rowData"->>'ProductNo'))::bigint
+      ELSE -1
+    END) DESC,
+    "createdAt" DESC,
+    "id" DESC
+  );
+```
+
+**Prevention**:
+- パフォーマンス問題の早期発見: 新規機能追加時は `EXPLAIN (ANALYZE, BUFFERS)` で実行計画を確認
+- 相関サブクエリの使用時は、プランナーがインデックスを拾えるよう非部分インデックスも検討
+- 式インデックスの活用: JSONBカラムからの抽出値でWHERE/ORDER BYする場合は式インデックスを検討
+- CIでの自動検証: マイグレーションファイルはCIで自動検証されるため、構文エラーは早期発見可能
+
+**学んだこと**:
+- **相関サブクエリとインデックス**: 相関サブクエリ内では、部分インデックスが十分に活用されない場合がある。非部分インデックスを追加することで、プランナーが確実にインデックスを使用できる
+- **式インデックスの効果**: JSONBカラムからの抽出値（`rowData->>'FSIGENCD'`）に対する式インデックスは、`DISTINCT/ORDER BY` のパフォーマンスを大幅に改善できる
+- **計測の重要性**: `EXPLAIN (ANALYZE, BUFFERS)` で実行計画を確認することで、ボトルネックを正確に特定できる
+- **段階的な最適化**: まず部分インデックスを試し、効果が限定的な場合は非部分インデックスも検討する段階的アプローチが有効
+
+**実機検証結果**: ✅ **本番DBで計測・検証完了・キオスク実機動作確認完了**（2026-02-11）
+- **DB計測結果**:
+  - 変更前: `Execution Time: 29299.650 ms`（約29.3秒）
+  - 変更後: `Execution Time: 81.947 ms`（約0.082秒）
+  - `history-progress` 相当SQLも改善: `Execution Time: 314.251 ms` → `Execution Time: 2.291 ms`
+  - API体感: `curl` で `ttfb=0.244928s`, `total=0.245218s`（HTTP 200）
+- **キオスク実機動作確認**（2026-02-11）:
+  - ✅ 資源CDボタンが即座に表示されるようになった（ページマウント時に即時表示）
+  - ✅ 体感速度が大幅に向上し、問題なく使用可能
+  - ✅ ユーザー体験が改善され、待機時間が解消された
+- **CI検証**: CI全ジョブ成功、マイグレーションが正常に適用されることを確認
+
+**関連ファイル**:
+- `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`（新規: 式インデックス追加）
+- `apps/api/src/routes/kiosk.ts`（`GET /kiosk/production-schedule/resources` エンドポイント）
+- `apps/api/src/services/production-schedule/row-resolver/max-product-no-sql.ts`（`buildMaxProductNoWinnerCondition`）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（資源CDボタン群の描画）
+- `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleResources`）
+
+**関連KB**:
+- [KB-205](./api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側): 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
+- [KB-247](./frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化): 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化
+
+**解決状況**: ✅ **実装完了・CI成功・本番DB適用完了・実機検証完了**（2026-02-11）
+
+---

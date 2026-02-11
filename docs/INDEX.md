@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-11）
+
+- **✅ 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）・実機検証完了**: 生産スケジュール検索画面で、資源CDの検索ボタン（資源CDピルボタン群）が表示されるまでに時間がかかる問題を調査・解決。**原因**: `GET /kiosk/production-schedule/resources` エンドポイントの実行時間が約29秒と非常に遅かった。コミット `fb95b9c`（2026-02-10）で `buildMaxProductNoWinnerCondition`（相関サブクエリ）が `resources` エンドポイントに追加され、DB負荷が増加。相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン（合計約14,422行スキャン）。**解決策**: PostgreSQLの式インデックス（Expression Indexes）を4つ追加（資源CD抽出用・論理キー一致用・winner探索用・相関サブクエリ用）。**効果**: 実行時間が約29秒→0.08秒に改善（約357倍高速化）。`history-progress` 相当SQLも改善（314ms→2.3ms）。**実装内容**: `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`を作成し、`IF NOT EXISTS`で安全に適用可能に。本番DBには直接DDL適用済み（緊急対応）、リポジトリにはマイグレーションファイルとして記録。CI全ジョブ成功、マイグレーションが正常に適用されることを確認。**実機検証結果**: キオスク端末で資源CDボタンが即座に表示されるようになり、体感速度が大幅に向上し、問題なく使用可能であることを確認。**学んだこと**: 相関サブクエリ内では部分インデックスが十分に活用されない場合があるため、非部分インデックスも追加することでプランナーが確実にインデックスを使用できる。JSONBカラムからの抽出値に対する式インデックスは、`DISTINCT/ORDER BY`のパフォーマンスを大幅に改善できる。詳細は [knowledge-base/api.md#kb-248](./knowledge-base/api.md#kb-248-生産スケジュール資源cdボタン表示の遅延問題式インデックス追加による高速化) / [decisions/ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-10）
 
 - **✅ クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了**: 管理コンソールでクライアント端末名を編集可能にし、`status-agent`や`heartbeat`による自動上書きを防止する機能を実装。**実装内容**: `ClientDevice.name`を「表示名（手動編集）」として定義し、`POST /api/clients/status`と`POST /api/clients/heartbeat`の`update`処理から`name`更新を除去（`create`時のみ初期値としてhostnameを使用）。`PUT /api/clients/:id`に`name`更新機能を追加（Zodスキーマで100文字以内・空文字列不可・trim処理）。管理画面`ClientsPage.tsx`で名前をインライン編集可能に（`Input`コンポーネント、バリデーション、エラーメッセージ表示）。統合テストで`name`上書きが起きないこと、`PUT`で更新できることを固定。**デプロイ**: Pi5でデプロイ成功（Run ID: 20260210-211119-16770, ok=111, changed=4, failed=0）。**実機検証**: 管理画面で名前フィールドが編集可能であることを確認、名前変更後、他の端末（Pi4/Pi3）でも反映されることを確認、ビデオ通話画面、履歴画面、Slack通知など、すべての機能が正常に動作することを確認。詳細は [knowledge-base/api.md#kb-206](./knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [investigation/kiosk-client-status-investigation.md](./investigation/kiosk-client-status-investigation.md) / [api/overview.md](./api/overview.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
@@ -608,6 +612,8 @@
 | [001-module-structure.md](./decisions/001-module-structure.md) | モジュール構造の設計決定 |
 | [002-service-layer.md](./decisions/002-service-layer.md) | サービス層の設計決定 |
 | [003-camera-module.md](./decisions/003-camera-module.md) | **カメラ機能のモジュール化**（写真撮影持出機能） |
+| [ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) | Tailscale主運用への移行決定 |
+| [ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) | 生産スケジュールパフォーマンス最適化のための式インデックス追加 |
 
 ### モジュール仕様（modules/）
 
