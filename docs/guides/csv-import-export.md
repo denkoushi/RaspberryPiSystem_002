@@ -2,9 +2,9 @@
 
 ## 概要
 
-本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具）を一括インポートできます：
+本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具・加工機）を一括インポートできます：
 
-1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具の4種類に対応）✅ **実機検証完了**
+1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具・加工機の5種類に対応）✅ **実機検証完了**
 2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）✅ **実装・検証完了**
 3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート ✅ **実装・検証完了**
 4. **Gmail経由（スケジュール実行）**: 設定したスケジュールに従って自動的にGmailからCSVを取得してインポート ✅ **実装完了（2025-12-29）** ⚠️ **スケジュール実行のE2E検証は未完了（手動実行は検証済み）**
@@ -57,6 +57,13 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 ### 列定義（columnDefinitions）の確認・編集
 
 CSVダッシュボードの列定義は、管理コンソール（`/admin/csv-dashboards`）で確認・編集できます。
+
+未点検加工機の抽出で使用する場合は、点検結果CSVの列定義に以下を揃えてください。
+
+- `equipmentManagementNumber`（候補: `設備管理番号`）
+- `inspectedAt`（候補: `点検日時`）
+
+あわせて `dateColumnName` を `inspectedAt` に設定すると、当日差分（JST）で未点検判定ができます。
 
 **編集可能**:
 - 表示名（`displayName`）
@@ -187,7 +194,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ## USBメモリ経由のCSVインポート
 
-管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具の4種類に対応しています。
+管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具・加工機の5種類に対応しています。
 
 ### インポート手順
 
@@ -198,6 +205,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
    - 工具CSV (`items.csv`)
    - 計測機器CSV (`measuring-instruments.csv`)
    - 吊具CSV (`rigging-gears.csv`)
+   - 加工機CSV (`machines.csv`)
 4. **オプション設定**: 「既存データをクリアしてから取り込み」にチェックを入れるか選択
 5. **取り込み開始**: 「取り込み開始」ボタンをクリック
 
@@ -212,7 +220,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 **エンドポイント**: `POST /api/imports/master/:type`
 
 **パラメータ**:
-- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`）
+- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`, `machines`）
 
 **リクエスト形式**: multipart form data
 - `file`: CSVファイル（必須）
@@ -382,6 +390,40 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
 - CSV内で`rfidTagUid`が重複していないこと
 - 他のマスターデータCSV間で`rfidTagUid`が重複していないこと
 
+### 加工機CSV（machines.csv）
+
+#### 必須項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `equipmentManagementNumber` | 文字列 | 設備管理番号（一意） | `30024`, `AQK002` |
+| `name` | 文字列 | 加工機名称 | `HS3A_10P` |
+
+#### 任意項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `shortName` | 文字列 | 加工機略称 | `HS3A` |
+| `classification` | 文字列 | 加工機分類 | `マシニングセンター` |
+| `operatingStatus` | 文字列 | 稼働状態 | `稼働中` |
+| `ncManual` | 文字列 | NC/汎用区分 | `NC` |
+| `maker` | 文字列 | メーカー | `日立` |
+| `processClassification` | 文字列 | 工程分類 | `切削` |
+| `coolant` | 文字列 | クーラント | `THK_I_ジュラロン` |
+
+#### CSV例
+
+```csv
+equipmentManagementNumber,name,shortName,classification,operatingStatus,ncManual,maker,processClassification,coolant
+30024,HS3A_10P,HS3A,マシニングセンター,稼働中,横型,日立,切削,
+30026,HS3A_6P,HS3A,マシニングセンター,稼働中,横型,日立,切削,
+```
+
+#### バリデーションルール
+
+- `equipmentManagementNumber`: 1文字以上（一意）
+- `name`: 1文字以上
+
 ## インポート処理の動作
 
 ### 通常インポート（`replaceExisting: false`）
@@ -392,7 +434,7 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
 
 ### 全削除してからインポート（`replaceExisting: true`）
 
-- 選択したCSVの種類（従業員・工具・計測機器・吊具）の既存データを削除してからインポート
+- 選択したCSVの種類（従業員・工具・計測機器・吊具・加工機）の既存データを削除してからインポート
 - **安全性**: 参照がある個体（貸出記録、点検記録など）は削除されません
   - 従業員: 貸出記録（Loan）が存在する場合は削除されない
   - 工具: 貸出記録（Loan）が存在する場合は削除されない
@@ -479,7 +521,8 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
         { "type": "employees", "source": "/backups/csv/employees-YYYYMMDD.csv" },
         { "type": "items", "source": "/backups/csv/items-YYYYMMDD.csv" },
         { "type": "measuringInstruments", "source": "/backups/csv/measuring-instruments-YYYYMMDD.csv" },
-        { "type": "riggingGears", "source": "/backups/csv/rigging-gears-YYYYMMDD.csv" }
+        { "type": "riggingGears", "source": "/backups/csv/rigging-gears-YYYYMMDD.csv" },
+        { "type": "machines", "source": "/backups/csv/machines-YYYYMMDD.csv" }
       ],
       "replaceExisting": false,
       "enabled": true
@@ -526,7 +569,8 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
         { "type": "employees", "source": "[Pi5 CSV Import] employees" },
         { "type": "items", "source": "[Pi5 CSV Import] items" },
         { "type": "measuringInstruments", "source": "[Pi5 CSV Import] measuring-instruments" },
-        { "type": "riggingGears", "source": "[Pi5 CSV Import] rigging-gears" }
+        { "type": "riggingGears", "source": "[Pi5 CSV Import] rigging-gears" },
+        { "type": "machines", "source": "[Pi5 CSV Import] machines" }
       ],
       "replaceExisting": false,
       "enabled": true
@@ -556,6 +600,12 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
       "[CSV Import] rigging-gears",
       "CSV Import - rigging-gears",
       "吊具CSVインポート"
+    ],
+    "machines": [
+      "[Pi5 CSV Import] machines",
+      "[CSV Import] machines",
+      "CSV Import - machines",
+      "加工機CSVインポート"
     ]
   }
 }

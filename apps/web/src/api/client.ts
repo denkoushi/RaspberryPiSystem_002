@@ -201,6 +201,40 @@ export async function getEmployees() {
   return data.employees;
 }
 
+export interface Machine {
+  id: string;
+  equipmentManagementNumber: string;
+  name: string;
+  shortName?: string | null;
+  classification?: string | null;
+  operatingStatus?: string | null;
+  ncManual?: string | null;
+  maker?: string | null;
+  processClassification?: string | null;
+  coolant?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UninspectedMachinesResponse {
+  date: string;
+  csvDashboardId: string;
+  totalRunningMachines: number;
+  inspectedRunningCount: number;
+  uninspectedCount: number;
+  uninspectedMachines: Machine[];
+}
+
+export async function getMachines(params?: { search?: string; operatingStatus?: string }) {
+  const { data } = await api.get<{ machines: Machine[] }>('/tools/machines', { params });
+  return data.machines;
+}
+
+export async function getUninspectedMachines(params: { csvDashboardId: string; date?: string }) {
+  const { data } = await api.get<UninspectedMachinesResponse>('/tools/machines/uninspected', { params });
+  return data;
+}
+
 // キオスク専用の従業員リスト取得（x-client-key認証）
 export async function getKioskEmployees(clientKey?: string) {
   const { data } = await api.get<{ employees: Array<{ id: string; displayName: string; department: string | null }> }>('/kiosk/employees', {
@@ -1014,7 +1048,7 @@ export async function importMaster(payload: ImportMasterPayload) {
 }
 
 interface ImportMasterSinglePayload {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines';
   file: File;
   replaceExisting?: boolean;
 }
@@ -1029,7 +1063,8 @@ export async function importMasterSingle(payload: ImportMasterSinglePayload) {
     'employees': 'employees',
     'items': 'items',
     'measuringInstruments': 'measuring-instruments',
-    'riggingGears': 'rigging-gears'
+    'riggingGears': 'rigging-gears',
+    'machines': 'machines'
   };
   const urlType = typeMap[payload.type] || payload.type;
 

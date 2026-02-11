@@ -5,7 +5,7 @@ import { useImportMasterSingle } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
-type ImportType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+type ImportType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines';
 
 interface ImportFormProps {
   type: ImportType;
@@ -168,6 +168,17 @@ export function MasterImportPage() {
         formatSpec={{
           required: 'managementNumber（管理番号、例: RG-001）, name（名称）',
           optional: 'storageLocation, department, startedAt, usableYears, maxLoadTon, lengthMm, widthMm, thicknessMm, status, notes, rfidTagUid'
+        }}
+      />
+
+      <ImportForm
+        type="machines"
+        title="加工機CSV (machines.csv)"
+        description="USBメモリ上の machines.csv をPCにコピーした後、以下から選択してアップロードしてください。"
+        formatSpec={{
+          required: 'equipmentManagementNumber（設備管理番号）, name（加工機名称）',
+          optional: 'shortName, classification, operatingStatus, ncManual, maker, processClassification, coolant',
+          note: '実CSVが日本語ヘッダーでも、列定義のヘッダー候補に登録すれば取り込み可能です。'
         }}
       />
     </div>

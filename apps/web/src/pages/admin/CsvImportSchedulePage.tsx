@@ -34,6 +34,7 @@ const SUBJECT_PATTERN_TYPES: Array<{ value: CsvImportSubjectPatternType; label: 
   { value: 'items', label: 'アイテム' },
   { value: 'measuringInstruments', label: '計測機器' },
   { value: 'riggingGears', label: '吊具' },
+  { value: 'machines', label: '加工機' },
   { value: 'csvDashboards', label: 'CSVダッシュボード' }
 ];
 
@@ -63,6 +64,7 @@ export function CsvImportSchedulePage() {
     items: { pattern: '', priority: 0, enabled: true },
     measuringInstruments: { pattern: '', priority: 0, enabled: true },
     riggingGears: { pattern: '', priority: 0, enabled: true },
+    machines: { pattern: '', priority: 0, enabled: true },
     csvDashboards: { pattern: '', priority: 0, enabled: true }
   });
 
@@ -78,6 +80,7 @@ export function CsvImportSchedulePage() {
       items: [],
       measuringInstruments: [],
       riggingGears: [],
+      machines: [],
       csvDashboards: []
     };
     for (const pattern of subjectPatterns) {
@@ -631,7 +634,7 @@ export function CsvImportSchedulePage() {
                       value={target.type}
                       onChange={(e) => {
                         const newTargets = [...(formData.targets || [])];
-                        newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards', source: '' };
+                        newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards', source: '' };
                         setFormData({ ...formData, targets: newTargets });
                       }}
                     >
@@ -639,6 +642,7 @@ export function CsvImportSchedulePage() {
                       <option value="items">アイテム</option>
                       <option value="measuringInstruments">計測機器</option>
                       <option value="riggingGears">吊具</option>
+                      <option value="machines">加工機</option>
                       <option value="csvDashboards">CSVダッシュボード</option>
                     </select>
                     {target.type === 'csvDashboards' ? (
@@ -694,7 +698,7 @@ export function CsvImportSchedulePage() {
                     ) : (
                       <Input
                         className="flex-1"
-                        placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : '/backups/csv/...'}
+                        placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : target.type === 'machines' ? '/backups/csv/machines.csv' : '/backups/csv/...'}
                         value={target.source}
                         onChange={(e) => {
                           const newTargets = [...(formData.targets || [])];
@@ -1067,7 +1071,7 @@ export function CsvImportSchedulePage() {
                                 value={target.type}
                                 onChange={(e) => {
                                   const newTargets = [...(formData.targets || [])];
-                                  newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards', source: '' };
+                                  newTargets[index] = { ...target, type: e.target.value as 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards', source: '' };
                                   setFormData({ ...formData, targets: newTargets });
                                 }}
                               >
@@ -1075,6 +1079,7 @@ export function CsvImportSchedulePage() {
                                 <option value="items">アイテム</option>
                                 <option value="measuringInstruments">計測機器</option>
                                 <option value="riggingGears">吊具</option>
+                                <option value="machines">加工機</option>
                                 <option value="csvDashboards">CSVダッシュボード</option>
                               </select>
                               {formData.provider === 'gmail' ? (
@@ -1130,7 +1135,7 @@ export function CsvImportSchedulePage() {
                               ) : (
                                 <Input
                                   className="flex-1 text-xs"
-                                  placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : '/backups/csv/...'}
+                                  placeholder={target.type === 'employees' ? '/backups/csv/employees.csv' : target.type === 'items' ? '/backups/csv/items.csv' : target.type === 'machines' ? '/backups/csv/machines.csv' : '/backups/csv/...'}
                                   value={target.source}
                                   onChange={(e) => {
                                     const newTargets = [...(formData.targets || [])];

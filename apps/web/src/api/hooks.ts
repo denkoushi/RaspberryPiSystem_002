@@ -53,6 +53,8 @@ import {
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
+  getUninspectedMachines,
+  getMachines,
   importMasterSingle,
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
@@ -168,6 +170,25 @@ export function useEmployees() {
   return useQuery({
     queryKey: ['employees'],
     queryFn: getEmployees
+  });
+}
+
+export function useMachines(params?: { search?: string; operatingStatus?: string }) {
+  return useQuery({
+    queryKey: ['machines', params],
+    queryFn: () => getMachines(params),
+  });
+}
+
+export function useUninspectedMachines(params?: { csvDashboardId?: string; date?: string }, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['machines-uninspected', params],
+    queryFn: () =>
+      getUninspectedMachines({
+        csvDashboardId: params?.csvDashboardId ?? '',
+        date: params?.date,
+      }),
+    enabled: (options?.enabled ?? true) && Boolean(params?.csvDashboardId),
   });
 }
 
@@ -738,6 +759,9 @@ export function useImportMasterSingle() {
         queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
       } else if (variables.type === 'riggingGears') {
         queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+      } else if (variables.type === 'machines') {
+        queryClient.invalidateQueries({ queryKey: ['machines'] });
+        queryClient.invalidateQueries({ queryKey: ['machines-uninspected'] });
       }
     }
   });

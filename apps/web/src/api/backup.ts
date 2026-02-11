@@ -43,7 +43,7 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
@@ -52,6 +52,7 @@ export type CsvImportSubjectPatternType =
   | 'items'
   | 'measuringInstruments'
   | 'riggingGears'
+  | 'machines'
   | 'csvDashboards';
 
 export interface CsvImportSubjectPattern {
@@ -65,7 +66,7 @@ export interface CsvImportSubjectPattern {
   updatedAt: string;
 }
 
-export type CsvImportConfigType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+export type CsvImportConfigType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines';
 export type CsvImportStrategy = 'UPSERT' | 'REPLACE';
 
 export interface CsvImportColumnDefinition {
@@ -344,6 +345,7 @@ export interface BackupConfig {
     items?: string[];
     measuringInstruments?: string[];
     riggingGears?: string[];
+    machines?: string[];
   };
   csvImportHistory?: {
     retentionDays?: number;

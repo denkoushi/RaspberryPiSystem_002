@@ -48,6 +48,7 @@ export function AdminLayout() {
           { to: '/admin/tools/inspection-items', label: '点検項目' },
           { to: '/admin/tools/instrument-tags', label: 'RFIDタグ' },
           { to: '/admin/tools/inspection-records', label: '点検記録' },
+          { to: '/admin/tools/machines-uninspected', label: '未点検（加工機）' },
           { to: '/admin/tools/rigging-gears', label: '吊具' },
           { to: '/admin/tools/history', label: '履歴' },
           { to: '/admin/clients', label: 'クライアント端末' },
@@ -113,6 +114,9 @@ export function AdminLayout() {
             </NavLink>
             <NavLink to="/admin/tools/inspection-records" className={linkClass}>
               点検記録
+            </NavLink>
+            <NavLink to="/admin/tools/machines-uninspected" className={linkClass}>
+              未点検（加工機）
             </NavLink>
             <NavLink to="/admin/tools/rigging-gears" className={linkClass}>
               吊具

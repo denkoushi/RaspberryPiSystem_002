@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * CSVインポートタイプ
  */
-export const CsvImportTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'csvDashboards']);
+export const CsvImportTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards']);
 
 /**
  * CSVインポートターゲット（スケジュール内の1つの対象）
@@ -135,6 +135,12 @@ export const BackupConfigSchema = z.object({
       '[CSV Import] rigging-gears',
       'CSV Import - rigging-gears',
       '吊具CSVインポート'
+    ],
+    machines: [
+      '[Pi5 CSV Import] machines',
+      '[CSV Import] machines',
+      'CSV Import - machines',
+      '加工機CSVインポート'
     ]
   }),
   csvImportHistory: z.object({
@@ -240,6 +246,12 @@ export const defaultBackupConfig: BackupConfig = {
       '[CSV Import] rigging-gears',
       'CSV Import - rigging-gears',
       '吊具CSVインポート'
+    ],
+    machines: [
+      '[Pi5 CSV Import] machines',
+      '[CSV Import] machines',
+      'CSV Import - machines',
+      '加工機CSVインポート'
     ]
   },
   csvImportHistory: {

@@ -804,7 +804,8 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       'employees': 'employees',
       'items': 'items',
       'measuring-instruments': 'measuringInstruments',
-      'rigging-gears': 'riggingGears'
+      'rigging-gears': 'riggingGears',
+      'machines': 'machines'
     };
     
     if (!typeParam || !typeMap[typeParam]) {
@@ -1089,7 +1090,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
   // スケジュール追加
   const csvImportTargetSchema = z.object({
-    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'csvDashboards']),
+    type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards']),
     source: z.string().min(1, 'sourceは必須です')
   });
 
