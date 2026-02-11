@@ -9,7 +9,8 @@ const cameraConfigSchema = z.object({
   THUMBNAIL_WIDTH: z.coerce.number().default(150),
   THUMBNAIL_HEIGHT: z.coerce.number().default(150),
   THUMBNAIL_QUALITY: z.coerce.number().min(0).max(100).default(70), // JPEG品質 (0-100)
-  CAMERA_MIN_MEAN_LUMA: z.coerce.number().min(0).max(255).default(18),
+  // 0-255 スケール。暗所でも撮影を許容するためデフォルトを下げる（必要に応じて環境変数で調整）
+  CAMERA_MIN_MEAN_LUMA: z.coerce.number().min(0).max(255).default(8),
 });
 
 const parsedConfig = cameraConfigSchema.parse(process.env);

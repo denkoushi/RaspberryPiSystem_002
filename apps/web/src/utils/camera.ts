@@ -45,7 +45,22 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
  * @param stream MediaStream
  * @returns 撮影した画像のBlob（JPEG形式）
  */
-const MIN_FRAME_BRIGHTNESS = 18; // 0-255 スケールでの平均輝度しきい値
+const DEFAULT_MIN_FRAME_BRIGHTNESS = 8; // 0-255 スケール（暗めでも撮影を許容する）
+
+function resolveMinFrameBrightness(): number {
+  // ビルド時環境変数（Vite）で上書き可能にする
+  // 例: VITE_CAMERA_MIN_FRAME_BRIGHTNESS=8
+  const env = import.meta.env as Record<string, string | undefined>;
+  const raw = env.VITE_CAMERA_MIN_FRAME_BRIGHTNESS;
+  if (raw === undefined || raw === null || raw === '') {
+    return DEFAULT_MIN_FRAME_BRIGHTNESS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_MIN_FRAME_BRIGHTNESS;
+  }
+  return Math.min(255, Math.max(0, parsed));
+}
 
 function calculateAverageLuminance(imageData: ImageData): number {
   const { data } = imageData;
@@ -118,7 +133,8 @@ export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob>
     // フレームの平均輝度を計算し、極端に暗い場合は再撮影を促す
     const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const averageLuma = calculateAverageLuminance(frameData);
-    if (averageLuma < MIN_FRAME_BRIGHTNESS) {
+    const minFrameBrightness = resolveMinFrameBrightness();
+    if (averageLuma < minFrameBrightness) {
       throw new Error('写真が暗すぎます。明るい場所でもう一度撮影してください。');
     }
 
