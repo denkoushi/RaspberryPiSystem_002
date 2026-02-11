@@ -7,6 +7,24 @@ import { Card } from '../../components/ui/Card';
 import type { VisualizationDashboard } from '../../api/client';
 
 const DEFAULT_JSON = '{}';
+const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
+const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
+const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
+  {
+    csvDashboardId: '',
+    date: '',
+    maxRows: 30,
+  },
+  null,
+  2,
+);
+const UNINSPECTED_RENDERER_TEMPLATE = JSON.stringify(
+  {
+    maxRows: 18,
+  },
+  null,
+  2,
+);
 
 type JsonParseResult = { value: Record<string, unknown> | null; error?: string };
 
@@ -47,6 +65,7 @@ export function VisualizationDashboardsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const isEditing = Boolean(selectedId) && !isCreating;
+  const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
 
   useEffect(() => {
     if (!isEditing || !selected) return;
@@ -115,6 +134,18 @@ export function VisualizationDashboardsPage() {
       return;
     }
 
+    if (dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE) {
+      const cfg = dataSourceParsed.value ?? {};
+      const csvDashboardId =
+        typeof cfg.csvDashboardId === 'string' ? cfg.csvDashboardId.trim() : '';
+      if (!csvDashboardId) {
+        setFormError(
+          '未点検加工機データソースでは csvDashboardId が必須です。CSVダッシュボードIDを設定してください。',
+        );
+        return;
+      }
+    }
+
     if (isCreating) {
       await create.mutateAsync({
         name: name.trim(),
@@ -153,6 +184,20 @@ export function VisualizationDashboardsPage() {
     if (!confirm(`可視化ダッシュボード「${selected.name}」を削除しますか？`)) return;
     await remove.mutateAsync(selectedId);
     setSelectedId(null);
+  };
+
+  const applyUninspectedPreset = () => {
+    setDataSourceType(UNINSPECTED_DATA_SOURCE_TYPE);
+    setRendererType(UNINSPECTED_RENDERER_TYPE);
+    setDataSourceConfig(UNINSPECTED_DATA_SOURCE_TEMPLATE);
+    setRendererConfig(UNINSPECTED_RENDERER_TEMPLATE);
+    if (!name.trim()) {
+      setName('未点検加工機');
+    }
+    if (!description.trim()) {
+      setDescription('加工機マスターと点検CSVの当日差分を表示');
+    }
+    setFormError(null);
   };
 
   return (
@@ -244,6 +289,22 @@ export function VisualizationDashboardsPage() {
                     placeholder="例: kpi_cards / bar_chart"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="secondary" onClick={applyUninspectedPreset}>
+                    未点検加工機プリセットを適用
+                  </Button>
+                  <p className="text-xs text-slate-600">
+                    サイネージ向け未点検表示の推奨設定を自動入力します。
+                  </p>
+                </div>
+                {isUninspectedPreset && (
+                  <p className="mt-2 text-xs text-slate-600">
+                    必須: <code>dataSourceConfig.csvDashboardId</code>（点検結果CSVダッシュボードID）
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -3462,3 +3462,79 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-02-11、実機検証完了）
 
 ---
+
+### [KB-249] 加工機マスターデータのCSVインポートと未点検加工機抽出機能の実装
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**: 
+- 加工機マスターデータをCSVインポートし、未点検加工機を抽出する機能が必要だった
+- マスターテーブルは今後も様々な用途で使うため、従業員名簿と同様に流用可能な扱いにする必要があった
+
+**実装内容**: 
+- ✅ **実装完了**（2026-02-11）: 加工機マスターデータのCSVインポート機能、未点検加工機抽出機能、管理コンソールUIを実装
+  1. **データベーススキーマ**: `Machine`モデルを追加（`equipmentManagementNumber`をユニークキーとして使用）
+  2. **CSVインポーター**: `MachineCsvImporter`を実装（既存の`CsvImporter`インターフェースに準拠）
+  3. **APIエンドポイント**: 
+     - `GET /api/tools/machines`: 加工機一覧取得（検索・フィルタ対応）
+     - `GET /api/tools/machines/uninspected`: 未点検加工機一覧取得（当日JST基準）
+  4. **管理コンソールUI**: `/admin/tools/machines-uninspected`ページを追加（未点検加工機一覧表示）
+  5. **CSVインポート設定**: `machines`タイプをCSVインポート設定に追加
+
+**仕様**:
+- **未点検の定義**: マスターテーブルで`稼働状態=稼働中`の加工機のうち、当日（JST）の点検結果CSVダッシュボードに記録がないもの
+- **結合キー**: `設備管理番号`（`equipmentManagementNumber`）でマスターデータとファクトデータを結合
+- **日付判定**: 当日（JST）の範囲を`formatTokyoDate`と`resolveTokyoDayRange`で正確に計算
+- **データ抽出**: `CsvDashboardRow.rowData`から`設備管理番号`を抽出（`extractEquipmentNumber`関数）
+
+**トラブルシューティング**:
+- **CSVインポート設定の初期化**: 初回インポート時に`machines`のCSVインポート設定が`null`だったため、デフォルト列定義を明示的に保存する必要があった
+- **タイムゾーン変換の二重適用**: KB-249参照（CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題）
+
+**学んだこと**: 
+- **マスターデータの再利用性**: マスターテーブルは様々な用途で使うため、従業員名簿と同様に流用可能な設計にする
+- **CSVインポート設定の初期化**: 新しいデータタイプを追加する際は、CSVインポート設定を明示的に初期化する必要がある
+- **タイムゾーン処理**: JST基準の日付判定は、`Date.UTC`を使用して実行環境に依存しない変換を行う
+
+**関連ファイル**: 
+- `apps/api/prisma/schema.prisma`（`Machine`モデル）
+- `apps/api/src/services/imports/importers/machine.ts`（`MachineCsvImporter`）
+- `apps/api/src/services/tools/machine.service.ts`（`MachineService`）
+- `apps/api/src/routes/tools/machines/index.ts`（APIエンドポイント）
+- `apps/web/src/pages/tools/MachinesUninspectedPage.tsx`（管理コンソールUI）
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-11）
+
+---
+
+### [KB-252] 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**:
+- 管理コンソールから未点検加工機をサイネージコンテンツとして選択しやすくする必要があった
+- 可視化ダッシュボードの入力が自由形式JSONのため、運用時に `csvDashboardId` の設定漏れが発生しやすかった
+
+**要因**:
+- 可視化ダッシュボード作成UIは汎用設計で、未点検加工機用途のプリセットや入力ガイドがなかった
+- サイネージスケジュール画面の可視化選択肢で、用途判別の情報が不足していた
+
+**有効だった対策**:
+- ✅ 可視化ダッシュボード管理画面に「未点検加工機プリセットを適用」ボタンを追加
+  - `dataSourceType=uninspected_machines`
+  - `rendererType=uninspected_machines`
+  - `dataSourceConfig` / `rendererConfig` の推奨テンプレートを自動入力
+- ✅ `uninspected_machines` 選択時に `dataSourceConfig.csvDashboardId` を必須バリデーション
+- ✅ サイネージスケジュール画面の可視化プルダウンに用途ラベル（`未点検加工機`）を表示
+
+**学んだこと**:
+- 汎用機能に業務用途を載せる場合は、専用機能を増やすより「プリセット + 必須入力ガード」の方が保守しやすい
+- 運用ミス対策は「保存時バリデーション」と「選択時の識別情報」の両方が必要
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/VisualizationDashboardsPage.tsx`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+
+**解決状況**: ✅ **実装完了・lint通過**（2026-02-11）
+
+---

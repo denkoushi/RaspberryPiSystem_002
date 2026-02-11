@@ -32,6 +32,17 @@ const DAYS_OF_WEEK = [
   { value: 6, label: '土' },
 ];
 
+function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): string {
+  const tags: string[] = [];
+  if (dashboard.dataSourceType === 'uninspected_machines') {
+    tags.push('未点検加工機');
+  }
+  if (dashboard.rendererType) {
+    tags.push(`renderer:${dashboard.rendererType}`);
+  }
+  return tags.length > 0 ? `${dashboard.name} [${tags.join(' / ')}]` : dashboard.name;
+}
+
 export function SignageSchedulesPage() {
   const schedulesQuery = useSignageSchedules();
   const pdfsQuery = useSignagePdfs();
@@ -630,7 +641,7 @@ export function SignageSchedulesPage() {
                           <option value="">選択してください</option>
                           {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
                             <option key={dashboard.id} value={dashboard.id}>
-                              {dashboard.name}
+                              {formatVisualizationOptionLabel(dashboard)}
                             </option>
                           ))}
                         </select>
@@ -713,7 +724,7 @@ export function SignageSchedulesPage() {
                           <option value="">選択してください</option>
                           {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
                             <option key={dashboard.id} value={dashboard.id}>
-                              {dashboard.name}
+                              {formatVisualizationOptionLabel(dashboard)}
                             </option>
                           ))}
                         </select>
@@ -793,7 +804,7 @@ export function SignageSchedulesPage() {
                           <option value="">選択してください</option>
                           {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
                             <option key={dashboard.id} value={dashboard.id}>
-                              {dashboard.name}
+                              {formatVisualizationOptionLabel(dashboard)}
                             </option>
                           ))}
                         </select>

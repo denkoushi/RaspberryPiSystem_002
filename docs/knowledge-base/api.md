@@ -2982,3 +2982,74 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 **解決状況**: ✅ **実装完了・CI成功・本番DB適用完了・実機検証完了**（2026-02-11）
 
 ---
+
+### [KB-249] CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**: 
+- CSVダッシュボード取り込み時に、JST日時（例: `2026/2/11 8:47`）がUTCに変換される際、UTC+9オフセットが二重に適用されていた
+- 結果として、`2026-02-10T23:47:00.000Z`（1日前）として保存され、当日（JST）の未点検判定が正しく動作しなかった
+
+**要因**: 
+- **根本原因**: `CsvDashboardIngestor.extractOccurredAt`で、JST日時をUTCに変換する際に、`new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0)`でローカルタイムゾーンでDateオブジェクトを作成し、その後`- 9 * 60 * 60 * 1000`でUTC+9オフセットを引いていた
+- しかし、`new Date()`コンストラクタは実行環境のローカルタイムゾーンで解釈するため、Mac（JST）とPi5（JST）では問題なく動作するが、UTC環境では異なる結果になる可能性がある
+- さらに、`Date.UTC`を使用せずにローカルタイムゾーンで作成した後、手動でオフセットを引く方法は、実行環境に依存し、二重適用のリスクがある
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-02-11）: `Date.UTC`を直接使用し、JSTの時間から9時間を引いた値をUTCとして扱うように修正
+  ```typescript
+  // 修正前
+  const date = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
+  const utcDate = new Date(date.getTime() - 9 * 60 * 60 * 1000);
+  
+  // 修正後
+  const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
+  ```
+- これにより、実行環境のローカルタイムゾーンに依存せず、常にJST→UTCの変換が正しく行われる
+
+**学んだこと**: 
+- **タイムゾーン変換は実行環境に依存しない方法を使用する**: `Date.UTC`を使用することで、実行環境のローカルタイムゾーンに依存しない変換が可能
+- **オフセットの二重適用を避ける**: ローカルタイムゾーンでDateオブジェクトを作成してから手動でオフセットを引く方法は、実行環境に依存し、二重適用のリスクがある
+- **JST→UTC変換は`Date.UTC`で直接行う**: `Date.UTC(year, month, day, hour - 9, minute, second)`の形式で、JSTの時間から9時間を引いた値をUTCとして扱う
+
+**関連ファイル**: 
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（`extractOccurredAt`メソッド）
+
+**解決状況**: ✅ **解決済み**（2026-02-11、CI成功・デプロイ完了・実機検証完了）
+
+---
+
+### [KB-251] 未点検加工機サイネージ可視化データソースの追加
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**:
+- 既存の未点検加工機抽出ロジックを、サイネージで再利用できる可視化データソースとして提供する必要があった
+- 新しい専用スロットを増やさず、既存の `visualization` 経路に乗せることが要件だった
+
+**要因**:
+- `MachineService.findUninspected` はAPIエンドポイント用には実装済みだったが、可視化基盤（DataSource/Renderer）とは未接続だった
+- 運用上、`csvDashboardId` の設定漏れが起きる可能性があり、入力契約の明示が必要だった
+
+**有効だった対策**:
+- ✅ `uninspected_machines` データソースを追加し、`MachineService.findUninspected({ csvDashboardId, date? })` を直接再利用
+- ✅ `uninspected_machines` レンダラーを追加し、KPI（稼働中/点検済み/未点検）+ 一覧の単画面表示を実装
+- ✅ 可視化作成APIのスキーマにバリデーションを追加し、`dataSourceType=uninspected_machines` 時は `dataSourceConfig.csvDashboardId` を必須化
+- ✅ 設定不足・不正時は空表示ではなく、サイネージ上に明示メッセージを表示
+
+**検証**:
+- `visualizations.integration.test.ts` に `csvDashboardId` 未設定時の400応答テストを追加
+- `uninspected-machines-data-source.test.ts` で正常/設定不足/件数制限を検証
+- `uninspected-machines-renderer.test.ts` で正常レンダリングとエラー表示を検証
+
+**関連ファイル**:
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/initialize.ts`
+- `apps/api/src/routes/visualizations/schemas.ts`
+- `apps/api/src/routes/__tests__/visualizations.integration.test.ts`
+
+**解決状況**: ✅ **実装完了・テスト成功**（2026-02-11）
+
+---

@@ -61,6 +61,25 @@ describe('Visualizations API', () => {
     expect(body.dashboard.name).toBe('Test Visualization');
   });
 
+  it('should reject uninspected_machines without csvDashboardId', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/visualizations',
+      headers: {
+        ...createAuthHeader(adminToken),
+      },
+      payload: {
+        name: 'Uninspected',
+        dataSourceType: 'uninspected_machines',
+        rendererType: 'uninspected_machines',
+        dataSourceConfig: {},
+        rendererConfig: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it('should list visualization dashboards', async () => {
     await prisma.visualizationDashboard.create({
       data: {
