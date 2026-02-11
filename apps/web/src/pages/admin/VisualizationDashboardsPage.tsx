@@ -1,12 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { useVisualizationDashboard, useVisualizationDashboardMutations, useVisualizationDashboards } from '../../api/hooks';
+import { useVisualizationDashboard, useVisualizationDashboardMutations, useVisualizationDashboards, useCsvDashboards } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
 import type { VisualizationDashboard } from '../../api/client';
 
 const DEFAULT_JSON = '{}';
+const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
+const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
+const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
+  {
+    csvDashboardId: '',
+    date: '',
+    maxRows: 30,
+  },
+  null,
+  2,
+);
+const UNINSPECTED_RENDERER_TEMPLATE = JSON.stringify(
+  {
+    maxRows: 18,
+  },
+  null,
+  2,
+);
 
 type JsonParseResult = { value: Record<string, unknown> | null; error?: string };
 
@@ -28,6 +46,7 @@ function parseJson(input: string, label: string): JsonParseResult {
 
 export function VisualizationDashboardsPage() {
   const dashboardsQuery = useVisualizationDashboards();
+  const csvDashboardsQuery = useCsvDashboards(); // すべてのCSVダッシュボードを取得（有効/無効問わず）
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -35,6 +54,7 @@ export function VisualizationDashboardsPage() {
   const { create, update, remove } = useVisualizationDashboardMutations();
 
   const dashboards = dashboardsQuery.data ?? [];
+  const csvDashboards = csvDashboardsQuery.data ?? [];
   const selected = selectedDashboardQuery.data ?? null;
 
   const [name, setName] = useState('');
@@ -47,6 +67,43 @@ export function VisualizationDashboardsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const isEditing = Boolean(selectedId) && !isCreating;
+  const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
+
+  // 未点検加工機プリセット用のCSVダッシュボードID取得
+  const currentCsvDashboardId = useMemo(() => {
+    if (!isUninspectedPreset) return '';
+    try {
+      const parsed = JSON.parse(dataSourceConfig);
+      return typeof parsed?.csvDashboardId === 'string' ? parsed.csvDashboardId : '';
+    } catch {
+      return '';
+    }
+  }, [dataSourceConfig, isUninspectedPreset]);
+
+  // CSVダッシュボードID変更ハンドラー
+  const handleCsvDashboardIdChange = (csvDashboardId: string) => {
+    try {
+      const parsed = JSON.parse(dataSourceConfig);
+      const updated = {
+        ...parsed,
+        csvDashboardId: csvDashboardId || '',
+      };
+      setDataSourceConfig(JSON.stringify(updated, null, 2));
+    } catch {
+      // JSONパースエラーの場合は新規作成
+      setDataSourceConfig(
+        JSON.stringify(
+          {
+            csvDashboardId: csvDashboardId || '',
+            date: '',
+            maxRows: 30,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  };
 
   useEffect(() => {
     if (!isEditing || !selected) return;
@@ -115,6 +172,18 @@ export function VisualizationDashboardsPage() {
       return;
     }
 
+    if (dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE) {
+      const cfg = dataSourceParsed.value ?? {};
+      const csvDashboardId =
+        typeof cfg.csvDashboardId === 'string' ? cfg.csvDashboardId.trim() : '';
+      if (!csvDashboardId) {
+        setFormError(
+          '未点検加工機データソースでは csvDashboardId が必須です。CSVダッシュボードIDを設定してください。',
+        );
+        return;
+      }
+    }
+
     if (isCreating) {
       await create.mutateAsync({
         name: name.trim(),
@@ -153,6 +222,20 @@ export function VisualizationDashboardsPage() {
     if (!confirm(`可視化ダッシュボード「${selected.name}」を削除しますか？`)) return;
     await remove.mutateAsync(selectedId);
     setSelectedId(null);
+  };
+
+  const applyUninspectedPreset = () => {
+    setDataSourceType(UNINSPECTED_DATA_SOURCE_TYPE);
+    setRendererType(UNINSPECTED_RENDERER_TYPE);
+    setDataSourceConfig(UNINSPECTED_DATA_SOURCE_TEMPLATE);
+    setRendererConfig(UNINSPECTED_RENDERER_TEMPLATE);
+    if (!name.trim()) {
+      setName('未点検加工機');
+    }
+    if (!description.trim()) {
+      setDescription('加工機マスターと点検CSVの当日差分を表示');
+    }
+    setFormError(null);
   };
 
   return (
@@ -244,6 +327,48 @@ export function VisualizationDashboardsPage() {
                     placeholder="例: kpi_cards / bar_chart"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="secondary" onClick={applyUninspectedPreset}>
+                    未点検加工機プリセットを適用
+                  </Button>
+                  <p className="text-xs text-slate-600">
+                    サイネージ向け未点検表示の推奨設定を自動入力します。
+                  </p>
+                </div>
+                {isUninspectedPreset && (
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      CSVダッシュボード（点検結果）<span className="text-rose-600">*</span>
+                    </label>
+                    <select
+                      value={currentCsvDashboardId}
+                      onChange={(e) => handleCsvDashboardIdChange(e.target.value)}
+                      className="w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    >
+                      <option value="">選択してください</option>
+                      {csvDashboards.map((dashboard) => (
+                        <option key={dashboard.id} value={dashboard.id}>
+                          {dashboard.name}
+                          {!dashboard.enabled && ' (無効)'}
+                        </option>
+                      ))}
+                    </select>
+                    {csvDashboardsQuery.isLoading && (
+                      <p className="text-xs text-slate-500">CSVダッシュボード一覧を読み込み中...</p>
+                    )}
+                    {csvDashboardsQuery.isError && (
+                      <p className="text-xs text-rose-600">CSVダッシュボード一覧の取得に失敗しました。</p>
+                    )}
+                    {!currentCsvDashboardId && (
+                      <p className="text-xs text-rose-600">
+                        CSVダッシュボードを選択してください（必須）
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

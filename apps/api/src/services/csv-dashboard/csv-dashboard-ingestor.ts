@@ -4,6 +4,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
+import {
+  PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
+  PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
+  resolveToMaxProductNoPerLogicalKey,
+} from '../production-schedule/row-resolver/index.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 
@@ -75,14 +80,27 @@ export class CsvDashboardIngestor {
           this.validateProductionScheduleRow(normalized, i);
         }
 
-        // 重複除去用のハッシュを計算（dedupモードの場合）
-        let hash: string | undefined;
-        if (dashboard.ingestMode === 'DEDUP') {
-          hash = this.calculateDataHash(normalized, dashboard.dedupKeyColumns);
-        }
-
-        normalizedRows.push({ data: normalized, occurredAt, hash });
+        normalizedRows.push({ data: normalized, occurredAt });
       }
+
+      const rowsProcessed = normalizedRows.length;
+      const isProductionScheduleDashboard = dashboardId === CsvDashboardIngestor.PRODUCTION_SCHEDULE_DASHBOARD_ID;
+      const productionScheduleDedupRows =
+        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
+          ? resolveToMaxProductNoPerLogicalKey(normalizedRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt })))
+          : normalizedRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }));
+      const preDedupSkippedRows = rowsProcessed - productionScheduleDedupRows.length;
+      const dedupKeyColumns =
+        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
+          ? [...PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS]
+          : dashboard.dedupKeyColumns;
+      const ingestRows: Array<{ data: NormalizedRowData; occurredAt: Date; hash?: string }> =
+        dashboard.ingestMode === 'DEDUP'
+          ? productionScheduleDedupRows.map((row) => ({
+              ...row,
+              hash: this.calculateDataHash(row.data, dedupKeyColumns),
+            }))
+          : productionScheduleDedupRows;
 
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
@@ -91,17 +109,18 @@ export class CsvDashboardIngestor {
       if (dashboard.ingestMode === 'APPEND') {
         // 追加モード：すべて追加
         await prisma.csvDashboardRow.createMany({
-          data: normalizedRows.map((row) => ({
+          data: ingestRows.map((row) => ({
             csvDashboardId: dashboardId,
             occurredAt: row.occurredAt,
             dataHash: null,
             rowData: row.data as Prisma.InputJsonValue,
           })),
         });
-        rowsAdded = normalizedRows.length;
+        rowsAdded = ingestRows.length;
+        rowsSkipped = preDedupSkippedRows;
       } else {
         // 重複除去モード：今回CSV内のハッシュだけをDBに問い合わせて差分反映
-        const incomingHashes = normalizedRows
+        const incomingHashes = ingestRows
           .map((row) => row.hash)
           .filter((hash): hash is string => !!hash);
         const existingRows = incomingHashes.length
@@ -121,13 +140,19 @@ export class CsvDashboardIngestor {
 
         const diff = computeCsvDashboardDedupDiff({
           dashboardId,
-          incomingRows: normalizedRows,
+          incomingRows: ingestRows,
           existingRows,
-          completedValue: CsvDashboardIngestor.COMPLETED_PROGRESS_VALUE
+          completedValue: CsvDashboardIngestor.COMPLETED_PROGRESS_VALUE,
+          options: isProductionScheduleDashboard
+            ? {
+                maxProductNoWins: true,
+                productNoColumn: PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
+              }
+            : undefined
         });
         const { rowsToCreate, updates } = diff;
         rowsAdded = diff.rowsAdded;
-        rowsSkipped = diff.rowsSkipped;
+        rowsSkipped = diff.rowsSkipped + preDedupSkippedRows;
 
         if (rowsToCreate.length > 0) {
           await prisma.csvDashboardRow.createMany({ data: rowsToCreate });
@@ -155,7 +180,7 @@ export class CsvDashboardIngestor {
         where: { id: ingestRun.id },
         data: {
           status: 'COMPLETED',
-          rowsProcessed: normalizedRows.length,
+          rowsProcessed,
           rowsAdded,
           rowsSkipped,
           completedAt: new Date(),
@@ -174,7 +199,7 @@ export class CsvDashboardIngestor {
         {
           dashboardId,
           dashboardName: dashboard.name,
-          rowsProcessed: normalizedRows.length,
+          rowsProcessed,
           rowsAdded,
           rowsSkipped,
         },
@@ -182,7 +207,7 @@ export class CsvDashboardIngestor {
       );
 
       return {
-        rowsProcessed: normalizedRows.length,
+        rowsProcessed,
         rowsAdded,
         rowsSkipped,
       };
@@ -360,14 +385,8 @@ export class CsvDashboardIngestor {
       const hourNum = parseInt(hour, 10);
       const minuteNum = parseInt(minute, 10);
 
-      // Asia/TokyoタイムゾーンでDateオブジェクトを作成
-      // UTCに変換する必要があるが、簡易実装としてローカルタイムゾーンで作成
-      // 実際の運用では、Asia/Tokyoのオフセット（+09:00）を考慮する必要がある
-      const date = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
-      
-      // Asia/Tokyo (UTC+9) を考慮してUTCに変換
-      // 日本時間から9時間引いてUTCに変換
-      const utcDate = new Date(date.getTime() - 9 * 60 * 60 * 1000);
+      // 入力値は常にAsia/Tokyoとして扱い、実行環境のローカルTZに依存しないUTCへ変換する
+      const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
 
       if (isNaN(utcDate.getTime())) {
         logger.warn({ dateValue }, '[CsvDashboardIngestor] Invalid date, using current time');

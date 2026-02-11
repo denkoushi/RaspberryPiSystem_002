@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-02-01（NodeSourceリポジトリGPG署名キー問題の解決、aptリポジトリ確認をデプロイ前チェックリストに追加）
+最終更新: 2026-02-07（Docker build最適化の実装、段階展開の推奨手順追加、profileオプションの説明追加）
 
 ## 概要
 
@@ -437,6 +437,46 @@ curl http://localhost:8080/api/system/health
   - デプロイ完了後、メンテナンス画面は自動的に消えます（最大5秒以内）
   - 詳細は [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
+**重要（2026-02-07更新）**:
+- **段階展開（カナリア→全台）**を推奨します（Pi4が増えた場合の安全策）
+  - inventoryに `kiosk` / `signage` / `kiosk_canary` / `signage_canary` グループを用意しています
+  - **カナリア成功後はPi4全台を並行デプロイ**、**Pi3は常時単独**の運用を想定しています
+  - `scripts/update-all-clients.sh` のデプロイ後ヘルスチェックは `--limit` に追従します（カナリア時に全台チェックで時間が伸びるのを防止）
+
+例（推奨）:
+
+```bash
+# Stage 0: カナリア（server + kiosk_canary）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk_canary"
+
+# Stage 1: ロールアウト（server + kiosk 全台、カナリア除外）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk:!kiosk_canary"
+
+# Pi3（signage）は常時単独で実行（server + signage）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:signage"
+```
+
+**重要（2026-02-07更新）**:
+- **Docker build最適化**: 変更ファイルに基づいてDocker buildの必要性を判定し、不要なbuildをスキップします
+  - **buildが必要な変更**: `apps/api/**`, `apps/web/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `infrastructure/docker/**`, `apps/api/prisma/**`
+  - **build不要な変更**: `docs/**`, `infrastructure/ansible/**`（`infrastructure/docker/**` を除く）, `scripts/**`（Dockerに影響しない場合）
+  - 判定ロジックは `scripts/update-all-clients.sh` と `infrastructure/ansible/roles/common/tasks/main.yml` の両方で実装（二重安全）
+  - 判定できない場合は安全側でbuild実行（初回clone/HEAD不明など）
+  - 効果: カナリアで **6分34秒 → 3分11秒（約3分23秒短縮）**を確認（[KB-235](../knowledge-base/infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定)参照）
+- **apt cache最適化**: 同一デプロイ内で`apt update`が複数回実行される無駄を削減します
+  - `group_vars/all.yml`の`apt_cache_valid_time_seconds: 3600`により、最後の`apt update`から1時間以内はキャッシュが有効
+  - `ansible.builtin.apt`タスクに`cache_valid_time`を追加し、`update_cache: true`は維持（判定不能時は安全側で更新）
+  - 対象: kiosk/serverのセキュリティ系パッケージ（ClamAV/rkhunter/ufw/fail2ban）
+  - 効果: 同一デプロイ内で最初の`apt update`以降はキャッシュが有効になり、apt関連タスクが若干短縮（例: `server : Install security packages` 4.51s → 3.46s）
+  - 詳細は [KB-234](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照
+
+**重要（2026-02-06更新）**:
+- **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します
+  - `POST http://localhost:7071/api/agent/reboot`
+  - `POST http://localhost:7071/api/agent/poweroff`
+- **Mixed Content回避**: キオスクは `https://<Pi5>/kiosk` で開くため、Pi4のChromium起動フラグに `--allow-running-insecure-content` と `--unsafely-treat-insecure-origin-as-secure=http://localhost:7071` を設定します
+- **OS権限**: Pi4のAnsible設定で `sudo_nopasswd_commands` に `/usr/bin/systemctl reboot` と `/usr/bin/systemctl poweroff` を含めてください
+
 ```bash
 # 1. リポジトリを更新
 cd /opt/RaspberryPiSystem_002
@@ -496,7 +536,8 @@ curl http://localhost:7071/api/agent/status
 - **重要**: デプロイ全体が`failed=0`で`state: success`なら、主要目的（コード更新、サービス再起動、GUI/サイネージ復旧）は達成されています
 - サービス状態は`systemctl is-active`で直接確認してください（ログの`unreachable`だけでは判断しない）
   ```bash
-  ssh denkon5sd02@100.106.158.2 "ssh pi@100.106.158.3 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  # NOTE: Pi3のTailscale IPは変わることがあるため、到達先はPi5の`tailscale status`で確認してください
+  ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
   # 結果が "active active" なら正常動作中
   ```
 - 詳細は [KB-216](../knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照してください
@@ -545,6 +586,10 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
 # ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
 # inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
+# ⚠️ 必須: Pi5へのデプロイ時は、必ずRASPI_SERVER_HOSTを設定してリモート実行してください
+# ansible_connection: localでも、Mac側からansible-playbookを実行するとMac側のsudoパスワードが求められます
+# RASPI_SERVER_HOSTを設定することで、Pi5上でリモート実行され、Pi5上のansible.cfgが正しく読み込まれます
+# 詳細は [KB-233](../knowledge-base/infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) を参照
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # または、ユーザー名を省略した形式（スクリプトが自動補完）
@@ -597,6 +642,20 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 # 状態確認（run_idを指定）
 ./scripts/update-all-clients.sh --status 20260125-123456-4242
 ```
+
+#### デプロイの所要時間を計測する（profile_tasks/timer）
+
+「どのタスクが遅いか」を秒で確定したい場合は、`--profile` を付けて実行します。
+通常のデプロイ挙動は変えず、**出力にタスクごとの所要時間（上位）が追加**されます。
+
+```bash
+# 例: カナリア（server + kiosk_canary）を計測付きで実行
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:kiosk_canary" --profile
+```
+
+読み方（目安）:
+- `profile_tasks` の出力で **上位（遅い順）に並ぶタスク**が“時間の主犯”
+- 主犯が `apt update` / `docker build` / `git fetch` / `uri health check` / `tailscale` などのどれかを確定してから、最小変更で削減する
 
 **重要**: 
 - `scripts/update-all-clients.sh`はPi5も含めて更新します

@@ -45,8 +45,6 @@ export async function getCameraStream(deviceId?: string): Promise<MediaStream> {
  * @param stream MediaStream
  * @returns 撮影した画像のBlob（JPEG形式）
  */
-const MIN_FRAME_BRIGHTNESS = 18; // 0-255 スケールでの平均輝度しきい値
-
 function calculateAverageLuminance(imageData: ImageData): number {
   const { data } = imageData;
   let sum = 0;
@@ -100,8 +98,8 @@ export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob>
     // ビデオを再生
     await video.play();
     
-    // フレームが安定するまで少し待機（100ms）
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // カメラの露出調整を待つ（500ms待機）
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
@@ -112,15 +110,43 @@ export async function capturePhotoFromStream(stream: MediaStream): Promise<Blob>
       throw new Error('Canvasコンテキストの取得に失敗しました');
     }
 
-    // ビデオフレームをキャンバスに描画
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // 複数フレームを試行して、最も明るいフレームを選択
+    // USBカメラの露出調整を待つため、5フレームを試行（各100ms間隔）
+    const numFrames = 5;
+    const frameInterval = 100; // 各フレーム間の待機時間（ms）
+    let bestFrame: ImageData | null = null;
+    let bestLuma = -1;
 
-    // フレームの平均輝度を計算し、極端に暗い場合は再撮影を促す
-    const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const averageLuma = calculateAverageLuminance(frameData);
-    if (averageLuma < MIN_FRAME_BRIGHTNESS) {
-      throw new Error('写真が暗すぎます。明るい場所でもう一度撮影してください。');
+    for (let i = 0; i < numFrames; i++) {
+      // フレームをキャンバスに描画
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // フレームの平均輝度を計算
+      const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const averageLuma = calculateAverageLuminance(frameData);
+      
+      // 最も明るいフレームを記録
+      if (averageLuma > bestLuma) {
+        bestLuma = averageLuma;
+        bestFrame = frameData;
+      }
+      
+      // 最後のフレームでない場合は待機
+      if (i < numFrames - 1) {
+        await new Promise(resolve => setTimeout(resolve, frameInterval));
+      }
     }
+
+    // 最も明るいフレームを使用
+    if (!bestFrame) {
+      throw new Error('フレームの取得に失敗しました');
+    }
+
+    // 最も明るいフレームをキャンバスに再描画
+    ctx.putImageData(bestFrame, 0, 0);
+
+    // 閾値チェックを削除（どんな明るさでも撮影可能）
+    // 過去の実装では閾値チェックがあったが、ストリーム保持による負荷問題のため削除
 
     // JPEG形式でBlobに変換（品質80%）
     return new Promise<Blob>((resolve, reject) => {

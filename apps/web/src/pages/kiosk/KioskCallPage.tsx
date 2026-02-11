@@ -3,25 +3,62 @@
  * クライアント一覧から相手を選んで発信、着信対応、通話中UI
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { useWebRTC } from '../../features/webrtc/hooks/useWebRTC';
+import { Dialog } from '../../components/ui/Dialog';
+import { useWebRTCCall } from '../../features/webrtc/context/WebRTCCallContext';
 export function KioskCallPage() {
   const callTargetsQuery = useKioskCallTargets();
+  const selfClientId = callTargetsQuery.data?.selfClientId ?? null;
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [showIncomingModal, setShowIncomingModal] = useState(false);
-  const lastAlertAtRef = useRef<number>(0);
-  const [localStreamForUi, setLocalStreamForUi] = useState<MediaStream | null>(null);
-  const [remoteStreamForUi, setRemoteStreamForUi] = useState<MediaStream | null>(null);
+  const [errorDialog, setErrorDialog] = useState<{ title: string; description?: string } | null>(null);
+
+  const toUserFacingError = useCallback((error: Error): { title: string; description?: string } => {
+    const msg = error.message || '';
+    if (/Callee is not connected/i.test(msg)) {
+      return {
+        title: '相手のキオスクが起動していません',
+        description:
+          '相手端末が通話待機状態ではないため、発信できません。相手端末の電源が入っていること、ブラウザが起動していること、キオスク画面/サイネージ画面が表示されていることを確認してから再試行してください。',
+      };
+    }
+    if (/WebSocket not connected/i.test(msg)) {
+      return {
+        title: '通話サーバーに接続できません',
+        description: 'ネットワーク接続を確認して、しばらく待ってから再試行してください。',
+      };
+    }
+    if (/already in a call/i.test(msg)) {
+      return {
+        title: '相手は通話中です',
+        description: '相手端末が別の通話中のため発信できません。時間をおいて再試行してください。',
+      };
+    }
+    if (/Other participant not connected/i.test(msg)) {
+      return {
+        title: '相手が切断されました',
+        description: '相手端末との接続が切れました。相手端末の状態を確認してから再試行してください。',
+      };
+    }
+    return {
+      title: 'エラー',
+      description: msg ? `エラーが発生しました: ${msg}` : 'エラーが発生しました。',
+    };
+  }, []);
 
   const {
     callState,
     incomingCallInfo,
     isVideoEnabled,
+    localStream,
+    remoteStream,
+    lastError,
+    clearLastError,
     call,
     accept,
     reject,
@@ -29,41 +66,7 @@ export function KioskCallPage() {
     enableVideo,
     disableVideo,
     isConnected
-  } = useWebRTC({
-    enabled: true,
-    onLocalStream: (stream) => {
-      setLocalStreamForUi(stream);
-      if (localVideoRef.current && stream) {
-        localVideoRef.current.srcObject = stream;
-        // autoplayがブロックされる環境があるため、明示的にplayを試す
-        void localVideoRef.current.play().catch(() => {
-          // autoplay失敗は無視（ユーザー操作で再生可能）
-        });
-      } else if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
-    },
-    onRemoteStream: (stream) => {
-      setRemoteStreamForUi(stream);
-      if (remoteVideoRef.current && stream) {
-        remoteVideoRef.current.srcObject = stream;
-        void remoteVideoRef.current.play().catch(() => {
-          // autoplay失敗は無視（ユーザー操作で再生可能）
-        });
-      } else if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
-    },
-    onError: (error) => {
-      console.error('WebRTC error:', error);
-      // alert連打で操作不能にならないように、短時間の重複表示を抑制する
-      const now = Date.now();
-      if (now - lastAlertAtRef.current > 3000) {
-        lastAlertAtRef.current = now;
-        alert(`エラーが発生しました: ${error.message}`);
-      }
-    }
-  });
+  } = useWebRTCCall();
 
   // 着信時にモーダルを表示
   useEffect(() => {
@@ -74,9 +77,16 @@ export function KioskCallPage() {
     }
   }, [callState, incomingCallInfo]);
 
+  useEffect(() => {
+    if (!lastError) return;
+    console.error('WebRTC error:', lastError);
+    setErrorDialog(toUserFacingError(lastError));
+    clearLastError();
+  }, [lastError, clearLastError, toUserFacingError]);
+
   // video要素が「後から」マウントされるケース（条件レンダリング）に備えて、ストリームを再バインドする
   useEffect(() => {
-    const stream = localStreamForUi;
+    const stream = localStream ?? null;
     const el = localVideoRef.current;
     if (!el || !stream || stream.getVideoTracks().length === 0) return;
     if (el.srcObject !== stream) {
@@ -85,10 +95,10 @@ export function KioskCallPage() {
     void el.play().catch(() => {
       // autoplay失敗は無視（ユーザー操作で再生可能）
     });
-  }, [localStreamForUi, isVideoEnabled, callState]);
+  }, [localStream, isVideoEnabled, callState]);
 
   useEffect(() => {
-    const stream = remoteStreamForUi;
+    const stream = remoteStream ?? null;
     const el = remoteVideoRef.current;
     if (!el || !stream || stream.getVideoTracks().length === 0) return;
     if (el.srcObject !== stream) {
@@ -97,13 +107,14 @@ export function KioskCallPage() {
     void el.play().catch(() => {
       // autoplay失敗は無視（ユーザー操作で再生可能）
     });
-  }, [remoteStreamForUi, isVideoEnabled, callState]);
+  }, [remoteStream, isVideoEnabled, callState]);
 
   // 発信先一覧（location優先でソート）
   const availableClients = useMemo(() => {
     const targets = callTargetsQuery.data?.targets ?? [];
     return targets
       .filter((t) => !t.stale)
+      .filter((t) => (selfClientId ? t.clientId !== selfClientId : true))
       .map((t) => ({
         clientId: t.clientId,
         name: t.name || t.hostname,
@@ -119,7 +130,7 @@ export function KioskCallPage() {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [callTargetsQuery.data]);
+  }, [callTargetsQuery.data, selfClientId]);
 
   const handleCall = async (to: string) => {
     // #region agent log
@@ -129,7 +140,7 @@ export function KioskCallPage() {
       await call(to);
     } catch (error) {
       console.error('Failed to call:', error);
-      alert(`発信に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -142,7 +153,7 @@ export function KioskCallPage() {
       setShowIncomingModal(false);
     } catch (error) {
       console.error('Failed to accept:', error);
-      alert(`受話に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -163,7 +174,7 @@ export function KioskCallPage() {
       await enableVideo();
     } catch (error) {
       console.error('Failed to enable video:', error);
-      alert(`ビデオの有効化に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorDialog(toUserFacingError(error instanceof Error ? error : new Error(String(error))));
     }
   };
 
@@ -171,8 +182,8 @@ export function KioskCallPage() {
     disableVideo();
   };
 
-  const hasLocalVideo = Boolean(localStreamForUi && localStreamForUi.getVideoTracks().length > 0);
-  const hasRemoteVideo = Boolean(remoteStreamForUi && remoteStreamForUi.getVideoTracks().length > 0);
+  const hasLocalVideo = Boolean(localStream && localStream.getVideoTracks().length > 0);
+  const hasRemoteVideo = Boolean(remoteStream && remoteStream.getVideoTracks().length > 0);
 
   return (
     <div className="flex h-screen flex-col bg-slate-100 p-4">
@@ -308,6 +319,22 @@ export function KioskCallPage() {
           </Card>
         </div>
       )}
+
+      {/* エラーダイアログ（ユーザー向け） */}
+      <Dialog
+        isOpen={Boolean(errorDialog)}
+        onClose={() => setErrorDialog(null)}
+        title={errorDialog?.title}
+        description={errorDialog?.description}
+        ariaLabel="通話エラー"
+        size="md"
+      >
+        <div className="mt-4 flex justify-end">
+          <Button type="button" onClick={() => setErrorDialog(null)}>
+            OK
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

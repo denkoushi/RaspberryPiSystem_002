@@ -42,8 +42,9 @@ exec chromium-browser \\
   --overscroll-history-navigation=0 \\
   --use-fake-ui-for-media-stream \\
   --allow-insecure-localhost \\
+  --allow-running-insecure-content \\
   --ignore-certificate-errors \\
-  --unsafely-treat-insecure-origin-as-secure="$TARGET_ORIGIN"
+  --unsafely-treat-insecure-origin-as-secure="$TARGET_ORIGIN,http://localhost:7071"
 EOF
 chmod +x "$LAUNCHER_PATH"
 

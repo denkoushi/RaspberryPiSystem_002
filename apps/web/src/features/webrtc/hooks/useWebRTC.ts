@@ -27,11 +27,17 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [incomingCallInfo, setIncomingCallInfo] = useState<{ callId: string; from: string; callerName?: string; callerLocation?: string | null } | null>(null);
+  // UI反映用（MediaStreamはrefだけだと再描画されないためstateでも保持する）
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   // デバッグログ用：最新stateを参照するためのref（Hook依存関係の警告回避）
   const callStateRef = useRef<CallState>('idle');
   const currentCallIdRef = useRef<string | null>(null);
   const hasIncomingRef = useRef(false);
+  
+  // call関数のエラーハンドリング用：エラーレスポンスを待機するためのPromise
+  const callErrorPromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
   // 外部コールバックはref化して、useCallback依存で関数同一性が変わらないようにする
   const onLocalStreamRef = useRef<UseWebRTCOptions['onLocalStream']>(onLocalStream);
@@ -46,6 +52,13 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const startCallRef = useRef<((callId: string, withVideo?: boolean) => Promise<void>) | null>(null);
   const pcConnectionStartTimeRef = useRef<number | null>(null);
   const pcIceConnectionStartTimeRef = useRef<number | null>(null);
+  const disconnectedRestartTimerRef = useRef<number | null>(null);
+
+  const toUiStream = useCallback((stream: MediaStream | null): MediaStream | null => {
+    if (!stream) return null;
+    // track追加/削除があってもReactの再描画が走るように、毎回新しいMediaStreamを作る
+    return new MediaStream(stream.getTracks());
+  }, []);
 
   useEffect(() => {
     onLocalStreamRef.current = onLocalStream;
@@ -58,6 +71,12 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
+    }
+    if (disconnectedRestartTimerRef.current) {
+      if (typeof window !== 'undefined') {
+        window.clearTimeout(disconnectedRestartTimerRef.current);
+      }
+      disconnectedRestartTimerRef.current = null;
     }
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -73,8 +92,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setCurrentCallId(null);
     setIsVideoEnabled(false);
     setIncomingCallInfo(null);
+    setLocalStream(null);
+    setRemoteStream(null);
     pcConnectionStartTimeRef.current = null;
     pcIceConnectionStartTimeRef.current = null;
+    // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+    if (callErrorPromiseRef.current) {
+      callErrorPromiseRef.current.resolve();
+      callErrorPromiseRef.current = null;
+    }
   }, []);
 
   // シグナリング（ref化してhandlersから参照可能にする）
@@ -92,6 +118,11 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       setCallState('incoming');
     },
     onCallAccepted: async (callId: string) => {
+      // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+      if (callErrorPromiseRef.current) {
+        callErrorPromiseRef.current.resolve();
+        callErrorPromiseRef.current = null;
+      }
       currentCallIdRef.current = callId;
       setCurrentCallId(callId);
       setCallState('connecting');
@@ -102,11 +133,21 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     },
     onCallRejected: (callId: string) => {
       if (callId === currentCallIdRef.current) {
+        // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.resolve();
+          callErrorPromiseRef.current = null;
+        }
         cleanup();
       }
     },
     onCallCancelled: (callId: string) => {
       if (callId === currentCallIdRef.current) {
+        // call関数のエラーハンドリング用：エラーレスポンス待機を解除
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.resolve();
+          callErrorPromiseRef.current = null;
+        }
         cleanup();
       }
     },
@@ -182,6 +223,15 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
     },
     onError: (error: Error) => {
+      // 発信中（ringing）の状態でエラーが発生した場合、idleに戻す
+      if (callStateRef.current === 'ringing') {
+        cleanup();
+        // call関数のエラーハンドリング用：エラーレスポンスを待機している場合はreject
+        if (callErrorPromiseRef.current) {
+          callErrorPromiseRef.current.reject(error);
+          callErrorPromiseRef.current = null;
+        }
+      }
       onErrorRef.current?.(error);
     }
   }), [cleanup]);
@@ -204,17 +254,69 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     };
   }, []);
 
+  const renegotiate = useCallback(async (reason: 'enableVideo' | 'iceRestart') => {
+    const pc = peerConnectionRef.current;
+    const callId = currentCallIdRef.current;
+    if (!pc || !callId) return;
+    // signalingStateが不安定な間はofferを作らない（状態崩壊の原因）
+    if (pc.signalingState !== 'stable') return;
+    if (isNegotiatingRef.current) return;
+    isNegotiatingRef.current = true;
+    try {
+      const offer =
+        reason === 'iceRestart'
+          ? await pc.createOffer({ iceRestart: true })
+          : await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      signalingRef.current?.sendMessage({
+        type: 'offer',
+        callId,
+        payload: offer
+      });
+    } finally {
+      isNegotiatingRef.current = false;
+    }
+  }, []);
+
+  const scheduleIceRestart = useCallback(() => {
+    if (disconnectedRestartTimerRef.current) return;
+    if (typeof window === 'undefined') return;
+    // 一時的なネットワーク揺れで即再ネゴしないよう、少し待ってからICE restart
+    disconnectedRestartTimerRef.current = window.setTimeout(() => {
+      disconnectedRestartTimerRef.current = null;
+      void renegotiate('iceRestart');
+    }, 2500);
+  }, [renegotiate]);
+
   // RTCPeerConnectionの作成
   const createPeerConnection = useCallback((): RTCPeerConnection => {
     const pc = new RTCPeerConnection(getRTCConfiguration());
 
     // リモートストリームの受信
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        const stream = event.streams[0];
-        remoteStreamRef.current = stream;
-        onRemoteStreamRef.current?.(stream);
+      // event.streams[0] に依存すると、音声/映像で別Streamが届く環境でUIが不安定になる。
+      // 受信トラックを単一のMediaStreamに集約して扱う。
+      const existing = remoteStreamRef.current ?? new MediaStream();
+      const track = event.track;
+      try {
+        if (!existing.getTracks().some((t) => t.id === track.id)) {
+          existing.addTrack(track);
+        }
+      } catch {
+        // ignore
       }
+      remoteStreamRef.current = existing;
+      onRemoteStreamRef.current?.(existing);
+      setRemoteStream(toUiStream(existing));
+
+      const refresh = () => {
+        const cur = remoteStreamRef.current;
+        if (!cur) return;
+        setRemoteStream(toUiStream(cur));
+      };
+      track.onended = refresh;
+      track.onmute = refresh;
+      track.onunmute = refresh;
     };
 
     // ICE candidateの処理
@@ -241,10 +343,29 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         }
         setCallState('connected');
       }
+      if (state === 'failed' || state === 'disconnected') {
+        scheduleIceRestart();
+      }
+      if (state === 'closed') {
+        cleanup();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const ice = pc.iceConnectionState;
+      if (ice === 'connected' || ice === 'completed') {
+        if (!pcIceConnectionStartTimeRef.current) {
+          pcIceConnectionStartTimeRef.current = Date.now();
+        }
+        return;
+      }
+      if (ice === 'failed' || ice === 'disconnected') {
+        scheduleIceRestart();
+      }
     };
 
     return pc;
-  }, [getRTCConfiguration, onRemoteStreamRef]);
+  }, [cleanup, getRTCConfiguration, onRemoteStreamRef, scheduleIceRestart, toUiStream]);
 
   // 通話開始（音声のみ）
   const startCall = useCallback(async (callId: string, withVideo: boolean = false) => {
@@ -259,6 +380,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
         stream = withVideo ? await getAudioVideoStream() : await getAudioStream();
         localStreamRef.current = stream;
         onLocalStreamRef.current?.(stream);
+        setLocalStream(toUiStream(stream));
 
         // ローカルストリームを追加
         stream.getTracks().forEach((track) => {
@@ -289,25 +411,69 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       cleanup();
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start call'));
     }
-  }, [createPeerConnection, signaling, cleanup]);
+  }, [createPeerConnection, signaling, cleanup, toUiStream]);
   startCallRef.current = startCall;
 
   // 発信
-  const call = useCallback(async (to: string) => {
+  const call = useCallback(async (to: string): Promise<void> => {
     if (callState !== 'idle') {
-      return;
+      throw new Error('Call already in progress');
+    }
+
+    // WebSocket接続を確認
+    if (!signaling.isConnected) {
+      const error = new Error('WebSocket not connected');
+      onErrorRef.current?.(error);
+      throw error;
     }
 
     const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     setCurrentCallId(callId);
-    setCallState('ringing');
-
-    // 発信メッセージを送信
-    signaling.sendMessage({
-      type: 'invite',
-      to,
-      callId
+    
+    // エラーレスポンスを待機するためのPromiseを作成
+    const errorPromise = new Promise<void>((resolve, reject) => {
+      callErrorPromiseRef.current = { resolve, reject };
     });
+
+    // 発信メッセージを送信（エラーが発生した場合はthrow）
+    // エラーはWebSocket経由でonErrorハンドラーに通知される
+    // サーバー側でhasCalleeSocket: falseの場合、エラーメッセージが返される
+    try {
+      signaling.sendMessage({
+        type: 'invite',
+        to,
+        callId
+      });
+      // メッセージ送信が成功した場合のみringing状態に設定
+      setCallState('ringing');
+    } catch (error) {
+      // sendMessageでエラーが発生した場合、Promiseをクリアしてエラーをthrow
+      callErrorPromiseRef.current = null;
+      throw error;
+    }
+
+    // エラーレスポンスを待機（最大1秒）
+    // エラーが発生した場合はreject、エラーが発生しない場合はresolve
+    try {
+      await Promise.race([
+        errorPromise,
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            // 1秒以内にエラーが発生しなかった場合、エラーレスポンス待機を解除
+            if (callErrorPromiseRef.current) {
+              callErrorPromiseRef.current.resolve();
+              callErrorPromiseRef.current = null;
+            }
+            resolve();
+          }, 1000);
+        })
+      ]);
+    } catch (error) {
+      // エラーが発生した場合はthrow
+      callErrorPromiseRef.current = null;
+      throw error;
+    }
+    
     // 相手が受話するまで待機（onCallAcceptedでstartCallが呼ばれる）
   }, [callState, signaling]);
 
@@ -337,13 +503,14 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       const stream = await getAudioStream();
       localStreamRef.current = stream;
       onLocalStreamRef.current?.(stream);
+      setLocalStream(toUiStream(stream));
       stream.getTracks().forEach((track) => {
         peerConnectionRef.current?.addTrack(track, stream);
       });
     } catch (e) {
       // ローカル音声が取得できない端末（マイク未接続等）でも通話確立できるようにする
     }
-  }, [callState, incomingCallInfo, signaling, createPeerConnection]);
+  }, [callState, incomingCallInfo, signaling, createPeerConnection, toUiStream]);
 
   // 拒否
   const reject = useCallback(() => {
@@ -381,11 +548,17 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo_start',data:{callId:currentCallId,signalingState:peerConnectionRef.current?.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
       const pcForVideo = peerConnectionRef.current;
-      // 再ネゴシエーション中は新しいofferを作らない（状態崩壊の原因）
-      if (pcForVideo.signalingState !== 'stable') {
+      if (pcForVideo.signalingState !== 'stable') return;
+      
+      // 既存のビデオトラックがliveなら、それを再有効化（toggle時のフリーズを避ける）
+      const existingVideo = localStreamRef.current?.getVideoTracks()?.[0] ?? null;
+      if (existingVideo && existingVideo.readyState === 'live') {
+        existingVideo.enabled = true;
+        setIsVideoEnabled(true);
+        setLocalStream(toUiStream(localStreamRef.current));
         return;
       }
-      
+
       // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
       const videoStream = await getVideoStream();
       // #region agent log
@@ -395,49 +568,41 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       if (!videoStream || videoStream.getVideoTracks().length === 0) {
         throw new Error('ビデオストリームの取得に失敗しました');
       }
-      // 既存のビデオトラックを停止
-      if (localStreamRef.current) {
-        localStreamRef.current.getVideoTracks().forEach(track => track.stop());
-      }
-
       // ビデオトラックを追加
       const videoTrack = videoStream.getVideoTracks()[0];
       if (videoTrack && peerConnectionRef.current) {
-        // 既存のvideo senderがあれば先に外す（保険）
-        if (videoSenderRef.current) {
+        // ローカルストリーム（UI/操作用）に必ず格納する
+        if (!localStreamRef.current) {
+          localStreamRef.current = new MediaStream();
+        }
+        if (!localStreamRef.current.getTracks().some((t) => t.id === videoTrack.id)) {
           try {
-            peerConnectionRef.current.removeTrack(videoSenderRef.current);
+            localStreamRef.current.addTrack(videoTrack);
           } catch {
             // ignore
           }
-          videoSenderRef.current = null;
-        }
-
-        // addTrackはRTCRtpSenderを返すので保持（disableVideoでremoveTrackする）
-        videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, videoStream);
-        // 既存の音声ストリームにビデオトラックを追加
-        if (localStreamRef.current) {
-          localStreamRef.current.addTrack(videoTrack);
-        } else {
-          localStreamRef.current = videoStream;
         }
         onLocalStreamRef.current?.(localStreamRef.current);
+        setLocalStream(toUiStream(localStreamRef.current));
 
-        // 再ネゴシエーション
-        isNegotiatingRef.current = true;
-        const offer = await peerConnectionRef.current.createOffer();
-        await peerConnectionRef.current.setLocalDescription(offer);
-        signaling.sendMessage({
-          type: 'offer',
-          callId: currentCallId,
-          payload: offer
-        });
+        const hadSender = Boolean(videoSenderRef.current);
+        if (videoSenderRef.current) {
+          // 既存senderがあるならreplaceTrackで差し替え（再ネゴ不要）
+          await videoSenderRef.current.replaceTrack(videoTrack);
+        } else {
+          // 初回のみaddTrackしてm-lineを作る（再ネゴ必要）
+          videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, localStreamRef.current);
+        }
+
+        if (!hadSender) {
+          await renegotiate('enableVideo');
+        }
         setIsVideoEnabled(true);
       }
     } catch (error) {
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to enable video'));
     }
-  }, [peerConnectionRef, currentCallId, isVideoEnabled, signaling]);
+  }, [currentCallId, isVideoEnabled, renegotiate, toUiStream]);
 
   // ビデオを無効化
   const disableVideo = useCallback(() => {
@@ -445,28 +610,14 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       return;
     }
 
-    // addTrackで返したsenderをremoveTrackする（removeTrackはRTCRtpSenderを要求）
-    if (videoSenderRef.current) {
-      try {
-        peerConnectionRef.current.removeTrack(videoSenderRef.current);
-      } catch {
-        // ignore
-      }
-      videoSenderRef.current = null;
-    }
-
-    // ローカルストリームからビデオトラックを外して停止
+    // stop/remove すると相手側が「最後のフレームで停止」しやすいので、enabled=falseで送信を止める
     localStreamRef.current?.getVideoTracks().forEach((track) => {
-      try {
-        localStreamRef.current?.removeTrack(track);
-      } catch {
-        // ignore
-      }
-      track.stop();
+      track.enabled = false;
     });
+    setLocalStream(toUiStream(localStreamRef.current));
 
     setIsVideoEnabled(false);
-  }, [peerConnectionRef, isVideoEnabled]);
+  }, [isVideoEnabled, toUiStream]);
 
 
   // クリーンアップ（アンマウント時のみ）
@@ -491,8 +642,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     currentCallId,
     isVideoEnabled,
     incomingCallInfo,
-    localStream: localStreamRef.current,
-    remoteStream: remoteStreamRef.current,
+    localStream,
+    remoteStream,
     call,
     accept,
     reject,

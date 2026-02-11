@@ -1,6 +1,6 @@
 # WebRTCビデオ通話機能 実機検証手順
 
-最終更新: 2026-01-04
+最終更新: 2026-02-10（実機検証完了: Mac→Pi4通話、着信自動切り替え、通話終了自動復帰）
 
 ## 概要
 
@@ -11,7 +11,7 @@
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI、WebRTCシグナリングサーバー）
 - **Raspberry Pi 4**: クライアント（キオスク、通話端末1）
 - **Mac**: クライアント（キオスク、通話端末2）
-- **Raspberry Pi 3**: サイネージ（通話端末としても使用可能）
+- **Raspberry Pi 3**: サイネージ（通話端末として除外）
 
 ## 前提条件
 
@@ -31,6 +31,8 @@
 - Pi3: `client-key-raspberrypi3-signage1`
 - Pi5: `client-key-raspberrypi5-server`
 - Mac: `client-key-mac-kiosk1`（ブラウザのlocalStorageに設定）
+
+**補足**: 通話の識別子は`ClientDevice.id`（UUID）であり、`selfClientId`としてAPIから返却されます。`kiosk-client-id`（localStorage）は通話に不要です。
 
 ### WebRTC機能の有効化確認
 
@@ -93,21 +95,20 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 2. 自己署名証明書の警告が出る場合は「詳細設定」→「続行」を選択
 3. ブラウザの開発者ツール（F12）を開き、Consoleタブを表示
 
-#### 2.2 クライアントキーとIDの設定確認
+#### 2.2 クライアントキーの設定確認（clientIdは不要）
 
 1. ブラウザの開発者ツールで以下を実行：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+// kiosk-client-id は通話に不要
 ```
 
-2. 設定されていない場合、以下を実行：
+2. `kiosk-client-key` が未設定の場合、以下を実行：
 ```javascript
 localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
-localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 ```
 
-**重要**: `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用してください。
+**補足**: 通話の識別子は`ClientDevice.id`（UUID）であり、APIの`selfClientId`として返却されます。
 
 3. ページをリロード（Cmd+R）
 
@@ -128,75 +129,38 @@ localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 
 1. 発信先一覧に以下の端末が表示されること：
    - `raspberrypi5-server`（Pi5サーバー）
-   - `raspberrypi3-signage1`（Pi3サイネージ）
    - `raspberrypi4-kiosk1`（Pi4キオスク、自分自身は除外される）
 
 2. 各発信先に「📞 発信」ボタンが表示されること
 
 **注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
 
-### 3. Pi4でのキオスク通話画面の確認
+### 3. Pi4の着信待機（常時接続）の確認
 
-**重要**: Pi4でも通話画面を開いておく必要があります。WebRTC通話は双方向の接続が必要で、発信先もWebSocketシグナリングに接続している必要があります。
+**重要**: Pi4は`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信があれば`/kiosk/call`へ自動切替します。
 
-#### 3.1 Pi4のキオスクブラウザで通話画面を開く
+**実装詳細（2026-02-09）**:
+- `WebRTCCallProvider`が`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用される
+- 着信時（`callState === 'incoming'`）に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移
+- 通話終了時（`callState === 'idle' || 'ended'`）に元のパスへ自動復帰
+- シグナリング接続は`useWebRTC({ enabled: true })`により常時維持される
 
-Pi4のキオスクブラウザは通常 `/kiosk` にアクセスしていますが、通話画面（`/kiosk/call`）にアクセスする必要があります。
+#### 3.1 接続状態の確認
 
-**方法1: キオスク画面のナビゲーションから（推奨）**
+1. Pi4で任意のキオスク画面（例: `/kiosk/tag` や `/kiosk/production-schedule`）を表示
+2. 画面上部のヘッダーで「接続中」と表示されること
+3. 開発者ツールのConsoleで `WebRTC signaling connected` が表示されること
 
-1. Pi4のキオスクブラウザで現在の画面を確認
-2. 画面上部のナビゲーションで「📞 通話」タブをクリック
-3. 通話画面（`/kiosk/call`）が表示されることを確認
-4. 画面上部に「接続済み」と表示されることを確認
+#### 3.3 クライアントキーの確認（clientIdは不要）
 
-**方法2: 直接URLを入力（キオスクブラウザがフルスクリーンでない場合）**
-
-1. Pi4のキオスクブラウザでアドレスバーに `https://100.106.158.2/kiosk/call` を入力
-2. Enterキーを押してアクセス
-
-**方法3: キオスクブラウザを一時的に終了して手動起動**
-
-```bash
-# Pi4で実行（VNC接続または直接Pi4で実行）
-# キオスクブラウザを一時停止
-sudo systemctl stop kiosk-browser.service
-
-# Chromiumを手動で起動（通話画面を開く）
-chromium-browser --app="https://100.106.158.2/kiosk/call" \
-  --start-maximized \
-  --noerrdialogs \
-  --disable-session-crashed-bubble \
-  --autoplay-policy=no-user-gesture-required \
-  --disable-translate \
-  --overscroll-history-navigation=0 \
-  --use-fake-ui-for-media-stream \
-  --allow-insecure-localhost \
-  --ignore-certificate-errors \
-  --unsafely-treat-insecure-origin-as-secure=https://100.106.158.2
-```
-
-**注意**: 方法3を使用した場合、検証後に元のキオスクブラウザを再起動してください：
-```bash
-sudo systemctl start kiosk-browser.service
-```
-
-#### 3.2 WebSocket接続の確認
-
-1. Pi4のブラウザで開発者ツールを開く（可能な場合、F12キー）
-2. Consoleタブで `WebRTC signaling connected` が表示されることを確認
-3. 画面上部に「接続済み」と表示されることを確認
-
-#### 3.3 クライアントキーとIDの確認
-
-Pi4のキオスクブラウザでは、通常以下のクライアントキーとIDが設定されています：
+Pi4のキオスクブラウザでは、通常以下のクライアントキーが設定されています：
 - `kiosk-client-key`: `client-key-raspberrypi4-kiosk1`
-- `kiosk-client-id`: `raspberrypi4-kiosk1`（または設定された値）
+（`kiosk-client-id` は不要）
 
 開発者ツールのConsoleで確認：
 ```javascript
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+// kiosk-client-id は通話に不要
 ```
 
 ### 4. 通話機能の実機検証
@@ -254,18 +218,17 @@ localStorage.getItem('kiosk-client-id')
 
 3. **通話中の確認**: 4.1と同様
 
-#### 4.3 Pi4からPi3への発信
+#### 4.3 Pi4からの発信対象について
 
-1. **Pi4側**:
-   - 発信先一覧から `raspberrypi3-signage1` を選択
-   - 「📞 発信」ボタンをクリック
+Pi3は通話対象外です。`/api/kiosk/call/targets` から除外されるため、発信先一覧には表示されません。
 
-2. **Pi3側**:
-   - Pi3のブラウザで `https://100.106.158.2/kiosk/call` を開く
-   - 着信モーダルが表示されること
-   - 「受話」ボタンで受話
+**除外設定**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`（CSV）に対象の`ClientDevice.id`を指定します。
 
-3. **通話中の確認**: 4.1と同様
+**実装詳細（2026-02-09）**:
+- Pi3はサイネージ機能特化のため、ビデオ通話機能は不要と判断
+- `getWebRTCCallExcludeClientIds()`関数で環境変数から除外対象を取得
+- `/api/kiosk/call/targets`エンドポイントで除外フィルタを適用
+- 統合テスト（`kiosk.integration.test.ts`）で除外ロジックを検証
 
 ### 5. エラーケースの確認
 
@@ -289,18 +252,12 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 #### 5.2 発信先がオフラインの場合
 
-1. Pi3のstatus-agentを停止：
-```bash
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl stop status-agent.timer'"
-```
+1. 対象端末（Pi4/Mac）のキオスク画面を閉じる、または端末をオフラインにする
 
 2. 数分待ってから、Macのキオスク画面で発信先一覧を確認：
-   - Pi3が`stale: true`として表示される、または一覧から除外されること
+   - 対象端末が`stale: true`として表示される、または一覧から除外されること
 
-3. Pi3のstatus-agentを再起動：
-```bash
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl start status-agent.timer'"
-```
+3. 対象端末のキオスク画面を再度開く
 
 ## トラブルシューティング
 
@@ -339,24 +296,23 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
    - 設定されているキーがデータベースに存在すること
    - `useLocalStorage`フックはJSON形式で保存するため、`JSON.stringify()`を使用すること
 
-3. **status-agentの動作確認**:
-   - 各端末のstatus-agentが正常に動作していること
-   - `ClientStatus`テーブルに最新データが記録されていること
+3. **オンライン判定の確認**:
+   - `/api/kiosk/config` が定期的に呼ばれていること（`ClientDevice.lastSeenAt`が更新される）
+   - status-agentは補助情報（hostname/IP）に利用されるが、通話の必須条件ではない
 
 ### 発信先一覧にPi4が表示されない
 
-1. **MacのlocalStorage設定を確認**:
+1. **MacのlocalStorage設定を確認（clientKey必須）**:
 ```javascript
 // ブラウザの開発者ツールで実行
 localStorage.getItem('kiosk-client-key')
-localStorage.getItem('kiosk-client-id')
+// kiosk-client-id は通話に不要
 ```
 
-2. **正しい形式で設定**:
+2. **正しい形式で設定（clientKeyのみ）**:
 ```javascript
 // useLocalStorageフックはJSON形式で保存するため、JSON.stringify()を使用
 localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1'))
-localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 ```
 
 3. **ページをリロード**:
@@ -366,11 +322,8 @@ localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
    - ブラウザの開発者ツールのNetworkタブで`/api/kiosk/call/targets`のレスポンスを確認
    - Pi4が`targets`配列に含まれていることを確認
 
-5. **デバッグ用URLパラメータ**:
-   - クライアントキーの問題を切り分けるため、URLパラメータで一時的に上書き可能
-```
-https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
-```
+5. **APIレスポンスの確認**:
+   - `selfClientId` と `targets[].clientId` がUUIDで返っていること
 
 ### 通話が開始されない / 着信モーダルが表示されない
 
@@ -434,10 +387,14 @@ ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep 
 1. **原因**: 発信先のクライアントがWebSocketシグナリングサーバーに接続していない
 
 2. **確認事項**:
-   - 発信先（Pi4など）で通話画面（`/kiosk/call`）を開いているか
+   - 発信先（Pi4など）で任意のキオスク画面（`/kiosk/*`）またはサイネージ画面（`/signage`）を開いているか
    - 発信先でWebSocket接続が確立されているか（コンソールで`WebRTC signaling connected`を確認）
+   - 画面上部のヘッダーで「接続済み」と表示されているか
 
-3. **対処**: 発信先でも通話画面を開いてWebSocket接続を確立する
+3. **対処（2026-02-09更新）**: 
+   - **常時接続機能により自動対応**: `/kiosk/*`や`/signage`表示中でもシグナリング接続が維持されるため、通話画面を開く必要はない
+   - 着信時は自動的に`/kiosk/call`へ切り替わる
+   - 接続が確立されていない場合は、ページをリロードして再接続を試みる
 
 ## IPアドレスについて
 
@@ -467,16 +424,20 @@ status-agentは以下の方法でIPアドレスを取得します：
 
 ### キオスク画面
 
-- [ ] Macでキオスク通話画面が表示される
-- [ ] MacでWebSocket接続が確立される
-- [ ] Macで発信先一覧が表示される（Pi4、Pi3、Pi5が含まれる）
-- [ ] Pi4でキオスク通話画面が表示される
-- [ ] Pi4でWebSocket接続が確立される
+- [x] Macでキオスク通話画面が表示される（2026-02-10確認済み）
+- [x] MacでWebSocket接続が確立される（2026-02-10確認済み）
+- [x] Macで発信先一覧が表示される（Pi4、Pi5が含まれる、Pi3は除外される）（2026-02-10確認済み）
+- [x] Pi4でキオスク通話画面が表示される（2026-02-10確認済み）
+- [x] Pi4でWebSocket接続が確立される（2026-02-10確認済み）
+- [x] Pi4で任意のキオスク画面（`/kiosk/tag`、`/kiosk/production-schedule`など）表示中でもWebSocket接続が維持される（2026-02-10確認済み）
+- [x] Pi4でサイネージ画面（`/signage`）表示中でもWebSocket接続が維持される（2026-02-10確認済み）
+- [x] 着信時に自動的に`/kiosk/call`へ切り替わる（2026-02-10確認済み）
+- [x] 通話終了後に元の画面へ自動復帰する（2026-02-10確認済み）
 
 ### 音声通話
 
-- [ ] MacからPi4への発信が成功する
-- [ ] Pi4からMacへの発信が成功する
+- [x] MacからPi4への発信が成功する（2026-02-10確認済み）
+- [x] Pi4からMacへの発信が成功する（2026-02-10確認済み）
 - [ ] 通話中に音声が聞こえる（マイク・スピーカー接続時）
 - [ ] マイク無し端末（Pi4）でも受話できる（recvonlyモード）
 - [ ] 通話の切断が正常に動作する
@@ -536,6 +497,23 @@ status-agentは以下の方法でIPアドレスを取得します：
 - **`srcObject`は要素存在時に設定**: `useEffect`で両方が利用可能な時にバインド
 - **`video.play()`は必ず呼び出す**: autoplay policyへの対応
 
+### 8. 常時接続と自動切り替え機能（2026-02-09実装）
+
+- **WebRTCシグナリング接続の常時維持**: `WebRTCCallProvider`により`/kiosk/*`と`/signage`の全ルートで接続を維持
+- **着信時の自動画面切り替え**: `callState === 'incoming'`時に現在のパスを保存し、`/kiosk/call`へ自動遷移
+- **通話終了後の自動復帰**: `callState === 'idle' || 'ended'`時に元のパスへ自動復帰
+- **`sessionStorage`による復帰パス管理**: `webrtc-call-return-path`キーで復帰先を保存
+- **Pi3の通話対象除外**: サイネージ機能特化のため、`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で除外
+
+### 9. 映像不安定問題の修正とエラーダイアログ改善（2026-02-10実装）
+
+- **`localStream`/`remoteStream`のstate化**: `useWebRTC`でstateを保持し、`ontrack`更新時にUI再描画を確実化
+- **受信トラックの単一MediaStream集約**: `pc.ontrack`で`event.streams[0]`依存をやめ、受信トラックを単一のMediaStreamに集約（音声/映像で別streamになる環境での不安定を回避）
+- **`disableVideo()`の改善**: trackをstop/removeせず`enabled=false`に変更（相手側フリーズ回避）
+- **`enableVideo()`の改善**: 既存trackがあれば再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`を使用
+- **接続状態監視とICE restart**: `connectionState`/`iceConnectionState`が`disconnected/failed`に寄った場合、少し待ってからICE restartのofferを送る最小の復旧処理
+- **エラーダイアログ改善**: `alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換
+
 ## 関連ドキュメント
 
 - [デプロイメントガイド](./deployment.md)
@@ -553,3 +531,23 @@ status-agentは以下の方法でIPアドレスを取得します：
 - [KB-139: WebSocket接続管理（重複接続防止）](../knowledge-base/frontend.md#kb-139)
 - [KB-140: useLocalStorageとの互換性](../knowledge-base/frontend.md#kb-140)
 - [KB-141: CaddyのWebSocketアップグレードヘッダー問題](../knowledge-base/infrastructure/docker-caddy.md#kb-141)
+- [KB-241: WebRTCビデオ通話の常時接続と着信自動切り替え機能実装](../knowledge-base/frontend.md#kb-241)
+- [KB-243: WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善](../knowledge-base/frontend.md#kb-243)
+
+## 実機検証結果（2026-02-10）
+
+### 常時接続と自動切り替え機能の実機検証
+
+**検証日**: 2026-02-10
+
+**検証項目**:
+1. ✅ **MacからPi4への通話テスト**: MacからPi4への通話が正常に動作することを確認（音声・ビデオ双方向通信）
+2. ✅ **着信時の自動切り替え**: Pi4が`/kiosk/*`や`/signage`表示中に着信があった場合、自動的に`/kiosk/call`へ切り替わることを確認
+3. ✅ **通話終了後の自動復帰**: 通話終了後、元の画面（`/kiosk/*`や`/signage`）へ自動的に復帰することを確認
+
+**検証結果**:
+- すべての検証項目が正常に動作することを確認
+- 常時接続により、任意の画面表示中でも着信を受けられることを確認
+- 自動画面切り替えにより、ユーザーが手動で操作する必要がなく、スムーズな通話体験を実現
+
+**詳細**: [KB-241](../knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) を参照。

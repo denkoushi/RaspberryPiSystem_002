@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { ApiError } from '../lib/errors.js';
 import { sendSlackNotification } from '../services/notifications/slack-webhook.js';
+import { fetchSeibanProgressRows } from '../services/production-schedule/seiban-progress.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, COMPLETED_PROGRESS_VALUE } from '../services/production-schedule/constants.js';
+import { buildMaxProductNoWinnerCondition } from '../services/production-schedule/row-resolver/index.js';
 
 const ORDER_NUMBER_MIN = 1;
 const ORDER_NUMBER_MAX = 10;
@@ -34,11 +38,18 @@ const supportMessageSchema = z.object({
   message: z.string().min(1).max(1000),
   page: z.string().min(1).max(200)
 });
+const powerActionSchema = z.object({
+  action: z.enum(['reboot', 'poweroff'])
+});
 
 // シンプルなメモリベースのレート制限（1分に最大3件）
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
 const RATE_LIMIT_MAX_REQUESTS = 3;
+const powerRateLimitMap = new Map<string, number[]>();
+const POWER_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
+const POWER_RATE_LIMIT_MAX_REQUESTS = 1;
+const POWER_ACTIONS_DIR = process.env.POWER_ACTIONS_DIR ?? '/app/power-actions';
 
 function checkRateLimit(clientKey: string): boolean {
   const now = Date.now();
@@ -69,6 +80,32 @@ function checkRateLimit(clientKey: string): boolean {
   return true;
 }
 
+function checkPowerRateLimit(clientKey: string): boolean {
+  const now = Date.now();
+  const requests = powerRateLimitMap.get(clientKey) || [];
+  const recentRequests = requests.filter((timestamp) => now - timestamp < POWER_RATE_LIMIT_WINDOW_MS);
+
+  if (recentRequests.length >= POWER_RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  recentRequests.push(now);
+  powerRateLimitMap.set(clientKey, recentRequests);
+
+  if (powerRateLimitMap.size > 100) {
+    for (const [key, timestamps] of powerRateLimitMap.entries()) {
+      const filtered = timestamps.filter((ts) => now - ts < 5 * 60 * 1000);
+      if (filtered.length === 0) {
+        powerRateLimitMap.delete(key);
+      } else {
+        powerRateLimitMap.set(key, filtered);
+      }
+    }
+  }
+
+  return true;
+}
+
 const parseCsvList = (value: string | undefined): string[] => {
   if (!value) return [];
   return Array.from(
@@ -80,6 +117,9 @@ const parseCsvList = (value: string | undefined): string[] => {
     )
   );
 };
+
+const getWebRTCCallExcludeClientIds = (): Set<string> =>
+  new Set(parseCsvList(process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS));
 
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   const productionScheduleQuerySchema = z.object({
@@ -253,7 +293,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const hasNoteOnly = query.hasNoteOnly === true;
     const hasDueDateOnly = query.hasDueDateOnly === true;
 
-    const baseWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    const baseWhere = Prisma.sql`
+      "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+    `;
     const uniqueTokens = parseCsvList(rawQueryText).slice(0, 8);
 
     const textConditions: Prisma.Sql[] = [];
@@ -410,6 +453,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
       SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
         AND ("rowData"->>'FSIGENCD') IS NOT NULL
         AND ("rowData"->>'FSIGENCD') <> ''
       ORDER BY ("rowData"->>'FSIGENCD') ASC
@@ -822,6 +866,45 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     return { state: { history: fallbackHistory }, updatedAt: fallbackState?.updatedAt ?? null };
   });
 
+  app.get('/kiosk/production-schedule/history-progress', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const locationKey = resolveLocationKey(clientDevice);
+    const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: SHARED_SEARCH_STATE_LOCATION,
+        },
+      },
+    });
+    const fallbackState = sharedState
+      ? null
+      : await prisma.kioskProductionScheduleSearchState.findUnique({
+          where: {
+            csvDashboardId_location: {
+              csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+              location: locationKey,
+            },
+          },
+        });
+    const effectiveState = sharedState ?? fallbackState;
+    const history = extractSearchHistory(effectiveState?.state ?? null);
+
+    const progressRows = await fetchSeibanProgressRows(history);
+    const progressMap = new Map(progressRows.map((row) => [row.fseiban, row]));
+    const progressBySeiban = Object.fromEntries(
+      history.map((fseiban) => {
+        const row = progressMap.get(fseiban);
+        const total = row?.total ?? 0;
+        const completed = row?.completed ?? 0;
+        const status = total > 0 && completed === total ? 'complete' : 'incomplete';
+        return [fseiban, { total, completed, status }];
+      })
+    );
+
+    return { history, progressBySeiban, updatedAt: effectiveState?.updatedAt ?? null };
+  });
+
   app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const locationKey = resolveLocationKey(clientDevice);
@@ -1029,6 +1112,12 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
         found: !!client, 
         defaultMode: client?.defaultMode 
       }, 'Client device lookup result');
+      if (client) {
+        await prisma.clientDevice.update({
+          where: { id: client.id },
+          data: { lastSeenAt: new Date() }
+        });
+      }
       if (client?.defaultMode) {
         defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
       }
@@ -1067,7 +1156,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   /**
    * キオスク通話向けの発信先一覧
    * - x-client-key 認証のみ（管理ユーザーのJWTは不要）
-   * - ClientStatus(clientId) と ClientDevice(statusClientId) を突き合わせて location を付与
+   * - 通話IDは ClientDevice.id を使用
+   * - ClientStatus は補助情報として利用
    */
   app.get('/kiosk/call/targets', { config: { rateLimit: false } }, async (request) => {
     const clientKey = normalizeClientKey(request.headers['x-client-key']);
@@ -1085,44 +1175,47 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     const statuses = await prisma.clientStatus.findMany({
       orderBy: { hostname: 'asc' }
     });
-    const statusClientIds = statuses.map((s) => s.clientId);
+    const statusByClientId = new Map(
+      statuses.map((status) => [status.clientId, status])
+    );
 
-    const deviceByStatusId = new Map<string, { name: string; location: string | null }>();
-    if (statusClientIds.length > 0) {
-      const devices = await prisma.clientDevice.findMany({
-        where: { statusClientId: { in: statusClientIds } },
-        select: { statusClientId: true, name: true, location: true }
-      });
-      for (const d of devices) {
-        if (d.statusClientId) {
-          deviceByStatusId.set(d.statusClientId, { name: d.name, location: d.location ?? null });
-        }
+    const devices = await prisma.clientDevice.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        location: true,
+        statusClientId: true,
+        lastSeenAt: true,
+        updatedAt: true
       }
-    }
+    });
 
     // 既存の /clients/status と同じ閾値（12時間）
     const staleThresholdMs = 1000 * 60 * 60 * 12;
     const now = Date.now();
-    const selfClientId = selfDevice.statusClientId ?? null;
+    const selfClientId = selfDevice.id;
 
+    const excludedClientIds = getWebRTCCallExcludeClientIds();
     return {
       selfClientId,
-      targets: statuses
-        .map((status) => {
-          const lastSeen = status.lastSeen ?? status.updatedAt;
+      targets: devices
+        .map((device) => {
+          const status = device.statusClientId ? statusByClientId.get(device.statusClientId) : undefined;
+          const lastSeen = device.lastSeenAt ?? status?.lastSeen ?? status?.updatedAt ?? device.updatedAt;
           const stale = now - lastSeen.getTime() > staleThresholdMs;
-          const device = deviceByStatusId.get(status.clientId);
           return {
-            clientId: status.clientId,
-            hostname: status.hostname,
-            ipAddress: status.ipAddress,
+            clientId: device.id,
+            hostname: status?.hostname ?? device.name,
+            ipAddress: status?.ipAddress ?? 'unknown',
             lastSeen,
             stale,
-            name: device?.name ?? status.hostname,
-            location: device?.location ?? null
+            name: device.name,
+            location: device.location ?? null
           };
         })
         .filter((t) => t.clientId !== selfClientId)
+        .filter((t) => !excludedClientIds.has(t.clientId))
     };
   });
 
@@ -1209,5 +1302,47 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { requestId: request.id };
+  });
+
+  app.post('/kiosk/power', { config: { rateLimit: false } }, async (request) => {
+    const { clientKey, clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const allowed = checkPowerRateLimit(clientKey);
+    if (!allowed) {
+      throw new ApiError(429, '操作が多すぎます。しばらく待ってから再度お試しください。', undefined, 'POWER_RATE_LIMIT');
+    }
+
+    const body = powerActionSchema.parse(request.body);
+    const requestedAt = new Date().toISOString();
+    const safeTimestamp = requestedAt.replace(/[:.]/g, '-');
+    const filename = `${safeTimestamp}-${clientKey}.json`;
+
+    // ディレクトリが存在しない場合は作成（ボリュームマウントされている場合は既に存在する）
+    try {
+      await fs.mkdir(POWER_ACTIONS_DIR, { recursive: true });
+    } catch (error) {
+      // ディレクトリが既に存在する場合はエラーを無視
+      if (error instanceof Error && 'code' in error && error.code !== 'EEXIST') {
+        throw error;
+      }
+    }
+
+    const filePath = path.join(POWER_ACTIONS_DIR, filename);
+    await fs.writeFile(
+      filePath,
+      JSON.stringify(
+        {
+          action: body.action,
+          clientKey,
+          clientDeviceId: clientDevice.id,
+          requestId: request.id,
+          requestedAt
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    return { requestId: request.id, action: body.action, status: 'accepted' };
   });
 }

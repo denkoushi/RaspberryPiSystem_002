@@ -64,6 +64,21 @@ describe('PUT /api/clients/:id', () => {
     expect(body.client.defaultMode).toBe('TAG');
   });
 
+  it('should update client name with trimmed value', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: '  受付キオスク  '
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.client.name).toBe('受付キオスク');
+  });
+
   it('should return 404 for non-existent client', async () => {
     const nonExistentId = '00000000-0000-0000-0000-000000000000';
     const response = await app.inject({
@@ -97,6 +112,7 @@ describe('クライアントテレメトリーAPI', () => {
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
   let clientKey: string;
+  let clientName: string;
 
   beforeAll(async () => {
     app = await buildServer();
@@ -112,6 +128,7 @@ describe('クライアントテレメトリーAPI', () => {
     adminToken = admin.token;
     const client = await createTestClientDevice();
     clientKey = client.apiKey;
+    clientName = client.name;
   });
 
   afterAll(async () => {
@@ -213,6 +230,54 @@ describe('クライアントテレメトリーAPI', () => {
       where: { apiKey: clientKey }
     });
     expect(updatedClientDevice?.statusClientId).toBe(newStatusClientId);
+  });
+
+  it('POST /api/clients/status does not overwrite ClientDevice.name', async () => {
+    const payload = {
+      clientId: `pi-status-${Date.now()}`,
+      hostname: 'pi-updated-hostname',
+      ipAddress: '192.168.0.51',
+      cpuUsage: 12.3,
+      memoryUsage: 23.4,
+      diskUsage: 34.5
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload
+    });
+
+    expect(response.statusCode).toBe(200);
+    const clientDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    expect(clientDevice?.name).toBe(clientName);
+    expect(clientDevice?.statusClientId).toBe(payload.clientId);
+  });
+
+  it('POST /api/clients/heartbeat does not overwrite ClientDevice.name', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/heartbeat',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        apiKey: clientKey,
+        name: 'Heartbeat Name',
+        location: '新しい場所'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const clientDevice = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    expect(clientDevice?.name).toBe(clientName);
+    expect(clientDevice?.location).toBe('新しい場所');
   });
 
   it('GET /api/clients/status requires auth and returns latest logs', async () => {

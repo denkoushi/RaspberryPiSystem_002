@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 35件  
+**件数**: 40件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -295,13 +295,18 @@ update-frequency: medium
   4. 平均輝度が`CAMERA_MIN_MEAN_LUMA`（デフォルト18）未満の場合は422エラーを返す
   5. 環境変数`CAMERA_MIN_MEAN_LUMA`でしきい値を調整可能
 
+- ⚠️ **変更**（2026-02-11）: 閾値チェックを削除（KB-248参照）
+  - 雨天・照明なしの環境でも撮影可能にするため、フロントエンド・バックエンドの両方で閾値チェックを削除
+  - 500ms待機＋5フレーム選択ロジックは維持（カメラの露出調整を待つため）
+
 **学んだこと**: 
 - USBカメラは起動直後に暗転フレームを生成するため、フレーム内容の検証が必要
 - フロントエンドとサーバー側の両方で検証することで、確実に黒画像を防止できる
 - `sharp().stats()`のチャネル名は環境によって異なる可能性があるため、フォールバック処理が必要
 - 輝度しきい値は環境変数で調整可能にすることで、実環境に応じた最適化が可能
+- **閾値チェックは負荷問題を引き起こす可能性がある**: ストリーム保持によるPi4の負荷問題を回避するため、閾値チェックを削除し、どんな明るさでも撮影可能にした（KB-248参照）
 
-**解決状況**: ✅ **解決済み**（2025-12-04）
+**解決状況**: ✅ **解決済み**（2025-12-04）、**変更**（2026-02-11、KB-248参照）
 
 **関連ファイル**: 
 - `apps/web/src/utils/camera.ts`
@@ -1706,8 +1711,14 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - `connect()`内で`clientKey`または`clientId`が空のため、93行目で早期リターンし、WebSocket接続が試行されない
 
 **実施した対策**: 
-- ✅ **`KioskCallPage.tsx`に`useLocalStorage`を追加**: `clientKey`と`clientId`を`localStorage`から取得して保持し、シグナリング接続の前提条件を満たすように修正
-- ✅ **`resolveClientKey`関数の改善**: `apps/web/src/api/client.ts`の`resolveClientKey`関数で`DEFAULT_CLIENT_KEY`をフォールバックとして使用するように修正
+- ✅ **（当時）`KioskCallPage.tsx`に`useLocalStorage`を追加**: `clientKey`と`clientId`を`localStorage`から取得して保持
+- ✅ **（当時）`resolveClientKey`関数の改善**: `DEFAULT_CLIENT_KEY`フォールバックを追加
+
+**追記（2026-02-09）**:
+- 通話IDは`ClientDevice.id`（UUID）に統一し、`kiosk-client-id`（localStorage）は不要になった
+- `KioskLayout`/`KioskHeader`はAPI由来の`selfClientId`を表示する
+- `/kiosk/*`や`/signage`表示中でも着信できるよう、WebRTCシグナリング接続をページから分離し常時保持（着信時に`/kiosk/call`へ自動切替、終了後に元画面へ復帰）
+- Pi3は通話対象から除外（`/api/kiosk/call/targets`で除外フィルタ適用）
 
 **実装の詳細**:
 1. **`KioskCallPage.tsx`の修正**: `useLocalStorage`フックを追加し、`clientKey`と`clientId`を取得
@@ -1719,10 +1730,9 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 2. **`resolveClientKey`関数の改善**: `localStorage`に値がない場合や空文字の場合、`DEFAULT_CLIENT_KEY`を返すように修正
 
 **学んだこと**:
-1. **WebRTCシグナリングに必要な設定**: WebRTCシグナリングには`clientKey`と`clientId`が必要で、これらは`localStorage`に保存される必要がある
-2. **既存ページとの整合性**: `KioskBorrowPage.tsx`や`KioskReturnPage.tsx`では設定されていたが、`KioskCallPage.tsx`では設定漏れがあった
-3. **新しいページ追加時の注意**: 新しいページを追加する際は、必要な設定（`clientKey`、`clientId`など）を確認する必要がある
-4. **デバッグログの活用**: デバッグログを追加することで、WebSocket接続が試行されない原因を特定できた
+1. **通話IDの単一ソース化が重要**: 複数系統のID（localStorage、statusClientId）を混在させると疎通が破綻しやすい
+2. **`x-client-key`の一貫性**: UI表示・APIヘッダー・WebSocket接続で同じキーを使う必要がある
+3. **新しいページ追加時の注意**: 通話/疎通に関わるIDとキーの取得元を明文化してから実装する
 
 **解決状況**: ✅ **解決済み**（2026-01-16）
 
@@ -1749,9 +1759,9 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 
 **実施した対策**: 
 - ✅ **入力フィールドの完全削除**: `KioskHeader.tsx`の`<Input>`コンポーネントを削除し、`<span>`要素による表示のみに変更
-- ✅ **localStorageへの書き込み無効化**: 各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除し、`DEFAULT_CLIENT_KEY`を直接使用
-- ✅ **起動時防御の実装**: `client.ts`の初期化時に`kiosk-client-key`を`localStorage`に`DEFAULT_CLIENT_KEY`として強制設定
-- ✅ **自動復旧機能の実装**: `axios` response interceptorで401エラー（`INVALID_CLIENT_KEY`）を検知し、自動的に`DEFAULT_CLIENT_KEY`に復元してページをリロード
+- ✅ **localStorageへの書き込み抑制**: 各キオスクページから`useLocalStorage('kiosk-client-key')`の使用を削除
+- ✅ **起動時防御の実装**: `kiosk-client-key`が未設定/空の場合のみ`DEFAULT_CLIENT_KEY`を設定（既存キーは保持）
+- ✅ **自動復旧機能の実装**: 401（`INVALID_CLIENT_KEY`）時に自動的に`DEFAULT_CLIENT_KEY`へ復元してページをリロード
 
 **実装の詳細**:
 1. **`KioskHeader.tsx`の修正**: `<Input>`コンポーネントを`<span>`に変更し、編集不可に
@@ -1761,19 +1771,22 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
    </span>
    ```
 2. **各キオスクページの修正**: `useLocalStorage`の使用を削除し、`resolvedClientKey`を`DEFAULT_CLIENT_KEY`に直接設定
-3. **`client.ts`の修正**: 初期化時に`localStorage`に`DEFAULT_CLIENT_KEY`を強制設定、`resetKioskClientKey()`関数と`axios` interceptorを追加
+3. **`client.ts`の修正**: 未設定時のみ`DEFAULT_CLIENT_KEY`を設定、`resetKioskClientKey()`関数と`axios` interceptorを追加
 
 **実機検証結果（2026-02-02）**:
 - ✅ **IDとAPIキーが編集不可に改善されている**: ヘッダーのAPIキー/IDが表示のみで編集できないことを確認
 - ✅ **生産スケジュールの値が表示されている**: 生産スケジュール画面で値が正常に表示されることを確認
 - ⏸️ **自動復旧機能は後日試す予定**: 開発者ツールでlocalStorageを手動で不正な値に変更し、APIアクセス時の自動復旧を確認予定
 
+**追記（2026-02-09）**:
+- 通話IDは`ClientDevice.id`（UUID）に統一し、`kiosk-client-id`（localStorage）は通話に不要
+
 **トラブルシューティング**:
 - **デプロイ後の入力欄が残る問題**: Webコンテナが再ビルドされていない場合、古いビルドが動いている可能性がある。`docker compose build --no-cache web && docker compose up -d web`で再ビルドが必要
 
 **学んだこと**:
 1. **UIロックの重要性**: 入力フィールドを削除することで、誤入力の根本原因を排除できる
-2. **localStorageへの依存削減**: 固定値（`DEFAULT_CLIENT_KEY`）を直接使用することで、状態の不整合を防げる
+2. **localStorageへの依存削減**: 入力UIからの書き込みを排除し、必要最低限の保存に限定する
 3. **自動復旧の実装**: APIエラー（401/INVALID_CLIENT_KEY）を検知して自動的に復旧することで、運用負荷を軽減できる
 4. **デプロイ時の再ビルド確認**: コード変更時はWebコンテナの再ビルドが必要であり、デプロイログで確認すべき
 
@@ -1782,7 +1795,7 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 **関連ファイル**:
 - `apps/web/src/components/kiosk/KioskHeader.tsx`（入力フィールド削除・表示のみに変更）
 - `apps/web/src/api/client.ts`（起動時防御・自動復旧機能の実装）
-- `apps/web/src/layouts/KioskLayout.tsx`（`DEFAULT_CLIENT_KEY`固定化）
+- `apps/web/src/layouts/KioskLayout.tsx`（表示/APIヘッダーを実際に利用するキーに統一）
 - `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`（localStorage使用削除）
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`（localStorage使用削除）
 - `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`（localStorage使用削除）
@@ -2779,5 +2792,763 @@ export function KioskDatePickerModal({
 - [KB-212](./frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能): 備考欄追加の初期実装
 - [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装): 納期日UI改善
 - [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題): デプロイ時のマイグレーション未適用問題
+
+---
+
+### [KB-239] キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）
+
+**実装日時**: 2026-02-08
+
+**事象**:
+- キオスクヘッダーの「管理コンソール」ボタンがテキストで表示され、スペースを占有していた
+- サイネージプレビュー機能が管理コンソール内にのみ存在し、キオスクから直接確認できなかった
+- 再起動/シャットダウンボタンが2つ並んでおり、スペースを占有していた
+- モーダル（サイネージプレビュー、電源メニュー）が画面上辺を超えて見切れ、画面全体に表示されなかった
+
+**要因**:
+- **UIデザイン**: テキストボタンがスペースを占有し、アイコン化でスペースを確保できる
+- **機能配置**: サイネージプレビューが管理コンソール専用で、キオスクからアクセスできなかった
+- **モーダル表示位置問題**: 
+  - `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されていた
+  - CSS仕様により、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にする（`transform`や`filter`が新しい包含ブロックを作成）
+  - モーダルが`KioskHeader`内でレンダリングされていたため、親要素のDOM階層制約を受けていた
+
+**有効だった対策**:
+- ✅ **管理コンソールボタンのアイコン化**: テキスト「管理コンソール」を歯車アイコン（`GearIcon`）に変更し、`aria-label`でアクセシビリティを確保
+- ✅ **サイネージプレビュー機能の追加**: キオスクヘッダーに「サイネージ」ボタン（歯車アイコン付き）を追加し、モーダルでサイネージプレビューを表示
+- ✅ **電源メニューの統合**: 再起動/シャットダウンボタンを電源アイコン（`PowerIcon`）1つに統合し、クリックでポップアップメニューを表示
+- ✅ **React Portalの導入**: モーダルコンポーネント（`KioskSignagePreviewModal`、`KioskPowerMenuModal`、`KioskPowerConfirmModal`）を`createPortal(..., document.body)`で`document.body`に直接レンダリングし、DOM階層の制約を回避
+- ✅ **モーダルスタイリングの改善**: 
+  - 外側divに`overflow-y-auto`を追加してスクロール可能に
+  - `items-center`を`items-start`に変更して上端揃え
+  - Cardに`max-h-[calc(100vh-2rem)] my-4`を追加して垂直方向のサイズ制御
+  - サイネージプレビューは`w-[calc(100vw-2rem)] max-w-none`で全幅表示
+- ✅ **E2Eテストの安定化**: 
+  - `scrollIntoViewIfNeeded()`で要素をビューポート内に確実に表示
+  - Escキー（`page.keyboard.press('Escape')`）でモーダルを閉じる方式に変更し、ビューポート外エラーを回避
+  - `waitForLoadState('networkidle')`でページ読み込み完了を待機
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+**実装の詳細**:
+- **React Portal**: `react-dom`の`createPortal`を使用し、モーダルを`document.body`に直接レンダリングすることで、親要素のCSS `filter`（`backdrop-blur`）の影響を回避
+- **モーダルコンポーネント**: 
+  - `KioskSignagePreviewModal`: サイネージ画像を30秒ごとに自動更新、手動更新ボタン、Blob取得と`URL.createObjectURL`/`URL.revokeObjectURL`によるメモリリーク防止
+  - `KioskPowerMenuModal`: 電源操作選択メニュー（再起動/シャットダウン）
+  - `KioskPowerConfirmModal`: 電源操作の確認ダイアログ
+- **アクセシビリティ**: アイコンボタンに`aria-label`と`title`属性を追加し、スクリーンリーダー対応
+- **E2Eテスト**: Playwrightの`getByRole`セレクタとEscキー操作で安定性を向上
+
+**学んだこと**:
+- **CSS `filter`プロパティの影響**: `backdrop-blur`などの`filter`プロパティは、子要素の`position: fixed`を親要素基準にする。モーダルを画面全体に表示するには、React PortalでDOM階層を回避する必要がある
+- **React Portalの活用**: `createPortal`を使用することで、DOM階層の制約を回避し、モーダルを画面全体に正しく表示できる
+- **E2Eテストの安定化**: ビューポート外エラーを避けるため、`scrollIntoViewIfNeeded()`とEscキー操作を活用する
+- **アクセシビリティ**: アイコンボタンには必ず`aria-label`や`title`を追加し、スクリーンリーダー対応を確保する
+
+**実機検証結果（2026-02-08）**:
+- ✅ **統合テスト成功**: モーダルの開閉、サイネージ画像の取得・表示、電源操作の確認が正常に動作することを確認
+- ✅ **GitHub Actions CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功
+- ✅ **実機検証完了（2026-02-08）**:
+  - 管理コンソールボタンが歯車アイコンに変更され、スペースが確保されたことを確認
+  - サイネージプレビューボタンが追加され、モーダルでサイネージ画像が正常に表示されることを確認
+  - 電源アイコンをクリックするとメニューが表示され、再起動/シャットダウンが選択できることを確認
+  - モーダルが画面全体に正しく表示され、画面上辺を超えて見切れないことを確認
+  - サイネージプレビューが全画面表示されることを確認
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskHeader.tsx`（ヘッダーコンポーネント、アイコン化、モーダル統合）
+- `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx`（サイネージプレビューモーダル、React Portal使用）
+- `apps/web/src/components/kiosk/KioskPowerMenuModal.tsx`（電源メニューモーダル、React Portal使用）
+- `apps/web/src/components/kiosk/KioskPowerConfirmModal.tsx`（電源確認モーダル、React Portal使用）
+- `apps/web/src/layouts/KioskLayout.tsx`（`backdrop-blur`が適用されている親要素）
+- `e2e/kiosk.spec.ts`（E2Eテスト、Escキー操作と`scrollIntoViewIfNeeded`使用）
+
+**関連KB**:
+- [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題): 管理コンソールのサイネージプレビュー機能実装（キオスクへの統合前）
+
+---
+
+### [KB-240] モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化
+
+**EXEC_PLAN.md参照**: Progress (2026-02-08)
+
+**事象**: 
+- キオスクと管理コンソールでモーダル実装が分散しており、アクセシビリティ対応が不統一
+- E2Eテストが不安定で、strict mode violationやタイミング問題が発生
+- サイネージプレビューが全画面表示に対応していない
+- 管理コンソールで`window.confirm`を使用しており、アクセシビリティに問題がある
+
+**要因**: 
+- モーダルコンポーネントが各ページで個別実装されており、共通ロジックが重複
+- ARIA属性、フォーカストラップ、スクロールロックなどのアクセシビリティ機能が統一されていない
+- E2Eテストで要素の可視性確認やタイミング待機が不十分
+- Fullscreen APIを使用した全画面表示機能が未実装
+- ネイティブ`window.confirm`はアクセシビリティに問題があり、カスタムUIに置き換えが必要
+
+**有効だった対策**: 
+- ✅ **共通Dialogコンポーネントの作成**: `apps/web/src/components/ui/Dialog.tsx`を作成し、Portal、ARIA属性、Escキー処理、バックドロップクリック、スクロールロック、フォーカストラップ、フォーカス復元を統合実装
+- ✅ **キオスク全モーダルの統一**: `KioskPowerMenuModal`、`KioskPowerConfirmModal`、`KioskSignagePreviewModal`、`KioskSupportModal`、`KioskNoteModal`、`KioskDatePickerModal`、`KioskKeyboardModal`をDialogベースに統一
+- ✅ **サイネージプレビューの全画面対応**: Fullscreen API（`element.requestFullscreen()`、`document.exitFullscreen()`、`fullscreenchange`イベント）を実装し、Escキーで全画面解除→モーダル閉じるの優先順位を実装
+- ✅ **ConfirmDialogとuseConfirmの実装**: `ConfirmDialog.tsx`と`ConfirmContext.tsx`（`useConfirm`フック）を作成し、Promiseベースの確認ダイアログを実装
+- ✅ **管理コンソールのwindow.confirm置換**: `EmployeesPage`、`ItemsPage`、`MeasuringInstrumentsPage`、`InstrumentTagsPage`、`InspectionItemsPage`、`GmailConfigPage`、`BackupTargetsPage`で`window.confirm`を`useConfirm`に置換
+- ✅ **アクセシビリティ標準化**: 
+  - `KioskLayout`に`sr-only`の`<h1>`を追加（ページタイトル）
+  - アイコンボタンとダイアログに適切な`aria-label`属性を追加
+  - `initialFocusRef`でモーダル開閉時のフォーカス管理を実装
+- ✅ **E2Eテストの安定化**: 
+  - `e2e/helpers.ts`に`clickByRoleSafe`（`scrollIntoViewIfNeeded` + `click`）と`closeDialogWithEscape`（Escキー操作）を追加
+  - `e2e/kiosk.spec.ts`と`e2e/admin.spec.ts`でヘルパー関数を使用
+  - `expect.poll()`でUI更新をポーリング待機（バックアップ削除テスト）
+- ✅ **CIの修正**: 
+  - import順序のlintエラー修正（`Dialog.tsx`、`AdminLayout.tsx`）
+  - `.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加
+  - E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）
+
+**解決状況**: ✅ **解決済み**（2026-02-08）
+
+**実装の詳細**:
+- **Dialogコンポーネント**: 
+  - React Portal（`createPortal`）で`document.body`に直接レンダリング
+  - ARIA属性（`role="dialog"`、`aria-modal="true"`、`aria-labelledby`、`aria-describedby`）を自動設定
+  - Escキー処理（`closeOnEsc`）、バックドロップクリック（`closeOnBackdrop`）、スクロールロック（`lockScroll`）、フォーカストラップ（`trapFocus`）、フォーカス復元（`returnFocus`）を実装
+  - `initialFocusRef`でモーダル開閉時の初期フォーカスを制御
+  - サイズ指定（`sm`、`md`、`lg`、`full`）に対応
+- **ConfirmDialogコンポーネント**: 
+  - Dialogをベースに、確認/キャンセルボタンを標準化
+  - `tone`プロパティ（`danger`/`primary`）でボタンの色を制御
+- **ConfirmContext**: 
+  - React ContextでPromiseベースの確認ダイアログを提供
+  - `useConfirm`フックで任意のコンポーネントから確認ダイアログを呼び出し可能
+  - `AdminLayout`に`ConfirmProvider`を追加し、管理コンソール全体で利用可能に
+- **Fullscreen API**: 
+  - `KioskSignagePreviewModal`に全画面表示ボタンを追加
+  - `isFullscreen`状態で全画面状態を管理
+  - `fullscreenchange`イベントで状態を同期
+  - Escキーで全画面解除→モーダル閉じるの優先順位を実装
+
+**学んだこと**:
+- **モーダルの共通化**: Portal、ARIA属性、フォーカス管理などのアクセシビリティ機能を共通コンポーネントに集約することで、一貫性と保守性が向上する
+- **Promiseベースの確認ダイアログ**: `useConfirm`フックにより、非同期処理と確認ダイアログを自然に統合できる
+- **Fullscreen API**: ブラウザネイティブのFullscreen APIを使用することで、カスタム実装よりも安定した全画面表示が可能
+- **E2Eテストの安定化**: `scrollIntoViewIfNeeded()`と`expect.poll()`を使用することで、タイミング問題を回避できる
+- **アクセシビリティ標準**: `sr-only`見出し、`aria-label`属性、フォーカス管理により、スクリーンリーダー対応が向上する
+
+**実機検証結果（2026-02-08）**:
+- ✅ **GitHub Actions CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+- ✅ **デプロイ成功**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）
+- ✅ **ヘルスチェック成功**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認
+
+**関連ファイル**:
+- `apps/web/src/components/ui/Dialog.tsx`（共通Dialogコンポーネント）
+- `apps/web/src/components/ui/ConfirmDialog.tsx`（確認ダイアログコンポーネント）
+- `apps/web/src/contexts/ConfirmContext.tsx`（useConfirmフック）
+- `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx`（Fullscreen API実装）
+- `apps/web/src/components/kiosk/KioskPowerMenuModal.tsx`（Dialogベースに統一）
+- `apps/web/src/components/kiosk/KioskPowerConfirmModal.tsx`（Dialogベースに統一）
+- `apps/web/src/pages/admin/GmailConfigPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/admin/BackupTargetsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/EmployeesPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/ItemsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/MeasuringInstrumentsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/InstrumentTagsPage.tsx`（useConfirm使用）
+- `apps/web/src/pages/tools/InspectionItemsPage.tsx`（useConfirm使用）
+- `apps/web/src/layouts/AdminLayout.tsx`（ConfirmProvider追加）
+- `apps/web/src/layouts/KioskLayout.tsx`（sr-only見出し追加）
+- `e2e/helpers.ts`（clickByRoleSafe、closeDialogWithEscape追加）
+- `e2e/kiosk.spec.ts`（ヘルパー関数使用）
+- `e2e/admin.spec.ts`（ヘルパー関数使用、expect.poll使用）
+- `.trivyignore`（Caddy依存関係の脆弱性追加）
+
+**関連KB**:
+- [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入): キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）
+
+---
+
+### [KB-241] WebRTCビデオ通話の常時接続と着信自動切り替え機能実装
+
+**実装日時**: 2026-02-09
+
+**事象**: 
+- Pi4が`/kiosk/*`や`/signage`表示中に着信を受けられない
+- 発信側が「Callee is not connected」エラーで通話できない
+- 通話画面（`/kiosk/call`）を開いていないとWebSocket接続が確立されない
+
+**要因**: 
+- WebRTCシグナリング接続が`KioskCallPage`内でのみ確立されていた
+- 他のキオスク画面やサイネージ画面では接続が維持されていなかった
+- 着信時に自動的に通話画面へ切り替わる機能がなかった
+
+**有効だった対策**: 
+- ✅ **常時接続機能の実装（2026-02-09）**:
+  1. **`WebRTCCallProvider`の作成**: React ContextでWebRTC状態を全ルートで共有
+  2. **`CallAutoSwitchLayout`の作成**: `/kiosk/*`と`/signage`の全ルートをラップ
+  3. **`App.tsx`のルーティング修正**: `CallAutoSwitchLayout`を`/kiosk/*`と`/signage`に適用
+  4. **着信時の自動切り替え**: `callState === 'incoming'`時に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移
+  5. **通話終了後の自動復帰**: `callState === 'idle' || 'ended'`時に元のパスへ自動復帰
+  6. **Pi3の通話対象除外**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数で除外フィルタを実装
+
+**実装の詳細**:
+```typescript
+// apps/web/src/features/webrtc/context/WebRTCCallContext.tsx
+export function WebRTCCallProvider({ children }: PropsWithChildren) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const webrtc = useWebRTC({ enabled: true });
+
+  // 着信時の自動切り替え
+  useEffect(() => {
+    if (webrtc.callState !== 'incoming') return;
+    if (location.pathname === '/kiosk/call') return;
+
+    const returnPath = `${location.pathname}${location.search}`;
+    window.sessionStorage.setItem(RETURN_PATH_KEY, returnPath);
+    navigate('/kiosk/call');
+  }, [webrtc.callState, location.pathname, location.search, navigate]);
+
+  // 通話終了後の自動復帰
+  useEffect(() => {
+    if (!shouldReturnOnCallState(webrtc.callState)) return;
+    const returnPath = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    if (returnPath && returnPath !== location.pathname) {
+      navigate(returnPath, { replace: true });
+    }
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+  }, [webrtc.callState, location.pathname, navigate]);
+}
+
+// apps/web/src/App.tsx
+<Route element={<CallAutoSwitchLayout />}>
+  <Route path="/signage" element={<SignageDisplayPage />} />
+  <Route element={<KioskLayout />}>
+    <Route path="/kiosk/*" ... />
+  </Route>
+</Route>
+```
+
+**API側の実装**:
+```typescript
+// apps/api/src/routes/kiosk.ts
+const getWebRTCCallExcludeClientIds = (): Set<string> =>
+  new Set(parseCsvList(process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS));
+
+// GET /kiosk/call/targets
+const excludedClientIds = getWebRTCCallExcludeClientIds();
+return {
+  targets: devices
+    .filter((t) => t.clientId !== selfClientId)
+    .filter((t) => !excludedClientIds.has(t.clientId))
+};
+```
+
+**学んだこと**:
+- **React Contextによる状態共有**: 複数のルートで同じWebRTCインスタンスを共有することで、接続を常時維持できる
+- **自動画面切り替えの実装**: `useEffect`で`callState`を監視し、着信時に自動的に通話画面へ遷移することで、ユーザー体験が向上する
+- **`sessionStorage`による復帰パス管理**: 通話終了後に元の画面へ戻ることで、作業の中断を最小限に抑えられる
+- **環境変数による柔軟な除外設定**: `WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で特定のクライアントを除外することで、用途に応じた設定が可能
+
+**解決状況**: ✅ **解決済み**（2026-02-09、実機検証完了: 2026-02-10）
+
+**実機検証結果**:
+- ✅ **APIレベルでの動作確認**: 発信先一覧APIが正常に動作し、Pi3が除外されることを確認
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260209-xxxxx-xxxxx, state: success）
+- ✅ **MacからPi4への通話テスト**: MacからPi4への通話が正常に動作することを確認（音声・ビデオ双方向通信）
+- ✅ **着信時の自動切り替え**: Pi4が`/kiosk/*`や`/signage`表示中に着信があった場合、自動的に`/kiosk/call`へ切り替わることを確認
+- ✅ **通話終了後の自動復帰**: 通話終了後、元の画面（`/kiosk/*`や`/signage`）へ自動的に復帰することを確認
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/context/WebRTCCallContext.tsx`（WebRTC Context Provider、自動切り替え・復帰ロジック）
+- `apps/web/src/features/webrtc/components/CallAutoSwitchLayout.tsx`（Layoutコンポーネント）
+- `apps/web/src/App.tsx`（ルーティング設定）
+- `apps/api/src/routes/kiosk.ts`（Pi3除外フィルタ）
+- `apps/api/src/routes/__tests__/kiosk.integration.test.ts`（除外ロジックの統合テスト）
+
+**関連KB**:
+- [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定): WebRTCビデオ通話機能の初期実装（clientKey/clientId未設定問題）
+- [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題): useWebRTCフックのcleanup関数が早期実行される問題
+- [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止): WebRTCシグナリングのWebSocket接続管理（重複接続防止）
+
+---
+
+### [KB-242] 生産スケジュール登録製番削除ボタンの進捗連動UI改善
+
+**実装日時**: 2026-02-10
+
+**事象**: 
+- 登録製番ボタン右上の×削除ボタンが、進捗状態に関係なく常に同じ見た目で表示されていた
+- 完了済み製番と未完了製番の識別が削除ボタン上では困難だった
+
+**要望**: 
+- 進捗100%の製番は削除ボタンを白で表示（削除可能であることを明確に）
+- 未完了の製番は削除ボタンをグレー白縁で表示（視覚的に区別）
+
+**有効だった対策**: 
+- ✅ **進捗連動UIの実装（2026-02-10）**:
+  1. **API**: `GET /kiosk/production-schedule/history-progress`エンドポイントを追加（shared historyから進捗マップを返す）
+  2. **Service**: `SeibanProgressService`を新設し、既存の製番進捗集計SQLを移植
+  3. **DataSource**: `ProductionScheduleDataSource`を共通サービス利用へ切替（重複ロジック排除）
+  4. **Web**: `useProductionScheduleHistoryProgress`フックを追加し、進捗マップを取得
+  5. **UI**: 削除ボタンのスタイルを進捗に応じて切替（100%完了=白、未完了=グレー白縁）
+
+**実装ファイル**:
+- `apps/web/src/api/hooks.ts`: `useProductionScheduleHistoryProgress`フック
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: 削除ボタンのスタイル切替
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`: 製番進捗集計サービス
+- `apps/api/src/routes/kiosk.ts`: history-progressエンドポイント
+- `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`: 共通サービス利用へ切替
+
+**学んだこと**:
+- **進捗マップの共有**: キオスクUIとサイネージの両方で同じ進捗データが必要な場合、サービス層を共通化することで整合性と保守性を確保できる
+- **視覚的フィードバック**: 削除ボタンの色を進捗で変えることで、ユーザーが状態を直感的に把握できる
+
+**解決状況**: ✅ **解決済み**（2026-02-10）
+
+**実機検証結果**:
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260210-080354-23118）
+- ✅ **キオスク動作検証OK**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作
+
+**関連KB**:
+- [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化): 生産スケジュール登録製番上限の拡張
+- [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト): サイネージ未完部品表示ロジック改善
+
+---
+
+### [KB-243] WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善
+
+**実装日時**: 2026-02-10
+
+**事象**: 
+- 相手側の動画が最初取得できない（通話開始直後に映像が表示されない）
+- 「ビデオを有効/無効」を切り替えると相手側の画像が止まる
+- しばらく無操作すると相手側の画像が止まる
+- 相手キオスク未起動時にエラーメッセージがユーザビリティ悪い（`alert()`で生のエラーメッセージを表示）
+
+**要因**: 
+1. **`useWebRTC`が`localStream`/`remoteStream`をrefで保持して返すだけ**で、`ontrack`で更新されてもReactが再描画せずUIが更新されない
+2. **`disableVideo()`がtrackを`stop/remove`**しており、相手側が最後のフレームで停止しやすい
+3. **`enableVideo()`で`addTrack`時に別の`MediaStream`を渡す**ことで、相手側の`ontrack`が別streamを参照し、音声/映像で別streamになる環境で不安定
+4. **PeerConnectionの接続状態監視（`disconnected/failed`検知・復旧）が無い**ため、無操作で接続が劣化しても復旧しない
+5. **エラーメッセージが`alert()`で生表示**されており、ユーザー向けの説明が不足
+
+**有効だった対策**: 
+- ✅ **映像不安定問題の修正（2026-02-10）**:
+  1. **`localStream`/`remoteStream`をstateで保持**: `useWebRTC`にstateを追加し、`ontrack`更新時にUI再描画を確実化
+  2. **受信トラックを単一MediaStreamに集約**: `pc.ontrack`で`event.streams[0]`依存をやめ、受信トラックを単一のMediaStreamに集約してUIに渡す（音声/映像で別streamになる環境での不安定を回避）
+  3. **`disableVideo()`でtrackをstop/removeしない**: `enabled=false`に変更（送信停止はするがtrackは生かす）ことで、相手側のフリーズを回避
+  4. **`enableVideo()`の改善**: 既存trackがliveなら再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`を使用
+  5. **接続状態監視とICE restart**: `connectionState`/`iceConnectionState`が`disconnected/failed`に寄った場合、少し待ってからICE restartのofferを送る最小の復旧処理を追加
+- ✅ **エラーダイアログ改善（2026-02-10）**:
+  1. **`alert()`を`Dialog`に置換**: `KioskCallPage`の`alert()`連発をやめ、`Dialog`コンポーネントで統一
+  2. **エラーメッセージのユーザー向け変換**: `Callee is not connected`を「相手のキオスクが起動していません」という説明ダイアログに変換
+
+**実装の詳細**:
+```typescript
+// apps/web/src/features/webrtc/hooks/useWebRTC.ts
+// localStream/remoteStreamをstateで保持
+const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+// toUiStream: track追加/削除があってもReactの再描画が走るように、毎回新しいMediaStreamを作る
+const toUiStream = useCallback((stream: MediaStream | null): MediaStream | null => {
+  if (!stream) return null;
+  return new MediaStream(stream.getTracks());
+}, []);
+
+// pc.ontrack: 受信トラックを単一MediaStreamに集約
+pc.ontrack = (event) => {
+  const existing = remoteStreamRef.current ?? new MediaStream();
+  const track = event.track;
+  if (!existing.getTracks().some((t) => t.id === track.id)) {
+    existing.addTrack(track);
+  }
+  remoteStreamRef.current = existing;
+  setRemoteStream(toUiStream(existing)); // state更新でUI再描画
+};
+
+// disableVideo: trackをstop/removeしない
+const disableVideo = useCallback(() => {
+  localStreamRef.current?.getVideoTracks().forEach((track) => {
+    track.enabled = false; // stop/removeではなくenabled=false
+  });
+  setLocalStream(toUiStream(localStreamRef.current));
+  setIsVideoEnabled(false);
+}, [isVideoEnabled, toUiStream]);
+
+// enableVideo: 既存trackがあれば再有効化、新規はreplaceTrack
+const enableVideo = useCallback(async () => {
+  const existingVideo = localStreamRef.current?.getVideoTracks()?.[0] ?? null;
+  if (existingVideo && existingVideo.readyState === 'live') {
+    existingVideo.enabled = true; // 再有効化
+    setIsVideoEnabled(true);
+    return;
+  }
+  // 新規track追加時はreplaceTrackを使用（再ネゴ不要）
+  if (videoSenderRef.current) {
+    await videoSenderRef.current.replaceTrack(videoTrack);
+  } else {
+    videoSenderRef.current = peerConnectionRef.current.addTrack(videoTrack, localStreamRef.current);
+    await renegotiate('enableVideo');
+  }
+}, [currentCallId, isVideoEnabled, renegotiate, toUiStream]);
+
+// 接続状態監視とICE restart
+pc.onconnectionstatechange = () => {
+  const state = pc.connectionState;
+  if (state === 'failed' || state === 'disconnected') {
+    scheduleIceRestart(); // 2.5秒後にICE restart
+  }
+};
+
+pc.oniceconnectionstatechange = () => {
+  const ice = pc.iceConnectionState;
+  if (ice === 'failed' || ice === 'disconnected') {
+    scheduleIceRestart();
+  }
+};
+```
+
+```typescript
+// apps/web/src/pages/kiosk/KioskCallPage.tsx
+// エラーダイアログのユーザー向け変換
+const toUserFacingError = useCallback((error: Error): { title: string; description?: string } => {
+  const msg = error.message || '';
+  if (/Callee is not connected/i.test(msg)) {
+    return {
+      title: '相手のキオスクが起動していません',
+      description: '相手端末が通話待機状態ではないため、発信できません。相手端末の電源が入っていること、ブラウザが起動していること、キオスク画面/サイネージ画面が表示されていることを確認してから再試行してください。',
+    };
+  }
+  // その他のエラーもユーザー向けに変換
+  return { title: 'エラー', description: msg ? `エラーが発生しました: ${msg}` : 'エラーが発生しました。' };
+}, []);
+
+// Dialogコンポーネントで表示
+<Dialog
+  isOpen={Boolean(errorDialog)}
+  onClose={() => setErrorDialog(null)}
+  title={errorDialog?.title}
+  description={errorDialog?.description}
+  ariaLabel="通話エラー"
+  size="md"
+>
+  <div className="mt-4 flex justify-end">
+    <Button type="button" onClick={() => setErrorDialog(null)}>OK</Button>
+  </div>
+</Dialog>
+```
+
+**学んだこと**:
+- **React stateとrefの使い分け**: UIに反映させる必要がある値はstateで保持し、refだけでは再描画が走らない
+- **MediaStreamの扱い**: `ontrack`で`event.streams[0]`に依存すると、音声/映像で別streamが届く環境で不安定になる。受信トラックを単一のMediaStreamに集約することで安定化
+- **WebRTC trackの停止方法**: `stop/remove`すると相手側が最後のフレームで停止しやすい。`enabled=false`で送信を止めることで、相手側のフリーズを回避
+- **`replaceTrack`の活用**: 既存senderがある場合は`replaceTrack`を使用することで、再ネゴシエーションを避けられる
+- **接続状態監視の重要性**: PeerConnectionの接続状態を監視し、劣化時にICE restartすることで、無操作による接続切断を防げる
+- **エラーメッセージのユーザビリティ**: 技術的なエラーメッセージをユーザー向けの説明に変換することで、ユーザー体験が向上する
+
+**解決状況**: ✅ **解決済み**（2026-02-10）
+
+**実機検証結果**:
+- ✅ **通話開始直後に相手映像が表示される**: トグル無しで正常に映像が表示されることを確認
+- ✅ **ビデオON/OFF時の相手側フリーズ回避**: 切り替えても相手側の映像が固まらないことを確認
+- ✅ **無操作時の接続維持**: 数分放置しても相手側の映像が止まらないことを確認
+- ✅ **エラーダイアログの改善**: 相手キオスク未起動時に分かりやすい説明ダイアログが表示されることを確認
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260210-105120-4601）
+- ✅ **CI成功**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功
+
+**関連ファイル**:
+- `apps/web/src/features/webrtc/hooks/useWebRTC.ts`（localStream/remoteStreamのstate化、track集約、disableVideo/enableVideo改善、接続状態監視）
+- `apps/web/src/pages/kiosk/KioskCallPage.tsx`（エラーダイアログ改善）
+
+**関連KB**:
+- [KB-241](./frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装): WebRTCビデオ通話の常時接続と着信自動切り替え機能実装
+- [KB-136](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題): useWebRTCフックのcleanup関数が早期実行される問題
+- [KB-138](./frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題): ビデオ通話時のDOM要素へのsrcObjectバインディング問題
+
+---
+
+### [KB-244] Pi4キオスクの備考欄に日本語入力状態インジケーターを追加
+
+**発生日**: 2026-02-10
+
+**Context**:
+- Pi4キオスクの備考欄で日本語入力が可能になったが、全画面表示のためシステムレベルのIMEインジケーターが見えない
+- ユーザーが現在の入力モード（日本語/英字）を確認できない
+- キーボードからの日本語入力切り替え（Ctrl+Space）ができない問題も発見
+
+**Symptoms**:
+- 備考欄にアルファベットしか入力できない
+- 現在の入力モードが分からない（全画面表示でシステムインジケーターが非表示）
+- Ctrl+SpaceやAlt+`で日本語入力に切り替えられない
+
+**Investigation**:
+- **仮説1**: IBus設定が不適切（CONFIRMED）
+  - `gsettings get org.freedesktop.ibus.general engines-order`が`@as []`（空）
+  - `ibus engine`実行時に「エンジンが設定されていません」と表示
+  - `gsettings get org.freedesktop.ibus.general.hotkey triggers`が`['<Super>space']`（Ctrl+Spaceではない）
+- **仮説2**: Chromiumの全画面モードでIMEショートカットがブロックされる（INCONCLUSIVE）
+  - Chromiumのkioskモードではキーボードショートカットが制限される可能性がある
+  - ただし、IBus設定が空のため、設定修正後の動作は未確認
+- **仮説3**: WebアプリからOSのIMEを直接制御できない（CONFIRMED）
+  - ブラウザからOSのIME（ibus/mozc）を直接切り替える標準APIは存在しない
+  - `compositionstart`/`compositionend`イベントで入力モードを検出することは可能
+
+**Root cause**:
+1. **IBus設定の未設定**: `engines-order`が空で、切替対象エンジンが設定されていない
+2. **ホットキー設定の不一致**: デフォルトが`<Super>space`で、ユーザーが期待する`Ctrl+Space`ではない
+3. **全画面表示による視認性の問題**: システムレベルのIMEインジケーターが非表示
+
+**Fix**:
+- ✅ **注釈文の修正**（2026-02-10）:
+  1. 切り替え方法の注釈を「Ctrl+Space または Alt+`（半角/全角）」→「全角半角キー」に修正
+  2. 実機動作（全角半角キー単独押し）と一致するように変更
+- ✅ **現在モード表示の削除**（2026-02-10）:
+  1. `isComposing` stateと`compositionstart`/`compositionend`イベントリスナーを削除
+  2. インジケーター表示（「あ 日本語」「A 英字」）を削除
+  3. 理由: 入力中のみ表示され、確定後は日本語入力モードでも「A 英字」に戻る不正確な動作のため
+- ✅ **IBus設定の永続化**（2026-02-10）:
+  1. Ansibleロール（`kiosk/tasks/main.yml`）にIBus設定タスクを追加
+  2. `engines-order`を`['xkb:jp::jpn', 'mozc-jp']`に設定
+  3. `hotkey triggers`を`['<Control>space']`に設定
+  4. DBusユーザーバスが無い場合は安全にスキップ（デプロイ失敗回避）
+  5. 冪等性を確保（差分がある時だけchanged）
+- ✅ **Pi4再起動ボタンのエラーハンドリング改善**（2026-02-10）:
+  1. `apps/api/src/routes/kiosk.ts`の`fs.mkdir`に`EEXIST`エラーハンドリングを追加
+  2. ボリュームマウントされたディレクトリでも正常に動作するように修正
+
+**Prevention**:
+- AnsibleでIBus設定を永続化することで、Pi4再起動後も設定が維持される
+- デプロイ時に自動的にIBus設定が適用されるため、手動設定が不要
+- 注釈文を実機動作に合わせることで、ユーザーが正しい切り替え方法を理解できる
+
+**実機検証結果**:
+- ✅ **切り替え方法**: 全角半角キーの単独押しで日本語入力モードが切り替わることを確認
+- ✅ **注釈文修正**: 「Ctrl+Space または Alt+`（半角/全角）」→「全角半角キー」に修正し、実機動作と一致することを確認
+- ✅ **現在モード表示削除**: 入力中のみ表示され、確定後は日本語入力モードでも「A 英字」に戻る不正確な動作のため、表示を削除
+- ✅ **IBus設定**: `engines-order`と`hotkey triggers`が正しく設定されることを確認
+- ✅ **デプロイ成功**: Pi5とPi4でデプロイ成功（Run ID: 20260210-131708-15247, state: success）
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/KioskNoteModal.tsx`（注釈文修正、現在モード表示削除）
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（IBus設定永続化）
+- `apps/api/src/routes/kiosk.ts`（再起動ボタンのエラーハンドリング改善）
+
+**学んだこと**:
+- **ブラウザからOSのIME状態を直接取得する標準APIは存在しない**: `compositionstart`/`compositionend`は入力中（未確定）のみ検出でき、IMEのON/OFF状態は検出できない
+- **実機検証の重要性**: 想定した動作（Ctrl+Space）と実際の動作（全角半角キー）が異なる場合があるため、実機検証が必須
+- **不正確な表示より非表示**: 現在モード表示が不正確な場合は、ユーザーを混乱させる可能性があるため、削除する方が良い
+
+**解決状況**: ✅ **解決済み**（2026-02-10、実機検証完了）
+
+---
+
+### [KB-247] 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- 生産スケジュール画面で、登録製番ボタン右上の×削除ボタンの応答性が若干落ちた気がするという報告があった
+- KB-242で実装した完未完判定機能（`useKioskProductionScheduleHistoryProgress()`）が追加され、4秒ごとにポーリングが実行されていた
+
+**Symptoms**:
+- ×ボタンを押したときの反応が若干遅い気がする
+- クリックの取りこぼしや反応の遅れが発生する可能性がある
+
+**Investigation**:
+1. **仮説1**: 完未完判定ロジック（`isComplete = progressBySeiban[h]?.status === 'complete'`）が重い（REJECTED）
+   - このロジック自体はO(1)の軽量な処理で、体感劣化の原因にはなりにくい
+2. **仮説2**: `history-progress`の4秒ポーリングが原因（CONFIRMED）
+   - `useKioskProductionScheduleHistoryProgress()`が`refetchInterval: 4000`で常時実行
+   - React Queryの`refetchInterval`は、データが同じでも`isFetching`が変動し、ページ全体の再レンダーが発生しやすい
+   - `ProductionSchedulePage`は最大400行の巨大テーブルを含むため、再レンダーコストが高い
+   - 4秒ごとに2回（フェッチ開始・完了）の再レンダーが発生し、Pi4等の非力端末でメインスレッドが詰まりやすい
+3. **仮説3**: API側の重い集計SQLが原因（CONFIRMED）
+   - `/kiosk/production-schedule/history-progress`エンドポイントが4秒ごとに実行
+   - `fetchSeibanProgressRows()`がJSON列抽出（`rowData->>'FSEIBAN'`、`rowData->>'progress'`）とGROUP BYを実行
+   - 式インデックスが存在しないため、データ件数が増えるとDB負荷が高くなる
+   - DB負荷/遅延が増えると、フロント側のフェッチ状態変動・更新が増えやすい
+
+**Root cause**:
+1. **フロント側**: `history-progress`の4秒ポーリングにより、重い`ProductionSchedulePage`（最大400行）が頻繁に再レンダーされる
+2. **サーバー/DB側**: 4秒ごとにJSON抽出＋集計SQL（式インデックスなし）が実行され、DB負荷/遅延が増えるとフロント側の更新が増える
+
+**Fix**:
+- ✅ **ポーリング間隔の最適化**（2026-02-10）:
+  1. `useKioskProductionScheduleHistoryProgress()`の`refetchInterval`を`4000`→`30000`（30秒）に変更
+  2. `useKioskProductionScheduleSearchState()`と`useKioskProductionScheduleSearchHistory()`は4秒のまま維持（端末間同期の速さを維持）
+  3. 完未完表示の更新間隔は最大30秒の遅延となるが、応答性改善を優先
+
+**Prevention**:
+- ポーリング間隔は用途に応じて適切に設定する（同期が必要なものは短く、表示のみのものは長く）
+- 重いページ（大量のDOM要素を含む）では、ポーリング間隔を長めに設定する
+- DB側の式インデックス検討（将来的な最適化候補）
+
+**実装ファイル**:
+- `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleHistoryProgress()`の`refetchInterval`変更）
+
+**学んだこと**:
+- **React Queryの`refetchInterval`はデータが同じでも再レンダーを発生させる**: `isFetching`の変動により、データが変わらなくても再レンダーが発生する
+- **重いページではポーリング間隔の影響が大きい**: 最大400行のテーブルを含むページでは、4秒ごとの再レンダーが体感劣化の原因になる
+- **用途に応じたポーリング間隔の設定**: 端末間同期が必要なもの（`search-state`）は短く、表示のみのもの（`history-progress`）は長く設定する
+- **DB側の最適化も重要**: JSON列抽出＋集計SQLは式インデックスがないと重くなるため、将来的な最適化候補として検討する
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 生産スケジュール登録製番削除ボタンの進捗連動UI改善
+- [KB-205](./api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側): 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
+
+**解決状況**: ✅ **解決済み**（2026-02-10、デプロイ完了）
+
+---
+
+### [KB-248] カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）
+
+**実装日時**: 2026-02-11
+
+**Context**:
+- 雨天・照明なしの環境で、閾値0.1でも「写真が暗すぎます」エラーが発生
+- 人間の目では暗いとは感じない環境でも、カメラの露出調整が完了する前に撮影されるためエラーになる
+- 過去にカメラストリームを常時ONにしていたが、Pi4の負荷が高くシステムが落ちた経験がある
+
+**Symptoms**:
+- 雨天・照明なしの環境で、閾値を0.1に下げても「写真が暗すぎます」エラーが発生
+- 補光で1回成功すれば、補光なしでも何度も成功する（ストリーム継続中は露出調整が保持される）
+- 再起動後の1回目のNFCタグスキャン時にエラーになりやすい
+
+**Investigation**:
+1. **仮説1**: 閾値が高すぎる（REJECTED）
+   - 閾値を18→8→1→0.1と下げても、雨天・照明なし環境ではエラーが発生
+2. **仮説2**: カメラの露出調整待機時間が短い（CONFIRMED）
+   - `capturePhotoFromStream`で100ms待機では不十分
+   - USBカメラの露出調整には200〜500msかかる
+   - 500ms待機＋5フレーム試行（各100ms間隔）に変更
+3. **仮説3**: ストリーム停止時に露出調整がリセットされる（CONFIRMED）
+   - ストリームを停止すると、カメラの露出調整もリセットされる
+   - 補光で1回成功後、補光なしでも成功するのは、ストリーム継続中は露出調整が保持されているため
+4. **仮説4**: ストリーム保持による負荷問題（CONFIRMED）
+   - 過去にカメラストリームを常時ONにしていたが、Pi4の負荷が高くシステムが落ちた
+   - ストリーム保持は負荷が高く、Pi4では不可
+
+**Root cause**:
+1. **カメラの露出調整タイミング**: USBカメラは起動直後に自動で露出調整を行うが、調整完了前に撮影すると暗い画像になる
+2. **ストリーム停止による露出調整リセット**: ストリームを停止すると露出調整もリセットされるため、次回スキャン時には再調整が必要
+3. **負荷問題**: ストリーム保持はPi4の負荷が高く、システムが落ちる可能性があるため不可
+
+**Fix**:
+- ✅ **閾値チェックの削除**（2026-02-11）:
+  1. フロントエンド（`apps/web/src/utils/camera.ts`）の閾値チェックを削除
+  2. バックエンド（`apps/api/src/services/tools/loan.service.ts`）の閾値チェックを削除
+  3. テスト（`apps/api/src/routes/__tests__/photo-borrow.integration.test.ts`）の暗い画像拒否テストをスキップ
+  4. **500ms待機＋5フレーム選択ロジックは維持**（カメラの露出調整を待つため）
+
+**Prevention**:
+- カメラの露出調整を待つロジック（500ms待機＋5フレーム選択）は維持
+- ストリーム保持による負荷問題を避けるため、閾値チェックは削除
+- どんな明るさでも撮影可能にすることで、ユーザー体験を向上
+
+**実装ファイル**:
+- `apps/web/src/utils/camera.ts`（閾値チェック削除、500ms待機＋5フレーム選択ロジック維持）
+- `apps/api/src/services/tools/loan.service.ts`（閾値チェック削除）
+- `apps/api/src/routes/__tests__/photo-borrow.integration.test.ts`（暗い画像拒否テストをスキップ）
+
+**学んだこと**:
+- **USBカメラの露出調整は時間がかかる**: 起動直後200〜500msで露出調整が完了するため、待機時間が必要
+- **複数フレーム選択は有効**: 5フレームを試行して最も明るいフレームを選択することで、露出調整後の明るい画像を取得できる
+- **ストリーム停止で露出調整がリセットされる**: ストリームを停止すると露出調整もリセットされるため、次回スキャン時には再調整が必要
+- **ストリーム保持は負荷が高い**: Pi4ではストリーム保持による負荷でシステムが落ちる可能性があるため、不可
+- **閾値チェックは負荷問題を引き起こす可能性がある**: ストリーム保持による負荷問題を回避するため、閾値チェックを削除し、どんな明るさでも撮影可能にした
+
+**関連KB**:
+- [KB-068](./frontend.md#kb-068-写真撮影持出のサムネイルが真っ黒になる問題輝度チェック対策): 写真撮影持出のサムネイルが真っ黒になる問題（輝度チェック対策）
+
+**解決状況**: ✅ **解決済み**（2026-02-11、実機検証完了）
+
+---
+
+### [KB-249] 加工機マスターデータのCSVインポートと未点検加工機抽出機能の実装
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**: 
+- 加工機マスターデータをCSVインポートし、未点検加工機を抽出する機能が必要だった
+- マスターテーブルは今後も様々な用途で使うため、従業員名簿と同様に流用可能な扱いにする必要があった
+
+**実装内容**: 
+- ✅ **実装完了**（2026-02-11）: 加工機マスターデータのCSVインポート機能、未点検加工機抽出機能、管理コンソールUIを実装
+  1. **データベーススキーマ**: `Machine`モデルを追加（`equipmentManagementNumber`をユニークキーとして使用）
+  2. **CSVインポーター**: `MachineCsvImporter`を実装（既存の`CsvImporter`インターフェースに準拠）
+  3. **APIエンドポイント**: 
+     - `GET /api/tools/machines`: 加工機一覧取得（検索・フィルタ対応）
+     - `GET /api/tools/machines/uninspected`: 未点検加工機一覧取得（当日JST基準）
+  4. **管理コンソールUI**: `/admin/tools/machines-uninspected`ページを追加（未点検加工機一覧表示）
+  5. **CSVインポート設定**: `machines`タイプをCSVインポート設定に追加
+
+**仕様**:
+- **未点検の定義**: マスターテーブルで`稼働状態=稼働中`の加工機のうち、当日（JST）の点検結果CSVダッシュボードに記録がないもの
+- **結合キー**: `設備管理番号`（`equipmentManagementNumber`）でマスターデータとファクトデータを結合
+- **日付判定**: 当日（JST）の範囲を`formatTokyoDate`と`resolveTokyoDayRange`で正確に計算
+- **データ抽出**: `CsvDashboardRow.rowData`から`設備管理番号`を抽出（`extractEquipmentNumber`関数）
+
+**トラブルシューティング**:
+- **CSVインポート設定の初期化**: 初回インポート時に`machines`のCSVインポート設定が`null`だったため、デフォルト列定義を明示的に保存する必要があった
+- **タイムゾーン変換の二重適用**: KB-249参照（CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題）
+
+**学んだこと**: 
+- **マスターデータの再利用性**: マスターテーブルは様々な用途で使うため、従業員名簿と同様に流用可能な設計にする
+- **CSVインポート設定の初期化**: 新しいデータタイプを追加する際は、CSVインポート設定を明示的に初期化する必要がある
+- **タイムゾーン処理**: JST基準の日付判定は、`Date.UTC`を使用して実行環境に依存しない変換を行う
+
+**関連ファイル**: 
+- `apps/api/prisma/schema.prisma`（`Machine`モデル）
+- `apps/api/src/services/imports/importers/machine.ts`（`MachineCsvImporter`）
+- `apps/api/src/services/tools/machine.service.ts`（`MachineService`）
+- `apps/api/src/routes/tools/machines/index.ts`（APIエンドポイント）
+- `apps/web/src/pages/tools/MachinesUninspectedPage.tsx`（管理コンソールUI）
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-11）
+
+---
+
+### [KB-252] 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**:
+- 管理コンソールから未点検加工機をサイネージコンテンツとして選択しやすくする必要があった
+- 可視化ダッシュボードの入力が自由形式JSONのため、運用時に `csvDashboardId` の設定漏れが発生しやすかった
+
+**要因**:
+- 可視化ダッシュボード作成UIは汎用設計で、未点検加工機用途のプリセットや入力ガイドがなかった
+- サイネージスケジュール画面の可視化選択肢で、用途判別の情報が不足していた
+
+**有効だった対策**:
+- ✅ 可視化ダッシュボード管理画面に「未点検加工機プリセットを適用」ボタンを追加
+  - `dataSourceType=uninspected_machines`
+  - `rendererType=uninspected_machines`
+  - `dataSourceConfig` / `rendererConfig` の推奨テンプレートを自動入力
+- ✅ `uninspected_machines` 選択時に `dataSourceConfig.csvDashboardId` を必須バリデーション
+- ✅ `csvDashboardId` を手入力させず、**CSVダッシュボードをUIで選択**できるように改善
+  - `uninspected_machines` プリセット適用時に `csvDashboardId` 選択ドロップダウンを表示
+  - 無効（`enabled=false`）のCSVダッシュボードも表示し、名前に `(無効)` を付けて誤選択を防止
+  - 一覧取得時の `enabled: true` 固定フィルタを外し、「選択肢に出てこない」事故を防止
+- ✅ 「点検結果CSVダッシュボードが存在しない」状況に対して、`加工機_日常点検結果` を**プリセット作成**できるボタンをCSVダッシュボード画面に追加
+- ✅ サイネージスケジュール画面の可視化プルダウンに用途ラベル（`未点検加工機`）を表示
+
+**運用トラブルシューティング（今回詰まった点）**:
+- **エラー**: 「未点検加工機データソースでは csvDashboardId が必須です」  
+  - **対処**: 可視化ダッシュボードの編集画面で `csvDashboardId` をドロップダウン選択して保存
+- **症状**: `csvDashboardId` の選択肢に「加工機_日常点検結果」が出ない  
+  - **原因候補**: CSVダッシュボードが未作成 / 無効化されている / 一覧取得が有効のみフィルタされている  
+  - **対処**: CSVダッシュボード画面でプリセット作成し、必要なら有効化してから再選択
+
+**学んだこと**:
+- 汎用機能に業務用途を載せる場合は、専用機能を増やすより「プリセット + 必須入力ガード」の方が保守しやすい
+- 運用ミス対策は「保存時バリデーション」と「選択時の識別情報」の両方が必要
+- 「参照先リソースのID」を手入力させるとミスが起きやすい。**作成（プリセット）→選択（ドロップダウン）→保存（バリデーション）**の順でガードする
+
+**関連ファイル**:
+- `apps/web/src/pages/admin/VisualizationDashboardsPage.tsx`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`
+
+**解決状況**: ✅ **実装完了・lint通過**（2026-02-11）
 
 ---

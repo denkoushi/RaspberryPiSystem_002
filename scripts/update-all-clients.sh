@@ -89,12 +89,17 @@ ATTACH_RUN_ID=""
 STATUS_RUN_ID=""
 PRINT_PLAN=0
 RUN_ID=""
+PROFILE_MODE=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --limit)
       LIMIT_HOSTS="$2"
       shift 2
+      ;;
+    --profile)
+      PROFILE_MODE=1
+      shift
       ;;
     --detach)
       DETACH_MODE=1
@@ -138,9 +143,9 @@ done
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--detach] [--follow]
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--job] [--follow]
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] --foreground
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--job] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] --foreground
   ./scripts/update-all-clients.sh --attach <run_id>
   ./scripts/update-all-clients.sh --status <run_id>
   ./scripts/update-all-clients.sh <branch> <inventory_path> --print-plan
@@ -154,6 +159,9 @@ Examples:
 
   # Pi3を除外してデプロイ
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit '!raspberrypi3'
+
+  # 計測（profile_tasks/timer）を有効化してデプロイ
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --profile
 
   # デタッチ実行（Pi5側で継続実行）
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
@@ -711,6 +719,20 @@ clear_pi4_maintenance_flag() {
   fi
 }
 
+clear_pi4_maintenance_flag_if_needed() {
+  if ! should_enable_kiosk_maintenance; then
+    clear_pi4_maintenance_flag
+  fi
+}
+
+clear_server_deployment_flag() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  echo "[INFO] Clearing server deployment completed flag on ${REMOTE_HOST}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"/opt/RaspberryPiSystem_002/config/server-deployment-completed.json\"" >/dev/null 2>&1 || true
+}
+
 remote_run_paths() {
   local run_id="$1"
   REMOTE_RUN_ID="${run_id}"
@@ -864,11 +886,17 @@ PLAYBOOK_RELATIVE="${PLAYBOOK_RELATIVE}"
 LIMIT_HOSTS="${LIMIT_HOSTS}"
 UNIT_NAME="${UNIT_NAME}"
 RUNNER="${RUNNER}"
+# NOTE: This script is executed on Pi5 with `set -u`.
+# PROFILE_MODE must be passed from the caller; default to 0 for safety.
+PROFILE_MODE="${PROFILE_MODE:-0}"
 
 mkdir -p "${REMOTE_LOG_DIR}"
 cd /opt/RaspberryPiSystem_002/infrastructure/ansible
 export ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles
 export ANSIBLE_REPO_VERSION="${REPO_VERSION}"
+if [[ "${PROFILE_MODE}" = "1" ]]; then
+  export ANSIBLE_CALLBACKS_ENABLED="profile_tasks,timer"
+fi
 FORCE_DOCKER_REBUILD="false"
 if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   if ! git -C /opt/RaspberryPiSystem_002 diff --quiet \
@@ -881,8 +909,27 @@ if [ -d /opt/RaspberryPiSystem_002/.git ]; then
   git -C /opt/RaspberryPiSystem_002 checkout "${REPO_VERSION}"
   git -C /opt/RaspberryPiSystem_002 pull --ff-only origin "${REPO_VERSION}"
   new_head="$(git -C /opt/RaspberryPiSystem_002 rev-parse HEAD || echo "")"
-  if [ -n "${prev_head}" ] && [ -n "${new_head}" ] && [ "${prev_head}" != "${new_head}" ]; then
+  if [ -z "${prev_head}" ] || [ -z "${new_head}" ]; then
     FORCE_DOCKER_REBUILD="true"
+    echo "[INFO] Docker rebuild: true (missing repo head)"
+  elif [ "${prev_head}" = "${new_head}" ]; then
+    FORCE_DOCKER_REBUILD="false"
+    echo "[INFO] Docker rebuild: false (no repo change)"
+  else
+    diff_files="$(git -C /opt/RaspberryPiSystem_002 diff --name-only "${prev_head}" "${new_head}" || true)"
+    diff_count="$(printf '%s\n' "${diff_files}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    echo "[INFO] Repo diff files count: ${diff_count}"
+    if [ -n "${diff_files}" ]; then
+      echo "[INFO] Repo diff files (first 50):"
+      printf '%s\n' "${diff_files}" | awk 'NR<=50{print}'
+    fi
+    if printf '%s\n' "${diff_files}" | grep -Eq '^(apps/(api|web)/|packages/|pnpm-lock\\.yaml|package\\.json|pnpm-workspace\\.yaml|infrastructure/docker/|apps/api/prisma/)'; then
+      FORCE_DOCKER_REBUILD="true"
+      echo "[INFO] Docker rebuild: true (docker-related changes detected)"
+    else
+      FORCE_DOCKER_REBUILD="false"
+      echo "[INFO] Docker rebuild: false (no docker-related changes)"
+    fi
   fi
 fi
 
@@ -958,6 +1005,11 @@ clear_kiosk_maintenance_flag() {
     echo "[INFO] Clearing kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
     rm -f "${REMOTE_DEPLOY_STATUS_FILE}" >/dev/null 2>&1 || true
   fi
+}
+
+clear_server_deployment_flag() {
+  echo "[INFO] Clearing server deployment completed flag"
+  rm -f "/opt/RaspberryPiSystem_002/config/server-deployment-completed.json" >/dev/null 2>&1 || true
 }
 
 write_status() {
@@ -1040,12 +1092,15 @@ PY
 cleanup() {
   local exit_code=$?
   echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
-  clear_kiosk_maintenance_flag
+  if ! should_enable_kiosk_maintenance; then
+    clear_kiosk_maintenance_flag
+  fi
   rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 set_kiosk_maintenance_flag
+clear_server_deployment_flag
 write_status running
 echo "[INFO] Detach run started: ${RUN_ID}"
 echo "[INFO] Log: ${REMOTE_RUN_LOG}"
@@ -1056,9 +1111,13 @@ max_attempts=3
 while [ ${attempt} -le ${max_attempts} ]; do
   echo "[INFO] Running ansible-playbook (attempt ${attempt}/${max_attempts})"
   if [ -n "${LIMIT_HOSTS}" ]; then
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" --limit "${LIMIT_HOSTS}" \
+      -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" \
+      -e "server_docker_build_needed=${FORCE_DOCKER_REBUILD}" || true
   else
-    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" || true
+    ansible-playbook -i "${INVENTORY_BASENAME}" "${PLAYBOOK_RELATIVE}" \
+      -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}" \
+      -e "server_docker_build_needed=${FORCE_DOCKER_REBUILD}" || true
   fi
   generate_summary "${REMOTE_RUN_LOG}" "${summary_file}"
   retry_hosts=$(get_retry_hosts_if_unreachable_only "${summary_file}")
@@ -1117,7 +1176,7 @@ start_remote_detached() {
 
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Detach run started: ${run_id}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
@@ -1147,7 +1206,7 @@ start_remote_job() {
 
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
   echo "[INFO] Job run started: ${run_id}"
   echo "[INFO] Unit: ${UNIT_NAME}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
@@ -1164,7 +1223,11 @@ run_locally() {
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ANSIBLE_ROLES_PATH="${PROJECT_ROOT}/infrastructure/ansible/roles" ANSIBLE_REPO_VERSION="${REPO_VERSION}" ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
+  local profile_env=""
+  if [[ "${PROFILE_MODE}" = "1" ]]; then
+    profile_env="ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer"
+  fi
+  ANSIBLE_ROLES_PATH="${PROJECT_ROOT}/infrastructure/ansible/roles" ANSIBLE_REPO_VERSION="${REPO_VERSION}" ${profile_env} ansible-playbook -i "${INVENTORY_PATH}" "${PLAYBOOK_PATH}" | tee "${LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${LOG_FILE}" "${SUMMARY_FILE}"
   append_history "${SUMMARY_FILE}" "${LOG_FILE}" "${exit_code}" "update" "${duration}" "local"
@@ -1188,7 +1251,11 @@ run_remotely() {
   if [[ -n "${limit_hosts}" ]]; then
     limit_arg="--limit ${limit_hosts}"
   fi
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}" | tee "${log_file}" || exit_code=$?
+  local profile_env=""
+  if [[ "${PROFILE_MODE}" = "1" ]]; then
+    profile_env="ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer"
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ANSIBLE_REPO_VERSION=${REPO_VERSION} ${profile_env} ansible-playbook -i ${inventory_basename} ${playbook_relative} ${limit_arg}" | tee "${log_file}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${log_file}" "${summary_file}"
   append_history "${summary_file}" "${log_file}" "${exit_code}" "update" "${duration}" "${REMOTE_HOST}"
@@ -1257,11 +1324,16 @@ PY
 }
 
 run_health_check_locally() {
+  local limit_hosts="${1:-}"
   cd "${PROJECT_ROOT}"
   local exit_code=0
   local start_time
   start_time=$(date +%s)
-  ansible-playbook -i "${INVENTORY_PATH}" "${HEALTH_PLAYBOOK_PATH}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  local limit_arg=""
+  if [[ -n "${limit_hosts}" ]]; then
+    limit_arg="--limit ${limit_hosts}"
+  fi
+  ansible-playbook -i "${INVENTORY_PATH}" "${HEALTH_PLAYBOOK_PATH}" ${limit_arg} | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "local"
@@ -1269,6 +1341,7 @@ run_health_check_locally() {
 }
 
 run_health_check_remotely() {
+  local limit_hosts="${1:-}"
   local exit_code=0
   local start_time
   start_time=$(date +%s)
@@ -1276,14 +1349,41 @@ run_health_check_remotely() {
   local inventory_basename=$(basename "${INVENTORY_PATH}")
   local health_playbook_basename=$(basename "${HEALTH_PLAYBOOK_PATH}")
   local health_playbook_relative="playbooks/${health_playbook_basename}"
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${inventory_basename} ${health_playbook_relative}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
+  local limit_arg=""
+  if [[ -n "${limit_hosts}" ]]; then
+    limit_arg="--limit ${limit_hosts}"
+  fi
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles ansible-playbook -i ${inventory_basename} ${health_playbook_relative} ${limit_arg}" | tee "${HEALTH_LOG_FILE}" || exit_code=$?
   local duration=$(( $(date +%s) - start_time ))
   generate_summary "${HEALTH_LOG_FILE}" "${HEALTH_SUMMARY_FILE}"
   append_history "${HEALTH_SUMMARY_FILE}" "${HEALTH_LOG_FILE}" "${exit_code}" "health-check" "${duration}" "${REMOTE_HOST}"
   return ${exit_code}
 }
 
+require_remote_host_for_pi5() {
+  if [[ -n "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  if [[ -z "${INVENTORY_PATH}" ]]; then
+    return 0
+  fi
+
+  local needs_pi5=0
+  if [[ -n "${LIMIT_HOSTS}" ]]; then
+    if [[ "${LIMIT_HOSTS}" == *"raspberrypi5"* ]] || [[ "${LIMIT_HOSTS}" == *"server"* ]]; then
+      needs_pi5=1
+    fi
+  else
+    needs_pi5=1
+  fi
+
+  if [[ ${needs_pi5} -eq 1 ]]; then
+    exit_with_error 2 "RASPI_SERVER_HOST is required when targeting raspberrypi5 (ansible_connection: local). Set RASPI_SERVER_HOST (e.g., export RASPI_SERVER_HOST=100.106.158.2)."
+  fi
+}
+
 # メイン処理
+require_remote_host_for_pi5
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   echo "[INFO] Branch: ${REPO_VERSION}"
@@ -1294,9 +1394,10 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   check_network_mode
   acquire_remote_lock
   if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
-    trap 'release_remote_lock; clear_pi4_maintenance_flag' EXIT
+    trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed' EXIT
   fi
   set_pi4_maintenance_flag
+  clear_server_deployment_flag
   run_preflight_remotely "${LIMIT_HOSTS}"
   if [[ ${JOB_MODE} -eq 1 ]]; then
     RUN_ID="$(build_run_id)"
@@ -1330,7 +1431,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   fi
 
   echo "[INFO] Running post-deploy health check on ${REMOTE_HOST}"
-  if ! run_health_check_remotely; then
+  if ! run_health_check_remotely "${LIMIT_HOSTS}"; then
     send_alert "ansible-health-check-failed" "Ansibleヘルスチェックが失敗しました" "ログファイル: ${HEALTH_LOG_FILE}"
     exit_with_error 2 "Post-deploy health check failed. Check ${HEALTH_LOG_FILE} for details."
   fi
@@ -1350,7 +1451,7 @@ else
   fi
 
   echo "[INFO] Running post-deploy health check locally"
-  if ! run_health_check_locally; then
+  if ! run_health_check_locally "${LIMIT_HOSTS}"; then
     send_alert "ansible-health-check-failed" "Ansibleヘルスチェックが失敗しました" "ログファイル: ${HEALTH_LOG_FILE}"
     exit_with_error 2 "Post-deploy health check failed. Check ${HEALTH_LOG_FILE} for details."
   fi

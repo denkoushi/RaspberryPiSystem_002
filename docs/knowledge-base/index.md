@@ -21,14 +21,15 @@ update-frequency: high
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
 | キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](./kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／返却後に再スキャンで使用中アラートが出る事象の調査（取消との混在有無） |
-| API関連 | [api.md](./api.md) | 44件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）、Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復、生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化 |
-| フロントエンド関連 | [frontend.md](./frontend.md) | 36件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証 |
+| API関連 | [api.md](./api.md) | 48件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、WebRTC通話IDの統一、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）、Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復、生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化、history-progressエンドポイント追加と製番進捗集計サービス、Gmailゴミ箱自動削除機能（深夜バッチ）、生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）、未点検加工機サイネージ可視化データソースの追加 |
+| フロントエンド関連 | [frontend.md](./frontend.md) | 43件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善、WebRTC通話、通話IDの表示統一、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証、キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）、モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化、WebRTCビデオ通話の常時接続と着信自動切り替え機能、生産スケジュール登録製番削除ボタンの進捗連動UI改善、Pi4キオスクの備考欄に日本語入力状態インジケーターを追加、生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化、カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）、未点検加工機サイネージ設定導線の実装 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 6件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit） |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 72件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
-| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 29件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差） |
-| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 36件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化） |
+| ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 30件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差）、証明書ディレクトリのバックアップターゲット追加スクリプト作成とDockerコンテナ内実行時の注意点 |
+| ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 41件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化）、Docker build最適化（変更ファイルに基づくbuild判定）、Pi4キオスクの再起動/シャットダウンボタンが機能しない問題（Jinja2テンプレート展開・systemd実行ユーザー・ディレクトリ所有権の問題）、update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加、Ansibleテンプレート内の`{{`混入によるSyntax error in template、Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化 |
+| ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 1件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 12件 | セキュリティ対策と監視 |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 15件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応） |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
@@ -94,6 +95,11 @@ update-frequency: high
 | [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加) | Gmail認証切れ時のSlack通知機能追加 | ✅ 解決済み |
 | [KB-230](./api.md#kb-230-gmail認証切れの実機調査と回復) | Gmail認証切れの実機調査と回復 | ✅ 解決済み |
 | [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) | 生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化 | ✅ 解決済み |
+| [KB-246](./api.md#kb-246-gmailゴミ箱自動削除機能深夜バッチ) | Gmailゴミ箱自動削除機能（深夜バッチ） | ✅ 解決済み |
+| [KB-248](./api.md#kb-248-生産スケジュール資源cdボタン表示の遅延問題式インデックス追加による高速化) | 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化） | ✅ 解決済み |
+| [KB-249](./api.md#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題) | CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題 | ✅ 解決済み |
+| [KB-250](./frontend.md#kb-249-加工機マスターデータのcsvインポートと未点検加工機抽出機能の実装) | 加工機マスターデータのCSVインポートと未点検加工機抽出機能の実装 | ✅ 実装完了・実機検証完了 |
+| [KB-251](./api.md#kb-251-未点検加工機サイネージ可視化データソースの追加) | 未点検加工機サイネージ可視化データソースの追加 | ✅ 解決済み |
 
 ### データベース関連
 
@@ -147,7 +153,7 @@ update-frequency: high
 | [KB-139](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止) | WebRTCシグナリングのWebSocket接続管理（重複接続防止） | ✅ 解決済み |
 | [KB-140](./frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応) | useLocalStorageとの互換性のためのJSON.stringify対応 | ✅ 解決済み |
 | [KB-149](./frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) | バックアップ履歴ページに用途列を追加（UI改善） | ✅ 解決済み |
-| [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定） | ✅ 解決済み |
+| [KB-171](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) | WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定、着信自動切替・Pi3除外の追記） | ✅ 解決済み |
 | [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) | 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能 | ✅ 解決済み |
 | [KB-192](./frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) | 管理コンソールのサイネージプレビュー機能実装とJWT認証問題 | ✅ 解決済み |
 | [KB-202](./frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) | 生産スケジュールキオスクページの列名変更とFSEIBAN全文表示 | ✅ 解決済み |
@@ -160,6 +166,16 @@ update-frequency: high
 | [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) | 生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装） | ✅ 解決済み |
 | [KB-223](./frontend.md#kb-223-生産スケジュール備考のモーダル編集化と処理列追加) | 生産スケジュール備考のモーダル編集化と処理列追加 | ✅ 解決済み |
 | [KB-225](./frontend.md#kb-225-キオスク入力フィールド保護ルールの実装と実機検証) | キオスク入力フィールド保護ルールの実装と実機検証 | ✅ 実装完了・実機検証完了 |
+| [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) | キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入） | ✅ 解決済み |
+| [KB-240](./frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) | モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化 | ✅ 解決済み |
+| [KB-241](./frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) | WebRTCビデオ通話の常時接続と着信自動切り替え機能実装 | ✅ 解決済み |
+| [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) | 生産スケジュール登録製番削除ボタンの進捗連動UI改善 | ✅ 解決済み |
+| [KB-243](./frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善) | WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善 | ✅ 解決済み |
+| [KB-244](./frontend.md#kb-244-pi4キオスクの備考欄に日本語入力状態インジケーターを追加) | Pi4キオスクの備考欄に日本語入力状態インジケーターを追加 | ✅ 解決済み |
+| [KB-245](./infrastructure/ansible-deployment.md#kb-245-pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とibus設定の永続化) | Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化 | ✅ 解決済み |
+| [KB-247](./frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化) | 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化 | ✅ 解決済み |
+| [KB-248](./frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) | カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応） | ✅ 解決済み |
+| [KB-252](./frontend.md#kb-252-未点検加工機サイネージ設定導線可視化ダッシュボード経由の実装) | 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装 | ✅ 解決済み |
 
 ### インフラ関連
 
@@ -228,6 +244,12 @@ update-frequency: high
 | [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一) | 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一） | ✅ 解決済み |
 | [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応） | ✅ 解決済み |
+| [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト) | サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト） | ✅ 解決済み |
+| [KB-233](./infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) | デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合） | ✅ 解決済み |
+| [KB-234](./infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) | Ansibleデプロイが遅い（段階展開/重複タスク/計測欠如の整理と暫定対策） | 🔄 進行中 |
+| [KB-235](./infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) | Docker build最適化（変更ファイルに基づくbuild判定） | ✅ 解決済み |
+| [KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題) | Pi4キオスクの再起動/シャットダウンボタンが機能しない問題 | ✅ 解決済み |
+| [KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) | update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加 | ✅ 解決済み |
 | [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
@@ -317,13 +339,13 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 132件 |
+| ✅ 解決済み | 142件 |
 | ✅ 手順確立済み | 1件 |
-| ✅ 実装完了・実機検証完了 | 2件 |
+| ✅ 実装完了・実機検証完了 | 3件 |
 | ✅ 検証完了 | 2件 |
 | ✅ 調査完了・対応不要 | 1件 |
 | 🔄 進行中 | 5件 |
-| **合計** | **148件** |
+| **合計** | **159件** |
 
 ---
 
@@ -447,3 +469,19 @@ update-frequency: high
 - 2026-02-03: KB-228を追加（生産スケジュールサイネージデザイン修正: タイトル・KPI配置・パディング統一）→ 2026-02-03に実装完了・CI成功・デプロイ成功・実機検証完了（タイトル「生産進捗」に変更、KPIチップ右端配置で重なり防止、サブタイトル削除、カード左右パディング16px統一、視認性向上を確認）
 - 2026-02-06: KB-229、KB-230を追加（Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復）→ 2026-02-06に実装完了・CI成功・デプロイ成功（CSVインポート定期実行時にGmail認証切れを検知してSlack通知、opsチャンネルにルーティング、dedupeで連続通知を抑制、手動実行時は通知しない）
 - 2026-02-06: KB-231を追加（生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化）→ 2026-02-06に実装完了・CI成功・デプロイ成功・動作確認完了（API側・フロントエンド側・サイネージ側の上限を20件に統一、サイネージカード高さを半分に最適化、20件表示が正常に動作することを確認）
+- 2026-02-06: KB-232を追加（サイネージ未完部品表示ロジック改善）→ 2026-02-06に実装完了・CI成功・デプロイ成功・実機検証完了（データソース側で未完部品を正規化・ソート・制限、レンダラー側で動的行数計算と表示制御、共通ユーティリティ追加、未完部品名が適切に表示され右端で切れないことを確認）
+- 2026-02-06: KB-233を追加（デプロイ時のsudoパスワード問題）→ 2026-02-06に解決完了（`ansible_connection: local`でもMac側から実行するとMac側のsudoパスワードが求められる問題を、`RASPI_SERVER_HOST`設定でPi5上でリモート実行することで解決、デプロイ成功を確認）
+- 2026-02-07: KB-236を追加（Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ）→ 2026-02-07に実装完了・CI成功・デプロイ完了（`signage-display.sh`の`xset`コマンドに`|| true`を追加してエラーで終了しないように変更、エラーが発生した場合は警告ログを出力するが処理は続行、`set -euo pipefail`を使用する場合の必須でないコマンドのエラーハンドリングを改善）
+- 2026-02-08: KB-236を更新（Pi3デプロイ時のサービス再起動成功を確認）→ 2026-02-08に実機検証完了（Pi3標準手順に従って`--limit "server:signage"`でデプロイを実行、preflightチェックが正しく実行され、サービス再起動が`Result=success`で完了、xsetエラーが発生しても警告ログが出力されサービスが継続することを確認、runId: `20260208-082138-11782`）
+- 2026-02-08: KB-237を追加（Pi4キオスクの再起動/シャットダウンボタンが機能しない問題）→ 2026-02-08に調査・修正・デプロイ完了・実機検証完了（3つの原因を発見・修正: Jinja2テンプレート展開の問題、systemd serviceの実行ユーザー問題、ディレクトリ所有権の問題。`pi5-power-dispatcher.sh.j2`にテンプレート展開ロジック追加、`pi5-power-dispatcher.service.j2`に`User=denkon5sd02`・`WorkingDirectory`・`StandardOutput/StandardError=journal`追加。CI成功、デプロイ成功、Pi4キオスクの再起動ボタンが正常動作することを確認）
+- 2026-02-08: KB-238を追加（update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加）→ 2026-02-08に実装完了・CI成功（`RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する問題を解決。`require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。CI全ジョブ成功、修正後の動作確認完了）
+- 2026-02-08: KB-239を追加（キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入））→ 2026-02-08に実装完了・CI成功・デプロイ成功・実機検証完了（管理コンソールボタンを歯車アイコンに変更、サイネージプレビューボタン追加、再起動/シャットダウンボタンを電源アイコン1つに統合。CSS `filter`プロパティが`position: fixed`に与える影響をReact Portalで回避。E2Eテストの安定化（`scrollIntoViewIfNeeded`とEscキー操作）も実装）
+- 2026-02-08: KB-240を追加（モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化）→ 2026-02-08に実装完了・CI成功・デプロイ成功（共通Dialogコンポーネント作成、キオスク全モーダル統一、サイネージプレビューのFullscreen API対応、ConfirmDialogとuseConfirm実装、管理コンソールのwindow.confirm置換、アクセシビリティ標準化、E2Eテスト安定化。CI修正（import順序、Trivy脆弱性、E2Eテストstrict mode violation）も完了）
+- 2026-02-09: KB-241を追加（WebRTCビデオ通話の常時接続と着信自動切り替え機能実装）→ 2026-02-09に実装完了・CI成功・デプロイ成功（`WebRTCCallProvider`と`CallAutoSwitchLayout`を実装し、`/kiosk/*`と`/signage`の全ルートでシグナリング接続を常時維持。着信時に`/kiosk/call`へ自動遷移、通話終了後に元のパスへ自動復帰。Pi3の通話対象除外機能を実装。APIレベルでの動作確認完了、実機検証待ち）
+- 2026-02-10: KB-242を追加（生産スケジュール登録製番削除ボタンの進捗連動UI改善）→ 2026-02-10に実装完了・CI成功・デプロイ成功・キオスク動作検証OK（`SeibanProgressService`を新設、`GET /kiosk/production-schedule/history-progress`を追加、`ProductionScheduleDataSource`を共通サービス利用へ切替、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを実装。Pi5＋Pi4でデプロイ成功、登録製番の進捗表示と削除ボタンの色切替が正常に動作）
+- 2026-02-10: KB-243を追加（WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善）→ 2026-02-10に実装完了・CI成功・デプロイ成功・実機検証完了（`useWebRTC`で`localStream`/`remoteStream`をstateで保持し、`ontrack`更新時にUI再描画を確実化。`pc.ontrack`で受信トラックを単一MediaStreamに集約。`disableVideo()`でtrackをstop/removeせず`enabled=false`に変更。`enableVideo()`で既存trackがあれば再有効化、新規は`replaceTrack`使用。`connectionState`/`iceConnectionState`の`disconnected/failed`検知時にICE restartで復旧。`KioskCallPage`で`alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換。Pi5＋Pi4でデプロイ成功、通話開始直後に相手映像が表示されること、ビデオON/OFF時の相手側フリーズ回避、無操作時の接続維持、エラーダイアログの改善を確認）
+- 2026-02-10: KB-244を追加（Pi4キオスクの備考欄に日本語入力状態インジケーターを追加）→ 2026-02-10に実装完了・デプロイ成功・実機検証完了（`KioskNoteModal.tsx`に`isComposing` stateを追加し、`compositionstart`/`compositionend`イベントで入力モードを検出。インジケーターを追加（日本語入力中: 「あ 日本語」、英字入力中: 「A 英字」）。切り替え方法（Ctrl+Space または Alt+`）を画面下部に表示。IBus設定の永続化も実装（`engines-order`を`['xkb:jp::jpn', 'mozc-jp']`に設定、`hotkey triggers`を`['<Control>space']`に設定）。Pi4再起動ボタンのエラーハンドリング改善も実施。Pi4でデプロイ成功（Run ID: 20260210-123251-3565, 20260210-124817-3570）、インジケーター表示とIBus設定を確認）
+- 2026-02-10: KB-245を追加（Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化）→ 2026-02-10に実装完了・デプロイ成功・実機検証完了（`deploy-staged.yml`の`post_tasks`を修正し、サーバーデプロイ完了フラグが存在しない場合でも、デプロイが成功していればメンテナンスフラグをクリア。IBus設定の永続化も実装（`kiosk/tasks/main.yml`にIBus設定タスクを追加）。Pi4のみのデプロイ（Run ID: 20260210-124817-3570）で、メンテナンスフラグが自動的にクリアされ、IBus設定が正しく適用されることを確認）
+- 2026-02-10: KB-201を更新（製造order番号繰り上がりルールの実機検証完了・トラブルシューティング追加）→ 2026-02-10に実装完了・CI成功・デプロイ成功・実機検証完了（同一キーで`ProductNo`が複数ある場合、数字が大きい方のみを有効とするルールを実装。取り込み時と表示時の両方で適用。テスト失敗・SQL正規表現エラー・TypeScriptビルドエラーのトラブルシューティングを実施。実機検証で重複除去機能が正常動作することを確認）
+- 2026-02-10: KB-247を追加（生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化）→ 2026-02-10に調査・修正・デプロイ完了（×ボタンの応答性が若干落ちた気がするという報告を受け、KB-242で実装した完未完判定機能の4秒ポーリングが原因と特定。`useKioskProductionScheduleHistoryProgress()`の`refetchInterval`を`4000`→`30000`（30秒）に変更。`useKioskProductionScheduleSearchState()`と`useKioskProductionScheduleSearchHistory()`は4秒のまま維持。CI全ジョブ成功、Pi4キオスクにデプロイ成功（Run ID: 20260210-175259-15669, ok=91, changed=9, failed=0））
+- 2026-02-11: KB-248を追加（カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応））→ 2026-02-11に実装完了・CI成功・デプロイ成功・実機検証完了（雨天・照明なし環境で閾値0.1でも「写真が暗すぎます」エラーが発生する問題を調査。ストリーム保持によるPi4の負荷問題を回避するため、フロントエンド・バックエンドの両方で閾値チェックを削除。500ms待機＋5フレーム選択ロジックは維持。どんな明るさでも撮影可能にし、ユーザー体験を向上。Pi5＋Pi4でデプロイ成功、実機検証で正常動作を確認）

@@ -1,6 +1,7 @@
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { GmailApiClient } from '../gmail-api-client.js';
+import type { GmailTrashCleanupResult } from '../gmail-api-client.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -453,6 +454,15 @@ export class GmailStorageProvider implements StorageProvider {
    */
   async trashMessage(messageId: string): Promise<void> {
     await this.gmailClient.trashMessage(messageId);
+  }
+
+  /**
+   * ゴミ箱内の処理済みメールを一括削除（深夜バッチ用）
+   */
+  async cleanupProcessedTrash(params?: {
+    processedLabelName?: string;
+  }): Promise<GmailTrashCleanupResult> {
+    return this.handleAuthError(async () => this.gmailClient.cleanupProcessedTrash(params));
   }
 }
 

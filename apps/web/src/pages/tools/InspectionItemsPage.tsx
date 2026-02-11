@@ -8,12 +8,14 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 import type { InspectionItem } from '../../api/types';
 
 export function InspectionItemsPage() {
   const [instrumentId, setInstrumentId] = useState('');
   const [editingItem, setEditingItem] = useState<InspectionItem | null>(null);
+  const confirm = useConfirm();
   const [form, setForm] = useState({
     name: '',
     content: '',
@@ -70,11 +72,17 @@ export function InspectionItemsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('この点検項目を削除しますか？')) {
-      await mutations.remove.mutateAsync(id);
-      if (editingItem?.id === id) {
-        resetForm();
-      }
+    const shouldDelete = await confirm({
+      title: 'この点検項目を削除しますか？',
+      description: '削除すると元に戻せません。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) return;
+    await mutations.remove.mutateAsync(id);
+    if (editingItem?.id === id) {
+      resetForm();
     }
   };
 

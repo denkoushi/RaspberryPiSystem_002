@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup verification (monthly, non-destructive)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=docker compose -f {{ project_root }}/infrastructure/docker/docker-compose.server.yml exec -T api node /app/apps/api/dist/scripts/verify-backups.js --mode=monthly --max-age-days={{ backup_verify_monthly_max_age_days | default(35) }} --max-download-mb={{ backup_verify_max_download_mb | default(50) }}
+StandardOutput=journal
+StandardError=journal
+

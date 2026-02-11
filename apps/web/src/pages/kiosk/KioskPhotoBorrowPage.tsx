@@ -98,6 +98,8 @@ export function KioskPhotoBorrowPage() {
   }, []);
 
   // NFCイベントの処理
+  // isCapturing / nfcEvent object 依存を外し、同一イベントでの再実行を防ぐ（KB-035の再発防止）
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
     const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
@@ -112,6 +114,14 @@ export function KioskPhotoBorrowPage() {
     if (!nfcEvent) {
       if (enableDebugLogs) {
         console.log('[KioskPhotoBorrowPage] Skipping: no NFC event');
+      }
+      return;
+    }
+    // エラー表示中は、ユーザーがリセットするまで新しいNFCイベントを受け付けない
+    // （暗所などでの連続失敗時に「置きっぱなし」で再試行が暴発するのを防ぐ）
+    if (error) {
+      if (enableDebugLogs) {
+        console.log('[KioskPhotoBorrowPage] Skipping: error displayed, waiting for reset');
       }
       return;
     }
@@ -141,22 +151,6 @@ export function KioskPhotoBorrowPage() {
     const processedUids = processedUidsRef.current;
     const processedEventTimestamps = processedEventTimestampsRef.current;
 
-    // デバッグログをサーバーに送信
-    const cachedType = tagTypeMap[nfcEvent.uid];
-    postClientLogs(
-      {
-        clientId: resolvedClientId || 'raspberrypi4-kiosk1',
-        logs: [
-          {
-            level: 'DEBUG',
-            message: 'photo-page nfc event',
-            context: { uid: nfcEvent.uid, cachedType, timestamp: nfcEvent.timestamp }
-          }
-        ]
-      },
-      resolvedClientKey
-    ).catch(() => {});
-    
     // 同じeventKeyを既に処理済みの場合はスキップ
     if (lastEventKeyRef.current === eventKey) {
       if (enableDebugLogs) {
@@ -191,6 +185,22 @@ export function KioskPhotoBorrowPage() {
     lastEventKeyRef.current = eventKey;
     processedUids.set(nfcEvent.uid, now); // 処理済みUIDを記録（処理開始時に即座に記録）
     processedEventTimestamps.set(nfcEvent.uid, nfcEvent.timestamp); // 処理済みタイムスタンプを記録
+
+    // デバッグログをサーバーに送信（重複判定後に送る）
+    const cachedType = tagTypeMap[nfcEvent.uid];
+    postClientLogs(
+      {
+        clientId: resolvedClientId || 'raspberrypi4-kiosk1',
+        logs: [
+          {
+            level: 'DEBUG',
+            message: 'photo-page nfc event',
+            context: { uid: nfcEvent.uid, cachedType, timestamp: nfcEvent.timestamp }
+          }
+        ]
+      },
+      resolvedClientKey
+    ).catch(() => {});
 
     if (enableDebugLogs) {
       console.log('[KioskPhotoBorrowPage] Processing NFC event:', nfcEvent.uid, 'eventKey:', eventKey, 'timestamp:', nfcEvent.timestamp);
@@ -372,7 +382,20 @@ export function KioskPhotoBorrowPage() {
       })();
     })();
     // successLoanを依存配列に追加（成功表示中は新しいイベントをスキップするため）
-  }, [nfcEvent, photoBorrowMutation, resolvedClientId, resolvedClientKey, isCapturing, successLoan, tagTypeMap, navigate]);
+    // isCapturing / nfcEvent object は意図的に除外（KB-035再発防止）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    nfcEvent?.eventId,
+    nfcEvent?.uid,
+    nfcEvent?.timestamp,
+    photoBorrowMutation,
+    resolvedClientId,
+    resolvedClientKey,
+    successLoan,
+    tagTypeMap,
+    navigate,
+    error,
+  ]);
 
   // ページアンマウント時に状態をリセット
   useEffect(() => {

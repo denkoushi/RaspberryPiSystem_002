@@ -252,7 +252,7 @@ export class BackupScheduler {
     if (successfulProvider) {
       // 対象ごとのretention設定を優先、未指定の場合は全体設定を使用（Phase 3）
       const retention = target.retention || config.retention;
-      if (retention && retention.days) {
+      if (retention && (retention.days || retention.maxBackups)) {
         const targetWithProvider = {
           ...target,
           storage: { provider: successfulProvider }

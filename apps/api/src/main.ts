@@ -3,6 +3,7 @@ import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
 import { getBackupScheduler } from './services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
+import { getGmailTrashCleanupScheduler } from './services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from './services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from './services/alerts/alerts-ingestor.js';
@@ -31,6 +32,10 @@ if (process.env['NODE_ENV'] !== 'test') {
       
       logger.info('CSV import scheduler started');
 
+      const gmailTrashCleanupScheduler = getGmailTrashCleanupScheduler();
+      await gmailTrashCleanupScheduler.start();
+      logger.info('Gmail trash cleanup scheduler started');
+
       // Alerts dispatchers
       // - mode=file: Phase1 (alertsファイル -> Slack配送)
       // - mode=db: Phase2 follow-up (DBキュー -> Slack配送)
@@ -56,6 +61,7 @@ if (process.env['NODE_ENV'] !== 'test') {
           await alertsIngestor.stop();
           await alertsDbDispatcher.stop();
           await alertsDispatcher.stop();
+          gmailTrashCleanupScheduler.stop();
           await app.close();
         } catch (err) {
           logger.warn({ err, signal }, 'Failed during shutdown');

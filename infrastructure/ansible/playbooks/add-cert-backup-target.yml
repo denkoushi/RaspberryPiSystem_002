@@ -1,0 +1,43 @@
+---
+# 証明書ディレクトリのバックアップターゲットを追加するPlaybook
+# 使用方法: ansible-playbook -i inventory.yml playbooks/add-cert-backup-target.yml
+
+- name: 証明書ディレクトリのバックアップターゲットを追加
+  hosts: raspberrypi5
+  become: false
+  vars:
+    project_dir: /opt/RaspberryPiSystem_002
+    script_path: "{{ project_dir }}/scripts/server/add-cert-backup-target.mjs"
+  
+  tasks:
+    - name: プロジェクトディレクトリが存在することを確認
+      stat:
+        path: "{{ project_dir }}"
+      register: project_dir_stat
+    
+    - name: プロジェクトディレクトリが存在しない場合はエラー
+      fail:
+        msg: "プロジェクトディレクトリ {{ project_dir }} が存在しません"
+      when: not project_dir_stat.stat.exists
+    
+    - name: スクリプトが存在することを確認
+      stat:
+        path: "{{ script_path }}"
+      register: script_stat
+    
+    - name: スクリプトが存在しない場合はエラー
+      fail:
+        msg: "スクリプト {{ script_path }} が存在しません。先にリポジトリを更新してください"
+      when: not script_stat.stat.exists
+    
+    - name: Node.jsスクリプトを実行してバックアップターゲットを追加（Dockerコンテナ内で実行）
+      command: >
+        docker compose -f {{ project_dir }}/infrastructure/docker/docker-compose.server.yml
+        exec -T api node /app/scripts/server/add-cert-backup-target.mjs
+      register: script_result
+      changed_when: "'追加しました' in script_result.stdout"
+      failed_when: script_result.rc != 0
+    
+    - name: 実行結果を表示
+      debug:
+        var: script_result.stdout_lines

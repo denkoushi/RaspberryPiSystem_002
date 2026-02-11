@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-01-31（可視化ダッシュボードの管理UI追加）
+最終更新: 2026-02-11（未点検加工機の可視化データソース追加）
 
 ## 概要
 
@@ -43,6 +43,34 @@
 - **可視化タイプ**: KPIカード、棒グラフ、テーブル
 - **設定方式**: 管理コンソールでデータソース/レンダラー/設定JSONを編集
 - **用途**: 現場での状況把握・課題可視化の拡張枠
+
+#### 未点検加工機コンテンツ（2026-02-11追加）
+
+- **実装方式**: 既存 `visualization` スロットを再利用（専用スロットは追加しない）
+- **データソース**: `uninspected_machines`（`MachineService.findUninspected` を再利用）
+- **レンダラー**: `uninspected_machines`（KPI: 稼働中/点検済み/未点検 + 一覧表示）
+- **必須設定**: `dataSourceConfig.csvDashboardId`（UUID）
+- **表示範囲**: FULL/SPLITの両レイアウトで表示可能（SPLITでは左右いずれの `visualization` スロットでも可）
+- **0件時表示**: 「未点検加工機はありません」
+- **設定不足時表示**: `csvDashboardId is required` を画面上に明示
+
+**セットアップ手順（運用テンプレ）**:
+
+1. **前提（マスタ）**: 加工機マスタ（`machines.csv`）を取り込み済みにする（未点検判定の母集団）
+2. **点検結果CSVダッシュボード**（`/admin/csv-dashboards`）:
+   - `gmailSubjectPattern` を設定
+   - `dateColumnName=inspectionAt`（当日判定に使用）
+3. **CSVインポートスケジュール**（`/admin/csv-imports`）:
+   - `provider=gmail`
+   - `targets.type=csvDashboards`
+   - `targets.source=CSVダッシュボードID`
+   - 可能なら一度「手動実行」で取り込みを確認
+4. **可視化ダッシュボード**（`/admin/visualization-dashboards`）:
+   - 未点検加工機プリセットを適用し、`csvDashboardId` を選択して保存
+5. **サイネージスケジュール**（`/admin/signage/schedules`）:
+   - `slot.kind=visualization` に上記の可視化ダッシュボードを配置
+
+詳細手順は `docs/guides/csv-import-export.md` の「レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ」を参照。
 
 ### PDF表示
 
@@ -256,7 +284,7 @@ model SignageSchedule {
   slots: [
     {
       position: "FULL" | "LEFT" | "RIGHT",
-      kind: "pdf" | "loans" | "csv_dashboard" | "message",
+      kind: "pdf" | "loans" | "csv_dashboard" | "visualization",
       config: {
         // kind="pdf"の場合
         pdfId: string,
@@ -266,6 +294,8 @@ model SignageSchedule {
         // config: {}（現時点では特別な設定なし）
         // kind="csv_dashboard"の場合
         csvDashboardId: string
+        // kind="visualization"の場合
+        visualizationDashboardId: string
       }
     }
   ]

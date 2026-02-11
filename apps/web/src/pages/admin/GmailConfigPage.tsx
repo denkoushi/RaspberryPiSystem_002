@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useGmailConfig, useGmailConfigMutations } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 export function GmailConfigPage() {
   const { data: config, isLoading } = useGmailConfig();
@@ -20,6 +21,7 @@ export function GmailConfigPage() {
     fromEmail: '',
     redirectUri: ''
   });
+  const confirm = useConfirm();
   const [isEditing, setIsEditing] = useState(false);
 
   // フォーム要素のラベル関連付け（E2E/アクセシビリティ向上）
@@ -69,7 +71,14 @@ export function GmailConfigPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Gmail設定を削除しますか？\n\n削除後はGmail経由でのデータ取得ができなくなります。')) {
+    const shouldDelete = await confirm({
+      title: 'Gmail設定を削除しますか？',
+      description: '削除後はGmail経由でのデータ取得ができなくなります。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) {
       return;
     }
 

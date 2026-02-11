@@ -123,20 +123,24 @@ Raspberry Pi 4を再起動した後、APIキーとIDがランダムな文字列�
 ### 3. 起動時防御の実装 ✅
 
 `apps/web/src/api/client.ts`を更新：
-- 初期化時に`kiosk-client-key`を`localStorage`に`DEFAULT_CLIENT_KEY`として強制設定
-- URLパラメータによるクライアント識別の上書きを削除
-- `resolveClientKey()`関数を削除し、常に`DEFAULT_CLIENT_KEY`を使用
+- 初期化時に`kiosk-client-key`が**未設定/空の場合のみ**`DEFAULT_CLIENT_KEY`を設定（既存キーは上書きしない）
+- `resolveClientKey()`で`localStorage`の値を優先し、空なら`DEFAULT_CLIENT_KEY`へフォールバック
+- 401(`INVALID_CLIENT_KEY`)時に自動復旧
 
 `apps/web/src/layouts/KioskLayout.tsx`を更新：
-- `clientKey`を`DEFAULT_CLIENT_KEY`に直接設定
-- `useLocalStorageApiKey`の使用を削除
-- `useEffect`による`clientKey`復元処理を削除（`client.ts`の初期化に依存）
+- `clientKey`は**実際に利用するキー**（`resolveClientKey`相当）に合わせて表示
+- `x-client-key`ヘッダーも同じキーに統一
 
 ### 4. 自動復旧機能の実装 ✅
 
 `apps/web/src/api/client.ts`に以下を追加：
 - `resetKioskClientKey()`関数: `kiosk-client-key`を`localStorage`から削除し、`DEFAULT_CLIENT_KEY`を設定してヘッダーを更新、キオスクパスの場合はページをリロード
 - `axios` response interceptor: 401エラーで`INVALID_CLIENT_KEY`または`CLIENT_KEY_INVALID`コード/メッセージを検出した場合、`resetKioskClientKey()`を自動実行
+
+## 追記（2026-02-09）
+
+- **通話IDは`ClientDevice.id`（UUID）に統一**し、`kiosk-client-id`（localStorage）は通話に不要
+- `/api/kiosk/call/targets`の`selfClientId`を通話IDとして使用
 
 ## 実機検証結果（2026-02-02）
 
@@ -179,7 +183,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 - `apps/web/src/components/kiosk/KioskHeader.tsx`: 入力フィールド削除・表示のみに変更
 - `apps/web/src/api/client.ts`: 起動時防御・自動復旧機能の実装
-- `apps/web/src/layouts/KioskLayout.tsx`: `DEFAULT_CLIENT_KEY`固定化
+- `apps/web/src/layouts/KioskLayout.tsx`: 表示/APIヘッダーを実際に利用するキーに統一
 - `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`: localStorage使用削除
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`: localStorage使用削除
 - `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`: localStorage使用削除

@@ -14,6 +14,10 @@ Environment=SSH_AUTH_SOCK=""
 # NetworkManagerの認証ダイアログを抑制
 Environment=NM_CLI_NO_TERSE=1
 Environment=NM_CLI_NO_ASK_PASSWORD=1
+# 日本語入力環境変数
+Environment=GTK_IM_MODULE=ibus
+Environment=XMODIFIERS=@im=ibus
+Environment=QT_IM_MODULE=ibus
 ExecStart=/usr/local/bin/kiosk-launch.sh
 Restart=always
 RestartSec=5

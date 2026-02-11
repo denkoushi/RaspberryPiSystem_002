@@ -110,6 +110,36 @@ describe('Kiosk Production Schedule API', () => {
     expect(completedRow?.rowData.progress).toBe('完了');
   });
 
+  it('keeps only the larger ProductNo for the same seiban+process key', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-older-duplicate',
+          rowData: { ProductNo: '0003', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-newer-duplicate',
+          rowData: { ProductNo: '0009', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
+        },
+      ],
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=BA1S2320',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0]?.rowData.ProductNo).toBe('0009');
+  });
+
   it('completes a row and keeps it in list (grayed out)', async () => {
     const list = await app.inject({
       method: 'GET',
@@ -369,6 +399,43 @@ describe('Kiosk Production Schedule API', () => {
       payload: { state: { history: ['Y'] } }
     });
     expect(stalePut.statusCode).toBe(409);
+  });
+
+  it('returns history progress map for shared history', async () => {
+    const initialGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const initialEtag = initialGet.headers['etag'];
+    expect(initialEtag).toBeTruthy();
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': initialEtag },
+      payload: {
+        state: {
+          history: ['A', 'B', 'C']
+        }
+      }
+    });
+    expect(putRes.statusCode).toBe(200);
+
+    const progressRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/history-progress',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+    expect(progressRes.statusCode).toBe(200);
+    const body = progressRes.json() as {
+      history: string[];
+      progressBySeiban: Record<string, { total: number; completed: number; status: 'complete' | 'incomplete' }>;
+    };
+    expect(body.history).toEqual(['A', 'B', 'C']);
+    expect(body.progressBySeiban.A).toEqual({ total: 2, completed: 0, status: 'incomplete' });
+    expect(body.progressBySeiban.B).toEqual({ total: 1, completed: 1, status: 'complete' });
+    expect(body.progressBySeiban.C).toEqual({ total: 0, completed: 0, status: 'incomplete' });
   });
 
   it('paginates results in sorted order', async () => {

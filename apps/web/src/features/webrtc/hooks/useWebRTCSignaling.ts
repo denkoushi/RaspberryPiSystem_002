@@ -5,41 +5,48 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { DEFAULT_CLIENT_KEY } from '../../../api/client';
 import { playRingtone } from '../utils/ringtone';
 
 import type { IncomingCallPayload, SignalingMessage } from '../types';
 
 const resolveClientKey = (): string => {
-  if (typeof window === 'undefined') return '';
-  const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return '';
+  if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
   
+  // Mac環境を検出（User-Agentから）
+  const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const macDefaultKey = 'client-key-mac-kiosk1';
+  
+  const savedKey = window.localStorage.getItem('kiosk-client-key');
+  if (!savedKey || savedKey.length === 0) {
+    // localStorageが空の場合、Mac環境ならMac用のキーを返す
+    return isMac ? macDefaultKey : DEFAULT_CLIENT_KEY;
+  }
+  
+  let parsedKey: string | null = null;
   try {
     const parsed = JSON.parse(savedKey);
     if (typeof parsed === 'string' && parsed.length > 0) {
-      return parsed;
+      parsedKey = parsed;
     }
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
+    parsedKey = savedKey;
   }
-  return savedKey || '';
+  
+  const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
+  
+  // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
+  if (isMac && resolvedKey === 'client-key-raspberrypi4-kiosk1') {
+    // localStorageを修正
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
+    return macDefaultKey;
+  }
+  
+  return resolvedKey;
 };
 
-const resolveClientId = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const savedId = window.localStorage.getItem('kiosk-client-id');
-  if (!savedId || savedId.length === 0) return null;
-  
-  try {
-    const parsed = JSON.parse(savedId);
-    if (typeof parsed === 'string' && parsed.length > 0) {
-      return parsed;
-    }
-  } catch {
-    // JSON.parseに失敗した場合は生の値をそのまま使用
-  }
-  return savedId || null;
-};
+const PONG_STALE_MS = 90_000;
 
 export interface UseWebRTCSignalingOptions {
   enabled?: boolean;
@@ -76,6 +83,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   const isPlayingRingtoneRef = useRef(false);
   const connectionStartTimeRef = useRef<number | null>(null);
   const keepaliveIntervalRef = useRef<number | null>(null);
+  const lastPongAtRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     if (!enabled || typeof window === 'undefined') {
@@ -93,12 +101,11 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     // #endregion
 
     const clientKey = resolveClientKey();
-    const clientId = resolveClientId();
-    if (!clientKey || !clientId) {
+    if (!clientKey) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:connect:missing',message:'signaling_connect_missing_key_or_id',data:{hasClientKey:Boolean(clientKey&&clientKey.length>0),hasClientId:Boolean(clientId&&clientId.length>0),readyState:socketRef.current?.readyState ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:connect:missing',message:'signaling_connect_missing_key',data:{hasClientKey:Boolean(clientKey&&clientKey.length>0),readyState:socketRef.current?.readyState ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
-      console.warn('WebRTC signaling: clientKey or clientId not found');
+      console.warn('WebRTC signaling: clientKey not found');
       return;
     }
 
@@ -125,6 +132,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
         connectionStartTimeRef.current = Date.now();
+        lastPongAtRef.current = Date.now();
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:socket:onopen',message:'signaling_socket_open',data:{online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
@@ -214,7 +222,8 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
             }
 
             case 'pong': {
-              // Keepalive pong応答（何もしない）
+              // Keepalive pong応答
+              lastPongAtRef.current = Date.now();
               break;
             }
 
@@ -248,6 +257,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         setIsConnected(false);
         setIsConnecting(false);
         connectionStartTimeRef.current = null;
+        lastPongAtRef.current = null;
         
         // Keepalive intervalをクリア
         if (keepaliveIntervalRef.current) {
@@ -296,18 +306,64 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       socketRef.current.close();
       socketRef.current = null;
     }
+    lastPongAtRef.current = null;
     setIsConnected(false);
     setIsConnecting(false);
   }, []);
 
-  const sendMessage = useCallback((message: SignalingMessage) => {
+  const isConnectionStale = useCallback(() => {
+    const socketState = socketRef.current?.readyState;
+    if (socketState === WebSocket.CONNECTING) return false;
+    if (socketState !== WebSocket.OPEN) return true;
+    const lastPongAt = lastPongAtRef.current;
+    if (!lastPongAt) return true;
+    return Date.now() - lastPongAt > PONG_STALE_MS;
+  }, []);
+
+  const reconnectIfNeeded = useCallback(() => {
+    if (!enabled) return;
+    if (!isConnectionStale()) return;
+    disconnect();
+    connect();
+  }, [connect, disconnect, enabled, isConnectionStale]);
+
+  const sendMessage = useCallback((message: SignalingMessage): void => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify(message));
+      try {
+        socketRef.current.send(JSON.stringify(message));
+      } catch (error) {
+        setIsConnected(false);
+        const err = error instanceof Error ? error : new Error('WebSocket send failed');
+        onError?.(err);
+        reconnectIfNeeded();
+        throw err; // エラーをthrowして呼び出し側で処理できるようにする
+      }
     } else {
       console.warn('WebRTC signaling: socket not connected');
-      onError?.(new Error('WebSocket not connected'));
+      const err = new Error('WebSocket not connected');
+      onError?.(err);
+      reconnectIfNeeded();
+      throw err; // エラーをthrowして呼び出し側で処理できるようにする
     }
-  }, [onError]);
+  }, [onError, reconnectIfNeeded]);
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconnectIfNeeded();
+      }
+    };
+    const handleOnline = () => {
+      reconnectIfNeeded();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [enabled, reconnectIfNeeded]);
 
   useEffect(() => {
     if (enabled) {

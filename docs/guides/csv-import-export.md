@@ -2,9 +2,9 @@
 
 ## 概要
 
-本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具）を一括インポートできます：
+本システムでは、以下の方法でマスターデータ（従業員・工具・計測機器・吊具・加工機）を一括インポートできます：
 
-1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具の4種類に対応）✅ **実機検証完了**
+1. **USBメモリ経由**: 管理画面からCSVファイルをアップロード（従業員・工具・計測機器・吊具・加工機の5種類に対応）✅ **実機検証完了**
 2. **Dropbox経由**: DropboxからCSVファイルをダウンロードしてインポート（手動実行）✅ **実装・検証完了**
 3. **Dropbox経由（スケジュール実行）**: 設定したスケジュールに従って自動的にDropboxからCSVを取得してインポート ✅ **実装・検証完了**
 4. **Gmail経由（スケジュール実行）**: 設定したスケジュールに従って自動的にGmailからCSVを取得してインポート ✅ **実装完了（2025-12-29）** ⚠️ **スケジュール実行のE2E検証は未完了（手動実行は検証済み）**
@@ -38,6 +38,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 - **資源CDフィルタ**: 各資源CDに2つのボタン（全件検索 / 割当済みのみ検索）を提供し、検索登録製番とAND条件で検索可能
 - **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
 - **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
+- **製造order番号の繰り上がりルール**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、**数字が大きい方のみ有効**として扱う（インポート時・表示時の両方で適用）✅ **実機検証完了（2026-02-10）**
 
 ### 設定手順
 
@@ -56,6 +57,23 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 ### 列定義（columnDefinitions）の確認・編集
 
 CSVダッシュボードの列定義は、管理コンソール（`/admin/csv-dashboards`）で確認・編集できます。
+
+未点検加工機（当日点検の有無）で使用する場合は、**点検結果CSVダッシュボード**の列定義に最低限以下を揃えてください。
+
+- `equipmentManagementNumber`（候補: `設備管理番号`）
+- `inspectionAt`（候補: `点検日時`, `点検日`, `inspectionAt` など）
+
+推奨（サイネージ/管理画面での確認が楽）:
+
+- `machineName`（候補: `加工機名` など）
+- `inspector`
+- `inspectionItem`
+- `inspectionResult`
+- `registeredAt`
+
+あわせて `dateColumnName` を `inspectionAt` に設定し、`displayPeriodDays: 1`（当日）で運用します。
+
+**重要**: 内部名（`internalName`）は固定で、CSVヘッダー（日本語など）とは `csvHeaderCandidates` で紐付けます。
 
 **編集可能**:
 - 表示名（`displayName`）
@@ -78,6 +96,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - `target.source`は**CSVダッシュボードID**を指定する（件名パターンはダッシュボード設定を使用）
 - Gmail件名は`CsvDashboard.gmailSubjectPattern`から取得するため、スケジュール側で件名を設定する必要はない
 - デフォルト設定には`MeasuringInstrumentLoans`向けの無効スケジュールが含まれている（有効化は運用で実施）
+- **落とし穴**: `CsvDashboard.gmailSubjectPattern` が `NULL` / 空文字だと、スケジュールが有効でも対象メールを検索できず取り込みできません（まずダッシュボード側の件名パターンを設定）。
 
 **設定例**（管理コンソール / CSVインポート）:
 1. **プロバイダー**: `gmail`
@@ -89,6 +108,25 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - CSVダッシュボードを選択すると、スケジュールIDと名前が自動生成されます（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
 - Gmailに該当する未読メールがない場合でも、エラーにならず正常に完了します（該当ダッシュボードはスキップされる）
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
+
+#### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ
+
+今後、別データでも同様に「GmailのCSV自動取得」から「サイネージの新コンテンツ」まで作る場合は、以下の順序が安全です（最小の動作確認ポイント込み）。
+
+1. **CSVダッシュボードを作る**（`/admin/csv-dashboards`）
+   - **最低限**: `gmailSubjectPattern`（件名）、`dateColumnName`（当日/期間フィルタに使う日付列）、列定義（`columnDefinitions`）
+   - **未点検加工機（点検結果）**の場合は、`dateColumnName=inspectionAt` を推奨（上記「列定義」参照）
+2. **CSVインポートスケジュールを作る**（`/admin/csv-imports`）
+   - **プロバイダー**: `gmail`
+   - **ターゲット**: `CSVダッシュボード`
+   - **source**: CSVダッシュボードID（件名ではない）
+3. **手動実行で疎通確認**（`/admin/csv-imports` の「実行」）
+   - 失敗時は、まず「Gmail設定（OAuth）」と「CSVダッシュボードの `gmailSubjectPattern`」を疑う
+4. **可視化ダッシュボードを作る/更新する**（`/admin/visualization-dashboards`）
+   - `uninspected_machines` は `dataSourceConfig.csvDashboardId` が必須（点検結果CSVダッシュボードID）
+   - 管理画面上でCSVダッシュボードIDを **ドロップダウン選択**して設定する（手入力しない）
+5. **サイネージスケジュールに組み込む**（`/admin/signage/schedules`）
+   - `layout=FULL` か `layout=SPLIT` を選び、`slot.kind=visualization` に可視化ダッシュボードIDを設定する
 
 #### 取得ロジック（現行仕様）
 
@@ -140,7 +178,7 @@ PowerAutomateが「追加/変更のたびにメール送信」だと、Gmail側�
 - `PUT /api/kiosk/production-schedule/:rowId/order`: 加工順序番号を割当/解除（`resourceCd`と`orderNumber`（1-10またはnull）を指定）
 - `PUT /api/kiosk/production-schedule/:rowId/note`: 行ごとの備考を保存（`note` 100文字以内・改行不可、拠点ごと）。空文字で削除
 - `GET /api/kiosk/production-schedule` のクエリ: `hasNoteOnly=true` で備考が入っている行のみ取得
-- `GET /api/kiosk/production-schedule/resources`: 全データから取得した資源CD一覧を返す
+- `GET /api/kiosk/production-schedule/resources`: 有効行（同一キーで最大`ProductNo`）から取得した資源CD一覧を返す
 - `GET /api/kiosk/production-schedule/order-usage`: 指定された資源CDの使用中順番番号を返す（`resourceCds`クエリパラメータでフィルタ可能）
 - `GET /api/kiosk/production-schedule/search-state`: 検索状態を取得（location単位）
 - `PUT /api/kiosk/production-schedule/search-state`: 検索状態を保存（location単位、`inputQuery`、`activeQueries`、`activeResourceCds`、`activeResourceAssignedOnlyCds`を含む）
@@ -168,6 +206,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 **注意事項**:
 - FSEIBANが`********`（8個のアスタリスク）の場合も正常に取り込まれます（割当がない場合の運用に対応）
 - バリデーションエラーの詳細は、エラーメッセージに`value`と`length`が含まれます（デバッグ用）
+- 同一キーで`ProductNo`が繰り上がるケースでは、小さい`ProductNo`は表示対象から除外されます（最大`ProductNo`のみ返却）
 
 ### 実機検証
 
@@ -185,7 +224,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ## USBメモリ経由のCSVインポート
 
-管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具の4種類に対応しています。
+管理画面からCSVファイルをアップロードしてインポートできます。従業員・工具・計測機器・吊具・加工機の5種類に対応しています。
 
 ### インポート手順
 
@@ -196,6 +235,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
    - 工具CSV (`items.csv`)
    - 計測機器CSV (`measuring-instruments.csv`)
    - 吊具CSV (`rigging-gears.csv`)
+   - 加工機CSV (`machines.csv`)
 4. **オプション設定**: 「既存データをクリアしてから取り込み」にチェックを入れるか選択
 5. **取り込み開始**: 「取り込み開始」ボタンをクリック
 
@@ -210,7 +250,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 **エンドポイント**: `POST /api/imports/master/:type`
 
 **パラメータ**:
-- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`）
+- `:type`: データタイプ（`employees`, `items`, `measuring-instruments`, `rigging-gears`, `machines`）
 
 **リクエスト形式**: multipart form data
 - `file`: CSVファイル（必須）
@@ -380,6 +420,40 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
 - CSV内で`rfidTagUid`が重複していないこと
 - 他のマスターデータCSV間で`rfidTagUid`が重複していないこと
 
+### 加工機CSV（machines.csv）
+
+#### 必須項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `equipmentManagementNumber` | 文字列 | 設備管理番号（一意） | `30024`, `AQK002` |
+| `name` | 文字列 | 加工機名称 | `HS3A_10P` |
+
+#### 任意項目
+
+| 列名 | 形式 | 説明 | 例 |
+|------|------|------|-----|
+| `shortName` | 文字列 | 加工機略称 | `HS3A` |
+| `classification` | 文字列 | 加工機分類 | `マシニングセンター` |
+| `operatingStatus` | 文字列 | 稼働状態 | `稼働中` |
+| `ncManual` | 文字列 | NC/汎用区分 | `NC` |
+| `maker` | 文字列 | メーカー | `日立` |
+| `processClassification` | 文字列 | 工程分類 | `切削` |
+| `coolant` | 文字列 | クーラント | `THK_I_ジュラロン` |
+
+#### CSV例
+
+```csv
+equipmentManagementNumber,name,shortName,classification,operatingStatus,ncManual,maker,processClassification,coolant
+30024,HS3A_10P,HS3A,マシニングセンター,稼働中,横型,日立,切削,
+30026,HS3A_6P,HS3A,マシニングセンター,稼働中,横型,日立,切削,
+```
+
+#### バリデーションルール
+
+- `equipmentManagementNumber`: 1文字以上（一意）
+- `name`: 1文字以上
+
 ## インポート処理の動作
 
 ### 通常インポート（`replaceExisting: false`）
@@ -390,7 +464,7 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
 
 ### 全削除してからインポート（`replaceExisting: true`）
 
-- 選択したCSVの種類（従業員・工具・計測機器・吊具）の既存データを削除してからインポート
+- 選択したCSVの種類（従業員・工具・計測機器・吊具・加工機）の既存データを削除してからインポート
 - **安全性**: 参照がある個体（貸出記録、点検記録など）は削除されません
   - 従業員: 貸出記録（Loan）が存在する場合は削除されない
   - 工具: 貸出記録（Loan）が存在する場合は削除されない
@@ -477,7 +551,8 @@ RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,I
         { "type": "employees", "source": "/backups/csv/employees-YYYYMMDD.csv" },
         { "type": "items", "source": "/backups/csv/items-YYYYMMDD.csv" },
         { "type": "measuringInstruments", "source": "/backups/csv/measuring-instruments-YYYYMMDD.csv" },
-        { "type": "riggingGears", "source": "/backups/csv/rigging-gears-YYYYMMDD.csv" }
+        { "type": "riggingGears", "source": "/backups/csv/rigging-gears-YYYYMMDD.csv" },
+        { "type": "machines", "source": "/backups/csv/machines-YYYYMMDD.csv" }
       ],
       "replaceExisting": false,
       "enabled": true
@@ -524,7 +599,8 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
         { "type": "employees", "source": "[Pi5 CSV Import] employees" },
         { "type": "items", "source": "[Pi5 CSV Import] items" },
         { "type": "measuringInstruments", "source": "[Pi5 CSV Import] measuring-instruments" },
-        { "type": "riggingGears", "source": "[Pi5 CSV Import] rigging-gears" }
+        { "type": "riggingGears", "source": "[Pi5 CSV Import] rigging-gears" },
+        { "type": "machines", "source": "[Pi5 CSV Import] machines" }
       ],
       "replaceExisting": false,
       "enabled": true
@@ -554,6 +630,12 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
       "[CSV Import] rigging-gears",
       "CSV Import - rigging-gears",
       "吊具CSVインポート"
+    ],
+    "machines": [
+      "[Pi5 CSV Import] machines",
+      "[CSV Import] machines",
+      "CSV Import - machines",
+      "加工機CSVインポート"
     ]
   }
 }

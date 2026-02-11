@@ -78,6 +78,11 @@ fail2ban_http_maxretry: 15
 fail2ban_http_findtime: "15m"
 fail2ban_http_bantime: "1h"
 
+# apt cacheの再取得を抑制（同一デプロイ内の重複apt updateを削減）
+# - cache_valid_timeの単位は秒
+# - update_cache: trueは維持し、判定不能時は安全側で更新
+apt_cache_valid_time_seconds: 3600
+
 # 不要サービス停止（ポート閉塞）
 # VNCは残す運用だが、不要な常駐サービスは止めて攻撃面を減らす
 server_disable_unused_services: true
@@ -177,6 +182,14 @@ security_monitor_timer_oncalendar: "*:0/15"
 security_monitor_allowed_listen_ports: "22 80 443 5900"
 security_monitor_ignore_processes: "tailscaled"
 security_monitor_ignore_addr_prefixes: "127.0.0.1 ::1 100. fd7a: fe80:"
+
+# バックアップ検証（自動化）
+backup_verify_enabled: true
+backup_verify_monthly_oncalendar: "Sun *-*-01 03:30:00"
+backup_verify_quarterly_oncalendar: "Sun *-01,04,07,10-01 04:00:00"
+backup_verify_monthly_max_age_days: 35
+backup_verify_quarterly_max_age_days: 110
+backup_verify_max_download_mb: 50
 
 # デバイスタイプごとのデフォルト設定（preflightチェック用）
 # 新しいデバイスタイプを追加する場合は、この設定に追加してください

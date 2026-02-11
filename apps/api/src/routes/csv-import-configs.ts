@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { authorizeRoles } from '../lib/auth.js';
 import { CsvImportConfigService } from '../services/imports/csv-import-config.service.js';
 
-const importTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears']);
+const importTypeSchema = z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines']);
 
 const columnDefinitionSchema = z.object({
   internalName: z.string().min(1),

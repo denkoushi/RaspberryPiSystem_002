@@ -40,22 +40,47 @@ export const api = axios.create({
 
 // 各リクエストで確実に client-key を付与するためのヘルパー
 // useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
+// Mac環境を検出して適切なデフォルト値を返す
 const resolveClientKey = () => {
   if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
+  
+  // Mac環境を検出（User-Agentから）
+  const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const macDefaultKey = 'client-key-mac-kiosk1';
+  
   const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) return DEFAULT_CLIENT_KEY;
+  if (!savedKey || savedKey.length === 0) {
+    // localStorageが空の場合、Mac環境ならMac用のキーを返す
+    return isMac ? macDefaultKey : DEFAULT_CLIENT_KEY;
+  }
   
   // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
+  let parsedKey: string | null = null;
   try {
     const parsed = JSON.parse(savedKey);
     if (typeof parsed === 'string' && parsed.length > 0) {
-      return parsed;
+      parsedKey = parsed;
     }
   } catch {
     // JSON.parseに失敗した場合は生の値をそのまま使用
+    parsedKey = savedKey;
   }
-  return savedKey || DEFAULT_CLIENT_KEY;
+  
+  const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
+  
+  // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
+  if (isMac && resolvedKey === 'client-key-raspberrypi4-kiosk1') {
+    // localStorageを修正
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
+    return macDefaultKey;
+  }
+  
+  return resolvedKey;
 };
+
+export function getResolvedClientKey() {
+  return resolveClientKey();
+}
 
 export function setAuthToken(token?: string) {
   if (token) {
@@ -79,11 +104,22 @@ const resetKioskClientKey = () => {
   }
 };
 
-// 初期読み込み時に localStorage に保存済みのキーがあれば適用し、なければデフォルトを設定
+// 初期読み込み時:
+// - localStorage が未設定/空の場合のみデフォルトを設定（誤って他端末のキーを上書きしない）
+// - 既に保存済みのキーがあればそれを適用する
+// - Mac環境を検出して適切なデフォルト値を設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
-  window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
-  setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  const existing = window.localStorage.getItem('kiosk-client-key');
+  if (!existing || existing.length === 0) {
+    // Mac環境を検出（User-Agentから）
+    const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+    const defaultKey = isMac ? 'client-key-mac-kiosk1' : DEFAULT_CLIENT_KEY;
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
+    setClientKeyHeader(defaultKey);
+  } else {
+    setClientKeyHeader(resolveClientKey());
+  }
 }
 
 // すべてのリクエストで client-key を付与
@@ -163,6 +199,40 @@ export async function getDepartments(): Promise<{ departments: string[] }> {
 export async function getEmployees() {
   const { data } = await api.get<{ employees: Employee[] }>('/tools/employees');
   return data.employees;
+}
+
+export interface Machine {
+  id: string;
+  equipmentManagementNumber: string;
+  name: string;
+  shortName?: string | null;
+  classification?: string | null;
+  operatingStatus?: string | null;
+  ncManual?: string | null;
+  maker?: string | null;
+  processClassification?: string | null;
+  coolant?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UninspectedMachinesResponse {
+  date: string;
+  csvDashboardId: string;
+  totalRunningMachines: number;
+  inspectedRunningCount: number;
+  uninspectedCount: number;
+  uninspectedMachines: Machine[];
+}
+
+export async function getMachines(params?: { search?: string; operatingStatus?: string }) {
+  const { data } = await api.get<{ machines: Machine[] }>('/tools/machines', { params });
+  return data.machines;
+}
+
+export async function getUninspectedMachines(params: { csvDashboardId: string; date?: string }) {
+  const { data } = await api.get<UninspectedMachinesResponse>('/tools/machines/uninspected', { params });
+  return data;
 }
 
 // キオスク専用の従業員リスト取得（x-client-key認証）
@@ -274,6 +344,18 @@ export type ProductionScheduleSearchHistory = {
   updatedAt: string | null;
 };
 
+export type ProductionScheduleHistoryProgressEntry = {
+  total: number;
+  completed: number;
+  status: 'complete' | 'incomplete';
+};
+
+export type ProductionScheduleHistoryProgressResponse = {
+  history: string[];
+  progressBySeiban: Record<string, ProductionScheduleHistoryProgressEntry>;
+  updatedAt: string | null;
+};
+
 export type ProductionScheduleSearchStateResponse = {
   state: ProductionScheduleSearchState | null;
   updatedAt: string | null;
@@ -318,6 +400,11 @@ export async function setKioskProductionScheduleSearchState(
 
 export async function getKioskProductionScheduleSearchHistory() {
   const { data } = await api.get<ProductionScheduleSearchHistory>('/kiosk/production-schedule/search-history');
+  return data;
+}
+
+export async function getKioskProductionScheduleHistoryProgress() {
+  const { data } = await api.get<ProductionScheduleHistoryProgressResponse>('/kiosk/production-schedule/history-progress');
   return data;
 }
 
@@ -703,7 +790,7 @@ export async function getClients() {
   return data.clients;
 }
 
-export async function updateClient(id: string, payload: { defaultMode?: 'PHOTO' | 'TAG' | null }) {
+export async function updateClient(id: string, payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null }) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;
 }
@@ -790,6 +877,20 @@ export async function postKioskSupport(
   const { data } = await api.post<{ requestId: string }>('/kiosk/support', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
+  return data;
+}
+
+export async function postKioskPower(
+  payload: { action: 'reboot' | 'poweroff' },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ requestId: string; action: string; status: string }>(
+    '/kiosk/power',
+    payload,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
   return data;
 }
 
@@ -947,7 +1048,7 @@ export async function importMaster(payload: ImportMasterPayload) {
 }
 
 interface ImportMasterSinglePayload {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines';
   file: File;
   replaceExisting?: boolean;
 }
@@ -962,7 +1063,8 @@ export async function importMasterSingle(payload: ImportMasterSinglePayload) {
     'employees': 'employees',
     'items': 'items',
     'measuringInstruments': 'measuring-instruments',
-    'riggingGears': 'rigging-gears'
+    'riggingGears': 'rigging-gears',
+    'machines': 'machines'
   };
   const urlType = typeMap[payload.type] || payload.type;
 
@@ -1324,6 +1426,26 @@ export async function deleteVisualizationDashboard(id: string) {
 
 export async function getCsvDashboard(id: string) {
   const { data } = await api.get<{ dashboard: CsvDashboard }>(`/csv-dashboards/${id}`);
+  return data.dashboard;
+}
+
+export interface CsvDashboardCreateInput {
+  name: string;
+  description?: string | null;
+  columnDefinitions: CsvDashboard['columnDefinitions'];
+  dateColumnName?: string | null;
+  displayPeriodDays?: number;
+  emptyMessage?: string | null;
+  ingestMode?: 'APPEND' | 'DEDUP';
+  dedupKeyColumns?: string[];
+  gmailScheduleId?: string | null;
+  gmailSubjectPattern?: string | null;
+  templateType?: 'TABLE' | 'CARD_GRID';
+  templateConfig: Record<string, unknown>;
+}
+
+export async function createCsvDashboard(payload: CsvDashboardCreateInput) {
+  const { data } = await api.post<{ dashboard: CsvDashboard }>('/csv-dashboards', payload);
   return data.dashboard;
 }
 

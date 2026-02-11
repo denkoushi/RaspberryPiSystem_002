@@ -144,6 +144,43 @@
     repo_new_head: "{{ repo_new_head.stdout | default('') }}"
     repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
 
+- name: Collect repo diff file list (for docker build decision)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}"
+    git diff --name-only "{{ repo_prev_head.stdout }}" "{{ repo_new_head.stdout }}"
+  args:
+    executable: /bin/bash
+  register: repo_diff_files_raw
+  changed_when: false
+  failed_when: false
+  when:
+    - (repo_prev_head.stdout | default('')) != ''
+    - (repo_new_head.stdout | default('')) != ''
+
+- name: Determine if docker build is needed on server
+  ansible.builtin.set_fact:
+    repo_changed_files: "{{ repo_diff_files_raw.stdout_lines | default([]) }}"
+    repo_diff_unavailable: >-
+      {{
+        (repo_prev_head.stdout | default('')) == ''
+        or (repo_new_head.stdout | default('')) == ''
+        or (repo_diff_files_raw.rc | default(0)) != 0
+      }}
+    server_docker_build_needed: >-
+      {{
+        (repo_prev_head.stdout | default('')) == ''
+        or (repo_new_head.stdout | default('')) == ''
+        or (repo_diff_files_raw.rc | default(0)) != 0
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^apps/(api|web)/') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^packages/') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^pnpm-lock\\.yaml$') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^package\\.json$') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^pnpm-workspace\\.yaml$') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^infrastructure/docker/') | list | length > 0)
+        or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^apps/api/prisma/') | list | length > 0)
+      }}
+
 - name: Fix .git directory ownership (prevent detached execution failures)
   ansible.builtin.file:
     path: "{{ repo_path }}/.git"

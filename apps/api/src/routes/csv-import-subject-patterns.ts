@@ -8,6 +8,7 @@ const importTypeSchema = z.enum([
   'items',
   'measuringInstruments',
   'riggingGears',
+  'machines',
   'csvDashboards',
 ]);
 

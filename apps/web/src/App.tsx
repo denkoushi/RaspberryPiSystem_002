@@ -2,8 +2,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
+import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
+import { BackupConfigHistoryPage } from './pages/admin/BackupConfigHistoryPage';
 import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
 import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
@@ -32,6 +34,7 @@ import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
 import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
 import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
+import { MachinesUninspectedPage } from './pages/tools/MachinesUninspectedPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
 import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
 import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
@@ -41,22 +44,24 @@ function App() {
     <Routes>
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/signage" element={<SignageDisplayPage />} />
+      <Route element={<CallAutoSwitchLayout />}>
+        <Route path="/signage" element={<SignageDisplayPage />} />
+        <Route element={<KioskLayout />}>
+          <Route path="/kiosk" element={<KioskRedirect />} />
+          <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
+          <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
+          <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
+          <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
+          <Route path="/kiosk/call" element={<KioskCallPage />} />
+          <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
+        </Route>
+      </Route>
       {/* 開発用: UI確認のための一時的なルート */}
       <Route
         path="/preview"
         element={<AdminLayout />}
       >
         <Route path="import" element={<CsvImportPage />} />
-      </Route>
-      <Route element={<KioskLayout />}>
-        <Route path="/kiosk" element={<KioskRedirect />} />
-        <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
-        <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
-        <Route path="/kiosk/instruments/borrow" element={<KioskInstrumentBorrowPage />} />
-        <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
-        <Route path="/kiosk/call" element={<KioskCallPage />} />
-        <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
       </Route>
       <Route
         path="/admin"
@@ -76,6 +81,7 @@ function App() {
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
           <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+          <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
           <Route path="history" element={<HistoryPage />} />
         </Route>
         <Route path="clients" element={<ClientsPage />} />
@@ -83,6 +89,7 @@ function App() {
         <Route path="import" element={<CsvImportPage />} />
         <Route path="backup">
           <Route path="targets" element={<BackupTargetsPage />} />
+          <Route path="config-history" element={<BackupConfigHistoryPage />} />
           <Route path="history" element={<BackupHistoryPage />} />
           <Route path="restore" element={<BackupRestorePage />} />
         </Route>
@@ -107,6 +114,7 @@ function App() {
         <Route path="instrument-tags" element={<InstrumentTagsPage />} />
         <Route path="inspection-records" element={<InspectionRecordsPage />} />
         <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+        <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
         <Route path="rigging-gears" element={<RiggingGearsPage />} />
         <Route path="history" element={<HistoryPage />} />
       </Route>

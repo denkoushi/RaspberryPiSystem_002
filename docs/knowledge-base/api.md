@@ -1701,6 +1701,10 @@ if (data.type === 'ping') {
 - ✅ **UI改善（2026-01-26）**:
   1. `CsvImportSchedulePage.tsx`で409エラー発生時に`refetch()`を呼び出し、スケジュール一覧を更新
   2. `validationError`メッセージを表示してユーザーに既存スケジュールの存在を通知
+- ✅ **製造order番号繰り上がりルール追加（2026-02-10）**:
+  1. 重複単位を`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`に定義
+  2. 同一キーで`ProductNo`が複数ある場合は、数値が大きい行のみを有効とする
+  3. 取り込み時（`CsvDashboardIngestor`）と表示時（`/kiosk/production-schedule`、`SeibanProgressService`）の両方で適用
 
 **実装の詳細**:
 ```typescript
@@ -1768,19 +1772,38 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - **UI改善**: 409エラー発生時にスケジュール一覧を更新することで、ユーザーに既存スケジュールの存在を通知できる
 - **日付パース**: JST形式の日付文字列をUTC `Date`オブジェクトに変換する際は、タイムゾーンオフセット（+9時間）を考慮する必要がある
 - **FSEIBANバリデーション**: 割当がない場合の`********`（8個のアスタリスク）を明示的に許可することで、実際の運用ケースに対応できる。エラーメッセージに`value`と`length`を含めることで、デバッグが容易になる
+- **製造order番号繰り上がり対応**: 表示時だけでなく取り込み時にも同ルールを適用することで、DB保存データと表示結果の整合性を維持できる
+- **ProductNoの数値比較**: 文字列比較ではなく数値比較を使用することで、`'0003'`と`'0009'`のようなゼロパディングされた文字列でも正しく比較できる（`compareProductNo`関数で`parseInt`を使用）
+- **SQL正規表現パターン**: PostgreSQLの正規表現では`\d`ではなく`[0-9]`を使用することで、エスケープの問題を回避できる（`'^\\\\d+$'`ではなく`'^[0-9]+$'`）
+- **型定義の明示**: TypeScriptの型推論が不十分な場合、明示的な型定義を追加することでコンパイルエラーを回避できる（`ingestRows`の型定義）
 
-**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26、2026-01-27 FSEIBANバリデーション修正）
+**解決状況**: ✅ **実装完了・実機検証完了**（2026-01-26、2026-01-27 FSEIBANバリデーション修正、2026-02-10 製造order番号繰り上がりルール追加）
 
-**実機検証結果**: ✅ **すべて正常動作**（2026-01-26、2026-01-27 FSEIBANバリデーション修正後も正常動作）
+**実機検証結果**: ✅ **すべて正常動作**（2026-01-26、2026-01-27 FSEIBANバリデーション修正後も正常動作、2026-02-10 製造order番号繰り上がりルール実装後も正常動作）
 - 差分ロジックが`updatedAt`を優先的に使用し、完了状態でも最新レコードを採用することを確認
 - バリデーションが正常に動作し、不正なデータの取り込みを防止することを確認
 - CSVインポートスケジュール作成時の409エラーで、スケジュール一覧が更新されることを確認
 - **FSEIBANバリデーション修正後（2026-01-27）**: `********`（8個のアスタリスク）が正常に取り込まれることを確認（Gmail経由CSV取り込み成功）
+- **製造order番号繰り上がりルール実装後（2026-02-10）**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、数字が大きい方のみが表示されることを確認（実機検証完了、重複除去機能が正常動作）
+
+**トラブルシューティング**:
+- **テスト失敗（ProductNo比較）**: 統合テストで`ProductNo: '0003'`と`ProductNo: '0009'`を比較した際、`'0009'`が返されるべきなのに`'0003'`が返された
+  - **原因**: `max-product-no-resolver.ts`で文字列比較（`>`）を使用していたため、数値として正しく比較されていなかった
+  - **対策**: `compareProductNo`関数を追加し、`parseInt`で数値に変換してから比較するように修正
+- **SQL正規表現エラー**: `buildMaxProductNoWinnerCondition`のSQLで正規表現パターン`'^\\\\d+$'`が正しく動作しなかった
+  - **原因**: PostgreSQLの正規表現エスケープの問題
+  - **対策**: `'^[0-9]+$'`に変更し、エスケープの問題を回避
+- **TypeScriptビルドエラー**: `csv-dashboard-ingestor.ts`で`ingestRows`の`hash`プロパティにアクセスしようとするとコンパイルエラーが発生
+  - **原因**: TypeScriptの型推論が不十分で、`dashboard.ingestMode === 'DEDUP'`の分岐で`hash`プロパティが存在することが推論されなかった
+  - **対策**: `ingestRows`に明示的な型定義を追加（`Array<{ data: NormalizedRowData; occurredAt: Date; hash?: string }>`）
 
 **関連ファイル**:
 - `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（差分ロジック改善）
 - `apps/api/src/services/csv-dashboard/diff/__tests__/csv-dashboard-diff.test.ts`（テスト更新）
 - `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（バリデーション追加）
+- `apps/api/src/services/production-schedule/row-resolver/`（製造order番号繰り上がり対応ロジック）
+- `apps/api/src/routes/kiosk.ts`（有効行フィルタ適用）
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`（集計時の有効行フィルタ適用）
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`（UI改善）
 
 ---
@@ -1801,18 +1824,19 @@ private validateProductionScheduleRow(rowData: Record<string, unknown>): void {
 - ✅ **解決済み**（2026-01-05）: キオスク専用の通話候補取得エンドポイントを追加
 - `GET /api/kiosk/call/targets`: `x-client-key`認証で通話可能なクライアント一覧を返す
 - 自分自身を除外、staleなクライアントを除外
-- `ClientDevice`情報（`location`等）を付加して返却
+- **通話IDは`ClientDevice.id`（UUID）に統一**
+- `ClientStatus`は補助情報（hostname/IP）として利用
 
 **実装詳細**:
 ```typescript
 // apps/api/src/routes/kiosk.ts
 app.get('/kiosk/call/targets', async (request, reply) => {
   const clientKey = await allowClientKey(request);
-  const selfClient = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
-  const statuses = await prisma.clientStatus.findMany({
-    where: { stale: false, clientId: { not: selfClient?.statusClientId } }
-  });
-  // ...
+  const selfDevice = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+  const devices = await prisma.clientDevice.findMany({ orderBy: { name: 'asc' } });
+  // 通話IDは ClientDevice.id を返す
+  // stale 判定は ClientDevice.lastSeenAt を優先
+  // ClientStatus は補助情報として付与
 });
 ```
 
@@ -1820,7 +1844,7 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 - キオスク向けAPIは`x-client-key`認証で設計する
 - 既存の管理者向けAPIを流用せず、キオスク専用のエンドポイントを作成する
 - 自端末を除外するロジックを含めることで、不正な自己発信を防止
-- `stale`フラグでオフライン端末を除外し、発信可能な端末のみを返す
+- `stale`フラグは`ClientDevice.lastSeenAt`を基準にし、ブラウザ起動時の疎通も反映できる
 
 **解決状況**: ✅ **解決済み**（2026-01-05）
 
@@ -1828,6 +1852,47 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 - `apps/api/src/routes/kiosk.ts`
 - `apps/web/src/api/client.ts`（`getKioskCallTargets`関数）
 - `apps/web/src/api/hooks.ts`（`useKioskCallTargets`フック）
+
+---
+
+### [KB-206] クライアント表示名を status-agent が上書きする問題
+
+**日付**: 2026-02-09
+
+**事象**:
+- 管理コンソールでクライアント端末名を変更しても、しばらくすると元に戻る
+- ビデオ通話の着信名（`callerName`）や発信先一覧で表示名が安定しない
+
+**要因**:
+- `POST /api/clients/status` が `ClientDevice.name = metrics.hostname` で毎回更新していた
+- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた
+- 一方で機械名は `ClientStatus.hostname` にすでに保持されており、`ClientDevice.name` と役割が混在していた
+
+**有効だった対策**:
+- ✅ **解決済み**（2026-02-09）:
+  1. `ClientDevice.name` を「表示名（手動編集）」として定義
+  2. `POST /api/clients/status` は `update` で `name` を更新せず、`statusClientId` と `lastSeenAt` のみ更新
+  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新
+  4. `PUT /api/clients/:id` で `name` を更新可能に拡張
+  5. 機械名は `ClientStatus.hostname` を参照する運用に統一
+- ✅ **実機検証完了**（2026-02-10）:
+  - 管理画面で名前フィールドを編集可能であることを確認
+  - 名前変更後、他の端末（Pi4/Pi3）でも反映されることを確認
+  - ビデオ通話画面、履歴画面、Slack通知など、すべての機能が正常に動作することを確認
+
+**学んだこと**:
+- 表示名（運用者が編集）と機械名（端末が自己申告）は同一フィールドに載せない方が安全
+- `ClientDevice`（台帳）と `ClientStatus`（テレメトリ）の責務分離により、通話UIや履歴表示の安定性が上がる
+- 既存データ互換を守るには、`create` 時だけ初期値として hostname を使い、`update` では上書きしない方針が有効
+- 名前変更は即座に反映されなくても問題ない（最大60秒の遅延は許容範囲）。システム全体の正常動作が最優先
+- Transactionはリレーションで取得するため、名前変更後も正しく参照される（スナップショットではない）
+
+**関連ファイル**:
+- `apps/api/src/routes/clients.ts`
+- `apps/api/src/routes/webrtc/signaling.ts`
+- `apps/api/src/routes/kiosk.ts`
+- `apps/web/src/pages/admin/ClientsPage.tsx`
+- `apps/api/src/routes/__tests__/clients.integration.test.ts`
 
 ---
 
@@ -2676,3 +2741,315 @@ const saveNote = (rowId: string) => {
 
 ---
 
+### [KB-242] history-progressエンドポイント追加と製番進捗集計サービス
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- キオスクの生産スケジュール画面で、登録製番の×削除ボタンを進捗に応じて白/グレー白縁に切替える機能を実装する必要があった
+- サイネージの`ProductionScheduleDataSource`は既に製番進捗を集計していたが、キオスクUI用のエンドポイントがなかった
+
+**Decision**:
+- `SeibanProgressService`を新設し、既存の製番進捗集計SQLを移植
+- `GET /kiosk/production-schedule/history-progress`エンドポイントを追加（shared historyから進捗マップを返す）
+- `ProductionScheduleDataSource`を`SeibanProgressService`を利用するように切替（重複ロジック排除）
+
+**実装内容**:
+1. **SeibanProgressService**: `progressBySeiban(fseibans: string[])`メソッドで、指定された製番リストに対する進捗マップ（`{ [fseiban]: { completed, total, pct } }`）を返す
+2. **history-progressエンドポイント**: shared `search-state`の`history`から製番リストを取得し、`SeibanProgressService`で進捗を集計して返す
+3. **ProductionScheduleDataSource**: 自前のSQLを削除し、`SeibanProgressService`を利用するように変更
+
+**レスポンス形式**:
+```json
+{
+  "progressBySeiban": {
+    "ABC12345": { "completed": 3, "total": 3, "pct": 100 },
+    "DEF67890": { "completed": 1, "total": 2, "pct": 50 }
+  }
+}
+```
+
+**テスト**:
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`にhistory-progressエンドポイントの統合テストを追加
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・キオスク動作検証OK**（2026-02-10）
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 生産スケジュール登録製番削除ボタンの進捗連動UI改善（フロントエンド側）
+
+---
+
+### [KB-246] Gmailゴミ箱自動削除機能（深夜バッチ）
+
+**実装日時**: 2026-02-10
+
+**Context**:
+- CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移動する機能は実装済みだったが、ゴミ箱内のメールが蓄積され続ける問題があった
+- Gmail APIには`users.trash.empty`のような一括削除APIが存在しないため、個別に削除する必要があった
+- ユーザーが手動で削除したメールと区別するため、処理済みメールにラベルを付与する必要があった
+
+**Symptoms**:
+- CSV取り込み後にゴミ箱へ移動したメールが蓄積され続ける
+- 手動で削除する必要があり、運用負荷が高い
+- ゴミ箱の容量が増加し続ける
+
+**Investigation**:
+1. **Gmail APIの調査**:
+   - `users.trash.empty`のような一括削除APIは存在しない
+   - `users.messages.delete`で個別に完全削除する必要がある
+   - `users.messages.list`でゴミ箱内のメールを検索可能（`label:TRASH`）
+2. **削除タイミングの検討**:
+   - 当初は「30分後に自動削除」を検討したが、Gmail検索演算子の`older_than`は分単位をサポートしない
+   - カスタムラベル（`rps_processed`）を付与し、ゴミ箱移動時にラベルを付与することで処理済みメールを識別可能に
+   - 深夜バッチで`in:trash label:rps_processed`を全削除する方式に変更
+3. **スケジューリングの検討**:
+   - `node-cron`を使用して深夜（デフォルト: 3:00 JST）に1日1回実行
+   - 既存の`CsvImportScheduler`と同様のパターンを採用
+
+**Root cause**:
+- Gmail APIに一括削除APIが存在しない
+- 処理済みメールを識別する仕組みがなかった
+- 自動削除のスケジューリング機能がなかった
+
+**Fix**:
+1. **ラベル管理機能の追加** (`apps/api/src/services/backup/gmail-api-client.ts`):
+   - `findLabelIdByName(labelName: string): Promise<string | undefined>`: 既存ラベルの検索
+   - `ensureLabel(labelName: string): Promise<string>`: ラベルの作成（存在しない場合）
+   - `trashMessage`メソッドを修正し、ゴミ箱移動前に`rps_processed`ラベルを付与
+2. **ゴミ箱クリーンアップ機能の追加** (`apps/api/src/services/backup/gmail-api-client.ts`):
+   - `cleanupProcessedTrash(params?: { processedLabelName?: string; }): Promise<GmailTrashCleanupResult>`: ゴミ箱内の処理済みメールを検索して削除
+   - Gmail検索クエリ: `in:trash label:rps_processed`
+   - 検索結果の各メールを`users.messages.delete`で完全削除
+3. **サービス層の追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`):
+   - `GmailTrashCleanupService`: 設定読み込み、`GmailStorageProvider`の解決、クリーンアップ実行
+   - Gmail設定が不完全な場合はスキップ
+4. **スケジューラーの追加** (`apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`):
+   - `GmailTrashCleanupScheduler`: `node-cron`を使用して深夜に実行
+   - 環境変数で有効/無効、実行時刻、ラベル名を設定可能
+5. **環境変数の追加** (`apps/api/src/config/env.ts`):
+   - `GMAIL_TRASH_CLEANUP_ENABLED`（デフォルト: `true`）
+   - `GMAIL_TRASH_CLEANUP_CRON`（デフォルト: `0 3 * * *`）
+   - `GMAIL_TRASH_CLEANUP_LABEL`（デフォルト: `rps_processed`）
+6. **メインアプリケーションへの統合** (`apps/api/src/main.ts`):
+   - `GmailTrashCleanupScheduler`を起動（`csvImportScheduler.start()`の後）
+   - グレースフルシャットダウン時にスケジューラーを停止
+
+**Prevention**:
+- 環境変数で動作を制御可能にし、必要に応じて無効化可能
+- ラベル名を環境変数で設定可能にし、運用要件に応じて調整可能
+- ユニットテストでラベル管理とクリーンアップロジックを検証
+
+**実装ファイル**:
+- `apps/api/src/services/backup/gmail-api-client.ts`: ラベル管理とゴミ箱クリーンアップ機能
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`: `cleanupProcessedTrash`メソッドの追加
+- `apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`: サービス層
+- `apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`: スケジューラー
+- `apps/api/src/config/env.ts`: 環境変数定義
+- `apps/api/src/main.ts`: スケジューラーの起動・停止
+- `apps/api/src/services/backup/__tests__/gmail-api-client.test.ts`: ユニットテスト追加
+- `apps/api/src/services/gmail/__tests__/gmail-trash-cleanup.service.test.ts`: サービス層のユニットテスト
+- `docs/guides/gmail-setup-guide.md`: ドキュメント更新
+
+**学んだこと**:
+- Gmail APIには一括削除APIが存在しないため、検索→個別削除のパターンが必要
+- カスタムラベルを使用することで、アプリが処理したメールを識別可能に
+- Gmail検索演算子の`older_than`は分単位をサポートしないため、分単位条件を要件にする場合は別実装が必要
+- `node-cron`を使用したスケジューリングは、既存の`CsvImportScheduler`と同様のパターンで実装可能
+
+**関連KB**:
+- [KB-123](./api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了): Gmail経由CSV取り込み（手動実行）の実機検証完了
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantでCSV取り込みが500になる
+- [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+
+**関連ドキュメント**:
+- [docs/guides/gmail-setup-guide.md](../guides/gmail-setup-guide.md#4-ゴミ箱自動削除深夜1回): Gmailセットアップガイド（ゴミ箱自動削除セクション）
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
+
+---
+
+### [KB-248] 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）
+
+**実装日時**: 2026-02-11
+
+**事象**: 
+- 生産スケジュール検索画面で、資源CDの検索ボタン（資源CDピルボタン群）が表示されるまでに時間がかかるようになった
+- ページマウント時に資源CDボタンが表示されず、数秒〜数十秒待たされる体感があった
+
+**要因**: 
+- **根本原因**: `GET /kiosk/production-schedule/resources` エンドポイントの実行時間が約29秒と非常に遅かった
+- **直接原因**: コミット `fb95b9c`（2026-02-10）で `buildMaxProductNoWinnerCondition`（相関サブクエリ）が `resources` エンドポイントに追加され、DB負荷が増加
+- **技術的詳細**:
+  1. 資源CDボタン群は `resourcesQuery` の結果で描画されるため、API応答が遅いと「ボタン登場」が遅くなる
+  2. `buildMaxProductNoWinnerCondition` は行ごとに「同一論理キーの中で最大ProductNoの行ID」を選ぶ相関サブクエリで、`CsvDashboardRow` 全件に対して実行される
+  3. 相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン（合計約14,422行スキャン）
+  4. `rowData->>'FSIGENCD'` に対する式インデックスが存在せず、`DISTINCT/ORDER BY` もフルスキャンに依存
+
+**Investigation**:
+1. **仮説1: scheduleQueryの応答遅延** → REJECTED（検索時のみ実行、初期表示には影響しない）
+2. **仮説2: search-state/history-progressの遅延** → REJECTED（KB-247でhistory-progressは30秒に変更済み、search-stateはシンプルなPK検索）
+3. **仮説3: UIの待機条件** → REJECTED（ツールバーは`resourcesQuery`に依存せず即時レンダリング）
+4. **仮説4: 資源CDピルの描画待ち** → CONFIRMED（`resourcesQuery.data`が来るまで何も表示されない）
+5. **仮説5: resources APIの重いクエリ** → CONFIRMED（`EXPLAIN (ANALYZE, BUFFERS)`で約29秒を確認）
+
+**Root cause**:
+- `buildMaxProductNoWinnerCondition` の相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン
+- `rowData->>'FSIGENCD'` に対する式インデックスが存在せず、`DISTINCT/ORDER BY` もフルスキャンに依存
+- 相関サブクエリのプランナーが部分インデックスを十分に活用できず、非部分インデックスが必要だった
+
+**Fix**:
+1. **式インデックス追加（2026-02-11）**:
+   - `csv_dashboard_row_prod_schedule_resource_cd_idx`: 資源CD抽出用（部分インデックス、NULL/空文字除外）
+   - `csv_dashboard_row_prod_schedule_logical_key_idx`: 論理キー一致用（部分インデックス）
+   - `csv_dashboard_row_prod_schedule_winner_lookup_idx`: winner探索+ORDER BY対応（部分インデックス）
+   - `csv_dashboard_row_winner_lookup_global_idx`: 相関サブクエリ用（非部分インデックス、プランナーが確実に拾うため）
+
+2. **計測による検証**:
+   - 本番DBで `EXPLAIN (ANALYZE, BUFFERS)` を取得し、ボトルネックを特定
+   - 変更前: `Execution Time: 29299.650 ms`（約29.3秒）
+   - 変更後: `Execution Time: 81.947 ms`（約0.082秒）
+   - **改善率: 約357倍高速化**
+
+3. **マイグレーション実装**:
+   - `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`
+   - `IF NOT EXISTS` で安全に適用可能
+   - 本番DBには直接DDL適用済み、リポジトリにはマイグレーションファイルとして記録
+
+**実装の詳細**:
+```sql
+-- 資源CD抽出用（部分インデックス）
+CREATE INDEX IF NOT EXISTS "csv_dashboard_row_prod_schedule_resource_cd_idx"
+  ON "CsvDashboardRow" (
+    "csvDashboardId",
+    ("rowData"->>'FSIGENCD')
+  )
+  WHERE "csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+    AND ("rowData"->>'FSIGENCD') IS NOT NULL
+    AND ("rowData"->>'FSIGENCD') <> '';
+
+-- 相関サブクエリ用（非部分インデックス、プランナーが確実に拾うため）
+CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
+  ON "CsvDashboardRow" (
+    "csvDashboardId",
+    (COALESCE("rowData"->>'FSEIBAN', '')),
+    (COALESCE("rowData"->>'FHINCD', '')),
+    (COALESCE("rowData"->>'FSIGENCD', '')),
+    (COALESCE("rowData"->>'FKOJUN', '')),
+    (CASE
+      WHEN ("rowData"->>'ProductNo') ~ '^[0-9]+$' THEN (("rowData"->>'ProductNo'))::bigint
+      ELSE -1
+    END) DESC,
+    "createdAt" DESC,
+    "id" DESC
+  );
+```
+
+**Prevention**:
+- パフォーマンス問題の早期発見: 新規機能追加時は `EXPLAIN (ANALYZE, BUFFERS)` で実行計画を確認
+- 相関サブクエリの使用時は、プランナーがインデックスを拾えるよう非部分インデックスも検討
+- 式インデックスの活用: JSONBカラムからの抽出値でWHERE/ORDER BYする場合は式インデックスを検討
+- CIでの自動検証: マイグレーションファイルはCIで自動検証されるため、構文エラーは早期発見可能
+
+**学んだこと**:
+- **相関サブクエリとインデックス**: 相関サブクエリ内では、部分インデックスが十分に活用されない場合がある。非部分インデックスを追加することで、プランナーが確実にインデックスを使用できる
+- **式インデックスの効果**: JSONBカラムからの抽出値（`rowData->>'FSIGENCD'`）に対する式インデックスは、`DISTINCT/ORDER BY` のパフォーマンスを大幅に改善できる
+- **計測の重要性**: `EXPLAIN (ANALYZE, BUFFERS)` で実行計画を確認することで、ボトルネックを正確に特定できる
+- **段階的な最適化**: まず部分インデックスを試し、効果が限定的な場合は非部分インデックスも検討する段階的アプローチが有効
+
+**実機検証結果**: ✅ **本番DBで計測・検証完了・キオスク実機動作確認完了**（2026-02-11）
+- **DB計測結果**:
+  - 変更前: `Execution Time: 29299.650 ms`（約29.3秒）
+  - 変更後: `Execution Time: 81.947 ms`（約0.082秒）
+  - `history-progress` 相当SQLも改善: `Execution Time: 314.251 ms` → `Execution Time: 2.291 ms`
+  - API体感: `curl` で `ttfb=0.244928s`, `total=0.245218s`（HTTP 200）
+- **キオスク実機動作確認**（2026-02-11）:
+  - ✅ 資源CDボタンが即座に表示されるようになった（ページマウント時に即時表示）
+  - ✅ 体感速度が大幅に向上し、問題なく使用可能
+  - ✅ ユーザー体験が改善され、待機時間が解消された
+- **CI検証**: CI全ジョブ成功、マイグレーションが正常に適用されることを確認
+
+**関連ファイル**:
+- `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`（新規: 式インデックス追加）
+- `apps/api/src/routes/kiosk.ts`（`GET /kiosk/production-schedule/resources` エンドポイント）
+- `apps/api/src/services/production-schedule/row-resolver/max-product-no-sql.ts`（`buildMaxProductNoWinnerCondition`）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（資源CDボタン群の描画）
+- `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleResources`）
+
+**関連KB**:
+- [KB-205](./api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側): 生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）
+- [KB-247](./frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化): 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化
+
+**解決状況**: ✅ **実装完了・CI成功・本番DB適用完了・実機検証完了**（2026-02-11）
+
+---
+
+### [KB-249] CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**: 
+- CSVダッシュボード取り込み時に、JST日時（例: `2026/2/11 8:47`）がUTCに変換される際、UTC+9オフセットが二重に適用されていた
+- 結果として、`2026-02-10T23:47:00.000Z`（1日前）として保存され、当日（JST）の未点検判定が正しく動作しなかった
+
+**要因**: 
+- **根本原因**: `CsvDashboardIngestor.extractOccurredAt`で、JST日時をUTCに変換する際に、`new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0)`でローカルタイムゾーンでDateオブジェクトを作成し、その後`- 9 * 60 * 60 * 1000`でUTC+9オフセットを引いていた
+- しかし、`new Date()`コンストラクタは実行環境のローカルタイムゾーンで解釈するため、Mac（JST）とPi5（JST）では問題なく動作するが、UTC環境では異なる結果になる可能性がある
+- さらに、`Date.UTC`を使用せずにローカルタイムゾーンで作成した後、手動でオフセットを引く方法は、実行環境に依存し、二重適用のリスクがある
+
+**有効だった対策**: 
+- ✅ **解決済み**（2026-02-11）: `Date.UTC`を直接使用し、JSTの時間から9時間を引いた値をUTCとして扱うように修正
+  ```typescript
+  // 修正前
+  const date = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
+  const utcDate = new Date(date.getTime() - 9 * 60 * 60 * 1000);
+  
+  // 修正後
+  const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
+  ```
+- これにより、実行環境のローカルタイムゾーンに依存せず、常にJST→UTCの変換が正しく行われる
+
+**学んだこと**: 
+- **タイムゾーン変換は実行環境に依存しない方法を使用する**: `Date.UTC`を使用することで、実行環境のローカルタイムゾーンに依存しない変換が可能
+- **オフセットの二重適用を避ける**: ローカルタイムゾーンでDateオブジェクトを作成してから手動でオフセットを引く方法は、実行環境に依存し、二重適用のリスクがある
+- **JST→UTC変換は`Date.UTC`で直接行う**: `Date.UTC(year, month, day, hour - 9, minute, second)`の形式で、JSTの時間から9時間を引いた値をUTCとして扱う
+
+**関連ファイル**: 
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（`extractOccurredAt`メソッド）
+
+**解決状況**: ✅ **解決済み**（2026-02-11、CI成功・デプロイ完了・実機検証完了）
+
+---
+
+### [KB-251] 未点検加工機サイネージ可視化データソースの追加
+
+**EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
+
+**事象**:
+- 既存の未点検加工機抽出ロジックを、サイネージで再利用できる可視化データソースとして提供する必要があった
+- 新しい専用スロットを増やさず、既存の `visualization` 経路に乗せることが要件だった
+
+**要因**:
+- `MachineService.findUninspected` はAPIエンドポイント用には実装済みだったが、可視化基盤（DataSource/Renderer）とは未接続だった
+- 運用上、`csvDashboardId` の設定漏れが起きる可能性があり、入力契約の明示が必要だった
+
+**有効だった対策**:
+- ✅ `uninspected_machines` データソースを追加し、`MachineService.findUninspected({ csvDashboardId, date? })` を直接再利用
+- ✅ `uninspected_machines` レンダラーを追加し、KPI（稼働中/点検済み/未点検）+ 一覧の単画面表示を実装
+- ✅ 可視化作成APIのスキーマにバリデーションを追加し、`dataSourceType=uninspected_machines` 時は `dataSourceConfig.csvDashboardId` を必須化
+- ✅ 設定不足・不正時は空表示ではなく、サイネージ上に明示メッセージを表示
+
+**検証**:
+- `visualizations.integration.test.ts` に `csvDashboardId` 未設定時の400応答テストを追加
+- `uninspected-machines-data-source.test.ts` で正常/設定不足/件数制限を検証
+- `uninspected-machines-renderer.test.ts` で正常レンダリングとエラー表示を検証
+
+**関連ファイル**:
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/initialize.ts`
+- `apps/api/src/routes/visualizations/schemas.ts`
+- `apps/api/src/routes/__tests__/visualizations.integration.test.ts`
+
+**解決状況**: ✅ **実装完了・テスト成功**（2026-02-11）
+
+---

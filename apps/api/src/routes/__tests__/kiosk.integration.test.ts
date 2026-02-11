@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { createTestClientDevice } from './helpers.js';
@@ -292,6 +292,57 @@ describe('GET /api/kiosk/config', () => {
     const body = response.json();
     expect(body.theme).toBe('factory-dark');
     expect(body.clientStatus).toBeNull();
+  });
+});
+
+describe('GET /api/kiosk/call/targets', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    await prisma.clientStatus.deleteMany();
+    await prisma.clientDevice.deleteMany();
+  });
+
+  afterEach(() => {
+    delete process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should exclude specified client IDs from targets', async () => {
+    const self = await createTestClientDevice('self-client-key');
+    const otherA = await createTestClientDevice('other-client-key-a');
+    const otherB = await createTestClientDevice('other-client-key-b');
+
+    process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS = otherB.id;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/call/targets',
+      headers: {
+        'x-client-key': self.apiKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { targets: Array<{ clientId: string }> };
+    const targetIds = body.targets.map((target) => target.clientId);
+
+    expect(targetIds).toContain(otherA.id);
+    expect(targetIds).not.toContain(otherB.id);
+    expect(targetIds).not.toContain(self.id);
   });
 });
 

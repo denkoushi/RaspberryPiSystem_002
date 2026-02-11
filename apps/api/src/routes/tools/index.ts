@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerEmployeeRoutes } from './employees/index.js';
 import { registerItemRoutes } from './items/index.js';
+import { registerMachineRoutes } from './machines/index.js';
 import { registerLoanRoutes } from './loans/index.js';
 import { registerTransactionRoutes } from './transactions/index.js';
 import { registerUnifiedRoutes } from './unified/index.js';
@@ -22,6 +23,7 @@ export async function registerToolsRoutes(app: FastifyInstance): Promise<void> {
 
       await registerEmployeeRoutes(subApp);
       await registerItemRoutes(subApp);
+      await registerMachineRoutes(subApp);
       await registerLoanRoutes(subApp);
       await registerTransactionRoutes(subApp);
       await registerUnifiedRoutes(subApp);

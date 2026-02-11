@@ -9,7 +9,35 @@
 
 ## Progress
 
+- [x] (2026-02-11) **加工機マスターデータのCSVインポートと未点検加工機抽出機能の実装・デプロイ完了・実機検証完了**: 加工機マスターデータをCSVインポートし、未点検加工機を抽出する機能を実装。**実装内容**: `Machine`モデルを追加（`equipmentManagementNumber`をユニークキー）、`MachineCsvImporter`を実装（既存の`CsvImporter`インターフェースに準拠）、`GET /api/tools/machines`と`GET /api/tools/machines/uninspected`エンドポイントを追加、管理コンソールUI（`/admin/tools/machines-uninspected`）を実装。**トラブルシューティング**: CSVインポート設定の初期化問題（デフォルト列定義を明示的に保存）、CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題（KB-249参照、`Date.UTC`を使用して修正）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（`failed=0`）。**実機検証結果**: マスターデータのCSVインポート成功、未点検加工機の抽出が正常に動作することを確認。**ドキュメント更新**: KB-249（CSVダッシュボードの日付パース問題）、KB-250（加工機マスターデータのCSVインポートと未点検加工機抽出機能）を追加、csv-import-export.mdを更新（加工機CSVインポート仕様を追加）、index.mdを更新（KB-249、KB-250を追加、件数を157件に更新）。詳細は [docs/knowledge-base/api.md#kb-249](./docs/knowledge-base/api.md#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題) / [docs/knowledge-base/frontend.md#kb-249](./docs/knowledge-base/frontend.md#kb-249-加工機マスターデータのcsvインポートと未点検加工機抽出機能の実装) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
+
+- [x] (2026-02-11) **カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）・デプロイ完了・実機検証完了**: 雨天・照明なし環境で閾値0.1でも「写真が暗すぎます」エラーが発生する問題を解決。**実装内容**: ストリーム保持によるPi4の負荷問題を回避するため、フロントエンド（`apps/web/src/utils/camera.ts`）・バックエンド（`apps/api/src/services/tools/loan.service.ts`）の両方で閾値チェックを削除。500ms待機＋5フレーム選択ロジックは維持（カメラの露出調整を待つため）。テスト（`apps/api/src/routes/__tests__/photo-borrow.integration.test.ts`）の暗い画像拒否テストをスキップ。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功。**実機検証結果**: 雨天・照明なし環境でも撮影可能であることを確認、どんな明るさでも撮影可能にし、ユーザー体験を向上。**ドキュメント更新**: KB-068を更新（閾値チェック削除を追記）、KB-248を追加（カメラ明るさ閾値チェックの削除）、photo-loan.mdを更新（撮影品質の自動検証セクションを更新）、index.mdを更新（KB-248を追加、件数を42件に更新）。詳細は [docs/knowledge-base/frontend.md#kb-248](./docs/knowledge-base/frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) / [docs/knowledge-base/frontend.md#kb-068](./docs/knowledge-base/frontend.md#kb-068-写真撮影持出のサムネイルが真っ黒になる問題輝度チェック対策) / [docs/modules/tools/photo-loan.md](./docs/modules/tools/photo-loan.md) を参照。
+
+- [x] (2026-02-10) **クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了**: 管理コンソールでクライアント端末名を編集可能にし、`status-agent`や`heartbeat`による自動上書きを防止する機能を実装。**実装内容**: `ClientDevice.name`を「表示名（手動編集）」として定義し、`POST /api/clients/status`と`POST /api/clients/heartbeat`の`update`処理から`name`更新を除去（`create`時のみ初期値としてhostnameを使用）。`PUT /api/clients/:id`に`name`更新機能を追加（Zodスキーマで100文字以内・空文字列不可・trim処理）。管理画面`ClientsPage.tsx`で名前をインライン編集可能に（`Input`コンポーネント、バリデーション、エラーメッセージ表示）。統合テストで`name`上書きが起きないこと、`PUT`で更新できることを固定。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（Run ID: 20260210-211119-16770, ok=111, changed=4, failed=0）。**実機検証結果**: 管理画面で名前フィールドが編集可能であることを確認、名前変更後、他の端末（Pi4/Pi3）でも反映されることを確認、ビデオ通話画面、履歴画面、Slack通知など、すべての機能が正常に動作することを確認。**ドキュメント更新**: KB-206に実機検証完了を追記、調査ドキュメント（`docs/investigation/kiosk-client-status-investigation.md`）に表示名とhostname分離の仕様を反映、API概要ドキュメント（`docs/api/overview.md`）に`PUT /api/clients/:id`の説明を追加。詳細は [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md) を参照。
+
+- [x] (2026-02-10) **生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化・デプロイ完了**: 生産スケジュール画面で、登録製番ボタン右上の×削除ボタンの応答性が若干落ちた気がするという報告を受け、調査・修正を実施。**原因**: KB-242で実装した完未完判定機能（`useKioskProductionScheduleHistoryProgress()`）が4秒ごとにポーリングを実行し、最大400行の巨大テーブルを含む`ProductionSchedulePage`が頻繁に再レンダーされていた。React Queryの`refetchInterval`はデータが同じでも`isFetching`が変動し、ページ全体の再レンダーが発生しやすい。また、API側でも4秒ごとにJSON列抽出＋集計SQL（式インデックスなし）が実行され、DB負荷/遅延が増えるとフロント側の更新が増える。**修正内容**: `useKioskProductionScheduleHistoryProgress()`の`refetchInterval`を`4000`→`30000`（30秒）に変更。`useKioskProductionScheduleSearchState()`と`useKioskProductionScheduleSearchHistory()`は4秒のまま維持（端末間同期の速さを維持）。完未完表示の更新間隔は最大30秒の遅延となるが、応答性改善を優先。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi4キオスクにデプロイ成功（Run ID: 20260210-175259-15669, ok=91, changed=9, failed=0）。**実装ファイル**: `apps/web/src/api/hooks.ts`（`useKioskProductionScheduleHistoryProgress()`の`refetchInterval`変更）。**ドキュメント更新**: ナレッジベースにKB-247を追加。詳細は [docs/knowledge-base/frontend.md#kb-247](./docs/knowledge-base/frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化) を参照。
+
+- [x] (2026-02-10) **Gmailゴミ箱自動削除機能（深夜バッチ）実装・CI成功・デプロイ完了**: CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移動した後、自動的に削除する機能を実装。**実装内容**: `GmailApiClient`にラベル管理機能（`findLabelIdByName`、`ensureLabel`）を追加し、`trashMessage`メソッドでゴミ箱移動前に`rps_processed`ラベルを付与。`cleanupProcessedTrash`メソッドでゴミ箱内の処理済みメール（`label:TRASH label:rps_processed older_than:30m`）を検索して完全削除。`GmailTrashCleanupService`と`GmailTrashCleanupScheduler`を新設し、`node-cron`で深夜（デフォルト: 3:00 JST）に1日1回実行。環境変数（`GMAIL_TRASH_CLEANUP_ENABLED`、`GMAIL_TRASH_CLEANUP_CRON`、`GMAIL_TRASH_CLEANUP_LABEL`、`GMAIL_TRASH_CLEANUP_MIN_AGE`）で動作を制御可能。`main.ts`でスケジューラーを起動・停止。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（Run ID: 20260210-173239-17094, ok=111, changed=4, failed=0）。**実装ファイル**: `apps/api/src/services/backup/gmail-api-client.ts`（ラベル管理・クリーンアップ）、`apps/api/src/services/gmail/gmail-trash-cleanup.service.ts`（サービス層）、`apps/api/src/services/gmail/gmail-trash-cleanup.scheduler.ts`（スケジューラー）、`apps/api/src/config/env.ts`（環境変数）、`apps/api/src/main.ts`（統合）、ユニットテスト追加。**ドキュメント更新**: `docs/guides/gmail-setup-guide.md`に「4. ゴミ箱自動削除（深夜1回）」セクションを追加。ナレッジベースにKB-246を追加。詳細は [docs/knowledge-base/api.md#kb-246](./docs/knowledge-base/api.md#kb-246-gmailゴミ箱自動削除機能深夜バッチ) / [docs/guides/gmail-setup-guide.md](./docs/guides/gmail-setup-guide.md#4-ゴミ箱自動削除深夜1回) を参照。
+
+- [x] (2026-02-10) **WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善・デプロイ成功・実機検証完了**: ビデオ通話の映像不安定問題（相手側の動画が最初取得できない、ビデオON/OFF時に相手側の画像が止まる、無操作で相手側の画像が止まる）とエラーダイアログ改善を実装。**実装内容**: `useWebRTC`で`localStream`/`remoteStream`をstateで保持し、`ontrack`更新時にUI再描画を確実化。`pc.ontrack`で受信トラックを単一MediaStreamに集約（音声/映像で別streamになる環境での不安定を回避）。`disableVideo()`でtrackをstop/removeせず`enabled=false`に変更（相手側フリーズ回避）。`enableVideo()`で既存trackがあれば再有効化、新規は初回のみ再ネゴ、以後は`replaceTrack`使用。`connectionState`/`iceConnectionState`の`disconnected/failed`検知時にICE restartで復旧。`KioskCallPage`で`alert()`を`Dialog`に置換し、`Callee is not connected`等をユーザー向け説明に変換。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（Run ID: 20260210-105120-4601, state: success）。**実機検証結果**: 通話開始直後に相手映像が表示されること、ビデオON/OFF時の相手側フリーズ回避、無操作時の接続維持、エラーダイアログの改善を確認。ナレッジベースにKB-243を追加。詳細は [docs/knowledge-base/frontend.md#kb-243](./docs/knowledge-base/frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善) / [docs/guides/webrtc-verification.md](./docs/guides/webrtc-verification.md) を参照。
+
+- [x] (2026-02-10) **Pi4キオスクの備考欄に日本語入力切り替え注釈修正・現在モード表示削除・IBus設定永続化・メンテナンスフラグ自動クリア修正・デプロイ成功・実機検証完了**: Pi4キオスクの備考欄で日本語入力が可能になったが、全画面表示のためシステムレベルのIMEインジケーターが見えない問題を解決。**実装内容**: 切り替え方法の注釈を「Ctrl+Space または Alt+`（半角/全角）」→「全角半角キー」に修正（実機動作に合わせて変更）。現在モード表示（「あ 日本語」「A 英字」）を削除（入力中のみ表示され、確定後は日本語入力モードでも「A 英字」に戻る不正確な動作のため）。IBus設定の永続化も実装（`kiosk/tasks/main.yml`にIBus設定タスクを追加、`engines-order`を`['xkb:jp::jpn', 'mozc-jp']`に設定、`hotkey triggers`を`['<Control>space']`に設定）。Pi4再起動ボタンのエラーハンドリング改善も実施（`apps/api/src/routes/kiosk.ts`の`fs.mkdir`に`EEXIST`エラーハンドリングを追加）。**メンテナンスフラグ自動クリア修正**: `deploy-staged.yml`の`post_tasks`を修正し、Pi4のみのデプロイ時もメンテナンスフラグが自動的にクリアされるように改善。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（Run ID: 20260210-131708-15247, state: success）。**実機検証結果**: 全角半角キーの単独押しで日本語入力モードが切り替わることを確認、注釈文が実機動作と一致することを確認、現在モード表示削除により混乱が解消されたことを確認、IBus設定とメンテナンスフラグ自動クリアを確認。ナレッジベースにKB-244、KB-245を追加。詳細は [docs/knowledge-base/frontend.md#kb-244](./docs/knowledge-base/frontend.md#kb-244-pi4キオスクの備考欄に日本語入力状態インジケーターを追加) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-245](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-245-pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とibus設定の永続化) を参照。
+
+- [x] (2026-02-10) **生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OK**: キオスクの生産スケジュール画面で、登録製番ボタン右上の×削除ボタンを進捗で白/グレー白縁に切替える機能を実装。**実装内容**: APIに`SeibanProgressService`（製番進捗集計）を新設し、既存SQLを移植。`GET /kiosk/production-schedule/history-progress`エンドポイントを追加。`ProductionScheduleDataSource`を共通サービス利用へ切替。Webに`useProductionScheduleHistoryProgress`フックを追加。登録製番の×削除ボタンを進捗100%で白、未完了でグレー白縁に表示。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（Run ID: 20260210-080354-23118, state: success）。**キオスク動作検証**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作することを確認。ナレッジベースにKB-242を追加。詳細は [docs/knowledge-base/frontend.md#kb-242](./docs/knowledge-base/frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) / [docs/knowledge-base/api.md#kb-242](./docs/knowledge-base/api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
+
+- [x] (2026-02-09) **WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功・実機検証完了**: Pi4が`/kiosk/*`や`/signage`表示中でもシグナリング接続を維持し、着信時に自動的に`/kiosk/call`へ切り替わる機能を実装。**実装内容**: `WebRTCCallProvider`（React Context）を作成し、`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用。着信時（`callState === 'incoming'`）に現在のパスを`sessionStorage`に保存し、`/kiosk/call`へ自動遷移。通話終了時（`callState === 'idle' || 'ended'`）に元のパスへ自動復帰。Pi3の通話対象除外機能を実装（`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`環境変数で除外フィルタ適用）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功（`failed=0`）。**APIレベルでの動作確認**: 発信先一覧APIが正常に動作し、Pi3が除外されることを確認。**実機検証結果**: MacからPi4への通話が正常に動作することを確認（音声・ビデオ双方向通信）、着信時に自動的に`/kiosk/call`へ切り替わることを確認、通話終了後に元の画面へ自動復帰することを確認。ナレッジベースにKB-241を追加、`docs/guides/webrtc-verification.md`を更新。詳細は [docs/knowledge-base/frontend.md#kb-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装) / [docs/guides/webrtc-verification.md](./docs/guides/webrtc-verification.md) を参照。
+
+- [x] (2026-02-08) **モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功**: キオスクと管理コンソールのモーダル実装を共通化し、アクセシビリティ標準を統一。**実装内容**: 共通`Dialog`コンポーネント（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）を作成し、キオスク全モーダル（7種類）をDialogベースに統一。サイネージプレビューにFullscreen API対応を追加。`ConfirmDialog`と`useConfirm`フックを作成し、管理コンソールの`window.confirm`（6ページ）を置換。アクセシビリティ標準化（`sr-only`見出し、`aria-label`追加）。E2Eテスト安定化（`clickByRoleSafe`、`closeDialogWithEscape`ヘルパー追加、`expect.poll()`でUI更新ポーリング待機）。**CI修正**: import順序のlintエラー修正、`.trivyignore`にCaddy依存関係の新規脆弱性（CVE-2026-25793、CVE-2025-61730、CVE-2025-68121）を追加、E2Eテストのstrict mode violation修正（`first()`で先頭要素を明示指定）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5、Pi4、Pi3でデプロイ成功（`failed=0`）。**ヘルスチェック結果**: APIヘルスチェック（`status: ok`）、Dockerコンテナ正常起動、サイネージサービス正常稼働を確認。ナレッジベースにKB-240を追加。詳細は [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化) を参照。
+
+- [x] (2026-02-08) **キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）・デプロイ成功・実機検証完了**: キオスクヘッダーのUI改善とモーダル表示位置問題を解決。**UI改善内容**: 管理コンソールボタンを歯車アイコンに変更、サイネージプレビューボタン追加（歯車アイコン付き）、再起動/シャットダウンボタンを電源アイコン1つに統合しポップアップメニューで選択可能に。**モーダル表示位置問題**: `KioskLayout`の`<header>`要素に`backdrop-blur`（CSS `filter`プロパティ）が適用されており、親要素に`filter`がある場合、子要素の`position: fixed`は親要素を基準にするため、モーダルが画面上辺を超えて見切れていた。**解決策**: React Portal（`createPortal`）を使用し、モーダルを`document.body`に直接レンダリングすることで、DOM階層の制約を回避。モーダルスタイリングを改善（`overflow-y-auto`、`items-start`、`max-h-[calc(100vh-2rem)]`、サイネージプレビューは全幅表示）。**E2Eテストの安定化**: `scrollIntoViewIfNeeded()`とEscキー操作（`page.keyboard.press('Escape')`）でビューポート外エラーを回避。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功。**実機検証結果**: 管理コンソールボタンが歯車アイコンに変更されスペースが確保されたこと、サイネージプレビューボタンが追加されモーダルでサイネージ画像が正常に表示されること、電源アイコンをクリックするとメニューが表示され再起動/シャットダウンが選択できること、モーダルが画面全体に正しく表示され画面上辺を超えて見切れないこと、サイネージプレビューが全画面表示されることを確認。ナレッジベースにKB-239を追加。詳細は [docs/knowledge-base/frontend.md#kb-239](./docs/knowledge-base/frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) を参照。
+
+- [x] (2026-02-08) **update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功**: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する問題を解決。**原因**: `raspberrypi5`は`ansible_connection: local`のため、`REMOTE_HOST`未設定時にMac側で実行されるとsudoパスワードが求められる。**修正内容**: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）成功。**実機検証結果**: `RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、エラーで停止することを確認。ナレッジベースにKB-238を追加。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) を参照。
+
+- [x] (2026-02-08) **Pi4キオスクの再起動/シャットダウンボタンが機能しない問題の修正・デプロイ成功・実機検証完了**: Pi4キオスクの再起動/シャットダウンボタンが機能しない問題を調査・修正。**原因**: 3つの問題を発見（Jinja2テンプレート展開の問題、systemd serviceの実行ユーザー問題、ディレクトリ所有権の問題）。**修正内容**: `pi5-power-dispatcher.sh.j2`にJinja2テンプレートからデフォルト値を抽出するロジックを追加、`cd "${ANSIBLE_DIR}"`を追加。`pi5-power-dispatcher.service.j2`に`User=denkon5sd02`、`WorkingDirectory`、`StandardOutput/StandardError=journal`を追加。**CI実行**: 全ジョブ成功。**デプロイ結果**: Pi5でデプロイ成功（`failed=0`）。**実機検証結果**: Pi4キオスクの再起動ボタンを押すと、正常に再起動が実行されることを確認。ナレッジベースにKB-237を追加、`docs/guides/deployment.md`の電源操作に関する記述を修正。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-237](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-02-01) **リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了**: デプロイスクリプトのリモート実行をデフォルトでデタッチモードに変更し、クライアント側の監視打ち切りによる中断リスクを排除。**実装内容**: `REMOTE_HOST`が設定されている場合、`--detach`、`--job`、`--foreground`が明示指定されていない限り、自動的にデタッチモードで実行されるように変更。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。`usage`関数の定義位置を修正し、エラーハンドリングを改善。**KB-226の更新**: 「約60秒」という不確実な記述を削除し、事実ベースの表現に修正（「クライアント側の監視打ち切り: 実行環境側のコマンド監視が短く（値は環境依存で未確定）」）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデフォルトデタッチモードでデプロイ成功（`failed=0`, exit code: 0）。**実機検証結果**: リモート実行時に自動的にデタッチモードで実行されること、`--attach`でログ追尾が正常に動作すること、`--status`で状態確認が正常に動作すること、APIヘルスチェック（`status: ok`）、DB整合性（29マイグレーション適用済み）、Dockerコンテナ（すべて起動中）を確認。ナレッジベースにKB-226を更新。詳細は [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) / [docs/guides/deployment.md](./docs/guides/deployment.md) を参照。
+
+- [x] (2026-02-08) **証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加するスクリプトを作成し、Pi5上で実行して既存設定を確認。**実装内容**: `scripts/server/add-cert-backup-target.mjs`（Node.jsスクリプト、ESMモジュール）、`infrastructure/ansible/playbooks/add-cert-backup-target.yml`（Ansible Playbook）を作成。スクリプトは既存のターゲットをチェックし、重複追加を防止。**実行結果**: Pi5上でスクリプトを実行し、既に証明書ディレクトリのバックアップターゲットが存在することを確認（`schedule: "0 2 * * 0"`, `retention.days: 14`, `retention.maxBackups: 4`）。既存設定を維持。**トラブルシューティング**: Dockerコンテナ内でスクリプトを実行する必要があるため、ホスト側からコンテナ内へのファイルコピー方法を確立（`scp`でホスト側にコピー→`docker compose exec`でコンテナ内にコピー）。**ドキュメント更新**: `docs/guides/backup-configuration.md`に追加方法を記載、`docs/guides/backup-and-restore.md`の証明書バックアップ方法を更新、`docs/knowledge-base/infrastructure/backup-restore.md`にKB-200を追加。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) を参照。
 
 - [x] (2026-02-01) **生産スケジュール備考のモーダル編集化と処理列追加完了・デプロイ成功・実機検証完了**: キオスクの生産スケジュールUIを大幅に改善し、操作性と視認性を向上。**UI改善内容**: 備考欄のモーダル編集化（`KioskNoteModal`コンポーネント新規作成、`textarea`で最大100文字入力、文字数カウント表示、保存時は改行削除して単一行として保存）、備考の2行表示（`line-clamp:2`で視認性向上）、処理列の追加（`processingType`フィールド追加、ドロップダウンで`塗装/カニゼン/LSLH/その他01/その他02`を選択可能、未選択状態も許可）、品番/製造order番号の折り返し対応（`break-all`クラス追加、`ProductNo`の固定幅削除で動的幅調整に参加）。**データベーススキーマ変更**: `ProductionScheduleRowNote`モデルに`processingType String? @db.VarChar(20)`フィールドを追加。**APIエンドポイント追加**: `PUT /kiosk/production-schedule/:rowId/processing`を追加。**データ整合性の考慮**: `note`、`dueDate`、`processingType`の3フィールドがすべて空/nullの場合のみレコードを削除するロジックを実装。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（マイグレーション適用済み）。**デプロイ時のトラブルシューティング**: デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用。**実機検証結果**: 備考モーダルが正常に開き全文を確認しながら編集できること、備考が2行まで折り返して表示されること、処理列のドロップダウンが正常に動作し選択・未選択状態が正しく保存されること、品番/製造order番号が長い場合でも折り返されて表示されること、備考・納期・処理の3フィールドが独立して動作することを確認。ナレッジベースにKB-223（備考モーダル編集化と処理列追加）、KB-224（デプロイ時のマイグレーション未適用問題）を追加。詳細は [docs/knowledge-base/frontend.md#kb-223](./docs/knowledge-base/frontend.md#kb-223-生産スケジュール備考のモーダル編集化と処理列追加) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) / [docs/plans/production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
 
@@ -488,9 +516,21 @@
   対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
 - 観測: クライアント側のコマンド監視が短く（値は環境依存で未確定）、Pi5+Pi4の長時間デプロイ（15-20分）では途中で「停止して見える」状態になりやすい。  
   対応: **リモート実行をデフォルトでデタッチモードに変更**し、クライアント側の監視打ち切りによる中断リスクを排除。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。**[KB-226]**
+- 観測: Mac開発環境では、**Cursorの`User/globalStorage`が肥大化しやすく（数十GB）**、Docker Desktopのデータも`Docker.raw`に集約されやすい。加えて、macOS標準の`rsync`が古い場合があり `--info=progress2` で失敗する。  
+  対応: 外付けSSD（例: `/Volumes/SSD01`）へ **Docker DesktopのDisk image location移動**、Cursorデータは **symlink方式**で移動し、切替フェーズは「CursorをQuitする必要があるため外部ターミナルで実行」へ寄せる。手順・検証・復旧・トラブルシューティングは `docs/guides/mac-storage-migration.md` に集約。
 - 発見: `usage`関数が呼び出しより後に定義されていたため、エラーハンドリング時に`usage: command not found`エラーが発生。  
   対応: `usage`関数を引数解析直後に移動し、エラーメッセージが正常に表示されるように修正。
-- 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。  
+- 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。
+- 発見: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する。エラーが100%発生する場合は、原因を潰すべき（fail-fast）。  
+  対応: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐため、早期にエラーを検出するガードを追加。**[KB-238]**
+- 発見: `ansible-inventory --list` はJinja2テンプレートを展開しないため、`{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}` が文字列のまま残り、`client-key-raspberrypi4-kiosk1` と一致しない。  
+  対応: `extract_default_value()` 関数を追加し、テンプレート文字列から `default('value')` パターンを抽出してデフォルト値と比較するように修正。**[KB-237]**
+- 発見: systemd serviceに `User=` が未指定の場合、rootで実行される。SSH鍵アクセスが必要な場合は、適切なユーザー（`denkon5sd02`）を指定する必要がある。  
+  対応: `pi5-power-dispatcher.service.j2` に `User=denkon5sd02` を追加し、SSH鍵アクセスを可能にした。**[KB-237]**
+- 発見: systemd経由で実行されるスクリプトは、カレントディレクトリが不定になり得る。`ansible.cfg` の相対パス設定（`vault_password_file=.vault-pass`）が機能しない場合がある。  
+  対応: `pi5-power-dispatcher.service.j2` に `WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible` を追加し、スクリプト内でも `cd "${ANSIBLE_DIR}"` を実行するように修正。**[KB-237]**
+- 発見: Pi4が`/kiosk/*`や`/signage`表示中にWebSocket接続が確立されていないため、発信側が「Callee is not connected」エラーで通話できない。  
+  対応: `WebRTCCallProvider`を`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用し、シグナリング接続を常時維持。着信時は`sessionStorage`に現在のパスを保存し、`/kiosk/call`へ自動遷移。通話終了後は元のパスへ自動復帰。Pi3は`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で通話対象から除外。**[KB-241]**  
   エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
   対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
 - 観測: `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある。  
@@ -647,7 +687,11 @@
 - 決定: リモート実行（`REMOTE_HOST`が設定されている場合）はデフォルトでデタッチモードで実行する。  
   理由: クライアント側の監視打ち切りによる中断リスクを排除し、長時間デプロイの安全性を向上させるため。前景実行が必要な場合は`--foreground`オプションで明示的に指定可能（短時間のみ推奨）。  
   日付/担当: 2026-02-01 / Codex  
-  参照: [KB-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須)  
+  参照: [KB-226](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須)
+- 決定: WebRTCシグナリング接続を常時維持し、`/kiosk/*`や`/signage`表示中でも着信を受けられるようにする。着信時は自動的に`/kiosk/call`へ切り替え、通話終了後は元の画面へ自動復帰する。  
+  理由: ユーザーが通話画面を開いていなくても着信を受けられるようにし、作業の中断を最小限に抑えるため。Pi3はサイネージ機能特化のため、通話対象から除外する。  
+  日付/担当: 2026-02-09 / Codex  
+  参照: [KB-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装)  
   理由: Raspberry Pi のChromiumにはNFC APIが実装されておらず、ローカルWebSocketであればCORS問題なくUSB処理をフロントから切り離せるため。  
   日付/担当: 2024-05-27 / Codex
 - 決定: データストアは PostgreSQL とし、社員レコードをUUID主体で設計して将来他モジュールが参照しやすい構造にする。  
@@ -1240,6 +1284,82 @@
 
 ## Next Steps（将来のタスク）
 
+### Mac開発環境: ストレージ運用（推奨）
+
+**概要**: Macのストレージ逼迫による開発停止（Cursorクラッシュ、Docker不調）を防ぐ
+
+**次の改善候補**:
+- **SSD常時接続の運用ガード**: SSD01未接続時にCursor/Dockerを起動しない運用に揃える（スリープ/ケーブル/ハブ起因の切断も含めて注意喚起）
+- **バックアップの自動化**: `docs/guides/mac-storage-migration.md` のGoogleドライブバックアップ（launchd）を導入して、SSD障害時の復旧導線を作る
+- **（任意）rsync更新**: `brew install rsync` を導入し、転送の進捗/再開性を改善（ただし手順は `--progress` で成立するため必須ではない）
+
+**詳細**: [docs/guides/mac-storage-migration.md](./docs/guides/mac-storage-migration.md)
+
+### アクセシビリティの継続的改善（推奨）
+
+**概要**: モーダル共通化・アクセシビリティ標準化を機に、アクセシビリティの継続的改善を検討
+
+**完了した改善**:
+- ✅ 共通Dialogコンポーネントによるモーダルの統一（Portal/ARIA/Esc/backdrop/scroll lock/focus trap）
+- ✅ キオスク全モーダル（7種類）のDialogベース統一
+- ✅ 管理コンソールの`window.confirm`置換（6ページ）
+- ✅ `sr-only`見出しの追加（KioskLayout）
+- ✅ アイコンボタンとダイアログの`aria-label`属性追加
+
+**次の改善候補**:
+1. **キーボードナビゲーションの強化**（優先度: 中）
+   - タブ順序の最適化（論理的な順序）
+   - ショートカットキーの追加（例: `Ctrl+K`で検索、`Ctrl+S`で保存）
+   - フォーカスインジケーターの視認性向上
+
+2. **スクリーンリーダー対応の拡充**（優先度: 中）
+   - 動的コンテンツの変更通知（`aria-live`属性）
+   - フォームエラーメッセージの関連付け（`aria-describedby`）
+   - 画像の代替テキスト（`alt`属性）の充実
+
+3. **色のコントラスト比の確認**（優先度: 低）
+   - WCAG 2.1 AA準拠の確認（コントラスト比4.5:1以上）
+   - カラーユニバーサルデザインの考慮（色だけでなく形状・テキストでも情報を伝える）
+
+4. **モーダル以外のUIコンポーネントの共通化**（優先度: 低）
+   - トースト通知コンポーネントの作成
+   - ドロップダウンメニューコンポーネントの作成
+   - ツールチップコンポーネントの作成
+
+**現状**: モーダル共通化とアクセシビリティ標準化は完了し、基本的なアクセシビリティ機能は実装済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化)
+
+### E2Eテストのさらなる安定化（推奨）
+
+**概要**: E2Eテスト安定化を機に、テストの信頼性と保守性をさらに向上させる
+
+**完了した改善**:
+- ✅ `clickByRoleSafe`ヘルパー関数の追加（`scrollIntoViewIfNeeded` + `click`）
+- ✅ `closeDialogWithEscape`ヘルパー関数の追加（Escキー操作）
+- ✅ `expect.poll()`によるUI更新のポーリング待機
+- ✅ strict mode violationの修正（`first()`で先頭要素を明示指定）
+
+**次の改善候補**:
+1. **テストヘルパー関数の拡充**（優先度: 中）
+   - フォーム入力ヘルパー（`fillForm`）
+   - 待機ヘルパー（`waitForElement`、`waitForNetworkIdle`）
+   - アサーションヘルパー（`expectElementVisible`、`expectElementNotVisible`）
+
+2. **テストデータ管理の改善**（優先度: 低）
+   - テストデータのファクトリー関数化
+   - テストデータのクリーンアップ自動化
+   - テストデータの再利用性向上
+
+3. **テスト実行の最適化**（優先度: 低）
+   - 並列実行の最適化（依存関係の整理）
+   - テスト実行時間の短縮（不要な待機時間の削減）
+   - テスト結果の可視化（レポート生成）
+
+**現状**: 基本的なE2Eテスト安定化は完了し、CIで安定して動作するようになった。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化)
+
 ### Alerts Platform Phase3（候補）
 
 **概要**: scriptsもAPI経由でAlert作成に寄せる
@@ -1272,6 +1392,29 @@
 - ✅ 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポートは非公開
 
 **詳細**: [KB-177](../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
+
+### WebRTCビデオ通話機能の実機検証（完了）
+
+**概要**: WebRTCビデオ通話の常時接続と着信自動切り替え機能、映像不安定問題の修正とエラーダイアログ改善の実機検証を完了
+
+**実装完了内容**:
+- ✅ `WebRTCCallProvider`と`CallAutoSwitchLayout`の実装完了
+- ✅ `/kiosk/*`と`/signage`の全ルートでシグナリング接続を常時維持
+- ✅ 着信時に`/kiosk/call`へ自動遷移、通話終了後に元のパスへ自動復帰
+- ✅ Pi3の通話対象除外機能（`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`）
+- ✅ `localStream`/`remoteStream`のstate化による映像不安定問題の修正
+- ✅ エラーダイアログ改善（`alert()`を`Dialog`に置換、ユーザー向け説明に変換）
+- ✅ CI成功、デプロイ成功（Pi5とPi4、Run ID: 20260210-105120-4601）
+
+**実機検証結果**（2026-02-10）:
+- ✅ **MacとPi5でビデオ通話が正常に動作**: 通話開始直後に相手映像が表示されること、ビデオON/OFF時の相手側フリーズ回避、無操作時の接続維持を確認
+- ✅ **エラーダイアログの改善**: 相手キオスク未起動時に分かりやすい説明ダイアログが表示されることを確認
+
+**検証手順**: [docs/guides/webrtc-verification.md](./docs/guides/webrtc-verification.md) を参照
+
+**詳細**: 
+- [docs/knowledge-base/frontend.md#kb-241](./docs/knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装): 常時接続と着信自動切り替え機能
+- [docs/knowledge-base/frontend.md#kb-243](./docs/knowledge-base/frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善): 映像不安定問題の修正とエラーダイアログ改善
 
 ### 運用安定性の継続的改善（推奨）
 
@@ -1419,8 +1562,77 @@
 
 **詳細**: [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) / [README.md](./README.md)
 
+### バックアップ・リストア機能の継続的改善（推奨）
+
+**概要**: 証明書ディレクトリのバックアップターゲット追加スクリプト作成を機に、バックアップ・リストア機能の継続的改善を検討
+
+**完了した改善**:
+- ✅ 証明書ディレクトリのバックアップターゲット追加スクリプト作成（KB-200）
+- ✅ バックアップ検証チェックリストの作成（月次・四半期検証）
+- ✅ 証明書バックアップの自動化（`backup.json`設定）
+
+**次の改善候補**:
+1. **バックアップ検証の自動化**（優先度: 中）
+   - 月次検証チェックリストの自動実行スクリプト作成
+   - バックアップファイルの整合性検証の自動化
+   - 検証結果のレポート生成とSlack通知
+
+2. **バックアップ設定の管理改善**（優先度: 低）
+   - バックアップターゲット追加スクリプトの汎用化（他のディレクトリにも対応）
+   - バックアップ設定のテンプレート化
+   - 設定変更履歴の追跡（Git管理の検討）
+
+3. **リストア機能の改善**（優先度: 低）
+   - リストア前の自動バックアップ（現在の状態を保存）
+   - リストア時の影響範囲確認機能
+   - 部分リストア機能（特定ファイル/ディレクトリのみ）
+
+4. **バックアップパフォーマンスの最適化**（優先度: 低）
+   - 増分バックアップの実装（変更ファイルのみ）
+   - バックアップの並列実行（複数ターゲットの同時バックアップ）
+   - バックアップファイルの圧縮率改善
+
+**現状**: 証明書ディレクトリのバックアップターゲット追加スクリプトは作成済みで、既存設定の確認も完了。バックアップ検証チェックリストも作成済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/infrastructure/backup-restore.md#kb-200](./docs/knowledge-base/infrastructure/backup-restore.md#kb-200-証明書ディレクトリのバックアップターゲット追加スクリプト作成とdockerコンテナ内実行時の注意点) / [docs/guides/backup-configuration.md](./docs/guides/backup-configuration.md) / [docs/guides/backup-verification-checklist.md](./docs/guides/backup-verification-checklist.md)
+
+### クライアント端末管理機能の継続的改善（候補）
+
+**概要**: クライアント端末の表示名編集機能実装を機に、クライアント端末管理機能の継続的改善を検討
+
+**完了した改善**:
+- ✅ クライアント端末名のインライン編集機能（KB-206）
+- ✅ `status-agent`や`heartbeat`による自動上書き防止
+- ✅ `PUT /api/clients/:id`での`name`更新機能
+- ✅ 表示名と機械名の分離（`ClientDevice.name` vs `ClientStatus.hostname`）
+
+**次の改善候補**:
+1. **クライアント端末名の変更履歴記録**（優先度: 低）
+   - 変更者・変更日時・変更前後の値を記録
+   - 監査ログとしての活用
+   - 管理画面での変更履歴表示
+
+2. **クライアント端末名の一括編集機能**（優先度: 低）
+   - 複数端末の名前を一括で変更
+   - CSVインポート/エクスポート機能
+   - テンプレート機能（命名規則の統一）
+
+3. **クライアント端末名の検索・フィルタ機能**（優先度: 低）
+   - 名前での検索機能
+   - 場所・ステータスでのフィルタ機能
+   - ソート機能の拡充
+
+4. **クライアント端末名の重複チェック**（優先度: 低）
+   - 名前の重複を警告（必須ではない）
+   - 重複時の推奨名の提案
+
+**現状**: クライアント端末名の編集機能は実装済みで、実機検証も完了。システム全体が正常に動作することを確認済み。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md)
+
 ---
 
+変更履歴: 2026-02-10 — クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了を記録。KB-206に実機検証完了を追記。Next Stepsセクションにクライアント端末管理機能の継続的改善候補を追加。
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
 変更履歴: 2026-01-18 — Alerts Platform Phase2完全移行の完了記録を追加。Next StepsセクションにPhase3候補を追加。
@@ -1440,3 +1652,12 @@
 変更履歴: 2026-01-28 — 生産スケジュール検索登録製番の端末間共有問題の修正・仕様確定・実機検証完了を反映。Progressをhistory専用共有・hiddenHistory・割当済み資源CD単独検索可に更新。KB-210を実装どおり（history専用・hiddenHistory・資源CD単独検索）に修正。Decision Logにsearch-state history専用・割当済み資源CD単独検索許可を追加。Surprisesに仕様確定と実機検証完了を追加。
 変更履歴: 2026-02-01 — NodeSourceリポジトリGPG署名キー問題の解決・恒久対策実装・デプロイ成功・実機検証完了を反映。Progressに恒久対策（デプロイ前チェック自動化、README.md更新、デプロイ標準手順更新）とCI実行・実機検証結果を追加。KB-220に実機検証結果を追加。Next Stepsにデプロイ前チェックのさらなる強化とNode.jsインストール方法の移行を追加。
 変更履歴: 2026-02-01 — リモート実行のデフォルトデタッチ化実装・デプロイ成功・実機検証完了を反映。Progressにリモート実行のデフォルトデタッチ化、`--foreground`オプション追加、`usage`関数の定義位置修正を追加。KB-226に実装の詳細と実機検証結果を追加。Surprises & Discoveriesにクライアント側監視打ち切り問題と`usage`関数の定義位置問題を追加。Decision Logにリモート実行のデフォルトデタッチ化決定を追加。
+変更履歴: 2026-02-08 — 証明書ディレクトリのバックアップターゲット追加スクリプト作成・Pi5上で実行・既存設定確認完了を反映。Progressにスクリプト作成とPi5上での実行結果を追加。KB-200を追加し、Dockerコンテナ内実行時の注意点を記録。関連ドキュメント（backup-configuration.md、backup-and-restore.md）を更新。Next Stepsにバックアップ・リストア機能の継続的改善候補を追加。
+変更履歴: 2026-02-08 — キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）・デプロイ成功・実機検証完了を反映。ProgressにUI改善（アイコン化、サイネージプレビュー追加、電源メニュー統合）とReact Portal導入によるモーダル表示位置問題の解決を追加。KB-239を追加し、CSS `filter`プロパティが`position: fixed`に与える影響とReact Portalによる回避方法を記録。E2Eテストの安定化（`scrollIntoViewIfNeeded`とEscキー操作）も記録。ナレッジベース更新（36件）。
+
+変更履歴: 2026-02-08 — update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加・CI成功を反映。Progressに`require_remote_host_for_pi5()`関数の追加とCI実行・実機検証結果を追加。KB-238を追加し、エラーが100%発生する場合は原因を潰すべき（fail-fast）という知見を記録。Surprises & Discoveriesに標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐためのガード追加を追加。ナレッジベース更新（39件）。
+
+変更履歴: 2026-02-08 — モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化・デプロイ成功を反映。Progressに共通Dialogコンポーネント作成、キオスク全モーダル統一、サイネージプレビューのFullscreen API対応、ConfirmDialogとuseConfirm実装、管理コンソールのwindow.confirm置換、アクセシビリティ標準化、E2Eテスト安定化を追加。CI修正（import順序、Trivy脆弱性、E2Eテストstrict mode violation）も記録。KB-240を追加し、モーダル共通化による保守性向上とアクセシビリティ標準化の重要性を記録。ナレッジベース更新（37件）。
+変更履歴: 2026-02-09 — WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功を反映。Progressに`WebRTCCallProvider`と`CallAutoSwitchLayout`の実装、着信時の自動切り替え・通話終了後の自動復帰、Pi3の通話対象除外機能を追加。Decision Logに常時接続と自動切り替えの決定を追加。Surprises & Discoveriesに「Callee is not connected」エラーの原因と解決策を追加。KB-241を追加し、React Contextによる状態共有と自動画面切り替えの重要性を記録。`docs/guides/webrtc-verification.md`を更新し、常時接続機能とPi3除外の実装詳細を追記。ナレッジベース更新（38件）。
+変更履歴: 2026-02-10 — WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善・デプロイ成功・実機検証完了を反映。Progressに`localStream`/`remoteStream`のstate化、受信トラックの単一MediaStream集約、`disableVideo()`/`enableVideo()`の改善、接続状態監視とICE restart、エラーダイアログ改善を追加。KB-243を追加し、React stateとrefの使い分け、MediaStreamの扱い、WebRTC trackの停止方法、`replaceTrack`の活用、接続状態監視の重要性、エラーメッセージのユーザビリティの学びを記録。`docs/guides/webrtc-verification.md`を更新し、映像不安定問題の修正とエラーダイアログ改善の実装詳細を追記。ナレッジベース更新（39件）。
+変更履歴: 2026-02-10 — 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OKを反映。Progressに`SeibanProgressService`新設、history-progressエンドポイント追加、`ProductionScheduleDataSource`の共通サービス利用、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを追加。KB-242を追加し、進捗マップの共有とサービス層の共通化による整合性・保守性の学びを記録。`docs/plans/production-schedule-kiosk-execplan.md`、`docs/guides/production-schedule-signage.md`、`docs/INDEX.md`、`docs/knowledge-base/index.md`を更新。ナレッジベース更新（39件）。

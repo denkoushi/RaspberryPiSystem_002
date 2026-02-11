@@ -43,7 +43,7 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'csvDashboards';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
@@ -52,6 +52,7 @@ export type CsvImportSubjectPatternType =
   | 'items'
   | 'measuringInstruments'
   | 'riggingGears'
+  | 'machines'
   | 'csvDashboards';
 
 export interface CsvImportSubjectPattern {
@@ -65,7 +66,7 @@ export interface CsvImportSubjectPattern {
   updatedAt: string;
 }
 
-export type CsvImportConfigType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears';
+export type CsvImportConfigType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines';
 export type CsvImportStrategy = 'UPSERT' | 'REPLACE';
 
 export interface CsvImportColumnDefinition {
@@ -143,6 +144,7 @@ export interface RestoreFromDropboxRequest {
   backupPath: string;
   targetKind?: 'database' | 'csv';
   verifyIntegrity?: boolean;
+  preBackup?: boolean;
   expectedSize?: number;
   expectedHash?: string;
 }
@@ -157,6 +159,30 @@ export interface RestoreFromDropboxResponse {
 
 export async function restoreFromDropbox(request: RestoreFromDropboxRequest): Promise<RestoreFromDropboxResponse> {
   const { data } = await api.post<RestoreFromDropboxResponse>('/backup/restore/from-dropbox', request);
+  return data;
+}
+
+export interface RestoreDryRunResponse {
+  backupPath: string;
+  normalizedBackupPath: string;
+  targetKind: string;
+  targetSource: string;
+  storageProvider: string;
+  exists: boolean;
+  sizeBytes: number | null;
+  modifiedAt: string | null;
+  preBackupDefault: boolean;
+}
+
+export async function restoreDryRun(request: {
+  backupPath: string;
+  targetKind?: string;
+  storage?: {
+    provider: 'local' | 'dropbox';
+    options?: Record<string, unknown>;
+  };
+}): Promise<RestoreDryRunResponse> {
+  const { data } = await api.post<RestoreDryRunResponse>('/backup/restore/dry-run', request);
   return data;
 }
 
@@ -319,6 +345,7 @@ export interface BackupConfig {
     items?: string[];
     measuringInstruments?: string[];
     riggingGears?: string[];
+    machines?: string[];
   };
   csvImportHistory?: {
     retentionDays?: number;
@@ -345,6 +372,27 @@ export async function updateBackupConfig(config: BackupConfig): Promise<{ succes
 // バックアップ対象操作API
 export async function addBackupTarget(target: Omit<BackupTarget, 'enabled'> & { enabled?: boolean }): Promise<{ success: boolean; target: BackupTarget }> {
   const { data } = await api.post<{ success: boolean; target: BackupTarget }>('/backup/config/targets', target);
+  return data;
+}
+
+export interface BackupTargetTemplate {
+  id: string;
+  label: string;
+  description?: string;
+  target: BackupTarget;
+  requiresSource?: boolean;
+}
+
+export async function getBackupTargetTemplates(): Promise<{ templates: BackupTargetTemplate[] }> {
+  const { data } = await api.get<{ templates: BackupTargetTemplate[] }>('/backup/config/templates');
+  return data;
+}
+
+export async function addBackupTargetFromTemplate(params: {
+  templateId: string;
+  overrides?: Partial<BackupTarget>;
+}): Promise<{ success: boolean; target: BackupTarget }> {
+  const { data } = await api.post<{ success: boolean; target: BackupTarget }>('/backup/config/targets/from-template', params);
   return data;
 }
 
@@ -469,5 +517,37 @@ export interface BackupConfigHealth {
 
 export async function getBackupConfigHealth(): Promise<BackupConfigHealth> {
   const { data } = await api.get<BackupConfigHealth>('/backup/config/health');
+  return data;
+}
+
+// バックアップ設定変更履歴
+export interface BackupConfigChange {
+  id: string;
+  actionType: string;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
+  summary?: string | null;
+  diff?: Record<string, unknown> | null;
+  snapshotRedacted: BackupConfig;
+  createdAt: string;
+}
+
+export interface BackupConfigHistoryResponse {
+  history: BackupConfigChange[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export async function getBackupConfigHistory(params?: { offset?: number; limit?: number }): Promise<BackupConfigHistoryResponse> {
+  const query = new URLSearchParams();
+  if (params?.offset !== undefined) query.append('offset', params.offset.toString());
+  if (params?.limit !== undefined) query.append('limit', params.limit.toString());
+  const { data } = await api.get<BackupConfigHistoryResponse>(`/backup/config/history?${query.toString()}`);
+  return data;
+}
+
+export async function getBackupConfigHistoryById(id: string): Promise<BackupConfigChange> {
+  const { data } = await api.get<BackupConfigChange>(`/backup/config/history/${id}`);
   return data;
 }

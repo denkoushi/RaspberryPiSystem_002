@@ -345,21 +345,9 @@ export class LoanService {
           .toBuffer();
       }
 
-      // フレームの平均輝度を確認し、極端に暗い画像は拒否する
-      const stats = await sharp(originalImage).stats();
-      const rgbChannels = stats.channels.filter((channel) =>
-        ['red', 'green', 'blue'].includes((channel as { name?: string; channel?: string }).name ?? (channel as { name?: string; channel?: string }).channel ?? ''),
-      );
-      const channelsForMean = rgbChannels.length > 0 ? rgbChannels : stats.channels.slice(0, 3);
-      const meanLuma =
-        channelsForMean.reduce((sum, channel) => sum + channel.mean, 0) /
-        (channelsForMean.length || 1);
-      if (meanLuma < cameraConfig.brightness.minMeanLuma) {
-        throw new ApiError(
-          422,
-          '写真が暗すぎます。照明環境を整えてからもう一度撮影してください。',
-        );
-      }
+      // 閾値チェックを削除（どんな明るさでも撮影可能）
+      // 過去の実装では閾値チェックがあったが、ストリーム保持による負荷問題のため削除
+      // フロントエンドとバックエンドの両方で閾値チェックを削除し、どんな明るさでも撮影可能にした
 
       // サムネイルを生成（150x150px、JPEG品質70%）
       const thumbnailImage = await sharp(originalImage)

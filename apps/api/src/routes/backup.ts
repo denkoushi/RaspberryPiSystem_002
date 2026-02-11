@@ -15,6 +15,9 @@ import { BackupHistoryService } from '../services/backup/backup-history.service.
 import { planDropboxSelectivePurge } from '../services/backup/dropbox-backup-maintenance.js';
 import { BackupOperationType } from '@prisma/client';
 import crypto from 'crypto';
+import { BackupConfigHistoryService, redactBackupConfig } from '../services/backup/backup-config-history.service.js';
+import { prisma } from '../lib/prisma.js';
+import { getBackupTargetTemplates } from '../services/backup/backup-target-templates.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   accessToken?: string;
@@ -35,8 +38,79 @@ const restoreRequestSchema = z.object({
   storage: z.object({
     provider: z.enum(['local', 'dropbox']),
     options: z.record(z.unknown()).optional()
-  }).optional()
+  }).optional(),
+  preBackup: z.boolean().optional()
 });
+
+const runPreBackup = async (params: {
+  config: BackupConfig;
+  targetKind: BackupKind;
+  targetSource: string;
+  protocol: string;
+  host: string;
+}): Promise<void> => {
+  const { config, targetKind, targetSource, protocol, host } = params;
+  const targetConfig = config.targets.find((t) => t.kind === targetKind && t.source === targetSource);
+  const preBackupLabel = `pre-restore-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const target = BackupTargetFactory.createFromConfig(config, targetKind, targetSource, { label: preBackupLabel });
+
+  const providers: ('local' | 'dropbox')[] = [];
+  if (targetConfig?.storage?.providers && targetConfig.storage.providers.length > 0) {
+    providers.push(...targetConfig.storage.providers.filter((p): p is 'local' | 'dropbox' => p === 'local' || p === 'dropbox'));
+  } else if (targetConfig?.storage?.provider && (targetConfig.storage.provider === 'local' || targetConfig.storage.provider === 'dropbox')) {
+    providers.push(targetConfig.storage.provider);
+  } else if (config.storage.provider === 'local' || config.storage.provider === 'dropbox') {
+    providers.push(config.storage.provider);
+  } else {
+    providers.push('local');
+  }
+
+  const historyService = new BackupHistoryService();
+  const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; error?: string }> = [];
+  for (const requestedProvider of providers) {
+    try {
+      const targetWithProvider = targetConfig ? {
+        ...targetConfig,
+        storage: { provider: requestedProvider }
+      } : undefined;
+      const providerResult = targetWithProvider
+        ? await StorageProviderFactory.createFromTarget(config, targetWithProvider, protocol, host, undefined, true)
+        : await StorageProviderFactory.createFromConfig(config, protocol, host, undefined, true);
+      const actualProvider = providerResult.provider;
+      const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
+      const storageProvider = providerResult.storageProvider;
+      const backupService = new BackupService(storageProvider);
+      const historyId = await historyService.createHistory({
+        operationType: BackupOperationType.BACKUP,
+        targetKind,
+        targetSource,
+        storageProvider: safeProvider
+      });
+      const result = await backupService.backup(target, { label: preBackupLabel });
+      if (result.success) {
+        results.push({ provider: safeProvider, success: true });
+        await historyService.completeHistory(historyId, {
+          targetKind,
+          targetSource,
+          sizeBytes: result.sizeBytes,
+          path: result.path
+        });
+      } else {
+        results.push({ provider: safeProvider, success: false, error: result.error });
+        await historyService.failHistory(historyId, result.error || 'Unknown error');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.push({ provider: requestedProvider, success: false, error: errorMessage });
+    }
+  }
+
+  const allFailed = results.every((r) => !r.success);
+  if (allFailed) {
+    const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
+    throw new ApiError(500, `Pre-backup failed on all providers: ${errorMessages}`);
+  }
+};
 
 /**
  * バックアップルートを登録
@@ -130,10 +204,12 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
         });
         
         try {
+          const backupStart = Date.now();
           // バックアップを実行
           const result = await backupService.backup(target, {
             label: body.metadata?.label as string
           });
+          const durationMs = Date.now() - backupStart;
           
           if (result.success) {
             results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
@@ -141,7 +217,9 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
               targetKind: body.kind,
               targetSource: body.source,
               sizeBytes: result.sizeBytes,
-              path: result.path
+              path: result.path,
+              durationMs,
+              provider: safeProvider
             });
           } else {
             results.push({ provider: safeProvider, success: false, error: result.error });
@@ -319,7 +397,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // Phase 3: バックアップ実行後にクリーンアップを実行（手動実行時も自動削除を実行）
     if (targetConfig) {
       const retention = targetConfig.retention || config.retention;
-      if (retention && retention.days) {
+      if (retention && (retention.days || retention.maxBackups)) {
         const successfulProvider = providers.find((p, i) => results[i]?.success);
         if (successfulProvider) {
           const targetWithProvider = {
@@ -349,10 +427,24 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           // BackupSchedulerのcleanupOldBackupsメソッドと同じロジックを実行
           try {
             const backups = await backupService.listBackups({ prefix });
-            // ターゲットのソース名に一致するバックアップのみ対象とする
-            const targetBackups = backups.filter((b) => b.path?.endsWith(`/${sourceForPrefix}`));
             const now = new Date();
-            const retentionDate = new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000);
+            const retentionDate = retention.days
+              ? new Date(now.getTime() - retention.days * 24 * 60 * 60 * 1000)
+              : null;
+
+            // ターゲットのソース名に一致するバックアップのみ対象とする（DB/CSVは拡張子まで含めて一致させる）
+            const matchesSource = (p: string | null | undefined): boolean => {
+              if (!sourceForPrefix) return true;
+              if (!p) return false;
+              if (body.kind === 'database') {
+                return p.endsWith(`/${sourceForPrefix}.sql.gz`) || p.endsWith(`/${sourceForPrefix}.sql`);
+              }
+              if (body.kind === 'csv') {
+                return p.endsWith(`/${sourceForPrefix}.csv`);
+              }
+              return p.endsWith(`/${sourceForPrefix}`);
+            };
+            const targetBackups = backups.filter((b) => matchesSource(b.path));
             
             // 最大バックアップ数を超える場合は古いものから削除（保持期間に関係なく）
             if (retention.maxBackups && targetBackups.length > retention.maxBackups) {
@@ -383,28 +475,30 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
             }
             
             // 保持期間を超えたバックアップを削除（maxBackupsチェック後も実行）
-            const sortedBackups = targetBackups
-              .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
-              .sort((a, b) => {
-                if (!a.modifiedAt || !b.modifiedAt) return 0;
-                return a.modifiedAt.getTime() - b.modifiedAt.getTime();
-              });
-            for (const backup of sortedBackups) {
-              if (!backup.path) continue;
-              try {
-                await backupService.deleteBackup(backup.path);
-                // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+            if (retentionDate) {
+              const sortedBackups = targetBackups
+                .filter(b => b.modifiedAt && b.modifiedAt < retentionDate)
+                .sort((a, b) => {
+                  if (!a.modifiedAt || !b.modifiedAt) return 0;
+                  return a.modifiedAt.getTime() - b.modifiedAt.getTime();
+                });
+              for (const backup of sortedBackups) {
+                if (!backup.path) continue;
                 try {
-                  const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
-                  if (updatedCount > 0) {
-                    logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                  await backupService.deleteBackup(backup.path);
+                  // ファイル削除後、対応する履歴レコードのfileStatusをDELETEDに更新
+                  try {
+                    const updatedCount = await historyService.markHistoryAsDeletedByPath(backup.path);
+                    if (updatedCount > 0) {
+                      logger?.info({ path: backup.path, updatedCount }, '[BackupRoute] Backup history fileStatus updated to DELETED');
+                    }
+                  } catch (error) {
+                    logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
                   }
+                  logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
                 } catch (error) {
-                  logger?.error({ err: error, path: backup.path }, '[BackupRoute] Failed to update backup history fileStatus');
+                  logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
                 }
-                logger?.info({ path: backup.path, prefix }, '[BackupRoute] Old backup deleted');
-              } catch (error) {
-                logger?.error({ err: error, path: backup.path, prefix }, '[BackupRoute] Failed to delete old backup');
               }
             }
             
@@ -529,6 +623,21 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     });
 
     try {
+      const preBackup = body.preBackup ?? (targetKind === 'database');
+      if (preBackup) {
+        await runPreBackup({
+          config: await BackupConfigLoader.load(),
+          targetKind: targetKind as BackupKind,
+          targetSource,
+          protocol: Array.isArray(request.headers['x-forwarded-proto'])
+            ? request.headers['x-forwarded-proto'][0]
+            : (request.headers['x-forwarded-proto'] || request.protocol || 'http'),
+          host: Array.isArray(request.headers.host)
+            ? request.headers.host[0]
+            : (request.headers.host || 'localhost:8080')
+        });
+      }
+
       // バックアップデータをダウンロード
       const backupData = await storageProvider.download(body.backupPath);
 
@@ -583,6 +692,97 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       await historyService.failHistory(historyId, errorMessage);
       throw error;
     }
+  });
+
+  // リストアのドライラン（破壊的操作なし）
+  app.post('/backup/restore/dry-run', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          backupPath: { type: 'string' },
+          targetKind: { type: 'string', enum: ['database', 'csv', 'image', 'file', 'directory', 'client-file', 'client-directory'] },
+          storage: {
+            type: 'object',
+            properties: {
+              provider: { type: 'string', enum: ['local', 'dropbox'] },
+              options: { type: 'object' }
+            }
+          }
+        },
+        required: ['backupPath']
+      }
+    }
+  }, async (request, reply) => {
+    const body = request.body as {
+      backupPath: string;
+      targetKind?: BackupKind;
+      storage?: {
+        provider: 'local' | 'dropbox';
+        options?: Record<string, unknown>;
+      };
+    };
+
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+    const host = request.headers.host || 'localhost:8080';
+    const storageProvider = body.storage
+      ? StorageProviderFactory.create({
+          provider: body.storage.provider,
+          accessToken: body.storage.options?.accessToken as string | undefined,
+          basePath: body.storage.options?.basePath as string | undefined,
+          refreshToken: body.storage.options?.refreshToken as string | undefined,
+          appKey: body.storage.options?.appKey as string | undefined,
+          appSecret: body.storage.options?.appSecret as string | undefined,
+          redirectUri: `${protocol}://${host}/api/backup/oauth/callback`
+        })
+      : new LocalStorageProvider();
+
+    const backupService = new BackupService(storageProvider);
+    const config = await BackupConfigLoader.load();
+    const basePath = config.storage.options?.basePath as string | undefined;
+
+    let normalizedBackupPath = body.backupPath;
+    if (body.storage?.provider === 'dropbox' && basePath && normalizedBackupPath.startsWith(basePath)) {
+      normalizedBackupPath = normalizedBackupPath.slice(basePath.length);
+      if (normalizedBackupPath.startsWith('/')) {
+        normalizedBackupPath = normalizedBackupPath.slice(1);
+      }
+    }
+
+    const pathParts = normalizedBackupPath.split('/');
+    const targetKind = body.targetKind || (pathParts[0] as BackupKind) || 'file';
+    let targetSource = pathParts[pathParts.length - 1] || normalizedBackupPath;
+    if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
+      targetSource = targetSource.replace(/\.csv$/, '');
+    }
+    if (targetKind === 'database') {
+      if (targetSource.endsWith('.sql.gz')) {
+        targetSource = targetSource.replace(/\.sql\.gz$/, '');
+      } else if (targetSource.endsWith('.sql')) {
+        targetSource = targetSource.replace(/\.sql$/, '');
+      }
+    }
+
+    const list = await backupService.listBackups({ prefix: targetKind });
+    const exists = list.find((entry) => {
+      if (!entry.path) return false;
+      if (entry.path === body.backupPath) return true;
+      if (entry.path.endsWith(`/${normalizedBackupPath}`)) return true;
+      return false;
+    });
+
+    return reply.status(200).send({
+      backupPath: body.backupPath,
+      normalizedBackupPath,
+      targetKind,
+      targetSource,
+      storageProvider: body.storage?.provider ?? 'local',
+      exists: !!exists,
+      sizeBytes: exists?.sizeBytes ?? null,
+      modifiedAt: exists?.modifiedAt ?? null,
+      preBackupDefault: targetKind === 'database'
+    });
   });
 
   // バックアップの削除
@@ -701,6 +901,58 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     return reply.status(statusCode).send(health);
   });
 
+  // バックアップ対象テンプレート一覧
+  app.get('/backup/config/templates', {
+    preHandler: [mustBeAdmin]
+  }, async (_request, reply) => {
+    return reply.status(200).send({ templates: getBackupTargetTemplates() });
+  });
+
+  // 設定変更履歴の取得
+  app.get('/backup/config/history', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          offset: { type: 'number' },
+          limit: { type: 'number' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const query = request.query as { offset?: number; limit?: number };
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 50;
+    const [items, total] = await Promise.all([
+      prisma.backupConfigChange.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit
+      }),
+      prisma.backupConfigChange.count()
+    ]);
+    return reply.status(200).send({ history: items, total, offset, limit });
+  });
+
+  app.get('/backup/config/history/:id', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id']
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const entry = await prisma.backupConfigChange.findUnique({ where: { id } });
+    if (!entry) {
+      throw new ApiError(404, `Backup config history not found: ${id}`);
+    }
+    return reply.status(200).send(entry);
+  });
+
   // 設定の更新
   app.put('/backup/config', {
     preHandler: [mustBeAdmin],
@@ -710,11 +962,26 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       }
     }
   }, async (request, reply) => {
+    const beforeConfig = await BackupConfigLoader.load();
     const config = request.body as BackupConfig;
     await BackupConfigLoader.save(config);
     // スケジューラーを再読み込み（設定変更を即時反映）
     const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
     await getBackupScheduler().reload();
+
+    const historyService = new BackupConfigHistoryService();
+    await historyService.recordChange({
+      actionType: 'config_update',
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      summary: 'バックアップ設定を更新',
+      diff: {
+        before: redactBackupConfig(beforeConfig),
+        after: redactBackupConfig(config)
+      },
+      snapshotRedacted: redactBackupConfig(config)
+    });
+
     return reply.status(200).send({ success: true });
   });
 
@@ -799,8 +1066,107 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
     await getBackupScheduler().reload();
 
+    const historyService = new BackupConfigHistoryService();
+    await historyService.recordChange({
+      actionType: 'target_add',
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      summary: `バックアップ対象を追加: ${newTarget.kind} ${newTarget.source}`,
+      diff: { after: newTarget },
+      snapshotRedacted: redactBackupConfig(config)
+    });
+
     logger?.info({ target: newTarget }, '[BackupRoute] Backup target added');
     return reply.status(200).send({ success: true, target: newTarget });
+  });
+
+  // バックアップ対象の追加（テンプレートから）
+  app.post('/backup/config/targets/from-template', {
+    preHandler: [mustBeAdmin],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          templateId: { type: 'string' },
+          overrides: {
+            type: 'object',
+            properties: {
+              source: { type: 'string' },
+              schedule: { type: 'string' },
+              enabled: { type: 'boolean' },
+              storage: {
+                type: 'object',
+                properties: {
+                  provider: { type: 'string', enum: ['local', 'dropbox'] },
+                  providers: { type: 'array', items: { type: 'string', enum: ['local', 'dropbox'] } }
+                }
+              },
+              retention: {
+                type: 'object',
+                properties: {
+                  days: { type: 'number' },
+                  maxBackups: { type: 'number' }
+                }
+              },
+              metadata: { type: 'object' }
+            }
+          }
+        },
+        required: ['templateId']
+      }
+    }
+  }, async (request, reply) => {
+    const body = request.body as {
+      templateId: string;
+      overrides?: Partial<BackupConfig['targets'][number]>;
+    };
+    const template = getBackupTargetTemplates().find((t) => t.id === body.templateId);
+    if (!template) {
+      throw new ApiError(404, `Template not found: ${body.templateId}`);
+    }
+
+    const mergedTarget: BackupConfig['targets'][number] = {
+      ...template.target,
+      ...body.overrides,
+      storage: body.overrides?.storage ?? template.target.storage,
+      retention: body.overrides?.retention ?? template.target.retention
+    };
+
+    if (!mergedTarget.source || mergedTarget.source.trim() === '') {
+      throw new ApiError(400, 'Template requires source override');
+    }
+
+    if (mergedTarget.schedule && mergedTarget.schedule.trim()) {
+      const cron = await import('node-cron');
+      if (!cron.validate(mergedTarget.schedule.trim())) {
+        throw new ApiError(400, `Invalid cron schedule format: ${mergedTarget.schedule}. Expected format: "分 時 日 月 曜日" (e.g., "0 4 * * *")`);
+      }
+    }
+
+    const config = await BackupConfigLoader.load();
+    const duplicate = config.targets.find((t) => t.kind === mergedTarget.kind && t.source === mergedTarget.source);
+    if (duplicate) {
+      throw new ApiError(409, `Target already exists: ${mergedTarget.kind} ${mergedTarget.source}`);
+    }
+
+    config.targets.push(mergedTarget);
+    await BackupConfigLoader.save(config);
+
+    const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
+    await getBackupScheduler().reload();
+
+    const historyService = new BackupConfigHistoryService();
+    await historyService.recordChange({
+      actionType: 'target_add',
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      summary: `テンプレートから追加: ${mergedTarget.kind} ${mergedTarget.source}`,
+      diff: { after: mergedTarget, templateId: body.templateId },
+      snapshotRedacted: redactBackupConfig(config)
+    });
+
+    logger?.info({ target: mergedTarget, templateId: body.templateId }, '[BackupRoute] Backup target added from template');
+    return reply.status(200).send({ success: true, target: mergedTarget });
   });
 
   // バックアップ対象の更新
@@ -891,6 +1257,16 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
     await getBackupScheduler().reload();
 
+    const historyService = new BackupConfigHistoryService();
+    await historyService.recordChange({
+      actionType: 'target_update',
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      summary: `バックアップ対象を更新: ${updatedTarget.kind} ${updatedTarget.source}`,
+      diff: { before: existingTarget, after: updatedTarget },
+      snapshotRedacted: redactBackupConfig(config)
+    });
+
     logger?.info({ index: targetIndex, target: config.targets[targetIndex] }, '[BackupRoute] Backup target updated');
     return reply.status(200).send({ success: true, target: config.targets[targetIndex] });
   });
@@ -915,6 +1291,16 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     // スケジューラーを再読み込み（ターゲット削除を即時反映）
     const { getBackupScheduler } = await import('../services/backup/backup-scheduler.js');
     await getBackupScheduler().reload();
+
+    const historyService = new BackupConfigHistoryService();
+    await historyService.recordChange({
+      actionType: 'target_delete',
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      summary: `バックアップ対象を削除: ${deletedTarget.kind} ${deletedTarget.source}`,
+      diff: { before: deletedTarget },
+      snapshotRedacted: redactBackupConfig(config)
+    });
 
     logger?.info({ index: targetIndex, target: deletedTarget }, '[BackupRoute] Backup target deleted');
     return reply.status(200).send({ success: true, target: deletedTarget });
@@ -1026,6 +1412,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
     backupPath: z.string().min(1, 'バックアップパスは必須です'),
     targetKind: z.enum(['database', 'csv', 'image']).optional(), // リストア対象の種類
     verifyIntegrity: z.boolean().optional().default(true), // 整合性検証を実行するか
+    preBackup: z.boolean().optional(), // リストア前の事前バックアップ
     expectedSize: z.number().optional(), // 期待されるファイルサイズ
     expectedHash: z.string().optional() // 期待されるハッシュ値（SHA256）
   });
@@ -1039,6 +1426,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
           backupPath: { type: 'string' },
           targetKind: { type: 'string', enum: ['database', 'csv', 'image'] },
           verifyIntegrity: { type: 'boolean' },
+          preBackup: { type: 'boolean' },
           expectedSize: { type: 'number' },
           expectedHash: { type: 'string' }
         },
@@ -1119,6 +1507,17 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
       }
     }
     
+    const preBackup = body.preBackup ?? (targetKind === 'database');
+    if (preBackup) {
+      await runPreBackup({
+        config,
+        targetKind: targetKind as BackupKind,
+        targetSource,
+        protocol,
+        host
+      });
+    }
+
     // データベースバックアップの場合は拡張子を処理
     // 既存のバックアップファイル（拡張子なし）との互換性のため、拡張子がない場合は.sql.gzを追加
     let actualBackupPath = normalizedBackupPath;

@@ -229,6 +229,24 @@ model RiggingInspectionRecord {
   @@index([inspectedAt])
 }
 
+model Machine {
+  id                        String   @id @default(uuid())
+  equipmentManagementNumber String   @unique
+  name                      String
+  shortName                 String?
+  classification            String?
+  operatingStatus           String?
+  ncManual                  String?
+  maker                     String?
+  processClassification     String?
+  coolant                   String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([operatingStatus])
+  @@index([classification])
+}
+
 model ClientDevice {
   id             String        @id @default(uuid())
   name           String
@@ -431,6 +449,20 @@ model BackupHistory {
   @@index([fileStatus])
   @@index([startedAt])
   @@index([completedAt])
+}
+
+model BackupConfigChange {
+  id               String   @id @default(uuid())
+  actionType       String
+  actorUserId      String?
+  actorUsername    String?
+  summary          String?
+  diff             Json?
+  snapshotRedacted Json
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actionType])
 }
 
 model SignageSchedule {

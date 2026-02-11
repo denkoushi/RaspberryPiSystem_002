@@ -6,6 +6,7 @@
       - fail2ban
     state: present
     update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
 
 - name: Ensure Caddy log directory exists
   ansible.builtin.file:

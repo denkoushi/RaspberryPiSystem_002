@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { Dialog } from '../ui/Dialog';
 
 type KioskDatePickerModalProps = {
   isOpen: boolean;
@@ -42,6 +42,7 @@ export function KioskDatePickerModal({
   const today = useMemo(() => new Date(), []);
   const todayKey = toYmd(today);
   const selectedDate = useMemo(() => parseYmd(value), [value]);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [displayMonth, setDisplayMonth] = useState<Date>(
     () => getMonthStart(selectedDate ?? today)
   );
@@ -50,8 +51,6 @@ export function KioskDatePickerModal({
     if (!isOpen) return;
     setDisplayMonth(getMonthStart(selectedDate ?? today));
   }, [isOpen, selectedDate, today]);
-
-  if (!isOpen) return null;
 
   const daysInMonth = new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 0).getDate();
   const leadingBlanks = new Date(displayMonth.getFullYear(), displayMonth.getMonth(), 1).getDay();
@@ -87,66 +86,81 @@ export function KioskDatePickerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-md">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">納期日</h2>
-          <button onClick={onCancel} className="text-slate-500 hover:text-slate-700">
-            ✕
-          </button>
-        </div>
-        <div className="mb-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Button type="button" variant="ghost" onClick={() => setDisplayMonth(addMonths(displayMonth, -1))}>
-              前月
-            </Button>
-            <div className="text-base font-semibold text-slate-900">{monthLabel}</div>
-            <Button type="button" variant="ghost" onClick={() => setDisplayMonth(addMonths(displayMonth, 1))}>
-              次月
-            </Button>
-          </div>
-          <div className="mb-2 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-            {WEEKDAYS.map((weekday) => (
-              <div key={weekday}>{weekday}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: leadingBlanks }).map((_, index) => (
-              <div key={`blank-start-${index}`} className="h-10 w-10" />
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, index) => renderDayCell(index + 1))}
-            {Array.from({ length: trailingBlanks }).map((_, index) => (
-              <div key={`blank-end-${index}`} className="h-10 w-10" />
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => onCommit(todayKey)}>
-            今日
-          </Button>
+    <Dialog
+      isOpen={isOpen}
+      onClose={onCancel}
+      ariaLabel="納期日"
+      size="md"
+      initialFocusRef={closeButtonRef}
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-slate-900">納期日</h2>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          onClick={onCancel}
+          aria-label="閉じる"
+          title="閉じる"
+          className="text-slate-500 hover:text-slate-700"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="mb-4">
+        <div className="mb-3 flex items-center justify-between">
           <Button
             type="button"
-            variant="secondary"
-            onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))}
+            variant="ghost"
+            onClick={() => setDisplayMonth(addMonths(displayMonth, -1))}
           >
-            明日
+            前月
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2)))}
-          >
-            明後日
-          </Button>
-          <div className="flex-1" />
-          <Button type="button" variant="ghost" onClick={() => onCommit('')}>
-            クリア
-          </Button>
-          <Button type="button" variant="ghost" onClick={onCancel}>
-            キャンセル
+          <div className="text-base font-semibold text-slate-900">{monthLabel}</div>
+          <Button type="button" variant="ghost" onClick={() => setDisplayMonth(addMonths(displayMonth, 1))}>
+            次月
           </Button>
         </div>
-      </Card>
-    </div>
+        <div className="mb-2 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+          {WEEKDAYS.map((weekday) => (
+            <div key={weekday}>{weekday}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {Array.from({ length: leadingBlanks }).map((_, index) => (
+            <div key={`blank-start-${index}`} className="h-10 w-10" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, index) => renderDayCell(index + 1))}
+          {Array.from({ length: trailingBlanks }).map((_, index) => (
+            <div key={`blank-end-${index}`} className="h-10 w-10" />
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" onClick={() => onCommit(todayKey)}>
+          今日
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))}
+        >
+          明日
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2)))}
+        >
+          明後日
+        </Button>
+        <div className="flex-1" />
+        <Button type="button" variant="ghost" onClick={() => onCommit('')}>
+          クリア
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          キャンセル
+        </Button>
+      </div>
+    </Dialog>
   );
 }

@@ -6,6 +6,7 @@ import { useEmployeeMutations, useEmployees } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { Employee } from '../../api/types';
@@ -21,6 +22,7 @@ const initialForm = {
 export function EmployeesPage() {
   const { data, isLoading } = useEmployees();
   const { create, update, remove } = useEmployeeMutations();
+  const confirm = useConfirm();
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   // スコープ分離: このページがアクティブな場合のみNFCを有効にする
@@ -93,17 +95,23 @@ export function EmployeesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('この従業員を削除しますか？')) {
-      try {
-        await remove.mutateAsync(id);
-        if (editingId === id) {
-          setEditingId(null);
-          setForm(initialForm);
-        }
-      } catch (error) {
-        // エラーはReact Queryが自動的に処理する（remove.errorに設定される）
-        console.error('Delete error:', error);
+    const shouldDelete = await confirm({
+      title: 'この従業員を削除しますか？',
+      description: '削除すると元に戻せません。',
+      confirmLabel: '削除',
+      cancelLabel: 'キャンセル',
+      tone: 'danger'
+    });
+    if (!shouldDelete) return;
+    try {
+      await remove.mutateAsync(id);
+      if (editingId === id) {
+        setEditingId(null);
+        setForm(initialForm);
       }
+    } catch (error) {
+      // エラーはReact Queryが自動的に処理する（remove.errorに設定される）
+      console.error('Delete error:', error);
     }
   };
 

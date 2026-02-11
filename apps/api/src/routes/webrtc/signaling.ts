@@ -32,11 +32,12 @@ const normalizeClientKey = (rawKey: unknown): string | undefined => {
 
 /**
  * クライアントデバイスの存在確認とclientId取得
+ * - WebRTCの疎通IDはClientDevice.id(UUID)を使用
  */
-async function validateClient(clientKey: string): Promise<{ id: string; clientId: string | null }> {
+async function validateClient(clientKey: string): Promise<{ id: string; clientId: string }> {
   const client = await prisma.clientDevice.findUnique({
     where: { apiKey: clientKey },
-    select: { id: true, statusClientId: true }
+    select: { id: true }
   });
 
   if (!client) {
@@ -45,7 +46,7 @@ async function validateClient(clientKey: string): Promise<{ id: string; clientId
 
   return {
     id: client.id,
-    clientId: client.statusClientId || null
+    clientId: client.id
   };
 }
 
@@ -55,8 +56,8 @@ async function validateClient(clientKey: string): Promise<{ id: string; clientId
 async function getClientByClientId(
   clientId: string
 ): Promise<{ id: string; name: string; location: string | null } | null> {
-  const client = await prisma.clientDevice.findFirst({
-    where: { statusClientId: clientId },
+  const client = await prisma.clientDevice.findUnique({
+    where: { id: clientId },
     select: { id: true, name: true, location: true }
   });
 
@@ -114,17 +115,11 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     }
 
     // クライアントの存在確認
-    let clientInfo: { id: string; clientId: string | null };
+    let clientInfo: { id: string; clientId: string };
     try {
       clientInfo = await validateClient(clientKey);
     } catch {
       socket.close(1008, 'Invalid client key');
-      return;
-    }
-
-    // clientIdが設定されていない場合はエラー
-    if (!clientInfo.clientId) {
-      socket.close(1008, 'Client ID not configured. Please set statusClientId.');
       return;
     }
 

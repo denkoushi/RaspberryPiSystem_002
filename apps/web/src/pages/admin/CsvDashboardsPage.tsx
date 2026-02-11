@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  createCsvDashboard,
   getCsvDashboard,
   getCsvDashboards,
   previewCsvDashboardParse,
@@ -11,6 +12,107 @@ import {
   type CsvPreviewResult,
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
+
+const MACHINE_DAILY_INSPECTION_DASHBOARD_NAME = '加工機_日常点検結果';
+
+function buildMachineDailyInspectionPreset(): Parameters<typeof createCsvDashboard>[0] {
+  const columnDefinitions: CsvDashboard['columnDefinitions'] = [
+    {
+      order: 0,
+      internalName: 'machineName',
+      displayName: '加工機_名称',
+      csvHeaderCandidates: ['加工機_名称', '加工機名称'],
+      dataType: 'string',
+      required: true,
+    },
+    {
+      order: 1,
+      internalName: 'equipmentManagementNumber',
+      displayName: '設備管理番号',
+      csvHeaderCandidates: ['設備管理番号'],
+      dataType: 'string',
+      required: true,
+    },
+    {
+      order: 2,
+      internalName: 'inspectionAt',
+      displayName: '点検日時',
+      csvHeaderCandidates: ['点検日時'],
+      dataType: 'date',
+      required: true,
+    },
+    {
+      order: 3,
+      internalName: 'inspector',
+      displayName: '点検者',
+      csvHeaderCandidates: ['点検者'],
+      dataType: 'string',
+    },
+    {
+      order: 4,
+      internalName: 'cycle',
+      displayName: '周期',
+      csvHeaderCandidates: ['周期'],
+      dataType: 'string',
+    },
+    {
+      order: 5,
+      internalName: 'inspectionItem',
+      displayName: '点検項目',
+      csvHeaderCandidates: ['点検項目'],
+      dataType: 'string',
+    },
+    {
+      order: 6,
+      internalName: 'criteria',
+      displayName: '判断基準',
+      csvHeaderCandidates: ['判断基準'],
+      dataType: 'string',
+    },
+    {
+      order: 7,
+      internalName: 'inspectionResult',
+      displayName: '点検結果',
+      csvHeaderCandidates: ['点検結果'],
+      dataType: 'string',
+      required: true,
+    },
+    {
+      order: 8,
+      internalName: 'registeredAt',
+      displayName: '登録日時',
+      csvHeaderCandidates: ['登録日時'],
+      dataType: 'date',
+    },
+  ];
+
+  return {
+    name: MACHINE_DAILY_INSPECTION_DASHBOARD_NAME,
+    description: '加工機の日常点検結果（当日分の点検有無判定に使用）',
+    columnDefinitions,
+    // occurredAt（当日判定）に使う列。API側のパーサは "2026/2/11 10:33" を想定。
+    dateColumnName: 'inspectionAt',
+    displayPeriodDays: 1,
+    emptyMessage: '当日の点検データはありません',
+    ingestMode: 'APPEND',
+    dedupKeyColumns: [],
+    gmailSubjectPattern: null,
+    templateType: 'TABLE',
+    templateConfig: {
+      rowsPerPage: 50,
+      fontSize: 16,
+      displayColumns: [
+        'machineName',
+        'equipmentManagementNumber',
+        'inspectionAt',
+        'inspector',
+        'inspectionItem',
+        'inspectionResult',
+      ],
+      headerFixed: true,
+    },
+  };
+}
 
 export function CsvDashboardsPage() {
   const queryClient = useQueryClient();
@@ -182,6 +284,21 @@ export function CsvDashboardsPage() {
     },
   });
 
+  const createInspectionDashboardMutation = useMutation({
+    mutationFn: async () => {
+      const dashboards = dashboardsQuery.data ?? [];
+      const existing = dashboards.find((d) => d.name === MACHINE_DAILY_INSPECTION_DASHBOARD_NAME);
+      if (existing) {
+        return existing;
+      }
+      return await createCsvDashboard(buildMachineDailyInspectionPreset());
+    },
+    onSuccess: async (dashboard) => {
+      await queryClient.invalidateQueries({ queryKey: ['csv-dashboards'] });
+      setSelectedId(dashboard.id);
+    },
+  });
+
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -205,10 +322,31 @@ export function CsvDashboardsPage() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border-2 border-slate-500 bg-white p-4 text-slate-900 shadow-lg">
-        <h2 className="text-lg font-bold">CSVダッシュボード</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          検証9（表示期間フィルタ）のため、まずは既存のCSVダッシュボードを選択して「表示期間（日数）」を設定し、CSVをアップロードしてください。
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">CSVダッシュボード</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              CSVダッシュボード定義を管理します。未点検加工機表示のための点検結果ダッシュボードはプリセットで作成できます。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => createInspectionDashboardMutation.mutate()}
+              disabled={createInspectionDashboardMutation.isPending || dashboardsQuery.isLoading}
+            >
+              加工機_日常点検結果プリセットで作成
+            </Button>
+          </div>
+        </div>
+        {createInspectionDashboardMutation.isError && (
+          <p className="mt-2 text-sm text-rose-600">プリセット作成に失敗しました。</p>
+        )}
+        {createInspectionDashboardMutation.isSuccess && (
+          <p className="mt-2 text-sm text-emerald-700">
+            「{MACHINE_DAILY_INSPECTION_DASHBOARD_NAME}」を作成/選択しました。
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

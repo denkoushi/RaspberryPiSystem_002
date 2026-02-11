@@ -7,6 +7,7 @@ import { EmployeeCsvImporter } from './importers/employee.js';
 import { ItemCsvImporter } from './importers/item.js';
 import { MeasuringInstrumentCsvImporter } from './importers/measuring-instrument.js';
 import { RiggingGearCsvImporter } from './importers/rigging-gear.js';
+import { MachineCsvImporter } from './importers/machine.js';
 
 /**
  * CSVインポータを初期化する
@@ -19,5 +20,6 @@ export function initializeCsvImporters(): void {
   registry.register(new ItemCsvImporter());
   registry.register(new MeasuringInstrumentCsvImporter());
   registry.register(new RiggingGearCsvImporter());
+  registry.register(new MachineCsvImporter());
 }
 

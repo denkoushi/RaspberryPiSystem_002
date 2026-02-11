@@ -55,6 +55,17 @@ const DEFAULT_COLUMN_DEFINITIONS: Record<CsvImportConfigType, CsvImportColumnDef
     { internalName: 'status', displayName: '状態', csvHeaderCandidates: ['status', '状態'], dataType: 'string', order: 10, required: false },
     { internalName: 'notes', displayName: '備考', csvHeaderCandidates: ['notes', '備考'], dataType: 'string', order: 11, required: false },
     { internalName: 'rfidTagUid', displayName: 'RFIDタグUID', csvHeaderCandidates: ['rfidTagUid', 'RFIDタグUID'], dataType: 'string', order: 12, required: false }
+  ],
+  machines: [
+    { internalName: 'equipmentManagementNumber', displayName: '設備管理番号', csvHeaderCandidates: ['equipmentManagementNumber', '設備管理番号'], dataType: 'string', order: 0 },
+    { internalName: 'name', displayName: '加工機名称', csvHeaderCandidates: ['name', '加工機_名称'], dataType: 'string', order: 1 },
+    { internalName: 'shortName', displayName: '加工機略称', csvHeaderCandidates: ['shortName', '加工機_略称'], dataType: 'string', order: 2, required: false },
+    { internalName: 'classification', displayName: '加工機分類', csvHeaderCandidates: ['classification', '加工機分類'], dataType: 'string', order: 3, required: false },
+    { internalName: 'operatingStatus', displayName: '稼働状態', csvHeaderCandidates: ['operatingStatus', '稼働状態'], dataType: 'string', order: 4, required: false },
+    { internalName: 'ncManual', displayName: 'NC/Manual', csvHeaderCandidates: ['ncManual', 'NC_Manual'], dataType: 'string', order: 5, required: false },
+    { internalName: 'maker', displayName: 'メーカー', csvHeaderCandidates: ['maker'], dataType: 'string', order: 6, required: false },
+    { internalName: 'processClassification', displayName: '工程分類', csvHeaderCandidates: ['processClassification', '工程分類'], dataType: 'string', order: 7, required: false },
+    { internalName: 'coolant', displayName: 'クーラント', csvHeaderCandidates: ['coolant', 'クーラント'], dataType: 'string', order: 8, required: false },
   ]
 };
 
@@ -189,6 +200,7 @@ export function CsvImportPage() {
                   <option value="items">アイテム</option>
                   <option value="measuringInstruments">計測機器</option>
                   <option value="riggingGears">吊具</option>
+                  <option value="machines">加工機</option>
                 </select>
               </div>
             )}

@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TRIGGER_PATH="${1:-}"
+
+REPO_ROOT="/opt/RaspberryPiSystem_002"
+ANSIBLE_DIR="${REPO_ROOT}/infrastructure/ansible"
+INVENTORY="${ANSIBLE_DIR}/inventory.yml"
+PLAYBOOK="${ANSIBLE_DIR}/playbooks/power-control.yml"
+LOG_DIR="${REPO_ROOT}/logs/power-actions"
+QUEUE_DIR="${REPO_ROOT}/power-actions"
+PROCESSED_DIR="${REPO_ROOT}/power-actions/processed"
+FAILED_DIR="${REPO_ROOT}/power-actions/failed"
+
+mkdir -p "${LOG_DIR}" "${PROCESSED_DIR}" "${FAILED_DIR}"
+
+if [[ -z "${TRIGGER_PATH}" ]]; then
+  TRIGGER_PATH="${QUEUE_DIR}"
+fi
+
+# systemd経由で実行される場合、カレントディレクトリが不定になり得る。
+# ansible.cfgの相対パス設定（例: vault_password_file=.vault-pass）を安定させるため、
+# Ansibleディレクトリへ移動してから実行する。
+cd "${ANSIBLE_DIR}"
+
+# ディレクトリが渡された場合、ディレクトリ内のすべてのJSONファイルを処理
+# 処理済み/失敗フォルダ内のファイルは除外
+if [[ -d "${TRIGGER_PATH}" ]]; then
+  # findコマンドでファイルが見つからない場合は終了
+  if ! find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null | grep -qz .; then
+    exit 0
+  fi
+  QUEUE_FILES=()
+  while IFS= read -r -d '' file; do
+    QUEUE_FILES+=("${file}")
+  done < <(find "${QUEUE_DIR}" -maxdepth 1 -name "*.json" -type f -print0 2>/dev/null || true)
+else
+  # ファイルが渡された場合（後方互換性のため）
+  if [[ -f "${TRIGGER_PATH}" ]]; then
+    QUEUE_FILES=("${TRIGGER_PATH}")
+  else
+    exit 0
+  fi
+fi
+
+# 各ファイルを処理
+for QUEUE_FILE in "${QUEUE_FILES[@]}"; do
+  # 処理済み/失敗フォルダ内のファイルはスキップ
+  if [[ "${QUEUE_FILE}" == "${PROCESSED_DIR}"/* ]] || [[ "${QUEUE_FILE}" == "${FAILED_DIR}"/* ]]; then
+    continue
+  fi
+
+  read_action_and_key() {
+    python3 - <<'PY' "${QUEUE_FILE}"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+action = data.get("action")
+client_key = data.get("clientKey")
+if action not in ("reboot", "poweroff") or not client_key:
+    raise SystemExit(1)
+print(action)
+print(client_key)
+PY
+  }
+
+  if ! mapfile -t parsed < <(read_action_and_key); then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
+
+  ACTION="${parsed[0]}"
+  CLIENT_KEY="${parsed[1]}"
+
+  if ! command -v ansible-inventory >/dev/null 2>&1; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
+
+  # ansible-inventoryの出力を一時ファイルに保存してから読み込む（パイプの問題を回避）
+  TMP_INV=$(mktemp)
+  ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
+    ansible-inventory -i "${INVENTORY}" --list > "${TMP_INV}" 2>&1 || {
+    rm -f "${TMP_INV}"
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  }
+
+  HOST=$(
+    python3 - <<'PY' "${CLIENT_KEY}" "${TMP_INV}"
+import json
+import sys
+import re
+
+client_key = sys.argv[1]
+inv_file = sys.argv[2]
+
+def extract_default_value(template_str):
+    """Jinja2テンプレート文字列からdefault()の値を抽出"""
+    if not isinstance(template_str, str):
+        return None
+    # 例: "vault_xxx | default('value')" の default 値を抽出
+    match = re.search(r"default\(['\"]([^'\"]+)['\"]\)", template_str)
+    if match:
+        return match.group(1)
+    # テンプレートでない場合はそのまま返す
+    if not template_str.startswith('{' * 2):
+        return template_str
+    return None
+
+try:
+    with open(inv_file, 'r') as f:
+        data = json.load(f)
+    hostvars = data.get("_meta", {}).get("hostvars", {})
+    for host, vars in hostvars.items():
+        status_key = vars.get("status_agent_client_key")
+        nfc_secret = vars.get("nfc_agent_client_secret")
+        
+        # テンプレート文字列からデフォルト値を抽出
+        status_key_resolved = extract_default_value(status_key) if status_key else None
+        nfc_secret_resolved = extract_default_value(nfc_secret) if nfc_secret else None
+        
+        # 実際の値またはデフォルト値と比較
+        if (status_key_resolved == client_key or nfc_secret_resolved == client_key or
+            status_key == client_key or nfc_secret == client_key):
+            print(host)
+            raise SystemExit(0)
+    raise SystemExit(1)
+except Exception as e:
+    # デバッグ用（必要に応じてコメントアウト）
+    # print(f"Error: {e}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  )
+  rm -f "${TMP_INV}"
+
+  if [[ -z "${HOST}" ]]; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
+
+  LOG_FILE="${LOG_DIR}/$(basename "${QUEUE_FILE}").log"
+
+  set +e
+  ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
+  ansible-playbook "${PLAYBOOK}" -i "${INVENTORY}" --limit "${HOST}" -e "power_action=${ACTION}" \
+    >> "${LOG_FILE}" 2>&1
+  rc=$?
+  set -e
+
+  if [[ $rc -ne 0 ]]; then
+    mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
+    continue
+  fi
+
+  mv "${QUEUE_FILE}" "${PROCESSED_DIR}/$(basename "${QUEUE_FILE}")" || true
+done

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-06
+last-verified: 2026-02-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 15件  
+**件数**: 17件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -1140,6 +1140,196 @@ const textX = x + textAreaX;
 - [KB-228](./signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了・動作確認完了**（2026-02-06）
+
+---
+
+### [KB-232] サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト）
+
+**実装日時**: 2026-02-06
+
+**Context**:
+- サイネージの生産スケジュール進捗表示で、未完部品名の表示が制御されておらず、右端で切れたり、10件以上あるのに3つしか表示されなかったり、表示順序が一貫していなかった
+- データソース側とレンダラー側の責務が混在しており、表示ロジックが散在していた
+
+**Symptoms**:
+- 未完部品名が右端で切れる（テキストオーバーフロー）
+- 10件以上あるのに3つしか表示されない（表示件数制限が不適切）
+- 表示順序が一貫していない（ソートされていない）
+- レイアウトが動的でなく、固定行数で表示される
+
+**Root cause**:
+- データソース側で未完部品名をカンマ区切り文字列として結合しており、レンダラー側で表示制御が困難だった
+- レンダラー側で`maxLinesParts`が固定値（0-3行）で、動的な行数計算ができていなかった
+- 未完部品名の正規化（trim、重複除去、ソート）が行われていなかった
+- テキストフィッティングロジックがレンダラー内に散在していた
+
+**Investigation**:
+- **CONFIRMED**: データソース側で未完部品名を構造化データとして提供することで、レンダラー側の表示制御が容易になる
+- **CONFIRMED**: 未完部品名を部品名昇順でソートすることで、表示順序が一貫する
+- **CONFIRMED**: レンダラー側で利用可能な高さに基づいて動的に行数を計算することで、表示件数を最適化できる
+- **CONFIRMED**: テキストフィッティングロジックを共通ユーティリティに分離することで、再利用性が向上する
+
+**Fix**:
+- ✅ **データソース側の改善** (`apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`):
+  - `normalizeParts`関数を追加: trim、重複除去、部品名昇順ソート（日本語ロケール）
+  - `MAX_INCOMPLETE_PARTS_STORED = 50`定数を追加（保存上限）
+  - `metadata`に`incompletePartsBySeiban`（上位N件、ソート済み）と`incompletePartsTotalBySeiban`（総件数）を追加
+  - `rows`の`incompleteParts`は後方互換性のため保持（スライス版）
+- ✅ **レンダラー側の改善** (`apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`):
+  - `ProgressListMetadata`型を追加して`metadata`を適切に読み取る
+  - `parsePartsFromText`関数を追加（後方互換性のため）
+  - 設定パラメータ追加: `maxIncompletePartsPerCard`（デフォルト: 6）、`showIncompleteParts`（デフォルト: true）、`incompleteLineStyle`（`bullets` | `comma`、デフォルト: `bullets`）
+  - 動的行数計算: 利用可能な高さに基づいて`maxItemLines`を計算
+  - 表示ロジック改善: 「未完部品: なし」/「未完部品: +残りM件」/「未完部品: 部品名リスト +残りM件」の3パターンに対応
+  - `insetRect`を使用して部品表示領域を定義
+  - `truncateToFit`で全テキスト行のオーバーフローを防止
+- ✅ **共通ユーティリティの追加**:
+  - `apps/api/src/services/visualization/renderers/_layout/rect.ts`: `Rect`型と`insetRect`関数
+  - `apps/api/src/services/visualization/renderers/_text/text-fit.ts`: `estimateMaxCharsPerLine`と`truncateToFit`関数
+
+**実装の詳細**:
+- **データソース側の正規化**:
+  ```typescript
+  function normalizeParts(parts: string[]): string[] {
+    return [...new Set(parts.map(p => p.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'ja'));
+  }
+  ```
+- **レンダラー側の動的行数計算**:
+  ```typescript
+  const availableHeight = partsRect.height - titleHeight - remainingHeight;
+  const maxItemLines = Math.max(0, Math.floor(availableHeight / lineHeight));
+  ```
+- **表示ロジック**:
+  - 完了または未完部品なし: 「未完部品: なし」
+  - `maxItemLines === 0`かつ未完部品あり: 「未完部品: +残りM件」
+  - それ以外: 「未完部品:」+ 部品名リスト（`maxIncompletePartsPerCard`または`itemLineLimit`まで）+ 残り件数（`remainingCount > 0`の場合）
+
+**実機検証結果（2026-02-06）**:
+- ✅ **表示制御**: 未完部品名が適切に表示され、右端で切れない
+- ✅ **表示件数**: `maxIncompletePartsPerCard`設定に従って表示件数が制御される
+- ✅ **表示順序**: 部品名が昇順でソートされて表示される
+- ✅ **動的レイアウト**: 利用可能な高さに基づいて行数が動的に計算される
+- ✅ **後方互換性**: 既存の`INCOMPLETE_PARTS`文字列も`parsePartsFromText`で解析可能
+
+**学んだこと**:
+- データソース側とレンダラー側の責務を分離することで、表示ロジックの柔軟性が向上する
+- 構造化データ（配列）を提供することで、レンダラー側の表示制御が容易になる
+- 共通ユーティリティ（`_layout/rect.ts`, `_text/text-fit.ts`）を分離することで、再利用性が向上する
+- 後方互換性を維持しながら、新しい機能を追加できる（`metadata`と`rows.incompleteParts`の併用）
+
+**関連KB**:
+- [KB-231](./signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応): 生産スケジュールサイネージアイテム高さの最適化
+- [KB-228](./signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
+
+**関連ファイル**:
+- `apps/api/src/services/visualization/data-sources/production-schedule/production-schedule-data-source.ts`
+- `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`
+- `apps/api/src/services/visualization/renderers/_layout/rect.ts`
+- `apps/api/src/services/visualization/renderers/_text/text-fit.ts`
+- `docs/guides/production-schedule-signage.md`
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-06）
+
+---
+
+### [KB-236] Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ
+
+**発生日**: 2026-02-07
+
+**Context**:
+- Pi3の`signage-lite.service`が起動時に`xset: unable to open display ":0"`エラーで失敗し、自動再起動を繰り返す問題が発生
+- 最終的には正常起動するが、起動時に10-30秒の遅延が発生
+- デプロイ時にサービス再起動が失敗し、rollbackが実行された
+
+**Symptoms**:
+- `journalctl -u signage-lite.service`で`xset: unable to open display ":0"`エラーが確認される
+- サービスが`FAILED`状態になり、`RestartSec=10`により10秒後に自動再起動
+- デプロイ時のログで`systemctl show signage-lite.service --property=Result --value`が`exit-code`を返す
+- デプロイは失敗（`failed=1`）となり、rollbackが実行される
+
+**Investigation**:
+- **H1: `xset`コマンドが失敗している**
+  - 検証: `signage-display.sh`の18-20行目で`xset s off`, `xset -dpms`, `xset s noblank`を実行
+  - 結果: **CONFIRMED** - `set -euo pipefail`により、`xset`が失敗するとスクリプト全体が即座に終了
+- **H2: `ExecStartPre`でXサーバーの準備を待機しているが、タイミングによっては`xset`が失敗する**
+  - 検証: `signage-lite.service`の`ExecStartPre`で30秒間Xサーバーの準備を待機
+  - 結果: **CONFIRMED** - タイミングによっては`xset`が失敗することがある
+- **H3: デプロイ時のサービス再起動失敗は一時的なもの**
+  - 検証: デプロイ後、サービスが正常に起動していることを確認（`active (running)`, `Result=success`）
+  - 結果: **CONFIRMED** - デプロイ時の再起動失敗は一時的なもので、修正後のスクリプトはデプロイ済み
+
+**Root cause**:
+- `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了
+- `ExecStartPre`でXサーバーの準備を待機しているが、タイミングによっては`xset`が失敗することがある
+- デプロイ時のサービス再起動は、修正前のスクリプトが実行された可能性がある
+
+**Fix**:
+- `infrastructure/ansible/roles/signage/templates/signage-display.sh.j2`の18-20行目の`xset`コマンドに`|| true`を追加してエラーで終了しないように修正
+- `infrastructure/ansible/templates/signage-display.sh.j2`も同様に修正（重複ファイルの可能性）
+- エラーが発生した場合は警告ログを出力するが、処理は続行するように変更
+
+**修正前**:
+```bash
+# 画面の自動オフを無効化
+xset s off
+xset -dpms
+xset s noblank
+```
+
+**修正後**:
+```bash
+# 画面の自動オフを無効化（エラーが発生しても処理を続行）
+xset s off || echo "$(date): WARNING: xset s off failed, continuing..."
+xset -dpms || echo "$(date): WARNING: xset -dpms failed (DPMS extension may not be available), continuing..."
+xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
+```
+
+**Validation**:
+- ✅ CI成功（Run ID: `21780516145`, 12分0秒）
+- ✅ 修正後のスクリプトがデプロイ済み（Pi3上で確認）
+- ✅ サービスは現在正常動作中（`active (running)`, `Result=success`）
+- ✅ **デプロイ時のサービス再起動成功を確認**（2026-02-08, runId: `20260208-082138-11782`）
+  - Pi3標準手順（preflightチェック）に従ってデプロイを実行
+  - preflightチェックが正しく実行された（サービス停止、lightdm停止、メモリチェック）
+  - サービス再起動が正常に完了（`Result=success`, `ActiveState=active`, `SubState=running`）
+  - xsetエラーが発生しても警告ログが出力され、サービスが継続（`WARNING: xset s off failed, continuing...`等）
+  - `feh`プロセスが正常に実行中
+
+**Prevention**:
+- `xset`コマンドは必須ではないため、エラーで終了しないようにする（`|| true`）
+- `ExecStartPre`でのXサーバー待機処理は維持（タイミング問題の緩和）
+- 既存の`pkill`コマンド（8-9行目）も同様に`|| true`でエラーハンドリングされているため、一貫性がある
+
+**学んだこと**:
+- `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする
+- デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある
+- Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/signage/templates/signage-display.sh.j2`
+- `infrastructure/ansible/templates/signage-display.sh.j2`
+- `infrastructure/ansible/templates/signage-lite.service.j2`
+- `docs/guides/deployment.md`
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-08）
+
+**実機検証結果（2026-02-08）**:
+- **デプロイ実行**: `--limit "server:signage"`でPi3デプロイを実行（runId: `20260208-082138-11782`）
+- **preflightチェック**: 標準手順に従って実行された
+  - サービス停止・無効化: ✅ 実行済み（signage-lite.service, signage-lite-update.timer等）
+  - サービスmask: ✅ 実行済み（自動再起動防止）
+  - lightdm停止: ✅ 実行済み（メモリ確保）
+  - メモリチェック: ✅ 実行済み（120MB以上）
+- **デプロイ結果**: `ok=111 changed=22 unreachable=0 failed=0`（成功）
+- **サービス再起動**: ✅ 正常に完了
+  - `Result=success` - サービスが正常に起動
+  - `ActiveState=active`, `SubState=running` - サービスが実行中
+  - `feh`プロセスが実行中（PID: 14441）
+- **xsetエラーハンドリング**: ✅ 機能確認
+  - xsetエラーが発生しても警告ログが出力され、サービスが継続
+  - ログ例: `WARNING: xset s off failed, continuing...`
+  - 修正が適用済み（`|| echo`によるエラーハンドリング）
 
 ---
 

@@ -188,22 +188,10 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     }
   });
 
-  it('should reject photos that are too dark', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/tools/loans/photo-borrow',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-key': clientApiKey,
-      },
-      payload: buildPayload({
-        photoData: darkPhotoBase64,
-      }),
-    });
-
-    expect(response.statusCode).toBe(422);
-    const body = response.json();
-    expect(body.message).toContain('暗');
+  // 閾値チェックを削除したため、暗い画像でも受け入れるようになった
+  // このテストは削除（過去の実装では暗い画像を拒否していたが、ストリーム保持による負荷問題のため削除）
+  it.skip('should reject photos that are too dark', async () => {
+    // このテストはスキップ（閾値チェックを削除したため、暗い画像でも受け入れる）
   });
 });
 

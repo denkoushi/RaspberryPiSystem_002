@@ -48,6 +48,31 @@ export async function setAuthToken(page: Page, token: string, user?: { id: strin
 }
 
 /**
+ * ボタン/リンクを安全にクリック（scrollIntoViewIfNeeded + click）
+ */
+export async function clickByRoleSafe(
+  page: Page,
+  role: 'button' | 'link',
+  name: string | RegExp,
+  options?: { timeout?: number }
+): Promise<void> {
+  const locator = page.getByRole(role, { name });
+  await locator.waitFor({ state: 'visible', timeout: options?.timeout });
+  await locator.scrollIntoViewIfNeeded();
+  await locator.click();
+}
+
+/**
+ * Escapeでダイアログを閉じる（アニメーション待機付き）
+ */
+export async function closeDialogWithEscape(page: Page, waitMs = 300): Promise<void> {
+  await page.keyboard.press('Escape');
+  if (waitMs > 0) {
+    await page.waitForTimeout(waitMs);
+  }
+}
+
+/**
  * テスト用の従業員を作成（API経由）
  */
 export async function createTestEmployee(

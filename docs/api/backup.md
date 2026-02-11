@@ -1,6 +1,6 @@
 # バックアップAPI
 
-最終更新: 2026-01-06
+最終更新: 2026-02-08（設定履歴/テンプレ/ドライラン/事前バックアップ/自動検証を反映）
 
 ## 概要
 
@@ -136,6 +136,7 @@
 {
   "backupPath": "/backups/database/2025-12-29T00-00-01-695Z/borrow_return.sql.gz",
   "destination": "/tmp/restored.sql.gz",
+  "preBackup": true,
   "storage": {
     "provider": "local",
     "options": {}
@@ -147,6 +148,7 @@
 
 - `backupPath` (必須): バックアップファイルのパス
 - `destination` (オプション): リストア先のパス（未指定時は元の場所に復元）
+- `preBackup` (オプション): 事前バックアップを実行するか（デフォルト: `database` は `true`）
 - `storage` (オプション): ストレージプロバイダー設定（未指定時はローカルストレージ）
 
 **レスポンス**
@@ -179,6 +181,7 @@ Dropboxからバックアップをダウンロードしてリストアします�
 {
   "backupPath": "/backups/csv/2025-12-29T00-00-01-695Z/employees.csv",
   "targetKind": "csv",
+  "preBackup": false,
   "verifyIntegrity": true,
   "expectedSize": 12345,
   "expectedHash": "sha256:abc123..."
@@ -189,6 +192,7 @@ Dropboxからバックアップをダウンロードしてリストアします�
 
 - `backupPath` (必須): Dropbox上のバックアップファイルのパス（`basePath`を含む完全パスまたは相対パス）
 - `targetKind` (オプション): バックアップ対象の種類（`database`、`csv`、`image`）。未指定時はパスから推測
+- `preBackup` (オプション): 事前バックアップを実行するか（デフォルト: `database` は `true`）
 - `verifyIntegrity` (オプション): 整合性検証を実行するか（デフォルト: `true`）
 - `expectedSize` (オプション): 期待されるファイルサイズ（バイト）
 - `expectedHash` (オプション): 期待されるハッシュ値（SHA256、`sha256:`プレフィックス付き）
@@ -218,6 +222,23 @@ Dropboxからバックアップをダウンロードしてリストアします�
 2. 整合性検証（`verifyIntegrity: true`の場合）
 3. バックアップターゲットの`restore`メソッドを呼び出してリストア
 4. リストア履歴に記録
+
+---
+
+### リストア ドライラン（非破壊）
+
+#### POST /api/backup/restore/dry-run
+
+リストアを**実行せず**、対象の存在/サイズ等を返します（安全確認用）。
+
+**リクエスト例**
+
+```json
+{
+  "backupPath": "/backups/database/2026-02-08T00-00-00-000Z/borrow_return.sql.gz",
+  "targetKind": "database"
+}
+```
 
 ---
 
@@ -396,6 +417,12 @@ DELETE /api/backup/%2Fbackups%2Fdatabase%2F2025-12-29T00-00-01-695Z%2Fborrow_ret
 
 - 環境変数（`${DROPBOX_APP_KEY}`など）は解決済みの値が返されます
 - 機密情報（`accessToken`、`refreshToken`、`appSecret`）が含まれるため、適切に管理してください
+
+---
+
+#### GET /api/backup/config/health
+
+設定の衝突/欠落などの健全性チェック結果を返します（管理コンソールの健全性表示で使用）。
 
 ---
 
@@ -584,6 +611,30 @@ DELETE /api/backup/%2Fbackups%2Fdatabase%2F2025-12-29T00-00-01-695Z%2Fborrow_ret
 - `404` - 指定されたインデックスの対象が見つからない
 - `401` - 認証エラー
 - `403` - 権限エラー
+
+---
+
+#### GET /api/backup/config/history
+
+`backup.json` の設定変更履歴（秘匿情報はredact済み）を取得します。
+
+---
+
+#### GET /api/backup/config/history/:id
+
+設定変更履歴の詳細を取得します。
+
+---
+
+#### GET /api/backup/config/templates
+
+バックアップ対象テンプレート一覧を返します（UIの「テンプレート追加」で使用）。
+
+---
+
+#### POST /api/backup/config/targets/from-template
+
+テンプレートからバックアップ対象を追加します（必要なら`source`等を上書き）。
 
 ---
 
@@ -943,8 +994,8 @@ Dropboxストレージ。OAuth 2.0認証が必要です。
 対象ごとの設定が優先され、未指定時は全体設定（`config.retention`）を使用します。
 
 **注意（現行実装の制約）**:
-- 自動削除（保持期間のクリーンアップ）は `retention.days` が設定されている場合にのみ実行されます。
-- `maxBackups`のみで運用したい場合でも、暫定的に`days`を併記してください（改善計画で見直します）。
+- 自動削除（保持期間のクリーンアップ）は `retention.days` または `retention.maxBackups` のいずれかが設定されている場合に実行されます。
+- `days` を未設定で `maxBackups` のみを指定した場合、**件数ベースの削除のみ**が行われます（期間ベースの削除は行われません）。
 
 ---
 

@@ -86,3 +86,63 @@
     enabled: true
     state: started
 
+- name: Deploy backup verification monthly service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-verify-monthly.service.j2"
+    dest: /etc/systemd/system/backup-verify-monthly.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    project_root: "{{ repo_path }}"
+  register: backup_verify_monthly_service_unit
+  when: backup_verify_enabled | default(true)
+
+- name: Deploy backup verification monthly timer
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-verify-monthly.timer.j2"
+    dest: /etc/systemd/system/backup-verify-monthly.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: backup_verify_monthly_timer_unit
+  when: backup_verify_enabled | default(true)
+
+- name: Deploy backup verification quarterly service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-verify-quarterly.service.j2"
+    dest: /etc/systemd/system/backup-verify-quarterly.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    project_root: "{{ repo_path }}"
+  register: backup_verify_quarterly_service_unit
+  when: backup_verify_enabled | default(true)
+
+- name: Deploy backup verification quarterly timer
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-verify-quarterly.timer.j2"
+    dest: /etc/systemd/system/backup-verify-quarterly.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: backup_verify_quarterly_timer_unit
+  when: backup_verify_enabled | default(true)
+
+- name: Reload systemd daemon if backup verification units changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - backup_verify_enabled | default(true)
+    - (backup_verify_monthly_service_unit is changed) or (backup_verify_monthly_timer_unit is changed) or (backup_verify_quarterly_service_unit is changed) or (backup_verify_quarterly_timer_unit is changed)
+
+- name: Enable and start backup verification timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - backup-verify-monthly.timer
+    - backup-verify-quarterly.timer
+  when: backup_verify_enabled | default(true)

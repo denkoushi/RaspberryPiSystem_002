@@ -93,6 +93,7 @@ export class CsvImportScheduler {
     items?: { processed: number; created: number; updated: number };
     measuringInstruments?: { processed: number; created: number; updated: number };
     riggingGears?: { processed: number; created: number; updated: number };
+    machines?: { processed: number; created: number; updated: number };
     csvDashboards?: Record<
       string,
       { rowsProcessed: number; rowsAdded: number; rowsSkipped: number; debug?: unknown }

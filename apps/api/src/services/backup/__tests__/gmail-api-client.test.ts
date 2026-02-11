@@ -7,14 +7,22 @@ const mockGmailMessages = {
   list: vi.fn(),
   get: vi.fn(),
   modify: vi.fn(),
+  trash: vi.fn(),
+  delete: vi.fn(),
   attachments: {
     get: vi.fn()
   }
 };
 
+const mockGmailLabels = {
+  list: vi.fn(),
+  create: vi.fn()
+};
+
 const mockGmail = {
   users: {
-    messages: mockGmailMessages
+    messages: mockGmailMessages,
+    labels: mockGmailLabels
   }
 };
 
@@ -23,7 +31,8 @@ vi.mock('googleapis', () => {
     google: {
       gmail: vi.fn(() => ({
         users: {
-          messages: mockGmailMessages
+          messages: mockGmailMessages,
+          labels: mockGmailLabels
         }
       }))
     }
@@ -344,6 +353,99 @@ describe('GmailApiClient', () => {
       expect(result).not.toBeNull();
       expect(result?.filename).toBe('attachment');
       expect(result?.buffer.toString()).toBe('test data');
+    });
+  });
+
+  describe('trashMessage', () => {
+    it('should add processed label then trash message', async () => {
+      const messageId = 'msg-trash-1';
+      mockGmailLabels.list.mockResolvedValueOnce({
+        data: {
+          labels: [{ id: 'label-processed', name: 'rps_processed' }]
+        }
+      });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} });
+      mockGmailMessages.trash.mockResolvedValueOnce({ data: {} });
+
+      await gmailClient.trashMessage(messageId);
+
+      expect(mockGmailMessages.modify).toHaveBeenCalledWith({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          addLabelIds: ['label-processed']
+        }
+      });
+      expect(mockGmailMessages.trash).toHaveBeenCalledWith({
+        userId: 'me',
+        id: messageId
+      });
+      const modifyOrder = mockGmailMessages.modify.mock.invocationCallOrder[0];
+      const trashOrder = mockGmailMessages.trash.mock.invocationCallOrder[0];
+      expect(modifyOrder).toBeLessThan(trashOrder);
+    });
+
+    it('should create processed label when missing', async () => {
+      const messageId = 'msg-trash-2';
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [] } });
+      mockGmailLabels.create.mockResolvedValueOnce({
+        data: { id: 'label-created' }
+      });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} });
+      mockGmailMessages.trash.mockResolvedValueOnce({ data: {} });
+
+      await gmailClient.trashMessage(messageId);
+
+      expect(mockGmailLabels.create).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: {
+          name: 'rps_processed',
+          labelListVisibility: 'labelShow',
+          messageListVisibility: 'show'
+        }
+      });
+      expect(mockGmailMessages.modify).toHaveBeenCalledWith({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          addLabelIds: ['label-created']
+        }
+      });
+    });
+  });
+
+  describe('cleanupProcessedTrash', () => {
+    it('should search by query and delete matched messages', async () => {
+      mockGmailMessages.list.mockResolvedValueOnce({
+        data: {
+          messages: [{ id: 'm1' }, { id: 'm2' }]
+        }
+      });
+      mockGmailMessages.delete.mockResolvedValueOnce({ data: {} });
+      mockGmailMessages.delete.mockRejectedValueOnce(new Error('delete failed'));
+
+      const result = await gmailClient.cleanupProcessedTrash({
+        processedLabelName: 'rps_processed'
+      });
+
+      expect(mockGmailMessages.list).toHaveBeenCalledWith({
+        userId: 'me',
+        q: 'in:trash label:rps_processed',
+        maxResults: 100,
+        pageToken: undefined
+      });
+      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(1, {
+        userId: 'me',
+        id: 'm1'
+      });
+      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(2, {
+        userId: 'me',
+        id: 'm2'
+      });
+      expect(result.totalMatched).toBe(2);
+      expect(result.deletedCount).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.query).toBe('in:trash label:rps_processed');
     });
   });
 });
