@@ -46,7 +46,7 @@ function parseJson(input: string, label: string): JsonParseResult {
 
 export function VisualizationDashboardsPage() {
   const dashboardsQuery = useVisualizationDashboards();
-  const csvDashboardsQuery = useCsvDashboards({ enabled: true });
+  const csvDashboardsQuery = useCsvDashboards(); // すべてのCSVダッシュボードを取得（有効/無効問わず）
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -352,6 +352,7 @@ export function VisualizationDashboardsPage() {
                       {csvDashboards.map((dashboard) => (
                         <option key={dashboard.id} value={dashboard.id}>
                           {dashboard.name}
+                          {!dashboard.enabled && ' (無効)'}
                         </option>
                       ))}
                     </select>
