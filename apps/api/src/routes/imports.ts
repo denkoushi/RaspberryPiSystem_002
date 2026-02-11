@@ -1416,3 +1416,6 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     return { history };
   });
 }
+
+// 後方互換性のため、processCsvImportとprocessCsvImportFromTargetsを再エクスポート
+export { processCsvImport, processCsvImportFromTargets } from '../services/imports/csv-import-process.service.js';
