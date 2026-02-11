@@ -115,6 +115,9 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/inspection-records" className={linkClass}>
               点検記録
             </NavLink>
+            <NavLink to="/admin/tools/machines" className={linkClass}>
+              加工機
+            </NavLink>
             <NavLink to="/admin/tools/machines-uninspected" className={linkClass}>
               未点検（加工機）
             </NavLink>

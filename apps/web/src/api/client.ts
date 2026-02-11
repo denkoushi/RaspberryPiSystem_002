@@ -235,6 +235,44 @@ export async function getUninspectedMachines(params: { csvDashboardId: string; d
   return data;
 }
 
+export interface CreateMachineInput {
+  equipmentManagementNumber: string;
+  name: string;
+  shortName?: string;
+  classification?: string;
+  operatingStatus?: string;
+  ncManual?: string;
+  maker?: string;
+  processClassification?: string;
+  coolant?: string;
+}
+
+export interface UpdateMachineInput {
+  name?: string;
+  shortName?: string;
+  classification?: string;
+  operatingStatus?: string;
+  ncManual?: string;
+  maker?: string;
+  processClassification?: string;
+  coolant?: string;
+}
+
+export async function createMachine(input: CreateMachineInput) {
+  const { data } = await api.post<{ machine: Machine }>('/tools/machines', input);
+  return data.machine;
+}
+
+export async function updateMachine(id: string, input: UpdateMachineInput) {
+  const { data } = await api.put<{ machine: Machine }>(`/tools/machines/${id}`, input);
+  return data.machine;
+}
+
+export async function deleteMachine(id: string) {
+  const { data } = await api.delete<{ success: boolean }>(`/tools/machines/${id}`);
+  return data.success;
+}
+
 // キオスク専用の従業員リスト取得（x-client-key認証）
 export async function getKioskEmployees(clientKey?: string) {
   const { data } = await api.get<{ employees: Array<{ id: string; displayName: string; department: string | null }> }>('/kiosk/employees', {

@@ -34,6 +34,7 @@ import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
 import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
 import { InstrumentTagsPage } from './pages/tools/InstrumentTagsPage';
 import { ItemsPage } from './pages/tools/ItemsPage';
+import { MachinesPage } from './pages/tools/MachinesPage';
 import { MachinesUninspectedPage } from './pages/tools/MachinesUninspectedPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
 import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
@@ -81,6 +82,7 @@ function App() {
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
           <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+          <Route path="machines" element={<MachinesPage />} />
           <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
           <Route path="history" element={<HistoryPage />} />
         </Route>
@@ -114,6 +116,7 @@ function App() {
         <Route path="instrument-tags" element={<InstrumentTagsPage />} />
         <Route path="inspection-records" element={<InspectionRecordsPage />} />
         <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+        <Route path="machines" element={<MachinesPage />} />
         <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
         <Route path="rigging-gears" element={<RiggingGearsPage />} />
         <Route path="history" element={<HistoryPage />} />

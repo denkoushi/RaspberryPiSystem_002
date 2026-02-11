@@ -52,6 +52,29 @@ function extractEquipmentNumber(rowData: unknown): string | null {
   return null;
 }
 
+export interface CreateMachinePayload {
+  equipmentManagementNumber: string;
+  name: string;
+  shortName?: string;
+  classification?: string;
+  operatingStatus?: string;
+  ncManual?: string;
+  maker?: string;
+  processClassification?: string;
+  coolant?: string;
+}
+
+export interface UpdateMachinePayload {
+  name?: string;
+  shortName?: string;
+  classification?: string;
+  operatingStatus?: string;
+  ncManual?: string;
+  maker?: string;
+  processClassification?: string;
+  coolant?: string;
+}
+
 export class MachineService {
   async findAll(query: MachineQuery) {
     const where: Prisma.MachineWhereInput = {
@@ -73,6 +96,59 @@ export class MachineService {
       where,
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
     });
+  }
+
+  async create(payload: CreateMachinePayload) {
+    const existing = await prisma.machine.findUnique({
+      where: { equipmentManagementNumber: payload.equipmentManagementNumber },
+    });
+    if (existing) {
+      throw new ApiError(409, `設備管理番号 "${payload.equipmentManagementNumber}" は既に登録されています`);
+    }
+
+    return prisma.machine.create({
+      data: {
+        equipmentManagementNumber: payload.equipmentManagementNumber,
+        name: payload.name,
+        shortName: payload.shortName || null,
+        classification: payload.classification || null,
+        operatingStatus: payload.operatingStatus || null,
+        ncManual: payload.ncManual || null,
+        maker: payload.maker || null,
+        processClassification: payload.processClassification || null,
+        coolant: payload.coolant || null,
+      },
+    });
+  }
+
+  async update(id: string, payload: UpdateMachinePayload) {
+    const existing = await prisma.machine.findUnique({ where: { id } });
+    if (!existing) {
+      throw new ApiError(404, '加工機が見つかりません');
+    }
+
+    return prisma.machine.update({
+      where: { id },
+      data: {
+        name: payload.name ?? existing.name,
+        shortName: payload.shortName !== undefined ? payload.shortName || null : existing.shortName,
+        classification: payload.classification !== undefined ? payload.classification || null : existing.classification,
+        operatingStatus: payload.operatingStatus !== undefined ? payload.operatingStatus || null : existing.operatingStatus,
+        ncManual: payload.ncManual !== undefined ? payload.ncManual || null : existing.ncManual,
+        maker: payload.maker !== undefined ? payload.maker || null : existing.maker,
+        processClassification: payload.processClassification !== undefined ? payload.processClassification || null : existing.processClassification,
+        coolant: payload.coolant !== undefined ? payload.coolant || null : existing.coolant,
+      },
+    });
+  }
+
+  async delete(id: string) {
+    const existing = await prisma.machine.findUnique({ where: { id } });
+    if (!existing) {
+      throw new ApiError(404, '加工機が見つかりません');
+    }
+
+    await prisma.machine.delete({ where: { id } });
   }
 
   async findUninspected(params: UninspectedMachineQuery) {

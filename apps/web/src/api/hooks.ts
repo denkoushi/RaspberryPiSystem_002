@@ -46,24 +46,6 @@ import {
   type CsvImportStrategy
 } from './backup';
 import {
-  getKioskEmployees,
-  getKioskProductionSchedule,
-  getKioskProductionScheduleOrderUsage,
-  getKioskProductionScheduleResources,
-  getKioskProductionScheduleSearchState,
-  getKioskProductionScheduleSearchHistory,
-  getKioskProductionScheduleHistoryProgress,
-  getUninspectedMachines,
-  getMachines,
-  importMasterSingle,
-  setKioskProductionScheduleSearchState,
-  setKioskProductionScheduleSearchHistory,
-  updateKioskProductionScheduleOrder,
-  updateKioskProductionScheduleNote,
-  updateKioskProductionScheduleDueDate,
-  updateKioskProductionScheduleProcessing
-} from './client';
-import {
   borrowItem,
   cancelLoan,
   completeKioskProductionScheduleRow,
@@ -81,16 +63,37 @@ import {
   getDepartments,
   getEmployees,
   getItems,
+  getMachines,
+  getUninspectedMachines,
+  createMachine,
+  updateMachine,
+  deleteMachine,
+  type CreateMachineInput,
+  type UpdateMachineInput,
   getKioskConfig,
+  getKioskEmployees,
+  getKioskProductionSchedule,
+  getKioskProductionScheduleOrderUsage,
+  getKioskProductionScheduleResources,
+  getKioskProductionScheduleSearchState,
+  getKioskProductionScheduleSearchHistory,
+  getKioskProductionScheduleHistoryProgress,
   getKioskCallTargets,
   getSystemInfo,
   getTransactions,
   importMaster,
+  importMasterSingle,
   photoBorrow,
   returnLoan,
+  setKioskProductionScheduleSearchState,
+  setKioskProductionScheduleSearchHistory,
   updateClient,
   updateEmployee,
   updateItem,
+  updateKioskProductionScheduleOrder,
+  updateKioskProductionScheduleNote,
+  updateKioskProductionScheduleDueDate,
+  updateKioskProductionScheduleProcessing,
   getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
@@ -190,6 +193,23 @@ export function useUninspectedMachines(params?: { csvDashboardId?: string; date?
       }),
     enabled: (options?.enabled ?? true) && Boolean(params?.csvDashboardId),
   });
+}
+
+export function useMachineMutations() {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (payload: CreateMachineInput) => createMachine(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateMachineInput }) => updateMachine(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteMachine(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+  });
+  return { create, update, remove };
 }
 
 export function useKioskEmployees(clientKey?: string) {
