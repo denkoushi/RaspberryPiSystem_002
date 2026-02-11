@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { useVisualizationDashboard, useVisualizationDashboardMutations, useVisualizationDashboards } from '../../api/hooks';
+import { useVisualizationDashboard, useVisualizationDashboardMutations, useVisualizationDashboards, useCsvDashboards } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
@@ -46,6 +46,7 @@ function parseJson(input: string, label: string): JsonParseResult {
 
 export function VisualizationDashboardsPage() {
   const dashboardsQuery = useVisualizationDashboards();
+  const csvDashboardsQuery = useCsvDashboards({ enabled: true });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -53,6 +54,7 @@ export function VisualizationDashboardsPage() {
   const { create, update, remove } = useVisualizationDashboardMutations();
 
   const dashboards = dashboardsQuery.data ?? [];
+  const csvDashboards = csvDashboardsQuery.data ?? [];
   const selected = selectedDashboardQuery.data ?? null;
 
   const [name, setName] = useState('');
@@ -66,6 +68,42 @@ export function VisualizationDashboardsPage() {
 
   const isEditing = Boolean(selectedId) && !isCreating;
   const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
+
+  // 未点検加工機プリセット用のCSVダッシュボードID取得
+  const currentCsvDashboardId = useMemo(() => {
+    if (!isUninspectedPreset) return '';
+    try {
+      const parsed = JSON.parse(dataSourceConfig);
+      return typeof parsed?.csvDashboardId === 'string' ? parsed.csvDashboardId : '';
+    } catch {
+      return '';
+    }
+  }, [dataSourceConfig, isUninspectedPreset]);
+
+  // CSVダッシュボードID変更ハンドラー
+  const handleCsvDashboardIdChange = (csvDashboardId: string) => {
+    try {
+      const parsed = JSON.parse(dataSourceConfig);
+      const updated = {
+        ...parsed,
+        csvDashboardId: csvDashboardId || '',
+      };
+      setDataSourceConfig(JSON.stringify(updated, null, 2));
+    } catch {
+      // JSONパースエラーの場合は新規作成
+      setDataSourceConfig(
+        JSON.stringify(
+          {
+            csvDashboardId: csvDashboardId || '',
+            date: '',
+            maxRows: 30,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  };
 
   useEffect(() => {
     if (!isEditing || !selected) return;
@@ -301,9 +339,34 @@ export function VisualizationDashboardsPage() {
                   </p>
                 </div>
                 {isUninspectedPreset && (
-                  <p className="mt-2 text-xs text-slate-600">
-                    必須: <code>dataSourceConfig.csvDashboardId</code>（点検結果CSVダッシュボードID）
-                  </p>
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      CSVダッシュボード（点検結果）<span className="text-rose-600">*</span>
+                    </label>
+                    <select
+                      value={currentCsvDashboardId}
+                      onChange={(e) => handleCsvDashboardIdChange(e.target.value)}
+                      className="w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    >
+                      <option value="">選択してください</option>
+                      {csvDashboards.map((dashboard) => (
+                        <option key={dashboard.id} value={dashboard.id}>
+                          {dashboard.name}
+                        </option>
+                      ))}
+                    </select>
+                    {csvDashboardsQuery.isLoading && (
+                      <p className="text-xs text-slate-500">CSVダッシュボード一覧を読み込み中...</p>
+                    )}
+                    {csvDashboardsQuery.isError && (
+                      <p className="text-xs text-rose-600">CSVダッシュボード一覧の取得に失敗しました。</p>
+                    )}
+                    {!currentCsvDashboardId && (
+                      <p className="text-xs text-rose-600">
+                        CSVダッシュボードを選択してください（必須）
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 
