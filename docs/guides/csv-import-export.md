@@ -58,12 +58,22 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 
 CSVダッシュボードの列定義は、管理コンソール（`/admin/csv-dashboards`）で確認・編集できます。
 
-未点検加工機の抽出で使用する場合は、点検結果CSVの列定義に以下を揃えてください。
+未点検加工機（当日点検の有無）で使用する場合は、**点検結果CSVダッシュボード**の列定義に最低限以下を揃えてください。
 
 - `equipmentManagementNumber`（候補: `設備管理番号`）
-- `inspectedAt`（候補: `点検日時`）
+- `inspectionAt`（候補: `点検日時`, `点検日`, `inspectionAt` など）
 
-あわせて `dateColumnName` を `inspectedAt` に設定すると、当日差分（JST）で未点検判定ができます。
+推奨（サイネージ/管理画面での確認が楽）:
+
+- `machineName`（候補: `加工機名` など）
+- `inspector`
+- `inspectionItem`
+- `inspectionResult`
+- `registeredAt`
+
+あわせて `dateColumnName` を `inspectionAt` に設定し、`displayPeriodDays: 1`（当日）で運用します。
+
+**重要**: 内部名（`internalName`）は固定で、CSVヘッダー（日本語など）とは `csvHeaderCandidates` で紐付けます。
 
 **編集可能**:
 - 表示名（`displayName`）
@@ -86,6 +96,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - `target.source`は**CSVダッシュボードID**を指定する（件名パターンはダッシュボード設定を使用）
 - Gmail件名は`CsvDashboard.gmailSubjectPattern`から取得するため、スケジュール側で件名を設定する必要はない
 - デフォルト設定には`MeasuringInstrumentLoans`向けの無効スケジュールが含まれている（有効化は運用で実施）
+- **落とし穴**: `CsvDashboard.gmailSubjectPattern` が `NULL` / 空文字だと、スケジュールが有効でも対象メールを検索できず取り込みできません（まずダッシュボード側の件名パターンを設定）。
 
 **設定例**（管理コンソール / CSVインポート）:
 1. **プロバイダー**: `gmail`
@@ -97,6 +108,25 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - CSVダッシュボードを選択すると、スケジュールIDと名前が自動生成されます（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
 - Gmailに該当する未読メールがない場合でも、エラーにならず正常に完了します（該当ダッシュボードはスキップされる）
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
+
+#### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ
+
+今後、別データでも同様に「GmailのCSV自動取得」から「サイネージの新コンテンツ」まで作る場合は、以下の順序が安全です（最小の動作確認ポイント込み）。
+
+1. **CSVダッシュボードを作る**（`/admin/csv-dashboards`）
+   - **最低限**: `gmailSubjectPattern`（件名）、`dateColumnName`（当日/期間フィルタに使う日付列）、列定義（`columnDefinitions`）
+   - **未点検加工機（点検結果）**の場合は、`dateColumnName=inspectionAt` を推奨（上記「列定義」参照）
+2. **CSVインポートスケジュールを作る**（`/admin/csv-imports`）
+   - **プロバイダー**: `gmail`
+   - **ターゲット**: `CSVダッシュボード`
+   - **source**: CSVダッシュボードID（件名ではない）
+3. **手動実行で疎通確認**（`/admin/csv-imports` の「実行」）
+   - 失敗時は、まず「Gmail設定（OAuth）」と「CSVダッシュボードの `gmailSubjectPattern`」を疑う
+4. **可視化ダッシュボードを作る/更新する**（`/admin/visualization-dashboards`）
+   - `uninspected_machines` は `dataSourceConfig.csvDashboardId` が必須（点検結果CSVダッシュボードID）
+   - 管理画面上でCSVダッシュボードIDを **ドロップダウン選択**して設定する（手入力しない）
+5. **サイネージスケジュールに組み込む**（`/admin/signage/schedules`）
+   - `layout=FULL` か `layout=SPLIT` を選び、`slot.kind=visualization` に可視化ダッシュボードIDを設定する
 
 #### 取得ロジック（現行仕様）
 

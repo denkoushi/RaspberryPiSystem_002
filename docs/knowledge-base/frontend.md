@@ -3525,15 +3525,29 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
   - `rendererType=uninspected_machines`
   - `dataSourceConfig` / `rendererConfig` の推奨テンプレートを自動入力
 - ✅ `uninspected_machines` 選択時に `dataSourceConfig.csvDashboardId` を必須バリデーション
+- ✅ `csvDashboardId` を手入力させず、**CSVダッシュボードをUIで選択**できるように改善
+  - `uninspected_machines` プリセット適用時に `csvDashboardId` 選択ドロップダウンを表示
+  - 無効（`enabled=false`）のCSVダッシュボードも表示し、名前に `(無効)` を付けて誤選択を防止
+  - 一覧取得時の `enabled: true` 固定フィルタを外し、「選択肢に出てこない」事故を防止
+- ✅ 「点検結果CSVダッシュボードが存在しない」状況に対して、`加工機_日常点検結果` を**プリセット作成**できるボタンをCSVダッシュボード画面に追加
 - ✅ サイネージスケジュール画面の可視化プルダウンに用途ラベル（`未点検加工機`）を表示
+
+**運用トラブルシューティング（今回詰まった点）**:
+- **エラー**: 「未点検加工機データソースでは csvDashboardId が必須です」  
+  - **対処**: 可視化ダッシュボードの編集画面で `csvDashboardId` をドロップダウン選択して保存
+- **症状**: `csvDashboardId` の選択肢に「加工機_日常点検結果」が出ない  
+  - **原因候補**: CSVダッシュボードが未作成 / 無効化されている / 一覧取得が有効のみフィルタされている  
+  - **対処**: CSVダッシュボード画面でプリセット作成し、必要なら有効化してから再選択
 
 **学んだこと**:
 - 汎用機能に業務用途を載せる場合は、専用機能を増やすより「プリセット + 必須入力ガード」の方が保守しやすい
 - 運用ミス対策は「保存時バリデーション」と「選択時の識別情報」の両方が必要
+- 「参照先リソースのID」を手入力させるとミスが起きやすい。**作成（プリセット）→選択（ドロップダウン）→保存（バリデーション）**の順でガードする
 
 **関連ファイル**:
 - `apps/web/src/pages/admin/VisualizationDashboardsPage.tsx`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`
 
 **解決状況**: ✅ **実装完了・lint通過**（2026-02-11）
 
