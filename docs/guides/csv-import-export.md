@@ -125,6 +125,11 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 4. **可視化ダッシュボードを作る/更新する**（`/admin/visualization-dashboards`）
    - `uninspected_machines` は `dataSourceConfig.csvDashboardId` が必須（点検結果CSVダッシュボードID）
    - 管理画面上でCSVダッシュボードIDを **ドロップダウン選択**して設定する（手入力しない）
+   - 表示仕様（サイネージ向け）:
+     - JST当日のみ対象
+     - 1設備管理番号あたり1行
+     - `点検結果` は `正常X/異常Y` 形式
+     - 稼働中マスターに存在し当日記録なしの設備は `未使用`
 5. **サイネージスケジュールに組み込む**（`/admin/signage/schedules`）
    - `layout=FULL` か `layout=SPLIT` を選び、`slot.kind=visualization` に可視化ダッシュボードIDを設定する
 

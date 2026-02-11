@@ -37,7 +37,7 @@ function parsePositiveInt(value: unknown, fallback: number): number {
 function buildEmptyTable(metadata: UninspectedMachinesMetadata): TableVisualizationData {
   return {
     kind: 'table',
-    columns: ['設備管理番号', '加工機名称', '略称', '分類', 'メーカー', '工程'],
+    columns: ['設備管理番号', '加工機名称', '分類', '点検結果'],
     rows: [],
     metadata,
   };
@@ -60,23 +60,21 @@ export class UninspectedMachinesDataSource implements DataSource {
     }
 
     try {
-      const result = await this.machineService.findUninspected({
+      const result = await this.machineService.findDailyInspectionSummaries({
         csvDashboardId,
         date,
       });
 
-      const rows = result.uninspectedMachines.slice(0, maxRows).map((machine) => ({
+      const rows = result.machines.slice(0, maxRows).map((machine) => ({
         設備管理番号: machine.equipmentManagementNumber,
         加工機名称: machine.name,
-        略称: machine.shortName ?? '',
         分類: machine.classification ?? '',
-        メーカー: machine.maker ?? '',
-        工程: machine.processClassification ?? '',
+        点検結果: machine.used ? `正常${machine.normalCount}/異常${machine.abnormalCount}` : '未使用',
       }));
 
       return {
         kind: 'table',
-        columns: ['設備管理番号', '加工機名称', '略称', '分類', 'メーカー', '工程'],
+        columns: ['設備管理番号', '加工機名称', '分類', '点検結果'],
         rows,
         metadata: {
           date: result.date,

@@ -89,7 +89,7 @@ export class UninspectedMachinesRenderer implements Renderer {
       { label: '対象日', value: targetDate, accent: SUB_TEXT_COLOR },
       { label: '稼働中', value: String(total), accent: TEXT_COLOR },
       { label: '点検済み', value: String(inspected), accent: OK_COLOR },
-      { label: '未点検', value: String(uninspected), accent: uninspected > 0 ? ALERT_COLOR : OK_COLOR },
+      { label: '未使用', value: String(uninspected), accent: uninspected > 0 ? ALERT_COLOR : OK_COLOR },
     ];
 
     const kpiCardWidth = Math.floor((width - padding * 2 - kpiGap * (kpiItems.length - 1)) / kpiItems.length);
@@ -173,7 +173,7 @@ export class UninspectedMachinesRenderer implements Renderer {
       rows.length === 0
         ? `<text x="${padding}" y="${tableTop + headerRowHeight + Math.round(34 * scale)}"
             font-size="${Math.max(14, Math.round(18 * scale))}" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
-            未点検加工機はありません
+            対象加工機はありません
           </text>`
         : '';
 

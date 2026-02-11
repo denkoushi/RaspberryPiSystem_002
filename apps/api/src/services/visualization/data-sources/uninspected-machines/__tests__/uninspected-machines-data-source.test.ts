@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UninspectedMachinesDataSource } from '../uninspected-machines-data-source.js';
 
-const findUninspectedMock = vi.fn();
+const findDailyInspectionSummariesMock = vi.fn();
 
 vi.mock('../../../../tools/machine.service.js', () => ({
   MachineService: class {
-    findUninspected = findUninspectedMock;
+    findDailyInspectionSummaries = findDailyInspectionSummariesMock;
   },
 }));
 
@@ -23,24 +23,24 @@ describe('UninspectedMachinesDataSource', () => {
       expect(result.rows).toHaveLength(0);
       expect(result.metadata?.error).toBe('csvDashboardId is required');
     }
-    expect(findUninspectedMock).not.toHaveBeenCalled();
+    expect(findDailyInspectionSummariesMock).not.toHaveBeenCalled();
   });
 
-  it('maps uninspected machines to table rows', async () => {
-    findUninspectedMock.mockResolvedValue({
+  it('maps daily machine summaries to table rows', async () => {
+    findDailyInspectionSummariesMock.mockResolvedValue({
       date: '2026-02-11',
       csvDashboardId: '11111111-1111-1111-1111-111111111111',
       totalRunningMachines: 10,
       inspectedRunningCount: 7,
       uninspectedCount: 3,
-      uninspectedMachines: [
+      machines: [
         {
           equipmentManagementNumber: 'M-001',
           name: '加工機A',
-          shortName: 'A',
           classification: 'MC',
-          maker: 'MakerA',
-          processClassification: '切削',
+          normalCount: 12,
+          abnormalCount: 0,
+          used: true,
         },
       ],
     });
@@ -51,7 +51,7 @@ describe('UninspectedMachinesDataSource', () => {
       maxRows: 10,
     });
 
-    expect(findUninspectedMock).toHaveBeenCalledWith({
+    expect(findDailyInspectionSummariesMock).toHaveBeenCalledWith({
       csvDashboardId: '11111111-1111-1111-1111-111111111111',
       date: undefined,
     });
@@ -61,10 +61,8 @@ describe('UninspectedMachinesDataSource', () => {
         {
           設備管理番号: 'M-001',
           加工機名称: '加工機A',
-          略称: 'A',
           分類: 'MC',
-          メーカー: 'MakerA',
-          工程: '切削',
+          点検結果: '正常12/異常0',
         },
       ]);
       expect(result.metadata?.uninspectedCount).toBe(3);
@@ -72,16 +70,16 @@ describe('UninspectedMachinesDataSource', () => {
   });
 
   it('limits rows by maxRows', async () => {
-    findUninspectedMock.mockResolvedValue({
+    findDailyInspectionSummariesMock.mockResolvedValue({
       date: '2026-02-11',
       csvDashboardId: '11111111-1111-1111-1111-111111111111',
       totalRunningMachines: 3,
       inspectedRunningCount: 0,
       uninspectedCount: 3,
-      uninspectedMachines: [
-        { equipmentManagementNumber: 'M-001', name: 'A', shortName: null, classification: null, maker: null, processClassification: null },
-        { equipmentManagementNumber: 'M-002', name: 'B', shortName: null, classification: null, maker: null, processClassification: null },
-        { equipmentManagementNumber: 'M-003', name: 'C', shortName: null, classification: null, maker: null, processClassification: null },
+      machines: [
+        { equipmentManagementNumber: 'M-001', name: 'A', shortName: null, classification: null, maker: null, processClassification: null, normalCount: 0, abnormalCount: 0, used: false },
+        { equipmentManagementNumber: 'M-002', name: 'B', shortName: null, classification: null, maker: null, processClassification: null, normalCount: 0, abnormalCount: 0, used: false },
+        { equipmentManagementNumber: 'M-003', name: 'C', shortName: null, classification: null, maker: null, processClassification: null, normalCount: 0, abnormalCount: 0, used: false },
       ],
     });
 
@@ -94,6 +92,44 @@ describe('UninspectedMachinesDataSource', () => {
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
       expect(result.rows).toHaveLength(2);
+    }
+  });
+
+  it('shows 未使用 for machines with no daily records', async () => {
+    findDailyInspectionSummariesMock.mockResolvedValue({
+      date: '2026-02-11',
+      csvDashboardId: '11111111-1111-1111-1111-111111111111',
+      totalRunningMachines: 1,
+      inspectedRunningCount: 0,
+      uninspectedCount: 1,
+      machines: [
+        {
+          equipmentManagementNumber: 'M-010',
+          name: '加工機X',
+          shortName: null,
+          classification: 'MC',
+          maker: null,
+          processClassification: null,
+          normalCount: 0,
+          abnormalCount: 0,
+          used: false,
+        },
+      ],
+    });
+
+    const source = new UninspectedMachinesDataSource();
+    const result = await source.fetchData({
+      csvDashboardId: '11111111-1111-1111-1111-111111111111',
+    });
+
+    expect(result.kind).toBe('table');
+    if (result.kind === 'table') {
+      expect(result.rows[0]).toEqual({
+        設備管理番号: 'M-010',
+        加工機名称: '加工機X',
+        分類: 'MC',
+        点検結果: '未使用',
+      });
     }
   });
 });
