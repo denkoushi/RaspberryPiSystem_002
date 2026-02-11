@@ -385,14 +385,8 @@ export class CsvDashboardIngestor {
       const hourNum = parseInt(hour, 10);
       const minuteNum = parseInt(minute, 10);
 
-      // Asia/TokyoタイムゾーンでDateオブジェクトを作成
-      // UTCに変換する必要があるが、簡易実装としてローカルタイムゾーンで作成
-      // 実際の運用では、Asia/Tokyoのオフセット（+09:00）を考慮する必要がある
-      const date = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
-      
-      // Asia/Tokyo (UTC+9) を考慮してUTCに変換
-      // 日本時間から9時間引いてUTCに変換
-      const utcDate = new Date(date.getTime() - 9 * 60 * 60 * 1000);
+      // 入力値は常にAsia/Tokyoとして扱い、実行環境のローカルTZに依存しないUTCへ変換する
+      const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
 
       if (isNaN(utcDate.getTime())) {
         logger.warn({ dateValue }, '[CsvDashboardIngestor] Invalid date, using current time');
