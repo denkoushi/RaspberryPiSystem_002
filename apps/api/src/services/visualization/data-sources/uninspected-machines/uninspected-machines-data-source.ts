@@ -2,8 +2,8 @@ import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { MachineService } from '../../../tools/machine.service.js';
 
-const DEFAULT_MAX_ROWS = 30;
 const MAX_ROWS_LIMIT = 200;
+const DEFAULT_MAX_ROWS = MAX_ROWS_LIMIT;
 
 type UninspectedMachinesMetadata = {
   date?: string;
@@ -37,7 +37,7 @@ function parsePositiveInt(value: unknown, fallback: number): number {
 function buildEmptyTable(metadata: UninspectedMachinesMetadata): TableVisualizationData {
   return {
     kind: 'table',
-    columns: ['設備管理番号', '加工機名称', '分類', '点検結果'],
+    columns: ['設備管理番号', '加工機名称', '点検結果'],
     rows: [],
     metadata,
   };
@@ -65,16 +65,25 @@ export class UninspectedMachinesDataSource implements DataSource {
         date,
       });
 
-      const rows = result.machines.slice(0, maxRows).map((machine) => ({
+      const sortedMachines = [...result.machines].sort((a, b) => {
+        if (a.used !== b.used) {
+          return a.used ? -1 : 1;
+        }
+        return a.equipmentManagementNumber.localeCompare(b.equipmentManagementNumber, 'ja', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+
+      const rows = sortedMachines.slice(0, maxRows).map((machine) => ({
         設備管理番号: machine.equipmentManagementNumber,
         加工機名称: machine.name,
-        分類: machine.classification ?? '',
         点検結果: machine.used ? `正常${machine.normalCount}/異常${machine.abnormalCount}` : '未使用',
       }));
 
       return {
         kind: 'table',
-        columns: ['設備管理番号', '加工機名称', '分類', '点検結果'],
+        columns: ['設備管理番号', '加工機名称', '点検結果'],
         rows,
         metadata: {
           date: result.date,

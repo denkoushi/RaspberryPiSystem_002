@@ -72,13 +72,15 @@ export class UninspectedMachinesRenderer implements Renderer {
     const height = config.height;
     const title = config.title ?? '加工機点検状況';
     const scale = width / 1920;
-    const padding = Math.round(24 * scale);
-    const headerHeight = Math.round(68 * scale);
+    const padding = Math.round(12 * scale);
+    const headerHeight = Math.round(56 * scale);
     const kpiTop = padding + headerHeight;
-    const kpiHeight = Math.round(104 * scale);
-    const kpiGap = Math.round(12 * scale);
-    const tableTop = kpiTop + kpiHeight + Math.round(16 * scale);
-    const maxRows = Number.isFinite(config.maxRows) ? Math.max(1, Math.floor(Number(config.maxRows))) : 18;
+    const kpiHeight = Math.round(92 * scale);
+    const kpiGap = Math.round(10 * scale);
+    const tableTop = kpiTop + kpiHeight + Math.round(10 * scale);
+    const maxRows = Number.isFinite(config.maxRows)
+      ? Math.max(1, Math.floor(Number(config.maxRows)))
+      : Number.MAX_SAFE_INTEGER;
 
     const total = toNumber(metadata.totalRunningMachines, 0);
     const inspected = toNumber(metadata.inspectedRunningCount, 0);
@@ -122,52 +124,90 @@ export class UninspectedMachinesRenderer implements Renderer {
       return { buffer, contentType: 'image/jpeg' };
     }
 
-    const rows = table.rows.slice(0, maxRows);
+    const allRows = table.rows.slice(0, maxRows);
     const tableWidth = width - padding * 2;
-    const headerRowHeight = Math.max(30, Math.round(36 * scale));
-    const bodyRowHeight = Math.max(24, Math.round(30 * scale));
-    const fallbackColWidth = Math.floor(tableWidth / columns.length);
-    const colWidths = columns.map(() => fallbackColWidth);
+    const paneGap = Math.round(10 * scale);
+    const paneWidth = Math.floor((tableWidth - paneGap) / 2);
+    const headerRowHeight = Math.max(26, Math.round(30 * scale));
+    const minBodyRowHeight = Math.max(18, Math.round(18 * scale));
+    const availableBodyHeight = height - tableTop - padding;
+    const rowsPerColumnCapacity = Math.max(1, Math.floor((availableBodyHeight - headerRowHeight) / minBodyRowHeight));
+    const displayCapacity = rowsPerColumnCapacity * 2;
+    const rows = allRows.slice(0, displayCapacity);
+    const leftRowsCount = Math.ceil(rows.length / 2);
+    const leftRows = rows.slice(0, leftRowsCount);
+    const rightRows = rows.slice(leftRowsCount);
+    const maxRowsInColumn = Math.max(leftRows.length, rightRows.length, 1);
+    const bodyRowHeight = Math.max(
+      minBodyRowHeight,
+      Math.floor((availableBodyHeight - headerRowHeight) / maxRowsInColumn)
+    );
 
-    let xCursor = padding;
-    const headerSvg = columns
-      .map((column, index) => {
-        const colWidth = colWidths[index] ?? fallbackColWidth;
-        const local = `
-          <rect x="${xCursor}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${GRID_COLOR}" />
-          <text x="${xCursor + Math.round(8 * scale)}" y="${tableTop + Math.round(headerRowHeight * 0.7)}"
-            font-size="${Math.max(12, Math.round(14 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
-            ${escapeXml(column)}
-          </text>
-        `;
-        xCursor += colWidth;
-        return local;
-      })
-      .join('\n');
+    const paneColumns = columns.slice(0, 3);
+    const equalColWidth = Math.floor(paneWidth / paneColumns.length);
+    const colWidths =
+      paneColumns.length === 3
+        ? [
+            Math.floor(paneWidth * 0.26),
+            Math.floor(paneWidth * 0.42),
+            paneWidth - Math.floor(paneWidth * 0.26) - Math.floor(paneWidth * 0.42),
+          ]
+        : paneColumns.map(() => equalColWidth);
 
-    const bodySvg = rows
-      .map((row, rowIndex) => {
-        const y = tableTop + headerRowHeight + rowIndex * bodyRowHeight;
-        let cellX = padding;
-        return columns
-          .map((column, colIndex) => {
-            const colWidth = colWidths[colIndex] ?? fallbackColWidth;
-            const raw = row[column];
-            const value = raw === null || raw === undefined ? '' : String(raw);
-            const fill = rowIndex % 2 === 0 ? '#0f172a' : '#111827';
-            const cell = `
-              <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${fill}" />
-              <text x="${cellX + Math.round(8 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
-                font-size="${Math.max(11, Math.round(13 * scale))}" fill="${TEXT_COLOR}" font-family="sans-serif">
-                ${escapeXml(value)}
-              </text>
-            `;
-            cellX += colWidth;
-            return cell;
-          })
-          .join('\n');
-      })
-      .join('\n');
+    const buildPaneSvg = (startX: number, paneRows: Array<Record<string, unknown>>) => {
+      let headerX = startX;
+      const paneHeader = paneColumns
+        .map((column, index) => {
+          const colWidth = colWidths[index] ?? equalColWidth;
+          const cell = `
+            <rect x="${headerX}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${GRID_COLOR}" />
+            <text x="${headerX + Math.round(6 * scale)}" y="${tableTop + Math.round(headerRowHeight * 0.7)}"
+              font-size="${Math.max(11, Math.round(13 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+              ${escapeXml(column)}
+            </text>
+          `;
+          headerX += colWidth;
+          return cell;
+        })
+        .join('\n');
+
+      const paneBody = paneRows
+        .map((row, rowIndex) => {
+          const y = tableTop + headerRowHeight + rowIndex * bodyRowHeight;
+          let cellX = startX;
+          return paneColumns
+            .map((column, colIndex) => {
+              const colWidth = colWidths[colIndex] ?? equalColWidth;
+              const raw = row[column];
+              const value = raw === null || raw === undefined ? '' : String(raw);
+              const fill = rowIndex % 2 === 0 ? '#0f172a' : '#111827';
+              const cell = `
+                <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${fill}" />
+                <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
+                  font-size="${Math.max(10, Math.round(12 * scale))}" fill="${TEXT_COLOR}" font-family="sans-serif">
+                  ${escapeXml(value)}
+                </text>
+              `;
+              cellX += colWidth;
+              return cell;
+            })
+            .join('\n');
+        })
+        .join('\n');
+
+      return `${paneHeader}\n${paneBody}`;
+    };
+
+    const leftPaneSvg = buildPaneSvg(padding, leftRows);
+    const rightPaneSvg = buildPaneSvg(padding + paneWidth + paneGap, rightRows);
+
+    const truncatedMessage =
+      allRows.length > rows.length
+        ? `<text x="${width - padding}" y="${tableTop - Math.round(6 * scale)}" text-anchor="end"
+            font-size="${Math.max(11, Math.round(13 * scale))}" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+            表示中 ${rows.length}/${allRows.length} 件
+          </text>`
+        : '';
 
     const emptyMessage =
       rows.length === 0
@@ -185,8 +225,9 @@ export class UninspectedMachinesRenderer implements Renderer {
           ${escapeXml(title)}
         </text>
         ${kpiSvg}
-        ${headerSvg}
-        ${bodySvg}
+        ${truncatedMessage}
+        ${leftPaneSvg}
+        ${rightPaneSvg}
         ${emptyMessage}
       </svg>
     `;
