@@ -63,14 +63,14 @@ export class UninspectedMachinesRenderer implements Renderer {
     const table = data as TableVisualizationData;
     const metadata = ((table.metadata ?? {}) as UninspectedMetadata) ?? {};
     if (metadata.error) {
-      const svg = buildMessageSvg(`未点検加工機: ${metadata.error}`, config.width, config.height);
+      const svg = buildMessageSvg(`加工機点検状況: ${metadata.error}`, config.width, config.height);
       const buffer = await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
       return { buffer, contentType: 'image/jpeg' };
     }
 
     const width = config.width;
     const height = config.height;
-    const title = config.title ?? '未点検加工機';
+    const title = config.title ?? '加工機点検状況';
     const scale = width / 1920;
     const padding = Math.round(24 * scale);
     const headerHeight = Math.round(68 * scale);
@@ -89,7 +89,7 @@ export class UninspectedMachinesRenderer implements Renderer {
       { label: '対象日', value: targetDate, accent: SUB_TEXT_COLOR },
       { label: '稼働中', value: String(total), accent: TEXT_COLOR },
       { label: '点検済み', value: String(inspected), accent: OK_COLOR },
-      { label: '未使用', value: String(uninspected), accent: uninspected > 0 ? ALERT_COLOR : OK_COLOR },
+      { label: '未点検', value: String(uninspected), accent: uninspected > 0 ? ALERT_COLOR : OK_COLOR },
     ];
 
     const kpiCardWidth = Math.floor((width - padding * 2 - kpiGap * (kpiItems.length - 1)) / kpiItems.length);
