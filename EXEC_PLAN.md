@@ -9,6 +9,10 @@
 
 ## Progress
 
+- [x] (2026-02-12) **加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）・フォントサイズ拡大・デプロイ完了・実機検証完了**: サイネージ表示値が手動SQL集計と一致しないように見えた問題を解決し、視認性を向上。**実装内容**: サイネージ右枠を`visualization`（`uninspected_machines`）へ統一、`MachineService.findDailyInspectionSummaries`基準（JST当日・設備管理番号・重複除去）でKPI整合を確認、データソースから`分類`列を削除・`未点検（未使用）`を終端ソート、レンダラーを2列表示へ変更し余白縮小・表示密度向上、フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）しレイアウト破壊なしで視認性を向上、タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一。**トラブルシューティング**: `404`で可視化API検証が失敗した際は`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認、DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）、画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-112355-17139` 2列表示、runId `20260212-114929-25101` フォント拡大）。**実機検証結果**: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認。**ドキュメント更新**: KB-256を追加・更新、index.mdを更新（KB-256を追加、件数を50件に更新）、INDEX.mdを更新（最新アップデートセクションにKB-256を追加）。詳細は [docs/knowledge-base/api.md#kb-256](./docs/knowledge-base/api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
+- [x] (2026-02-11) **`imports.ts` のCSVインポート実行ロジックをサービス層へ移設（依存方向を是正）**: `processCsvImportFromTargets` / `processCsvImport` を `apps/api/src/services/imports/csv-import-process.service.ts` へ移設し、`routes/imports.ts` はサービス呼び出しに統一。これにより `services -> routes` 逆依存を解消し、`csv-import-execution.service.ts` と `csv-backup.target.ts` は新サービスを直接参照する構造へ変更。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（75件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
 - [x] (2026-02-11) **`clients.ts` のモジュール分割とサービス層抽出を完了（API互換維持）**: APIルート肥大化対策の横展開として、`apps/api/src/routes/clients.ts` の責務を `routes/clients/core.ts`・`routes/clients/alerts.ts`・`routes/clients/shared.ts` に分割。DBアクセス/集約ロジックを `services/clients/client-telemetry.service.ts` と `services/clients/client-alerts.service.ts` に抽出し、ルート層はバリデーションと入出力の組み立てに限定。`apps/api/src/routes/index.ts` は `./clients/index.js` 経由の登録に変更。**検証**: `pnpm --filter @raspi-system/api test -- clients --reporter=verbose`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api lint` を実行しすべて成功。既存の `clients.integration` 18件が全件パスし、互換性を維持できることを確認。
 
 - [x] (2026-02-11) **加工機マスタのメンテナンスページ追加とCSVインポートトラブルシューティング完了・実機検証完了・ドキュメント更新完了**: 加工機マスタのCRUD機能を実装し、CSVインポート時のDB設定不整合問題を解決。**実装内容**: `POST /api/tools/machines`、`PUT /api/tools/machines/:id`、`DELETE /api/tools/machines/:id`エンドポイントを追加、`MachineService`に`create`、`update`、`delete`メソッドを追加、`/admin/tools/machines`ページを追加（`MachinesPage.tsx`）、`AdminLayout.tsx`に「加工機」タブを追加、`useMachineMutations`フックを追加。**トラブルシューティング**: CSVインポート時に「equipmentManagementNumber と name が undefined」エラーが発生。原因はDB側の`master-config-machines`レコードの`columnDefinitions`で`internalName`が壊れていた（日本語ヘッダーがそのまま`internalName`になっていた）。DB側の列定義を直接修正して解決。**コード改善**: `MachineCsvImporter`にデフォルト列定義を追加（DB設定がない場合のフォールバック）、`CsvRowMapper`のエラーメッセージを改善（実際のCSVヘッダーを表示）。**実機検証結果**: 加工機の登録・編集・削除が正常に動作することを確認。検索・フィルタ機能（名称、設備管理番号、分類、メーカー、稼働状態）が正常に動作することを確認。一覧表示とページネーションが正常に動作することを確認。**ドキュメント更新**: KB-253（加工機CSVインポートのデフォルト列定義とDB設定不整合問題）、KB-254（加工機マスタのメンテナンスページ追加）を追加、csv-import-export.mdを更新（日本語ヘッダー対応、トラブルシューティングセクション追加）、index.mdを更新（KB-253、KB-254を追加、件数を161件に更新）。詳細は [docs/knowledge-base/api.md#kb-253](./docs/knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題) / [docs/knowledge-base/frontend.md#kb-254](./docs/knowledge-base/frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
@@ -514,6 +518,10 @@
 
 ## Surprises & Discoveries
 
+- 観測: `PUT /api/kiosk/production-schedule/search-state` は `search-history` と異なり、payloadに `state` オブジェクトを必須とする（`{ state: { history: [...] } }`）。同値更新検証で `{ history: [...] }` を送ると `400 VALIDATION_ERROR` になる。  
+  対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
+- 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
+  対応: 実機検証開始前に `free -m` / `docker ps` / 複数回ヘルスチェックでトレンド確認し、即断せず監視しながら判定する手順を採用。**[KB-255]**
 - 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。  
   対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
 - 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
@@ -684,6 +692,10 @@
 
 ## Decision Log
 
+- 決定: APIルート肥大化対策として、`routes` は「入出力契約と認可」、`services` は「DB/業務ロジック」に責務分離する実装パターンを `kiosk`・`clients` で標準化し、以降の大型ルート（例: `backup.ts`, `imports.ts`）へ横展開する。  
+  理由: 互換性を維持したまま変更容易性・再利用性・検証容易性を上げ、回帰範囲を局所化するため。  
+  日付/担当: 2026-02-11 / Codex  
+  参照: [KB-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証), [ADR-001](./docs/decisions/001-module-structure.md), [ADR-002](./docs/decisions/002-service-layer.md)
 - 決定: サーバー（Pi5）は Docker Compose で PostgreSQL・API・Web サーバーを構成し、将来の機能追加でも同一手順でデプロイできるようにする。  
   理由: Raspberry Pi OS 64bit に標準で含まれ、再起動や依存関係管理が容易なため。  
   日付/担当: 2024-05-27 / Codex
@@ -1287,6 +1299,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### APIルート分割の横展開（優先）
+
+**概要**: `kiosk` / `clients` と同じ責務分離パターンを、残る大型ルートへ段階適用して保守性を底上げする
+
+**次の改善候補**:
+- **`apps/api/src/routes/backup.ts` の分割**: ルート集約層と `services/backup/*` への抽出を進め、認可/バリデーションとDB処理を分離
+- **`apps/api/src/routes/imports.ts` の分割**: CSV取り込みの実行・履歴・設定更新を機能別モジュールに分離
+- **回帰テスト固定**: 既存の統合テストに加え、分割対象ごとの契約テスト（正常系/異常系/認可）を追加
+
+**詳細**: [docs/knowledge-base/api.md#kb-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証)
 
 ### Mac開発環境: ストレージ運用（推奨）
 

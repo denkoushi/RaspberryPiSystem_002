@@ -1,4 +1,91 @@
 ---
+
+### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
+
+**日付**: 2026-02-11
+
+**事象**:
+- `apps/api/src/routes/kiosk.ts` と `apps/api/src/routes/clients.ts` が肥大化し、1ファイル内でルーティング・バリデーション・DB処理が混在していた
+- 変更容易性と回帰リスクの観点で、APIルート肥大化/DB直結の構造課題が顕在化していた
+
+**要因**:
+- 機能追加を同一ルートファイルへ継ぎ足す運用が継続し、責務境界（route/service）が曖昧になっていた
+- 共通処理（`x-client-key` 正規化、認可、検索状態更新など）が局所実装され、横展開時に再利用しづらかった
+
+**有効だった対策**:
+- ✅ `kiosk` を機能単位に分割（`routes/kiosk/*`, `routes/kiosk/production-schedule/*`）し、`services/production-schedule/*` へDB/業務ロジックを抽出
+- ✅ `clients` を `routes/clients/{core,alerts,shared}.ts` と `services/clients/*` に分割し、`routes/index.ts` は集約エントリ経由に統一
+- ✅ API契約（パス/レスポンス/認可）を維持したまま、統合テスト・CI・実機APIスモークで互換を確認
+
+**トラブルシューティング**:
+- `search-state` 更新確認時に `PUT /api/kiosk/production-schedule/search-state` へ `{ history: [...] }` を送信すると `400 VALIDATION_ERROR`（`state` 必須）になった
+- 正しい形式 `{ state: { history: [...] } }` に修正し `200` を確認
+- `search-history` は既存どおり `{ history: [...] }` で `200` を確認（エンドポイントごとの契約差異）
+
+**検証**:
+- ローカル: `clients` + `kiosk-production-schedule` 統合テスト、`build`、`lint` 成功
+- CI: GitHub Actions Run `21905767965`（`lint-and-test` / `e2e-smoke` / `e2e-tests` / `docker-build` すべて成功）
+- デプロイ: `update-all-clients.sh` で Pi5限定デプロイ成功（runId: `20260211-220347-19394`, `failed=0`）
+- 実機API: `kiosk`/`clients` の主要導線を `200` で確認、未認証/キー欠落ガードは `401` を確認
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`
+- `apps/api/src/routes/kiosk/**/*.ts`
+- `apps/api/src/services/production-schedule/*.ts`
+- `apps/api/src/routes/clients.ts`
+- `apps/api/src/routes/clients/*.ts`
+- `apps/api/src/services/clients/*.ts`
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-11）
+- ルート肥大化の主要2領域（`kiosk`/`clients`）で、モジュール化とサービス層分離を完了
+
+---
+
+### [KB-256] 加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）
+
+**日付**: 2026-02-12
+
+**事象**:
+- サイネージ表示値が、運用確認時に手動SQL集計と一致しないように見えた
+- KPIは`49/25/24`でも、一覧表の見え方が「点検済み9/未使用9」に見え、誤集計疑いが出た
+- 一覧が読みづらく、49件運用で視認性が不足した
+
+**要因**:
+- 有効スケジュール右枠が一時的に`csv_dashboard`を参照し、`uninspected_machines`集計と不一致だった
+- 一覧はレンダラー既定で先頭18件のみ表示（KPIは全件集計）だったため、見かけ上の不一致が発生
+- レイアウト上、分類列を含む1表表示では文字サイズと一覧密度の両立が難しかった
+
+**有効だった対策**:
+- ✅ サイネージ右枠を`visualization`（`uninspected_machines`）へ統一
+- ✅ `MachineService.findDailyInspectionSummaries`基準（JST当日・設備管理番号・重複除去）でKPI整合を確認
+- ✅ データソースを更新し、`分類`列を削除・`未点検（未使用）`を終端ソート
+- ✅ レンダラーを2列表示へ変更し、余白縮小・表示密度向上を実施
+- ✅ フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）し、レイアウト破壊なしで視認性を向上
+- ✅ タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一
+
+**トラブルシューティング**:
+- `404`で可視化API検証が失敗した際は、`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認
+- DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）
+- 画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認する
+
+**検証**:
+- ローカル: `pnpm test` 成功（`apps/api`: 64 passed / 2 skipped）
+- CI:
+  - Run `21930870130` 成功（2列表示最適化）
+  - Run `21931409637` 成功（フォントサイズ拡大）
+- デプロイ:
+  - runId `20260212-112355-17139` 成功（2列表示）
+  - runId `20260212-114929-25101` 成功（フォント拡大）
+- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認
+
+**関連ファイル**:
+- `apps/api/src/services/tools/machine.service.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-12）
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
