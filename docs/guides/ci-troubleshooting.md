@@ -254,11 +254,14 @@ Error: Response time 2100ms exceeds threshold 1800ms
    - 対処: `response.json()` ではなく `response.body.length` をチェック
 3. **テストデータの一意制約衝突**: 固定の `apiKey` を使用して `ClientDevice` を作成
    - 対処: `createTestClientDevice()` で自動生成キーを使用（固定キーを避ける）
+4. **認証前提の見落とし**: 管理系エンドポイント（例: `/api/tools/employees`, `/api/tools/items`）でJWTヘッダ未付与
+   - 対処: 性能テストでは `createTestUser('ADMIN')` + `createAuthHeader(token)` を利用して `Authorization` ヘッダを明示的に付与
 
 **参考**: フェーズ4第一弾実装時に、`performance.test.ts` で以下のトラブルが発生:
 - `GET /api/kiosk/production-schedule/history-progress` が `401 CLIENT_KEY_REQUIRED` → テスト用クライアント作成で解決
 - `GET /api/system/metrics` がJSONではなくテキスト → JSONパース依存を除去して解決
 - 固定 `apiKey` による一意制約衝突（P2002）→ 自動生成キーへ修正して解決
+- フェーズ4第二弾で追加した `/api/tools/employees`・`/api/tools/items` が `401 AUTH_TOKEN_REQUIRED` → JWTヘッダ付与で解決
 
 詳細は [knowledge-base/api.md#kb-258](./../knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) を参照。
 

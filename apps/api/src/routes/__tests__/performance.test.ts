@@ -140,6 +140,34 @@ describe('Performance Tests (NFR-001)', () => {
       expect(response.body.length).toBeGreaterThan(0);
       expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
+
+    it('should respond to /api/tools/employees within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/tools/employees',
+          headers: authHeaders,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/tools/items within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/tools/items',
+          headers: authHeaders,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
   });
 });
 

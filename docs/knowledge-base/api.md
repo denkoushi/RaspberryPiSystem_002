@@ -115,6 +115,30 @@
   - `apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts`
   - `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`
 
+**フェーズ4第二弾（サービス層テスト拡張優先）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ 第1群（`measuring-instruments` / `rigging`）のサービス層テストを追加
+  - ✅ 第2群（`production-schedule` / `csv-dashboard`）の未カバー領域テストを追加
+  - ✅ 性能テストを拡張（`/api/tools/employees`、`/api/tools/items`）
+- **追加テスト**:
+  - `apps/api/src/services/measuring-instruments/__tests__/measuring-instrument.service.test.ts`
+  - `apps/api/src/services/measuring-instruments/__tests__/inspection-item.service.test.ts`
+  - `apps/api/src/services/rigging/__tests__/rigging-gear.service.test.ts`
+  - `apps/api/src/services/rigging/__tests__/rigging-inspection-record.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-search-state.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/seiban-progress.service.test.ts`
+  - `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-source.service.test.ts`
+  - `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-retention.service.test.ts`
+- **トラブルシューティング**:
+  - `performance.test.ts` へ追加した `/api/tools/employees` と `/api/tools/items` が初回 `401 AUTH_TOKEN_REQUIRED` で失敗
+  - 原因は当該エンドポイントがJWT認証必須であること
+  - 対応として `authHeaders` を付与し、`200` 応答で閾値判定できるよう修正
+- **検証**:
+  - **追加分検証**: 追加した9ファイル対象で31件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test` 成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **補足**: CI/デプロイ/実機検証は次フェーズで継続実施（本段階は実装＋ローカル品質ゲートまで完了）
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
