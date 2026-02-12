@@ -86,6 +86,31 @@
   - `apps/api/src/routes/__tests__/backup.integration.test.ts`（非ADMINの403テスト追加）
   - `apps/api/src/routes/__tests__/imports.integration.test.ts`（非ADMINの403テスト追加）
 
+**フェーズ4第一弾（性能ゲート最優先）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ 性能回帰ゲートを強化（`performance.test.ts` を主要APIへ拡張し、閾値を `PERF_RESPONSE_TIME_THRESHOLD_MS` で外部化）
+  - ✅ CIに性能テスト専用ステップを追加（`Run API performance tests`、初期閾値 `1800ms`）
+  - ✅ 依存境界ルールを追加（`import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止）
+  - ✅ 未カバー領域のサービス層ユニットテストを追加（`clients` / `production-schedule`）
+- **トラブルシューティング**:
+  - `GET /api/kiosk/production-schedule/history-progress` が `401 CLIENT_KEY_REQUIRED` となるため、性能テスト内でテスト用クライアントを作成し `x-client-key` を付与して解消
+  - `GET /api/system/metrics` がJSONではなくテキスト応答のため、JSONパース依存を除去して解消
+  - テストヘルパーの `app.inject` 型制約により `tsc` で型エラーが発生したため、`measureInjectResponse` のリクエスト型を `unknown` に緩和して解消
+- **検証**:
+  - **ローカル検証（追加分）**:  
+    `pnpm --filter @raspi-system/api test -- src/routes/__tests__/performance.test.ts src/services/clients/__tests__/client-alerts.service.test.ts src/services/clients/__tests__/client-telemetry.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`（19件全件パス）
+  - **ローカル検証（品質ゲート）**: `pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+- **関連ファイル（追加）**:
+  - `apps/api/src/routes/__tests__/performance.test.ts`
+  - `apps/api/src/routes/__tests__/helpers.ts`（`measureInjectResponse` 追加）
+  - `apps/api/.eslintrc.cjs`（`lib -> routes/services` 制限追加）
+  - `.github/workflows/ci.yml`（`Run API performance tests` 追加）
+  - `apps/api/src/services/clients/__tests__/client-alerts.service.test.ts`
+  - `apps/api/src/services/clients/__tests__/client-telemetry.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）

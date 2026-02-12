@@ -31,6 +31,16 @@ module.exports = {
             target: './src/services',
             from: './src/routes',
             message: 'services層からroutes層への依存は禁止です（依存方向: routes -> services）。'
+          },
+          {
+            target: './src/lib',
+            from: './src/routes',
+            message: 'lib層からroutes層への依存は禁止です（依存方向: routes/services -> lib）。'
+          },
+          {
+            target: './src/lib',
+            from: './src/services',
+            message: 'lib層からservices層への依存は禁止です（依存方向: routes/services -> lib）。'
           }
         ]
       }
