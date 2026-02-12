@@ -2,8 +2,10 @@ import { Dropbox } from 'dropbox';
 import * as https from 'https';
 import * as tls from 'tls';
 import fetch from 'node-fetch';
+import type { RequestInit as NodeFetchRequestInit } from 'node-fetch';
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
+import { getString, isRecord, toErrorInfo } from '../../../lib/type-guards.js';
 import { verifyDropboxCertificate } from './dropbox-cert-pinning.js';
 import { DropboxOAuthService } from '../dropbox-oauth.service.js';
 
@@ -19,6 +21,16 @@ export class DropboxStorageProvider implements StorageProvider {
   private refreshToken?: string;
   private oauthService?: DropboxOAuthService;
   private onTokenUpdate?: (token: string) => Promise<void>;
+
+  private createPinnedFetch(httpsAgent: https.Agent) {
+    return (url: string, init?: NodeFetchRequestInit) => {
+      const nextInit = {
+        ...(init as Record<string, unknown>),
+        agent: httpsAgent
+      };
+      return fetch(url, nextInit as NodeFetchRequestInit);
+    };
+  }
 
   constructor(options: {
     accessToken: string;
@@ -47,14 +59,7 @@ export class DropboxStorageProvider implements StorageProvider {
     });
 
     // カスタムfetch関数（HTTPSエージェントを使用）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const customFetch = (url: string, init?: RequestInit) => {
-      return fetch(url, {
-        ...init,
-        agent: httpsAgent
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
-    };
+    const customFetch = this.createPinnedFetch(httpsAgent);
 
     this.accessToken = options.accessToken;
     this.refreshToken = options.refreshToken;
@@ -63,8 +68,7 @@ export class DropboxStorageProvider implements StorageProvider {
 
     this.dbx = new Dropbox({
       accessToken: this.accessToken,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fetch: customFetch as any
+      fetch: customFetch as unknown as (input: string, init?: NodeFetchRequestInit) => Promise<unknown>
     });
 
     this.basePath = options.basePath || '/backups';
@@ -99,19 +103,11 @@ export class DropboxStorageProvider implements StorageProvider {
         }
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const customFetch = (url: string, init?: RequestInit) => {
-        return fetch(url, {
-          ...init,
-          agent: httpsAgent
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-      };
+      const customFetch = this.createPinnedFetch(httpsAgent);
 
       this.dbx = new Dropbox({
         accessToken: this.accessToken,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fetch: customFetch as any
+        fetch: customFetch as unknown as (input: string, init?: NodeFetchRequestInit) => Promise<unknown>
       });
 
       // トークン更新コールバックを呼び出す
@@ -133,20 +129,22 @@ export class DropboxStorageProvider implements StorageProvider {
     try {
       return await operation();
     } catch (error: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const err: any = error;
       // 401エラー、expired_access_tokenエラー、または400エラー（malformed token）の場合、リフレッシュを試みる
-      const isAuthError = err?.status === 401 || err?.error?.error?.['.tag'] === 'expired_access_token';
+      const status = this.getErrorStatus(error);
+      const errorTag = this.getDropboxTag(error);
+      const message = this.getErrorMessage(error);
+      const isAuthError = status === 401 || errorTag === 'expired_access_token';
       // 400エラーでmalformed/invalid tokenの場合を検出（errorが文字列またはオブジェクトの両方に対応）
-      const errorMessage = typeof err?.error === 'string' ? err.error : err?.error?.toString() || '';
+      const dropboxError = this.getDropboxErrorRecord(error);
+      const errorMessage = typeof dropboxError === 'string' ? dropboxError : String(dropboxError ?? '');
       const errorMessageLower = errorMessage.toLowerCase();
-      const isMalformedToken = err?.status === 400 && 
+      const isMalformedToken = status === 400 &&
         (errorMessageLower.includes('malformed') || errorMessageLower.includes('invalid') ||
-         err?.message?.toLowerCase()?.includes('malformed') || err?.message?.toLowerCase()?.includes('invalid'));
+         message.toLowerCase().includes('malformed') || message.toLowerCase().includes('invalid'));
       
       if (isAuthError || isMalformedToken) {
         logger?.warn(
-          { status: err?.status, error: err?.error, message: err?.message, isAuthError, isMalformedToken },
+          { status, error: dropboxError, message, isAuthError, isMalformedToken },
           '[DropboxStorageProvider] Access token invalid or expired, attempting refresh'
         );
         await this.refreshAccessTokenIfNeeded();
@@ -179,11 +177,9 @@ export class DropboxStorageProvider implements StorageProvider {
         logger?.info({ path: fullPath, size: file.length }, '[DropboxStorageProvider] File uploaded');
         return;
       } catch (error: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const err: any = error;
         // レート制限エラー（429）の場合、リトライ
-        if (err?.status === 429 || err?.error?.error?.['.tag'] === 'rate_limit') {
-          const retryAfter = this.extractRetryAfter(err);
+        if (this.isRateLimitError(error)) {
+          const retryAfter = this.extractRetryAfter(error);
           const delay = this.calculateBackoffDelay(retryCount, retryAfter);
           
           logger?.warn(
@@ -197,7 +193,7 @@ export class DropboxStorageProvider implements StorageProvider {
         }
 
         // その他のエラーは再スロー
-        logger?.error({ err, path: fullPath }, '[DropboxStorageProvider] Upload failed');
+        logger?.error({ err: error, path: fullPath }, '[DropboxStorageProvider] Upload failed');
         throw error;
       }
     }
@@ -221,29 +217,25 @@ export class DropboxStorageProvider implements StorageProvider {
           const response = await this.dbx.filesDownload({ path: fullPath });
           
           // Dropbox SDKのfilesDownloadは、result.fileBinaryまたはresult.result.fileBinaryを返す
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fileBinary = (response as any).fileBinary || (response as any).result?.fileBinary;
+          const fileBinary = this.getFileBinaryFromDownloadResponse(response);
           if (!fileBinary) {
             throw new Error('No file binary in response');
           }
 
-          return Buffer.from(fileBinary);
+          return this.toBufferFromFileBinary(fileBinary);
         });
       } catch (error: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const err: any = error;
-        
         // 409エラーまたはpath_lookupエラーの場合、詳細なメッセージを返す（リトライしない）
-        if (err?.status === 409 || err?.error?.error?.['.tag'] === 'path_lookup' || err?.error?.error_summary?.includes('not_found')) {
-          const errorTag = err?.error?.error?.['.tag'] || 'not_found';
-          const errorSummary = err?.error?.error_summary || 'File not found';
+        if (this.isPathLookupError(error) || this.getDropboxErrorSummary(error)?.includes('not_found')) {
+          const errorTag = this.getDropboxTag(error) || 'not_found';
+          const errorSummary = this.getDropboxErrorSummary(error) || 'File not found';
           logger?.error({ path: fullPath, errorTag, errorSummary }, '[DropboxStorageProvider] File not found');
           throw new Error(`Backup file not found in Dropbox: ${fullPath}. Error: ${errorSummary}`);
         }
         
         // レート制限エラー（429）の場合、リトライ
-        if (err?.status === 429 || err?.error?.error?.['.tag'] === 'rate_limit') {
-          const retryAfter = this.extractRetryAfter(err);
+        if (this.isRateLimitError(error)) {
+          const retryAfter = this.extractRetryAfter(error);
           const delay = this.calculateBackoffDelay(retryCount, retryAfter);
           
           logger?.warn(
@@ -257,20 +249,11 @@ export class DropboxStorageProvider implements StorageProvider {
         }
         
         // ネットワークエラー（タイムアウト、接続エラーなど）の場合、リトライ
-        const isNetworkError = 
-          err?.code === 'ETIMEDOUT' ||
-          err?.code === 'ECONNRESET' ||
-          err?.code === 'ENOTFOUND' ||
-          err?.code === 'ECONNREFUSED' ||
-          err?.message?.includes('timeout') ||
-          err?.message?.includes('network') ||
-          err?.message?.includes('ECONN');
-        
-        if (isNetworkError && retryCount < maxRetries - 1) {
+        if (this.isNetworkError(error) && retryCount < maxRetries - 1) {
           const delay = this.calculateBackoffDelay(retryCount, 0);
           
           logger?.warn(
-            { path: fullPath, retryCount, delay, errorCode: err?.code, errorMessage: err?.message },
+            { path: fullPath, retryCount, delay, errorCode: this.getErrorCode(error), errorMessage: this.getErrorMessage(error) },
             '[DropboxStorageProvider] Network error during download, retrying'
           );
           
@@ -280,7 +263,7 @@ export class DropboxStorageProvider implements StorageProvider {
         }
         
         // その他のエラーは再スロー
-        logger?.error({ err, path: fullPath, retryCount }, '[DropboxStorageProvider] Download failed');
+        logger?.error({ err: error, path: fullPath, retryCount }, '[DropboxStorageProvider] Download failed');
         throw error;
       }
     }
@@ -305,16 +288,15 @@ export class DropboxStorageProvider implements StorageProvider {
         });
         logger?.info({ path: fullPath }, '[DropboxStorageProvider] File deleted');
         return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
+      } catch (error: unknown) {
         // ファイルが存在しない場合はエラーにしない（リトライしない）
-        if (error?.status === 409 || error?.error?.error?.['.tag'] === 'path_lookup') {
+        if (this.isPathLookupError(error)) {
           logger?.warn({ path: fullPath }, '[DropboxStorageProvider] File not found, skipping delete');
           return;
         }
         
         // レート制限エラー（429）の場合、リトライ
-        if (error?.status === 429 || error?.error?.error?.['.tag'] === 'rate_limit') {
+        if (this.isRateLimitError(error)) {
           const retryAfter = this.extractRetryAfter(error);
           const delay = this.calculateBackoffDelay(retryCount, retryAfter);
           
@@ -329,20 +311,11 @@ export class DropboxStorageProvider implements StorageProvider {
         }
         
         // ネットワークエラー（タイムアウト、接続エラーなど）の場合、リトライ
-        const isNetworkError = 
-          error?.code === 'ETIMEDOUT' ||
-          error?.code === 'ECONNRESET' ||
-          error?.code === 'ENOTFOUND' ||
-          error?.code === 'ECONNREFUSED' ||
-          error?.message?.includes('timeout') ||
-          error?.message?.includes('network') ||
-          error?.message?.includes('ECONN');
-        
-        if (isNetworkError && retryCount < maxRetries - 1) {
+        if (this.isNetworkError(error) && retryCount < maxRetries - 1) {
           const delay = this.calculateBackoffDelay(retryCount, 0);
           
           logger?.warn(
-            { path: fullPath, retryCount, delay, errorCode: error?.code, errorMessage: error?.message },
+            { path: fullPath, retryCount, delay, errorCode: this.getErrorCode(error), errorMessage: this.getErrorMessage(error) },
             '[DropboxStorageProvider] Network error during delete, retrying'
           );
           
@@ -389,18 +362,14 @@ export class DropboxStorageProvider implements StorageProvider {
       
       for (const entry of response.result.entries) {
         if (entry['.tag'] === 'file') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fileEntry = entry as any;
           results.push({
-            path: fileEntry.path_display || fileEntry.path_lower || '',
-            sizeBytes: fileEntry.size,
-            modifiedAt: fileEntry.server_modified ? new Date(fileEntry.server_modified) : undefined
+            path: entry.path_display || entry.path_lower || '',
+            sizeBytes: entry.size,
+            modifiedAt: entry.server_modified ? new Date(entry.server_modified) : undefined
           });
         } else if (entry['.tag'] === 'folder') {
           // 再帰的にフォルダ内を探索
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const folderEntry = entry as any;
-          const subResults = await this.list(folderEntry.path_display || folderEntry.path_lower || '');
+          const subResults = await this.list(entry.path_display || entry.path_lower || '');
           results.push(...subResults);
         }
       }
@@ -413,10 +382,9 @@ export class DropboxStorageProvider implements StorageProvider {
       }
 
       return results;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
       // フォルダが存在しない場合は空配列を返す
-      if (error?.status === 409 || error?.error?.error?.['.tag'] === 'path_lookup') {
+      if (this.isPathLookupError(error)) {
         return [];
       }
       logger?.error({ err: error, path: fullPath }, '[DropboxStorageProvider] List failed');
@@ -437,17 +405,13 @@ export class DropboxStorageProvider implements StorageProvider {
       
       for (const entry of response.result.entries) {
         if (entry['.tag'] === 'file') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fileEntry = entry as any;
           results.push({
-            path: fileEntry.path_display || fileEntry.path_lower || '',
-            sizeBytes: fileEntry.size,
-            modifiedAt: fileEntry.server_modified ? new Date(fileEntry.server_modified) : undefined
+            path: entry.path_display || entry.path_lower || '',
+            sizeBytes: entry.size,
+            modifiedAt: entry.server_modified ? new Date(entry.server_modified) : undefined
           });
         } else if (entry['.tag'] === 'folder') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const folderEntry = entry as any;
-          const subResults = await this.list(folderEntry.path_display || folderEntry.path_lower || '');
+          const subResults = await this.list(entry.path_display || entry.path_lower || '');
           results.push(...subResults);
         }
       }
@@ -492,12 +456,102 @@ export class DropboxStorageProvider implements StorageProvider {
     return `${normalizedBasePath}/${noLeadingSlash}`.replace(/\/+/g, '/');
   }
 
+  private getErrorStatus(error: unknown): number | undefined {
+    const errorInfo = toErrorInfo(error);
+    return typeof errorInfo.status === 'number' ? errorInfo.status : undefined;
+  }
+
+  private getErrorCode(error: unknown): string | undefined {
+    const errorInfo = toErrorInfo(error);
+    if (typeof errorInfo.code === 'string') return errorInfo.code;
+    if (typeof errorInfo.code === 'number') return String(errorInfo.code);
+    return undefined;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return toErrorInfo(error).message ?? '';
+  }
+
+  private getDropboxErrorRecord(error: unknown): Record<string, unknown> | undefined {
+    if (!isRecord(error)) return undefined;
+    const errorField = error.error;
+    return isRecord(errorField) ? errorField : undefined;
+  }
+
+  private getDropboxTag(error: unknown): string | undefined {
+    const first = this.getDropboxErrorRecord(error);
+    if (!first) return undefined;
+    const second = first.error;
+    if (!isRecord(second)) return undefined;
+    const tag = second['.tag'];
+    return typeof tag === 'string' ? tag : undefined;
+  }
+
+  private getDropboxErrorSummary(error: unknown): string | undefined {
+    const record = this.getDropboxErrorRecord(error);
+    if (!record) return undefined;
+    return getString(record, 'error_summary');
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    return this.getErrorStatus(error) === 429 || this.getDropboxTag(error) === 'rate_limit';
+  }
+
+  private isPathLookupError(error: unknown): boolean {
+    return this.getErrorStatus(error) === 409 || this.getDropboxTag(error) === 'path_lookup';
+  }
+
+  private isNetworkError(error: unknown): boolean {
+    const code = this.getErrorCode(error);
+    const message = this.getErrorMessage(error).toLowerCase();
+    return code === 'ETIMEDOUT'
+      || code === 'ECONNRESET'
+      || code === 'ENOTFOUND'
+      || code === 'ECONNREFUSED'
+      || message.includes('timeout')
+      || message.includes('network')
+      || message.includes('econn');
+  }
+
+  private getFileBinaryFromDownloadResponse(response: unknown): unknown {
+    if (!isRecord(response)) return undefined;
+    if ('fileBinary' in response) {
+      return response.fileBinary;
+    }
+    if (isRecord(response.result) && 'fileBinary' in response.result) {
+      return response.result.fileBinary;
+    }
+    return undefined;
+  }
+
+  private toBufferFromFileBinary(fileBinary: unknown): Buffer {
+    if (Buffer.isBuffer(fileBinary)) {
+      return fileBinary;
+    }
+    if (typeof fileBinary === 'string' || fileBinary instanceof Uint8Array) {
+      return Buffer.from(fileBinary);
+    }
+    if (fileBinary instanceof ArrayBuffer) {
+      return Buffer.from(fileBinary);
+    }
+    if (ArrayBuffer.isView(fileBinary)) {
+      return Buffer.from(fileBinary.buffer, fileBinary.byteOffset, fileBinary.byteLength);
+    }
+    throw new Error('Unsupported file binary type in Dropbox response');
+  }
+
   /**
    * Retry-Afterヘッダーからリトライ待機時間を抽出
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private extractRetryAfter(error: any): number {
-    const retryAfter = error?.headers?.['retry-after'] || error?.error?.retry_after;
+  private extractRetryAfter(error: unknown): number {
+    let retryAfter: unknown;
+    if (isRecord(error) && isRecord(error.headers)) {
+      retryAfter = error.headers['retry-after'];
+    }
+    if (retryAfter === undefined) {
+      const dropboxError = this.getDropboxErrorRecord(error);
+      retryAfter = dropboxError?.retry_after;
+    }
     if (retryAfter) {
       return parseInt(String(retryAfter), 10) * 1000; // 秒をミリ秒に変換
     }

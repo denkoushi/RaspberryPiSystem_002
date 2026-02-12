@@ -1,5 +1,6 @@
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
+import { toErrorInfo } from '../../../lib/type-guards.js';
 import { GmailApiClient } from '../gmail-api-client.js';
 import type { GmailTrashCleanupResult } from '../gmail-api-client.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
@@ -90,20 +91,24 @@ export class GmailStorageProvider implements StorageProvider {
     try {
       return await operation();
     } catch (error: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const err: any = error;
-      if (err instanceof GmailReauthRequiredError || isInvalidGrantMessage(err?.message)) {
+      if (error instanceof GmailReauthRequiredError) {
+        throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
+      }
+
+      const errorInfo = toErrorInfo(error);
+      if (isInvalidGrantMessage(errorInfo.message)) {
         throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
       }
       // 401エラーまたは認証関連のエラーの場合、リフレッシュを試みる
-      const isAuthError = err?.status === 401 || 
-        err?.code === 401 ||
-        err?.message?.toLowerCase().includes('unauthorized') ||
-        err?.message?.toLowerCase().includes('invalid credentials');
+      const message = errorInfo.message?.toLowerCase() ?? '';
+      const isAuthError = errorInfo.status === 401
+        || errorInfo.code === 401
+        || message.includes('unauthorized')
+        || message.includes('invalid credentials');
       
       if (isAuthError && this.refreshToken && this.oauthService) {
         logger?.warn(
-          { status: err?.status, code: err?.code, message: err?.message, isAuthError },
+          { status: errorInfo.status, code: errorInfo.code, message: errorInfo.message, isAuthError },
           '[GmailStorageProvider] Access token invalid or expired, attempting refresh'
         );
         
