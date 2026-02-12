@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-02-12) **コード品質改善フェーズ1（API+shared-types）実装完了**: `any` 依存の縮小、境界ルール導入、最小ユニットテスト追加を実施。**実装内容**: `apps/api/src/lib/type-guards.ts` を新設して `unknown` の安全処理を共通化、`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去、`apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入、`packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加。**テスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース（`result.fileBinary`、`ArrayBuffer`、400 malformed token の再認証）。**検証**: `pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（27件全件パス）、`pnpm --filter @raspi-system/shared-types lint`、`pnpm --filter @raspi-system/shared-types build` 成功。**トラブルシューティング**: テスト失敗はコード起因ではなくDocker/DB環境起因（`overlay2` I/Oエラー→Docker再起動、`public.User` 不在→`prisma:deploy` で復旧）。  
+- [x] (2026-02-12) **コード品質改善フェーズ1（API+shared-types）実装完了・CI成功・デプロイ完了・実機検証完了**: `any` 依存の縮小、境界ルール導入、最小ユニットテスト追加を実施。**実装内容**: `apps/api/src/lib/type-guards.ts` を新設して `unknown` の安全処理を共通化、`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去、`apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入、`packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加。**テスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース（`result.fileBinary`、`ArrayBuffer`、400 malformed token の再認証）。**ローカル検証**: `pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（27件全件パス）、`pnpm --filter @raspi-system/shared-types lint`、`pnpm --filter @raspi-system/shared-types build` 成功。**トラブルシューティング**: テスト失敗はコード起因ではなくDocker/DB環境起因（`overlay2` I/Oエラー→Docker再起動、`public.User` 不在→`prisma:deploy` で復旧）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21938333459`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-174057-14354`, `failed=0`, 実行時間約5分30秒）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。  
 
 - [x] (2026-02-12) **backup/importsルート分割と実行ロジックのサービス層移設完了・CI成功・デプロイ完了・実機検証完了**: `backup.ts`と`imports.ts`の巨大ルートを機能別モジュールへ分割し、実行前後の処理をサービス層へ移して責務境界を明確化。今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくする。**実装内容**: `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）、`imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）、`backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化。**トラブルシューティング**: lintエラー6件（未使用import削除、`any`型を型ガード化）を修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21935302228`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-155938-10971`, `failed=0`, 実行時間約7分）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。**ドキュメント更新**: KB-257を追加、EXEC_PLAN.mdを更新、index.mdを更新（KB-257を追加、件数を51件に更新）。詳細は [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
 
@@ -1358,11 +1358,19 @@
 
 **概要**: ルート分割完了を機に、コード品質の継続的改善を検討
 
-**次の改善候補**:
-- **型安全性の向上**: `any`型の完全排除、型ガードの標準化、Zodスキーマの徹底
-- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅
-- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新
+**完了した改善（フェーズ1）**:
+- ✅ **型安全性の向上**: `apps/api/src/lib/type-guards.ts` を新設し、`unknown` の安全処理を共通化。`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去
+- ✅ **依存境界ルールの導入**: `apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入
+- ✅ **共有型契約の拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加
+- ✅ **最小ユニットテスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21938333459` 成功、Pi5デプロイ成功（runId `20260212-174057-14354`）、実機検証完了
+
+**次の改善候補（フェーズ2以降）**:
+- **型安全性のさらなる向上**: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
+- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充
+- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
 - **パフォーマンス最適化**: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
+- **ESLintルールの拡張**: 追加の依存境界ルール、型安全性ルールの段階導入
 
 ### Mac開発環境: ストレージ運用（推奨）
 
