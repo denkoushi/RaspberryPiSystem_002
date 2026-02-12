@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-12) **backup/importsルート分割と実行ロジックのサービス層移設完了・CI成功・デプロイ完了・実機検証完了**: `backup.ts`と`imports.ts`の巨大ルートを機能別モジュールへ分割し、実行前後の処理をサービス層へ移して責務境界を明確化。今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくする。**実装内容**: `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）、`imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）、`backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化。**トラブルシューティング**: lintエラー6件（未使用import削除、`any`型を型ガード化）を修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21935302228`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-155938-10971`, `failed=0`, 実行時間約7分）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。**ドキュメント更新**: KB-257を追加、EXEC_PLAN.mdを更新、index.mdを更新（KB-257を追加、件数を51件に更新）。詳細は [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
+
 - [x] (2026-02-12) **加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）・フォントサイズ拡大・デプロイ完了・実機検証完了**: サイネージ表示値が手動SQL集計と一致しないように見えた問題を解決し、視認性を向上。**実装内容**: サイネージ右枠を`visualization`（`uninspected_machines`）へ統一、`MachineService.findDailyInspectionSummaries`基準（JST当日・設備管理番号・重複除去）でKPI整合を確認、データソースから`分類`列を削除・`未点検（未使用）`を終端ソート、レンダラーを2列表示へ変更し余白縮小・表示密度向上、フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）しレイアウト破壊なしで視認性を向上、タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一。**トラブルシューティング**: `404`で可視化API検証が失敗した際は`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認、DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）、画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-112355-17139` 2列表示、runId `20260212-114929-25101` フォント拡大）。**実機検証結果**: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認。**ドキュメント更新**: KB-256を追加・更新、index.mdを更新（KB-256を追加、件数を50件に更新）、INDEX.mdを更新（最新アップデートセクションにKB-256を追加）。詳細は [docs/knowledge-base/api.md#kb-256](./docs/knowledge-base/api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
 - [x] (2026-02-12) **`backup.ts` から履歴APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/history.ts` を追加し、`/backup/history` と `/backup/history/:id` を専用登録関数 `registerBackupHistoryRoutes` へ分離。`backup.ts` 本体は `await registerBackupHistoryRoutes(app)` で集約登録する構成に変更し、ルート肥大化を抑制。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
@@ -1332,16 +1334,28 @@
 
 ## Next Steps（将来のタスク）
 
-### APIルート分割の横展開（優先）
+### APIルート分割の横展開（完了）
 
 **概要**: `kiosk` / `clients` と同じ責務分離パターンを、残る大型ルートへ段階適用して保守性を底上げする
 
-**次の改善候補**:
-- **`apps/api/src/routes/backup.ts` の分割**: ルート集約層と `services/backup/*` への抽出を進め、認可/バリデーションとDB処理を分離
-- **`apps/api/src/routes/imports.ts` の分割**: CSV取り込みの実行・履歴・設定更新を機能別モジュールに分離
-- **回帰テスト固定**: 既存の統合テストに加え、分割対象ごとの契約テスト（正常系/異常系/認可）を追加
+**完了した改善**:
+- ✅ **`apps/api/src/routes/backup.ts` の分割**: 9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）完了、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）
+- ✅ **`apps/api/src/routes/imports.ts` の分割**: 3分割（`master.ts`/`schedule.ts`/`history.ts`）完了、実行ロジックをサービス層へ移設（`csv-import-process.service.ts`）
+- ✅ **回帰テスト固定**: 既存の統合テスト（`backup.integration.test.ts` 9件、`imports.integration.test.ts` 66件）が全件パスし、互換性を維持
 
-**詳細**: [docs/knowledge-base/api.md#kb-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証)
+**詳細**: 
+- [docs/knowledge-base/api.md#kb-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証)
+- [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設)
+
+### コード品質の継続的改善（推奨）
+
+**概要**: ルート分割完了を機に、コード品質の継続的改善を検討
+
+**次の改善候補**:
+- **型安全性の向上**: `any`型の完全排除、型ガードの標準化、Zodスキーマの徹底
+- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅
+- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新
+- **パフォーマンス最適化**: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
 
 ### Mac開発環境: ストレージ運用（推奨）
 

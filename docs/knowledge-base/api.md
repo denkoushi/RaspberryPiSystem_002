@@ -86,6 +86,60 @@
 - `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
 
 **解決状況**: ✅ **解決済み**（2026-02-12）
+
+---
+
+### [KB-257] backup/importsルート分割と実行ロジックのサービス層移設
+
+**日付**: 2026-02-12
+
+**事象**:
+- `apps/api/src/routes/backup.ts`（約2000行）と`apps/api/src/routes/imports.ts`（約1400行）が肥大化し、1ファイル内でルーティング・バリデーション・DB処理・ビジネスロジックが混在していた
+- 変更容易性と回帰リスクの観点で、APIルート肥大化/責務境界不明確の構造課題が顕在化していた
+- 実行前後の処理（pre-restore、post-backup cleanup）がルート層に残り、サービス層への依存方向が逆転していた
+
+**要因**:
+- 機能追加を同一ルートファイルへ継ぎ足す運用が継続し、責務境界（route/service）が曖昧になっていた
+- 実行ロジックがルート層に残り、`services -> routes`の正しい依存方向が維持できていなかった
+- 共通処理（プロバイダー解決、多重実行、クリーンアップ）が局所実装され、横展開時に再利用しづらかった
+
+**有効だった対策**:
+- ✅ `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）し、機能単位で責務を明確化
+- ✅ `imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）し、履歴/スケジュール/master実行の境界を明確化
+- ✅ 実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）し、依存方向を是正
+- ✅ `backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化（各モジュールの`register*Routes`を呼び出すだけ）
+- ✅ API契約（パス/レスポンス/認可）を維持したまま、統合テスト・CI・実機APIスモークで互換を確認
+
+**トラブルシューティング**:
+- lintエラー6件を修正:
+  - `restore.ts`: 未使用import（`BackupConfig`）を削除
+  - `history.ts`: `any`型キャストを型ガード（`isImportStatus`）に置換（2箇所）
+  - `schedule.ts`: `(request as any).id`を`request.id`に置換（2箇所）
+- 修正後、`pnpm --filter @raspi-system/api lint`成功
+
+**検証**:
+- ローカル: `backup/imports`統合テスト75件全件パス、`build`、`lint`成功
+- CI: GitHub Actions Run `21935302228`（`lint-and-test` / `e2e-smoke` / `e2e-tests` / `docker-build` すべて成功）
+- デプロイ: `update-all-clients.sh`でPi5限定デプロイ成功（runId: `20260212-155938-10971`, `failed=0`, 実行時間約7分）
+- 実機API: `backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）、APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）
+
+**関連ファイル**:
+- `apps/api/src/routes/backup.ts`（集約レイヤへ簡素化）
+- `apps/api/src/routes/backup/*.ts`（9分割モジュール）
+- `apps/api/src/routes/imports.ts`（集約レイヤへ簡素化）
+- `apps/api/src/routes/imports/*.ts`（3分割モジュール）
+- `apps/api/src/services/backup/backup-execution.service.ts`
+- `apps/api/src/services/backup/pre-restore-backup.service.ts`
+- `apps/api/src/services/backup/post-backup-cleanup.service.ts`
+- `apps/api/src/routes/__tests__/backup.integration.test.ts`
+- `apps/api/src/routes/__tests__/imports.integration.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-12）
+- ルート肥大化の主要2領域（`backup`/`imports`）で、モジュール化とサービス層分離を完了
+- 今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくなった
+
+---
+
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
