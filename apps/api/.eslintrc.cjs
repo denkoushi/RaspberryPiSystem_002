@@ -41,6 +41,16 @@ module.exports = {
             target: './src/lib',
             from: './src/services',
             message: 'lib層からservices層への依存は禁止です（依存方向: routes/services -> lib）。'
+          },
+          {
+            target: './src/routes/clients',
+            from: './src/routes/kiosk',
+            message: 'routes/kiosk から routes/clients への依存は禁止です（機能境界の横断を防止）。'
+          },
+          {
+            target: './src/routes/kiosk',
+            from: './src/routes/clients',
+            message: 'routes/clients から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
           }
         ]
       }
