@@ -35,7 +35,7 @@ describe('Performance Tests (NFR-001)', () => {
     loginUsername = user.username;
     loginPassword = password;
 
-    const client = await createTestClientDevice('perf-client-key');
+    const client = await createTestClientDevice();
     kioskClientHeaders = { 'x-client-key': client.apiKey };
   });
 
