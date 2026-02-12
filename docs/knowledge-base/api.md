@@ -56,6 +56,36 @@
 **解決状況**: ✅ **解決済み**（2026-02-12）
 - Ratchet方式で型安全性とLint健全性を強化し、疎結合・再利用性を維持したままフェーズ2を完了
 
+**フェーズ3（テスト主軸: backup/imports + auth/roles）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ サービス層ユニットテスト追加（`backup-execution.service.test.ts` でプロバイダー解決・履歴記録・失敗時処理を検証、`csv-import-process.service.test.ts` で空ターゲット・UID重複・正常系・エラー再スローを検証）
+  - ✅ 統合テスト拡充（`auth.integration.test.ts` に認可境界テスト追加（`POST /api/auth/refresh` 空refreshTokenで400、`POST /api/auth/users/:id/role` でMANAGERが403、`GET /api/auth/role-audit` でMANAGERが403）、`backup.integration.test.ts` に非ADMINの403テスト追加、`imports.integration.test.ts` に非ADMINの403テスト追加）
+  - ✅ テスト共通ヘルパー拡張（`helpers.ts` に `loginAndGetAccessToken` / `expectApiError` を追加して重複削減）
+- **トラブルシューティング**:
+  - Vitestの `vi.mock` hoisting問題（`ReferenceError: Cannot access 'createFromTargetMock' before initialization`）を `vi.hoisted` で解決（`backup-execution.service.test.ts` / `csv-import-process.service.test.ts`）
+- **検証**:
+  - **ローカル検証**: `pnpm --filter @raspi-system/api test`（43件全件パス）、`pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21941655302` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-190813-9599`, `failed=0`, 実行時間約6分、ブランチ `feat/code-quality-phase2-ratchet-api-shared-types`）
+  - **実機検証結果（詳細）**:
+    - **デプロイ実体確認**: Pi5上のコミットハッシュ `88eb0f73` がローカルと一致、ブランチ `feat/code-quality-phase2-ratchet-api-shared-types` が反映済み
+    - **コンテナ稼働状態**: `api`, `db`, `web` すべて `Up` 状態で正常稼働
+    - **ヘルスチェック**: `GET /api/system/health` → `200` (`status: ok`), `GET /api/backup/config/health` → `200` (`healthy`), `GET /api/backup/config` → `200`（認証あり）
+    - **DB整合性**: `pnpm prisma migrate status` → `Database schema is up to date!`（32 migrations）、必須テーブル `MeasuringInstrumentLoanEvent` 存在確認 → `true`
+    - **認証・認可境界検証**: `POST /api/auth/login` → `200`（トークン取得成功）、`POST /api/auth/refresh` 空refreshToken → `400`（期待通り）、`GET /api/backup/config` 無認証 → `401`（期待通り）、`POST /api/imports/master` 無認証 → `401`（期待通り）、`GET /api/auth/role-audit` → `200`
+    - **業務エンドポイント疎通**: `GET /api/system/deploy-status` → `200`, `GET /api/tools/loans/active`（client-key付き）→ `200`, `GET /api/signage/content` → `200`
+    - **UI到達性**: `/admin`, `/kiosk`, `/signage` すべて `200`
+    - **Pi4/Pi3サービス状態**: Pi4: `kiosk-browser.service` / `status-agent.timer` → `active`、Pi3: `signage-lite.service` → `active`、`/run/signage/current.jpg` 更新確認済み
+    - **ログ健全性**: 直近10分のAPIログで重大障害系未検出、検証時の意図的異常系リクエストに起因する `VALIDATION_ERROR` / `AUTH_TOKEN_REQUIRED` ログのみ確認（正常挙動）
+- **関連ファイル（追加）**:
+  - `apps/api/src/services/backup/__tests__/backup-execution.service.test.ts`
+  - `apps/api/src/services/imports/__tests__/csv-import-process.service.test.ts`
+  - `apps/api/src/routes/__tests__/helpers.ts`（`loginAndGetAccessToken`, `expectApiError` 追加）
+  - `apps/api/src/routes/__tests__/auth.integration.test.ts`（認可境界テスト追加）
+  - `apps/api/src/routes/__tests__/backup.integration.test.ts`（非ADMINの403テスト追加）
+  - `apps/api/src/routes/__tests__/imports.integration.test.ts`（非ADMINの403テスト追加）
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
