@@ -9,6 +9,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     },
     csvDashboardRow: {
       findMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -19,6 +20,7 @@ describe('MachineService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new MachineService();
+    vi.mocked(prisma.csvDashboardRow.deleteMany).mockResolvedValue({ count: 0 } as any);
   });
 
   it('稼働中マスター - 当日点検済みの差分で未点検を返す', async () => {
@@ -55,8 +57,16 @@ describe('MachineService', () => {
 
     vi.mocked(prisma.machine.findMany).mockResolvedValue(machines as any);
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
-      { rowData: { equipmentManagementNumber: '30024' } },
-      { rowData: { equipmentManagementNumber: '99999' } }, // マスター外は差分計算に影響しない
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-02-11T12:00:00Z'),
+        rowData: { equipmentManagementNumber: '30024', inspectionAt: '2026-02-11T12:00:00Z', inspectionItem: '主軸' },
+      },
+      {
+        id: 'r2',
+        occurredAt: new Date('2026-02-11T12:01:00Z'),
+        rowData: { equipmentManagementNumber: '99999', inspectionAt: '2026-02-11T12:01:00Z', inspectionItem: '主軸' },
+      }, // マスター外は差分計算に影響しない
     ] as any);
 
     const result = await service.findUninspected({
@@ -104,10 +114,46 @@ describe('MachineService', () => {
 
     vi.mocked(prisma.machine.findMany).mockResolvedValue(machines as any);
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
-      { rowData: { equipmentManagementNumber: '30024', inspectionResult: '正常' } },
-      { rowData: { equipmentManagementNumber: '30024', inspectionResult: '異常' } },
-      { rowData: { equipmentManagementNumber: '30024', inspectionResult: '正常' } },
-      { rowData: { equipmentManagementNumber: '99999', inspectionResult: '正常' } }, // マスター外は無視
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-02-11T12:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: '主軸',
+          inspectionAt: '2026-02-11T12:00:00Z',
+          inspectionResult: '正常',
+        },
+      },
+      {
+        id: 'r2',
+        occurredAt: new Date('2026-02-11T12:02:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: '主軸',
+          inspectionAt: '2026-02-11T12:02:00Z',
+          inspectionResult: '異常',
+        },
+      },
+      {
+        id: 'r3',
+        occurredAt: new Date('2026-02-11T12:05:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: 'クーラント',
+          inspectionAt: '2026-02-11T12:05:00Z',
+          inspectionResult: '正常',
+        },
+      },
+      {
+        id: 'r4',
+        occurredAt: new Date('2026-02-11T12:03:00Z'),
+        rowData: {
+          equipmentManagementNumber: '99999',
+          inspectionItem: '主軸',
+          inspectionAt: '2026-02-11T12:03:00Z',
+          inspectionResult: '正常',
+        },
+      }, // マスター外は無視
     ] as any);
 
     const result = await service.findDailyInspectionSummaries({
@@ -121,7 +167,7 @@ describe('MachineService', () => {
     expect(result.machines).toEqual([
       expect.objectContaining({
         equipmentManagementNumber: '30024',
-        normalCount: 2,
+        normalCount: 1,
         abnormalCount: 1,
         used: true,
       }),
@@ -132,5 +178,12 @@ describe('MachineService', () => {
         used: false,
       }),
     ]);
+    expect(prisma.csvDashboardRow.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['r1'],
+        },
+      },
+    });
   });
 });

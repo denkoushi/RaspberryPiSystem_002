@@ -80,6 +80,51 @@ function extractInspectionResult(rowData: unknown): string | null {
   return null;
 }
 
+function extractInspectionItem(rowData: unknown): string | null {
+  if (!rowData || typeof rowData !== 'object' || Array.isArray(rowData)) {
+    return null;
+  }
+  const data = rowData as Record<string, unknown>;
+  const normalized = data.inspectionItem;
+  if (typeof normalized === 'string' && normalized.trim().length > 0) {
+    return normalized.trim();
+  }
+  const rawJapanese = data['点検項目'];
+  if (typeof rawJapanese === 'string' && rawJapanese.trim().length > 0) {
+    return rawJapanese.trim();
+  }
+  return null;
+}
+
+function parseDateValue(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function extractInspectionAt(rowData: unknown): Date | null {
+  if (!rowData || typeof rowData !== 'object' || Array.isArray(rowData)) {
+    return null;
+  }
+  const data = rowData as Record<string, unknown>;
+  const normalized = parseDateValue(data.inspectionAt);
+  if (normalized) {
+    return normalized;
+  }
+  const rawJapanese = parseDateValue(data['点検日時']);
+  if (rawJapanese) {
+    return rawJapanese;
+  }
+  return null;
+}
+
 function classifyInspectionResult(result: string | null): 'normal' | 'abnormal' | null {
   if (!result) {
     return null;
@@ -195,7 +240,7 @@ export class MachineService {
 
   async findDailyInspectionSummaries(params: UninspectedMachineQuery) {
     const { csvDashboardId } = params;
-    const { date, start, end } = resolveTokyoDayRange(params.date);
+    const { date } = resolveTokyoDayRange(params.date);
 
     const runningMachines = await prisma.machine.findMany({
       where: { operatingStatus: '稼働中' },
@@ -206,13 +251,85 @@ export class MachineService {
     const rows = await prisma.csvDashboardRow.findMany({
       where: {
         csvDashboardId,
-        occurredAt: {
-          gte: start,
-          lt: end,
-        },
       },
-      select: { rowData: true },
+      select: {
+        id: true,
+        occurredAt: true,
+        rowData: true,
+      },
     });
+
+    const deduplicatedRows = new Map<
+      string,
+      {
+        id: string;
+        occurredAt: Date;
+        rowData: Prisma.JsonValue;
+      }
+    >();
+    const duplicateRowIds = new Set<string>();
+
+    for (const row of rows) {
+      const equipmentNumber = extractEquipmentNumber(row.rowData);
+      if (!equipmentNumber || !runningMachineNumbers.has(equipmentNumber)) {
+        continue;
+      }
+
+      const inspectionAt = extractInspectionAt(row.rowData);
+      if (!inspectionAt) {
+        continue;
+      }
+      const jstInspectionDate = formatTokyoDate(inspectionAt);
+      if (jstInspectionDate !== date) {
+        continue;
+      }
+
+      const inspectionItem = extractInspectionItem(row.rowData) ?? '';
+      const dedupKey = `${equipmentNumber}__${inspectionItem}__${jstInspectionDate}`;
+      const currentAt = inspectionAt.getTime();
+      const existing = deduplicatedRows.get(dedupKey);
+
+      if (!existing) {
+        deduplicatedRows.set(dedupKey, {
+          id: row.id,
+          occurredAt: row.occurredAt,
+          rowData: row.rowData,
+        });
+        continue;
+      }
+
+      const existingInspectionAt = extractInspectionAt(existing.rowData);
+      if (!existingInspectionAt) {
+        deduplicatedRows.set(dedupKey, {
+          id: row.id,
+          occurredAt: row.occurredAt,
+          rowData: row.rowData,
+        });
+        duplicateRowIds.add(existing.id);
+        continue;
+      }
+      const existingAt = existingInspectionAt.getTime();
+      if (currentAt >= existingAt) {
+        duplicateRowIds.add(existing.id);
+        deduplicatedRows.set(dedupKey, {
+          id: row.id,
+          occurredAt: row.occurredAt,
+          rowData: row.rowData,
+        });
+      } else {
+        duplicateRowIds.add(row.id);
+      }
+    }
+
+    if (duplicateRowIds.size > 0) {
+      await prisma.csvDashboardRow.deleteMany({
+        where: {
+          id: {
+            in: Array.from(duplicateRowIds),
+          },
+        },
+      });
+    }
 
     const aggregates = new Map<
       string,
@@ -223,12 +340,9 @@ export class MachineService {
       }
     >();
 
-    for (const row of rows) {
+    for (const row of deduplicatedRows.values()) {
       const equipmentNumber = extractEquipmentNumber(row.rowData);
-      if (!equipmentNumber || !runningMachineNumbers.has(equipmentNumber)) {
-        continue;
-      }
-
+      if (!equipmentNumber) continue;
       const current = aggregates.get(equipmentNumber) ?? {
         normalCount: 0,
         abnormalCount: 0,
