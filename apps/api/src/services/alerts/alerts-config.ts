@@ -124,13 +124,10 @@ export async function loadAlertsDispatcherConfig(): Promise<AlertsDispatcherConf
   const asUrl = (value: string | undefined): string | undefined => {
     const v = value?.trim();
     if (!v) return undefined;
-    try {
-      // eslint-disable-next-line no-new
-      new URL(v);
-      return v;
-    } catch {
+    if (!URL.canParse(v)) {
       return undefined;
     }
+    return v;
   };
 
   const base: AlertsDispatcherConfig = {

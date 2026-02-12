@@ -9,6 +9,10 @@
 
 ## Progress
 
+- [x] (2026-02-12) **コード品質改善フェーズ3（テスト主軸: backup/imports + auth/roles）実装完了・CI成功・デプロイ完了・実機検証完了**: フェーズ1・2で確立した型安全性とLint健全性を基盤に、テストカバレッジ拡充と認可境界の明確化を実施。**実装内容**: サービス層ユニットテスト追加（`backup-execution.service.test.ts` でプロバイダー解決・履歴記録・失敗時処理を検証、`csv-import-process.service.test.ts` で空ターゲット・UID重複・正常系・エラー再スローを検証）、統合テスト拡充（`auth.integration.test.ts` に認可境界テスト追加（`POST /api/auth/refresh` 空refreshTokenで400、`POST /api/auth/users/:id/role` でMANAGERが403、`GET /api/auth/role-audit` でMANAGERが403）、`backup.integration.test.ts` に非ADMINの403テスト追加、`imports.integration.test.ts` に非ADMINの403テスト追加）、テスト共通ヘルパー拡張（`helpers.ts` に `loginAndGetAccessToken` / `expectApiError` を追加して重複削減）。**トラブルシューティング**: Vitestの `vi.mock` hoisting問題（`ReferenceError: Cannot access 'createFromTargetMock' before initialization`）を `vi.hoisted` で解決（`backup-execution.service.test.ts` / `csv-import-process.service.test.ts`）。**ローカル検証**: `pnpm --filter @raspi-system/api test`（43件全件パス）、`pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build` 成功。**CI実行**: GitHub Actions Run ID `21941655302` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-190813-9599`, `failed=0`, 実行時間約6分、ブランチ `feat/code-quality-phase2-ratchet-api-shared-types`）。**実機検証結果（詳細）**: デプロイ実体確認（コミットハッシュ `88eb0f73` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)、`GET /api/backup/config/health` → `200` (`healthy`)、`GET /api/backup/config` → `200`（認証あり））、DB整合性（32マイグレーション適用済み・必須テーブル存在確認）、認証・認可境界検証（`POST /api/auth/login` → `200`（トークン取得成功）、`POST /api/auth/refresh` 空refreshToken → `400`（期待通り）、`GET /api/backup/config` 無認証 → `401`（期待通り）、`POST /api/imports/master` 無認証 → `401`（期待通り）、`GET /api/auth/role-audit` → `200`）、業務エンドポイント疎通（`GET /api/system/deploy-status` → `200`、`GET /api/tools/loans/active`（client-key付き）→ `200`、`GET /api/signage/content` → `200`）、UI到達性（`/admin`, `/kiosk`, `/signage` すべて `200`）、Pi4/Pi3サービス状態（Pi4: `kiosk-browser.service` / `status-agent.timer` → `active`、Pi3: `signage-lite.service` → `active`、`/run/signage/current.jpg` 更新確認済み）、ログ健全性（直近10分のAPIログで重大障害系未検出、検証時の意図的異常系リクエストに起因する `VALIDATION_ERROR` / `AUTH_TOKEN_REQUIRED` ログのみ確認（正常挙動））。**ドキュメント更新**: KB-258を更新（フェーズ3の実装と検証結果を追加）、EXEC_PLAN.mdを更新。詳細は [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet型安全化lint抑制削減契約型拡張) を参照。
+
+- [x] (2026-02-12) **コード品質改善フェーズ2（API+shared-types, Ratchet）実装完了・CI成功・デプロイ完了・実機検証完了**: フェーズ1で導入した方針を維持しつつ、`apps/api + packages/shared-types` の範囲で型安全化・Lint強化・再利用性向上を段階適用。**実装内容**: `type-guards.ts` を拡張（`getRecord/getNumber/getBoolean/getArray` 追加）、`csv-dashboards/schemas.ts` の `z.any()` を `z.unknown()` へ変更、`gmail-storage.provider.ts` / `item.ts` / `image-backup.target.ts` / `database-backup.target.ts` の未使用引数向け `eslint-disable` を除去、`backup.service.ts` の制御文字除去を正規表現依存から関数化、`csv-backup.target.ts` の `while(true)` と `as string` キャストを撤去、`alerts-config.ts` のURL検証を `URL.canParse` へ統一。**契約型拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）。**Lint方針**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）。**ローカル検証**: `pnpm --filter @raspi-system/shared-types lint/build`、`pnpm --filter @raspi-system/api lint/build`、`pnpm --filter @raspi-system/api test -- src/lib/__tests__/type-guards.test.ts src/services/backup/__tests__/dropbox-storage-refresh.test.ts src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（38件全件パス）成功。**CI実行**: GitHub Actions Run ID `21940221571` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-182127-4633`, `failed=0`, 実行時間約5分、ブランチ `feat/code-quality-phase2-ratchet-api-shared-types`）。**実機検証結果（詳細）**: デプロイ実体確認（コミットハッシュ一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`/api/system/health` → `200`, `/api/backup/config/health/internal` → `200`）、DB整合性（32マイグレーション適用済み・必須テーブル存在確認）、業務エンドポイント疎通（`/api/tools/loans/active`, `/api/signage/content` 正常）、認証フロー（`/api/auth/login`, `/api/auth/refresh` 正常）、認証付き管理API読み取り系（`backup/imports/csv-dashboards` 系エンドポイントすべて `200`）、非認証アクセス防御（未認証で `401` を返却）、ログ健全性（重大障害系未検出）、運用タイマー（`security-monitor.timer` 正常）。**ドキュメント更新**: KB-258を追加・更新、EXEC_PLAN.mdを更新。詳細は [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet型安全化lint抑制削減契約型拡張) を参照。
+
 - [x] (2026-02-12) **コード品質改善フェーズ1（API+shared-types）実装完了・CI成功・デプロイ完了・実機検証完了**: `any` 依存の縮小、境界ルール導入、最小ユニットテスト追加を実施。**実装内容**: `apps/api/src/lib/type-guards.ts` を新設して `unknown` の安全処理を共通化、`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去、`apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入、`packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加。**テスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース（`result.fileBinary`、`ArrayBuffer`、400 malformed token の再認証）。**ローカル検証**: `pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（27件全件パス）、`pnpm --filter @raspi-system/shared-types lint`、`pnpm --filter @raspi-system/shared-types build` 成功。**トラブルシューティング**: テスト失敗はコード起因ではなくDocker/DB環境起因（`overlay2` I/Oエラー→Docker再起動、`public.User` 不在→`prisma:deploy` で復旧）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21938333459`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-174057-14354`, `failed=0`, 実行時間約5分30秒）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。  
 
 - [x] (2026-02-12) **backup/importsルート分割と実行ロジックのサービス層移設完了・CI成功・デプロイ完了・実機検証完了**: `backup.ts`と`imports.ts`の巨大ルートを機能別モジュールへ分割し、実行前後の処理をサービス層へ移して責務境界を明確化。今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくする。**実装内容**: `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）、`imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）、`backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化。**トラブルシューティング**: lintエラー6件（未使用import削除、`any`型を型ガード化）を修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21935302228`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-155938-10971`, `failed=0`, 実行時間約7分）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。**ドキュメント更新**: KB-257を追加、EXEC_PLAN.mdを更新、index.mdを更新（KB-257を追加、件数を51件に更新）。詳細は [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
@@ -554,6 +558,10 @@
 
 ## Surprises & Discoveries
 
+- 観測: `Record<string, unknown>` の判定では配列もオブジェクトとして真になるため、境界ヘルパー `getRecord()` が配列を許容してしまうと期待外の分岐を通る。  
+  対応: `getRecord()` を「非配列オブジェクトのみ許可」に修正し、ユニットテストで固定化。フェーズ2の型ガード拡張時は「配列とオブジェクトを明示分離」を標準方針とする。**[KB-258]**
+- 観測: URL検証で `new URL()` のインスタンス化を行う実装は、Lint抑制コメントに依存しやすい。  
+  対応: `URL.canParse()` ベースへ置換して `eslint-disable` を不要化。フェーズ2では「検証専用APIを優先し、抑制コメントを残さない」を再利用ルールとして採用。**[KB-258]**
 - 観測: `PUT /api/kiosk/production-schedule/search-state` は `search-history` と異なり、payloadに `state` オブジェクトを必須とする（`{ state: { history: [...] } }`）。同値更新検証で `{ history: [...] }` を送ると `400 VALIDATION_ERROR` になる。  
   対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
 - 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
@@ -728,6 +736,10 @@
 
 ## Decision Log
 
+- 決定: フェーズ2の型安全改善は「共通ガード拡張→高リスク箇所の小刻み置換→Lintで新規違反を防止」のRatchet順序で実施する。  
+  理由: 稼働互換を壊さず、変更範囲を局所化しながら再利用性とスケーラビリティを上げるため。  
+  日付/担当: 2026-02-12 / Codex  
+  参照: [KB-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2-ratchet型安全化lint抑制削減契約型拡張)
 - 決定: 型安全化は「外部SDK境界に型の曖昧さを閉じ込める」方針で段階導入し、`services -> routes` 逆依存をESLintで禁止する。  
   理由: 稼働中システムの互換性を保ちながら、疎結合・再利用性・将来拡張時の回帰抑制を機械的に担保するため。  
   日付/担当: 2026-02-12 / Codex  
@@ -1365,12 +1377,25 @@
 - ✅ **最小ユニットテスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース
 - ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21938333459` 成功、Pi5デプロイ成功（runId `20260212-174057-14354`）、実機検証完了
 
-**次の改善候補（フェーズ2以降）**:
-- **型安全性のさらなる向上**: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
-- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充
-- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
-- **パフォーマンス最適化**: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
-- **ESLintルールの拡張**: 追加の依存境界ルール、型安全性ルールの段階導入
+**完了した改善（フェーズ2）**:
+- ✅ **型ガード関数の拡張**: `apps/api/src/lib/type-guards.ts` に `getRecord/getNumber/getBoolean/getArray` を追加し、境界処理の共通化を強化
+- ✅ **Lint抑制コメントの削減**: `z.any()` → `z.unknown()` への置換、未使用引数向け `eslint-disable` の除去、制御文字除去の関数化、`while(true)` の改善、URL検証の `URL.canParse` 統一
+- ✅ **共有契約型の拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）
+- ✅ **Lint方針の強化**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21940221571` 成功、Pi5デプロイ成功（runId `20260212-182127-4633`）、実機検証完了（詳細検証: 認証フロー、管理API読み取り系、ログ健全性まで確認）
+
+**完了した改善（フェーズ3）**:
+- ✅ **サービス層ユニットテスト追加**: `backup-execution.service.test.ts` でプロバイダー解決・履歴記録・失敗時処理を検証、`csv-import-process.service.test.ts` で空ターゲット・UID重複・正常系・エラー再スローを検証
+- ✅ **統合テスト拡充**: `auth.integration.test.ts` に認可境界テスト追加（`POST /api/auth/refresh` 空refreshTokenで400、`POST /api/auth/users/:id/role` でMANAGERが403、`GET /api/auth/role-audit` でMANAGERが403）、`backup.integration.test.ts` に非ADMINの403テスト追加、`imports.integration.test.ts` に非ADMINの403テスト追加
+- ✅ **テスト共通ヘルパー拡張**: `helpers.ts` に `loginAndGetAccessToken` / `expectApiError` を追加して重複削減
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21941655302` 成功、Pi5デプロイ成功（runId `20260212-190813-9599`）、実機検証完了（詳細検証: 認証・認可境界、業務エンドポイント疎通、UI到達性、Pi4/Pi3サービス状態、ログ健全性まで確認）
+
+**次の改善候補（フェーズ4以降）**:
+- **テストカバレッジのさらなる向上**（推奨・優先度: 低）: 残るサービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充（フェーズ3で主要領域は完了）
+- **ドキュメントの整備**（推奨・優先度: 中）: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
+- **パフォーマンス最適化**（推奨・優先度: 中）: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
+- **型安全性のさらなる向上**（優先度: 低）: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
+- **ESLintルールの拡張**（優先度: 低）: 追加の依存境界ルール、型安全性ルールの段階導入
 
 ### Mac開発環境: ストレージ運用（推奨）
 

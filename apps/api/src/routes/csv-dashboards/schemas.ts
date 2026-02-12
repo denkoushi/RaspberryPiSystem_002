@@ -58,5 +58,5 @@ export const csvDashboardParamsSchema = z.object({
 
 // CSVアップロードスキーマ（multipart form data用）
 export const csvUploadSchema = z.object({
-  file: z.any(), // Fastifyのmultipart file
+  file: z.unknown(), // Fastifyのmultipart file
 });

@@ -122,6 +122,19 @@ describe('Backup API integration', () => {
     expect(Array.isArray(body.targets)).toBe(true);
   });
 
+  it('should return 403 for non-admin user on backup config endpoint', async () => {
+    const manager = await createTestUser('MANAGER');
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/backup/config',
+      headers: createAuthHeader(manager.token),
+    });
+
+    expect(response.statusCode).toBe(403);
+    const body = response.json();
+    expect(body.message).toContain('操作権限がありません');
+  });
+
   describe('Backup target management', () => {
     it('should add a backup target', async () => {
       const response = await app.inject({

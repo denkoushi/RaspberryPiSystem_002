@@ -292,16 +292,17 @@ export class GmailStorageProvider implements StorageProvider {
   /**
    * ファイルをアップロード（未実装：Gmailは読み取り専用）
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async upload(_file: Buffer, _path: string): Promise<void> {
+  async upload(file: Buffer, path: string): Promise<void> {
+    void file;
+    void path;
     throw new Error('GmailStorageProvider does not support upload. Gmail is read-only.');
   }
 
   /**
    * ファイルを削除（未実装：Gmailは読み取り専用）
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async delete(_path: string): Promise<void> {
+  async delete(path: string): Promise<void> {
+    void path;
     throw new Error('GmailStorageProvider does not support delete. Gmail is read-only.');
   }
 

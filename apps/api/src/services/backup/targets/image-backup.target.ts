@@ -6,6 +6,7 @@ import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
 import { logger } from '../../../lib/logger.js';
+import { getString } from '../../../lib/type-guards.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,12 +27,13 @@ export class ImageBackupTarget implements BackupTarget {
     this.photosDir = path.join(baseDir, 'photos');
     this.thumbnailsDir = path.join(baseDir, 'thumbnails');
     
+    const metadataLabel = metadata ? getString(metadata, 'label') : undefined;
     this.info = {
       type: 'image',
       source: 'photo-storage',
       metadata: {
         ...metadata,
-        label: metadata?.label as string || `images-${new Date().toISOString()}`,
+        label: metadataLabel || `images-${new Date().toISOString()}`,
         photosDir: this.photosDir,
         thumbnailsDir: this.thumbnailsDir
       }
@@ -82,7 +84,8 @@ export class ImageBackupTarget implements BackupTarget {
     }
   }
 
-  async restore(backupData: Buffer, _options?: RestoreOptions): Promise<RestoreResult> { // eslint-disable-line @typescript-eslint/no-unused-vars
+  async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {
+    void options;
     // 一時ディレクトリを作成してtar.gzを展開
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-restore-'));
     const archivePath = path.join(tmpDir, 'images.tar.gz');

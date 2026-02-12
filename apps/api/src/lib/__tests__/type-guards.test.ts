@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getString, isRecord, toErrorInfo } from '../type-guards.js';
+import { getArray, getBoolean, getNumber, getRecord, getString, isRecord, toErrorInfo } from '../type-guards.js';
 
 describe('type-guards', () => {
   it('isRecord should narrow plain objects', () => {
@@ -19,6 +19,25 @@ describe('type-guards', () => {
     expect(getString(record, 'n')).toBeUndefined();
     expect(getString(record, 'u')).toBeUndefined();
     expect(getString(record, 'missing')).toBeUndefined();
+  });
+
+  it('getNumber/getBoolean/getArray/getRecord should narrow expected values', () => {
+    const record: Record<string, unknown> = {
+      n: 42,
+      b: true,
+      a: ['x', 1],
+      r: { nested: 'ok' },
+      s: 'not-number',
+    };
+
+    expect(getNumber(record, 'n')).toBe(42);
+    expect(getNumber(record, 's')).toBeUndefined();
+    expect(getBoolean(record, 'b')).toBe(true);
+    expect(getBoolean(record, 'n')).toBeUndefined();
+    expect(getArray(record, 'a')).toEqual(['x', 1]);
+    expect(getArray(record, 'r')).toBeUndefined();
+    expect(getRecord(record, 'r')).toEqual({ nested: 'ok' });
+    expect(getRecord(record, 'a')).toBeUndefined();
   });
 
   it('toErrorInfo should extract metadata from Error-like values', () => {
