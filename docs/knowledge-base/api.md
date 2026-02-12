@@ -1,4 +1,145 @@
 ---
+
+### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
+
+**日付**: 2026-02-11
+
+**事象**:
+- `apps/api/src/routes/kiosk.ts` と `apps/api/src/routes/clients.ts` が肥大化し、1ファイル内でルーティング・バリデーション・DB処理が混在していた
+- 変更容易性と回帰リスクの観点で、APIルート肥大化/DB直結の構造課題が顕在化していた
+
+**要因**:
+- 機能追加を同一ルートファイルへ継ぎ足す運用が継続し、責務境界（route/service）が曖昧になっていた
+- 共通処理（`x-client-key` 正規化、認可、検索状態更新など）が局所実装され、横展開時に再利用しづらかった
+
+**有効だった対策**:
+- ✅ `kiosk` を機能単位に分割（`routes/kiosk/*`, `routes/kiosk/production-schedule/*`）し、`services/production-schedule/*` へDB/業務ロジックを抽出
+- ✅ `clients` を `routes/clients/{core,alerts,shared}.ts` と `services/clients/*` に分割し、`routes/index.ts` は集約エントリ経由に統一
+- ✅ API契約（パス/レスポンス/認可）を維持したまま、統合テスト・CI・実機APIスモークで互換を確認
+
+**トラブルシューティング**:
+- `search-state` 更新確認時に `PUT /api/kiosk/production-schedule/search-state` へ `{ history: [...] }` を送信すると `400 VALIDATION_ERROR`（`state` 必須）になった
+- 正しい形式 `{ state: { history: [...] } }` に修正し `200` を確認
+- `search-history` は既存どおり `{ history: [...] }` で `200` を確認（エンドポイントごとの契約差異）
+
+**検証**:
+- ローカル: `clients` + `kiosk-production-schedule` 統合テスト、`build`、`lint` 成功
+- CI: GitHub Actions Run `21905767965`（`lint-and-test` / `e2e-smoke` / `e2e-tests` / `docker-build` すべて成功）
+- デプロイ: `update-all-clients.sh` で Pi5限定デプロイ成功（runId: `20260211-220347-19394`, `failed=0`）
+- 実機API: `kiosk`/`clients` の主要導線を `200` で確認、未認証/キー欠落ガードは `401` を確認
+
+**関連ファイル**:
+- `apps/api/src/routes/kiosk.ts`
+- `apps/api/src/routes/kiosk/**/*.ts`
+- `apps/api/src/services/production-schedule/*.ts`
+- `apps/api/src/routes/clients.ts`
+- `apps/api/src/routes/clients/*.ts`
+- `apps/api/src/services/clients/*.ts`
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-11）
+- ルート肥大化の主要2領域（`kiosk`/`clients`）で、モジュール化とサービス層分離を完了
+
+---
+
+### [KB-256] 加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）
+
+**日付**: 2026-02-12
+
+**事象**:
+- サイネージ表示値が、運用確認時に手動SQL集計と一致しないように見えた
+- KPIは`49/25/24`でも、一覧表の見え方が「点検済み9/未使用9」に見え、誤集計疑いが出た
+- 一覧が読みづらく、49件運用で視認性が不足した
+
+**要因**:
+- 有効スケジュール右枠が一時的に`csv_dashboard`を参照し、`uninspected_machines`集計と不一致だった
+- 一覧はレンダラー既定で先頭18件のみ表示（KPIは全件集計）だったため、見かけ上の不一致が発生
+- レイアウト上、分類列を含む1表表示では文字サイズと一覧密度の両立が難しかった
+
+**有効だった対策**:
+- ✅ サイネージ右枠を`visualization`（`uninspected_machines`）へ統一
+- ✅ `MachineService.findDailyInspectionSummaries`基準（JST当日・設備管理番号・重複除去）でKPI整合を確認
+- ✅ データソースを更新し、`分類`列を削除・`未点検（未使用）`を終端ソート
+- ✅ レンダラーを2列表示へ変更し、余白縮小・表示密度向上を実施
+- ✅ フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）し、レイアウト破壊なしで視認性を向上
+- ✅ タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一
+
+**トラブルシューティング**:
+- `404`で可視化API検証が失敗した際は、`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認
+- DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）
+- 画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認する
+
+**検証**:
+- ローカル: `pnpm test` 成功（`apps/api`: 64 passed / 2 skipped）
+- CI:
+  - Run `21930870130` 成功（2列表示最適化）
+  - Run `21931409637` 成功（フォントサイズ拡大）
+- デプロイ:
+  - runId `20260212-112355-17139` 成功（2列表示）
+  - runId `20260212-114929-25101` 成功（フォント拡大）
+- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認
+
+**関連ファイル**:
+- `apps/api/src/services/tools/machine.service.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-12）
+
+---
+
+### [KB-257] backup/importsルート分割と実行ロジックのサービス層移設
+
+**日付**: 2026-02-12
+
+**事象**:
+- `apps/api/src/routes/backup.ts`（約2000行）と`apps/api/src/routes/imports.ts`（約1400行）が肥大化し、1ファイル内でルーティング・バリデーション・DB処理・ビジネスロジックが混在していた
+- 変更容易性と回帰リスクの観点で、APIルート肥大化/責務境界不明確の構造課題が顕在化していた
+- 実行前後の処理（pre-restore、post-backup cleanup）がルート層に残り、サービス層への依存方向が逆転していた
+
+**要因**:
+- 機能追加を同一ルートファイルへ継ぎ足す運用が継続し、責務境界（route/service）が曖昧になっていた
+- 実行ロジックがルート層に残り、`services -> routes`の正しい依存方向が維持できていなかった
+- 共通処理（プロバイダー解決、多重実行、クリーンアップ）が局所実装され、横展開時に再利用しづらかった
+
+**有効だった対策**:
+- ✅ `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）し、機能単位で責務を明確化
+- ✅ `imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）し、履歴/スケジュール/master実行の境界を明確化
+- ✅ 実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）し、依存方向を是正
+- ✅ `backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化（各モジュールの`register*Routes`を呼び出すだけ）
+- ✅ API契約（パス/レスポンス/認可）を維持したまま、統合テスト・CI・実機APIスモークで互換を確認
+
+**トラブルシューティング**:
+- lintエラー6件を修正:
+  - `restore.ts`: 未使用import（`BackupConfig`）を削除
+  - `history.ts`: `any`型キャストを型ガード（`isImportStatus`）に置換（2箇所）
+  - `schedule.ts`: `(request as any).id`を`request.id`に置換（2箇所）
+- 修正後、`pnpm --filter @raspi-system/api lint`成功
+
+**検証**:
+- ローカル: `backup/imports`統合テスト75件全件パス、`build`、`lint`成功
+- CI: GitHub Actions Run `21935302228`（`lint-and-test` / `e2e-smoke` / `e2e-tests` / `docker-build` すべて成功）
+- デプロイ: `update-all-clients.sh`でPi5限定デプロイ成功（runId: `20260212-155938-10971`, `failed=0`, 実行時間約7分）
+- 実機API: `backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）、APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）
+
+**関連ファイル**:
+- `apps/api/src/routes/backup.ts`（集約レイヤへ簡素化）
+- `apps/api/src/routes/backup/*.ts`（9分割モジュール）
+- `apps/api/src/routes/imports.ts`（集約レイヤへ簡素化）
+- `apps/api/src/routes/imports/*.ts`（3分割モジュール）
+- `apps/api/src/services/backup/backup-execution.service.ts`
+- `apps/api/src/services/backup/pre-restore-backup.service.ts`
+- `apps/api/src/services/backup/post-backup-cleanup.service.ts`
+- `apps/api/src/routes/__tests__/backup.integration.test.ts`
+- `apps/api/src/routes/__tests__/imports.integration.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-12）
+- ルート肥大化の主要2領域（`backup`/`imports`）で、モジュール化とサービス層分離を完了
+- 今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくなった
+
+---
+
 title: トラブルシューティングナレッジベース - API関連
 tags: [トラブルシューティング, API, レート制限, 認証]
 audience: [開発者]
@@ -3051,5 +3192,51 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 - `apps/api/src/routes/__tests__/visualizations.integration.test.ts`
 
 **解決状況**: ✅ **実装完了・テスト成功**（2026-02-11）
+
+---
+
+### [KB-253] 加工機CSVインポートのデフォルト列定義とDB設定不整合問題
+
+**日付**: 2026-02-11
+
+**事象**: 
+- 加工機CSVインポート時に「加工機CSVの2行目でエラー: equipmentManagementNumber と name が undefined」が発生
+- DBに列定義が登録されていない場合でも、デフォルト列定義を使用するように実装したが、エラーが続いた
+- 実際のCSVファイル（`加工機_マスター.csv`）はローカルテストでは正常にパースできた
+
+**要因**: 
+- **根本原因**: DB側の`master-config-machines`レコードの`columnDefinitions`で、`internalName`が壊れていた
+  - 正しい値: `equipmentManagementNumber`, `name`
+  - 実際の値: `設備管理番号`, `加工機_名称`（日本語ヘッダーがそのまま`internalName`になっていた）
+- このため、`CsvRowMapper`がマッピングした結果、`equipmentManagementNumber`と`name`が`undefined`になり、Zodスキーマのバリデーションでエラーが発生
+
+**試行した対策**: 
+- [試行1] デフォルト列定義を`MachineCsvImporter`に追加 → ローカルテストでは成功したが、本番環境ではDB側の設定が優先され、壊れた設定が使用されていた
+- [試行2] CSVインポートのエラーメッセージを改善（実際のCSVヘッダーを表示） → デバッグしやすくなったが、根本原因は解決していなかった
+
+**有効だった対策**: 
+- ✅ **DB側の列定義を直接修正（2026-02-11）**:
+  - `CsvDashboard`テーブルの`master-config-machines`レコードの`columnDefinitions`を正しい`internalName`に更新
+  - SQLで直接修正: `UPDATE "CsvDashboard" SET "columnDefinitions" = '[...]'::jsonb WHERE id = 'master-config-machines'`
+  - 修正後、CSVインポートが正常に動作することを確認
+
+**学んだこと**: 
+- **DB側の設定が優先される**: `getEffectiveConfig`が`null`を返さない場合、DB側の設定が使用される。デフォルト列定義は「DB側に設定がない場合」のフォールバック
+- **列定義の`internalName`は英語キーである必要がある**: `internalName`はシステム内部で使用するキー名であり、日本語ヘッダーとは別物。`csvHeaderCandidates`で日本語ヘッダーとマッピングする
+- **DB設定の検証**: 列定義を設定する際は、`internalName`が正しい英語キーであることを確認する必要がある
+- **エラーメッセージの重要性**: 実際のCSVヘッダーを表示することで、デバッグが容易になる
+
+**再発防止**: 
+- 列定義を設定する際は、`internalName`が正しい英語キーであることを確認する
+- 管理コンソールの「CSV取り込み」→「取り込み設定（列定義・許可・戦略）」で列定義を設定する際、デフォルト値が正しく読み込まれることを確認する
+- DB側の設定を直接確認する方法をドキュメント化する
+
+**関連ファイル**: 
+- `apps/api/src/services/imports/importers/machine.ts`（デフォルト列定義の追加）
+- `apps/api/src/services/imports/csv-row-mapper.ts`（エラーメッセージ改善）
+- `apps/api/src/services/imports/csv-import-config.service.ts`（列定義取得）
+
+**解決状況**: ✅ **解決済み**（2026-02-11）
+- DB側の列定義を修正し、CSVインポートが正常に動作することを確認
 
 ---

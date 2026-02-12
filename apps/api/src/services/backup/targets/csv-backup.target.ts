@@ -2,7 +2,7 @@ import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../../../lib/prisma.js';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
-import { processCsvImport } from '../../../routes/imports.js';
+import { processCsvImport } from '../../imports/csv-import-process.service.js';
 import { logger } from '../../../lib/logger.js';
 
 /**

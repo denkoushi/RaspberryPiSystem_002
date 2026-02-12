@@ -3531,6 +3531,11 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
   - 一覧取得時の `enabled: true` 固定フィルタを外し、「選択肢に出てこない」事故を防止
 - ✅ 「点検結果CSVダッシュボードが存在しない」状況に対して、`加工機_日常点検結果` を**プリセット作成**できるボタンをCSVダッシュボード画面に追加
 - ✅ サイネージスケジュール画面の可視化プルダウンに用途ラベル（`未点検加工機`）を表示
+- ✅ 表示仕様を「日次設備集約」に更新（2026-02-12）
+  - JST当日のみ対象
+  - 1設備管理番号あたり1行に集約
+  - `点検結果` 列を `正常X/異常Y` 形式で表示（`点検項目` 列は非表示）
+  - 稼働中マスターに存在し当日記録がない設備は `未使用` と表示
 
 **運用トラブルシューティング（今回詰まった点）**:
 - **エラー**: 「未点検加工機データソースでは csvDashboardId が必須です」  
@@ -3543,12 +3548,75 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 汎用機能に業務用途を載せる場合は、専用機能を増やすより「プリセット + 必須入力ガード」の方が保守しやすい
 - 運用ミス対策は「保存時バリデーション」と「選択時の識別情報」の両方が必要
 - 「参照先リソースのID」を手入力させるとミスが起きやすい。**作成（プリセット）→選択（ドロップダウン）→保存（バリデーション）**の順でガードする
+- サイネージ用途では「生CSVの1行=1点検項目」の粒度をそのまま見せるより、業務判断単位（1設備）へ集約した方が可読性と運用性が高い
+- 集約ロジックはサービス層に置き、データソース/レンダラーは表示責務に限定すると、他画面への再利用と仕様変更がしやすい
 
 **関連ファイル**:
 - `apps/web/src/pages/admin/VisualizationDashboardsPage.tsx`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 - `apps/web/src/pages/admin/CsvDashboardsPage.tsx`
+- `apps/api/src/services/tools/machine.service.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
+- `apps/api/src/services/tools/__tests__/machine.service.test.ts`
 
-**解決状況**: ✅ **実装完了・lint通過**（2026-02-11）
+**解決状況**: ✅ **実装完了・テスト通過**（2026-02-12）
+
+---
+
+### [KB-254] 加工機マスタのメンテナンスページ追加（CRUD機能）
+
+**日付**: 2026-02-11
+
+**事象**: 
+- 加工機マスタデータをCSVインポートしたが、管理コンソールに従業員名簿や計測機器のようなメンテナンスタブが存在しなかった
+- 加工機マスタデータの登録・編集・削除ができない状態だった
+
+**要因**: 
+- 加工機マスタのCRUD機能が実装されていなかった
+- APIエンドポイントは`GET /api/tools/machines`と`GET /api/tools/machines/uninspected`のみで、作成・更新・削除ができなかった
+
+**有効だった対策**: 
+- ✅ **加工機マスタのCRUD機能実装（2026-02-11）**:
+  1. **APIエンドポイント追加**:
+     - `POST /api/tools/machines`: 加工機作成
+     - `PUT /api/tools/machines/:id`: 加工機更新
+     - `DELETE /api/tools/machines/:id`: 加工機削除
+  2. **サービス層実装**: `MachineService`に`create`, `update`, `delete`メソッドを追加
+  3. **フロントエンドページ追加**: `/admin/tools/machines`ページを追加（`MachinesPage.tsx`）
+     - 加工機登録・編集フォーム
+     - 加工機一覧テーブル（検索・フィルタ対応）
+     - 編集・削除機能
+  4. **ナビゲーション追加**: `AdminLayout.tsx`に「加工機」タブを追加
+  5. **React Queryフック追加**: `useMachineMutations`フックを追加（create, update, delete）
+
+**実装の詳細**:
+- **フォーム**: 設備管理番号、加工機名称、略称、分類、稼働状態、NC/Manual、メーカー、工程分類、クーラントの入力フィールド
+- **検索・フィルタ**: 名称、設備管理番号、分類、メーカーで検索、稼働状態でフィルタ
+- **編集機能**: 一覧から「編集」ボタンをクリックしてフォームに値を設定、編集完了後に「上書き保存」
+- **削除機能**: 削除前に確認ダイアログを表示
+
+**学んだこと**: 
+- **マスターデータの一貫性**: 従業員名簿や計測機器と同様に、加工機マスタも管理コンソールからCRUD操作できるようにすることで、運用の一貫性を保つ
+- **既存パターンの再利用**: `EmployeesPage.tsx`を参考にすることで、UIの一貫性と実装効率を向上
+- **ブランチ管理**: `main`ブランチにマージした変更が、`feat/signage-visualization-layout-improvement`ブランチに反映されていなかったため、マージが必要だった
+
+**関連ファイル**: 
+- `apps/api/src/routes/tools/machines/index.ts`（APIエンドポイント）
+- `apps/api/src/services/tools/machine.service.ts`（サービス層）
+- `apps/web/src/pages/tools/MachinesPage.tsx`（フロントエンドページ）
+- `apps/web/src/layouts/AdminLayout.tsx`（ナビゲーション）
+- `apps/web/src/api/client.ts`（APIクライアント）
+- `apps/web/src/api/hooks.ts`（React Queryフック）
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-11）
+
+**実機検証結果（2026-02-11）**:
+- ✅ **加工機の登録**: 設備管理番号、加工機名称、略称、分類、稼働状態、NC/Manual、メーカー、工程分類、クーラントの入力が正常に動作することを確認
+- ✅ **加工機の編集**: 一覧から「編集」ボタンをクリックしてフォームに値を設定し、「上書き保存」で正常に更新されることを確認
+- ✅ **加工機の削除**: 削除前に確認ダイアログが表示され、確認後に正常に削除されることを確認
+- ✅ **検索・フィルタ機能**: 名称、設備管理番号、分類、メーカーでの検索が正常に動作することを確認。稼働状態（稼働中/停止中/メンテナンス中）でのフィルタが正常に動作することを確認
+- ✅ **一覧表示**: 加工機一覧が正常に表示され、ページネーションが正常に動作することを確認
 
 ---

@@ -3,7 +3,7 @@ import type { BackupConfig } from '../backup/backup-config.js';
 import { StorageProviderFactory } from '../backup/storage-provider-factory.js';
 import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
 import { logger } from '../../lib/logger.js';
-import { processCsvImportFromTargets } from '../../routes/imports.js';
+import { processCsvImportFromTargets } from './csv-import-process.service.js';
 import type { CsvImportTarget } from './csv-importer.types.js';
 import { CsvDashboardImportService } from '../csv-dashboard/csv-dashboard-import.service.js';
 import { CsvImportSourceService } from './csv-import-source.service.js';

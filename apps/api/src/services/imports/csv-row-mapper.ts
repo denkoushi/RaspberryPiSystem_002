@@ -56,6 +56,7 @@ export class CsvRowMapper {
             'CSVファイルの列構成が設定と一致しません。',
             `見つからなかった列: ${colDef.displayName} (内部名: ${colDef.internalName})`,
             `候補: ${colDef.csvHeaderCandidates.join(', ')}`,
+            `実際のCSVヘッダー: ${csvHeaders.slice(0, 5).join(', ')}${csvHeaders.length > 5 ? '...' : ''}`,
             '対応: CSVヘッダー行を確認し、必要なら管理コンソールで列定義の候補を追加してください。'
           ].join(' ');
           throw new ApiError(400, userMessage);

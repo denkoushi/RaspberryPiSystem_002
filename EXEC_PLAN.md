@@ -9,6 +9,48 @@
 
 ## Progress
 
+- [x] (2026-02-12) **backup/importsルート分割と実行ロジックのサービス層移設完了・CI成功・デプロイ完了・実機検証完了**: `backup.ts`と`imports.ts`の巨大ルートを機能別モジュールへ分割し、実行前後の処理をサービス層へ移して責務境界を明確化。今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくする。**実装内容**: `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）、`imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）、`backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化。**トラブルシューティング**: lintエラー6件（未使用import削除、`any`型を型ガード化）を修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21935302228`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-155938-10971`, `failed=0`, 実行時間約7分）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。**ドキュメント更新**: KB-257を追加、EXEC_PLAN.mdを更新、index.mdを更新（KB-257を追加、件数を51件に更新）。詳細は [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
+
+- [x] (2026-02-12) **加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）・フォントサイズ拡大・デプロイ完了・実機検証完了**: サイネージ表示値が手動SQL集計と一致しないように見えた問題を解決し、視認性を向上。**実装内容**: サイネージ右枠を`visualization`（`uninspected_machines`）へ統一、`MachineService.findDailyInspectionSummaries`基準（JST当日・設備管理番号・重複除去）でKPI整合を確認、データソースから`分類`列を削除・`未点検（未使用）`を終端ソート、レンダラーを2列表示へ変更し余白縮小・表示密度向上、フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）しレイアウト破壊なしで視認性を向上、タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一。**トラブルシューティング**: `404`で可視化API検証が失敗した際は`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認、DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）、画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-112355-17139` 2列表示、runId `20260212-114929-25101` フォント拡大）。**実機検証結果**: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認。**ドキュメント更新**: KB-256を追加・更新、index.mdを更新（KB-256を追加、件数を50件に更新）、INDEX.mdを更新（最新アップデートセクションにKB-256を追加）。詳細は [docs/knowledge-base/api.md#kb-256](./docs/knowledge-base/api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
+- [x] (2026-02-12) **`backup.ts` から履歴APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/history.ts` を追加し、`/backup/history` と `/backup/history/:id` を専用登録関数 `registerBackupHistoryRoutes` へ分離。`backup.ts` 本体は `await registerBackupHistoryRoutes(app)` で集約登録する構成に変更し、ルート肥大化を抑制。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` から設定Read系APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/config-read.ts` を追加し、`/backup/config`、`/backup/config/health`、`/backup/config/health/internal`、`/backup/config/templates` を `registerBackupConfigReadRoutes` へ分離。`backup.ts` は登録呼び出しのみを担当し、書き込み系/破壊系ルートと読み取り系ルートの境界を明確化。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` から設定Write/履歴管理APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/config-write.ts` を追加し、`/backup/config/history*`、`PUT /backup/config`、`/backup/config/targets*`（追加/更新/削除/テンプレート追加）を `registerBackupConfigWriteRoutes` へ分離。`backup.ts` は `await registerBackupConfigWriteRoutes(app)` で集約登録する構成に変更し、巨大ルートの責務を「実行系」「設定Read」「設定Write」「履歴」「OAuth/restore系」に段階分割。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` からOAuth系APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/oauth.ts` を追加し、`/backup/oauth/authorize`、`/backup/oauth/callback`、`/backup/oauth/refresh` を `registerBackupOAuthRoutes` へ分離。トークン保存時の互換仕様（`options.dropbox.*` と旧キー同時更新）を維持したまま、`backup.ts` 本体は登録のみへ整理。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` からDropbox purge系APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/purge.ts` を追加し、`POST /backup/dropbox/purge` と `POST /backup/dropbox/purge-selective` を `registerBackupPurgeRoutes` へ分離。確認テキスト検証、`basePath=/backups` ガード、dry-run仕様、選択削除計画（`planDropboxSelectivePurge`）の挙動を維持したまま、`backup.ts` の責務をさらに縮小。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` からDropbox restore実行APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/restore-dropbox.ts` を追加し、`POST /backup/restore/from-dropbox` を `registerBackupRestoreDropboxRoutes` へ分離。`runPreBackup` は依存注入で受け渡し、既存の互換挙動（`basePath` 正規化、`.sql.gz` フォールバック、履歴P2025回避、整合性検証）を維持。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` から通常restore系APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/restore.ts` を追加し、`POST /backup/restore` と `POST /backup/restore/dry-run` を `registerBackupRestoreRoutes` へ分離。`runPreBackup` は依存注入で受け渡し、既存挙動（ローカル/Dropbox両対応、履歴作成/完了/失敗更新、dry-run判定）を維持。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` から一覧/削除APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/storage-maintenance.ts` を追加し、`GET /backup` と `DELETE /backup/*` を `registerBackupStorageMaintenanceRoutes` へ分離。ローカルストレージ既定挙動とレスポンス契約を維持しつつ、`backup.ts` の責務を集約登録へ寄せた。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`backup.ts` から実行系APIをモジュール抽出（段階分割）**: `apps/api/src/routes/backup/execution.ts` を追加し、`POST /backup/internal` と `POST /backup` を `registerBackupExecutionRoutes` へ分離。localhost制限、複数プロバイダー実行、保持ポリシーに基づくクリーンアップ、履歴 `DELETED` マーク更新の既存挙動を維持したまま、`backup.ts` を集約レイヤに近づけた。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **pre-restore処理をサービス層へ移設し、restore系依存を簡素化**: `apps/api/src/services/backup/pre-restore-backup.service.ts` を追加し、`runPreRestoreBackup` を `restore.ts` / `restore-dropbox.ts` から直接利用する構成へ変更。これにより `backup.ts` の `runPreBackup` 実装と依存注入を廃止し、`backup.ts` はルート登録責務へ収束。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **実行後クリーンアップをサービス層へ移設（責務分離）**: `apps/api/src/services/backup/post-backup-cleanup.service.ts` を追加し、`execution.ts` に残っていた保持ポリシー適用・古いバックアップ削除・履歴 `DELETED` 更新ロジックを `cleanupBackupsAfterManualExecution` へ抽出。`execution.ts` は入出力契約と実行オーケストレーションに集中する構成へ整理。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-11) **`backup.ts` の多重バックアップ実行重複をサービス層へ抽出（互換維持）**: `apps/api/src/services/backup/backup-execution.service.ts` を新設し、プロバイダー解決（`resolveBackupProviders`）と多重実行（`executeBackupAcrossProviders`）をルート外へ移管。`/backup/internal` と `/backup` は同サービスを利用する構成へ変更し、`runPreBackup` も同じ実行基盤に統一。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（9件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-11) **`imports.ts` のCSVインポート実行ロジックをサービス層へ移設（依存方向を是正）**: `processCsvImportFromTargets` / `processCsvImport` を `apps/api/src/services/imports/csv-import-process.service.ts` へ移設し、`routes/imports.ts` はサービス呼び出しに統一。これにより `services -> routes` 逆依存を解消し、`csv-import-execution.service.ts` と `csv-backup.target.ts` は新サービスを直接参照する構造へ変更。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts src/routes/__tests__/backup.integration.test.ts --reporter=verbose`（75件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`imports.ts` から履歴APIをモジュール抽出（段階分割）**: `apps/api/src/routes/imports/history.ts` を追加し、`GET /imports/history`、`GET /imports/schedule/:id/history`、`GET /imports/history/failed`、`GET /imports/history/:historyId` を `registerImportHistoryRoutes` へ分離。`imports.ts` 本体は `await registerImportHistoryRoutes(app)` に集約し、履歴系責務の境界を明確化。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts --reporter=verbose`（66件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`imports.ts` からスケジュール管理APIをモジュール抽出（段階分割）**: `apps/api/src/routes/imports/schedule.ts` を追加し、`/imports/schedule*`（一覧/追加/更新/削除/手動実行）を `registerImportScheduleRoutes` へ分離。cron間隔バリデーション、旧形式互換（`employeesPath/itemsPath`）、手動実行時のデバッグログ送信仕様、Gmail再認可エラー変換を維持したまま、`imports.ts` 本体の責務を縮小。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts --reporter=verbose`（66件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`imports.ts` からmaster実行APIをモジュール抽出（段階分割）**: `apps/api/src/routes/imports/master.ts` を追加し、`POST /imports/master`、`POST /imports/master/:type`、`POST /imports/master/from-dropbox` を `registerImportMasterRoutes` へ分離。multipart取り込み、`replaceExisting` 解釈、Dropbox/Gmail取得、トークン更新保存、詳細エラーハンドリングの既存挙動を維持しつつ、`imports.ts` の責務を登録集約へ寄せた。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts --reporter=verbose`（66件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-12) **`imports.ts` 本体を集約レイヤへ簡素化（未参照旧実装を整理）**: 既に `master` / `schedule` / `history` をモジュール分割済みであることを踏まえ、`apps/api/src/routes/imports.ts` から未参照の旧ヘルパー実装（CSV行変換/旧import関数等）を除去し、`registerImportRoutes` は `registerImportMasterRoutes` / `registerImportScheduleRoutes` / `registerImportHistoryRoutes` の登録のみを担当する形へ再構成。後方互換のため `processCsvImport*` 再エクスポートは維持。**検証**: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/imports.integration.test.ts src/routes/__tests__/imports-schedule.integration.test.ts src/routes/__tests__/imports-gmail.integration.test.ts src/routes/__tests__/imports-dropbox.integration.test.ts --reporter=verbose`（66件全件パス）、`pnpm --filter @raspi-system/api build` 成功。
+
+- [x] (2026-02-11) **`clients.ts` のモジュール分割とサービス層抽出を完了（API互換維持）**: APIルート肥大化対策の横展開として、`apps/api/src/routes/clients.ts` の責務を `routes/clients/core.ts`・`routes/clients/alerts.ts`・`routes/clients/shared.ts` に分割。DBアクセス/集約ロジックを `services/clients/client-telemetry.service.ts` と `services/clients/client-alerts.service.ts` に抽出し、ルート層はバリデーションと入出力の組み立てに限定。`apps/api/src/routes/index.ts` は `./clients/index.js` 経由の登録に変更。**検証**: `pnpm --filter @raspi-system/api test -- clients --reporter=verbose`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api lint` を実行しすべて成功。既存の `clients.integration` 18件が全件パスし、互換性を維持できることを確認。
+
+- [x] (2026-02-11) **加工機マスタのメンテナンスページ追加とCSVインポートトラブルシューティング完了・実機検証完了・ドキュメント更新完了**: 加工機マスタのCRUD機能を実装し、CSVインポート時のDB設定不整合問題を解決。**実装内容**: `POST /api/tools/machines`、`PUT /api/tools/machines/:id`、`DELETE /api/tools/machines/:id`エンドポイントを追加、`MachineService`に`create`、`update`、`delete`メソッドを追加、`/admin/tools/machines`ページを追加（`MachinesPage.tsx`）、`AdminLayout.tsx`に「加工機」タブを追加、`useMachineMutations`フックを追加。**トラブルシューティング**: CSVインポート時に「equipmentManagementNumber と name が undefined」エラーが発生。原因はDB側の`master-config-machines`レコードの`columnDefinitions`で`internalName`が壊れていた（日本語ヘッダーがそのまま`internalName`になっていた）。DB側の列定義を直接修正して解決。**コード改善**: `MachineCsvImporter`にデフォルト列定義を追加（DB設定がない場合のフォールバック）、`CsvRowMapper`のエラーメッセージを改善（実際のCSVヘッダーを表示）。**実機検証結果**: 加工機の登録・編集・削除が正常に動作することを確認。検索・フィルタ機能（名称、設備管理番号、分類、メーカー、稼働状態）が正常に動作することを確認。一覧表示とページネーションが正常に動作することを確認。**ドキュメント更新**: KB-253（加工機CSVインポートのデフォルト列定義とDB設定不整合問題）、KB-254（加工機マスタのメンテナンスページ追加）を追加、csv-import-export.mdを更新（日本語ヘッダー対応、トラブルシューティングセクション追加）、index.mdを更新（KB-253、KB-254を追加、件数を161件に更新）。詳細は [docs/knowledge-base/api.md#kb-253](./docs/knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題) / [docs/knowledge-base/frontend.md#kb-254](./docs/knowledge-base/frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
+
 - [x] (2026-02-11) **加工機マスターデータのCSVインポートと未点検加工機抽出機能の実装・デプロイ完了・実機検証完了**: 加工機マスターデータをCSVインポートし、未点検加工機を抽出する機能を実装。**実装内容**: `Machine`モデルを追加（`equipmentManagementNumber`をユニークキー）、`MachineCsvImporter`を実装（既存の`CsvImporter`インターフェースに準拠）、`GET /api/tools/machines`と`GET /api/tools/machines/uninspected`エンドポイントを追加、管理コンソールUI（`/admin/tools/machines-uninspected`）を実装。**トラブルシューティング**: CSVインポート設定の初期化問題（デフォルト列定義を明示的に保存）、CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題（KB-249参照、`Date.UTC`を使用して修正）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5でデプロイ成功（`failed=0`）。**実機検証結果**: マスターデータのCSVインポート成功、未点検加工機の抽出が正常に動作することを確認。**ドキュメント更新**: KB-249（CSVダッシュボードの日付パース問題）、KB-250（加工機マスターデータのCSVインポートと未点検加工機抽出機能）を追加、csv-import-export.mdを更新（加工機CSVインポート仕様を追加）、index.mdを更新（KB-249、KB-250を追加、件数を157件に更新）。詳細は [docs/knowledge-base/api.md#kb-249](./docs/knowledge-base/api.md#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題) / [docs/knowledge-base/frontend.md#kb-249](./docs/knowledge-base/frontend.md#kb-249-加工機マスターデータのcsvインポートと未点検加工機抽出機能の実装) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) を参照。
 
 - [x] (2026-02-11) **カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）・デプロイ完了・実機検証完了**: 雨天・照明なし環境で閾値0.1でも「写真が暗すぎます」エラーが発生する問題を解決。**実装内容**: ストリーム保持によるPi4の負荷問題を回避するため、フロントエンド（`apps/web/src/utils/camera.ts`）・バックエンド（`apps/api/src/services/tools/loan.service.ts`）の両方で閾値チェックを削除。500ms待機＋5フレーム選択ロジックは維持（カメラの露出調整を待つため）。テスト（`apps/api/src/routes/__tests__/photo-borrow.integration.test.ts`）の暗い画像拒否テストをスキップ。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5とPi4でデプロイ成功。**実機検証結果**: 雨天・照明なし環境でも撮影可能であることを確認、どんな明るさでも撮影可能にし、ユーザー体験を向上。**ドキュメント更新**: KB-068を更新（閾値チェック削除を追記）、KB-248を追加（カメラ明るさ閾値チェックの削除）、photo-loan.mdを更新（撮影品質の自動検証セクションを更新）、index.mdを更新（KB-248を追加、件数を42件に更新）。詳細は [docs/knowledge-base/frontend.md#kb-248](./docs/knowledge-base/frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) / [docs/knowledge-base/frontend.md#kb-068](./docs/knowledge-base/frontend.md#kb-068-写真撮影持出のサムネイルが真っ黒になる問題輝度チェック対策) / [docs/modules/tools/photo-loan.md](./docs/modules/tools/photo-loan.md) を参照。
@@ -510,6 +552,10 @@
 
 ## Surprises & Discoveries
 
+- 観測: `PUT /api/kiosk/production-schedule/search-state` は `search-history` と異なり、payloadに `state` オブジェクトを必須とする（`{ state: { history: [...] } }`）。同値更新検証で `{ history: [...] }` を送ると `400 VALIDATION_ERROR` になる。  
+  対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
+- 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
+  対応: 実機検証開始前に `free -m` / `docker ps` / 複数回ヘルスチェックでトレンド確認し、即断せず監視しながら判定する手順を採用。**[KB-255]**
 - 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。  
   対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
 - 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
@@ -680,6 +726,10 @@
 
 ## Decision Log
 
+- 決定: APIルート肥大化対策として、`routes` は「入出力契約と認可」、`services` は「DB/業務ロジック」に責務分離する実装パターンを `kiosk`・`clients` で標準化し、以降の大型ルート（例: `backup.ts`, `imports.ts`）へ横展開する。  
+  理由: 互換性を維持したまま変更容易性・再利用性・検証容易性を上げ、回帰範囲を局所化するため。  
+  日付/担当: 2026-02-11 / Codex  
+  参照: [KB-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証), [ADR-001](./docs/decisions/001-module-structure.md), [ADR-002](./docs/decisions/002-service-layer.md)
 - 決定: サーバー（Pi5）は Docker Compose で PostgreSQL・API・Web サーバーを構成し、将来の機能追加でも同一手順でデプロイできるようにする。  
   理由: Raspberry Pi OS 64bit に標準で含まれ、再起動や依存関係管理が容易なため。  
   日付/担当: 2024-05-27 / Codex
@@ -1284,6 +1334,29 @@
 
 ## Next Steps（将来のタスク）
 
+### APIルート分割の横展開（完了）
+
+**概要**: `kiosk` / `clients` と同じ責務分離パターンを、残る大型ルートへ段階適用して保守性を底上げする
+
+**完了した改善**:
+- ✅ **`apps/api/src/routes/backup.ts` の分割**: 9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）完了、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）
+- ✅ **`apps/api/src/routes/imports.ts` の分割**: 3分割（`master.ts`/`schedule.ts`/`history.ts`）完了、実行ロジックをサービス層へ移設（`csv-import-process.service.ts`）
+- ✅ **回帰テスト固定**: 既存の統合テスト（`backup.integration.test.ts` 9件、`imports.integration.test.ts` 66件）が全件パスし、互換性を維持
+
+**詳細**: 
+- [docs/knowledge-base/api.md#kb-255](./docs/knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証)
+- [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設)
+
+### コード品質の継続的改善（推奨）
+
+**概要**: ルート分割完了を機に、コード品質の継続的改善を検討
+
+**次の改善候補**:
+- **型安全性の向上**: `any`型の完全排除、型ガードの標準化、Zodスキーマの徹底
+- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅
+- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新
+- **パフォーマンス最適化**: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
+
 ### Mac開発環境: ストレージ運用（推奨）
 
 **概要**: Macのストレージ逼迫による開発停止（Cursorクラッシュ、Docker不調）を防ぐ
@@ -1661,3 +1734,5 @@
 変更履歴: 2026-02-09 — WebRTCビデオ通話の常時接続と着信自動切り替え機能実装・デプロイ成功を反映。Progressに`WebRTCCallProvider`と`CallAutoSwitchLayout`の実装、着信時の自動切り替え・通話終了後の自動復帰、Pi3の通話対象除外機能を追加。Decision Logに常時接続と自動切り替えの決定を追加。Surprises & Discoveriesに「Callee is not connected」エラーの原因と解決策を追加。KB-241を追加し、React Contextによる状態共有と自動画面切り替えの重要性を記録。`docs/guides/webrtc-verification.md`を更新し、常時接続機能とPi3除外の実装詳細を追記。ナレッジベース更新（38件）。
 変更履歴: 2026-02-10 — WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善・デプロイ成功・実機検証完了を反映。Progressに`localStream`/`remoteStream`のstate化、受信トラックの単一MediaStream集約、`disableVideo()`/`enableVideo()`の改善、接続状態監視とICE restart、エラーダイアログ改善を追加。KB-243を追加し、React stateとrefの使い分け、MediaStreamの扱い、WebRTC trackの停止方法、`replaceTrack`の活用、接続状態監視の重要性、エラーメッセージのユーザビリティの学びを記録。`docs/guides/webrtc-verification.md`を更新し、映像不安定問題の修正とエラーダイアログ改善の実装詳細を追記。ナレッジベース更新（39件）。
 変更履歴: 2026-02-10 — 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OKを反映。Progressに`SeibanProgressService`新設、history-progressエンドポイント追加、`ProductionScheduleDataSource`の共通サービス利用、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを追加。KB-242を追加し、進捗マップの共有とサービス層の共通化による整合性・保守性の学びを記録。`docs/plans/production-schedule-kiosk-execplan.md`、`docs/guides/production-schedule-signage.md`、`docs/INDEX.md`、`docs/knowledge-base/index.md`を更新。ナレッジベース更新（39件）。
+
+変更履歴: 2026-02-11 — 加工機マスタのメンテナンスページ追加とCSVインポートトラブルシューティング完了・実機検証完了・ドキュメント更新完了を反映。Progressに加工機マスタのCRUD機能実装（APIエンドポイント追加、サービス層実装、フロントエンドページ追加、ナビゲーション追加、React Queryフック追加）とCSVインポート時のDB設定不整合問題の解決を追加。実機検証結果（加工機の登録・編集・削除、検索・フィルタ機能、一覧表示）を追加。KB-253（加工機CSVインポートのデフォルト列定義とDB設定不整合問題）、KB-254（加工機マスタのメンテナンスページ追加）を追加。csv-import-export.mdを更新（日本語ヘッダー対応、トラブルシューティングセクション追加）。ナレッジベース更新（161件）。
