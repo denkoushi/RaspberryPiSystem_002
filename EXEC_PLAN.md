@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-02-12) **コード品質改善フェーズ2（API+shared-types, Ratchet）実装完了**: フェーズ1で導入した方針を維持しつつ、`apps/api + packages/shared-types` の範囲で型安全化・Lint強化・再利用性向上を段階適用。**実装内容**: `type-guards.ts` を拡張（`getRecord/getNumber/getBoolean/getArray` 追加）、`csv-dashboards/schemas.ts` の `z.any()` を `z.unknown()` へ変更、`gmail-storage.provider.ts` / `item.ts` / `image-backup.target.ts` / `database-backup.target.ts` の未使用引数向け `eslint-disable` を除去、`backup.service.ts` の制御文字除去を正規表現依存から関数化、`csv-backup.target.ts` の `while(true)` と `as string` キャストを撤去、`alerts-config.ts` のURL検証を `URL.canParse` へ統一。**契約型拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）。**Lint方針**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）。**検証**: `pnpm --filter @raspi-system/shared-types lint/build`、`pnpm --filter @raspi-system/api lint/build`、`pnpm --filter @raspi-system/api test -- src/lib/__tests__/type-guards.test.ts src/services/backup/__tests__/dropbox-storage-refresh.test.ts src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（38件全件パス）成功。
+- [x] (2026-02-12) **コード品質改善フェーズ2（API+shared-types, Ratchet）実装完了・CI成功・デプロイ完了・実機検証完了**: フェーズ1で導入した方針を維持しつつ、`apps/api + packages/shared-types` の範囲で型安全化・Lint強化・再利用性向上を段階適用。**実装内容**: `type-guards.ts` を拡張（`getRecord/getNumber/getBoolean/getArray` 追加）、`csv-dashboards/schemas.ts` の `z.any()` を `z.unknown()` へ変更、`gmail-storage.provider.ts` / `item.ts` / `image-backup.target.ts` / `database-backup.target.ts` の未使用引数向け `eslint-disable` を除去、`backup.service.ts` の制御文字除去を正規表現依存から関数化、`csv-backup.target.ts` の `while(true)` と `as string` キャストを撤去、`alerts-config.ts` のURL検証を `URL.canParse` へ統一。**契約型拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）。**Lint方針**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）。**ローカル検証**: `pnpm --filter @raspi-system/shared-types lint/build`、`pnpm --filter @raspi-system/api lint/build`、`pnpm --filter @raspi-system/api test -- src/lib/__tests__/type-guards.test.ts src/services/backup/__tests__/dropbox-storage-refresh.test.ts src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（38件全件パス）成功。**CI実行**: GitHub Actions Run ID `21940221571` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-182127-4633`, `failed=0`, 実行時間約5分、ブランチ `feat/code-quality-phase2-ratchet-api-shared-types`）。**実機検証結果（詳細）**: デプロイ実体確認（コミットハッシュ一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`/api/system/health` → `200`, `/api/backup/config/health/internal` → `200`）、DB整合性（32マイグレーション適用済み・必須テーブル存在確認）、業務エンドポイント疎通（`/api/tools/loans/active`, `/api/signage/content` 正常）、認証フロー（`/api/auth/login`, `/api/auth/refresh` 正常）、認証付き管理API読み取り系（`backup/imports/csv-dashboards` 系エンドポイントすべて `200`）、非認証アクセス防御（未認証で `401` を返却）、ログ健全性（重大障害系未検出）、運用タイマー（`security-monitor.timer` 正常）。**ドキュメント更新**: KB-258を追加・更新、EXEC_PLAN.mdを更新。詳細は [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet型安全化lint抑制削減契約型拡張) を参照。
 
 - [x] (2026-02-12) **コード品質改善フェーズ1（API+shared-types）実装完了・CI成功・デプロイ完了・実機検証完了**: `any` 依存の縮小、境界ルール導入、最小ユニットテスト追加を実施。**実装内容**: `apps/api/src/lib/type-guards.ts` を新設して `unknown` の安全処理を共通化、`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去、`apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入、`packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加。**テスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース（`result.fileBinary`、`ArrayBuffer`、400 malformed token の再認証）。**ローカル検証**: `pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（27件全件パス）、`pnpm --filter @raspi-system/shared-types lint`、`pnpm --filter @raspi-system/shared-types build` 成功。**トラブルシューティング**: テスト失敗はコード起因ではなくDocker/DB環境起因（`overlay2` I/Oエラー→Docker再起動、`public.User` 不在→`prisma:deploy` で復旧）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21938333459`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-174057-14354`, `failed=0`, 実行時間約5分30秒）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。  
 
@@ -1375,12 +1375,19 @@
 - ✅ **最小ユニットテスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース
 - ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21938333459` 成功、Pi5デプロイ成功（runId `20260212-174057-14354`）、実機検証完了
 
-**次の改善候補（フェーズ2以降）**:
-- **型安全性のさらなる向上**: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
-- **テストカバレッジの向上**: サービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充
-- **ドキュメントの整備**: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
-- **パフォーマンス最適化**: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
-- **ESLintルールの拡張**: 追加の依存境界ルール、型安全性ルールの段階導入
+**完了した改善（フェーズ2）**:
+- ✅ **型ガード関数の拡張**: `apps/api/src/lib/type-guards.ts` に `getRecord/getNumber/getBoolean/getArray` を追加し、境界処理の共通化を強化
+- ✅ **Lint抑制コメントの削減**: `z.any()` → `z.unknown()` への置換、未使用引数向け `eslint-disable` の除去、制御文字除去の関数化、`while(true)` の改善、URL検証の `URL.canParse` 統一
+- ✅ **共有契約型の拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）
+- ✅ **Lint方針の強化**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21940221571` 成功、Pi5デプロイ成功（runId `20260212-182127-4633`）、実機検証完了（詳細検証: 認証フロー、管理API読み取り系、ログ健全性まで確認）
+
+**次の改善候補（フェーズ3以降）**:
+- **テストカバレッジの向上**（推奨・優先度: 中）: サービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充
+- **ドキュメントの整備**（推奨・優先度: 中）: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
+- **パフォーマンス最適化**（推奨・優先度: 中）: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
+- **型安全性のさらなる向上**（優先度: 低）: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
+- **ESLintルールの拡張**（優先度: 低）: 追加の依存境界ルール、型安全性ルールの段階導入
 
 ### Mac開発環境: ストレージ運用（推奨）
 

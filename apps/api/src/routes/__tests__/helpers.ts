@@ -1,8 +1,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
 import type { ClientDevice, Employee, Item, Loan, User } from '@prisma/client';
+import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { expect } from 'vitest';
 
 let employeeSequence = 0;
 let itemSequence = 0;
@@ -32,6 +34,46 @@ export async function createTestUser(
  */
 export function createAuthHeader(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * ログインAPIを実行してアクセストークンを取得
+ */
+export async function loginAndGetAccessToken(params: {
+  app: FastifyInstance;
+  username: string;
+  password: string;
+}): Promise<string> {
+  const { app, username, password } = params;
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    headers: { 'Content-Type': 'application/json' },
+    payload: { username, password },
+  });
+
+  if (response.statusCode !== 200) {
+    throw new Error(`Failed to login in test helper: status=${response.statusCode}`);
+  }
+
+  return response.json().accessToken as string;
+}
+
+/**
+ * APIエラー応答の共通アサート
+ */
+export function expectApiError(
+  response: { statusCode: number; json: () => Record<string, unknown> },
+  expectedStatus: number,
+  expectedMessageIncludes?: string
+): Record<string, unknown> {
+  expect(response.statusCode).toBe(expectedStatus);
+  const body = response.json();
+  if (expectedMessageIncludes) {
+    const message = typeof body.message === 'string' ? body.message : '';
+    expect(message).toContain(expectedMessageIncludes);
+  }
+  return body;
 }
 
 /**

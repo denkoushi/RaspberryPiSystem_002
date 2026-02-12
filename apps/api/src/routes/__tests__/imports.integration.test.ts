@@ -99,6 +99,33 @@ describe('POST /api/imports/master', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('should return 403 for non-admin user', async () => {
+    const manager = await createTestUser('MANAGER');
+    const formData = new FormData();
+    const emp = String(generateTestId(2)).padStart(4, '0');
+    const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
+    formData.append('employees', Buffer.from(csvContent), {
+      filename: 'employees.csv',
+      contentType: 'text/csv',
+    });
+
+    const { buffer, headers } = await formDataToBuffer(formData);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/imports/master',
+      payload: buffer,
+      headers: {
+        ...headers,
+        ...createAuthHeader(manager.token),
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    const body = response.json();
+    expect(body.message).toContain('操作権限がありません');
+  });
+
   it('should import employees CSV successfully', async () => {
     const formData = new FormData();
     const emp1 = String(generateTestId(10)).padStart(4, '0');

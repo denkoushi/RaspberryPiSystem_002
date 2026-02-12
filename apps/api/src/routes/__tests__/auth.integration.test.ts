@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createTestUser } from './helpers.js';
+import { createTestUser, expectApiError, loginAndGetAccessToken } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -62,9 +62,7 @@ describe('POST /api/auth/login', () => {
       },
     });
 
-    expect(response.statusCode).toBe(401);
-    const body = response.json();
-    expect(body.message).toContain('ユーザー名またはパスワードが違います');
+    expectApiError(response, 401, 'ユーザー名またはパスワードが違います');
   });
 
   it('should return 401 with non-existent username', async () => {
@@ -78,7 +76,7 @@ describe('POST /api/auth/login', () => {
       },
     });
 
-    expect(response.statusCode).toBe(401);
+    expectApiError(response, 401, 'ユーザー名またはパスワードが違います');
   });
 
   it('should return 400 for invalid request body', async () => {
@@ -91,7 +89,7 @@ describe('POST /api/auth/login', () => {
       },
     });
 
-    expect(response.statusCode).toBe(400);
+    expectApiError(response, 400);
   });
 
   it('should accept rememberMe parameter and return tokens', async () => {
@@ -192,7 +190,20 @@ describe('POST /api/auth/refresh', () => {
       },
     });
 
-    expect(response.statusCode).toBe(401);
+    expectApiError(response, 401, 'リフレッシュトークンが無効です');
+  });
+
+  it('should return 400 when refresh token is empty', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        refreshToken: '',
+      },
+    });
+
+    expectApiError(response, 400);
   });
 });
 
@@ -283,7 +294,36 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
       payload: { role: 'MANAGER' },
     });
 
-    expect(response.statusCode).toBe(401);
+    expectApiError(response, 401, '認証トークンが必要です');
+  });
+
+  it('should return 403 for manager on admin-only role endpoints', async () => {
+    const managerUser = await createTestUser('MANAGER', 'manager-password');
+    const managerToken = await loginAndGetAccessToken({
+      app,
+      username: managerUser.user.username,
+      password: managerUser.password,
+    });
+
+    const updateResponse = await app.inject({
+      method: 'POST',
+      url: `/api/auth/users/${targetUserId}/role`,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${managerToken}`,
+      },
+      payload: { role: 'VIEWER' },
+    });
+    expectApiError(updateResponse, 403, '操作権限がありません');
+
+    const auditResponse = await app.inject({
+      method: 'GET',
+      url: '/api/auth/role-audit',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+      },
+    });
+    expectApiError(auditResponse, 403, '操作権限がありません');
   });
 
   it('should return 404 for non-existent user', async () => {
