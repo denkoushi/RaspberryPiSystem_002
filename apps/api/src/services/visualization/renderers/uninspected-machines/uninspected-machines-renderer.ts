@@ -162,7 +162,7 @@ export class UninspectedMachinesRenderer implements Renderer {
           const cell = `
             <rect x="${headerX}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${GRID_COLOR}" />
             <text x="${headerX + Math.round(6 * scale)}" y="${tableTop + Math.round(headerRowHeight * 0.7)}"
-              font-size="${Math.max(11, Math.round(13 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${Math.max(13, Math.round(15 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
               ${escapeXml(column)}
             </text>
           `;
@@ -184,7 +184,7 @@ export class UninspectedMachinesRenderer implements Renderer {
               const cell = `
                 <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${fill}" />
                 <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
-                  font-size="${Math.max(10, Math.round(12 * scale))}" fill="${TEXT_COLOR}" font-family="sans-serif">
+                  font-size="${Math.max(12, Math.round(14 * scale))}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
                   ${escapeXml(value)}
                 </text>
               `;
