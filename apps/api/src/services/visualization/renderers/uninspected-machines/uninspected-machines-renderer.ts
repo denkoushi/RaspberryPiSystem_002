@@ -10,6 +10,9 @@ const CARD_BG = 'rgba(255,255,255,0.06)';
 const CARD_BORDER = 'rgba(255,255,255,0.12)';
 const ALERT_COLOR = '#ef4444';
 const OK_COLOR = '#10b981';
+const RESULT_OK_BG = '#2563eb';
+const RESULT_ALERT_BG = '#dc2626';
+const RESULT_TEXT_ON_COLOR = '#ffffff';
 
 type UninspectedMetadata = {
   date?: string;
@@ -35,6 +38,22 @@ function toNumber(value: unknown, fallback = 0): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
+}
+
+function resolveInspectionResultCellStyle(column: string, value: string, rowIndex: number): { fill: string; textColor: string } {
+  const baseFill = rowIndex % 2 === 0 ? '#0f172a' : '#111827';
+  if (column !== '点検結果') {
+    return { fill: baseFill, textColor: TEXT_COLOR };
+  }
+  if (value === '未使用') {
+    return { fill: baseFill, textColor: TEXT_COLOR };
+  }
+  const abnormalMatch = value.match(/異常\s*(\d+)/);
+  const abnormalCount = abnormalMatch ? Number(abnormalMatch[1]) : 0;
+  if (abnormalCount >= 1) {
+    return { fill: RESULT_ALERT_BG, textColor: RESULT_TEXT_ON_COLOR };
+  }
+  return { fill: RESULT_OK_BG, textColor: RESULT_TEXT_ON_COLOR };
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
@@ -180,11 +199,11 @@ export class UninspectedMachinesRenderer implements Renderer {
               const colWidth = colWidths[colIndex] ?? equalColWidth;
               const raw = row[column];
               const value = raw === null || raw === undefined ? '' : String(raw);
-              const fill = rowIndex % 2 === 0 ? '#0f172a' : '#111827';
+              const style = resolveInspectionResultCellStyle(column, value, rowIndex);
               const cell = `
-                <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${fill}" />
+                <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />
                 <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
-                  font-size="${Math.max(12, Math.round(14 * scale))}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+                  font-size="${Math.max(12, Math.round(14 * scale))}" font-weight="600" fill="${style.textColor}" font-family="sans-serif">
                   ${escapeXml(value)}
                 </text>
               `;
