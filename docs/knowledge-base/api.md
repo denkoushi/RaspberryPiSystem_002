@@ -97,10 +97,12 @@
   - `GET /api/kiosk/production-schedule/history-progress` が `401 CLIENT_KEY_REQUIRED` となるため、性能テスト内でテスト用クライアントを作成し `x-client-key` を付与して解消
   - `GET /api/system/metrics` がJSONではなくテキスト応答のため、JSONパース依存を除去して解消
   - テストヘルパーの `app.inject` 型制約により `tsc` で型エラーが発生したため、`measureInjectResponse` のリクエスト型を `unknown` に緩和して解消
+  - CI初回（Run ID `21943236869`）で固定 `apiKey` による `ClientDevice.apiKey` 一意制約衝突（P2002）が発生し、固定キー利用を廃止して自動生成キーへ修正
 - **検証**:
   - **ローカル検証（追加分）**:  
     `pnpm --filter @raspi-system/api test -- src/routes/__tests__/performance.test.ts src/services/clients/__tests__/client-alerts.service.test.ts src/services/clients/__tests__/client-telemetry.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`（19件全件パス）
-  - **ローカル検証（品質ゲート）**: `pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **ローカル検証（品質ゲート）**: `pnpm --filter @raspi-system/api test`（469件中462件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21943411618` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
 - **関連ファイル（追加）**:
   - `apps/api/src/routes/__tests__/performance.test.ts`
   - `apps/api/src/routes/__tests__/helpers.ts`（`measureInjectResponse` 追加）
