@@ -137,7 +137,24 @@
 - **検証**:
   - **追加分検証**: 追加した9ファイル対象で31件全件パス
   - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test` 成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
-  - **補足**: CI/デプロイ/実機検証は次フェーズで継続実施（本段階は実装＋ローカル品質ゲートまで完了）
+  - **CI実行**: GitHub Actions Run ID `21945480333` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-211502-30448`, `failed=0`, 実行時間約6分40秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `f0eb80ef` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
+
+**フェーズ4第三弾（残サービス層テスト + signage性能テスト）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ サービス層テストを追加（`pre-restore-backup.service.test.ts`、`post-backup-cleanup.service.test.ts`、`csv-import-source.service.test.ts`、`alerts-config.test.ts`）
+  - ✅ 性能テストを拡張（`/api/signage/content`）
+- **トラブルシューティング**:
+  - 標準デプロイスクリプトが未commit差分を検知してfail-fast停止
+  - `git stash` でドキュメント差分を一時退避し、デプロイ後に復元して解消
+- **検証**:
+  - **追加分検証**: 追加した5ファイル対象で21件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test`（500件中500件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21946824175` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-214653-31460`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `4bd6d900` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
 
 ---
 

@@ -9,7 +9,9 @@
 
 ## Progress
 
-- [x] (2026-02-12) **コード品質改善フェーズ4（性能ゲート最優先）第二弾実装完了・ローカル品質ゲート成功**: 第二弾では「サービス層テスト拡張」を最優先に、`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の未カバー領域へユニットテストを追加し、第一弾で導入した性能ゲートも拡張。**実装内容**: サービステストを新規追加（`measuring-instrument.service.test.ts`、`inspection-item.service.test.ts`、`rigging-gear.service.test.ts`、`rigging-inspection-record.service.test.ts`、`production-schedule-search-state.service.test.ts`、`seiban-progress.service.test.ts`、`csv-dashboard-source.service.test.ts`、`csv-dashboard-retention.service.test.ts`）。性能テストを拡張（`/api/tools/employees`、`/api/tools/items` を追加）。**トラブルシューティング**: 追加した性能テスト2件が初回 `401 AUTH_TOKEN_REQUIRED` で失敗し、当該エンドポイントがJWT必須であることを確認。`authHeaders` を付与して解消。**ローカル検証**: 追加対象の絞り込み実行で31件全件パス、`pnpm --filter @raspi-system/api test` 成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功。**ドキュメント更新**: KB-258（フェーズ4第二弾）・CIトラブルシュート・INDEX/KB索引を更新。
+- [x] (2026-02-12) **コード品質改善フェーズ4（性能ゲート最優先）第三弾実装完了・CI成功・デプロイ完了・実機検証完了**: 第三弾では「サービス層の残未カバー領域テスト追加 + signage系性能テスト最小拡張」を実施。**実装内容**: サービステストを新規追加（`pre-restore-backup.service.test.ts`、`post-backup-cleanup.service.test.ts`、`csv-import-source.service.test.ts`、`alerts-config.test.ts`）。性能テストを拡張（`/api/signage/content` を追加）。**トラブルシューティング**: 標準デプロイスクリプトが未commit差分でfail-fast停止したため、`git stash` でドキュメント差分を一時退避してデプロイ実行後に復元。**ローカル検証**: 追加対象の絞り込み実行で21件全件パス、`pnpm --filter @raspi-system/api test`（500件中500件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功。**CI実行**: GitHub Actions Run ID `21946824175` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-214653-31460`, `ok=111`, `changed=4`, `failed=0`, ブランチ `feat/phase4-performance-gate-and-service-tests`）。**実機検証結果**: デプロイ実体確認（コミットハッシュ `4bd6d900` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）。
+
+- [x] (2026-02-12) **コード品質改善フェーズ4（性能ゲート最優先）第二弾実装完了・CI成功・デプロイ完了・実機検証完了**: 第二弾では「サービス層テスト拡張」を最優先に、`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の未カバー領域へユニットテストを追加し、第一弾で導入した性能ゲートも拡張。**実装内容**: サービステストを新規追加（`measuring-instrument.service.test.ts`、`inspection-item.service.test.ts`、`rigging-gear.service.test.ts`、`rigging-inspection-record.service.test.ts`、`production-schedule-search-state.service.test.ts`、`seiban-progress.service.test.ts`、`csv-dashboard-source.service.test.ts`、`csv-dashboard-retention.service.test.ts`）。性能テストを拡張（`/api/tools/employees`、`/api/tools/items` を追加）。**トラブルシューティング**: 追加した性能テスト2件が初回 `401 AUTH_TOKEN_REQUIRED` で失敗し、当該エンドポイントがJWT必須であることを確認。`authHeaders` を付与して解消。**ローカル検証**: 追加対象の絞り込み実行で31件全件パス、`pnpm --filter @raspi-system/api test` 成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功。**CI実行**: GitHub Actions Run ID `21945480333` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-211502-30448`, `failed=0`, 実行時間約6分40秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）。**実機検証結果**: デプロイ実体確認（コミットハッシュ `f0eb80ef` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、設定ファイル保持確認（`backup.json` が保持されていることを確認）。**ドキュメント更新**: KB-258（フェーズ4第二弾）・CIトラブルシュート・INDEX/KB索引・EXEC_PLANを更新。
 
 - [x] (2026-02-12) **コード品質改善フェーズ4（性能ゲート最優先）第一弾実装完了・CI成功・デプロイ完了・実機検証完了**: フェーズ3までで強化した機能回帰検知に加え、性能回帰検知・依存境界強制・未カバーサービス層テストの第一弾を実装。**実装内容**: `performance.test.ts` を主要API（`/api/system/health`・`/api/auth/login`・`/api/backup/config`・`/api/imports/history`・`/api/kiosk/production-schedule/history-progress`・`/api/system/metrics`）へ拡張し、閾値を `PERF_RESPONSE_TIME_THRESHOLD_MS` で外部化。CIに `Run API performance tests` ステップを追加（初期閾値 `1800ms`）。`apps/api/.eslintrc.cjs` の `import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止を追加。サービス層テストを追加（`services/clients` と `services/production-schedule`）。**追加テスト**: `client-alerts.service.test.ts`、`client-telemetry.service.test.ts`、`production-schedule-query.service.test.ts`、`production-schedule-command.service.test.ts`。**トラブルシューティング**: 性能テスト実装時に `kiosk` 系で `x-client-key` 必須による `401` を確認し、テスト用クライアント作成＋ヘッダ付与へ修正。`/api/system/metrics` はJSONではなくテキスト応答のため、JSONパース依存を除去。`helpers.ts` の `app.inject` 型制約でビルド失敗が発生したため、テストヘルパーの型を緩和して解消。CI初回実行（Run ID `21943236869`）では固定 `apiKey` の一意制約衝突（P2002）で性能ステップが失敗し、自動生成キーへ修正後に再実行（Run ID `21943411618`）で全ジョブ成功。**ローカル検証**: 追加5ファイルのテスト実行（19件全件パス）、`pnpm --filter @raspi-system/api test`（469件中462件パス・7件skip）、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-200125-1261`, `failed=0`, 実行時間約6分42秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）。**実機検証結果**: デプロイ実体確認（コミットハッシュ `753b6b70` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)、`GET /api/system/metrics` → `200`（テキスト形式、期待通り）、`GET /api/backup/config/health` 無認証 → `401`（期待通り））、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、ログ健全性（直近5分のAPIログで重大障害系未検出、正常なリクエスト処理を確認）。**ドキュメント更新**: KB-258とEXEC_PLAN/KB索引へフェーズ4第一弾を反映。詳細は [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) を参照。
 
@@ -1401,7 +1403,7 @@
 - ✅ **未カバー領域のサービス層ユニットテストを追加**: `services/clients` と `services/production-schedule` のテスト追加（`client-alerts.service.test.ts`、`client-telemetry.service.test.ts`、`production-schedule-query.service.test.ts`、`production-schedule-command.service.test.ts`）
 - ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21943411618` 成功、Pi5デプロイ成功（runId `20260212-200125-1261`）、実機検証完了（詳細検証: デプロイ実体確認、コンテナ稼働状態、ヘルスチェック、DB整合性、ログ健全性まで確認）
 
-**次の改善候補（フェーズ4第二弾以降）**:
+**次の改善候補（フェーズ4第四弾以降）**:
 - **テストカバレッジのさらなる向上**（推奨・優先度: 低）: 残るサービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充（フェーズ3で主要領域は完了）
 - **ドキュメントの整備**（推奨・優先度: 中）: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
 - **パフォーマンス最適化**（推奨・優先度: 中）: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
@@ -1418,7 +1420,17 @@
 - ✅ 依存境界ルールを追加（`import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止）
 - ✅ 未カバー領域のサービス層ユニットテストを追加（`clients` / `production-schedule`）
 
-**次の改善候補（フェーズ4第二弾）**:
+**完了した改善（フェーズ4第二弾）**:
+- ✅ サービス層テスト拡張（`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の未カバー領域へユニットテストを追加）
+- ✅ 性能テスト拡張（`/api/tools/employees`、`/api/tools/items` を追加）
+- ✅ CI成功・デプロイ完了・実機検証完了（Run ID `21945480333` 成功、Pi5デプロイ成功（runId `20260212-211502-30448`）、実機検証完了）
+
+**完了した改善（フェーズ4第三弾）**:
+- ✅ サービス層テスト拡張（`backup` / `imports` / `alerts` の残未カバー領域へユニットテストを追加）
+- ✅ 性能テスト拡張（`/api/signage/content` を追加）
+- ✅ CI成功・デプロイ完了・実機検証完了（Run ID `21946824175` 成功、Pi5デプロイ成功（runId `20260212-214653-31460`）、実機検証完了）
+
+**次の改善候補（フェーズ4第四弾以降）**:
 1. **残りのサービス層テストの追加**（優先度: 中）
    - `services/backup/*` の残り（`backup-execution.service.ts` は既存、`pre-restore-backup.service.ts` / `post-backup-cleanup.service.ts` など）
    - `services/imports/*` の残り（`csv-import-process.service.ts` は既存）
@@ -1426,7 +1438,7 @@
    - `services/tools/*` のテスト追加
 
 2. **性能テストの拡張**（優先度: 中）
-   - より多くのAPIエンドポイントへの拡張（`/api/tools/*`, `/api/signage/*` など）
+   - より多くのAPIエンドポイントへの拡張（`/api/signage/*` など、`/api/tools/*` は第二弾で一部追加済み）
    - 負荷テストの追加（複数リクエストの並列実行）
    - パフォーマンスベンチマークの定期実行とトレンド追跡
 
@@ -1440,7 +1452,7 @@
    - カバレッジ閾値の設定とCIゲート化
    - 未カバー領域の特定と優先順位付け
 
-**現状**: フェーズ4第一弾は完了し、CI成功・デプロイ成功・実機検証完了を確認。性能ゲートと依存境界ルールの基盤が確立された。上記の改善は運用上の課題や要望を収集してから実施。
+**現状**: フェーズ4第一弾・第二弾は完了し、CI成功・デプロイ成功・実機検証完了を確認。性能ゲートと依存境界ルールの基盤が確立され、サービス層テストも拡充された（`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の未カバー領域を追加）。上記の改善は運用上の課題や要望を収集してから実施。
 
 **詳細**: [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) / [EXEC_PLAN.md](./EXEC_PLAN.md)
 
@@ -1792,7 +1804,8 @@
 
 ---
 
-変更履歴: 2026-02-12 — コード品質改善フェーズ4第二弾（サービス層テスト拡張）を反映。`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の新規ユニットテスト、`performance.test.ts` への `/api/tools/employees`・`/api/tools/items` 追加、品質ゲート（test/lint/build）成功、トラブルシューティング（性能テストの401）を追記。Next Stepsにフェーズ4第二弾候補を反映。
+変更履歴: 2026-02-12 — コード品質改善フェーズ4第三弾（残サービス層テスト + signage性能テスト）を反映。`pre-restore-backup` / `post-backup-cleanup` / `csv-import-source` / `alerts-config` の新規ユニットテスト、`performance.test.ts` への `/api/signage/content` 追加、品質ゲート（test/lint/build）成功、CI成功（Run `21946824175`）、デプロイ完了（runId `20260212-214653-31460`）、実機検証完了、トラブルシューティング（未commit差分によるデプロイfail-fast）を追記。Next Stepsをフェーズ4第四弾以降に更新。
+変更履歴: 2026-02-12 — コード品質改善フェーズ4第二弾（サービス層テスト拡張）を反映。`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の新規ユニットテスト、`performance.test.ts` への `/api/tools/employees`・`/api/tools/items` 追加、品質ゲート（test/lint/build）成功、CI成功、デプロイ完了（runId `20260212-211502-30448`）、実機検証完了、トラブルシューティング（性能テストの401）を追記。Next Stepsにフェーズ4第二弾候補を反映。
 変更履歴: 2026-02-10 — クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了を記録。KB-206に実機検証完了を追記。Next Stepsセクションにクライアント端末管理機能の継続的改善候補を追加。
 変更履歴: 2024-05-27 Codex — 初版（全セクションを日本語で作成）。
 変更履歴: 2025-11-18 Codex — Progress を更新して実機検証が未完であることを明記し、Validation and Acceptance の未実施状態を加筆。Milestone 5（実機検証フェーズ）を追加。
