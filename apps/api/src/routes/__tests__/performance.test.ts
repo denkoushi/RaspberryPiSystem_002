@@ -168,6 +168,19 @@ describe('Performance Tests (NFR-001)', () => {
       expect(response.statusCode).toBe(200);
       expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
+
+    it('should respond to /api/signage/content within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/signage/content',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
   });
 });
 
