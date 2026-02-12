@@ -198,5 +198,61 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       // リフレッシュトークンが呼ばれていないことを確認
       expect(mockOAuthService.refreshAccessToken).not.toHaveBeenCalled();
     });
+
+    it('should read fileBinary from response.result.fileBinary', async () => {
+      const mockPath = 'test/path.txt';
+      const nestedFileBinary = Buffer.from('nested-binary');
+
+      mockDbx.filesDownload.mockResolvedValueOnce({
+        result: {
+          fileBinary: nestedFileBinary,
+        }
+      });
+
+      const result = await storageProvider.download(mockPath);
+      expect(result.equals(nestedFileBinary)).toBe(true);
+    });
+
+    it('should convert ArrayBuffer fileBinary to Buffer', async () => {
+      const mockPath = 'test/path.txt';
+      const src = Uint8Array.from([65, 66, 67]).buffer; // "ABC"
+
+      mockDbx.filesDownload.mockResolvedValueOnce({
+        fileBinary: src,
+      });
+
+      const result = await storageProvider.download(mockPath);
+      expect(result.toString()).toBe('ABC');
+    });
+
+    it('should refresh token when malformed token error is returned as 400', async () => {
+      const mockRefreshedToken = 'refreshed-access-token';
+      const mockPath = 'test/path.txt';
+      const mockFileBinary = Buffer.from('after-refresh');
+
+      mockDbx.filesDownload
+        .mockRejectedValueOnce({
+          status: 400,
+          message: 'Malformed access token',
+          error: 'malformed token'
+        })
+        .mockResolvedValueOnce({
+          fileBinary: mockFileBinary
+        });
+
+      vi.mocked(mockOAuthService.refreshAccessToken).mockResolvedValue({
+        accessToken: mockRefreshedToken,
+        refreshToken: mockRefreshToken,
+        expiresIn: 14400,
+        tokenType: 'bearer'
+      });
+
+      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => mockDbx);
+
+      const result = await storageProvider.download(mockPath);
+      expect(result.equals(mockFileBinary)).toBe(true);
+      expect(mockOAuthService.refreshAccessToken).toHaveBeenCalledWith(mockRefreshToken);
+      expect(onTokenUpdate).toHaveBeenCalledWith(mockRefreshedToken);
+    });
   });
 });

@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 import { ApiError } from '../../lib/errors.js';
+import { getString, isRecord, toErrorInfo } from '../../lib/type-guards.js';
 import { CsvImporterFactory } from './csv-importer-factory.js';
 import type { CsvImportTarget, ImportSummary } from './csv-importer.types.js';
 
@@ -35,13 +35,19 @@ export async function processCsvImportFromTargets(
 
     // タグUIDを収集
     for (const row of rows) {
-      const tagUid = (row as any).nfcTagUid || (row as any).rfidTagUid;
+      if (!isRecord(row)) {
+        continue;
+      }
+      const tagUid = getString(row, 'nfcTagUid') ?? getString(row, 'rfidTagUid');
       if (tagUid && tagUid.trim()) {
         const uid = tagUid.trim();
         if (!tagUidMap.has(uid)) {
           tagUidMap.set(uid, []);
         }
-        const identifier = (row as any).employeeCode || (row as any).itemCode || (row as any).managementNumber || '不明';
+        const identifier = getString(row, 'employeeCode')
+          ?? getString(row, 'itemCode')
+          ?? getString(row, 'managementNumber')
+          ?? '不明';
         tagUidMap.get(uid)!.push({ type: target.type, identifier });
       }
     }
@@ -49,7 +55,7 @@ export async function processCsvImportFromTargets(
 
   // タイプ間のタグUID重複チェック
   const crossDuplicateTagUids = Array.from(tagUidMap.entries())
-    .filter(([_, entries]) => entries.length > 1 && new Set(entries.map((e) => e.type)).size > 1)
+    .filter(([, entries]) => entries.length > 1 && new Set(entries.map((e) => e.type)).size > 1)
     .map(([uid, entries]) => ({ uid, entries }));
 
   if (crossDuplicateTagUids.length > 0) {
@@ -73,21 +79,23 @@ export async function processCsvImportFromTargets(
       summary[target.type] = result;
     }
   } catch (error) {
+    const errorInfo = toErrorInfo(error);
     log.error(
       {
         err: error,
         errorName: error instanceof Error ? error.name : typeof error,
         errorMessage: error instanceof Error ? error.message : String(error),
-        errorCode: (error as any)?.code,
-        errorMeta: (error as any)?.meta,
+        errorCode: errorInfo.code,
+        errorMeta: errorInfo.meta,
       },
       'インポート処理エラー'
     );
 
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2003') {
-        const fieldName = (error.meta as any)?.field_name || '不明なフィールド';
-        const modelName = (error.meta as any)?.model_name || '不明なモデル';
+        const meta = isRecord(error.meta) ? error.meta : undefined;
+        const fieldName = (meta && typeof meta.field_name === 'string') ? meta.field_name : '不明なフィールド';
+        const modelName = (meta && typeof meta.model_name === 'string') ? meta.model_name : '不明なモデル';
         throw new ApiError(
           400,
           `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、削除できません。既存の貸出記録や点検記録があるデータは削除できません。`,

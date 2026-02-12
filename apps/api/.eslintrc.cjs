@@ -21,7 +21,19 @@ module.exports = {
     'unused-imports/no-unused-imports': 'error',
     'import/no-unresolved': 'off',
     'import/order': 'off',
-    'import/no-cycle': 'error'
+    'import/no-cycle': 'error',
+    'import/no-restricted-paths': [
+      'error',
+      {
+        zones: [
+          {
+            target: './src/services',
+            from: './src/routes',
+            message: 'services層からroutes層への依存は禁止です（依存方向: routes -> services）。'
+          }
+        ]
+      }
+    ]
   },
   overrides: [
     {

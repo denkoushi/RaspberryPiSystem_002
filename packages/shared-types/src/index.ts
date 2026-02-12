@@ -18,5 +18,8 @@ export * from './auth';
 // 共通の型定義
 export * from './common';
 
+// API契約型（段階導入）
+export * from './contracts';
+
 
 

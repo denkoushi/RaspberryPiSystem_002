@@ -1,4 +1,4 @@
-import { SignageContentType, SignageDisplayMode } from '@prisma/client';
+import { Prisma, SignageContentType, SignageDisplayMode } from '@prisma/client';
 import type { SignageSchedule } from '@prisma/client';
 
 type ScheduleSummary = Pick<
@@ -110,6 +110,18 @@ export class SignageService {
   private readonly csvDashboardService = new CsvDashboardService();
   private readonly measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+  private toPrismaLayoutConfig(
+    layoutConfig: SignageLayoutConfigJson | undefined
+  ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+    if (layoutConfig === null) {
+      return Prisma.JsonNull;
+    }
+    if (layoutConfig === undefined) {
+      return Prisma.JsonNull;
+    }
+    return layoutConfig as unknown as Prisma.InputJsonValue;
+  }
 
   /**
    * 有効なスケジュール一覧を取得（優先順位順）
@@ -846,8 +858,7 @@ export class SignageService {
         name: input.name,
         contentType: input.contentType,
         pdfId: input.pdfId ?? null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        layoutConfig: (input.layoutConfig ?? null) as any,
+        layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig ?? null),
         dayOfWeek: input.dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -883,8 +894,7 @@ export class SignageService {
         ...(input.contentType !== undefined && { contentType: input.contentType }),
         ...(input.pdfId !== undefined && { pdfId: input.pdfId ?? null }),
         ...(input.layoutConfig !== undefined && {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          layoutConfig: (input.layoutConfig ?? null) as any,
+          layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig),
         }),
         ...(input.dayOfWeek !== undefined && { dayOfWeek: input.dayOfWeek }),
         ...(input.startTime !== undefined && { startTime: input.startTime }),
@@ -1056,8 +1066,7 @@ export class SignageService {
         message: input.message ?? null,
         contentType: input.contentType ?? null,
         pdfId: input.pdfId ?? null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        layoutConfig: (input.layoutConfig ?? null) as any,
+        layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig ?? null),
         enabled: input.enabled ?? true,
         expiresAt: input.expiresAt ?? null,
       },
