@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-12) **コード品質改善フェーズ2（API+shared-types, Ratchet）実装完了**: フェーズ1で導入した方針を維持しつつ、`apps/api + packages/shared-types` の範囲で型安全化・Lint強化・再利用性向上を段階適用。**実装内容**: `type-guards.ts` を拡張（`getRecord/getNumber/getBoolean/getArray` 追加）、`csv-dashboards/schemas.ts` の `z.any()` を `z.unknown()` へ変更、`gmail-storage.provider.ts` / `item.ts` / `image-backup.target.ts` / `database-backup.target.ts` の未使用引数向け `eslint-disable` を除去、`backup.service.ts` の制御文字除去を正規表現依存から関数化、`csv-backup.target.ts` の `while(true)` と `as string` キャストを撤去、`alerts-config.ts` のURL検証を `URL.canParse` へ統一。**契約型拡張**: `packages/shared-types/src/contracts/index.ts` に `ApiSuccessResponse<T>` / `ApiListResponse<T>` を追加（非破壊拡張）。**Lint方針**: `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）。**検証**: `pnpm --filter @raspi-system/shared-types lint/build`、`pnpm --filter @raspi-system/api lint/build`、`pnpm --filter @raspi-system/api test -- src/lib/__tests__/type-guards.test.ts src/services/backup/__tests__/dropbox-storage-refresh.test.ts src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（38件全件パス）成功。
+
 - [x] (2026-02-12) **コード品質改善フェーズ1（API+shared-types）実装完了・CI成功・デプロイ完了・実機検証完了**: `any` 依存の縮小、境界ルール導入、最小ユニットテスト追加を実施。**実装内容**: `apps/api/src/lib/type-guards.ts` を新設して `unknown` の安全処理を共通化、`csv-import-process.service.ts` / `gmail-storage.provider.ts` / `dropbox-storage.provider.ts` / `signage.service.ts` の `any` を除去、`apps/api/.eslintrc.cjs` に `services -> routes` 依存禁止ルール（`import/no-restricted-paths`）を段階導入、`packages/shared-types/src/contracts/index.ts` に `ApiErrorResponse` を追加。**テスト追加**: `type-guards.test.ts`、`dropbox-storage-refresh.test.ts` の追加ケース（`result.fileBinary`、`ArrayBuffer`、400 malformed token の再認証）。**ローカル検証**: `pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api build`、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（27件全件パス）、`pnpm --filter @raspi-system/shared-types lint`、`pnpm --filter @raspi-system/shared-types build` 成功。**トラブルシューティング**: テスト失敗はコード起因ではなくDocker/DB環境起因（`overlay2` I/Oエラー→Docker再起動、`public.User` 不在→`prisma:deploy` で復旧）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21938333459`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-174057-14354`, `failed=0`, 実行時間約5分30秒）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。  
 
 - [x] (2026-02-12) **backup/importsルート分割と実行ロジックのサービス層移設完了・CI成功・デプロイ完了・実機検証完了**: `backup.ts`と`imports.ts`の巨大ルートを機能別モジュールへ分割し、実行前後の処理をサービス層へ移して責務境界を明確化。今後の機能追加時に影響範囲を局所化し、保守性と拡張性を維持しやすくする。**実装内容**: `backup.ts`を9分割（`history.ts`/`config-read.ts`/`config-write.ts`/`oauth.ts`/`purge.ts`/`restore-dropbox.ts`/`restore.ts`/`storage-maintenance.ts`/`execution.ts`）、`imports.ts`を3分割（`master.ts`/`schedule.ts`/`history.ts`）、実行ロジックをサービス層へ移設（`backup-execution.service.ts`/`pre-restore-backup.service.ts`/`post-backup-cleanup.service.ts`）、`backup.ts`/`imports.ts`本体は集約登録レイヤへ簡素化。**トラブルシューティング**: lintエラー6件（未使用import削除、`any`型を型ガード化）を修正。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID: `21935302228`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-155938-10971`, `failed=0`, 実行時間約7分）。**実機検証結果**: APIヘルスチェック200、Dockerコンテナ正常稼働、DB整合性確認（32マイグレーション適用済み）、`backup/imports`系エンドポイントが正しく登録されていることを確認（404なし、401/400は期待どおり）。**ドキュメント更新**: KB-257を追加、EXEC_PLAN.mdを更新、index.mdを更新（KB-257を追加、件数を51件に更新）。詳細は [docs/knowledge-base/api.md#kb-257](./docs/knowledge-base/api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
@@ -554,6 +556,10 @@
 
 ## Surprises & Discoveries
 
+- 観測: `Record<string, unknown>` の判定では配列もオブジェクトとして真になるため、境界ヘルパー `getRecord()` が配列を許容してしまうと期待外の分岐を通る。  
+  対応: `getRecord()` を「非配列オブジェクトのみ許可」に修正し、ユニットテストで固定化。フェーズ2の型ガード拡張時は「配列とオブジェクトを明示分離」を標準方針とする。**[KB-258]**
+- 観測: URL検証で `new URL()` のインスタンス化を行う実装は、Lint抑制コメントに依存しやすい。  
+  対応: `URL.canParse()` ベースへ置換して `eslint-disable` を不要化。フェーズ2では「検証専用APIを優先し、抑制コメントを残さない」を再利用ルールとして採用。**[KB-258]**
 - 観測: `PUT /api/kiosk/production-schedule/search-state` は `search-history` と異なり、payloadに `state` オブジェクトを必須とする（`{ state: { history: [...] } }`）。同値更新検証で `{ history: [...] }` を送ると `400 VALIDATION_ERROR` になる。  
   対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
 - 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
@@ -728,6 +734,10 @@
 
 ## Decision Log
 
+- 決定: フェーズ2の型安全改善は「共通ガード拡張→高リスク箇所の小刻み置換→Lintで新規違反を防止」のRatchet順序で実施する。  
+  理由: 稼働互換を壊さず、変更範囲を局所化しながら再利用性とスケーラビリティを上げるため。  
+  日付/担当: 2026-02-12 / Codex  
+  参照: [KB-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2-ratchet型安全化lint抑制削減契約型拡張)
 - 決定: 型安全化は「外部SDK境界に型の曖昧さを閉じ込める」方針で段階導入し、`services -> routes` 逆依存をESLintで禁止する。  
   理由: 稼働中システムの互換性を保ちながら、疎結合・再利用性・将来拡張時の回帰抑制を機械的に担保するため。  
   日付/担当: 2026-02-12 / Codex  

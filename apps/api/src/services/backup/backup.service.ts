@@ -12,6 +12,15 @@ import type {
 } from './backup-types.js';
 import type { StorageProvider, FileInfo } from './storage/storage-provider.interface.js';
 
+function stripControlChars(value: string): string {
+  return Array.from(value)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 0x20 && code !== 0x7f;
+    })
+    .join('');
+}
+
 export class BackupService implements BackupProvider {
   constructor(private readonly storage: StorageProvider) {}
 
@@ -111,8 +120,7 @@ export class BackupService implements BackupProvider {
     if (!trimmed) return '';
 
     // 制御文字を除去（念のため）
-    // eslint-disable-next-line no-control-regex
-    let s = trimmed.replace(/[\x00-\x1F\x7F]/g, '');
+    let s = stripControlChars(trimmed);
     // パス区切りは破壊的なので '_' に置換
     s = s.replace(/[/\\]/g, '_');
     // 空白は '_' に寄せる（視認性と安全性のバランス）

@@ -1,5 +1,54 @@
 ---
 
+### [KB-258] コード品質改善フェーズ2（Ratchet）: 型安全化・Lint抑制削減・契約型拡張
+
+**日付**: 2026-02-12
+
+**事象**:
+- フェーズ1完了後、`apps/api` には本番コードで `any/as any` はほぼ解消済みだったが、`eslint-disable` 依存と境界ヘルパー不足が残存していた
+- `packages/shared-types` 側はエラー契約型のみで、成功/一覧系の共通契約が未整備だった
+
+**要因**:
+- 既存改善が個別最適で進んだ結果、再利用可能な型ガード群が不足していた
+- URL検証・未使用引数・制御文字除去などで、Lint抑制コメントに依存する箇所が点在していた
+
+**有効だった対策**:
+- ✅ `apps/api/src/lib/type-guards.ts` を拡張（`getRecord/getNumber/getBoolean/getArray`）
+- ✅ `apps/api/.eslintrc.cjs` に `@typescript-eslint/no-explicit-any: error` を明示追加（テストoverrideは維持）
+- ✅ `z.any()` を `z.unknown()` に置換（`routes/csv-dashboards/schemas.ts`）
+- ✅ 高リスク箇所の `eslint-disable` を削減（`gmail-storage.provider.ts` / `item.ts` / `image-backup.target.ts` / `database-backup.target.ts` / `alerts-config.ts` / `csv-backup.target.ts` / `backup.service.ts`）
+- ✅ 共有契約型を非破壊拡張（`ApiSuccessResponse<T>`, `ApiListResponse<T>`）
+
+**トラブルシューティング**:
+- `getRecord()` 実装初版で配列をRecordとして許容し、ユニットテストが失敗
+- `getRecord()` を「非配列オブジェクトのみ許可」に修正して解消
+
+**検証**:
+- `pnpm --filter @raspi-system/shared-types lint` 成功
+- `pnpm --filter @raspi-system/shared-types build` 成功
+- `pnpm --filter @raspi-system/api lint` 成功
+- `pnpm --filter @raspi-system/api build` 成功
+- `pnpm --filter @raspi-system/api test -- src/lib/__tests__/type-guards.test.ts src/services/backup/__tests__/dropbox-storage-refresh.test.ts src/routes/__tests__/backup.integration.test.ts src/routes/__tests__/imports.integration.test.ts`（38件全件パス）
+
+**関連ファイル**:
+- `apps/api/src/lib/type-guards.ts`
+- `apps/api/src/lib/__tests__/type-guards.test.ts`
+- `apps/api/.eslintrc.cjs`
+- `apps/api/src/routes/csv-dashboards/schemas.ts`
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`
+- `apps/api/src/services/imports/importers/item.ts`
+- `apps/api/src/services/backup/targets/csv-backup.target.ts`
+- `apps/api/src/services/backup/targets/image-backup.target.ts`
+- `apps/api/src/services/backup/targets/database-backup.target.ts`
+- `apps/api/src/services/alerts/alerts-config.ts`
+- `apps/api/src/services/backup/backup.service.ts`
+- `packages/shared-types/src/contracts/index.ts`
+
+**解決状況**: ✅ **解決済み**（2026-02-12）
+- Ratchet方式で型安全性とLint健全性を強化し、疎結合・再利用性を維持したままフェーズ2を完了
+
+---
+
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
 
 **日付**: 2026-02-11

@@ -19,6 +19,7 @@ module.exports = {
   parser: '@typescript-eslint/parser',
   rules: {
     'unused-imports/no-unused-imports': 'error',
+    '@typescript-eslint/no-explicit-any': 'error',
     'import/no-unresolved': 'off',
     'import/order': 'off',
     'import/no-cycle': 'error',

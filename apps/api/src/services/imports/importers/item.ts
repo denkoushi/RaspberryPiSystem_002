@@ -85,9 +85,9 @@ export class ItemCsvImporter implements CsvImporter {
   async import(
     rows: unknown[],
     replaceExisting: boolean,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _logger?: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
+    logger?: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void }
   ): Promise<ImportSummary> {
+    void logger;
     const itemRows = rows as ItemCsvRow[];
 
     if (itemRows.length === 0) {

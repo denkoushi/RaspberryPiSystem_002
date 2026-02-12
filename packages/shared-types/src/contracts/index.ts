@@ -10,3 +10,13 @@ export interface ApiErrorResponse {
   details?: unknown;
   statusCode?: number;
 }
+
+export interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiListResponse<T> {
+  items: T[];
+  total?: number;
+}

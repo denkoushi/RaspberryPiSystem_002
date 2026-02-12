@@ -4,6 +4,7 @@ import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
 import { processCsvImport } from '../../imports/csv-import-process.service.js';
 import { logger } from '../../../lib/logger.js';
+import { getString } from '../../../lib/type-guards.js';
 
 /**
  * CSVバックアップターゲット
@@ -15,13 +16,14 @@ export class CsvBackupTarget implements BackupTarget {
   private readonly type: 'employees' | 'items';
 
   constructor(type: 'employees' | 'items', metadata?: Record<string, unknown>) {
+    const metadataLabel = metadata ? getString(metadata, 'label') : undefined;
     this.type = type;
     this.info = {
       type: 'csv',
       source: type,
       metadata: {
         ...metadata,
-        label: metadata?.label as string || `csv-${type}-${new Date().toISOString()}`
+        label: metadataLabel || `csv-${type}-${new Date().toISOString()}`
       }
     };
   }
@@ -43,14 +45,15 @@ export class CsvBackupTarget implements BackupTarget {
     let isFirstBatch = true;
     const chunks: string[] = [];
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+    let hasMore = true;
+    while (hasMore) {
       const employees = await prisma.employee.findMany({
         orderBy: { employeeCode: 'asc' },
         skip: offset,
         take: batchSize
       });
-      if (employees.length === 0) break;
+      hasMore = employees.length > 0;
+      if (!hasMore) break;
 
       const rows = employees.map(emp => ({
         employeeCode: emp.employeeCode,
@@ -82,14 +85,15 @@ export class CsvBackupTarget implements BackupTarget {
     let isFirstBatch = true;
     const chunks: string[] = [];
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+    let hasMore = true;
+    while (hasMore) {
       const items = await prisma.item.findMany({
         orderBy: { itemCode: 'asc' },
         skip: offset,
         take: batchSize
       });
-      if (items.length === 0) break;
+      hasMore = items.length > 0;
+      if (!hasMore) break;
 
       const rows = items.map(item => ({
         itemCode: item.itemCode,

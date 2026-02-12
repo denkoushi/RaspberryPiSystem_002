@@ -90,7 +90,8 @@ export class DatabaseBackupTarget implements BackupTarget {
     }
   }
 
-  async restore(backupData: Buffer, _options?: RestoreOptions): Promise<RestoreResult> { // eslint-disable-line @typescript-eslint/no-unused-vars
+  async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {
+    void options;
     const url = new URL(this.dbUrl);
     const dbName = url.pathname.replace(/^\//, '');
     const user = decodeURIComponent(url.username || 'postgres');
