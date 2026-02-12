@@ -225,6 +225,43 @@ error  `../client` import should occur before type import of `@raspi-system/shar
 
 **参考**: Phase 8実装時に `contracts.client.test.ts` で同様のエラーが発生し、CI run #637-#640が失敗。`pnpm lint --fix` で修正後、run #641で成功。
 
+### 9. 性能テストの失敗（`Run API performance tests`）
+
+**症状**: `Run API performance tests` ステップでテストが失敗し、CIが停止
+
+**エラーメッセージ例**:
+```
+Error: Response time 2100ms exceeds threshold 1800ms
+  at performance.test.ts:45
+```
+
+**確認事項**:
+- 性能テストの閾値（`PERF_RESPONSE_TIME_THRESHOLD_MS`）が適切か（デフォルト: `1800ms`）
+- テスト対象のAPIエンドポイントが正常に動作しているか
+- データベースの負荷が高い状態でないか
+- CI環境のリソース（CPU/メモリ）が不足していないか
+
+**対処法**:
+- ローカルで `pnpm test -- performance` を実行して再現性を確認
+- 閾値を一時的に引き上げる（環境変数 `PERF_RESPONSE_TIME_THRESHOLD_MS` を設定）
+- パフォーマンスの根本原因を調査（DBクエリの最適化、インデックス追加など）
+- CI環境のリソース状況を確認（GitHub Actionsのログで確認）
+
+**よくある原因**:
+1. **クライアント認証不足**: `x-client-key` ヘッダーが必要なエンドポイントで未設定
+   - 対処: テスト内で `createTestClientDevice()` を呼び出し、`x-client-key` を付与
+2. **レスポンス形式の誤解**: JSONを期待しているが、実際はテキスト形式
+   - 対処: `response.json()` ではなく `response.body.length` をチェック
+3. **テストデータの一意制約衝突**: 固定の `apiKey` を使用して `ClientDevice` を作成
+   - 対処: `createTestClientDevice()` で自動生成キーを使用（固定キーを避ける）
+
+**参考**: フェーズ4第一弾実装時に、`performance.test.ts` で以下のトラブルが発生:
+- `GET /api/kiosk/production-schedule/history-progress` が `401 CLIENT_KEY_REQUIRED` → テスト用クライアント作成で解決
+- `GET /api/system/metrics` がJSONではなくテキスト → JSONパース依存を除去して解決
+- 固定 `apiKey` による一意制約衝突（P2002）→ 自動生成キーへ修正して解決
+
+詳細は [knowledge-base/api.md#kb-258](./../knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) を参照。
+
 ## ログの見方
 
 ### 重要な行を探す

@@ -1392,12 +1392,55 @@
 - ✅ **テスト共通ヘルパー拡張**: `helpers.ts` に `loginAndGetAccessToken` / `expectApiError` を追加して重複削減
 - ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21941655302` 成功、Pi5デプロイ成功（runId `20260212-190813-9599`）、実機検証完了（詳細検証: 認証・認可境界、業務エンドポイント疎通、UI到達性、Pi4/Pi3サービス状態、ログ健全性まで確認）
 
-**次の改善候補（フェーズ4以降）**:
+**完了した改善（フェーズ4第一弾）**:
+- ✅ **性能回帰ゲートを強化**: `performance.test.ts` を主要API（`/api/system/health`・`/api/auth/login`・`/api/backup/config`・`/api/imports/history`・`/api/kiosk/production-schedule/history-progress`・`/api/system/metrics`）へ拡張し、閾値を `PERF_RESPONSE_TIME_THRESHOLD_MS` で外部化
+- ✅ **CIに性能テスト専用ステップを追加**: `Run API performance tests` ステップを追加（初期閾値 `1800ms`）
+- ✅ **依存境界ルールを追加**: `apps/api/.eslintrc.cjs` の `import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止を追加
+- ✅ **未カバー領域のサービス層ユニットテストを追加**: `services/clients` と `services/production-schedule` のテスト追加（`client-alerts.service.test.ts`、`client-telemetry.service.test.ts`、`production-schedule-query.service.test.ts`、`production-schedule-command.service.test.ts`）
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `21943411618` 成功、Pi5デプロイ成功（runId `20260212-200125-1261`）、実機検証完了（詳細検証: デプロイ実体確認、コンテナ稼働状態、ヘルスチェック、DB整合性、ログ健全性まで確認）
+
+**次の改善候補（フェーズ4第二弾以降）**:
 - **テストカバレッジのさらなる向上**（推奨・優先度: 低）: 残るサービス層のユニットテスト追加、エッジケースの網羅、統合テストの拡充（フェーズ3で主要領域は完了）
 - **ドキュメントの整備**（推奨・優先度: 中）: 各サービス層の責務とインターフェースを明文化、API仕様の更新、型ガードの使用ガイドライン作成
 - **パフォーマンス最適化**（推奨・優先度: 中）: 不要なDBクエリの削減、キャッシュ戦略の見直し、N+1問題の解消
 - **型安全性のさらなる向上**（優先度: 低）: 残存する `any` 型の完全排除、型ガードの標準化、Zodスキーマの徹底、外部SDK境界での型の曖昧さの閉じ込め
 - **ESLintルールの拡張**（優先度: 低）: 追加の依存境界ルール、型安全性ルールの段階導入
+
+### コード品質改善フェーズ4第二弾（推奨）
+
+**概要**: フェーズ4第一弾（性能ゲート最優先）の完了を機に、残りのサービス層テスト・性能テスト拡張・依存境界ルール拡張を実施
+
+**完了した改善（フェーズ4第一弾）**:
+- ✅ 性能回帰ゲートを強化（`performance.test.ts` を主要APIへ拡張、閾値 `PERF_RESPONSE_TIME_THRESHOLD_MS` で外部化）
+- ✅ CIに性能テスト専用ステップを追加（`Run API performance tests`、初期閾値 `1800ms`）
+- ✅ 依存境界ルールを追加（`import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止）
+- ✅ 未カバー領域のサービス層ユニットテストを追加（`clients` / `production-schedule`）
+
+**次の改善候補（フェーズ4第二弾）**:
+1. **残りのサービス層テストの追加**（優先度: 中）
+   - `services/backup/*` の残り（`backup-execution.service.ts` は既存、`pre-restore-backup.service.ts` / `post-backup-cleanup.service.ts` など）
+   - `services/imports/*` の残り（`csv-import-process.service.ts` は既存）
+   - `services/alerts/*` のテスト追加
+   - `services/tools/*` のテスト追加
+
+2. **性能テストの拡張**（優先度: 中）
+   - より多くのAPIエンドポイントへの拡張（`/api/tools/*`, `/api/signage/*` など）
+   - 負荷テストの追加（複数リクエストの並列実行）
+   - パフォーマンスベンチマークの定期実行とトレンド追跡
+
+3. **依存境界ルールの拡張**（優先度: 低）
+   - `routes` 層内の依存方向ルール（例: `routes/kiosk` から `routes/clients` への依存禁止）
+   - `services` 層内の依存方向ルール（循環依存の防止）
+   - 共有モジュール（`lib`）の依存方向の明確化
+
+4. **テストカバレッジの可視化**（優先度: 低）
+   - カバレッジレポートの自動生成（CIでの実行）
+   - カバレッジ閾値の設定とCIゲート化
+   - 未カバー領域の特定と優先順位付け
+
+**現状**: フェーズ4第一弾は完了し、CI成功・デプロイ成功・実機検証完了を確認。性能ゲートと依存境界ルールの基盤が確立された。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/api.md#kb-258](./docs/knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) / [EXEC_PLAN.md](./EXEC_PLAN.md)
 
 ### Mac開発環境: ストレージ運用（推奨）
 
