@@ -1430,10 +1430,15 @@
 - ✅ 性能テスト拡張（`/api/signage/content` を追加）
 - ✅ CI成功・デプロイ完了・実機検証完了（Run ID `21946824175` 成功、Pi5デプロイ成功（runId `20260212-214653-31460`）、実機検証完了）
 
+**完了した改善（フェーズ4第四弾）**:
+- ✅ 依存境界ルールを段階強化（`apps/api/.eslintrc.cjs` に `routes/kiosk -> routes/clients` と `routes/clients -> routes/kiosk` の相互依存禁止を追加）
+- ✅ サービス層テスト拡張（`import-history.service.test.ts`、`csv-import-config.service.test.ts` を新規追加）
+- ✅ CI成功・デプロイ完了・実機検証完了（Run ID `21949019086` 成功、Pi5デプロイ成功（runId `20260212-225612-22558`）、実機検証完了）
+
 **次の改善候補（フェーズ4第四弾以降）**:
 1. **残りのサービス層テストの追加**（優先度: 中）
-   - `services/backup/*` の残り（`backup-execution.service.ts` は既存、`pre-restore-backup.service.ts` / `post-backup-cleanup.service.ts` など）
-   - `services/imports/*` の残り（`csv-import-process.service.ts` は既存）
+   - `services/backup/*` の残り（`backup-execution.service.ts` / `pre-restore-backup.service.ts` / `post-backup-cleanup.service.ts` は対応済み、未対応ユニットを継続追加）
+   - `services/imports/*` の残り（`csv-import-process.service.ts` / `csv-import-source.service.ts` / `import-history.service.ts` / `csv-import-config.service.ts` は対応済み、未対応ユニットを継続追加）
    - `services/alerts/*` のテスト追加
    - `services/tools/*` のテスト追加
 
@@ -1443,7 +1448,8 @@
    - パフォーマンスベンチマークの定期実行とトレンド追跡
 
 3. **依存境界ルールの拡張**（優先度: 低）
-   - `routes` 層内の依存方向ルール（例: `routes/kiosk` から `routes/clients` への依存禁止）
+   - `routes` 層内の依存方向ルール追加は着手済み（`kiosk <-> clients` 相互依存禁止を導入）
+   - `routes` 層内の他境界（`backup` / `imports` 等）への段階適用
    - `services` 層内の依存方向ルール（循環依存の防止）
    - 共有モジュール（`lib`）の依存方向の明確化
 
@@ -1804,6 +1810,7 @@
 
 ---
 
+変更履歴: 2026-02-12 — コード品質改善フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）を反映。`apps/api/.eslintrc.cjs` に `routes/kiosk` と `routes/clients` の相互依存禁止を追加し、`import-history.service.test.ts` / `csv-import-config.service.test.ts` を新規追加。品質ゲート（test/lint/build）成功、CI成功（Run `21949019086`）、デプロイ完了（runId `20260212-225612-22558`）、実機検証完了（`/api/system/health`、マイグレーション整合）を追記。トラブルシューティングとして `raspberrypi.local` 名前解決不可時はTailscale IPを使用する点と、コンテナ内マイグレーション確認は `pnpm prisma migrate status` を用いる点を記録。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第三弾（残サービス層テスト + signage性能テスト）を反映。`pre-restore-backup` / `post-backup-cleanup` / `csv-import-source` / `alerts-config` の新規ユニットテスト、`performance.test.ts` への `/api/signage/content` 追加、品質ゲート（test/lint/build）成功、CI成功（Run `21946824175`）、デプロイ完了（runId `20260212-214653-31460`）、実機検証完了、トラブルシューティング（未commit差分によるデプロイfail-fast）を追記。Next Stepsをフェーズ4第四弾以降に更新。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第二弾（サービス層テスト拡張）を反映。`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の新規ユニットテスト、`performance.test.ts` への `/api/tools/employees`・`/api/tools/items` 追加、品質ゲート（test/lint/build）成功、CI成功、デプロイ完了（runId `20260212-211502-30448`）、実機検証完了、トラブルシューティング（性能テストの401）を追記。Next Stepsにフェーズ4第二弾候補を反映。
 変更履歴: 2026-02-10 — クライアント端末の表示名編集機能実装・デプロイ完了・実機検証完了を記録。KB-206に実機検証完了を追記。Next Stepsセクションにクライアント端末管理機能の継続的改善候補を追加。

@@ -156,6 +156,21 @@
   - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-214653-31460`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
   - **実機検証結果**: デプロイ実体確認（コミットハッシュ `4bd6d900` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
 
+**フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ `apps/api/.eslintrc.cjs` の `import/no-restricted-paths` を拡張し、`routes/kiosk -> routes/clients` と `routes/clients -> routes/kiosk` の相互依存を禁止
+  - ✅ サービス層テストを追加（`import-history.service.test.ts`、`csv-import-config.service.test.ts`）
+- **トラブルシューティング**:
+  - 実機確認で `https://raspberrypi.local/api/system/health` が名前解決不可（`curl` exit code 6）になったため、Tailscale IP (`https://100.106.158.2/api/system/health`) で疎通確認して解消
+  - コンテナ内のマイグレーション確認で `npx` が存在しないため、`docker compose ... exec -T api pnpm prisma migrate status` に切り替えて確認
+- **検証**:
+  - **追加分検証**: 追加した2ファイル対象で6件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test`（513件中506件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21949019086` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-225612-22558`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `0ee8a9bd` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
