@@ -103,6 +103,8 @@
     `pnpm --filter @raspi-system/api test -- src/routes/__tests__/performance.test.ts src/services/clients/__tests__/client-alerts.service.test.ts src/services/clients/__tests__/client-telemetry.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`（19件全件パス）
   - **ローカル検証（品質ゲート）**: `pnpm --filter @raspi-system/api test`（469件中462件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
   - **CI実行**: GitHub Actions Run ID `21943411618` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-200125-1261`, `failed=0`, 実行時間約6分42秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `753b6b70` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)、`GET /api/system/metrics` → `200`（テキスト形式、期待通り）、`GET /api/backup/config/health` 無認証 → `401`（期待通り））、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、ログ健全性（直近5分のAPIログで重大障害系未検出、正常なリクエスト処理を確認）
 - **関連ファイル（追加）**:
   - `apps/api/src/routes/__tests__/performance.test.ts`
   - `apps/api/src/routes/__tests__/helpers.ts`（`measureInjectResponse` 追加）
