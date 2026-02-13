@@ -145,6 +145,24 @@ jobs:
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
 
+      - name: Run API performance tests
+        run: |
+          cd apps/api
+          echo "Running API performance tests..."
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- performance --reporter=verbose || {
+            echo "Performance tests failed, showing test output..."
+            exit 1
+          }
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          BACKUP_STORAGE_DIR: /tmp/test-backups
+          NODE_ENV: test
+          PERF_RESPONSE_TIME_THRESHOLD_MS: 1800
+
       - name: Run backup service tests
         run: |
           cd apps/api

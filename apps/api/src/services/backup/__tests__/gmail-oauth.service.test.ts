@@ -34,6 +34,7 @@ describe('GmailOAuthService', () => {
       expect(url).toContain('prompt=consent');
       expect(url).toContain(`redirect_uri=${encodeURIComponent(mockRedirectUri)}`);
       expect(url).toContain('scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly');
+      expect(url).toContain(encodeURIComponent('https://mail.google.com/'));
     });
 
     it('should include state parameter when provided', () => {

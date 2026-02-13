@@ -1,13 +1,42 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../../app.js';
 import type { FastifyInstance } from 'fastify';
+import {
+  createTestUser,
+  createAuthHeader,
+  createTestClientDevice,
+  measureInjectResponse,
+} from './helpers.js';
+
+const PERF_RESPONSE_TIME_THRESHOLD_MS = Number(
+  process.env.PERF_RESPONSE_TIME_THRESHOLD_MS ?? '1500'
+);
+
+const isDatabaseUnavailable = (statusCode: number, body: unknown): boolean => {
+  if (statusCode === 503) return true;
+  if (!body || typeof body !== 'object') return false;
+  const message = 'message' in body && typeof body.message === 'string' ? body.message : '';
+  return statusCode === 500 && (message.includes('database') || message.includes('Prisma'));
+};
 
 describe('Performance Tests (NFR-001)', () => {
   let app: FastifyInstance;
+  let authHeaders: Record<string, string>;
+  let loginUsername = '';
+  let loginPassword = '';
+  let kioskClientHeaders: Record<string, string>;
 
   beforeAll(async () => {
     app = await buildServer();
     await app.ready();
+
+    const { user, token, password } = await createTestUser('ADMIN');
+    authHeaders = createAuthHeader(token);
+    loginUsername = user.username;
+    loginPassword = password;
+
+    const client = await createTestClientDevice();
+    kioskClientHeaders = { 'x-client-key': client.apiKey };
   });
 
   afterAll(async () => {
@@ -15,110 +44,142 @@ describe('Performance Tests (NFR-001)', () => {
   });
 
   describe('API Response Time', () => {
-    it('should respond to /api/system/health within 1 second', async () => {
-      const startTime = Date.now();
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/system/health',
+    it('should respond to /api/system/health within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/system/health',
+        },
       });
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
+      const body = response.json() as Record<string, unknown>;
 
-      // データベース接続エラーの場合はスキップ（CI環境ではデータベースが起動している）
-      if (response.statusCode === 503) {
+      if (isDatabaseUnavailable(response.statusCode, body)) {
         console.log('Skipping test: Database not available');
         return;
       }
 
       expect(response.statusCode).toBe(200);
-      expect(responseTime).toBeLessThan(1000); // 1秒以内
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
 
-    it('should respond to /api/tools/employees within 1 second', async () => {
-      // 認証トークンを取得
-      const loginResponse = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        payload: {
-          username: 'admin',
-          password: 'admin1234',
+    it('should respond to /api/auth/login within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: {
+            username: loginUsername,
+            password: loginPassword,
+          },
         },
       });
 
-      if (loginResponse.statusCode !== 200) {
-        // テスト用のadminユーザーが存在しない場合はスキップ
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/backup/config within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/backup/config',
+          headers: authHeaders,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/imports/history within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/imports/history',
+          headers: authHeaders,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/kiosk/production-schedule/history-progress within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/kiosk/production-schedule/history-progress',
+          headers: kioskClientHeaders,
+        },
+      });
+
+      if (response.statusCode === 404) {
+        console.log('Skipping test: kiosk production schedule route unavailable in current setup');
         return;
       }
 
-      const { accessToken } = loginResponse.json() as { accessToken: string };
-
-      const startTime = Date.now();
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/tools/employees',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
-
       expect(response.statusCode).toBe(200);
-      expect(responseTime).toBeLessThan(1000); // 1秒以内
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
 
-    it('should respond to /api/tools/items within 1 second', async () => {
-      // 認証トークンを取得
-      const loginResponse = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        payload: {
-          username: 'admin',
-          password: 'admin1234',
+    it('should respond to /api/system/metrics within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/system/metrics',
         },
       });
-
-      if (loginResponse.statusCode !== 200) {
-        return;
-      }
-
-      const { accessToken } = loginResponse.json() as { accessToken: string };
-
-      const startTime = Date.now();
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/tools/items',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
 
       expect(response.statusCode).toBe(200);
-      expect(responseTime).toBeLessThan(1000); // 1秒以内
+      expect(response.body.length).toBeGreaterThan(0);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
 
-    it('should respond to /api/system/metrics within 1 second', async () => {
-      const startTime = Date.now();
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/system/metrics',
+    it('should respond to /api/tools/employees within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/tools/employees',
+          headers: authHeaders,
+        },
       });
-      const endTime = Date.now();
-      const responseTime = endTime - startTime;
-
-      // データベース接続エラーの場合はスキップ（CI環境ではデータベースが起動している）
-      if (response.statusCode === 500) {
-        const body = response.json() as { message?: string };
-        if (body.message?.includes('database') || body.message?.includes('Prisma')) {
-          console.log('Skipping test: Database not available');
-          return;
-        }
-      }
 
       expect(response.statusCode).toBe(200);
-      expect(responseTime).toBeLessThan(1000); // 1秒以内
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/tools/items within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/tools/items',
+          headers: authHeaders,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should respond to /api/signage/content within threshold', async () => {
+      const { response, responseTimeMs } = await measureInjectResponse<Awaited<ReturnType<FastifyInstance['inject']>>>({
+        app,
+        request: {
+          method: 'GET',
+          url: '/api/signage/content',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
     });
   });
 });

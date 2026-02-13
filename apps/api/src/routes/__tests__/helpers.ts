@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { expect } from 'vitest';
+import { performance } from 'node:perf_hooks';
 
 let employeeSequence = 0;
 let itemSequence = 0;
@@ -74,6 +75,19 @@ export function expectApiError(
     expect(message).toContain(expectedMessageIncludes);
   }
   return body;
+}
+
+/**
+ * app.injectの実行時間を計測して返す
+ */
+export async function measureInjectResponse<T>(params: {
+  app: FastifyInstance;
+  request: unknown;
+}): Promise<{ response: T; responseTimeMs: number }> {
+  const start = performance.now();
+  const response = (await params.app.inject(params.request as never)) as T;
+  const responseTimeMs = performance.now() - start;
+  return { response, responseTimeMs };
 }
 
 /**

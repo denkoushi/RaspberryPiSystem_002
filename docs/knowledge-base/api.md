@@ -86,6 +86,91 @@
   - `apps/api/src/routes/__tests__/backup.integration.test.ts`（非ADMINの403テスト追加）
   - `apps/api/src/routes/__tests__/imports.integration.test.ts`（非ADMINの403テスト追加）
 
+**フェーズ4第一弾（性能ゲート最優先）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ 性能回帰ゲートを強化（`performance.test.ts` を主要APIへ拡張し、閾値を `PERF_RESPONSE_TIME_THRESHOLD_MS` で外部化）
+  - ✅ CIに性能テスト専用ステップを追加（`Run API performance tests`、初期閾値 `1800ms`）
+  - ✅ 依存境界ルールを追加（`import/no-restricted-paths` に `lib -> routes` / `lib -> services` 禁止）
+  - ✅ 未カバー領域のサービス層ユニットテストを追加（`clients` / `production-schedule`）
+- **トラブルシューティング**:
+  - `GET /api/kiosk/production-schedule/history-progress` が `401 CLIENT_KEY_REQUIRED` となるため、性能テスト内でテスト用クライアントを作成し `x-client-key` を付与して解消
+  - `GET /api/system/metrics` がJSONではなくテキスト応答のため、JSONパース依存を除去して解消
+  - テストヘルパーの `app.inject` 型制約により `tsc` で型エラーが発生したため、`measureInjectResponse` のリクエスト型を `unknown` に緩和して解消
+  - CI初回（Run ID `21943236869`）で固定 `apiKey` による `ClientDevice.apiKey` 一意制約衝突（P2002）が発生し、固定キー利用を廃止して自動生成キーへ修正
+- **検証**:
+  - **ローカル検証（追加分）**:  
+    `pnpm --filter @raspi-system/api test -- src/routes/__tests__/performance.test.ts src/services/clients/__tests__/client-alerts.service.test.ts src/services/clients/__tests__/client-telemetry.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`（19件全件パス）
+  - **ローカル検証（品質ゲート）**: `pnpm --filter @raspi-system/api test`（469件中462件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21943411618` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-200125-1261`, `failed=0`, 実行時間約6分42秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `753b6b70` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)、`GET /api/system/metrics` → `200`（テキスト形式、期待通り）、`GET /api/backup/config/health` 無認証 → `401`（期待通り））、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、ログ健全性（直近5分のAPIログで重大障害系未検出、正常なリクエスト処理を確認）
+- **関連ファイル（追加）**:
+  - `apps/api/src/routes/__tests__/performance.test.ts`
+  - `apps/api/src/routes/__tests__/helpers.ts`（`measureInjectResponse` 追加）
+  - `apps/api/.eslintrc.cjs`（`lib -> routes/services` 制限追加）
+  - `.github/workflows/ci.yml`（`Run API performance tests` 追加）
+  - `apps/api/src/services/clients/__tests__/client-alerts.service.test.ts`
+  - `apps/api/src/services/clients/__tests__/client-telemetry.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`
+
+**フェーズ4第二弾（サービス層テスト拡張優先）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ 第1群（`measuring-instruments` / `rigging`）のサービス層テストを追加
+  - ✅ 第2群（`production-schedule` / `csv-dashboard`）の未カバー領域テストを追加
+  - ✅ 性能テストを拡張（`/api/tools/employees`、`/api/tools/items`）
+- **追加テスト**:
+  - `apps/api/src/services/measuring-instruments/__tests__/measuring-instrument.service.test.ts`
+  - `apps/api/src/services/measuring-instruments/__tests__/inspection-item.service.test.ts`
+  - `apps/api/src/services/rigging/__tests__/rigging-gear.service.test.ts`
+  - `apps/api/src/services/rigging/__tests__/rigging-inspection-record.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-search-state.service.test.ts`
+  - `apps/api/src/services/production-schedule/__tests__/seiban-progress.service.test.ts`
+  - `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-source.service.test.ts`
+  - `apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-retention.service.test.ts`
+- **トラブルシューティング**:
+  - `performance.test.ts` へ追加した `/api/tools/employees` と `/api/tools/items` が初回 `401 AUTH_TOKEN_REQUIRED` で失敗
+  - 原因は当該エンドポイントがJWT認証必須であること
+  - 対応として `authHeaders` を付与し、`200` 応答で閾値判定できるよう修正
+- **検証**:
+  - **追加分検証**: 追加した9ファイル対象で31件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test` 成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21945480333` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-211502-30448`, `failed=0`, 実行時間約6分40秒、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `f0eb80ef` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み・必須テーブル `MeasuringInstrumentLoanEvent` 存在確認）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
+
+**フェーズ4第三弾（残サービス層テスト + signage性能テスト）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ サービス層テストを追加（`pre-restore-backup.service.test.ts`、`post-backup-cleanup.service.test.ts`、`csv-import-source.service.test.ts`、`alerts-config.test.ts`）
+  - ✅ 性能テストを拡張（`/api/signage/content`）
+- **トラブルシューティング**:
+  - 標準デプロイスクリプトが未commit差分を検知してfail-fast停止
+  - `git stash` でドキュメント差分を一時退避し、デプロイ後に復元して解消
+- **検証**:
+  - **追加分検証**: 追加した5ファイル対象で21件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test`（500件中500件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21946824175` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-214653-31460`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `4bd6d900` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
+
+**フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）の実装と検証結果**:
+- **日付**: 2026-02-12
+- **実装内容**:
+  - ✅ `apps/api/.eslintrc.cjs` の `import/no-restricted-paths` を拡張し、`routes/kiosk -> routes/clients` と `routes/clients -> routes/kiosk` の相互依存を禁止
+  - ✅ サービス層テストを追加（`import-history.service.test.ts`、`csv-import-config.service.test.ts`）
+- **トラブルシューティング**:
+  - 実機確認で `https://raspberrypi.local/api/system/health` が名前解決不可（`curl` exit code 6）になったため、Tailscale IP (`https://100.106.158.2/api/system/health`) で疎通確認して解消
+  - コンテナ内のマイグレーション確認で `npx` が存在しないため、`docker compose ... exec -T api pnpm prisma migrate status` に切り替えて確認
+- **検証**:
+  - **追加分検証**: 追加した2ファイル対象で6件全件パス
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test`（513件中506件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **CI実行**: GitHub Actions Run ID `21949019086` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）
+  - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-225612-22558`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
+  - **実機検証結果**: デプロイ実体確認（コミットハッシュ `0ee8a9bd` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）
@@ -151,6 +236,7 @@
 - ✅ レンダラーを2列表示へ変更し、余白縮小・表示密度向上を実施
 - ✅ フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）し、レイアウト破壊なしで視認性を向上
 - ✅ タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一
+- ✅ 点検結果セルの背景色を値連動で変更（未使用=現状維持、異常0=青#2563eb、異常1以上=赤#dc2626、文字色=白#ffffff）し、異常有無を視認しやすく改善
 
 **トラブルシューティング**:
 - `404`で可視化API検証が失敗した際は、`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認
@@ -158,22 +244,25 @@
 - 画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認する
 
 **検証**:
-- ローカル: `pnpm test` 成功（`apps/api`: 64 passed / 2 skipped）
+- ローカル: `pnpm test` 成功（`apps/api`: 85 passed / 2 skipped）
 - CI:
   - Run `21930870130` 成功（2列表示最適化）
   - Run `21931409637` 成功（フォントサイズ拡大）
+  - Run `21968831251` 成功（点検結果セル背景色変更）
 - デプロイ:
   - runId `20260212-112355-17139` 成功（2列表示）
   - runId `20260212-114929-25101` 成功（フォント拡大）
-- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認
+  - runId `20260213-092127-19323` 成功（点検結果セル背景色変更、ok=111, changed=4, failed=0）
+- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認。点検結果セルの背景色変更により、未使用・異常0・異常1以上の状態が視認しやすくなり、正常に発色することを確認
 
 **関連ファイル**:
 - `apps/api/src/services/tools/machine.service.ts`
 - `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
-- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`（`resolveInspectionResultCellStyle`関数追加、点検結果列のみ背景色制御）
 - `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
 
-**解決状況**: ✅ **解決済み**（2026-02-12）
+**解決状況**: ✅ **解決済み**（2026-02-13）
+- 2列表示・フォント拡大・点検結果セル背景色変更により、視認性と異常有無の識別性が向上
 
 ---
 
@@ -3094,6 +3183,52 @@ const saveNote = (rowId: string) => {
 - [docs/guides/gmail-setup-guide.md](../guides/gmail-setup-guide.md#4-ゴミ箱自動削除深夜1回): Gmailセットアップガイド（ゴミ箱自動削除セクション）
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
+
+**追加調査・修正（2026-02-10）**: 削除権限不足問題の解決
+
+**事象（追加）**:
+- 実装・デプロイ後、2日間監視したがゴミ箱のアイテムが削除されなかった
+- タグ（`rps_processed`）は付与されていたが、削除処理が実行されなかった
+- 手動実行時に`Request had insufficient authentication scopes.`エラーが発生
+
+**調査結果（追加）**:
+1. **OAuthスコープ不足**:
+   - 既存のOAuthスコープ（`gmail.readonly`, `gmail.modify`）では`users.messages.delete`（恒久削除）が実行できない
+   - `users.messages.delete`には`https://mail.google.com/`スコープが必要
+   - `gmail.modify`はゴミ箱への移動（`users.messages.trash`）は可能だが、ゴミ箱からの恒久削除は別スコープが必要
+2. **スコープ追加の必要性**:
+   - Google Cloud ConsoleのOAuth同意画面に`https://mail.google.com/`スコープを追加する必要がある
+   - コード側でスコープを追加しても、Google Cloud Console側で追加していないと認証時にスコープが付与されない
+   - 既存のトークンには新しいスコープが含まれていないため、再認証が必要
+
+**Fix（追加）**:
+1. **コード側の修正** (`apps/api/src/services/backup/gmail-oauth.service.ts`):
+   - `GmailOAuthService`のデフォルトスコープに`https://mail.google.com/`を追加
+   - デフォルトスコープ:
+     - `https://www.googleapis.com/auth/gmail.readonly`: 既存の取得処理
+     - `https://www.googleapis.com/auth/gmail.modify`: 既存の移動処理
+     - `https://mail.google.com/`: **新規追加** - ゴミ箱からの恒久削除に必要
+2. **Google Cloud Console側の設定**:
+   - Google Cloud Console → APIとサービス → OAuth同意画面 → スコープ
+   - `https://mail.google.com/`スコープを追加（手動で追加が必要）
+   - スコープ名: `View and manage your mail`（Googleが自動的に表示）
+3. **再認証の実行**:
+   - 管理コンソール → Gmail設定 → 「OAuth認証」ボタンをクリック
+   - 新しいスコープ（`View and manage your mail`）を承認
+   - 再認証後、新しいトークンに`https://mail.google.com/`スコープが含まれる
+4. **動作確認**:
+   - 手動実行で`users.messages.batchDelete`が正常に動作することを確認
+   - 484件のメッセージが正常に削除されたことを確認
+
+**学んだこと（追加）**:
+- Gmail APIのスコープは階層的ではなく、操作ごとに必要なスコープが異なる
+- `gmail.modify`はゴミ箱への移動は可能だが、ゴミ箱からの恒久削除には`https://mail.google.com/`が必要
+- OAuthスコープの追加は、コード側とGoogle Cloud Console側の両方で必要
+- 既存のトークンには新しいスコープが含まれないため、スコープ追加後は再認証が必須
+- `users.messages.batchDelete`は大量のメッセージを効率的に削除できる（個別の`delete`より高速）
+
+**関連KB（追加）**:
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー（再認証が必要な場合）
 
 ---
 
