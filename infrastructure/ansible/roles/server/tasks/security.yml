@@ -91,6 +91,37 @@
     state: started
   when: fail2ban_enabled | default(false)
 
+- name: Ensure sshd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ssh_hardening_enabled | default(false)
+
+- name: Deploy ssh hardening overrides (high priority include)
+  ansible.builtin.template:
+    src: "../../templates/sshd-hardening.conf.j2"
+    dest: /etc/ssh/sshd_config.d/00-security-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: ssh_hardening_enabled | default(false)
+  notify: reload ssh
+
+- name: Remove obsolete ssh hardening drop-in
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/60-security-hardening.conf
+    state: absent
+  when: ssh_hardening_enabled | default(false)
+  notify: reload ssh
+
+- name: Validate sshd configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  when: ssh_hardening_enabled | default(false)
+
 # ClamAV/Trivy/rkhunterのタスクはmalware.ymlに統合されました
 
 - name: Deploy logrotate config for security logs

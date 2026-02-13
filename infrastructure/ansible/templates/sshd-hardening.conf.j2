@@ -1,0 +1,6 @@
+# Managed by Ansible: SSH hardening overrides
+PasswordAuthentication {{ ssh_password_authentication }}
+PubkeyAuthentication {{ ssh_pubkey_authentication }}
+PermitRootLogin {{ ssh_permit_root_login }}
+KbdInteractiveAuthentication {{ ssh_kbd_interactive_authentication }}
+LogLevel {{ ssh_log_level }}

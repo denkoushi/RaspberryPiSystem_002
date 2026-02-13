@@ -31,3 +31,8 @@
     name: security-monitor.timer
     state: restarted
     enabled: true
+
+- name: reload ssh
+  ansible.builtin.systemd:
+    name: ssh
+    state: reloaded

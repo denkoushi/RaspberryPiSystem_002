@@ -71,12 +71,23 @@ alert_webhook_timeout_seconds: 5
 
 fail2ban_enabled: true
 fail2ban_defaults:
-  bantime: "1h"
+  # SSHブルートフォース抑止を強化（誤BANとのバランスを取りつつ厳格化）
+  bantime: "4h"
   findtime: "10m"
-  maxretry: 5
-fail2ban_http_maxretry: 15
+  maxretry: 4
+# HTTP認証失敗（caddy-http-auth）も一段厳格化
+fail2ban_http_maxretry: 10
 fail2ban_http_findtime: "15m"
-fail2ban_http_bantime: "1h"
+fail2ban_http_bantime: "2h"
+
+# SSHハードニング（server role）
+# - 既存接続を維持するため、設定反映はreloadで行う
+ssh_hardening_enabled: true
+ssh_password_authentication: "no"
+ssh_pubkey_authentication: "yes"
+ssh_permit_root_login: "no"
+ssh_kbd_interactive_authentication: "no"
+ssh_log_level: "INFO"
 
 # apt cacheの再取得を抑制（同一デプロイ内の重複apt updateを削減）
 # - cache_valid_timeの単位は秒
