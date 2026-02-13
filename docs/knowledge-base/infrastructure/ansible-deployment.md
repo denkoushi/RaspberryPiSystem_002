@@ -6,6 +6,7 @@ last-verified: 2026-02-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
+liquid: false
 ---
 
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
