@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - セキュリティ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-01-19
+last-verified: 2026-02-13
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,10 +11,56 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 12件  
+**件数**: 13件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
+
+---
+
+### [KB-259] 本番JWT秘密鍵のFail-fast化とkioskレート制限のRedis共有化
+
+**EXEC_PLAN.md参照**: コード品質改善フェーズ4後続（2026-02-13）
+
+**事象**:
+- `NODE_ENV=production`でもJWT秘密鍵が未設定・弱値のまま起動し得る状態だった
+- `/api/kiosk/*` はグローバルレート制限の広い除外に含まれており、共有IP環境で制御が粗かった
+
+**要因**:
+1. 環境変数スキーマが開発互換のデフォルト値を本番でも許容していた
+2. kiosk専用のレート制御がインメモリMapで、複数プロセス/将来の水平分散で一貫性が保てない
+
+**有効だった対策**:
+- ✅ `apps/api/src/config/env.ts` に本番限定Fail-fastを追加（弱いJWT秘密鍵は起動時に拒否）
+- ✅ kioskレート制限をサービス層へ抽出し、`RateLimiterStore`を導入
+- ✅ Redis利用時は共有カウンタ、障害時はInMemoryフォールバックで可用性を維持
+- ✅ `apps/api/src/plugins/rate-limit.ts` で `/api/kiosk` 一括除外を廃止し、`support/power`のみ個別制御へ整理
+
+**実装のポイント**:
+- **秘密鍵強度**: 最小長（32文字）+ 弱いパターン（`change-me`, `dev-`, `test-`等）を禁止
+- **キー粒度**: `kiosk:{scope}:{clientKey}:{ip}` でカウントし、同一IP配下でも端末キー単位で制御
+- **依存分離**: `routes -> services/security -> infra(store)` の方向を維持
+
+**運用設定（追加）**:
+- `RATE_LIMIT_REDIS_URL`（任意）: 設定時はRedis共有レート制限を使用
+- `KIOSK_SUPPORT_RATE_LIMIT_MAX`, `KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS`
+- `KIOSK_POWER_RATE_LIMIT_MAX`, `KIOSK_POWER_RATE_LIMIT_WINDOW_MS`
+
+**再発防止**:
+- 本番用シークレットをデプロイ前チェックに追加（未設定・弱値を禁止）
+- kiosk系新規エンドポイントは「グローバル制限 + 端末単位制限」の二層方針で統一
+
+**関連ファイル**:
+- `apps/api/src/config/env.ts`
+- `apps/api/src/services/security/rate-limiter-store.ts`
+- `apps/api/src/services/security/kiosk-rate-limit.service.ts`
+- `apps/api/src/plugins/rate-limit.ts`
+- `apps/api/src/routes/kiosk/shared.ts`
+- `apps/api/src/routes/kiosk/support.ts`
+- `apps/api/src/routes/kiosk/power.ts`
+- `apps/api/src/routes/backup/config-write.ts`
+- `apps/api/src/routes/backup/oauth.ts`
+- `apps/api/src/routes/gmail/oauth.ts`
 
 ---
 

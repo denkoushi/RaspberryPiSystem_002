@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2025-12-13
+last-verified: 2026-02-13
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-02-07（Docker build最適化の実装、段階展開の推奨手順追加、profileオプションの説明追加）
+最終更新: 2026-02-13（JWT秘密鍵Fail-fastとkioskレート制限Redis共有化の運用設定を追記）
 
 ## 概要
 
@@ -46,6 +46,22 @@ update-frequency: medium
   - **運用標準（Ansible経路）ではデプロイ中に `pnpm prisma migrate deploy` を実行**し、デプロイ後にhealth-checkでstatusを再確認
 - **API稼働**: `GET /api/system/health` が 200 で `status=ok`
 - **証跡**: デプロイログ/検証ログが残り、失敗理由が追跡できる
+
+### 本番セキュリティ設定（2026-02-13追加）
+
+本番環境では、以下の設定を必須または推奨で適用してください。
+
+- **JWT秘密鍵（必須）**
+  - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` は**32文字以上の強い値**を設定する
+  - `NODE_ENV=production` で弱い値（例: `dev-*`, `*change-me*`, `test-*`）はAPI起動時にFail-fastで拒否される
+- **kioskレート制限（推奨）**
+  - `RATE_LIMIT_REDIS_URL` を設定すると、kiosk系レート制限がRedis共有カウンタで動作する
+  - 未設定時はInMemoryフォールバックで動作（単一ノード想定）
+- **kiosk専用閾値（必要に応じて調整）**
+  - `KIOSK_SUPPORT_RATE_LIMIT_MAX`（既定: 3）
+  - `KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS`（既定: 60000）
+  - `KIOSK_POWER_RATE_LIMIT_MAX`（既定: 1）
+  - `KIOSK_POWER_RATE_LIMIT_WINDOW_MS`（既定: 60000）
 
 ## 🌐 ネットワーク環境の確認（デプロイ前必須）
 
