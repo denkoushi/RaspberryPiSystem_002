@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
+import { gmailOauthCallbackQuerySchema } from './schemas.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   subjectPattern?: string;
@@ -79,7 +80,7 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
   // 注意: コールバックエンドポイントはGoogleからリダイレクトされるため、認証をスキップする
   // CSRF保護は`state`パラメータで行う（簡易実装）
   app.get('/gmail/oauth/callback', async (request, reply) => {
-    const query = request.query as { code?: string; state?: string; error?: string };
+    const query = gmailOauthCallbackQuerySchema.parse(request.query);
     
     if (query.error) {
       logger?.error({ error: query.error }, '[GmailOAuthRoute] OAuth error received');

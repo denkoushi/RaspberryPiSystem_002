@@ -3,6 +3,23 @@ import { z } from 'zod';
 
 config();
 
+const SECRET_MIN_LENGTH = 32;
+const WEAK_SECRET_PATTERNS = [
+  'change-me',
+  'dev-',
+  'default',
+  'example',
+  'test-',
+];
+
+const isWeakSecret = (secret: string): boolean => {
+  const normalized = secret.trim().toLowerCase();
+  if (normalized.length < SECRET_MIN_LENGTH) {
+    return true;
+  }
+  return WEAK_SECRET_PATTERNS.some((pattern) => normalized.includes(pattern));
+};
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(8080),
@@ -85,7 +102,35 @@ const envSchema = z.object({
   GMAIL_TRASH_CLEANUP_LABEL: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim() : v),
     z.string().min(1).default('rps_processed')
-  )
+  ),
+  RATE_LIMIT_REDIS_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  KIOSK_SUPPORT_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(3),
+  KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60 * 1000),
+  KIOSK_POWER_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(1),
+  KIOSK_POWER_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60 * 1000)
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') {
+    return;
+  }
+
+  if (isWeakSecret(value.JWT_ACCESS_SECRET)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['JWT_ACCESS_SECRET'],
+      message: `JWT_ACCESS_SECRET must be a strong secret (min ${SECRET_MIN_LENGTH} chars, no weak patterns) in production`,
+    });
+  }
+
+  if (isWeakSecret(value.JWT_REFRESH_SECRET)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['JWT_REFRESH_SECRET'],
+      message: `JWT_REFRESH_SECRET must be a strong secret (min ${SECRET_MIN_LENGTH} chars, no weak patterns) in production`,
+    });
+  }
 });
 
 export const env = envSchema.parse(process.env);

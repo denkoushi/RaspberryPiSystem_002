@@ -8,6 +8,7 @@ import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { DropboxOAuthService } from '../../services/backup/dropbox-oauth.service.js';
+import { oauthCallbackQuerySchema } from './schemas.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   accessToken?: string;
@@ -59,7 +60,7 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
   // 注意: コールバックエンドポイントはDropboxからリダイレクトされるため、認証をスキップする
   // CSRF保護は`state`パラメータで行う（簡易実装）
   app.get('/backup/oauth/callback', async (request, reply) => {
-    const query = request.query as { code?: string; state?: string; error?: string };
+    const query = oauthCallbackQuerySchema.parse(request.query);
 
     if (query.error) {
       throw new ApiError(400, `OAuth error: ${query.error}`);

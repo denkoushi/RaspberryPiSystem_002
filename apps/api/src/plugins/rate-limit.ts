@@ -13,7 +13,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 // スキップするパスのプレフィックス
 const skipPrefixes = [
-  '/api/kiosk',
+  '/api/kiosk/support',
+  '/api/kiosk/power',
   '/api/tools/loans/active',
   '/api/tools/loans/borrow',
   '/api/tools/loans/return',
@@ -31,6 +32,16 @@ const shouldSkip = (path: string): boolean => {
   return skipPrefixes.some((prefix) => path.startsWith(prefix));
 };
 
+const normalizeClientKey = (raw: unknown): string | undefined => {
+  if (typeof raw === 'string') {
+    return raw;
+  }
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') {
+    return raw[0];
+  }
+  return undefined;
+};
+
 export const registerRateLimit = fp(async (app: FastifyInstance) => {
   await app.register(rateLimit, {
     global: true,
@@ -39,6 +50,10 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     // URL+IPをキーにしてエンドポイント別にカウント
     keyGenerator: (request: FastifyRequest) => {
       const baseUrl = request.url.split('?')[0];
+      if (baseUrl.startsWith('/api/kiosk')) {
+        const clientKey = normalizeClientKey(request.headers['x-client-key']);
+        return `${request.ip}:${baseUrl}:${clientKey ?? 'anonymous'}`;
+      }
       return `${request.ip}:${baseUrl}`;
     },
     // 特定パスをスキップ

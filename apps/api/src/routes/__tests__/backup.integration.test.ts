@@ -135,6 +135,43 @@ describe('Backup API integration', () => {
     expect(body.message).toContain('操作権限がありません');
   });
 
+  it('should reject invalid backup config payload', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/backup/config',
+      headers: { ...authHeader, 'Content-Type': 'application/json' },
+      payload: {
+        storage: {
+          provider: 'unknown-provider',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('should reject backup oauth callback without code and error', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/backup/oauth/callback',
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.errorCode).toBe('VALIDATION_ERROR');
+  });
+
+  it('should reject gmail oauth callback without code and error', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/gmail/oauth/callback',
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.errorCode).toBe('VALIDATION_ERROR');
+  });
+
   describe('Backup target management', () => {
     it('should add a backup target', async () => {
       const response = await app.inject({

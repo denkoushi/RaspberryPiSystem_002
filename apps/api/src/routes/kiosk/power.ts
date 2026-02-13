@@ -14,7 +14,7 @@ type PowerRouteDeps = {
     clientKey: string;
     clientDevice: { id: string };
   }>;
-  checkPowerRateLimit: (clientKey: string) => boolean;
+  checkPowerRateLimit: (clientKey: string, ip: string) => Promise<boolean>;
   powerActionsDir: string;
 };
 
@@ -24,7 +24,7 @@ export async function registerKioskPowerRoute(
 ): Promise<void> {
   app.post('/kiosk/power', { config: { rateLimit: false } }, async (request) => {
     const { clientKey, clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const allowed = deps.checkPowerRateLimit(clientKey);
+    const allowed = await deps.checkPowerRateLimit(clientKey, request.ip);
     if (!allowed) {
       throw new ApiError(429, '操作が多すぎます。しばらく待ってから再度お試しください。', undefined, 'POWER_RATE_LIMIT');
     }

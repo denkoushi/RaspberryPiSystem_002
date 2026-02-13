@@ -8,6 +8,15 @@ import { BackupConfigLoader } from '../../services/backup/backup-config.loader.j
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { BackupConfigHistoryService, redactBackupConfig } from '../../services/backup/backup-config-history.service.js';
 import { getBackupTargetTemplates } from '../../services/backup/backup-target-templates.js';
+import {
+  addBackupTargetBodySchema,
+  addBackupTargetFromTemplateBodySchema,
+  backupConfigBodySchema,
+  backupConfigHistoryIdParamsSchema,
+  backupConfigHistoryQuerySchema,
+  updateBackupTargetBodySchema,
+  updateBackupTargetParamsSchema,
+} from './schemas.js';
 
 export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
@@ -25,7 +34,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
       },
     },
   }, async (request, reply) => {
-    const query = request.query as { offset?: number; limit?: number };
+    const query = backupConfigHistoryQuerySchema.parse(request.query);
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
     const [items, total] = await Promise.all([
@@ -49,7 +58,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
       },
     },
   }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id } = backupConfigHistoryIdParamsSchema.parse(request.params);
     const entry = await prisma.backupConfigChange.findUnique({ where: { id } });
     if (!entry) {
       throw new ApiError(404, `Backup config history not found: ${id}`);
@@ -67,7 +76,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     },
   }, async (request, reply) => {
     const beforeConfig = await BackupConfigLoader.load();
-    const config = request.body as BackupConfig;
+    const config = backupConfigBodySchema.parse(request.body) as BackupConfig;
     await BackupConfigLoader.save(config);
     // スケジューラーを再読み込み（設定変更を即時反映）
     const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
@@ -120,21 +129,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
       },
     },
   }, async (request, reply) => {
-    const body = request.body as {
-      kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
-      source: string;
-      schedule?: string;
-      enabled?: boolean;
-      storage?: {
-        provider?: 'local' | 'dropbox';
-        providers?: ('local' | 'dropbox')[];
-      };
-      retention?: {
-        days?: number;
-        maxBackups?: number;
-      };
-      metadata?: Record<string, unknown>;
-    };
+    const body = addBackupTargetBodySchema.parse(request.body);
 
     // スケジュールのバリデーション
     if (body.schedule && body.schedule.trim()) {
@@ -220,10 +215,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
       },
     },
   }, async (request, reply) => {
-    const body = request.body as {
-      templateId: string;
-      overrides?: Partial<BackupConfig['targets'][number]>;
-    };
+    const body = addBackupTargetFromTemplateBodySchema.parse(request.body);
     const template = getBackupTargetTemplates().find((t) => t.id === body.templateId);
     if (!template) {
       throw new ApiError(404, `Template not found: ${body.templateId}`);
@@ -303,23 +295,8 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
       },
     },
   }, async (request, reply) => {
-    const { index } = request.params as { index: string };
-    const targetIndex = parseInt(index, 10);
-    const body = request.body as Partial<{
-      kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
-      source: string;
-      schedule: string;
-      enabled: boolean;
-      storage?: {
-        provider?: 'local' | 'dropbox';
-        providers?: ('local' | 'dropbox')[];
-      };
-      retention?: {
-        days?: number;
-        maxBackups?: number;
-      };
-      metadata?: Record<string, unknown>;
-    }>;
+    const { index: targetIndex } = updateBackupTargetParamsSchema.parse(request.params);
+    const body = updateBackupTargetBodySchema.parse(request.body);
 
     // スケジュールのバリデーション
     if (body.schedule !== undefined && body.schedule.trim()) {
@@ -332,7 +309,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     const config = await BackupConfigLoader.load();
 
     if (targetIndex < 0 || targetIndex >= config.targets.length) {
-      throw new ApiError(400, `Invalid target index: ${index}`);
+      throw new ApiError(400, `Invalid target index: ${targetIndex}`);
     }
 
     // 既存のtargetを更新（Phase 2: providers配列に対応）
@@ -379,13 +356,12 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
   app.delete('/backup/config/targets/:index', {
     preHandler: [mustBeAdmin],
   }, async (request, reply) => {
-    const { index } = request.params as { index: string };
-    const targetIndex = parseInt(index, 10);
+    const { index: targetIndex } = updateBackupTargetParamsSchema.parse(request.params);
 
     const config = await BackupConfigLoader.load();
 
     if (targetIndex < 0 || targetIndex >= config.targets.length) {
-      throw new ApiError(400, `Invalid target index: ${index}`);
+      throw new ApiError(400, `Invalid target index: ${targetIndex}`);
     }
 
     const deletedTarget = config.targets[targetIndex];

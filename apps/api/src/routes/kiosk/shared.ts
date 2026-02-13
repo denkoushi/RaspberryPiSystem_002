@@ -1,14 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { env } from '../../config/env.js';
+import { getKioskRateLimitService } from '../../services/security/kiosk-rate-limit.service.js';
 
 const DEFAULT_LOCATION = 'default';
-
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
-const RATE_LIMIT_MAX_REQUESTS = 3;
-const powerRateLimitMap = new Map<string, number[]>();
-const POWER_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1分
-const POWER_RATE_LIMIT_MAX_REQUESTS = 1;
 
 export const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
@@ -43,59 +38,26 @@ export const parseCsvList = (value: string | undefined): string[] => {
 export const getWebRTCCallExcludeClientIds = (): Set<string> =>
   new Set(parseCsvList(process.env.WEBRTC_CALL_EXCLUDE_CLIENT_IDS));
 
-export function checkRateLimit(clientKey: string): boolean {
-  const now = Date.now();
-  const requests = rateLimitMap.get(clientKey) || [];
-
-  // 古いリクエストを削除
-  const recentRequests = requests.filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
-
-  if (recentRequests.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return false; // レート制限超過
-  }
-
-  recentRequests.push(now);
-  rateLimitMap.set(clientKey, recentRequests);
-
-  // メモリリーク防止: 5分以上古いエントリを削除
-  if (rateLimitMap.size > 100) {
-    for (const [key, timestamps] of rateLimitMap.entries()) {
-      const filtered = timestamps.filter((ts) => now - ts < 5 * 60 * 1000);
-      if (filtered.length === 0) {
-        rateLimitMap.delete(key);
-      } else {
-        rateLimitMap.set(key, filtered);
-      }
-    }
-  }
-
-  return true;
+export async function checkRateLimit(clientKey: string, ip: string): Promise<boolean> {
+  const service = getKioskRateLimitService();
+  return service.isAllowed({
+    scope: 'kiosk-support',
+    clientKey,
+    ip,
+    max: env.KIOSK_SUPPORT_RATE_LIMIT_MAX,
+    windowMs: env.KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS,
+  });
 }
 
-export function checkPowerRateLimit(clientKey: string): boolean {
-  const now = Date.now();
-  const requests = powerRateLimitMap.get(clientKey) || [];
-  const recentRequests = requests.filter((timestamp) => now - timestamp < POWER_RATE_LIMIT_WINDOW_MS);
-
-  if (recentRequests.length >= POWER_RATE_LIMIT_MAX_REQUESTS) {
-    return false;
-  }
-
-  recentRequests.push(now);
-  powerRateLimitMap.set(clientKey, recentRequests);
-
-  if (powerRateLimitMap.size > 100) {
-    for (const [key, timestamps] of powerRateLimitMap.entries()) {
-      const filtered = timestamps.filter((ts) => now - ts < 5 * 60 * 1000);
-      if (filtered.length === 0) {
-        powerRateLimitMap.delete(key);
-      } else {
-        powerRateLimitMap.set(key, filtered);
-      }
-    }
-  }
-
-  return true;
+export async function checkPowerRateLimit(clientKey: string, ip: string): Promise<boolean> {
+  const service = getKioskRateLimitService();
+  return service.isAllowed({
+    scope: 'kiosk-power',
+    clientKey,
+    ip,
+    max: env.KIOSK_POWER_RATE_LIMIT_MAX,
+    windowMs: env.KIOSK_POWER_RATE_LIMIT_WINDOW_MS,
+  });
 }
 
 export async function requireClientDevice(rawClientKey: unknown): Promise<{

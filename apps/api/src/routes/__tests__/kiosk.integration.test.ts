@@ -143,6 +143,55 @@ describe('POST /api/kiosk/support', () => {
     expect(body.errorCode).toBe('RATE_LIMIT_EXCEEDED');
   });
 
+  it('should apply support rate limit per client key', async () => {
+    const anotherClient = await createTestClientDevice();
+
+    for (let i = 0; i < 3; i++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/support',
+        headers: {
+          'x-client-key': clientKey,
+          'Content-Type': 'application/json'
+        },
+        payload: {
+          message: `Primary key message ${i}`,
+          page: '/kiosk'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const blockedResponse = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/support',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        message: 'Primary key blocked',
+        page: '/kiosk'
+      }
+    });
+    expect(blockedResponse.statusCode).toBe(429);
+
+    const secondClientResponse = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/support',
+      headers: {
+        'x-client-key': anotherClient.apiKey,
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        message: 'Secondary key should pass',
+        page: '/kiosk'
+      }
+    });
+
+    expect(secondClientResponse.statusCode).toBe(200);
+  });
+
   it('should validate message length (max 1000 chars)', async () => {
     const longMessage = 'a'.repeat(1001);
     const response = await app.inject({
