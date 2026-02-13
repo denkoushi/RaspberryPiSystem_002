@@ -42,11 +42,13 @@ export class GmailOAuthService {
     this.clientId = options.clientId;
     this.clientSecret = options.clientSecret;
     this.redirectUri = options.redirectUri;
-    // デフォルトスコープ: Gmail読み取り専用
-    // デフォルトスコープ: Gmail読み取りとメール操作（アーカイブ用）
+    // デフォルトスコープ:
+    // - gmail.readonly/gmail.modify: 既存の取得・移動処理
+    // - mail.google.com: ゴミ箱からの恒久削除（users.messages.delete）に必要
     this.scopes = options.scopes || [
       'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.modify'
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://mail.google.com/'
     ];
   }
 
