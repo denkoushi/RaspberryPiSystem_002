@@ -98,6 +98,23 @@ describe('ItemService', () => {
         orderBy: { name: 'asc' },
       });
     });
+
+    it('検索クエリとステータスを同時に指定できる', async () => {
+      vi.mocked(prisma.item.findMany).mockResolvedValue([]);
+
+      await itemService.findAll({ search: 'ITEM', status: ItemStatus.IN_USE });
+
+      expect(prisma.item.findMany).toHaveBeenCalledWith({
+        where: {
+          status: ItemStatus.IN_USE,
+          OR: [
+            { name: { contains: 'ITEM', mode: 'insensitive' } },
+            { itemCode: { contains: 'ITEM', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { name: 'asc' },
+      });
+    });
   });
 
   describe('findById', () => {

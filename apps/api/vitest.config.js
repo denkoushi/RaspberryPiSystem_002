@@ -13,6 +13,7 @@ export default defineConfig({
         testTimeout: 30000, // 30秒のタイムアウト
         hookTimeout: 30000, // フックのタイムアウトも30秒
         coverage: {
+            provider: 'istanbul',
             reporter: ['text', 'lcov'],
             exclude: ['src/types/**']
         },

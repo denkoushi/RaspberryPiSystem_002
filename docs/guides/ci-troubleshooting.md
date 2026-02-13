@@ -265,6 +265,30 @@ Error: Response time 2100ms exceeds threshold 1800ms
 
 詳細は [knowledge-base/api.md#kb-258](./../knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) を参照。
 
+### 10. `test:coverage` が `ERR_INVALID_ARG_TYPE` で失敗する（`test-exclude` / `glob` 競合）
+
+**症状**: ローカルで `pnpm --filter @raspi-system/api test:coverage` を実行すると、`test-exclude` 読み込み時に以下で停止する。
+
+```text
+TypeError [ERR_INVALID_ARG_TYPE]: The "original" argument must be of type function.
+... test-exclude/index.js
+```
+
+**確認事項**:
+- root `package.json` の `pnpm.overrides` に `glob` が強制指定されているか
+- `apps/api` の coverage provider が `istanbul` 指定になっているか
+- `apps/api` で Prisma Client が生成済みか（未生成だと別エラーを誘発）
+
+**対処法（本リポジトリの確定手順）**:
+1. `apps/api/package.json` の `test:coverage` を `--coverage.provider=istanbul` 付きで実行
+2. root `package.json` の `pnpm.overrides` に `test-exclude>glob: 7.2.3` を維持
+3. `pnpm install --no-frozen-lockfile` 後に `pnpm prisma generate` を実行
+4. 再度 `pnpm --filter @raspi-system/api test:coverage -- <target>` で確認
+
+**注意**:
+- `test-exclude>glob` を外すと同エラーが再発するため、現時点では維持が必要
+- 依存を大きく更新するB2フェーズを実施する場合は、再度この項目の検証を行う
+
 ## ログの見方
 
 ### 重要な行を探す

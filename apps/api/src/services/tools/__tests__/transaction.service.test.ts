@@ -73,6 +73,27 @@ describe('TransactionService', () => {
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
       expect(result.pageSize).toBe(20);
+      expect(prisma.transaction.count).toHaveBeenCalledWith({
+        where: {},
+      });
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 20,
+        include: {
+          loan: {
+            include: { item: true, employee: true, client: true },
+          },
+          actorEmployee: true,
+          performedByUser: true,
+          client: true,
+        },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        undefined,
+        undefined,
+      ]);
     });
 
     it('日付範囲でフィルタリングされる', async () => {
@@ -122,6 +143,54 @@ describe('TransactionService', () => {
       expect(result.pageSize).toBe(10);
       expect(result.total).toBe(100);
       expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('複合フィルタをwhereへ反映する', async () => {
+      const startDate = new Date('2025-02-01T00:00:00.000Z');
+      const endDate = new Date('2025-02-28T23:59:59.999Z');
+      vi.mocked(prisma.$transaction).mockResolvedValue([0, []] as any);
+
+      await transactionService.findAll({
+        employeeId: 'emp-1',
+        itemId: 'item-1',
+        clientId: 'client-1',
+        startDate,
+        endDate,
+        page: 3,
+        pageSize: 5,
+      });
+
+      expect(prisma.transaction.count).toHaveBeenCalledWith({
+        where: {
+          actorEmployeeId: 'emp-1',
+          clientId: 'client-1',
+          loan: { itemId: 'item-1' },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      });
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          actorEmployeeId: 'emp-1',
+          clientId: 'client-1',
+          loan: { itemId: 'item-1' },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: 10,
+        take: 5,
+        include: {
+          loan: {
+            include: { item: true, employee: true, client: true },
+          },
+          actorEmployee: true,
+          performedByUser: true,
+          client: true,
+        },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        undefined,
+        undefined,
+      ]);
     });
   });
 });

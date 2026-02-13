@@ -1437,12 +1437,20 @@
 - ✅ サービス層テスト拡張（`import-history.service.test.ts`、`csv-import-config.service.test.ts` を新規追加）
 - ✅ CI成功・デプロイ完了・実機検証完了（Run ID `21949019086` 成功、Pi5デプロイ成功（runId `20260212-225612-22558`）、実機検証完了）
 
+**完了した改善（フェーズ4第五弾）**:
+- ✅ `alerts` サービス層テスト補完（`slack-sink.test.ts`、`alerts-db-dispatcher.runtime.test.ts`、`alerts-config.test.ts` 拡張）
+- ✅ `tools` サービス層テスト補完（`loan`/`machine` を主軸に、`item`/`employee`/`transaction` の複合条件テストを拡張）
+- ✅ 依存境界ルール第2段階（`routes/imports -> routes/backup`、`routes/backup -> routes/imports` 禁止）
+- ✅ 性能テストの並列ミニケース追加（`/api/system/health` 3並列、`/api/signage/content` 2並列）
+- ✅ CIカバレッジ可視化導入（`test:coverage` 追加、`api-coverage` artifact アップロード追加）
+- ✅ B対応（api-only / minor-safe）を実施し、coverage provider を `istanbul` に統一。`test-exclude>glob` オーバーライドの削除トライは失敗したため、安定化のため維持判断
+
 **次の改善候補（フェーズ4第四弾以降）**:
 1. **残りのサービス層テストの追加**（優先度: 中）
    - `services/backup/*` の残り（`backup-execution.service.ts` / `pre-restore-backup.service.ts` / `post-backup-cleanup.service.ts` は対応済み、未対応ユニットを継続追加）
    - `services/imports/*` の残り（`csv-import-process.service.ts` / `csv-import-source.service.ts` / `import-history.service.ts` / `csv-import-config.service.ts` は対応済み、未対応ユニットを継続追加）
-   - `services/alerts/*` のテスト追加
-   - `services/tools/*` のテスト追加
+   - `services/alerts/*` の残り分岐（dispatcher/ingestor の周辺分岐）を継続追加
+   - `services/tools/*` の未対応分岐（`photoBorrow` 等）を継続追加
 
 2. **性能テストの拡張**（優先度: 中）
    - より多くのAPIエンドポイントへの拡張（`/api/signage/*` など、`/api/tools/*` は第二弾で一部追加済み）
@@ -1451,12 +1459,12 @@
 
 3. **依存境界ルールの拡張**（優先度: 低）
    - `routes` 層内の依存方向ルール追加は着手済み（`kiosk <-> clients` 相互依存禁止を導入）
-   - `routes` 層内の他境界（`backup` / `imports` 等）への段階適用
+   - `routes` 層内の他境界（`backup <-> imports` は導入済み、他機能境界へ段階適用）
    - `services` 層内の依存方向ルール（循環依存の防止）
    - 共有モジュール（`lib`）の依存方向の明確化
 
 4. **テストカバレッジの可視化**（優先度: 低）
-   - カバレッジレポートの自動生成（CIでの実行）
+   - カバレッジレポートの自動生成（CIでの実行）は導入済み（artifact: `api-coverage`）
    - カバレッジ閾値の設定とCIゲート化
    - 未カバー領域の特定と優先順位付け
 
@@ -1812,6 +1820,8 @@
 
 ---
 
+変更履歴: 2026-02-13 — B実装（api-only / minor-safe）を反映。`vitest` / `@vitest/coverage-istanbul` は major 1 系で最新（`1.6.1`）を確認。coverage provider を `istanbul` に統一し、`test:coverage` 実行時に明示指定する形へ更新。`test-exclude>glob` オーバーライド削除トライは再発エラー（`ERR_INVALID_ARG_TYPE`）で失敗したため復元し維持。最終的に `test:coverage`（ローカル）と `pnpm --filter @raspi-system/api test/lint/build` が成功することを確認。
+変更履歴: 2026-02-13 — コード品質改善フェーズ4第五弾（5本実装）を反映。`alerts/tools` サービス層テスト拡張、`backup/imports` 依存境界ルール追加、性能テスト並列ケース追加、CIカバレッジartifact導入（`api-coverage`）を実施。ローカル品質ゲート（test/lint/build）成功、`test:coverage` はローカル Node18 環境で実行時に provider 互換エラーを確認し、CI Node20 実行を前提に運用する判断を追記。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）を反映。`apps/api/.eslintrc.cjs` に `routes/kiosk` と `routes/clients` の相互依存禁止を追加し、`import-history.service.test.ts` / `csv-import-config.service.test.ts` を新規追加。品質ゲート（test/lint/build）成功、CI成功（Run `21949019086`）、デプロイ完了（runId `20260212-225612-22558`）、実機検証完了（`/api/system/health`、マイグレーション整合）を追記。トラブルシューティングとして `raspberrypi.local` 名前解決不可時はTailscale IPを使用する点と、コンテナ内マイグレーション確認は `pnpm prisma migrate status` を用いる点を記録。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第三弾（残サービス層テスト + signage性能テスト）を反映。`pre-restore-backup` / `post-backup-cleanup` / `csv-import-source` / `alerts-config` の新規ユニットテスト、`performance.test.ts` への `/api/signage/content` 追加、品質ゲート（test/lint/build）成功、CI成功（Run `21946824175`）、デプロイ完了（runId `20260212-214653-31460`）、実機検証完了、トラブルシューティング（未commit差分によるデプロイfail-fast）を追記。Next Stepsをフェーズ4第四弾以降に更新。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第二弾（サービス層テスト拡張）を反映。`measuring-instruments` / `rigging` / `production-schedule` / `csv-dashboard` の新規ユニットテスト、`performance.test.ts` への `/api/tools/employees`・`/api/tools/items` 追加、品質ゲート（test/lint/build）成功、CI成功、デプロイ完了（runId `20260212-211502-30448`）、実機検証完了、トラブルシューティング（性能テストの401）を追記。Next Stepsにフェーズ4第二弾候補を反映。

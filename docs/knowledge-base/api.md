@@ -171,6 +171,26 @@
   - **デプロイ結果**: Pi5でデプロイ成功（runId `20260212-225612-22558`, `ok=111`, `changed=4`, `failed=0`、ブランチ `feat/phase4-performance-gate-and-service-tests`）
   - **実機検証結果**: デプロイ実体確認（コミットハッシュ `0ee8a9bd` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）
 
+**フェーズ4第五弾（5本実装: alerts/tools/境界/性能並列/coverage可視化）の実装と検証結果**:
+- **日付**: 2026-02-13
+- **実装内容**:
+  - ✅ `alerts` サービス層テスト補完（`slack-sink.test.ts`、`alerts-db-dispatcher.runtime.test.ts` 追加、`alerts-config.test.ts` 拡張）
+  - ✅ `tools` サービス層テスト補完（`loan`/`machine` を主軸に `item`/`employee`/`transaction` の複合・異常系を追加）
+  - ✅ 依存境界ルール第2段階（`routes/imports -> routes/backup`、`routes/backup -> routes/imports` 禁止）
+  - ✅ 性能テスト並列ケース追加（`/api/system/health` 3並列、`/api/signage/content` 2並列）
+  - ✅ CIカバレッジ可視化（`apps/api/package.json` に `test:coverage` 追加、`.github/workflows/ci.yml` に `api-coverage` artifact アップロード追加）
+- **トラブルシューティング**:
+  - ローカル環境（Node v18）で `test:coverage` 実行時に provider 側の互換エラーを確認（`ERR_INVALID_ARG_TYPE`）
+  - B対応（api-only / minor-safe）で `coverage-v8` から `coverage-istanbul` へ切替し、`test:coverage` を `--coverage.provider=istanbul` で固定して解消
+  - root `pnpm.overrides` の `test-exclude>glob` を外すと同エラーが再発するため、削除トライはロールバックして維持
+- **検証**:
+  - **追加分検証**:
+    - `alerts` 追加分: 14件全件パス
+    - `tools` 追加分: 66件全件パス
+    - `performance` 追加分: 11件全件パス（並列ケース含む）
+  - **ローカル品質ゲート**: `pnpm --filter @raspi-system/api test`（543件中536件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功
+  - **B対応後確認**: `pnpm --filter @raspi-system/api test:coverage -- src/services/alerts/__tests__/slack-sink.test.ts` 成功（provider固定）、オーバーライド削除時は同コマンドで失敗し再現を確認
+
 ---
 
 ### [KB-255] `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証）

@@ -18,6 +18,7 @@ vi.mock('../../../lib/prisma.js', () => ({
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
     },
     item: {
       update: vi.fn(),
@@ -125,6 +126,13 @@ describe('LoanService', () => {
       const result = await loanService.resolveClientId(undefined, undefined);
 
       expect(result).toBeUndefined();
+    });
+
+    it('apiKeyHeaderが配列の場合、クライアント解決をスキップする', async () => {
+      const result = await loanService.resolveClientId(undefined, ['key1', 'key2']);
+
+      expect(result).toBeUndefined();
+      expect(prisma.clientDevice.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -503,6 +511,33 @@ describe('LoanService', () => {
       await expect(loanService.return(input)).rejects.toThrow(ApiError);
       await expect(loanService.return(input)).rejects.toThrow('すでに返却済みです');
     });
+
+    it('itemIdが存在しitemリレーションが欠損している場合、400エラーを投げる', async () => {
+      const invalidLoan = {
+        ...mockLoan,
+        itemId: 'item-123',
+        item: null,
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(invalidLoan as any);
+
+      await expect(loanService.return({ loanId: 'loan-123' })).rejects.toThrow(
+        'この貸出記録に関連するアイテムが見つかりません',
+      );
+    });
+
+    it('employeeリレーションが欠損している場合、400エラーを投げる', async () => {
+      const invalidLoan = {
+        ...mockLoan,
+        employee: null,
+      };
+
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(invalidLoan as any);
+
+      await expect(loanService.return({ loanId: 'loan-123' })).rejects.toThrow(
+        'この貸出記録に関連する従業員が見つかりません',
+      );
+    });
   });
 
   describe('cancel', () => {
@@ -630,6 +665,63 @@ describe('LoanService', () => {
       });
       expect(itemUpdate).not.toHaveBeenCalled();
       expect(riggingUpdate).not.toHaveBeenCalled();
+    });
+
+    it('貸出レコードが存在しない場合、404エラーを投げる', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(null);
+
+      await expect(loanService.cancel('loan-404')).rejects.toThrow('貸出レコードが見つかりません');
+    });
+
+    it('返却済みの貸出は取消できない', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue({
+        ...mockLoan,
+        returnedAt: new Date(),
+      } as any);
+
+      await expect(loanService.cancel('loan-123')).rejects.toThrow('返却済みの貸出記録は取消できません');
+    });
+
+    it('取消済みの貸出は再取消できない', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue({
+        ...mockLoan,
+        cancelledAt: new Date(),
+      } as any);
+
+      await expect(loanService.cancel('loan-123')).rejects.toThrow('すでに取消済みです');
+    });
+  });
+
+  describe('delete', () => {
+    it('貸出レコードが存在しない場合、404エラーを投げる', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(null);
+
+      await expect(loanService.delete('loan-404')).rejects.toThrow('貸出レコードが見つかりません');
+    });
+
+    it('未返却の貸出は削除できない', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue({
+        id: 'loan-1',
+        returnedAt: null,
+        photoUrl: null,
+      } as any);
+
+      await expect(loanService.delete('loan-1')).rejects.toThrow(
+        '未返却の貸出記録は削除できません。先に返却してください。',
+      );
+    });
+
+    it('返却済み貸出は削除できる', async () => {
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue({
+        id: 'loan-2',
+        returnedAt: new Date(),
+        photoUrl: null,
+      } as any);
+      vi.mocked(prisma.loan.delete).mockResolvedValue({ id: 'loan-2' } as any);
+
+      await loanService.delete('loan-2');
+
+      expect(prisma.loan.delete).toHaveBeenCalledWith({ where: { id: 'loan-2' } });
     });
   });
 

@@ -6,10 +6,14 @@ import {
   createAuthHeader,
   createTestClientDevice,
   measureInjectResponse,
+  measureConcurrentInjectResponses,
 } from './helpers.js';
 
 const PERF_RESPONSE_TIME_THRESHOLD_MS = Number(
   process.env.PERF_RESPONSE_TIME_THRESHOLD_MS ?? '1500'
+);
+const PERF_PARALLEL_RESPONSE_TIME_THRESHOLD_MS = Number(
+  process.env.PERF_PARALLEL_RESPONSE_TIME_THRESHOLD_MS ?? String(PERF_RESPONSE_TIME_THRESHOLD_MS * 2)
 );
 
 const isDatabaseUnavailable = (statusCode: number, body: unknown): boolean => {
@@ -180,6 +184,40 @@ describe('Performance Tests (NFR-001)', () => {
 
       expect(response.statusCode).toBe(200);
       expect(responseTimeMs).toBeLessThan(PERF_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should keep /api/system/health responsive under 3 parallel requests', async () => {
+      const { responses, maxResponseTimeMs } =
+        await measureConcurrentInjectResponses<Awaited<ReturnType<FastifyInstance['inject']>>>({
+          app,
+          concurrency: 3,
+          requestFactory: () => ({
+            method: 'GET',
+            url: '/api/system/health',
+          }),
+        });
+
+      for (const response of responses) {
+        expect(response.statusCode).toBe(200);
+      }
+      expect(maxResponseTimeMs).toBeLessThan(PERF_PARALLEL_RESPONSE_TIME_THRESHOLD_MS);
+    });
+
+    it('should keep /api/signage/content responsive under 2 parallel requests', async () => {
+      const { responses, maxResponseTimeMs } =
+        await measureConcurrentInjectResponses<Awaited<ReturnType<FastifyInstance['inject']>>>({
+          app,
+          concurrency: 2,
+          requestFactory: () => ({
+            method: 'GET',
+            url: '/api/signage/content',
+          }),
+        });
+
+      for (const response of responses) {
+        expect(response.statusCode).toBe(200);
+      }
+      expect(maxResponseTimeMs).toBeLessThan(PERF_PARALLEL_RESPONSE_TIME_THRESHOLD_MS);
     });
   });
 });

@@ -51,6 +51,16 @@ module.exports = {
             target: './src/routes/kiosk',
             from: './src/routes/clients',
             message: 'routes/clients から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
+          },
+          {
+            target: './src/routes/backup',
+            from: './src/routes/imports',
+            message: 'routes/imports から routes/backup への依存は禁止です（機能境界の横断を防止）。'
+          },
+          {
+            target: './src/routes/imports',
+            from: './src/routes/backup',
+            message: 'routes/backup から routes/imports への依存は禁止です（機能境界の横断を防止）。'
           }
         ]
       }

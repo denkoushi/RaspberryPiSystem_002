@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-13）
 
+- **✅ コード品質改善フェーズ4第五弾（5本実装）+ B対応完了**: `alerts/tools` サービス層テスト補完、`backup/imports` 依存境界ルール第2段階、性能テスト並列ミニケース追加、CIカバレッジ可視化（`api-coverage` artifact）を実装。さらに B対応（api-only / minor-safe）として `coverage-v8` から `coverage-istanbul` へ切替し、`test:coverage` を provider 明示で安定化。**ローカル検証**: 追加分テスト（alerts 14件、tools 66件、performance 11件）成功、`pnpm --filter @raspi-system/api test/lint/build` すべて成功、`test:coverage` もローカル成功。**トラブルシューティング**: `test-exclude>glob` override を外すと `ERR_INVALID_ARG_TYPE` が再発するため、削除トライをロールバックして維持。詳細は [knowledge-base/api.md#kb-258](./knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) / [knowledge-base/index.md](./knowledge-base/index.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 - **✅ 加工機点検状況サイネージの点検結果セル背景色変更・デプロイ完了・実機検証完了**: 点検結果列の背景色を値連動で変更し、異常有無を視認しやすく改善。**実装内容**: レンダラーに`resolveInspectionResultCellStyle`関数を追加し、点検結果列のみ背景色を制御（未使用=現状維持、異常0=青#2563eb、異常1以上=赤#dc2626、文字色=白#ffffff）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID `21968831251`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260213-092127-19323`, `ok=111`, `changed=4`, `failed=0`）。**実機検証結果**: 点検結果セルの背景色が正常に発色し、未使用・異常0・異常1以上の状態が視認しやすくなったことを確認。詳細は [knowledge-base/api.md#kb-256](./knowledge-base/api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
 ### 🆕 最新アップデート（2026-02-12）

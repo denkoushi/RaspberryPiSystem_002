@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MachineService } from '../machine.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { ApiError } from '../../../lib/errors.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     machine: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
     csvDashboardRow: {
       findMany: vi.fn(),
@@ -184,6 +189,65 @@ describe('MachineService', () => {
           in: ['r1'],
         },
       },
+    });
+  });
+
+  it('findAll は search と operatingStatus の複合条件を組み立てる', async () => {
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
+
+    await service.findAll({ search: 'HS3A', operatingStatus: '稼働中' });
+
+    expect(prisma.machine.findMany).toHaveBeenCalledWith({
+      where: {
+        operatingStatus: '稼働中',
+        OR: [
+          { name: { contains: 'HS3A', mode: 'insensitive' } },
+          { shortName: { contains: 'HS3A', mode: 'insensitive' } },
+          { equipmentManagementNumber: { contains: 'HS3A', mode: 'insensitive' } },
+          { classification: { contains: 'HS3A', mode: 'insensitive' } },
+          { maker: { contains: 'HS3A', mode: 'insensitive' } },
+        ],
+      },
+      orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
+    });
+  });
+
+  it('create は設備管理番号が重複すると409を返す', async () => {
+    vi.mocked(prisma.machine.findUnique).mockResolvedValue({ id: 'm1' } as any);
+
+    await expect(
+      service.create({
+        equipmentManagementNumber: '30024',
+        name: 'HS3A_10P',
+      }),
+    ).rejects.toMatchObject<ApiError>({ statusCode: 409 });
+  });
+
+  it('update は対象がなければ404を返す', async () => {
+    vi.mocked(prisma.machine.findUnique).mockResolvedValue(null);
+
+    await expect(service.update('missing-machine', { name: 'new' })).rejects.toMatchObject<ApiError>({
+      statusCode: 404,
+    });
+  });
+
+  it('delete は対象がなければ404を返す', async () => {
+    vi.mocked(prisma.machine.findUnique).mockResolvedValue(null);
+
+    await expect(service.delete('missing-machine')).rejects.toMatchObject<ApiError>({
+      statusCode: 404,
+    });
+  });
+
+  it('findDailyInspectionSummaries は不正な日付形式で400を返す', async () => {
+    await expect(
+      service.findDailyInspectionSummaries({
+        csvDashboardId: 'dashboard-1',
+        date: '2026/02/11',
+      }),
+    ).rejects.toMatchObject<ApiError>({
+      statusCode: 400,
+      message: 'dateはYYYY-MM-DD形式で指定してください',
     });
   });
 });

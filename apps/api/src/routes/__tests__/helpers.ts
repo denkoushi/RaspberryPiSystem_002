@@ -91,6 +91,27 @@ export async function measureInjectResponse<T>(params: {
 }
 
 /**
+ * app.inject を同時実行してレスポンスタイムを計測する
+ */
+export async function measureConcurrentInjectResponses<T>(params: {
+  app: FastifyInstance;
+  requestFactory: (index: number) => unknown;
+  concurrency: number;
+}): Promise<{ responses: T[]; responseTimesMs: number[]; maxResponseTimeMs: number }> {
+  const tasks = Array.from({ length: params.concurrency }, (_, index) =>
+    measureInjectResponse<T>({
+      app: params.app,
+      request: params.requestFactory(index),
+    })
+  );
+  const measured = await Promise.all(tasks);
+  const responses = measured.map((v) => v.response);
+  const responseTimesMs = measured.map((v) => v.responseTimeMs);
+  const maxResponseTimeMs = Math.max(...responseTimesMs);
+  return { responses, responseTimesMs, maxResponseTimeMs };
+}
+
+/**
  * テスト用のクライアントデバイスを作成
  */
 export async function createTestClientDevice(apiKey?: string): Promise<ClientDevice> {

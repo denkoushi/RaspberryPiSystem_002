@@ -132,7 +132,7 @@ jobs:
             exit 1
           }
           # imports-scheduleは専用ステップで実行するため除外
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test:coverage -- --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
             echo "Tests failed, showing test output..."
             exit 1
           }
@@ -144,6 +144,14 @@ jobs:
           PHOTO_STORAGE_DIR: /tmp/test-photo-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
+
+      - name: Upload API coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage/
+          retention-days: 7
 
       - name: Run API performance tests
         run: |

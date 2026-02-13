@@ -94,6 +94,23 @@ describe('EmployeeService', () => {
         orderBy: { displayName: 'asc' },
       });
     });
+
+    it('検索クエリとステータスを同時に指定できる', async () => {
+      vi.mocked(prisma.employee.findMany).mockResolvedValue([]);
+
+      await employeeService.findAll({ search: 'EMP', status: EmployeeStatus.INACTIVE });
+
+      expect(prisma.employee.findMany).toHaveBeenCalledWith({
+        where: {
+          status: EmployeeStatus.INACTIVE,
+          OR: [
+            { displayName: { contains: 'EMP', mode: 'insensitive' } },
+            { employeeCode: { contains: 'EMP', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { displayName: 'asc' },
+      });
+    });
   });
 
   describe('findById', () => {
