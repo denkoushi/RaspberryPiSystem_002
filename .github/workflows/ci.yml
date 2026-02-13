@@ -305,8 +305,10 @@ jobs:
           echo "API server is ready!"
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          # NOTE:
+          # NODE_ENV=production でAPIを起動するため、Fail-fastシークレットポリシーを満たす強い値を使用する。
+          JWT_ACCESS_SECRET: ci-prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+          JWT_REFRESH_SECRET: ci-prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           PORT: 8080
           HOST: 0.0.0.0
 
