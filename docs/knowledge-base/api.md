@@ -3184,6 +3184,52 @@ const saveNote = (rowId: string) => {
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了**（2026-02-10）
 
+**追加調査・修正（2026-02-10）**: 削除権限不足問題の解決
+
+**事象（追加）**:
+- 実装・デプロイ後、2日間監視したがゴミ箱のアイテムが削除されなかった
+- タグ（`rps_processed`）は付与されていたが、削除処理が実行されなかった
+- 手動実行時に`Request had insufficient authentication scopes.`エラーが発生
+
+**調査結果（追加）**:
+1. **OAuthスコープ不足**:
+   - 既存のOAuthスコープ（`gmail.readonly`, `gmail.modify`）では`users.messages.delete`（恒久削除）が実行できない
+   - `users.messages.delete`には`https://mail.google.com/`スコープが必要
+   - `gmail.modify`はゴミ箱への移動（`users.messages.trash`）は可能だが、ゴミ箱からの恒久削除は別スコープが必要
+2. **スコープ追加の必要性**:
+   - Google Cloud ConsoleのOAuth同意画面に`https://mail.google.com/`スコープを追加する必要がある
+   - コード側でスコープを追加しても、Google Cloud Console側で追加していないと認証時にスコープが付与されない
+   - 既存のトークンには新しいスコープが含まれていないため、再認証が必要
+
+**Fix（追加）**:
+1. **コード側の修正** (`apps/api/src/services/backup/gmail-oauth.service.ts`):
+   - `GmailOAuthService`のデフォルトスコープに`https://mail.google.com/`を追加
+   - デフォルトスコープ:
+     - `https://www.googleapis.com/auth/gmail.readonly`: 既存の取得処理
+     - `https://www.googleapis.com/auth/gmail.modify`: 既存の移動処理
+     - `https://mail.google.com/`: **新規追加** - ゴミ箱からの恒久削除に必要
+2. **Google Cloud Console側の設定**:
+   - Google Cloud Console → APIとサービス → OAuth同意画面 → スコープ
+   - `https://mail.google.com/`スコープを追加（手動で追加が必要）
+   - スコープ名: `View and manage your mail`（Googleが自動的に表示）
+3. **再認証の実行**:
+   - 管理コンソール → Gmail設定 → 「OAuth認証」ボタンをクリック
+   - 新しいスコープ（`View and manage your mail`）を承認
+   - 再認証後、新しいトークンに`https://mail.google.com/`スコープが含まれる
+4. **動作確認**:
+   - 手動実行で`users.messages.batchDelete`が正常に動作することを確認
+   - 484件のメッセージが正常に削除されたことを確認
+
+**学んだこと（追加）**:
+- Gmail APIのスコープは階層的ではなく、操作ごとに必要なスコープが異なる
+- `gmail.modify`はゴミ箱への移動は可能だが、ゴミ箱からの恒久削除には`https://mail.google.com/`が必要
+- OAuthスコープの追加は、コード側とGoogle Cloud Console側の両方で必要
+- 既存のトークンには新しいスコープが含まれないため、スコープ追加後は再認証が必須
+- `users.messages.batchDelete`は大量のメッセージを効率的に削除できる（個別の`delete`より高速）
+
+**関連KB（追加）**:
+- [KB-190](./api.md#kb-190-gmail-oauthのinvalid_grantでcsv取り込みが500になる): Gmail OAuthのinvalid_grantエラー（再認証が必要な場合）
+
 ---
 
 ### [KB-248] 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）
