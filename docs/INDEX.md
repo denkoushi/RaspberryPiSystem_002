@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-13）
+
+- **✅ 加工機点検状況サイネージの点検結果セル背景色変更・デプロイ完了・実機検証完了**: 点検結果列の背景色を値連動で変更し、異常有無を視認しやすく改善。**実装内容**: レンダラーに`resolveInspectionResultCellStyle`関数を追加し、点検結果列のみ背景色を制御（未使用=現状維持、異常0=青#2563eb、異常1以上=赤#dc2626、文字色=白#ffffff）。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功（Run ID `21968831251`）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260213-092127-19323`, `ok=111`, `changed=4`, `failed=0`）。**実機検証結果**: 点検結果セルの背景色が正常に発色し、未使用・異常0・異常1以上の状態が視認しやすくなったことを確認。詳細は [knowledge-base/api.md#kb-256](./knowledge-base/api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-12）
 
 - **✅ コード品質改善フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）実装完了・CI成功・デプロイ完了・実機検証完了**: 第四弾では `apps/api/.eslintrc.cjs` の `import/no-restricted-paths` を拡張し、`routes/kiosk` と `routes/clients` の相互依存禁止ルールを追加。加えて `import-history.service.test.ts` と `csv-import-config.service.test.ts` を新規追加し、imports サービス層の残未カバー領域を補完。**トラブルシューティング**: 実機疎通確認で `raspberrypi.local` が名前解決できないケースは Tailscale IP（`100.106.158.2`）で確認、コンテナ内マイグレーション確認は `npx` ではなく `pnpm prisma migrate status` を使用。**ローカル検証**: 追加分6件全件パス、`pnpm --filter @raspi-system/api test/lint/build` すべて成功。**CI実行**: GitHub Actions Run ID `21949019086` 成功。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-225612-22558`, `ok=111`, `changed=4`, `failed=0`）。**実機検証結果**: コミット `0ee8a9bd` 反映、`api/db/web` 正常、`/api/system/health` が `ok`、マイグレーション最新、`backup.json` 保持を確認。詳細は [knowledge-base/api.md#kb-258](./knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) / [knowledge-base/index.md](./knowledge-base/index.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。

@@ -236,6 +236,7 @@
 - ✅ レンダラーを2列表示へ変更し、余白縮小・表示密度向上を実施
 - ✅ フォントサイズを拡大（ヘッダー: 11→13px、本文: 10→12px、太字化）し、レイアウト破壊なしで視認性を向上
 - ✅ タイトル/文言を「未点検加工機」から「加工機点検状況」へ統一
+- ✅ 点検結果セルの背景色を値連動で変更（未使用=現状維持、異常0=青#2563eb、異常1以上=赤#dc2626、文字色=白#ffffff）し、異常有無を視認しやすく改善
 
 **トラブルシューティング**:
 - `404`で可視化API検証が失敗した際は、`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認
@@ -243,22 +244,25 @@
 - 画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認する
 
 **検証**:
-- ローカル: `pnpm test` 成功（`apps/api`: 64 passed / 2 skipped）
+- ローカル: `pnpm test` 成功（`apps/api`: 85 passed / 2 skipped）
 - CI:
   - Run `21930870130` 成功（2列表示最適化）
   - Run `21931409637` 成功（フォントサイズ拡大）
+  - Run `21968831251` 成功（点検結果セル背景色変更）
 - デプロイ:
   - runId `20260212-112355-17139` 成功（2列表示）
   - runId `20260212-114929-25101` 成功（フォント拡大）
-- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認
+  - runId `20260213-092127-19323` 成功（点検結果セル背景色変更、ok=111, changed=4, failed=0）
+- 実機: KPI（稼働中49/点検済み25/未点検24）と一覧表示（49件を2列で表示、未点検は終端にソート）が運用意図どおりであることを確認。フォントサイズ拡大により視認性が向上し、レイアウトが崩れないことを確認。点検結果セルの背景色変更により、未使用・異常0・異常1以上の状態が視認しやすくなり、正常に発色することを確認
 
 **関連ファイル**:
 - `apps/api/src/services/tools/machine.service.ts`
 - `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
-- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`
+- `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`（`resolveInspectionResultCellStyle`関数追加、点検結果列のみ背景色制御）
 - `apps/api/src/services/visualization/data-sources/uninspected-machines/__tests__/uninspected-machines-data-source.test.ts`
 
-**解決状況**: ✅ **解決済み**（2026-02-12）
+**解決状況**: ✅ **解決済み**（2026-02-13）
+- 2列表示・フォント拡大・点検結果セル背景色変更により、視認性と異常有無の識別性が向上
 
 ---
 
