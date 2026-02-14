@@ -258,8 +258,8 @@ export class UninspectedMachinesRenderer implements Renderer {
         const normalItemCenterY = statusStartY + statusItemHeight / 2;
         const normalValueWidth = estimateTextWidth(String(normal), statusValueFontSize);
         const normalLabelX = rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale) - labelValueGap - estimateTextWidth('正常', statusLabelFontSize);
-        // バッジの背景色はカードの背景色と同じにする
-        const normalBgFill = cardFill;
+        // 数値背景の塗りは「はみ出し」対策で透明にする
+        const normalBgFill = 'transparent';
         // テキストの色はカードの背景色に応じて設定
         const normalTextFill = normal > 0
           ? (abnormal > 0 
@@ -285,8 +285,8 @@ export class UninspectedMachinesRenderer implements Renderer {
         const abnormalItemCenterY = statusStartY + statusItemHeight + statusGap + statusItemHeight / 2;
         const abnormalValueWidth = estimateTextWidth(String(abnormal), statusValueFontSize);
         const abnormalLabelX = rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale) - labelValueGap - estimateTextWidth('異常', statusLabelFontSize);
-        // バッジの背景色はカードの背景色と同じにする
-        const abnormalBgFill = cardFill;
+        // 数値背景の塗りは「はみ出し」対策で透明にする
+        const abnormalBgFill = 'transparent';
         // テキストの色はカードの背景色に応じて設定
         const abnormalTextFill = abnormal > 0
           ? t.colors.status.onErrorContainer  // 異常がある場合（カードが赤）

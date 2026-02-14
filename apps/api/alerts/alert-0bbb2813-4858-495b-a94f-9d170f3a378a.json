@@ -1,0 +1,19 @@
+{
+  "id": "0bbb2813-4858-495b-a94f-9d170f3a378a",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1771071683561-i4upu を VIEWER から MANAGER に変更 (by test-1771071683428-06t31d)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "ec81ca35-1ed3-401d-a63f-44ac64818505",
+    "actorUsername": "test-1771071683428-06t31d",
+    "targetUserId": "94f35dd0-28a0-4c32-99a5-7d5cd278d2b1",
+    "targetUsername": "test-1771071683561-i4upu",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2026-02-14T12:21:23.572Z",
+  "acknowledged": false
+}

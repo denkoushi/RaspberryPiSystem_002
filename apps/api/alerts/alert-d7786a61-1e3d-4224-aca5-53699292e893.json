@@ -1,0 +1,19 @@
+{
+  "id": "d7786a61-1e3d-4224-aca5-53699292e893",
+  "type": "role_change",
+  "severity": "warning",
+  "message": "権限変更: test-1771071683749-50tfui を VIEWER から MANAGER に変更 (by test-1771071683630-l4ee4)",
+  "reasons": [
+    "outside-business-hours"
+  ],
+  "details": {
+    "actorUserId": "7d8542a2-e235-4d5f-9c56-f036226e386c",
+    "actorUsername": "test-1771071683630-l4ee4",
+    "targetUserId": "d41046cf-5c74-47c6-a035-0ce0fadced16",
+    "targetUsername": "test-1771071683749-50tfui",
+    "fromRole": "VIEWER",
+    "toRole": "MANAGER"
+  },
+  "timestamp": "2026-02-14T12:21:23.756Z",
+  "acknowledged": false
+}
