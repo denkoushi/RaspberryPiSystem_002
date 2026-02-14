@@ -3739,4 +3739,57 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-263] Pi5のみデプロイ時にメンテナンスフラグが残存する問題
+
+**発生日**: 2026-02-14  
+**Status**: ✅ 解決済み（手動削除で対応）
+
+**Context**:
+- Pi5のみのデプロイ実行後、Macからキオスクを開いた際にメンテナンス画面が表示され続けた
+- デプロイは成功していたが、メンテナンスフラグファイル（`/opt/RaspberryPiSystem_002/config/deploy-status.json`）が残存していた
+
+**Symptoms**:
+- Macのブラウザから `https://100.106.158.2/kiosk` にアクセスすると、メンテナンス画面が表示される
+- APIエンドポイント `/api/system/deploy-status` が `{"kioskMaintenance":true}` を返す
+- Pi5上の `/opt/RaspberryPiSystem_002/config/deploy-status.json` に `{"kioskMaintenance": true, "scope": "kiosk", "startedAt": "2026-02-14T11:49:12Z"}` が残存
+
+**Investigation**:
+- **CONFIRMED**: Pi5のみのデプロイ（`--limit raspberrypi5`）では、メンテナンスフラグのクリア処理が実行されない
+- **CONFIRMED**: `scripts/update-all-clients.sh` の `should_enable_kiosk_maintenance()` 関数は、Pi4がデプロイ対象に含まれる場合のみ `true` を返す
+- **CONFIRMED**: Pi5のみのデプロイでは、`set_kiosk_maintenance_flag()` が呼ばれず、既存のフラグファイルがクリアされない
+- **CONFIRMED**: 以前のデプロイ（Pi4を含む）で設定されたメンテナンスフラグが残存していた
+
+**Root cause**:
+- メンテナンスフラグのクリア処理（`clear_kiosk_maintenance_flag()`）は、`MAINTENANCE_FLAG_SET=1` の場合のみ実行される
+- Pi5のみのデプロイでは、`set_kiosk_maintenance_flag()` が呼ばれないため、`MAINTENANCE_FLAG_SET` が `0` のままとなり、クリア処理がスキップされる
+- 以前のデプロイで設定されたフラグファイルが手動で削除されていない場合、残存し続ける
+
+**Fix**:
+- ✅ **即時対応**: Pi5上の `/opt/RaspberryPiSystem_002/config/deploy-status.json` を手動で削除
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/config/deploy-status.json"
+  ```
+- ✅ **確認**: APIエンドポイント `/api/system/deploy-status` が `{"kioskMaintenance":false}` を返すことを確認
+
+**Prevention**:
+- Pi5のみのデプロイ時でも、既存のメンテナンスフラグファイルをクリアする処理を追加することを検討
+- または、デプロイ完了後の検証チェックリストに「メンテナンスフラグの確認」を追加
+- デプロイスクリプト（`scripts/update-all-clients.sh`）に、Pi5のみのデプロイ時でも既存フラグをクリアするオプションを追加することを検討
+
+**学んだこと**:
+- Pi5のみのデプロイでは、メンテナンスフラグのクリア処理が実行されない仕様であることを理解
+- デプロイ後の検証時に、メンテナンスフラグの状態も確認する必要がある
+- メンテナンスフラグは、Pi4がデプロイ対象に含まれる場合のみ自動管理される
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（メンテナンスフラグの設定・クリアロジック）
+- `apps/api/src/routes/system/deploy-status.ts`（メンテナンス状態のAPIエンドポイント）
+- `apps/web/src/layouts/KioskLayout.tsx`（メンテナンス画面の表示ロジック）
+- `/opt/RaspberryPiSystem_002/config/deploy-status.json`（メンテナンスフラグファイル）
+
+**解決状況**: ✅ **解決済み**（2026-02-14）
+- メンテナンスフラグファイルを手動で削除し、メンテナンス画面が消えることを確認
+
+---
+
 {% endraw %}
