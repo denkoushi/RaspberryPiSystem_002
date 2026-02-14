@@ -26,17 +26,40 @@ async function ensureDir(dirPath: string): Promise<void> {
 }
 
 function sampleUninspectedTable(): TableVisualizationData {
+  const machineTypes = ['NC旋盤', 'マシニング', 'フライス', '研削盤', 'ボール盤', '旋盤'];
+  const suffixes = ['A型', 'B型', 'C型', 'D型', 'E型', 'F型', 'G型', 'H型', 'I型', 'J型'];
+  
+  const rows = [];
+  for (let i = 1; i <= 49; i++) {
+    const machineNum = `M-${String(i).padStart(3, '0')}`;
+    const typeIndex = (i - 1) % machineTypes.length;
+    const suffixIndex = Math.floor((i - 1) / machineTypes.length) % suffixes.length;
+    const machineName = `${machineTypes[typeIndex]} ${suffixes[suffixIndex]}`;
+    
+    // 点検結果の生成（バリエーションを持たせる）
+    let inspectionResult: string;
+    if (i % 7 === 0) {
+      inspectionResult = '未使用';
+    } else if (i % 5 === 0) {
+      const abnormal = Math.floor(Math.random() * 3) + 1;
+      const normal = Math.floor(Math.random() * 10) + 1;
+      inspectionResult = `正常${normal}/異常${abnormal}`;
+    } else {
+      const normal = Math.floor(Math.random() * 15) + 1;
+      inspectionResult = `正常${normal}/異常0`;
+    }
+    
+    rows.push({
+      設備管理番号: machineNum,
+      加工機名称: machineName,
+      点検結果: inspectionResult,
+    });
+  }
+  
   return {
     kind: 'table',
     columns: ['設備管理番号', '加工機名称', '点検結果'],
-    rows: [
-      { 設備管理番号: 'M-001', 加工機名称: 'NC旋盤 A型', 点検結果: '正常12/異常0' },
-      { 設備管理番号: 'M-002', 加工機名称: 'NC旋盤 B型', 点検結果: '正常8/異常0' },
-      { 設備管理番号: 'M-003', 加工機名称: 'マシニング C型', 点検結果: '正常5/異常1' },
-      { 設備管理番号: 'M-004', 加工機名称: 'フライス D型', 点検結果: '未使用' },
-      { 設備管理番号: 'M-005', 加工機名称: '研削盤 E型', 点検結果: '正常3/異常0' },
-      { 設備管理番号: 'M-006', 加工機名称: 'ボール盤 F型', 点検結果: '正常0/異常2' },
-    ],
+    rows,
     metadata: {
       date: '2026-02-13',
       totalRunningMachines: 49,
@@ -309,6 +332,39 @@ async function main(): Promise<void> {
   const splitPath = path.join(outDir, 'signage-split.jpg');
   await writeBuffer(splitPath, signageSplitJpg);
 
+  // カード形式のSVG出力を生成
+  const cardFullOut = await renderer.render(table, {
+    width: full.width,
+    height: full.height,
+    title: '加工機点検状況',
+  });
+  const vizCardFullPath = path.join(outDir, 'viz-card-full.jpg');
+  await writeBuffer(vizCardFullPath, cardFullOut.buffer);
+
+  const cardPaneOut = await renderer.render(table, {
+    width: g.rightPaneContentWidth,
+    height: g.paneContentHeight,
+    title: '加工機点検状況 (pane)',
+  });
+  const vizCardPanePath = path.join(outDir, 'viz-card-pane.jpg');
+  await writeBuffer(vizCardPanePath, cardPaneOut.buffer);
+
+  const cardRightImageBase64 = `data:image/jpeg;base64,${cardPaneOut.buffer.toString('base64')}`;
+  const cardSplitSvg = buildSplitCompositeSvg({
+    width: full.width,
+    height: full.height,
+    leftTitle: 'LEFT (placeholder)',
+    rightTitle: 'RIGHT (uninspected_machines card layout @ pane size)',
+    leftImageBase64: null,
+    rightImageBase64: cardRightImageBase64,
+  });
+  const cardSignageSplitJpg = await sharp(Buffer.from(cardSplitSvg))
+    .resize(full.width, full.height, { fit: 'fill' })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  const cardSplitPath = path.join(outDir, 'signage-card-split.jpg');
+  await writeBuffer(cardSplitPath, cardSignageSplitJpg);
+
   const indexHtml = `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -350,6 +406,21 @@ async function main(): Promise<void> {
       <div class="title">Signage SPLIT composite preview (${full.width}x${full.height})</div>
       <img src="./signage-split.jpg" alt="signage split" />
       <p class="note">Uses <code>computeSplitPaneGeometry</code> to match SPLIT geometry.</p>
+    </div>
+    <div class="card">
+      <div class="title">カード形式 SVG renderer output (FULL ${full.width}x${full.height})</div>
+      <img src="./viz-card-full.jpg" alt="viz card full" />
+      <p class="note">カード形式のSVGレンダラー出力（4列グリッド、49件表示）。</p>
+    </div>
+    <div class="card">
+      <div class="title">カード形式 SVG renderer output (pane ${g.rightPaneContentWidth}x${g.paneContentHeight})</div>
+      <img src="./viz-card-pane.jpg" alt="viz card pane" />
+      <p class="note">SPLIT paneサイズでのカード形式SVGレンダラー出力。</p>
+    </div>
+    <div class="card">
+      <div class="title">カード形式 Signage SPLIT composite preview (${full.width}x${full.height})</div>
+      <img src="./signage-card-split.jpg" alt="signage card split" />
+      <p class="note">SPLITレイアウトでのカード形式SVGレンダラー出力（右側パネル）。</p>
     </div>
   </div>
 </body>

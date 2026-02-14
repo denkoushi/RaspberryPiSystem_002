@@ -3,9 +3,7 @@ import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import {
   createMd3Tokens,
-  renderChip,
-  resolveChipColors,
-  resolveChipToneFromInspectionResult,
+  escapeSvgText,
 } from '../_design-system/index.js';
 
 type UninspectedMetadata = {
@@ -17,12 +15,19 @@ type UninspectedMetadata = {
 };
 
 function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return escapeSvgText(value);
+}
+
+function estimateTextWidth(text: string, fontPx: number): number {
+  // Approximation tuned for mixed JP/ASCII text:
+  // - ASCII-ish (<= 0xFF): 0.6em
+  // - Wide chars (JP/CJK/emoji etc): 1.0em
+  let usedEm = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    usedEm += code != null && code <= 0xff ? 0.6 : 1.0;
+  }
+  return Math.round(usedEm * fontPx);
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -34,24 +39,15 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function resolveInspectionResultCellStyle(
-  column: string,
-  value: string,
-  rowIndex: number,
-  t: ReturnType<typeof createMd3Tokens>
-): { fill: string; textColor: string } {
-  const baseFill = rowIndex % 2 === 0 ? t.colors.table.rowFillEven : t.colors.table.rowFillOdd;
-  if (column !== '点検結果') {
-    return { fill: baseFill, textColor: t.colors.text.primary };
-  }
+function parseInspectionResult(value: string): { normal: number; abnormal: number; isUnused: boolean } {
   if (value === '未使用') {
-    return { fill: baseFill, textColor: t.colors.text.primary };
+    return { normal: 0, abnormal: 0, isUnused: true };
   }
-  // NOTE:
-  // - この関数は後方互換のため残しているが、点検結果の「強調表示」はセル全面塗りではなく
-  //   HTML合意と同様の「チップ（丸角+padding）」で表現する方針へ移行した。
-  // - そのため、ここではベースのセル色を返し、強調色はrenderChip側で使用する。
-  return { fill: baseFill, textColor: t.colors.text.primary };
+  const normalMatch = value.match(/正常\s*(\d+)/);
+  const abnormalMatch = value.match(/異常\s*(\d+)/);
+  const normal = normalMatch ? Number(normalMatch[1]) : 0;
+  const abnormal = abnormalMatch ? Number(abnormalMatch[1]) : 0;
+  return { normal, abnormal, isUnused: false };
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
@@ -148,131 +144,150 @@ export class UninspectedMachinesRenderer implements Renderer {
     }
 
     const allRows = table.rows.slice(0, maxRows);
-    const tableWidth = width - padding * 2;
-    const paneGap = Math.round(10 * scale);
-    const paneWidth = Math.floor((tableWidth - paneGap) / 2);
-    const headerRowHeight = Math.max(26, Math.round(30 * scale));
-    // すべての列をタイトルと同じフォントサイズに統一
-    const baseBodyFontSize = Math.max(20, Math.round(30 * scale));
-    // フォントサイズに合わせて行の高さを調整（今の倍の高さ）
-    const minBodyRowHeight = Math.max(Math.round(baseBodyFontSize * 2.2), Math.max(18, Math.round(18 * scale)));
-    const availableBodyHeight = height - tableTop - padding;
-    const rowsPerColumnCapacity = Math.max(1, Math.floor((availableBodyHeight - headerRowHeight) / minBodyRowHeight));
-    const displayCapacity = rowsPerColumnCapacity * 2;
-    const rows = allRows.slice(0, displayCapacity);
-    const leftRowsCount = Math.ceil(rows.length / 2);
-    const leftRows = rows.slice(0, leftRowsCount);
-    const rightRows = rows.slice(leftRowsCount);
-    // 行の高さは最小値に固定（余白を増やさない）
-    const bodyRowHeight = minBodyRowHeight;
+    
+    // カード形式のレイアウト: 4列グリッド
+    const cardsTop = tableTop;
+    const cardsAreaWidth = width - padding * 2;
+    const cardsAreaHeight = height - cardsTop - padding;
+    const numColumns = 4;
+    const cardGap = Math.round(12 * scale);
+    const cardWidth = Math.floor((cardsAreaWidth - cardGap * (numColumns - 1)) / numColumns);
+    const cardHeight = Math.round(140 * scale);
+    const cardPadding = Math.round(14 * scale);
+    
+    // 1行に表示できるカード数と行数
+    const cardsPerRow = numColumns;
+    const availableRows = Math.max(1, Math.floor(cardsAreaHeight / (cardHeight + cardGap)));
+    const maxDisplayCards = cardsPerRow * availableRows;
+    const displayRows = allRows.slice(0, maxDisplayCards);
 
-    const paneColumns = columns.slice(0, 3);
-    const equalColWidth = Math.floor(paneWidth / paneColumns.length);
-    const colWidths =
-      paneColumns.length === 3
-        ? [
-            Math.floor(paneWidth * 0.26),
-            Math.floor(paneWidth * 0.42),
-            paneWidth - Math.floor(paneWidth * 0.26) - Math.floor(paneWidth * 0.42),
-          ]
-        : paneColumns.map(() => equalColWidth);
-
-    const buildPaneSvg = (startX: number, paneRows: Array<Record<string, unknown>>) => {
-      let headerX = startX;
-      const paneHeader = paneColumns
-        .map((column, index) => {
-          const colWidth = colWidths[index] ?? equalColWidth;
-          const cell = `
-            <rect x="${headerX}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${t.colors.table.headerFill}" />
-            <text x="${headerX + Math.round(6 * scale)}" y="${tableTop + Math.round(headerRowHeight * 0.7)}"
-              font-size="${Math.max(13, Math.round(15 * scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
-              ${escapeXml(column)}
-            </text>
-          `;
-          headerX += colWidth;
-          return cell;
-        })
-        .join('\n');
-
-      const paneBody = paneRows
-        .map((row, rowIndex) => {
-          const y = tableTop + headerRowHeight + rowIndex * bodyRowHeight;
-          let cellX = startX;
-          return paneColumns
-            .map((column, colIndex) => {
-              const colWidth = colWidths[colIndex] ?? equalColWidth;
-              const raw = row[column];
-              const value = raw === null || raw === undefined ? '' : String(raw);
-              const style = resolveInspectionResultCellStyle(column, value, rowIndex, t);
-              const baseRect = `<rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />`;
-
-              const fontFamily = 'sans-serif';
-              const fontSize = baseBodyFontSize;
-
-              // 点検結果列: HTMLデモと同じ「チップ」表現（丸角+padding）で強調する
-              let contentSvg = '';
-              if (column === '点検結果' && value && value !== '未使用') {
-                const tone = resolveChipToneFromInspectionResult(value);
-                const colors = resolveChipColors(t, tone);
-                // Padding is clamped so SPLITでも潰れないようにする。
-                const chipPaddingX = Math.max(10, Math.round(10 * scale));
-                const chipPaddingY = Math.max(6, Math.round(6 * scale));
-                const chipHeight = Math.max(1, fontSize + chipPaddingY * 2);
-                const radius = Math.min(t.shape.radiusSm, Math.floor(chipHeight / 2));
-                const chipX = cellX + Math.round(6 * scale);
-                const chipY = y + Math.max(0, Math.floor((bodyRowHeight - chipHeight) / 2));
-                const chipMaxWidth = Math.max(1, colWidth - Math.round(12 * scale));
-                const chip = renderChip({
-                  x: chipX,
-                  y: chipY,
-                  maxWidth: chipMaxWidth,
-                  text: value,
-                  fontSize,
-                  fontWeight: 600,
-                  fontFamily,
-                  paddingX: chipPaddingX,
-                  paddingY: chipPaddingY,
-                  radius,
-                  fill: colors.fill,
-                  textColor: colors.text,
-                  stroke: colors.stroke,
-                  strokeWidth: Math.max(1, Math.round(1 * scale)),
-                });
-                contentSvg = chip.svg;
-              } else {
-                contentSvg = `
-                  <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight / 2)}"
-                    dominant-baseline="middle" font-size="${fontSize}" font-weight="600" fill="${style.textColor}" font-family="${fontFamily}">
-                    ${escapeXml(value)}
-                  </text>
-                `;
-              }
-
-              const cell = `${baseRect}${contentSvg}`;
-              cellX += colWidth;
-              return cell;
-            })
-            .join('\n');
-        })
-        .join('\n');
-
-      return `${paneHeader}\n${paneBody}`;
+    const buildCardSvg = (row: Record<string, unknown>, index: number): string => {
+      const col = index % numColumns;
+      const rowIndex = Math.floor(index / numColumns);
+      const cardX = padding + col * (cardWidth + cardGap);
+      const cardY = cardsTop + rowIndex * (cardHeight + cardGap);
+      
+      const machineNumber = String(row[columns[0]] ?? '');
+      const machineName = String(row[columns[1]] ?? '');
+      const inspectionResult = String(row[columns[2]] ?? '');
+      const { normal, abnormal, isUnused } = parseInspectionResult(inspectionResult);
+      
+      // 異常も正常も0以外のときのみカード背景色を発色
+      const cardFill = (abnormal > 0 || normal > 0) && !isUnused ? t.colors.card.fill : t.colors.surface.background;
+      const cardStroke = (abnormal > 0 || normal > 0) && !isUnused ? t.colors.card.border : 'transparent';
+      
+      // カード背景
+      const cardBg = `
+        <rect x="${cardX}" y="${cardY}" width="${cardWidth}" height="${cardHeight}"
+          rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
+          fill="${cardFill}" stroke="${cardStroke}" />
+      `;
+      
+      // カード内コンテンツを垂直方向に中央揃え
+      const contentCenterY = cardY + cardHeight / 2;
+      
+      // 左側: 管理番号と加工機名（縦2段）
+      const leftContentWidth = Math.floor(cardWidth * 0.6);
+      const machineNumberFontSize = Math.max(20, Math.round(24 * scale));
+      const machineNameFontSize = Math.max(16, Math.round(20 * scale));
+      const leftContentGap = Math.round(8 * scale);
+      const leftContentTotalHeight = machineNumberFontSize + leftContentGap + machineNameFontSize;
+      const machineNumberY = contentCenterY - leftContentTotalHeight / 2 + machineNumberFontSize / 2;
+      const machineNameY = machineNumberY + machineNumberFontSize / 2 + leftContentGap + machineNameFontSize / 2;
+      
+      const leftContent = `
+        <text x="${cardX + cardPadding}" y="${machineNumberY}"
+          dominant-baseline="middle" font-size="${machineNumberFontSize}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
+          ${escapeXml(machineNumber)}
+        </text>
+        <text x="${cardX + cardPadding}" y="${machineNameY}"
+          dominant-baseline="middle" font-size="${machineNameFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+          ${escapeXml(machineName)}
+        </text>
+      `;
+      
+      // 右側: 異常と正常（縦2段）
+      const rightContentX = cardX + leftContentWidth;
+      const rightContentWidth = cardWidth - leftContentWidth;
+      const statusLabelFontSize = Math.max(14, Math.round(16 * scale));
+      const statusValueFontSize = Math.max(18, Math.round(20 * scale));
+      const statusGap = Math.round(6 * scale);
+      const statusPadding = Math.round(3 * scale);
+      const statusRadius = Math.round(6 * scale);
+      
+      let rightContent = '';
+      if (isUnused) {
+        rightContent = `
+          <text x="${rightContentX + rightContentWidth / 2}" y="${contentCenterY}"
+            text-anchor="middle" dominant-baseline="middle"
+            font-size="${statusLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+            未使用
+          </text>
+        `;
+      } else {
+        // 正常と異常の合計高さ
+        const statusItemHeight = statusValueFontSize + statusPadding * 2;
+        const statusTotalHeight = statusItemHeight * 2 + statusGap;
+        const statusStartY = contentCenterY - statusTotalHeight / 2;
+        
+        // 正常（上段）
+        const normalItemCenterY = statusStartY + statusItemHeight / 2;
+        const normalValueWidth = estimateTextWidth(String(normal), statusValueFontSize);
+        const normalLabelX = rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale) - estimateTextWidth('正常', statusLabelFontSize);
+        rightContent += `
+          <text x="${normalLabelX}" y="${normalItemCenterY}"
+            dominant-baseline="middle" font-size="${statusLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+            正常
+          </text>
+          <rect x="${rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale)}" y="${normalItemCenterY - statusItemHeight / 2}"
+            width="${normalValueWidth + Math.round(16 * scale)}" height="${statusItemHeight}"
+            rx="${statusRadius}" ry="${statusRadius}"
+            fill="${t.colors.status.successContainer}" />
+          <text x="${rightContentX + rightContentWidth - Math.round(8 * scale)}" y="${normalItemCenterY}"
+            text-anchor="end" dominant-baseline="middle" font-size="${statusValueFontSize}" font-weight="700" fill="${t.colors.status.onSuccessContainer}" font-family="sans-serif">
+            ${normal}
+          </text>
+        `;
+        
+        // 異常（下段）
+        const abnormalItemCenterY = statusStartY + statusItemHeight + statusGap + statusItemHeight / 2;
+        const abnormalValueWidth = estimateTextWidth(String(abnormal), statusValueFontSize);
+        const abnormalLabelX = rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale) - estimateTextWidth('異常', statusLabelFontSize);
+        // 異常が0の場合は背景色を全体背景色と同じにする
+        const abnormalBgFill = abnormal > 0 ? t.colors.status.errorContainer : t.colors.surface.background;
+        const abnormalTextFill = abnormal > 0 ? t.colors.status.onErrorContainer : t.colors.text.secondary;
+        rightContent += `
+          <text x="${abnormalLabelX}" y="${abnormalItemCenterY}"
+            dominant-baseline="middle" font-size="${statusLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+            異常
+          </text>
+          <rect x="${rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale)}" y="${abnormalItemCenterY - statusItemHeight / 2}"
+            width="${abnormalValueWidth + Math.round(16 * scale)}" height="${statusItemHeight}"
+            rx="${statusRadius}" ry="${statusRadius}"
+            fill="${abnormalBgFill}" />
+          <text x="${rightContentX + rightContentWidth - Math.round(8 * scale)}" y="${abnormalItemCenterY}"
+            text-anchor="end" dominant-baseline="middle" font-size="${statusValueFontSize}" font-weight="700" fill="${abnormalTextFill}" font-family="sans-serif">
+            ${abnormal}
+          </text>
+        `;
+      }
+      
+      return `${cardBg}${leftContent}${rightContent}`;
     };
 
-    const leftPaneSvg = buildPaneSvg(padding, leftRows);
-    const rightPaneSvg = buildPaneSvg(padding + paneWidth + paneGap, rightRows);
+    const cardsSvg = displayRows.map((row, index) => buildCardSvg(row, index)).join('\n');
 
     const truncatedMessage =
-      allRows.length > rows.length
-        ? `<text x="${width - padding}" y="${tableTop - Math.round(6 * scale)}" text-anchor="end"
+      allRows.length > displayRows.length
+        ? `<text x="${width - padding}" y="${cardsTop - Math.round(6 * scale)}" text-anchor="end"
             font-size="${Math.max(11, Math.round(13 * scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">
-            表示中 ${rows.length}/${allRows.length} 件
+            表示中 ${displayRows.length}/${allRows.length} 件
           </text>`
         : '';
 
     const emptyMessage =
-      rows.length === 0
-        ? `<text x="${padding}" y="${tableTop + headerRowHeight + Math.round(34 * scale)}"
+      displayRows.length === 0
+        ? `<text x="${padding}" y="${cardsTop + Math.round(34 * scale)}"
             font-size="${Math.max(14, Math.round(18 * scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">
             対象加工機はありません
           </text>`
@@ -287,8 +302,7 @@ export class UninspectedMachinesRenderer implements Renderer {
         </text>
         ${kpiSvg}
         ${truncatedMessage}
-        ${leftPaneSvg}
-        ${rightPaneSvg}
+        ${cardsSvg}
         ${emptyMessage}
       </svg>
     `;
