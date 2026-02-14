@@ -54,6 +54,7 @@ update-frequency: medium
 - **JWT秘密鍵（必須）**
   - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` は**32文字以上の強い値**を設定する
   - `NODE_ENV=production` で弱い値（例: `dev-*`, `*change-me*`, `test-*`）はAPI起動時にFail-fastで拒否される
+  - **注意（Docker Composeのenv_file）**: `docker-compose.server.yml` の `api` は `apps/api/.env.example` と `infrastructure/docker/.env` を `env_file` で読み込むため、`infrastructure/docker/.env` にJWTが無いと `.env.example` の弱い値（例: `replace-me`）が使われてAPIが再起動ループになる
 - **kioskレート制限（推奨）**
   - `RATE_LIMIT_REDIS_URL` を設定すると、kiosk系レート制限がRedis共有カウンタで動作する
   - 未設定時はInMemoryフォールバックで動作（単一ノード想定）

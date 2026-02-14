@@ -3631,4 +3631,54 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-260] デプロイ後にAPIが再起動ループする（JWT秘密鍵が弱い値で上書きされる）
+
+**発生日**: 2026-02-14  
+**Status**: ✅ 解決済み（2026-02-14）
+
+**Context**:
+- `scripts/update-all-clients.sh`（標準デプロイ）完走後、Pi5のAPIが `Restarting (1)` を繰り返し、ヘルスチェックが通らない
+- `NODE_ENV=production` のため、JWT秘密鍵が弱い値だとAPIがFail-fastで起動を拒否する（[KB-259](./security.md#kb-259-本番jwt秘密鍵のfail-fast化とkioskレート制限のredis共有化) 参照）
+
+**Symptoms**:
+- `docker compose -f infrastructure/docker/docker-compose.server.yml ps api` が `Restarting (1)` のまま
+- APIログに以下が出る（例）:
+  - `JWT_ACCESS_SECRET must be a strong secret (min 32 chars, no weak patterns) in production`
+  - `JWT_REFRESH_SECRET must be a strong secret (min 32 chars, no weak patterns) in production`
+- `curl -sk https://localhost/api/system/health` が応答しない/空になる
+
+**Investigation**:
+- **CONFIRMED**: `apps/api/.env` に強いJWTが設定されていても、Docker Composeが別ソースの環境変数を読み込んでいる可能性がある
+- **CONFIRMED**: `docker compose ... config | grep JWT` で、実際にコンテナへ渡るJWTが `replace-me` 等の弱い値になっている
+- **CONFIRMED**: `docker-compose.server.yml` の `api.env_file` は `apps/api/.env.example` と `infrastructure/docker/.env` を読み込むため、`infrastructure/docker/.env` にJWTが無いと `.env.example` の弱い値へフォールバックする
+
+**Root cause**:
+- `infrastructure/ansible/templates/docker.env.j2`（= `infrastructure/docker/.env`）にJWT秘密鍵が含まれておらず、デプロイ後に `.env.example` の弱い値が採用される経路が残っていた
+- 併せて、Ansibleの変数が弱い/プレースホルダーのままだと `apps/api/.env` が弱い値に戻るリスクがあった（再発しやすい）
+
+**Fix**:
+- ✅ **恒久対策（コード）**:
+  - `apps/api/.env` 生成時に、Ansible変数が弱い場合でも **既存 `.env` の強いJWTを優先して維持**するガードを追加
+  - `infrastructure/docker/.env` にも **強いJWT秘密鍵を必ず出力**するよう `docker.env.j2` を更新（`.env.example` フォールバック経路を遮断）
+- ✅ **復旧手順（運用・最小）**:
+  - 緊急時は `apps/api/.env` のJWTを `infrastructure/docker/.env` へコピーし、`api` コンテナを `--force-recreate` で再作成する
+
+**Prevention**:
+- デプロイ後チェックで以下を必ず確認:
+  - `curl -sk https://localhost/api/system/health` → `{"status":"ok"...}`
+  - `docker compose ... config | grep -A1 JWT_ACCESS_SECRET`（値そのものは出さず、弱いプレースホルダーが残っていないことを確認）
+- JWT秘密鍵はバックアップ対象（`.env`）に含め、復旧可能性を確保する（バックアップ設定/運用標準に従う）
+
+**関連ファイル**:
+- `docs/guides/deployment.md`（JWT秘密鍵の注意点）
+- `infrastructure/docker/docker-compose.server.yml`（`env_file` の優先順位）
+- `infrastructure/ansible/templates/api.env.j2`
+- `infrastructure/ansible/templates/docker.env.j2`
+- `infrastructure/ansible/roles/server/tasks/main.yml`
+- `infrastructure/ansible/playbooks/manage-app-configs.yml`
+
+**解決状況**: ✅ **解決済み**（2026-02-14）
+
+---
+
 {% endraw %}

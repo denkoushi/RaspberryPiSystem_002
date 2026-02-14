@@ -230,6 +230,7 @@ update-frequency: high
 | [KB-079](./infrastructure/security.md#kb-079-phase7セキュリティテストの実施結果と検証ポイント) | Phase7セキュリティテストの実施結果と検証ポイント | ✅ 解決済み |
 | [KB-178](./infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) | ログの機密情報保護実装（x-client-keyの[REDACTED]置換） | ✅ 解決済み（2026-01-18） |
 | [KB-259](./infrastructure/security.md#kb-259-本番jwt秘密鍵のfail-fast化とkioskレート制限のredis共有化) | 本番JWT秘密鍵のFail-fast化とkioskレート制限のRedis共有化 | ✅ 解決済み（2026-02-13） |
+| [KB-260](./infrastructure/ansible-deployment.md#kb-260-デプロイ後にapiが再起動ループするjwt秘密鍵が弱い値で上書きされる) | デプロイ後にAPIが再起動ループする（JWT秘密鍵が弱い値で上書きされる） | ✅ 解決済み（2026-02-14） |
 | [KB-080](./infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
 | [KB-081](./infrastructure/signage.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) | Pi3サイネージが新デザインへ更新されない | 🔄 進行中 |
 | [KB-082](./infrastructure/signage.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | ✅ 解決済み |
