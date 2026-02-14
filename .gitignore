@@ -28,6 +28,9 @@ logs/
 # Storage (user-uploaded files at project root only)
 /storage/
 
+# Local preview artifacts
+/tmp/
+
 # SSL certificates
 certs/
 

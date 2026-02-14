@@ -1,7 +1,12 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
-import { createMd3Tokens } from '../_design-system/index.js';
+import {
+  createMd3Tokens,
+  renderChip,
+  resolveChipColors,
+  resolveChipToneFromInspectionResult,
+} from '../_design-system/index.js';
 
 type UninspectedMetadata = {
   date?: string;
@@ -42,13 +47,11 @@ function resolveInspectionResultCellStyle(
   if (value === '未使用') {
     return { fill: baseFill, textColor: t.colors.text.primary };
   }
-  const abnormalMatch = value.match(/異常\s*(\d+)/);
-  const abnormalCount = abnormalMatch ? Number(abnormalMatch[1]) : 0;
-  if (abnormalCount >= 1) {
-    return { fill: t.colors.status.errorContainer, textColor: t.colors.status.onErrorContainer };
-  }
-  // 異常0件は青系（情報）で強調
-  return { fill: t.colors.status.infoContainer, textColor: t.colors.status.onInfoContainer };
+  // NOTE:
+  // - この関数は後方互換のため残しているが、点検結果の「強調表示」はセル全面塗りではなく
+  //   HTML合意と同様の「チップ（丸角+padding）」で表現する方針へ移行した。
+  // - そのため、ここではベースのセル色を返し、強調色はrenderChip側で使用する。
+  return { fill: baseFill, textColor: t.colors.text.primary };
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
@@ -197,13 +200,50 @@ export class UninspectedMachinesRenderer implements Renderer {
               const raw = row[column];
               const value = raw === null || raw === undefined ? '' : String(raw);
               const style = resolveInspectionResultCellStyle(column, value, rowIndex, t);
-              const cell = `
-                <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />
-                <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
-                  font-size="${Math.max(12, Math.round(14 * scale))}" font-weight="600" fill="${style.textColor}" font-family="sans-serif">
-                  ${escapeXml(value)}
-                </text>
-              `;
+              const baseRect = `<rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />`;
+
+              const fontFamily = 'sans-serif';
+              const fontSize = Math.max(12, Math.round(14 * scale));
+
+              // 点検結果列: HTMLデモと同じ「チップ」表現（丸角+padding）で強調する
+              let contentSvg = '';
+              if (column === '点検結果' && value && value !== '未使用') {
+                const tone = resolveChipToneFromInspectionResult(value);
+                const colors = resolveChipColors(t, tone);
+                const chipPaddingX = Math.round(8 * scale);
+                const chipPaddingY = Math.round(4 * scale);
+                const chipHeight = Math.max(1, fontSize + chipPaddingY * 2);
+                const radius = Math.min(t.shape.radiusSm, Math.floor(chipHeight / 2));
+                const chipX = cellX + Math.round(6 * scale);
+                const chipY = y + Math.max(0, Math.floor((bodyRowHeight - chipHeight) / 2));
+                const chipMaxWidth = Math.max(1, colWidth - Math.round(12 * scale));
+                const chip = renderChip({
+                  x: chipX,
+                  y: chipY,
+                  maxWidth: chipMaxWidth,
+                  text: value,
+                  fontSize,
+                  fontWeight: 600,
+                  fontFamily,
+                  paddingX: chipPaddingX,
+                  paddingY: chipPaddingY,
+                  radius,
+                  fill: colors.fill,
+                  textColor: colors.text,
+                  stroke: colors.stroke,
+                  strokeWidth: Math.max(1, Math.round(1 * scale)),
+                });
+                contentSvg = chip.svg;
+              } else {
+                contentSvg = `
+                  <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
+                    font-size="${fontSize}" font-weight="600" fill="${style.textColor}" font-family="${fontFamily}">
+                    ${escapeXml(value)}
+                  </text>
+                `;
+              }
+
+              const cell = `${baseRect}${contentSvg}`;
               cellX += colWidth;
               return cell;
             })

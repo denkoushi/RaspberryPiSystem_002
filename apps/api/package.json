@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=istanbul",
+    "design:preview": "tsx scripts/design-preview.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",

@@ -15,6 +15,7 @@ import type {
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { VisualizationService } from '../visualization/index.js';
+import { computeSplitPaneGeometry } from './signage-layout-math.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -707,18 +708,11 @@ export class SignageRenderer {
       visualizationDashboardId?: string;
     }
   ): Promise<Buffer> {
-    // buildSplitWithPanesSvg と同じレイアウト計算で、CSVをペインサイズに合わせてレンダリングする
-    const scale = WIDTH / 1920;
-    const outerPadding = 0;
-    const panelGap = Math.round(12 * scale);
-    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.5);
-    const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
-    const panelHeight = HEIGHT - outerPadding * 2;
-    const innerPadding = Math.round(12 * scale);
-    const headerHeight = Math.round(40 * scale);
-    const paneContentHeight = panelHeight - innerPadding * 2 - headerHeight;
-    const leftPaneContentWidth = leftWidth - innerPadding * 2;
-    const rightPaneContentWidth = rightWidth - innerPadding * 2;
+    // buildSplitWithPanesSvg と同じレイアウト計算で、CSV/可視化をペインサイズに合わせてレンダリングする
+    const geometry = computeSplitPaneGeometry({ width: WIDTH, height: HEIGHT });
+    const paneContentHeight = geometry.paneContentHeight;
+    const leftPaneContentWidth = geometry.leftPaneContentWidth;
+    const rightPaneContentWidth = geometry.rightPaneContentWidth;
 
     // 左右のPDF画像またはCSVダッシュボード画像を事前にBase64エンコード
     let leftImageBase64: string | null = null;
@@ -798,19 +792,19 @@ export class SignageRenderer {
     leftImageBase64: string | null,
     rightImageBase64: string | null
   ): Promise<string> {
-    const scale = WIDTH / 1920;
-    const outerPadding = 0;
-    const panelGap = Math.round(12 * scale);
+    const geometry = computeSplitPaneGeometry({ width: WIDTH, height: HEIGHT });
+    const scale = geometry.scale;
+    const outerPadding = geometry.outerPadding;
     const gradientId = this.generateId('bg');
-    const leftWidth = Math.round((WIDTH - outerPadding * 2 - panelGap) * 0.5);
-    const rightWidth = WIDTH - outerPadding * 2 - panelGap - leftWidth;
-    const panelHeight = HEIGHT - outerPadding * 2;
-    const leftX = outerPadding;
-    const rightX = leftX + leftWidth + panelGap;
+    const leftWidth = geometry.leftWidth;
+    const rightWidth = geometry.rightWidth;
+    const panelHeight = geometry.panelHeight;
+    const leftX = geometry.leftX;
+    const rightX = geometry.rightX;
     const panelRadius = Math.round(10 * scale);
-    const innerPadding = Math.round(12 * scale);
+    const innerPadding = geometry.innerPadding;
     const titleOffsetY = Math.round(22 * scale);
-    const headerHeight = Math.round(40 * scale);
+    const headerHeight = geometry.headerHeight;
 
     const leftTitle = leftPane.kind === 'pdf'
       ? (leftPane.pdfOptions?.title ?? 'PDF表示')
