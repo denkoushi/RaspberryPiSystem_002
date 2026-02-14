@@ -30,8 +30,14 @@ function sampleUninspectedTable(): TableVisualizationData {
   const suffixes = ['A型', 'B型', 'C型', 'D型', 'E型', 'F型', 'G型', 'H型', 'I型', 'J型'];
   
   const rows = [];
-  for (let i = 1; i <= 49; i++) {
-    const machineNum = `M-${String(i).padStart(3, '0')}`;
+  for (let i = 1; i <= 50; i++) {
+    // 管理番号40033を除外するため、40033の場合はスキップ
+    if (i === 33) {
+      continue;
+    }
+    
+    // 実際のデータ形式に合わせて、数値形式の管理番号も含める
+    const machineNum = i <= 49 ? `400${String(i).padStart(2, '0')}` : `M-${String(i - 49).padStart(3, '0')}`;
     const typeIndex = (i - 1) % machineTypes.length;
     const suffixIndex = Math.floor((i - 1) / machineTypes.length) % suffixes.length;
     const machineName = `${machineTypes[typeIndex]} ${suffixes[suffixIndex]}`;

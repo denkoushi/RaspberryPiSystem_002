@@ -143,7 +143,13 @@ export class UninspectedMachinesRenderer implements Renderer {
       return { buffer, contentType: 'image/jpeg' };
     }
 
-    const allRows = table.rows.slice(0, maxRows);
+    const allRows = table.rows
+      .slice(0, maxRows)
+      .filter((row) => {
+        // 管理番号40033を除外
+        const machineNumber = String(row[columns[0]] ?? '');
+        return machineNumber !== '40033';
+      });
     
     // カード形式のレイアウト: 4列グリッド
     const cardsTop = tableTop;
@@ -172,9 +178,26 @@ export class UninspectedMachinesRenderer implements Renderer {
       const inspectionResult = String(row[columns[2]] ?? '');
       const { normal, abnormal, isUnused } = parseInspectionResult(inspectionResult);
       
-      // 異常も正常も0以外のときのみカード背景色を発色
-      const cardFill = (abnormal > 0 || normal > 0) && !isUnused ? t.colors.card.fill : t.colors.surface.background;
-      const cardStroke = (abnormal > 0 || normal > 0) && !isUnused ? t.colors.card.border : 'transparent';
+      // カード背景色の決定:
+      // - 未使用: 全体背景色 + 枠線のみ
+      // - 正常1件以上・異常0件: 青
+      // - 異常1件以上: 赤
+      // - それ以外: 全体背景色
+      let cardFill: string;
+      let cardStroke: string;
+      if (isUnused) {
+        cardFill = t.colors.surface.background; // 全体背景色
+        cardStroke = t.colors.card.border; // 枠線のみ
+      } else if (abnormal > 0) {
+        cardFill = t.colors.status.errorContainer; // 赤
+        cardStroke = 'transparent';
+      } else if (normal > 0) {
+        cardFill = t.colors.status.infoContainer; // 青
+        cardStroke = 'transparent';
+      } else {
+        cardFill = t.colors.surface.background;
+        cardStroke = 'transparent';
+      }
       
       // カード背景
       const cardBg = `
@@ -234,6 +257,14 @@ export class UninspectedMachinesRenderer implements Renderer {
         const normalItemCenterY = statusStartY + statusItemHeight / 2;
         const normalValueWidth = estimateTextWidth(String(normal), statusValueFontSize);
         const normalLabelX = rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale) - estimateTextWidth('正常', statusLabelFontSize);
+        // バッジの背景色はカードの背景色と同じにする
+        const normalBgFill = cardFill;
+        // テキストの色はカードの背景色に応じて設定
+        const normalTextFill = normal > 0
+          ? (abnormal > 0 
+              ? t.colors.status.onErrorContainer  // 異常がある場合（カードが赤）
+              : t.colors.status.onInfoContainer)  // 正常のみの場合（カードが青）
+          : t.colors.text.secondary;
         rightContent += `
           <text x="${normalLabelX}" y="${normalItemCenterY}"
             dominant-baseline="middle" font-size="${statusLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
@@ -242,9 +273,9 @@ export class UninspectedMachinesRenderer implements Renderer {
           <rect x="${rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale)}" y="${normalItemCenterY - statusItemHeight / 2}"
             width="${normalValueWidth + Math.round(16 * scale)}" height="${statusItemHeight}"
             rx="${statusRadius}" ry="${statusRadius}"
-            fill="${t.colors.status.successContainer}" />
+            fill="${normalBgFill}" />
           <text x="${rightContentX + rightContentWidth - Math.round(8 * scale)}" y="${normalItemCenterY}"
-            text-anchor="end" dominant-baseline="middle" font-size="${statusValueFontSize}" font-weight="700" fill="${t.colors.status.onSuccessContainer}" font-family="sans-serif">
+            text-anchor="end" dominant-baseline="middle" font-size="${statusValueFontSize}" font-weight="700" fill="${normalTextFill}" font-family="sans-serif">
             ${normal}
           </text>
         `;
@@ -253,9 +284,12 @@ export class UninspectedMachinesRenderer implements Renderer {
         const abnormalItemCenterY = statusStartY + statusItemHeight + statusGap + statusItemHeight / 2;
         const abnormalValueWidth = estimateTextWidth(String(abnormal), statusValueFontSize);
         const abnormalLabelX = rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale) - estimateTextWidth('異常', statusLabelFontSize);
-        // 異常が0の場合は背景色を全体背景色と同じにする
-        const abnormalBgFill = abnormal > 0 ? t.colors.status.errorContainer : t.colors.surface.background;
-        const abnormalTextFill = abnormal > 0 ? t.colors.status.onErrorContainer : t.colors.text.secondary;
+        // バッジの背景色はカードの背景色と同じにする
+        const abnormalBgFill = cardFill;
+        // テキストの色はカードの背景色に応じて設定
+        const abnormalTextFill = abnormal > 0
+          ? t.colors.status.onErrorContainer  // 異常がある場合（カードが赤）
+          : t.colors.text.secondary;
         rightContent += `
           <text x="${abnormalLabelX}" y="${abnormalItemCenterY}"
             dominant-baseline="middle" font-size="${statusLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
