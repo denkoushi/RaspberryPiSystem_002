@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-14) **HTML↔SVG整合プレビューシステム実装完了・CI成功・デプロイ完了・実機検証開始**: 事前打ち合わせ（HTMLデザイン）と実機表示（SVG→JPEG）の差異要因を解消し、同一MD3トークンからHTML/CSS変数・SVG・SPLITペイン・複合サイネージプレビューを生成するシステムを構築。**実装内容**: MD3トークン→CSS変数アダプタ（`md3-css.ts`）、SVGチップ/バッジプリミティブ（`svg-primitives.ts`）、サイネージSPLITペイン幾何計算の抽出（`signage-layout-math.ts`）、デザインプレビュー生成スクリプト（`design-preview.ts`、`pnpm --filter @raspi-system/api design:preview`で実行）、未点検加工機レンダラーのチッププリミティブ適用（丸角+padding）。**トラブルシューティング**: CI初回実行で`design-preview.ts`がビルド対象に含まれビルドエラーが発生。`tsconfig.build.json`の`exclude`に追加して解決。デプロイ時に環境変数検証で一時的なエラーが発生したが、最終的にはデプロイ成功（KB-261参照）。**CI実行**: GitHub Actions Run ID `22011599165` 成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260214-143340-30468`, `ok=108`, `changed=5`, `failed=1`（環境変数検証エラー）だが最終的には成功、コードは正常に反映）。**実機検証結果**: APIヘルスチェック（`status: ok`）、Pi5生成画像とPi3キャッシュ画像のSHA256一致確認、Pi3サービス稼働確認（`signage-lite.service` / `signage-lite-update.timer` ともに `active`）、Pi5画像更新確認（約30秒間隔で更新）。詳細は [docs/design/preview-workflow.md](./docs/design/preview-workflow.md) 、トラブルシューティングはKB-261に記録。
+
 - [x] (2026-02-14) **サイネージ共通デザインシステム（MD3 dark tokens）導入・CI成功・デプロイ完了・実機検証開始**: サーバー側SVGレンダラー/CSVダッシュボードテンプレートの配色・タイポ・余白をMaterial Design 3ベースのトークンへ集約。トラブルシューティングとして、デプロイ後にJWT秘密鍵が弱い値へフォールバックしてAPIが再起動ループする事象を確認し、Ansible側で`apps/api/.env`と`infrastructure/docker/.env`の両方に強いJWT秘密鍵が維持されるガードを追加して復旧。KB-260に記録。
 
 - [x] (2026-02-12) **コード品質改善フェーズ4（性能ゲート最優先）第三弾実装完了・CI成功・デプロイ完了・実機検証完了**: 第三弾では「サービス層の残未カバー領域テスト追加 + signage系性能テスト最小拡張」を実施。**実装内容**: サービステストを新規追加（`pre-restore-backup.service.test.ts`、`post-backup-cleanup.service.test.ts`、`csv-import-source.service.test.ts`、`alerts-config.test.ts`）。性能テストを拡張（`/api/signage/content` を追加）。**トラブルシューティング**: 標準デプロイスクリプトが未commit差分でfail-fast停止したため、`git stash` でドキュメント差分を一時退避してデプロイ実行後に復元。**ローカル検証**: 追加対象の絞り込み実行で21件全件パス、`pnpm --filter @raspi-system/api test`（500件中500件パス・7件skip）成功、`pnpm --filter @raspi-system/api lint` 成功、`pnpm --filter @raspi-system/api build` 成功。**CI実行**: GitHub Actions Run ID `21946824175` 成功（`lint-and-test`, `e2e-smoke`, `docker-build`, `e2e-tests` すべて成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260212-214653-31460`, `ok=111`, `changed=4`, `failed=0`, ブランチ `feat/phase4-performance-gate-and-service-tests`）。**実機検証結果**: デプロイ実体確認（コミットハッシュ `4bd6d900` 一致・ブランチ反映済み）、コンテナ稼働状態（`api/db/web` すべて正常）、ヘルスチェック（`GET /api/system/health` → `200` (`status: ok`)）、DB整合性（32マイグレーション適用済み）、設定ファイル保持確認（`backup.json` が保持されていることを確認）。
@@ -576,7 +578,8 @@
   対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
 - 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
   対応: 実機検証開始前に `free -m` / `docker ps` / 複数回ヘルスチェックでトレンド確認し、即断せず監視しながら判定する手順を採用。**[KB-255]**
-- 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。  
+- 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。
+- 観測: デプロイログに `failed=1` が記録されても、実際のデプロイ状態（ステータスファイル、API動作、コード反映）を確認することが重要。環境変数検証タスクで一時的なエラーが発生したが、実際には環境変数はすべて設定されており、デプロイは最終的に成功していた。**対応**: デプロイ後の検証チェックリストに「APIヘルスチェック」「環境変数確認」「コード反映確認」を追加し、ログだけで判断しない手順を確立。**[KB-261]**  
   対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
 - 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
   対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**

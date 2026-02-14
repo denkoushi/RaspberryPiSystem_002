@@ -10,15 +10,16 @@ export function escapeSvgText(value: string): string {
 }
 
 function estimateTextWidth(text: string, fontPx: number): number {
-  // Cheap approximation good enough for signage labels.
-  return Math.round(text.length * fontPx * 0.6);
-}
-
-function truncateToChars(text: string, maxChars: number): string {
-  if (maxChars <= 0) return '';
-  if (text.length <= maxChars) return text;
-  if (maxChars <= 3) return text.slice(0, maxChars);
-  return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+  // Approximation tuned for mixed JP/ASCII text:
+  // - ASCII-ish (<= 0xFF): 0.6em
+  // - Wide chars (JP/CJK/emoji etc): 1.0em
+  // This avoids under-estimating JP strings and prevents right-edge clipping.
+  let usedEm = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    usedEm += code != null && code <= 0xff ? 0.6 : 1.0;
+  }
+  return Math.round(usedEm * fontPx);
 }
 
 export type ChipTone = 'success' | 'error' | 'info' | 'neutral';
@@ -32,13 +33,14 @@ export function resolveChipToneFromInspectionResult(value: string): ChipTone {
 
 export function resolveChipColors(t: Md3Tokens, tone: ChipTone): { fill: string; text: string; stroke: string } {
   if (tone === 'success') {
-    return { fill: t.colors.status.successContainer, text: t.colors.status.onSuccessContainer, stroke: t.colors.grid };
+    // Use strong fills so chips don't get buried on dark backgrounds.
+    return { fill: t.colors.status.success, text: t.colors.text.onColor, stroke: t.colors.outline };
   }
   if (tone === 'error') {
-    return { fill: t.colors.status.errorContainer, text: t.colors.status.onErrorContainer, stroke: t.colors.grid };
+    return { fill: t.colors.status.error, text: t.colors.text.onColor, stroke: t.colors.outline };
   }
   if (tone === 'info') {
-    return { fill: t.colors.status.infoContainer, text: t.colors.status.onInfoContainer, stroke: t.colors.grid };
+    return { fill: t.colors.status.info, text: t.colors.text.onColor, stroke: t.colors.outline };
   }
   return { fill: t.colors.surface.containerHigh, text: t.colors.text.primary, stroke: t.colors.grid };
 }
@@ -68,8 +70,18 @@ export function renderChip(options: {
   let displayText = options.text;
   let width = estimateTextWidth(displayText, fontSize) + paddingX * 2;
   if (width > maxWidth) {
-    const approxChars = Math.floor((maxWidth - paddingX * 2) / Math.max(1, Math.round(fontSize * 0.6)));
-    displayText = truncateToChars(displayText, approxChars);
+    // Recompute truncation budget using the same em approximation.
+    const maxEm = (maxWidth - paddingX * 2) / Math.max(1, fontSize);
+    let usedEm = 0;
+    let out = '';
+    for (const ch of options.text) {
+      const code = ch.codePointAt(0);
+      const em = code != null && code <= 0xff ? 0.6 : 1.0;
+      if (usedEm + em > maxEm) break;
+      usedEm += em;
+      out += ch;
+    }
+    displayText = out.length > 0 ? `${out}...` : '...';
     width = Math.min(maxWidth, estimateTextWidth(displayText, fontSize) + paddingX * 2);
   }
 

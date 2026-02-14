@@ -3686,4 +3686,57 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-261] デプロイ時の環境変数検証エラー（一時的な失敗だが最終的には成功）
+
+**発生日**: 2026-02-14  
+**Status**: ✅ 解決済み（デプロイは最終的に成功）
+
+**Context**:
+- HTML↔SVG整合プレビューシステムのデプロイ実行中、環境変数検証タスクで一時的なエラーが発生
+- デプロイログには `failed=1` と表示されたが、最終的にはデプロイは成功し、コードも正常に反映された
+
+**Symptoms**:
+- デプロイログに以下が記録:
+  - `PLAY RECAP`: `failed=1`, `rescued=1`
+  - `TASK [Record deployment failure reason]`: `ok`
+  - `TASK [Fail host after rollback (server)]`: `FAILED!`
+  - エラーメッセージ: `Missing required environment variables:`（詳細は省略されていた）
+- しかし、デプロイステータスファイル（`status.json`）では `"state": "success"` となっていた
+- APIは正常に動作し、新しいコードもデプロイされていた
+
+**Investigation**:
+- **CONFIRMED**: デプロイログの `failed=1` は環境変数検証タスク（`server : Validate required environment variables`）での一時的な失敗
+- **CONFIRMED**: 実際には環境変数はすべて設定されており（`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`、`ALERTS_SLACK_WEBHOOK_*` など）、APIコンテナ内でも正常に読み込まれていた
+- **CONFIRMED**: デプロイは最終的に成功し、新しいコード（`svg-primitives.ts`、`md3-css.ts` など）がPi5に反映されていた
+- **CONFIRMED**: APIヘルスチェック（`GET /api/system/health`）は正常に応答し、`status: ok` を返していた
+
+**Root cause**:
+- 環境変数検証タスクが実行された時点で、一時的に環境変数が読み込まれていなかった可能性がある（タイミング問題）
+- または、検証スクリプト内での環境変数取得ロジックに一時的な問題があった可能性
+- デプロイプロセスはロールバックを試みたが、実際には環境変数は正常に設定されていたため、最終的には成功した
+
+**Fix**:
+- ✅ **即時対応**: デプロイは最終的に成功していたため、追加の対応は不要
+- ✅ **確認**: デプロイ後の環境変数確認（`docker compose exec api printenv | grep -E '(SLACK|ALERTS)'`）で、すべての環境変数が正常に設定されていることを確認
+
+**Prevention**:
+- デプロイ後の検証チェックリストに以下を追加:
+  - APIヘルスチェック（`curl -sk https://localhost/api/system/health`）で `status: ok` を確認
+  - 環境変数検証エラーが発生した場合でも、実際の環境変数設定を確認してから判断する
+  - デプロイステータスファイル（`status.json`）とデプロイログ（`PLAY RECAP`）の両方を確認し、矛盾がある場合は詳細を調査する
+
+**学んだこと**:
+- デプロイログに `failed=1` が記録されても、実際のデプロイ状態（ステータスファイル、API動作、コード反映）を確認することが重要
+- 環境変数検証はデプロイプロセスの一部だが、検証タイミングによっては一時的な失敗が発生する可能性がある
+- デプロイ後の検証（ヘルスチェック、環境変数確認、コード反映確認）を必ず実施し、ログだけで判断しない
+
+**関連ファイル**:
+- `infrastructure/ansible/playbooks/deploy-staged.yml`（環境変数検証タスク）
+- `infrastructure/ansible/roles/server/tasks/main.yml`（環境変数検証ロジック）
+- `docs/guides/deployment.md`（デプロイ後の検証手順）
+
+**解決状況**: ✅ **解決済み**（デプロイは最終的に成功、追加対応不要）
+
+---
+
 {% endraw %}

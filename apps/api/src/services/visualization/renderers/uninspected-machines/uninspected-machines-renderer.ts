@@ -118,19 +118,23 @@ export class UninspectedMachinesRenderer implements Renderer {
       .map((item, index) => {
         const x = padding + index * (kpiCardWidth + kpiGap);
         const y = kpiTop;
+        const isDateItem = item.label === '対象日';
         return `
           <g>
             <rect x="${x}" y="${y}" width="${kpiCardWidth}" height="${kpiHeight}"
               rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
               fill="${t.colors.card.fill}" stroke="${t.colors.card.border}" />
-            <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(30 * scale)}"
-              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+            ${!isDateItem ? `<text x="${x + Math.round(14 * scale)}" y="${y + Math.round(30 * scale)}"
+              font-size="${Math.max(28, Math.round(32 * scale))}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
               ${escapeXml(item.label)}
             </text>
-            <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(74 * scale)}"
-              font-size="${Math.max(24, Math.round(34 * scale))}" font-weight="700" fill="${item.accent}" font-family="sans-serif">
+            <text x="${x + kpiCardWidth - Math.round(14 * scale)}" y="${y + Math.round(74 * scale)}"
+              text-anchor="end" font-size="${Math.max(32, Math.round(48 * scale))}" font-weight="700" fill="${item.accent}" font-family="sans-serif">
               ${escapeXml(item.value)}
-            </text>
+            </text>` : `<text x="${x + kpiCardWidth / 2}" y="${y + kpiHeight / 2}"
+              text-anchor="middle" dominant-baseline="middle" font-size="${Math.max(32, Math.round(48 * scale))}" font-weight="700" fill="${item.accent}" font-family="sans-serif">
+              ${escapeXml(item.value)}
+            </text>`}
           </g>
         `;
       })
@@ -148,7 +152,10 @@ export class UninspectedMachinesRenderer implements Renderer {
     const paneGap = Math.round(10 * scale);
     const paneWidth = Math.floor((tableWidth - paneGap) / 2);
     const headerRowHeight = Math.max(26, Math.round(30 * scale));
-    const minBodyRowHeight = Math.max(18, Math.round(18 * scale));
+    // すべての列をタイトルと同じフォントサイズに統一
+    const baseBodyFontSize = Math.max(20, Math.round(30 * scale));
+    // フォントサイズに合わせて行の高さを調整（今の倍の高さ）
+    const minBodyRowHeight = Math.max(Math.round(baseBodyFontSize * 2.2), Math.max(18, Math.round(18 * scale)));
     const availableBodyHeight = height - tableTop - padding;
     const rowsPerColumnCapacity = Math.max(1, Math.floor((availableBodyHeight - headerRowHeight) / minBodyRowHeight));
     const displayCapacity = rowsPerColumnCapacity * 2;
@@ -156,11 +163,8 @@ export class UninspectedMachinesRenderer implements Renderer {
     const leftRowsCount = Math.ceil(rows.length / 2);
     const leftRows = rows.slice(0, leftRowsCount);
     const rightRows = rows.slice(leftRowsCount);
-    const maxRowsInColumn = Math.max(leftRows.length, rightRows.length, 1);
-    const bodyRowHeight = Math.max(
-      minBodyRowHeight,
-      Math.floor((availableBodyHeight - headerRowHeight) / maxRowsInColumn)
-    );
+    // 行の高さは最小値に固定（余白を増やさない）
+    const bodyRowHeight = minBodyRowHeight;
 
     const paneColumns = columns.slice(0, 3);
     const equalColWidth = Math.floor(paneWidth / paneColumns.length);
@@ -203,15 +207,16 @@ export class UninspectedMachinesRenderer implements Renderer {
               const baseRect = `<rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />`;
 
               const fontFamily = 'sans-serif';
-              const fontSize = Math.max(12, Math.round(14 * scale));
+              const fontSize = baseBodyFontSize;
 
               // 点検結果列: HTMLデモと同じ「チップ」表現（丸角+padding）で強調する
               let contentSvg = '';
               if (column === '点検結果' && value && value !== '未使用') {
                 const tone = resolveChipToneFromInspectionResult(value);
                 const colors = resolveChipColors(t, tone);
-                const chipPaddingX = Math.round(8 * scale);
-                const chipPaddingY = Math.round(4 * scale);
+                // Padding is clamped so SPLITでも潰れないようにする。
+                const chipPaddingX = Math.max(10, Math.round(10 * scale));
+                const chipPaddingY = Math.max(6, Math.round(6 * scale));
                 const chipHeight = Math.max(1, fontSize + chipPaddingY * 2);
                 const radius = Math.min(t.shape.radiusSm, Math.floor(chipHeight / 2));
                 const chipX = cellX + Math.round(6 * scale);
@@ -236,8 +241,8 @@ export class UninspectedMachinesRenderer implements Renderer {
                 contentSvg = chip.svg;
               } else {
                 contentSvg = `
-                  <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
-                    font-size="${fontSize}" font-weight="600" fill="${style.textColor}" font-family="${fontFamily}">
+                  <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight / 2)}"
+                    dominant-baseline="middle" font-size="${fontSize}" font-weight="600" fill="${style.textColor}" font-family="${fontFamily}">
                     ${escapeXml(value)}
                   </text>
                 `;
