@@ -11,9 +11,7 @@
       ansible.builtin.assert:
         that:
           - api_database_url is defined
-          - api_jwt_access_secret is defined
-          - api_jwt_refresh_secret is defined
-        fail_msg: "API環境変数が定義されていません（inventory.ymlを確認してください）"
+        fail_msg: "API環境変数（DATABASE_URL）が定義されていません（inventory.ymlを確認してください）"
       when: '"server" in group_names'
 
     - name: Validate required Web variables
@@ -46,6 +44,86 @@
         state: directory
         mode: '0755'
       when: '"server" in group_names'
+
+    - name: Stat existing API .env (for preserving JWT secrets)
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/apps/api/.env"
+      register: api_env_stat
+      when: '"server" in group_names'
+
+    - name: Read existing API .env (for preserving JWT secrets)
+      ansible.builtin.slurp:
+        path: "{{ repo_path }}/apps/api/.env"
+      register: api_env_slurp
+      when:
+        - '"server" in group_names'
+        - api_env_stat.stat.exists | default(false)
+      no_log: true
+
+    - name: Extract existing JWT secrets from API .env
+      ansible.builtin.set_fact:
+        existing_api_jwt_access_secret: >-
+          {{
+            (
+              (
+                (api_env_slurp.content | b64decode)
+                | regex_findall('^JWT_ACCESS_SECRET=(.*)$', multiline=True)
+              )
+              | first
+            )
+            | default('')
+          }}
+        existing_api_jwt_refresh_secret: >-
+          {{
+            (
+              (
+                (api_env_slurp.content | b64decode)
+                | regex_findall('^JWT_REFRESH_SECRET=(.*)$', multiline=True)
+              )
+              | first
+            )
+            | default('')
+          }}
+      when:
+        - '"server" in group_names'
+        - api_env_stat.stat.exists | default(false)
+      no_log: true
+
+    - name: Resolve effective JWT secrets for API .env
+      ansible.builtin.set_fact:
+        api_jwt_access_secret_effective: >-
+          {{
+            (
+              (
+                (api_jwt_access_secret | default('') | length) >= 32
+                and ((api_jwt_access_secret | default('') | regex_search('change-me|test-|dev-|example')) == None)
+              )
+              | ternary((api_jwt_access_secret | default('')), (existing_api_jwt_access_secret | default('')))
+            )
+          }}
+        api_jwt_refresh_secret_effective: >-
+          {{
+            (
+              (
+                (api_jwt_refresh_secret | default('') | length) >= 32
+                and ((api_jwt_refresh_secret | default('') | regex_search('change-me|test-|dev-|example')) == None)
+              )
+              | ternary((api_jwt_refresh_secret | default('')), (existing_api_jwt_refresh_secret | default('')))
+            )
+          }}
+      when: '"server" in group_names'
+      no_log: true
+
+    - name: Validate effective JWT secrets (must be strong in production)
+      ansible.builtin.assert:
+        that:
+          - (api_jwt_access_secret_effective | length) >= 32
+          - (api_jwt_refresh_secret_effective | length) >= 32
+        fail_msg: >-
+          JWT secrets are missing or weak.
+          Set strong secrets in Ansible vars (vault_api_jwt_*), or ensure existing {{ repo_path }}/apps/api/.env has strong JWT_*_SECRET.
+      when: '"server" in group_names'
+      no_log: true
 
     - name: Deploy API environment variables
       ansible.builtin.template:
