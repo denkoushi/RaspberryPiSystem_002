@@ -3,18 +3,8 @@ import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { estimateMaxCharsPerLine, truncateToFit } from '../_text/text-fit.js';
 import { insetRect } from '../_layout/rect.js';
+import { createMd3Tokens } from '../_design-system/index.js';
 
-const BACKGROUND = '#020617';
-const TEXT_COLOR = '#f8fafc';
-const SUB_TEXT_COLOR = '#94a3b8';
-const BORDER_COLOR = '#334155';
-const CARD_BG = 'rgba(255,255,255,0.06)';
-const COMPLETE_COLOR = '#10b981'; // 100%
-const PROGRESS_BLUE = '#3b82f6'; // 71-99%
-const PROGRESS_YELLOW = '#f59e0b'; // 31-70%
-const INCOMPLETE_COLOR = '#ef4444'; // 0-30%
-const NEUTRAL_COLOR = '#38bdf8';
-const BAR_BG = '#1e293b';
 const DEFAULT_MAX_INCOMPLETE_PARTS_PER_CARD = 6;
 const DEFAULT_SHOW_INCOMPLETE_PARTS = true;
 const DEFAULT_INCOMPLETE_LINE_STYLE = 'bullets';
@@ -34,12 +24,13 @@ function escapeXml(value: string): string {
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
+  const t = createMd3Tokens({ width, height });
   const fontSize = Math.max(24, Math.round(width / 40));
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${BACKGROUND}" />
+      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${fontSize}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         ${escapeXml(message)}
       </text>
     </svg>
@@ -59,12 +50,19 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function accentForPercent(percentRaw: number): string {
+type ProgressAccentPalette = {
+  complete: string;
+  high: string;
+  mid: string;
+  low: string;
+};
+
+function accentForPercent(percentRaw: number, palette: ProgressAccentPalette): string {
   const percent = clampNumber(Math.round(percentRaw), 0, 100);
-  if (percent >= 100) return COMPLETE_COLOR;
-  if (percent >= 71) return PROGRESS_BLUE;
-  if (percent >= 31) return PROGRESS_YELLOW;
-  return INCOMPLETE_COLOR;
+  if (percent >= 100) return palette.complete;
+  if (percent >= 71) return palette.high;
+  if (percent >= 31) return palette.mid;
+  return palette.low;
 }
 
 function truncateText(value: string, maxChars: number): string {
@@ -90,6 +88,7 @@ function buildKpiInlineSvg(options: {
   yBaseline: number;
   scale: number;
   stats: Array<{ label: string; value: string; color: string }>;
+  chip: { fill: string; stroke: string; text: string };
 }): string {
   const labelShortMap: Record<string, string> = {
     総製番数: '製番',
@@ -138,9 +137,9 @@ function buildKpiInlineSvg(options: {
     <g>
       <rect x="${chipX}" y="${chipY}" width="${chipWidth}" height="${chipHeight}"
         rx="${Math.round(10 * options.scale)}" ry="${Math.round(10 * options.scale)}"
-        fill="rgba(255,255,255,0.05)" stroke="${BORDER_COLOR}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
+        fill="${options.chip.fill}" stroke="${options.chip.stroke}" stroke-width="${Math.max(1, Math.round(2 * options.scale))}" />
       <text x="${textX}" y="${textY}"
-        font-size="${fontSize}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="700" fill="${options.chip.text}" font-family="sans-serif">
         ${escapeXml(displayText)}
       </text>
     </g>
@@ -160,6 +159,7 @@ export class ProgressListRenderer implements Renderer {
     const table = data as TableVisualizationData;
     const width = config.width;
     const height = config.height;
+    const t = createMd3Tokens({ width, height });
     // タイトルを「生産進捗」に変更
     const title = config.title ?? '生産進捗';
     const rows = table.rows ?? [];
@@ -179,7 +179,7 @@ export class ProgressListRenderer implements Renderer {
       return { buffer, contentType: 'image/jpeg' };
     }
 
-    const scale = width / 1920;
+    const scale = t.scale;
     const padding = Math.round(24 * scale);
     // タイトルのみのヘッダー高さに調整（サブタイトル削除）
     const headerHeight = Math.round(80 * scale);
@@ -261,10 +261,10 @@ export class ProgressListRenderer implements Renderer {
     const visibleRows = rows.slice(0, visibleCapacity);
 
     const stats = [
-      { label: '総製番数', value: String(totalSeibanCount), color: NEUTRAL_COLOR },
-      { label: '総部品数', value: String(totalParts), color: NEUTRAL_COLOR },
-      { label: '完了部品数', value: String(completedParts), color: COMPLETE_COLOR },
-      { label: '進捗率', value: `${progressRate}%`, color: NEUTRAL_COLOR },
+      { label: '総製番数', value: String(totalSeibanCount), color: t.colors.status.info },
+      { label: '総部品数', value: String(totalParts), color: t.colors.status.info },
+      { label: '完了部品数', value: String(completedParts), color: t.colors.status.success },
+      { label: '進捗率', value: `${progressRate}%`, color: t.colors.status.info },
     ];
 
     // HTMLのスタイルに合わせてタイトルフォントサイズを48pxに変更（以前は34px）
@@ -277,6 +277,7 @@ export class ProgressListRenderer implements Renderer {
       yBaseline: titleY,
       scale,
       stats,
+      chip: { fill: t.colors.card.fill, stroke: t.colors.grid, text: t.colors.text.primary },
     });
 
     const overflowBadgeSvg =
@@ -284,7 +285,7 @@ export class ProgressListRenderer implements Renderer {
         ? `
           <text x="${width - padding}" y="${height - Math.round(12 * scale)}"
             text-anchor="end" font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700"
-            fill="#fcd34d" font-family="sans-serif">
+            fill="${t.colors.status.warning}" font-family="sans-serif">
             さらに ${overflowCount} 件
           </text>
         `
@@ -306,7 +307,12 @@ export class ProgressListRenderer implements Renderer {
         const status = String(row.status ?? '未完了');
 
         const isCompleted = status === '完了';
-        const accent = accentForPercent(percent);
+        const accent = accentForPercent(percent, {
+          complete: t.colors.status.success,
+          high: t.colors.status.info,
+          mid: t.colors.status.warning,
+          low: t.colors.status.error,
+        });
         const partsFromMetadata = metadata.incompletePartsBySeiban?.[fseiban];
         const fallbackParts = parsePartsFromText(incompleteParts);
         const partsList = partsFromMetadata ?? fallbackParts;
@@ -389,7 +395,7 @@ export class ProgressListRenderer implements Renderer {
             const textValue = truncateToFit(line, itemMaxChars);
             return `
               <text x="${partsArea.x}" y="${yy}"
-                font-size="${partsFontPreferred}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+                font-size="${partsFontPreferred}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
                 ${escapeXml(textValue)}
               </text>
             `;
@@ -400,13 +406,13 @@ export class ProgressListRenderer implements Renderer {
         const contentSvg = `
           <g clip-path="url(#${clipId})">
             <text x="${x + cardPaddingX}" y="${seibanY}"
-              font-size="${seibanFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${seibanFont}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
               ${escapeXml(fseiban)}
             </text>
             ${
               labelText
                 ? `<text x="${partsX}" y="${labelY}"
-                    font-size="${labelFont}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+                    font-size="${labelFont}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
                     ${escapeXml(labelText)}
                   </text>`
                 : ''
@@ -419,7 +425,7 @@ export class ProgressListRenderer implements Renderer {
             </text>
 
             <rect x="${barX}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="${Math.round(barHeight / 2)}" ry="${Math.round(barHeight / 2)}"
-              fill="${BAR_BG}" />
+              fill="${t.colors.surface.containerHigh}" />
             <rect x="${barX}" y="${barY}" width="${fillWidth}" height="${barHeight}" rx="${Math.round(barHeight / 2)}" ry="${Math.round(barHeight / 2)}"
               fill="${accent}" />
           </g>
@@ -437,7 +443,7 @@ export class ProgressListRenderer implements Renderer {
               </clipPath>
             </defs>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${Math.round(12 * scale)}" ry="${Math.round(12 * scale)}" fill="${CARD_BG}" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
+              rx="${Math.round(12 * scale)}" ry="${Math.round(12 * scale)}" fill="${t.colors.card.fill}" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
             ${contentSvg}
           </g>
         `;
@@ -446,9 +452,9 @@ export class ProgressListRenderer implements Renderer {
 
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${BACKGROUND}" />
+        <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
         <text x="${padding}" y="${titleY}"
-          font-size="${titleFont}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${titleFont}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${kpiInlineSvg}

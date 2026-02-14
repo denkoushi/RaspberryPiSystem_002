@@ -1,9 +1,7 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { KpiVisualizationData, RenderConfig, RenderOutput, VisualizationData } from '../../visualization.types.js';
-
-const BACKGROUND = '#020617';
-const TEXT_COLOR = '#f8fafc';
+import { createMd3Tokens } from '../_design-system/index.js';
 
 function escapeXml(value: string): string {
   return value
@@ -15,12 +13,13 @@ function escapeXml(value: string): string {
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
+  const t = createMd3Tokens({ width, height });
   const fontSize = Math.max(24, Math.round(width / 40));
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${BACKGROUND}" />
+      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${fontSize}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         ${escapeXml(message)}
       </text>
     </svg>
@@ -42,11 +41,12 @@ export class KpiCardsRenderer implements Renderer {
     const height = config.height;
     const title = config.title ?? '可視化';
 
-    const goodColor = config.colors?.good ?? '#10b981';
-    const badColor = config.colors?.bad ?? '#ef4444';
-    const neutralColor = config.colors?.neutral ?? '#38bdf8';
+    const t = createMd3Tokens({ width, height });
+    const goodColor = config.colors?.good ?? t.colors.status.success;
+    const badColor = config.colors?.bad ?? t.colors.status.error;
+    const neutralColor = config.colors?.neutral ?? t.colors.status.info;
 
-    const scale = width / 1920;
+    const scale = t.scale;
     const padding = Math.round(24 * scale);
     const headerHeight = Math.round(72 * scale);
     const cardGap = Math.round(16 * scale);
@@ -75,9 +75,9 @@ export class KpiCardsRenderer implements Renderer {
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${cardRadius}" ry="${cardRadius}" fill="rgba(255,255,255,0.06)" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
+              rx="${cardRadius}" ry="${cardRadius}" fill="${t.colors.card.fill}" stroke="${accent}" stroke-width="${Math.max(2, Math.round(2 * scale))}" />
             <text x="${x + Math.round(16 * scale)}" y="${y + Math.round(30 * scale)}"
-              font-size="${labelFont}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${labelFont}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
               ${escapeXml(item.label)}
             </text>
             <text x="${x + Math.round(16 * scale)}" y="${y + Math.round(70 * scale)}"
@@ -87,7 +87,7 @@ export class KpiCardsRenderer implements Renderer {
             ${
               item.note
                 ? `<text x="${x + Math.round(16 * scale)}" y="${y + Math.round(100 * scale)}"
-                    font-size="${noteFont}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+                    font-size="${noteFont}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
                     ${escapeXml(item.note)}
                   </text>`
                 : ''
@@ -99,16 +99,16 @@ export class KpiCardsRenderer implements Renderer {
 
     const emptySvg = `
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${Math.max(24, Math.round(28 * scale))}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${Math.max(24, Math.round(28 * scale))}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         表示データがありません
       </text>
     `;
 
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${BACKGROUND}" />
+        <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
         <text x="${padding}" y="${padding + Math.round(36 * scale)}"
-          font-size="${Math.max(20, Math.round(28 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${Math.max(20, Math.round(28 * scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${items.length > 0 ? cardsSvg : emptySvg}

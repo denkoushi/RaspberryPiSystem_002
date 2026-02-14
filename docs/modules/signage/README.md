@@ -509,6 +509,7 @@ model SignageEmergency {
 ### 注意事項
 
 - サイネージ表示はサーバー側でSVG→JPEG変換されるため、カラーテーマの変更は`signage.renderer.ts`で実装
+- 可視化ダッシュボード/CSVダッシュボードのSVGテンプレの共通デザイン仕様（MD3ダーク）は `apps/api/src/services/visualization/renderers/_design-system/md3.ts` にトークンとして集約（レンダラー側はトークン参照）
 - 工具と計測機器の視覚的識別は現状の藍系背景を維持しつつ、コントラスト比を向上させる
 
 **実装状況**: 

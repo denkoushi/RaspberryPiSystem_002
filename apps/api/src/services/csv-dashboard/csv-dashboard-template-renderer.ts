@@ -4,6 +4,7 @@ import type {
   CardGridTemplateConfig,
 } from './csv-dashboard.types.js';
 import { env } from '../../config/env.js';
+import { createMd3Tokens } from '../visualization/renderers/_design-system/index.js';
 
 /**
  * 描画時に最低限必要な列定義プロパティ（完全なColumnDefinitionは不要）
@@ -48,7 +49,8 @@ export class CsvDashboardTemplateRenderer {
     // 表示列の定義を取得（順序も反映）
     const canvasWidth = context?.canvasWidth ?? DEFAULT_CANVAS_WIDTH;
     const canvasHeight = context?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT;
-    const scale = canvasWidth / DEFAULT_CANVAS_WIDTH;
+    const t = createMd3Tokens({ width: canvasWidth, height: canvasHeight });
+    const scale = t.scale;
 
     const selectedColumnDefs = config.displayColumns
       .map((internalName) => columnDefinitions.find((col) => col.internalName === internalName))
@@ -95,10 +97,10 @@ export class CsvDashboardTemplateRenderer {
           const x = columnX[index] ?? 0;
           const w = columnWidths[index] ?? Math.floor(canvasWidth / displayColumns.length);
           return `
-      <rect x="${x}" y="0" width="${w}" height="${headerHeight}" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+      <rect x="${x}" y="0" width="${w}" height="${headerHeight}" fill="${t.colors.table.headerFill}" stroke="${t.colors.grid}" stroke-width="2"/>
       <text x="${x + w / 2}" y="${headerHeight / 2 + 2}"
             font-family="Arial, sans-serif" font-size="${Math.round(config.fontSize + 4)}" font-weight="bold"
-            fill="#ffffff" text-anchor="middle" dominant-baseline="middle">
+            fill="${t.colors.text.primary}" text-anchor="middle" dominant-baseline="middle">
         ${this.escapeXml(headerLabel)}
       </text>
     `;
@@ -128,11 +130,11 @@ export class CsvDashboardTemplateRenderer {
             return `
         <rect x="${x}" y="${y}"
               width="${w}" height="${rowHeight}"
-              fill="${rowIndex % 2 === 0 ? '#0f172a' : '#1e293b'}"
-              stroke="#334155" stroke-width="1"/>
+              fill="${rowIndex % 2 === 0 ? t.colors.table.rowFillEven : t.colors.table.rowFillOdd}"
+              stroke="${t.colors.grid}" stroke-width="1"/>
         <text x="${x + cellPaddingX}" y="${y + rowHeight / 2 + 2}"
               font-family="Arial, sans-serif" font-size="${effectiveFontSize}"
-              fill="#ffffff" dominant-baseline="middle">
+              fill="${t.colors.text.primary}" dominant-baseline="middle">
           ${this.escapeXml(textValue)}
         </text>
       `;
@@ -144,9 +146,9 @@ export class CsvDashboardTemplateRenderer {
 
     return `
     <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${canvasWidth}" height="${canvasHeight}" fill="#0a0e27"/>
+      <rect width="${canvasWidth}" height="${canvasHeight}" fill="${t.colors.surface.background}"/>
       <text x="${canvasWidth / 2}" y="${topTitleHeight / 2 + Math.round(6 * scale)}" font-family="Arial, sans-serif" font-size="${Math.max(18, Math.round(36 * scale))}" font-weight="bold"
-            fill="#ffffff" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
+            fill="${t.colors.text.primary}" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
       <g transform="translate(0, ${tableTop})">
         ${headerCells}
         ${dataRows}
@@ -177,6 +179,7 @@ export class CsvDashboardTemplateRenderer {
     const cardGap = 20;
     const totalWidth = gridColumns * cardWidth + (gridColumns - 1) * cardGap;
     const totalHeight = gridRows * cardHeight + (gridRows - 1) * cardGap + 80;
+    const t = createMd3Tokens({ width: totalWidth, height: totalHeight });
 
     // 表示項目の定義を取得
     const displayFields = config.displayFields
@@ -197,7 +200,7 @@ export class CsvDashboardTemplateRenderer {
             (field, fieldIndex) => `
           <text x="${x + 20}" y="${y + 40 + fieldIndex * (config.fontSize + 10)}" 
                 font-family="Arial, sans-serif" font-size="${config.fontSize}" 
-                fill="#ffffff">
+                fill="${t.colors.text.primary}">
             <tspan font-weight="bold">${this.escapeXml(field.displayName)}:</tspan>
             <tspan x="${x + 200}">${this.escapeXml(String(row[field.internalName] ?? ''))}</tspan>
           </text>
@@ -207,7 +210,7 @@ export class CsvDashboardTemplateRenderer {
 
         return `
         <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" 
-              fill="#1e293b" stroke="#334155" stroke-width="2" rx="8"/>
+              fill="${t.colors.surface.container}" stroke="${t.colors.grid}" stroke-width="2" rx="8"/>
         ${cardContent}
       `;
       })
@@ -215,9 +218,9 @@ export class CsvDashboardTemplateRenderer {
 
     return `
     <svg width="${totalWidth}" height="${totalHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${totalWidth}" height="${totalHeight}" fill="#0a0e27"/>
+      <rect width="${totalWidth}" height="${totalHeight}" fill="${t.colors.surface.background}"/>
       <text x="${totalWidth / 2}" y="30" font-family="Arial, sans-serif" font-size="28" font-weight="bold" 
-            fill="#ffffff" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
+            fill="${t.colors.text.primary}" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
       ${cards}
     </svg>
     `;
@@ -227,13 +230,14 @@ export class CsvDashboardTemplateRenderer {
    * 空メッセージをレンダリング
    */
   private renderEmptyMessage(dashboardName: string, message: string): string {
+    const t = createMd3Tokens({ width: DEFAULT_CANVAS_WIDTH, height: DEFAULT_CANVAS_HEIGHT });
     return `
     <svg width="${DEFAULT_CANVAS_WIDTH}" height="${DEFAULT_CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${DEFAULT_CANVAS_WIDTH}" height="${DEFAULT_CANVAS_HEIGHT}" fill="#0a0e27"/>
+      <rect width="${DEFAULT_CANVAS_WIDTH}" height="${DEFAULT_CANVAS_HEIGHT}" fill="${t.colors.surface.background}"/>
       <text x="${DEFAULT_CANVAS_WIDTH / 2}" y="400" font-family="Arial, sans-serif" font-size="32" font-weight="bold"
-            fill="#ffffff" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
+            fill="${t.colors.text.primary}" text-anchor="middle">${this.escapeXml(dashboardName)}</text>
       <text x="${DEFAULT_CANVAS_WIDTH / 2}" y="500" font-family="Arial, sans-serif" font-size="24"
-            fill="#94a3b8" text-anchor="middle">${this.escapeXml(message)}</text>
+            fill="${t.colors.text.secondary}" text-anchor="middle">${this.escapeXml(message)}</text>
     </svg>
     `;
   }

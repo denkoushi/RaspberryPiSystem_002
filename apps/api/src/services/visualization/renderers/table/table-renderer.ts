@@ -1,10 +1,7 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
-
-const BACKGROUND = '#020617';
-const TEXT_COLOR = '#f8fafc';
-const GRID_COLOR = '#334155';
+import { createMd3Tokens } from '../_design-system/index.js';
 
 function escapeXml(value: string): string {
   return value
@@ -16,12 +13,13 @@ function escapeXml(value: string): string {
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
+  const t = createMd3Tokens({ width, height });
   const fontSize = Math.max(24, Math.round(width / 40));
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${BACKGROUND}" />
+      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${fontSize}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         ${escapeXml(message)}
       </text>
     </svg>
@@ -42,7 +40,8 @@ export class TableRenderer implements Renderer {
     const width = config.width;
     const height = config.height;
     const title = config.title ?? '可視化';
-    const scale = width / 1920;
+    const t = createMd3Tokens({ width, height });
+    const scale = t.scale;
     const padding = Math.round(24 * scale);
     const headerHeight = Math.round(72 * scale);
     const rowHeight = Math.max(28, Math.round(34 * scale));
@@ -82,8 +81,8 @@ export class TableRenderer implements Renderer {
         const cellWidth = normalizedWidths[index] ?? fallbackWidth;
         const textX = xCursor + 8;
         const textY = padding + headerHeight + Math.round(columnHeaderHeight * 0.7);
-        const rect = `<rect x="${xCursor}" y="${padding + headerHeight}" width="${cellWidth}" height="${columnHeaderHeight}" fill="${GRID_COLOR}" />`;
-        const text = `<text x="${textX}" y="${textY}" font-size="${Math.max(12, Math.round(16 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">${escapeXml(column)}</text>`;
+        const rect = `<rect x="${xCursor}" y="${padding + headerHeight}" width="${cellWidth}" height="${columnHeaderHeight}" fill="${t.colors.table.headerFill}" />`;
+        const text = `<text x="${textX}" y="${textY}" font-size="${t.typography.header.size}" font-weight="${t.typography.header.weight}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeXml(column)}</text>`;
         const block = `${rect}${text}`;
         xCursor += cellWidth;
         return block;
@@ -101,8 +100,8 @@ export class TableRenderer implements Renderer {
             const textValue = value === null || value === undefined ? '' : String(value);
             const textX = cellX + 8;
             const textY = cellY + Math.round(rowHeight * 0.7);
-            const rect = `<rect x="${cellX}" y="${cellY}" width="${cellWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#0f172a' : '#111827'}" />`;
-            const text = `<text x="${textX}" y="${textY}" font-size="${Math.max(11, Math.round(15 * scale))}" fill="${TEXT_COLOR}" font-family="sans-serif">${escapeXml(textValue)}</text>`;
+            const rect = `<rect x="${cellX}" y="${cellY}" width="${cellWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? t.colors.table.rowFillEven : t.colors.table.rowFillOdd}" />`;
+            const text = `<text x="${textX}" y="${textY}" font-size="${t.typography.body.size}" font-weight="${t.typography.body.weight}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeXml(textValue)}</text>`;
             cellX += cellWidth;
             return `${rect}${text}`;
           })
@@ -116,7 +115,9 @@ export class TableRenderer implements Renderer {
         (lines, widthValue, index) => {
           if (index === 0) return lines;
           const x = padding + normalizedWidths.slice(0, index).reduce((sum, v) => sum + v, 0);
-          lines.push(`<line x1="${x}" y1="${padding + headerHeight}" x2="${x}" y2="${padding + headerHeight + tableHeight}" stroke="${GRID_COLOR}" stroke-width="1" />`);
+          lines.push(
+            `<line x1="${x}" y1="${padding + headerHeight}" x2="${x}" y2="${padding + headerHeight + tableHeight}" stroke="${t.colors.grid}" stroke-width="1" />`
+          );
           return lines;
         },
         [] as string[]
@@ -125,9 +126,9 @@ export class TableRenderer implements Renderer {
 
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${BACKGROUND}" />
+        <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
         <text x="${padding}" y="${padding + Math.round(36 * scale)}"
-          font-size="${Math.max(20, Math.round(28 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${t.typography.title.size}" font-weight="${t.typography.title.weight}" fill="${t.colors.text.primary}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${headerLabelsSvg}

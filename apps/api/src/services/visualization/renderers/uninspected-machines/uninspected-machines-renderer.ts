@@ -1,18 +1,7 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
-
-const BACKGROUND = '#020617';
-const TEXT_COLOR = '#f8fafc';
-const SUB_TEXT_COLOR = '#94a3b8';
-const GRID_COLOR = '#334155';
-const CARD_BG = 'rgba(255,255,255,0.06)';
-const CARD_BORDER = 'rgba(255,255,255,0.12)';
-const ALERT_COLOR = '#ef4444';
-const OK_COLOR = '#10b981';
-const RESULT_OK_BG = '#2563eb';
-const RESULT_ALERT_BG = '#dc2626';
-const RESULT_TEXT_ON_COLOR = '#ffffff';
+import { createMd3Tokens } from '../_design-system/index.js';
 
 type UninspectedMetadata = {
   date?: string;
@@ -40,29 +29,36 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function resolveInspectionResultCellStyle(column: string, value: string, rowIndex: number): { fill: string; textColor: string } {
-  const baseFill = rowIndex % 2 === 0 ? '#0f172a' : '#111827';
+function resolveInspectionResultCellStyle(
+  column: string,
+  value: string,
+  rowIndex: number,
+  t: ReturnType<typeof createMd3Tokens>
+): { fill: string; textColor: string } {
+  const baseFill = rowIndex % 2 === 0 ? t.colors.table.rowFillEven : t.colors.table.rowFillOdd;
   if (column !== '点検結果') {
-    return { fill: baseFill, textColor: TEXT_COLOR };
+    return { fill: baseFill, textColor: t.colors.text.primary };
   }
   if (value === '未使用') {
-    return { fill: baseFill, textColor: TEXT_COLOR };
+    return { fill: baseFill, textColor: t.colors.text.primary };
   }
   const abnormalMatch = value.match(/異常\s*(\d+)/);
   const abnormalCount = abnormalMatch ? Number(abnormalMatch[1]) : 0;
   if (abnormalCount >= 1) {
-    return { fill: RESULT_ALERT_BG, textColor: RESULT_TEXT_ON_COLOR };
+    return { fill: t.colors.status.errorContainer, textColor: t.colors.status.onErrorContainer };
   }
-  return { fill: RESULT_OK_BG, textColor: RESULT_TEXT_ON_COLOR };
+  // 異常0件は青系（情報）で強調
+  return { fill: t.colors.status.infoContainer, textColor: t.colors.status.onInfoContainer };
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
+  const t = createMd3Tokens({ width, height });
   const fontSize = Math.max(24, Math.round(width / 40));
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${BACKGROUND}" />
+      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${fontSize}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         ${escapeXml(message)}
       </text>
     </svg>
@@ -90,7 +86,8 @@ export class UninspectedMachinesRenderer implements Renderer {
     const width = config.width;
     const height = config.height;
     const title = config.title ?? '加工機点検状況';
-    const scale = width / 1920;
+    const t = createMd3Tokens({ width, height });
+    const scale = t.scale;
     const padding = Math.round(12 * scale);
     const headerHeight = Math.round(56 * scale);
     const kpiTop = padding + headerHeight;
@@ -107,10 +104,10 @@ export class UninspectedMachinesRenderer implements Renderer {
     const targetDate = metadata.date ?? '-';
 
     const kpiItems = [
-      { label: '対象日', value: targetDate, accent: SUB_TEXT_COLOR },
-      { label: '稼働中', value: String(total), accent: TEXT_COLOR },
-      { label: '点検済み', value: String(inspected), accent: OK_COLOR },
-      { label: '未点検', value: String(uninspected), accent: uninspected > 0 ? ALERT_COLOR : OK_COLOR },
+      { label: '対象日', value: targetDate, accent: t.colors.text.secondary },
+      { label: '稼働中', value: String(total), accent: t.colors.text.primary },
+      { label: '点検済み', value: String(inspected), accent: t.colors.status.success },
+      { label: '未点検', value: String(uninspected), accent: uninspected > 0 ? t.colors.status.error : t.colors.status.success },
     ];
 
     const kpiCardWidth = Math.floor((width - padding * 2 - kpiGap * (kpiItems.length - 1)) / kpiItems.length);
@@ -122,9 +119,9 @@ export class UninspectedMachinesRenderer implements Renderer {
           <g>
             <rect x="${x}" y="${y}" width="${kpiCardWidth}" height="${kpiHeight}"
               rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
-              fill="${CARD_BG}" stroke="${CARD_BORDER}" />
+              fill="${t.colors.card.fill}" stroke="${t.colors.card.border}" />
             <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(30 * scale)}"
-              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
               ${escapeXml(item.label)}
             </text>
             <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(74 * scale)}"
@@ -179,9 +176,9 @@ export class UninspectedMachinesRenderer implements Renderer {
         .map((column, index) => {
           const colWidth = colWidths[index] ?? equalColWidth;
           const cell = `
-            <rect x="${headerX}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${GRID_COLOR}" />
+            <rect x="${headerX}" y="${tableTop}" width="${colWidth}" height="${headerRowHeight}" fill="${t.colors.table.headerFill}" />
             <text x="${headerX + Math.round(6 * scale)}" y="${tableTop + Math.round(headerRowHeight * 0.7)}"
-              font-size="${Math.max(13, Math.round(15 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${Math.max(13, Math.round(15 * scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
               ${escapeXml(column)}
             </text>
           `;
@@ -199,7 +196,7 @@ export class UninspectedMachinesRenderer implements Renderer {
               const colWidth = colWidths[colIndex] ?? equalColWidth;
               const raw = row[column];
               const value = raw === null || raw === undefined ? '' : String(raw);
-              const style = resolveInspectionResultCellStyle(column, value, rowIndex);
+              const style = resolveInspectionResultCellStyle(column, value, rowIndex, t);
               const cell = `
                 <rect x="${cellX}" y="${y}" width="${colWidth}" height="${bodyRowHeight}" fill="${style.fill}" />
                 <text x="${cellX + Math.round(6 * scale)}" y="${y + Math.round(bodyRowHeight * 0.7)}"
@@ -223,7 +220,7 @@ export class UninspectedMachinesRenderer implements Renderer {
     const truncatedMessage =
       allRows.length > rows.length
         ? `<text x="${width - padding}" y="${tableTop - Math.round(6 * scale)}" text-anchor="end"
-            font-size="${Math.max(11, Math.round(13 * scale))}" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+            font-size="${Math.max(11, Math.round(13 * scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">
             表示中 ${rows.length}/${allRows.length} 件
           </text>`
         : '';
@@ -231,16 +228,16 @@ export class UninspectedMachinesRenderer implements Renderer {
     const emptyMessage =
       rows.length === 0
         ? `<text x="${padding}" y="${tableTop + headerRowHeight + Math.round(34 * scale)}"
-            font-size="${Math.max(14, Math.round(18 * scale))}" fill="${SUB_TEXT_COLOR}" font-family="sans-serif">
+            font-size="${Math.max(14, Math.round(18 * scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">
             対象加工機はありません
           </text>`
         : '';
 
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${BACKGROUND}" />
+        <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
         <text x="${padding}" y="${padding + Math.round(36 * scale)}"
-          font-size="${Math.max(20, Math.round(30 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${Math.max(20, Math.round(30 * scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${kpiSvg}

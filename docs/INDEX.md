@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-14）
+
+- **✅ サイネージ/可視化SVGの共通デザイン仕様（Material Design 3 ダーク）を導入**: 可視化レンダラーとCSVダッシュボードSVGテンプレの色・タイポグラフィ等をトークン化し、ハードコード分散を解消する方針を採用。トークンは `apps/api/src/services/visualization/renderers/_design-system/md3.ts` に集約。意思決定は [decisions/ADR-20260214-signage-design-system-md3.md](./decisions/ADR-20260214-signage-design-system-md3.md) 、移行チェックリストは [plans/signage-md3-design-system-migration.md](./plans/signage-md3-design-system-migration.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-13）
 
 - **✅ コード品質改善フェーズ4第五弾（5本実装）+ B対応完了**: `alerts/tools` サービス層テスト補完、`backup/imports` 依存境界ルール第2段階、性能テスト並列ミニケース追加、CIカバレッジ可視化（`api-coverage` artifact）を実装。さらに B対応（api-only / minor-safe）として `coverage-v8` から `coverage-istanbul` へ切替し、`test:coverage` を provider 明示で安定化。**ローカル検証**: 追加分テスト（alerts 14件、tools 66件、performance 11件）成功、`pnpm --filter @raspi-system/api test/lint/build` すべて成功、`test:coverage` もローカル成功。**トラブルシューティング**: `test-exclude>glob` override を外すと `ERR_INVALID_ARG_TYPE` が再発するため、削除トライをロールバックして維持。詳細は [knowledge-base/api.md#kb-258](./knowledge-base/api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) / [knowledge-base/index.md](./knowledge-base/index.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。

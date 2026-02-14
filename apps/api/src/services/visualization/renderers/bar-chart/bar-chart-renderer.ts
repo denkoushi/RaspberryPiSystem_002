@@ -1,9 +1,7 @@
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, SeriesVisualizationData, VisualizationData } from '../../visualization.types.js';
-
-const BACKGROUND = '#020617';
-const TEXT_COLOR = '#f8fafc';
+import { createMd3Tokens } from '../_design-system/index.js';
 
 function escapeXml(value: string): string {
   return value
@@ -15,12 +13,13 @@ function escapeXml(value: string): string {
 }
 
 function buildMessageSvg(message: string, width: number, height: number): string {
+  const t = createMd3Tokens({ width, height });
   const fontSize = Math.max(24, Math.round(width / 40));
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${BACKGROUND}" />
+      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${fontSize}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${fontSize}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         ${escapeXml(message)}
       </text>
     </svg>
@@ -41,7 +40,8 @@ export class BarChartRenderer implements Renderer {
     const width = config.width;
     const height = config.height;
     const title = config.title ?? '可視化';
-    const scale = width / 1920;
+    const t = createMd3Tokens({ width, height });
+    const scale = t.scale;
 
     const padding = Math.round(24 * scale);
     const headerHeight = Math.round(72 * scale);
@@ -57,7 +57,8 @@ export class BarChartRenderer implements Renderer {
     const maxValue = Math.max(1, ...values);
 
     const barHeight = Math.max(22, Math.floor((chartHeight - barGap * Math.max(0, values.length - 1)) / Math.max(values.length, 1)));
-    const barColor = dataset?.isGood === false ? (config.colors?.bad ?? '#ef4444') : (config.colors?.good ?? '#38bdf8');
+    const barColor =
+      dataset?.isGood === false ? (config.colors?.bad ?? t.colors.status.error) : (config.colors?.good ?? t.colors.status.info);
 
     const barsSvg = values
       .map((value, index) => {
@@ -72,13 +73,13 @@ export class BarChartRenderer implements Renderer {
         return `
           <g>
             <text x="${padding}" y="${y + Math.round(barHeight * 0.7)}"
-              font-size="${labelFont}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${labelFont}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
               ${escapeXml(label)}
             </text>
             <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}"
               rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" fill="${barColor}" />
             <text x="${x + barWidth + Math.round(12 * scale)}" y="${y + Math.round(barHeight * 0.7)}"
-              font-size="${valueFont}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+              font-size="${valueFont}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
               ${escapeXml(valueText)}
             </text>
           </g>
@@ -88,16 +89,16 @@ export class BarChartRenderer implements Renderer {
 
     const emptySvg = `
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
-        font-size="${Math.max(24, Math.round(28 * scale))}" font-weight="600" fill="${TEXT_COLOR}" font-family="sans-serif">
+        font-size="${Math.max(24, Math.round(28 * scale))}" font-weight="600" fill="${t.colors.text.primary}" font-family="sans-serif">
         表示データがありません
       </text>
     `;
 
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${BACKGROUND}" />
+        <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
         <text x="${padding}" y="${padding + Math.round(36 * scale)}"
-          font-size="${Math.max(20, Math.round(28 * scale))}" font-weight="700" fill="${TEXT_COLOR}" font-family="sans-serif">
+          font-size="${Math.max(20, Math.round(28 * scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
           ${escapeXml(title)}
         </text>
         ${values.length > 0 ? barsSvg : emptySvg}

@@ -15,7 +15,8 @@ const baseConfig: TableTemplateConfig = {
 
 const extractHeaderWidths = (svg: string): number[] => {
   const widths: number[] = [];
-  const regex = /<rect x="(\d+)" y="0" width="(\d+)" height="(\d+)" fill="#1e293b"/g;
+  // Header rects are rendered at y="0". Do not couple this test to a specific fill color.
+  const regex = /<rect x="(\d+)" y="0" width="(\d+)" height="(\d+)"/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(svg)) !== null) {
     widths.push(Number(match[2]));
