@@ -97,7 +97,7 @@ export function createMd3Tokens(params: { width: number; height: number }): Md3T
       warningContainer: '#4d3800',
       onWarningContainer: '#ffdca8',
       info: '#8ab4f8',
-      infoContainer: '#1e3a5f',
+      infoContainer: '#2d4a7a',
       onInfoContainer: '#d6e3ff',
     },
     table: {

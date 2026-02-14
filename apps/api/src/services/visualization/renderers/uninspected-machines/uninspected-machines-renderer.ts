@@ -252,11 +252,12 @@ export class UninspectedMachinesRenderer implements Renderer {
         const statusItemHeight = statusValueFontSize + statusPadding * 2;
         const statusTotalHeight = statusItemHeight * 2 + statusGap;
         const statusStartY = contentCenterY - statusTotalHeight / 2;
+        const labelValueGap = Math.round(4 * scale); // ラベルと値の間のスペース
         
         // 正常（上段）
         const normalItemCenterY = statusStartY + statusItemHeight / 2;
         const normalValueWidth = estimateTextWidth(String(normal), statusValueFontSize);
-        const normalLabelX = rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale) - estimateTextWidth('正常', statusLabelFontSize);
+        const normalLabelX = rightContentX + rightContentWidth - normalValueWidth - Math.round(8 * scale) - labelValueGap - estimateTextWidth('正常', statusLabelFontSize);
         // バッジの背景色はカードの背景色と同じにする
         const normalBgFill = cardFill;
         // テキストの色はカードの背景色に応じて設定
@@ -283,7 +284,7 @@ export class UninspectedMachinesRenderer implements Renderer {
         // 異常（下段）
         const abnormalItemCenterY = statusStartY + statusItemHeight + statusGap + statusItemHeight / 2;
         const abnormalValueWidth = estimateTextWidth(String(abnormal), statusValueFontSize);
-        const abnormalLabelX = rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale) - estimateTextWidth('異常', statusLabelFontSize);
+        const abnormalLabelX = rightContentX + rightContentWidth - abnormalValueWidth - Math.round(8 * scale) - labelValueGap - estimateTextWidth('異常', statusLabelFontSize);
         // バッジの背景色はカードの背景色と同じにする
         const abnormalBgFill = cardFill;
         // テキストの色はカードの背景色に応じて設定
