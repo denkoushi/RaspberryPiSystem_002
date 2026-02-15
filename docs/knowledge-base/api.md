@@ -1,6 +1,7 @@
 ---
 
 
+
 ### [KB-258] コード品質改善フェーズ2（Ratchet）: 型安全化・Lint抑制削減・契約型拡張
 
 **日付**: 2026-02-12
@@ -3543,5 +3544,85 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 - SVGレンダラーでは、`rect`要素の背景色を`transparent`にすることで、カードの境界を超える描画を防げる
 - カードレイアウトは、テーブルレイアウトよりも多くのアイテムを表示できるが、レイアウト計算が複雑になる
 - デザインレビューシステム（HTMLプレビュー + SVG出力）により、実装前の確認が可能
+
+---
+
+### [KB-216] Gmail APIレート制限エラー（429）の対処方法
+
+**日付**: 2026-02-15
+
+**事象**:
+- CSVインポート実行時に`User-rate limit exceeded. Retry after 2026-02-15T03:22:25.039Z (status: 429/429)`エラーが発生
+- Gmail受信箱に180件ほどのメールが蓄積されており、一度に処理しようとしてレート制限に達した
+
+**要因**:
+1. **PowerAutomate側**: SharePointリストのアイテム追加・変更トリガーが10時台に頻発し、大量のメールが短時間で送信された
+2. **Pi5側**: `downloadAllWithMetadata`メソッドで180件のメールを一度に処理する際、短時間で大量のAPI呼び出しが発生
+   - `searchMessagesAll`: 2回（100件ずつページネーション）
+   - `getMessage`: 180回
+   - `getFirstAttachment`: 180回
+   - 合計: 約362回のAPI呼び出しが短時間で発生
+3. **Gmail APIのレート制限**: User-rate limitは250 queries per second per user
+4. **スケジュール間隔**: 10分ごとの実行頻度自体は問題ないが、大量のメールを一度に処理する際にレート制限に達した
+
+**有効だった対策**:
+1. ✅ **GmailStorageProviderにバッチ処理と429エラー時のリトライロジックを追加（2026-02-15）**:
+   - 1回のメール取得数を制限（環境変数`GMAIL_MAX_MESSAGES_PER_BATCH`で設定可能、デフォルト50件）
+   - バッチ処理でリクエスト間に遅延を追加（環境変数`GMAIL_BATCH_REQUEST_DELAY_MS`で設定可能、デフォルト1000ms）
+   - 429エラー時の自動リトライ（**1回のみ**、`Retry-After`優先。連続リトライはしない）
+   - `Retry-After`ヘッダーまたはエラーメッセージからリトライ待機時間を抽出
+
+2. ✅ **スケジュール間隔の調整（状況に応じて）**:
+   - 遅延1秒 + 50件上限で安定する場合は10分ごとのままでも運用可能
+   - それでも429が出る場合は、30分ごとなどに延長（管理コンソール → CSV取り込み → CSVインポートスケジュール → 編集）
+
+3. ✅ **PowerAutomate側の改善（予定）**:
+   - SharePointリストの変更トリガーをバッチ処理に変更
+   - 一定時間（例：5分、10分）内の変更を蓄積して1つのCSVファイルにまとめて送信
+
+**実装の詳細**:
+```typescript
+// GmailStorageProviderに追加した機能
+- maxMessagesPerBatch: 環境変数から読み込み（デフォルト50件）
+- batchRequestDelayMs: 環境変数から読み込み（デフォルト1000ms）
+- isRateLimitError(): 429エラーかどうかを判定
+- extractRetryAfter(): Retry-Afterヘッダーまたはエラーメッセージからリトライ待機時間を抽出
+- calculateBackoffDelay(): 指数バックオフの遅延時間を計算
+- sleep(): 指定時間待機
+```
+
+**環境変数の設定方法**:
+```bash
+# Pi5にSSH接続して、環境変数を設定
+cd /opt/RaspberryPiSystem_002/infrastructure/docker
+echo "GMAIL_MAX_MESSAGES_PER_BATCH=50" >> .env
+echo "GMAIL_BATCH_REQUEST_DELAY_MS=1000" >> .env
+
+# APIコンテナを再起動
+docker compose -f docker-compose.server.yml restart api
+```
+
+**推奨設定**:
+- 大量のメール（100件以上）を処理する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=50`、`GMAIL_BATCH_REQUEST_DELAY_MS=1000`
+- レート制限エラーが頻発する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=30`、`GMAIL_BATCH_REQUEST_DELAY_MS=1500`
+
+**学んだこと**:
+- Gmail APIのレート制限は「1秒あたりのリクエスト数」だけでなく、「短時間での大量リクエスト」でも発生する
+- 180件のメールを一度に処理する際、約362回のAPI呼び出しが短時間で発生し、レート制限に達した
+- バッチ処理とリクエスト間の遅延により、レート制限を回避できる
+- 429エラー時は`Retry-After`を尊重し、**1回だけ**再試行する（連続リトライは状況を悪化させ得る）
+
+**関連KB**:
+- [KB-215](./api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ): Gmail OAuthリフレッシュトークンの7日間制限問題
+- [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加): Gmail認証切れ時のSlack通知機能追加
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`（バッチ処理と429エラー時のリトライロジック追加）
+- `docs/guides/gmail-setup-guide.md`（環境変数の設定方法を追加）
+
+**解決状況**: ✅ **実装完了**（2026-02-15）
+- GmailStorageProviderにバッチ処理と429エラー時のリトライロジックを追加
+- 環境変数で設定可能にした
+- スケジュール間隔は状況に応じて調整（安定するなら10分のままでも運用可能）
 
 ---

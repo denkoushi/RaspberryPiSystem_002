@@ -296,6 +296,28 @@ CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移�
 - `GMAIL_TRASH_CLEANUP_CRON`（デフォルト: `0 3 * * *`）
 - `GMAIL_TRASH_CLEANUP_LABEL`（デフォルト: `rps_processed`）
 
+### Gmail APIレート制限対策
+
+Gmail APIのレート制限エラー（429）を回避するための環境変数：
+
+- `GMAIL_MAX_MESSAGES_PER_BATCH`（デフォルト: `50`）: 1回の処理で取得するメール数の上限
+- `GMAIL_BATCH_REQUEST_DELAY_MS`（デフォルト: `1000`）: バッチ処理時のリクエスト間隔（ミリ秒）
+
+**推奨設定**:
+- 大量のメール（100件以上）を処理する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=50`、`GMAIL_BATCH_REQUEST_DELAY_MS=1000`
+- レート制限エラーが頻発する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=30`、`GMAIL_BATCH_REQUEST_DELAY_MS=1500`
+
+**設定方法**:
+```bash
+# Pi5にSSH接続して、環境変数を設定
+cd /opt/RaspberryPiSystem_002/infrastructure/docker
+echo "GMAIL_MAX_MESSAGES_PER_BATCH=50" >> .env
+echo "GMAIL_BATCH_REQUEST_DELAY_MS=1000" >> .env
+
+# APIコンテナを再起動
+docker compose -f docker-compose.server.yml restart api
+```
+
 ## トラブルシューティング
 
 ### OAuth認証が失敗する
