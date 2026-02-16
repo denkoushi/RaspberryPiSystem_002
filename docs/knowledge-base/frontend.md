@@ -977,8 +977,49 @@ function formatScheduleForDisplay(cronSchedule: string): string {
 
 **解決状況**: ✅ **解決済み**（2025-12-29）
 
+**機能拡張（2026-02-16）**:
+- ✅ **分のリスト形式の表示改善**: `15,25,35,45,55 * * * 0,1,2,3,4,5,6`のような形式を「毎週日、月、火、水、木、金、土の 15、25、35、45、55分」と読みやすく表示
+- ✅ **規則的な間隔の自動検出**: `parseCronSchedule`関数を拡張し、10分間隔などの規則的な間隔は`intervalMinutes`モードとして扱い、UIで編集可能に
+- ✅ **実機検証完了**: 管理コンソールのCSV取り込みタブで、スケジュール一覧のcron表示が読みやすくなっていることを確認
+
+**実装の詳細（機能拡張）**:
+```typescript
+// parseCronSchedule関数の拡張: 分のリスト形式を検出
+if (minute.includes(',') && hour === '*') {
+  const minuteList = minute.split(',').map(m => parseInt(m.trim(), 10))
+    .filter(m => !isNaN(m) && m >= 0 && m < 60).sort((a, b) => a - b);
+  if (minuteList.length > 0) {
+    // 規則的な間隔（10分間隔など）を検出
+    const intervals = [];
+    for (let i = 1; i < minuteList.length; i++) {
+      intervals.push(minuteList[i] - minuteList[i - 1]);
+    }
+    // すべての間隔が同じ場合、intervalMinutesモードとして扱う
+    if (intervals.length > 0 && intervals.every(iv => iv === intervals[0])) {
+      const intervalMinutes = intervals[0];
+      if (intervalMinutes >= MIN_INTERVAL_MINUTES) {
+        return { mode: 'intervalMinutes', intervalMinutes, ... };
+      }
+    }
+  }
+}
+
+// formatScheduleForDisplay関数の拡張: 分のリスト形式を読みやすく表示
+if (mode === 'custom' && minute.includes(',')) {
+  const minuteStr = minuteList.map(m => m.toString().padStart(2, '0')).join('、');
+  return `毎週${dayLabels}の ${minuteStr}分`;
+}
+```
+
+**学んだこと（機能拡張から）**:
+- 分のリスト形式（`15,25,35,45,55`）は、規則的な間隔（10分間隔）として検出できる場合は`intervalMinutes`モードとして扱い、UIで編集可能にする
+- 規則的でない場合は`custom`モードとして扱い、編集不可として表示するが、読みやすい形式で表示する
+- 既存の`parseCronSchedule`関数を拡張することで、後方互換性を保ちながら新機能を追加できる
+
 **関連ファイル**: 
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`
+- `apps/web/src/pages/admin/csv-import-schedule-utils.ts`（`parseCronSchedule`、`formatScheduleForDisplay`関数の拡張）
+- `apps/web/src/pages/admin/__tests__/csv-import-schedule-utils.test.ts`（テストケース追加）
 
 ---
 

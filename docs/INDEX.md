@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-16）
 
+- **✅ CSV自動取得復旧とcron表示UI改善・CI成功・デプロイ完了・実機検証完了**: CSV自動取得が停止していた問題を復旧し、管理コンソールのCSV取り込みタブでスケジュール一覧のcron表示を改善。**復旧作業**: Gmail 429エラー（`Retry-After`約15分）により`PROCESSING`状態が詰まっていた問題を、cronスケジュールの分散（`15,25,35,45,55` / `18,28,38,48,58` / `21,31,41,51`）、`retryConfig.maxRetries=0`によるリトライ抑制、古い`PROCESSING`履歴のクリーンアップで解決。**UI改善**: 分のリスト形式（`15,25,35,45,55 * * * 0,1,2,3,4,5,6`）を「毎週日、月、火、水、木、金、土の 15、25、35、45、55分」と読みやすく表示。規則的な間隔（10分間隔など）は`intervalMinutes`モードとして扱い、UIで編集可能に。**実装**: コミット`6cb8ce5`、CI成功（Run ID: `22048155459`）、デプロイ成功（Run ID: `20260216-115024-16726`、Pi5+Pi4）、実機検証完了（Gmailのメールが正常に処理されゴミ箱へ移動、スケジュール一覧のcron表示が読みやすくなっていることを確認）。KB-216とKB-111を更新。詳細は [knowledge-base/api.md#kb-216](./knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) / [knowledge-base/frontend.md#kb-111](./knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) / [knowledge-base/index.md](./knowledge-base/index.md) を参照。
+
 - **✅ Dropbox証明書ピニング検証失敗の再発対応完了・CI成功・デプロイ完了・実機検証完了**: 2/10以降、Dropboxバックアップが全て失敗していた問題を解決。原因はDropboxが証明書を再更新し、証明書ピニング検証が失敗していたこと（KB-199と同様の問題）。**調査過程**: トークンリフレッシュの問題ではないことを確認（証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコードまで到達せず、トークンリフレッシュロジックは発動しない）。**解決方法**: `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に最新の証明書フィンガープリント3件を追加（api/content/notify.dropboxapi.com）。**実装**: コミット`87c7303`、CI成功（Run ID: `22046681555`）、デプロイ成功（Run ID: `20260216-105415-23252`）、実機検証完了（正常動作を確認）。KB-199を更新し、再発事例として記録。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-199](./knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) / [knowledge-base/index.md](./knowledge-base/index.md) を参照。
 
 ### 🆕 最新アップデート（2026-02-14）
