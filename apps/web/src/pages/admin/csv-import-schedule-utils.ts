@@ -100,6 +100,41 @@ export function parseCronSchedule(cronSchedule?: string): ParsedCronSchedule {
     };
   }
 
+  // 分のリスト形式（カンマ区切り）を検出: "15,25,35,45,55" → 10分間隔として扱う
+  if (minute.includes(',') && hour === '*') {
+    const minuteList = minute.split(',').map(m => parseInt(m.trim(), 10)).filter(m => !isNaN(m) && m >= 0 && m < 60);
+    if (minuteList.length > 0) {
+      // 規則的な間隔（10分間隔など）を検出
+      const sortedMinutes = [...minuteList].sort((a, b) => a - b);
+      const intervals: number[] = [];
+      for (let i = 1; i < sortedMinutes.length; i++) {
+        intervals.push(sortedMinutes[i] - sortedMinutes[i - 1]);
+      }
+      // すべての間隔が同じ場合、intervalMinutesモードとして扱う
+      if (intervals.length > 0 && intervals.every(iv => iv === intervals[0])) {
+        const intervalMinutes = intervals[0];
+        if (intervalMinutes >= MIN_INTERVAL_MINUTES) {
+          return {
+            mode: 'intervalMinutes',
+            time: '02:00',
+            daysOfWeek,
+            intervalMinutes,
+            isEditable: true
+          };
+        }
+      }
+      // 規則的でない場合は、最初の分を時刻として扱う（表示用）
+      const firstMinute = sortedMinutes[0];
+      return {
+        mode: 'custom',
+        time: `00:${firstMinute.toString().padStart(2, '0')}`,
+        daysOfWeek,
+        isEditable: false,
+        reason: `分のリスト形式（${minute}）は編集できません。間隔指定モードで再設定してください。`
+      };
+    }
+  }
+
   const hourNum = parseInt(hour, 10);
   const minuteNum = parseInt(minute, 10);
   if (!Number.isInteger(hourNum) || !Number.isInteger(minuteNum)) {
@@ -164,6 +199,29 @@ export function formatScheduleForDisplay(cronSchedule: string): string {
   }
 
   if (mode === 'custom') {
+    // 分のリスト形式（カンマ区切り）を読みやすく表示
+    const parts = cronSchedule.trim().split(/\s+/);
+    if (parts.length === 5) {
+      const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+      if (minute.includes(',') && hour === '*' && dayOfMonth === '*' && month === '*') {
+        const minuteList = minute.split(',').map(m => parseInt(m.trim(), 10)).filter(m => !isNaN(m) && m >= 0 && m < 60).sort((a, b) => a - b);
+        if (minuteList.length > 0) {
+          const minuteStr = minuteList.map(m => m.toString().padStart(2, '0')).join('、');
+          const parsedDaysOfWeek = parseDaysOfWeek(dayOfWeek);
+          if (parsedDaysOfWeek !== null) {
+            const dayLabels = parsedDaysOfWeek
+              .sort((a, b) => a - b)
+              .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
+              .filter(Boolean)
+              .join('、');
+            if (parsedDaysOfWeek.length === 0) {
+              return `毎日 ${minuteStr}分`;
+            }
+            return `毎週${dayLabels}の ${minuteStr}分`;
+          }
+        }
+      }
+    }
     return `cron: ${cronSchedule}`;
   }
 
