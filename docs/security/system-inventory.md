@@ -47,6 +47,34 @@
 
 参考: [docs/guides/external-integration-ledger.md](../guides/external-integration-ledger.md)
 
+## Tailscale運用（ロールと最小通信）
+
+目的: 端末台数が増えても、個体依存ではなく「役割（ロール）」でアクセス制御を維持し、横移動（端末間）を最小化する。
+
+### ロール（タグの想定）
+
+- **admin**: 運用Mac（開発・デプロイ指示端末）
+- **server**: Pi5（サーバー）
+- **kiosk**: Pi4/将来のキオスク端末群（入力・NFC等）
+- **signage**: Pi3/Zero2W等のサイネージ端末群（表示専用）
+
+### 必須通信（Allowlistの原型）
+
+- **admin → server**: SSH（運用入口をPi5に固定）
+- **kiosk → server**: HTTPS 443（`/kiosk`、`/api/*` 等）
+- **signage → server**: HTTPS 443（表示コンテンツ取得）
+- **server → kiosk/signage**: SSH（更新・保守）
+- **kiosk内ループバック**: `ws://localhost:7071/stream`、`http://localhost:7071/api/agent/*`（NFC Agent）
+
+### 原則禁止（横移動面の削減）
+
+- **client ↔ client**（kiosk↔kiosk、signage↔kiosk、signage↔signage など）は原則不要のため禁止に寄せる
+
+### 運用上の割り切り（WebRTC通話）
+
+- WebRTC通話は同一LAN内のみで良い（遠隔通話は不要）方針とし、通話時のみ `local` モードへ切り替えて運用する。
+  - これにより Tailnet 側の client↔client を恒常的に許可せずに済む。
+
 ## 公開面（Attack Surface）
 
 - **公開ポート**: 22/80/443/5900（詳細はポート監査ドキュメント参照）

@@ -24,16 +24,31 @@ const persistEventId = (eventId: number) => {
   window.sessionStorage.setItem(LAST_EVENT_ID_KEY, String(eventId));
 };
 
-// HTTPSページの場合は自動的にWSSに変換（Caddy経由）
-const getAgentWsUrl = () => {
+// ViteのVITE_*はビルド時に埋め込まれる。
+// - デフォルトは従来どおり: HTTPSページでは Caddy 経由の /stream を使う
+// - localモードでは: ws://localhost:7071/stream を優先し、失敗時に従来経路へフォールバックする
+const getAgentWsCandidates = (): string[] => {
   const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
-  if (isBrowser && window.location.protocol === 'https:') {
-    return `wss://${window.location.host}/stream`;
-  }
-  return envUrl;
-};
+  const mode = String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase();
+  const candidates: string[] = [];
+  const add = (url: string | undefined) => {
+    if (!url) return;
+    if (candidates.includes(url)) return;
+    candidates.push(url);
+  };
 
-const AGENT_WS_URL = getAgentWsUrl();
+  if (mode === 'local') {
+    add('ws://localhost:7071/stream');
+  }
+
+  // HTTPSページの場合は自動的にWSSに変換（Caddy経由）
+  if (isBrowser && window.location.protocol === 'https:') {
+    add(`wss://${window.location.host}/stream`);
+  }
+
+  add(envUrl);
+  return candidates;
+};
 
 export function useNfcStream(enabled = false) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
@@ -55,8 +70,10 @@ export function useNfcStream(enabled = false) {
     const enabledAt = new Date().toISOString();
     enabledAtRef.current = enabledAt;
 
+    const wsCandidates = getAgentWsCandidates();
     let socket: WebSocket | null = null;
     let isMounted = true;
+    let candidateIdx = 0;
 
     if (lastProcessedEventIdRef.current === null) {
       lastProcessedEventIdRef.current = readStoredEventId();
@@ -66,7 +83,12 @@ export function useNfcStream(enabled = false) {
       if (!isMounted) return;
       
       try {
-        socket = new WebSocket(AGENT_WS_URL);
+        const url = wsCandidates[Math.min(candidateIdx, wsCandidates.length - 1)];
+        let opened = false;
+        socket = new WebSocket(url);
+        socket.onopen = () => {
+          opened = true;
+        };
         socket.onmessage = (message) => {
           if (!isMounted) return;
           try {
@@ -102,6 +124,15 @@ export function useNfcStream(enabled = false) {
         };
         socket.onclose = () => {
           if (!isMounted) return;
+
+          // localモードでlocalhostへ接続できない環境（管理Mac等）では、
+          // まず次の候補（通常は wss://<Pi5>/stream）へ即フォールバックする。
+          if (!opened && candidateIdx < wsCandidates.length - 1) {
+            candidateIdx += 1;
+            reconnectTimeout.current = setTimeout(connect, 100);
+            return;
+          }
+
           // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
           reconnectTimeout.current = setTimeout(connect, 2000);
         };
@@ -112,6 +143,11 @@ export function useNfcStream(enabled = false) {
       } catch (error) {
         // 接続エラーは無視（NFCエージェントが起動していない場合など）
         if (isMounted) {
+          if (candidateIdx < wsCandidates.length - 1) {
+            candidateIdx += 1;
+            reconnectTimeout.current = setTimeout(connect, 100);
+            return;
+          }
           reconnectTimeout.current = setTimeout(connect, 2000);
         }
       }

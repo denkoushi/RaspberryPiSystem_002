@@ -116,6 +116,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 - `network_mode`が`local`の場合、ローカルIPが使われます（`hostname -I`で取得した値を使用）
 - **Tailscale主運用のため、`local`は緊急時のみ許可**としてください
   - `scripts/update-all-clients.sh` で`local`を使う場合は `ALLOW_LOCAL_EMERGENCY=1` を明示
+- **WebRTC通話（同一LAN限定）**: 通話を工場LAN内のみに限定したい場合、通話実施中だけ `network_mode=local` に切り替えて運用します（工場LAN限定）。通話が終わったら `network_mode=tailscale` に戻してください。
 - ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
 - **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`tailscale`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
 
@@ -505,6 +506,7 @@ curl http://localhost:8080/api/system/health
   - `POST http://localhost:7071/api/agent/reboot`
   - `POST http://localhost:7071/api/agent/poweroff`
 - **Mixed Content回避**: キオスクは `https://<Pi5>/kiosk` で開くため、Pi4のChromium起動フラグに `--allow-running-insecure-content` と `--unsafely-treat-insecure-origin-as-secure=http://localhost:7071` を設定します
+- **NFC WebSocket（増台対応）**: キオスク画面は `ws://localhost:7071/stream`（自端末のNFCエージェント）を優先し、接続できない場合は従来どおり `wss://<Pi5>/stream`（Caddy経由のプロキシ）へフォールバックします。これによりPi4が複数台になっても「自分のNFCは自分で読む」を維持できます。
 - **OS権限**: Pi4のAnsible設定で `sudo_nopasswd_commands` に `/usr/bin/systemctl reboot` と `/usr/bin/systemctl poweroff` を含めてください
 
 ```bash
