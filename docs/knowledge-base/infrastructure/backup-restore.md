@@ -1919,6 +1919,26 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - 修正後、Pi5でAPIコンテナを再ビルド・再起動
 - 手動バックアップを実行し、成功を確認（証明書ピニング検証が正常に通過）
 
+**再発事例（2026-02-16）**:
+- **事象**: 2/10以降、Dropboxバックアップが全て失敗（500エラー）
+- **症状**: 証明書ピニング検証失敗（KB-199と同様の問題）
+- **調査過程**:
+  1. **仮説1**: トークンリフレッシュの問題 → REJECTED（トークンリフレッシュはHTTPリクエスト成立後に発動するが、証明書ピニング失敗はTLSハンドシェイク段階で発生するため到達しない）
+  2. **仮説2**: Dropbox API側の障害 → REJECTED（エラーメッセージから証明書ピニング失敗と判明）
+  3. **仮説3**: Dropboxが証明書を再更新した → CONFIRMED（2026-02-16時点で取得した証明書フィンガープリントが期待値リストに含まれていなかった）
+- **根本原因**: Dropboxが2026-02-10前後に`api.dropboxapi.com`、`content.dropboxapi.com`、`notify.dropboxapi.com`の証明書を更新した
+- **解決方法**:
+  - `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に新しい証明書フィンガープリントを追加:
+    - `sha256/aa0e37dc4382850e07897e7c63be2dc6622d2fc4e7674d1aa70610448748f40a`（api.dropboxapi.com、2026-02-16確認）
+    - `sha256/2b2ffab566b828495e4a0c8cd8f477cc13d308209fd55169f15c933687868dd1`（content.dropboxapi.com、2026-02-16確認）
+    - `sha256/118d3ebeae3bf03eed53227bb933efc2fb8857c7e2a679e12ec62c14fe5f874c`（notify.dropboxapi.com、2026-02-16確認）
+  - CI成功後、Pi5へデプロイ（`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server"`）
+- **解決状況**: ✅ **解決済み・実機検証完了**（2026-02-16）
+  - コミット: `87c7303` - `fix(backup): update Dropbox certificate fingerprints for 2026-02-16`
+  - CI成功（Run ID: `22046681555`）
+  - デプロイ成功（Run ID: `20260216-105415-23252`）
+  - 実機検証: 正常動作を確認
+
 **関連ファイル**:
 - `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
 - `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（証明書フィンガープリント取得スクリプト）
@@ -1927,6 +1947,7 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - Dropboxが証明書を更新した場合は、`get-dropbox-cert-fingerprint.ts`スクリプトで新しいフィンガープリントを取得し、`dropbox-cert-pinning.ts`に追加する
 - 証明書更新の監視（Dropbox公式からの通知や定期的な検証）を検討
 - 証明書ピニング失敗時のエラーメッセージを明確化（「証明書が更新された可能性」を明記）
+- **学んだこと**: 証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコード（401/400）まで到達せず、トークンリフレッシュロジックは発動しない。証明書更新は定期的に発生する可能性があるため、監視と迅速な対応が必要。
 
 **関連ナレッジ**:
 - KB-020: バックアップ・リストア機能の実装
