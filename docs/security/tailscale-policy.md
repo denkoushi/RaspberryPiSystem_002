@@ -1,6 +1,6 @@
 # Tailscale Policy（タグ/ACL/SSH）運用台帳
 
-最終更新: 2026-02-16
+最終更新: 2026-02-17
 
 ## 目的
 
@@ -79,6 +79,7 @@ Tailscale SSHを使う場合は、以下のポリシーを基本にする。
 注意:
 - Tailscaleのポリシーファイル（ACL/SSH）はTailnet管理画面で設定する（このリポジトリ内では管理しない）。
 - 以下は「雛形」。実際の`tagOwners`（タグ付け権限）は、あなたのTailscaleユーザー/組織に合わせて調整する。
+- **重要**: Tailscaleの新しい形式では`grants`を使用します。`acls`形式（旧形式）は`tag:server:22`のようなポート指定が可能ですが、`grants`形式では`ip`フィールドで`tcp:22`のように指定します。
 
 ### 共通: tagOwners
 
@@ -93,7 +94,31 @@ Tailscale SSHを使う場合は、以下のポリシーを基本にする。
 }
 ```
 
-### Stage 1: 最小Allowlist（まず壊さない）
+### Stage 1: 最小Allowlist（まず壊さない）- grants形式（推奨）
+
+```json
+{
+  "grants": [
+    {
+      "src": ["tag:admin"],
+      "dst": ["tag:server"],
+      "ip": ["tcp:22", "tcp:443"]
+    },
+    {
+      "src": ["tag:server"],
+      "dst": ["tag:kiosk", "tag:signage"],
+      "ip": ["tcp:22"]
+    },
+    {
+      "src": ["tag:kiosk", "tag:signage"],
+      "dst": ["tag:server"],
+      "ip": ["tcp:443"]
+    }
+  ]
+}
+```
+
+### Stage 1（旧形式: acls）- 参考のみ
 
 ```json
 {
@@ -117,7 +142,24 @@ Tailscale SSHを使う場合は、以下のポリシーを基本にする。
 }
 ```
 
-### Stage 2: `kiosk:7071` を閉じる（横移動面の削減）
+### Stage 2: `kiosk:7071` を閉じる（横移動面の削減）- grants形式（推奨）
+
+- 原則: `tag:kiosk` への到達許可に `tcp:7071` を含めない。
+- 互換期間が必要な場合のみ、短期間だけ次を追加（その後削除）:
+
+```json
+{
+  "grants": [
+    {
+      "src": ["tag:server"],
+      "dst": ["tag:kiosk"],
+      "ip": ["tcp:7071"]
+    }
+  ]
+}
+```
+
+### Stage 2（旧形式: acls）- 参考のみ
 
 - 原則: `tag:kiosk:*` への到達許可に `:7071` を含めない。
 - 互換期間が必要な場合のみ、短期間だけ次を追加:
@@ -172,6 +214,50 @@ Stage 3（Tailscale SSH）:
 - Mac→Pi5のSSHがTailscale SSHの方針に沿って通る
 - Pi5→clientsのSSHが通る
 - それ以外のSSHが拒否される（意図した封じ込め）
+
+## 実装完了記録（2026-02-17）
+
+### Phase 1: 事前整備（完了）
+
+- ✅ NFC WebSocketのlocalhost優先化実装
+  - `apps/web/src/hooks/useNfcStream.ts`: `VITE_AGENT_WS_MODE=local`時に`ws://localhost:7071/stream`を優先、失敗時は`wss://<Pi5>/stream`へフォールバック
+  - `infrastructure/ansible/templates/web.env.j2`: `VITE_AGENT_WS_MODE`を追加
+  - `infrastructure/ansible/inventory.yml`: kiosk端末に`web_agent_ws_mode: "local"`を設定
+- ✅ ドキュメント整備
+  - `docs/guides/deployment.md`: WebRTC通話時のlocalモード切替手順、NFC WebSocketの増台対応を追記
+  - `docs/security/system-inventory.md`: Tailscale運用（ロールと最小通信）を追記
+
+### Phase 2: Tailscale標準機能の追加（完了）
+
+- ✅ **Phase 2-0: タグ付け（完了）**
+  - macbook-air → `tag:admin`
+  - raspberrypi → `tag:server`
+  - raspberrypi-1 → `tag:kiosk`
+  - raspberrypi-2 → `tag:signage`
+- ✅ **Phase 2-1: ACL最小化（完了）**
+  - grants形式でポート単位の制限を適用
+  - `tag:admin → tag:server: tcp:22, tcp:443`
+  - `tag:kiosk/tag:signage → tag:server: tcp:443`
+  - `tag:server → tag:kiosk/tag:signage: tcp:22`
+- ✅ **Phase 2-2: kiosk:7071閉塞（完了）**
+  - `tag:server → tag:kiosk: tcp:7071`のgrantを削除
+  - Tailnet上の`kiosk:7071`へのアクセスを遮断
+  - Pi4キオスクは`localhost:7071`経由でNFC Agentにアクセス（動作確認済み）
+
+### Phase 3: 検証（完了）
+
+- ✅ NFC（Pi4）: キオスクでタグ読み取りが反映される（local経路）
+- ✅ 管理UI: `https://<Pi5>/admin`到達（許可CIDR内）
+- ✅ API: `GET /api/system/health`が200/ok
+- ✅ サイネージ: `https://<Pi5>/api/signage/content`が200（Pi3/Zero2W）
+- ✅ デプロイ: Mac→Pi5→clients経路で`update-all-clients.sh`が成功
+- ✅ WebRTC: `local`モード（工場LAN）でのみ通話が成立（実機検証完了）
+
+### 知見・トラブルシューティング
+
+- **grants形式でのポート指定**: `dst`フィールドに`tag:server:22`のような形式は無効。`ip`フィールドで`tcp:22`のように指定する必要がある（KB-264参照）
+- **NFC WebSocketの動作確認**: ビルド済みJSファイル（`/srv/site/assets/index-*.js`）に`localhost:7071`優先ロジックが含まれていることを確認
+- **Tailnet上の横移動面削減**: Mac→Pi4:7071がタイムアウト（到達不可）であることを確認
 
 ## ロールバック
 

@@ -558,3 +558,103 @@ update-frequency: medium
 - `docs/security/evaluation-report.md`
 
 ---
+
+### [KB-264] Tailscale ACL grants形式でのポート指定エラー（tag:server:22形式が無効）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入（2026-02-16）
+
+**事象**:
+- Tailscale管理画面のJSON editorでACLポリシーを設定する際、`"dst": ["tag:server:22"]` のような形式でエラーが発生
+- エラーメッセージ: `Error: dst="tag:server:22": tag not found: "tag:server:22"`
+
+**要因**:
+- Tailscaleの新しい`grants`形式では、ポート指定を`dst`フィールドに含めることができない
+- `grants`形式では、`dst`はタグのみを指定し、ポートは`ip`フィールドで`tcp:22`のように指定する必要がある
+- 旧形式の`acls`では`tag:server:22`形式が有効だが、`grants`形式では無効
+
+**有効だった対策**:
+- ✅ `grants`形式では`ip`フィールドでポートを指定:
+  ```json
+  {
+    "src": ["tag:admin"],
+    "dst": ["tag:server"],
+    "ip": ["tcp:22", "tcp:443"]
+  }
+  ```
+- ✅ `dst`フィールドにはタグのみを指定（ポートを含めない）
+
+**実装のポイント**:
+- **grants形式**: `"ip": ["tcp:22", "tcp:443"]` のようにプロトコルとポートを明示
+- **acls形式（旧）**: `"dst": ["tag:server:22"]` のようにポートを含める形式が可能
+- Tailscale管理画面のデフォルトは`grants`形式のため、新しい設定では`grants`形式を使用する
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`に`grants`形式の正しい雛形を追加
+- ポート指定は`ip`フィールドで行うことを明記
+
+**関連ファイル**:
+- `docs/security/tailscale-policy.md`
+- Tailscale管理画面のAccess Controls → JSON editor
+
+---
+
+### [KB-265] Tailscaleハードニング段階導入完了（横移動面削減）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入（2026-02-16〜2026-02-17）
+
+**事象**:
+- Tailscale VPN内で端末間の横移動（lateral movement）が可能な状態だった
+- Pi4キオスクのNFC Agent（`0.0.0.0:7071`）がTailnet上でアクセス可能で、認証なしの制御API（`reboot`、`poweroff`）が暴露されていた
+
+**要因**:
+1. **NFC Agentの広いバインド**: Pi4のNFC Agentが`0.0.0.0:7071`でバインドされ、Tailnet上の任意の端末からアクセス可能
+2. **認証なしの制御API**: `/api/agent/reboot`、`/api/agent/poweroff`が認証なしで公開
+3. **ACL未適用**: Tailscaleのデフォルト設定（Allow all）で、端末間の通信が全て許可されていた
+
+**有効だった対策**:
+- ✅ **Phase 1: NFC WebSocketのlocalhost優先化**
+  - `apps/web/src/hooks/useNfcStream.ts`を修正し、`VITE_AGENT_WS_MODE=local`時に`ws://localhost:7071/stream`を優先
+  - 失敗時は従来の`wss://<Pi5>/stream`（Caddy経由）へフォールバック
+  - `infrastructure/ansible/templates/web.env.j2`に`VITE_AGENT_WS_MODE`を追加
+  - `infrastructure/ansible/inventory.yml`でkiosk端末に`web_agent_ws_mode: "local"`を設定
+- ✅ **Phase 2-0: タグ付け**
+  - Tailscale管理画面で各端末にタグを付与（`tag:admin`、`tag:server`、`tag:kiosk`、`tag:signage`）
+- ✅ **Phase 2-1: ACL最小化（grants形式）**
+  - `tag:admin → tag:server: tcp:22, tcp:443`
+  - `tag:kiosk/tag:signage → tag:server: tcp:443`
+  - `tag:server → tag:kiosk/tag:signage: tcp:22`
+  - 互換期間として`tag:server → tag:kiosk: tcp:7071`を一時的に許可
+- ✅ **Phase 2-2: kiosk:7071閉塞**
+  - `tag:server → tag:kiosk: tcp:7071`のgrantを削除
+  - Tailnet上の`kiosk:7071`へのアクセスを遮断
+
+**実装のポイント**:
+- **NFC WebSocket**: kiosk端末は`localhost:7071`を優先し、Pi5経由のプロキシはフォールバックのみ
+- **ACL形式**: Tailscaleの新しい`grants`形式を使用（`ip`フィールドでポート指定）
+- **段階適用**: タグ付け→ACL最小化→7071閉塞の順で段階的に適用し、各段階で動作確認
+
+**検証結果**:
+- ✅ Mac→Pi5 SSH: 正常
+- ✅ APIヘルスチェック: `status=ok`
+- ✅ サイネージ配信: `200 OK`
+- ✅ Pi5→Pi4/Pi3（Ansible ping）: 正常
+- ✅ Mac→Pi4:7071: タイムアウト（到達不可、期待通り）
+- ✅ Pi4 localhost:7071: 正常応答（NFC Agent動作確認）
+- ✅ Mac→Pi4 SSH: ブロック（期待通り）
+- ✅ NFC読み取り: 正常動作（実機検証）
+- ✅ WebRTC通話: 正常動作（実機検証、工場LAN内）
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`に`grants`形式の正しい雛形を追加
+- `docs/security/system-inventory.md`にTailscale運用（ロールと最小通信）を記録
+- 新規端末追加時は、適切なタグを付与し、ACLポリシーに反映
+
+**関連ファイル**:
+- `apps/web/src/hooks/useNfcStream.ts`
+- `infrastructure/ansible/templates/web.env.j2`
+- `infrastructure/ansible/inventory.yml`
+- `docs/security/tailscale-policy.md`
+- `docs/security/system-inventory.md`
+- `docs/guides/deployment.md`
+
+---
