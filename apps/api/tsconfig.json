@@ -11,7 +11,8 @@
     "vitest.config.ts",
     "scripts/import-rigging.ts",
     "scripts/get-dropbox-cert-fingerprint.ts",
-    "scripts/design-preview.ts"
+    "scripts/design-preview.ts",
+    "scripts/investigate-machine-inspection-duplicates.ts"
   ],
   "references": [
     { "path": "../../packages/shared-types" }

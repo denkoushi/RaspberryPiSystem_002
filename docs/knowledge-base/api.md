@@ -264,6 +264,13 @@
 - `404`で可視化API検証が失敗した際は、`/api/signage/content`の`layoutConfig.slots`で参照先IDを直接確認
 - DBでの当日確認は`rowData.inspectionAt`をJST日付へ変換して検証（`occurredAt`は使わない）
 - 画面上の件数違和感は「KPI全件 vs 一覧抜粋」の仕様差を先に確認する
+- **点検済みのはずなのにカード/セルが発色しない（灰色に見える）場合**:
+  - 典型症状: `used=true` だが `正常0/異常0` となり、背景色の条件（正常>0 / 異常>0）に入らない
+  - 原因候補（最優先）: 取り込まれたCSVの`点検結果`（=`inspectionResult`/`rowData['点検結果']`）が **空文字** または「正常/異常」を含まない値になっている
+  - 確認手順（最短）:
+    - `CsvDashboard.csvFilePath` で最新のraw CSVを特定し、当日レコードの `設備管理番号` と `点検結果` を確認する
+    - DB上でも `CsvDashboardRow.rowData->>'点検結果'`（または`inspectionResult`）が空になっていないか確認する
+  - 対処: 上流（PowerAutomate / SharePoint / 元Excel等）で`点検結果`を正しい値（例: `正常` / `異常`）で出力する。修正CSVを再取り込みするとサイネージ表示も復旧する
 
 **検証**:
 - ローカル: `pnpm test` 成功（`apps/api`: 85 passed / 2 skipped）
