@@ -658,3 +658,62 @@ update-frequency: medium
 - `docs/guides/deployment.md`
 
 ---
+
+### [KB-266] NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入 Phase 2-2完了（2026-02-18）
+
+**事象**:
+- Tailscale ACLポリシー導入後、Pi4でNFCタグをスキャンすると、Macで開いたキオスク画面でも動作が発動する問題が発生
+- NFCイベントが端末間で横漏れし、意図しない画面遷移が発生していた
+
+**要因**:
+1. **Pi5経由の共有購読**: Webアプリが`wss://<Pi5>/stream`（Caddy経由）に接続し、Pi5がPi4のNFC Agentをプロキシしていた
+2. **NFC Agentの全端末配信**: Pi4のNFC AgentがWebSocket接続している全クライアントにイベントを配信していた
+3. **ポリシー未実装**: Webアプリに端末分離ポリシーが実装されておらず、MacでもNFCストリームを購読していた
+
+**有効だった対策**:
+- ✅ **NFCストリームポリシーの実装**
+  - `apps/web/src/features/nfc/nfcPolicy.ts`を新設し、`resolveNfcStreamPolicy()`でポリシーを解決
+  - Mac環境では`disabled`（NFC無効）、Pi4では`localOnly`（localhostのみ）を返す
+  - `apps/web/src/features/nfc/nfcEventSource.ts`を新設し、`getNfcWsCandidates()`でWebSocket候補を生成
+  - `localOnly`ポリシー時は`ws://localhost:7071/stream`のみ、フォールバックなし
+- ✅ **useNfcStreamフックの更新**
+  - `apps/web/src/hooks/useNfcStream.ts`を修正し、`resolveNfcStreamPolicy()`と`getNfcWsCandidates()`を使用
+  - Pi5経由の`wss://<Pi5>/stream`へのフォールバックを削除
+- ✅ **Caddyfileの更新**
+  - `infrastructure/docker/Caddyfile.local.template`から`/stream`プロキシ設定を削除
+  - Pi5経由のNFCストリームプロキシを廃止
+- ✅ **CI設定の更新**
+  - `.github/workflows/ci.yml`の`on.push.branches`に`chore/**`パターンを追加
+
+**実装のポイント**:
+- **ポリシー解決**: User-AgentとlocalStorageの`kiosk-client-key`から端末種別を判定
+- **Mac環境の無効化**: Mac環境ではNFCストリームを`disabled`にし、誤発火を防止
+- **Pi4のlocalOnly**: Pi4では`ws://localhost:7071/stream`のみに接続し、端末分離を実現
+- **Caddyプロキシ削除**: Pi5経由の`/stream`プロキシを削除し、共有購読面を撤去
+
+**検証結果**:
+- ✅ Pi4キオスク画面: NFCスキャンがローカル端末のみで動作（実機検証完了）
+- ✅ Macキオスク画面: NFCスキャンが発動しない（実機検証完了）
+- ✅ Caddyfile: `/stream`プロキシ設定が削除済み（確認済み）
+- ✅ ビルド済みWebアプリ: `wss://.../stream`への参照が存在しない（確認済み）
+- ✅ Pi5からPi4のNFC Agent: アクセス不可（正常、端末分離が機能）
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`にNFCストリーム分離の実装完了を記録
+- `docs/troubleshooting/nfc-reader-issues.md`にNFC WebSocket接続ポリシーの説明を追加
+- 新規端末追加時は、適切なポリシーが適用されることを確認
+
+**関連ファイル**:
+- `apps/web/src/features/nfc/nfcPolicy.ts`（新規）
+- `apps/web/src/features/nfc/nfcEventSource.ts`（新規）
+- `apps/web/src/hooks/useNfcStream.ts`（修正）
+- `apps/web/src/hooks/useNfcStream.test.ts`（新規、テスト）
+- `infrastructure/docker/Caddyfile.local.template`（修正）
+- `infrastructure/docker/Caddyfile.local`（修正）
+- `.github/workflows/ci.yml`（修正）
+- `docs/security/tailscale-policy.md`
+- `docs/troubleshooting/nfc-reader-issues.md`
+
+---

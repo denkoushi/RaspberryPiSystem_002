@@ -62,9 +62,16 @@ NFC（Pi4）について:
 - サイネージ: `https://<Pi5>/api/signage/content` が 200
 - デプロイ: Mac → Pi5 → clients が成立する
 
-### Stage 2: `kiosk:7071` を閉じる
+### Stage 2: `kiosk:7071` を閉じる（完了: 2026-02-18）
 
 NFCを `localhost:7071` 優先に寄せられたら、Tailnet上の `kiosk:7071` をdenyに寄せる。
+
+**実装完了**:
+- ✅ NFCストリームポリシーの実装（`nfcPolicy.ts`、`nfcEventSource.ts`）
+- ✅ `useNfcStream`フックの更新（Pi5経由のフォールバック削除）
+- ✅ Caddyfileの`/stream`プロキシ設定削除
+- ✅ Mac環境でのNFC無効化（`disabled`ポリシー）
+- ✅ Pi4での`localOnly`ポリシー適用（`ws://localhost:7071/stream`のみ）
 
 注意:
 - 互換期間が必要な場合のみ、一時的に `server → kiosk:7071` を許可する。
@@ -262,6 +269,7 @@ Stage 3（Tailscale SSH）:
 - **grants形式でのポート指定**: `dst`フィールドに`tag:server:22`のような形式は無効。`ip`フィールドで`tcp:22`のように指定する必要がある（KB-264参照）
 - **NFC WebSocketの動作確認**: ビルド済みJSファイル（`/srv/site/assets/index-*.js`）に`localhost:7071`優先ロジックが含まれていることを確認
 - **Tailnet上の横移動面削減**: Mac→Pi4:7071がタイムアウト（到達不可）であることを確認
+- **NFCストリーム端末分離**: Pi4でNFCスキャンした際、Macで開いたキオスク画面でも動作が発動する問題を解決。NFCストリームポリシー（`disabled`/`localOnly`/`legacy`）を実装し、MacではNFCを無効化、Pi4では`ws://localhost:7071/stream`のみに接続するように変更。Pi5経由の`/stream`プロキシを削除し、共有購読面を撤去（KB-266参照）
 
 ## ロールバック
 
