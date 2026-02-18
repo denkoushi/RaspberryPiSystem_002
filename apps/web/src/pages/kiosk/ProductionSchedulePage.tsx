@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -121,6 +122,8 @@ function CalendarIcon({ className }: { className?: string }) {
 
 
 export function ProductionSchedulePage() {
+  const queryClient = useQueryClient();
+  const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
   const [inputQuery, setInputQuery] = useState('');
   const [activeQueries, setActiveQueries] = useState<string[]>([]);
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
@@ -246,6 +249,47 @@ export function ProductionSchedulePage() {
   const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
   const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
+
+  // Debug: 「10往復目くらいでたまに数秒待つ」が、(a) 完了API遅延なのか (b) 再取得競合なのかを分離する
+  const scheduleFetchStartRef = useRef<number | null>(null);
+  const prevScheduleFetchingRef = useRef<boolean>(false);
+  useEffect(() => {
+    const prev = prevScheduleFetchingRef.current;
+    const next = scheduleQuery.isFetching;
+    prevScheduleFetchingRef.current = next;
+    if (!hasQuery) return;
+
+    if (!prev && next) {
+      scheduleFetchStartRef.current = performance.now();
+      if (cursorDebugEnabled) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:schedule-fetch-start',message:'scheduleQuery fetch started',data:{pauseRefetch,isWriting,isWriteCooldown,isLoading:scheduleQuery.isLoading,fetchingCountSchedule:queryClient.isFetching({queryKey:['kiosk-production-schedule']}),fetchingCountOrderUsage:queryClient.isFetching({queryKey:['kiosk-production-schedule-order-usage']}),hasQuery},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+      }
+      return;
+    }
+
+    if (prev && !next) {
+      const start = scheduleFetchStartRef.current;
+      const elapsedMs = start ? Math.round(performance.now() - start) : null;
+      scheduleFetchStartRef.current = null;
+      if (cursorDebugEnabled) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:schedule-fetch-end',message:'scheduleQuery fetch ended',data:{elapsedMs,pauseRefetch,isWriting,isWriteCooldown,isError:scheduleQuery.isError},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+      }
+    }
+  }, [
+    cursorDebugEnabled,
+    hasQuery,
+    isWriteCooldown,
+    isWriting,
+    pauseRefetch,
+    queryClient,
+    scheduleQuery.isError,
+    scheduleQuery.isFetching,
+    scheduleQuery.isLoading
+  ]);
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -619,8 +663,34 @@ export function ProductionSchedulePage() {
   };
 
   const handleComplete = async (rowId: string) => {
+    const t0 = performance.now();
+    const isFetchingSchedule = scheduleQuery.isFetching;
+    const fetchingCountSchedule = queryClient.isFetching({ queryKey: ['kiosk-production-schedule'] });
+    const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    if (cursorDebugEnabled) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H3',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:start',message:'complete click',data:{rowId,pauseRefetch,isWriting,isWriteCooldown,isFetchingSchedule,fetchingCountSchedule,fetchingCountOrderUsage,completePending:completeMutation.isPending},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+    }
+
     // Optimistic Updateにより、UIは即座に更新される
-    await completeMutation.mutateAsync(rowId);
+    try {
+      await completeMutation.mutateAsync(rowId);
+      const elapsedMs = Math.round(performance.now() - t0);
+      if (cursorDebugEnabled) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:success',message:'complete mutation resolved',data:{rowId,elapsedMs},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+      }
+    } catch (error) {
+      const elapsedMs = Math.round(performance.now() - t0);
+      if (cursorDebugEnabled) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:error',message:'complete mutation rejected',data:{rowId,elapsedMs,isAxiosError:isAxiosError(error),status:isAxiosError(error)?(error.response?.status??null):null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+      }
+      throw error;
+    }
   };
 
   return (

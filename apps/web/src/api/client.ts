@@ -298,6 +298,8 @@ export interface ProductionScheduleListResponse {
   rows: ProductionScheduleRow[];
 }
 
+const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
+
 export async function getKioskProductionSchedule(params?: {
   productNo?: string;
   q?: string;
@@ -308,14 +310,38 @@ export async function getKioskProductionSchedule(params?: {
   page?: number;
   pageSize?: number;
 }) {
-  const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', {
-    params
-  });
+  const t0 = performance.now();
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:start',message:'GET /kiosk/production-schedule start',data:{hasParams:!!params,hasQuery:typeof params?.q==='string'&&params.q.length>0,hasNoteOnly:!!params?.hasNoteOnly,hasDueDateOnly:!!params?.hasDueDateOnly,page:params?.page??null,pageSize:params?.pageSize??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
+  const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
+  const elapsedMs = Math.round(performance.now() - t0);
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:end',message:'GET /kiosk/production-schedule end',data:{elapsedMs,rowsCount:data.rows.length,total:data.total},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
 export async function completeKioskProductionScheduleRow(rowId: string) {
+  const t0 = performance.now();
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:start',message:'PUT /kiosk/production-schedule/:rowId/complete start',data:{rowId},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean; rowData: Record<string, unknown> }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  const elapsedMs = Math.round(performance.now() - t0);
+  const progressValue = (data.rowData ?? {}) as Record<string, unknown>;
+  const nextProgress = typeof progressValue.progress === 'string' ? progressValue.progress.trim() : null;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:end',message:'PUT /kiosk/production-schedule/:rowId/complete end',data:{rowId,elapsedMs,alreadyCompleted:data.alreadyCompleted,nextProgress},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
