@@ -13,6 +13,8 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
+import type { RiggingGear } from '../../api/types';
+
 export function KioskRiggingBorrowPage() {
   const isActiveRoute = useMatch('/kiosk/rigging/borrow');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
@@ -31,6 +33,66 @@ export function KioskRiggingBorrowPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const processingRef = useRef(false);
+
+  const [riggingGear, setRiggingGear] = useState<RiggingGear | null>(null);
+  const [isRiggingGearLoading, setIsRiggingGearLoading] = useState(false);
+  const [riggingGearError, setRiggingGearError] = useState<string | null>(null);
+
+  // NFCイベント処理は同一イベントを二重処理しないことが重要なため、最新state参照はrefで行う
+  const riggingGearRef = useRef<RiggingGear | null>(null);
+  const riggingGearErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    riggingGearRef.current = riggingGear;
+  }, [riggingGear]);
+  useEffect(() => {
+    riggingGearErrorRef.current = riggingGearError;
+  }, [riggingGearError]);
+
+  // 吊具タグUIDが決まった時点で、吊具マスタ情報を先読みして表示に使う
+  useEffect(() => {
+    let cancelled = false;
+    const tagUid = riggingTagUid.trim();
+    if (!tagUid) {
+      setRiggingGear(null);
+      setRiggingGearError(null);
+      setIsRiggingGearLoading(false);
+      return;
+    }
+
+    setIsRiggingGearLoading(true);
+    setRiggingGearError(null);
+    getRiggingGearByTagUid(tagUid)
+      .then((gear) => {
+        if (cancelled) return;
+        setRiggingGear(gear);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const apiMessage =
+          axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object'
+            ? (err.response.data as { message?: string }).message
+            : undefined;
+        const msg =
+          status === 404
+            ? 'タグ未登録（吊具）'
+            : typeof apiMessage === 'string' && apiMessage.length > 0
+            ? apiMessage
+            : err instanceof Error
+            ? err.message
+            : '吊具情報の取得に失敗しました';
+        setRiggingGear(null);
+        setRiggingGearError(msg);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsRiggingGearLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [riggingTagUid]);
 
   // NFCイベント: 1枚目=吊具タグ, 2枚目=従業員タグ
   useEffect(() => {
@@ -69,9 +131,20 @@ export function KioskRiggingBorrowPage() {
           setError(null);
           setMessage(null);
 
-          const gear = await getRiggingGearByTagUid(riggingTagUid);
+          // すでに取得済みの吊具情報があれば再利用し、不要なAPI二重呼び出しを避ける
+          const latestGear = riggingGearRef.current;
+          const latestGearError = riggingGearErrorRef.current;
+          const gear =
+            latestGear ??
+            (latestGearError
+              ? null
+              : await getRiggingGearByTagUid(riggingTagUid));
           if (!gear) {
-            throw new Error('吊具が登録されていません');
+            // 表示用の取得で404を掴んでいる場合は、送信時は従来の短い文言に揃える
+            if (latestGearError === 'タグ未登録（吊具）') {
+              throw new Error('吊具が登録されていません');
+            }
+            throw new Error(latestGearError || '吊具が登録されていません');
           }
 
           const loan = await borrowRiggingGear({
@@ -146,6 +219,9 @@ export function KioskRiggingBorrowPage() {
                     onClick={() => {
                       setRiggingTagUid('');
                       setEmployeeTagUid('');
+                      setRiggingGear(null);
+                      setRiggingGearError(null);
+                      setIsRiggingGearLoading(false);
                       setMessage(null);
                       setError(null);
                     }}
@@ -179,6 +255,43 @@ export function KioskRiggingBorrowPage() {
               </div>
             </div>
             <div className="flex flex-col gap-3">
+              <div className="rounded-md border-2 border-slate-300 bg-white p-3 shadow-lg">
+                <h3 className="text-xl font-bold text-slate-900">吊具持出</h3>
+                <div className="mt-2 text-sm">
+                  {!riggingTagUid ? (
+                    <p className="font-semibold text-slate-600">吊具タグをスキャンしてください</p>
+                  ) : isRiggingGearLoading ? (
+                    <p className="font-semibold text-slate-600">吊具情報を取得中…</p>
+                  ) : riggingGearError ? (
+                    <p className="font-semibold text-red-600">{riggingGearError}</p>
+                  ) : riggingGear ? (
+                    <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1">
+                      <dt className="font-semibold text-slate-600">名称</dt>
+                      <dd className="font-semibold text-slate-900">{riggingGear.name || '-'}</dd>
+
+                      <dt className="font-semibold text-slate-600">管理番号</dt>
+                      <dd className="font-semibold text-slate-900">{riggingGear.managementNumber || '-'}</dd>
+
+                      <dt className="font-semibold text-slate-600">保管場所</dt>
+                      <dd className="font-semibold text-slate-900">{riggingGear.storageLocation ?? '-'}</dd>
+
+                      <dt className="font-semibold text-slate-600">荷重(t)</dt>
+                      <dd className="font-semibold text-slate-900">
+                        {typeof riggingGear.maxLoadTon === 'number' ? `${riggingGear.maxLoadTon} t` : '-'}
+                      </dd>
+
+                      <dt className="font-semibold text-slate-600">長さ/幅/厚み</dt>
+                      <dd className="font-semibold text-slate-900">
+                        {riggingGear.lengthMm != null || riggingGear.widthMm != null || riggingGear.thicknessMm != null
+                          ? `${riggingGear.lengthMm ?? '-'} / ${riggingGear.widthMm ?? '-'} / ${riggingGear.thicknessMm ?? '-'} mm`
+                          : '-'}
+                      </dd>
+                    </dl>
+                  ) : (
+                    <p className="font-semibold text-slate-600">吊具情報なし</p>
+                  )}
+                </div>
+              </div>
               {message && <div className="rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg">{message}</div>}
               {error && <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">{error}</div>}
               {isSubmitting && <div className="text-sm font-semibold text-slate-700">送信中…</div>}
