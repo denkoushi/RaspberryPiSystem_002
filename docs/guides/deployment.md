@@ -506,7 +506,7 @@ curl http://localhost:8080/api/system/health
   - `POST http://localhost:7071/api/agent/reboot`
   - `POST http://localhost:7071/api/agent/poweroff`
 - **Mixed Content回避**: キオスクは `https://<Pi5>/kiosk` で開くため、Pi4のChromium起動フラグに `--allow-running-insecure-content` と `--unsafely-treat-insecure-origin-as-secure=http://localhost:7071` を設定します
-- **NFC WebSocket（増台対応）**: キオスク画面は `ws://localhost:7071/stream`（自端末のNFCエージェント）を優先し、接続できない場合は従来どおり `wss://<Pi5>/stream`（Caddy経由のプロキシ）へフォールバックします。これによりPi4が複数台になっても「自分のNFCは自分で読む」を維持できます。
+- **NFC WebSocket（増台対応）**: キオスク画面は `ws://localhost:7071/stream`（自端末のNFCエージェント）に **localOnly** で接続し、Pi5経由の`/stream`へはフォールバックしません（端末分離と横漏れ防止のため）。
 - **OS権限**: Pi4のAnsible設定で `sudo_nopasswd_commands` に `/usr/bin/systemctl reboot` と `/usr/bin/systemctl poweroff` を含めてください
 
 ```bash
@@ -990,7 +990,9 @@ nano infrastructure/docker/docker-compose.server.yml
 web:
   build:
     args:
-      VITE_AGENT_WS_URL: ws://100.74.144.79:7071/stream  # Pi4のTailscale IP（推奨）
+      # localOnly運用では `ws://localhost:7071/stream` のみを使用し、Pi5経由の /stream は使いません。
+      # そのためVITE_AGENT_WS_URLは原則デフォルトのまま（localhost）でOKです。
+      VITE_AGENT_WS_URL: ws://localhost:7071/stream
       VITE_API_BASE_URL: /api   # 相対パス（推奨、IPアドレス変更に対応）
       # または絶対URL（HTTPS経由、Caddy経由）
       # VITE_API_BASE_URL: https://100.106.158.2/api   # Pi5のTailscale IP（推奨）

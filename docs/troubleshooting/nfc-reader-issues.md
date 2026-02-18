@@ -79,8 +79,14 @@ Webアプリのビルド時に環境変数が正しく設定されているか�
 cd /opt/RaspberryPiSystem_002/apps/web
 cat .env  # または環境変数ファイルを確認
 
-# VITE_AGENT_WS_URLが設定されているか確認
-# デフォルトは ws://localhost:7071/stream
+# NFC WebSocket の接続先ポリシーを確認
+# - kiosk端末（Pi4）の通常運用: `VITE_AGENT_WS_MODE=local`（localOnly）で
+#   `ws://localhost:7071/stream` のみに接続し、Pi5経由の `/stream` へはフォールバックしない
+# - 運用Mac: NFCは無効（購読しない）
+#
+# 目安:
+# - 正常: `ws://localhost:7071/stream` への接続が確立し、スキャンでイベントが届く
+# - 異常: `wss://<Pi5>/stream` へ接続しようとしている（古いbundle/設定の可能性）
 ```
 
 #### 7. ブラウザのコンソールログ確認

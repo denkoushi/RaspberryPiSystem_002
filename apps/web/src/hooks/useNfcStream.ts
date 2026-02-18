@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { getNfcWsCandidates } from '../features/nfc/nfcEventSource';
+import { resolveNfcStreamPolicy, type NfcStreamPolicy } from '../features/nfc/nfcPolicy';
+
 export interface NfcEvent {
   uid: string;
   timestamp: string;
@@ -25,32 +28,9 @@ const persistEventId = (eventId: number) => {
 };
 
 // ViteのVITE_*はビルド時に埋め込まれる。
-// - デフォルトは従来どおり: HTTPSページでは Caddy 経由の /stream を使う
-// - localモードでは: ws://localhost:7071/stream を優先し、失敗時に従来経路へフォールバックする
-const getAgentWsCandidates = (): string[] => {
-  const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
-  const mode = String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase();
-  const candidates: string[] = [];
-  const add = (url: string | undefined) => {
-    if (!url) return;
-    if (candidates.includes(url)) return;
-    candidates.push(url);
-  };
-
-  if (mode === 'local') {
-    add('ws://localhost:7071/stream');
-  }
-
-  // HTTPSページの場合は自動的にWSSに変換（Caddy経由）
-  if (isBrowser && window.location.protocol === 'https:') {
-    add(`wss://${window.location.host}/stream`);
-  }
-
-  add(envUrl);
-  return candidates;
-};
-
-export function useNfcStream(enabled = false) {
+// - localOnlyポリシー: ws://localhost:7071/stream のみ（フォールバック無し）
+// - legacyポリシー: 従来互換（HTTPSページでは host 経由の /stream も候補に入る）
+export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
@@ -59,7 +39,9 @@ export function useNfcStream(enabled = false) {
   const enabledAtRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!enabled) {
+    const resolvedPolicy = policy ?? resolveNfcStreamPolicy();
+
+    if (!enabled || resolvedPolicy === 'disabled') {
       setEvent(null);
       // enabled=falseになったらenabledAtをリセット
       enabledAtRef.current = null;
@@ -70,7 +52,12 @@ export function useNfcStream(enabled = false) {
     const enabledAt = new Date().toISOString();
     enabledAtRef.current = enabledAt;
 
-    const wsCandidates = getAgentWsCandidates();
+    const wsCandidates = getNfcWsCandidates({
+      policy: resolvedPolicy,
+      envUrl: import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream',
+      mode: String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase(),
+      location: isBrowser ? { protocol: window.location.protocol, host: window.location.host } : undefined,
+    });
     let socket: WebSocket | null = null;
     let isMounted = true;
     let candidateIdx = 0;
@@ -81,6 +68,7 @@ export function useNfcStream(enabled = false) {
 
     const connect = () => {
       if (!isMounted) return;
+      if (wsCandidates.length === 0) return;
       
       try {
         const url = wsCandidates[Math.min(candidateIdx, wsCandidates.length - 1)];
@@ -125,8 +113,7 @@ export function useNfcStream(enabled = false) {
         socket.onclose = () => {
           if (!isMounted) return;
 
-          // localモードでlocalhostへ接続できない環境（管理Mac等）では、
-          // まず次の候補（通常は wss://<Pi5>/stream）へ即フォールバックする。
+          // legacy互換: localhostへ接続できない場合は、次の候補へ即フォールバックする。
           if (!opened && candidateIdx < wsCandidates.length - 1) {
             candidateIdx += 1;
             reconnectTimeout.current = setTimeout(connect, 100);
@@ -165,7 +152,7 @@ export function useNfcStream(enabled = false) {
       lastEventKeyRef.current = null;
       setEvent(null);
     };
-  }, [enabled]);
+  }, [enabled, policy]);
 
   return event;
 }

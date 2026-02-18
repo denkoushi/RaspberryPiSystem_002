@@ -34,7 +34,10 @@
 - `tag:kiosk` / `tag:signage` → `tag:server`: HTTPS 443（UI/API）
 
 NFC（Pi4）について:
-- キオスク端末は自端末の `localhost:7071` を優先して使用する（WS/REST）。
+- キオスク端末は **自端末の** `ws://localhost:7071/stream`（WS）および `http://localhost:7071/api/agent/*`（REST）を使用する。
+- Pi5（Caddy）経由の `https://<Pi5>/stream` / `wss://<Pi5>/stream` は **通常運用では使用しない（廃止）**。
+  - 理由: 共有購読面になり、端末分離（Pi4増台）とセキュリティ（横移動面削減）の両方に反するため。
+  - 運用Mac等が誤って購読すると、他端末のスキャンで画面遷移が発火し得る。
 - Tailnet上で `kiosk:7071` を恒常的に開けることは避ける（横移動面になるため）。
 
 ## 原則禁止（横移動面の削減）
@@ -65,6 +68,7 @@ NFCを `localhost:7071` 優先に寄せられたら、Tailnet上の `kiosk:7071`
 
 注意:
 - 互換期間が必要な場合のみ、一時的に `server → kiosk:7071` を許可する。
+  - ただし、その場合でも「Pi5経由の`/stream`」を恒常化しない（端末分離に反する）。
 
 ### Stage 3: Tailscale SSH（可能なら）
 
@@ -208,7 +212,7 @@ Stage 1（ACL最小）:
 Stage 2（`kiosk:7071`閉塞）:
 - キオスク端末上でNFCが読める（`localhost:7071`経由）
 - MacからキオスクのNFCを「直接」叩けなくなる（横移動面の削減）
-- 既存のPi5経由の`/stream`が必要なら互換許可（`server → kiosk:7071`）のみで成立する
+- Pi5経由の`/stream`は使わない（共有購読面の撤去）
 
 Stage 3（Tailscale SSH）:
 - Mac→Pi5のSSHがTailscale SSHの方針に沿って通る
