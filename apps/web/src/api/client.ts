@@ -520,26 +520,98 @@ export async function updateKioskProductionScheduleOrder(
   rowId: string,
   payload: { resourceCd: string; orderNumber: number | null }
 ) {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleOrder:start',message:'PUT /kiosk/production-schedule/:rowId/order start',data:{rowId,resourceCd:payload.resourceCd,orderNumber:payload.orderNumber},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   const { data } = await api.put<{ success: boolean; orderNumber: number | null }>(
     `/kiosk/production-schedule/${rowId}/order`,
     payload
   );
+  const elapsedMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : null;
+  const endTime = typeof performance !== 'undefined' ? performance.now() : startTime;
+  const resourceTiming =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000
+      ? getLatestResourceTimingInWindow({
+          startTime,
+          endTime,
+          match: (name) => name.includes(`/api/kiosk/production-schedule/${rowId}/order`)
+        })
+      : null;
+  const longTasks =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000 ? summarizeLongTasks(startTime, endTime) : null;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleOrder:end',message:'PUT /kiosk/production-schedule/:rowId/order end',data:{rowId,elapsedMs,orderNumber:data.orderNumber,resourceTiming,longTasks},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
 export async function updateKioskProductionScheduleNote(rowId: string, payload: { note: string }) {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleNote:start',message:'PUT /kiosk/production-schedule/:rowId/note start',data:{rowId,noteLen:payload.note.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   const { data } = await api.put<{ success: boolean; note: string | null }>(
     `/kiosk/production-schedule/${rowId}/note`,
     payload
   );
+  const elapsedMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : null;
+  const endTime = typeof performance !== 'undefined' ? performance.now() : startTime;
+  const resourceTiming =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000
+      ? getLatestResourceTimingInWindow({
+          startTime,
+          endTime,
+          match: (name) => name.includes(`/api/kiosk/production-schedule/${rowId}/note`)
+        })
+      : null;
+  const longTasks =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000 ? summarizeLongTasks(startTime, endTime) : null;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleNote:end',message:'PUT /kiosk/production-schedule/:rowId/note end',data:{rowId,elapsedMs,note:data.note??null,resourceTiming,longTasks},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
 export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleDueDate:start',message:'PUT /kiosk/production-schedule/:rowId/due-date start',data:{rowId,dueDate:payload.dueDate},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
     `/kiosk/production-schedule/${rowId}/due-date`,
     payload
   );
+  const elapsedMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : null;
+  const endTime = typeof performance !== 'undefined' ? performance.now() : startTime;
+  const resourceTiming =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000
+      ? getLatestResourceTimingInWindow({
+          startTime,
+          endTime,
+          match: (name) => name.includes(`/api/kiosk/production-schedule/${rowId}/due-date`)
+        })
+      : null;
+  const longTasks =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000 ? summarizeLongTasks(startTime, endTime) : null;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleDueDate:end',message:'PUT /kiosk/production-schedule/:rowId/due-date end',data:{rowId,elapsedMs,dueDate:data.dueDate??null,resourceTiming,longTasks},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
@@ -547,10 +619,34 @@ export async function updateKioskProductionScheduleProcessing(
   rowId: string,
   payload: { processingType: string }
 ) {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleProcessing:start',message:'PUT /kiosk/production-schedule/:rowId/processing start',data:{rowId,processingType:payload.processingType},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   const { data } = await api.put<{ success: boolean; processingType: string | null }>(
     `/kiosk/production-schedule/${rowId}/processing`,
     payload
   );
+  const elapsedMs = typeof performance !== 'undefined' ? Math.round(performance.now() - t0) : null;
+  const endTime = typeof performance !== 'undefined' ? performance.now() : startTime;
+  const resourceTiming =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000
+      ? getLatestResourceTimingInWindow({
+          startTime,
+          endTime,
+          match: (name) => name.includes(`/api/kiosk/production-schedule/${rowId}/processing`)
+        })
+      : null;
+  const longTasks =
+    cursorDebugEnabled && typeof elapsedMs === 'number' && elapsedMs >= 2000 ? summarizeLongTasks(startTime, endTime) : null;
+  if (cursorDebugEnabled) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H4',location:'apps/web/src/api/client.ts:updateKioskProductionScheduleProcessing:end',message:'PUT /kiosk/production-schedule/:rowId/processing end',data:{rowId,elapsedMs,processingType:data.processingType??null,resourceTiming,longTasks},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
   return data;
 }
 
