@@ -62,6 +62,12 @@ type DebugLongTaskEntry = { startTime: number; duration: number };
 
 const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
 
+let debugReqSeq = 0;
+function nextDebugReqSeq(): number {
+  debugReqSeq += 1;
+  return debugReqSeq;
+}
+
 const longTaskBuffer: DebugLongTaskEntry[] = [];
 const MAX_LONG_TASK_BUFFER = 200;
 
@@ -91,6 +97,17 @@ if (cursorDebugEnabled && typeof window !== 'undefined' && typeof PerformanceObs
       }
     });
     obs.observe({ entryTypes: ['longtask'] } as unknown as PerformanceObserverInit);
+  } catch {
+    // ignore
+  }
+}
+
+if (cursorDebugEnabled && typeof performance !== 'undefined') {
+  // Resource Timing buffer can fill up on long-lived kiosk pages.
+  // If the buffer is full, new entries (including the slow one we want) may be dropped, causing resourceTiming=null.
+  try {
+    // 250 is the default in many browsers; expand to keep enough history for debug sessions.
+    performance.setResourceTimingBufferSize(2000);
   } catch {
     // ignore
   }
@@ -150,7 +167,8 @@ function getLatestResourceTimingInWindow(params: {
     // Prevent unbounded growth in long debug sessions.
     try {
       const count = performance.getEntriesByType('resource').length;
-      if (count > 300) performance.clearResourceTimings();
+      // Clear earlier than the buffer size to keep recording stable.
+      if (count > 1500) performance.clearResourceTimings();
     } catch {
       // ignore
     }
@@ -432,16 +450,27 @@ export async function getKioskProductionSchedule(params?: {
   page?: number;
   pageSize?: number;
 }) {
+  const reqSeq = cursorDebugEnabled ? nextDebugReqSeq() : 0;
   const t0 = performance.now();
   const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
   if (cursorDebugEnabled) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:start',message:'GET /kiosk/production-schedule start',data:{hasParams:!!params,hasQuery:typeof params?.q==='string'&&params.q.length>0,hasNoteOnly:!!params?.hasNoteOnly,hasDueDateOnly:!!params?.hasDueDateOnly,page:params?.page??null,pageSize:params?.pageSize??null},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:start',message:'GET /kiosk/production-schedule start',data:{reqSeq,hasParams:!!params,hasQuery:typeof params?.q==='string'&&params.q.length>0,hasNoteOnly:!!params?.hasNoteOnly,hasDueDateOnly:!!params?.hasDueDateOnly,page:params?.page??null,pageSize:params?.pageSize??null,nowMs:Date.now()},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
   const elapsedMs = Math.round(performance.now() - t0);
   const endTime = typeof performance !== 'undefined' ? performance.now() : startTime;
+  const resourceEntriesCount =
+    cursorDebugEnabled && typeof performance !== 'undefined'
+      ? (() => {
+          try {
+            return performance.getEntriesByType('resource').length;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
   const resourceTiming =
     cursorDebugEnabled && elapsedMs >= 2000
       ? getLatestResourceTimingInWindow({
@@ -453,7 +482,7 @@ export async function getKioskProductionSchedule(params?: {
   const longTasks = cursorDebugEnabled && elapsedMs >= 2000 ? summarizeLongTasks(startTime, endTime) : null;
   if (cursorDebugEnabled) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:end',message:'GET /kiosk/production-schedule end',data:{elapsedMs,rowsCount:data.rows.length,total:data.total,resourceTiming,longTasks},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:end',message:'GET /kiosk/production-schedule end',data:{reqSeq,elapsedMs,rowsCount:data.rows.length,total:data.total,resourceTiming,longTasks,resourceEntriesCount,nowMs:Date.now()},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
   return data;
