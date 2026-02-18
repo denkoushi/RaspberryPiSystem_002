@@ -77,9 +77,11 @@ NFCを `localhost:7071` 優先に寄せられたら、Tailnet上の `kiosk:7071`
 - 互換期間が必要な場合のみ、一時的に `server → kiosk:7071` を許可する。
   - ただし、その場合でも「Pi5経由の`/stream`」を恒常化しない（端末分離に反する）。
 
-### Stage 3: Tailscale SSH（可能なら）
+### Stage 3: Tailscale SSH（可能なら・無料プランでは利用不可）
 
-Tailscale SSHを使う場合は、以下のポリシーを基本にする。
+**注意**: Tailscale SSHはPersonal Plus/Premium/Enterpriseプランでのみ利用可能です。Personal（無料）プランでは利用できません。
+
+Tailscale SSHを使う場合は（有料プランでの利用を検討する場合）、以下のポリシーを基本にする。
 
 - `tag:admin` → `tag:server` のみ許可
 - `tag:server` → `tag:kiosk` / `tag:signage` のみ許可
@@ -187,7 +189,15 @@ Tailscale SSHを使う場合は、以下のポリシーを基本にする。
 }
 ```
 
-### Stage 3: Tailscale SSH（任意）
+### Stage 3: Tailscale SSH（任意・無料プランでは利用不可）
+
+**注意**: Tailscale SSHはPersonal Plus/Premium/Enterpriseプランでのみ利用可能です。Personal（無料）プランでは利用できません。
+
+**無料プランでの対応**:
+- Stage 2-2（ACL最小化 + `kiosk:7071`閉塞）までで完了とし、Stage 3はスキップします
+- SSH接続は従来のSSH鍵を使用し、Tailscale ACLでネットワークレベルのアクセス制御（TCP:22の許可/拒否）を実施します
+
+**有料プランでの利用を検討する場合のポリシー例**:
 
 ```json
 {
@@ -222,9 +232,11 @@ Stage 2（`kiosk:7071`閉塞）:
 - Pi5経由の`/stream`は使わない（共有購読面の撤去）
 
 Stage 3（Tailscale SSH）:
-- Mac→Pi5のSSHがTailscale SSHの方針に沿って通る
-- Pi5→clientsのSSHが通る
-- それ以外のSSHが拒否される（意図した封じ込め）
+- **無料プランでは利用不可**: PersonalプランではTailscale SSH機能が利用できないため、Stage 3はスキップします
+- **有料プランでの利用を検討する場合**:
+  - Mac→Pi5のSSHがTailscale SSHの方針に沿って通る
+  - Pi5→clientsのSSHが通る
+  - それ以外のSSHが拒否される（意図した封じ込め）
 
 ## 実装完了記録（2026-02-17）
 
@@ -264,6 +276,15 @@ Stage 3（Tailscale SSH）:
 - ✅ デプロイ: Mac→Pi5→clients経路で`update-all-clients.sh`が成功
 - ✅ WebRTC: `local`モード（工場LAN）でのみ通話が成立（実機検証完了）
 
+### Phase 4: Tailscale SSH（無料プランでは利用不可）
+
+**注意**: Tailscale SSHはPersonal Plus/Premium/Enterpriseプランでのみ利用可能です。Personal（無料）プランでは利用できません。
+
+**無料プランでの対応**:
+- Phase 2-2（ACL最小化 + `kiosk:7071`閉塞）までで完了とし、Phase 4はスキップします
+- SSH接続は従来のSSH鍵を使用し、Tailscale ACLでネットワークレベルのアクセス制御（TCP:22の許可/拒否）を実施します
+- 現在のセキュリティレベルで十分な保護が確保されています
+
 ### 知見・トラブルシューティング
 
 - **grants形式でのポート指定**: `dst`フィールドに`tag:server:22`のような形式は無効。`ip`フィールドで`tcp:22`のように指定する必要がある（KB-264参照）
@@ -274,5 +295,16 @@ Stage 3（Tailscale SSH）:
 ## ロールバック
 
 - ACL: 変更前のtailnet policyへ即差し戻し
-- SSH: Tailscale SSHの適用前に、従来のSSHでserverへ入れる経路が生きていることを確認してから段階適用
+- SSH: Tailscale SSHの適用前に、従来のSSHでserverへ入れる経路が生きていることを確認してから段階適用（有料プランでの利用を検討する場合）
+
+## プラン別の対応
+
+### Personal（無料）プラン
+- **Stage 1-2まで実施**: ACL最小化（Stage 1）と`kiosk:7071`閉塞（Stage 2）まで完了
+- **Stage 3はスキップ**: Tailscale SSHは利用不可のため、従来のSSH鍵を使用
+- **セキュリティレベル**: ネットワークレベルのアクセス制御（ACL）で十分なセキュリティを確保
+
+### Personal Plus/Premium/Enterpriseプラン
+- **Stage 1-3まで実施可能**: Tailscale SSH機能を利用して、SSH接続の認証・認可もTailscaleで一元管理可能
+- **メリット**: SSH鍵管理が不要、Tailscale ACLでSSHアクセスを細かく制御可能
 
