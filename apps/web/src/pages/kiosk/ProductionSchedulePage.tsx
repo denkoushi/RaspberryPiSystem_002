@@ -192,16 +192,24 @@ export function ProductionSchedulePage() {
     normalizedAssignedOnlyCds.length > 0 ||
     hasNoteOnlyFilter ||
     hasDueDateOnlyFilter;
-  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery });
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const processingMutation = useUpdateKioskProductionScheduleProcessing();
   const noteMutation = useUpdateKioskProductionScheduleNote();
   const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
-  const resourcesQuery = useKioskProductionScheduleResources();
-  const searchStateQuery = useKioskProductionScheduleSearchState();
-  const historyProgressQuery = useKioskProductionScheduleHistoryProgress();
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
+  const isWriting =
+    completeMutation.isPending ||
+    orderMutation.isPending ||
+    processingMutation.isPending ||
+    noteMutation.isPending ||
+    dueDateMutation.isPending ||
+    searchStateMutation.isPending;
+
+  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch: isWriting });
+  const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: isWriting });
+  const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch: isWriting });
+  const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch: isWriting });
   const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
 
   const tableColumns: TableColumnDefinition[] = useMemo(
@@ -281,7 +289,8 @@ export function ProductionSchedulePage() {
   }, [normalizedRows]);
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
-    resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined
+    resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
+    { pauseRefetch: isWriting }
   );
 
   const isTwoColumn = containerWidth >= 1200;

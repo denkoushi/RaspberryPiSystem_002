@@ -230,60 +230,63 @@ export function useKioskProductionSchedule(
     page?: number;
     pageSize?: number;
   },
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; pauseRefetch?: boolean }
 ) {
   return useQuery({
     queryKey: ['kiosk-production-schedule', params],
     queryFn: () => getKioskProductionSchedule(params),
     // 仕掛中が頻繁に変わるため軽く自動更新
-    refetchInterval: 30000,
+    // NOTE: 書き込み操作（完了/未完了戻し/納期/備考/順番/処理など）と同時に走ると体感遅延が出やすいので、
+    //       操作中はポーリングを止め、操作完了後に invalidate で再取得させる。
+    refetchInterval: options?.pauseRefetch ? false : 30000,
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled ?? true
   });
 }
 
-export function useKioskProductionScheduleResources() {
+export function useKioskProductionScheduleResources(options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-resources'],
     queryFn: getKioskProductionScheduleResources,
-    refetchInterval: 60000,
+    refetchInterval: options?.pauseRefetch ? false : 60000,
   });
 }
 
-export function useKioskProductionScheduleOrderUsage(resourceCds?: string) {
+export function useKioskProductionScheduleOrderUsage(resourceCds?: string, options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-order-usage', resourceCds],
     queryFn: () => getKioskProductionScheduleOrderUsage(resourceCds ? { resourceCds } : undefined),
-    refetchInterval: 15000,
+    refetchInterval: options?.pauseRefetch ? false : 15000,
   });
 }
 
-export function useKioskProductionScheduleSearchState() {
+export function useKioskProductionScheduleSearchState(options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-state'],
     queryFn: getKioskProductionScheduleSearchState,
-    refetchInterval: 4000,
+    refetchInterval: options?.pauseRefetch ? false : 4000,
   });
 }
 
-export function useKioskProductionScheduleSearchHistory() {
+export function useKioskProductionScheduleSearchHistory(options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-history'],
     queryFn: getKioskProductionScheduleSearchHistory,
-    refetchInterval: 4000,
+    refetchInterval: options?.pauseRefetch ? false : 4000,
   });
 }
 
-export function useKioskProductionScheduleHistoryProgress() {
+export function useKioskProductionScheduleHistoryProgress(options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
-    refetchInterval: 30000,
+    refetchInterval: options?.pauseRefetch ? false : 30000,
   });
 }
 
 export function useUpdateKioskProductionScheduleSearchState() {
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'search-state'],
     mutationFn: (state: Parameters<typeof setKioskProductionScheduleSearchState>[0]) =>
       setKioskProductionScheduleSearchState(state),
   });
@@ -291,6 +294,7 @@ export function useUpdateKioskProductionScheduleSearchState() {
 
 export function useUpdateKioskProductionScheduleSearchHistory() {
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'search-history'],
     mutationFn: (history: Parameters<typeof setKioskProductionScheduleSearchHistory>[0]) =>
       setKioskProductionScheduleSearchHistory(history),
   });
@@ -299,20 +303,31 @@ export function useUpdateKioskProductionScheduleSearchHistory() {
 export function useUpdateKioskProductionScheduleOrder() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'order'],
     mutationFn: ({ rowId, payload }: { rowId: string; payload: { resourceCd: string; orderNumber: number | null } }) =>
       updateKioskProductionScheduleOrder(rowId, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    onMutate: async () => {
+      // 進行中の再取得（ポーリング/手動refetch）と更新が競合すると体感待ちが出やすいので止める
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     },
+    onSuccess: () => {
+      // UI待ちを作らない（mutation完了は即返し、裏で再取得）
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    }
   });
 }
 
 export function useUpdateKioskProductionScheduleNote() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'note'],
     mutationFn: ({ rowId, note }: { rowId: string; note: string }) =>
       updateKioskProductionScheduleNote(rowId, { note }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
         page: number;
@@ -335,7 +350,7 @@ export function useUpdateKioskProductionScheduleNote() {
           )
         };
       });
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
     }
   });
 }
@@ -343,8 +358,12 @@ export function useUpdateKioskProductionScheduleNote() {
 export function useUpdateKioskProductionScheduleDueDate() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'due-date'],
     mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string }) =>
       updateKioskProductionScheduleDueDate(rowId, { dueDate }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
         page: number;
@@ -367,7 +386,7 @@ export function useUpdateKioskProductionScheduleDueDate() {
           )
         };
       });
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
     }
   });
 }
@@ -375,8 +394,12 @@ export function useUpdateKioskProductionScheduleDueDate() {
 export function useUpdateKioskProductionScheduleProcessing() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'processing'],
     mutationFn: ({ rowId, processingType }: { rowId: string; processingType: string }) =>
       updateKioskProductionScheduleProcessing(rowId, { processingType }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
         page: number;
@@ -400,7 +423,7 @@ export function useUpdateKioskProductionScheduleProcessing() {
           )
         };
       });
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
     }
   });
 }
@@ -408,8 +431,13 @@ export function useUpdateKioskProductionScheduleProcessing() {
 export function useCompleteKioskProductionScheduleRow() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'complete'],
     mutationFn: (rowId: string) => completeKioskProductionScheduleRow(rowId),
-    onSuccess: async (data, rowId) => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    },
+    onSuccess: (data, rowId) => {
       // Optimistic Update: キャッシュを直接更新して即座にUIを更新
       queryClient.setQueriesData<{
         page: number;
@@ -431,8 +459,8 @@ export function useCompleteKioskProductionScheduleRow() {
         }
       );
       // バックグラウンドで再取得（エラー時の整合性確保）
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     }
   });
 }
