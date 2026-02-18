@@ -17,51 +17,44 @@
     mode: "0755"
 
 - name: Configure UFW default incoming policy
-  community.general.ufw:
-    direction: incoming
-    policy: "{{ ufw_default_incoming_policy }}"
+  ansible.builtin.command: "ufw default {{ ufw_default_incoming_policy }} incoming"
+  changed_when: false
   when: ufw_enabled | default(false)
 
 - name: Configure UFW default outgoing policy
-  community.general.ufw:
-    direction: outgoing
-    policy: "{{ ufw_default_outgoing_policy }}"
+  ansible.builtin.command: "ufw default {{ ufw_default_outgoing_policy }} outgoing"
+  changed_when: false
   when: ufw_enabled | default(false)
 
 - name: Allow HTTP/S traffic through UFW
-  community.general.ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  register: ufw_allow_tcp_ports_result
+  changed_when: "'Skipping' not in (ufw_allow_tcp_ports_result.stdout | default(''))"
   loop: "{{ ufw_allowed_tcp_ports | default([]) }}"
   when: ufw_enabled | default(false)
 
 - name: Allow SSH from trusted networks
-  community.general.ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
-    src: "{{ item }}"
+  ansible.builtin.command: "ufw allow from {{ item }} to any port 22 proto tcp"
+  register: ufw_allow_ssh_nets_result
+  changed_when: "'Skipping' not in (ufw_allow_ssh_nets_result.stdout | default(''))"
   loop: "{{ ufw_ssh_allowed_networks | default([]) }}"
   when: ufw_enabled | default(false)
 
 - name: Allow VNC from trusted networks
-  community.general.ufw:
-    rule: allow
-    port: "5900"
-    proto: tcp
-    src: "{{ item }}"
+  ansible.builtin.command: "ufw allow from {{ item }} to any port 5900 proto tcp"
+  register: ufw_allow_vnc_nets_result
+  changed_when: "'Skipping' not in (ufw_allow_vnc_nets_result.stdout | default(''))"
   loop: "{{ ufw_vnc_allowed_networks | default([]) }}"
   when: ufw_enabled | default(false)
 
 - name: Enable UFW logging
-  community.general.ufw:
-    logging: "{{ ufw_logging_level }}"
+  ansible.builtin.command: "ufw logging {{ ufw_logging_level }}"
+  changed_when: false
   when: ufw_enabled | default(false)
 
 - name: Ensure UFW is enabled
-  community.general.ufw:
-    state: enabled
+  ansible.builtin.command: "ufw --force enable"
+  changed_when: false
   when: ufw_enabled | default(false)
 
 - name: Deploy fail2ban jail overrides
