@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-18) **吊具持出画面に吊具情報表示を追加・CI成功・デプロイ完了・実機検証完了**: 吊具持出画面に遷移したとき、吊具タグのUIDだけが表示されていた問題を解決し、吊具マスタから取得した詳細情報（名称、管理番号、保管場所、荷重、寸法）を点検見本の右側余白に表示する機能を実装。**実装内容**: `riggingTagUid`が設定された時点で`getRiggingGearByTagUid()`を呼び出し、吊具情報をstateに保持。点検見本の右側余白に「吊具持出」情報ブロックを追加（タイトルはページタイトルと同じフォントサイズ`text-xl font-bold`）。表示項目は名称、管理番号、保管場所、荷重(t)、長さ/幅/厚み(mm)。貸出登録時の存在チェックで、既に取得済みの`riggingGear`をref経由で再利用し、API二重呼び出しを回避。**実装ファイル**: `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`（修正）。**CI実行**: GitHub Actions Run ID `22126971043` 成功（全ジョブ成功）。**デプロイ結果**: Pi5とPi4でデプロイ成功（runId `20260218-140619-15371`, `ok=211`, `changed=13`, `failed=0`）。**実機検証結果**: 吊具タグをスキャンした時点で右側余白に吊具情報が表示されることを確認、状態表示（未スキャン/取得中/エラー）が適切に動作することを確認、リセットボタンでUIDと吊具情報が正しくクリアされることを確認、貸出登録が正常に動作し従来通り戻り先へ自動遷移することを確認、API二重呼び出しが回避されることを確認。**ドキュメント更新**: KB-267を追加、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
 - [x] (2026-02-18) **NFCストリーム端末分離の実装完了・CI成功・デプロイ完了・実機検証完了**: Tailscale ACLポリシー導入後、Pi4でNFCタグをスキャンするとMacで開いたキオスク画面でも動作が発動する問題を解決。**実装内容**: NFCストリームポリシー（`disabled`/`localOnly`/`legacy`）を実装し、Mac環境ではNFCを無効化（`disabled`）、Pi4では`ws://localhost:7071/stream`のみに接続（`localOnly`）。Pi5経由の`/stream`プロキシをCaddyfileから削除し、共有購読面を撤去。**実装ファイル**: `apps/web/src/features/nfc/nfcPolicy.ts`（新規）、`apps/web/src/features/nfc/nfcEventSource.ts`（新規）、`apps/web/src/hooks/useNfcStream.ts`（修正）、`apps/web/src/hooks/useNfcStream.test.ts`（新規）、`infrastructure/docker/Caddyfile.local.template`（修正）、`.github/workflows/ci.yml`（修正、`chore/**`パターン追加）。**CI実行**: GitHub Actions Run ID `22124446236` 成功（全ジョブ成功）。**デプロイ結果**: Pi5とPi4でデプロイ成功（runId `20260218-120030-20305`, `ok=211`, `changed=13`, `failed=0`）。**実機検証結果**: Pi4キオスク画面でNFCスキャンがローカル端末のみで動作することを確認、Macキオスク画面でNFCスキャンが発動しないことを確認、Caddyfileから`/stream`プロキシ設定が削除されていることを確認、ビルド済みWebアプリに`wss://.../stream`への参照が存在しないことを確認。**ドキュメント更新**: KB-266を追加、`docs/security/tailscale-policy.md`のPhase 2-2完了記録を更新、`docs/troubleshooting/nfc-reader-issues.md`にNFC WebSocket接続ポリシーの説明を追加、Tailscale SSHが無料プランでは利用不可であることを追記。**Tailscaleハードニング完了**: Phase 2-2（ACL最小化 + `kiosk:7071`閉塞）まで完了。Phase 4（Tailscale SSH）はPersonal Plus/Premium/Enterpriseプランでのみ利用可能のため、無料プランではスキップ（従来のSSH鍵を使用し、Tailscale ACLでネットワークレベルのアクセス制御を実施）。詳細は [docs/knowledge-base/infrastructure/security.md#kb-266](./docs/knowledge-base/infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) / [docs/security/tailscale-policy.md](./docs/security/tailscale-policy.md) / [docs/troubleshooting/nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md) を参照。
 
 - [x] (2026-02-16) **Dropbox証明書ピニング検証失敗の再発対応完了・CI成功・デプロイ完了・実機検証完了**: 2/10以降、Dropboxバックアップが全て失敗していた問題を解決。原因はDropboxが証明書を再更新し、証明書ピニング検証が失敗していたこと（KB-199と同様の問題）。**調査過程**: トークンリフレッシュの問題ではないことを確認（証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコードまで到達せず、トークンリフレッシュロジックは発動しない）。**解決方法**: `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に最新の証明書フィンガープリント3件を追加（api/content/notify.dropboxapi.com）。**実装**: コミット`87c7303`、CI成功（Run ID: `22046681555`）、デプロイ成功（Run ID: `20260216-105415-23252`）、実機検証完了（正常動作を確認）。KB-199を更新し、再発事例として記録。詳細は [docs/knowledge-base/infrastructure/backup-restore.md#kb-199](./docs/knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
@@ -594,7 +596,9 @@
 - 発見: `usage`関数が呼び出しより後に定義されていたため、エラーハンドリング時に`usage: command not found`エラーが発生。  
   対応: `usage`関数を引数解析直後に移動し、エラーメッセージが正常に表示されるように修正。
 - 観測: デプロイ時に`harden-server-ports.yml`が未追跡ファイルとして存在すると、git checkoutで上書き警告が出る。
-- 発見: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する。エラーが100%発生する場合は、原因を潰すべき（fail-fast）。  
+- 発見: `update-all-clients.sh`を`RASPI_SERVER_HOST`未設定で実行し、`raspberrypi5`を対象にした場合、Mac側でローカル実行になりsudoパスワードエラーが発生する。エラーが100%発生する場合は、原因を潰すべき（fail-fast）。
+- 観測: NFCイベント処理の`useEffect`で`riggingGear`を参照する際、依存配列に含めると不要な再実行が発生する。また、表示用の取得と貸出登録時の存在チェックで同じAPIを呼び出す場合、取得済みデータを再利用することでパフォーマンスを向上できる。  
+  対応: `useRef`で最新値を参照する方法を採用し、NFCイベント処理では`riggingGearRef.current`で最新値を取得。貸出登録時の存在チェックでは、既に取得済みの`riggingGear`があれば再利用し、API二重呼び出しを回避。**[KB-267]**  
   対応: `require_remote_host_for_pi5()`関数を追加し、`raspberrypi5`または`server`が対象の場合、`REMOTE_HOST`が必須であることをチェック。未設定時はエラーで停止するように修正。標準手順を無視して独自判断で別のスクリプトを実行する問題を防ぐため、早期にエラーを検出するガードを追加。**[KB-238]**
 - 発見: `ansible-inventory --list` はJinja2テンプレートを展開しないため、`{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}` が文字列のまま残り、`client-key-raspberrypi4-kiosk1` と一致しない。  
   対応: `extract_default_value()` 関数を追加し、テンプレート文字列から `default('value')` パターンを抽出してデフォルト値と比較するように修正。**[KB-237]**
@@ -1827,6 +1831,34 @@
 
 **詳細**: [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md)
 
+### キオスク画面のUI改善（推奨）
+
+**概要**: 吊具持出画面に吊具情報表示を追加した実装を機に、他のキオスク画面のUI改善を検討
+
+**完了した改善**:
+- ✅ 吊具持出画面に吊具情報表示を追加（KB-267）
+  - タグUIDから吊具マスタを取得して表示（名称、管理番号、保管場所、荷重、寸法）
+  - API二重呼び出しを回避する最適化（ref経由で最新state参照）
+  - 実機検証完了
+
+**次の改善候補**:
+1. **計測機器持出画面にも同様の情報表示を追加**（優先度: 中）
+   - 計測機器タグをスキャンした時点で、計測機器マスタから取得した詳細情報を表示
+   - 表示項目: 名称、管理番号、保管場所、校正期限、点検項目など
+   - 吊具持出画面と同じパターンで実装し、UIの一貫性を保つ
+
+2. **吊具返却画面にも情報表示を追加**（優先度: 低）
+   - 返却一覧に表示されている吊具の詳細情報を、クリックまたはホバーで表示
+   - 返却時の確認作業を支援
+
+3. **他のキオスク画面のUI改善**（優先度: 低）
+   - 工具持出画面のUI改善（写真撮影持出画面との一貫性）
+   - 返却画面のUI改善（持出中アイテムの詳細情報表示）
+
+**現状**: 吊具持出画面への情報表示追加は完了し、実機検証も完了。上記の改善は運用上の課題や要望を収集してから実施。
+
+**詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
+
 ---
 
 変更履歴: 2026-02-13 — B実装（api-only / minor-safe）を反映。`vitest` / `@vitest/coverage-istanbul` は major 1 系で最新（`1.6.1`）を確認。coverage provider を `istanbul` に統一し、`test:coverage` 実行時に明示指定する形へ更新。`test-exclude>glob` オーバーライド削除トライは再発エラー（`ERR_INVALID_ARG_TYPE`）で失敗したため復元し維持。最終的に `test:coverage`（ローカル）と `pnpm --filter @raspi-system/api test/lint/build` が成功することを確認。
@@ -1865,3 +1897,5 @@
 変更履歴: 2026-02-10 — 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OKを反映。Progressに`SeibanProgressService`新設、history-progressエンドポイント追加、`ProductionScheduleDataSource`の共通サービス利用、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを追加。KB-242を追加し、進捗マップの共有とサービス層の共通化による整合性・保守性の学びを記録。`docs/plans/production-schedule-kiosk-execplan.md`、`docs/guides/production-schedule-signage.md`、`docs/INDEX.md`、`docs/knowledge-base/index.md`を更新。ナレッジベース更新（39件）。
 
 変更履歴: 2026-02-11 — 加工機マスタのメンテナンスページ追加とCSVインポートトラブルシューティング完了・実機検証完了・ドキュメント更新完了を反映。Progressに加工機マスタのCRUD機能実装（APIエンドポイント追加、サービス層実装、フロントエンドページ追加、ナビゲーション追加、React Queryフック追加）とCSVインポート時のDB設定不整合問題の解決を追加。実機検証結果（加工機の登録・編集・削除、検索・フィルタ機能、一覧表示）を追加。KB-253（加工機CSVインポートのデフォルト列定義とDB設定不整合問題）、KB-254（加工機マスタのメンテナンスページ追加）を追加。csv-import-export.mdを更新（日本語ヘッダー対応、トラブルシューティングセクション追加）。ナレッジベース更新（161件）。
+
+変更履歴: 2026-02-18 — 吊具持出画面に吊具情報表示を追加・CI成功・デプロイ完了・実機検証完了を反映。Progressに吊具情報表示機能の実装（`riggingTagUid`変化時のデータ取得、右側余白への情報ブロック追加、API二重呼び出し回避）を追加。Surprises & DiscoveriesにuseRefによる最新state参照とAPI二重呼び出し回避の知見を追加。KB-267を追加。Next Stepsにキオスク画面のUI改善候補を追加。ナレッジベース更新（44件）。
