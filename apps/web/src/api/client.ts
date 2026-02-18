@@ -38,6 +38,81 @@ export const api = axios.create({
   baseURL: apiBase
 });
 
+type DebugResourceTiming = {
+  name: string;
+  initiatorType: string;
+  startTime: number;
+  duration: number;
+  requestStart?: number;
+  responseStart?: number;
+  responseEnd?: number;
+  connectStart?: number;
+  connectEnd?: number;
+  secureConnectionStart?: number;
+  domainLookupStart?: number;
+  domainLookupEnd?: number;
+  nextHopProtocol?: string;
+  transferSize?: number;
+  encodedBodySize?: number;
+  decodedBodySize?: number;
+};
+
+function getLatestResourceTiming(match: (name: string) => boolean): DebugResourceTiming | null {
+  if (typeof window === 'undefined' || typeof performance === 'undefined') return null;
+  try {
+    const entries = performance.getEntriesByType('resource') as PerformanceEntry[];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i];
+      if (!entry || typeof entry.name !== 'string') continue;
+      if (!match(entry.name)) continue;
+      // PerformanceResourceTiming fields exist only on resource timings.
+      const timing = entry as unknown as PerformanceResourceTiming;
+      type ResourceTimingExtra = PerformanceResourceTiming & {
+        secureConnectionStart?: number;
+        nextHopProtocol?: string;
+        transferSize?: number;
+        encodedBodySize?: number;
+        decodedBodySize?: number;
+      };
+      const timingExtra = timing as ResourceTimingExtra;
+      const initiatorType = typeof timing.initiatorType === 'string' ? timing.initiatorType : '';
+      if (initiatorType !== 'xmlhttprequest' && initiatorType !== 'fetch') continue;
+      const next: DebugResourceTiming = {
+        name: entry.name,
+        initiatorType,
+        startTime: Math.round(entry.startTime),
+        duration: Math.round(entry.duration),
+        requestStart: Math.round(timing.requestStart || 0),
+        responseStart: Math.round(timing.responseStart || 0),
+        responseEnd: Math.round(timing.responseEnd || 0),
+        connectStart: Math.round(timing.connectStart || 0),
+        connectEnd: Math.round(timing.connectEnd || 0),
+        secureConnectionStart: Math.round(timingExtra.secureConnectionStart || 0),
+        domainLookupStart: Math.round(timing.domainLookupStart || 0),
+        domainLookupEnd: Math.round(timing.domainLookupEnd || 0),
+        nextHopProtocol: typeof timingExtra.nextHopProtocol === 'string' ? timingExtra.nextHopProtocol : undefined,
+        transferSize: typeof timingExtra.transferSize === 'number' ? Math.round(timingExtra.transferSize) : undefined,
+        encodedBodySize:
+          typeof timingExtra.encodedBodySize === 'number' ? Math.round(timingExtra.encodedBodySize) : undefined,
+        decodedBodySize:
+          typeof timingExtra.decodedBodySize === 'number' ? Math.round(timingExtra.decodedBodySize) : undefined
+      };
+      return next;
+    }
+  } catch {
+    // ignore
+  } finally {
+    // Prevent unbounded growth in long debug sessions.
+    try {
+      const count = performance.getEntriesByType('resource').length;
+      if (count > 300) performance.clearResourceTimings();
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
 // 各リクエストで確実に client-key を付与するためのヘルパー
 // useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
 // Mac環境を検出して適切なデフォルト値を返す
@@ -322,9 +397,13 @@ export async function getKioskProductionSchedule(params?: {
   }
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
   const elapsedMs = Math.round(performance.now() - t0);
+  const resourceTiming =
+    cursorDebugEnabled && elapsedMs >= 2000
+      ? getLatestResourceTiming((name) => name.includes('/kiosk/production-schedule'))
+      : null;
   if (cursorDebugEnabled) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:end',message:'GET /kiosk/production-schedule end',data:{elapsedMs,rowsCount:data.rows.length,total:data.total},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/api/client.ts:getKioskProductionSchedule:end',message:'GET /kiosk/production-schedule end',data:{elapsedMs,rowsCount:data.rows.length,total:data.total,resourceTiming},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
   return data;
@@ -356,9 +435,13 @@ export async function completeKioskProductionScheduleRow(rowId: string) {
   const elapsedMs = Math.round(performance.now() - t0);
   const progressValue = (data.rowData ?? {}) as Record<string, unknown>;
   const nextProgress = typeof progressValue.progress === 'string' ? progressValue.progress.trim() : null;
+  const resourceTiming =
+    cursorDebugEnabled && elapsedMs >= 2000
+      ? getLatestResourceTiming((name) => name.includes(`/kiosk/production-schedule/${rowId}/complete`))
+      : null;
   if (cursorDebugEnabled) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:end',message:'PUT /kiosk/production-schedule/:rowId/complete end',data:{rowId,elapsedMs,alreadyCompleted:data.alreadyCompleted,nextProgress,debug:data.debug??null},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:end',message:'PUT /kiosk/production-schedule/:rowId/complete end',data:{rowId,elapsedMs,alreadyCompleted:data.alreadyCompleted,nextProgress,debug:data.debug??null,resourceTiming},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
   return data;
