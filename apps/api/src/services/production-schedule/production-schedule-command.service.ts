@@ -1,11 +1,39 @@
 import { Prisma } from '@prisma/client';
-import { performance } from 'node:perf_hooks';
+import { performance, monitorEventLoopDelay, eventLoopUtilization } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 
 const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
+
+// Debug: track event loop stalls (global, low overhead).
+// This helps detect cases where the request waits in the Node process *before* the handler runs.
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+let eluPrev = eventLoopUtilization();
+
+function snapshotEventLoopHealth() {
+  const eluNow = eventLoopUtilization();
+  const delta = eventLoopUtilization(eluNow, eluPrev);
+  eluPrev = eluNow;
+  // monitorEventLoopDelay histogram values are in nanoseconds.
+  const toMs = (n: number) => Math.round(n / 1e6);
+  return {
+    elu: {
+      utilization: Math.round(delta.utilization * 1000) / 1000,
+      activeMs: Math.round(delta.active / 1e6),
+      idleMs: Math.round(delta.idle / 1e6)
+    },
+    eventLoopDelayMs: {
+      mean: toMs(eventLoopDelay.mean),
+      max: toMs(eventLoopDelay.max),
+      p50: toMs(eventLoopDelay.percentile(50)),
+      p90: toMs(eventLoopDelay.percentile(90)),
+      p99: toMs(eventLoopDelay.percentile(99))
+    }
+  };
+}
 
 export async function completeProductionScheduleRow(params: {
   rowId: string;
@@ -25,11 +53,13 @@ export async function completeProductionScheduleRow(params: {
     txShiftAssignmentsMs: number | null;
     txShiftAssignmentsCount: number | null;
     hadAssignment: boolean;
+    eventLoop?: ReturnType<typeof snapshotEventLoopHealth>;
   };
 }> {
   const { rowId, locationKey, debugSessionId } = params;
   const debugEnabled = debugSessionId === '30be23';
   const tTotalStart = performance.now();
+  const eventLoop = debugEnabled ? snapshotEventLoopHealth() : null;
 
   const tFindRowStart = performance.now();
   const row = await prisma.csvDashboardRow.findFirst({
@@ -119,7 +149,8 @@ export async function completeProductionScheduleRow(params: {
             txDeleteAssignmentMs: txDeleteAssignmentMs === null ? null : Math.round(txDeleteAssignmentMs),
             txShiftAssignmentsMs: txShiftAssignmentsMs === null ? null : Math.round(txShiftAssignmentsMs),
             txShiftAssignmentsCount,
-            hadAssignment: Boolean(currentAssignment)
+            hadAssignment: Boolean(currentAssignment),
+            eventLoop: eventLoop ?? undefined
           }
         }
       : {})
