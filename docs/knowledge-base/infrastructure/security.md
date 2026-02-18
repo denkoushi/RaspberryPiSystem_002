@@ -558,3 +558,162 @@ update-frequency: medium
 - `docs/security/evaluation-report.md`
 
 ---
+
+### [KB-264] Tailscale ACL grants形式でのポート指定エラー（tag:server:22形式が無効）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入（2026-02-16）
+
+**事象**:
+- Tailscale管理画面のJSON editorでACLポリシーを設定する際、`"dst": ["tag:server:22"]` のような形式でエラーが発生
+- エラーメッセージ: `Error: dst="tag:server:22": tag not found: "tag:server:22"`
+
+**要因**:
+- Tailscaleの新しい`grants`形式では、ポート指定を`dst`フィールドに含めることができない
+- `grants`形式では、`dst`はタグのみを指定し、ポートは`ip`フィールドで`tcp:22`のように指定する必要がある
+- 旧形式の`acls`では`tag:server:22`形式が有効だが、`grants`形式では無効
+
+**有効だった対策**:
+- ✅ `grants`形式では`ip`フィールドでポートを指定:
+  ```json
+  {
+    "src": ["tag:admin"],
+    "dst": ["tag:server"],
+    "ip": ["tcp:22", "tcp:443"]
+  }
+  ```
+- ✅ `dst`フィールドにはタグのみを指定（ポートを含めない）
+
+**実装のポイント**:
+- **grants形式**: `"ip": ["tcp:22", "tcp:443"]` のようにプロトコルとポートを明示
+- **acls形式（旧）**: `"dst": ["tag:server:22"]` のようにポートを含める形式が可能
+- Tailscale管理画面のデフォルトは`grants`形式のため、新しい設定では`grants`形式を使用する
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`に`grants`形式の正しい雛形を追加
+- ポート指定は`ip`フィールドで行うことを明記
+
+**関連ファイル**:
+- `docs/security/tailscale-policy.md`
+- Tailscale管理画面のAccess Controls → JSON editor
+
+---
+
+### [KB-265] Tailscaleハードニング段階導入完了（横移動面削減）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入（2026-02-16〜2026-02-17）
+
+**事象**:
+- Tailscale VPN内で端末間の横移動（lateral movement）が可能な状態だった
+- Pi4キオスクのNFC Agent（`0.0.0.0:7071`）がTailnet上でアクセス可能で、認証なしの制御API（`reboot`、`poweroff`）が暴露されていた
+
+**要因**:
+1. **NFC Agentの広いバインド**: Pi4のNFC Agentが`0.0.0.0:7071`でバインドされ、Tailnet上の任意の端末からアクセス可能
+2. **認証なしの制御API**: `/api/agent/reboot`、`/api/agent/poweroff`が認証なしで公開
+3. **ACL未適用**: Tailscaleのデフォルト設定（Allow all）で、端末間の通信が全て許可されていた
+
+**有効だった対策**:
+- ✅ **Phase 1: NFC WebSocketのlocalhost優先化**
+  - `apps/web/src/hooks/useNfcStream.ts`を修正し、`VITE_AGENT_WS_MODE=local`時に`ws://localhost:7071/stream`を優先
+  - 失敗時は従来の`wss://<Pi5>/stream`（Caddy経由）へフォールバック
+  - `infrastructure/ansible/templates/web.env.j2`に`VITE_AGENT_WS_MODE`を追加
+  - `infrastructure/ansible/inventory.yml`でkiosk端末に`web_agent_ws_mode: "local"`を設定
+- ✅ **Phase 2-0: タグ付け**
+  - Tailscale管理画面で各端末にタグを付与（`tag:admin`、`tag:server`、`tag:kiosk`、`tag:signage`）
+- ✅ **Phase 2-1: ACL最小化（grants形式）**
+  - `tag:admin → tag:server: tcp:22, tcp:443`
+  - `tag:kiosk/tag:signage → tag:server: tcp:443`
+  - `tag:server → tag:kiosk/tag:signage: tcp:22`
+  - 互換期間として`tag:server → tag:kiosk: tcp:7071`を一時的に許可
+- ✅ **Phase 2-2: kiosk:7071閉塞**
+  - `tag:server → tag:kiosk: tcp:7071`のgrantを削除
+  - Tailnet上の`kiosk:7071`へのアクセスを遮断
+
+**実装のポイント**:
+- **NFC WebSocket**: kiosk端末は`localhost:7071`を優先し、Pi5経由のプロキシはフォールバックのみ
+- **ACL形式**: Tailscaleの新しい`grants`形式を使用（`ip`フィールドでポート指定）
+- **段階適用**: タグ付け→ACL最小化→7071閉塞の順で段階的に適用し、各段階で動作確認
+
+**検証結果**:
+- ✅ Mac→Pi5 SSH: 正常
+- ✅ APIヘルスチェック: `status=ok`
+- ✅ サイネージ配信: `200 OK`
+- ✅ Pi5→Pi4/Pi3（Ansible ping）: 正常
+- ✅ Mac→Pi4:7071: タイムアウト（到達不可、期待通り）
+- ✅ Pi4 localhost:7071: 正常応答（NFC Agent動作確認）
+- ✅ Mac→Pi4 SSH: ブロック（期待通り）
+- ✅ NFC読み取り: 正常動作（実機検証）
+- ✅ WebRTC通話: 正常動作（実機検証、工場LAN内）
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`に`grants`形式の正しい雛形を追加
+- `docs/security/system-inventory.md`にTailscale運用（ロールと最小通信）を記録
+- 新規端末追加時は、適切なタグを付与し、ACLポリシーに反映
+
+**関連ファイル**:
+- `apps/web/src/hooks/useNfcStream.ts`
+- `infrastructure/ansible/templates/web.env.j2`
+- `infrastructure/ansible/inventory.yml`
+- `docs/security/tailscale-policy.md`
+- `docs/security/system-inventory.md`
+- `docs/guides/deployment.md`
+
+---
+
+### [KB-266] NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）
+
+**EXEC_PLAN.md参照**: Tailscaleハードニング段階導入 Phase 2-2完了（2026-02-18）
+
+**事象**:
+- Tailscale ACLポリシー導入後、Pi4でNFCタグをスキャンすると、Macで開いたキオスク画面でも動作が発動する問題が発生
+- NFCイベントが端末間で横漏れし、意図しない画面遷移が発生していた
+
+**要因**:
+1. **Pi5経由の共有購読**: Webアプリが`wss://<Pi5>/stream`（Caddy経由）に接続し、Pi5がPi4のNFC Agentをプロキシしていた
+2. **NFC Agentの全端末配信**: Pi4のNFC AgentがWebSocket接続している全クライアントにイベントを配信していた
+3. **ポリシー未実装**: Webアプリに端末分離ポリシーが実装されておらず、MacでもNFCストリームを購読していた
+
+**有効だった対策**:
+- ✅ **NFCストリームポリシーの実装**
+  - `apps/web/src/features/nfc/nfcPolicy.ts`を新設し、`resolveNfcStreamPolicy()`でポリシーを解決
+  - Mac環境では`disabled`（NFC無効）、Pi4では`localOnly`（localhostのみ）を返す
+  - `apps/web/src/features/nfc/nfcEventSource.ts`を新設し、`getNfcWsCandidates()`でWebSocket候補を生成
+  - `localOnly`ポリシー時は`ws://localhost:7071/stream`のみ、フォールバックなし
+- ✅ **useNfcStreamフックの更新**
+  - `apps/web/src/hooks/useNfcStream.ts`を修正し、`resolveNfcStreamPolicy()`と`getNfcWsCandidates()`を使用
+  - Pi5経由の`wss://<Pi5>/stream`へのフォールバックを削除
+- ✅ **Caddyfileの更新**
+  - `infrastructure/docker/Caddyfile.local.template`から`/stream`プロキシ設定を削除
+  - Pi5経由のNFCストリームプロキシを廃止
+- ✅ **CI設定の更新**
+  - `.github/workflows/ci.yml`の`on.push.branches`に`chore/**`パターンを追加
+
+**実装のポイント**:
+- **ポリシー解決**: User-AgentとlocalStorageの`kiosk-client-key`から端末種別を判定
+- **Mac環境の無効化**: Mac環境ではNFCストリームを`disabled`にし、誤発火を防止
+- **Pi4のlocalOnly**: Pi4では`ws://localhost:7071/stream`のみに接続し、端末分離を実現
+- **Caddyプロキシ削除**: Pi5経由の`/stream`プロキシを削除し、共有購読面を撤去
+
+**検証結果**:
+- ✅ Pi4キオスク画面: NFCスキャンがローカル端末のみで動作（実機検証完了）
+- ✅ Macキオスク画面: NFCスキャンが発動しない（実機検証完了）
+- ✅ Caddyfile: `/stream`プロキシ設定が削除済み（確認済み）
+- ✅ ビルド済みWebアプリ: `wss://.../stream`への参照が存在しない（確認済み）
+- ✅ Pi5からPi4のNFC Agent: アクセス不可（正常、端末分離が機能）
+
+**再発防止**:
+- `docs/security/tailscale-policy.md`にNFCストリーム分離の実装完了を記録
+- `docs/troubleshooting/nfc-reader-issues.md`にNFC WebSocket接続ポリシーの説明を追加
+- 新規端末追加時は、適切なポリシーが適用されることを確認
+
+**関連ファイル**:
+- `apps/web/src/features/nfc/nfcPolicy.ts`（新規）
+- `apps/web/src/features/nfc/nfcEventSource.ts`（新規）
+- `apps/web/src/hooks/useNfcStream.ts`（修正）
+- `apps/web/src/hooks/useNfcStream.test.ts`（新規、テスト）
+- `infrastructure/docker/Caddyfile.local.template`（修正）
+- `infrastructure/docker/Caddyfile.local`（修正）
+- `.github/workflows/ci.yml`（修正）
+- `docs/security/tailscale-policy.md`
+- `docs/troubleshooting/nfc-reader-issues.md`
+
+---

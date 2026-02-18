@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { getNfcWsCandidates } from '../features/nfc/nfcEventSource';
+import { resolveNfcStreamPolicy, type NfcStreamPolicy } from '../features/nfc/nfcPolicy';
+
 export interface NfcEvent {
   uid: string;
   timestamp: string;
@@ -24,18 +27,10 @@ const persistEventId = (eventId: number) => {
   window.sessionStorage.setItem(LAST_EVENT_ID_KEY, String(eventId));
 };
 
-// HTTPSページの場合は自動的にWSSに変換（Caddy経由）
-const getAgentWsUrl = () => {
-  const envUrl = import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream';
-  if (isBrowser && window.location.protocol === 'https:') {
-    return `wss://${window.location.host}/stream`;
-  }
-  return envUrl;
-};
-
-const AGENT_WS_URL = getAgentWsUrl();
-
-export function useNfcStream(enabled = false) {
+// ViteのVITE_*はビルド時に埋め込まれる。
+// - localOnlyポリシー: ws://localhost:7071/stream のみ（フォールバック無し）
+// - legacyポリシー: 従来互換（HTTPSページでは host 経由の /stream も候補に入る）
+export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const lastEventKeyRef = useRef<string | null>(null); // 最後に処理したイベントのキー
@@ -44,7 +39,9 @@ export function useNfcStream(enabled = false) {
   const enabledAtRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!enabled) {
+    const resolvedPolicy = policy ?? resolveNfcStreamPolicy();
+
+    if (!enabled || resolvedPolicy === 'disabled') {
       setEvent(null);
       // enabled=falseになったらenabledAtをリセット
       enabledAtRef.current = null;
@@ -55,8 +52,15 @@ export function useNfcStream(enabled = false) {
     const enabledAt = new Date().toISOString();
     enabledAtRef.current = enabledAt;
 
+    const wsCandidates = getNfcWsCandidates({
+      policy: resolvedPolicy,
+      envUrl: import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream',
+      mode: String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase(),
+      location: isBrowser ? { protocol: window.location.protocol, host: window.location.host } : undefined,
+    });
     let socket: WebSocket | null = null;
     let isMounted = true;
+    let candidateIdx = 0;
 
     if (lastProcessedEventIdRef.current === null) {
       lastProcessedEventIdRef.current = readStoredEventId();
@@ -64,9 +68,15 @@ export function useNfcStream(enabled = false) {
 
     const connect = () => {
       if (!isMounted) return;
+      if (wsCandidates.length === 0) return;
       
       try {
-        socket = new WebSocket(AGENT_WS_URL);
+        const url = wsCandidates[Math.min(candidateIdx, wsCandidates.length - 1)];
+        let opened = false;
+        socket = new WebSocket(url);
+        socket.onopen = () => {
+          opened = true;
+        };
         socket.onmessage = (message) => {
           if (!isMounted) return;
           try {
@@ -102,6 +112,14 @@ export function useNfcStream(enabled = false) {
         };
         socket.onclose = () => {
           if (!isMounted) return;
+
+          // legacy互換: localhostへ接続できない場合は、次の候補へ即フォールバックする。
+          if (!opened && candidateIdx < wsCandidates.length - 1) {
+            candidateIdx += 1;
+            reconnectTimeout.current = setTimeout(connect, 100);
+            return;
+          }
+
           // エラーをコンソールに出力しない（WebSocket接続エラーは正常な動作の一部）
           reconnectTimeout.current = setTimeout(connect, 2000);
         };
@@ -112,6 +130,11 @@ export function useNfcStream(enabled = false) {
       } catch (error) {
         // 接続エラーは無視（NFCエージェントが起動していない場合など）
         if (isMounted) {
+          if (candidateIdx < wsCandidates.length - 1) {
+            candidateIdx += 1;
+            reconnectTimeout.current = setTimeout(connect, 100);
+            return;
+          }
           reconnectTimeout.current = setTimeout(connect, 2000);
         }
       }
@@ -129,7 +152,7 @@ export function useNfcStream(enabled = false) {
       lastEventKeyRef.current = null;
       setEvent(null);
     };
-  }, [enabled]);
+  }, [enabled, policy]);
 
   return event;
 }

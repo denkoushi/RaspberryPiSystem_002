@@ -36,6 +36,8 @@ all:
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"
           web_agent_ws_url: "{{ websocket_agent_url }}"
+          # kiosk増台に備え、kiosk端末では localhost のNFC Agentを優先（失敗時は従来経路へフォールバック）
+          web_agent_ws_mode: "local"
           # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
           # status-agent設定
           status_agent_client_id: raspberrypi5-server

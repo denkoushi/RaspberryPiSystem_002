@@ -24,17 +24,6 @@
     }
   }
 
-  # WebSocketプロキシ（NFCエージェント用）
-  # 環境変数 NFC_AGENT_HOST でIPアドレスを設定可能（デフォルト: 192.168.128.102）
-  # 起動時に $NFC_AGENT_HOST が環境変数の値に置換されます
-  handle /stream {
-    reverse_proxy $NFC_AGENT_HOST:7071 {
-      transport http {
-        versions 1.1
-      }
-    }
-  }
-
   # サムネイルの静的ファイル配信（認証不要）
   handle_path /storage/thumbnails/* {
     root * /srv/storage/thumbnails
@@ -44,7 +33,6 @@
 
   @spa {
     not path /api/*
-    not path /stream
     not path /storage/*
     not file
   }

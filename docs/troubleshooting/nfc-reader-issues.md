@@ -1,5 +1,15 @@
 # NFCリーダーのトラブルシューティング
 
+## NFC WebSocket接続ポリシー（2026-02-18更新）
+
+**重要**: NFCストリームは端末分離ポリシーに基づいて動作します。
+
+- **Pi4キオスク端末**: `localOnly`ポリシーが適用され、`ws://localhost:7071/stream`のみに接続します。Pi5経由の`/stream`プロキシは使用しません。
+- **運用Mac**: `disabled`ポリシーが適用され、NFCストリームを購読しません（誤発火防止）。
+- **開発環境**: `legacy`ポリシーが適用され、従来互換の動作（HTTPSページでは`wss://<host>/stream`も候補に入る）を維持します。
+
+詳細は [docs/security/tailscale-policy.md](../security/tailscale-policy.md) と [KB-266](../knowledge-base/infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) を参照してください。
+
 ## 問題: ラズパイ4のキオスクでNFCリーダーからのタグスキャンが機能しない
 
 ### 確認手順
@@ -79,8 +89,15 @@ Webアプリのビルド時に環境変数が正しく設定されているか�
 cd /opt/RaspberryPiSystem_002/apps/web
 cat .env  # または環境変数ファイルを確認
 
-# VITE_AGENT_WS_URLが設定されているか確認
-# デフォルトは ws://localhost:7071/stream
+# NFC WebSocket の接続先ポリシーを確認
+# - kiosk端末（Pi4）の通常運用: `localOnly`ポリシーで`ws://localhost:7071/stream`のみに接続
+#   Pi5経由の`/stream`プロキシは使用しない（Caddyfileから削除済み）
+# - 運用Mac: `disabled`ポリシーでNFCストリームを購読しない（誤発火防止）
+#
+# 目安:
+# - 正常: `ws://localhost:7071/stream` への接続が確立し、スキャンでイベントが届く
+# - 異常: `wss://<Pi5>/stream` へ接続しようとしている（古いbundle/設定の可能性）
+#   または、MacでNFCスキャンが発動する（ポリシー未適用の可能性）
 ```
 
 #### 7. ブラウザのコンソールログ確認
