@@ -206,10 +206,45 @@ export function ProductionSchedulePage() {
     dueDateMutation.isPending ||
     searchStateMutation.isPending;
 
-  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch: isWriting });
-  const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: isWriting });
-  const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch: isWriting });
-  const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch: isWriting });
+  // NOTE: 人間の連続操作中に「書き込み完了→即ポーリング復帰→次のクリック」と衝突しやすいため、
+  //       書き込み完了後に短いクールダウンを入れて衝突確率を下げる。
+  const WRITE_REFETCH_COOLDOWN_MS = 2500;
+  const [isWriteCooldown, setIsWriteCooldown] = useState(false);
+  const prevIsWritingRef = useRef(false);
+  const cooldownTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prevIsWriting = prevIsWritingRef.current;
+    prevIsWritingRef.current = isWriting;
+
+    if (isWriting) {
+      // 書き込み中は常に pause。クールダウンタイマーが残っていたら止める。
+      if (cooldownTimerRef.current) {
+        window.clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+      setIsWriteCooldown(false);
+      return;
+    }
+
+    // 書き込みが「終わった瞬間」にだけクールダウン開始
+    if (prevIsWriting && !isWriting) {
+      setIsWriteCooldown(true);
+      if (cooldownTimerRef.current) {
+        window.clearTimeout(cooldownTimerRef.current);
+      }
+      cooldownTimerRef.current = window.setTimeout(() => {
+        cooldownTimerRef.current = null;
+        setIsWriteCooldown(false);
+      }, WRITE_REFETCH_COOLDOWN_MS);
+    }
+  }, [isWriting]);
+
+  const pauseRefetch = isWriting || isWriteCooldown;
+
+  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch });
+  const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
+  const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
+  const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
   const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
 
   const tableColumns: TableColumnDefinition[] = useMemo(
@@ -290,7 +325,7 @@ export function ProductionSchedulePage() {
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
-    { pauseRefetch: isWriting }
+    { pauseRefetch }
   );
 
   const isTwoColumn = containerWidth >= 1200;

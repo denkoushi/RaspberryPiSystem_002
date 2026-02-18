@@ -306,10 +306,12 @@ export function useUpdateKioskProductionScheduleOrder() {
     mutationKey: ['kiosk-production-schedule', 'write', 'order'],
     mutationFn: ({ rowId, payload }: { rowId: string; payload: { resourceCd: string; orderNumber: number | null } }) =>
       updateKioskProductionScheduleOrder(rowId, payload),
-    onMutate: async () => {
-      // 進行中の再取得（ポーリング/手動refetch）と更新が競合すると体感待ちが出やすいので止める
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    onMutate: () => {
+      // NOTE: cancelQueries は「進行中の取得」と「更新」が競合しやすい場面で有効。
+      //       ただし await すると、取得側が即時キャンセルに対応していない場合に体感待ちを作るため、
+      //       ここでは await せず投げっぱなしにする（更新完了後に invalidate で整合を取る）。
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     },
     onSuccess: () => {
       // UI待ちを作らない（mutation完了は即返し、裏で再取得）
@@ -325,8 +327,8 @@ export function useUpdateKioskProductionScheduleNote() {
     mutationKey: ['kiosk-production-schedule', 'write', 'note'],
     mutationFn: ({ rowId, note }: { rowId: string; note: string }) =>
       updateKioskProductionScheduleNote(rowId, { note }),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    onMutate: () => {
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
     },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
@@ -361,8 +363,8 @@ export function useUpdateKioskProductionScheduleDueDate() {
     mutationKey: ['kiosk-production-schedule', 'write', 'due-date'],
     mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string }) =>
       updateKioskProductionScheduleDueDate(rowId, { dueDate }),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    onMutate: () => {
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
     },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
@@ -397,8 +399,8 @@ export function useUpdateKioskProductionScheduleProcessing() {
     mutationKey: ['kiosk-production-schedule', 'write', 'processing'],
     mutationFn: ({ rowId, processingType }: { rowId: string; processingType: string }) =>
       updateKioskProductionScheduleProcessing(rowId, { processingType }),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+    onMutate: () => {
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
     },
     onSuccess: async (data, { rowId }) => {
       queryClient.setQueriesData<{
@@ -433,9 +435,9 @@ export function useCompleteKioskProductionScheduleRow() {
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'complete'],
     mutationFn: (rowId: string) => completeKioskProductionScheduleRow(rowId),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
-      await queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    onMutate: () => {
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     },
     onSuccess: (data, rowId) => {
       // Optimistic Update: キャッシュを直接更新して即座にUIを更新
