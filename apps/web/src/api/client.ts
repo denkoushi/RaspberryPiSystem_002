@@ -129,6 +129,10 @@ api.interceptors.request.use((config) => {
   if (!config.headers['x-client-key']) {
     config.headers['x-client-key'] = key;
   }
+  // Debug: Cursor内ブラウザでの計測時だけサーバへヒントを渡す（通常運用には影響しない）
+  if (typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23')) {
+    config.headers['x-cursor-debug-session'] = '30be23';
+  }
   return config;
 });
 
@@ -333,13 +337,28 @@ export async function completeKioskProductionScheduleRow(rowId: string) {
     fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:start',message:'PUT /kiosk/production-schedule/:rowId/complete start',data:{rowId},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
-  const { data } = await api.put<{ success: boolean; alreadyCompleted: boolean; rowData: Record<string, unknown> }>(`/kiosk/production-schedule/${rowId}/complete`, {});
+  const { data } = await api.put<{
+    success: boolean;
+    alreadyCompleted: boolean;
+    rowData: Record<string, unknown>;
+    debug?: {
+      totalMs: number;
+      findRowMs: number;
+      findAssignmentMs: number;
+      txMs: number;
+      txUpdateRowMs: number;
+      txDeleteAssignmentMs: number | null;
+      txShiftAssignmentsMs: number | null;
+      txShiftAssignmentsCount: number | null;
+      hadAssignment: boolean;
+    };
+  }>(`/kiosk/production-schedule/${rowId}/complete`, {});
   const elapsedMs = Math.round(performance.now() - t0);
   const progressValue = (data.rowData ?? {}) as Record<string, unknown>;
   const nextProgress = typeof progressValue.progress === 'string' ? progressValue.progress.trim() : null;
   if (cursorDebugEnabled) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:end',message:'PUT /kiosk/production-schedule/:rowId/complete end',data:{rowId,elapsedMs,alreadyCompleted:data.alreadyCompleted,nextProgress},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/api/client.ts:completeKioskProductionScheduleRow:end',message:'PUT /kiosk/production-schedule/:rowId/complete end',data:{rowId,elapsedMs,alreadyCompleted:data.alreadyCompleted,nextProgress,debug:data.debug??null},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
   }
   return data;
