@@ -28,11 +28,13 @@ export function WebRTCCallProvider({ children }: PropsWithChildren) {
     setLastError(null);
   }, []);
 
+  const handleWebRTCError = useCallback((error: Error) => {
+    setLastError(error);
+  }, []);
+
   const webrtc = useWebRTC({
     enabled: true,
-    onError: (error) => {
-      setLastError(error);
-    }
+    onError: handleWebRTCError
   });
 
   useEffect(() => {
@@ -40,6 +42,9 @@ export function WebRTCCallProvider({ children }: PropsWithChildren) {
       return;
     }
     if (location.pathname === '/kiosk/call') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H4',location:'WebRTCCallContext.tsx:autoswitch:skip',message:'webrtc_autoswitch_skipped_already_on_call_page',data:{pathname:location.pathname,search:location.search},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return;
     }
 
@@ -49,6 +54,9 @@ export function WebRTCCallProvider({ children }: PropsWithChildren) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(RETURN_PATH_KEY, returnPath);
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H4',location:'WebRTCCallContext.tsx:autoswitch:navigate',message:'webrtc_autoswitch_navigate_to_call_page',data:{fromPath:returnPath,toPath:'/kiosk/call'},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     navigate('/kiosk/call');
   }, [webrtc.callState, location.pathname, location.search, navigate]);
 
