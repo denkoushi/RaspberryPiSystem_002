@@ -34,6 +34,7 @@
   },
   "pnpm": {
     "overrides": {
+      "test-exclude>glob": "7.2.3",
       "glob": "10.5.0",
       "minimatch": ">=10.2.1",
       "cross-spawn": "7.0.5",
