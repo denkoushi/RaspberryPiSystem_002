@@ -1,5 +1,52 @@
 ---
 
+### [KB-271] 生産スケジュールデータ削除ルール（重複loser即時削除・1年超過は保存しない）
+
+**日付**: 2026-02-19
+
+**Context**:
+- 生産スケジュールCSVは継続的に取得され、DB上の`CsvDashboardRow`が増え続ける
+- ストレージ圧迫解消と、将来の新規機能データ追加に備え、**生産スケジュールのみ**削除ルールを明確化・実装する
+- 既存のDEDUP取り込みは「CSVに含まれない過去行を削除しない」ため、運用次第で重複や古い行が残り得る
+
+**前提**:
+- 完了状態（`progress`）は別テーブル`ProductionScheduleProgress`で管理済み（`rowData`上書きに影響されない）: [KB-269](#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避)
+- 行削除はカスケード前提（備考/納期/割当/完了状態などのユーザー操作データも一緒に削除する。復旧・履歴保持はしない）
+
+**削除ルール（仕様）**:
+1. **重複loserの削除（即時 + 日次収束）**
+   - 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で複数行がDBに存在する場合、winnerを1行だけ残し、それ以外（loser）を削除
+   - winner判定は既存の表示/集計ロジックと同じ（`ProductNo`数値降順、同値なら`createdAt`降順、同値なら`id`降順）
+2. **1年超過は保存しない（取り込み時フィルタ + 日次削除）**
+   - 基準日を `max(rowData.updatedAt, occurredAt)` とし、**1年を超えた行は取り込み時点で保存しない**（UIにも出ない）
+   - 既にDBに残っている1年超過行は日次ジョブで削除して収束させる
+
+**実装（要点）**:
+- 取り込み時フィルタ（production schedule + DEDUPのみ）:
+  - `CsvDashboardIngestor`で正規化後に`1年超過行`を除外し、再取り込みで復活しないようにした
+- 重複loser即時削除（ベストエフォート）:
+  - 取り込み後、今回のCSVに出現した論理キー範囲に限定して重複loserを削除
+- 日次クリーンアップ:
+  - `CsvImportScheduler`で毎日`02:10`（JST）に「1年超過削除」「重複loser削除」を実行し、取り込み漏れや過去データ残存を収束
+
+**トラブルシューティング**:
+- 「古い行が取り込まれない」:
+  - 仕様どおり（1年超過は保存しない）。`rowData.updatedAt`または`registeredAt(dateColumnName)`の値を確認
+- 「想定より削除が進まない」:
+  - `rowData.updatedAt`が存在し、更新日時が新しい場合は保持される（基準日が`updatedAt`優先のため）
+  - 日次ジョブのログ（`[CsvImportScheduler] Starting production schedule cleanup`）を確認
+- 「備考/納期/割当/完了が消えた」:
+  - 行削除はカスケード前提のため仕様どおり（復旧・履歴保持しない方針）
+
+**関連ファイル**:
+- `apps/api/src/services/production-schedule/retention/production-schedule-basis-date.ts`（基準日計算）
+- `apps/api/src/services/production-schedule/retention/production-schedule-cleanup.service.ts`（削除/クリーンアップ）
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（取り込み時フィルタ + 即時重複削除）
+- `apps/api/src/services/imports/csv-import-scheduler.ts`（日次クリーンアップジョブ）
+- `docs/guides/csv-import-export.md`（仕様追記）
+
+---
+
 
 
 ### [KB-258] コード品質改善フェーズ2（Ratchet）: 型安全化・Lint抑制削減・契約型拡張
