@@ -33,6 +33,8 @@ const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
 export const DEFAULT_CLIENT_KEY =
   import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
+const DEMO_CLIENT_KEY = 'client-demo-key';
+const PI4_KIOSK_CLIENT_KEY = 'client-key-raspberrypi4-kiosk1';
 
 export const api = axios.create({
   baseURL: apiBase
@@ -184,12 +186,18 @@ const resolveClientKey = () => {
   
   // Mac環境を検出（User-Agentから）
   const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  const isChromeOS = /CrOS/i.test(navigator.userAgent);
+  // Raspberry Pi (Linux/ARM) を雑に推定（ChromeOSは除外）
+  const isLinuxArm =
+    /Linux/i.test(navigator.userAgent) && /(arm|aarch64)/i.test(navigator.userAgent) && !isChromeOS;
   const macDefaultKey = 'client-key-mac-kiosk1';
+
+  const recommendedDefaultKey = isMac ? macDefaultKey : isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
   
   const savedKey = window.localStorage.getItem('kiosk-client-key');
   if (!savedKey || savedKey.length === 0) {
     // localStorageが空の場合、Mac環境ならMac用のキーを返す
-    return isMac ? macDefaultKey : DEFAULT_CLIENT_KEY;
+    return recommendedDefaultKey;
   }
   
   // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
@@ -207,10 +215,16 @@ const resolveClientKey = () => {
   const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
   
   // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
-  if (isMac && resolvedKey === 'client-key-raspberrypi4-kiosk1') {
+  if (isMac && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
     // localStorageを修正
     window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
     return macDefaultKey;
+  }
+
+  // 非Pi端末（例: ChromeOS等）でPi4のキーを持っている場合はdemoへ矯正（競合防止）
+  if (!isLinuxArm && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEMO_CLIENT_KEY));
+    return DEMO_CLIENT_KEY;
   }
   
   return resolvedKey;
@@ -229,14 +243,15 @@ export function setAuthToken(token?: string) {
 }
 
 export function setClientKeyHeader(key?: string) {
-  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : DEFAULT_CLIENT_KEY;
+  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : resolveClientKey();
 }
 
 const resetKioskClientKey = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem('kiosk-client-key');
-  window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEFAULT_CLIENT_KEY));
-  setClientKeyHeader(DEFAULT_CLIENT_KEY);
+  const defaultKey = resolveClientKey();
+  window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
+  setClientKeyHeader(defaultKey);
   if (window.location.pathname.startsWith('/kiosk')) {
     window.location.reload();
   }
@@ -252,11 +267,17 @@ if (typeof window !== 'undefined') {
   if (!existing || existing.length === 0) {
     // Mac環境を検出（User-Agentから）
     const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-    const defaultKey = isMac ? 'client-key-mac-kiosk1' : DEFAULT_CLIENT_KEY;
+    const isChromeOS = /CrOS/i.test(navigator.userAgent);
+    const isLinuxArm =
+      /Linux/i.test(navigator.userAgent) && /(arm|aarch64)/i.test(navigator.userAgent) && !isChromeOS;
+    const defaultKey = isMac ? 'client-key-mac-kiosk1' : isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
     window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
     setClientKeyHeader(defaultKey);
   } else {
-    setClientKeyHeader(resolveClientKey());
+    // 既存値が不適切（非PiでPi4キー等）の場合はresolveClientKeyが矯正する
+    const resolved = resolveClientKey();
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(resolved));
+    setClientKeyHeader(resolved);
   }
 }
 
