@@ -225,6 +225,35 @@ error  `../client` import should occur before type import of `@raspi-system/shar
 
 **参考**: Phase 8実装時に `contracts.client.test.ts` で同様のエラーが発生し、CI run #637-#640が失敗。`pnpm lint --fix` で修正後、run #641で成功。
 
+### 11. `test:coverage` が `TypeError: minimatch is not a function` で失敗する（`test-exclude@6.0.0` と `minimatch@10.x` の非互換）
+
+**症状**: CIの`Run API tests`ステップで、すべてのテストファイル（90件）が失敗し、以下のエラーが表示される:
+```
+TypeError: minimatch is not a function
+❯ matches ../../node_modules/.pnpm/test-exclude@6.0.0/node_modules/test-exclude/index.js:99:36
+❯ TestExclude.shouldInstrument ../../node_modules/.pnpm/test-exclude@6.0.0/node_modules/test-exclude/index.js:102:28
+❯ IstanbulCoverageProvider.onFileTransform ../../node_modules/.pnpm/@vitest+coverage-istanbul@1.6.1_vitest@1.6.1/node_modules/@vitest/coverage-istanbul/dist/provider.js:167:27
+```
+
+**確認事項**:
+- `package.json`の`pnpm.overrides`に`test-exclude`のバージョンが指定されているか
+- `minimatch`のバージョンが`10.x`以上か（セキュリティ修正のため）
+- `test-exclude@6.0.0`が`minimatch@10.x`と非互換か
+
+**対処法**:
+1. `package.json`の`pnpm.overrides`に`"test-exclude": "7.0.1"`を追加（`test-exclude@7.0.1`は`minimatch@10.x`に対応）
+2. `test-exclude>glob: 7.2.3`のoverrideを削除（不要になったため）
+3. `minimatch`のoverrideを`>=10.2.1`から`10.2.1`に固定（セキュリティ修正のため）
+4. `pnpm install --no-frozen-lockfile`で依存関係を更新
+5. ローカルで`pnpm --filter @raspi-system/api test:coverage`を実行して確認
+6. CIを再実行して確認
+
+**注意**:
+- `test-exclude@6.0.0`は`minimatch@10.x`のESMエクスポート形式に対応していないため、`test-exclude@7.0.1`への更新が必要
+- セキュリティ修正（`minimatch`のoverride）と互換性修正（`test-exclude`のoverride）を同時に行う場合は、両方の影響を確認する
+
+**参考**: 2026-02-19に発生し、`test-exclude@7.0.1`へのoverride追加で解決。CI成功（Run ID `22163832946`）、デプロイ成功、実機検証で正常表示を確認。詳細は [knowledge-base/ci-cd.md#kb-270](../knowledge-base/ci-cd.md#kb-270-ciのvitest-coverageでtest-excludeとminimatchの非互換エラー) を参照。
+
 ### 9. 性能テストの失敗（`Run API performance tests`）
 
 **症状**: `Run API performance tests` ステップでテストが失敗し、CIが停止

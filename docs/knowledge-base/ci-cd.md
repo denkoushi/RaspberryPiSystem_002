@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 6件  
+**件数**: 7件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -348,4 +348,75 @@ update-frequency: high
 **関連ファイル**: 
 - `.github/workflows/ci.yml`
 - `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-270] CIのvitest coverageでtest-excludeとminimatchの非互換エラー
+
+**事象**:
+- GitHub Actions CIの`lint-and-test`ジョブで`Run API tests`ステップが失敗する
+- エラー: `TypeError: minimatch is not a function`
+- ローカルでは`test:coverage`が成功するが、CI環境では失敗する
+
+**症状**:
+- CIログに以下のエラーが表示される:
+  ```
+  TypeError: minimatch is not a function
+  ❯ matches ../../node_modules/.pnpm/test-exclude@6.0.0/node_modules/test-exclude/index.js:99:36
+  ❯ TestExclude.shouldInstrument ../../node_modules/.pnpm/test-exclude@6.0.0/node_modules/test-exclude/index.js:102:28
+  ❯ IstanbulCoverageProvider.onFileTransform ../../node_modules/.pnpm/@vitest+coverage-istanbul@1.6.1_vitest@1.6.1/node_modules/@vitest/coverage-istanbul/dist/provider.js:167:27
+  ```
+- すべてのテストファイル（90件）が失敗し、テストが実行されない
+
+**調査**:
+- **仮説1**: `test-exclude@6.0.0`が`minimatch@10.x`のエクスポート形式（ESM）に対応していない
+  - **検証**: `pnpm why test-exclude`で依存関係を確認 → `@vitest/coverage-istanbul`が`test-exclude@6.0.0`を使用していることを確認
+  - **検証**: `pnpm why minimatch`で`minimatch@10.2.1`が使用されていることを確認
+  - **結果**: CONFIRMED - `test-exclude@6.0.0`は`minimatch@10.x`と非互換
+- **仮説2**: `pnpm.overrides`で`test-exclude>glob: 7.2.3`を指定していたが、`test-exclude`自体のバージョンを固定していない
+  - **検証**: `pnpm-lock.yaml`を確認 → `test-exclude@6.0.0`が解決されていることを確認
+  - **結果**: CONFIRMED - `test-exclude`のバージョンが固定されていない
+
+**根本原因**:
+- `test-exclude@6.0.0`が`minimatch@10.x`のエクスポート形式（ESM）に対応していない
+- `minimatch@10.x`はESMモジュールとしてエクスポートされるが、`test-exclude@6.0.0`はCommonJS形式で`minimatch`を読み込もうとして失敗する
+- `pnpm.overrides`で`test-exclude>glob: 7.2.3`を指定していたが、`test-exclude`自体のバージョンが`6.0.0`のままだった
+
+**実施した対策**:
+1. **依存関係のoverride追加**:
+   - `package.json`の`pnpm.overrides`に`"test-exclude": "7.0.1"`を追加
+   - `test-exclude@7.0.1`は`minimatch@10.x`に対応している
+   - `test-exclude>glob: 7.2.3`のoverrideを削除（不要になったため）
+   - `minimatch`のoverrideを`>=10.2.1`から`10.2.1`に固定（セキュリティ修正のため）
+
+2. **`.gitignore`の更新**:
+   - `.cursor/debug-*.log`と`.cursor/tmp/`を追加（一時ファイルがコミットされないように）
+
+3. **ローカル検証**:
+   - `pnpm install --force`で依存関係を再インストール
+   - `apps/api`で`test:coverage`を実行 → 成功（exit_code: 0、全テスト通過）
+
+4. **CI検証**:
+   - コミット・プッシュ後、CI実行（Run ID: `22163832946`）で成功を確認
+
+**再発防止**:
+- 依存関係の更新時は、互換性を確認してから更新する
+- `pnpm.overrides`で依存関係を固定する場合は、関連するパッケージのバージョンも確認する
+- CI失敗時は、ローカルで同じコマンドを実行して再現性を確認する
+- セキュリティ修正（`minimatch`のoverride）と互換性修正（`test-exclude`のoverride）を同時に行う場合は、両方の影響を確認する
+
+**解決状況**: ✅ **解決済み（2026-02-19）**
+
+**関連ファイル**:
+- `package.json`
+- `pnpm-lock.yaml`
+- `.gitignore`
+- `.github/workflows/ci.yml`
+- `apps/api/vitest.config.ts`
+
+**関連コミット**:
+- `dda7f86` - `fix(deps): align test-exclude with minimatch v10`
+
+**CI実行結果**:
+- Run ID: `22163832946` - 成功（12分35秒）
 
