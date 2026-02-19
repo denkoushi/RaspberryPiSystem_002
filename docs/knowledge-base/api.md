@@ -38,6 +38,24 @@
 - 「備考/納期/割当/完了が消えた」:
   - 行削除はカスケード前提のため仕様どおり（復旧・履歴保持しない方針）
 
+**CI修正（2026-02-19）**:
+- **型エラー修正**: `Prisma.JsonValue`型制約を`unknown`に緩和（`NormalizedRowData`との互換性確保）
+  - `production-schedule-basis-date.ts`: `rowData: Prisma.JsonValue` → `rowData: unknown`
+  - `production-schedule-cleanup.service.ts`: `data: Prisma.JsonValue` → `data: unknown`、`extractLogicalKey`の引数型も`unknown`に変更
+- **`Prisma.join`の修正**: `Prisma.join(..., Prisma.sql`, `)` → `Prisma.join(..., ', ')`（文字列リテラルセパレータに変更）
+- **三項演算子のif文への変更**: `csv-dashboard-ingestor.ts`で複雑な型推論を避けるため、三項演算子をif文に変更
+
+**デプロイ結果（2026-02-19）**:
+- **デプロイ成功**: Pi5でデプロイ成功（runId `20260219-212228-17755`, `state: success`, `exitCode: 0`）
+- **デプロイ時のトラブルシューティング**: 未追跡ファイル（`alerts/*.json`）がfail-fastチェックで検出されたため、`git stash push -u`で一時退避してデプロイ実行、デプロイ後に`git stash pop`で復元
+- **デプロイ後チェック**: Prismaマイグレーション状態（`Database schema is up to date!`）、APIヘルスチェック（`status: degraded`（メモリ使用量が高いが既存の問題）、`database: ok`）
+
+**実機検証結果（2026-02-19）**:
+- **デプロイ実体確認**: Pi5上のブランチ `feat/production-schedule-delete-rules`、コミット `f341c9c` が反映済み
+- **日次クリーンアップジョブの登録確認**: APIログで `[CsvImportScheduler] Production schedule cleanup job registered` を確認、スケジュール `schedule: "10 2 * * *"`（毎日02:10 JST）
+- **API正常動作確認**: `GET /api/kiosk/production-schedule`（`x-client-key`付き）→ `200`、`total=5378` rows取得成功
+- **ヘルスチェック警告**: `GET /api/system/health` → `503` (`status: degraded`)、原因はメモリ使用量が高いこと（既存の問題、今回の実装とは無関係）
+
 **関連ファイル**:
 - `apps/api/src/services/production-schedule/retention/production-schedule-basis-date.ts`（基準日計算）
 - `apps/api/src/services/production-schedule/retention/production-schedule-cleanup.service.ts`（削除/クリーンアップ）
