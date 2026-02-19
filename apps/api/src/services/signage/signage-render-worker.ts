@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
+import { initializeVisualizationModules } from '../visualization/initialize.js';
 import { SignageService } from './index.js';
 import { SignageRenderScheduler } from './signage-render-scheduler.js';
 import { SignageRenderer } from './signage.renderer.js';
@@ -8,6 +9,12 @@ import { SignageRenderer } from './signage.renderer.js';
 // - This file is executed as a standalone Node process (forked from the API process).
 // - Goal: isolate heavy signage rendering from the API event loop to avoid kiosk UI stalls.
 // - The parent process forces SIGNAGE_RENDER_RUNNER=in_process for this worker via env.
+
+// NOTE:
+// This worker process does not go through buildServer(), so we must initialize
+// visualization registries here. Otherwise rendering fails with:
+//   "Data source not found: production_schedule"
+initializeVisualizationModules();
 
 const signageService = new SignageService();
 const signageRenderer = new SignageRenderer(signageService);

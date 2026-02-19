@@ -3710,4 +3710,31 @@ docker compose -f docker-compose.server.yml restart api
 - ✅ **実機検証完了**: 管理コンソールのCSV取り込みタブで、スケジュール一覧のcron表示が読みやすくなっていることを確認
 - **関連KB**: [KB-111](../knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更)（CSVインポートスケジュールの表示改善）
 
+**トラブルシューティング: 加工機日常点検結果がサイネージへ反映されない**:
+- **前提**: サイネージの「未点検加工機/加工機点検状況」は、加工機マスタ（稼働中のみ）＋点検結果CSV（CSVダッシュボード）で集計されます
+- **1) CSV取り込みが止まっていないか**:
+  - 管理コンソール → CSV取り込み → CSVインポートスケジュール で `csv-import-加工機_日常点検結果` の最終実行状態を確認
+  - `PROCESSING` が長時間残留している場合は、このKBの「復旧作業（2026-02-16）」の手順で詰まりを解消（429→待機→中断→PROCESSING残留→スキップが典型）
+- **2) CSVダッシュボード設定の確認（internalNameが重要）**:
+  - 対象CSVダッシュボードの `dateColumnName` は `inspectionAt`（当日判定に使用）
+  - 行データ（`CsvDashboardRow.rowData`）は「CSVヘッダー名」ではなく **列定義のinternalName** がキーになります
+  - 未点検加工機集計が参照するinternalName（必須）:
+    - `equipmentManagementNumber`（設備管理番号）
+    - `inspectionAt`（点検日時）
+    - `inspectionItem`（点検項目）
+    - `inspectionResult`（点検結果: `正常`/`異常` を含む文字列）
+- **3) 点検日時のフォーマット（2026-02-18 対応）**:
+  - `inspectionAt` がタイムゾーン無しの文字列でも、JSTとして解釈できるようにパースを堅牢化
+  - 例: `2026-02-18 07:05:00`, `2026/02/18 07:05:00`, `2026年2月18日 07:05:00`
+  - パース不能な形式だと行が集計から除外されるため、ダッシュボード上で `inspectionAt` の値（例数行）を確認する
+- **4) 加工機マスタ側の確認**:
+  - 集計対象は `operatingStatus === '稼働中'` の加工機のみ（停止中/メンテ/未設定は対象外）
+- **5) APIで集計結果を直接確認**（要ログイン）:
+  - `GET /api/tools/machines/uninspected?csvDashboardId=<UUID>&date=YYYY-MM-DD`
+  - ここで期待通りの台数が出るなら、サイネージ側は「スケジュール/可視化割り当て/レンダリング更新」側が原因になりやすい
+- **6) サイネージ設定の確認**:
+  - 可視化ダッシュボードの `dataSourceType=uninspected_machines` に、対象の `csvDashboardId` が設定されていること
+  - サイネージスケジュールのスロットに、その可視化ダッシュボードが割り当てられていること
+  - 設定が欠けている場合、画像上に `csvDashboardId is required` などのエラー文言が表示される
+
 ---

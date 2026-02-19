@@ -100,7 +100,90 @@ function parseDateValue(value: unknown): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value;
   }
+  const parseAsJstDate = (raw: string): Date | null => {
+    const s = raw.trim();
+    if (!s) return null;
+
+    // If timezone is explicitly present, let Date parse it as-is.
+    // Examples: 2026-02-18T01:02:03Z, 2026-02-18T10:02:03+09:00
+    if (/[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s) || /\bGMT\b/.test(s)) {
+      return null;
+    }
+
+    const pad2 = (n: string) => n.padStart(2, '0');
+
+    // 2026-2-18 / 2026-02-18
+    const mDateOnlyDash = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (mDateOnlyDash) {
+      const iso = `${mDateOnlyDash[1]}-${pad2(mDateOnlyDash[2])}-${pad2(mDateOnlyDash[3])}T00:00:00+09:00`;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    // 2026/2/18 / 2026/02/18
+    const mDateOnlySlash = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (mDateOnlySlash) {
+      const iso = `${mDateOnlySlash[1]}-${pad2(mDateOnlySlash[2])}-${pad2(mDateOnlySlash[3])}T00:00:00+09:00`;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    // 2026-02-18 7:05(:00) / 2026-02-18T07:05(:00)
+    const mDateTimeDash = s.match(
+      /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/
+    );
+    if (mDateTimeDash) {
+      const year = mDateTimeDash[1];
+      const month = pad2(mDateTimeDash[2]);
+      const day = pad2(mDateTimeDash[3]);
+      const hour = pad2(mDateTimeDash[4]);
+      const minute = pad2(mDateTimeDash[5]);
+      const second = pad2(mDateTimeDash[6] ?? '00');
+      const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}+09:00`;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    // 2026/02/18 7:05(:00)
+    const mDateTimeSlash = s.match(
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+    );
+    if (mDateTimeSlash) {
+      const year = mDateTimeSlash[1];
+      const month = pad2(mDateTimeSlash[2]);
+      const day = pad2(mDateTimeSlash[3]);
+      const hour = pad2(mDateTimeSlash[4]);
+      const minute = pad2(mDateTimeSlash[5]);
+      const second = pad2(mDateTimeSlash[6] ?? '00');
+      const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}+09:00`;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    // 2026年2月18日 7:05(:00)
+    const mDateTimeJp = s.match(
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+    );
+    if (mDateTimeJp) {
+      const year = mDateTimeJp[1];
+      const month = pad2(mDateTimeJp[2]);
+      const day = pad2(mDateTimeJp[3]);
+      const hour = pad2(mDateTimeJp[4]);
+      const minute = pad2(mDateTimeJp[5]);
+      const second = pad2(mDateTimeJp[6] ?? '00');
+      const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}+09:00`;
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    return null;
+  };
   if (typeof value === 'string' && value.trim().length > 0) {
+    const parsedJst = parseAsJstDate(value);
+    if (parsedJst) {
+      return parsedJst;
+    }
+
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) {
       return parsed;

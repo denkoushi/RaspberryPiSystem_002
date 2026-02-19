@@ -1333,6 +1333,49 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 
 ---
 
+### [KB-269] サイネージ自動レンダリングをworker化してAPIイベントループ詰まりを隔離
+
+**日付**: 2026-02-18
+
+**事象**:
+- キオスク（生産スケジュール）操作で、間欠的に数秒待たされる事象が報告された
+- APIハンドラ内の処理時間は短いケースがあり、**イベントループ詰まり等でリクエストがハンドラに入る前に待つ**可能性が高かった
+
+**要因（推定）**:
+- サーバー側のサイネージ定期レンダリングは重い処理になりやすく、同一プロセスで動作しているとAPIのイベントループを塞ぎ得る
+
+**有効だった対策**:
+- ✅ **サイネージレンダリングを別プロセスへ分離（worker化）**:
+  - 環境変数 `SIGNAGE_RENDER_RUNNER` を追加（`in_process` | `worker`）
+  - 本番デフォルトは `worker` とし、`child_process.fork()` で `signage-render-worker` を起動してレンダリングを隔離
+  - worker起動に失敗した場合は `in_process` にフォールバック（表示/運用の継続を優先）
+
+**運用上の注意**:
+- workerは意図的に自動再起動しない（異常時は運用判断で再起動/デプロイ）
+- 起動ログに runner/interval/pid が出るため、稼働形態の確認はログで行う
+
+**トラブルシューティング（重要）**:
+- **症状**: `/api/signage/current-image` が古い画像のまま更新されない（`current.jpg` のmtimeが動かない）
+- **確認**:
+  - `docker logs` で `Failed to run scheduled signage render` が連続していないか
+  - エラーが `Data source not found: production_schedule` の場合、workerプロセス側で可視化モジュール初期化が行われていない可能性が高い
+- **根本原因（CONFIRMED, 2026-02-19）**:
+  - `signage-render-worker` は `buildServer()` を通らないため、可視化のレジストリ（dataSource/renderer）が未初期化のまま起動し得る
+  - その結果、サイネージ内の可視化レンダリングで `Data source not found: production_schedule` が発生し、レンダリングが失敗し続ける
+- **対策（最小修正）**:
+  - `apps/api/src/services/signage/signage-render-worker.ts` で `initializeVisualizationModules()` を明示的に呼び、worker側でもレジストリを初期化する
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage-render-scheduler.ts`（runner判定、fork、フォールバック）
+- `apps/api/src/services/signage/signage-render-worker.ts`（workerプロセスエントリ）
+- `apps/api/src/config/env.ts`（`SIGNAGE_RENDER_RUNNER` 定義、本番デフォルト）
+- `apps/api/src/main.ts`（起動ログ）
+
+**解決状況**: 🔄 **継続観察**
+- キオスク側の間欠的待ち事象に対して、重い定期処理の影響を隔離する対策を適用
+
+---
+
 ### 2. サイネージのパフォーマンス最適化（優先度: 低）
 
 - **画像キャッシュの改善**: レンダリング済み画像のキャッシュ戦略、キャッシュの無効化タイミング

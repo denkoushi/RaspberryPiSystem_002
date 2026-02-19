@@ -181,6 +181,7 @@ update-frequency: high
 | [KB-244](./frontend.md#kb-244-pi4キオスクの備考欄に日本語入力状態インジケーターを追加) | Pi4キオスクの備考欄に日本語入力状態インジケーターを追加 | ✅ 解決済み |
 | [KB-245](./infrastructure/ansible-deployment.md#kb-245-pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とibus設定の永続化) | Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化 | ✅ 解決済み |
 | [KB-247](./frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化) | 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化 | ✅ 解決済み |
+| [KB-268](./frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) | 生産スケジュールキオスク操作で間欠的に数秒待つ（継続観察） | 🔄 継続観察 |
 | [KB-248](./frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) | カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応） | ✅ 解決済み |
 | [KB-252](./frontend.md#kb-252-未点検加工機サイネージ設定導線可視化ダッシュボード経由の実装) | 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装 | ✅ 解決済み |
 | [KB-254](./frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能) | 加工機マスタのメンテナンスページ追加（CRUD機能） | ✅ 解決済み |
@@ -261,6 +262,7 @@ update-frequency: high
 | [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一) | 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一） | ✅ 解決済み |
 | [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応） | ✅ 解決済み |
 | [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト) | サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト） | ✅ 解決済み |
+| [KB-269](./infrastructure/signage.md#kb-269-サイネージ自動レンダリングをworker化してapiイベントループ詰まりを隔離) | サイネージ自動レンダリングをworker化してAPIイベントループ詰まりを隔離 | 🔄 継続観察 |
 | [KB-233](./infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) | デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合） | ✅ 解決済み |
 | [KB-234](./infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) | Ansibleデプロイが遅い（段階展開/重複タスク/計測欠如の整理と暫定対策） | 🔄 進行中 |
 | [KB-235](./infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) | Docker build最適化（変更ファイルに基づくbuild判定） | ✅ 解決済み |
