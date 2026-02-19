@@ -27,7 +27,7 @@ const coerceKeyPart = (value: unknown): string => {
   return '';
 };
 
-const extractLogicalKey = (rowData: Prisma.JsonValue): ProductionScheduleLogicalKey => {
+const extractLogicalKey = (rowData: unknown): ProductionScheduleLogicalKey => {
   const record = rowData as Record<string, unknown> | null | undefined;
   return {
     FSEIBAN: coerceKeyPart(record?.FSEIBAN),
@@ -51,7 +51,7 @@ export class ProductionScheduleCleanupService {
    * 取り込み行を「1年超過は保存しない」方針でフィルタする。
    * - production schedule限定で使う想定
    */
-  filterIncomingRowsByOneYear<T extends { data: Prisma.JsonValue; occurredAt: Date }>(params: {
+  filterIncomingRowsByOneYear<T extends { data: unknown; occurredAt: Date }>(params: {
     rows: T[];
     nowUtc?: Date;
   }): { kept: T[]; droppedCount: number; thresholdUtc: Date } {
@@ -159,7 +159,7 @@ export class ProductionScheduleCleanupService {
       for (;;) {
         const valuesSql = Prisma.join(
           keyChunk.map((k) => Prisma.sql`(${k.FSEIBAN}, ${k.FHINCD}, ${k.FSIGENCD}, ${k.FKOJUN})`),
-          Prisma.sql`, `
+          ', '
         );
 
         const affected = await prisma.$executeRaw<number>(Prisma.sql`
@@ -264,7 +264,7 @@ export class ProductionScheduleCleanupService {
    * 取り込みで使いやすい logicalKey 抽出ヘルパー。
    */
   static extractLogicalKeysFromRows(params: {
-    rows: Array<{ data: Prisma.JsonValue }>;
+    rows: Array<{ data: unknown }>;
     maxKeys?: number;
   }): ProductionScheduleLogicalKey[] {
     const maxKeys = Math.max(1, Math.min(params.maxKeys ?? 5000, 50000));

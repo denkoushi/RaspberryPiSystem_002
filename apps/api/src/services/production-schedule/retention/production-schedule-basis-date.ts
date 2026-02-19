@@ -1,5 +1,3 @@
-import { Prisma } from '@prisma/client';
-
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 /**
@@ -46,7 +44,7 @@ export const parseJstDateLike = (value: unknown): Date | null => {
  * - 解釈できない場合は occurredAt
  */
 export const computeBasisDateUtc = (params: {
-  rowData: Prisma.JsonValue;
+  rowData: unknown;
   occurredAtUtc: Date;
 }): Date => {
   const { rowData, occurredAtUtc } = params;

@@ -89,14 +89,19 @@ export class CsvDashboardIngestor {
 
       // production schedule (DEDUP) のみ: 1年超過行は保存しない（取り込み時点で除外）
       const cleanupService = new ProductionScheduleCleanupService();
-      const { kept: oneYearFilteredRows, droppedCount: oneYearDroppedCount } =
-        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? cleanupService.filterIncomingRowsByOneYear({ rows: normalizedRows })
-          : { kept: normalizedRows, droppedCount: 0 };
+      let oneYearFilteredRows = normalizedRows;
+      let oneYearDroppedCount = 0;
+      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+        const filtered = cleanupService.filterIncomingRowsByOneYear({ rows: normalizedRows });
+        oneYearFilteredRows = filtered.kept;
+        oneYearDroppedCount = filtered.droppedCount;
+      }
 
       const productionScheduleDedupRows =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? resolveToMaxProductNoPerLogicalKey(oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt })))
+          ? resolveToMaxProductNoPerLogicalKey(
+              oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }))
+            )
           : oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }));
       const productNoDedupSkippedRows = oneYearFilteredRows.length - productionScheduleDedupRows.length;
       const preDedupSkippedRows = oneYearDroppedCount + productNoDedupSkippedRows;
