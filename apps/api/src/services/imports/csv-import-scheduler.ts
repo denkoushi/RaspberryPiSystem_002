@@ -10,6 +10,8 @@ import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js'
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
 import { MeasuringInstrumentLoanRetentionService } from '../measuring-instruments/measuring-instrument-loan-retention.service.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail-oauth.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
@@ -24,6 +26,7 @@ export class CsvImportScheduler {
   private cleanupTask: cron.ScheduledTask | null = null;
   private csvDashboardRetentionTask: cron.ScheduledTask | null = null;
   private measuringInstrumentLoanRetentionTask: cron.ScheduledTask | null = null;
+  private productionScheduleCleanupTask: cron.ScheduledTask | null = null;
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
@@ -34,6 +37,7 @@ export class CsvImportScheduler {
   private createAutoBackupService: () => CsvImportAutoBackupService;
   private createCsvDashboardRetentionService: () => CsvDashboardRetentionService;
   private createMeasuringInstrumentLoanRetentionService: () => MeasuringInstrumentLoanRetentionService;
+  private createProductionScheduleCleanupService: () => ProductionScheduleCleanupService;
   private readonly minIntervalMinutes = 5;
 
   constructor(overrides: {
@@ -44,6 +48,7 @@ export class CsvImportScheduler {
     createAutoBackupService?: () => CsvImportAutoBackupService;
     createCsvDashboardRetentionService?: () => CsvDashboardRetentionService;
     createMeasuringInstrumentLoanRetentionService?: () => MeasuringInstrumentLoanRetentionService;
+    createProductionScheduleCleanupService?: () => ProductionScheduleCleanupService;
   } = {}) {
     this.historyService = new ImportHistoryService();
     this.alertService = new ImportAlertService();
@@ -53,6 +58,7 @@ export class CsvImportScheduler {
       new CsvImportAutoBackupService({ backupHistoryService: this.backupHistoryService });
     this.createCsvDashboardRetentionService = () => new CsvDashboardRetentionService();
     this.createMeasuringInstrumentLoanRetentionService = () => new MeasuringInstrumentLoanRetentionService();
+    this.createProductionScheduleCleanupService = () => new ProductionScheduleCleanupService();
 
     if (overrides.historyService) this.historyService = overrides.historyService;
     if (overrides.alertService) this.alertService = overrides.alertService;
@@ -63,6 +69,8 @@ export class CsvImportScheduler {
       this.createCsvDashboardRetentionService = overrides.createCsvDashboardRetentionService;
     if (overrides.createMeasuringInstrumentLoanRetentionService)
       this.createMeasuringInstrumentLoanRetentionService = overrides.createMeasuringInstrumentLoanRetentionService;
+    if (overrides.createProductionScheduleCleanupService)
+      this.createProductionScheduleCleanupService = overrides.createProductionScheduleCleanupService;
   }
 
   private extractIntervalMinutes(schedule: string): number | null {
@@ -247,6 +255,8 @@ export class CsvImportScheduler {
       await this.startCsvDashboardRetentionJob();
       // 計測機器持出返却イベントの年次削除Jobを開始
       await this.startMeasuringInstrumentLoanRetentionJob();
+      // 生産スケジュール日次クリーンアップJobを開始
+      await this.startProductionScheduleCleanupJob();
       return;
     }
 
@@ -333,6 +343,9 @@ export class CsvImportScheduler {
 
     // 計測機器持出返却イベントの年次削除Jobを開始
     await this.startMeasuringInstrumentLoanRetentionJob();
+
+    // 生産スケジュール日次クリーンアップJobを開始
+    await this.startProductionScheduleCleanupJob();
   }
 
   /**
@@ -522,6 +535,65 @@ export class CsvImportScheduler {
   }
 
   /**
+   * 生産スケジュール（CSVダッシュボード）の日次クリーンアップJobを開始
+   * - 1年超過データの削除
+   * - 重複loserの削除
+   */
+  private async startProductionScheduleCleanupJob(): Promise<void> {
+    if (this.productionScheduleCleanupTask) {
+      this.productionScheduleCleanupTask.stop();
+      this.productionScheduleCleanupTask = null;
+    }
+
+    // デフォルト: 毎日 02:10（Asia/Tokyo）
+    const cleanupSchedule = '10 2 * * *';
+
+    try {
+      if (!validate(cleanupSchedule)) {
+        logger?.warn(
+          { schedule: cleanupSchedule },
+          '[CsvImportScheduler] Invalid production schedule cleanup schedule format, skipping'
+        );
+        return;
+      }
+    } catch (error) {
+      logger?.warn(
+        { err: error, schedule: cleanupSchedule },
+        '[CsvImportScheduler] Invalid production schedule cleanup schedule format, skipping'
+      );
+      return;
+    }
+
+    this.productionScheduleCleanupTask = cron.schedule(
+      cleanupSchedule,
+      async () => {
+        try {
+          logger?.info('[CsvImportScheduler] Starting production schedule cleanup');
+          const cleanupService = this.createProductionScheduleCleanupService();
+          const result = await cleanupService.runDailyCleanup({
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          });
+          logger?.info(
+            result,
+            '[CsvImportScheduler] Production schedule cleanup completed'
+          );
+        } catch (error) {
+          logger?.error(
+            { err: error },
+            '[CsvImportScheduler] Production schedule cleanup failed'
+          );
+        }
+      },
+      { scheduled: true, timezone: 'Asia/Tokyo' }
+    );
+
+    logger?.info(
+      { schedule: cleanupSchedule },
+      '[CsvImportScheduler] Production schedule cleanup job registered'
+    );
+  }
+
+  /**
    * スケジューラーを停止
    */
   stop(): void {
@@ -546,6 +618,13 @@ export class CsvImportScheduler {
       this.csvDashboardRetentionTask.stop();
       this.csvDashboardRetentionTask = null;
       logger?.info('[CsvImportScheduler] CSV dashboard retention task stopped');
+    }
+
+    // 生産スケジュール日次クリーンアップタスクを停止
+    if (this.productionScheduleCleanupTask) {
+      this.productionScheduleCleanupTask.stop();
+      this.productionScheduleCleanupTask = null;
+      logger?.info('[CsvImportScheduler] Production schedule cleanup task stopped');
     }
 
     this.tasks.clear();

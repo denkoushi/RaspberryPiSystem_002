@@ -9,6 +9,8 @@ import {
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
   resolveToMaxProductNoPerLogicalKey,
 } from '../production-schedule/row-resolver/index.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 
@@ -17,7 +19,6 @@ import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
  */
 export class CsvDashboardIngestor {
   private static readonly COMPLETED_PROGRESS_VALUE = '完了';
-  private static readonly PRODUCTION_SCHEDULE_DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -76,7 +77,7 @@ export class CsvDashboardIngestor {
         const row = rows[i];
         const normalized = this.normalizeRow(row, columnMapping);
         const occurredAt = this.extractOccurredAt(row, dateColumnIndex);
-        if (dashboardId === CsvDashboardIngestor.PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+        if (dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
           this.validateProductionScheduleRow(normalized, i);
         }
 
@@ -84,12 +85,26 @@ export class CsvDashboardIngestor {
       }
 
       const rowsProcessed = normalizedRows.length;
-      const isProductionScheduleDashboard = dashboardId === CsvDashboardIngestor.PRODUCTION_SCHEDULE_DASHBOARD_ID;
+      const isProductionScheduleDashboard = dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID;
+
+      // production schedule (DEDUP) のみ: 1年超過行は保存しない（取り込み時点で除外）
+      const cleanupService = new ProductionScheduleCleanupService();
+      let oneYearFilteredRows = normalizedRows;
+      let oneYearDroppedCount = 0;
+      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+        const filtered = cleanupService.filterIncomingRowsByOneYear({ rows: normalizedRows });
+        oneYearFilteredRows = filtered.kept;
+        oneYearDroppedCount = filtered.droppedCount;
+      }
+
       const productionScheduleDedupRows =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? resolveToMaxProductNoPerLogicalKey(normalizedRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt })))
-          : normalizedRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }));
-      const preDedupSkippedRows = rowsProcessed - productionScheduleDedupRows.length;
+          ? resolveToMaxProductNoPerLogicalKey(
+              oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }))
+            )
+          : oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }));
+      const productNoDedupSkippedRows = oneYearFilteredRows.length - productionScheduleDedupRows.length;
+      const preDedupSkippedRows = oneYearDroppedCount + productNoDedupSkippedRows;
       const dedupKeyColumns =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
           ? [...PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS]
@@ -193,6 +208,28 @@ export class CsvDashboardIngestor {
           where: { id: dashboardId },
           data: { csvFilePath },
         });
+      }
+
+      // production schedule (DEDUP) のみ: winner以外の重複loserを即時削除（ベストエフォート）
+      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+        try {
+          const logicalKeys = ProductionScheduleCleanupService.extractLogicalKeysFromRows({
+            rows: productionScheduleDedupRows,
+          });
+          const { deletedCount } = await cleanupService.deleteDuplicateLosersForKeys({
+            csvDashboardId: dashboardId,
+            logicalKeys,
+          });
+          logger.info(
+            { dashboardId, deletedCount, keys: logicalKeys.length },
+            '[CsvDashboardIngestor] Production schedule duplicate loser cleanup completed'
+          );
+        } catch (error) {
+          logger.error(
+            { err: error, dashboardId },
+            '[CsvDashboardIngestor] Production schedule duplicate loser cleanup failed'
+          );
+        }
       }
 
       logger.info(
