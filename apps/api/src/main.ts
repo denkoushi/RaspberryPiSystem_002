@@ -18,7 +18,10 @@ if (process.env['NODE_ENV'] !== 'test') {
       // サイネージレンダリングの定期実行を開始（app.tsで作成されたスケジューラーを使用）
       app.signageRenderScheduler.start();
       
-      logger.info({ intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS }, 'Signage render scheduler started');
+      logger.info(
+        { intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS, runner: env.SIGNAGE_RENDER_RUNNER },
+        'Signage render scheduler started'
+      );
       
       // バックアップスケジューラーを開始
       const backupScheduler = getBackupScheduler();

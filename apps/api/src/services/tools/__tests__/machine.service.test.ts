@@ -192,6 +192,77 @@ describe('MachineService', () => {
     });
   });
 
+  it('点検日時がタイムゾーン無し文字列でもJST日付として集計できる', async () => {
+    const machines = [
+      {
+        id: 'm1',
+        equipmentManagementNumber: '30024',
+        name: 'HS3A_10P',
+        shortName: null,
+        classification: 'マシニングセンター',
+        operatingStatus: '稼働中',
+        ncManual: null,
+        maker: '日立',
+        processClassification: '切削',
+        coolant: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ];
+
+    vi.mocked(prisma.machine.findMany).mockResolvedValue(machines as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-02-11T00:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: '主軸',
+          // timezoneなし（JST想定）のフォーマットを許容する
+          inspectionAt: '2026-02-11 23:30:00',
+          inspectionResult: '正常',
+        },
+      },
+      {
+        id: 'r2',
+        occurredAt: new Date('2026-02-11T00:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: 'クーラント',
+          inspectionAt: '2026/02/11 08:05:00',
+          inspectionResult: '正常',
+        },
+      },
+      {
+        id: 'r3',
+        occurredAt: new Date('2026-02-11T00:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionItem: '安全扉',
+          inspectionAt: '2026年2月11日 07:05:00',
+          inspectionResult: '異常',
+        },
+      },
+    ] as any);
+
+    const result = await service.findDailyInspectionSummaries({
+      csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+      date: '2026-02-11',
+    });
+
+    expect(result.totalRunningMachines).toBe(1);
+    expect(result.inspectedRunningCount).toBe(1);
+    expect(result.uninspectedCount).toBe(0);
+    expect(result.machines[0]).toEqual(
+      expect.objectContaining({
+        equipmentManagementNumber: '30024',
+        normalCount: 2,
+        abnormalCount: 1,
+        used: true,
+      })
+    );
+  });
+
   it('findAll は search と operatingStatus の複合条件を組み立てる', async () => {
     vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
 

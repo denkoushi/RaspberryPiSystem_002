@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
@@ -6,28 +6,85 @@ import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './co
 
 const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
 
+// Debug: track event loop stalls (global, low overhead).
+// This helps detect cases where the request waits in the Node process *before* the handler runs.
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+let eluPrev = performance.eventLoopUtilization();
+
+function snapshotEventLoopHealth() {
+  const eluNow = performance.eventLoopUtilization();
+  const delta = performance.eventLoopUtilization(eluNow, eluPrev);
+  eluPrev = eluNow;
+  // monitorEventLoopDelay histogram values are in nanoseconds.
+  const toMs = (n: number) => Math.round(n / 1e6);
+  return {
+    elu: {
+      utilization: Math.round(delta.utilization * 1000) / 1000,
+      activeMs: Math.round(delta.active / 1e6),
+      idleMs: Math.round(delta.idle / 1e6)
+    },
+    eventLoopDelayMs: {
+      mean: toMs(eventLoopDelay.mean),
+      max: toMs(eventLoopDelay.max),
+      p50: toMs(eventLoopDelay.percentile(50)),
+      p90: toMs(eventLoopDelay.percentile(90)),
+      p99: toMs(eventLoopDelay.percentile(99))
+    }
+  };
+}
+
 export async function completeProductionScheduleRow(params: {
   rowId: string;
   locationKey: string;
-}): Promise<{ success: true; alreadyCompleted: false; rowData: Record<string, unknown> }> {
-  const { rowId, locationKey } = params;
+  debugSessionId?: string;
+}): Promise<{
+  success: true;
+  alreadyCompleted: false;
+  rowData: Record<string, unknown>;
+  debug?: {
+    totalMs: number;
+    findRowMs: number;
+    findAssignmentMs: number;
+    txMs: number;
+    txUpdateRowMs: number;
+    txDeleteAssignmentMs: number | null;
+    txShiftAssignmentsMs: number | null;
+    txShiftAssignmentsCount: number | null;
+    hadAssignment: boolean;
+    eventLoop?: ReturnType<typeof snapshotEventLoopHealth>;
+  };
+}> {
+  const { rowId, locationKey, debugSessionId } = params;
+  const debugEnabled = debugSessionId === '30be23';
+  const tTotalStart = performance.now();
+  const eventLoop = debugEnabled ? snapshotEventLoopHealth() : null;
+
+  const tFindRowStart = performance.now();
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
   });
+  const findRowMs = performance.now() - tFindRowStart;
   if (!row) {
     throw new ApiError(404, '対象の行が見つかりません');
   }
 
   const current = row.rowData as Record<string, unknown>;
-  const currentProgress = typeof current.progress === 'string' ? current.progress.trim() : '';
+  const progress = await prisma.productionScheduleProgress.findUnique({
+    where: { csvDashboardRowId: row.id },
+    select: { isCompleted: true }
+  });
+  const isCompleted = progress?.isCompleted === true;
 
   // トグル動作: 既に完了している場合は未完了に戻す
+  const nextIsCompleted = !isCompleted;
   const nextRowData: Record<string, unknown> = {
     ...current,
-    progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE
+    progress: nextIsCompleted ? COMPLETED_PROGRESS_VALUE : ''
   };
 
+  const tFindAssignmentStart = performance.now();
   const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
     where: {
       csvDashboardRowId_location: {
@@ -36,14 +93,28 @@ export async function completeProductionScheduleRow(params: {
       }
     }
   });
+  const findAssignmentMs = performance.now() - tFindAssignmentStart;
 
+  const txStart = performance.now();
+  let txUpdateRowMs = 0;
+  let txDeleteAssignmentMs: number | null = null;
+  let txShiftAssignmentsMs: number | null = null;
+  let txShiftAssignmentsCount: number | null = null;
   await prisma.$transaction(async (tx) => {
-    await tx.csvDashboardRow.update({
-      where: { id: row.id },
-      data: { rowData: nextRowData as Prisma.InputJsonValue }
+    const tUpdateRowStart = performance.now();
+    await tx.productionScheduleProgress.upsert({
+      where: { csvDashboardRowId: row.id },
+      create: {
+        csvDashboardRowId: row.id,
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        isCompleted: nextIsCompleted
+      },
+      update: { isCompleted: nextIsCompleted }
     });
+    txUpdateRowMs = performance.now() - tUpdateRowStart;
 
     if (currentAssignment) {
+      const tDeleteStart = performance.now();
       await tx.productionScheduleOrderAssignment.delete({
         where: {
           csvDashboardRowId_location: {
@@ -52,8 +123,10 @@ export async function completeProductionScheduleRow(params: {
           }
         }
       });
+      txDeleteAssignmentMs = performance.now() - tDeleteStart;
 
-      await tx.productionScheduleOrderAssignment.updateMany({
+      const tShiftStart = performance.now();
+      const shiftResult = await tx.productionScheduleOrderAssignment.updateMany({
         where: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           location: locationKey,
@@ -62,10 +135,35 @@ export async function completeProductionScheduleRow(params: {
         },
         data: { orderNumber: { decrement: 1 } }
       });
+      txShiftAssignmentsMs = performance.now() - tShiftStart;
+      txShiftAssignmentsCount = shiftResult.count;
     }
   });
+  const txMs = performance.now() - txStart;
 
-  return { success: true, alreadyCompleted: false, rowData: nextRowData };
+  const totalMs = performance.now() - tTotalStart;
+
+  return {
+    success: true,
+    alreadyCompleted: false,
+    rowData: nextRowData,
+    ...(debugEnabled
+      ? {
+          debug: {
+            totalMs: Math.round(totalMs),
+            findRowMs: Math.round(findRowMs),
+            findAssignmentMs: Math.round(findAssignmentMs),
+            txMs: Math.round(txMs),
+            txUpdateRowMs: Math.round(txUpdateRowMs),
+            txDeleteAssignmentMs: txDeleteAssignmentMs === null ? null : Math.round(txDeleteAssignmentMs),
+            txShiftAssignmentsMs: txShiftAssignmentsMs === null ? null : Math.round(txShiftAssignmentsMs),
+            txShiftAssignmentsCount,
+            hadAssignment: Boolean(currentAssignment),
+            eventLoop: eventLoop ?? undefined
+          }
+        }
+      : {})
+  };
 }
 
 export async function upsertProductionScheduleNote(params: {

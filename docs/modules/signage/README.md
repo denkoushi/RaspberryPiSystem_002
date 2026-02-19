@@ -53,6 +53,14 @@
 - **表示範囲**: FULL/SPLITの両レイアウトで表示可能（SPLITでは左右いずれの `visualization` スロットでも可）
 - **0件時表示**: 「未点検加工機はありません」
 - **設定不足時表示**: `csvDashboardId is required` を画面上に明示
+- **列定義の注意（internalNameが重要）**:
+  - `CsvDashboardRow.rowData` のキーは「CSVヘッダー名」ではなく、管理コンソールで設定する列定義の `internalName`
+  - 集計が参照する internalName（必須）:
+    - `equipmentManagementNumber`（設備管理番号）
+    - `inspectionAt`（点検日時、当日判定に使用）
+    - `inspectionItem`（点検項目）
+    - `inspectionResult`（点検結果、`正常`/`異常` を含む文字列）
+  - `inspectionAt` の日時文字列は、タイムゾーン無しでもJSTとして解釈できる形式を推奨（例: `2026-02-18 07:05:00`, `2026/02/18 07:05:00`, `2026年2月18日 07:05:00`）
 
 **セットアップ手順（運用テンプレ）**:
 

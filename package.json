@@ -34,8 +34,9 @@
   },
   "pnpm": {
     "overrides": {
-      "test-exclude>glob": "7.2.3",
       "glob": "10.5.0",
+      "minimatch": "10.2.1",
+      "test-exclude": "7.0.1",
       "cross-spawn": "7.0.5",
       "qs": ">=6.14.1",
       "@remix-run/router": "1.23.2"

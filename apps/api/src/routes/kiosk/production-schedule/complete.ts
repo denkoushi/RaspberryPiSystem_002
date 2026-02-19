@@ -11,10 +11,13 @@ export async function registerProductionScheduleCompleteRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationKey = deps.resolveLocationKey(clientDevice);
     const params = productionScheduleCompleteParamsSchema.parse(request.params);
+    const debugSessionHeader = request.headers['x-cursor-debug-session'];
+    const debugSessionId = typeof debugSessionHeader === 'string' ? debugSessionHeader : undefined;
 
     return completeProductionScheduleRow({
       rowId: params.rowId,
-      locationKey
+      locationKey,
+      debugSessionId
     });
   });
 }

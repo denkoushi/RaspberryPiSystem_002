@@ -1865,6 +1865,7 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
 - ✅ **完了ボタンのグレーアウト**: `progress='完了'`のアイテムを`opacity-50 grayscale`で視覚的にグレーアウト
 - ✅ **完了ボタンのトグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+- ✅ **完了状態の保存方法変更（2026-02-19）**: `ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離（[KB-269](../api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避)参照）。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの変更は不要
 - ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
 - ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
 - ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
@@ -3708,5 +3709,50 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - ✅ **リセット機能**: リセットボタンでUIDと吊具情報が正しくクリアされることを確認
 - ✅ **貸出登録**: 2枚目（従業員タグ）スキャンで貸出登録が正常に動作し、従来通り戻り先へ自動遷移することを確認
 - ✅ **API二重呼び出し回避**: 貸出登録時に既に取得済みの吊具情報が再利用され、APIが二重呼び出しされないことを確認
+
+---
+
+### [KB-268] 生産スケジュールキオスク操作で間欠的に数秒待つ（継続観察）
+
+**日付**: 2026-02-18
+
+**Context**:
+- キオスクの生産スケジュール画面で「完了/未完了トグル」「グレーアウト復帰」「納期設定」などの操作で、**毎回ではないが数秒待たされる**事象が報告された
+- 表示アイテム数は登録製番で約30件に絞っても発生（1分連続操作で数回発生）
+
+**Symptoms**:
+- 10〜13往復（人間の操作速度）あたりで、1回程度、操作全般が数秒固まるように見える
+- CSV取得/サイネージ取得とは頻度が異なる（別要因の疑い）
+
+**Investigation**:
+- **仮説1**: フロントのポーリング/再検証（refetch）が書き込み操作とバッティングし、UIが詰まる（PARTIALLY CONFIRMED）
+  - 書き込み中のrefetch/cancel/invalidateが同期的に重なり、体感遅延になり得る
+- **仮説2**: APIハンドラ（DBトランザクション）が遅い（REJECTED）
+  - サーバー側計測（handler内処理時間）が短いケースがあり、遅延はハンドラ外（TTFB側）を疑う
+- **仮説3**: Node.jsイベントループ詰まりで、リクエストがハンドラに入る前に待たされる（CONFIRMED）
+  - Caddyアクセスログで、サーバー処理は速いのにTTFBが長いケースを確認
+- **仮説4**: サイネージの定期レンダリング等の重い処理が同一プロセスで動き、APIイベントループを塞いでいる（LIKELY / 影響隔離で改善）
+
+**Fix（最小変更の手当）**:
+- ✅ **フロント側（競合抑止）**:
+  - 書き込み中はポーリングを停止する `pauseRefetch` を導入
+  - 書き込み直後もしばらく停止するクールダウン（`WRITE_REFETCH_COOLDOWN_MS=2500ms`）を追加
+  - `cancelQueries`/`invalidateQueries` は `void ...` で非同期発火し、UIブロッキングを避ける
+- ✅ **バックエンド側（重い定期処理の隔離）**:
+  - サイネージレンダリングを別プロセスへ分離できるようにし、APIイベントループの詰まりを避ける（`SIGNAGE_RENDER_RUNNER`）
+- ✅ **計測（原因切り分けのための一時デバッグ）**:
+  - `?cursor_debug=30be23` でクライアント/サーバーに計測ログを出せるようにし、遅延が「ネットワーク/長タスク/イベントループ/ハンドラ内」のどこかを判定できるようにした
+
+**解決状況**: 🔄 **継続観察**
+- 最新のログ取得試行では「数秒待ち」は未発生（=良い兆候）
+- ただし間欠事象のため、一定期間の運用で再発しないことを確認する（再発時は `cursor_debug` を付けて再取得）
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（書き込み中/直後のrefetch抑止、デバッグ計測）
+- `apps/web/src/api/hooks.ts`（`pauseRefetch`、mutationKey、cancel/invalidateの非同期化）
+- `apps/web/src/api/client.ts`（計測、ResourceTiming/LongTaskサマリ）
+- `apps/api/src/services/signage/signage-render-scheduler.ts`（worker分離）
+- `apps/api/src/services/signage/signage-render-worker.ts`（workerエントリ）
+- `apps/api/src/config/env.ts`（`SIGNAGE_RENDER_RUNNER`）
 
 ---

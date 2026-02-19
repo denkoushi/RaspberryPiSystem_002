@@ -635,6 +635,7 @@ model CsvDashboardRow {
   createdAt      DateTime     @default(now())
   orderAssignments ProductionScheduleOrderAssignment[]
   rowNotes       ProductionScheduleRowNote[]
+  productionScheduleProgress ProductionScheduleProgress?
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
@@ -673,6 +674,19 @@ model ProductionScheduleOrderAssignment {
   @@index([csvDashboardId, location, resourceCd])
   @@unique([csvDashboardId, location, resourceCd, orderNumber])
   @@unique([csvDashboardRowId, location])
+}
+
+model ProductionScheduleProgress {
+  // 1:1で固定（csvDashboardRowIdを主キーにすることで、DB側で別ID生成が不要）
+  csvDashboardRowId String         @id
+  csvDashboardId    String
+  isCompleted       Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  csvDashboardRow   CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@index([csvDashboardId, isCompleted])
 }
 
 model KioskProductionScheduleSearchState {

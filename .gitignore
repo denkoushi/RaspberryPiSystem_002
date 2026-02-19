@@ -48,6 +48,8 @@ clients/nfc-agent/.venv/
 .idea/
 .vscode/
 .cursor/debug.log
+.cursor/debug-*.log
+.cursor/tmp/
 
 # Docker
 *.pid

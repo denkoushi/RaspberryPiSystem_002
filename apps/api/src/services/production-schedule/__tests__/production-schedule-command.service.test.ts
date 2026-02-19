@@ -12,6 +12,10 @@ vi.mock('../../../lib/prisma.js', () => ({
     csvDashboardRow: {
       findFirst: vi.fn(),
     },
+    productionScheduleProgress: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+    },
     productionScheduleOrderAssignment: {
       findUnique: vi.fn(),
       deleteMany: vi.fn(),
