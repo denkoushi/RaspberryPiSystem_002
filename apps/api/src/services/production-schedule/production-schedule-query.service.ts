@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProductionScheduleRow = {
@@ -203,7 +203,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
         'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
         'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-        'progress', "CsvDashboardRow"."rowData"->>'progress'
+        'progress', (CASE WHEN COALESCE("p"."isCompleted", FALSE) THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       (
         SELECT "orderNumber"
@@ -216,6 +216,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       "n"."processingType" AS "processingType",
       "n"."dueDate" AS "dueDate"
     FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleProgress" AS "p"
+      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."location" = ${locationKey}

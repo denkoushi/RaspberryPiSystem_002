@@ -22,6 +22,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -31,6 +32,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -88,6 +90,26 @@ describe('Kiosk Production Schedule API', () => {
         }
       ]
     });
+
+    // progressは別テーブルが真実なので、完了状態もseedする。
+    const completedRow = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0002' }
+      },
+      select: { id: true }
+    });
+    if (completedRow) {
+      await prisma.productionScheduleProgress.upsert({
+        where: { csvDashboardRowId: completedRow.id },
+        create: {
+          csvDashboardRowId: completedRow.id,
+          csvDashboardId: DASHBOARD_ID,
+          isCompleted: true
+        },
+        update: { isCompleted: true }
+      });
+    }
   });
 
   it('rejects request without x-client-key', async () => {

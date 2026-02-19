@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
@@ -72,12 +71,17 @@ export async function completeProductionScheduleRow(params: {
   }
 
   const current = row.rowData as Record<string, unknown>;
-  const currentProgress = typeof current.progress === 'string' ? current.progress.trim() : '';
+  const progress = await prisma.productionScheduleProgress.findUnique({
+    where: { csvDashboardRowId: row.id },
+    select: { isCompleted: true }
+  });
+  const isCompleted = progress?.isCompleted === true;
 
   // トグル動作: 既に完了している場合は未完了に戻す
+  const nextIsCompleted = !isCompleted;
   const nextRowData: Record<string, unknown> = {
     ...current,
-    progress: currentProgress === COMPLETED_PROGRESS_VALUE ? '' : COMPLETED_PROGRESS_VALUE
+    progress: nextIsCompleted ? COMPLETED_PROGRESS_VALUE : ''
   };
 
   const tFindAssignmentStart = performance.now();
@@ -98,9 +102,14 @@ export async function completeProductionScheduleRow(params: {
   let txShiftAssignmentsCount: number | null = null;
   await prisma.$transaction(async (tx) => {
     const tUpdateRowStart = performance.now();
-    await tx.csvDashboardRow.update({
-      where: { id: row.id },
-      data: { rowData: nextRowData as Prisma.InputJsonValue }
+    await tx.productionScheduleProgress.upsert({
+      where: { csvDashboardRowId: row.id },
+      create: {
+        csvDashboardRowId: row.id,
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        isCompleted: nextIsCompleted
+      },
+      update: { isCompleted: nextIsCompleted }
     });
     txUpdateRowMs = performance.now() - tUpdateRowStart;
 

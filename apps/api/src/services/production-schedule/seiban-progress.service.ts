@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 export type SeibanProgressRow = {
@@ -40,18 +40,21 @@ export async function fetchSeibanProgressRows(
       COUNT(*)::int AS "total",
       SUM(
         CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'progress') = ${COMPLETED_PROGRESS_VALUE}
+          WHEN COALESCE("p"."isCompleted", FALSE) = TRUE
           THEN 1
           ELSE 0
         END
       )::int AS "completed"
       ,
       ARRAY_AGG(DISTINCT ("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
-        WHERE ("CsvDashboardRow"."rowData"->>'progress') IS DISTINCT FROM ${COMPLETED_PROGRESS_VALUE}
+        WHERE COALESCE("p"."isCompleted", FALSE) = FALSE
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
       ) AS "incompleteProductNames"
     FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleProgress" AS "p"
+      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "p"."csvDashboardId" = ${csvDashboardId}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${csvDashboardId}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
