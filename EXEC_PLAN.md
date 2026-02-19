@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-19) **生産スケジュールprogress別テーブル化・CI成功・デプロイ完了・実機検証完了**: CSV取り込み時の`rowData`上書きで完了状態が失われる問題を解決。`ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離。**実装内容**: `csvDashboardRowId`を主キーとする1対1の関係、`isCompleted`（Boolean）で完了状態を管理、`onDelete: Cascade`で自動削除、`(csvDashboardId, isCompleted)`の複合インデックス追加。既存データの移行（マイグレーションSQLで`rowData.progress='完了'`を新テーブルへ移行）。APIサービスの更新（完了トグル・一覧取得・進捗集計を新テーブル参照に変更、レスポンスで`rowData.progress`を合成して互換維持）。**CI実行**: GitHub Actions Run ID `22178638075`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260219-200946-13664`, `state: success`, `exitCode: 0`）。**実機検証結果**: マイグレーション状態（33 migrations found）、テーブル存在確認（223件の完了状態レコード）、完了トグル動作（DB `isCompleted`とAPI返却`rowData.progress`が正しく連動）、一覧取得・履歴進捗が正常応答することを確認。**ドキュメント更新**: KB-269を追加、ADR-20260219を追加、KB-184を更新（完了状態の保存方法が変更されたことを追記）、KB-268に今回の変更と衝突しないことを追記、INDEX.mdを更新。詳細は [docs/knowledge-base/api.md#kb-269](./docs/knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避) / [docs/decisions/ADR-20260219-production-schedule-progress-separation.md](./docs/decisions/ADR-20260219-production-schedule-progress-separation.md) / [docs/knowledge-base/frontend.md#kb-184](./docs/knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
 - [x] (2026-02-18) **吊具持出画面に吊具情報表示を追加・CI成功・デプロイ完了・実機検証完了**: 吊具持出画面に遷移したとき、吊具タグのUIDだけが表示されていた問題を解決し、吊具マスタから取得した詳細情報（名称、管理番号、保管場所、荷重、寸法）を点検見本の右側余白に表示する機能を実装。**実装内容**: `riggingTagUid`が設定された時点で`getRiggingGearByTagUid()`を呼び出し、吊具情報をstateに保持。点検見本の右側余白に「吊具持出」情報ブロックを追加（タイトルはページタイトルと同じフォントサイズ`text-xl font-bold`）。表示項目は名称、管理番号、保管場所、荷重(t)、長さ/幅/厚み(mm)。貸出登録時の存在チェックで、既に取得済みの`riggingGear`をref経由で再利用し、API二重呼び出しを回避。**実装ファイル**: `apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`（修正）。**CI実行**: GitHub Actions Run ID `22126971043` 成功（全ジョブ成功）。**デプロイ結果**: Pi5とPi4でデプロイ成功（runId `20260218-140619-15371`, `ok=211`, `changed=13`, `failed=0`）。**実機検証結果**: 吊具タグをスキャンした時点で右側余白に吊具情報が表示されることを確認、状態表示（未スキャン/取得中/エラー）が適切に動作することを確認、リセットボタンでUIDと吊具情報が正しくクリアされることを確認、貸出登録が正常に動作し従来通り戻り先へ自動遷移することを確認、API二重呼び出しが回避されることを確認。**ドキュメント更新**: KB-267を追加、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
 - [x] (2026-02-18) **NFCストリーム端末分離の実装完了・CI成功・デプロイ完了・実機検証完了**: Tailscale ACLポリシー導入後、Pi4でNFCタグをスキャンするとMacで開いたキオスク画面でも動作が発動する問題を解決。**実装内容**: NFCストリームポリシー（`disabled`/`localOnly`/`legacy`）を実装し、Mac環境ではNFCを無効化（`disabled`）、Pi4では`ws://localhost:7071/stream`のみに接続（`localOnly`）。Pi5経由の`/stream`プロキシをCaddyfileから削除し、共有購読面を撤去。**実装ファイル**: `apps/web/src/features/nfc/nfcPolicy.ts`（新規）、`apps/web/src/features/nfc/nfcEventSource.ts`（新規）、`apps/web/src/hooks/useNfcStream.ts`（修正）、`apps/web/src/hooks/useNfcStream.test.ts`（新規）、`infrastructure/docker/Caddyfile.local.template`（修正）、`.github/workflows/ci.yml`（修正、`chore/**`パターン追加）。**CI実行**: GitHub Actions Run ID `22124446236` 成功（全ジョブ成功）。**デプロイ結果**: Pi5とPi4でデプロイ成功（runId `20260218-120030-20305`, `ok=211`, `changed=13`, `failed=0`）。**実機検証結果**: Pi4キオスク画面でNFCスキャンがローカル端末のみで動作することを確認、Macキオスク画面でNFCスキャンが発動しないことを確認、Caddyfileから`/stream`プロキシ設定が削除されていることを確認、ビルド済みWebアプリに`wss://.../stream`への参照が存在しないことを確認。**ドキュメント更新**: KB-266を追加、`docs/security/tailscale-policy.md`のPhase 2-2完了記録を更新、`docs/troubleshooting/nfc-reader-issues.md`にNFC WebSocket接続ポリシーの説明を追加、Tailscale SSHが無料プランでは利用不可であることを追記。**Tailscaleハードニング完了**: Phase 2-2（ACL最小化 + `kiosk:7071`閉塞）まで完了。Phase 4（Tailscale SSH）はPersonal Plus/Premium/Enterpriseプランでのみ利用可能のため、無料プランではスキップ（従来のSSH鍵を使用し、Tailscale ACLでネットワークレベルのアクセス制御を実施）。詳細は [docs/knowledge-base/infrastructure/security.md#kb-266](./docs/knowledge-base/infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) / [docs/security/tailscale-policy.md](./docs/security/tailscale-policy.md) / [docs/troubleshooting/nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md) を参照。
@@ -582,6 +584,8 @@
   対応: `URL.canParse()` ベースへ置換して `eslint-disable` を不要化。フェーズ2では「検証専用APIを優先し、抑制コメントを残さない」を再利用ルールとして採用。**[KB-258]**
 - 観測: `PUT /api/kiosk/production-schedule/search-state` は `search-history` と異なり、payloadに `state` オブジェクトを必須とする（`{ state: { history: [...] } }`）。同値更新検証で `{ history: [...] }` を送ると `400 VALIDATION_ERROR` になる。  
   対応: 実機検証手順に「`search-state` は `state` ラッパ必須」を明記し、`search-history` と契約差分があることをKBへ記録。**[KB-255]**
+- 発見: 生産スケジュールの完了状態（`progress`）が`rowData`（JSONB）に保存されていたため、CSV取り込み時の`rowData`更新で上書きされるリスクがあった。他のユーザー操作データ（備考、納期、処理列、加工順序割当）は既に別テーブル化されていたが、完了状態のみ`rowData`に残っていた。  
+  対応: `ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの互換性を維持しながら、バックエンドのデータ構造を改善。マイグレーションSQLで既存データの移行を確実に実行。KB-268の対策（フロントエンドのrefetch抑止、バックエンドのworker分離）とは衝突しないことを確認。**[KB-269]**
 - 観測: デプロイ直後の `/api/system/health` が一時的に `degraded`（memory）を返す場合があるが、ホスト全体の `available` メモリとコンテナ稼働は正常で、数分で `status: ok` へ戻るケースがある。  
   対応: 実機検証開始前に `free -m` / `docker ps` / 複数回ヘルスチェックでトレンド確認し、即断せず監視しながら判定する手順を採用。**[KB-255]**
 - 観測: `ports-unexpected` が15分おきに発生し続ける場合、UFW許可の有無とは別に **「サービスがLISTENしている」事実**で監視が反応している（＝通知は止まらない）。
@@ -766,6 +770,10 @@
   日付/担当: 2026-02-12 / Codex  
   参照: [ADR-001](./docs/decisions/001-module-structure.md), [ADR-002](./docs/decisions/002-service-layer.md)
 
+- 決定: 生産スケジュールの完了状態（`progress`）を`ProductionScheduleProgress`テーブルに分離し、CSV取り込み時の上書きリスクを回避する。  
+  理由: ユーザー操作データはCSVデータと分離し、別テーブルで管理することで、CSV取り込み時の上書きリスクを回避できる。他のユーザー操作データ（備考、納期、処理列、加工順序割当）と一貫性を保つため。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの互換性を維持しながら、バックエンドのデータ構造を改善できる。  
+  日付/担当: 2026-02-19 / Codex  
+  参照: [KB-269](./docs/knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避), [ADR-20260219](./docs/decisions/ADR-20260219-production-schedule-progress-separation.md)
 - 決定: APIルート肥大化対策として、`routes` は「入出力契約と認可」、`services` は「DB/業務ロジック」に責務分離する実装パターンを `kiosk`・`clients` で標準化し、以降の大型ルート（例: `backup.ts`, `imports.ts`）へ横展開する。  
   理由: 互換性を維持したまま変更容易性・再利用性・検証容易性を上げ、回帰範囲を局所化するため。  
   日付/担当: 2026-02-11 / Codex  
@@ -1531,6 +1539,39 @@
 
 **詳細**: [docs/knowledge-base/frontend.md#kb-240](./docs/knowledge-base/frontend.md#kb-240-モーダル共通化アクセシビリティ標準化e2eテスト安定化)
 
+### 生産スケジュールデータの削除ルール実装（推奨）
+
+**概要**: ストレージ圧迫解消と将来の新規機能データ追加に備え、生産スケジュールデータの削除ルールを実装する
+
+**前提条件**:
+- ✅ **完了状態の別テーブル化完了**: `ProductionScheduleProgress`テーブルを新設し、CSV取り込み時の上書きリスクを回避（KB-269）
+- ✅ **ユーザー操作データの保護**: 備考、納期、処理列、加工順序割当、完了状態は別テーブルで管理され、CSV取り込み時の上書きリスクがない
+
+**提案された削除ルール**:
+1. **重複データの即時削除**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、数字が小さい方を削除（製造order番号繰り上がりルールと整合）
+2. **1年経過データの削除**: 取得時から1年経過した「生きているデータ」（最新CSVに含まれるデータ）を削除。基準は「より最近の日付」を使用
+
+**注意事項**:
+- 削除の復旧は不要、履歴も不要
+- ユーザー操作データ（備考、納期、処理列、加工順序割当、完了状態）は別テーブルで保護されているため、CSV取り込み時の上書きリスクはない
+- 削除ルール実装前に、既存システムへの悪影響を確認する必要がある
+
+**実装検討事項**:
+- CSV取り込み時の重複削除ロジック（即時削除）
+- 定期バッチ処理での1年経過データ削除（cronスケジューラー）
+- 削除対象の判定ロジック（`occurredAt`または`rowData`内の日付フィールドを基準）
+- 削除前のバックアップ（任意）
+
+**次のステップ**:
+1. **CSV取り込み後の完了状態保持の継続観察**（優先度: 高）: 実機検証で完了トグル動作は確認済みだが、実際のCSV取り込み実行後も完了状態が保持されることを継続観察する必要がある
+2. **削除ルールの詳細設計**（優先度: 中）: 削除対象の判定基準、削除タイミング、削除前のバックアップ有無を決定
+3. **削除ルールの実装**（優先度: 中）: CSV取り込み時の重複削除ロジックと定期バッチ処理の実装
+4. **削除ルールの実機検証**（優先度: 中）: 削除が正常に動作し、既存システムに悪影響がないことを確認
+
+**関連KB**:
+- [KB-269](./docs/knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避): 完了状態の別テーブル化（CSV取り込み時の上書きリスク回避）
+- [KB-201](./docs/knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加): 製造order番号繰り上がりルール（重複除去の基盤）
+
 ### E2Eテストのさらなる安定化（推奨）
 
 **概要**: E2Eテスト安定化を機に、テストの信頼性と保守性をさらに向上させる
@@ -1897,5 +1938,7 @@
 変更履歴: 2026-02-10 — 生産スケジュール登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OKを反映。Progressに`SeibanProgressService`新設、history-progressエンドポイント追加、`ProductionScheduleDataSource`の共通サービス利用、`useProductionScheduleHistoryProgress`フックと削除ボタン進捗連動スタイルを追加。KB-242を追加し、進捗マップの共有とサービス層の共通化による整合性・保守性の学びを記録。`docs/plans/production-schedule-kiosk-execplan.md`、`docs/guides/production-schedule-signage.md`、`docs/INDEX.md`、`docs/knowledge-base/index.md`を更新。ナレッジベース更新（39件）。
 
 変更履歴: 2026-02-11 — 加工機マスタのメンテナンスページ追加とCSVインポートトラブルシューティング完了・実機検証完了・ドキュメント更新完了を反映。Progressに加工機マスタのCRUD機能実装（APIエンドポイント追加、サービス層実装、フロントエンドページ追加、ナビゲーション追加、React Queryフック追加）とCSVインポート時のDB設定不整合問題の解決を追加。実機検証結果（加工機の登録・編集・削除、検索・フィルタ機能、一覧表示）を追加。KB-253（加工機CSVインポートのデフォルト列定義とDB設定不整合問題）、KB-254（加工機マスタのメンテナンスページ追加）を追加。csv-import-export.mdを更新（日本語ヘッダー対応、トラブルシューティングセクション追加）。ナレッジベース更新（161件）。
+
+変更履歴: 2026-02-19 — 生産スケジュールprogress別テーブル化・CI成功・デプロイ完了・実機検証完了を反映。Progressに`ProductionScheduleProgress`テーブル新設と完了状態の分離を追加。Surprises & DiscoveriesにCSV取り込み時の上書きリスク回避の知見を追加。Decision Logに完了状態の別テーブル化決定を追加。KB-269、ADR-20260219を追加。KB-184を更新（完了状態の保存方法が変更されたことを追記）。Next StepsにCSV取り込み後の完了状態保持の継続観察と生産スケジュールデータ削除ルール実装を追加。ナレッジベース更新（55件）。
 
 変更履歴: 2026-02-18 — 吊具持出画面に吊具情報表示を追加・CI成功・デプロイ完了・実機検証完了を反映。Progressに吊具情報表示機能の実装（`riggingTagUid`変化時のデータ取得、右側余白への情報ブロック追加、API二重呼び出し回避）を追加。Surprises & DiscoveriesにuseRefによる最新state参照とAPI二重呼び出し回避の知見を追加。KB-267を追加。Next Stepsにキオスク画面のUI改善候補を追加。ナレッジベース更新（44件）。

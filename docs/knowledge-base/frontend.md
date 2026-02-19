@@ -1865,6 +1865,7 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
 - ✅ **完了ボタンのグレーアウト**: `progress='完了'`のアイテムを`opacity-50 grayscale`で視覚的にグレーアウト
 - ✅ **完了ボタンのトグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
+- ✅ **完了状態の保存方法変更（2026-02-19）**: `ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離（[KB-269](../api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避)参照）。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの変更は不要
 - ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
 - ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
 - ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
