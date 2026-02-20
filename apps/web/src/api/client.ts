@@ -35,6 +35,9 @@ export const DEFAULT_CLIENT_KEY =
   import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
 const DEMO_CLIENT_KEY = 'client-demo-key';
 const PI4_KIOSK_CLIENT_KEY = 'client-key-raspberrypi4-kiosk1';
+const MAC_KIOSK_CLIENT_KEY = 'client-key-mac-kiosk1';
+const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
+const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 
 export const api = axios.create({
   baseURL: apiBase
@@ -181,18 +184,35 @@ function getLatestResourceTimingInWindow(params: {
 // 各リクエストで確実に client-key を付与するためのヘルパー
 // useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
 // Mac環境を検出して適切なデフォルト値を返す
+const isKioskPath = () => {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname.startsWith('/kiosk');
+};
+
+const getRecommendedDefaultClientKey = (userAgent: string) => {
+  const isMac = /Macintosh|Mac OS X/i.test(userAgent);
+  const isChromeOS = /CrOS/i.test(userAgent);
+  // Raspberry Pi (Linux/ARM) を雑に推定（ChromeOSは除外）
+  const isLinuxArm = /Linux/i.test(userAgent) && /(arm|aarch64)/i.test(userAgent) && !isChromeOS;
+
+  if (isMac) {
+    return MAC_KIOSK_CLIENT_KEY;
+  }
+  // /kiosk ではUA誤判定（例: CrOS）でもPi4既定キーを優先し、ループを回避する。
+  if (isKioskPath()) {
+    return DEFAULT_CLIENT_KEY;
+  }
+  return isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
+};
+
 const resolveClientKey = () => {
   if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
-  
-  // Mac環境を検出（User-Agentから）
-  const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-  const isChromeOS = /CrOS/i.test(navigator.userAgent);
-  // Raspberry Pi (Linux/ARM) を雑に推定（ChromeOSは除外）
-  const isLinuxArm =
-    /Linux/i.test(navigator.userAgent) && /(arm|aarch64)/i.test(navigator.userAgent) && !isChromeOS;
-  const macDefaultKey = 'client-key-mac-kiosk1';
 
-  const recommendedDefaultKey = isMac ? macDefaultKey : isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
+  const userAgent = navigator.userAgent;
+  const isMac = /Macintosh|Mac OS X/i.test(userAgent);
+  const isChromeOS = /CrOS/i.test(userAgent);
+  const isLinuxArm = /Linux/i.test(userAgent) && /(arm|aarch64)/i.test(userAgent) && !isChromeOS;
+  const recommendedDefaultKey = getRecommendedDefaultClientKey(userAgent);
   
   const savedKey = window.localStorage.getItem('kiosk-client-key');
   if (!savedKey || savedKey.length === 0) {
@@ -217,12 +237,13 @@ const resolveClientKey = () => {
   // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
   if (isMac && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
     // localStorageを修正
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(macDefaultKey));
-    return macDefaultKey;
+    window.localStorage.setItem('kiosk-client-key', JSON.stringify(MAC_KIOSK_CLIENT_KEY));
+    return MAC_KIOSK_CLIENT_KEY;
   }
 
   // 非Pi端末（例: ChromeOS等）でPi4のキーを持っている場合はdemoへ矯正（競合防止）
-  if (!isLinuxArm && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
+  // ただし /kiosk 画面ではPi4既定キーを優先し、認証リロードループを避ける。
+  if (!isLinuxArm && !isKioskPath() && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
     window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEMO_CLIENT_KEY));
     return DEMO_CLIENT_KEY;
   }
@@ -252,7 +273,17 @@ const resetKioskClientKey = () => {
   const defaultKey = resolveClientKey();
   window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
   setClientKeyHeader(defaultKey);
+
+  // 同一セッションで短時間に401が続いた場合、リロードループを防ぐ。
+  const now = Date.now();
+  const lastResetAtRaw = window.sessionStorage.getItem(KIOSK_KEY_RESET_TS_KEY);
+  const lastResetAt = lastResetAtRaw ? Number(lastResetAtRaw) : 0;
+  window.sessionStorage.setItem(KIOSK_KEY_RESET_TS_KEY, String(now));
+
   if (window.location.pathname.startsWith('/kiosk')) {
+    if (Number.isFinite(lastResetAt) && now - lastResetAt < KIOSK_KEY_RESET_COOLDOWN_MS) {
+      return;
+    }
     window.location.reload();
   }
 };
@@ -265,12 +296,7 @@ const resetKioskClientKey = () => {
 if (typeof window !== 'undefined') {
   const existing = window.localStorage.getItem('kiosk-client-key');
   if (!existing || existing.length === 0) {
-    // Mac環境を検出（User-Agentから）
-    const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-    const isChromeOS = /CrOS/i.test(navigator.userAgent);
-    const isLinuxArm =
-      /Linux/i.test(navigator.userAgent) && /(arm|aarch64)/i.test(navigator.userAgent) && !isChromeOS;
-    const defaultKey = isMac ? 'client-key-mac-kiosk1' : isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
+    const defaultKey = getRecommendedDefaultClientKey(navigator.userAgent);
     window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
     setClientKeyHeader(defaultKey);
   } else {
