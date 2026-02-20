@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { logger } from '../../lib/logger.js';
+import { GmailRequestGateService, GmailRateLimitedDeferredError } from './gmail-request-gate.service.js';
 
 /**
  * Gmailメッセージ情報
@@ -50,17 +51,36 @@ export interface GmailTrashCleanupResult {
  */
 export class GmailApiClient {
   private gmail: ReturnType<typeof google.gmail>;
-  private oauth2Client: OAuth2Client;
+  private readonly gate: GmailRequestGateService;
+  private readonly allowWait: boolean;
 
-  constructor(oauth2Client: OAuth2Client) {
-    this.oauth2Client = oauth2Client;
+  constructor(
+    oauth2Client: OAuth2Client,
+    opts?: {
+      gate?: GmailRequestGateService;
+      /**
+       * trueの場合、クールダウンが解除されるまで待ってから実行する。
+       * falseの場合、クールダウン中は即座にdeferする（scheduled用途向け）。
+       */
+      allowWait?: boolean;
+    }
+  ) {
     this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    this.gate = opts?.gate ?? new GmailRequestGateService();
+    this.allowWait = opts?.allowWait ?? false;
+  }
+
+  private async gateExecute<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+    return await this.gate.execute(operation, fn, { allowWait: this.allowWait });
   }
 
   private async findLabelIdByName(labelName: string): Promise<string | undefined> {
-    const response = await this.gmail.users.labels.list({ userId: 'me' });
+    const response = await this.gateExecute('gmail.users.labels.list', async () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.gmail.users.labels.list as any)({ userId: 'me' }, { retry: false })
+    );
     const labels = response.data.labels || [];
-    const found = labels.find((label) => label.name === labelName);
+    const found = labels.find((label: { id?: string; name?: string }) => label.name === labelName);
     return found?.id || undefined;
   }
 
@@ -70,14 +90,20 @@ export class GmailApiClient {
       return existingId;
     }
 
-    const created = await this.gmail.users.labels.create({
-      userId: 'me',
-      requestBody: {
-        name: labelName,
-        labelListVisibility: 'labelShow',
-        messageListVisibility: 'show',
-      },
-    });
+    const created = await this.gateExecute('gmail.users.labels.create', async () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.gmail.users.labels.create as any)(
+        {
+          userId: 'me',
+          requestBody: {
+            name: labelName,
+            labelListVisibility: 'labelShow',
+            messageListVisibility: 'show',
+          },
+        },
+        { retry: false }
+      )
+    );
 
     if (!created.data.id) {
       throw new Error(`Failed to create Gmail label: ${labelName}`);
@@ -92,15 +118,26 @@ export class GmailApiClient {
    */
   async searchMessages(query: string): Promise<string[]> {
     try {
-      const response = await this.gmail.users.messages.list({
-        userId: 'me',
-        q: query,
-        maxResults: 10 // 最大10件まで取得
-      });
+      const response = await this.gateExecute('gmail.users.messages.list', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.list as any)(
+          {
+            userId: 'me',
+            q: query,
+            maxResults: 10, // 最大10件まで取得
+          },
+          { retry: false }
+        )
+      );
 
       const messages = response.data.messages || [];
-      return messages.map(msg => msg.id || '').filter(id => id !== '');
+      return messages
+        .map((msg: { id?: string }) => msg.id || '')
+        .filter((id: string) => id !== '');
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       const err = error as { message?: string; status?: number; code?: number };
       const statusInfo = [err?.status, err?.code].filter(Boolean).join('/');
       const statusSuffix = statusInfo ? ` (status: ${statusInfo})` : '';
@@ -127,20 +164,33 @@ export class GmailApiClient {
       let pageToken: string | undefined;
 
       do {
-        const response = await this.gmail.users.messages.list({
-          userId: 'me',
-          q: query,
-          maxResults: 100,
-          pageToken
-        });
+        const response = await this.gateExecute('gmail.users.messages.list', async () =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this.gmail.users.messages.list as any)(
+            {
+              userId: 'me',
+              q: query,
+              maxResults: 100,
+              pageToken,
+            },
+            { retry: false }
+          )
+        );
 
         const messages = response.data.messages || [];
-        messageIds.push(...messages.map((msg) => msg.id || '').filter((id) => id !== ''));
+        messageIds.push(
+          ...messages
+            .map((msg: { id?: string }) => msg.id || '')
+            .filter((id: string) => id !== '')
+        );
         pageToken = response.data.nextPageToken || undefined;
       } while (pageToken);
 
       return messageIds;
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       const err = error as { message?: string; status?: number; code?: number };
       const statusInfo = [err?.status, err?.code].filter(Boolean).join('/');
       const statusSuffix = statusInfo ? ` (status: ${statusInfo})` : '';
@@ -163,11 +213,17 @@ export class GmailApiClient {
    */
   async getMessage(messageId: string): Promise<GmailMessage> {
     try {
-      const response = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId,
-        format: 'full'
-      });
+      const response = await this.gateExecute('gmail.users.messages.get', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.get as any)(
+          {
+            userId: 'me',
+            id: messageId,
+            format: 'full',
+          },
+          { retry: false }
+        )
+      );
 
       const message = response.data;
       return {
@@ -178,6 +234,9 @@ export class GmailApiClient {
         payload: message.payload as GmailMessage['payload']
       };
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, messageId },
         '[GmailApiClient] Failed to get message'
@@ -194,11 +253,17 @@ export class GmailApiClient {
    */
   async getAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
     try {
-      const response = await this.gmail.users.messages.attachments.get({
-        userId: 'me',
-        messageId,
-        id: attachmentId
-      });
+      const response = await this.gateExecute('gmail.users.messages.attachments.get', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.attachments.get as any)(
+          {
+            userId: 'me',
+            messageId,
+            id: attachmentId,
+          },
+          { retry: false }
+        )
+      );
 
       const attachment = response.data;
       if (!attachment.data) {
@@ -208,6 +273,9 @@ export class GmailApiClient {
       // Base64デコード
       return Buffer.from(attachment.data, 'base64');
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, messageId, attachmentId },
         '[GmailApiClient] Failed to get attachment'
@@ -222,16 +290,25 @@ export class GmailApiClient {
    */
   async archiveMessage(messageId: string): Promise<void> {
     try {
-      await this.gmail.users.messages.modify({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          removeLabelIds: ['INBOX']
-        }
-      });
+      await this.gateExecute('gmail.users.messages.modify(archive)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.modify as any)(
+          {
+            userId: 'me',
+            id: messageId,
+            requestBody: {
+              removeLabelIds: ['INBOX'],
+            },
+          },
+          { retry: false }
+        )
+      );
 
       logger?.info({ messageId }, '[GmailApiClient] Message archived');
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, messageId },
         '[GmailApiClient] Failed to archive message'
@@ -250,16 +327,25 @@ export class GmailApiClient {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:markAsRead',message:'markAsRead called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      await this.gmail.users.messages.modify({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          removeLabelIds: ['UNREAD']
-        }
-      });
+      await this.gateExecute('gmail.users.messages.modify(markAsRead)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.modify as any)(
+          {
+            userId: 'me',
+            id: messageId,
+            requestBody: {
+              removeLabelIds: ['UNREAD'],
+            },
+          },
+          { retry: false }
+        )
+      );
 
       logger?.info({ messageId }, '[GmailApiClient] Message marked as read');
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, messageId },
         '[GmailApiClient] Failed to mark message as read'
@@ -281,21 +367,30 @@ export class GmailApiClient {
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:trashMessage',message:'trashMessage called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
 
-      await this.gmail.users.messages.modify({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          addLabelIds: [processedLabelId],
-        },
-      });
+      await this.gateExecute('gmail.users.messages.modify(addProcessedLabel)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.modify as any)(
+          {
+            userId: 'me',
+            id: messageId,
+            requestBody: {
+              addLabelIds: [processedLabelId],
+            },
+          },
+          { retry: false }
+        )
+      );
 
-      await this.gmail.users.messages.trash({
-        userId: 'me',
-        id: messageId,
-      });
+      await this.gateExecute('gmail.users.messages.trash', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.trash as any)({ userId: 'me', id: messageId }, { retry: false })
+      );
 
       logger?.info({ messageId }, '[GmailApiClient] Message trashed');
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, messageId },
         '[GmailApiClient] Failed to trash message'
@@ -317,10 +412,10 @@ export class GmailApiClient {
 
       for (const messageId of messageIds) {
         try {
-          await this.gmail.users.messages.delete({
-            userId: 'me',
-            id: messageId,
-          });
+          await this.gateExecute('gmail.users.messages.delete', async () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (this.gmail.users.messages.delete as any)({ userId: 'me', id: messageId }, { retry: false })
+          );
           deletedCount += 1;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -335,6 +430,9 @@ export class GmailApiClient {
         errors,
       };
     } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
       logger?.error(
         { err: error, query },
         '[GmailApiClient] Failed to cleanup processed trash messages'

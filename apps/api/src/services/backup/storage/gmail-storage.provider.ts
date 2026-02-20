@@ -1,10 +1,11 @@
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
-import { toErrorInfo, isRecord } from '../../../lib/type-guards.js';
+import { toErrorInfo } from '../../../lib/type-guards.js';
 import { GmailApiClient } from '../gmail-api-client.js';
 import type { GmailTrashCleanupResult } from '../gmail-api-client.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
+import { GmailRequestGateService } from '../gmail-request-gate.service.js';
 
 export class NoMatchingMessageError extends Error {
   constructor(query: string) {
@@ -35,6 +36,7 @@ export class GmailStorageProvider implements StorageProvider {
    * バッチ処理時のリクエスト間隔（ミリ秒、デフォルト1000ms）
    */
   private readonly batchRequestDelayMs: number;
+  private readonly allowWait: boolean;
 
   constructor(options: {
     oauth2Client: OAuth2Client;
@@ -44,6 +46,7 @@ export class GmailStorageProvider implements StorageProvider {
     fromEmail?: string;
     oauthService?: GmailOAuthService;
     onTokenUpdate?: (token: string) => Promise<void>;
+    allowWait?: boolean;
   }) {
     this.oauth2Client = options.oauth2Client;
     this.accessToken = options.accessToken;
@@ -52,6 +55,7 @@ export class GmailStorageProvider implements StorageProvider {
     this.fromEmail = options.fromEmail;
     this.oauthService = options.oauthService;
     this.onTokenUpdate = options.onTokenUpdate;
+    this.allowWait = options.allowWait ?? false;
 
     // OAuth2Clientにトークンを設定
     this.oauth2Client.setCredentials({
@@ -59,7 +63,9 @@ export class GmailStorageProvider implements StorageProvider {
       refresh_token: this.refreshToken
     });
 
-    this.gmailClient = new GmailApiClient(this.oauth2Client);
+    // Gmail API呼び出しはゲート経由で一元調停する（429を踏みに行かない）
+    const gate = new GmailRequestGateService();
+    this.gmailClient = new GmailApiClient(this.oauth2Client, { gate, allowWait: this.allowWait });
 
     // 環境変数から設定を読み込み
     {
@@ -205,86 +211,57 @@ export class GmailStorageProvider implements StorageProvider {
    * @returns ファイルのBuffer
    */
   async download(path: string): Promise<Buffer> {
-    // 429時のみリトライ1回（= 最大2試行）
-    const maxRetries = 2;
-    let retryCount = 0;
+    return await this.handleAuthError(async () => {
+      // 検索クエリを構築
+      const query = this.buildSearchQuery(path);
 
-    while (retryCount < maxRetries) {
-      try {
-        return await this.handleAuthError(async () => {
-          // 検索クエリを構築
-          const query = this.buildSearchQuery(path);
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages'
+      );
 
-          logger?.info(
-            { path, query },
-            '[GmailStorageProvider] Searching for messages'
-          );
+      // メールを検索
+      const messageIds = await this.gmailClient.searchMessages(query);
 
-          // メールを検索
-          const messageIds = await this.gmailClient.searchMessages(query);
-
-          if (messageIds.length === 0) {
-            throw new NoMatchingMessageError(query);
-          }
-
-          // 最初のメールから添付ファイルを取得
-          const firstMessageId = messageIds[0];
-          logger?.info(
-            { messageId: firstMessageId, query },
-            '[GmailStorageProvider] Found message, getting attachment'
-          );
-
-          const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
-
-          if (!attachment) {
-            throw new Error(`No attachment found in message: ${firstMessageId}`);
-          }
-
-          logger?.info(
-            { messageId: firstMessageId, filename: attachment.filename, size: attachment.buffer.length },
-            '[GmailStorageProvider] Attachment downloaded successfully'
-          );
-
-          // メールをアーカイブ（処理済みとしてマーク）
-          try {
-            await this.gmailClient.archiveMessage(firstMessageId);
-            logger?.info(
-              { messageId: firstMessageId },
-              '[GmailStorageProvider] Message archived'
-            );
-          } catch (archiveError) {
-            // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
-            logger?.warn(
-              { err: archiveError, messageId: firstMessageId },
-              '[GmailStorageProvider] Failed to archive message'
-            );
-          }
-
-          return attachment.buffer;
-        });
-      } catch (error: unknown) {
-        // レート制限エラー（429）の場合、リトライ
-        if (this.isRateLimitError(error)) {
-          const retryAfter = this.extractRetryAfter(error);
-          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
-
-          logger?.warn(
-            { path, retryCount, delay, retryAfter },
-            '[GmailStorageProvider] Rate limit hit during download, retrying'
-          );
-
-          await this.sleep(delay);
-          retryCount++;
-          continue;
-        }
-
-        // その他のエラーは再スロー
-        logger?.error({ err: error, path, retryCount }, '[GmailStorageProvider] Download failed');
-        throw error;
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
       }
-    }
 
-    throw new Error(`Failed to download message after ${maxRetries} attempts`);
+      // 最初のメールから添付ファイルを取得
+      const firstMessageId = messageIds[0];
+      logger?.info(
+        { messageId: firstMessageId, query },
+        '[GmailStorageProvider] Found message, getting attachment'
+      );
+
+      const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
+
+      if (!attachment) {
+        throw new Error(`No attachment found in message: ${firstMessageId}`);
+      }
+
+      logger?.info(
+        { messageId: firstMessageId, filename: attachment.filename, size: attachment.buffer.length },
+        '[GmailStorageProvider] Attachment downloaded successfully'
+      );
+
+      // メールをアーカイブ（処理済みとしてマーク）
+      try {
+        await this.gmailClient.archiveMessage(firstMessageId);
+        logger?.info(
+          { messageId: firstMessageId },
+          '[GmailStorageProvider] Message archived'
+        );
+      } catch (archiveError) {
+        // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
+        logger?.warn(
+          { err: archiveError, messageId: firstMessageId },
+          '[GmailStorageProvider] Failed to archive message'
+        );
+      }
+
+      return attachment.buffer;
+    });
   }
 
   /**
@@ -363,100 +340,71 @@ export class GmailStorageProvider implements StorageProvider {
     messageId: string;
     messageSubject: string;
   }> {
-    // 429時のみリトライ1回（= 最大2試行）
-    const maxRetries = 2;
-    let retryCount = 0;
+    return await this.handleAuthError(async () => {
+      // 検索クエリを構築
+      const query = this.buildSearchQuery(path);
 
-    while (retryCount < maxRetries) {
-      try {
-        return await this.handleAuthError(async () => {
-          // 検索クエリを構築
-          const query = this.buildSearchQuery(path);
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages (with metadata)'
+      );
 
-          logger?.info(
-            { path, query },
-            '[GmailStorageProvider] Searching for messages (with metadata)'
-          );
+      // メールを検索
+      const messageIds = await this.gmailClient.searchMessages(query);
 
-          // メールを検索
-          const messageIds = await this.gmailClient.searchMessages(query);
-
-          if (messageIds.length === 0) {
-            throw new NoMatchingMessageError(query);
-          }
-
-          // 最初のメールから添付ファイルとメタデータを取得
-          const firstMessageId = messageIds[0];
-          logger?.info(
-            { messageId: firstMessageId, query },
-            '[GmailStorageProvider] Found message, getting attachment and metadata'
-          );
-
-          // メッセージ情報を取得（件名を取得するため）
-          const message = await this.gmailClient.getMessage(firstMessageId);
-          const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
-          const messageSubject = subjectHeader?.value || 'No Subject';
-
-          const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
-
-          if (!attachment) {
-            throw new Error(`No attachment found in message: ${firstMessageId}`);
-          }
-
-          logger?.info(
-            {
-              messageId: firstMessageId,
-              messageSubject,
-              filename: attachment.filename,
-              size: attachment.buffer.length,
-            },
-            '[GmailStorageProvider] Attachment downloaded successfully (with metadata)'
-          );
-
-          // メールをアーカイブ（処理済みとしてマーク）
-          try {
-            await this.gmailClient.archiveMessage(firstMessageId);
-            logger?.info(
-              { messageId: firstMessageId },
-              '[GmailStorageProvider] Message archived'
-            );
-          } catch (archiveError) {
-            // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
-            logger?.warn(
-              { err: archiveError, messageId: firstMessageId },
-              '[GmailStorageProvider] Failed to archive message'
-            );
-          }
-
-          return {
-            buffer: attachment.buffer,
-            messageId: firstMessageId,
-            messageSubject,
-          };
-        });
-      } catch (error: unknown) {
-        // レート制限エラー（429）の場合、リトライ
-        if (this.isRateLimitError(error)) {
-          const retryAfter = this.extractRetryAfter(error);
-          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
-
-          logger?.warn(
-            { path, retryCount, delay, retryAfter },
-            '[GmailStorageProvider] Rate limit hit during downloadWithMetadata, retrying'
-          );
-
-          await this.sleep(delay);
-          retryCount++;
-          continue;
-        }
-
-        // その他のエラーは再スロー
-        logger?.error({ err: error, path, retryCount }, '[GmailStorageProvider] downloadWithMetadata failed');
-        throw error;
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
       }
-    }
 
-    throw new Error(`Failed to download message with metadata after ${maxRetries} attempts`);
+      // 最初のメールから添付ファイルとメタデータを取得
+      const firstMessageId = messageIds[0];
+      logger?.info(
+        { messageId: firstMessageId, query },
+        '[GmailStorageProvider] Found message, getting attachment and metadata'
+      );
+
+      // メッセージ情報を取得（件名を取得するため）
+      const message = await this.gmailClient.getMessage(firstMessageId);
+      const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+      const messageSubject = subjectHeader?.value || 'No Subject';
+
+      const attachment = await this.gmailClient.getFirstAttachment(firstMessageId);
+
+      if (!attachment) {
+        throw new Error(`No attachment found in message: ${firstMessageId}`);
+      }
+
+      logger?.info(
+        {
+          messageId: firstMessageId,
+          messageSubject,
+          filename: attachment.filename,
+          size: attachment.buffer.length,
+        },
+        '[GmailStorageProvider] Attachment downloaded successfully (with metadata)'
+      );
+
+      // メールをアーカイブ（処理済みとしてマーク）
+      try {
+        await this.gmailClient.archiveMessage(firstMessageId);
+        logger?.info(
+          { messageId: firstMessageId },
+          '[GmailStorageProvider] Message archived'
+        );
+      } catch (archiveError) {
+        // アーカイブ失敗はログに記録するが、ダウンロード成功は維持
+        logger?.warn(
+          { err: archiveError, messageId: firstMessageId },
+          '[GmailStorageProvider] Failed to archive message'
+        );
+      }
+
+      return {
+        buffer: attachment.buffer,
+        messageId: firstMessageId,
+        messageSubject,
+      };
+    });
   }
 
   /**
@@ -469,102 +417,73 @@ export class GmailStorageProvider implements StorageProvider {
     messageId: string;
     messageSubject: string;
   }>> {
-    // 429時のみリトライ1回（= 最大2試行）
-    const maxRetries = 2;
-    let retryCount = 0;
+    return await this.handleAuthError(async () => {
+      const query = this.buildSearchQuery(path);
 
-    while (retryCount < maxRetries) {
-      try {
-        return await this.handleAuthError(async () => {
-          const query = this.buildSearchQuery(path);
+      logger?.info(
+        { path, query },
+        '[GmailStorageProvider] Searching for messages (all with metadata)'
+      );
 
-          logger?.info(
-            { path, query },
-            '[GmailStorageProvider] Searching for messages (all with metadata)'
-          );
+      const messageIds = await this.gmailClient.searchMessagesAll(query);
 
-          const messageIds = await this.gmailClient.searchMessagesAll(query);
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
+      }
 
-          if (messageIds.length === 0) {
-            throw new NoMatchingMessageError(query);
-          }
+      // 1回の取得数を制限
+      const limitedMessageIds = messageIds.slice(0, this.maxMessagesPerBatch);
+      if (messageIds.length > this.maxMessagesPerBatch) {
+        logger?.warn(
+          {
+            totalMessages: messageIds.length,
+            maxMessagesPerBatch: this.maxMessagesPerBatch,
+            processedMessages: limitedMessageIds.length,
+          },
+          '[GmailStorageProvider] Limiting messages per batch to avoid rate limit'
+        );
+      }
 
-          // 1回の取得数を制限
-          const limitedMessageIds = messageIds.slice(0, this.maxMessagesPerBatch);
-          if (messageIds.length > this.maxMessagesPerBatch) {
-            logger?.warn(
-              {
-                totalMessages: messageIds.length,
-                maxMessagesPerBatch: this.maxMessagesPerBatch,
-                processedMessages: limitedMessageIds.length,
-              },
-              '[GmailStorageProvider] Limiting messages per batch to avoid rate limit'
-            );
-          }
+      const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
 
-          const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
+      // バッチ処理でリクエスト間に遅延を追加
+      for (let i = 0; i < limitedMessageIds.length; i++) {
+        const messageId = limitedMessageIds[i];
 
-          // バッチ処理でリクエスト間に遅延を追加
-          for (let i = 0; i < limitedMessageIds.length; i++) {
-            const messageId = limitedMessageIds[i];
+        // リクエスト間に遅延を追加（最初のリクエスト以外）
+        if (i > 0 && this.batchRequestDelayMs > 0) {
+          await this.sleep(this.batchRequestDelayMs);
+        }
 
-            // リクエスト間に遅延を追加（最初のリクエスト以外）
-            if (i > 0 && this.batchRequestDelayMs > 0) {
-              await this.sleep(this.batchRequestDelayMs);
-            }
+        const message = await this.gmailClient.getMessage(messageId);
+        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+        const messageSubject = subjectHeader?.value || 'No Subject';
 
-            const message = await this.gmailClient.getMessage(messageId);
-            const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
-            const messageSubject = subjectHeader?.value || 'No Subject';
-
-            const attachment = await this.gmailClient.getFirstAttachment(messageId);
-            if (!attachment) {
-              logger?.warn(
-                { messageId, messageSubject },
-                '[GmailStorageProvider] No attachment found in message, skipping'
-              );
-              continue;
-            }
-
-            logger?.info(
-              {
-                messageId,
-                messageSubject,
-                filename: attachment.filename,
-                size: attachment.buffer.length,
-                progress: `${i + 1}/${limitedMessageIds.length}`,
-              },
-              '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
-            );
-
-            results.push({ buffer: attachment.buffer, messageId, messageSubject });
-          }
-
-          return results;
-        });
-      } catch (error: unknown) {
-        // レート制限エラー（429）の場合、リトライ
-        if (this.isRateLimitError(error)) {
-          const retryAfter = this.extractRetryAfter(error);
-          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
-
+        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        if (!attachment) {
           logger?.warn(
-            { path, retryCount, delay, retryAfter },
-            '[GmailStorageProvider] Rate limit hit during downloadAllWithMetadata, retrying'
+            { messageId, messageSubject },
+            '[GmailStorageProvider] No attachment found in message, skipping'
           );
-
-          await this.sleep(delay);
-          retryCount++;
           continue;
         }
 
-        // その他のエラーは再スロー
-        logger?.error({ err: error, path, retryCount }, '[GmailStorageProvider] downloadAllWithMetadata failed');
-        throw error;
-      }
-    }
+        logger?.info(
+          {
+            messageId,
+            messageSubject,
+            filename: attachment.filename,
+            size: attachment.buffer.length,
+            progress: `${i + 1}/${limitedMessageIds.length}`,
+          },
+          '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
+        );
 
-    throw new Error(`Failed to download messages after ${maxRetries} attempts`);
+        results.push({ buffer: attachment.buffer, messageId, messageSubject });
+      }
+
+      return results;
+    });
   }
 
   /**
@@ -590,66 +509,8 @@ export class GmailStorageProvider implements StorageProvider {
     return this.handleAuthError(async () => this.gmailClient.cleanupProcessedTrash(params));
   }
 
-  /**
-   * レート制限エラー（429）かどうかを判定
-   */
-  private isRateLimitError(error: unknown): boolean {
-    const errorInfo = toErrorInfo(error);
-    const message = errorInfo.message?.toLowerCase() ?? '';
-    return (
-      errorInfo.status === 429 ||
-      errorInfo.code === 429 ||
-      message.includes('rate limit') ||
-      message.includes('user-rate limit exceeded') ||
-      message.includes('quota exceeded')
-    );
-  }
-
-  /**
-   * Retry-Afterヘッダーまたはエラーメッセージからリトライ待機時間を抽出
-   */
-  private extractRetryAfter(error: unknown): number {
-    // Retry-Afterヘッダーを確認
-    if (isRecord(error)) {
-      if (isRecord(error.headers) && typeof error.headers['retry-after'] === 'string') {
-        const retryAfter = parseInt(error.headers['retry-after'], 10);
-        if (!isNaN(retryAfter)) {
-          return retryAfter * 1000; // 秒をミリ秒に変換
-        }
-      }
-    }
-
-    // エラーメッセージからRetry after時刻を抽出
-    const errorInfo = toErrorInfo(error);
-    const message = errorInfo.message || '';
-    const retryAfterMatch = message.match(/Retry after ([0-9TZ:.-]+)/i);
-    if (retryAfterMatch) {
-      const retryAfterDate = new Date(retryAfterMatch[1]);
-      if (!isNaN(retryAfterDate.getTime())) {
-        const delay = retryAfterDate.getTime() - Date.now();
-        return Math.max(delay, 0);
-      }
-    }
-
-    return 0;
-  }
-
-  /**
-   * 指数バックオフの遅延時間を計算
-   */
-  private calculateBackoffDelay(retryCount: number, retryAfter: number): number {
-    if (retryAfter > 0) {
-      return retryAfter;
-    }
-    // 指数バックオフ: 2^retryCount秒（最大30秒）
-    return Math.min(1000 * Math.pow(2, retryCount), 30000);
-  }
-
-  /**
-   * 指定時間待機
-   */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

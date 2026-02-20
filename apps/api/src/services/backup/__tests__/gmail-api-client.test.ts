@@ -42,15 +42,20 @@ vi.mock('googleapis', () => {
 describe('GmailApiClient', () => {
   let oauth2Client: OAuth2Client;
   let gmailClient: GmailApiClient;
+  let gate: { execute: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    vi.clearAllMocks();
     oauth2Client = {
       setCredentials: vi.fn(),
       getAccessToken: vi.fn()
     } as unknown as OAuth2Client;
 
-    gmailClient = new GmailApiClient(oauth2Client);
-    vi.clearAllMocks();
+    // DBを使う実ゲートはテストに不要なので、単純にfnを実行するだけのゲートを差し込む
+    gate = {
+      execute: vi.fn(async (_op: string, fn: () => Promise<unknown>) => fn()),
+    };
+    gmailClient = new GmailApiClient(oauth2Client, { gate: gate as any, allowWait: false });
   });
 
   describe('searchMessages', () => {
@@ -71,11 +76,14 @@ describe('GmailApiClient', () => {
       const result = await gmailClient.searchMessages(mockQuery);
 
       expect(result).toEqual(['msg1', 'msg2', 'msg3']);
-      expect(mockGmailMessages.list).toHaveBeenCalledWith({
-        userId: 'me',
-        q: mockQuery,
-        maxResults: 10
-      });
+      expect(mockGmailMessages.list).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          q: mockQuery,
+          maxResults: 10
+        },
+        expect.objectContaining({ retry: false })
+      );
     });
 
     it('should return empty array when no messages found', async () => {
@@ -132,11 +140,14 @@ describe('GmailApiClient', () => {
       expect(result.threadId).toBe('thread1');
       expect(result.labelIds).toEqual(['INBOX', 'UNREAD']);
       expect(result.snippet).toBe('Test message');
-      expect(mockGmailMessages.get).toHaveBeenCalledWith({
-        userId: 'me',
-        id: mockMessageId,
-        format: 'full'
-      });
+      expect(mockGmailMessages.get).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          id: mockMessageId,
+          format: 'full'
+        },
+        expect.objectContaining({ retry: false })
+      );
     });
 
     it('should throw error when get message fails', async () => {
@@ -169,11 +180,14 @@ describe('GmailApiClient', () => {
 
       expect(result).toBeInstanceOf(Buffer);
       expect(result.toString()).toBe('test attachment data');
-      expect(mockGmailMessages.attachments.get).toHaveBeenCalledWith({
-        userId: 'me',
-        messageId: mockMessageId,
-        id: mockAttachmentId
-      });
+      expect(mockGmailMessages.attachments.get).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          messageId: mockMessageId,
+          id: mockAttachmentId
+        },
+        expect.objectContaining({ retry: false })
+      );
     });
 
     it('should throw error when attachment data is empty', async () => {
@@ -220,13 +234,16 @@ describe('GmailApiClient', () => {
 
       await gmailClient.archiveMessage(mockMessageId);
 
-      expect(mockGmailMessages.modify).toHaveBeenCalledWith({
-        userId: 'me',
-        id: mockMessageId,
-        requestBody: {
-          removeLabelIds: ['INBOX']
-        }
-      });
+      expect(mockGmailMessages.modify).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          id: mockMessageId,
+          requestBody: {
+            removeLabelIds: ['INBOX']
+          }
+        },
+        expect.objectContaining({ retry: false })
+      );
     });
 
     it('should throw error when archive fails', async () => {
@@ -369,17 +386,23 @@ describe('GmailApiClient', () => {
 
       await gmailClient.trashMessage(messageId);
 
-      expect(mockGmailMessages.modify).toHaveBeenCalledWith({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          addLabelIds: ['label-processed']
-        }
-      });
-      expect(mockGmailMessages.trash).toHaveBeenCalledWith({
-        userId: 'me',
-        id: messageId
-      });
+      expect(mockGmailMessages.modify).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          id: messageId,
+          requestBody: {
+            addLabelIds: ['label-processed']
+          }
+        },
+        expect.objectContaining({ retry: false })
+      );
+      expect(mockGmailMessages.trash).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          id: messageId
+        },
+        expect.objectContaining({ retry: false })
+      );
       const modifyOrder = mockGmailMessages.modify.mock.invocationCallOrder[0];
       const trashOrder = mockGmailMessages.trash.mock.invocationCallOrder[0];
       expect(modifyOrder).toBeLessThan(trashOrder);
@@ -396,21 +419,27 @@ describe('GmailApiClient', () => {
 
       await gmailClient.trashMessage(messageId);
 
-      expect(mockGmailLabels.create).toHaveBeenCalledWith({
-        userId: 'me',
-        requestBody: {
-          name: 'rps_processed',
-          labelListVisibility: 'labelShow',
-          messageListVisibility: 'show'
-        }
-      });
-      expect(mockGmailMessages.modify).toHaveBeenCalledWith({
-        userId: 'me',
-        id: messageId,
-        requestBody: {
-          addLabelIds: ['label-created']
-        }
-      });
+      expect(mockGmailLabels.create).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          requestBody: {
+            name: 'rps_processed',
+            labelListVisibility: 'labelShow',
+            messageListVisibility: 'show'
+          }
+        },
+        expect.objectContaining({ retry: false })
+      );
+      expect(mockGmailMessages.modify).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          id: messageId,
+          requestBody: {
+            addLabelIds: ['label-created']
+          }
+        },
+        expect.objectContaining({ retry: false })
+      );
     });
   });
 
@@ -428,20 +457,25 @@ describe('GmailApiClient', () => {
         processedLabelName: 'rps_processed'
       });
 
-      expect(mockGmailMessages.list).toHaveBeenCalledWith({
-        userId: 'me',
-        q: 'in:trash label:rps_processed',
-        maxResults: 100,
-        pageToken: undefined
-      });
-      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(1, {
-        userId: 'me',
-        id: 'm1'
-      });
-      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(2, {
-        userId: 'me',
-        id: 'm2'
-      });
+      expect(mockGmailMessages.list).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          q: 'in:trash label:rps_processed',
+          maxResults: 100,
+          pageToken: undefined
+        },
+        expect.objectContaining({ retry: false })
+      );
+      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(
+        1,
+        { userId: 'me', id: 'm1' },
+        expect.objectContaining({ retry: false })
+      );
+      expect(mockGmailMessages.delete).toHaveBeenNthCalledWith(
+        2,
+        { userId: 'me', id: 'm2' },
+        expect.objectContaining({ retry: false })
+      );
       expect(result.totalMatched).toBe(2);
       expect(result.deletedCount).toBe(1);
       expect(result.errors).toHaveLength(1);

@@ -26,11 +26,14 @@ export interface StorageProviderOptions {
   fromEmail?: string; // Gmail用
   oauth2Client?: OAuth2Client; // Gmail用
   onTokenUpdate?: (token: string) => Promise<void>;
+  // Gmail rate limit gate用（manual実行などで待機を許容するか）
+  gmailAllowWait?: boolean;
 }
 
 type StorageProviderCreateOptions = {
   returnProvider?: boolean;
   allowFallbackToLocal?: boolean;
+  gmailAllowWait?: boolean;
 };
 
 /**
@@ -107,7 +110,8 @@ export class StorageProviderFactory {
           subjectPattern: options.subjectPattern,
           fromEmail: options.fromEmail,
           oauthService,
-          onTokenUpdate: options.onTokenUpdate
+          onTokenUpdate: options.onTokenUpdate,
+          allowWait: options.gmailAllowWait
         });
       }
     ]
@@ -149,12 +153,14 @@ export class StorageProviderFactory {
       ? { returnProvider: options }
       : (options ?? {});
     const allowFallbackToLocal = resolvedOptions.allowFallbackToLocal ?? true;
+    const gmailAllowWait = resolvedOptions.gmailAllowWait ?? false;
     const providerOptions: StorageProviderOptions = {
       provider: config.storage.provider
     };
 
     // local/dropbox/gmail共通
     providerOptions.basePath = config.storage.options?.basePath as string | undefined;
+    providerOptions.gmailAllowWait = gmailAllowWait;
 
     if (config.storage.provider === 'gmail') {
       // 新構造優先: options.gmail.* → 後方互換: gmailAccessToken/gmailRefreshToken → 旧: accessToken/refreshToken

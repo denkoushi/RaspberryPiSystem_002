@@ -408,6 +408,20 @@ model CsvImportHistory {
   @@index([completedAt])
 }
 
+// Gmail API 429（rate limit）をスケジュール横断で調停するための状態
+model GmailRateLimitState {
+  // 現状は userId="me" 前提のため固定キーで運用（例: "gmail:me"）
+  id               String   @id
+  cooldownUntil    DateTime?
+  last429At        DateTime?
+  lastRetryAfterMs Int?
+  version          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([cooldownUntil])
+}
+
 enum BackupOperationType {
   BACKUP
   RESTORE

@@ -13,6 +13,7 @@ import { MeasuringInstrumentLoanRetentionService } from '../measuring-instrument
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail-oauth.service.js';
+import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
@@ -181,6 +182,20 @@ export class CsvImportScheduler {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'csv-import-scheduler.ts:executeSingleRun',message:'executeSingleRun error',data:{taskId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
+
+      // scheduledのみ: Gmail 429クールダウン中は「延期」として扱い、アラート/連続失敗を抑制する
+      if (!isManual && error instanceof GmailRateLimitedDeferredError) {
+        logger?.warn(
+          { taskId, name: importSchedule.name, ...error.toLogFields() },
+          '[CsvImportScheduler] Gmail rate limit cooldown active, deferring scheduled import'
+        );
+
+        if (historyId) {
+          await this.historyService.failHistory(historyId, errorMessage);
+        }
+
+        return {};
+      }
 
       logger?.error(
         { err: error, taskId, name: importSchedule.name },

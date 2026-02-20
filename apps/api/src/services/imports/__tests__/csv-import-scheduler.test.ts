@@ -210,6 +210,62 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     expect(mockGenerateConsecutiveFailureAlert).toHaveBeenCalledTimes(1);
   });
 
+  it('scheduled execution should suppress alerts on GmailRateLimitedDeferredError', async () => {
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    const { GmailRateLimitedDeferredError } = await import('../../backup/gmail-request-gate.service.js');
+
+    loadMock.mockResolvedValue({
+      storage: { provider: 'dropbox', options: { dropbox: { accessToken: 'dummy' } } },
+      csvImports: [
+        {
+          id: 'test-1',
+          name: 'Test Import',
+          targets: [{ type: 'employees', source: '/backups/csv/employees.csv' }],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false,
+        },
+      ],
+    });
+
+    const executionExecute = vi.fn().mockRejectedValue(
+      new GmailRateLimitedDeferredError({
+        operation: 'gmail.users.messages.list',
+        cooldownUntil: new Date('2026-02-19T12:00:30.000Z'),
+        retryAfterMs: 30_000,
+      })
+    );
+
+    const mockFailHistory = vi.fn().mockResolvedValue(undefined);
+    const mockGenerateFailureAlert = vi.fn().mockResolvedValue(undefined);
+    const mockGenerateConsecutiveFailureAlert = vi.fn().mockResolvedValue(undefined);
+
+    const scheduler = new CsvImportScheduler({
+      historyService: {
+        createHistory: vi.fn().mockResolvedValue('history-1'),
+        completeHistory: vi.fn(),
+        failHistory: mockFailHistory,
+        cleanupOldHistory: vi.fn(),
+      } as any,
+      alertService: {
+        generateFailureAlert: mockGenerateFailureAlert,
+        generateConsecutiveFailureAlert: mockGenerateConsecutiveFailureAlert,
+      } as any,
+      createExecutionService: () => ({ execute: executionExecute } as any),
+    });
+
+    await scheduler.start();
+    const cb = callbacksBySchedule.get('0 4 * * *')?.[0];
+    expect(cb).toBeDefined();
+
+    // Gmail 429 cooldownは「延期」扱いなので throw しない
+    await expect(cb?.()).resolves.toBeUndefined();
+
+    expect(mockFailHistory).toHaveBeenCalledTimes(1);
+    expect(mockGenerateFailureAlert).not.toHaveBeenCalled();
+    expect(mockGenerateConsecutiveFailureAlert).not.toHaveBeenCalled();
+  });
+
   it('retention cron should call retention service cleanup', async () => {
     const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
 

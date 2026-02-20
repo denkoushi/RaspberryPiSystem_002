@@ -8,6 +8,7 @@ import type { CsvImportTarget } from './csv-importer.types.js';
 import { CsvDashboardImportService } from '../csv-dashboard/csv-dashboard-import.service.js';
 import { CsvImportSourceService } from './csv-import-source.service.js';
 import { CsvImportConfigService } from './csv-import-config.service.js';
+import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -35,7 +36,7 @@ export interface StorageProviderFactoryLike {
     requestProtocol?: string,
     requestHost?: string,
     onTokenUpdate?: (token: string) => Promise<void>,
-    options?: { allowFallbackToLocal?: boolean }
+    options?: { allowFallbackToLocal?: boolean; gmailAllowWait?: boolean }
   ): Promise<StorageProvider>;
 }
 
@@ -61,8 +62,13 @@ export class CsvImportExecutionService {
         save: BackupConfigLoader.save,
       },
       storageProviderFactory: {
-        createFromConfig: (config: BackupConfig, requestProtocol?: string, requestHost?: string, onTokenUpdate?: (token: string) => Promise<void>) =>
-          StorageProviderFactory.createFromConfig(config, requestProtocol, requestHost, onTokenUpdate),
+        createFromConfig: (
+          config: BackupConfig,
+          requestProtocol?: string,
+          requestHost?: string,
+          onTokenUpdate?: (token: string) => Promise<void>,
+          options?: { allowFallbackToLocal?: boolean; gmailAllowWait?: boolean }
+        ) => StorageProviderFactory.createFromConfig(config, requestProtocol, requestHost, onTokenUpdate, options),
       },
       createCsvImportSourceService: () => new CsvImportSourceService(),
       createCsvDashboardImportService: () => new CsvDashboardImportService(),
@@ -93,7 +99,7 @@ export class CsvImportExecutionService {
 
     // 手動実行の場合はリトライをスキップして直接実行
     if (skipRetry) {
-      return await this.executeAttempt(config, importSchedule, provider);
+      return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: true });
     }
 
     // リトライ設定
@@ -107,8 +113,12 @@ export class CsvImportExecutionService {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeAttempt(config, importSchedule, provider);
+        return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false });
       } catch (error) {
+        // 429クールダウンは「待つ/延期」すべき状態なので、ここで汎用Errorに包まず上位へ伝播させる
+        if (error instanceof GmailRateLimitedDeferredError) {
+          throw error;
+        }
         lastError = error instanceof Error ? error : new Error(String(error));
 
         if (attempt < retryConfig.maxRetries) {
@@ -141,7 +151,8 @@ export class CsvImportExecutionService {
   private async executeAttempt(
     config: BackupConfig,
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
-    provider: 'dropbox' | 'gmail'
+    provider: 'dropbox' | 'gmail',
+    opts: { gmailAllowWait: boolean }
   ): Promise<CsvImportExecutionSummary> {
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = 'http'; // スケジューラー内ではプロトコルは不要
@@ -184,7 +195,7 @@ export class CsvImportExecutionService {
       protocol,
       host,
       onTokenUpdate,
-      { allowFallbackToLocal: provider !== 'gmail' }
+      { allowFallbackToLocal: provider !== 'gmail', gmailAllowWait: opts.gmailAllowWait }
     );
 
     // ターゲットを取得（新形式優先、旧形式は変換）
