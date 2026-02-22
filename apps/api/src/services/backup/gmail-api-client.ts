@@ -117,14 +117,25 @@ export class GmailApiClient {
    * @returns メッセージIDの配列
    */
   async searchMessages(query: string): Promise<string[]> {
+    return this.searchMessagesLimited(query, 10);
+  }
+
+  /**
+   * メールを指定件数だけ検索
+   * @param query Gmail検索クエリ（例: "subject:CSV Import"）
+   * @param maxResults 取得上限（1以上）
+   * @returns メッセージIDの配列
+   */
+  async searchMessagesLimited(query: string, maxResults: number): Promise<string[]> {
     try {
+      const safeMaxResults = Number.isFinite(maxResults) && maxResults > 0 ? Math.floor(maxResults) : 10;
       const response = await this.gateExecute('gmail.users.messages.list', async () =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (this.gmail.users.messages.list as any)(
           {
             userId: 'me',
             q: query,
-            maxResults: 10, // 最大10件まで取得
+            maxResults: safeMaxResults,
           },
           { retry: false }
         )

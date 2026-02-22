@@ -29,7 +29,7 @@ export class GmailStorageProvider implements StorageProvider {
   private accessToken: string;
   private refreshToken?: string;
   /**
-   * 1回のメール取得数の上限（環境変数で設定可能、デフォルト50件）
+   * 1回のメール取得数の上限（環境変数で設定可能、デフォルト30件）
    */
   private readonly maxMessagesPerBatch: number;
   /**
@@ -69,8 +69,8 @@ export class GmailStorageProvider implements StorageProvider {
 
     // 環境変数から設定を読み込み
     {
-      const parsedMax = parseInt(process.env.GMAIL_MAX_MESSAGES_PER_BATCH || '50', 10);
-      this.maxMessagesPerBatch = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 50;
+      const parsedMax = parseInt(process.env.GMAIL_MAX_MESSAGES_PER_BATCH || '30', 10);
+      this.maxMessagesPerBatch = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 30;
     }
     {
       const parsedDelay = parseInt(process.env.GMAIL_BATCH_REQUEST_DELAY_MS || '1000', 10);
@@ -425,30 +425,20 @@ export class GmailStorageProvider implements StorageProvider {
         '[GmailStorageProvider] Searching for messages (all with metadata)'
       );
 
-      const messageIds = await this.gmailClient.searchMessagesAll(query);
+      const messageIds = await this.gmailClient.searchMessagesLimited(
+        query,
+        this.maxMessagesPerBatch
+      );
 
       if (messageIds.length === 0) {
         throw new NoMatchingMessageError(query);
       }
 
-      // 1回の取得数を制限
-      const limitedMessageIds = messageIds.slice(0, this.maxMessagesPerBatch);
-      if (messageIds.length > this.maxMessagesPerBatch) {
-        logger?.warn(
-          {
-            totalMessages: messageIds.length,
-            maxMessagesPerBatch: this.maxMessagesPerBatch,
-            processedMessages: limitedMessageIds.length,
-          },
-          '[GmailStorageProvider] Limiting messages per batch to avoid rate limit'
-        );
-      }
-
       const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
 
       // バッチ処理でリクエスト間に遅延を追加
-      for (let i = 0; i < limitedMessageIds.length; i++) {
-        const messageId = limitedMessageIds[i];
+      for (let i = 0; i < messageIds.length; i++) {
+        const messageId = messageIds[i];
 
         // リクエスト間に遅延を追加（最初のリクエスト以外）
         if (i > 0 && this.batchRequestDelayMs > 0) {
@@ -474,7 +464,7 @@ export class GmailStorageProvider implements StorageProvider {
             messageSubject,
             filename: attachment.filename,
             size: attachment.buffer.length,
-            progress: `${i + 1}/${limitedMessageIds.length}`,
+            progress: `${i + 1}/${messageIds.length}`,
           },
           '[GmailStorageProvider] Attachment downloaded successfully (all with metadata)'
         );

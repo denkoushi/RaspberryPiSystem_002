@@ -113,6 +113,46 @@ describe('GmailApiClient', () => {
     });
   });
 
+  describe('searchMessagesLimited', () => {
+    it('should search messages with specified maxResults', async () => {
+      const mockQuery = 'subject:CSV Import';
+      const mockResponse = {
+        data: {
+          messages: [{ id: 'msg-a' }, { id: 'msg-b' }]
+        }
+      };
+
+      mockGmailMessages.list.mockResolvedValueOnce(mockResponse);
+
+      const result = await gmailClient.searchMessagesLimited(mockQuery, 30);
+
+      expect(result).toEqual(['msg-a', 'msg-b']);
+      expect(mockGmailMessages.list).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          q: mockQuery,
+          maxResults: 30
+        },
+        expect.objectContaining({ retry: false })
+      );
+    });
+
+    it('should fallback to 10 when maxResults is invalid', async () => {
+      mockGmailMessages.list.mockResolvedValueOnce({ data: { messages: [] } });
+
+      await gmailClient.searchMessagesLimited('subject:X', 0);
+
+      expect(mockGmailMessages.list).toHaveBeenCalledWith(
+        {
+          userId: 'me',
+          q: 'subject:X',
+          maxResults: 10
+        },
+        expect.objectContaining({ retry: false })
+      );
+    });
+  });
+
   describe('getMessage', () => {
     it('should get message details', async () => {
       const mockMessageId = 'msg1';

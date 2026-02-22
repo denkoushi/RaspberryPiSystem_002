@@ -25,6 +25,7 @@ describe('GmailStorageProvider', () => {
 
     mockGmailApiClient = {
       searchMessages: vi.fn(),
+      searchMessagesLimited: vi.fn(),
       getMessage: vi.fn(),
       getFirstAttachment: vi.fn(),
       archiveMessage: vi.fn()
@@ -336,6 +337,76 @@ describe('GmailStorageProvider', () => {
       await expect(provider.delete('test.csv')).rejects.toThrow(
         'GmailStorageProvider does not support delete'
       );
+    });
+  });
+
+  describe('downloadAllWithMetadata', () => {
+    it('should use searchMessagesLimited with default max 30', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        refreshToken: 'test-refresh-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(['m1', 'm2']);
+      mockGmailApiClient.getMessage.mockResolvedValue({
+        id: 'm1',
+        threadId: 't1',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'subject-1' }],
+          parts: []
+        }
+      });
+      mockGmailApiClient.getFirstAttachment.mockResolvedValue({
+        buffer: Buffer.from('csv'),
+        filename: 'file.csv'
+      });
+
+      const result = await provider.downloadAllWithMetadata('CSV Import');
+
+      expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
+        expect.stringContaining('subject:"CSV Import"'),
+        30
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0].messageId).toBe('m1');
+      expect(result[1].messageId).toBe('m2');
+    });
+
+    it('should honor GMAIL_MAX_MESSAGES_PER_BATCH env value', async () => {
+      const previous = process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
+      try {
+        process.env.GMAIL_MAX_MESSAGES_PER_BATCH = '12';
+
+        const provider = new GmailStorageProvider({
+          oauth2Client,
+          accessToken: 'test-access-token',
+          refreshToken: 'test-refresh-token',
+          oauthService: mockOAuthService,
+          onTokenUpdate
+        });
+
+        mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce([]);
+
+        await expect(provider.downloadAllWithMetadata('CSV Import')).rejects.toThrow(
+          'No messages found matching query'
+        );
+
+        expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
+          expect.any(String),
+          12
+        );
+      } finally {
+        if (previous === undefined) {
+          delete process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
+        } else {
+          process.env.GMAIL_MAX_MESSAGES_PER_BATCH = previous;
+        }
+      }
     });
   });
 });
