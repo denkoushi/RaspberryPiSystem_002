@@ -3905,3 +3905,75 @@ model ProductionScheduleProgress {
 - [KB-268](../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察): 今回の変更とKB-268の対策は衝突しない
 
 ---
+
+### [KB-272] Gmail csvDashboards取得を10分30件運用へ最適化
+
+**日付**: 2026-02-22
+
+**Context**:
+- Gmail APIの429レート制限エラーが発生し、CSVダッシュボードの取得が失敗していた
+- `searchMessagesAll`が全件ページングを実行し、実際に処理する件数（`maxMessagesPerBatch`、デフォルト50）を超えるAPI呼び出しが発生していた
+- 失敗したメールが未読のまま残り、次回実行時に再試行され、さらにAPI呼び出しが増加する悪循環が発生していた
+
+**原因**:
+- `GmailStorageProvider.downloadAllWithMetadata`が`searchMessagesAll`を使用し、未読メールが大量にある場合、全件ページングで数百件のメッセージIDを取得していた
+- 実際には`maxMessagesPerBatch`（デフォルト50）件のみ処理するため、残りのメッセージID取得は無駄なAPI呼び出しだった
+- 1回の実行で最大30件処理する運用（10分間隔）を想定していたが、`searchMessagesAll`は全件取得するため、429エラーのリスクが高かった
+
+**解決方法**:
+- `GmailApiClient`に`searchMessagesLimited(query: string, maxResults: number)`メソッドを追加し、`gmail.users.messages.list`を1回のみ実行して最大N件のメッセージIDを取得
+- `GmailStorageProvider.downloadAllWithMetadata`を`searchMessagesLimited`を使用するように変更し、全件ページングを回避
+- デフォルトバッチサイズを50→30に変更（`GMAIL_MAX_MESSAGES_PER_BATCH`環境変数、デフォルト30）
+- 加工機日常点検結果のスケジュールに日曜日（0）を追加（`21,31,41,51 * * * 0,1,2,3,4,5,6`）
+
+**実装内容**:
+- `apps/api/src/services/backup/gmail-api-client.ts`:
+  - `searchMessagesLimited(query: string, maxResults: number): Promise<string[]>`メソッドを追加
+  - `searchMessages(query: string)`を`searchMessagesLimited(query, 10)`に変更（既存の動作を維持）
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`:
+  - `downloadAllWithMetadata`を`searchMessagesLimited`を使用するように変更
+  - デフォルトバッチサイズを50→30に変更（`GMAIL_MAX_MESSAGES_PER_BATCH`環境変数、デフォルト30）
+- `apps/api/src/routes/imports/schedule.ts`:
+  - 加工機日常点検結果のスケジュールに日曜日（0）を追加
+- ユニットテスト追加:
+  - `gmail-api-client.test.ts`に`searchMessagesLimited`のテストを追加
+  - `gmail-storage.provider.test.ts`に`downloadAllWithMetadata`のテストを追加
+
+**効果**:
+- `searchMessagesAll`による全件ページングを回避し、1回の実行で最大30件のみ取得することで、Gmail APIの429エラー発生リスクを低減
+- 10分間隔で30件処理する運用により、1時間あたり最大180件、1日あたり最大4,320件の処理が可能（Gmail APIのレート制限1分あたり250リクエストに余裕がある）
+- 失敗したメールが未読のまま残る問題は、成功時に既読化・ゴミ箱移動することで解決
+
+**CI実行**:
+- GitHub Actions Run ID `22268463453`成功（全ジョブ成功）
+
+**デプロイ結果**:
+- Pi5でデプロイ成功（runId `20260222-111603-30625`, `state: success`, `exitCode: 0`）
+
+**実機検証結果**（2026-02-22）:
+- ✅ デプロイ実体確認: ブランチ `main`、コミット `1bd081d4` が反映済み
+- ✅ コード実装確認:
+  - `searchMessagesLimited`メソッド定義: 存在
+  - `searchMessages`が`searchMessagesLimited(query, 10)`を呼び出し: 実装済み
+  - デフォルト30設定: `gmail-storage.provider.ts`で設定済み
+  - `searchMessagesLimited`使用: `gmail-storage.provider.ts`で使用中
+- ✅ スケジュール設定確認: 加工機日常点検結果のスケジュールに日曜日（0）が含まれることを確認
+- ✅ API正常動作確認: `GET /api/system/health` → `200`、`status: degraded`はメモリ高負荷による既存の問題
+
+**運用上の推奨**:
+- `GMAIL_MAX_MESSAGES_PER_BATCH`環境変数でバッチサイズを調整可能（デフォルト30）
+- 429エラーが発生した場合は、バッチサイズを減らすか、スケジュール間隔を広げることを検討
+- CSVヘッダーの不一致など、失敗原因を早めに修正することで、未読メールの蓄積を防ぐ
+
+**関連ファイル**:
+- `apps/api/src/services/backup/gmail-api-client.ts`（`searchMessagesLimited`追加）
+- `apps/api/src/services/backup/storage/gmail-storage.provider.ts`（`searchMessagesLimited`使用、デフォルト30）
+- `apps/api/src/routes/imports/schedule.ts`（日曜日追加）
+- `apps/api/src/services/backup/__tests__/gmail-api-client.test.ts`（テスト追加）
+- `apps/api/src/services/backup/__tests__/gmail-storage.provider.test.ts`（テスト追加）
+
+**関連KB**:
+- [KB-216](./api.md#kb-216-gmail-apiレート制限エラー429の対処方法): Gmail APIレート制限エラー429の対処方法
+- [KB-271](./api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない): 生産スケジュールデータ削除ルール
+
+---
