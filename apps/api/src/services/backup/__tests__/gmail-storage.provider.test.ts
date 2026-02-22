@@ -341,7 +341,7 @@ describe('GmailStorageProvider', () => {
   });
 
   describe('downloadAllWithMetadata', () => {
-    it('should use searchMessagesLimited with default max 30', async () => {
+    it('should use searchMessagesLimited with default max 10', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,
         accessToken: 'test-access-token',
@@ -370,7 +370,7 @@ describe('GmailStorageProvider', () => {
 
       expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
         expect.stringContaining('subject:"CSV Import"'),
-        30
+        10
       );
       expect(result).toHaveLength(2);
       expect(result[0].messageId).toBe('m1');

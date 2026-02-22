@@ -29,11 +29,11 @@ export class GmailStorageProvider implements StorageProvider {
   private accessToken: string;
   private refreshToken?: string;
   /**
-   * 1回のメール取得数の上限（環境変数で設定可能、デフォルト30件）
+   * 1回のメール取得数の上限（環境変数で設定可能、デフォルト10件）
    */
   private readonly maxMessagesPerBatch: number;
   /**
-   * バッチ処理時のリクエスト間隔（ミリ秒、デフォルト1000ms）
+   * バッチ処理時のリクエスト間隔（ミリ秒、デフォルト2000ms）
    */
   private readonly batchRequestDelayMs: number;
   private readonly allowWait: boolean;
@@ -69,12 +69,12 @@ export class GmailStorageProvider implements StorageProvider {
 
     // 環境変数から設定を読み込み
     {
-      const parsedMax = parseInt(process.env.GMAIL_MAX_MESSAGES_PER_BATCH || '30', 10);
-      this.maxMessagesPerBatch = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 30;
+      const parsedMax = parseInt(process.env.GMAIL_MAX_MESSAGES_PER_BATCH || '10', 10);
+      this.maxMessagesPerBatch = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 10;
     }
     {
-      const parsedDelay = parseInt(process.env.GMAIL_BATCH_REQUEST_DELAY_MS || '1000', 10);
-      this.batchRequestDelayMs = Number.isFinite(parsedDelay) && parsedDelay >= 0 ? parsedDelay : 1000;
+      const parsedDelay = parseInt(process.env.GMAIL_BATCH_REQUEST_DELAY_MS || '2000', 10);
+      this.batchRequestDelayMs = Number.isFinite(parsedDelay) && parsedDelay >= 0 ? parsedDelay : 2000;
     }
   }
 
