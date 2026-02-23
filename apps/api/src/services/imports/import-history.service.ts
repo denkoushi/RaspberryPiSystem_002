@@ -18,6 +18,8 @@ export interface ImportSummary {
  * CSVインポート履歴サービス
  */
 export class ImportHistoryService {
+  private static readonly DEFAULT_STALE_PROCESSING_REASON =
+    'Stale PROCESSING history was auto-failed by scheduler watchdog';
   /**
    * インポート履歴を作成
    */
@@ -191,6 +193,32 @@ export class ImportHistoryService {
       }
     });
     
+    return result.count;
+  }
+
+  /**
+   * 長時間PROCESSINGのまま残っている履歴をFAILEDに確定する
+   */
+  async failStaleProcessingHistory(params?: {
+    staleMinutes?: number;
+    reason?: string;
+  }): Promise<number> {
+    const staleMinutes = params?.staleMinutes ?? 60;
+    const reason = params?.reason ?? ImportHistoryService.DEFAULT_STALE_PROCESSING_REASON;
+    const threshold = new Date(Date.now() - staleMinutes * 60_000);
+
+    const result = await prisma.csvImportHistory.updateMany({
+      where: {
+        status: ImportStatus.PROCESSING,
+        startedAt: { lt: threshold },
+      },
+      data: {
+        status: ImportStatus.FAILED,
+        errorMessage: reason,
+        completedAt: new Date(),
+      },
+    });
+
     return result.count;
   }
 }

@@ -8,6 +8,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     csvImportHistory: {
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
@@ -96,6 +97,25 @@ describe('ImportHistoryService', () => {
         completedAt: {
           lt: expect.any(Date),
         },
+      },
+    });
+  });
+
+  it('failStaleProcessingHistory updates stale PROCESSING records to FAILED', async () => {
+    vi.mocked(prisma.csvImportHistory.updateMany).mockResolvedValue({ count: 2 } as any);
+
+    const failed = await service.failStaleProcessingHistory({ staleMinutes: 30 });
+
+    expect(failed).toBe(2);
+    expect(prisma.csvImportHistory.updateMany).toHaveBeenCalledWith({
+      where: {
+        status: ImportStatus.PROCESSING,
+        startedAt: { lt: expect.any(Date) },
+      },
+      data: {
+        status: ImportStatus.FAILED,
+        errorMessage: expect.any(String),
+        completedAt: expect.any(Date),
       },
     });
   });

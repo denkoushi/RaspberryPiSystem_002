@@ -5,7 +5,8 @@ import { GmailApiClient } from '../gmail-api-client.js';
 import type { GmailTrashCleanupResult } from '../gmail-api-client.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../gmail-oauth.service.js';
 import { OAuth2Client } from 'google-auth-library';
-import { GmailRequestGateService } from '../gmail-request-gate.service.js';
+import { GmailRequestGateService, GmailRateLimitedDeferredError } from '../gmail-request-gate.service.js';
+import { AdaptiveRateController } from '../adaptive-rate-controller.js';
 
 export class NoMatchingMessageError extends Error {
   constructor(query: string) {
@@ -37,6 +38,7 @@ export class GmailStorageProvider implements StorageProvider {
    */
   private readonly batchRequestDelayMs: number;
   private readonly allowWait: boolean;
+  private readonly rateController: AdaptiveRateController;
 
   constructor(options: {
     oauth2Client: OAuth2Client;
@@ -56,6 +58,7 @@ export class GmailStorageProvider implements StorageProvider {
     this.oauthService = options.oauthService;
     this.onTokenUpdate = options.onTokenUpdate;
     this.allowWait = options.allowWait ?? false;
+    this.rateController = AdaptiveRateController.getInstance();
 
     // OAuth2Clientにトークンを設定
     this.oauth2Client.setCredentials({
@@ -184,6 +187,20 @@ export class GmailStorageProvider implements StorageProvider {
     // 未読メールのみ検索（処理済みメールを除外）
     queries.push('is:unread');
 
+    return queries.join(' ');
+  }
+
+  private buildSearchQueryFromSubjectPatterns(subjectPatterns: string[]): string {
+    const patterns = subjectPatterns.map((v) => v.trim()).filter((v) => v.length > 0);
+    const queries: string[] = [];
+    if (patterns.length > 0) {
+      const escaped = patterns.map((pattern) => `subject:"${pattern.replace(/"/g, '\\"')}"`);
+      queries.push(`(${escaped.join(' OR ')})`);
+    }
+    if (this.fromEmail) {
+      queries.push(`from:${this.fromEmail}`);
+    }
+    queries.push('is:unread');
     return queries.join(' ');
   }
 
@@ -419,15 +436,20 @@ export class GmailStorageProvider implements StorageProvider {
   }>> {
     return await this.handleAuthError(async () => {
       const query = this.buildSearchQuery(path);
+      const effectiveBatchSize = Math.max(
+        1,
+        Math.min(this.maxMessagesPerBatch, this.rateController.getBatchSize())
+      );
+      const effectiveDelayMs = Math.max(this.batchRequestDelayMs, this.rateController.getRequestDelayMs());
 
       logger?.info(
-        { path, query },
+        { path, query, effectiveBatchSize, effectiveDelayMs },
         '[GmailStorageProvider] Searching for messages (all with metadata)'
       );
 
       const messageIds = await this.gmailClient.searchMessagesLimited(
         query,
-        this.maxMessagesPerBatch
+        effectiveBatchSize
       );
 
       if (messageIds.length === 0) {
@@ -441,8 +463,8 @@ export class GmailStorageProvider implements StorageProvider {
         const messageId = messageIds[i];
 
         // リクエスト間に遅延を追加（最初のリクエスト以外）
-        if (i > 0 && this.batchRequestDelayMs > 0) {
-          await this.sleep(this.batchRequestDelayMs);
+        if (i > 0 && effectiveDelayMs > 0) {
+          await this.sleep(effectiveDelayMs);
         }
 
         const message = await this.gmailClient.getMessage(messageId);
@@ -472,7 +494,71 @@ export class GmailStorageProvider implements StorageProvider {
         results.push({ buffer: attachment.buffer, messageId, messageSubject });
       }
 
+      this.rateController.recordSuccess();
       return results;
+    }).catch((error) => {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        this.rateController.recordRateLimit();
+      }
+      throw error;
+    });
+  }
+
+  async downloadAllBySubjectPatterns(
+    subjectPatterns: string[]
+  ): Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>>> {
+    return await this.handleAuthError(async () => {
+      const uniquePatterns = Array.from(
+        new Set(subjectPatterns.map((v) => v.trim()).filter((v) => v.length > 0))
+      );
+      const grouped: Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>> = {};
+      for (const pattern of uniquePatterns) {
+        grouped[pattern] = [];
+      }
+      if (uniquePatterns.length === 0) {
+        return grouped;
+      }
+
+      const query = this.buildSearchQueryFromSubjectPatterns(uniquePatterns);
+      const effectiveBatchSize = Math.max(
+        1,
+        Math.min(this.maxMessagesPerBatch, this.rateController.getBatchSize())
+      );
+      const effectiveDelayMs = Math.max(this.batchRequestDelayMs, this.rateController.getRequestDelayMs());
+      const messageIds = await this.gmailClient.searchMessagesLimited(query, effectiveBatchSize);
+      if (messageIds.length === 0) {
+        throw new NoMatchingMessageError(query);
+      }
+
+      for (let i = 0; i < messageIds.length; i++) {
+        const messageId = messageIds[i];
+        if (i > 0 && effectiveDelayMs > 0) {
+          await this.sleep(effectiveDelayMs);
+        }
+        const message = await this.gmailClient.getMessage(messageId);
+        const subjectHeader = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject');
+        const messageSubject = subjectHeader?.value || 'No Subject';
+        const normalizedSubject = messageSubject.toLowerCase();
+        const matchedPattern = uniquePatterns.find((pattern) =>
+          normalizedSubject.includes(pattern.toLowerCase())
+        );
+        if (!matchedPattern) {
+          continue;
+        }
+        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        if (!attachment) {
+          continue;
+        }
+        grouped[matchedPattern].push({ buffer: attachment.buffer, messageId, messageSubject });
+      }
+
+      this.rateController.recordSuccess();
+      return grouped;
+    }).catch((error) => {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        this.rateController.recordRateLimit();
+      }
+      throw error;
     });
   }
 

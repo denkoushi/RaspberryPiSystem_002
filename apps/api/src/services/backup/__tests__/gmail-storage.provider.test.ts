@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { GmailStorageProvider } from '../storage/gmail-storage.provider.js';
 import { GmailApiClient } from '../gmail-api-client.js';
 import { GmailOAuthService } from '../gmail-oauth.service.js';
+import { AdaptiveRateController } from '../adaptive-rate-controller.js';
 
 // GmailApiClientをモック
 vi.mock('../gmail-api-client.js', () => {
@@ -380,6 +381,7 @@ describe('GmailStorageProvider', () => {
     it('should honor GMAIL_MAX_MESSAGES_PER_BATCH env value', async () => {
       const previous = process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
       try {
+        AdaptiveRateController.resetInstance();
         process.env.GMAIL_MAX_MESSAGES_PER_BATCH = '12';
 
         const provider = new GmailStorageProvider({
@@ -401,6 +403,7 @@ describe('GmailStorageProvider', () => {
           12
         );
       } finally {
+        AdaptiveRateController.resetInstance();
         if (previous === undefined) {
           delete process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
         } else {

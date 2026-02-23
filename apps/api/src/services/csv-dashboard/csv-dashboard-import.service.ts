@@ -7,6 +7,7 @@ import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
 import { NoMatchingMessageError } from '../backup/storage/gmail-storage.provider.js';
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-subject-pattern.provider.js';
+import { GmailUnifiedMailboxFetcher } from '../backup/gmail-unified-mailbox-fetcher.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -32,8 +33,19 @@ export class CsvDashboardImportService {
   private ingestor = new CsvDashboardIngestor();
   private measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
   private subjectPatternProvider = new PrismaCsvImportSubjectPatternProvider();
+  private unifiedMailboxFetcher = new GmailUnifiedMailboxFetcher();
 
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+  private static canFetchUnifiedMailbox(
+    storageProvider: StorageProvider
+  ): storageProvider is StorageProvider & {
+    downloadAllBySubjectPatterns: (
+      subjectPatterns: string[]
+    ) => Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string }>>>;
+  } {
+    return typeof (storageProvider as { downloadAllBySubjectPatterns?: unknown }).downloadAllBySubjectPatterns === 'function';
+  }
 
   private static canPostProcessGmail(storageProvider: StorageProvider): storageProvider is StorageProvider & {
     markAsRead: (messageId: string) => Promise<void>;
@@ -71,6 +83,40 @@ export class CsvDashboardImportService {
     const { provider, storageProvider, dashboardIds } = params;
     const results: Record<string, CsvDashboardIngestResult> = {};
 
+    const dashboardSubjects = new Map<string, string[]>();
+    const unifiedPatternSet = new Set<string>();
+    for (const dashboardId of dashboardIds) {
+      const dashboard = await prisma.csvDashboard.findUnique({ where: { id: dashboardId } });
+      if (!dashboard || !dashboard.enabled) {
+        continue;
+      }
+      const legacyPattern = (dashboard as unknown as { gmailSubjectPattern?: string | null }).gmailSubjectPattern;
+      const subjectPatterns = await this.resolveSubjectPatterns(dashboardId, legacyPattern ?? undefined);
+      dashboardSubjects.set(dashboardId, subjectPatterns);
+      subjectPatterns.forEach((pattern) => unifiedPatternSet.add(pattern));
+    }
+
+    const unifiedResultsByPattern: Record<
+      string,
+      Array<{ buffer: Buffer; messageId: string; messageSubject: string }>
+    > = {};
+    if (
+      provider === 'gmail' &&
+      CsvDashboardImportService.canFetchUnifiedMailbox(storageProvider) &&
+      unifiedPatternSet.size > 0
+    ) {
+      try {
+        Object.assign(
+          unifiedResultsByPattern,
+          await this.unifiedMailboxFetcher.fetchBySubjectPatterns(storageProvider, Array.from(unifiedPatternSet))
+        );
+      } catch (error) {
+        if (!(error instanceof NoMatchingMessageError)) {
+          throw error;
+        }
+      }
+    }
+
     for (const dashboardId of dashboardIds) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'csv-dashboard-import.service.ts:dashboard-loop',message:'Start dashboard ingest loop',data:{dashboardId,provider},timestamp:Date.now()})}).catch(()=>{});
@@ -87,8 +133,7 @@ export class CsvDashboardImportService {
         continue;
       }
 
-      const legacyPattern = (dashboard as unknown as { gmailSubjectPattern?: string | null }).gmailSubjectPattern;
-      const subjectPatterns = await this.resolveSubjectPatterns(dashboardId, legacyPattern ?? undefined);
+      const subjectPatterns = dashboardSubjects.get(dashboardId) ?? [];
       if (subjectPatterns.length === 0) {
         logger?.warn(
           { dashboardId, provider },
@@ -103,23 +148,30 @@ export class CsvDashboardImportService {
       );
 
       const bufferResults: Array<{ buffer: Buffer; messageId?: string; messageSubject?: string }> = [];
-      for (const pattern of subjectPatterns) {
-        try {
-          const results = await this.sourceService.downloadCsv({
-            provider,
-            storageProvider,
-            gmailSubjectPattern: pattern,
-          });
-          bufferResults.push(...results);
-        } catch (error) {
-          if (error instanceof NoMatchingMessageError) {
-            logger?.info(
-              { dashboardId, subjectPattern: pattern, provider },
-              '[CsvDashboardImportService] No matching Gmail message, trying next pattern'
-            );
-            continue;
+      if (provider === 'gmail' && Object.keys(unifiedResultsByPattern).length > 0) {
+        for (const pattern of subjectPatterns) {
+          const unifiedResults = unifiedResultsByPattern[pattern] ?? [];
+          bufferResults.push(...unifiedResults);
+        }
+      } else {
+        for (const pattern of subjectPatterns) {
+          try {
+            const results = await this.sourceService.downloadCsv({
+              provider,
+              storageProvider,
+              gmailSubjectPattern: pattern,
+            });
+            bufferResults.push(...results);
+          } catch (error) {
+            if (error instanceof NoMatchingMessageError) {
+              logger?.info(
+                { dashboardId, subjectPattern: pattern, provider },
+                '[CsvDashboardImportService] No matching Gmail message, trying next pattern'
+              );
+              continue;
+            }
+            throw error;
           }
-          throw error;
         }
       }
 

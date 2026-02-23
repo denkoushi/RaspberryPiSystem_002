@@ -14,6 +14,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail-oauth.service.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
+import { GmailImportOrchestrator } from '../backup/gmail-import-orchestrator.js';
 import { prisma } from '../../lib/prisma.js';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
@@ -39,6 +40,7 @@ export class CsvImportScheduler {
   private createCsvDashboardRetentionService: () => CsvDashboardRetentionService;
   private createMeasuringInstrumentLoanRetentionService: () => MeasuringInstrumentLoanRetentionService;
   private createProductionScheduleCleanupService: () => ProductionScheduleCleanupService;
+  private gmailOrchestrator: GmailImportOrchestrator;
   private readonly minIntervalMinutes = 5;
 
   constructor(overrides: {
@@ -60,6 +62,10 @@ export class CsvImportScheduler {
     this.createCsvDashboardRetentionService = () => new CsvDashboardRetentionService();
     this.createMeasuringInstrumentLoanRetentionService = () => new MeasuringInstrumentLoanRetentionService();
     this.createProductionScheduleCleanupService = () => new ProductionScheduleCleanupService();
+    this.gmailOrchestrator = new GmailImportOrchestrator({
+      executeSchedule: async ({ config, importSchedule, isManual }) =>
+        this.executeSingleRun({ config, importSchedule, isManual }),
+    });
 
     if (overrides.historyService) this.historyService = overrides.historyService;
     if (overrides.alertService) this.alertService = overrides.alertService;
@@ -91,6 +97,18 @@ export class CsvImportScheduler {
       return Number.isInteger(interval) ? interval : null;
     }
     return null;
+  }
+
+  private hasCsvDashboardTarget(importSchedule: NonNullable<BackupConfig['csvImports']>[0]): boolean {
+    return Array.isArray(importSchedule.targets) && importSchedule.targets.some((target) => target.type === 'csvDashboards');
+  }
+
+  private isGmailCsvDashboardSchedule(
+    config: BackupConfig,
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0]
+  ): boolean {
+    const resolvedProvider = importSchedule.provider ?? config.storage.provider;
+    return resolvedProvider === 'gmail' && this.hasCsvDashboardTarget(importSchedule);
   }
 
   private async executeSingleRun(params: {
@@ -260,6 +278,11 @@ export class CsvImportScheduler {
 
     this.isRunning = true;
     const config = await BackupConfigLoader.load();
+    try {
+      await this.historyService.failStaleProcessingHistory?.({ staleMinutes: 60 });
+    } catch (error) {
+      logger?.warn({ err: error }, '[CsvImportScheduler] Failed to auto-fail stale PROCESSING histories on startup');
+    }
     
     // csvImportsが設定されていない場合でもクリーンアップJobは開始する
     if (!config.csvImports || config.csvImports.length === 0) {
@@ -329,7 +352,15 @@ export class CsvImportScheduler {
 
         this.runningImports.add(taskId);
         try {
-          await this.executeSingleRun({ config, importSchedule, isManual: false });
+          if (this.isGmailCsvDashboardSchedule(config, importSchedule)) {
+            await this.gmailOrchestrator.runCycle({
+              config,
+              triggerScheduleId: taskId,
+              isManual: false,
+            });
+          } else {
+            await this.executeSingleRun({ config, importSchedule, isManual: false });
+          }
         } finally {
           this.runningImports.delete(taskId);
         }
@@ -406,10 +437,16 @@ export class CsvImportScheduler {
           '[CsvImportScheduler] Starting history cleanup'
         );
 
+        let staleFailedCount: number | undefined;
+        try {
+          staleFailedCount = await this.historyService.failStaleProcessingHistory?.({ staleMinutes: 60 });
+        } catch (error) {
+          logger?.warn({ err: error }, '[CsvImportScheduler] Failed to auto-fail stale PROCESSING histories');
+        }
         const deletedCount = await this.historyService.cleanupOldHistory(retentionDays);
 
         logger?.info(
-          { deletedCount, retentionDays },
+          { deletedCount, retentionDays, staleFailedCount },
           '[CsvImportScheduler] History cleanup completed'
         );
       } catch (error) {

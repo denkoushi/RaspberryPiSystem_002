@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { isRecord, toErrorInfo } from '../../lib/type-guards.js';
+import { GmailCooldownStateMachine } from './gmail-cooldown-state-machine.js';
 
 export class GmailRateLimitedDeferredError extends Error {
   readonly cooldownUntil: Date;
@@ -46,6 +47,7 @@ type GmailRateLimitStateRow = {
  */
 export class GmailRequestGateService {
   private static readonly STATE_ID = 'gmail:me';
+  private readonly stateMachine = new GmailCooldownStateMachine();
 
   // DBへのアクセスを毎回行わないための軽いキャッシュ（正確性より過負荷防止を優先）
   private cachedCooldownUntil: Date | null = null;
@@ -113,13 +115,21 @@ export class GmailRequestGateService {
 
       const retryAfterMs = extractRetryAfterMs(error);
       const jitter = Math.floor(Math.random() * this.jitterMaxMs());
-      const cooldownUntilNext = new Date(this.now().getTime() + retryAfterMs + jitter);
+      const now = this.now();
+      const current = await this.getOrCreateStateRow();
+      const decision = this.stateMachine.nextCooldown({
+        last429At: current.last429At,
+        lastRetryAfterMs: current.lastRetryAfterMs,
+        now,
+        retryAfterMsFromGmail: retryAfterMs,
+      });
+      const cooldownUntilNext = new Date(decision.cooldownUntil.getTime() + jitter);
 
       try {
         await this.persistCooldown({
           cooldownUntil: cooldownUntilNext,
-          last429At: this.now(),
-          lastRetryAfterMs: retryAfterMs,
+          last429At: now,
+          lastRetryAfterMs: decision.effectiveRetryAfterMs,
         });
       } catch (persistError) {
         // 永続化に失敗しても“今のリクエスト”は429なので、呼び出し元にはdeferを返す。
@@ -133,6 +143,9 @@ export class GmailRequestGateService {
         {
           operation,
           retryAfterMs,
+          effectiveRetryAfterMs: decision.effectiveRetryAfterMs,
+          relockLevel: decision.relockLevel,
+          state: decision.mode,
           cooldownUntil: cooldownUntilNext.toISOString(),
         },
         '[GmailRequestGate] Rate limit detected; entering cooldown'
@@ -141,10 +154,38 @@ export class GmailRequestGateService {
       throw new GmailRateLimitedDeferredError({
         operation,
         cooldownUntil: cooldownUntilNext,
-        retryAfterMs,
+        retryAfterMs: decision.effectiveRetryAfterMs,
         cause: error,
       });
     }
+  }
+
+  async getStateSnapshot(): Promise<{
+    cooldownUntil: string | null;
+    last429At: string | null;
+    lastRetryAfterMs: number | null;
+    relockLevel: 0 | 1 | 2 | 3;
+    state: 'NORMAL' | 'COOLDOWN' | 'PROBE' | 'RAMP_UP';
+  }> {
+    const row = await this.getOrCreateStateRow();
+    const now = this.now();
+    const state =
+      row.cooldownUntil && row.cooldownUntil.getTime() > now.getTime() ? 'COOLDOWN' : 'NORMAL';
+    const relockLevel =
+      row.lastRetryAfterMs && row.lastRetryAfterMs >= 720 * 60_000
+        ? 3
+        : row.lastRetryAfterMs && row.lastRetryAfterMs >= 180 * 60_000
+          ? 2
+          : row.lastRetryAfterMs && row.lastRetryAfterMs >= 60 * 60_000
+            ? 1
+            : 0;
+    return {
+      cooldownUntil: row.cooldownUntil?.toISOString() ?? null,
+      last429At: row.last429At?.toISOString() ?? null,
+      lastRetryAfterMs: row.lastRetryAfterMs ?? null,
+      relockLevel,
+      state,
+    };
   }
 
   private async getCooldownUntil(): Promise<Date | null> {

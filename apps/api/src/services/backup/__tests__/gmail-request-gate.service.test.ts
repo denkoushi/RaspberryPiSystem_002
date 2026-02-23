@@ -58,6 +58,13 @@ describe('GmailRequestGateService', () => {
       lastRetryAfterMs: null,
       version: 3,
     });
+    gmailRateLimitStateMock.findUnique.mockResolvedValueOnce({
+      id: 'gmail:me',
+      cooldownUntil: null,
+      last429At: null,
+      lastRetryAfterMs: null,
+      version: 3,
+    });
     // persistCooldown() 側でも読み直すため、もう1回同じ行を返す
     gmailRateLimitStateMock.findUnique.mockResolvedValueOnce({
       id: 'gmail:me',
@@ -91,9 +98,9 @@ describe('GmailRequestGateService', () => {
     expect(gmailRateLimitStateMock.updateMany).toHaveBeenCalledWith({
       where: { id: 'gmail:me', version: 3 },
       data: expect.objectContaining({
-        cooldownUntil: new Date(baseNow.getTime() + 60_000),
+        cooldownUntil: new Date(baseNow.getTime() + 15 * 60_000),
         last429At: baseNow,
-        lastRetryAfterMs: 60_000,
+        lastRetryAfterMs: 15 * 60_000,
         version: { increment: 1 },
       }),
     });

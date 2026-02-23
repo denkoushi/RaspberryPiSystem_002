@@ -10,6 +10,43 @@ import { writeDebugLog } from '../../lib/debug-log.js';
 
 const MIN_CSV_IMPORT_INTERVAL_MINUTES = 5;
 
+function hasCsvDashboardTarget(schedule: {
+  targets?: Array<{ type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards'; source: string }>;
+}): boolean {
+  return Array.isArray(schedule.targets) && schedule.targets.some((target) => target.type === 'csvDashboards');
+}
+
+function isGmailCsvDashboardSchedule(
+  schedule: { provider?: 'dropbox' | 'gmail'; targets?: Array<{ type: string }> },
+  fallbackProvider: 'local' | 'dropbox' | 'gmail'
+): boolean {
+  const provider = schedule.provider ?? fallbackProvider;
+  return provider === 'gmail' && hasCsvDashboardTarget(schedule as { targets?: Array<{ type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards'; source: string }> });
+}
+
+function extractMinuteField(schedule: string): string | null {
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  return parts[0] ?? null;
+}
+
+function detectGmailScheduleMinuteCollisions(config: Awaited<ReturnType<typeof BackupConfigLoader.load>>): string[] {
+  const collisions = new Map<string, string[]>();
+  for (const schedule of config.csvImports ?? []) {
+    if (!schedule.enabled || !isGmailCsvDashboardSchedule(schedule, config.storage.provider)) {
+      continue;
+    }
+    const minute = extractMinuteField(schedule.schedule);
+    if (!minute) continue;
+    const ids = collisions.get(minute) ?? [];
+    ids.push(schedule.id);
+    collisions.set(minute, ids);
+  }
+  return Array.from(collisions.entries())
+    .filter(([, ids]) => ids.length >= 2)
+    .map(([minute, ids]) => `Gmail csvDashboards schedules overlap at minute pattern "${minute}": ${ids.join(', ')}`);
+}
+
 function extractIntervalMinutes(schedule: string): number | null {
   const parts = schedule.trim().split(/\s+/);
   if (parts.length !== 5) {
@@ -220,6 +257,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     };
 
     config.csvImports = [...(config.csvImports || []), newSchedule];
+    const warnings = detectGmailScheduleMinuteCollisions(config);
     await BackupConfigLoader.save(config);
 
     // スケジューラーを再読み込み
@@ -228,7 +266,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     await scheduler.reload();
 
     request.log.info({ scheduleId: body.id }, '[CSV Import Schedule] Schedule added');
-    return { schedule: newSchedule };
+    return { schedule: newSchedule, warnings };
   });
 
   // スケジュール更新
@@ -254,6 +292,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     };
 
     config.csvImports![scheduleIndex] = updatedSchedule;
+    const warnings = detectGmailScheduleMinuteCollisions(config);
     await BackupConfigLoader.save(config);
 
     // スケジューラーを再読み込み
@@ -262,7 +301,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     await scheduler.reload();
 
     request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule updated');
-    return { schedule: updatedSchedule };
+    return { schedule: updatedSchedule, warnings };
   });
 
   // スケジュール削除
