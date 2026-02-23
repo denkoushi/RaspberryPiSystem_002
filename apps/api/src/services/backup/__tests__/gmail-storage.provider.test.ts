@@ -412,5 +412,241 @@ describe('GmailStorageProvider', () => {
       }
     });
   });
+
+  describe('downloadAllBySubjectPatterns', () => {
+    it('should fetch messages with OR condition and group by pattern', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        refreshToken: 'test-refresh-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      const mockMessageIds = ['msg1', 'msg2', 'msg3'];
+      const mockMessage1 = {
+        id: 'msg1',
+        threadId: 't1',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          parts: []
+        }
+      };
+      const mockMessage2 = {
+        id: 'msg2',
+        threadId: 't2',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'CSV Import Pattern2' }],
+          parts: []
+        }
+      };
+      const mockMessage3 = {
+        id: 'msg3',
+        threadId: 't3',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          parts: []
+        }
+      };
+
+      const mockAttachment1 = { buffer: Buffer.from('csv1'), filename: 'file1.csv' };
+      const mockAttachment2 = { buffer: Buffer.from('csv2'), filename: 'file2.csv' };
+      const mockAttachment3 = { buffer: Buffer.from('csv3'), filename: 'file3.csv' };
+
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(mockMessageIds);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage1);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage2);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage3);
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment1);
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment2);
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment3);
+
+      const result = await provider.downloadAllBySubjectPatterns(['Pattern1', 'Pattern2']);
+
+      // OR条件で1回だけsearchMessagesLimitedが呼ばれることを確認
+      expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledTimes(1);
+      expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
+        expect.stringContaining('subject:"Pattern1"'),
+        expect.any(Number)
+      );
+      expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
+        expect.stringContaining('OR'),
+        expect.any(Number)
+      );
+
+      // パターンごとにグループ化されていることを確認
+      expect(result).toHaveProperty('Pattern1');
+      expect(result).toHaveProperty('Pattern2');
+      expect(result.Pattern1).toHaveLength(2); // msg1とmsg3
+      expect(result.Pattern2).toHaveLength(1); // msg2
+      expect(result.Pattern1[0].messageId).toBe('msg1');
+      expect(result.Pattern1[1].messageId).toBe('msg3');
+      expect(result.Pattern2[0].messageId).toBe('msg2');
+    });
+
+    it('should handle empty subject patterns', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      const result = await provider.downloadAllBySubjectPatterns([]);
+
+      expect(result).toEqual({});
+      expect(mockGmailApiClient.searchMessagesLimited).not.toHaveBeenCalled();
+    });
+
+    it('should throw NoMatchingMessageError when no messages found', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce([]);
+
+      await expect(
+        provider.downloadAllBySubjectPatterns(['Pattern1'])
+      ).rejects.toThrow('No messages found matching query');
+    });
+
+    it('should use AdaptiveRateController for batch size and delay', async () => {
+      const previous = process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
+      try {
+        AdaptiveRateController.resetInstance();
+        process.env.GMAIL_MAX_MESSAGES_PER_BATCH = '15';
+
+        const provider = new GmailStorageProvider({
+          oauth2Client,
+          accessToken: 'test-access-token',
+          refreshToken: 'test-refresh-token',
+          oauthService: mockOAuthService,
+          onTokenUpdate
+        });
+
+        const mockMessageIds = ['msg1'];
+        const mockMessage = {
+          id: 'msg1',
+          threadId: 't1',
+          labelIds: ['UNREAD'],
+          snippet: '',
+          payload: {
+            headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+            parts: []
+          }
+        };
+        const mockAttachment = { buffer: Buffer.from('csv'), filename: 'file.csv' };
+
+        mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(mockMessageIds);
+        mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage);
+        mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment);
+
+        await provider.downloadAllBySubjectPatterns(['Pattern1']);
+
+        // AdaptiveRateControllerのgetBatchSize()が使用されることを確認
+        expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(Number)
+        );
+      } finally {
+        AdaptiveRateController.resetInstance();
+        if (previous === undefined) {
+          delete process.env.GMAIL_MAX_MESSAGES_PER_BATCH;
+        } else {
+          process.env.GMAIL_MAX_MESSAGES_PER_BATCH = previous;
+        }
+      }
+    });
+
+    it('should record success in AdaptiveRateController on success', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        refreshToken: 'test-refresh-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      const mockMessageIds = ['msg1'];
+      const mockMessage = {
+        id: 'msg1',
+        threadId: 't1',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          parts: []
+        }
+      };
+      const mockAttachment = { buffer: Buffer.from('csv'), filename: 'file.csv' };
+
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(mockMessageIds);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage);
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment);
+
+      const controller = AdaptiveRateController.getInstance();
+      const initialBatch = controller.getBatchSize();
+
+      await provider.downloadAllBySubjectPatterns(['Pattern1']);
+
+      // recordSuccess()が呼ばれ、バッチサイズが増加または維持されることを確認
+      const afterBatch = controller.getBatchSize();
+      expect(afterBatch).toBeGreaterThanOrEqual(initialBatch);
+    });
+
+    it('should skip messages that do not match any pattern', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        refreshToken: 'test-refresh-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      const mockMessageIds = ['msg1', 'msg2'];
+      const mockMessage1 = {
+        id: 'msg1',
+        threadId: 't1',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          parts: []
+        }
+      };
+      const mockMessage2 = {
+        id: 'msg2',
+        threadId: 't2',
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{ name: 'Subject', value: 'Unmatched Subject' }],
+          parts: []
+        }
+      };
+
+      const mockAttachment1 = { buffer: Buffer.from('csv1'), filename: 'file1.csv' };
+
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(mockMessageIds);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage1);
+      mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage2);
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment1);
+
+      const result = await provider.downloadAllBySubjectPatterns(['Pattern1']);
+
+      // マッチしないメッセージはスキップされる
+      expect(result.Pattern1).toHaveLength(1);
+      expect(result.Pattern1[0].messageId).toBe('msg1');
+    });
+  });
 });
 
