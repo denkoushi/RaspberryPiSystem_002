@@ -114,6 +114,7 @@ export class GmailRequestGateService {
       }
 
       const retryAfterMs = extractRetryAfterMs(error);
+      const rateLimitDetails = extractRateLimitDetails(error);
       const jitter = Math.floor(Math.random() * this.jitterMaxMs());
       const now = this.now();
       const current = await this.getOrCreateStateRow();
@@ -143,6 +144,12 @@ export class GmailRequestGateService {
         {
           operation,
           retryAfterMs,
+          retryAfterHeaderSeconds: rateLimitDetails.retryAfterHeaderSeconds,
+          status: rateLimitDetails.status,
+          apiErrorStatus: rateLimitDetails.apiErrorStatus,
+          apiErrorCode: rateLimitDetails.apiErrorCode,
+          apiErrorReason: rateLimitDetails.apiErrorReason,
+          apiErrorMessage: rateLimitDetails.apiErrorMessage,
           effectiveRetryAfterMs: decision.effectiveRetryAfterMs,
           relockLevel: decision.relockLevel,
           state: decision.mode,
@@ -339,5 +346,62 @@ function extractRetryAfterMs(error: unknown): number {
 
   // 3) Fallback: small fixed backoff
   return 15_000;
+}
+
+function extractRateLimitDetails(error: unknown): {
+  status: number | null;
+  retryAfterHeaderSeconds: number | null;
+  apiErrorStatus: string | null;
+  apiErrorCode: number | null;
+  apiErrorReason: string | null;
+  apiErrorMessage: string | null;
+} {
+  const info = toErrorInfo(error);
+  const statusRaw = info.status ?? info.code;
+  const status = typeof statusRaw === 'number' ? statusRaw : Number.isFinite(Number(statusRaw)) ? Number(statusRaw) : null;
+
+  let retryAfterHeaderSeconds: number | null = null;
+  let apiErrorStatus: string | null = null;
+  let apiErrorCode: number | null = null;
+  let apiErrorReason: string | null = null;
+  let apiErrorMessage: string | null = null;
+
+  if (isRecord(error)) {
+    const headers =
+      (isRecord(error.headers) ? error.headers : undefined) ??
+      (isRecord(error.response) && isRecord(error.response.headers) ? error.response.headers : undefined);
+
+    const retryAfterRaw = headers ? headers['retry-after'] : undefined;
+    if (typeof retryAfterRaw === 'string') {
+      const secs = parseInt(retryAfterRaw, 10);
+      if (Number.isFinite(secs) && secs > 0) {
+        retryAfterHeaderSeconds = secs;
+      }
+    }
+
+    const response = isRecord(error.response) ? error.response : undefined;
+    const data = response && isRecord(response.data) ? response.data : undefined;
+    const err = data && isRecord(data.error) ? data.error : undefined;
+    if (err) {
+      apiErrorStatus = typeof err.status === 'string' ? err.status : null;
+      apiErrorCode = typeof err.code === 'number' ? err.code : null;
+      apiErrorMessage = typeof err.message === 'string' ? err.message : null;
+
+      const errors = Array.isArray(err.errors) ? err.errors : null;
+      const first = errors && errors.length > 0 && isRecord(errors[0]) ? errors[0] : null;
+      if (first) {
+        apiErrorReason = typeof first.reason === 'string' ? first.reason : null;
+      }
+    }
+  }
+
+  return {
+    status,
+    retryAfterHeaderSeconds,
+    apiErrorStatus,
+    apiErrorCode,
+    apiErrorReason,
+    apiErrorMessage,
+  };
 }
 
