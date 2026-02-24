@@ -17,7 +17,7 @@ import {
   INTERVAL_PRESETS,
   MIN_INTERVAL_MINUTES,
   formatCronSchedule,
-  formatIntervalCronSchedule,
+  formatOffsetIntervalCronSchedule,
   formatScheduleForDisplay,
   parseCronSchedule,
   type ScheduleMode
@@ -105,6 +105,7 @@ export function CsvImportSchedulePage() {
   const [scheduleDaysOfWeek, setScheduleDaysOfWeek] = useState<number[]>([]);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('timeOfDay');
   const [intervalMinutes, setIntervalMinutes] = useState<string>('10');
+  const [offsetMinutes, setOffsetMinutes] = useState<string>('0');
   const [scheduleEditable, setScheduleEditable] = useState(true);
   const [scheduleEditWarning, setScheduleEditWarning] = useState<string | null>(null);
 
@@ -168,7 +169,12 @@ export function CsvImportSchedulePage() {
         setValidationError(`間隔は${MIN_INTERVAL_MINUTES}分以上で指定してください`);
         return;
       }
-      cronSchedule = formatIntervalCronSchedule(intervalValue, scheduleDaysOfWeek);
+      const offsetValue = Number(offsetMinutes);
+      if (!Number.isInteger(offsetValue) || offsetValue < 0 || offsetValue > 59) {
+        setValidationError('開始分（オフセット）は 0〜59 で指定してください');
+        return;
+      }
+      cronSchedule = formatOffsetIntervalCronSchedule(intervalValue, offsetValue, scheduleDaysOfWeek);
     } else {
       // UI形式からcron形式に変換（時刻+曜日）
       cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
@@ -211,6 +217,7 @@ export function CsvImportSchedulePage() {
       setScheduleDaysOfWeek([]);
       setScheduleMode('timeOfDay');
       setIntervalMinutes('10');
+      setOffsetMinutes('0');
       setScheduleEditable(true);
       setScheduleEditWarning(null);
       refetch();
@@ -245,7 +252,12 @@ export function CsvImportSchedulePage() {
         setValidationError(`間隔は${MIN_INTERVAL_MINUTES}分以上で指定してください`);
         return;
       }
-      cronSchedule = formatIntervalCronSchedule(intervalValue, scheduleDaysOfWeek);
+      const offsetValue = Number(offsetMinutes);
+      if (!Number.isInteger(offsetValue) || offsetValue < 0 || offsetValue > 59) {
+        setValidationError('開始分（オフセット）は 0〜59 で指定してください');
+        return;
+      }
+      cronSchedule = formatOffsetIntervalCronSchedule(intervalValue, offsetValue, scheduleDaysOfWeek);
     } else {
       // UI形式からcron形式に変換
       cronSchedule = formatCronSchedule(scheduleTime, scheduleDaysOfWeek);
@@ -438,6 +450,7 @@ export function CsvImportSchedulePage() {
     setScheduleDaysOfWeek(parsed.daysOfWeek);
     setScheduleMode(parsed.mode === 'custom' ? 'timeOfDay' : parsed.mode);
     setIntervalMinutes(parsed.intervalMinutes ? String(parsed.intervalMinutes) : '10');
+    setOffsetMinutes(typeof parsed.offsetMinutes === 'number' ? String(parsed.offsetMinutes) : '0');
     setScheduleEditable(parsed.isEditable);
     setScheduleEditWarning(parsed.isEditable ? null : (parsed.reason || 'このcron形式はUIから編集できません'));
   };
@@ -465,6 +478,7 @@ export function CsvImportSchedulePage() {
     setScheduleDaysOfWeek([]);
     setScheduleMode('timeOfDay');
     setIntervalMinutes('10');
+    setOffsetMinutes('0');
     setScheduleEditable(true);
     setScheduleEditWarning(null);
   };
@@ -520,6 +534,7 @@ export function CsvImportSchedulePage() {
       setScheduleDaysOfWeek([]);
       setScheduleMode('timeOfDay');
       setIntervalMinutes('10');
+      setOffsetMinutes('0');
       setScheduleEditable(true);
       setScheduleEditWarning(null);
     }
@@ -782,6 +797,16 @@ export function CsvImportSchedulePage() {
                         />
                         <span className="text-xs text-slate-600">分ごと</span>
                       </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={offsetMinutes}
+                          onChange={(e) => setOffsetMinutes(e.target.value)}
+                        />
+                        <span className="text-xs text-slate-600">分開始（オフセット）</span>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {INTERVAL_PRESETS.map((preset) => (
                           <button
@@ -799,7 +824,7 @@ export function CsvImportSchedulePage() {
                         ))}
                       </div>
                       <p className="text-xs text-slate-600">
-                        最小{MIN_INTERVAL_MINUTES}分。負荷を考慮して短すぎる間隔は避けてください。
+                        最小{MIN_INTERVAL_MINUTES}分。オフセットを指定すると「15,25,35...」のような分リストで保存し、同時発火を避けられます。
                       </p>
                     </div>
                   ) : (
@@ -1060,6 +1085,20 @@ export function CsvImportSchedulePage() {
                               </button>
                             ))}
                           </div>
+                          {scheduleMode === 'intervalMinutes' && (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={59}
+                                value={offsetMinutes}
+                                onChange={(e) => setOffsetMinutes(e.target.value)}
+                                className="w-full text-xs"
+                                disabled={!scheduleEditable}
+                              />
+                              <span className="text-[10px] text-slate-600">分開始</span>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-2 py-1">

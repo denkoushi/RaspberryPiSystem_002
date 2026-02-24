@@ -18,6 +18,12 @@ export type ParsedCronSchedule = {
   time: string;
   daysOfWeek: number[];
   intervalMinutes?: number;
+  /**
+   * intervalMinutes モードで「開始分」を保持する。
+   * - `* /10 * * * *` のような純粋な間隔指定は `0`（アスタリスクとスラッシュの並びはブロックコメント終端と衝突し得るため、表記を分離）
+   * - `15,25,35,45,55 * * * *` のような分リストは `15`（先頭分）
+   */
+  offsetMinutes?: number;
   isEditable: boolean;
   reason?: string;
 };
@@ -96,11 +102,12 @@ export function parseCronSchedule(cronSchedule?: string): ParsedCronSchedule {
       time: '02:00',
       daysOfWeek,
       intervalMinutes,
+      offsetMinutes: 0,
       isEditable: true
     };
   }
 
-  // 分のリスト形式（カンマ区切り）を検出: "15,25,35,45,55" → 10分間隔として扱う
+  // 分のリスト形式（カンマ区切り）を検出: "15,25,35,45,55"
   if (minute.includes(',') && hour === '*') {
     const minuteList = minute.split(',').map(m => parseInt(m.trim(), 10)).filter(m => !isNaN(m) && m >= 0 && m < 60);
     if (minuteList.length > 0) {
@@ -119,6 +126,7 @@ export function parseCronSchedule(cronSchedule?: string): ParsedCronSchedule {
             time: '02:00',
             daysOfWeek,
             intervalMinutes,
+            offsetMinutes: sortedMinutes[0],
             isEditable: true
           };
         }
@@ -180,20 +188,79 @@ export function formatIntervalCronSchedule(intervalMinutes: number, daysOfWeek: 
 }
 
 /**
+ * UI形式（間隔+開始分）からcron形式に変換
+ *
+ * - offsetMinutes=0 の場合は `* /N` を使う（従来互換。アスタリスクとスラッシュの並びはブロックコメント終端と衝突し得るため、表記を分離）
+ * - offsetMinutes>0 の場合は `15,25,35,45,55 * * * *` のような分リストで表現する
+ *
+ * NOTE:
+ * - 分リストは「同時発火を避けるためのオフセット保持」が目的
+ * - バックエンドは node-cron で minute list を受け付ける前提
+ */
+export function formatOffsetIntervalCronSchedule(
+  intervalMinutes: number,
+  offsetMinutes: number,
+  daysOfWeek: number[]
+): string {
+  const dayOfWeekStr = daysOfWeek.length === 0 ? '*' : daysOfWeek.sort((a, b) => a - b).join(',');
+  const interval = Math.max(1, Math.floor(intervalMinutes));
+  const offset = ((Math.floor(offsetMinutes) % 60) + 60) % 60;
+
+  if (offset === 0) {
+    return `*/${interval} * * * ${dayOfWeekStr}`;
+  }
+
+  const minutes: number[] = [];
+  for (let m = offset; m < 60; m += interval) {
+    minutes.push(m);
+  }
+  const minuteField = minutes.join(',');
+  return `${minuteField} * * * ${dayOfWeekStr}`;
+}
+
+/**
  * cron形式のスケジュールを人間が読みやすい形式に変換
  */
 export function formatScheduleForDisplay(cronSchedule: string): string {
   const parsed = parseCronSchedule(cronSchedule);
-  const { time, daysOfWeek, mode, intervalMinutes } = parsed;
+  const { time, daysOfWeek, mode, intervalMinutes, offsetMinutes } = parsed;
 
   if (mode === 'intervalMinutes' && intervalMinutes) {
+    // minute field が分リストの場合は、オフセット情報が重要なので併記する
+    const parts = cronSchedule.trim().split(/\s+/);
+    const minuteField = parts.length === 5 ? parts[0] : '';
+    const hasMinuteList = minuteField.includes(',');
+    const minuteListLabel = (() => {
+      if (!hasMinuteList) return null;
+      const list = minuteField
+        .split(',')
+        .map((m) => parseInt(m.trim(), 10))
+        .filter((m) => Number.isInteger(m) && m >= 0 && m < 60)
+        .sort((a, b) => a - b);
+      if (list.length === 0) return null;
+      const minuteStr = list.map((m) => m.toString().padStart(2, '0')).join('、');
+      return minuteStr;
+    })();
+
     const dayLabels = daysOfWeek
       .sort((a, b) => a - b)
       .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
       .filter(Boolean)
       .join('、');
     if (daysOfWeek.length === 0) {
+      if (minuteListLabel) {
+        return `毎日${intervalMinutes}分ごと（${minuteListLabel}分）`;
+      }
+      if (offsetMinutes && offsetMinutes > 0) {
+        return `毎日${intervalMinutes}分ごと（${offsetMinutes.toString().padStart(2, '0')}分開始）`;
+      }
       return `毎日${intervalMinutes}分ごと`;
+    }
+    if (minuteListLabel) {
+      return `毎週${dayLabels}の${intervalMinutes}分ごと（${minuteListLabel}分）`;
+    }
+    if (offsetMinutes && offsetMinutes > 0) {
+      return `毎週${dayLabels}の${intervalMinutes}分ごと（${offsetMinutes.toString().padStart(2, '0')}分開始）`;
     }
     return `毎週${dayLabels}の${intervalMinutes}分ごと`;
   }
