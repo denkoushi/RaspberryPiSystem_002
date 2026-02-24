@@ -69,13 +69,20 @@ export class GmailImportOrchestrator {
         '[GmailImportOrchestrator] Starting Gmail import cycle'
       );
 
-      for (const schedule of gmailSchedules) {
-        await this.deps.executeSchedule({
-          config,
-          importSchedule: schedule,
-          isManual,
-        });
+      const triggerSchedule = gmailSchedules.find((schedule) => schedule.id === triggerScheduleId);
+      if (!triggerSchedule) {
+        logger?.warn(
+          { triggerScheduleId, scheduleCount: gmailSchedules.length },
+          '[GmailImportOrchestrator] Trigger schedule not found in active Gmail schedules, skipping cycle'
+        );
+        return;
       }
+
+      await this.deps.executeSchedule({
+        config,
+        importSchedule: triggerSchedule,
+        isManual,
+      });
     } finally {
       this.running = false;
     }
