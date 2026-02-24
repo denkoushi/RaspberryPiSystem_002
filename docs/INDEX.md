@@ -8,6 +8,12 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-24）
+
+- **✅ Gmail自動運用プロトコル フェーズ2テスト追加・CI成功・Pi5デプロイ・実機検証完了**: フェーズ2のテスト（GmailUnifiedMailboxFetcher、downloadAllBySubjectPatterns）を追加し、CI成功・Pi5限定デプロイ（Run ID `20260224-084216-12664`）・実機検証を実施。デプロイ時は未commit変更でfail-fastしたためstashで退避して実行。実機はAPI疎通・認証・主要API応答を確認。**解決策1〜4の進捗**は [plans/gmail-auto-protocol-progress.md](./plans/gmail-auto-protocol-progress.md) を参照。詳細は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
+- **✅ Gmail自動運用プロトコル フェーズ1実機検証完了**: フェーズ1の実装内容（単一オーケストレータ・429状態機械・PROCESSING自動解消）が実機環境で正常に動作することを確認。**検証方法**: Tailscale経由でAPI接続し、ヘルスチェック・スケジュール設定・インポート履歴・手動実行を確認。**検証結果**: API正常応答（`status: "ok"`）、Gmail csvDashboardsスケジュール3件が存在しすべて10分ごとに設定、PROCESSING状態の履歴0件（古いPROCESSING状態は解消済み）、429発生時にクールダウン処理が正常に動作（手動実行時に「Gmail API is rate limited; deferred until 2026-02-23T23:03:49.435Z」が返された）、GmailRateLimitStateが正常に動作（429発生時にクールダウン状態が記録され、再突入が防止される）。**検証できなかった項目**: SSH接続が必要な項目（ログ確認、DB直接確認）は未実施。**ドキュメント更新**: KB-216を更新（フェーズ1実機検証結果を追加）、実機検証チェックリストに結果を記録、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [knowledge-base/api.md#kb-216](./knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) / [guides/gmail-auto-protocol-phase1-verification.md](./guides/gmail-auto-protocol-phase1-verification.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-22）
 
 - **✅ Gmail csvDashboards取得を10分30件運用へ最適化・CI成功・デプロイ完了・実機検証完了**: Gmail APIの429レート制限エラーを低減するため、`searchMessagesAll`（全件ページング）から`searchMessagesLimited`（最大N件）への変更を実装。**実装内容**: `GmailApiClient`に`searchMessagesLimited(query: string, maxResults: number)`メソッドを追加し、`searchMessages`を`searchMessagesLimited(query, 10)`に変更。`GmailStorageProvider`の`downloadAllWithMetadata`を`searchMessagesLimited`を使用するように変更し、デフォルトバッチサイズを50→30に変更（`GMAIL_MAX_MESSAGES_PER_BATCH`環境変数、デフォルト30）。加工機日常点検結果のスケジュールに日曜日（0）を追加（`21,31,41,51 * * * 0,1,2,3,4,5,6`）。**実装ファイル**: `apps/api/src/services/backup/gmail-api-client.ts`（`searchMessagesLimited`追加）、`apps/api/src/services/backup/storage/gmail-storage.provider.ts`（`searchMessagesLimited`使用、デフォルト30）、`apps/api/src/routes/imports/schedule.ts`（日曜日追加）、ユニットテスト追加。**CI実行**: GitHub Actions Run ID `22268463453`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260222-111603-30625`, `state: success`, `exitCode: 0`）。**実機検証結果**: デプロイ実体確認（ブランチ `main`、コミット `1bd081d4` が反映済み）、コード実装確認（`searchMessagesLimited`定義・使用、デフォルト30設定、`searchMessagesLimited`使用を確認）、スケジュール設定確認（加工機日常点検結果のスケジュールに日曜日（0）が含まれることを確認）、API正常動作確認（`GET /api/system/health` → `200`、`status: degraded`はメモリ高負荷による既存の問題）。**効果**: `searchMessagesAll`による全件ページングを回避し、1回の実行で最大30件のみ取得することで、Gmail APIの429エラー発生リスクを低減。**ドキュメント更新**: KB-272を追加、csv-import-export.mdに429監視手順を追記、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [knowledge-base/api.md#kb-272](./knowledge-base/api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) / [guides/csv-import-export.md](./guides/csv-import-export.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
@@ -532,6 +538,7 @@
 | 計測機器キオスク実機検証 | [guides/measuring-instruments-verification.md](./guides/measuring-instruments-verification.md) |
 | 機能を検証したい | [guides/verification-checklist.md](./guides/verification-checklist.md) |
 | **CSVフォーマット仕様実装を検証したい** | **[guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31](./guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)** |
+| **Gmail自動運用プロトコル フェーズ1の実機検証を実施したい** | **[guides/gmail-auto-protocol-phase1-verification.md](./guides/gmail-auto-protocol-phase1-verification.md)** |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
 | デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
 | **CSVダッシュボード可視化機能を検証したい** | **[guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md)** |

@@ -9,6 +9,10 @@
 
 ## Progress
 
+- [x] (2026-02-24) **Gmail自動運用プロトコル フェーズ2テスト追加・CI成功・Pi5デプロイ完了・実機検証完了**: フェーズ2の未カバーだったテストを追加し、CI・デプロイ・実機検証を実施。**実装内容**: `GmailUnifiedMailboxFetcher`のユニットテスト（`gmail-unified-mailbox-fetcher.test.ts`）を新規追加、`GmailStorageProvider.downloadAllBySubjectPatterns`のテストを`gmail-storage.provider.test.ts`に追加（OR条件・空パターン・NoMatchingMessageError・AdaptiveRateController連携・パターン不一致スキップなど6ケース）。**ローカル**: 全テスト574件パス、lint・build成功。**CI**: Run ID `22329165576` 成功。**デプロイ**: 標準手順（`docs/guides/deployment.md`）に従い、未commit変更でfail-fastになったため`git stash`で退避→`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、Run ID `20260224-084216-12664`でデタッチ実行、約7分30秒で`state: success`、`exitCode: 0`。**実機検証**: Tailscale経由でAPI疎通・認証・スケジュールAPI・network-modeを確認。ヘルスは`degraded`（メモリ95.9%、既知の環境要因）。**知見**: デプロイ実行時は未commit変更があるとfail-fastするため、手順どおりstashしてから実行し、完了後に`git stash pop`で復元する。
+
+- [x] (2026-02-24) **Gmail自動運用プロトコル フェーズ1実機検証完了**: フェーズ1の実装内容（単一オーケストレータ・429状態機械・PROCESSING自動解消）が実機環境で正常に動作することを確認。**検証方法**: Tailscale経由でAPI接続し、ヘルスチェック・スケジュール設定・インポート履歴・手動実行を確認。**検証結果**: API正常応答（`status: "ok"`）、Gmail csvDashboardsスケジュール3件が存在しすべて10分ごとに設定、PROCESSING状態の履歴0件（古いPROCESSING状態は解消済み）、429発生時にクールダウン処理が正常に動作（手動実行時に「Gmail API is rate limited; deferred until 2026-02-23T23:03:49.435Z」が返された）、GmailRateLimitStateが正常に動作（429発生時にクールダウン状態が記録され、再突入が防止される）。**検証できなかった項目**: SSH接続が必要な項目（ログ確認、DB直接確認）は未実施。**ドキュメント更新**: KB-216を更新（フェーズ1実機検証結果を追加）、実機検証チェックリストに結果を記録、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/api.md#kb-216](./docs/knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) / [docs/guides/gmail-auto-protocol-phase1-verification.md](./docs/guides/gmail-auto-protocol-phase1-verification.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
 - [x] (2026-02-22) **Gmail csvDashboards取得を10分30件運用へ最適化・CI成功・デプロイ完了・実機検証完了**: Gmail APIの429レート制限エラーを低減するため、`searchMessagesAll`（全件ページング）から`searchMessagesLimited`（最大N件）への変更を実装。**実装内容**: `GmailApiClient`に`searchMessagesLimited(query: string, maxResults: number)`メソッドを追加し、`searchMessages`を`searchMessagesLimited(query, 10)`に変更。`GmailStorageProvider`の`downloadAllWithMetadata`を`searchMessagesLimited`を使用するように変更し、デフォルトバッチサイズを50→30に変更（`GMAIL_MAX_MESSAGES_PER_BATCH`環境変数、デフォルト30）。加工機日常点検結果のスケジュールに日曜日（0）を追加（`21,31,41,51 * * * 0,1,2,3,4,5,6`）。**実装ファイル**: `apps/api/src/services/backup/gmail-api-client.ts`（`searchMessagesLimited`追加）、`apps/api/src/services/backup/storage/gmail-storage.provider.ts`（`searchMessagesLimited`使用、デフォルト30）、`apps/api/src/routes/imports/schedule.ts`（日曜日追加）、ユニットテスト追加。**CI実行**: GitHub Actions Run ID `22268463453`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260222-111603-30625`, `state: success`, `exitCode: 0`）。**実機検証結果**: デプロイ実体確認（ブランチ `main`、コミット `1bd081d4` が反映済み）、コード実装確認（`searchMessagesLimited`定義・使用、デフォルト30設定、`searchMessagesLimited`使用を確認）、スケジュール設定確認（加工機日常点検結果のスケジュールに日曜日（0）が含まれることを確認）、API正常動作確認（`GET /api/system/health` → `200`、`status: degraded`はメモリ高負荷による既存の問題）。**効果**: `searchMessagesAll`による全件ページングを回避し、1回の実行で最大30件のみ取得することで、Gmail APIの429エラー発生リスクを低減。**ドキュメント更新**: KB-272を追加、csv-import-export.mdに429監視手順を追記、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/api.md#kb-272](./docs/knowledge-base/api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
 - [x] (2026-02-19) **生産スケジュールデータ削除ルール実装・CI成功・デプロイ完了・実機検証完了**: ストレージ圧迫解消と将来の新規機能データ追加に備え、生産スケジュールのみ削除ルールを実装。**実装内容**: 重複loser即時削除（同一キーで`ProductNo`最大の行をwinnerとして残し、それ以外を削除）、1年超過は保存しない（`max(rowData.updatedAt, occurredAt)`を基準日として1年を超えた行は取り込み時点で保存しない）、日次クリーンアップ（毎日02:10 JSTに「1年超過削除」「重複loser削除」を実行）。**実装ファイル**: `production-schedule-basis-date.ts`（基準日計算）、`production-schedule-cleanup.service.ts`（削除/クリーンアップ）、`csv-dashboard-ingestor.ts`（取り込み時フィルタ + 即時重複削除）、`csv-import-scheduler.ts`（日次クリーンアップジョブ）。**CI修正**: 型エラー修正（`Prisma.JsonValue` → `unknown`、`Prisma.join`の修正、三項演算子のif文への変更）。**CI実行**: GitHub Actions Run ID `22163832946`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260219-212228-17755`, `state: success`, `exitCode: 0`）。**デプロイ時のトラブルシューティング**: 未追跡ファイル（`alerts/*.json`）がfail-fastチェックで検出されたため、`git stash push -u`で一時退避してデプロイ実行、デプロイ後に`git stash pop`で復元。**実機検証結果**: デプロイ実体確認（ブランチ `feat/production-schedule-delete-rules`、コミット `f341c9c` が反映済み）、日次クリーンアップジョブの登録確認（APIログで `[CsvImportScheduler] Production schedule cleanup job registered`、スケジュール `schedule: "10 2 * * *"`）、API正常動作確認（`GET /api/kiosk/production-schedule` → `200`、`total=5378` rows取得成功）、ヘルスチェック警告（`status: degraded`、メモリ使用量が高いが既存の問題、今回の実装とは無関係）。**ドキュメント更新**: KB-271を追加・更新、csv-import-export.mdに削除ルール仕様を追記、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/api.md#kb-271](./docs/knowledge-base/api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない) / [docs/guides/csv-import-export.md](./docs/guides/csv-import-export.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
@@ -603,6 +607,7 @@
   対応: 不要なOS常駐サービスは stop+disable+mask して LISTEN 自体を消す／監視は `ss -H -tulpen` で `addr:port(process,proto)` を扱い「外部露出」に絞る。**[KB-177]**
 - 観測: `inventory.yml` の `server` は `ansible_connection: local` のため、コントローラ（Mac）からの `ansible-playbook` 実行は想定通りに動かない（`roles_path=./roles` 前提のCWDも絡む）。  
   対応: **Pi5上で** `cd /opt/RaspberryPiSystem_002/infrastructure/ansible` してAnsibleを実行する運用に寄せる。**[KB-177]**
+- 観測: `scripts/update-all-clients.sh` 実行時に未commit/未pushの変更があると fail-fast で停止する。ドキュメント変更のみで本番コードに影響がない場合でも、デプロイだけ先行させたいときは **stash → デプロイ実行 → stash pop** の順で対応する（標準手順の「commit するか stash してから再実行」に準拠）。2026-02-24のPi5デプロイで実施済み。
 - 観測: クライアント側のコマンド監視が短く（値は環境依存で未確定）、Pi5+Pi4の長時間デプロイ（15-20分）では途中で「停止して見える」状態になりやすい。  
   対応: **リモート実行をデフォルトでデタッチモードに変更**し、クライアント側の監視打ち切りによる中断リスクを排除。`--foreground`オプションを追加し、前景実行が必要な場合は明示的に指定可能に（短時間のみ推奨）。**[KB-226]**
 - 観測: Mac開発環境では、**Cursorの`User/globalStorage`が肥大化しやすく（数十GB）**、Docker Desktopのデータも`Docker.raw`に集約されやすい。加えて、macOS標準の`rsync`が古い場合があり `--info=progress2` で失敗する。  
@@ -1395,6 +1400,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
+
+**概要**: フェーズ1実機検証・フェーズ2テスト追加とデプロイは完了。以下は任意のフォローアップ。
+
+- **429解消後の正常系確認**: クールダウン解除後に手動実行で COMPLETED が増えること、スケジュール実行で履歴が正常に積み上がることを確認する。
+- **フェーズ2統合フェッチの実機確認**: 実機で `downloadAllBySubjectPatterns`（messages.list 統合）が使われているか、ログやインポート成功有無で確認する。未使用の場合は `CsvDashboardImportService` の条件（`unifiedResultsByPattern` が空でないか）を調査する。
+- **SSH による詳細検証**: フェーズ1チェックリストの「ログ確認」「DB 直接確認」「日次クリーンアップ Job」など、SSH が必要な項目を実施する。
+- **メモリ逼迫の恒常対策**: 実機でヘルスが degraded（メモリ高使用率）になる事象は既知。必要に応じてリソース増強やプロセス見直しを検討する。
+
+**参照**: [docs/guides/gmail-auto-protocol-phase1-verification.md](./docs/guides/gmail-auto-protocol-phase1-verification.md) / [docs/knowledge-base/api.md#kb-216](./docs/knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法)
 
 ### APIルート分割の横展開（完了）
 
