@@ -30,6 +30,25 @@ function estimateTextWidth(text: string, fontPx: number): number {
   return Math.round(usedEm * fontPx);
 }
 
+function truncateTextToWidth(text: string, maxWidthPx: number, fontPx: number): string {
+  if (text.length === 0) return text;
+  if (estimateTextWidth(text, fontPx) <= maxWidthPx) return text;
+
+  const ellipsis = '...';
+  const ellipsisWidth = estimateTextWidth(ellipsis, fontPx);
+  if (ellipsisWidth >= maxWidthPx) return ellipsis;
+
+  let truncated = '';
+  for (const ch of text) {
+    const next = `${truncated}${ch}`;
+    if (estimateTextWidth(next, fontPx) + ellipsisWidth > maxWidthPx) {
+      break;
+    }
+    truncated = next;
+  }
+  return `${truncated}${ellipsis}`;
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -84,7 +103,10 @@ export class UninspectedMachinesRenderer implements Renderer {
 
     const width = config.width;
     const height = config.height;
-    const title = config.title ?? '加工機点検状況';
+    const title = (config.title ?? '加工機点検状況')
+      .replace('（日時集約）', '')
+      .replace('(日時集約)', '')
+      .trim();
     const t = createMd3Tokens({ width, height });
     const scale = t.scale;
     const padding = Math.round(12 * scale);
@@ -115,13 +137,14 @@ export class UninspectedMachinesRenderer implements Renderer {
         const x = padding + index * (kpiCardWidth + kpiGap);
         const y = kpiTop;
         const isDateItem = item.label === '対象日';
+        const kpiLabelFontSize = Math.max(20, Math.round(32 * scale * 0.7));
         return `
           <g>
             <rect x="${x}" y="${y}" width="${kpiCardWidth}" height="${kpiHeight}"
               rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
               fill="${t.colors.card.fill}" stroke="${t.colors.card.border}" />
             ${!isDateItem ? `<text x="${x + Math.round(14 * scale)}" y="${y + Math.round(30 * scale)}"
-              font-size="${Math.max(28, Math.round(32 * scale))}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
+              font-size="${kpiLabelFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
               ${escapeXml(item.label)}
             </text>
             <text x="${x + kpiCardWidth - Math.round(14 * scale)}" y="${y + Math.round(74 * scale)}"
@@ -217,6 +240,12 @@ export class UninspectedMachinesRenderer implements Renderer {
       const leftContentTotalHeight = machineNumberFontSize + leftContentGap + machineNameFontSize;
       const machineNumberY = contentCenterY - leftContentTotalHeight / 2 + machineNumberFontSize / 2;
       const machineNameY = machineNumberY + machineNumberFontSize / 2 + leftContentGap + machineNameFontSize / 2;
+      const machineNameMaxWidth = leftContentWidth - cardPadding - Math.round(8 * scale);
+      const truncatedMachineName = truncateTextToWidth(
+        machineName,
+        Math.max(40, machineNameMaxWidth),
+        machineNameFontSize,
+      );
       
       const leftContent = `
         <text x="${cardX + cardPadding}" y="${machineNumberY}"
@@ -225,7 +254,7 @@ export class UninspectedMachinesRenderer implements Renderer {
         </text>
         <text x="${cardX + cardPadding}" y="${machineNameY}"
           dominant-baseline="middle" font-size="${machineNameFontSize}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
-          ${escapeXml(machineName)}
+          ${escapeXml(truncatedMachineName)}
         </text>
       `;
       
