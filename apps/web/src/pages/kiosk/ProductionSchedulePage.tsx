@@ -22,6 +22,7 @@ import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionSche
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
+import { filterResourceCdsByCategory } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
@@ -132,6 +133,8 @@ export function ProductionSchedulePage() {
   const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
   const [hasNoteOnlyFilter, setHasNoteOnlyFilter] = useState(false);
   const [hasDueDateOnlyFilter, setHasDueDateOnlyFilter] = useState(false);
+  const [showGrindingResources, setShowGrindingResources] = useState(false);
+  const [showCuttingResources, setShowCuttingResources] = useState(false);
   const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = useState('');
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
@@ -371,6 +374,12 @@ export function ProductionSchedulePage() {
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
     { pauseRefetch }
   );
+  const visibleResourceCds = useMemo(() => {
+    return filterResourceCdsByCategory(resourcesQuery.data ?? [], {
+      showGrinding: showGrindingResources,
+      showCutting: showCuttingResources
+    });
+  }, [resourcesQuery.data, showCuttingResources, showGrindingResources]);
 
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
@@ -480,6 +489,8 @@ export function ProductionSchedulePage() {
     setActiveResourceAssignedOnlyCds([]);
     setHasNoteOnlyFilter(false);
     setHasDueDateOnlyFilter(false);
+    setShowGrindingResources(false);
+    setShowCuttingResources(false);
   };
 
   const startNoteEdit = (rowId: string, currentNote: string | null) => {
@@ -603,6 +614,14 @@ export function ProductionSchedulePage() {
     });
   };
 
+  const toggleGrindingResources = () => {
+    setShowGrindingResources((value) => !value);
+  };
+
+  const toggleCuttingResources = () => {
+    setShowCuttingResources((value) => !value);
+  };
+
   const getAvailableOrders = (resourceCd: string, current: number | null) => {
     const usage = orderUsageQuery.data?.[resourceCd] ?? [];
     return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
@@ -708,13 +727,17 @@ export function ProductionSchedulePage() {
         onToggleHasNoteOnly={() => setHasNoteOnlyFilter((value) => !value)}
         hasDueDateOnly={hasDueDateOnlyFilter}
         onToggleHasDueDateOnly={() => setHasDueDateOnlyFilter((value) => !value)}
+        showGrindingResources={showGrindingResources}
+        onToggleGrindingResources={toggleGrindingResources}
+        showCuttingResources={showCuttingResources}
+        onToggleCuttingResources={toggleCuttingResources}
         disabled={scheduleQuery.isFetching || completeMutation.isPending}
         isFetching={scheduleQuery.isFetching}
         showFetching={hasQuery}
       />
 
       <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
-        {(resourcesQuery.data ?? []).map((resourceCd) => {
+        {visibleResourceCds.map((resourceCd) => {
           const colorClasses = getResourceColorClasses(resourceCd);
           const isActive = normalizedResourceCds.includes(resourceCd);
           const isAssignedActive = normalizedAssignedOnlyCds.includes(resourceCd);

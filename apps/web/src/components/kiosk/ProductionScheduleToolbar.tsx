@@ -15,6 +15,10 @@ type ProductionScheduleToolbarProps = {
   onToggleHasNoteOnly: () => void;
   hasDueDateOnly: boolean;
   onToggleHasDueDateOnly: () => void;
+  showGrindingResources: boolean;
+  onToggleGrindingResources: () => void;
+  showCuttingResources: boolean;
+  onToggleCuttingResources: () => void;
   disabled?: boolean;
   isFetching?: boolean;
   showFetching?: boolean;
@@ -32,6 +36,10 @@ export function ProductionScheduleToolbar({
   onToggleHasNoteOnly,
   hasDueDateOnly,
   onToggleHasDueDateOnly,
+  showGrindingResources,
+  onToggleGrindingResources,
+  showCuttingResources,
+  onToggleCuttingResources,
   disabled = false,
   isFetching = false,
   showFetching = false
@@ -92,6 +100,28 @@ export function ProductionScheduleToolbar({
             inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
           >
             納期日あり
+          </PillToggle>
+          <PillToggle
+            isActive={showGrindingResources}
+            onClick={onToggleGrindingResources}
+            disabled={disabled}
+            size="md"
+            className="h-10 whitespace-nowrap shrink-0"
+            activeClassName="border-emerald-300 bg-emerald-500 text-white"
+            inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
+          >
+            研削工程
+          </PillToggle>
+          <PillToggle
+            isActive={showCuttingResources}
+            onClick={onToggleCuttingResources}
+            disabled={disabled}
+            size="md"
+            className="h-10 whitespace-nowrap shrink-0"
+            activeClassName="border-emerald-300 bg-emerald-500 text-white"
+            inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
+          >
+            切削工程
           </PillToggle>
           {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </Row>
