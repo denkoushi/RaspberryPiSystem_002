@@ -189,7 +189,7 @@ update-frequency: high
 | [KB-271](./api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない) | 生産スケジュールデータ削除ルール（重複loser即時削除・1年超過は保存しない） | ✅ 解決済み |
 | [KB-272](./api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) | Gmail csvDashboards取得を10分30件運用へ最適化 | ✅ 解決済み |
 | [KB-273](./KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) | CSVダッシュボードの重複削除共通化とエラーメール廃棄ポリシー統一 | ✅ 実装中 |
-| [KB-274](./infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) | 計測機器持出状況サイネージコンテンツの実装とCSVイベント連携 | ✅ 解決済み |
+| [KB-274](./infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応) | signage-render-workerの高メモリ化（断続）と安定化対応 | 🔄 継続観察 |
 | [KB-275](./infrastructure/signage.md#kb-275-加工機点検状況サイネージのレイアウト調整) | 加工機点検状況サイネージのレイアウト調整 | ✅ 解決済み |
 | [KB-248](./frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) | カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応） | ✅ 解決済み |
 | [KB-252](./frontend.md#kb-252-未点検加工機サイネージ設定導線可視化ダッシュボード経由の実装) | 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装 | ✅ 解決済み |

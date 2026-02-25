@@ -13,6 +13,8 @@ export class SignageRenderScheduler {
   private cronJob: cron.ScheduledTask | null = null;
   private worker: ChildProcess | null = null;
   private readonly defaultIntervalSeconds: number;
+  private isRendering = false;
+  private skipCount = 0;
 
   constructor(renderer: SignageRenderer, intervalSeconds: number = 30) {
     this.renderer = renderer;
@@ -74,26 +76,14 @@ export class SignageRenderScheduler {
     logger.info({ interval, cronExpression }, 'Starting signage render scheduler');
 
     this.cronJob = cron.schedule(cronExpression, async () => {
-      try {
-        logger.info('Running scheduled signage render');
-        await this.renderer.renderCurrentContent();
-        logger.info('Scheduled signage render completed');
-      } catch (error) {
-        logger.error({ err: error }, 'Failed to run scheduled signage render');
-      }
+      await this.runScheduledRender('scheduled');
     }, {
       scheduled: true,
       timezone: 'Asia/Tokyo'
     });
 
     // 初回レンダリングを即座に実行
-    this.renderer.renderCurrentContent()
-      .then(() => {
-        logger.info('Initial signage render completed');
-      })
-      .catch((error) => {
-        logger.error({ err: error }, 'Failed to run initial signage render');
-      });
+    void this.runScheduledRender('initial');
   }
 
   /**
@@ -122,6 +112,31 @@ export class SignageRenderScheduler {
   isRunning(): boolean {
     // env だけに依存すると「worker起動失敗→in-processフォールバック」時に不整合が出るため実体で判定する
     return (this.worker !== null && !this.worker.killed) || this.cronJob !== null;
+  }
+
+  private async runScheduledRender(trigger: 'initial' | 'scheduled'): Promise<void> {
+    if (this.isRendering) {
+      this.skipCount += 1;
+      logger.warn(
+        { trigger, skipCount: this.skipCount, reason: 'previous render is still running' },
+        'Skipped signage render to avoid overlapping execution'
+      );
+      return;
+    }
+
+    this.isRendering = true;
+    const startedAt = Date.now();
+    try {
+      logger.info({ trigger }, 'Running scheduled signage render');
+      await this.renderer.renderCurrentContent();
+      const durationMs = Date.now() - startedAt;
+      logger.info({ trigger, durationMs, skipCount: this.skipCount }, 'Scheduled signage render completed');
+    } catch (error) {
+      const durationMs = Date.now() - startedAt;
+      logger.error({ err: error, trigger, durationMs, skipCount: this.skipCount }, 'Failed to run scheduled signage render');
+    } finally {
+      this.isRendering = false;
+    }
   }
 }
 
