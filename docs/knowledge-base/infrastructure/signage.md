@@ -1450,13 +1450,40 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 2. 周期ジョブは高負荷時の再入防止を先に入れると安定化しやすい
 3. まず最小修正で運用観測点を増やし、その後に中規模分離へ段階移行するのが安全
 
-**解決状況**: 🔄 **安定化実装完了（継続観察）**（2026-02-25）
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-25）
 
-**検証結果（今回）**:
+**検証結果（ローカル）**:
 - ✅ lint通過（`apps/api`）
-- ✅ テスト通過（`apps/api`）
-- ✅ Pi5実機で30秒周期ログの開始/完了が1対1で継続
-- ✅ 3分RSS観測（worker）: `1042128 -> 1000352 -> 1012704 -> 1012096 -> 973600 -> 974432` KB（右肩上がりを確認せず）
+- ✅ テスト通過（`apps/api`、100 passed, 2 skipped）
+- ✅ ビルド成功（`apps/api`）
+
+**CI実行結果**:
+- ✅ GitHub Actions成功（Run ID `22393111065`）
+  - `lint-and-test`: 成功
+  - `e2e-smoke`: 成功
+  - `e2e-tests`: 成功
+  - `docker-build`: 成功
+
+**デプロイ結果**:
+- ✅ Pi5でデプロイ成功（Run ID `20260225-200127-25899`）
+  - ブランチ: `fix/signage-worker-memory-guard`
+  - 状態: `success`、`exitCode: 0`
+  - 実行時間: 約16分37秒
+  - 全ホスト成功（raspberrypi5: ok=120, raspberrypi4: ok=91, raspberrypi3: ok=111）
+
+**実機検証結果**:
+- ✅ API正常稼働（Status: ok, Uptime: 約40分）
+- ✅ signage-render-worker実行中（PID: 90293, RSS: 1017.7MB）
+- ✅ スケジューラ正常動作（30秒周期でレンダリング実行）
+- ✅ メモリ使用量の改善確認:
+  - signage-render-worker RSS: 1017.7MB（以前: 約4.3GB → 約76%削減）
+  - システム全体利用可能: 約4.9GB / 8GB
+- ✅ リエントランシーガード動作確認:
+  - ログに`skipCount:0`が記録（重複実行なし）
+  - `trigger: "scheduled"`と`durationMs: 2500-2600ms`が正常に記録
+- ✅ 構造化ログ確認:
+  - `trigger`, `durationMs`, `skipCount`が正常に記録
+  - タイムアウトログに`stage`, `timeoutMs`, `dataSourceType`/`rendererType`が記録
 
 **再発防止（運用）**:
 - schedulerログで `Skipped signage render to avoid overlapping execution` を監視
