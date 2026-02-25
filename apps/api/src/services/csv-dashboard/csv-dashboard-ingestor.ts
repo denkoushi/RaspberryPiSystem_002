@@ -189,7 +189,7 @@ export class CsvDashboardIngestor {
               });
               progressSyncCandidates.push({
                 rowId: created.id,
-                rowData: row.rowData,
+                rowData: row.rowData as Prisma.JsonValue,
                 occurredAt: row.occurredAt,
               });
             }
@@ -216,7 +216,7 @@ export class CsvDashboardIngestor {
             progressSyncCandidates.push(
               ...updates.map((u) => ({
                 rowId: u.id,
-                rowData: u.rowData,
+                rowData: u.rowData as Prisma.JsonValue,
                 occurredAt: u.occurredAt,
               }))
             );
