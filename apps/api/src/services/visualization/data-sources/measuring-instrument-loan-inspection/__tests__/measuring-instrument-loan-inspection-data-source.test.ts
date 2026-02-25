@@ -60,7 +60,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
     expect(prisma.employee.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          department: '加工担当部署',
+          section: '加工担当部署',
           status: EmployeeStatus.ACTIVE,
         },
       }),

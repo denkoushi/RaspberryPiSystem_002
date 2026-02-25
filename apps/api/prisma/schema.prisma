@@ -78,7 +78,8 @@ model Employee {
   lastName                 String? // 苗字（CSVインポート用）
   firstName                String? // 名前（CSVインポート用）
   nfcTagUid                String?                   @unique
-  department               String?
+  department               String? // 部署（例: 製造担当部門）
+  section                  String? // セクション（例: 加工担当部署）
   contact                  String?
   status                   EmployeeStatus            @default(ACTIVE)
   createdAt                DateTime                  @default(now())

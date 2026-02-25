@@ -62,7 +62,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
 
     const employees = await prisma.employee.findMany({
       where: {
-        department: sectionEquals,
+        section: sectionEquals,
         status: EmployeeStatus.ACTIVE,
       },
       select: {

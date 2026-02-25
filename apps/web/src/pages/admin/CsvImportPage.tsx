@@ -20,7 +20,8 @@ const DEFAULT_COLUMN_DEFINITIONS: Record<CsvImportConfigType, CsvImportColumnDef
     { internalName: 'firstName', displayName: '名前', csvHeaderCandidates: ['firstName', '名前'], dataType: 'string', order: 2 },
     { internalName: 'nfcTagUid', displayName: 'NFCタグUID', csvHeaderCandidates: ['nfcTagUid', 'NFCタグUID'], dataType: 'string', order: 3, required: false },
     { internalName: 'department', displayName: '部署', csvHeaderCandidates: ['department', '部署'], dataType: 'string', order: 4, required: false },
-    { internalName: 'status', displayName: '状態', csvHeaderCandidates: ['status', '状態'], dataType: 'string', order: 5, required: false }
+    { internalName: 'section', displayName: 'セクション', csvHeaderCandidates: ['Section', 'section', 'セクション'], dataType: 'string', order: 5, required: false },
+    { internalName: 'status', displayName: '状態', csvHeaderCandidates: ['status', '状態'], dataType: 'string', order: 6, required: false }
   ],
   items: [
     { internalName: 'itemCode', displayName: '管理番号', csvHeaderCandidates: ['itemCode', '管理番号'], dataType: 'string', order: 0 },

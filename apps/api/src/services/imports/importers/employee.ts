@@ -17,6 +17,7 @@ const employeeCsvSchema = z.object({
   firstName: z.string().min(1, '名前は必須です'),
   nfcTagUid: z.string().optional(),
   department: z.string().optional(),
+  section: z.string().optional(),
   status: z.string().optional()
 });
 
@@ -154,6 +155,7 @@ export class EmployeeCsvImporter implements CsvImporter {
           lastName: row.lastName,
           firstName: row.firstName,
           department: row.department || null,
+          section: row.section || null,
           nfcTagUid: row.nfcTagUid || null,
           status: normalizeEmployeeStatus(row.status)
         };
