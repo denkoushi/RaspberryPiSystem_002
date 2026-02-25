@@ -12,6 +12,7 @@ import {
 } from '../production-schedule/row-resolver/index.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
+import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
@@ -23,6 +24,7 @@ export class CsvDashboardIngestor {
   private static readonly COMPLETED_PROGRESS_VALUE = '完了';
   private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
+  private progressSyncFromCsvService = new ProgressSyncFromCsvService();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -172,9 +174,28 @@ export class CsvDashboardIngestor {
         const { rowsToCreate, updates } = diff;
         rowsAdded = diff.rowsAdded;
         rowsSkipped = diff.rowsSkipped + preDedupSkippedRows;
+        const progressSyncCandidates: Array<{
+          rowId: string;
+          rowData: Prisma.JsonValue;
+          occurredAt: Date;
+        }> = [];
 
         if (rowsToCreate.length > 0) {
-          await prisma.csvDashboardRow.createMany({ data: rowsToCreate });
+          if (isProductionScheduleDashboard) {
+            for (const row of rowsToCreate) {
+              const created = await prisma.csvDashboardRow.create({
+                data: row,
+                select: { id: true },
+              });
+              progressSyncCandidates.push({
+                rowId: created.id,
+                rowData: row.rowData,
+                occurredAt: row.occurredAt,
+              });
+            }
+          } else {
+            await prisma.csvDashboardRow.createMany({ data: rowsToCreate });
+          }
         }
 
         if (updates.length > 0) {
@@ -191,6 +212,21 @@ export class CsvDashboardIngestor {
               )
             );
           }
+          if (isProductionScheduleDashboard) {
+            progressSyncCandidates.push(
+              ...updates.map((u) => ({
+                rowId: u.id,
+                rowData: u.rowData,
+                occurredAt: u.occurredAt,
+              }))
+            );
+          }
+        }
+
+        if (isProductionScheduleDashboard && progressSyncCandidates.length > 0) {
+          await this.progressSyncFromCsvService.sync({
+            candidates: progressSyncCandidates,
+          });
         }
       }
 
