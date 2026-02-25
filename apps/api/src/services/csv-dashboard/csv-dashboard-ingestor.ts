@@ -7,18 +7,22 @@ import { ApiError } from '../../lib/errors.js';
 import {
   PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
+  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   resolveToMaxProductNoPerLogicalKey,
 } from '../production-schedule/row-resolver/index.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
+import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
 
 /**
  * CSVダッシュボード取り込みサービス
  */
 export class CsvDashboardIngestor {
   private static readonly COMPLETED_PROGRESS_VALUE = '完了';
+  private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  private dedupCleanupService = new CsvDashboardDedupCleanupService();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -210,24 +214,45 @@ export class CsvDashboardIngestor {
         });
       }
 
-      // production schedule (DEDUP) のみ: winner以外の重複loserを即時削除（ベストエフォート）
-      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+      // DEDUP全体: 今回観測したキー範囲に限定して重複 loser を即時削除（ベストエフォート）
+      if (dashboard.ingestMode === 'DEDUP') {
         try {
-          const logicalKeys = ProductionScheduleCleanupService.extractLogicalKeysFromRows({
+          const keyColumns =
+            isProductionScheduleDashboard && dashboard.dedupKeyColumns.length === 0
+              ? [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS]
+              : dashboard.dedupKeyColumns;
+          const dedupKeys = CsvDashboardIngestor.extractDedupKeysFromRows({
             rows: productionScheduleDedupRows,
+            keyColumns,
           });
-          const { deletedCount } = await cleanupService.deleteDuplicateLosersForKeys({
+          const { deletedCount } = await this.dedupCleanupService.deleteDuplicateLosersForKeys({
             csvDashboardId: dashboardId,
-            logicalKeys,
+            keyColumns,
+            keys: dedupKeys,
+            winnerOrder: isProductionScheduleDashboard
+              ? [
+                  {
+                    expression: CsvDashboardIngestor.buildProductNoOrderExpression(
+                      PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN
+                    ),
+                    direction: 'DESC',
+                  },
+                  { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+                  { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+                ]
+              : [
+                  { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+                  { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+                ],
           });
           logger.info(
-            { dashboardId, deletedCount, keys: logicalKeys.length },
-            '[CsvDashboardIngestor] Production schedule duplicate loser cleanup completed'
+            { dashboardId, deletedCount, keys: dedupKeys.length, keyColumns },
+            '[CsvDashboardIngestor] Dashboard duplicate loser cleanup completed'
           );
         } catch (error) {
           logger.error(
             { err: error, dashboardId },
-            '[CsvDashboardIngestor] Production schedule duplicate loser cleanup failed'
+            '[CsvDashboardIngestor] Dashboard duplicate loser cleanup failed'
           );
         }
       }
@@ -480,5 +505,49 @@ export class CsvDashboardIngestor {
         `FSEIBANは英数字8桁である必要があります（割当がない場合は*のみの8桁も可）（行: ${rowIndex} / value: ${seiban} / length: ${seiban.length}）`
       );
     }
+  }
+
+  static extractDedupKeysFromRows(params: {
+    rows: Array<{ data: NormalizedRowData }>;
+    keyColumns: string[];
+    maxKeys?: number;
+  }): Array<Record<string, string>> {
+    const keyColumns = params.keyColumns.filter((v) => v.trim().length > 0);
+    if (keyColumns.length === 0) {
+      return [];
+    }
+    const maxKeys = Math.max(1, Math.min(params.maxKeys ?? 5000, 50000));
+    const seen = new Set<string>();
+    const result: Array<Record<string, string>> = [];
+    for (const row of params.rows) {
+      const key: Record<string, string> = {};
+      for (const column of keyColumns) {
+        const value = row.data[column];
+        key[column] =
+          typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : '';
+      }
+      const signature = keyColumns.map((column) => key[column]).join('\t');
+      if (seen.has(signature)) {
+        continue;
+      }
+      seen.add(signature);
+      result.push(key);
+      if (result.length >= maxKeys) {
+        break;
+      }
+    }
+    return result;
+  }
+
+  private static buildProductNoOrderExpression(productNoColumn: string): Prisma.Sql {
+    if (!CsvDashboardIngestor.SAFE_SQL_IDENTIFIER.test(productNoColumn)) {
+      throw new Error(`Invalid ProductNo column for winner order: ${productNoColumn}`);
+    }
+    const escaped = productNoColumn.replace(/'/g, "''");
+    return Prisma.raw(`CASE
+      WHEN (r."rowData"->>'${escaped}') ~ '^[0-9]+$'
+      THEN (r."rowData"->>'${escaped}')::bigint
+      ELSE -1
+    END`);
   }
 }

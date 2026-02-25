@@ -8,6 +8,7 @@ import { NoMatchingMessageError } from '../backup/storage/gmail-storage.provider
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-subject-pattern.provider.js';
 import { GmailUnifiedMailboxFetcher } from '../backup/gmail-unified-mailbox-fetcher.js';
+import { CsvErrorDispositionPolicy } from './csv-error-disposition-policy.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -20,6 +21,9 @@ export type CsvDashboardIngestResult = {
     postProcessedMessageIdSuffixes: string[];
     failedMessageIdSuffixes: string[];
     postProcessErrorByMessageIdSuffix?: Record<string, { step: 'markAsRead' | 'trashMessage'; error: string }>;
+    disposedMessageIdSuffixes?: string[];
+    disposeReasonByMessageIdSuffix?: Record<string, string>;
+    postProcessStateByMessageIdSuffix?: Record<string, 'completed' | 'disposed_non_retriable' | 'failed'>;
     canPostProcessGmail: boolean;
     // #region agent debug: ステップ追跡用
     stepLogs: string[];
@@ -34,8 +38,10 @@ export class CsvDashboardImportService {
   private measuringInstrumentLoanEventService = new MeasuringInstrumentLoanEventService();
   private subjectPatternProvider = new PrismaCsvImportSubjectPatternProvider();
   private unifiedMailboxFetcher = new GmailUnifiedMailboxFetcher();
+  private errorDispositionPolicy = new CsvErrorDispositionPolicy();
 
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  private static readonly INGEST_AUDIT_PREFIX = '[ingest-audit]';
 
   private static canFetchUnifiedMailbox(
     storageProvider: StorageProvider
@@ -69,6 +75,51 @@ export class CsvDashboardImportService {
       candidates.push(legacy);
     }
     return candidates;
+  }
+
+  private async appendIngestRunAudit(params: {
+    dashboardId: string;
+    messageId?: string;
+    postProcessState: 'completed' | 'disposed_non_retriable' | 'failed';
+    reason?: string;
+  }): Promise<void> {
+    if (!params.messageId) return;
+    const latestRun = await prisma.csvDashboardIngestRun.findFirst({
+      where: {
+        csvDashboardId: params.dashboardId,
+        messageId: params.messageId,
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true, errorMessage: true },
+    });
+    if (!latestRun) return;
+    const nextMessage = CsvDashboardImportService.mergeAuditMessage({
+      currentErrorMessage: latestRun.errorMessage,
+      postProcessState: params.postProcessState,
+      reason: params.reason,
+    });
+    await prisma.csvDashboardIngestRun.update({
+      where: { id: latestRun.id },
+      data: { errorMessage: nextMessage },
+    });
+  }
+
+  private static mergeAuditMessage(params: {
+    currentErrorMessage: string | null;
+    postProcessState: 'completed' | 'disposed_non_retriable' | 'failed';
+    reason?: string;
+  }): string {
+    const auditLine = `${CsvDashboardImportService.INGEST_AUDIT_PREFIX} postProcessState=${params.postProcessState}${
+      params.reason ? ` reason=${params.reason}` : ''
+    }`;
+    const current = params.currentErrorMessage?.trim();
+    if (!current) return auditLine;
+    const lines = current
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith(CsvDashboardImportService.INGEST_AUDIT_PREFIX));
+    lines.push(auditLine);
+    return lines.join('\n');
   }
 
   /**
@@ -193,11 +244,17 @@ export class CsvDashboardImportService {
       let lastError: unknown | null = null;
       const downloadedMessageIdSuffixes: string[] = [];
       const postProcessedMessageIdSuffixes: string[] = [];
+      const disposedMessageIdSuffixes: string[] = [];
       const failedMessageIdSuffixes: string[] = [];
+      const postProcessStateByMessageIdSuffix: Record<
+        string,
+        'completed' | 'disposed_non_retriable' | 'failed'
+      > = {};
       const postProcessErrorByMessageIdSuffix: Record<
         string,
         { step: 'markAsRead' | 'trashMessage'; error: string }
       > = {};
+      const disposeReasonByMessageIdSuffix: Record<string, string> = {};
       const canPostProcessGmail = provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider);
       // #region agent debug
       const stepLogs: string[] = [];
@@ -327,6 +384,12 @@ export class CsvDashboardImportService {
             stepLogs.push(`${safeMessageId}:postProcess-complete`);
             // #endregion
             if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
+            if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'completed';
+            await this.appendIngestRunAudit({
+              dashboardId,
+              messageId,
+              postProcessState: 'completed',
+            });
           }
         } catch (error) {
           // #region agent debug
@@ -336,10 +399,74 @@ export class CsvDashboardImportService {
           // #endregion
           lastError = error;
           if (safeMessageId) failedMessageIdSuffixes.push(safeMessageId);
+          if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
           logger?.error(
             { err: error, dashboardId, messageId },
             '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
           );
+          if (provider === 'gmail' && messageId) {
+            await this.appendIngestRunAudit({
+              dashboardId,
+              messageId,
+              postProcessState: 'failed',
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
+          if (
+            provider === 'gmail' &&
+            messageId &&
+            CsvDashboardImportService.canPostProcessGmail(storageProvider) &&
+            this.errorDispositionPolicy.classify(error) === 'NON_RETRIABLE'
+          ) {
+            try {
+              await storageProvider.trashMessage(messageId);
+              if (safeMessageId) {
+                disposedMessageIdSuffixes.push(safeMessageId);
+                postProcessStateByMessageIdSuffix[safeMessageId] = 'disposed_non_retriable';
+                disposeReasonByMessageIdSuffix[safeMessageId] =
+                  error instanceof Error ? error.message : String(error);
+              }
+              await this.appendIngestRunAudit({
+                dashboardId,
+                messageId,
+                postProcessState: 'disposed_non_retriable',
+                reason: error instanceof Error ? error.message : String(error),
+              });
+              logger?.warn(
+                {
+                  dashboardId,
+                  messageId,
+                  disposition: 'NON_RETRIABLE',
+                  postProcessState: 'disposed_non_retriable',
+                },
+                '[CsvDashboardImportService] Non-retriable CSV error: message moved to trash'
+              );
+            } catch (disposeError) {
+              if (safeMessageId) {
+                postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
+                postProcessErrorByMessageIdSuffix[safeMessageId] = {
+                  step: 'trashMessage',
+                  error: disposeError instanceof Error ? disposeError.message : String(disposeError),
+                };
+              }
+              await this.appendIngestRunAudit({
+                dashboardId,
+                messageId,
+                postProcessState: 'failed',
+                reason: disposeError instanceof Error ? disposeError.message : String(disposeError),
+              });
+              logger?.error(
+                {
+                  err: disposeError,
+                  dashboardId,
+                  messageId,
+                  disposition: 'NON_RETRIABLE',
+                  postProcessState: 'failed',
+                },
+                '[CsvDashboardImportService] Failed to trash non-retriable error message'
+              );
+            }
+          }
           continue;
         }
       }
@@ -357,9 +484,16 @@ export class CsvDashboardImportService {
           bufferResultsCount: bufferResults.length,
           downloadedMessageIdSuffixes,
           postProcessedMessageIdSuffixes,
+          disposedMessageIdSuffixes,
+          postProcessStateByMessageIdSuffix:
+            Object.keys(postProcessStateByMessageIdSuffix).length > 0
+              ? postProcessStateByMessageIdSuffix
+              : undefined,
           failedMessageIdSuffixes,
           postProcessErrorByMessageIdSuffix:
             Object.keys(postProcessErrorByMessageIdSuffix).length > 0 ? postProcessErrorByMessageIdSuffix : undefined,
+          disposeReasonByMessageIdSuffix:
+            Object.keys(disposeReasonByMessageIdSuffix).length > 0 ? disposeReasonByMessageIdSuffix : undefined,
           canPostProcessGmail,
           // #region agent debug
           stepLogs,

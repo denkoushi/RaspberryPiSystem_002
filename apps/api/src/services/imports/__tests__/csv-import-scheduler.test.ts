@@ -30,8 +30,12 @@ vi.mock('../../../lib/logger.js', () => ({
 // Prismaのモック（Gmail OAuth expired alertテスト用）
 const mockCreateAlert = vi.fn();
 const mockCreateAlertDelivery = vi.fn();
+const mockFindCsvDashboards = vi.fn().mockResolvedValue([]);
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    csvDashboard: {
+      findMany: mockFindCsvDashboards,
+    },
     alert: {
       create: mockCreateAlert,
     },
@@ -69,6 +73,8 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     loadMock.mockReset();
     mockCreateAlert.mockReset();
     mockCreateAlertDelivery.mockReset();
+    mockFindCsvDashboards.mockReset();
+    mockFindCsvDashboards.mockResolvedValue([]);
   });
 
   it('should register cron tasks (import + cleanup + retention)', async () => {

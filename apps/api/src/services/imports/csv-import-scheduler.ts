@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
+import { CsvDashboardDedupCleanupService } from '../csv-dashboard/csv-dashboard-dedup-cleanup.service.js';
 import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js';
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
@@ -16,7 +17,7 @@ import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { GmailImportOrchestrator } from '../backup/gmail-import-orchestrator.js';
 import { prisma } from '../../lib/prisma.js';
-import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
+import { AlertSeverity, AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 import crypto from 'crypto';
 
@@ -29,6 +30,7 @@ export class CsvImportScheduler {
   private csvDashboardRetentionTask: cron.ScheduledTask | null = null;
   private measuringInstrumentLoanRetentionTask: cron.ScheduledTask | null = null;
   private productionScheduleCleanupTask: cron.ScheduledTask | null = null;
+  private csvDashboardDedupCleanupTask: cron.ScheduledTask | null = null;
   private isRunning = false;
   private runningImports: Set<string> = new Set(); // 実行中のインポートID
   private historyService: ImportHistoryService;
@@ -40,6 +42,7 @@ export class CsvImportScheduler {
   private createCsvDashboardRetentionService: () => CsvDashboardRetentionService;
   private createMeasuringInstrumentLoanRetentionService: () => MeasuringInstrumentLoanRetentionService;
   private createProductionScheduleCleanupService: () => ProductionScheduleCleanupService;
+  private createCsvDashboardDedupCleanupService: () => CsvDashboardDedupCleanupService;
   private gmailOrchestrator: GmailImportOrchestrator;
   private readonly minIntervalMinutes = 5;
 
@@ -52,6 +55,7 @@ export class CsvImportScheduler {
     createCsvDashboardRetentionService?: () => CsvDashboardRetentionService;
     createMeasuringInstrumentLoanRetentionService?: () => MeasuringInstrumentLoanRetentionService;
     createProductionScheduleCleanupService?: () => ProductionScheduleCleanupService;
+    createCsvDashboardDedupCleanupService?: () => CsvDashboardDedupCleanupService;
   } = {}) {
     this.historyService = new ImportHistoryService();
     this.alertService = new ImportAlertService();
@@ -62,6 +66,7 @@ export class CsvImportScheduler {
     this.createCsvDashboardRetentionService = () => new CsvDashboardRetentionService();
     this.createMeasuringInstrumentLoanRetentionService = () => new MeasuringInstrumentLoanRetentionService();
     this.createProductionScheduleCleanupService = () => new ProductionScheduleCleanupService();
+    this.createCsvDashboardDedupCleanupService = () => new CsvDashboardDedupCleanupService();
     this.gmailOrchestrator = new GmailImportOrchestrator({
       executeSchedule: async ({ config, importSchedule, isManual }) =>
         this.executeSingleRun({ config, importSchedule, isManual }),
@@ -78,6 +83,8 @@ export class CsvImportScheduler {
       this.createMeasuringInstrumentLoanRetentionService = overrides.createMeasuringInstrumentLoanRetentionService;
     if (overrides.createProductionScheduleCleanupService)
       this.createProductionScheduleCleanupService = overrides.createProductionScheduleCleanupService;
+    if (overrides.createCsvDashboardDedupCleanupService)
+      this.createCsvDashboardDedupCleanupService = overrides.createCsvDashboardDedupCleanupService;
   }
 
   private extractIntervalMinutes(schedule: string): number | null {
@@ -295,6 +302,8 @@ export class CsvImportScheduler {
       await this.startMeasuringInstrumentLoanRetentionJob();
       // 生産スケジュール日次クリーンアップJobを開始
       await this.startProductionScheduleCleanupJob();
+      // CSVダッシュボード共通DEDUP収束Jobを開始
+      await this.startCsvDashboardDedupCleanupJob();
       return;
     }
 
@@ -392,6 +401,8 @@ export class CsvImportScheduler {
 
     // 生産スケジュール日次クリーンアップJobを開始
     await this.startProductionScheduleCleanupJob();
+    // CSVダッシュボード共通DEDUP収束Jobを開始
+    await this.startCsvDashboardDedupCleanupJob();
   }
 
   /**
@@ -646,6 +657,103 @@ export class CsvImportScheduler {
   }
 
   /**
+   * CSVダッシュボード（DEDUP）の日次収束クリーンアップJobを開始
+   * - Production Schedule は専用Jobを維持するため除外
+   */
+  private async startCsvDashboardDedupCleanupJob(): Promise<void> {
+    if (this.csvDashboardDedupCleanupTask) {
+      this.csvDashboardDedupCleanupTask.stop();
+      this.csvDashboardDedupCleanupTask = null;
+    }
+
+    // デフォルト: 毎日 02:40（Asia/Tokyo）
+    const cleanupSchedule = '40 2 * * *';
+    try {
+      if (!validate(cleanupSchedule)) {
+        logger?.warn(
+          { schedule: cleanupSchedule },
+          '[CsvImportScheduler] Invalid csv dashboard dedup cleanup schedule format, skipping'
+        );
+        return;
+      }
+    } catch (error) {
+      logger?.warn(
+        { err: error, schedule: cleanupSchedule },
+        '[CsvImportScheduler] Invalid csv dashboard dedup cleanup schedule format, skipping'
+      );
+      return;
+    }
+
+    this.csvDashboardDedupCleanupTask = cron.schedule(
+      cleanupSchedule,
+      async () => {
+        try {
+          const dashboards = await prisma.csvDashboard.findMany({
+            where: {
+              enabled: true,
+              ingestMode: 'DEDUP',
+              NOT: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+            },
+            select: {
+              id: true,
+              name: true,
+              dedupKeyColumns: true,
+            },
+          });
+          if (dashboards.length === 0) {
+            logger?.info('[CsvImportScheduler] No DEDUP csv dashboards for nightly cleanup');
+            return;
+          }
+
+          logger?.info(
+            { dashboardCount: dashboards.length },
+            '[CsvImportScheduler] Starting nightly csv dashboard dedup convergence cleanup'
+          );
+          const cleanupService = this.createCsvDashboardDedupCleanupService();
+          for (const dashboard of dashboards) {
+            const keyColumns = dashboard.dedupKeyColumns.filter((v) => v.trim().length > 0);
+            if (keyColumns.length === 0) {
+              logger?.warn(
+                { dashboardId: dashboard.id, dashboardName: dashboard.name },
+                '[CsvImportScheduler] Skip nightly dedup cleanup: dedupKeyColumns is empty'
+              );
+              continue;
+            }
+            const result = await cleanupService.deleteDuplicateLosersGlobally({
+              csvDashboardId: dashboard.id,
+              keyColumns,
+              winnerOrder: [
+                { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+                { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+              ],
+            });
+            logger?.info(
+              {
+                dashboardId: dashboard.id,
+                dashboardName: dashboard.name,
+                keyColumns,
+                deletedCount: result.deletedCount,
+              },
+              '[CsvImportScheduler] Nightly csv dashboard dedup cleanup completed'
+            );
+          }
+        } catch (error) {
+          logger?.error(
+            { err: error },
+            '[CsvImportScheduler] Nightly csv dashboard dedup cleanup failed'
+          );
+        }
+      },
+      { scheduled: true, timezone: 'Asia/Tokyo' }
+    );
+
+    logger?.info(
+      { schedule: cleanupSchedule },
+      '[CsvImportScheduler] CSV dashboard dedup cleanup job registered'
+    );
+  }
+
+  /**
    * スケジューラーを停止
    */
   stop(): void {
@@ -677,6 +785,11 @@ export class CsvImportScheduler {
       this.productionScheduleCleanupTask.stop();
       this.productionScheduleCleanupTask = null;
       logger?.info('[CsvImportScheduler] Production schedule cleanup task stopped');
+    }
+    if (this.csvDashboardDedupCleanupTask) {
+      this.csvDashboardDedupCleanupTask.stop();
+      this.csvDashboardDedupCleanupTask = null;
+      logger?.info('[CsvImportScheduler] CSV dashboard dedup cleanup task stopped');
     }
 
     this.tasks.clear();

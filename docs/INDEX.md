@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-02-24）
 
+- **✅ CSVダッシュボード重複削除共通化 + エラーメール廃棄ポリシー統一（実装中間報告）**: DEDUP時の重複 loser 削除をProduction Schedule専用から共通サービスへ拡張し、観測キー範囲の即時削除を全ダッシュボードで適用。あわせて非再試行可能なCSVエラーのみを即時ゴミ箱移動（既存ラベル運用を維持）するポリシー分離を実装。`IngestRun`/構造化ログへ後処理状態（`completed` / `disposed_non_retriable` / `failed`）と理由を記録する監査情報を追加。詳細は [knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) を参照。
+
 - **✅ Gmail自動運用プロトコル フェーズ2テスト追加・CI成功・Pi5デプロイ・実機検証完了**: フェーズ2のテスト（GmailUnifiedMailboxFetcher、downloadAllBySubjectPatterns）を追加し、CI成功・Pi5限定デプロイ（Run ID `20260224-084216-12664`）・実機検証を実施。デプロイ時は未commit変更でfail-fastしたためstashで退避して実行。実機はAPI疎通・認証・主要API応答を確認。**解決策1〜4の進捗**は [plans/gmail-auto-protocol-progress.md](./plans/gmail-auto-protocol-progress.md) を参照。詳細は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
 - **✅ Gmail自動運用プロトコル フェーズ1実機検証完了**: フェーズ1の実装内容（単一オーケストレータ・429状態機械・PROCESSING自動解消）が実機環境で正常に動作することを確認。**検証方法**: Tailscale経由でAPI接続し、ヘルスチェック・スケジュール設定・インポート履歴・手動実行を確認。**検証結果**: API正常応答（`status: "ok"`）、Gmail csvDashboardsスケジュール3件が存在しすべて10分ごとに設定、PROCESSING状態の履歴0件（古いPROCESSING状態は解消済み）、429発生時にクールダウン処理が正常に動作（手動実行時に「Gmail API is rate limited; deferred until 2026-02-23T23:03:49.435Z」が返された）、GmailRateLimitStateが正常に動作（429発生時にクールダウン状態が記録され、再突入が防止される）。**検証できなかった項目**: SSH接続が必要な項目（ログ確認、DB直接確認）は未実施。**ドキュメント更新**: KB-216を更新（フェーズ1実機検証結果を追加）、実機検証チェックリストに結果を記録、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [knowledge-base/api.md#kb-216](./knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) / [guides/gmail-auto-protocol-phase1-verification.md](./guides/gmail-auto-protocol-phase1-verification.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
