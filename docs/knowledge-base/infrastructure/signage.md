@@ -98,6 +98,33 @@ update-frequency: medium
 
 ---
 
+### [KB-236] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
+
+**事象**:
+- 管理コンソールで可視化ダッシュボードを更新後、`再レンダリング失敗` ダイアログが出る
+- APIログに `dataSource timeout (5000ms)` / `Failed to run scheduled signage render` が繰り返し出る
+
+**要因**:
+- `uninspected_machines` が `csvDashboardId` の全行を取得し、アプリ側で日付判定していた
+- データ量増加時に5秒タイムアウトを超過し、サイネージ全体レンダリングが失敗
+
+**有効だった対策**:
+- `MachineService.findDailyInspectionSummaries` で `CsvDashboardRow` 取得時に
+  `occurredAt` のJST日次範囲（`gte`/`lt`）をDB側フィルタとして適用
+- 期間計算・上限制限・遅延計測を可視化データソース共通ユーティリティへ分離
+
+**運用ルール（再発防止）**:
+- 可視化データソースで時系列データを扱う場合、**期間フィルタは必ずDB側で実施**する
+- 原則: 「DBで絞る → アプリ側で最終整形」
+- 監視時は `Visualization data source is slow` と `dataSource timeout (5000ms)` を優先確認
+
+**関連ファイル**:
+- `apps/api/src/services/tools/machine.service.ts`
+- `apps/api/src/services/visualization/data-sources/_shared/data-source-utils.ts`
+- `apps/api/src/services/visualization/data-sources/uninspected-machines/uninspected-machines-data-source.ts`
+
+---
+
 ### [KB-081] Pi3サイネージのPDF/TOOLS画面が新デザインへ更新されない
 
 **EXEC_PLAN.md参照**: Phase 8 サイネージ／キオスク回帰対応（2025-12-05）

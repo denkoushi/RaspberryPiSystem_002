@@ -166,6 +166,21 @@ describe('MachineService', () => {
       date: '2026-02-11',
     });
 
+    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
+      where: {
+        csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+        occurredAt: {
+          gte: new Date('2026-02-10T15:00:00.000Z'),
+          lt: new Date('2026-02-11T15:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+        occurredAt: true,
+        rowData: true,
+      },
+    });
+
     expect(result.totalRunningMachines).toBe(2);
     expect(result.inspectedRunningCount).toBe(1);
     expect(result.uninspectedCount).toBe(1);

@@ -323,7 +323,7 @@ export class MachineService {
 
   async findDailyInspectionSummaries(params: UninspectedMachineQuery) {
     const { csvDashboardId } = params;
-    const { date } = resolveTokyoDayRange(params.date);
+    const { date, start, end } = resolveTokyoDayRange(params.date);
 
     const runningMachines = await prisma.machine.findMany({
       where: { operatingStatus: '稼働中' },
@@ -334,6 +334,10 @@ export class MachineService {
     const rows = await prisma.csvDashboardRow.findMany({
       where: {
         csvDashboardId,
+        occurredAt: {
+          gte: start,
+          lt: end,
+        },
       },
       select: {
         id: true,

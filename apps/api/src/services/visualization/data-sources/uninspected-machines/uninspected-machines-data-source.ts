@@ -1,9 +1,15 @@
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { MachineService } from '../../../tools/machine.service.js';
+import {
+  clampPositiveInt,
+  resolveJstDayRange,
+  withDataSourceTiming,
+} from '../_shared/data-source-utils.js';
 
 const MAX_ROWS_LIMIT = 200;
 const DEFAULT_MAX_ROWS = MAX_ROWS_LIMIT;
+const SLOW_THRESHOLD_MS = 2000;
 
 type UninspectedMachinesMetadata = {
   date?: string;
@@ -19,19 +25,6 @@ function asRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
   }
   return {};
-}
-
-function parsePositiveInt(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(1, Math.min(MAX_ROWS_LIMIT, Math.floor(value)));
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return Math.max(1, Math.min(MAX_ROWS_LIMIT, Math.floor(parsed)));
-    }
-  }
-  return fallback;
 }
 
 function buildEmptyTable(metadata: UninspectedMachinesMetadata): TableVisualizationData {
@@ -50,8 +43,8 @@ export class UninspectedMachinesDataSource implements DataSource {
   async fetchData(config: Record<string, unknown>): Promise<VisualizationData> {
     const query = asRecord(config);
     const csvDashboardId = typeof query.csvDashboardId === 'string' ? query.csvDashboardId : '';
-    const date = typeof query.date === 'string' ? query.date : undefined;
-    const maxRows = parsePositiveInt(query.maxRows, DEFAULT_MAX_ROWS);
+    const date = typeof query.date === 'string' ? resolveJstDayRange(query.date).date : undefined;
+    const maxRows = clampPositiveInt(query.maxRows, DEFAULT_MAX_ROWS, { max: MAX_ROWS_LIMIT });
 
     if (!csvDashboardId) {
       return buildEmptyTable({
@@ -60,10 +53,15 @@ export class UninspectedMachinesDataSource implements DataSource {
     }
 
     try {
-      const result = await this.machineService.findDailyInspectionSummaries({
-        csvDashboardId,
-        date,
-      });
+      const result = await withDataSourceTiming(
+        this.type,
+        async () =>
+          this.machineService.findDailyInspectionSummaries({
+            csvDashboardId,
+            date,
+          }),
+        { warnThresholdMs: SLOW_THRESHOLD_MS },
+      );
 
       const sortedMachines = [...result.machines].sort((a, b) => {
         if (a.used !== b.used) {
