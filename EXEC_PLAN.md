@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-25) **CSVダッシュボードDEDUP共通化とエラーメール廃棄ポリシー統一・CI成功・デプロイ完了・実機検証完了**: Production Schedule専用だった重複loser削除を全DEDUPダッシュボード共通サービスへ拡張し、非再試行可能なCSVエラーのみを即時ゴミ箱移動するポリシー分離を実装。**実装内容**: `CsvDashboardDedupCleanupService`を新設し、観測キー範囲の即時削除（`deleteDuplicateLosersForKeys`）と日次収束ジョブ（`deleteDuplicateLosersGlobally`）を実装。`CsvErrorDispositionPolicy`を新設し、`RETRIABLE`/`NON_RETRIABLE`判定を分離（`GmailRateLimitedDeferredError`は`RETRIABLE`、`CSV_HEADER_MISMATCH`やProduction Scheduleフォーマットエラーは`NON_RETRIABLE`）。`CsvDashboardIngestor`で全DEDUPダッシュボードに共通cleanupを適用（`keyColumns`と`winnerOrder`を動的解決、Production Scheduleは既存`ProductNo`優先順位を維持）。`CsvDashboardImportService`で`NON_RETRIABLE`のみ`trashMessage`を実行し、監査情報（`postProcessStateByMessageIdSuffix`/`disposeReasonByMessageIdSuffix`）を`IngestRun.errorMessage`と構造化ログに記録。`CsvImportScheduler`に日次クリーンアップジョブ（`40 2 * * *` Asia/Tokyo）を追加し、全DEDUPダッシュボード（Production Schedule除く）のグローバル収束を実行。**実装ファイル**: `csv-dashboard-dedup-cleanup.service.ts`（新規）、`csv-error-disposition-policy.ts`（新規）、`csv-dashboard-ingestor.ts`（修正）、`csv-dashboard-import.service.ts`（修正）、`csv-import-scheduler.ts`（修正）、ユニットテスト3ファイル追加。**ローカル**: 全テスト14件パス（csv-dashboard系）、lint・build成功。**CI**: Run ID `22376265460` 成功（全ジョブ成功）。**デプロイ**: 標準手順に従い、未commit変更を`git stash`で退避→`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、Run ID `20260225-095437-12216`でデタッチ実行、約7分で`state: success`、`exitCode: 0`。**実機検証**: APIヘルスチェック（`status: "ok"`）、DBマイグレーション（34 migrations）、デプロイコミットハッシュ（`910adf4`）一致確認、`backup.json`保持確認。**ドキュメント更新**: KB-273を追加、INDEX.mdを更新、knowledge-base/index.mdを更新（件数58件に更新）。詳細は [docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+
 - [x] (2026-02-24) **Gmail自動運用プロトコル フェーズ2テスト追加・CI成功・Pi5デプロイ完了・実機検証完了**: フェーズ2の未カバーだったテストを追加し、CI・デプロイ・実機検証を実施。**実装内容**: `GmailUnifiedMailboxFetcher`のユニットテスト（`gmail-unified-mailbox-fetcher.test.ts`）を新規追加、`GmailStorageProvider.downloadAllBySubjectPatterns`のテストを`gmail-storage.provider.test.ts`に追加（OR条件・空パターン・NoMatchingMessageError・AdaptiveRateController連携・パターン不一致スキップなど6ケース）。**ローカル**: 全テスト574件パス、lint・build成功。**CI**: Run ID `22329165576` 成功。**デプロイ**: 標準手順（`docs/guides/deployment.md`）に従い、未commit変更でfail-fastになったため`git stash`で退避→`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、Run ID `20260224-084216-12664`でデタッチ実行、約7分30秒で`state: success`、`exitCode: 0`。**実機検証**: Tailscale経由でAPI疎通・認証・スケジュールAPI・network-modeを確認。ヘルスは`degraded`（メモリ95.9%、既知の環境要因）。**知見**: デプロイ実行時は未commit変更があるとfail-fastするため、手順どおりstashしてから実行し、完了後に`git stash pop`で復元する。
 
 - [x] (2026-02-24) **Gmail自動運用プロトコル フェーズ1実機検証完了**: フェーズ1の実装内容（単一オーケストレータ・429状態機械・PROCESSING自動解消）が実機環境で正常に動作することを確認。**検証方法**: Tailscale経由でAPI接続し、ヘルスチェック・スケジュール設定・インポート履歴・手動実行を確認。**検証結果**: API正常応答（`status: "ok"`）、Gmail csvDashboardsスケジュール3件が存在しすべて10分ごとに設定、PROCESSING状態の履歴0件（古いPROCESSING状態は解消済み）、429発生時にクールダウン処理が正常に動作（手動実行時に「Gmail API is rate limited; deferred until 2026-02-23T23:03:49.435Z」が返された）、GmailRateLimitStateが正常に動作（429発生時にクールダウン状態が記録され、再突入が防止される）。**検証できなかった項目**: SSH接続が必要な項目（ログ確認、DB直接確認）は未実施。**ドキュメント更新**: KB-216を更新（フェーズ1実機検証結果を追加）、実機検証チェックリストに結果を記録、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [docs/knowledge-base/api.md#kb-216](./docs/knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) / [docs/guides/gmail-auto-protocol-phase1-verification.md](./docs/guides/gmail-auto-protocol-phase1-verification.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
@@ -1412,6 +1414,35 @@
 
 **参照**: [docs/guides/gmail-auto-protocol-phase1-verification.md](./docs/guides/gmail-auto-protocol-phase1-verification.md) / [docs/knowledge-base/api.md#kb-216](./docs/knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法)
 
+### CSVダッシュボード機能の継続的改善（推奨）
+
+**概要**: DEDUP共通化とエラーメール廃棄ポリシー統一の完了を機に、CSVダッシュボード機能の継続的改善を検討
+
+**完了した改善**:
+- ✅ **DEDUP共通化**: `CsvDashboardDedupCleanupService`を新設し、全DEDUPダッシュボードで重複loser削除を共通化（観測キー範囲即時削除・日次収束ジョブ）
+- ✅ **エラーメール廃棄ポリシー統一**: `CsvErrorDispositionPolicy`を新設し、`RETRIABLE`/`NON_RETRIABLE`判定を分離。`NON_RETRIABLE`のみ即時ゴミ箱移動
+- ✅ **監査性強化**: `IngestRun.errorMessage`と構造化ログに後処理状態（`completed`/`disposed_non_retriable`/`failed`）と理由を記録
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `22376265460` 成功、Pi5デプロイ成功（runId `20260225-095437-12216`）、実機検証完了
+
+**次の改善候補**:
+1. **日次クリーンアップジョブの実機検証**（優先度: 中）
+   - 日次クリーンアップジョブ（`40 2 * * *` Asia/Tokyo）が正常に実行されているか、ログやDB削除件数で確認
+   - Production Schedule以外のDEDUPダッシュボードで重複loser削除が正常に動作することを確認
+   - ジョブ実行時のエラーハンドリングとログ出力を確認
+
+2. **エラーメール廃棄ポリシーの拡張**（優先度: 低）
+   - 他のエラータイプ（ネットワークエラー、タイムアウトなど）の`RETRIABLE`/`NON_RETRIABLE`判定を追加
+   - エラーメール廃棄後の削除タイミング（既存のGmailゴミ箱自動削除機能との連携）を確認
+
+3. **監査情報の可視化**（優先度: 低）
+   - 管理コンソールで`IngestRun.errorMessage`の監査情報を表示するUIを追加
+   - 後処理状態（`completed`/`disposed_non_retriable`/`failed`）の統計を表示
+
+4. **重複削除パフォーマンスの最適化**（優先度: 低）
+   - 大量データでの重複削除パフォーマンスを測定し、必要に応じて最適化（バッチサイズ調整、インデックス追加など）
+
+**参照**: [docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) / [docs/INDEX.md](./docs/INDEX.md)
+
 ### APIルート分割の横展開（完了）
 
 **概要**: `kiosk` / `clients` と同じ責務分離パターンを、残る大型ルートへ段階適用して保守性を底上げする
@@ -1974,5 +2005,7 @@
 変更履歴: 2026-02-22 — Gmail csvDashboards取得を10分30件運用へ最適化・CI成功・デプロイ完了・実機検証完了を反映。Progressに`searchMessagesLimited`実装、デフォルトバッチサイズ30への変更、加工機日常点検結果の日曜日取得有効化を追加。Surprises & Discoveriesに`searchMessagesAll`による全件ページングの問題と失敗メールの再試行ループによるAPI呼び出し増加の悪循環を追加。KB-272を追加、csv-import-export.mdに429監視手順を追記。CI実行（Run ID `22268463453`）、デプロイ結果（runId `20260222-111603-30625`）、実機検証結果（コード実装確認、スケジュール設定確認、API正常動作確認）を反映。ナレッジベース更新（57件）。
 
 変更履歴: 2026-02-19 — 生産スケジュールprogress別テーブル化・CI成功・デプロイ完了・実機検証完了を反映。Progressに`ProductionScheduleProgress`テーブル新設と完了状態の分離を追加。Surprises & DiscoveriesにCSV取り込み時の上書きリスク回避の知見を追加。Decision Logに完了状態の別テーブル化決定を追加。KB-269、ADR-20260219を追加。KB-184を更新（完了状態の保存方法が変更されたことを追記）。Next StepsにCSV取り込み後の完了状態保持の継続観察と生産スケジュールデータ削除ルール実装を追加。ナレッジベース更新（55件）。
+
+変更履歴: 2026-02-25 — CSVダッシュボードDEDUP共通化とエラーメール廃棄ポリシー統一・CI成功・デプロイ完了・実機検証完了を反映。Progressに`CsvDashboardDedupCleanupService`新設（観測キー範囲即時削除・日次収束ジョブ）、`CsvErrorDispositionPolicy`新設（`RETRIABLE`/`NON_RETRIABLE`判定分離）、全DEDUPダッシュボードへの共通cleanup適用、`NON_RETRIABLE`のみ`trashMessage`実行、監査情報記録（`IngestRun.errorMessage`・構造化ログ）、日次クリーンアップジョブ追加を追加。Surprises & Discoveriesに重複削除ロジックの共通サービス化とエラーメール廃棄ポリシー分離の知見を追加。Decision LogにDEDUP共通化とエラーメール廃棄ポリシー統一の決定を追加。KB-273を追加、INDEX.mdを更新、knowledge-base/index.mdを更新（件数58件に更新）。CI実行（Run ID `22376265460`）、デプロイ結果（runId `20260225-095437-12216`）、実機検証結果（APIヘルスチェック、DBマイグレーション、デプロイコミットハッシュ一致確認）を反映。Next StepsにCSVダッシュボード機能の継続的改善候補を追加。
 
 変更履歴: 2026-02-18 — 吊具持出画面に吊具情報表示を追加・CI成功・デプロイ完了・実機検証完了を反映。Progressに吊具情報表示機能の実装（`riggingTagUid`変化時のデータ取得、右側余白への情報ブロック追加、API二重呼び出し回避）を追加。Surprises & DiscoveriesにuseRefによる最新state参照とAPI二重呼び出し回避の知見を追加。KB-267を追加。Next Stepsにキオスク画面のUI改善候補を追加。ナレッジベース更新（44件）。
