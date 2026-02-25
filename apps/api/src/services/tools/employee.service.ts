@@ -20,6 +20,7 @@ export interface EmployeeUpdateInput {
   firstName?: string;
   nfcTagUid?: string | null;
   department?: string | null;
+  section?: string | null;
   contact?: string | null;
   status?: EmployeeStatus;
 }
@@ -117,6 +118,9 @@ export class EmployeeService {
     }
     if (data.department !== undefined) {
       updateData.department = data.department ?? null;
+    }
+    if (data.section !== undefined) {
+      updateData.section = data.section ?? null;
     }
     if (data.contact !== undefined) {
       updateData.contact = data.contact ?? null;

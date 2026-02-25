@@ -11,6 +11,7 @@ export const employeeBodySchema = z.object({
   firstName: z.string().min(1, '名前は必須です').optional(),
   nfcTagUid: z.string().min(4).optional().or(z.literal('').transform(() => undefined)).nullable(),
   department: z.string().optional().nullable(),
+  section: z.string().optional().nullable(),
   contact: z.string().optional().nullable(),
   status: z.nativeEnum(EmployeeStatus).optional()
 }).refine((data) => {
@@ -30,6 +31,7 @@ export const employeeUpdateSchema = z.object({
   firstName: z.string().min(1, '名前は必須です').optional(),
   nfcTagUid: z.string().min(4).optional().or(z.literal('').transform(() => undefined)).nullable(),
   department: z.string().optional().nullable(),
+  section: z.string().optional().nullable(),
   contact: z.string().optional().nullable(),
   status: z.nativeEnum(EmployeeStatus).optional()
 }).refine((data) => Object.keys(data).length > 0, {

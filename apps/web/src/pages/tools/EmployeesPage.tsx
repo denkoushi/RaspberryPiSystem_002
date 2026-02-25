@@ -16,6 +16,7 @@ const initialForm = {
   lastName: '',
   firstName: '',
   department: '',
+  section: '',
   nfcTagUid: ''
 };
 
@@ -47,6 +48,7 @@ export function EmployeesPage() {
             lastName: form.lastName,
             firstName: form.firstName,
             department: form.department || undefined,
+            section: form.section || undefined,
             nfcTagUid: form.nfcTagUid || undefined
           }
         });
@@ -56,6 +58,7 @@ export function EmployeesPage() {
           lastName: form.lastName,
           firstName: form.firstName,
           department: form.department || undefined,
+          section: form.section || undefined,
           nfcTagUid: form.nfcTagUid || undefined
         });
       }
@@ -90,6 +93,7 @@ export function EmployeesPage() {
       lastName,
       firstName,
       department: emp.department ?? '',
+      section: emp.section ?? '',
       nfcTagUid: emp.nfcTagUid ?? ''
     });
   };
@@ -162,7 +166,11 @@ export function EmployeesPage() {
           </label>
           <label className="text-sm font-semibold text-slate-700">
             部署
-            <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
+            <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder="例: 製造担当部門" />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            セクション
+            <Input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="例: 加工担当部署" />
           </label>
           <label className="text-sm font-semibold text-slate-700">
             NFC UID
@@ -202,6 +210,7 @@ export function EmployeesPage() {
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">氏名</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">社員コード</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">部署</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">セクション</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">NFC UID</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
@@ -212,6 +221,7 @@ export function EmployeesPage() {
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.displayName}</td>
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.employeeCode}</td>
                   <td className="px-2 py-1 text-sm text-slate-700">{employee.department ?? '-'}</td>
+                  <td className="px-2 py-1 text-sm text-slate-700">{employee.section ?? '-'}</td>
                   <td className="px-2 py-1 font-mono text-xs text-slate-700">{employee.nfcTagUid ?? '-'}</td>
                   <td className="px-2 py-1 flex gap-2">
                     <Button className="px-2 py-1 text-xs" onClick={() => startEdit(employee)}>編集</Button>
