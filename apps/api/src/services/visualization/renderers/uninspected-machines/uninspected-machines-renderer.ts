@@ -104,8 +104,12 @@ export class UninspectedMachinesRenderer implements Renderer {
     const width = config.width;
     const height = config.height;
     const title = (config.title ?? '加工機点検状況')
-      .replace('（日時集約）', '')
-      .replace('(日時集約)', '')
+      .replace(/（日時集約）/g, '')
+      .replace(/\(日時集約\)/g, '')
+      .replace(/（ 日時集約 ）/g, '')
+      .replace(/\( 日時集約 \)/g, '')
+      .replace(/\s*（日時集約）\s*/g, '')
+      .replace(/\s*\(日時集約\)\s*/g, '')
       .trim();
     const t = createMd3Tokens({ width, height });
     const scale = t.scale;
@@ -241,9 +245,11 @@ export class UninspectedMachinesRenderer implements Renderer {
       const machineNumberY = contentCenterY - leftContentTotalHeight / 2 + machineNumberFontSize / 2;
       const machineNameY = machineNumberY + machineNumberFontSize / 2 + leftContentGap + machineNameFontSize / 2;
       const machineNameMaxWidth = leftContentWidth - cardPadding - Math.round(8 * scale);
+      // 右側の「異常」表示と被らないように、左カラム内で省略
+      // 最小値は削除し、実際の利用可能幅を使用（カード幅の60%からパディングを引いた値）
       const truncatedMachineName = truncateTextToWidth(
         machineName,
-        Math.max(40, machineNameMaxWidth),
+        machineNameMaxWidth,
         machineNameFontSize,
       );
       
