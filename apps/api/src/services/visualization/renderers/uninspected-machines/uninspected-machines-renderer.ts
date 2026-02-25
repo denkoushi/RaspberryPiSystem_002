@@ -103,13 +103,12 @@ export class UninspectedMachinesRenderer implements Renderer {
 
     const width = config.width;
     const height = config.height;
-    const title = (config.title ?? '加工機点検状況')
-      .replace(/（日時集約）/g, '')
-      .replace(/\(日時集約\)/g, '')
-      .replace(/（ 日時集約 ）/g, '')
-      .replace(/\( 日時集約 \)/g, '')
-      .replace(/\s*（日時集約）\s*/g, '')
-      .replace(/\s*\(日時集約\)\s*/g, '')
+    // タイトルから「（日時集約）」を削除（全角・半角・スペースのバリエーションに対応）
+    let title = config.title ?? '加工機点検状況';
+    title = title
+      .replace(/[（(]\s*日時集約\s*[）)]/g, '')  // 全角・半角括弧、前後のスペースに対応
+      .replace(/日時集約/g, '')  // 括弧なしでも削除
+      .replace(/\s+/g, ' ')  // 連続スペースを1つに
       .trim();
     const t = createMd3Tokens({ width, height });
     const scale = t.scale;
@@ -237,16 +236,16 @@ export class UninspectedMachinesRenderer implements Renderer {
       const contentCenterY = cardY + cardHeight / 2;
       
       // 左側: 管理番号と加工機名（縦2段）
-      const leftContentWidth = Math.floor(cardWidth * 0.6);
+      // 右側の「異常」表示と被らないように、左側の幅を70%に拡大
+      const leftContentWidth = Math.floor(cardWidth * 0.7);
       const machineNumberFontSize = Math.max(20, Math.round(24 * scale));
       const machineNameFontSize = Math.max(16, Math.round(20 * scale));
       const leftContentGap = Math.round(8 * scale);
       const leftContentTotalHeight = machineNumberFontSize + leftContentGap + machineNameFontSize;
       const machineNumberY = contentCenterY - leftContentTotalHeight / 2 + machineNumberFontSize / 2;
       const machineNameY = machineNumberY + machineNumberFontSize / 2 + leftContentGap + machineNameFontSize / 2;
-      const machineNameMaxWidth = leftContentWidth - cardPadding - Math.round(8 * scale);
-      // 右側の「異常」表示と被らないように、左カラム内で省略
-      // 最小値は削除し、実際の利用可能幅を使用（カード幅の60%からパディングを引いた値）
+      // 加工機名称の最大幅：左側幅からパディングを引いた値（右側の「異常」表示と被らないように）
+      const machineNameMaxWidth = leftContentWidth - cardPadding - Math.round(4 * scale);
       const truncatedMachineName = truncateTextToWidth(
         machineName,
         machineNameMaxWidth,
@@ -265,6 +264,7 @@ export class UninspectedMachinesRenderer implements Renderer {
       `;
       
       // 右側: 異常と正常（縦2段）
+      // 左側を70%に拡大したため、右側は30%に縮小
       const rightContentX = cardX + leftContentWidth;
       const rightContentWidth = cardWidth - leftContentWidth;
       const statusLabelFontSize = Math.max(14, Math.round(16 * scale));

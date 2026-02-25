@@ -343,7 +343,7 @@ async function main(): Promise<void> {
   const paneOut = await renderer.render(table, {
     width: g.rightPaneContentWidth,
     height: g.paneContentHeight,
-    title: '加工機点検状況 (pane)',
+    title: '加工機点検状況',
   });
   const vizPanePath = path.join(outDir, 'viz-pane.jpg');
   await writeBuffer(vizPanePath, paneOut.buffer);
@@ -376,7 +376,7 @@ async function main(): Promise<void> {
   const cardPaneOut = await renderer.render(table, {
     width: g.rightPaneContentWidth,
     height: g.paneContentHeight,
-    title: '加工機点検状況 (pane)',
+    title: '加工機点検状況',
   });
   const vizCardPanePath = path.join(outDir, 'viz-card-pane.jpg');
   await writeBuffer(vizCardPanePath, cardPaneOut.buffer);
