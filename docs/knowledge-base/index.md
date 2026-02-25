@@ -32,7 +32,7 @@ update-frequency: high
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 43件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化）、Docker build最適化（変更ファイルに基づくbuild判定）、Pi4キオスクの再起動/シャットダウンボタンが機能しない問題（Jinja2テンプレート展開・systemd実行ユーザー・ディレクトリ所有権の問題）、update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加、Ansibleテンプレート内の`&#123;&#123;`混入によるSyntax error in template、Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化、Pi5のみデプロイ時にメンテナンスフラグが残存する問題 |
 | ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 1件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 16件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止） |
-| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 18件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携 |
+| ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 19件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 21件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除含む） |
 
@@ -190,6 +190,7 @@ update-frequency: high
 | [KB-272](./api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) | Gmail csvDashboards取得を10分30件運用へ最適化 | ✅ 解決済み |
 | [KB-273](./KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) | CSVダッシュボードの重複削除共通化とエラーメール廃棄ポリシー統一 | ✅ 実装中 |
 | [KB-274](./infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) | 計測機器持出状況サイネージコンテンツの実装とCSVイベント連携 | ✅ 解決済み |
+| [KB-275](./infrastructure/signage.md#kb-275-加工機点検状況サイネージのレイアウト調整) | 加工機点検状況サイネージのレイアウト調整 | ✅ 解決済み |
 | [KB-248](./frontend.md#kb-248-カメラ明るさ閾値チェックの削除雨天照明なし環境での撮影対応) | カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応） | ✅ 解決済み |
 | [KB-252](./frontend.md#kb-252-未点検加工機サイネージ設定導線可視化ダッシュボード経由の実装) | 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装 | ✅ 解決済み |
 | [KB-254](./frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能) | 加工機マスタのメンテナンスページ追加（CRUD機能） | ✅ 解決済み |
@@ -365,14 +366,14 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 146件 |
+| ✅ 解決済み | 147件 |
 | ✅ 手順確立済み | 1件 |
 | ✅ 実装完了・実機検証完了 | 3件 |
 | ✅ 検証完了 | 2件 |
 | ✅ 調査完了・対応不要 | 1件 |
 | 🔄 進行中 | 6件 |
 | 🔄 調査中 | 1件 |
-| **合計** | **164件** |
+| **合計** | **165件** |
 
 ---
 
@@ -517,3 +518,4 @@ update-frequency: high
 - 2026-02-18: KB-267を追加（吊具持出画面に吊具情報表示を追加）→ 2026-02-18に実装完了・CI成功・デプロイ完了・実機検証完了（吊具持出画面に遷移したとき、吊具タグのUIDだけが表示されていた問題を解決し、吊具マスタから取得した詳細情報（名称、管理番号、保管場所、荷重、寸法）を点検見本の右側余白に表示する機能を実装。`riggingTagUid`が設定された時点で`getRiggingGearByTagUid()`を呼び出し、吊具情報をstateに保持。貸出登録時の存在チェックで、既に取得済みの`riggingGear`をref経由で再利用し、API二重呼び出しを回避。CI成功（Run ID `22126971043`）、Pi5とPi4でデプロイ成功（runId `20260218-140619-15371`）、実機検証で正常動作を確認）
 - 2026-02-19: KB-270を追加（CIのvitest coverageでtest-excludeとminimatchの非互換エラー）→ 2026-02-19に解決完了・CI成功・デプロイ完了・実機検証完了（`test-exclude@6.0.0`が`minimatch@10.x`と非互換でCIが失敗する問題を、`test-exclude@7.0.1`へのoverride追加で解決。`.gitignore`に`.cursor/debug-*.log`と`.cursor/tmp/`を追加。CI成功（Run ID `22163832946`）、Pi5でデプロイ成功、実機検証で正常表示を確認）
 - 2026-02-25: KB-274を追加（計測機器持出状況サイネージコンテンツの実装とCSVイベント連携）→ 2026-02-25に実装完了・CI成功・デプロイ完了・実機検証完了（計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。`Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装。実機検証で従業員カード表示・計測機器数表示・計測機器名称表示が正常動作することを確認）
+- 2026-02-25: KB-275を追加（加工機点検状況サイネージのレイアウト調整）→ 2026-02-25に実装完了・CI成功・デプロイ完了・実機検証完了（タイトルから「（日時集約）」を削除する処理を強化（正規表現で全角・半角・スペースのバリエーションに対応）、加工機名称の表示幅を拡大（左側60%→70%、パディング8px→4px）、KPIパネルの日付以外のタイトルフォントサイズを30%縮小、デザインプレビュー用タイトルから「(pane)」を削除。実機検証でタイトル表示・加工機名称表示・KPIパネル表示が正常動作することを確認）
