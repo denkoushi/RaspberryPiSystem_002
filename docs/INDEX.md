@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-02-25）
+
+- **✅ 計測機器持出状況サイネージコンテンツの実装とCSVイベント連携・CI成功・デプロイ完了・実機検証完了**: 計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。**実装内容**: `Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装（「持ち出し」イベントから「返却」イベントを除外）。**実装ファイル**: `apps/api/prisma/schema.prisma`（`Employee.section`追加）、`apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`（CSVイベント連携）、`apps/web/src/pages/admin/CsvImportPage.tsx`（CSVインポート設定）、`apps/web/src/pages/tools/EmployeesPage.tsx`（従業員編集画面）。**CI実行**: GitHub Actions成功。**デプロイ結果**: Pi5でデプロイ成功。**実機検証結果**: Sectionに「加工担当部署」を登録後、サイネージに従業員ごとのカードが表示され、CSVで取得した計測機器持出状況のデータと連携し、本日使用中の計測機器数と名称が正しく表示されることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-274](./knowledge-base/infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) / [knowledge-base/index.md](./knowledge-base/index.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-24）
 
 - **✅ CSVダッシュボード重複削除共通化 + エラーメール廃棄ポリシー統一（実装中間報告）**: DEDUP時の重複 loser 削除をProduction Schedule専用から共通サービスへ拡張し、観測キー範囲の即時削除を全ダッシュボードで適用。あわせて非再試行可能なCSVエラーのみを即時ゴミ箱移動（既存ラベル運用を維持）するポリシー分離を実装。`IngestRun`/構造化ログへ後処理状態（`completed` / `disposed_non_retriable` / `failed`）と理由を記録する監査情報を追加。詳細は [knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) を参照。

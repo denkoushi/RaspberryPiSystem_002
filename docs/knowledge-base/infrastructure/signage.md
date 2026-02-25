@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-08
+last-verified: 2026-02-25
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 17件  
+**件数**: 18件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -1400,6 +1400,95 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 
 **解決状況**: 🔄 **継続観察**
 - キオスク側の間欠的待ち事象に対して、重い定期処理の影響を隔離する対策を適用
+
+---
+
+### [KB-274] 計測機器持出状況サイネージコンテンツの実装とCSVイベント連携
+
+**実装日時**: 2026-02-25
+
+**Context**:
+- 計測機器の持出状況をサイネージで可視化する機能を実装
+- 「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示
+- CSVで取得した計測機器持出状況のデータと連携させる必要があった
+
+**Symptoms**:
+- 初期実装では`Loan`テーブルを直接参照していたが、実際のデータはCSV由来の`MeasuringInstrumentLoanEvent`テーブルに存在
+- サイネージに「計測機器: 0」が全員に表示される（データ連携ができていない）
+- 「対象従業員がありません」と表示される（`section`フィールドが`Employee`テーブルに存在しなかった）
+
+**Investigation**:
+- **H1: `Loan`テーブルに計測機器の貸出データが存在しない**
+  - 検証: `prisma.loan.findMany`で`measuringInstrumentId`が`not null`のレコードを確認
+  - 結果: **CONFIRMED** - `Loan`テーブルには計測機器の貸出データが存在しない
+- **H2: CSV由来のイベントデータが`MeasuringInstrumentLoanEvent`テーブルに存在する**
+  - 検証: `prisma.measuringInstrumentLoanEvent.findMany`で「持ち出し」イベントを確認
+  - 結果: **CONFIRMED** - CSV取り込み時に`MeasuringInstrumentLoanEvent`テーブルにイベントが記録されている
+- **H3: `Employee`テーブルに`section`フィールドが存在しない**
+  - 検証: `prisma.employee.findMany`で`section`フィールドを参照
+  - 結果: **CONFIRMED** - `Employee`テーブルに`section`カラムが存在しない（`department`のみ存在）
+- **H4: CSVインポート時に`Section`列が`section`フィールドにマッピングされていない**
+  - 検証: CSVインポート設定と従業員編集画面を確認
+  - 結果: **CONFIRMED** - CSVインポート設定に`section`列定義がなく、従業員編集画面にも`section`フィールドが存在しない
+
+**Root cause**:
+1. **データソースの誤り**: `Loan`テーブルではなく、CSV由来の`MeasuringInstrumentLoanEvent`テーブルを参照する必要があった
+2. **`section`フィールドの欠如**: `Employee`テーブルに`section`カラムが存在せず、CSVインポートと従業員編集画面でも`section`フィールドが未実装だった
+3. **名前マッチングの問題**: CSVの`borrower`（借主名）と`Employee.displayName`の正規化（空白除去）が必要だった
+
+**Fix**:
+- ✅ **`Employee`テーブルに`section`フィールド追加**:
+  - `apps/api/prisma/schema.prisma`に`section String?`を追加
+  - マイグレーション`20260225054706_add_employee_section`を作成
+- ✅ **CSVインポート設定に`section`列定義追加**:
+  - `apps/web/src/pages/admin/CsvImportPage.tsx`の`DEFAULT_COLUMN_DEFINITIONS`に`section`列定義を追加（`csvHeaderCandidates: ['Section', 'section', 'セクション']`）
+  - `apps/api/src/services/imports/importers/employee.ts`の`employeeCsvSchema`と`import`メソッドに`section`処理を追加
+- ✅ **従業員編集画面に`section`フィールド追加**:
+  - `packages/shared-types/src/tools/index.ts`の`Employee`インターフェースに`section`を追加
+  - `apps/api/src/routes/tools/employees/schemas.ts`の`employeeBodySchema`と`employeeUpdateSchema`に`section`を追加
+  - `apps/api/src/services/tools/employee.service.ts`の`EmployeeUpdateInput`と`update`メソッドに`section`処理を追加
+  - `apps/web/src/pages/tools/EmployeesPage.tsx`に「セクション」入力フィールドとテーブル列を追加
+- ✅ **データソースをCSVイベント連携に修正**:
+  - `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`を修正
+    - `prisma.loan.findMany`を削除し、`prisma.measuringInstrumentLoanEvent.findMany`を使用
+    - 「持ち出し」イベントを取得し、「返却」イベントと照合して現在持出中の計測機器を判定
+    - `event.raw.borrower`と`event.raw.name`から借主名と計測機器名を抽出
+    - `normalizeEmployeeName`関数で名前を正規化してマッチング
+  - `prisma.employee.findMany`の`where`句を`department: sectionEquals`から`section: sectionEquals`に変更
+- ✅ **ユニットテスト更新**:
+  - `measuring-instrument-loan-inspection-data-source.test.ts`を更新し、`prisma.measuringInstrumentLoanEvent.findMany`をモック
+
+**実装の詳細**:
+- **名前正規化**: `normalizeEmployeeName`関数で空白文字（全角・半角スペース）を除去してマッチング
+- **アクティブローン判定**: 「持ち出し」イベントから「返却」イベントを除外し、現在持出中の計測機器を判定
+- **JST日付範囲計算**: `resolveTodayJstRange`関数でJSTの「今日」の範囲をUTCに変換してDBクエリに使用
+
+**学んだこと**:
+1. **CSV由来データの扱い**: CSV取り込み時にイベントテーブル（`MeasuringInstrumentLoanEvent`）に記録されるデータは、マスターテーブル（`Loan`）とは別管理される
+2. **名前マッチングの正規化**: CSVの`borrower`と`Employee.displayName`は空白文字の有無が異なる場合があるため、正規化が必要
+3. **データモデルの拡張**: 新しいフィールド（`section`）を追加する際は、スキーマ・マイグレーション・CSVインポート・API・UIのすべてを更新する必要がある
+4. **アクティブローンの判定**: 「持ち出し」と「返却」のイベントを時系列で照合し、現在持出中かどうかを判定する必要がある
+
+**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-25）
+
+**実機検証結果**:
+- ✅ **従業員カード表示**: Sectionに「加工担当部署」を登録後、サイネージに従業員ごとのカードが表示される
+- ✅ **計測機器数表示**: CSVで取得した計測機器持出状況のデータと連携し、本日使用中の計測機器数が正しく表示される
+- ✅ **計測機器名称表示**: 計測機器名称がカンマ区切りで表示され、長い場合は省略される
+
+**関連ファイル**:
+- `apps/api/prisma/schema.prisma`（`Employee.section`追加）
+- `apps/api/prisma/migrations/20260225054706_add_employee_section/migration.sql`
+- `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`（CSVイベント連携）
+- `apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-renderer.ts`（レンダラー）
+- `apps/web/src/pages/admin/CsvImportPage.tsx`（CSVインポート設定）
+- `apps/web/src/pages/tools/EmployeesPage.tsx`（従業員編集画面）
+- `apps/api/src/services/imports/importers/employee.ts`（CSVインポート処理）
+- `apps/api/src/services/tools/employee.service.ts`（従業員サービス）
+- `packages/shared-types/src/tools/index.ts`（型定義）
+
+**関連KB**:
+- [KB-236](./signage.md#kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
 
 ---
 

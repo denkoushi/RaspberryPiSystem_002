@@ -152,7 +152,7 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
 
     const width = config.width;
     const height = config.height;
-    const title = config.title ?? '計測機器持出状況';
+    const title = (config.title ?? '計測機器持出状況').replace('（点検可視化）', '').trim();
     const t = createMd3Tokens({ width, height });
     const scale = t.scale;
     const padding = Math.round(12 * scale);
@@ -164,9 +164,7 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
 
     const targetDate = typeof metadata.targetDate === 'string' ? metadata.targetDate : '-';
 
-    const kpiItems = [
-      { label: '対象日', value: targetDate, accent: t.colors.text.secondary },
-    ];
+    const kpiItems = [{ value: targetDate, accent: t.colors.text.secondary }];
 
     const kpiColumns = 4;
     const kpiCardWidth = Math.floor((width - padding * 2 - kpiGap * (kpiColumns - 1)) / kpiColumns);
@@ -179,12 +177,8 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
             <rect x="${x}" y="${y}" width="${kpiCardWidth}" height="${kpiHeight}"
               rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
               fill="${t.colors.card.fill}" stroke="${t.colors.card.border}" />
-            <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(28 * scale)}"
-              font-size="${Math.max(18, Math.round(20 * scale))}" font-weight="600" fill="${t.colors.text.secondary}" font-family="sans-serif">
-              ${escapeXml(item.label)}
-            </text>
-            <text x="${x + kpiCardWidth - Math.round(14 * scale)}" y="${y + Math.round(64 * scale)}"
-              text-anchor="end" font-size="${Math.max(26, Math.round(34 * scale))}" font-weight="700" fill="${item.accent}" font-family="sans-serif">
+            <text x="${x + Math.round(14 * scale)}" y="${y + Math.round(54 * scale)}"
+              font-size="${Math.max(26, Math.round(34 * scale))}" font-weight="700" fill="${item.accent}" font-family="sans-serif">
               ${escapeXml(item.value)}
             </text>
           </g>
@@ -197,7 +191,7 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
     const numColumns = 4;
     const cardGap = Math.round(12 * scale);
     const cardWidth = Math.floor((cardsAreaWidth - cardGap * (numColumns - 1)) / numColumns);
-    const cardHeight = Math.round(128 * scale);
+    const cardHeight = Math.round(192 * scale);
     const rowsPerScreen = Math.max(1, Math.floor(cardsAreaHeight / (cardHeight + cardGap)));
     const maxCards = numColumns * rowsPerScreen;
     const allRows = table.rows.slice(0, maxCards);
