@@ -44,7 +44,24 @@ export class VisualizationService {
     const rendererConfig = isPlainObject(definition.rendererConfig) ? definition.rendererConfig : {};
 
     const dataStart = Date.now();
-    const data = await withTimeout(dataSource.fetchData(dataSourceConfig), DEFAULT_TIMEOUT_MS, 'dataSource');
+    let data;
+    try {
+      data = await withTimeout(dataSource.fetchData(dataSourceConfig), DEFAULT_TIMEOUT_MS, 'dataSource');
+    } catch (error) {
+      const durationMs = Date.now() - dataStart;
+      logger.error(
+        {
+          err: error,
+          stage: 'dataSource',
+          durationMs,
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+          dataSourceType: definition.dataSourceType,
+          note: 'Timeout only rejects caller; underlying async work may continue until completion.',
+        },
+        'Visualization stage timed out'
+      );
+      throw error;
+    }
     const dataDuration = Date.now() - dataStart;
     if (dataDuration >= SLOW_THRESHOLD_MS) {
       logger.warn(
@@ -54,16 +71,33 @@ export class VisualizationService {
     }
 
     const renderStart = Date.now();
-    const output = await withTimeout(
-      renderer.render(data, {
-        width: options.width,
-        height: options.height,
-        title: options.title,
-        ...rendererConfig,
-      }),
-      DEFAULT_TIMEOUT_MS,
-      'renderer'
-    );
+    let output;
+    try {
+      output = await withTimeout(
+        renderer.render(data, {
+          width: options.width,
+          height: options.height,
+          title: options.title,
+          ...rendererConfig,
+        }),
+        DEFAULT_TIMEOUT_MS,
+        'renderer'
+      );
+    } catch (error) {
+      const durationMs = Date.now() - renderStart;
+      logger.error(
+        {
+          err: error,
+          stage: 'renderer',
+          durationMs,
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+          rendererType: definition.rendererType,
+          note: 'Timeout only rejects caller; underlying async work may continue until completion.',
+        },
+        'Visualization stage timed out'
+      );
+      throw error;
+    }
     const renderDuration = Date.now() - renderStart;
     if (renderDuration >= SLOW_THRESHOLD_MS) {
       logger.warn(

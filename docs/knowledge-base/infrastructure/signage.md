@@ -1403,100 +1403,69 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 
 ---
 
-### [KB-274] 計測機器持出状況サイネージコンテンツの実装とCSVイベント連携
+### [KB-274] signage-render-workerの高メモリ化（断続）と安定化対応
 
 **実装日時**: 2026-02-25
 
 **Context**:
-- 計測機器の持出状況をサイネージで可視化する機能を実装
-- 「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示
-- CSVで取得した計測機器持出状況のデータと連携させる必要があった
+- Raspberry Pi 5 で `signage-render-worker` のメモリ使用率が断続的に上昇し、ホスト全体メモリが70%超で張り付きやすい状況が観測された
+- 高負荷時に `dataSource timeout (5000ms)` が発生し、サイネージ再レンダリング失敗ログが断続していた
 
 **Symptoms**:
-- 初期実装では`Loan`テーブルを直接参照していたが、実際のデータはCSV由来の`MeasuringInstrumentLoanEvent`テーブルに存在
-- サイネージに「計測機器: 0」が全員に表示される（データ連携ができていない）
-- 「対象従業員がありません」と表示される（`section`フィールドが`Employee`テーブルに存在しなかった）
+- `signage-render-worker.js` の RSS が数GBまで増加するケースがある
+- `dataSource timeout (5000ms)` が出た直後に `Failed to run scheduled signage render` が記録される
+- 失敗時も次周期が到来し、重い処理が重なる懸念があった
 
 **Investigation**:
-- **H1: `Loan`テーブルに計測機器の貸出データが存在しない**
-  - 検証: `prisma.loan.findMany`で`measuringInstrumentId`が`not null`のレコードを確認
-  - 結果: **CONFIRMED** - `Loan`テーブルには計測機器の貸出データが存在しない
-- **H2: CSV由来のイベントデータが`MeasuringInstrumentLoanEvent`テーブルに存在する**
-  - 検証: `prisma.measuringInstrumentLoanEvent.findMany`で「持ち出し」イベントを確認
-  - 結果: **CONFIRMED** - CSV取り込み時に`MeasuringInstrumentLoanEvent`テーブルにイベントが記録されている
-- **H3: `Employee`テーブルに`section`フィールドが存在しない**
-  - 検証: `prisma.employee.findMany`で`section`フィールドを参照
-  - 結果: **CONFIRMED** - `Employee`テーブルに`section`カラムが存在しない（`department`のみ存在）
-- **H4: CSVインポート時に`Section`列が`section`フィールドにマッピングされていない**
-  - 検証: CSVインポート設定と従業員編集画面を確認
-  - 結果: **CONFIRMED** - CSVインポート設定に`section`列定義がなく、従業員編集画面にも`section`フィールドが存在しない
+- **H1: scheduler が重複実行を許し、処理が重なる**
+  - 検証: `signage-render-scheduler.ts` の cron 実装を確認
+  - 結果: **CONFIRMED** - 実行中ガードがなく、設計上は重複開始しうる
+- **H2: timeout が実処理を中断できず、裏処理が残留する**
+  - 検証: `visualization.service.ts` の `withTimeout()` 実装を確認
+  - 結果: **CONFIRMED** - `Promise.race` による呼び出し側の失敗化のみで、下流処理のキャンセルは行っていない
+- **H3: 状態Mapの無限増殖が主因**
+  - 検証: `pdfSlideState` / `csvDashboardPageState` の更新箇所を追跡
+  - 結果: **REJECTED** - `pdfId` 単位で更新/削除され、無限増殖主因とは言い難い
 
 **Root cause**:
-1. **データソースの誤り**: `Loan`テーブルではなく、CSV由来の`MeasuringInstrumentLoanEvent`テーブルを参照する必要があった
-2. **`section`フィールドの欠如**: `Employee`テーブルに`section`カラムが存在せず、CSVインポートと従業員編集画面でも`section`フィールドが未実装だった
-3. **名前マッチングの問題**: CSVの`borrower`（借主名）と`Employee.displayName`の正規化（空白除去）が必要だった
+1. **再入制御不足**: schedulerが前回処理の完了前でも次周期を開始できる構造
+2. **timeout非キャンセル**: timeout後も下流の重い処理が残り得るため、負荷時にメモリ圧迫が継続しやすい
 
 **Fix**:
-- ✅ **`Employee`テーブルに`section`フィールド追加**:
-  - `apps/api/prisma/schema.prisma`に`section String?`を追加
-  - マイグレーション`20260225054706_add_employee_section`を作成
-- ✅ **CSVインポート設定に`section`列定義追加**:
-  - `apps/web/src/pages/admin/CsvImportPage.tsx`の`DEFAULT_COLUMN_DEFINITIONS`に`section`列定義を追加（`csvHeaderCandidates: ['Section', 'section', 'セクション']`）
-  - `apps/api/src/services/imports/importers/employee.ts`の`employeeCsvSchema`と`import`メソッドに`section`処理を追加
-- ✅ **従業員編集画面に`section`フィールド追加**:
-  - `packages/shared-types/src/tools/index.ts`の`Employee`インターフェースに`section`を追加
-  - `apps/api/src/routes/tools/employees/schemas.ts`の`employeeBodySchema`と`employeeUpdateSchema`に`section`を追加
-  - `apps/api/src/services/tools/employee.service.ts`の`EmployeeUpdateInput`と`update`メソッドに`section`処理を追加
-  - `apps/web/src/pages/tools/EmployeesPage.tsx`に「セクション」入力フィールドとテーブル列を追加
-- ✅ **データソースをCSVイベント連携に修正**:
-  - `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`を修正
-    - `prisma.loan.findMany`を削除し、`prisma.measuringInstrumentLoanEvent.findMany`を使用
-    - 「持ち出し」イベントを取得し、「返却」イベントと照合して現在持出中の計測機器を判定
-    - `event.raw.borrower`と`event.raw.name`から借主名と計測機器名を抽出
-    - `normalizeEmployeeName`関数で名前を正規化してマッチング
-  - `prisma.employee.findMany`の`where`句を`department: sectionEquals`から`section: sectionEquals`に変更
-- ✅ **ユニットテスト更新**:
-  - `measuring-instrument-loan-inspection-data-source.test.ts`を更新し、`prisma.measuringInstrumentLoanEvent.findMany`をモック
+- ✅ **scheduler再入防止を追加（最小変更）**:
+  - `apps/api/src/services/signage/signage-render-scheduler.ts`
+  - `isRendering` ガードを追加し、実行中は次周期を `skip`
+  - `skipCount` / `durationMs` / `trigger` をログ出力
+- ✅ **timeout時の構造化ログを追加**:
+  - `apps/api/src/services/visualization/visualization.service.ts`
+  - `stage(dataSource|renderer)` / `timeoutMs` / `durationMs` / `dataSourceType|rendererType` を出力
+  - 「timeoutは呼び出し側失敗化のみで下流処理継続し得る」旨を `note` として明示
 
 **実装の詳細**:
-- **名前正規化**: `normalizeEmployeeName`関数で空白文字（全角・半角スペース）を除去してマッチング
-- **アクティブローン判定**: 「持ち出し」イベントから「返却」イベントを除外し、現在持出中の計測機器を判定
-- **JST日付範囲計算**: `resolveTodayJstRange`関数でJSTの「今日」の範囲をUTCに変換してDBクエリに使用
+- 既存API契約・DBスキーマ・ルート構成は非変更（後方互換維持）
+- 変更点は scheduler / visualization ログの2点に限定し、コンフリクト面積を最小化
 
 **学んだこと**:
-1. **CSV由来データの扱い**: CSV取り込み時にイベントテーブル（`MeasuringInstrumentLoanEvent`）に記録されるデータは、マスターテーブル（`Loan`）とは別管理される
-2. **名前マッチングの正規化**: CSVの`borrower`と`Employee.displayName`は空白文字の有無が異なる場合があるため、正規化が必要
-3. **データモデルの拡張**: 新しいフィールド（`section`）を追加する際は、スキーマ・マイグレーション・CSVインポート・API・UIのすべてを更新する必要がある
-4. **アクティブローンの判定**: 「持ち出し」と「返却」のイベントを時系列で照合し、現在持出中かどうかを判定する必要がある
+1. timeoutは「中断」ではなく「呼び出し側の打ち切り」のみになる実装がある
+2. 周期ジョブは高負荷時の再入防止を先に入れると安定化しやすい
+3. まず最小修正で運用観測点を増やし、その後に中規模分離へ段階移行するのが安全
 
-**解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-25）
+**解決状況**: 🔄 **安定化実装完了（継続観察）**（2026-02-25）
 
-**実機検証結果（初回実装）**:
-- ✅ **従業員カード表示**: Sectionに「加工担当部署」を登録後、サイネージに従業員ごとのカードが表示される
-- ✅ **計測機器数表示**: CSVで取得した計測機器持出状況のデータと連携し、本日使用中の計測機器数が正しく表示される
-- ✅ **計測機器名称表示**: 計測機器名称がカンマ区切りで表示され、長い場合は省略される
+**検証結果（今回）**:
+- ✅ lint通過（`apps/api`）
+- ✅ テスト通過（`apps/api`）
+- ✅ Pi5実機で30秒周期ログの開始/完了が1対1で継続
+- ✅ 3分RSS観測（worker）: `1042128 -> 1000352 -> 1012704 -> 1012096 -> 973600 -> 974432` KB（右肩上がりを確認せず）
 
-**デザイン調整（2026-02-25）**:
-- ✅ **カードの縦寸法を1.5倍に変更**: `cardHeight`を128px → 192pxに変更し、計測機器名の表示行数を増加
-- ✅ **タイトルの「（点検可視化）」を自動削除**: `config.title`から`replace('（点検可視化）', '').trim()`で自動除去
-- ✅ **KPIの「対象日」ラベルを削除**: `kpiItems`から`label`フィールドを削除し、日付のみ表示
-- ✅ **KPIの対象日を左寄せに変更**: `text-anchor="end"`を削除し、`x="${x + Math.round(14 * scale)}"`で左端からパディング14pxを追加
-
-**実機検証結果（デザイン調整後）**:
-- ✅ **カード高さ**: 1.5倍に拡大され、計測機器名がより多く表示されることを確認
-- ✅ **タイトル表示**: 「計測機器持出状況」のみが表示され、「（点検可視化）」が削除されていることを確認
-- ✅ **KPI表示**: 日付のみが左寄せで表示され、「対象日」ラベルが削除されていることを確認
+**再発防止（運用）**:
+- schedulerログで `Skipped signage render to avoid overlapping execution` を監視
+- timeoutログ（`Visualization stage timed out`）の `stage` と `type` を優先確認
+- 再発時は次フェーズで `Runner` 分離（実行キュー化）を検討
 
 **関連ファイル**:
-- `apps/api/prisma/schema.prisma`（`Employee.section`追加）
-- `apps/api/prisma/migrations/20260225054706_add_employee_section/migration.sql`
-- `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`（CSVイベント連携）
-- `apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-renderer.ts`（レンダラー）
-- `apps/web/src/pages/admin/CsvImportPage.tsx`（CSVインポート設定）
-- `apps/web/src/pages/tools/EmployeesPage.tsx`（従業員編集画面）
-- `apps/api/src/services/imports/importers/employee.ts`（CSVインポート処理）
-- `apps/api/src/services/tools/employee.service.ts`（従業員サービス）
-- `packages/shared-types/src/tools/index.ts`（型定義）
+- `apps/api/src/services/signage/signage-render-scheduler.ts`
+- `apps/api/src/services/visualization/visualization.service.ts`
 
 **関連KB**:
 - [KB-236](./signage.md#kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
