@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-02-25) **計測機器持出状況サイネージコンテンツの実装とCSVイベント連携・CI成功・デプロイ完了・実機検証完了**: 計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。**実装内容**: `Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装（「持ち出し」イベントから「返却」イベントを除外）。**実装ファイル**: `apps/api/prisma/schema.prisma`（`Employee.section`追加）、`apps/api/prisma/migrations/20260225054706_add_employee_section/migration.sql`、`apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`（CSVイベント連携）、`apps/web/src/pages/admin/CsvImportPage.tsx`（CSVインポート設定）、`apps/web/src/pages/tools/EmployeesPage.tsx`（従業員編集画面）、`apps/api/src/services/imports/importers/employee.ts`（CSVインポート処理）、`apps/api/src/services/tools/employee.service.ts`（従業員サービス）。**ローカル**: 全テストパス、lint・build成功。**CI**: GitHub Actions成功。**デプロイ**: 標準手順に従い、未commit変更を`git stash`で退避→`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、デタッチ実行で`state: success`、`exitCode: 0`。**実機検証**: Sectionに「加工担当部署」を登録後、サイネージに従業員ごとのカードが表示され、CSVで取得した計測機器持出状況のデータと連携し、本日使用中の計測機器数と名称が正しく表示されることを確認。**ドキュメント更新**: KB-274を追加、signage.mdを更新（件数18件に更新）、knowledge-base/index.mdを更新（件数164件に更新）、INDEX.mdを更新（最新アップデートセクションにKB-274を追加）。詳細は [docs/knowledge-base/infrastructure/signage.md#kb-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
+- [x] (2026-02-25) **計測機器持出状況サイネージコンテンツの実装とCSVイベント連携・デザイン調整・CI成功・デプロイ完了・実機検証完了**: 計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。**実装内容**: `Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装（「持ち出し」イベントから「返却」イベントを除外）。**デザイン調整**: カードの縦寸法を1.5倍に変更（128px → 192px）して計測機器名の表示行数を増加、タイトルの「（点検可視化）」を自動削除、KPIの「対象日」ラベルを削除して日付のみ表示、KPIの対象日を左寄せに変更（左端からパディング14px）。**実装ファイル**: `apps/api/prisma/schema.prisma`（`Employee.section`追加）、`apps/api/prisma/migrations/20260225054706_add_employee_section/migration.sql`、`apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`（CSVイベント連携）、`apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-renderer.ts`（レンダラー・デザイン調整）、`apps/web/src/pages/admin/CsvImportPage.tsx`（CSVインポート設定）、`apps/web/src/pages/tools/EmployeesPage.tsx`（従業員編集画面）、`apps/api/src/services/imports/importers/employee.ts`（CSVインポート処理）、`apps/api/src/services/tools/employee.service.ts`（従業員サービス）。**ローカル**: 全テストパス、lint・build成功。**CI**: GitHub Actions成功（Run ID `22387437619`）。**デプロイ**: 標準手順に従い、`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`を実行、Run ID `20260225-173204-3798`でデタッチ実行、`state: success`、`exitCode: 0`。**実機検証**: Sectionに「加工担当部署」を登録後、サイネージに従業員ごとのカードが表示され、CSVで取得した計測機器持出状況のデータと連携し、本日使用中の計測機器数と名称が正しく表示されることを確認。デザイン調整後、カード高さ1.5倍で計測機器名がより多く表示され、タイトルから「（点検可視化）」が削除され、KPIの日付が左寄せで表示されることを確認。**ドキュメント更新**: KB-274を追加・更新（デザイン調整を追記）、signage.mdを更新（件数18件に更新）、knowledge-base/index.mdを更新（件数164件に更新）、INDEX.mdを更新（最新アップデートセクションにKB-274を追加）、EXEC_PLAN.mdを更新。詳細は [docs/knowledge-base/infrastructure/signage.md#kb-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
 - [x] (2026-02-25) **CSVダッシュボードDEDUP共通化とエラーメール廃棄ポリシー統一・CI成功・デプロイ完了・実機検証完了**: Production Schedule専用だった重複loser削除を全DEDUPダッシュボード共通サービスへ拡張し、非再試行可能なCSVエラーのみを即時ゴミ箱移動するポリシー分離を実装。**実装内容**: `CsvDashboardDedupCleanupService`を新設し、観測キー範囲の即時削除（`deleteDuplicateLosersForKeys`）と日次収束ジョブ（`deleteDuplicateLosersGlobally`）を実装。`CsvErrorDispositionPolicy`を新設し、`RETRIABLE`/`NON_RETRIABLE`判定を分離（`GmailRateLimitedDeferredError`は`RETRIABLE`、`CSV_HEADER_MISMATCH`やProduction Scheduleフォーマットエラーは`NON_RETRIABLE`）。`CsvDashboardIngestor`で全DEDUPダッシュボードに共通cleanupを適用（`keyColumns`と`winnerOrder`を動的解決、Production Scheduleは既存`ProductNo`優先順位を維持）。`CsvDashboardImportService`で`NON_RETRIABLE`のみ`trashMessage`を実行し、監査情報（`postProcessStateByMessageIdSuffix`/`disposeReasonByMessageIdSuffix`）を`IngestRun.errorMessage`と構造化ログに記録。`CsvImportScheduler`に日次クリーンアップジョブ（`40 2 * * *` Asia/Tokyo）を追加し、全DEDUPダッシュボード（Production Schedule除く）のグローバル収束を実行。**実装ファイル**: `csv-dashboard-dedup-cleanup.service.ts`（新規）、`csv-error-disposition-policy.ts`（新規）、`csv-dashboard-ingestor.ts`（修正）、`csv-dashboard-import.service.ts`（修正）、`csv-import-scheduler.ts`（修正）、ユニットテスト3ファイル追加。**ローカル**: 全テスト14件パス（csv-dashboard系）、lint・build成功。**CI**: Run ID `22376265460` 成功（全ジョブ成功）。**デプロイ**: 標準手順に従い、未commit変更を`git stash`で退避→`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、Run ID `20260225-095437-12216`でデタッチ実行、約7分で`state: success`、`exitCode: 0`。**実機検証**: APIヘルスチェック（`status: "ok"`）、DBマイグレーション（34 migrations）、デプロイコミットハッシュ（`910adf4`）一致確認、`backup.json`保持確認。**ドキュメント更新**: KB-273を追加、INDEX.mdを更新、knowledge-base/index.mdを更新（件数58件に更新）。詳細は [docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
@@ -1444,6 +1444,38 @@
    - 大量データでの重複削除パフォーマンスを測定し、必要に応じて最適化（バッチサイズ調整、インデックス追加など）
 
 **参照**: [docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./docs/knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) / [docs/INDEX.md](./docs/INDEX.md)
+
+### 計測機器持出状況サイネージ機能の拡張（推奨）
+
+**概要**: 計測機器持出状況サイネージコンテンツの実装とデザイン調整完了を機に、機能の拡張を検討
+
+**完了した実装**:
+- ✅ **計測機器持出状況サイネージコンテンツの実装**: 「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示する機能を実装
+- ✅ **CSVイベント連携**: `MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）と連携し、名前正規化とアクティブローン判定ロジックを実装
+- ✅ **`section`フィールド統合**: `Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に統合
+- ✅ **デザイン調整**: カードの縦寸法を1.5倍に変更、タイトルの「（点検可視化）」を自動削除、KPIの「対象日」ラベルを削除して日付のみ表示、KPIの対象日を左寄せに変更
+- ✅ **CI成功・デプロイ完了・実機検証完了**: Run ID `22387437619` 成功、Pi5デプロイ成功（runId `20260225-173204-3798`）、実機検証完了
+
+**次の改善候補**:
+1. **他の部署への拡張**（優先度: 中）
+   - 現在は「加工担当部署」のみを対象としているが、他の部署（`section`フィールドの値）にも対応
+   - 管理コンソールで部署を選択できるUIを追加
+   - 複数部署を同時に表示するオプションを追加
+
+2. **計測機器持出履歴の表示**（優先度: 低）
+   - 現在は本日のみを表示しているが、過去の履歴（過去7日間、過去30日間など）を表示するオプションを追加
+   - 日付選択UIを追加し、任意の日付の持出状況を確認できるようにする
+
+3. **他のサイネージコンテンツのデザイン統一**（優先度: 低）
+   - 「加工機日常点検結果」など、他のサイネージコンテンツとデザインを統一
+   - KPI表示の統一（左寄せ、ラベル削除など）
+   - カードサイズの統一
+
+4. **パフォーマンス最適化の継続**（優先度: 低）
+   - 大量の従業員・計測機器がある場合のレンダリング時間の最適化
+   - キャッシュ戦略の見直し（KB-236で実施済みの最適化を継続）
+
+**参照**: [docs/knowledge-base/infrastructure/signage.md#kb-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携) / [docs/INDEX.md](./docs/INDEX.md) / [EXEC_PLAN.md](./EXEC_PLAN.md)
 
 ### APIルート分割の横展開（完了）
 
