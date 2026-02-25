@@ -97,6 +97,27 @@ related: [KB-269]
   - ✅ テーブル存在確認: `ProductionScheduleProgress`テーブルが存在（223件の完了状態レコード）
   - ✅ 完了トグル動作: DB `isCompleted`とAPI返却`rowData.progress`が正しく連動することを確認
   - ✅ CSV取り込み後の完了状態保持: CSV取り込み実行後も完了状態が保持されることを確認（要継続観察）
+- **CSV progress同期機能の実装**（2026-02-25）:
+  - ✅ `ProgressSyncFromCsvService`を新設し、CSV取り込み時に`progress`列の値を`ProductionScheduleProgress`テーブルに反映する機能を実装
+  - ✅ `updatedAt`による優先順位判定（新しいCSVが優先、同時刻はシステム側優先）を実装
+  - ✅ タイムゾーン非依存の`updatedAt`パース処理を実装（`Date.UTC`を使用、KB-249の知見を適用）
+  - ✅ デプロイ成功（runId `20260225-213519-20840`, `state: success`, `exitCode: 0`）
+  - ✅ 実機検証完了: 実装コードが正しくデプロイされ、統合されていることを確認
+- **判定ロジックの妥当性確認**（2026-02-25）:
+  - ✅ CSVの`progress`列の仕様確認:
+    - CSVの`progress`列は常に存在する
+    - CSVで`progress`は「完了」か「空」の2択のみ（その他の値は送られない）
+    - CSVで`progress=''`（空）は新規アイテム追加時に送られる（未完了を意味する）
+  - ✅ 判定ロジックの動作確認:
+    - CSVの`progress='完了'` → `isCompleted=true`に反映（CSVの`updatedAt`が新しい場合のみ）
+    - CSVの`progress=''`（空） → `isCompleted=false`に反映（CSVの`updatedAt`が新しい場合のみ）
+    - CSVの`updatedAt` <= DB側の`updatedAt` → DB側（キオスクで設定した完了状態）を維持
+    - 同時刻の場合 → DB側（システム側）を優先
+  - ✅ 動作ケースの検証:
+    - **ケース1: キオスクで完了設定 → その後、CSVで`progress=''`（空）が送られる**: CSVの`updatedAt`が新しい場合、キオスクの完了状態が上書きされる動作で問題なし（業務的に妥当）
+    - **ケース2: キオスクで完了設定 → その後、CSVで`progress='完了'`が送られる**: CSVの`updatedAt`が新しい場合でも既に`true`なので実質変化なし、古い場合はDB側を維持する動作で問題なし（業務的に妥当）
+  - ✅ タイムスタンプ比較の妥当性: CSVの`updatedAt`（CSVデータの更新日時）とDB側の`updatedAt`（完了状態の更新日時）を比較するロジックは業務的に妥当であることを確認
+  - ✅ 現在の実装の妥当性: 生産スケジュール管理の観点で、現在の判定ロジックは妥当であることを確認
 
 ## References
 

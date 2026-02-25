@@ -3474,7 +3474,22 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 **関連ファイル**: 
 - `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（`extractOccurredAt`メソッド）
 
+**トラブルシューティング（2026-02-25）**:
+- **CIテスト失敗**: CSV progress同期機能の実装時に、`parseJstDate`関数がローカルタイムゾーンでDateオブジェクトを作成していたため、CI環境（UTC）でテストが失敗
+  - **症状**: 「同時刻の場合は本システム側を優先して更新しない」「CSVが古い場合は更新しない」のテストが失敗（`upsert`が呼び出されることを期待していたが、実際には呼び出されなかった）
+  - **原因**: `parseJstDate`が`new Date(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0)`でローカルタイムゾーンでDateオブジェクトを作成していたため、CI環境（UTC）では異なる結果になった
+  - **解決**: `Date.UTC`を使用するように修正し、実行環境のローカルタイムゾーンに依存しない変換を実現
+    ```typescript
+    // 修正前
+    const utcDate = new Date(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0);
+    
+    // 修正後
+    const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
+    ```
+  - **学んだこと**: タイムゾーン変換は常に`Date.UTC`を使用し、実行環境に依存しない実装を徹底する必要がある
+
 **解決状況**: ✅ **解決済み**（2026-02-11、CI成功・デプロイ完了・実機検証完了）
+- ✅ **再発対応完了**（2026-02-25）: CSV progress同期機能の実装時に同様の問題が再発し、`Date.UTC`を使用するように修正して解決
 
 ---
 
@@ -3908,9 +3923,58 @@ model ProductionScheduleProgress {
 - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テスト更新）
 - `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`（ユニットテスト更新）
 
+**CSV progress同期機能の実装**（2026-02-25）:
+- ✅ **CSVの`progress`列を`ProductionScheduleProgress`テーブルに同期する機能を実装**:
+  - `ProgressSyncFromCsvService`を新設し、CSV取り込み時に`progress`列の値を`ProductionScheduleProgress`テーブルに反映
+  - `updatedAt`による優先順位判定（新しいCSVが優先、同時刻はシステム側優先）
+  - `progress='完了'` → `isCompleted=true`、`progress=''`（空） → `isCompleted=false`、その他は無視
+  - `CsvDashboardIngestor`で新規行作成時と更新時に`progressSyncCandidates`を収集し、取り込み完了後に同期実行
+- ✅ **タイムゾーン非依存の`updatedAt`パース処理**:
+  - `csv-dashboard-updated-at.ts`を新設し、`parseJstDate`と`resolveUpdatedAt`を共通化
+  - `Date.UTC`を使用して実行環境のローカルタイムゾーンに依存しない変換を実現（KB-249の知見を適用）
+- ✅ **CI修正**:
+  - 初回CI実行でタイムゾーン依存のテスト失敗が発生（`parseJstDate`がローカルタイムゾーンでDateオブジェクトを作成していたため）
+  - `Date.UTC`を使用するように修正し、CI環境（UTC）でも正しく動作することを確認
+- ✅ **デプロイ結果**: Pi5でデプロイ成功（runId `20260225-213519-20840`, `state: success`, `exitCode: 0`）
+- ✅ **実機検証結果**（2026-02-25）:
+  - ✅ デプロイ実体確認: ブランチ `feat/csv-progress-sync`、コミット `bf0e23e4` が反映済み
+  - ✅ 実装コード統合確認: `ProgressSyncFromCsvService`がデプロイ済み、`csv-dashboard-ingestor.js`で`progressSyncFromCsvService.sync()`が呼び出されていることを確認
+  - ✅ `resolveUpdatedAt`関数の実装確認: `Date.UTC`を使用したタイムゾーン非依存の実装が確認できた
+  - ✅ APIログ: エラーなし（過去10分間）
+  - ✅ サービス状態: 正常稼働中
+
+**判定ロジックの妥当性確認**（2026-02-25）:
+- ✅ **CSVの`progress`列の仕様確認**:
+  - CSVの`progress`列は常に存在する
+  - CSVで`progress`は「完了」か「空」の2択のみ（その他の値は送られない）
+  - CSVで`progress=''`（空）は新規アイテム追加時に送られる（未完了を意味する）
+- ✅ **判定ロジックの動作確認**:
+  - CSVの`progress='完了'` → `isCompleted=true`に反映（CSVの`updatedAt`が新しい場合のみ）
+  - CSVの`progress=''`（空） → `isCompleted=false`に反映（CSVの`updatedAt`が新しい場合のみ）
+  - CSVの`updatedAt` <= DB側の`updatedAt` → DB側（キオスクで設定した完了状態）を維持
+  - 同時刻の場合 → DB側（システム側）を優先
+- ✅ **動作ケースの検証**:
+  - **ケース1: キオスクで完了設定 → その後、CSVで`progress=''`（空）が送られる**:
+    - CSVの`updatedAt`がキオスク設定日時より新しい場合 → `isCompleted=false`に更新される（キオスクの完了状態が上書きされる）
+    - CSVの`updatedAt`がキオスク設定日時より古い場合 → DB側（`isCompleted=true`）を維持
+    - **検証結果**: この動作で問題なし（業務的に妥当）
+  - **ケース2: キオスクで完了設定 → その後、CSVで`progress='完了'`が送られる**:
+    - CSVの`updatedAt`がキオスク設定日時より新しい場合 → `isCompleted=true`に更新される（既に`true`なので実質変化なし）
+    - CSVの`updatedAt`がキオスク設定日時より古い場合 → DB側（`isCompleted=true`）を維持
+    - **検証結果**: この動作で問題なし（業務的に妥当）
+- ✅ **タイムスタンプ比較の妥当性**:
+  - CSVの`updatedAt`: CSVデータの更新日時（CSVファイルの`updatedAt`列、または`occurredAt`）
+  - DB側の`updatedAt`: `ProductionScheduleProgress`テーブルの`updatedAt`（完了状態を最後に更新した日時）
+  - 比較の意図: CSVの`updatedAt`が新しい場合、CSVの`progress`値を反映。CSVの`updatedAt`が同じか古い場合、DB側（キオスクで設定した完了状態）を維持
+  - **検証結果**: この比較ロジックは業務的に妥当であることを確認
+- ✅ **現在の実装の妥当性**:
+  - 生産スケジュール管理の観点で、現在の判定ロジックは妥当であることを確認
+  - CSVの`progress`列の仕様（「完了」か「空」の2択）と、タイムスタンプ比較による優先順位判定は、業務要件を満たしている
+
 **関連KB**:
 - [KB-184](../frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能): 生産スケジュールキオスクページ実装（完了状態の保存方法が変更された）
 - [KB-268](../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察): 今回の変更とKB-268の対策は衝突しない
+- [KB-249](#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題): CSV progress同期機能の実装時にタイムゾーン問題が再発し、`Date.UTC`を使用するように修正
 
 ---
 
