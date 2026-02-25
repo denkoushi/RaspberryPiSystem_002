@@ -11,7 +11,7 @@ vi.mock('../../../../../lib/prisma.js', () => ({
     inspectionRecord: {
       groupBy: vi.fn(),
     },
-    loan: {
+    measuringInstrumentLoanEvent: {
       findMany: vi.fn(),
     },
   },
@@ -81,11 +81,25 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
     vi.mocked(prisma.inspectionRecord.groupBy).mockResolvedValue([
       { employeeId: 'emp-1', _count: { _all: 3 } },
     ] as never);
-    vi.mocked(prisma.loan.findMany).mockResolvedValue([
-      { employeeId: 'emp-1', measuringInstrument: { name: 'デジタルノギス' } },
-      { employeeId: 'emp-1', measuringInstrument: { name: 'マイクロメータ' } },
-      { employeeId: 'emp-2', measuringInstrument: { name: 'トルクレンチ' } },
-    ] as never);
+    vi.mocked(prisma.measuringInstrumentLoanEvent.findMany)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T01:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'デジタルノギス' },
+        },
+        {
+          managementNumber: 'AG1002',
+          eventAt: new Date('2026-02-25T02:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'マイクロメータ' },
+        },
+        {
+          managementNumber: 'AG1003',
+          eventAt: new Date('2026-02-25T03:00:00.000Z'),
+          raw: { borrower: '佐藤花子', name: 'トルクレンチ' },
+        },
+      ] as never)
+      .mockResolvedValueOnce([] as never);
 
     const source = new MeasuringInstrumentLoanInspectionDataSource();
     const result = await source.fetchData({

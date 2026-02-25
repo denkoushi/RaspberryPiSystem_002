@@ -18,6 +18,14 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeEmployeeName(value: string): string {
+  return value.replace(/[\s\u3000]/g, '');
+}
+
 function resolveTodayJstRange(nowUtc = new Date()): { startDateUtc: Date; endDateUtc: Date; dateLabel: string } {
   const jstOffsetMs = 9 * 60 * 60 * 1000;
   const nowJst = new Date(nowUtc.getTime() + jstOffsetMs);
@@ -58,7 +66,8 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
       return buildEmptyTable({ sectionEquals, error: 'period must be today_jst' });
     }
 
-    const { startDateUtc, endDateUtc, dateLabel } = resolveTodayJstRange();
+    const nowUtc = new Date();
+    const { startDateUtc, endDateUtc, dateLabel } = resolveTodayJstRange(nowUtc);
 
     const employees = await prisma.employee.findMany({
       where: {
@@ -84,7 +93,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     }
 
     const employeeIds = employees.map((employee) => employee.id);
-    const [inspectedGroup, activeLoans] = await Promise.all([
+    const [inspectedGroup, borrowEvents] = await Promise.all([
       prisma.inspectionRecord.groupBy({
         by: ['employeeId'],
         where: {
@@ -98,23 +107,21 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
           _all: true,
         },
       }),
-      prisma.loan.findMany({
+      prisma.measuringInstrumentLoanEvent.findMany({
         where: {
-          employeeId: { in: employeeIds },
-          measuringInstrumentId: { not: null },
-          returnedAt: null,
-          cancelledAt: null,
-        },
-        select: {
-          employeeId: true,
-          measuringInstrument: {
-            select: {
-              name: true,
-            },
+          action: '持ち出し',
+          eventAt: {
+            gte: startDateUtc,
+            lte: endDateUtc,
           },
         },
+        select: {
+          managementNumber: true,
+          eventAt: true,
+          raw: true,
+        },
         orderBy: {
-          borrowedAt: 'desc',
+          eventAt: 'desc',
         },
       }),
     ]);
@@ -122,25 +129,53 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     const inspectedCountByEmployee = new Map(
       inspectedGroup.map((group) => [group.employeeId, group._count._all ?? 0]),
     );
-    const activeLoanNamesByEmployee = new Map<string, string[]>();
-    for (const loan of activeLoans) {
-      const employeeId = loan.employeeId;
-      if (!employeeId) {
+    const managementNumbers = Array.from(
+      new Set(borrowEvents.map((event) => event.managementNumber).filter(Boolean)),
+    );
+    const returnEvents = managementNumbers.length
+      ? await prisma.measuringInstrumentLoanEvent.findMany({
+          where: {
+            action: '返却',
+            managementNumber: { in: managementNumbers },
+            eventAt: { lte: nowUtc },
+          },
+          select: {
+            managementNumber: true,
+            eventAt: true,
+          },
+        })
+      : [];
+
+    const latestReturnByManagementNumber = new Map<string, Date>();
+    for (const event of returnEvents) {
+      const current = latestReturnByManagementNumber.get(event.managementNumber);
+      if (!current || event.eventAt > current) {
+        latestReturnByManagementNumber.set(event.managementNumber, event.eventAt);
+      }
+    }
+
+    const activeInstrumentNamesByBorrower = new Map<string, string[]>();
+    for (const event of borrowEvents) {
+      const latestReturn = latestReturnByManagementNumber.get(event.managementNumber);
+      if (latestReturn && latestReturn >= event.eventAt) {
         continue;
       }
-      const name = loan.measuringInstrument?.name?.trim();
-      if (!name) {
+      const raw = asRecord(event.raw);
+      const borrower = normalizeEmployeeName(asString(raw.borrower));
+      const instrumentName = asString(raw.name);
+      if (!borrower || !instrumentName) {
         continue;
       }
-      const current = activeLoanNamesByEmployee.get(employeeId) ?? [];
-      current.push(name);
-      activeLoanNamesByEmployee.set(employeeId, current);
+      const current = activeInstrumentNamesByBorrower.get(borrower) ?? [];
+      current.push(instrumentName);
+      activeInstrumentNamesByBorrower.set(borrower, current);
     }
 
     let inspectedUsers = 0;
     const rows = employees.map((employee) => {
       const inspectedCountToday = inspectedCountByEmployee.get(employee.id) ?? 0;
-      const rawNames = activeLoanNamesByEmployee.get(employee.id) ?? [];
+      const rawNames =
+        activeInstrumentNamesByBorrower.get(normalizeEmployeeName(employee.displayName)) ?? [];
       const activeInstrumentNames = Array.from(new Set(rawNames));
       const activeInstrumentLoansCount = activeInstrumentNames.length;
       if (inspectedCountToday > 0) {
