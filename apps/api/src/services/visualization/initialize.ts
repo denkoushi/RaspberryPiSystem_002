@@ -4,11 +4,13 @@ import { MeasuringInstrumentsDataSource } from './data-sources/measuring-instrum
 import { CsvDashboardTableDataSource } from './data-sources/csv-dashboard-table/index.js';
 import { ProductionScheduleDataSource } from './data-sources/production-schedule/index.js';
 import { UninspectedMachinesDataSource } from './data-sources/uninspected-machines/index.js';
+import { MeasuringInstrumentLoanInspectionDataSource } from './data-sources/measuring-instrument-loan-inspection/index.js';
 import { KpiCardsRenderer } from './renderers/kpi-cards/index.js';
 import { BarChartRenderer } from './renderers/bar-chart/index.js';
 import { TableRenderer } from './renderers/table/index.js';
 import { ProgressListRenderer } from './renderers/progress-list/index.js';
 import { UninspectedMachinesRenderer } from './renderers/uninspected-machines/index.js';
+import { MeasuringInstrumentLoanInspectionRenderer } from './renderers/measuring-instrument-loan-inspection/index.js';
 
 export function initializeVisualizationModules(): void {
   const dataSourceRegistry = getDataSourceRegistry();
@@ -30,6 +32,10 @@ export function initializeVisualizationModules(): void {
     dataSourceRegistry.register(new UninspectedMachinesDataSource());
   }
 
+  if (!dataSourceRegistry.has('measuring_instrument_loan_inspection')) {
+    dataSourceRegistry.register(new MeasuringInstrumentLoanInspectionDataSource());
+  }
+
   if (!rendererRegistry.has('kpi_cards')) {
     rendererRegistry.register(new KpiCardsRenderer());
   }
@@ -48,5 +54,9 @@ export function initializeVisualizationModules(): void {
 
   if (!rendererRegistry.has('uninspected_machines')) {
     rendererRegistry.register(new UninspectedMachinesRenderer());
+  }
+
+  if (!rendererRegistry.has('measuring_instrument_loan_inspection')) {
+    rendererRegistry.register(new MeasuringInstrumentLoanInspectionRenderer());
   }
 }

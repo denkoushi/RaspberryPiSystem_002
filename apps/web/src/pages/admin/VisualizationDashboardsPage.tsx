@@ -9,6 +9,8 @@ import type { VisualizationDashboard } from '../../api/client';
 const DEFAULT_JSON = '{}';
 const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
 const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
+const MI_LOAN_INSPECTION_DATA_SOURCE_TYPE = 'measuring_instrument_loan_inspection';
+const MI_LOAN_INSPECTION_RENDERER_TYPE = 'measuring_instrument_loan_inspection';
 const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
   {
     csvDashboardId: '',
@@ -21,6 +23,21 @@ const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
 const UNINSPECTED_RENDERER_TEMPLATE = JSON.stringify(
   {
     maxRows: 18,
+  },
+  null,
+  2,
+);
+const MI_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE = JSON.stringify(
+  {
+    sectionEquals: '加工担当部署',
+    period: 'today_jst',
+  },
+  null,
+  2,
+);
+const MI_LOAN_INSPECTION_RENDERER_TEMPLATE = JSON.stringify(
+  {
+    maxRows: 24,
   },
   null,
   2,
@@ -68,6 +85,7 @@ export function VisualizationDashboardsPage() {
 
   const isEditing = Boolean(selectedId) && !isCreating;
   const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
+  const isMeasuringInspectionPreset = dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE;
 
   // 未点検加工機プリセット用のCSVダッシュボードID取得
   const currentCsvDashboardId = useMemo(() => {
@@ -183,6 +201,17 @@ export function VisualizationDashboardsPage() {
         return;
       }
     }
+    if (dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE) {
+      const cfg = dataSourceParsed.value ?? {};
+      const sectionEquals =
+        typeof cfg.sectionEquals === 'string' ? cfg.sectionEquals.trim() : '';
+      if (!sectionEquals) {
+        setFormError(
+          '計測機器持出状況（点検可視化）データソースでは sectionEquals が必須です。',
+        );
+        return;
+      }
+    }
 
     if (isCreating) {
       await create.mutateAsync({
@@ -234,6 +263,20 @@ export function VisualizationDashboardsPage() {
     }
     if (!description.trim()) {
       setDescription('加工機マスターと点検CSVの当日差分を表示');
+    }
+    setFormError(null);
+  };
+
+  const applyMeasuringInspectionPreset = () => {
+    setDataSourceType(MI_LOAN_INSPECTION_DATA_SOURCE_TYPE);
+    setRendererType(MI_LOAN_INSPECTION_RENDERER_TYPE);
+    setDataSourceConfig(MI_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE);
+    setRendererConfig(MI_LOAN_INSPECTION_RENDERER_TEMPLATE);
+    if (!name.trim()) {
+      setName('計測機器持出状況（点検可視化）');
+    }
+    if (!description.trim()) {
+      setDescription('加工担当部署の従業員ごとにJST当日の点検有無と貸出中計測機器数を表示');
     }
     setFormError(null);
   };
@@ -334,8 +377,11 @@ export function VisualizationDashboardsPage() {
                   <Button variant="secondary" onClick={applyUninspectedPreset}>
                     未点検加工機プリセットを適用
                   </Button>
+                  <Button variant="secondary" onClick={applyMeasuringInspectionPreset}>
+                    計測機器点検可視化プリセットを適用
+                  </Button>
                   <p className="text-xs text-slate-600">
-                    サイネージ向け未点検表示の推奨設定を自動入力します。
+                    サイネージ向け可視化の推奨設定を自動入力します。
                   </p>
                 </div>
                 {isUninspectedPreset && (
@@ -367,6 +413,14 @@ export function VisualizationDashboardsPage() {
                         CSVダッシュボードを選択してください（必須）
                       </p>
                     )}
+                  </div>
+                )}
+                {isMeasuringInspectionPreset && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-slate-700">
+                      部署フィルタは <code>dataSourceConfig.sectionEquals</code> で設定します。
+                      既定値は「加工担当部署」です。
+                    </p>
                   </div>
                 )}
               </div>

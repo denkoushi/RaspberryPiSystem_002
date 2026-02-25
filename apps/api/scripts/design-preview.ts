@@ -10,6 +10,7 @@ import {
 } from '../src/services/visualization/renderers/_design-system/index.js';
 import { computeSplitPaneGeometry } from '../src/services/signage/signage-layout-math.js';
 import { UninspectedMachinesRenderer } from '../src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.js';
+import { MeasuringInstrumentLoanInspectionRenderer } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-renderer.js';
 
 type PreviewConfig = {
   width: number;
@@ -71,6 +72,29 @@ function sampleUninspectedTable(): TableVisualizationData {
       totalRunningMachines: 49,
       inspectedRunningCount: 25,
       uninspectedCount: 24,
+    },
+  };
+}
+
+function sampleMeasuringInstrumentLoanInspectionTable(): TableVisualizationData {
+  return {
+    kind: 'table',
+    columns: ['従業員名', '貸出中計測機器数', '計測機器名称一覧'],
+    rows: [
+      { 従業員名: '山田 太郎', 点検件数: 2, 貸出中計測機器数: 2, 計測機器名称一覧: 'デジタルノギス, マイクロメータ' },
+      { 従業員名: '佐藤 花子', 点検件数: 0, 貸出中計測機器数: 1, 計測機器名称一覧: 'トルクレンチ' },
+      { 従業員名: '高橋 一郎', 点検件数: 1, 貸出中計測機器数: 3, 計測機器名称一覧: 'デジタルノギス, トルクレンチ, ブロックゲージセット' },
+      { 従業員名: '伊藤 晴美', 点検件数: 0, 貸出中計測機器数: 0, 計測機器名称一覧: '' },
+      { 従業員名: '渡辺 直人', 点検件数: 1, 貸出中計測機器数: 1, 計測機器名称一覧: 'マイクロメータ' },
+      { 従業員名: '中村 美咲', 点検件数: 0, 貸出中計測機器数: 2, 計測機器名称一覧: 'トルクレンチ, 高精度測長器' },
+      { 従業員名: '小林 健', 点検件数: 3, 貸出中計測機器数: 4, 計測機器名称一覧: 'デジタルノギス, トルクレンチ, マイクロメータ, 高精度測長器' },
+      { 従業員名: '加藤 亜紀', 点検件数: 0, 貸出中計測機器数: 1, 計測機器名称一覧: 'テーパーゲージ' },
+    ],
+    metadata: {
+      targetDate: '2026-02-25',
+      sectionEquals: '加工担当部署',
+      totalUsers: 8,
+      inspectedUsers: 4,
     },
   };
 }
@@ -305,6 +329,8 @@ async function main(): Promise<void> {
 
   const renderer = new UninspectedMachinesRenderer();
   const table = sampleUninspectedTable();
+  const measuringInspectionRenderer = new MeasuringInstrumentLoanInspectionRenderer();
+  const measuringInspectionTable = sampleMeasuringInstrumentLoanInspectionTable();
 
   const fullOut = await renderer.render(table, {
     width: full.width,
@@ -371,6 +397,23 @@ async function main(): Promise<void> {
   const cardSplitPath = path.join(outDir, 'signage-card-split.jpg');
   await writeBuffer(cardSplitPath, cardSignageSplitJpg);
 
+  // 計測機器持出状況（点検可視化）プレビュー
+  const miFullOut = await measuringInspectionRenderer.render(measuringInspectionTable, {
+    width: full.width,
+    height: full.height,
+    title: '計測機器持出状況',
+  });
+  const miFullPath = path.join(outDir, 'measuring-loan-inspection-full.jpg');
+  await writeBuffer(miFullPath, miFullOut.buffer);
+
+  const miPaneOut = await measuringInspectionRenderer.render(measuringInspectionTable, {
+    width: g.rightPaneContentWidth,
+    height: g.paneContentHeight,
+    title: '計測機器持出状況',
+  });
+  const miPanePath = path.join(outDir, 'measuring-loan-inspection-pane.jpg');
+  await writeBuffer(miPanePath, miPaneOut.buffer);
+
   const indexHtml = `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -428,6 +471,16 @@ async function main(): Promise<void> {
       <img src="./signage-card-split.jpg" alt="signage card split" />
       <p class="note">SPLITレイアウトでのカード形式SVGレンダラー出力（右側パネル）。</p>
     </div>
+    <div class="card">
+      <div class="title">計測機器持出状況 FULL (${full.width}x${full.height})</div>
+      <img src="./measuring-loan-inspection-full.jpg" alt="measuring inspection full" />
+      <p class="note">ユーザー別カードで、点検有無に応じた背景色切り替えを確認。</p>
+    </div>
+    <div class="card">
+      <div class="title">計測機器持出状況 pane (${g.rightPaneContentWidth}x${g.paneContentHeight})</div>
+      <img src="./measuring-loan-inspection-pane.jpg" alt="measuring inspection pane" />
+      <p class="note">SPLIT右ペイン相当サイズで視認性を確認。</p>
+    </div>
   </div>
 </body>
 </html>
@@ -444,6 +497,8 @@ async function main(): Promise<void> {
       vizFull: 'tmp/design-preview/viz-full.jpg',
       vizPane: 'tmp/design-preview/viz-pane.jpg',
       signageSplit: 'tmp/design-preview/signage-split.jpg',
+      measuringLoanInspectionFull: 'tmp/design-preview/measuring-loan-inspection-full.jpg',
+      measuringLoanInspectionPane: 'tmp/design-preview/measuring-loan-inspection-pane.jpg',
     },
   };
   await fs.writeFile(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf8');
