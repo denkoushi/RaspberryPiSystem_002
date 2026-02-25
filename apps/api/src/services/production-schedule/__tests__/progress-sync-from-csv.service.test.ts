@@ -70,7 +70,7 @@ describe('ProgressSyncFromCsvService', () => {
 
   it('同時刻の場合は本システム側を優先して更新しない', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
-      updatedAt: new Date('2026-02-24T16:00:00.000Z'),
+      updatedAt: new Date('2026-02-25T01:00:00.000Z'),
     } as never);
 
     await service.sync({
@@ -88,7 +88,7 @@ describe('ProgressSyncFromCsvService', () => {
 
   it('CSVが古い場合は更新しない', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
-      updatedAt: new Date('2026-02-24T20:00:00.000Z'),
+      updatedAt: new Date('2026-02-25T02:00:00.000Z'),
     } as never);
 
     await service.sync({

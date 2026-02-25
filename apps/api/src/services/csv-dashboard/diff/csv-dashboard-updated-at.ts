@@ -21,11 +21,12 @@ export const parseJstDate = (value: unknown): Date | null => {
   const dayNum = parseInt(day, 10);
   const hourNum = parseInt(hour, 10);
   const minuteNum = parseInt(minute, 10);
-  const localDate = new Date(yearNum, monthNum, dayNum, hourNum, minuteNum, 0, 0);
-  if (isNaN(localDate.getTime())) {
+  // 入力値を常に JST (UTC+9) として解釈し、実行環境のローカルTZ依存を排除する。
+  const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
+  if (isNaN(utcDate.getTime())) {
     return null;
   }
-  return new Date(localDate.getTime() - 9 * 60 * 60 * 1000);
+  return utcDate;
 };
 
 export const resolveUpdatedAt = (rowData: Prisma.JsonValue, fallback: Date): Date => {
