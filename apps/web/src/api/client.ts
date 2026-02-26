@@ -492,6 +492,7 @@ export async function getKioskProductionSchedule(params?: {
   q?: string;
   resourceCds?: string;
   resourceAssignedOnlyCds?: string;
+  resourceCategory?: 'grinding' | 'cutting';
   hasNoteOnly?: boolean;
   hasDueDateOnly?: boolean;
   page?: number;

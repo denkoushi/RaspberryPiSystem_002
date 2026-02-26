@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { filterProductionScheduleResourceCdsByCategory, type ProductionScheduleResourceCategory } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -20,6 +21,7 @@ export type ProductionScheduleListParams = {
   queryText: string;
   resourceCds: string[];
   assignedOnlyCds: string[];
+  resourceCategory?: ProductionScheduleResourceCategory;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
   locationKey: string;
@@ -61,9 +63,12 @@ const buildTextConditions = (queryText: string): Prisma.Sql[] => {
 const buildResourceConditions = (params: {
   resourceCds: string[];
   assignedOnlyCds: string[];
+  resourceCategory?: ProductionScheduleResourceCategory;
   locationKey: string;
 }): Prisma.Sql[] => {
-  const { resourceCds, assignedOnlyCds, locationKey } = params;
+  const { resourceCategory, locationKey } = params;
+  const resourceCds = filterProductionScheduleResourceCdsByCategory(params.resourceCds, resourceCategory);
+  const assignedOnlyCds = filterProductionScheduleResourceCdsByCategory(params.assignedOnlyCds, resourceCategory);
   const resourceConditions: Prisma.Sql[] = [];
 
   if (resourceCds.length > 0) {
@@ -149,6 +154,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     queryText,
     resourceCds,
     assignedOnlyCds,
+    resourceCategory,
     hasNoteOnly,
     hasDueDateOnly,
     locationKey
@@ -157,6 +163,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const resourceConditions = buildResourceConditions({
     resourceCds,
     assignedOnlyCds,
+    resourceCategory,
     locationKey
   });
 

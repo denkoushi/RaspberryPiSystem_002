@@ -22,7 +22,7 @@ import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionSche
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
-import { filterResourceCdsByCategory } from '../../features/kiosk/productionSchedule/resourceCategory';
+import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
@@ -180,17 +180,32 @@ export function ProductionSchedulePage() {
     return Array.from(unique);
   }, [activeResourceAssignedOnlyCds]);
 
+  const selectedResourceCategory = useMemo<'grinding' | 'cutting' | undefined>(() => {
+    if (showGrindingResources === showCuttingResources) {
+      return undefined;
+    }
+    return showGrindingResources ? 'grinding' : 'cutting';
+  }, [showCuttingResources, showGrindingResources]);
+
   const queryParams = useMemo(
     () => ({
       q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
+      resourceCategory: selectedResourceCategory,
       hasNoteOnly: hasNoteOnlyFilter || undefined,
       hasDueDateOnly: hasDueDateOnlyFilter || undefined,
       page: 1,
       pageSize: 400
     }),
-    [normalizedActiveQueries, normalizedAssignedOnlyCds, normalizedResourceCds, hasNoteOnlyFilter, hasDueDateOnlyFilter]
+    [
+      normalizedActiveQueries,
+      normalizedAssignedOnlyCds,
+      normalizedResourceCds,
+      selectedResourceCategory,
+      hasNoteOnlyFilter,
+      hasDueDateOnlyFilter
+    ]
   );
   // 資源CD単独では検索しない（登録製番単独・AND検索は維持）。備考ありのみは単独で有効
   const hasQuery =
@@ -621,6 +636,18 @@ export function ProductionSchedulePage() {
   const toggleCuttingResources = () => {
     setShowCuttingResources((value) => !value);
   };
+
+  useEffect(() => {
+    if (!selectedResourceCategory) {
+      return;
+    }
+    const shouldKeepResourceCd = (resourceCd: string) => {
+      const isGrinding = isGrindingResourceCd(resourceCd);
+      return selectedResourceCategory === 'grinding' ? isGrinding : !isGrinding;
+    };
+    setActiveResourceCds((prev) => prev.filter(shouldKeepResourceCd));
+    setActiveResourceAssignedOnlyCds((prev) => prev.filter(shouldKeepResourceCd));
+  }, [selectedResourceCategory]);
 
   const getAvailableOrders = (resourceCd: string, current: number | null) => {
     const usage = orderUsageQuery.data?.[resourceCd] ?? [];

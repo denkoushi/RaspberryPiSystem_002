@@ -1,23 +1,15 @@
+import {
+  filterProductionScheduleResourceCdsByCategory,
+  isProductionScheduleGrindingResourceCd
+} from '@raspi-system/shared-types';
+
 export type ResourceCategoryFilter = {
   showGrinding: boolean;
   showCutting: boolean;
 };
 
-export const GRINDING_RESOURCE_CDS = new Set<string>([
-  '305',
-  '581',
-  '582',
-  '583',
-  '584',
-  '585',
-  '586',
-  '587',
-  '588',
-  '589'
-]);
-
 export const isGrindingResourceCd = (resourceCd: string) => {
-  return GRINDING_RESOURCE_CDS.has(resourceCd.trim());
+  return isProductionScheduleGrindingResourceCd(resourceCd);
 };
 
 export const filterResourceCdsByCategory = (
@@ -31,8 +23,8 @@ export const filterResourceCdsByCategory = (
   }
 
   if (showGrinding) {
-    return resourceCds.filter((cd) => isGrindingResourceCd(cd));
+    return filterProductionScheduleResourceCdsByCategory(resourceCds, 'grinding');
   }
 
-  return resourceCds.filter((cd) => !isGrindingResourceCd(cd));
+  return filterProductionScheduleResourceCdsByCategory(resourceCds, 'cutting');
 };

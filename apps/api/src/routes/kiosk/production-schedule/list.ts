@@ -17,6 +17,7 @@ export async function registerProductionScheduleListRoute(
     const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
     const resourceCds = parseCsvList(query.resourceCds);
     const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
+    const resourceCategory = query.resourceCategory;
     const hasNoteOnly = query.hasNoteOnly === true;
     const hasDueDateOnly = query.hasDueDateOnly === true;
 
@@ -26,6 +27,7 @@ export async function registerProductionScheduleListRoute(
       queryText: rawQueryText,
       resourceCds,
       assignedOnlyCds,
+      resourceCategory,
       hasNoteOnly,
       hasDueDateOnly,
       locationKey
