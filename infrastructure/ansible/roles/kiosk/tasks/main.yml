@@ -71,6 +71,20 @@
       changed=1
     fi
 
+    # IBusパネルのエンジン名表示を無効化（キー入力時のUI表示を抑制）
+    current_show_im_name="$(gsettings get org.freedesktop.ibus.panel show-im-name || true)"
+    if [ "${current_show_im_name}" != "false" ]; then
+      gsettings set org.freedesktop.ibus.panel show-im-name false
+      changed=1
+    fi
+
+    # IBusパネル自体も非表示にする（念のため）
+    current_show_panel="$(gsettings get org.freedesktop.ibus.panel show || true)"
+    if [ "${current_show_panel}" != "false" ]; then
+      gsettings set org.freedesktop.ibus.panel show false
+      changed=1
+    fi
+
     if [ "${changed}" -eq 1 ]; then
       echo "changed:ibus-settings"
     else
