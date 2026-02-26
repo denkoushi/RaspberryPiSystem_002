@@ -37,7 +37,8 @@
       Type=Application
       Name=IBus Engine Init
       Comment=Set default IBus engine to mozc-jp
-      Exec=bash -lc 'sleep 2; ibus engine mozc-jp >/dev/null 2>&1 || true'
+      # IBus起動直後は一時的にbus/engine未準備になるため、短時間リトライして確実に設定する
+      Exec=bash -lc 'for i in 1 2 3 4 5; do sleep 1; ibus engine mozc-jp >/dev/null 2>&1 && exit 0; done; exit 0'
       Terminal=false
       Categories=System;Utility;
       X-GNOME-Autostart-enabled=true
