@@ -4,22 +4,22 @@
  */
 
 // ツール管理モジュールの型定義
-export * from './tools';
+export * from './tools/index.js';
 
 // 計測機器モジュールの型定義
-export * from './measuring-instruments';
+export * from './measuring-instruments/index.js';
 
 // 吊具モジュールの型定義
-export * from './rigging';
+export * from './rigging/index.js';
 
 // 認証関連の型定義
-export * from './auth';
+export * from './auth/index.js';
 
 // 共通の型定義
-export * from './common';
+export * from './common/index.js';
 
 // API契約型（段階導入）
-export * from './contracts';
+export * from './contracts/index.js';
 
 
 

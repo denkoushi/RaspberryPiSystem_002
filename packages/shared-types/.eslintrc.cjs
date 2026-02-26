@@ -19,6 +19,7 @@ module.exports = {
   ],
   ignorePatterns: ['dist/**'],
   rules: {
+    'import/no-unresolved': 'off',
     'import/order': [
       'error',
       {
