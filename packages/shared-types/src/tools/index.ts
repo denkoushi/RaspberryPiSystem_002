@@ -1,8 +1,8 @@
 /**
  * ツール管理モジュールの型定義
  */
-import type { MeasuringInstrument } from '../measuring-instruments';
-import type { RiggingGear } from '../rigging';
+import type { MeasuringInstrument } from '../measuring-instruments/index.js';
+import type { RiggingGear } from '../rigging/index.js';
 
 export interface Employee {
   id: string;

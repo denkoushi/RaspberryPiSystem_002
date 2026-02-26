@@ -23,7 +23,7 @@ export interface ImportJob {
   completedAt?: string | null;
 }
 
-export * from './production-schedule-resource-category';
+export * from './production-schedule-resource-category.js';
 
 
 
