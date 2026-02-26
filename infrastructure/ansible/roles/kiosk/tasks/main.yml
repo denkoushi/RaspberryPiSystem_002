@@ -26,6 +26,22 @@
     group: "{{ ansible_user }}"
     mode: '0644'
 
+- name: Force mozc-jp as initial IBus engine on login
+  ansible.builtin.copy:
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus-engine.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=IBus Engine Init
+      Comment=Set default IBus engine to mozc-jp
+      Exec=bash -lc 'sleep 2; ibus engine mozc-jp >/dev/null 2>&1 || true'
+      Terminal=false
+      Categories=System;Utility;
+      X-GNOME-Autostart-enabled=true
+
 - name: Persist IBus engine order and hotkey for kiosk user
   ansible.builtin.shell: |
     set -eu
@@ -41,7 +57,7 @@
     export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
 
     changed=0
-    desired_engines="['xkb:jp::jpn', 'mozc-jp']"
+    desired_engines="['mozc-jp', 'xkb:jp::jpn']"
     current_engines="$(gsettings get org.freedesktop.ibus.general engines-order || true)"
     if [ "${current_engines}" != "${desired_engines}" ]; then
       gsettings set org.freedesktop.ibus.general engines-order "${desired_engines}"

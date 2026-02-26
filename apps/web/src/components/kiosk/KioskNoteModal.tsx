@@ -65,7 +65,7 @@ export function KioskNoteModal({
         />
         <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
           <div>
-            <span className="font-semibold">切り替え:</span> 全角半角キー
+            <span className="font-semibold">切り替え:</span> Ctrl+Space（必要に応じて全角半角キー）
           </div>
           <div>
             {draft.length} / {maxLength}
