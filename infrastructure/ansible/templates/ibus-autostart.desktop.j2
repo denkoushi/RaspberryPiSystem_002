@@ -2,7 +2,9 @@
 Type=Application
 Name=IBus
 Comment=Start IBus daemon
-Exec=ibus-daemon -drx
+# キオスク環境ではパネル(UI)が独立ウィンドウとして前面に出てフォーカスを奪うことがあるため、
+# パネル/設定UI/絵文字拡張を起動しない（IMEエンジン自体は動作する）
+Exec=ibus-daemon -drx --panel=disable --config=disable --emoji-extension=disable
 Icon=ibus
 Terminal=false
 Categories=System;Utility;
