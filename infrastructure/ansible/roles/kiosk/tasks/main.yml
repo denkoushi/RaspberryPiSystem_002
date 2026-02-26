@@ -65,7 +65,8 @@
       changed=1
     fi
 
-    desired_triggers="['<Control>space']"
+    # 現場では「全角/半角」キーでの切替も使うため、Ctrl+Spaceと併用する
+    desired_triggers="['<Control>space', 'Zenkaku_Hankaku']"
     current_triggers="$(gsettings get org.freedesktop.ibus.general.hotkey triggers || true)"
     if [ "${current_triggers}" != "${desired_triggers}" ]; then
       gsettings set org.freedesktop.ibus.general.hotkey triggers "${desired_triggers}"
