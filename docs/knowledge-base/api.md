@@ -2560,6 +2560,84 @@ await prisma.$transaction(async (tx) => {
 
 ---
 
+**拡張機能: 工程カテゴリフィルタ（2026-02-26）**:
+
+**事象**: 
+- 生産スケジュールの資源CDを「研削工程」と「切削工程」に分類し、工程カテゴリボタンでフィルタできる機能を実装
+- 実機検証で、工程カテゴリボタンと登録製番を組み合わせた際に、工程カテゴリ以外のアイテムが表示される問題が発生
+
+**要因**: 
+- `resourceCategory`パラメータは`buildResourceConditions`内で`resourceCds`と`assignedOnlyCds`に適用されていたが、これらの配列が空の場合、条件が生成されずメインクエリに反映されなかった
+- 工程カテゴリボタン単独では検索しない仕様のため、登録製番や資源CDの割当と組み合わせた際にのみフィルタが適用される必要があったが、実装が不完全だった
+
+**有効だった対策**: 
+- ✅ **resourceCategoryを独立したSQL条件として常に適用（2026-02-26）**:
+  1. **`buildResourceCategoryCondition`関数の追加**: `resourceCategory`に基づいて独立したSQL条件を生成する関数を追加
+  2. **研削工程の資源CD定義**: `packages/shared-types/src/common/production-schedule-resource-category.ts`に研削工程の資源CD（`305`, `581`, `582`, `583`, `584`, `585`, `586`, `587`, `588`, `589`）を定義
+  3. **SQL条件の生成**: `resourceCategory === 'grinding'`の場合は`FSIGENCD IN (研削工程の資源CD)`、`resourceCategory === 'cutting'`の場合は`FSIGENCD NOT IN (研削工程の資源CD)`を生成
+  4. **メインクエリへの統合**: `buildQueryWhere`関数で`resourceCategoryCondition`を無条件に`queryWhere`に追加し、`resourceCds`や`assignedOnlyCds`が空でもフィルタが適用されるように修正
+  5. **統合テスト追加**: 
+     - `applies resourceCategory with q filter (grinding only)`: 工程カテゴリと検索クエリを組み合わせた際に正しくフィルタされることを確認
+     - `does not search when only resourceCategory is specified (without q/assignedOnly)`: 工程カテゴリボタン単独では検索されないことを確認
+
+**実装の詳細**:
+```typescript
+// packages/shared-types/src/common/production-schedule-resource-category.ts
+export const PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS = [
+  '305', '581', '582', '583', '584', '585', '586', '587', '588', '589'
+] as const;
+
+// apps/api/src/services/production-schedule/production-schedule-query.service.ts
+const buildResourceCategoryCondition = (
+  resourceCategory: ProductionScheduleResourceCategory | undefined
+): Prisma.Sql => {
+  if (!resourceCategory) {
+    return Prisma.empty;
+  }
+  const grindingCds = PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS.map((cd) => Prisma.sql`${cd}`);
+  if (resourceCategory === 'grinding') {
+    return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(grindingCds, ',')})`;
+  }
+  return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')})`;
+};
+
+const buildQueryWhere = (params: {
+  textConditions: Prisma.Sql[];
+  resourceConditions: Prisma.Sql[];
+  resourceCategoryCondition: Prisma.Sql; // 追加
+  hasNoteOnly: boolean;
+  hasDueDateOnly: boolean;
+  locationKey: string;
+}): Prisma.Sql => {
+  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly, locationKey } = params;
+  // ... 既存のロジック ...
+  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition}`; // 無条件に追加
+  // ... 残りのロジック ...
+};
+```
+
+**学んだこと**:
+- **フィルタ条件の独立性**: 複数のフィルタ条件がある場合、各条件を独立したSQL条件として生成し、メインクエリに無条件で追加することで、他の条件の有無に関わらず確実に適用できる
+- **仕様の明確化**: 「工程カテゴリボタン単独では検索しないが、他の検索条件と組み合わせた際には必ずフィルタが適用される」という仕様を明確にし、実装とテストで検証することが重要
+- **共有型定義の活用**: フロントエンドとバックエンドで共通の定義（研削工程の資源CD）を使用することで、一貫性を保ち、保守性を向上できる
+
+**解決状況**: ✅ **解決済み**（2026-02-26）
+
+**実機検証**:
+- ✅ 工程カテゴリボタンと登録製番を組み合わせた際に、正しくフィルタされることを確認
+- ✅ 工程カテゴリボタン単独では検索されないことを確認（パフォーマンス考慮）
+- ✅ 資源CDの割当と工程カテゴリを組み合わせた際に、正しくフィルタされることを確認
+
+**関連ファイル**:
+- `packages/shared-types/src/common/production-schedule-resource-category.ts`（新規: 工程カテゴリ定義とユーティリティ関数）
+- `apps/api/src/services/production-schedule/production-schedule-query.service.ts`（`buildResourceCategoryCondition`関数追加、`buildQueryWhere`関数修正）
+- `apps/api/src/routes/kiosk/production-schedule/shared.ts`（`resourceCategory`パラメータ追加）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（統合テスト追加）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（工程カテゴリボタン追加、UIフィルタリング実装）
+- `apps/web/src/components/kiosk/ProductionScheduleToolbar.tsx`（工程カテゴリボタン追加）
+
+---
+
 ### [KB-209] 生産スケジュール検索状態の全キオスク間共有化
 
 **実装日時**: 2026-01-28
