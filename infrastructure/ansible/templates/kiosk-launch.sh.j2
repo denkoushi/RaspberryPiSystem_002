@@ -42,6 +42,8 @@ CHROMIUM_FLAGS=(
   --test-type
   # キーリングを無効化（パスワードストアをbasicに設定）
   --password-store=basic
+  # アクセシビリティヒント（「tabキーで選択」など）を無効化
+  --disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert
 )
 
 exec chromium-browser "${CHROMIUM_FLAGS[@]}"
