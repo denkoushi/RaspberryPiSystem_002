@@ -785,5 +785,46 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows[0].id).toBe(row0.id);
     expect(body.rows[0].rowData.ProductNo).toBe('0000');
   });
+
+  it('applies resourceCategory with q filter (grinding only)', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-grinding-305',
+          rowData: { ProductNo: '0010', FSEIBAN: 'CAT1', FHINCD: 'G1', FSIGENCD: '305', FKOJUN: '10', progress: '' }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-cutting-100',
+          rowData: { ProductNo: '0011', FSEIBAN: 'CAT1', FHINCD: 'C1', FSIGENCD: '100', FKOJUN: '10', progress: '' }
+        }
+      ]
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=CAT1&resourceCategory=grinding',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FSIGENCD?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0010']);
+    expect(body.rows[0]?.rowData.FSIGENCD).toBe('305');
+  });
+
+  it('does not search when only resourceCategory is specified (without q/assignedOnly)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceCategory=grinding',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }>; total: number };
+    expect(body.rows).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
 });
 

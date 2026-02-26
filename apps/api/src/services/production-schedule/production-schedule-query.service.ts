@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { filterProductionScheduleResourceCdsByCategory, type ProductionScheduleResourceCategory } from '@raspi-system/shared-types';
+import {
+  filterProductionScheduleResourceCdsByCategory,
+  PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS,
+  type ProductionScheduleResourceCategory
+} from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -98,14 +102,30 @@ const buildResourceConditions = (params: {
   return resourceConditions;
 };
 
+const buildResourceCategoryCondition = (
+  resourceCategory: ProductionScheduleResourceCategory | undefined
+): Prisma.Sql => {
+  if (!resourceCategory) {
+    return Prisma.empty;
+  }
+
+  const grindingCds = PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS.map((cd) => Prisma.sql`${cd}`);
+  if (resourceCategory === 'grinding') {
+    return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(grindingCds, ',')})`;
+  }
+  return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')})`;
+};
+
 const buildQueryWhere = (params: {
   textConditions: Prisma.Sql[];
   resourceConditions: Prisma.Sql[];
+  resourceCategoryCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
   locationKey: string;
 }): Prisma.Sql => {
-  const { textConditions, resourceConditions, hasNoteOnly, hasDueDateOnly, locationKey } = params;
+  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly, locationKey } =
+    params;
 
   const textWhere =
     textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
@@ -122,6 +142,8 @@ const buildQueryWhere = (params: {
         : resourceConditions.length > 0
           ? Prisma.sql`AND ${resourceWhere}`
           : Prisma.empty;
+
+  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition}`;
 
   if (hasNoteOnly) {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
@@ -166,6 +188,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceCategory,
     locationKey
   });
+  const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory);
 
   // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
   // 割当のみは対象が少ないため単独検索を許可する
@@ -185,6 +208,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const queryWhere = buildQueryWhere({
     textConditions,
     resourceConditions,
+    resourceCategoryCondition,
     hasNoteOnly,
     hasDueDateOnly,
     locationKey
