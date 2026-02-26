@@ -190,9 +190,18 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   });
   const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory);
 
-  // 資源CD単独では検索しない（登録製番単独・AND検索は維持）
-  // 割当のみは対象が少ないため単独検索を許可する
-  if (textConditions.length === 0 && resourceCds.length > 0 && assignedOnlyCds.length === 0) {
+  // 登録製番なし かつ 割当なし の場合は検索しない。
+  // - 資源CD単独（resourceCds）
+  // - 工程カテゴリ単独（resourceCategory）
+  // - 資源CD + 工程カテゴリ（resourceCds + resourceCategory）
+  // はいずれも0件を返す。
+  // 割当のみは対象が少ないため単独検索を許可する。
+  const hasOnlyResourceFilters =
+    textConditions.length === 0 &&
+    assignedOnlyCds.length === 0 &&
+    (resourceCds.length > 0 || resourceCategory !== undefined);
+
+  if (hasOnlyResourceFilters) {
     return {
       page,
       pageSize,
