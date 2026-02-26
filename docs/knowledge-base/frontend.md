@@ -3756,3 +3756,82 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - `apps/api/src/config/env.ts`（`SIGNAGE_RENDER_RUNNER`）
 
 ---
+
+### [KB-276] Pi4キオスクの日本語入力モード切替問題とIBus設定改善
+
+**発生日**: 2026-02-26
+
+**Context**:
+- KB-244でIBus設定を永続化したが、その後「日本語入力モードに切り替わらない」「ibus-...ウィンドウが出現してスムーズに入力できない」という問題が発生
+- キー入力ごとに一瞬だけ「ibus-...」と読めるウィンドウが出現し、フォーカスを奪って入力が妨げられる
+- 全角/半角キーで日本語入力モードに切り替えられない
+
+**Symptoms**:
+- 日本語入力モードに切り替わらない（`ibus engine`で「エンジンが設定されていません」エラー）
+- キー入力ごとに「ibus-...」と読めるウィンドウが一瞬出現し、フォーカスを奪う
+- 全角/半角キーで日本語入力モードに切り替えられない（Ctrl+Spaceのみ設定されていた）
+- `ibus-daemon`が二重起動している（`pgrep`で2プロセス確認）
+
+**Investigation**:
+- **仮説1**: IBusパネルUIが独立ウィンドウとして前面化している（CONFIRMED）
+  - `ibus-ui-gtk3`プロセスが存在し、キオスク環境でパネルが独立ウィンドウとして表示される
+  - `gsettings set org.freedesktop.ibus.panel show 0`で非表示にしたが、ウィンドウは依然として出現
+- **仮説2**: `ibus-daemon`の二重起動が原因（CONFIRMED）
+  - `pgrep -af ibus-daemon`で2プロセス確認（PID 1719と23333）
+  - 片方が`--panel=disable`なしで起動しており、UI付きで動作している可能性
+  - `ibus-autostart.desktop.j2`に`--replace`が無く、既存プロセスを置換できていない
+- **仮説3**: IBus起動直後のタイミング問題でエンジン未設定になる（CONFIRMED）
+  - `ibus-engine.desktop`の`Exec`が単発実行（`sleep 2; ibus engine mozc-jp`）で、IBus準備完了前に実行されて失敗
+  - IBus起動直後は一時的にbus/engine未準備のため、単発実行では失敗する
+- **仮説4**: 切替トリガーがCtrl+Spaceのみで、現場で使っている全角/半角キーが効かない（CONFIRMED）
+  - `gsettings get org.freedesktop.ibus.general.hotkey triggers`が`['<Control>space']`のみ
+  - KB-244の実機検証で「全角半角キー」での切替が確認されていたが、設定に反映されていなかった
+
+**Root cause**:
+1. **IBusパネルUIの二重起動**: `ibus-daemon`が二重起動し、片方がUI付きで動作していた
+   - `ibus-autostart.desktop.j2`に`--replace`が無く、既存プロセスを置換できていない
+   - `--single`オプションも無く、パネル/設定UIが起動する可能性があった
+2. **IBusエンジン設定のタイミング問題**: IBus起動直後は一時的にbus/engine未準備のため、単発実行では失敗する
+3. **切替トリガーの不足**: 現場で使っている全角/半角キーがトリガーに含まれていなかった
+
+**Fix**:
+- ✅ **IBusパネルUIの二重起動防止**（2026-02-26）:
+  1. `infrastructure/ansible/templates/ibus-autostart.desktop.j2`の`Exec`に`--replace`と`--single`を追加
+  2. `--replace`: 既存の`ibus-daemon`を置換して二重起動を防止
+  3. `--single`: パネル/設定UIを起動しない（`--panel=disable`と併用）
+  4. キー入力ごとに出現する「ibus-...」ウィンドウの根本原因を解決
+- ✅ **IBusエンジン設定のリトライロジック追加**（2026-02-26）:
+  1. `infrastructure/ansible/roles/kiosk/tasks/main.yml`の`ibus-engine.desktop`の`Exec`をリトライ付きに変更
+  2. 最大5回（各1秒間隔）リトライして`mozc-jp`を確実に設定
+  3. IBus起動直後のタイミング問題でエンジン未設定になる問題を解決
+- ✅ **IBus切替トリガーに全角/半角キーを追加**（2026-02-26）:
+  1. `infrastructure/ansible/roles/kiosk/tasks/main.yml`の`hotkey triggers`を`['<Control>space', 'Zenkaku_Hankaku']`に設定
+  2. 現場で利用している全角/半角キーでの切替が効かない回帰を防止
+  3. Ctrl+Spaceも併用可能なまま維持
+
+**Prevention**:
+- AnsibleでIBus設定を永続化することで、Pi4再起動後も設定が維持される
+- `--replace`と`--single`により、`ibus-daemon`の二重起動とUI表示を防止
+- リトライロジックにより、IBus起動直後のタイミング問題を回避
+- 全角/半角キーとCtrl+Spaceの両方をトリガーに設定することで、ユーザーの操作習慣に対応
+
+**実機検証結果**:
+- ✅ **IBusパネルUIの二重起動防止**: `ibus-daemon`が単一プロセスで動作し、「ibus-...」ウィンドウが出現しなくなったことを確認
+- ✅ **IBusエンジン設定**: `mozc-on`が正しく設定され、日本語入力が可能になったことを確認
+- ✅ **切替トリガー**: 全角/半角キーとCtrl+Spaceの両方で日本語入力モードに切り替わることを確認
+- ✅ **スムーズな入力**: キー入力ごとにウィンドウが出現せず、スムーズに日本語入力ができることを確認
+- ✅ **デプロイ成功**: Pi4でデプロイ成功（Run ID: 20260226-171548-20196, state: success）
+
+**関連ファイル**:
+- `infrastructure/ansible/templates/ibus-autostart.desktop.j2`（IBusパネルUIの二重起動防止）
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（IBusエンジン設定のリトライロジック、切替トリガー追加）
+
+**学んだこと**:
+- **IBusの二重起動はUI表示の原因になる**: `--replace`なしで`ibus-daemon`を起動すると、既存プロセスと併存し、片方がUI付きで動作する可能性がある
+- **IBus起動直後は準備完了まで時間がかかる**: エンジン設定はリトライロジックで確実に設定する必要がある
+- **実機検証の重要性**: 想定した動作（Ctrl+Space）と実際の動作（全角/半角キー）が異なる場合があるため、実機検証が必須
+- **キオスク環境ではUIコンポーネントを完全に無効化する**: `--single`と`--panel=disable`を併用することで、独立ウィンドウとして表示されるUIを防止できる
+
+**解決状況**: ✅ **解決済み**（2026-02-26、実機検証完了）
+
+---
