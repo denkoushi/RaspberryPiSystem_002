@@ -601,6 +601,14 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Build shared-types (smoke)
+        run: |
+          cd packages/shared-types
+          pnpm build || {
+            echo "Build shared-types (smoke) failed!"
+            exit 1
+          }
+
       - name: Run E2E smoke tests
         env:
           CI: true
