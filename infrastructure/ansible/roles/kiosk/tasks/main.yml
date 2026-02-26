@@ -79,9 +79,10 @@
     fi
 
     # IBusパネル自体も非表示にする（念のため）
+    # showは数値（0=非表示、1=表示）で設定する必要がある
     current_show_panel="$(gsettings get org.freedesktop.ibus.panel show || true)"
-    if [ "${current_show_panel}" != "false" ]; then
-      gsettings set org.freedesktop.ibus.panel show false
+    if [ "${current_show_panel}" != "0" ]; then
+      gsettings set org.freedesktop.ibus.panel show 0
       changed=1
     fi
 
