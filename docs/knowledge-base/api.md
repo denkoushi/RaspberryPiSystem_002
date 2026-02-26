@@ -2638,6 +2638,69 @@ const buildQueryWhere = (params: {
 
 ---
 
+**追加修正: 工程カテゴリ単独のAPI側ガード追加（2026-02-26）**:
+
+**事象**: 
+- 実機検証で、工程カテゴリボタン単独でAPIを直接呼び出すと5730件が返却されることが判明
+- フロントエンド側では工程カテゴリボタン単独ではAPIを呼ばない実装になっているため、UI上は問題ないが、API側の仕様として「工程カテゴリ単独では検索しない」というガードが未実装だった
+
+**要因**: 
+- 既存のガード（`textConditions.length === 0 && resourceCds.length > 0 && assignedOnlyCds.length === 0`）は資源CD単独のみを対象としており、`resourceCategory`単独の場合はガードが適用されなかった
+- 将来的にフロントエンドの実装変更や他クライアントからの呼び出しで、意図しない大量データ取得が発生する可能性があった
+
+**有効だった対策**: 
+- ✅ **工程カテゴリ単独のAPI側ガード追加（2026-02-26）**:
+  1. **ガード条件の拡張**: 既存の資源CD単独ガードを拡張し、`resourceCategory`も含めて判定
+  2. **判定ロジック**: `登録製番なし` かつ `割当なし` で、`resourceCds` または `resourceCategory` がある場合は0件を返す
+  3. **影響範囲の明確化**: 以下の組み合わせが0件を返すように修正
+     - 工程カテゴリ単独（`resourceCategory`のみ）
+     - 資源CD単独（`resourceCds`のみ）
+     - 工程カテゴリ + 資源CD（`resourceCategory` + `resourceCds`）
+  4. **既存機能の維持**: 以下の組み合わせは従来通り検索可能
+     - 工程カテゴリ + 登録製番（`resourceCategory` + `q`）
+     - 工程カテゴリ + 資源CDの割当（`resourceCategory` + `assignedOnlyCds`）
+
+**実装の詳細**:
+```typescript
+// apps/api/src/services/production-schedule/production-schedule-query.service.ts
+// 登録製番なし かつ 割当なし の場合は検索しない。
+// - 資源CD単独（resourceCds）
+// - 工程カテゴリ単独（resourceCategory）
+// - 資源CD + 工程カテゴリ（resourceCds + resourceCategory）
+// はいずれも0件を返す。
+// 割当のみは対象が少ないため単独検索を許可する。
+const hasOnlyResourceFilters =
+  textConditions.length === 0 &&
+  assignedOnlyCds.length === 0 &&
+  (resourceCds.length > 0 || resourceCategory !== undefined);
+
+if (hasOnlyResourceFilters) {
+  return {
+    page,
+    pageSize,
+    total: 0,
+    rows: []
+  };
+}
+```
+
+**学んだこと**:
+- **防御的プログラミング**: フロントエンド側で制御していても、API側でも仕様を強制することで、将来の実装変更や他クライアントからの呼び出しに対する安全性を確保できる
+- **仕様の明確化**: 「工程カテゴリボタン単独では検索しない」という仕様をAPI側でも強制することで、仕様と実装の一貫性を保つことができる
+- **ガード条件の拡張**: 既存のガード条件を拡張する際は、影響範囲を明確にし、既存機能が壊れないことを確認することが重要
+
+**解決状況**: ✅ **解決済み**（2026-02-26）
+
+**実機検証**:
+- ✅ 工程カテゴリ単独（grinding）でAPIを呼び出した場合、0件が返却されることを確認
+- ✅ 工程カテゴリ単独（cutting）でAPIを呼び出した場合、0件が返却されることを確認
+- ✅ 工程カテゴリ + 登録製番の組み合わせは従来通り検索可能であることを確認（実機検証で該当データがない場合は0件だが、ロジックは正常動作）
+
+**関連ファイル**:
+- `apps/api/src/services/production-schedule/production-schedule-query.service.ts`（ガード条件の拡張）
+
+---
+
 ### [KB-209] 生産スケジュール検索状態の全キオスク間共有化
 
 **実装日時**: 2026-01-28
