@@ -23,6 +23,9 @@ pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true
 pkill -x wf-panel-pi || true
 
 CHROMIUM_FLAGS=(
+  # Chromium 135+ で IBus/IME が壊れるリグレッション対策（issue 408309963）
+  # X11 を明示指定して IME 経路を強制
+  --ozone-platform=x11
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
   --app="{{ kiosk_url }}"
   --start-maximized

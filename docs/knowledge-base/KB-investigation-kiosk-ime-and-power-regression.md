@@ -1,7 +1,7 @@
 # KB調査: キオスク備考欄の日本語入力モード切替・電源ボタンの同時不具合
 
 **作成日**: 2026-02-28  
-**状態**: ✅ 電源ボタン修正完了（clientKey対応）、IMEは再デプロイで復旧  
+**状態**: ✅ 電源ボタン修正完了（clientKey対応）、IMEは Chromium 135+ リグレッション対策を適用  
 **関連**: [frontend.md#KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善), [ansible-deployment.md#KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題)
 
 ---
@@ -87,14 +87,15 @@ gsettings get org.freedesktop.ibus.general engines-order
 gsettings get org.freedesktop.ibus.general.hotkey triggers
 ```
 
-#### 仮説D: Chromium キオスクモードと IME の相性
+#### 仮説D: Chromium 135+ IBus リグレッション（**確認済み・原因**）
 
-- Chromium の kiosk モードではキーボードショートカットが制限される場合がある（KB-244 で言及）
-- ラズパイ標準の IBus + Chromium の組み合わせは、OS/Chromium 更新で挙動が変わる可能性
+- **Chrome 135 で IBus/IME が壊れる既知のリグレッション**（issue 408309963）
+- raspi4-robodrill01 は Chromium 142 を稼働 → 135 以降のため影響あり
+- IBus/mozc は起動済み（pgrep で確認済み）だが、Chromium 内で IME が動作しない
 
-**検証手順**:
-- Chromium のバージョン確認
-- 通常ウィンドウモードで同じ URL を開き、日本語入力が可能か確認
+**対策**（2026-02-28 実施）:
+- `--ozone-platform=x11` を kiosk-launch.sh に追加し、X11 経路を強制
+- 実機検証が必要
 
 ---
 
@@ -120,9 +121,10 @@ gsettings get org.freedesktop.ibus.general.hotkey triggers
 2. **resolveClientKey**: URL パラメータ `?clientKey=xxx` を最優先で読み取り、localStorage に保存
 3. **inventory**: `kiosk_url` に `?clientKey={{ status_agent_client_key }}` を追加（raspberrypi4 / raspi4-robodrill01 両方）
 
-### 日本語入力（IBus）
+### 日本語入力（Chromium 135+ リグレッション）
 
-- **再デプロイで復旧**: raspi4-robodrill01 に対して kiosk ロールを再実行し、IBus 設定（KB-276）を再適用する
+- **原因**: raspi4-robodrill01 が Chromium 142 を使用。Chrome 135 以降で IBus/IME が壊れる既知のリグレッション（issue 408309963）
+- **対策**: `kiosk-launch.sh` に `--ozone-platform=x11` を追加し、X11 経路を強制
 - デプロイ後、`kiosk-browser.service` を再起動して Chromium を再起動する
 
 ### デプロイ順序の修正（2026-02-28）
