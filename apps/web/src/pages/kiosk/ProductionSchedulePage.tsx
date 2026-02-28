@@ -19,6 +19,7 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton';
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
@@ -792,43 +793,18 @@ export function ProductionSchedulePage() {
       <div className="flex flex-wrap items-center justify-end gap-2">
         {visibleHistory.map((h) => {
           const isActive = normalizedActiveQueries.includes(h);
-          const isComplete = progressBySeiban[h]?.status === 'complete';
+          const progress = progressBySeiban[h];
+          const isComplete = progress?.status === 'complete';
           return (
-            <div
+            <SeibanHistoryButton
               key={h}
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleHistoryQuery(h)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  toggleHistoryQuery(h);
-                }
-              }}
-              className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                isActive
-                  ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
-                  : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-              }`}
-            >
-              {h}
-              <button
-                type="button"
-                aria-label={`履歴から削除: ${h}`}
-                title={isComplete ? '完了' : '未完'}
-                className={`absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 shadow box-border ${
-                  isComplete
-                    ? 'bg-slate-300 border-2 border-white hover:bg-slate-200'
-                    : 'bg-white border-2 border-transparent hover:bg-slate-100'
-                }`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  confirmRemoveHistoryQuery(h);
-                }}
-              >
-                ×
-              </button>
-            </div>
+              seiban={h}
+              machineName={progress?.machineName}
+              isActive={isActive}
+              isComplete={isComplete}
+              onToggle={() => toggleHistoryQuery(h)}
+              onRemove={() => confirmRemoveHistoryQuery(h)}
+            />
           );
         })}
       </div>
