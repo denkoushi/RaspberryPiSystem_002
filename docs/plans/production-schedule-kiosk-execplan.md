@@ -98,6 +98,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-02-28) **検索条件の端末別localStorage保存・デプロイ成功・実機検証OK**: 生産スケジュール画面の検索条件（製番ボタン押下状態・資源CD・備考あり・納期日あり・工程フィルタ・入力値）を端末ごとにlocalStorageに保存し、画面遷移後も復元する機能を実装。**実装内容**: `useProductionScheduleSearchConditions`フックを新設し、検索条件の永続化ロジックを専用フックに集約。`schemaVersion`でバージョン管理し、将来の項目追加を容易に。変更時は300ms debounceして`localStorage`に保存。`clearAllFilters`で`reset()`を呼び出し、全条件を初期化。**デプロイ**: Pi5でデプロイ成功（Run ID: 20260228-175720-12122, state: success）。ロボドリル01（raspi4-robodrill01）でデプロイ成功（Run ID: 20260228-180503-29038, state: success）。**実機検証結果**: 検索条件が画面遷移後も復元されること、リセットボタンで初期化されること、製番ボタン（history）は全端末共有を維持することを確認。詳細は [KB-283](../knowledge-base/frontend.md#kb-283-生産スケジュール検索条件の端末別localstorage保存) を参照。
 
+- [x] (2026-02-28) **MHアイテムの一覧除外・デプロイ成功・実機検証OK**: kiosk生産スケジュールのアイテム一覧から、FHINCDが"MH"で始まるアイテム（機種名を持つアイテム）を除外する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内で、FHINCDが"MH"で始まるアイテムをフィルタリングで除外。これらのアイテムは検索用製番ボタンにのみ表示され、一覧には表示されない。**デプロイ**: Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-184500-20184`, `state: success`, `exitCode: 0`）。Pi5: `ok=122, changed=4, failed=0`。Pi4: `ok=94, changed=8, failed=0`。**実機検証結果**: FHINCDが"MH"で始まるアイテムが一覧から除外され、検索用製番ボタンにのみ表示されることを確認。詳細は [KB-284](../knowledge-base/frontend.md#kb-284-生産スケジュールアイテム一覧からmhアイテムを除外) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能
