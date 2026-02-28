@@ -217,9 +217,6 @@ const resolveClientKey = () => {
   // URLパラメータでclientKeyが指定されていれば最優先（複数キオスク対応）
   const urlKey = new URLSearchParams(window.location.search).get('clientKey');
   if (urlKey && urlKey.length > 0 && urlKey.startsWith('client-key-')) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c92bd'},body:JSON.stringify({sessionId:'8c92bd',location:'client.ts:resolveClientKey',message:'clientKey from URL param',data:{urlKey:urlKey.slice(0,35),hypothesisId:'H2'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     window.localStorage.setItem('kiosk-client-key', JSON.stringify(urlKey));
     setClientKeyHeader(urlKey);
     return urlKey;
@@ -1292,10 +1289,6 @@ export async function postKioskPower(
   payload: { action: 'reboot' | 'poweroff' },
   clientKey?: string
 ) {
-  // #region agent log
-  const keyToSend = clientKey ?? resolveClientKey();
-  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c92bd'},body:JSON.stringify({sessionId:'8c92bd',location:'client.ts:postKioskPower',message:'power request',data:{clientKeyParam:!!clientKey,keyToSend:keyToSend?.slice(0,35),action:payload.action,hypothesisId:'H3'},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const { data } = await api.post<{ requestId: string; action: string; status: string }>(
     '/kiosk/power',
     payload,

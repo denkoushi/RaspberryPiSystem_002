@@ -88,9 +88,6 @@ export function KioskHeader({
   const handlePowerConfirm = async () => {
     if (!pendingAction) return;
     setIsPowerProcessing(true);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c92bd'},body:JSON.stringify({sessionId:'8c92bd',location:'KioskHeader.tsx:handlePowerConfirm',message:'power confirm',data:{clientKey:clientKey?.slice(0,30),action:pendingAction,passingClientKey:!!clientKey,hypothesisId:'H1'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       await postKioskPower({ action: pendingAction }, clientKey);
     } catch (error) {

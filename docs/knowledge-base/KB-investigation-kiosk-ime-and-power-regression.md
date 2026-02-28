@@ -125,6 +125,11 @@ gsettings get org.freedesktop.ibus.general.hotkey triggers
 - **再デプロイで復旧**: raspi4-robodrill01 に対して kiosk ロールを再実行し、IBus 設定（KB-276）を再適用する
 - デプロイ後、`kiosk-browser.service` を再起動して Chromium を再起動する
 
+### デプロイ順序の修正（2026-02-28）
+
+- **kiosk ロール**: kiosk-launch スクリプトまたは kiosk-browser.service 変更時に、kiosk-browser を再起動するタスクを追加
+- 従来は client ロールの再起動が kiosk ロールより先に実行され、新しい URL（clientKey 付き）が反映されなかった
+
 ---
 
 ## 関連ファイル

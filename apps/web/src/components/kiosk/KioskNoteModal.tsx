@@ -23,11 +23,22 @@ export function KioskNoteModal({
   const [draft, setDraft] = useState(value);
   const normalizedValue = useMemo(() => value ?? '', [value]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastImeLogAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isOpen) return;
     setDraft(normalizedValue);
   }, [isOpen, normalizedValue]);
+
+  const logIme = (message: string, data: Record<string, unknown>) => {
+    // Avoid noisy logs: rate-limit to ~10 logs/sec.
+    const now = Date.now();
+    if (now - lastImeLogAtRef.current < 100) return;
+    lastImeLogAtRef.current = now;
+    // NOTE: Do not log user text contents (draft). Only log metadata.
+    // eslint-disable-next-line no-console
+    console.error('[IME_DEBUG]', message, { ...data, at: new Date(now).toISOString() });
+  };
 
   const handleCommit = () => {
     onCommit(draft.slice(0, maxLength));
@@ -58,6 +69,40 @@ export function KioskNoteModal({
           ref={textareaRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onFocus={() => {
+            logIme('textarea focus', { activeTag: document.activeElement?.tagName ?? null });
+          }}
+          onKeyDown={(event) => {
+            const key = event.key;
+            const code = (event as unknown as { code?: string }).code ?? '';
+            const isCtrlSpace = event.ctrlKey && (key === ' ' || code === 'Space');
+            const isZenkakuLike =
+              String(key).toLowerCase().includes('zenkaku') ||
+              String(key).toLowerCase().includes('hankaku') ||
+              String(code).toLowerCase().includes('zenkaku') ||
+              String(code).toLowerCase().includes('hankaku');
+            if (isCtrlSpace || isZenkakuLike || event.isComposing) {
+              logIme('keydown', {
+                key,
+                code,
+                ctrl: event.ctrlKey,
+                alt: event.altKey,
+                meta: event.metaKey,
+                shift: event.shiftKey,
+                isComposing: event.isComposing,
+                keyCode: (event as unknown as { keyCode?: number }).keyCode ?? null
+              });
+            }
+          }}
+          onCompositionStart={() => {
+            logIme('compositionstart', { draftLen: draft.length });
+          }}
+          onCompositionUpdate={() => {
+            logIme('compositionupdate', { draftLen: draft.length });
+          }}
+          onCompositionEnd={() => {
+            logIme('compositionend', { draftLen: draft.length });
+          }}
           maxLength={maxLength}
           rows={6}
           className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base text-slate-900"

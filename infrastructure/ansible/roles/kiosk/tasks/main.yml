@@ -154,6 +154,15 @@
     - kiosk_browser_result.changed
   changed_when: false
 
+# kiosk-launch（URL含む）やservice変更時は再起動して新設定を反映（clientロールの再起動はkioskロールより先に実行されるため）
+- name: Restart kiosk-browser if launch script or service changed
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: restarted
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed)
+
 - name: Verify kiosk UI is reachable
   ansible.builtin.uri:
     url: "{{ kiosk_url }}"
