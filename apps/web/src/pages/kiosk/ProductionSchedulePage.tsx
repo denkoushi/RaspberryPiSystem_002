@@ -19,11 +19,13 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton';
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
+import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 type ScheduleRowData = {
@@ -125,16 +127,19 @@ function CalendarIcon({ className }: { className?: string }) {
 export function ProductionSchedulePage() {
   const queryClient = useQueryClient();
   const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
-  const [inputQuery, setInputQuery] = useState('');
-  const [activeQueries, setActiveQueries] = useState<string[]>([]);
+  const [searchConditions, setSearchConditions, resetSearchConditions] = useProductionScheduleSearchConditions();
+  const {
+    inputQuery,
+    activeQueries,
+    activeResourceCds,
+    activeResourceAssignedOnlyCds,
+    hasNoteOnlyFilter,
+    hasDueDateOnlyFilter,
+    showGrindingResources,
+    showCuttingResources
+  } = searchConditions;
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
-  const [activeResourceCds, setActiveResourceCds] = useState<string[]>([]);
-  const [activeResourceAssignedOnlyCds, setActiveResourceAssignedOnlyCds] = useState<string[]>([]);
-  const [hasNoteOnlyFilter, setHasNoteOnlyFilter] = useState(false);
-  const [hasDueDateOnlyFilter, setHasDueDateOnlyFilter] = useState(false);
-  const [showGrindingResources, setShowGrindingResources] = useState(false);
-  const [showCuttingResources, setShowCuttingResources] = useState(false);
   const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = useState('');
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
@@ -339,7 +344,7 @@ export function ProductionSchedulePage() {
 
   const normalizedRows = useMemo<NormalizedScheduleRow[]>(() => {
     const sourceRows = scheduleQuery.data?.rows ?? [];
-    return sourceRows.map((r) => {
+    const mapped = sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
@@ -366,6 +371,11 @@ export function ProductionSchedulePage() {
         note,
         dueDate
       };
+    });
+    // FHINCDがMHで始まるアイテム（機種名）は検索用製番ボタンにのみ表示し、一覧からは除外
+    return mapped.filter((row) => {
+      const fhincd = String(row.data.FHINCD ?? '').toUpperCase();
+      return !fhincd.startsWith('MH');
     });
   }, [scheduleQuery.data?.rows]);
 
@@ -487,8 +497,10 @@ export function ProductionSchedulePage() {
 
   const applySearch = (value: string) => {
     const trimmed = value.trim();
-    setInputQuery(trimmed);
-    setActiveQueries(trimmed.length > 0 ? [trimmed] : []);
+    setSearchConditions({
+      inputQuery: trimmed,
+      activeQueries: trimmed.length > 0 ? [trimmed] : []
+    });
     if (trimmed.length > 0) {
       const nextHistory = normalizeHistoryList([trimmed, ...normalizedHistory]);
       setHistory(nextHistory);
@@ -498,14 +510,7 @@ export function ProductionSchedulePage() {
   };
 
   const clearAllFilters = () => {
-    setInputQuery('');
-    setActiveQueries([]);
-    setActiveResourceCds([]);
-    setActiveResourceAssignedOnlyCds([]);
-    setHasNoteOnlyFilter(false);
-    setHasDueDateOnlyFilter(false);
-    setShowGrindingResources(false);
-    setShowCuttingResources(false);
+    resetSearchConditions();
   };
 
   const startNoteEdit = (rowId: string, currentNote: string | null) => {
@@ -574,25 +579,24 @@ export function ProductionSchedulePage() {
   };
 
   const toggleHistoryQuery = (value: string) => {
-    setActiveQueries((prev) => {
-      const exists = prev.includes(value);
-      if (exists) {
-        return prev.filter((item) => item !== value);
-      }
-      const next = [...prev, value];
-      return next.slice(0, 20);
+    setSearchConditions((prev) => {
+      const exists = prev.activeQueries.includes(value);
+      const next = exists
+        ? prev.activeQueries.filter((item) => item !== value)
+        : [...prev.activeQueries, value].slice(0, 20);
+      return { activeQueries: next };
     });
   };
 
   const removeHistoryQuery = (value: string) => {
-    setActiveQueries((prev) => prev.filter((item) => item !== value));
+    setSearchConditions((prev) => ({ activeQueries: prev.activeQueries.filter((item) => item !== value) }));
     // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
     // そのため削除は端末ローカル非表示（hiddenHistory）ではなく shared history を更新する。
     const nextHistory = normalizedHistory.filter((item) => item !== value);
     setHistory(nextHistory);
     setHiddenHistory((prev) => prev.filter((item) => item !== value));
     if (inputQuery === value) {
-      setInputQuery('');
+      setSearchConditions({ inputQuery: '' });
     }
     void updateSharedSearchState(nextHistory, { type: 'remove', value });
 
@@ -610,31 +614,31 @@ export function ProductionSchedulePage() {
   };
 
   const toggleResourceCd = (value: string) => {
-    setActiveResourceCds((prev) => {
-      const exists = prev.includes(value);
-      if (exists) {
-        return prev.filter((item) => item !== value);
-      }
-      return [...prev, value];
+    setSearchConditions((prev) => {
+      const exists = prev.activeResourceCds.includes(value);
+      const next = exists
+        ? prev.activeResourceCds.filter((item) => item !== value)
+        : [...prev.activeResourceCds, value];
+      return { activeResourceCds: next };
     });
   };
 
   const toggleAssignedOnlyCd = (value: string) => {
-    setActiveResourceAssignedOnlyCds((prev) => {
-      const exists = prev.includes(value);
-      if (exists) {
-        return prev.filter((item) => item !== value);
-      }
-      return [...prev, value];
+    setSearchConditions((prev) => {
+      const exists = prev.activeResourceAssignedOnlyCds.includes(value);
+      const next = exists
+        ? prev.activeResourceAssignedOnlyCds.filter((item) => item !== value)
+        : [...prev.activeResourceAssignedOnlyCds, value];
+      return { activeResourceAssignedOnlyCds: next };
     });
   };
 
   const toggleGrindingResources = () => {
-    setShowGrindingResources((value) => !value);
+    setSearchConditions((prev) => ({ showGrindingResources: !prev.showGrindingResources }));
   };
 
   const toggleCuttingResources = () => {
-    setShowCuttingResources((value) => !value);
+    setSearchConditions((prev) => ({ showCuttingResources: !prev.showCuttingResources }));
   };
 
   useEffect(() => {
@@ -645,9 +649,11 @@ export function ProductionSchedulePage() {
       const isGrinding = isGrindingResourceCd(resourceCd);
       return selectedResourceCategory === 'grinding' ? isGrinding : !isGrinding;
     };
-    setActiveResourceCds((prev) => prev.filter(shouldKeepResourceCd));
-    setActiveResourceAssignedOnlyCds((prev) => prev.filter(shouldKeepResourceCd));
-  }, [selectedResourceCategory]);
+    setSearchConditions((prev) => ({
+      activeResourceCds: prev.activeResourceCds.filter(shouldKeepResourceCd),
+      activeResourceAssignedOnlyCds: prev.activeResourceAssignedOnlyCds.filter(shouldKeepResourceCd)
+    }));
+  }, [selectedResourceCategory, setSearchConditions]);
 
   const getAvailableOrders = (resourceCd: string, current: number | null) => {
     const usage = orderUsageQuery.data?.[resourceCd] ?? [];
@@ -704,7 +710,7 @@ export function ProductionSchedulePage() {
   };
 
   const confirmKeyboard = () => {
-    setInputQuery(keyboardValue);
+    setSearchConditions({ inputQuery: keyboardValue });
     setIsKeyboardOpen(false);
   };
 
@@ -744,16 +750,20 @@ export function ProductionSchedulePage() {
 
       <ProductionScheduleToolbar
         inputQuery={inputQuery}
-        onInputChange={setInputQuery}
+        onInputChange={(value) => setSearchConditions({ inputQuery: value })}
         onOpenKeyboard={openKeyboard}
         onSearch={() => applySearch(inputQuery)}
         onClear={clearAllFilters}
         completedCount={completedCount}
         incompleteCount={incompleteCount}
         hasNoteOnly={hasNoteOnlyFilter}
-        onToggleHasNoteOnly={() => setHasNoteOnlyFilter((value) => !value)}
+        onToggleHasNoteOnly={() =>
+          setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
+        }
         hasDueDateOnly={hasDueDateOnlyFilter}
-        onToggleHasDueDateOnly={() => setHasDueDateOnlyFilter((value) => !value)}
+        onToggleHasDueDateOnly={() =>
+          setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
+        }
         showGrindingResources={showGrindingResources}
         onToggleGrindingResources={toggleGrindingResources}
         showCuttingResources={showCuttingResources}
@@ -792,43 +802,18 @@ export function ProductionSchedulePage() {
       <div className="flex flex-wrap items-center justify-end gap-2">
         {visibleHistory.map((h) => {
           const isActive = normalizedActiveQueries.includes(h);
-          const isComplete = progressBySeiban[h]?.status === 'complete';
+          const progress = progressBySeiban[h];
+          const isComplete = progress?.status === 'complete';
           return (
-            <div
+            <SeibanHistoryButton
               key={h}
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleHistoryQuery(h)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  toggleHistoryQuery(h);
-                }
-              }}
-              className={`relative cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                isActive
-                  ? 'border-emerald-300 bg-emerald-400 text-slate-900 hover:bg-emerald-300'
-                  : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-              }`}
-            >
-              {h}
-              <button
-                type="button"
-                aria-label={`履歴から削除: ${h}`}
-                title={isComplete ? '完了' : '未完'}
-                className={`absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 shadow box-border ${
-                  isComplete
-                    ? 'bg-slate-300 border-2 border-white hover:bg-slate-200'
-                    : 'bg-white border-2 border-transparent hover:bg-slate-100'
-                }`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  confirmRemoveHistoryQuery(h);
-                }}
-              >
-                ×
-              </button>
-            </div>
+              seiban={h}
+              machineName={progress?.machineName}
+              isActive={isActive}
+              isComplete={isComplete}
+              onToggle={() => toggleHistoryQuery(h)}
+              onRemove={() => confirmRemoveHistoryQuery(h)}
+            />
           );
         })}
       </div>

@@ -744,6 +744,7 @@ export type ProductionScheduleHistoryProgressEntry = {
   total: number;
   completed: number;
   status: 'complete' | 'incomplete';
+  machineName?: string | null;
 };
 
 export type ProductionScheduleHistoryProgressResponse = {

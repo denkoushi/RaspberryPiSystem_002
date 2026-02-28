@@ -4190,3 +4190,67 @@ model ProductionScheduleProgress {
 - [KB-271](./api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない): 生産スケジュールデータ削除ルール
 
 ---
+
+### [KB-282] 生産スケジュールhistory-progressエンドポイントにmachineName追加
+
+**日付**: 2026-02-28
+
+**Context**:
+- 生産スケジュール画面の登録製番ボタンに機種名（FHINCDがMHで始まるアイテムのFHINMEI）を表示する要望があった
+- 機種名は各製番ごとの製品名として定義され、`FHINCD`が`MH`で始まるアイテムの`FHINMEI`が機種名として扱われる
+- フロントエンドで機種名を表示するため、API側で機種名を集約して返す必要があった
+
+**実装内容**:
+- ✅ **`SeibanProgressRow`型に`machineName`追加**（2026-02-28）:
+  - `apps/api/src/services/production-schedule/seiban-progress.service.ts`の`SeibanProgressRow`型に`machineName: string | null`を追加
+  - SQL集約で`FHINCD LIKE 'MH%'`の`FHINMEI`を`MIN`で取得（複数ある場合は最初の1件）
+  - `FILTER`句で`FHINMEI`が`NULL`または空文字の場合は除外
+- ✅ **`getProductionScheduleHistoryProgress`の戻り値に`machineName`追加**（2026-02-28）:
+  - `apps/api/src/services/production-schedule/production-schedule-search-state.service.ts`の`getProductionScheduleHistoryProgress`関数の戻り値に`machineName`を含める
+  - `progressBySeiban`オブジェクトの各エントリに`machineName: string | null`を追加
+- ✅ **APIクライアント型定義の更新**（2026-02-28）:
+  - `apps/web/src/api/client.ts`の`ProductionScheduleHistoryProgressEntry`型に`machineName?: string | null`を追加
+- ✅ **テストの更新**（2026-02-28）:
+  - `seiban-progress.service.test.ts`のモック戻り値に`machineName`を追加
+  - `production-schedule-search-state.service.test.ts`の期待値に`machineName`を追加
+  - `kiosk-production-schedule.integration.test.ts`のアサーションを`toMatchObject`に変更し、`machineName`の存在を確認
+
+**実装ファイル**: 
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`（`SeibanProgressRow`型、SQL集約）
+- `apps/api/src/services/production-schedule/production-schedule-search-state.service.ts`（`getProductionScheduleHistoryProgress`関数）
+- `apps/web/src/api/client.ts`（`ProductionScheduleHistoryProgressEntry`型）
+- `apps/api/src/services/production-schedule/__tests__/seiban-progress.service.test.ts`（テスト更新）
+- `apps/api/src/services/production-schedule/__tests__/production-schedule-search-state.service.test.ts`（テスト更新）
+- `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（テスト更新）
+
+**SQL集約の詳細**:
+```sql
+MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
+  WHERE UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+    AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
+    AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
+) AS "machineName"
+```
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22515259397`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-170617-12957`, `state: success`, `exitCode: 0`）
+
+**実機検証結果**: 
+- ✅ APIレスポンスに`machineName`が含まれることを確認
+- ✅ `FHINCD`が`MH`で始まるアイテムの`FHINMEI`が正しく取得されることを確認
+- ✅ 機種名が存在しない場合（MHアイテムがない）は`null`が返されることを確認
+
+**学んだこと**:
+- SQL集約で`FILTER`句を使用することで、条件に合致する行のみを集約できる
+- `MIN`関数で複数候補がある場合の最初の1件を取得できる
+- API側で機種名を集約することで、フロントエンドのロジックを簡潔に保てる（SOLID原則のSeparation of Concerns）
+- テストのアサーションを`toEqual`から`toMatchObject`に変更することで、柔軟な検証が可能になる
+
+**関連KB**:
+- [KB-242](./api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス): history-progressエンドポイントの追加（`machineName`追加の前段階）
+- [KB-282](../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): フロントエンド側の実装
+
+---

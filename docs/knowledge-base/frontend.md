@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 44件  
+**件数**: 48件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -3833,5 +3833,172 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - **キオスク環境ではUIコンポーネントを完全に無効化する**: `--single`と`--panel=disable`を併用することで、独立ウィンドウとして表示されるUIを防止できる
 
 **解決状況**: ✅ **解決済み**（2026-02-26、実機検証完了）
+
+---
+
+### [KB-282] 生産スケジュール登録製番ボタンの3段表示と機種名表示（全角半角大文字化）
+
+**EXEC_PLAN.md参照**: Progress (行95-96)
+
+**事象**: 
+- 生産スケジュール画面の登録製番ボタンが1行表示のみで、機種名（FHINCDがMHで始まるアイテムのFHINMEI）が表示されていなかった
+- ユーザーから「機種名を表示してほしい」という要望があった
+- 機種名は全角文字が含まれる可能性があり、統一的な表示形式が必要だった
+
+**実装内容**: 
+- ✅ **`SeibanHistoryButton`コンポーネントの新設**（2026-02-28）:
+  - `apps/web/src/components/kiosk/SeibanHistoryButton.tsx`を新規作成
+  - 製番を1段目、機種名を2-3段目に表示する3段レイアウトを実装
+  - 固定幅（`w-36`）と固定高さ（`h-16`）で統一的な表示を実現
+  - `line-clamp-2`と`break-all`で2行折り返しと文字単位の改行を実現
+- ✅ **機種名の正規化処理**（2026-02-28）:
+  - `toHalfWidthAscii`関数を実装し、全角ASCII（`！`〜`～`）を半角に変換
+  - 全角スペース（`　`）を半角スペースに変換
+  - `toUpperCase()`で大文字化
+  - 36文字超は`...`で省略（`MAX_MACHINE_NAME_CHARS = 36`）
+- ✅ **CSSユーティリティ追加**（2026-02-28）:
+  - `apps/web/src/index.css`に`line-clamp-2`ユーティリティを追加（Tailwind標準プラグインなしで実現）
+- ✅ **API連携**（2026-02-28）:
+  - `history-progress`エンドポイントから`machineName`を取得
+  - `progressBySeiban`オブジェクトに`machineName`を含める
+
+**実装ファイル**: 
+- `apps/web/src/components/kiosk/SeibanHistoryButton.tsx`（新規）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（修正、`SeibanHistoryButton`を使用）
+- `apps/web/src/index.css`（修正、`line-clamp-2`追加）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22515259397`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-170617-12957`, `state: success`, `exitCode: 0`）
+- Pi5: `ok=122, changed=4, failed=0`
+- Pi4: `ok=94, changed=8, failed=0`
+
+**実機検証結果**: 
+- ✅ 製番ボタンが3段表示され、製番が1段目、機種名が2-3段目に正しく表示されることを確認
+- ✅ 機種名が全角半角大文字で正しく変換・表示されることを確認
+- ✅ 長い機種名が36文字超で`...`で省略されることを確認
+- ✅ 機種名が存在しない場合（MHアイテムがない）は空欄で表示されることを確認
+
+**学んだこと**:
+- コンポーネントの分離により、再利用性と保守性が向上する（SOLID原則のSingle Responsibility）
+- 全角→半角変換は`String.fromCharCode(char.charCodeAt(0) - 0xfee0)`で実現できる
+- Tailwind標準の`line-clamp`プラグインがなくても、CSSの`-webkit-line-clamp`で実現できる
+- API側で機種名を集約することで、UIロジックを簡潔に保てる（SOLID原則のSeparation of Concerns）
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 登録製番削除ボタンの進捗連動UI改善（`history-progress`エンドポイントの追加）
+- [KB-282](../api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): API側の`machineName`追加実装
+
+**解決状況**: ✅ **解決済み**（2026-02-28）
+
+---
+
+### [KB-283] 生産スケジュール検索条件の端末別localStorage保存
+
+**EXEC_PLAN.md参照**: Progress (行97-98)
+
+**事象**: 
+- 生産スケジュール画面で設定した検索条件（製番ボタン押下状態・資源CD・備考あり・納期日あり・工程フィルタ・入力値）が画面遷移（持出画面など）で失われていた
+- ユーザーから「検索条件を端末ごとに保存し、画面遷移後も維持したい」という要望があった
+- 検索用製番ボタン（history）は既存仕様で全端末共有だが、検索状態（押下状態の組み合わせ）は端末ごとに異なるため、端末別に保存する必要があった
+
+**実装内容**: 
+- ✅ **型定義とスキーマの追加**（2026-02-28）:
+  - `apps/web/src/features/kiosk/productionSchedule/searchConditions.ts`を新規作成
+  - `ProductionScheduleSearchConditions`型を定義（`activeQueries`, `activeResourceCds`, `activeResourceAssignedOnlyCds`, `hasNoteOnlyFilter`, `hasDueDateOnlyFilter`, `showGrindingResources`, `showCuttingResources`, `inputQuery`）
+  - `DEFAULT_SEARCH_CONDITIONS`定数と`SEARCH_CONDITIONS_STORAGE_KEY`定数を定義
+  - `schemaVersion`を付与し、将来のスキーマ変更時のマイグレーションを想定
+- ✅ **永続化フックの作成**（2026-02-28）:
+  - `apps/web/src/features/kiosk/productionSchedule/useProductionScheduleSearchConditions.ts`を新規作成
+  - `useProductionScheduleSearchConditions()`フックを実装
+  - 初回マウント時に`localStorage`から読み込み
+  - 返却: `[conditions, setConditions, reset]`
+  - `setConditions`は部分更新（`Partial`）を受け付ける
+  - 変更時は`useEffect`でdebounce（300ms）して`localStorage`に保存
+  - `reset`は`DEFAULT_SEARCH_CONDITIONS`を設定し、localStorageを上書き
+  - パース失敗時・`schemaVersion`不一致時は`DEFAULT_SEARCH_CONDITIONS`にフォールバック
+- ✅ **ProductionSchedulePageの修正**（2026-02-28）:
+  - 個別の`useState`（8個）を`useProductionScheduleSearchConditions`に置き換え
+  - `clearAllFilters`内で`reset()`を呼び出す
+  - `conditions`の各フィールドを参照し、setterは`setConditions`に部分更新を渡す形で呼び出す
+- ✅ **テストの追加**（2026-02-28）:
+  - `apps/web/src/features/kiosk/productionSchedule/useProductionScheduleSearchConditions.test.ts`を新規作成
+  - 初期値の読み込みテスト
+  - 変更時のlocalStorage保存テスト（debounce確認含む）
+
+**実装ファイル**: 
+- `apps/web/src/features/kiosk/productionSchedule/searchConditions.ts`（新規）
+- `apps/web/src/features/kiosk/productionSchedule/useProductionScheduleSearchConditions.ts`（新規）
+- `apps/web/src/features/kiosk/productionSchedule/useProductionScheduleSearchConditions.test.ts`（新規）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（修正）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22517205369`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5でデプロイ成功（Run ID: `20260228-175720-12122`, `state: success`, `exitCode: 0`）
+- ロボドリル01（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-180503-29038`, `state: success`, `exitCode: 0`）
+
+**実機検証結果**: 
+- ✅ 生産スケジュール画面で検索条件を設定後、持出画面へ遷移して戻っても条件が復元されることを確認
+- ✅ リセット（クリア）ボタンで全条件が初期化されることを確認
+- ✅ 製番ボタン（history）は既存どおり全端末で共有されることを確認
+- ✅ 端末ごとに異なる条件を保存できることを確認（同一ブラウザ内でもlocalStorageは端末ごとに異なるため自動的に分離）
+
+**学んだこと**:
+- **SOLID原則の適用**: 検索条件の永続化ロジックを専用フックに集約することで、Single Responsibilityを実現。`ProductionSchedulePage`は画面表示とユーザー操作に専念できる
+- **スキーマバージョン管理**: `schemaVersion`を付与することで、将来の項目追加を容易にし、Open/Closed原則を実現
+- **debounceの重要性**: 連続操作時の`localStorage`書き込みを抑えるため、300msのdebounceを実装。パフォーマンスとデータ整合性のバランスを取る
+- **部分更新の柔軟性**: `setConditions`が`Partial`を受け付けることで、必要な項目のみを更新でき、コードの可読性が向上
+- **フォールバック戦略**: パース失敗時や`schemaVersion`不一致時は`DEFAULT_SEARCH_CONDITIONS`にフォールバックすることで、堅牢性を確保
+
+**関連KB**:
+- [KB-209](../api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態の全キオスク間共有化（historyは全端末共有、検索条件は端末別保存）
+
+**解決状況**: ✅ **解決済み**（2026-02-28、実機検証完了）
+
+---
+
+### [KB-284] 生産スケジュールアイテム一覧からMHアイテムを除外
+
+**EXEC_PLAN.md参照**: Progress (行100)
+
+**事象**: 
+- kiosk生産スケジュールのアイテム一覧に、FHINCDが"MH"で始まるアイテム（機種名を持つアイテム）が表示されていた
+- ユーザーから「機種名アイテムは検索用製番ボタンにのみ表示し、一覧からは除外してほしい」という要望があった
+
+**実装内容**: 
+- ✅ **フィルタリングロジックの追加**（2026-02-28）:
+  - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`の`normalizedRows` useMemo内でフィルタリングを追加
+  - FHINCDを大文字化（`toUpperCase()`）してから`startsWith('MH')`で判定
+  - `MH`で始まるアイテムを除外し、それ以外のみを返却
+
+**実装ファイル**: 
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（修正、`normalizedRows` useMemo内にフィルタリング追加）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22518015952`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-184500-20184`, `state: success`, `exitCode: 0`）
+- Pi5: `ok=122, changed=4, failed=0`
+- Pi4: `ok=94, changed=8, failed=0`
+
+**実機検証結果**: 
+- ✅ FHINCDが"MH"で始まるアイテムが一覧から除外されることを確認
+- ✅ 検索用製番ボタンには機種名が表示されることを確認（KB-282で実装済み）
+- ✅ 通常のアイテム（FHINCDが"MH"で始まらない）は一覧に正常に表示されることを確認
+
+**学んだこと**:
+- **フィルタリングのタイミング**: `normalizedRows` useMemo内でフィルタリングすることで、データ変換とフィルタリングを一箇所に集約でき、保守性が向上する
+- **大文字小文字の考慮**: `toUpperCase()`で大文字化してから判定することで、大文字小文字の違いによる判定漏れを防止
+- **既存機能との整合性**: KB-282で実装した機種名表示機能（検索用製番ボタン）と整合性を保ち、一覧からは除外することで、UIの一貫性を維持
+
+**関連KB**:
+- [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): 登録製番ボタンの3段表示と機種名表示（検索用製番ボタンに機種名を表示）
+
+**解決状況**: ✅ **解決済み**（2026-02-28、実機検証完了）
 
 ---

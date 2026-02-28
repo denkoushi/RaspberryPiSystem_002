@@ -89,7 +89,10 @@ export async function getProductionScheduleSearchState(locationKey: string): Pro
 
 export async function getProductionScheduleHistoryProgress(locationKey: string): Promise<{
   history: string[];
-  progressBySeiban: Record<string, { total: number; completed: number; status: 'complete' | 'incomplete' }>;
+  progressBySeiban: Record<
+    string,
+    { total: number; completed: number; status: 'complete' | 'incomplete'; machineName: string | null }
+  >;
   updatedAt: Date | null;
 }> {
   const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
@@ -120,8 +123,9 @@ export async function getProductionScheduleHistoryProgress(locationKey: string):
       const row = progressMap.get(fseiban);
       const total = row?.total ?? 0;
       const completed = row?.completed ?? 0;
+      const machineName = row?.machineName ?? null;
       const status: 'complete' | 'incomplete' = total > 0 && completed === total ? 'complete' : 'incomplete';
-      return [fseiban, { total, completed, status }];
+      return [fseiban, { total, completed, status, machineName }];
     })
   );
 

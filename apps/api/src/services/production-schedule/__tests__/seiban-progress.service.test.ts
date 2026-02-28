@@ -23,14 +23,14 @@ describe('seiban-progress.service', () => {
 
   it('fseiban を正規化して進捗行を返す', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([
-      { fseiban: 'S-001', total: 2, completed: 1, incompleteProductNames: ['A'] },
+      { fseiban: 'S-001', total: 2, completed: 1, incompleteProductNames: ['A'], machineName: 'mha' },
     ] as never);
 
     const result = await fetchSeibanProgressRows(['S-001', ' S-001 ', '', 'S-002']);
 
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(result).toEqual([
-      { fseiban: 'S-001', total: 2, completed: 1, incompleteProductNames: ['A'] },
+      { fseiban: 'S-001', total: 2, completed: 1, incompleteProductNames: ['A'], machineName: 'mha' },
     ]);
   });
 });

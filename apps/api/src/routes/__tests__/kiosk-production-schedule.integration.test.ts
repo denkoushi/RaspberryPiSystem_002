@@ -514,12 +514,30 @@ describe('Kiosk Production Schedule API', () => {
     expect(progressRes.statusCode).toBe(200);
     const body = progressRes.json() as {
       history: string[];
-      progressBySeiban: Record<string, { total: number; completed: number; status: 'complete' | 'incomplete' }>;
+      progressBySeiban: Record<
+        string,
+        { total: number; completed: number; status: 'complete' | 'incomplete'; machineName: string | null }
+      >;
     };
     expect(body.history).toEqual(['A', 'B', 'C']);
-    expect(body.progressBySeiban.A).toEqual({ total: 2, completed: 0, status: 'incomplete' });
-    expect(body.progressBySeiban.B).toEqual({ total: 1, completed: 1, status: 'complete' });
-    expect(body.progressBySeiban.C).toEqual({ total: 0, completed: 0, status: 'incomplete' });
+    expect(body.progressBySeiban.A).toMatchObject({
+      total: 2,
+      completed: 0,
+      status: 'incomplete',
+    });
+    expect(body.progressBySeiban.B).toMatchObject({
+      total: 1,
+      completed: 1,
+      status: 'complete',
+    });
+    expect(body.progressBySeiban.C).toMatchObject({
+      total: 0,
+      completed: 0,
+      status: 'incomplete',
+    });
+    expect(body.progressBySeiban.A).toHaveProperty('machineName');
+    expect(body.progressBySeiban.B).toHaveProperty('machineName');
+    expect(body.progressBySeiban.C).toHaveProperty('machineName');
   });
 
   it('paginates results in sorted order', async () => {
