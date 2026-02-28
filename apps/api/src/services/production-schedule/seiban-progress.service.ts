@@ -9,6 +9,7 @@ export type SeibanProgressRow = {
   total: number;
   completed: number;
   incompleteProductNames: string[] | null;
+  machineName: string | null;
 };
 
 const normalizeSeibanList = (values: string[]): string[] => {
@@ -50,7 +51,12 @@ export async function fetchSeibanProgressRows(
         WHERE COALESCE("p"."isCompleted", FALSE) = FALSE
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
-      ) AS "incompleteProductNames"
+      ) AS "incompleteProductNames",
+      MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
+        WHERE UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+          AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
+          AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
+      ) AS "machineName"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"

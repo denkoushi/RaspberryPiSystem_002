@@ -50,8 +50,8 @@ describe('production-schedule-search-state.service', () => {
       } as never)
       .mockResolvedValueOnce(null as never);
     vi.mocked(fetchSeibanProgressRows).mockResolvedValue([
-      { fseiban: 'S-001', total: 3, completed: 3, incompleteProductNames: [] },
-      { fseiban: 'S-002', total: 5, completed: 2, incompleteProductNames: ['P1'] },
+      { fseiban: 'S-001', total: 3, completed: 3, incompleteProductNames: [], machineName: null },
+      { fseiban: 'S-002', total: 5, completed: 2, incompleteProductNames: ['P1'], machineName: 'mha-1' },
     ]);
 
     const result = await getProductionScheduleHistoryProgress('kiosk-1');
@@ -61,8 +61,14 @@ describe('production-schedule-search-state.service', () => {
       total: 5,
       completed: 2,
       status: 'incomplete',
+      machineName: 'mha-1',
     });
-    expect(result.progressBySeiban['S-001'].status).toBe('complete');
+    expect(result.progressBySeiban['S-001']).toEqual({
+      total: 3,
+      completed: 3,
+      status: 'complete',
+      machineName: null,
+    });
   });
 
   it('updateProductionScheduleSearchState は If-Match 未指定で428を返す', async () => {
