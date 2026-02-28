@@ -83,6 +83,38 @@ all:
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspberrypi4-kiosk1"
               nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
+            raspi4-robodrill01:
+              # RoboDrill01 キオスク（Pi4増設）
+              # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
+              ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
+              ansible_user: tools04
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-robodrill01-kiosk1
+              # 登録スクリプト（scripts/register-clients.sh）でそのまま使えるよう、キーは文字列で固定する
+              status_agent_client_key: "client-key-raspi4-robodrill01-kiosk1"
+              status_agent_location: "第2工場 - RoboDrill01"
+              kiosk_url: "{{ kiosk_full_url }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
+              nfc_agent_client_secret: "client-key-raspi4-robodrill01-kiosk1"
         signage:
           hosts:
             raspberrypi3:

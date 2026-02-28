@@ -7,6 +7,7 @@ network_mode: "tailscale"
 local_network:
   raspberrypi5_ip: "192.168.10.230"
   raspberrypi4_ip: "192.168.10.224"
+  raspi4_robodrill01_ip: "192.168.10.236"
   raspberrypi3_ip: "192.168.128.152"
 
 # 通常運用（Tailscale経由）に使用するIPアドレス
@@ -14,6 +15,7 @@ local_network:
 tailscale_network:
   raspberrypi5_ip: "100.106.158.2"
   raspberrypi4_ip: "100.74.144.79"
+  raspi4_robodrill01_ip: "100.123.1.113"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）
@@ -58,11 +60,13 @@ ufw_allowed_tcp_ports:
 ufw_ssh_allowed_networks:
   - "192.168.10.0/24"
   - "100.64.0.0/10"
-# VNCポート（ローカルネットワークからのみ許可）
+# VNCポート（信頼ネットワークからのみ許可）
 # 複数のローカルネットワークに対応（会社: 192.168.10.0/24、自宅: 192.168.128.0/24）
+# Tailscale経由でのアクセスも許可（100.64.0.0/10）
 ufw_vnc_allowed_networks:
   - "192.168.10.0/24"
   - "192.168.128.0/24"
+  - "100.64.0.0/10"
 ufw_logging_level: "medium"
 caddy_log_dir: "/var/log/caddy"
 alert_script_path: "/opt/RaspberryPiSystem_002/scripts/generate-alert.sh"

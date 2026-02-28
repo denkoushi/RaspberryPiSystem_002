@@ -155,6 +155,11 @@ if server_base_url:
     env_vars.append(f"SERVER_BASE_URL={server_base_url}")
 if kiosk_full_url:
     env_vars.append(f"KIOSK_FULL_URL={kiosk_full_url}")
+# verifier用のクライアントキー（未指定なら既定値にフォールバック）
+# - 本来はinventory/vaultから解決したいが、このスクリプトはローカル（Mac）実行もあるため、
+#   まずは環境変数で上書き可能な形にしておく。
+if not os.environ.get("KIOSK_CLIENT_KEY"):
+    env_vars.append("KIOSK_CLIENT_KEY=client-key-raspberrypi4-kiosk1")
 # セキュリティ機能の有効/無効も設定
 for key in ["ufw_enabled", "fail2ban_enabled", "clamav_server_enabled", "security_monitor_enabled", "clamav_kiosk_enabled"]:
     val = vars_data.get(key, False)

@@ -32,7 +32,9 @@ verification_map:
       expected_status: 200
       insecure_tls: true
       headers:
-        x-client-key: "client-key-raspberrypi4-kiosk1"
+        # NOTE: verifier.sh は {{ var }} を環境変数 VAR（大文字）として展開する。
+        # 例: export KIOSK_CLIENT_KEY="client-key-raspberrypi4-kiosk1"
+        x-client-key: "{{ kiosk_client_key }}"
   pi3_signage:
     # 目的: Pi3サイネージがサーバーからコンテンツを取得できることを確認
     # 成功基準: HTTP GETが200を返し、画像データが返される

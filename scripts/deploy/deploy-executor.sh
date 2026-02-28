@@ -32,12 +32,15 @@ import sys, json, subprocess, time, os
 
 enable_exec, now_ts, stdin_json, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
+inventory_path = os.environ.get("DEPLOY_INVENTORY_PATH", "infrastructure/ansible/inventory.yml")
+
 CMD_MAP = {
     "server": ["bash", "scripts/server/deploy.sh"],
-    "pi4_kiosk": ["ansible-playbook", "-i", "infrastructure/ansible/inventory.yml",
-                  "infrastructure/ansible/playbooks/deploy.yml", "--limit", "raspberrypi4"],
-    "pi3_signage": ["ansible-playbook", "-i", "infrastructure/ansible/inventory.yml",
-                    "infrastructure/ansible/playbooks/deploy.yml", "--limit", "raspberrypi3"],
+    # 増台対応: host固定ではなくグループでデプロイする
+    "pi4_kiosk": ["ansible-playbook", "-i", inventory_path,
+                  "infrastructure/ansible/playbooks/deploy.yml", "--limit", "kiosk"],
+    "pi3_signage": ["ansible-playbook", "-i", inventory_path,
+                    "infrastructure/ansible/playbooks/deploy.yml", "--limit", "signage"],
 }
 
 # Ansibleロールパスを環境変数で設定
