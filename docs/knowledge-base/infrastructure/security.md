@@ -850,3 +850,53 @@ update-frequency: medium
 - `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`（`extract_default_value()`関数の実装例）
 
 ---
+
+### [KB-280] Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）
+
+**発生日**: 2026-02-28
+
+**事象**:
+- raspi4-robodrill01（Pi4）で`kiosk-browser.service`を起動しようとすると、`chromium-browser: not found`エラーが発生
+- エラーログ: `/usr/local/bin/kiosk-launch.sh: line 48: exec: chromium-browser: not found`
+- サービス状態: `failed (exit-code)`
+
+**根本原因**:
+- Debian Trixie（Debian 13）では`chromium-browser`パッケージが存在せず、`chromium`パッケージのみが利用可能
+- `kiosk-launch.sh`は`chromium-browser`コマンドを実行しようとしているが、実際には`/usr/bin/chromium`がインストールされている
+- Ansibleロール（`roles/kiosk/tasks/main.yml`）に`chromium-browser`のインストールタスクが存在しない
+
+**有効だった対策**:
+- ✅ `/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成
+- ✅ `systemctl daemon-reload`でsystemdを再読み込み
+- ✅ `systemctl enable kiosk-browser.service`で自動起動を有効化
+- ✅ `systemctl start kiosk-browser.service`でサービスを起動
+
+**実装のポイント**:
+- Debian Trixieでは`chromium-browser`パッケージ名が`chromium`に変更されている
+- シンボリックリンク作成コマンド: `sudo ln -sf /usr/bin/chromium /usr/bin/chromium-browser`
+- 既存の`kiosk-launch.sh`テンプレートは`chromium-browser`を想定しているため、シンボリックリンクで互換性を維持
+
+**検証結果**:
+- ✅ シンボリックリンク作成後、`chromium-browser --version`が正常に動作
+- ✅ `kiosk-browser.service`が正常に起動（`active (running)`）
+- ✅ chromiumプロセスが実行中で、キオスクURL（`https://100.106.158.2/kiosk`）を開いている
+- ✅ 実機検証でキオスクが正常動作することを確認
+
+**再発防止**:
+- 将来的にはAnsibleロール（`roles/kiosk/tasks/main.yml`）に`chromium-browser`シンボリックリンク作成タスクを追加することを推奨
+- Debian Trixie以降のOSでは`chromium`パッケージ名を前提とした設定を検討
+- 新規Pi4追加時は、`kiosk-browser.service`起動前に`chromium-browser`シンボリックリンクの存在を確認
+
+**解決状況**: ✅ **解決済み（2026-02-28）**
+
+**関連ファイル**:
+- `/usr/local/bin/kiosk-launch.sh`（`chromium-browser`コマンドを実行）
+- `/usr/bin/chromium-browser`（シンボリックリンク）
+- `/etc/systemd/system/kiosk-browser.service`（サービス定義）
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`（テンプレート）
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（Ansibleロール）
+
+**関連ドキュメント**:
+- [guides/client-initial-setup.md](../../guides/client-initial-setup.md)（Pi4追加手順）
+
+---

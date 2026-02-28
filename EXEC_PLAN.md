@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-02-28) **ロボドリル01パイ4（raspi4-robodrill01）追加作業完了・実機検証完了**: 新規Pi4端末（raspi4-robodrill01）をシステムに追加し、キオスク端末として正常動作することを確認。**実施内容**: Tailscale接続・タグ設定（`tag:kiosk`）、Tailscale SSH無効化（標準SSHを使用するため）、SSH鍵認証設定（Pi5からPi4への接続）、Gitリポジトリクローン、status-agent設定・動作確認、クライアント登録（`client-key-raspi4-robodrill01-kiosk1`）、kiosk-browser.service起動（chromium-browserシンボリックリンク作成含む）。**トラブルシューティング**: Debian Trixieでは`chromium-browser`パッケージが存在せず`chromium`のみが利用可能なため、`/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成して解決。**実機検証結果**: status-agent.timerが正常動作（`active (waiting)`）、kiosk-browser.serviceが正常起動（`active (running)`）、キオスクが正常動作することを確認。クライアント総数が5件（実機数と一致）で重複なし。**ドキュメント更新**: KB-280を追加、client-initial-setup.mdにkiosk-browser起動手順とchromium-browserシンボリックリンク作成手順を追加、INDEX.mdとknowledge-base/index.mdを更新。詳細は [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md) / [docs/INDEX.md](./docs/INDEX.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
+
 - [x] (2026-02-26) **Pi4キオスクの日本語入力モード切替問題とIBus設定改善・CI成功・デプロイ完了・実機検証完了**: KB-244でIBus設定を永続化したが、その後「日本語入力モードに切り替わらない」「ibus-...ウィンドウが出現してスムーズに入力できない」という問題が発生。**原因**: IBusパネルUIの二重起動（`ibus-daemon`が2プロセス起動し、片方がUI付きで動作）、IBus起動直後のタイミング問題でエンジン未設定、切替トリガーがCtrl+Spaceのみで全角/半角キーが効かない。**実装内容**: IBusパネルUIの二重起動を防止（`ibus-autostart.desktop.j2`に`--replace --single`を追加）、IBusエンジン設定のリトライロジック追加（最大5回、各1秒間隔）、IBus切替トリガーに全角/半角キーを追加（`['<Control>space', 'Zenkaku_Hankaku']`）。**CI実行**: GitHub Actions成功（Run ID `22433125722`、全ジョブ成功）。**デプロイ結果**: Pi4でデプロイ成功（Run ID: `20260226-171548-20196`, `state: success`, `exitCode: 0`）。**実機検証結果**: キー入力ごとに出現する「ibus-...」ウィンドウが完全に抑制され、全角/半角キーとCtrl+Spaceの両方で日本語入力モードに切り替わり、スムーズな日本語入力が可能になったことを確認。**ドキュメント更新**: KB-276を追加、index.mdとINDEX.mdを更新、frontend.mdの件数を44件→45件に更新、ansible-deployment.mdの件数を41件→42件に更新。詳細は [docs/knowledge-base/frontend.md#kb-276](./docs/knowledge-base/frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
 
 - [x] (2026-02-25) **CSV progress同期機能の実装・CI成功・デプロイ完了・実機検証完了**: CSVの`progress`列を`ProductionScheduleProgress`テーブルに同期する機能を実装。**実装内容**: `ProgressSyncFromCsvService`を新設し、CSV取り込み時に`progress`列の値を`ProductionScheduleProgress`テーブルに反映。`updatedAt`による優先順位判定（新しいCSVが優先、同時刻はシステム側優先）。`progress='完了'` → `isCompleted=true`、`progress=''`（空） → `isCompleted=false`、その他は無視。`CsvDashboardIngestor`で新規行作成時と更新時に`progressSyncCandidates`を収集し、取り込み完了後に同期実行。タイムゾーン非依存の`updatedAt`パース処理を実装（`csv-dashboard-updated-at.ts`を新設し、`Date.UTC`を使用して実行環境のローカルタイムゾーンに依存しない変換を実現）。**実装ファイル**: `apps/api/src/services/production-schedule/progress-sync-from-csv.service.ts`（新規）、`apps/api/src/services/csv-dashboard/diff/csv-dashboard-updated-at.ts`（新規、`parseJstDate`と`resolveUpdatedAt`を共通化）、`apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`（修正、`progressSyncCandidates`収集と同期実行）、`apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（修正、`parseJstDate`と`resolveUpdatedAt`を削除して共通モジュールへ移行）、ユニットテスト追加。**トラブルシューティング**: CI初回実行でタイムゾーン依存のテスト失敗が発生（`parseJstDate`がローカルタイムゾーンでDateオブジェクトを作成していたため、CI環境（UTC）で異なる結果になった）。`Date.UTC`を使用するように修正して解決（KB-249の知見を適用）。**ローカル**: 全テストパス、lint・build成功。**CI**: GitHub Actions成功（Run ID `22396593864`、全ジョブ成功）。**デプロイ**: 標準手順に従い、`RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`を設定して`./scripts/update-all-clients.sh feat/csv-progress-sync infrastructure/ansible/inventory.yml --limit raspberrypi5`を実行、Run ID `20260225-213519-20840`でデタッチ実行、`state: success`、`exitCode: 0`。**実機検証**: デプロイ実体確認（ブランチ `feat/csv-progress-sync`、コミット `bf0e23e4` が反映済み）、実装コード統合確認（`ProgressSyncFromCsvService`がデプロイ済み、`csv-dashboard-ingestor.js`で`progressSyncFromCsvService.sync()`が呼び出されていることを確認）、`resolveUpdatedAt`関数の実装確認（`Date.UTC`を使用したタイムゾーン非依存の実装が確認できた）、APIログ（エラーなし、過去10分間）、サービス状態（正常稼働中）。**ドキュメント更新**: KB-269を更新（CSV progress同期機能の実装を追記）、KB-249を更新（CIテスト失敗のトラブルシューティングを追記）、ADR-20260219を更新（CSV progress同期機能の実装を追記）、EXEC_PLAN.mdを更新。詳細は [docs/knowledge-base/api.md#kb-269](./docs/knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避) / [docs/knowledge-base/api.md#kb-249](./docs/knowledge-base/api.md#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題) / [docs/decisions/ADR-20260219-production-schedule-progress-separation.md](./docs/decisions/ADR-20260219-production-schedule-progress-separation.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
@@ -1412,6 +1414,26 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Pi4追加時のkiosk-browser.service起動エラー対策の永続化（推奨）
+
+**概要**: raspi4-robodrill01追加時に発生した`chromium-browser: not found`エラーを解決するため、シンボリックリンク作成をAnsibleロールに永続化する
+
+**完了した作業**:
+- ✅ **raspi4-robodrill01追加作業完了**: Tailscale接続・SSH設定・status-agent設定・kiosk-browser.service起動完了
+- ✅ **chromium-browserシンボリックリンク作成**: Debian Trixie対応として`/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成
+- ✅ **実機検証完了**: kiosk-browser.serviceが正常起動し、キオスクが正常動作することを確認
+
+**次の改善候補**:
+1. **Ansibleロールへの永続化**（優先度: 中）
+   - `infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium-browser`シンボリックリンク作成タスクを追加
+   - Debian Trixie以降のOSでは`chromium`パッケージ名を前提とした設定を検討
+   - 新規Pi4追加時に自動的にシンボリックリンクが作成されるようにする
+
+2. **kiosk-launch.shテンプレートの修正検討**（優先度: 低）
+   - `infrastructure/ansible/templates/kiosk-launch.sh.j2`で`chromium-browser`の代わりに`chromium`を使用するか、シンボリックリンクの存在確認を追加
+
+**参照**: [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md)
 
 ### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
 

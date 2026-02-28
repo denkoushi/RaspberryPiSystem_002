@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2026-02-28（Pi4追加時のTailscale SSH無効化手順を追加）
+最終更新: 2026-02-28（Pi4追加時のTailscale SSH無効化手順とkiosk-browser起動手順を追加）
 
 ## 概要
 
@@ -433,9 +433,77 @@ systemctl status status-agent.service
 
 ---
 
-## Step 5: 管理コンソールでの確認
+## Step 5: kiosk-browser.serviceの設定と起動（キオスク端末の場合）
 
-### 5.1 管理画面でクライアント状態を確認
+**重要**: キオスク端末（研削メイン端末など）として使用する場合は、この手順を実行してください。
+
+### 5.1 chromium-browserシンボリックリンクの作成（Debian Trixie対応）
+
+**Debian Trixie（Debian 13）では`chromium-browser`パッケージが存在せず、`chromium`パッケージのみが利用可能です。**
+
+**クライアント端末で実行:**
+
+```bash
+# chromiumがインストールされているか確認
+which chromium || echo "chromium not found"
+
+# chromium-browserシンボリックリンクを作成
+sudo ln -sf /usr/bin/chromium /usr/bin/chromium-browser
+
+# 確認
+which chromium-browser && chromium-browser --version | head -1
+```
+
+**期待される結果:**
+- `/usr/bin/chromium-browser`が`/usr/bin/chromium`へのシンボリックリンクとして作成される
+- `chromium-browser --version`が正常に動作する
+
+### 5.2 kiosk-browser.serviceの有効化・起動
+
+**クライアント端末で実行:**
+
+```bash
+# systemdをリロード
+sudo systemctl daemon-reload
+
+# 自動起動を有効化
+sudo systemctl enable kiosk-browser.service
+
+# サービスを起動
+sudo systemctl start kiosk-browser.service
+
+# 状態確認
+systemctl status kiosk-browser.service --no-pager | head -15
+```
+
+**期待される結果:**
+- `kiosk-browser.service`が`active (running)`状態
+- `enabled`で自動起動が有効化されている
+- chromiumプロセスが実行中で、キオスクURLを開いている
+
+### 5.3 トラブルシューティング
+
+**エラー: `chromium-browser: not found`**
+- 原因: Debian Trixieでは`chromium-browser`パッケージが存在しない
+- 解決策: 上記5.1の手順でシンボリックリンクを作成
+
+**エラー: `kiosk-browser.service: Failed with result 'exit-code'`**
+- 原因: `chromium-browser`コマンドが見つからない
+- 解決策: シンボリックリンクの存在を確認（`ls -la /usr/bin/chromium-browser`）
+
+**ログ確認:**
+```bash
+# サービスログを確認
+journalctl -u kiosk-browser.service -n 20 --no-pager
+```
+
+**関連KB**: [KB-280: Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）](../knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出)
+
+---
+
+## Step 6: 管理コンソールでの確認
+
+### 6.1 管理画面でクライアント状態を確認
 
 **ブラウザでアクセス:**
 
@@ -448,7 +516,7 @@ https://192.168.128.131/admin/clients
 - CPU、メモリ、ディスク、温度が表示される
 - 最終確認時刻が1分以内であること
 
-### 5.2 APIで直接確認
+### 6.2 APIで直接確認
 
 **Macのターミナルで実行:**
 
