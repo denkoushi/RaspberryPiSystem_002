@@ -26,6 +26,9 @@ CHROMIUM_FLAGS=(
   # Chromium 135+ で IBus/IME が壊れるリグレッション対策（issue 408309963）
   # X11 を明示指定して IME 経路を強制
   --ozone-platform=x11
+  # 実機からの原因調査用（localhost のみで待ち受け）
+  --remote-debugging-address=127.0.0.1
+  --remote-debugging-port=9222
   # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
   --app="{{ kiosk_url }}"
   --start-maximized
