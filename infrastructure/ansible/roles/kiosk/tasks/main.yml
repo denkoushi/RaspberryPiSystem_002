@@ -110,6 +110,32 @@
   when: manage_kiosk_browser | default(false) | bool
   register: kiosk_launch_script_result
 
+- name: Check chromium binary path for kiosk browser
+  ansible.builtin.stat:
+    path: /usr/bin/chromium
+  when: manage_kiosk_browser | default(false) | bool
+  register: chromium_binary_stat
+
+- name: Fail when chromium binary is missing on kiosk host
+  ansible.builtin.fail:
+    msg: >-
+      /usr/bin/chromium が見つかりません。kiosk-browser.service 起動前に chromium をインストールしてください。
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - chromium_binary_stat is defined
+    - not chromium_binary_stat.stat.exists
+
+- name: Ensure chromium-browser compatibility symlink exists
+  ansible.builtin.file:
+    src: /usr/bin/chromium
+    dest: /usr/bin/chromium-browser
+    state: link
+    force: true
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - chromium_binary_stat is defined
+    - chromium_binary_stat.stat.exists
+
 - name: Deploy kiosk-browser.service
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-browser.service.j2"
