@@ -344,7 +344,7 @@ export function ProductionSchedulePage() {
 
   const normalizedRows = useMemo<NormalizedScheduleRow[]>(() => {
     const sourceRows = scheduleQuery.data?.rows ?? [];
-    return sourceRows.map((r) => {
+    const mapped = sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
@@ -371,6 +371,11 @@ export function ProductionSchedulePage() {
         note,
         dueDate
       };
+    });
+    // FHINCDがMHで始まるアイテム（機種名）は検索用製番ボタンにのみ表示し、一覧からは除外
+    return mapped.filter((row) => {
+      const fhincd = String(row.data.FHINCD ?? '').toUpperCase();
+      return !fhincd.startsWith('MH');
     });
   }, [scheduleQuery.data?.rows]);
 
