@@ -126,7 +126,7 @@ all:
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
               status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
-              status_agent_location: "ラズパイ3 - サイネージ1"
+              status_agent_location: "第2工場 - signageMakoRoom"
               signage_server_url: "{{ server_base_url }}"
               signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
               # signage-lite.serviceを管理対象にする
