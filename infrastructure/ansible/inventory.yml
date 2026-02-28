@@ -58,7 +58,7 @@ all:
               ansible_command_timeout: 600
               status_agent_client_id: raspberrypi4-kiosk1
               status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
-              status_agent_location: "ラズパイ4 - キオスク1"
+              status_agent_location: "第2工場 - kensakuMain"
               kiosk_url: "{{ kiosk_full_url }}"
               # kiosk-browser.serviceを管理対象にする
               manage_kiosk_browser: true
