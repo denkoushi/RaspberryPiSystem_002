@@ -75,6 +75,11 @@ PY
   ACTION="${parsed[0]}"
   CLIENT_KEY="${parsed[1]}"
 
+  # #region agent log
+  DEBUG_LOG="${LOG_DIR}/dispatcher-debug.log"
+  echo "$(date -Iseconds) [power-debug] Processing CLIENT_KEY=${CLIENT_KEY} ACTION=${ACTION} FILE=$(basename "${QUEUE_FILE}")" >> "${DEBUG_LOG}" 2>/dev/null || true
+  # #endregion
+
   if ! command -v ansible-inventory >/dev/null 2>&1; then
     mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
     continue
@@ -138,9 +143,16 @@ PY
   rm -f "${TMP_INV}"
 
   if [[ -z "${HOST}" ]]; then
+    # #region agent log
+    echo "$(date -Iseconds) [power-debug] HOST_RESOLUTION_FAILED CLIENT_KEY=${CLIENT_KEY} -> moved to failed/" >> "${DEBUG_LOG}" 2>/dev/null || true
+    # #endregion
     mv "${QUEUE_FILE}" "${FAILED_DIR}/$(basename "${QUEUE_FILE}")" || true
     continue
   fi
+
+  # #region agent log
+  echo "$(date -Iseconds) [power-debug] Resolved HOST=${HOST} for CLIENT_KEY=${CLIENT_KEY}" >> "${DEBUG_LOG}" 2>/dev/null || true
+  # #endregion
 
   LOG_FILE="${LOG_DIR}/$(basename "${QUEUE_FILE}").log"
 

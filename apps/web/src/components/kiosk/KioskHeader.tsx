@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
-import { postKioskPower } from '../../api/client';
+import { getResolvedClientKey, postClientLogs, postKioskPower } from '../../api/client';
 import { Row } from '../layout/Row';
 
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
@@ -88,9 +88,61 @@ export function KioskHeader({
   const handlePowerConfirm = async () => {
     if (!pendingAction) return;
     setIsPowerProcessing(true);
+    const effectiveClientKey = (getResolvedClientKey() || clientKey || '').trim();
+    // #region agent log
+    const urlClientKey = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('clientKey') : null;
+    const storedKey = typeof window !== 'undefined' ? window.localStorage.getItem('kiosk-client-key') : null;
+    postClientLogs(
+      {
+        clientId: clientId || 'power-debug-unknown',
+        logs: [
+          {
+            level: 'INFO',
+            message: '[power-debug] power request start',
+            context: {
+              action: pendingAction,
+              clientKeyProp: clientKey,
+              clientKeySent: effectiveClientKey,
+              urlClientKey,
+              localStorageKioskKey: storedKey?.slice(0, 50) ?? null,
+              pathname: typeof window !== 'undefined' ? window.location.pathname : null,
+            },
+          },
+        ],
+      },
+      effectiveClientKey
+    ).catch(() => {});
+    // #endregion
     try {
-      await postKioskPower({ action: pendingAction }, clientKey);
+      await postKioskPower({ action: pendingAction }, effectiveClientKey);
+      // #region agent log
+      postClientLogs(
+        {
+          clientId: clientId || 'power-debug-unknown',
+          logs: [{ level: 'INFO', message: '[power-debug] power request accepted', context: { action: pendingAction } }],
+        },
+        effectiveClientKey
+      ).catch(() => {});
+      // #endregion
     } catch (error) {
+      // #region agent log
+      postClientLogs(
+        {
+          clientId: clientId || 'power-debug-unknown',
+          logs: [
+            {
+              level: 'ERROR',
+              message: '[power-debug] power request failed',
+              context: {
+                action: pendingAction,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              },
+            },
+          ],
+        },
+        effectiveClientKey
+      ).catch(() => {});
+      // #endregion
       console.error('Failed to request power action:', error);
     } finally {
       setIsPowerProcessing(false);

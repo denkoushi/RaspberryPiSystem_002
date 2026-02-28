@@ -4,6 +4,7 @@ import path from 'path';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
+import { writeDebugLog } from '../../lib/debug-log.js';
 
 const powerActionSchema = z.object({
   action: z.enum(['reboot', 'poweroff'])
@@ -23,7 +24,24 @@ export async function registerKioskPowerRoute(
   deps: PowerRouteDeps
 ): Promise<void> {
   app.post('/kiosk/power', { config: { rateLimit: false } }, async (request) => {
-    const { clientKey, clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const rawHeader = request.headers['x-client-key'];
+    const { clientKey, clientDevice } = await deps.requireClientDevice(rawHeader);
+    // #region agent log
+    await writeDebugLog({
+      sessionId: 'power-debug',
+      runId: 'run1',
+      hypothesisId: 'H-power',
+      location: 'kiosk/power.ts:post',
+      message: 'POST /kiosk/power received',
+      data: {
+        rawHeader: typeof rawHeader === 'string' ? rawHeader : String(rawHeader),
+        resolvedClientKey: clientKey,
+        clientDeviceId: clientDevice.id,
+        action: (request.body as { action?: string })?.action,
+      },
+      timestamp: Date.now(),
+    });
+    // #endregion
     const allowed = await deps.checkPowerRateLimit(clientKey, request.ip);
     if (!allowed) {
       throw new ApiError(429, '操作が多すぎます。しばらく待ってから再度お試しください。', undefined, 'POWER_RATE_LIMIT');
