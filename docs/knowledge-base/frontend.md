@@ -3835,3 +3835,62 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-02-26、実機検証完了）
 
 ---
+
+### [KB-282] 生産スケジュール登録製番ボタンの3段表示と機種名表示（全角半角大文字化）
+
+**EXEC_PLAN.md参照**: Progress (行95-96)
+
+**事象**: 
+- 生産スケジュール画面の登録製番ボタンが1行表示のみで、機種名（FHINCDがMHで始まるアイテムのFHINMEI）が表示されていなかった
+- ユーザーから「機種名を表示してほしい」という要望があった
+- 機種名は全角文字が含まれる可能性があり、統一的な表示形式が必要だった
+
+**実装内容**: 
+- ✅ **`SeibanHistoryButton`コンポーネントの新設**（2026-02-28）:
+  - `apps/web/src/components/kiosk/SeibanHistoryButton.tsx`を新規作成
+  - 製番を1段目、機種名を2-3段目に表示する3段レイアウトを実装
+  - 固定幅（`w-36`）と固定高さ（`h-16`）で統一的な表示を実現
+  - `line-clamp-2`と`break-all`で2行折り返しと文字単位の改行を実現
+- ✅ **機種名の正規化処理**（2026-02-28）:
+  - `toHalfWidthAscii`関数を実装し、全角ASCII（`！`〜`～`）を半角に変換
+  - 全角スペース（`　`）を半角スペースに変換
+  - `toUpperCase()`で大文字化
+  - 36文字超は`...`で省略（`MAX_MACHINE_NAME_CHARS = 36`）
+- ✅ **CSSユーティリティ追加**（2026-02-28）:
+  - `apps/web/src/index.css`に`line-clamp-2`ユーティリティを追加（Tailwind標準プラグインなしで実現）
+- ✅ **API連携**（2026-02-28）:
+  - `history-progress`エンドポイントから`machineName`を取得
+  - `progressBySeiban`オブジェクトに`machineName`を含める
+
+**実装ファイル**: 
+- `apps/web/src/components/kiosk/SeibanHistoryButton.tsx`（新規）
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（修正、`SeibanHistoryButton`を使用）
+- `apps/web/src/index.css`（修正、`line-clamp-2`追加）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22515259397`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-170617-12957`, `state: success`, `exitCode: 0`）
+- Pi5: `ok=122, changed=4, failed=0`
+- Pi4: `ok=94, changed=8, failed=0`
+
+**実機検証結果**: 
+- ✅ 製番ボタンが3段表示され、製番が1段目、機種名が2-3段目に正しく表示されることを確認
+- ✅ 機種名が全角半角大文字で正しく変換・表示されることを確認
+- ✅ 長い機種名が36文字超で`...`で省略されることを確認
+- ✅ 機種名が存在しない場合（MHアイテムがない）は空欄で表示されることを確認
+
+**学んだこと**:
+- コンポーネントの分離により、再利用性と保守性が向上する（SOLID原則のSingle Responsibility）
+- 全角→半角変換は`String.fromCharCode(char.charCodeAt(0) - 0xfee0)`で実現できる
+- Tailwind標準の`line-clamp`プラグインがなくても、CSSの`-webkit-line-clamp`で実現できる
+- API側で機種名を集約することで、UIロジックを簡潔に保てる（SOLID原則のSeparation of Concerns）
+
+**関連KB**:
+- [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 登録製番削除ボタンの進捗連動UI改善（`history-progress`エンドポイントの追加）
+- [KB-282](../api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): API側の`machineName`追加実装
+
+**解決状況**: ✅ **解決済み**（2026-02-28）
+
+---

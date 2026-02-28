@@ -94,6 +94,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-02-10) **登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OK**: 登録製番ボタン右上の×削除ボタンを進捗で白（100%完了）/グレー白縁（未完了）に切替える機能を実装。**実装内容**: APIに`SeibanProgressService`を新設し、`GET /kiosk/production-schedule/history-progress`を追加。`ProductionScheduleDataSource`を共通サービス利用へ切替。Webに`useProductionScheduleHistoryProgress`フックを追加。**デプロイ**: Pi5＋Pi4でデプロイ成功（Run ID: 20260210-080354-23118）。**キオスク動作検証**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作。詳細は [KB-242](../knowledge-base/frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) / [KB-242](../knowledge-base/api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス) を参照。
 
+- [x] (2026-02-28) **登録製番ボタンの3段表示と機種名表示・全角半角大文字化・デプロイ成功・実機検証OK**: 登録製番ボタンを3段表示に変更し、機種名（FHINCDがMHで始まるアイテムのFHINMEI）を下2段に表示する機能を実装。**実装内容**: `SeibanHistoryButton`コンポーネントを新設し、製番を1段目、機種名を2-3段目に表示。機種名は全角→半角変換＋大文字化（`toHalfWidthAscii`関数）。36文字超は`...`で省略。APIに`machineName`フィールドを追加（`SeibanProgressRow`型、SQL集約で`FHINCD LIKE 'MH%'`の`FHINMEI`を取得）。**デプロイ**: Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: 20260228-170617-12957, state: success）。**実機検証結果**: 製番ボタンが3段表示され、機種名が全角半角大文字で正しく表示されることを確認。詳細は [KB-282](../knowledge-base/frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化) / [KB-282](../knowledge-base/api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能
