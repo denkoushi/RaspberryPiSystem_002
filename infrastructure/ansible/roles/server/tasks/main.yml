@@ -377,6 +377,9 @@
 - name: Apply server security hardening
   ansible.builtin.import_tasks: security.yml
 
+- name: Configure wayvnc VNC server
+  ansible.builtin.import_tasks: wayvnc.yml
+
 - name: Apply malware protection tasks
   ansible.builtin.import_tasks: malware.yml
 

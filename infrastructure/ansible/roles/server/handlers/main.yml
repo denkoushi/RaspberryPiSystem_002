@@ -36,3 +36,8 @@
   ansible.builtin.systemd:
     name: ssh
     state: reloaded
+
+- name: restart wayvnc
+  ansible.builtin.systemd:
+    name: wayvnc
+    state: restarted

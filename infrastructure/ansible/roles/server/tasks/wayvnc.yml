@@ -1,0 +1,21 @@
+---
+# wayvnc設定ファイルの配布（Pi5サーバー側）
+# wayvncはWaylandセッション用のVNCサーバー
+
+- name: Ensure wayvnc configuration directory exists
+  ansible.builtin.file:
+    path: /etc/wayvnc
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy wayvnc configuration file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/wayvnc.config.j2"
+    dest: /etc/wayvnc/config
+    owner: root
+    group: root
+    mode: '0644'
+  register: wayvnc_config_result
+  notify: restart wayvnc

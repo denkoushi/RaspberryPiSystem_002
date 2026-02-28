@@ -1,0 +1,7 @@
+use_relative_paths={{ wayvnc_use_relative_paths | default(true) }}
+address={{ wayvnc_address | default('0.0.0.0') }}
+enable_auth={{ wayvnc_enable_auth | default(true) }}
+enable_pam={{ wayvnc_enable_pam | default(true) }}
+private_key_file={{ wayvnc_private_key_file | default('tls_key.pem') }}
+certificate_file={{ wayvnc_certificate_file | default('tls_cert.pem') }}
+rsa_private_key_file={{ wayvnc_rsa_private_key_file | default('rsa_key.pem') }}

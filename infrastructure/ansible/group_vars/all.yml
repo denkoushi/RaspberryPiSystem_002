@@ -68,6 +68,16 @@ ufw_vnc_allowed_networks:
   - "192.168.128.0/24"
   - "100.64.0.0/10"
 ufw_logging_level: "medium"
+
+# wayvnc設定（Pi5サーバー側のVNCサーバー）
+wayvnc_use_relative_paths: true
+wayvnc_address: "0.0.0.0"  # IPv4/IPv6両対応（IPv6のみの場合は "::"）
+wayvnc_enable_auth: true
+wayvnc_enable_pam: true
+wayvnc_private_key_file: "tls_key.pem"
+wayvnc_certificate_file: "tls_cert.pem"
+wayvnc_rsa_private_key_file: "rsa_key.pem"
+
 caddy_log_dir: "/var/log/caddy"
 alert_script_path: "/opt/RaspberryPiSystem_002/scripts/generate-alert.sh"
 alert_webhook_url: ""
