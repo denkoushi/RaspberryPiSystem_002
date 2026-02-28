@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2025-12-01
+最終更新: 2026-02-28（Pi4追加時のTailscale SSH無効化手順を追加）
 
 ## 概要
 
@@ -128,7 +128,57 @@ echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-### 2.3 SSH接続のテスト
+### 2.3 Tailscale接続の設定（Pi4追加時）
+
+**重要**: Pi4へはPi5からTailscale経由で接続するのがルールです。
+
+**Pi4で実行（Tailscale接続とタグ設定）**:
+
+1. **Tailscaleのインストールと認証**:
+   ```bash
+   # Pi4で実行
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   # 認証URLが表示されるので、Macのブラウザで開いて承認
+   ```
+
+2. **Tailscale管理画面でタグを設定**:
+   - Tailscale管理画面（https://login.tailscale.com/admin/machines）にアクセス
+   - Pi4の端末を選択し、`tag:kiosk`を付与
+   - 保存後、約30秒待つ
+
+3. **Tailscale SSHの無効化**（重要）:
+   ```bash
+   # Pi4で実行
+   sudo tailscale set --ssh=false
+   # 確認
+   tailscale status --json | grep -i ssh
+   # "https://tailscale.com/cap/ssh": null が表示されればOK
+   ```
+   - **理由**: Tailscale SSHが有効だと、標準SSH（鍵認証）がブロックされる
+   - Pi5からPi4へのAnsible接続には標準SSHが必要
+
+**Pi5からPi4への接続確認**:
+
+```bash
+# Pi5で実行
+tailscale status
+# Pi4が表示されていることを確認（例: raspi4-robodrill01）
+
+# Pi5からPi4へのping確認
+ping -c 3 <Pi4のTailscale IP>
+# 例: ping -c 3 100.123.1.113
+
+# Pi5からPi4へのSSH接続確認
+ssh <ユーザー名>@<Pi4のTailscale IP>
+# 例: ssh tools04@100.123.1.113
+```
+
+**トラブルシューティング**:
+- `tailnet policy does not permit you to SSH to this node`: Tailscale SSHが有効になっている。Pi4で`sudo tailscale set --ssh=false`を実行
+- `Permission denied (publickey,password)`: Pi5の公開鍵がPi4の`authorized_keys`に追加されていない。手動で追加する（下記参照）
+
+### 2.4 SSH接続のテスト
 
 **Raspberry Pi 5（サーバー）で実行:**
 
@@ -136,14 +186,30 @@ chmod 600 ~/.ssh/authorized_keys
 # パスワードなしで接続できるか確認
 ssh <ユーザー名>@<IPアドレス>
 
-# 例:
-# ssh tools03@192.168.128.102
-# ssh signageras3@192.168.128.152
+# 例（Tailscale経由）:
+# ssh tools04@100.123.1.113  # Pi4のTailscale IP
+# ssh tools03@100.74.144.79  # 既存Pi4のTailscale IP
+# ssh signageras3@100.105.224.86  # Pi3のTailscale IP
 ```
 
 **期待される結果:**
 - パスワード入力なしで接続できる
 - 接続後、`exit`で切断できる
+
+**Pi4追加時の注意事項**:
+- **Tailscale SSH無効化**: Pi4で`sudo tailscale set --ssh=false`を実行（標準SSHを使用するため）
+- **SSH鍵の手動追加**: `ssh-copy-id`が使えない場合は、Pi5の公開鍵をPi4の`authorized_keys`に手動で追加
+  ```bash
+  # Pi5で公開鍵を表示
+  cat ~/.ssh/id_ed25519.pub
+  
+  # Pi4で公開鍵を追加（RealVNC経由または直接ログイン）
+  mkdir -p ~/.ssh
+  chmod 700 ~/.ssh
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
+  chmod 600 ~/.ssh/authorized_keys
+  ```
+- **接続確認**: Pi5から`ansible <ホスト名> -i infrastructure/ansible/inventory.yml -m ping`で接続確認
 
 ---
 
@@ -274,6 +340,16 @@ SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
 - `Skip client ... unresolved/invalid status_agent_client_key detected` が出る端末は、inventoryのキー定義を見直す
 - 実機に対応する端末のみが `[SUCCESS]` で登録される
 - 再実行してもクライアント件数が増えない（冪等）
+
+**現時点での運用方針（2026-02-28）**:
+- **新規端末追加時は固定キーを使用することを推奨**
+  - 例: `raspi4-robodrill01`の`client-key-raspi4-robodrill01-kiosk1`（`inventory.yml`に直接文字列で定義）
+  - vault管理のテンプレート（`{{ vault_status_agent_client_key ... }}`）は`register-clients.sh`でスキップされる
+- **既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）について**:
+  - vaultで管理されているが、`register-clients.sh`はスキップされる
+  - `status-agent`のheartbeat（`POST /api/clients/heartbeat`）で自動登録されるため、手動登録は不要
+- **vault管理のキーを直接登録する必要が出た場合**:
+  - 将来的にAnsible経由での変数解決方式へ移行することを検討（詳細は [KB-278](../knowledge-base/infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) の「次のフェーズの検討タイミング」を参照）
 
 ### 4.2 クライアント端末でstatus-agentを設定
 

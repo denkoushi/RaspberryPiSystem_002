@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 7件  
+**件数**: 8件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -419,4 +419,57 @@ update-frequency: high
 
 **CI実行結果**:
 - Run ID: `22163832946` - 成功（12分35秒）
+
+---
+
+### [KB-279] Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される
+
+**発生日**: 2026-02-28
+
+**事象**:
+- GitHub Actions CIの`Security scan (Trivy fs)`ステップが失敗する
+- エラー: `Total: 2 (HIGH: 2, CRITICAL: 0)`
+- 脆弱性: `minimatch@10.2.1`にCVE-2026-27903とCVE-2026-27904（HIGH）が検出される
+- 修正版: `minimatch@10.2.3`が利用可能
+
+**根本原因**:
+- `package.json`の`pnpm.overrides`で`minimatch`を`10.2.1`に固定していた
+- Trivyが`pnpm-lock.yaml`をスキャンし、`minimatch@10.2.1`の脆弱性を検出
+- CIの`exit-code: 1`設定により、HIGH以上の脆弱性が検出されるとCIが失敗する
+
+**有効だった対策**:
+- ✅ `package.json`の`pnpm.overrides`で`minimatch`を`10.2.1`から`10.2.3`に更新
+- ✅ `pnpm install --no-frozen-lockfile`でロックファイルを更新
+- ✅ ローカルでlint/testを実行して動作確認
+- ✅ CI実行で成功を確認（Run ID: `22512483225`）
+
+**実装のポイント**:
+- `minimatch`は`glob`や`eslint`などの依存関係から間接的に使用される
+- `pnpm.overrides`で固定することで、全依存関係で同一バージョンを使用
+- セキュリティ修正は`10.2.3`で対応済み（CVE-2026-27903/27904）
+
+**検証結果**:
+- ✅ ローカルlint: 成功
+- ✅ ローカルtest: 成功（PostgreSQL起動後）
+- ✅ CI実行: 成功（全ジョブ成功）
+- ✅ デプロイ: 成功（Pi5のみ）
+- ✅ 実機検証: API正常動作、マイグレーション最新、コンテナ正常起動
+
+**再発防止**:
+- セキュリティ監査（Trivy）の結果を定期的に確認し、HIGH以上の脆弱性は速やかに修正
+- `pnpm.overrides`で固定している依存関係は、セキュリティ修正がリリースされたら速やかに更新
+- CI失敗時は、ローカルで同じコマンドを実行して再現性を確認
+
+**解決状況**: ✅ **解決済み（2026-02-28）**
+
+**関連ファイル**:
+- `package.json`
+- `pnpm-lock.yaml`
+- `.github/workflows/ci.yml`
+
+**関連コミット**:
+- `b88f524` - `chore(deps): minimatchを10.2.3へ固定`
+
+**CI実行結果**:
+- Run ID: `22512483225` - 成功（全ジョブ成功）
 

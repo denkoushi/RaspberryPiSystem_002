@@ -812,10 +812,41 @@ update-frequency: medium
 - `register-clients.sh` 実行前に `DRY_RUN=1` で判定ログを確認する
 - inventoryに固定キーを置けない場合は、将来的にAnsible解決済み変数経由で登録する方式へ移行する
 
+**次のフェーズの検討タイミング（2026-02-28見解）**:
+- **現時点では次のフェーズに進まないことを推奨**
+- **理由**:
+  1. 最小スコープで再発防止は達成済み（未解決テンプレートの検知とスキップにより、重複登録は防止できている）
+  2. 現状の運用で十分機能している（`raspi4-robodrill01`は固定キーで正常に登録済み、既存端末は`status-agent`のheartbeatで自動登録）
+  3. 次のフェーズの実装コストが高い（Ansible playbook統合には設計・実装・テストが必要、vaultパスワード管理の追加が必要になる可能性）
+- **次のフェーズを検討すべきタイミング**:
+  1. 新規端末追加が頻繁になる（月1台以上）
+  2. vault管理のキーを`register-clients.sh`で直接登録する必要が出る
+  3. `status-agent`のheartbeat自動登録では不十分になる
+
+**将来の実装方針（Phase 1-3）**:
+- **Phase 1: Ansible経由での変数解決**
+  - `ansible`コマンドの`debug`モジュールで変数を解決
+  - 例: `ansible all -i inventory.yml -m debug -a "var=status_agent_client_key" --vault-password-file .vault-pass`
+  - 解決済み値をJSONで出力し、`register-clients.sh`で読み込む
+- **Phase 2: Ansible playbook統合**
+  - `register-clients.sh`をAnsible playbookに統合
+  - `register-clients.yml`を作成し、変数解決とAPI登録を一括実行
+  - vaultパスワード管理を統合
+- **Phase 3: 完全自動化**
+  - デプロイ時に自動的にクライアント登録を実行
+  - `deploy.yml`に`register-clients`タスクを追加
+
+**現時点での運用方針**:
+- `DRY_RUN=1`での事前確認を徹底する
+- 新規端末追加時は固定キーを使用する（例: `raspi4-robodrill01`の`client-key-raspi4-robodrill01-kiosk1`）
+- 既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）はvaultで管理されているが、`register-clients.sh`はスキップされ、`status-agent`がheartbeatで自動登録している
+
 **関連ファイル**:
 - `scripts/register-clients.sh`
 - `apps/api/src/services/clients/client-telemetry.service.ts`
 - `apps/api/prisma/schema.prisma`
 - `docs/guides/client-initial-setup.md`
+- `infrastructure/ansible/inventory.yml`（`status_agent_client_key`の定義）
+- `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`（`extract_default_value()`関数の実装例）
 
 ---
