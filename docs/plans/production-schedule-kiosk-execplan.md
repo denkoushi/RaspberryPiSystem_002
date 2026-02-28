@@ -96,6 +96,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-02-28) **登録製番ボタンの3段表示と機種名表示・全角半角大文字化・デプロイ成功・実機検証OK**: 登録製番ボタンを3段表示に変更し、機種名（FHINCDがMHで始まるアイテムのFHINMEI）を下2段に表示する機能を実装。**実装内容**: `SeibanHistoryButton`コンポーネントを新設し、製番を1段目、機種名を2-3段目に表示。機種名は全角→半角変換＋大文字化（`toHalfWidthAscii`関数）。36文字超は`...`で省略。APIに`machineName`フィールドを追加（`SeibanProgressRow`型、SQL集約で`FHINCD LIKE 'MH%'`の`FHINMEI`を取得）。**デプロイ**: Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: 20260228-170617-12957, state: success）。**実機検証結果**: 製番ボタンが3段表示され、機種名が全角半角大文字で正しく表示されることを確認。詳細は [KB-282](../knowledge-base/frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化) / [KB-282](../knowledge-base/api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加) を参照。
 
+- [x] (2026-02-28) **検索条件の端末別localStorage保存・デプロイ成功・実機検証OK**: 生産スケジュール画面の検索条件（製番ボタン押下状態・資源CD・備考あり・納期日あり・工程フィルタ・入力値）を端末ごとにlocalStorageに保存し、画面遷移後も復元する機能を実装。**実装内容**: `useProductionScheduleSearchConditions`フックを新設し、検索条件の永続化ロジックを専用フックに集約。`schemaVersion`でバージョン管理し、将来の項目追加を容易に。変更時は300ms debounceして`localStorage`に保存。`clearAllFilters`で`reset()`を呼び出し、全条件を初期化。**デプロイ**: Pi5でデプロイ成功（Run ID: 20260228-175720-12122, state: success）。ロボドリル01（raspi4-robodrill01）でデプロイ成功（Run ID: 20260228-180503-29038, state: success）。**実機検証結果**: 検索条件が画面遷移後も復元されること、リセットボタンで初期化されること、製番ボタン（history）は全端末共有を維持することを確認。詳細は [KB-283](../knowledge-base/frontend.md#kb-283-生産スケジュール検索条件の端末別localstorage保存) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能
