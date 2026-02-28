@@ -59,7 +59,7 @@ all:
               status_agent_client_id: raspberrypi4-kiosk1
               status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
               status_agent_location: "第2工場 - kensakuMain"
-              kiosk_url: "{{ kiosk_full_url }}"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               # kiosk-browser.serviceを管理対象にする
               manage_kiosk_browser: true
               # このホストで再起動するサービスリスト
@@ -94,7 +94,7 @@ all:
               # 登録スクリプト（scripts/register-clients.sh）でそのまま使えるよう、キーは文字列で固定する
               status_agent_client_key: "client-key-raspi4-robodrill01-kiosk1"
               status_agent_location: "第2工場 - RoboDrill01"
-              kiosk_url: "{{ kiosk_full_url }}"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
               services_to_restart:
                 - kiosk-browser.service
