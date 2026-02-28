@@ -1,2 +1,10 @@
 ---
 repo_path: /opt/RaspberryPiSystem_002
+
+# IBus kiosk defaults (KB-276 follow-up)
+ibus_engines_order: "['mozc-jp', 'xkb:jp::jpn']"
+ibus_hotkey_triggers: "['<Control>space', 'Zenkaku_Hankaku']"
+ibus_panel_show_im_name: false
+ibus_panel_show: 0
+ibus_engine_retry_count: 5
+ibus_daemon_args: "-drx --replace --single --panel=disable --config=disable --emoji-extension=disable"

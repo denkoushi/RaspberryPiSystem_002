@@ -5,7 +5,7 @@ Comment=Start IBus daemon
 # キオスク環境ではパネル(UI)が独立ウィンドウとして前面に出てフォーカスを奪うことがあるため、
 # パネル/設定UI/絵文字拡張を起動しない（IMEエンジン自体は動作する）。
 # また、二重起動でUIが復活しないよう --replace を付与して単一起動を強制する。
-Exec=ibus-daemon -drx --replace --single --panel=disable --config=disable --emoji-extension=disable
+Exec=ibus-daemon {{ ibus_daemon_args | default("-drx --replace --single --panel=disable --config=disable --emoji-extension=disable") }}
 Icon=ibus
 Terminal=false
 Categories=System;Utility;

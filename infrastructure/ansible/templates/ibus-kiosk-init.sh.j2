@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# IBus キオスク初期化: ログイン時に gsettings を適用し、mozc-jp を設定する
+# KB-276 再発対策: デプロイ時 no-user-bus の影響を補完するため、セッション開始時に確実に適用
+set -e
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR}/bus
+
+gsettings set org.freedesktop.ibus.general engines-order "{{ ibus_engines_order }}"
+gsettings set org.freedesktop.ibus.general.hotkey triggers "{{ ibus_hotkey_triggers }}"
+gsettings set org.freedesktop.ibus.panel show-im-name {{ ibus_panel_show_im_name | ternary("true", "false") }}
+gsettings set org.freedesktop.ibus.panel show {{ ibus_panel_show }}
+
+for i in $(seq 1 {{ ibus_engine_retry_count }}); do
+  sleep 1
+  ibus engine mozc-jp >/dev/null 2>&1 && exit 0
+done
+exit 0

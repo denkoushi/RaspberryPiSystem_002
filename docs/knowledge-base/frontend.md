@@ -3832,6 +3832,21 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - **実機検証の重要性**: 想定した動作（Ctrl+Space）と実際の動作（全角/半角キー）が異なる場合があるため、実機検証が必須
 - **キオスク環境ではUIコンポーネントを完全に無効化する**: `--single`と`--panel=disable`を併用することで、独立ウィンドウとして表示されるUIを防止できる
 
+**Follow-up Fix（再発対策, 2026-02-28）**:
+- ✅ **IBus 設定タスクのモジュール化**:
+  - `infrastructure/ansible/roles/kiosk/tasks/ibus.yml` を新設し、IBus関連タスクを `main.yml` から分離
+  - 責務分離により、kiosk browser 設定と IME 設定の変更影響を局所化
+- ✅ **設定値の変数化（疎結合化）**:
+  - `infrastructure/ansible/roles/kiosk/defaults/main.yml` に `ibus_*` 変数を追加
+  - `engines-order` / `hotkey triggers` / `panel show` をハードコードから排除
+- ✅ **ログイン時の gsettings 再適用を追加**:
+  - `ibus-engine.desktop` の Exec を拡張し、セッション DBus 上で gsettings を適用してから `ibus engine mozc-jp` をリトライ
+  - デプロイ時に `skip:no-user-bus` となるケースでも、ログイン時に自己修復できる構成へ変更
+- ✅ **再発防止の多層化**:
+  - L1: `ibus-daemon` 起動フラグで UI 抑止
+  - L2: ログイン時の gsettings 再適用
+  - L3: デプロイ時の冪等 gsettings 適用
+
 **解決状況**: ✅ **解決済み**（2026-02-26、実機検証完了）
 
 ---

@@ -1,0 +1,111 @@
+- name: Install Japanese input method (ibus-mozc)
+  ansible.builtin.apt:
+    name:
+      - ibus-mozc
+      - ibus-gtk
+      - ibus-gtk3
+      - ibus-gtk4
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Create ibus autostart directory
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/autostart"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Deploy ibus autostart desktop file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/ibus-autostart.desktop.j2"
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+
+- name: Deploy ibus kiosk init script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/ibus-kiosk-init.sh.j2"
+    dest: /usr/local/bin/ibus-kiosk-init.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Force mozc-jp as initial IBus engine on login
+  ansible.builtin.copy:
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus-engine.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=IBus Engine Init
+      Comment=Set default IBus engine to mozc-jp
+      # ログインセッション側で gsettings を適用して、デプロイ時 no-user-bus の影響を補完する。
+      # IBus起動直後は一時的にbus/engine未準備になるため、短時間リトライして確実に設定する。
+      Exec=bash -lc /usr/local/bin/ibus-kiosk-init.sh
+      Terminal=false
+      Categories=System;Utility;
+      X-GNOME-Autostart-enabled=true
+
+- name: Persist IBus engine order and hotkey for kiosk user
+  ansible.builtin.shell: |
+    set -eu
+    uid="$(id -u)"
+    runtime_dir="/run/user/${uid}"
+    bus="${runtime_dir}/bus"
+    if [ ! -S "${bus}" ]; then
+      echo "skip:no-user-bus"
+      exit 0
+    fi
+
+    export XDG_RUNTIME_DIR="${runtime_dir}"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+
+    changed=0
+    desired_engines="{{ ibus_engines_order }}"
+    current_engines="$(gsettings get org.freedesktop.ibus.general engines-order || true)"
+    if [ "${current_engines}" != "${desired_engines}" ]; then
+      gsettings set org.freedesktop.ibus.general engines-order "${desired_engines}"
+      changed=1
+    fi
+
+    # 現場では「全角/半角」キーでの切替も使うため、Ctrl+Spaceと併用する
+    desired_triggers="{{ ibus_hotkey_triggers }}"
+    current_triggers="$(gsettings get org.freedesktop.ibus.general.hotkey triggers || true)"
+    if [ "${current_triggers}" != "${desired_triggers}" ]; then
+      gsettings set org.freedesktop.ibus.general.hotkey triggers "${desired_triggers}"
+      changed=1
+    fi
+
+    # IBusパネルのエンジン名表示を無効化（キー入力時のUI表示を抑制）
+    desired_show_im_name="{{ ibus_panel_show_im_name | ternary("true", "false") }}"
+    current_show_im_name="$(gsettings get org.freedesktop.ibus.panel show-im-name || true)"
+    if [ "${current_show_im_name}" != "${desired_show_im_name}" ]; then
+      gsettings set org.freedesktop.ibus.panel show-im-name {{ ibus_panel_show_im_name | ternary("true", "false") }}
+      changed=1
+    fi
+
+    # IBusパネル自体も非表示にする（念のため）
+    # showは数値（0=非表示、1=表示）で設定する必要がある
+    desired_show_panel="{{ ibus_panel_show }}"
+    current_show_panel="$(gsettings get org.freedesktop.ibus.panel show || true)"
+    if [ "${current_show_panel}" != "${desired_show_panel}" ]; then
+      gsettings set org.freedesktop.ibus.panel show {{ ibus_panel_show }}
+      changed=1
+    fi
+
+    if [ "${changed}" -eq 1 ]; then
+      echo "changed:ibus-settings"
+    else
+      echo "ok:ibus-settings"
+    fi
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: "{{ ansible_user }}"
+  changed_when: "'changed:ibus-settings' in ibus_settings_result.stdout"
+  register: ibus_settings_result

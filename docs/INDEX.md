@@ -694,6 +694,7 @@
 | [003-camera-module.md](./decisions/003-camera-module.md) | **カメラ機能のモジュール化**（写真撮影持出機能） |
 | [ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) | Tailscale主運用への移行決定 |
 | [ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) | 生産スケジュールパフォーマンス最適化のための式インデックス追加 |
+| [ADR-20260228-ibus-kiosk-multilayer-suppression.md](./decisions/ADR-20260228-ibus-kiosk-multilayer-suppression.md) | IBus UI 再発を防ぐ多層抑止とモジュール分離 |
 
 ### モジュール仕様（modules/）
 
