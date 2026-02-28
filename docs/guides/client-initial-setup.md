@@ -446,6 +446,8 @@ systemctl status status-agent.service
 
 **Debian Trixie（Debian 13）では`chromium-browser`パッケージが存在せず、`chromium`パッケージのみが利用可能です。**
 
+**⚠️ 注意（2026-02-28更新）**: 現在はAnsibleロール（`roles/kiosk/tasks/main.yml`）で自動化されており、デプロイ時に自動的にシンボリックリンクが作成されます。以下の手動手順は、Ansibleデプロイ前の初期セットアップ時のみ必要です。
+
 **クライアント端末で実行:**
 
 ```bash
@@ -502,7 +504,9 @@ systemctl status kiosk-browser.service --no-pager | head -15
 journalctl -u kiosk-browser.service -n 20 --no-pager
 ```
 
-**関連KB**: [KB-280: Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）](../knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出)
+**関連KB**: 
+- [KB-280: Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）](../knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出)
+- [KB-281: Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む）](../knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む)
 
 ---
 

@@ -26,12 +26,12 @@ update-frequency: high
 | フロントエンド関連 | [frontend.md](./frontend.md) | 45件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善（分のリスト形式対応）、WebRTC通話、通話IDの表示統一、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証、キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）、モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化、WebRTCビデオ通話の常時接続と着信自動切り替え機能、生産スケジュール登録製番削除ボタンの進捗連動UI改善、Pi4キオスクの備考欄に日本語入力状態インジケーターを追加、生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化、カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）、未点検加工機サイネージ設定導線の実装、吊具持出画面に吊具情報表示を追加、Pi4キオスクの日本語入力モード切替問題とIBus設定改善 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 8件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される |
-| インフラ関連 | [infrastructure.md](./infrastructure.md) | 75件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入） |
+| インフラ関連 | [infrastructure.md](./infrastructure.md) | 76件（サブカテゴリ別に分割） | Docker、Caddy、HTTPS設定、オフライン耐性、バックアップ、Ansible、NFCリーダー、Tailscale、IPアドレス管理、ファイアウォール、マルウェア対策、監視、サイネージSVGレンダラー、Dropbox OAuth 2.0、CI必須化、SSH接続、DropboxリストアUI改善、デプロイ標準手順、APIエンドポイントHTTPS化、サイネージ温度表示、WebSocketプロキシ、Slack通知チャンネル分離、Pi4デプロイ時のメンテナンス画面表示、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 30件 | バックアップとリストア機能、Gmail連携、client-directory追加、Gmail/Dropboxトークン分離、provider別名前空間化、衝突・ドリフト検出の自動化、Dropbox basePath分離、git clean削除問題、backup.json復元方法、Gmail OAuth設定復元、旧キーと新構造の衝突解決、Dropbox証明書ピニング問題、バックアップ対象の追加、UI表示問題の修正、Dropbox 409 Conflictエラー（labelサニタイズ未実施によるパス不正）、旧キー自動削除機能の実装（backup.json保存時の自動クリーンアップ）、Dropbox選択削除（purge-selective）のパス正規化不整合、retention.maxBackupsがdays無しで効かない（仕様/実装差）、証明書ディレクトリのバックアップターゲット追加スクリプト作成とDockerコンテナ内実行時の注意点 |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 43件 | Ansibleとデプロイメント、APIエンドポイントHTTPS化、環境変数管理、Dropbox設定管理、backup.json保護、Gmail設定健全性チェック、status-agent.timer無効化、マルチサイト対応、inventory引数必須化、inventory/playbookパス相対パス修正、デプロイ安定化機能、Alerts Platform Phase2のDB取り込み実装と空ファイル処理の改善、Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了、Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了、Slack通知チャンネル分離デプロイトラブルシューティング、Pi4デプロイ検証結果、Pi4デプロイ時のメンテナンス画面表示機能、デプロイ検証強化（DBゲート追加・fail-fast化）、デプロイ標準手順のタイムアウト・コンテナ未起動問題の調査と改善実装（down後回し、中断時復旧、ログ永続化）、デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能、Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している、デプロイプロセスのコード変更検知とDocker再ビルド確実化、Docker build時のtsbuildinfo問題、SSH接続失敗の原因（fail2banによるIP Ban）、Pi5のGit権限問題（.gitディレクトリがroot所有）、NodeSourceリポジトリのGPG署名キー問題（SHA1が2026-02-01以降拒否される）、デプロイ時のinventory混同問題（inventory-talkplaza.ymlとinventory.ymlの混同）、デプロイ時のマイグレーション未適用問題、デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）、Web bundleデプロイ修正（コード更新時のDocker再ビルド確実化）、Docker build最適化（変更ファイルに基づくbuild判定）、Pi4キオスクの再起動/シャットダウンボタンが機能しない問題（Jinja2テンプレート展開・systemd実行ユーザー・ディレクトリ所有権の問題）、update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加、Ansibleテンプレート内の`&#123;&#123;`混入によるSyntax error in template、Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化、Pi5のみデプロイ時にメンテナンスフラグが残存する問題 |
 | ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 1件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線） |
-| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 18件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入） |
+| ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 19件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 19件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 21件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除含む） |
@@ -253,6 +253,7 @@ update-frequency: high
 | [KB-277](./infrastructure/security.md#kb-277-tailscale経由でのvnc接続問題acl設定不足) | Tailscale経由でのVNC接続問題（ACL設定不足） | ✅ 解決済み（2026-02-28） |
 | [KB-278](./infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) | クライアント端末管理の重複登録（inventory未解決テンプレキー混入） | ✅ 解決済み（2026-02-28） |
 | [KB-280](./infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) | Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出） | ✅ 解決済み（2026-02-28） |
+| [KB-281](./infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) | Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） | ✅ 解決済み（2026-02-28） |
 | [KB-080](./infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
 | [KB-081](./infrastructure/signage.md#kb-081-pi3サイネージのpdftools画面が新デザインへ更新されない) | Pi3サイネージが新デザインへ更新されない | 🔄 進行中 |
 | [KB-082](./infrastructure/signage.md#kb-082-管理コンソールでsplitを指定してもサイネージapiが常にtoolsを返す) | SPLIT指定でもサイネージAPIがTOOLSを返す | ✅ 解決済み |
@@ -370,14 +371,14 @@ update-frequency: high
 
 | 状態 | 件数 |
 |------|------|
-| ✅ 解決済み | 149件 |
+| ✅ 解決済み | 150件 |
 | ✅ 手順確立済み | 1件 |
 | ✅ 実装完了・実機検証完了 | 3件 |
 | ✅ 検証完了 | 2件 |
 | ✅ 調査完了・対応不要 | 1件 |
 | 🔄 進行中 | 6件 |
 | 🔄 調査中 | 1件 |
-| **合計** | **167件** |
+| **合計** | **168件** |
 
 ---
 
@@ -527,3 +528,4 @@ update-frequency: high
 - 2026-02-28: KB-277を追加（Tailscale経由でのVNC接続問題（ACL設定不足））→ 2026-02-28に解決完了・実機検証完了（MacからPi5のVNCポート（5900）に接続できない問題を解決。原因はTailscaleのACLで`tag:admin` → `tag:server`の`tcp:5900`が許可されていなかったこと。Tailscale管理画面の「Access controls」で`grants`配列に`tcp:5900`を追加。wayvnc設定を`address=0.0.0.0`に変更（IPv4/IPv6両方で待ち受け）。`nc -zv 100.106.158.2 5900`が成功し、RealVNC Viewerで接続可能になったことを確認。mac-ssh-access.mdにTailscale ACL設定の説明を追加、port-security-audit.mdにTailscale経由のVNC接続について追記）
 - 2026-02-28: KB-278を追加（クライアント端末管理の重複登録（inventory未解決テンプレキー混入））→ 2026-02-28に解決完了（`register-clients.sh`に未解決テンプレキー検知ガードと`DRY_RUN`モードを追加。`{{ ... }}` / `vault_` を含むキーをスキップするよう修正。既存の誤登録3件は`Loan`/`Transaction`参照0件を確認し、`ClientDevice_backup_20260228_dupfix`へバックアップ後に削除。実行後、クライアント件数は実機相当の5件に是正され、再実行しても増殖しないことを確認）
 - 2026-02-28: KB-280を追加（Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出））→ 2026-02-28に解決完了・実機検証完了（raspi4-robodrill01で`kiosk-browser.service`起動時に`chromium-browser: not found`エラーが発生。原因はDebian Trixieでは`chromium-browser`パッケージが存在せず`chromium`のみが利用可能なこと。`/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成して解決。`systemctl enable kiosk-browser.service`で自動起動を有効化し、`systemctl start kiosk-browser.service`でサービスを起動。実機検証でキオスクが正常動作することを確認。client-initial-setup.mdにkiosk-browser起動手順とchromium-browserシンボリックリンク作成手順を追加）
+- 2026-02-28: KB-281を追加（Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む））→ 2026-02-28に解決完了・CI成功・デプロイ完了・実機検証完了（KB-280で手動復旧していた`chromium-browser: not found`対策を、Ansibleロールに恒久化。`infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium`存在確認・未存在時fail-fast・シンボリックリンク自動作成タスクを追加。ローカル検証でAnsible構文チェック成功。CI成功（Run ID: `22513820001`）。標準デプロイスクリプトで実運用検証時、全台実行で`raspberrypi4`がSSH到達不可（`tailscale status`で`offline, last seen 19h ago`）を検出し、到達可能ホストへ`--limit`で継続デプロイ成功（Run ID: `20260228-141511-7945`）。実機検証で`raspi4-robodrill01`のシンボリックリンク・サービス状態・APIヘルスを確認）

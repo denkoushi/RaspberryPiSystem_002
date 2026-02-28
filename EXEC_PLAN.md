@@ -11,6 +11,8 @@
 
 - [x] (2026-02-28) **クライアント端末の場所設定更新・デプロイ完了**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が空欄になっていた問題を解決。**実施内容**: `inventory.yml`の`status_agent_location`を更新（raspi4_kensakuMain: 「ラズパイ4 - キオスク1」→「第2工場 - kensakuMain」、raspi3_signageMakoRoom: 「ラズパイ3 - サイネージ1」→「第2工場 - signageMakoRoom」）。DBの`ClientDevice`テーブルの`location`を直接更新（`POST /api/clients/heartbeat`でも更新可能だが、`status-agent`はlocationを送信しないため、DB直接更新が必要）。**知見**: `status_agent_location`は`register-clients.sh`で使用されるが、vaultテンプレートのためスキップされる。DBの`location`は`status-agent`のheartbeatでは更新されないため、管理コンソールから直接編集するか、DB直接更新が必要。**デプロイ結果**: Pi5でデプロイ成功（Run ID `20260228-134834-12062`, `state: success`, `exitCode: 0`, `ok=120 changed=3`）。**実機検証結果**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が正しく表示されることを確認。詳細は [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
 
+- [x] (2026-02-28) **Pi4 kiosk-browser対策のAnsible恒久化・CI成功・デプロイ完了・実機検証完了**: KB-280で手動復旧していた`chromium-browser: not found`対策を、Ansibleロールに恒久化して再発を防止。**実施内容**: `infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium`存在確認（`stat`）・未存在時fail-fast（`fail`）・シンボリックリンク自動作成（`file state=link`）タスクを追加。**ローカル検証**: Ansible構文チェック成功（`playbooks/deploy.yml` / `playbooks/deploy-staged.yml`）。**CI実行**: GitHub Actions成功（Run ID: `22513820001`、全ジョブ成功）。**デプロイ結果**: 標準デプロイスクリプトで実運用検証時、全台実行で`raspberrypi4`がSSH到達不可（`tailscale status`で`offline, last seen 19h ago`）を検出し、到達可能ホストへ`--limit "server:raspberrypi3:raspi4-robodrill01"`で継続デプロイ成功（Run ID: `20260228-141511-7945`、`state: success`、`exitCode: 0`）。**実機検証結果**: `raspi4-robodrill01`でシンボリックリンク（`/usr/bin/chromium-browser -> /usr/bin/chromium`）・サービス状態（`kiosk-browser.service` / `status-agent.timer` ともに`active`）・APIヘルス（`status: ok`）を確認。**知見**: 端末依存の手動復旧はAnsibleタスク化で再発率が下がる。標準デプロイのプリフライト停止は安全機能であり、`tailscale status`で到達不可端末を先に切り分けるのが有効。オフライン端末がある場合、到達可能端末へ`--limit`で段階展開し、復帰後に追いデプロイする運用が安全。**ドキュメント更新**: KB-281を追加、knowledge-base/index.mdを更新（件数168件、セキュリティ関連19件、インフラ関連76件）、INDEX.mdを更新。詳細は [docs/knowledge-base/infrastructure/security.md#kb-281](./docs/knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
+
 - [x] (2026-02-28) **ロボドリル01パイ4（raspi4-robodrill01）追加作業完了・実機検証完了**: 新規Pi4端末（raspi4-robodrill01）をシステムに追加し、キオスク端末として正常動作することを確認。**実施内容**: Tailscale接続・タグ設定（`tag:kiosk`）、Tailscale SSH無効化（標準SSHを使用するため）、SSH鍵認証設定（Pi5からPi4への接続）、Gitリポジトリクローン、status-agent設定・動作確認、クライアント登録（`client-key-raspi4-robodrill01-kiosk1`）、kiosk-browser.service起動（chromium-browserシンボリックリンク作成含む）。**トラブルシューティング**: Debian Trixieでは`chromium-browser`パッケージが存在せず`chromium`のみが利用可能なため、`/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成して解決。**実機検証結果**: status-agent.timerが正常動作（`active (waiting)`）、kiosk-browser.serviceが正常起動（`active (running)`）、キオスクが正常動作することを確認。クライアント総数が5件（実機数と一致）で重複なし。**ドキュメント更新**: KB-280を追加、client-initial-setup.mdにkiosk-browser起動手順とchromium-browserシンボリックリンク作成手順を追加、INDEX.mdとknowledge-base/index.mdを更新。詳細は [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md) / [docs/INDEX.md](./docs/INDEX.md) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
 
 - [x] (2026-02-26) **Pi4キオスクの日本語入力モード切替問題とIBus設定改善・CI成功・デプロイ完了・実機検証完了**: KB-244でIBus設定を永続化したが、その後「日本語入力モードに切り替わらない」「ibus-...ウィンドウが出現してスムーズに入力できない」という問題が発生。**原因**: IBusパネルUIの二重起動（`ibus-daemon`が2プロセス起動し、片方がUI付きで動作）、IBus起動直後のタイミング問題でエンジン未設定、切替トリガーがCtrl+Spaceのみで全角/半角キーが効かない。**実装内容**: IBusパネルUIの二重起動を防止（`ibus-autostart.desktop.j2`に`--replace --single`を追加）、IBusエンジン設定のリトライロジック追加（最大5回、各1秒間隔）、IBus切替トリガーに全角/半角キーを追加（`['<Control>space', 'Zenkaku_Hankaku']`）。**CI実行**: GitHub Actions成功（Run ID `22433125722`、全ジョブ成功）。**デプロイ結果**: Pi4でデプロイ成功（Run ID: `20260226-171548-20196`, `state: success`, `exitCode: 0`）。**実機検証結果**: キー入力ごとに出現する「ibus-...」ウィンドウが完全に抑制され、全角/半角キーとCtrl+Spaceの両方で日本語入力モードに切り替わり、スムーズな日本語入力が可能になったことを確認。**ドキュメント更新**: KB-276を追加、index.mdとINDEX.mdを更新、frontend.mdの件数を44件→45件に更新、ansible-deployment.mdの件数を41件→42件に更新。詳細は [docs/knowledge-base/frontend.md#kb-276](./docs/knowledge-base/frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md) / [docs/INDEX.md](./docs/INDEX.md) を参照。
@@ -645,6 +647,8 @@
   対応: `WebRTCCallProvider`を`CallAutoSwitchLayout`経由で`/kiosk/*`と`/signage`の全ルートに適用し、シグナリング接続を常時維持。着信時は`sessionStorage`に現在のパスを保存し、`/kiosk/call`へ自動遷移。通話終了後は元のパスへ自動復帰。Pi3は`WEBRTC_CALL_EXCLUDE_CLIENT_IDS`で通話対象から除外。**[KB-241]**  
   エビデンス: `error: The following untracked working tree files would be overwritten by checkout: infrastructure/ansible/playbooks/harden-server-ports.yml`。  
   対応: Pi5上で未追跡ファイルを削除してから再デプロイ（`rm infrastructure/ansible/playbooks/harden-server-ports.yml`）。次回以降はmainブランチにマージ済みのため発生しない。**[KB-177]**
+- 発見: 全台デプロイ開始時、`raspberrypi4`（`100.74.144.79`）がSSH到達不可（`port 22 timeout`）でプリフライト停止した。`tailscale status`で確認すると、該当端末が`offline, last seen 19h ago`の状態だった。  
+  対応: 標準デプロイスクリプトのプリフライト停止は安全機能であり、不具合ではない。`tailscale status`で到達不可端末を先に切り分け、到達可能ホストへ`--limit "server:raspberrypi3:raspi4-robodrill01"`で段階展開デプロイを実施。オフライン端末復帰後は`--limit raspberrypi4`で追いデプロイする運用が安全。端末依存の手動復旧（例: `chromium-browser`シンボリックリンク作成）は、Ansibleタスク化（存在確認・fail-fast・自動修復）で再発率が下がる。**[KB-281]**
 - 観測: `deploy.sh`のヘルスチェックがタイムアウトしても、実際にはAPIは正常起動していることがある。  
   エビデンス: デプロイスクリプトが10分タイムアウトしたが、手動で`curl`すると`/api/system/health`が`ok`を返す。  
   対応: Dockerサービス起動に時間がかかる場合があるため、タイムアウト後も手動でヘルスチェックを実施し、必要に応じてコンテナ再起動を確認。**[KB-177]**
@@ -1417,7 +1421,7 @@
 
 ## Next Steps（将来のタスク）
 
-### Pi4追加時のkiosk-browser.service起動エラー対策の永続化（推奨）
+### Pi4追加時のkiosk-browser.service起動エラー対策の永続化（完了）
 
 **概要**: raspi4-robodrill01追加時に発生した`chromium-browser: not found`エラーを解決するため、シンボリックリンク作成をAnsibleロールに永続化する
 
@@ -1425,17 +1429,13 @@
 - ✅ **raspi4-robodrill01追加作業完了**: Tailscale接続・SSH設定・status-agent設定・kiosk-browser.service起動完了
 - ✅ **chromium-browserシンボリックリンク作成**: Debian Trixie対応として`/usr/bin/chromium-browser` → `/usr/bin/chromium`のシンボリックリンクを作成
 - ✅ **実機検証完了**: kiosk-browser.serviceが正常起動し、キオスクが正常動作することを確認
+- ✅ **Ansibleロールへの永続化完了**（2026-02-28）: `infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium`存在確認・未存在時fail-fast・シンボリックリンク自動作成タスクを追加
+- ✅ **CI成功・デプロイ完了・実機検証完了**: GitHub Actions成功（Run ID: `22513820001`）、標準デプロイスクリプトで実運用検証成功（Run ID: `20260228-141511-7945`）、実機検証でシンボリックリンク・サービス状態・APIヘルスを確認
 
-**次の改善候補**:
-1. **Ansibleロールへの永続化**（優先度: 中）
-   - `infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium-browser`シンボリックリンク作成タスクを追加
-   - Debian Trixie以降のOSでは`chromium`パッケージ名を前提とした設定を検討
-   - 新規Pi4追加時に自動的にシンボリックリンクが作成されるようにする
+**将来の改善候補**（優先度: 低）:
+- **kiosk-launch.shテンプレートの修正検討**: `infrastructure/ansible/templates/kiosk-launch.sh.j2`で`chromium-browser`の代わりに`chromium`を使用するか、シンボリックリンクの存在確認を追加（現状はシンボリックリンクで互換性を維持しているため、優先度は低い）
 
-2. **kiosk-launch.shテンプレートの修正検討**（優先度: 低）
-   - `infrastructure/ansible/templates/kiosk-launch.sh.j2`で`chromium-browser`の代わりに`chromium`を使用するか、シンボリックリンクの存在確認を追加
-
-**参照**: [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md)
+**参照**: [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/knowledge-base/infrastructure/security.md#kb-281](./docs/knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md)
 
 ### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
 

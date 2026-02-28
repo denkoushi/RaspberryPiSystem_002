@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 13件  
+**件数**: 19件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
@@ -883,7 +883,7 @@ update-frequency: medium
 - ✅ 実機検証でキオスクが正常動作することを確認
 
 **再発防止**:
-- 将来的にはAnsibleロール（`roles/kiosk/tasks/main.yml`）に`chromium-browser`シンボリックリンク作成タスクを追加することを推奨
+- ✅ **2026-02-28に恒久化を実装済み**: Ansibleロール（`roles/kiosk/tasks/main.yml`）に`chromium-browser`シンボリックリンク作成タスクを追加し、自動化
 - Debian Trixie以降のOSでは`chromium`パッケージ名を前提とした設定を検討
 - 新規Pi4追加時は、`kiosk-browser.service`起動前に`chromium-browser`シンボリックリンクの存在を確認
 
@@ -898,5 +898,56 @@ update-frequency: medium
 
 **関連ドキュメント**:
 - [guides/client-initial-setup.md](../../guides/client-initial-setup.md)（Pi4追加手順）
+
+---
+
+### [KB-281] Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む）
+
+**発生日**: 2026-02-28
+
+**事象**:
+- KB-280で手動復旧していた`chromium-browser: not found`対策を、再発しない形で恒久化する必要があった
+- 全台デプロイ開始時、`raspberrypi4`（`100.74.144.79`）がSSH到達不可（`port 22 timeout`）でプリフライト停止した
+
+**根本原因**:
+- Debian Trixie環境では`chromium-browser`コマンド前提のままだと、端末追加時に再発余地が残る
+- 既存Pi4（`raspberrypi4`）はTailscale上で`offline, last seen 19h ago`の状態で、標準スクリプトの到達性チェックに失敗した
+
+**有効だった対策**:
+- ✅ `infrastructure/ansible/roles/kiosk/tasks/main.yml` に以下を追加
+  - `/usr/bin/chromium` の存在確認（`stat`）
+  - 未存在時は明示的に停止（`fail`）
+  - `/usr/bin/chromium-browser` 互換シンボリックリンクを自動作成（`file state=link`）
+- ✅ ローカル検証でAnsible構文チェックを実施
+  - `playbooks/deploy.yml --syntax-check` 成功
+  - `playbooks/deploy-staged.yml --syntax-check` 成功
+- ✅ CI成功（Run ID: `22513820001`）
+- ✅ 標準デプロイスクリプトで実運用検証
+  - 初回全台実行で到達不可を検出（fail-fast）
+  - `tailscale status`でオフライン端末を切り分け
+  - 到達可能ホストへ`--limit "server:raspberrypi3:raspi4-robodrill01"`で継続デプロイ（Run ID: `20260228-141511-7945`、成功）
+
+**実機検証結果**:
+- ✅ `raspi4-robodrill01` で `/usr/bin/chromium-browser -> /usr/bin/chromium` を確認
+- ✅ `chromium-browser --version` 正常
+- ✅ `kiosk-browser.service` は `enabled` かつ `active`
+- ✅ `status-agent.timer` は `active`
+- ✅ Pi5 APIヘルスチェック `status: ok`
+
+**学んだこと**:
+- 端末依存の手動復旧は、Ansibleタスク化して「前提確認 + 自動修復 + fail-fast」を揃えると再発率が下がる
+- 標準デプロイのプリフライト停止は不具合ではなく安全機能であり、`tailscale status`で到達不可端末を先に切り分けるのが有効
+- オフライン端末がある場合、到達可能端末へ`--limit`で段階展開し、復帰後に追いデプロイする運用が安全
+
+**再発防止**:
+- 新規Pi4追加時は`kiosk`ロール適用後に`chromium-browser --version`と`kiosk-browser.service`状態を確認
+- 全台デプロイ前にPi5から`tailscale status`を確認し、オフライン端末有無を先に把握する
+- オフライン端末復帰後は`--limit <host>`で追いデプロイを実施する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`
+- `scripts/update-all-clients.sh`
+- `docs/guides/deployment.md`
+- `docs/guides/client-initial-setup.md`
 
 ---
