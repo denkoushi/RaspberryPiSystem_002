@@ -255,6 +255,26 @@ curl -X POST http://192.168.128.131:8080/api/clients/devices \
   }'
 ```
 
+### 4.1.1 `register-clients.sh` を使う場合の注意（重複登録防止）
+
+`scripts/register-clients.sh` は `inventory.yml` から `status_agent_client_key` を読み取り登録します。  
+未解決テンプレート（例: `{{ vault_status_agent_client_key ... }}`）が残っていると、誤ったAPIキーで重複登録されるため、実行前に必ずドライランで確認してください。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+
+# 先にドライランで判定結果を確認（API登録は行わない）
+DRY_RUN=1 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
+
+# 問題なければ本実行
+SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
+```
+
+**確認ポイント**:
+- `Skip client ... unresolved/invalid status_agent_client_key detected` が出る端末は、inventoryのキー定義を見直す
+- 実機に対応する端末のみが `[SUCCESS]` で登録される
+- 再実行してもクライアント件数が増えない（冪等）
+
 ### 4.2 クライアント端末でstatus-agentを設定
 
 **クライアント端末で実行:**

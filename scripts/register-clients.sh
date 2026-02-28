@@ -32,19 +32,59 @@ fi
 
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234}"
+DRY_RUN="${DRY_RUN:-0}"
 
-# ログインしてトークンを取得
-echo "[INFO] Logging in to API..."
-TOKEN=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"${ADMIN_USERNAME}\",\"password\":\"${ADMIN_PASSWORD}\"}" | jq -r '.accessToken')
+is_truthy() {
+  local value="${1:-}"
+  case "${value}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-  echo "[ERROR] Failed to get access token"
-  exit 1
+is_invalid_client_key() {
+  local key="${1:-}"
+  local compact_key="${key//[[:space:]]/}"
+
+  # 未解決テンプレートや空値を弾いて、誤登録の増殖を防ぐ
+  if [ -z "${compact_key}" ]; then
+    return 0
+  fi
+  if [ "${#compact_key}" -lt 8 ]; then
+    return 0
+  fi
+  if [[ "${key}" == *"{{"* || "${key}" == *"}}"* || "${key}" == *"vault_"* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+mask_client_key() {
+  local key="${1:-}"
+  if [ "${#key}" -le 8 ]; then
+    printf '%s' "********"
+    return 0
+  fi
+  printf '%s****' "${key:0:8}"
+}
+
+if is_truthy "${DRY_RUN}"; then
+  TOKEN=""
+  echo "[INFO] DRY_RUN is enabled. API login is skipped."
+else
+  # ログインしてトークンを取得
+  echo "[INFO] Logging in to API..."
+  TOKEN=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"${ADMIN_USERNAME}\",\"password\":\"${ADMIN_PASSWORD}\"}" | jq -r '.accessToken')
+
+  if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+    echo "[ERROR] Failed to get access token"
+    exit 1
+  fi
+
+  echo "[INFO] Access token obtained"
 fi
-
-echo "[INFO] Access token obtained"
 
 # クライアントデバイスを登録
 register_client() {
@@ -53,6 +93,11 @@ register_client() {
   local location="$3"
 
   echo "[INFO] Registering client: ${name}"
+
+  if is_truthy "${DRY_RUN}"; then
+    echo "[INFO] [DRY-RUN] Skip API call for client=${name}, apiKey=$(mask_client_key "${api_key}"), location=${location}"
+    return 0
+  fi
   
   # クライアントデバイスを登録（heartbeatエンドポイントを使用）
   RESPONSE=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients/heartbeat" \
@@ -155,6 +200,10 @@ if [ -f "${inventory_path}" ]; then
       name="$(echo "${line}" | jq -r '.name')"
       client_key="$(echo "${line}" | jq -r '.clientKey')"
       location="$(echo "${line}" | jq -r '.location')"
+      if is_invalid_client_key "${client_key}"; then
+        echo "[WARN] Skip client ${name}: unresolved/invalid status_agent_client_key detected (${client_key})" >&2
+        continue
+      fi
       register_client "${name}" "${client_key}" "${location}"
     done
   else

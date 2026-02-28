@@ -780,3 +780,42 @@ update-frequency: medium
 - `docs/security/port-security-audit.md` (ポートセキュリティ監査)
 
 ---
+
+### [KB-278] クライアント端末管理の重複登録（inventory未解決テンプレキー混入）
+
+**発生日**: 2026-02-28
+
+**事象**:
+- 管理コンソールの「クライアント端末管理」で、実機台数より多いクライアントが表示される
+- `raspberrypi3` / `raspberrypi4` / `raspberrypi5` のAPIキー欄に `{{ vault_status_agent_client_key ... }}` がそのまま登録される
+- 同一実機に対応する別名レコードが混在し、運用上の識別が困難になる
+
+**根本原因**:
+- `scripts/register-clients.sh` が `inventory.yml` をYAMLとして直接読み、`status_agent_client_key` のJinjaテンプレート（`{{ ... }}`）を解決せず文字列のまま扱っていた
+- API側の `ClientDevice` は `apiKey` を一意キーとしてupsertするため、未解決テンプレ文字列が「別キー」として新規登録された
+
+**有効だった対策**:
+- ✅ `scripts/register-clients.sh` に未解決テンプレキー検知ガードを追加
+  - `{{`, `}}`, `vault_` を含むキーを無効としてスキップ
+  - 空値/短すぎるキー（8文字未満）もスキップ
+- ✅ `DRY_RUN=1` モードを追加し、API登録前に対象と判定結果を確認可能にした
+- ✅ 既存の誤登録レコードは、`Loan` / `Transaction` 参照が0件であることを確認した上でバックアップ後に削除
+  - 退避先: `ClientDevice_backup_20260228_dupfix`
+  - 削除件数: 3件（`raspberrypi3` / `raspberrypi4` / `raspberrypi5` のテンプレキー行）
+
+**学んだこと**:
+- inventoryの未解決テンプレートをそのまま業務キーとして扱うと、upsertでも重複汚染が発生する
+- 「再発防止（入力ガード）」を先に適用してから「既存データ是正（削除/統合）」を行うと安全に復旧できる
+- 誤登録削除時は参照整合性（取引/貸出の紐づき）確認を必須化するべき
+
+**再発防止**:
+- `register-clients.sh` 実行前に `DRY_RUN=1` で判定ログを確認する
+- inventoryに固定キーを置けない場合は、将来的にAnsible解決済み変数経由で登録する方式へ移行する
+
+**関連ファイル**:
+- `scripts/register-clients.sh`
+- `apps/api/src/services/clients/client-telemetry.service.ts`
+- `apps/api/prisma/schema.prisma`
+- `docs/guides/client-initial-setup.md`
+
+---
