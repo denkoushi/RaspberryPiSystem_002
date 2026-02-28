@@ -32,15 +32,18 @@ ufw_ssh_allowed_networks:
 ufw_vnc_allowed_networks:
   - "192.168.10.0/24"
   - "192.168.128.0/24"
+  - "100.64.0.0/10"    # Tailscaleネットワーク（2026-02-28追加）
 ```
 
 **UFWの動作**:
 - ✅ **デフォルトポリシー**: 全着信を拒否（`deny`）
 - ✅ **許可ポート**: HTTP（80）、HTTPS（443）のみ
 - ✅ **SSH（22）**: 信頼ネットワークのみ許可（ローカル/Tailscale）
-- ✅ **VNC（5900）**: 信頼ネットワークのみ許可
+- ✅ **VNC（5900）**: 信頼ネットワークのみ許可（ローカル/Tailscale）
 - ✅ **PostgreSQL（5432）**: UFWで**ブロック**されている（許可リストにない）
 - ✅ **API（8080）**: UFWで**ブロック**されている（許可リストにない）
+
+**⚠️ 重要（2026-02-28追加）**: Tailscale経由でVNC接続する場合は、UFW設定に加えて**Tailscale ACL設定も必要**です。Tailscale管理画面の「Access controls」で`tag:admin` → `tag:server`の`tcp:5900`を許可してください。詳細は [KB-277](../knowledge-base/infrastructure/security.md#kb-277-tailscale経由でのvnc接続問題acl設定不足) を参照。
 
 ## 追加の改善（2026-01-18）
 

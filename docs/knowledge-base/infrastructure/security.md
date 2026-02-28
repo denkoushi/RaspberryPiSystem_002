@@ -717,3 +717,66 @@ update-frequency: medium
 - `docs/troubleshooting/nfc-reader-issues.md`
 
 ---
+
+### [KB-277] Tailscale経由でのVNC接続問題（ACL設定不足）
+
+**発生日**: 2026-02-28
+
+**事象**: 
+- MacからPi5のVNCポート（5900）に接続できない（`nc -zv 100.106.158.2 5900`がタイムアウト）
+- Pi5側のwayvncは起動しており、ポート5900で待ち受けている
+- Pi5側のUFW設定も正しく設定されている（`100.64.0.0/10`からのアクセスを許可）
+- Pi5自身からは`127.0.0.1:5900`と`100.106.158.2:5900`に接続できる
+
+**調査過程**:
+1. **UFW設定の確認**: `sudo ufw status verbose`で`5900/tcp ALLOW IN 100.64.0.0/10`が設定されていることを確認
+2. **wayvncサービスの確認**: `systemctl status wayvnc`でサービスが起動していることを確認
+3. **ポート待ち受けの確認**: `sudo ss -tlnp | grep 5900`で`0.0.0.0:5900`で待ち受けていることを確認
+4. **UFW無効化テスト**: UFWを無効化しても接続がタイムアウトすることを確認（UFWが原因ではない）
+5. **wayvnc設定の確認**: `/etc/wayvnc/config`で`address=::`（IPv6のみ）になっていることを確認
+6. **wayvnc設定の修正**: `address=0.0.0.0`に変更してIPv4でも待ち受けられるように修正
+7. **Tailscale ACL設定の確認**: Tailscale管理画面でACL設定を確認し、`tag:admin` → `tag:server`の`tcp:5900`が許可されていないことを確認
+
+**根本原因**: 
+- TailscaleのACL（Access Control List）で`tag:admin` → `tag:server`の`tcp:5900`（VNC）が許可されていなかった
+- ACLで許可されていない通信はタイムアウトに見える（接続拒否ではなくタイムアウト）
+- UFW設定やwayvnc設定は正しかったが、TailscaleのACLが先にブロックしていた
+
+**有効だった対策**: 
+- ✅ Tailscale ACLの`grants`配列に`tcp:5900`を追加
+  ```json
+  {
+    "src": ["tag:admin"],
+    "dst": ["tag:server"],
+    "ip":  ["tcp:22", "tcp:443", "tcp:5900"]
+  }
+  ```
+- ✅ wayvnc設定を`address=0.0.0.0`に変更（IPv4/IPv6両方で待ち受け）
+- ✅ UFW設定に`100.64.0.0/10`を追加（既に実施済み）
+
+**学んだこと**: 
+- TailscaleのACLは、UFWやアプリケーション設定よりも先に評価される
+- ACLで許可されていない通信は接続拒否ではなくタイムアウトに見える
+- 複数のネットワーク層（Tailscale ACL → UFW → アプリケーション）を順番に確認する必要がある
+- wayvncの`address=::`はIPv6のみを意味し、IPv4接続を受け付けるには`address=0.0.0.0`が必要
+
+**セキュリティ影響**:
+- `tag:admin`（管理者のみ）から`tag:server`への接続のみ許可
+- 既にSSH（22）とHTTPS（443）が許可されているため、VNC（5900）追加による新規リスクは小さい
+- wayvncは認証あり（`enable_auth=true`, `enable_pam=true`）
+- Tailscale経由での通信は暗号化されている
+
+**再発防止**:
+- 新規ポートを追加する際は、Tailscale ACL設定も確認・更新する
+- 接続がタイムアウトする場合は、Tailscale ACL設定を最初に確認する
+- `docs/guides/mac-ssh-access.md`にTailscale ACL設定の説明を追加
+
+**関連ファイル**: 
+- `infrastructure/ansible/group_vars/all.yml` (ufw_vnc_allowed_networks)
+- `infrastructure/ansible/roles/server/tasks/security.yml` (VNCポート許可タスク)
+- `/etc/wayvnc/config` (wayvnc設定)
+- Tailscale管理画面のACL設定
+- `docs/guides/mac-ssh-access.md` (VNC接続手順)
+- `docs/security/port-security-audit.md` (ポートセキュリティ監査)
+
+---
