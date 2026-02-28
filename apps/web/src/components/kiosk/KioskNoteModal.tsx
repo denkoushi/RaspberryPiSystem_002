@@ -81,7 +81,10 @@ export function KioskNoteModal({
               String(key).toLowerCase().includes('hankaku') ||
               String(code).toLowerCase().includes('zenkaku') ||
               String(code).toLowerCase().includes('hankaku');
-            if (isCtrlSpace || isZenkakuLike || event.isComposing) {
+            // React KeyboardEvent doesn't expose isComposing; use nativeEvent (DOM KeyboardEvent).
+            const isComposing =
+              (event.nativeEvent as unknown as { isComposing?: boolean } | undefined)?.isComposing ?? false;
+            if (isCtrlSpace || isZenkakuLike || isComposing) {
               logIme('keydown', {
                 key,
                 code,
@@ -89,7 +92,7 @@ export function KioskNoteModal({
                 alt: event.altKey,
                 meta: event.metaKey,
                 shift: event.shiftKey,
-                isComposing: event.isComposing,
+                isComposing,
                 keyCode: (event as unknown as { keyCode?: number }).keyCode ?? null
               });
             }
