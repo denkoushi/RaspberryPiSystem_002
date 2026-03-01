@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { api, DEFAULT_CLIENT_KEY, postClientLogs } from '../../api/client';
+import { api, getResolvedClientKey, postClientLogs } from '../../api/client';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -17,7 +17,7 @@ interface KioskReturnPageProps {
 
 export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: providedClientKey }: KioskReturnPageProps = {}) {
   // propsでデータが提供されていない場合は自分で取得（/kiosk/returnルート用）
-  const resolvedClientKey = providedClientKey || DEFAULT_CLIENT_KEY;
+  const resolvedClientKey = providedClientKey || getResolvedClientKey();
   const resolvedClientId = undefined;
   // 返却一覧は全件表示（clientIdで絞らない）
   

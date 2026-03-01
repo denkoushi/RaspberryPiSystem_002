@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { DEFAULT_CLIENT_KEY, postKioskSupport } from '../../api/client';
+import { getResolvedClientKey, postKioskSupport } from '../../api/client';
 import { useKioskEmployees } from '../../api/hooks';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
@@ -17,7 +17,8 @@ const requestTypes = [
 
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   const location = useLocation();
-  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(DEFAULT_CLIENT_KEY);
+  const resolvedClientKey = getResolvedClientKey();
+  const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(resolvedClientKey);
   const senderSelectRef = useRef<HTMLSelectElement | null>(null);
   
   // デフォルト日時を現在の日時に設定
@@ -81,7 +82,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
           message: userMessage,
           page: location.pathname
         },
-        DEFAULT_CLIENT_KEY
+        resolvedClientKey
       );
 
       // 成功後、フォームをリセットして閉じる

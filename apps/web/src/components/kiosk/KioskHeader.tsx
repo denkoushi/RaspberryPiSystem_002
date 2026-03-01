@@ -2,7 +2,8 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
-import { getResolvedClientKey, postClientLogs, postKioskPower } from '../../api/client';
+import { postClientLogs, postKioskPower } from '../../api/client';
+import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
 
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
@@ -62,11 +63,6 @@ const PowerIcon = () => (
   </svg>
 );
 
-const powerOverlayMessage: Record<PowerAction, string> = {
-  reboot: '再起動を実行しています。しばらくお待ちください。',
-  poweroff: 'シャットダウンを実行しています。まもなく画面が消えます。'
-};
-
 export function KioskHeader({
   clientKey,
   clientId,
@@ -78,7 +74,6 @@ export function KioskHeader({
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
-  const [powerOverlayAction, setPowerOverlayAction] = useState<PowerAction | null>(null);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -94,7 +89,13 @@ export function KioskHeader({
   const handlePowerConfirm = async () => {
     if (!pendingAction) return;
     setIsPowerProcessing(true);
-    const effectiveClientKey = (getResolvedClientKey() || clientKey || '').trim();
+    const effectiveClientKey = resolveClientKeyForPower(clientKey);
+    if (!effectiveClientKey) {
+      window.alert('端末を特定できません。URLに clientKey が含まれているか確認してください。');
+      setIsPowerProcessing(false);
+      setPendingAction(null);
+      return;
+    }
     // #region agent log
     const urlClientKey = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('clientKey') : null;
     const storedKey = typeof window !== 'undefined' ? window.localStorage.getItem('kiosk-client-key') : null;
@@ -130,7 +131,6 @@ export function KioskHeader({
         effectiveClientKey
       ).catch(() => {});
       // #endregion
-      setPowerOverlayAction(pendingAction);
     } catch (error) {
       // #region agent log
       postClientLogs(
@@ -282,16 +282,6 @@ export function KioskHeader({
         onCancel={() => setPendingAction(null)}
         onConfirm={handlePowerConfirm}
       />
-      {powerOverlayAction && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white"
-          role="status"
-          aria-live="polite"
-          style={{ pointerEvents: 'auto' }}
-        >
-          <p className="text-xl font-medium">{powerOverlayMessage[powerOverlayAction]}</p>
-        </div>
-      )}
     </div>
   );
 }

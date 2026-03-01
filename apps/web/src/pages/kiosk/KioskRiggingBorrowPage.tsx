@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
-  DEFAULT_CLIENT_KEY,
   borrowRiggingGear,
+  getResolvedClientKey,
   getRiggingGearByTagUid,
   postClientLogs
 } from '../../api/client';
@@ -24,7 +24,7 @@ export function KioskRiggingBorrowPage() {
   const { data: kioskConfig } = useKioskConfig();
   const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
 
-  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientKey = getResolvedClientKey();
   const resolvedClientId = undefined;
 
   const [riggingTagUid, setRiggingTagUid] = useState(searchParams.get('tagUid') ?? '');

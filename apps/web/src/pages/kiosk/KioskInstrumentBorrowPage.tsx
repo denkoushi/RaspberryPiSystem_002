@@ -4,7 +4,7 @@ import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   borrowMeasuringInstrument,
   createInspectionRecord,
-  DEFAULT_CLIENT_KEY,
+  getResolvedClientKey,
   getInspectionItems,
   getMeasuringInstrumentByTagUid,
   getMeasuringInstrumentTags,
@@ -26,7 +26,7 @@ export function KioskInstrumentBorrowPage() {
   const { data: kioskConfig } = useKioskConfig();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientKey = getResolvedClientKey();
   const resolvedClientId = undefined;
 
   // defaultModeに基づいて戻り先を決定

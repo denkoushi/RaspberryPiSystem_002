@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
 import {
-  DEFAULT_CLIENT_KEY,
+  getResolvedClientKey,
   getMeasuringInstrumentByTagUid,
   getUnifiedItems,
   getRiggingGearByTagUid,
@@ -21,7 +21,7 @@ import type { AxiosError } from 'axios';
 
 export function KioskPhotoBorrowPage() {
   useKioskConfig(); // 初期設定取得（キャッシュ用途）
-  const resolvedClientKey = DEFAULT_CLIENT_KEY;
+  const resolvedClientKey = getResolvedClientKey();
   const resolvedClientId = undefined;
   // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
   const loansQuery = useActiveLoans(undefined, resolvedClientKey);

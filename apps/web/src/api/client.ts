@@ -1,5 +1,12 @@
 import axios from 'axios';
 
+import {
+  DEFAULT_CLIENT_KEY,
+  ensureClientKeyStorageInitialized,
+  resolveClientKey,
+  setClientKeyToStorage
+} from '../lib/client-key';
+
 import type {
   AuthResponse,
   MfaInitiateResponse,
@@ -31,11 +38,7 @@ import type {
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
-export const DEFAULT_CLIENT_KEY =
-  import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
-const DEMO_CLIENT_KEY = 'client-demo-key';
-const PI4_KIOSK_CLIENT_KEY = 'client-key-raspberrypi4-kiosk1';
-const MAC_KIOSK_CLIENT_KEY = 'client-key-mac-kiosk1';
+export { DEFAULT_CLIENT_KEY };
 const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
 const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 
@@ -181,86 +184,8 @@ function getLatestResourceTimingInWindow(params: {
   return null;
 }
 
-// 各リクエストで確実に client-key を付与するためのヘルパー
-// useLocalStorageとの互換性を保つため、JSON.parseを試みてから生の値にフォールバック
-// Mac環境を検出して適切なデフォルト値を返す
-const isKioskPath = () => {
-  if (typeof window === 'undefined') return false;
-  return window.location.pathname.startsWith('/kiosk');
-};
-
-const getRecommendedDefaultClientKey = (userAgent: string) => {
-  const isMac = /Macintosh|Mac OS X/i.test(userAgent);
-  const isChromeOS = /CrOS/i.test(userAgent);
-  // Raspberry Pi (Linux/ARM) を雑に推定（ChromeOSは除外）
-  const isLinuxArm = /Linux/i.test(userAgent) && /(arm|aarch64)/i.test(userAgent) && !isChromeOS;
-
-  if (isMac) {
-    return MAC_KIOSK_CLIENT_KEY;
-  }
-  // /kiosk ではUA誤判定（例: CrOS）でもPi4既定キーを優先し、ループを回避する。
-  if (isKioskPath()) {
-    return DEFAULT_CLIENT_KEY;
-  }
-  return isLinuxArm ? DEFAULT_CLIENT_KEY : DEMO_CLIENT_KEY;
-};
-
-const resolveClientKey = () => {
-  if (typeof window === 'undefined') return DEFAULT_CLIENT_KEY;
-
-  const userAgent = navigator.userAgent;
-  const isMac = /Macintosh|Mac OS X/i.test(userAgent);
-  const isChromeOS = /CrOS/i.test(userAgent);
-  const isLinuxArm = /Linux/i.test(userAgent) && /(arm|aarch64)/i.test(userAgent) && !isChromeOS;
-  const recommendedDefaultKey = getRecommendedDefaultClientKey(userAgent);
-  
-  // URLパラメータでclientKeyが指定されていれば最優先（複数キオスク対応）
-  const urlKey = new URLSearchParams(window.location.search).get('clientKey');
-  if (urlKey && urlKey.length > 0 && urlKey.startsWith('client-key-')) {
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(urlKey));
-    setClientKeyHeader(urlKey);
-    return urlKey;
-  }
-
-  const savedKey = window.localStorage.getItem('kiosk-client-key');
-  if (!savedKey || savedKey.length === 0) {
-    // localStorageが空の場合、Mac環境ならMac用のキーを返す
-    return recommendedDefaultKey;
-  }
-  
-  // useLocalStorageはJSON.stringifyで保存するので、まずJSON.parseを試みる
-  let parsedKey: string | null = null;
-  try {
-    const parsed = JSON.parse(savedKey);
-    if (typeof parsed === 'string' && parsed.length > 0) {
-      parsedKey = parsed;
-    }
-  } catch {
-    // JSON.parseに失敗した場合は生の値をそのまま使用
-    parsedKey = savedKey;
-  }
-  
-  const resolvedKey = parsedKey || savedKey || DEFAULT_CLIENT_KEY;
-  
-  // Mac環境でPi4のキーが設定されている場合、Mac用のキーに修正
-  if (isMac && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
-    // localStorageを修正
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(MAC_KIOSK_CLIENT_KEY));
-    return MAC_KIOSK_CLIENT_KEY;
-  }
-
-  // 非Pi端末（例: ChromeOS等）でPi4のキーを持っている場合はdemoへ矯正（競合防止）
-  // ただし /kiosk 画面ではPi4既定キーを優先し、認証リロードループを避ける。
-  if (!isLinuxArm && !isKioskPath() && resolvedKey === PI4_KIOSK_CLIENT_KEY) {
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(DEMO_CLIENT_KEY));
-    return DEMO_CLIENT_KEY;
-  }
-  
-  return resolvedKey;
-};
-
 export function getResolvedClientKey() {
-  return resolveClientKey();
+  return resolveClientKey({ allowDefaultFallback: true }).key;
 }
 
 export function setAuthToken(token?: string) {
@@ -272,14 +197,15 @@ export function setAuthToken(token?: string) {
 }
 
 export function setClientKeyHeader(key?: string) {
-  api.defaults.headers.common['x-client-key'] = key && key.length > 0 ? key : resolveClientKey();
+  api.defaults.headers.common['x-client-key'] =
+    key && key.length > 0 ? key : resolveClientKey({ allowDefaultFallback: true }).key;
 }
 
 const resetKioskClientKey = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem('kiosk-client-key');
-  const defaultKey = resolveClientKey();
-  window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
+  const defaultKey = resolveClientKey({ allowDefaultFallback: true }).key;
+  setClientKeyToStorage(defaultKey);
   setClientKeyHeader(defaultKey);
 
   // 同一セッションで短時間に401が続いた場合、リロードループを防ぐ。
@@ -302,22 +228,14 @@ const resetKioskClientKey = () => {
 // - Mac環境を検出して適切なデフォルト値を設定
 // useLocalStorageとの互換性を保つため、JSON形式で保存する
 if (typeof window !== 'undefined') {
-  const existing = window.localStorage.getItem('kiosk-client-key');
-  if (!existing || existing.length === 0) {
-    const defaultKey = getRecommendedDefaultClientKey(navigator.userAgent);
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(defaultKey));
-    setClientKeyHeader(defaultKey);
-  } else {
-    // 既存値が不適切（非PiでPi4キー等）の場合はresolveClientKeyが矯正する
-    const resolved = resolveClientKey();
-    window.localStorage.setItem('kiosk-client-key', JSON.stringify(resolved));
-    setClientKeyHeader(resolved);
-  }
+  ensureClientKeyStorageInitialized();
+  const resolved = resolveClientKey({ allowDefaultFallback: true }).key;
+  setClientKeyHeader(resolved);
 }
 
 // すべてのリクエストで client-key を付与
 api.interceptors.request.use((config) => {
-  const key = resolveClientKey();
+  const key = resolveClientKey({ allowDefaultFallback: true }).key;
   config.headers = config.headers ?? {};
   if (!config.headers['x-client-key']) {
     config.headers['x-client-key'] = key;
@@ -1172,7 +1090,7 @@ export interface KioskConfig {
 }
 
 export async function getKioskConfig(): Promise<KioskConfig> {
-  const key = resolveClientKey();
+  const key = resolveClientKey({ allowDefaultFallback: true }).key;
   const { data } = await api.get<KioskConfig>('/kiosk/config', {
     headers: { 'x-client-key': key }
   });
