@@ -138,6 +138,8 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0755'
+  register: power_actions_dir_result
+  notify: restart api
 
 - name: Stat existing Docker Compose .env
   ansible.builtin.stat:

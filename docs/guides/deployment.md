@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-02-13
+last-verified: 2026-03-01
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-02-13（JWT秘密鍵Fail-fastとkioskレート制限Redis共有化の運用設定を追記）
+最終更新: 2026-03-01（Pi4キオスク電源操作フローの記述を現行アーキテクチャに更新）
 
 ## 概要
 
@@ -501,10 +501,10 @@ curl http://localhost:8080/api/system/health
   - 効果: 同一デプロイ内で最初の`apt update`以降はキャッシュが有効になり、apt関連タスクが若干短縮（例: `server : Install security packages` 4.51s → 3.46s）
   - 詳細は [KB-234](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照
 
-**重要（2026-02-06更新）**:
-- **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi4ローカルのNFCエージェントREST APIを呼び出します
-  - `POST http://localhost:7071/api/agent/reboot`
-  - `POST http://localhost:7071/api/agent/poweroff`
+**重要（2026-03-01更新）**:
+- **Pi4キオスクの電源操作**: キオスク画面の「再起動」「シャットダウン」ボタンは、Pi5 API経由で電源操作を実行します
+  - フロー: Pi4キオスク UI → `POST https://<Pi5>/api/kiosk/power`（`x-client-key`付き）→ Pi5 API が `power-actions` に JSON 書き込み → `pi5-power-dispatcher`（systemd path unit）が検知 → Ansible で Pi4 に SSH 接続し `systemctl reboot` / `poweroff` を実行
+  - 遅延の目安: poweroff 約20秒、reboot 約85秒（多段構成による）。詳細は [KB-285](../knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) を参照
 - **Mixed Content回避**: キオスクは `https://<Pi5>/kiosk` で開くため、Pi4のChromium起動フラグに `--allow-running-insecure-content` と `--unsafely-treat-insecure-origin-as-secure=http://localhost:7071` を設定します
 - **NFC WebSocket（増台対応）**: キオスク画面は `ws://localhost:7071/stream`（自端末のNFCエージェント）に **localOnly** で接続し、Pi5経由の`/stream`へはフォールバックしません（端末分離と横漏れ防止のため）。
 - **OS権限**: Pi4のAnsible設定で `sudo_nopasswd_commands` に `/usr/bin/systemctl reboot` と `/usr/bin/systemctl poweroff` を含めてください

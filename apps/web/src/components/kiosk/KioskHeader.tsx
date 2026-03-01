@@ -90,12 +90,15 @@ export function KioskHeader({
 
   const handlePowerConfirm = async () => {
     if (!pendingAction) return;
+    const actionToExecute = pendingAction;
+    setPowerOverlayAction(actionToExecute);
+    setPendingAction(null);
     setIsPowerProcessing(true);
     const effectiveClientKey = resolveClientKeyForPower(clientKey);
     if (!effectiveClientKey) {
+      setPowerOverlayAction(null);
       window.alert('端末を特定できません。URLに clientKey が含まれているか確認してください。');
       setIsPowerProcessing(false);
-      setPendingAction(null);
       return;
     }
     // #region agent log
@@ -109,7 +112,7 @@ export function KioskHeader({
             level: 'INFO',
             message: '[power-debug] power request start',
             context: {
-              action: pendingAction,
+              action: actionToExecute,
               clientKeyProp: clientKey,
               clientKeySent: effectiveClientKey,
               urlClientKey,
@@ -123,17 +126,16 @@ export function KioskHeader({
     ).catch(() => {});
     // #endregion
     try {
-      await postKioskPower({ action: pendingAction }, effectiveClientKey);
+      await postKioskPower({ action: actionToExecute }, effectiveClientKey);
       // #region agent log
       postClientLogs(
         {
           clientId: clientId || 'power-debug-unknown',
-          logs: [{ level: 'INFO', message: '[power-debug] power request accepted', context: { action: pendingAction } }],
+          logs: [{ level: 'INFO', message: '[power-debug] power request accepted', context: { action: actionToExecute } }],
         },
         effectiveClientKey
       ).catch(() => {});
       // #endregion
-      setPowerOverlayAction(pendingAction);
     } catch (error) {
       // #region agent log
       postClientLogs(
@@ -144,7 +146,7 @@ export function KioskHeader({
               level: 'ERROR',
               message: '[power-debug] power request failed',
               context: {
-                action: pendingAction,
+                action: actionToExecute,
                 errorMessage: error instanceof Error ? error.message : String(error),
               },
             },
@@ -153,10 +155,11 @@ export function KioskHeader({
         effectiveClientKey
       ).catch(() => {});
       // #endregion
+      setPowerOverlayAction(null);
       console.error('Failed to request power action:', error);
+      window.alert('電源操作のリクエストに失敗しました。ネットワーク接続を確認して再度お試しください。');
     } finally {
       setIsPowerProcessing(false);
-      setPendingAction(null);
     }
   };
 
