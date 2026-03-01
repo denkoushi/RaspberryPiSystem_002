@@ -13,11 +13,13 @@
 - [x] (2026-03-01) **他コンポーネントの getResolvedClientKey 統一**: KioskSupportModal, KioskBorrowPage, KioskInstrumentBorrowPage, KioskPhotoBorrowPage, KioskReturnPage, KioskRiggingBorrowPage を `getResolvedClientKey()` に統一。
 - [x] (2026-03-01) **ローカルテスト・CI成功・デプロイ完了・実機検証完了**: 全テストパス、lint・build成功。Pi5＋raspi4-robodrill01 へデプロイ成功。実機で電源操作が正常動作することを確認。
 - [x] (2026-03-01) **電源操作遅延の原因特定**: ボタン押下から約20秒（poweroff）/約85秒（reboot）かかる事象を調査。Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4 の多段構成に起因することを特定。KB-285 に記録。
+- [x] (2026-03-01) **電源操作の連打防止オーバーレイ実装・実機検証完了**: API 受理直後に黒画面オーバーレイを表示し、応答遅延中の連打を防止。FullScreenOverlay（createPortal で document.body にレンダリング）、PowerDebounceOverlay、KioskHeader 統合。前回失敗（bae3802）の原因（backdrop-blur 親の影響で position: fixed がビューポート基準にならず）を React Portal で解決。KB-286 に記録。
 
 ## Surprises & Discoveries
 
 - **電源操作の遅延**: 実機検証で「ボタン押して20秒後に発動」が報告された。ロジックは正常だが、Pi4 kiosk → Pi5 API → path unit → dispatcher service → ansible-playbook → Pi4 SSH の多段構成により、poweroff で約21秒、reboot で約85秒かかることが判明。Ansible inventory パース（vault 復号含む）、SSH 接続確立、`ansible.builtin.reboot` の復帰待ちが主因。
 - **連打防止のベストプラクティス**: 不可逆操作かつ応答遅延がある場合、ボタン押下直後に連打防止画面を出すのが UX のベストプラクティス。現状は `isPowerProcessing` でボタン無効化しているが、専用の「処理中」オーバーレイを検討する余地あり。
+- **連打防止オーバーレイの前回失敗原因**: bae3802 でオーバーレイを KioskHeader 内に直接レンダリングしたが、親要素（`backdrop-blur` を持つ `<header>`）の影響で `position: fixed` がビューポート基準にならず全画面表示に失敗。KB-239 と同様の事象。React Portal（`createPortal` で `document.body`）で解決。
 
 ## Decision Log
 
@@ -29,10 +31,14 @@
 - **Rationale**: 多段構成（API→dispatcher→Ansible→SSH）のため短縮は困難。不可逆操作の UX 改善として、処理中表示の強化が有効。
 - **Date/Author**: 2026-03-01
 
+- **Decision**: 連打防止オーバーレイは React Portal（createPortal で document.body）を使用する。
+- **Rationale**: KioskHeader 内に直接レンダリングすると、親要素の backdrop-blur により position: fixed がビューポート基準にならず表示失敗する（KB-239 と同様）。汎用 FullScreenOverlay と電源専用 PowerDebounceOverlay に責務分離。
+- **Date/Author**: 2026-03-01
+
 ## Outcomes & Retrospective
 
 - **達成**: clientKey 解決の責務分離、電源操作の明示的 clientKey 渡し、複数キオスク環境での正しい端末ターゲット化を実現。実機検証で正常動作を確認。
-- **残課題**: 電源操作の応答遅延（約20秒）に対する UX 改善（連打防止画面の強化）は未実装。Next Steps に記載。
+- **達成**: 電源操作の連打防止オーバーレイを実装。API 受理直後に黒画面・白文字の全画面オーバーレイを表示し、応答遅延中の連打を防止。実機検証で正常表示を確認。
 
 ## Context and Orientation
 
@@ -54,4 +60,4 @@
 
 ## Next Steps
 
-- **電源操作の連打防止画面**: ボタン押下直後に「処理中です。しばらくお待ちください。」等のオーバーレイを表示し、応答遅延（約20秒）中の連打を防止する UX 改善を検討する。不可逆操作のベストプラクティスとして推奨。
+- **電源操作の連打防止画面**: 完了（2026-03-01）。FullScreenOverlay / PowerDebounceOverlay を実装し、実機検証で正常動作を確認。

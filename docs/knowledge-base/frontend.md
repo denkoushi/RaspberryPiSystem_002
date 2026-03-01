@@ -4017,3 +4017,46 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-02-28、実機検証完了）
 
 ---
+
+### [KB-286] 電源操作の連打防止オーバーレイ実装（React Portal による表示失敗の解決）
+
+**実装日時**: 2026-03-01
+
+**事象**:
+- 電源操作（再起動/シャットダウン）のボタン押下から発動まで約20秒（poweroff）/約85秒（reboot）かかり、ユーザーが「効いていない」と勘違いして連打し、レート制限（429）に当たる問題があった
+- 前回（bae3802）で連打防止オーバーレイを実装したが、表示に失敗していた。4dffa46 の SOLID リファクタでオーバーレイが削除された
+
+**前回失敗の原因**:
+- オーバーレイを `KioskHeader` 内に直接レンダリングしていた
+- `KioskHeader` は `KioskLayout` の `<header className="... backdrop-blur">` の子
+- CSS 仕様により、親要素に `filter` / `backdrop-filter` があると、子要素の `position: fixed` は親要素を基準にする
+- その結果、`fixed inset-0` がビューポートではなくヘッダー領域を基準にしており、全画面を覆えず見切れていた
+- [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入) と同様の事象
+
+**有効だった対策**:
+- ✅ **React Portal の使用**: `createPortal` でオーバーレイを `document.body` に直接レンダリングし、DOM 階層の制約を回避
+- ✅ **責務分離**: `FullScreenOverlay`（汎用 UI プリミティブ）と `PowerDebounceOverlay`（電源専用文言マッピング）に分離
+- ✅ **表示タイミング**: API 受理直後に `setPowerOverlayAction(pendingAction)` を実行し、`finally` で確認モーダルを閉じた後もオーバーレイは表示継続
+
+**実装ファイル**:
+- `apps/web/src/components/ui/FullScreenOverlay.tsx`（新規、createPortal で document.body にレンダリング）
+- `apps/web/src/components/kiosk/PowerDebounceOverlay.tsx`（新規、PowerAction → 文言マッピング）
+- `apps/web/src/components/kiosk/KioskHeader.tsx`（修正、powerOverlayAction 状態追加、PowerDebounceOverlay レンダリング）
+
+**CI実行**: GitHub Actions 成功（Run ID: `22535812426`）
+
+**デプロイ結果**: Pi5 でデプロイ成功（Run ID: `20260301-133729-17849`, `state: success`, `exitCode: 0`）
+
+**実機検証結果**: 電源ボタン押下 → 確認モーダル → 実行後、API 受理直後に黒画面・白文字のオーバーレイが全画面表示され、連打防止が正常に動作することを確認
+
+**学んだこと**:
+- 全画面オーバーレイは `backdrop-blur` 等の filter を持つ親の子にレンダリングすると表示失敗する。React Portal で `document.body` にレンダリングする必要がある
+- 汎用オーバーレイ（FullScreenOverlay）とドメイン専用ラッパー（PowerDebounceOverlay）の分離により、メンテナンス画面・ファームウェア更新など他用途への再利用が可能
+
+**関連KB**:
+- [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入): モーダル表示位置問題と React Portal 導入
+- [KB-285](../infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる): 電源操作遅延の原因
+
+**解決状況**: ✅ **解決済み**（2026-03-01、実機検証完了）
+
+---
