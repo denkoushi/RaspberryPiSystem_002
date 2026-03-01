@@ -1,9 +1,9 @@
 # KB調査: キオスク生産スケジュールの不具合（静的解析＋実機ログ解析）
 
 **作成日**: 2026-03-01  
-**更新**: 2026-03-01（実機ログ解析で電源ボタン不具合の根本原因を確定）  
+**更新**: 2026-03-01（実機ログ解析で電源ボタン不具合の根本原因を確定、電源機能SOLIDリファクタ完了・電源操作遅延の原因特定を追記）  
 **手法**: 静的解析 → 実機ログ取得（Pi5 power-actions、raspi4-robodrill01 kiosk-launch.sh）  
-**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md), [KB-237](./infrastructure/ansible-deployment.md#kb-237), [KB-276](./frontend.md#kb-276)
+**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md), [KB-237](./infrastructure/ansible-deployment.md#kb-237), [KB-276](./frontend.md#kb-276), [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる), [power-function-solid-refactor-execplan.md](../plans/power-function-solid-refactor-execplan.md)
 
 ---
 
@@ -85,6 +85,8 @@
 | 状態 | 内容 |
 |------|------|
 | **現状** | raspi4-robodrill01 の kiosk-launch.sh は正しい clientKey で設定済み。2/28 10:44 以降の電源操作は成功している。 |
+| **電源機能SOLIDリファクタ（2026-03-01）** | ClientKeyResolver モジュール（`apps/web/src/lib/client-key/`）を新設。`resolveClientKeyForPower` で電源専用の clientKey 解決を実施。未解決時はアラート表示し実行しない。複数キオスク環境での誤ターゲット問題を恒久対策。 |
+| **電源操作遅延** | ボタン押下から発動まで約20秒（poweroff）/約85秒（reboot）かかる。多段構成（API→dispatcher→Ansible→SSH）に起因。KB-285 に詳細。連打防止画面の追加を検討（[power-function-solid-refactor-execplan.md](../plans/power-function-solid-refactor-execplan.md) の Next Steps）。 |
 | **再発防止** | デプロイ時に `--limit` で raspi4-robodrill01 を必ず含める。`update-all-clients.sh` で全 kiosk ホストを対象にするか、`--limit kiosk` で両方の Pi4 に適用する。 |
 | **確認方法** | `ssh denkon5sd02@100.106.158.2 'ssh tools04@100.123.1.113 "grep -E \"app=|clientKey\" /usr/local/bin/kiosk-launch.sh"'` で clientKey が `client-key-raspi4-robodrill01-kiosk1` であることを確認。 |
 
@@ -99,8 +101,9 @@
 
 ## 関連ファイル
 
-- `apps/web/src/api/client.ts`: resolveClientKey, DEFAULT_CLIENT_KEY
-- `apps/web/src/layouts/KioskLayout.tsx`: getResolvedClientKey → KioskHeader
+- `apps/web/src/lib/client-key/`: ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）
+- `apps/web/src/api/client.ts`: resolveClientKey, postKioskPower（clientKey オプション）
+- `apps/web/src/components/kiosk/KioskHeader.tsx`: resolveClientKeyForPower, postKioskPower
 - `infrastructure/ansible/inventory.yml`: raspberrypi4, raspi4-robodrill01 の kiosk_url（両方 clientKey 付与済み）
 - `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`: clientKey → ホスト解決ロジック
 - `infrastructure/ansible/templates/kiosk-launch.sh.j2`: --ozone-platform=x11, kiosk_url

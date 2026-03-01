@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-01）
+
+- **✅ 電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**実施内容**: `apps/web/src/lib/client-key/` に ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）を新設。`resolveClientKeyForPower` で電源専用の解決を実施し、未解決時はアラート表示。KioskHeader で `postKioskPower` に明示的な clientKey を渡す。**電源操作遅延**: ボタン押下から約20秒（poweroff）/約85秒（reboot）かかる事象を調査。多段構成（Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4）に起因することを特定。KB-285 に記録。連打防止画面の追加を Next Steps として検討。詳細は [plans/power-function-solid-refactor-execplan.md](./plans/power-function-solid-refactor-execplan.md) / [knowledge-base/infrastructure/ansible-deployment.md#kb-285](./knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-02-28）
 
 - **✅ 生産スケジュール登録製番ボタンの3段表示と機種名表示・全角半角大文字化・デプロイ完了・実機検証OK**: 登録製番ボタンを3段表示に変更し、機種名（FHINCDがMHで始まるアイテムのFHINMEI）を下2段に表示する機能を実装。**実装内容**: `SeibanHistoryButton`コンポーネントを新設し、製番を1段目、機種名を2-3段目に表示。機種名は全角→半角変換＋大文字化（`toHalfWidthAscii`関数）。36文字超は`...`で省略。APIに`machineName`フィールドを追加（`SeibanProgressRow`型、SQL集約で`FHINCD LIKE 'MH%'`の`FHINMEI`を取得）。**CI実行**: GitHub Actions成功（Run ID: `22515259397`、全ジョブ成功）。**デプロイ結果**: Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-170617-12957`, `state: success`, `exitCode: 0`）。**実機検証結果**: 製番ボタンが3段表示され、機種名が全角半角大文字で正しく表示されることを確認。詳細は [knowledge-base/frontend.md#kb-282](./knowledge-base/frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化) / [knowledge-base/api.md#kb-282](./knowledge-base/api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。

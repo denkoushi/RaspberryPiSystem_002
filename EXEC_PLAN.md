@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-01) **電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**実施内容**: `apps/web/src/lib/client-key/` に ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）を新設。`resolveClientKeyForPower` で電源専用の解決を実施し、未解決時はアラート表示。KioskHeader で `postKioskPower` に明示的な clientKey を渡す。他コンポーネント（KioskSupportModal, KioskBorrowPage 等）を `getResolvedClientKey()` に統一。**実機検証**: 電源操作が正常動作することを確認。**電源操作遅延**: ボタン押下から約20秒（poweroff）/約85秒（reboot）かかる事象を調査。多段構成（Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4）に起因することを特定。KB-285 に記録。連打防止画面の追加を Next Steps として検討。**ドキュメント更新**: power-function-solid-refactor-execplan.md を新設、KB-285 を ansible-deployment.md に追加、KB調査ドキュメントを更新。詳細は [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) を参照。
+
 - [x] (2026-02-28) **クライアント端末の場所設定更新・デプロイ完了**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が空欄になっていた問題を解決。**実施内容**: `inventory.yml`の`status_agent_location`を更新（raspi4_kensakuMain: 「ラズパイ4 - キオスク1」→「第2工場 - kensakuMain」、raspi3_signageMakoRoom: 「ラズパイ3 - サイネージ1」→「第2工場 - signageMakoRoom」）。DBの`ClientDevice`テーブルの`location`を直接更新（`POST /api/clients/heartbeat`でも更新可能だが、`status-agent`はlocationを送信しないため、DB直接更新が必要）。**知見**: `status_agent_location`は`register-clients.sh`で使用されるが、vaultテンプレートのためスキップされる。DBの`location`は`status-agent`のheartbeatでは更新されないため、管理コンソールから直接編集するか、DB直接更新が必要。**デプロイ結果**: Pi5でデプロイ成功（Run ID `20260228-134834-12062`, `state: success`, `exitCode: 0`, `ok=120 changed=3`）。**実機検証結果**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が正しく表示されることを確認。詳細は [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
 
 - [x] (2026-02-28) **Pi4 kiosk-browser対策のAnsible恒久化・CI成功・デプロイ完了・実機検証完了**: KB-280で手動復旧していた`chromium-browser: not found`対策を、Ansibleロールに恒久化して再発を防止。**実施内容**: `infrastructure/ansible/roles/kiosk/tasks/main.yml`に`chromium`存在確認（`stat`）・未存在時fail-fast（`fail`）・シンボリックリンク自動作成（`file state=link`）タスクを追加。**ローカル検証**: Ansible構文チェック成功（`playbooks/deploy.yml` / `playbooks/deploy-staged.yml`）。**CI実行**: GitHub Actions成功（Run ID: `22513820001`、全ジョブ成功）。**デプロイ結果**: 標準デプロイスクリプトで実運用検証時、全台実行で`raspberrypi4`がSSH到達不可（`tailscale status`で`offline, last seen 19h ago`）を検出し、到達可能ホストへ`--limit "server:raspberrypi3:raspi4-robodrill01"`で継続デプロイ成功（Run ID: `20260228-141511-7945`、`state: success`、`exitCode: 0`）。**実機検証結果**: `raspi4-robodrill01`でシンボリックリンク（`/usr/bin/chromium-browser -> /usr/bin/chromium`）・サービス状態（`kiosk-browser.service` / `status-agent.timer` ともに`active`）・APIヘルス（`status: ok`）を確認。**知見**: 端末依存の手動復旧はAnsibleタスク化で再発率が下がる。標準デプロイのプリフライト停止は安全機能であり、`tailscale status`で到達不可端末を先に切り分けるのが有効。オフライン端末がある場合、到達可能端末へ`--limit`で段階展開し、復帰後に追いデプロイする運用が安全。**ドキュメント更新**: KB-281を追加、knowledge-base/index.mdを更新（件数168件、セキュリティ関連19件、インフラ関連76件）、INDEX.mdを更新。詳細は [docs/knowledge-base/infrastructure/security.md#kb-281](./docs/knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) / [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
@@ -1436,6 +1438,17 @@
 - **kiosk-launch.shテンプレートの修正検討**: `infrastructure/ansible/templates/kiosk-launch.sh.j2`で`chromium-browser`の代わりに`chromium`を使用するか、シンボリックリンクの存在確認を追加（現状はシンボリックリンクで互換性を維持しているため、優先度は低い）
 
 **参照**: [docs/knowledge-base/infrastructure/security.md#kb-280](./docs/knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) / [docs/knowledge-base/infrastructure/security.md#kb-281](./docs/knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) / [docs/guides/client-initial-setup.md](./docs/guides/client-initial-setup.md)
+
+### 電源操作の連打防止画面（推奨）
+
+**概要**: 電源機能SOLIDリファクタ完了後、実機検証で「ボタン押して20秒後に発動」が報告された。ロジックは正常だが、多段構成（Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4）により poweroff で約20秒、reboot で約85秒かかる。不可逆操作かつ応答遅延がある場合、ボタン押下直後に連打防止画面を出すのが UX のベストプラクティス。
+
+**推奨実装**:
+- ボタン押下直後に「処理中です。しばらくお待ちください。」等のオーバーレイを表示
+- `isPowerProcessing` によるボタン無効化に加え、専用の処理中表示を強化
+- 応答遅延中の連打を防止し、ユーザーに「処理が受け付けられた」ことを明示
+
+**参照**: [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる)
 
 ### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
 

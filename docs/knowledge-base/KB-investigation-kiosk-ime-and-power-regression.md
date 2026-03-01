@@ -1,8 +1,9 @@
 # KB調査: キオスク備考欄の日本語入力モード切替・電源ボタンの同時不具合
 
 **作成日**: 2026-02-28  
-**状態**: ✅ 電源ボタン修正完了（clientKey対応）、IMEは Chromium 135+ リグレッション対策を適用  
-**関連**: [frontend.md#KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善), [ansible-deployment.md#KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題)
+**更新**: 2026-03-01（電源機能SOLIDリファクタ完了・電源操作遅延の原因特定を追記）  
+**状態**: ✅ 電源ボタン修正完了（clientKey対応）→ 電源機能SOLIDリファクタ完了（ClientKeyResolverモジュール化）、IMEは Chromium 135+ リグレッション対策を適用  
+**関連**: [frontend.md#KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善), [ansible-deployment.md#KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題), [ansible-deployment.md#KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる), [power-function-solid-refactor-execplan.md](../plans/power-function-solid-refactor-execplan.md)
 
 ---
 
@@ -120,6 +121,15 @@ gsettings get org.freedesktop.ibus.general.hotkey triggers
 1. **KioskHeader**: `postKioskPower` に `clientKey` を明示渡す修正を実施
 2. **resolveClientKey**: URL パラメータ `?clientKey=xxx` を最優先で読み取り、localStorage に保存
 3. **inventory**: `kiosk_url` に `?clientKey={{ status_agent_client_key }}` を追加（raspberrypi4 / raspi4-robodrill01 両方）
+
+## 電源機能SOLIDリファクタ（2026-03-01）
+
+clientKey 解決の責務分離と複数キオスク対応の恒久化を実施。
+
+- **ClientKeyResolver モジュール**: `apps/web/src/lib/client-key/` に types, config, sources, resolver, power-validator を新設
+- **resolveClientKeyForPower**: 電源操作専用の解決ロジック。未解決時は実行せずアラート表示
+- **KioskHeader**: `resolveClientKeyForPower(clientKey)` を使用し、`postKioskPower` に明示的な clientKey を渡す
+- **電源操作遅延**: 実機検証で約20秒（poweroff）/約85秒（reboot）の遅延を確認。多段構成（API→dispatcher→Ansible→SSH）に起因。KB-285 に記録。連打防止画面の追加を Next Steps として検討
 
 ### 日本語入力（Chromium 135+ リグレッション）
 

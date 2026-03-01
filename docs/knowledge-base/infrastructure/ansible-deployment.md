@@ -3534,6 +3534,44 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-285] 電源操作（再起動/シャットダウン）のボタン押下から発動まで約20秒かかる
+
+**発生日**: 2026-03-01  
+**Status**: ✅ 原因特定済み（仕様・アーキテクチャに起因、正常動作）
+
+**Context**:
+- 電源機能SOLIDリファクタ（clientKey解決の責務分離）実装後、実機検証で「ボタン押して20秒後に発動する」と報告された
+- ロジックは正常に動作しているが、ユーザー体験として遅延が気になる
+
+**Symptoms**:
+- 再起動/シャットダウンボタンを押してから、実際にPi4が再起動/シャットダウンするまで約20秒（poweroff）または約85秒（reboot）かかる
+- APIは即座に `status: accepted` を返すが、物理的な電源操作の発動まで遅延がある
+
+**Investigation**:
+- **CONFIRMED**: 電源操作のフローは Pi4 kiosk UI → Pi5 API (`POST /kiosk/power`) → JSONファイル書き込み → systemd path unit (`PathChanged`) → dispatcher service → `pi5-power-dispatcher.sh` → `ansible-playbook power-control.yml` → Pi4 へ SSH で `systemctl reboot` / `systemctl poweroff`
+- **CONFIRMED**: タイムスタンプ解析の結果、poweroff で API リクエスト受付から Ansible 完了まで約21秒、reboot で約85秒
+- **CONFIRMED**: 主な遅延要因: (1) Ansible inventory パース（vault 復号含む）、(2) SSH 接続確立、(3) `ansible.builtin.reboot` は復帰待ちのため約60秒以上かかる
+
+**Root cause**:
+- 現アーキテクチャ（Pi4 → Pi5 API → dispatcher → Ansible SSH → Pi4）の多段構成に起因。単一ホストでの `systemctl` 直接実行と異なり、ネットワーク越しの Ansible 実行にはオーバーヘッドが避けられない
+
+**Fix**:
+- ロジックは正常。遅延はアーキテクチャ上の仕様として許容する
+- **UX改善（推奨）**: 不可逆操作かつ応答遅延がある場合、ボタン押下直後に「処理中です。しばらくお待ちください。」等の連打防止画面を表示するのがベストプラクティス。`isPowerProcessing` によるボタン無効化に加え、専用オーバーレイの追加を検討
+
+**Prevention**:
+- 電源操作の遅延は既知の仕様としてドキュメント化
+- 連打防止画面の実装は [power-function-solid-refactor-execplan.md](../../plans/power-function-solid-refactor-execplan.md) の Next Steps に記載
+
+**References**:
+- [power-function-solid-refactor-execplan.md](../../plans/power-function-solid-refactor-execplan.md)
+- [KB-investigation-kiosk-schedule-regression-20260301.md](../KB-investigation-kiosk-schedule-regression-20260301.md)
+- [KB-237](./ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題)
+
+**解決状況**: ✅ **原因特定済み**（2026-03-01）
+
+---
+
 ### [KB-238] update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加
 
 **発生日**: 2026-02-08  
