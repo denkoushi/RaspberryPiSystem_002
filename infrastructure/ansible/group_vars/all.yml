@@ -133,6 +133,13 @@ clamav_kiosk_scan_cron: "0 2 * * 0"
 clamav_kiosk_log_dir: "/var/log/clamav"
 clamav_kiosk_log_file: "clamav-kiosk-scan.log"
 
+trivy_install_method: "apt"
+trivy_repo_url: "https://get.trivy.dev/deb"
+trivy_repo_distribution: "generic"
+trivy_repo_component: "main"
+trivy_repo_key_url: "https://get.trivy.dev/deb/public.key"
+trivy_package_name: "trivy"
+trivy_package_state: "latest"
 trivy_enabled: true
 trivy_scan_target: "/opt/RaspberryPiSystem_002"
 trivy_scan_cron: "30 3 * * *"
