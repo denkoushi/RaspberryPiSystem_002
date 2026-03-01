@@ -108,20 +108,27 @@
 - **実行タイミング**: kiosk ロール適用時（`manage_kiosk_browser` が真のとき）
 - **手動実行**: `docs/runbooks/kiosk-ime-diagnosis.md` を参照
 
-### 診断結果の記録（実機デプロイ後に記入）
+### 診断結果の記録（2026-03-01 / run_id: 20260301-153319-22948）
 
 デプロイ実行後、Ansible の出力から診断結果を取得し、以下に記録する。
 
 | 項目 | 結果 | 判定 |
 |------|------|------|
-| ibus-daemon プロセス数 | （記入） | 2以上→二重起動の可能性 |
-| 起動引数に --replace --single --panel=disable | （記入） | 含まれない→設定未反映 |
-| gsettings panel show | （記入） | 1→パネル表示有効 |
-| gsettings panel show-im-name | （記入） | true→エンジン名表示有効 |
-| XDG_SESSION_TYPE | （記入） | wayland→X11強制の要確認 |
-| kiosk-launch.sh に --ozone-platform | （記入） | 含まれない→Chromium 135+ 対策未適用 |
+| ibus-daemon プロセス数 | `1` | ✅ 単一起動 |
+| 起動引数に --replace --single --panel=disable | `あり` | ✅ 反映済み |
+| 競合シグネチャ `--daemonize --xim` | `0` | ✅ 競合なし |
+| gsettings panel show | `0` | ✅ パネル非表示 |
+| gsettings panel show-im-name | `false` | ✅ エンジン名非表示 |
+| XDG_SESSION_TYPE | `tty`（Ansible script 実行時） | ℹ️ 非対話実行のため参考値 |
+| kiosk-launch.sh に --ozone-platform | `含まれる（x11）` | ✅ 反映済み |
+| ibus-owner.desktop | `あり` | ✅ 単一オーナー補助有効 |
+| im-launch.desktop override | `Hidden=true` | ✅ 競合autostart抑止有効 |
 
-**分析メモ**: （実機診断後に記入）
+**分析メモ**:
+- `raspi4-robodrill01` に単一オーナー化（`ibus_owner_mode: single-owner`）を先行適用し、`ibus-daemon` 二重起動は解消した。
+- `ibus-ui-gtk3` はプロセス一覧に現れず、少なくとも IBus パネル経路の競合起動は抑止できている。
+- ただし診断スクリプトの `ibus engine` は非対話セッション実行時に取得失敗する場合があり、これは `failed_when: false` でデプロイ継続する設計どおり。
+- 最終確認として、備考欄の実入力（人手）でフォーカス奪取が再発しないことを確認する。
 
 ---
 

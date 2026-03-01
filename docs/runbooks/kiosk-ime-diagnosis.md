@@ -60,10 +60,15 @@ ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 |------|------------|--------------|
 | プロセス数 | 1 | 2以上→二重起動の可能性 |
 | 起動引数 | `--replace --single --panel=disable` を含む | 含まれない→設定未反映 |
-| gsettings panel show | `uint32 0` | `uint32 1`→パネル表示有効 |
+| 競合シグネチャ | `--daemonize --xim` が0件 | 1件以上→競合起動の可能性 |
+| 単一オーナー判定 | `PASS` | `FAIL`→競合起動の可能性 |
+| gsettings panel show | `0` | `1`→パネル表示有効 |
 | gsettings panel show-im-name | `false` | `true`→エンジン名表示有効 |
-| XDG_SESSION_TYPE | `x11` | `wayland`→X11強制の要確認 |
+| XDG_SESSION_TYPE | `x11`（対話セッション） | `wayland`→X11強制の要確認 |
 | ozone-platform | `含まれる` | 含まれない→Chromium 135+ 対策未適用 |
+
+補足:
+- Ansible の `script` 実行では `XDG_SESSION_TYPE=tty` と出ることがある。これは非対話実行のためで、単体では異常と断定しない。
 
 ## 診断結果の記録
 

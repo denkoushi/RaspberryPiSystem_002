@@ -4072,7 +4072,8 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **調査状況**:
 - 診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装済み
 - デプロイ時に IBus 状態（プロセス数、起動引数、gsettings、ozone-platform）がログに記録される
-- 実機診断後の原因分析と対策は未実施
+- 単一オーナー化の対策を `raspi4-robodrill01` に先行適用（`ibus_owner_mode: single-owner`）
+- 実機デプロイログで `ibus-daemon` 単一起動（1プロセス）・競合シグネチャ0件を確認
 
 **想定される要因**（KB-investigation-kiosk-schedule-regression-20260301 より）:
 1. IBus 二重起動の再発（`--replace` が効かず二重起動）
@@ -4082,6 +4083,9 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **関連ファイル**:
 - `scripts/kiosk/diagnose-ime.sh`: IME 診断スクリプト
 - `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`: 診断 Ansible タスク
+- `infrastructure/ansible/roles/kiosk/tasks/ibus-process-owner.yml`: IBus起動責務の単一オーナー制御
+- `infrastructure/ansible/templates/ibus-process-owner.sh.j2`: 競合プロセス収束スクリプト
+- `infrastructure/ansible/roles/kiosk/tasks/ibus-settings.yml`: IBus設定適用の分離モジュール
 - `docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 調査・診断結果記録
 - `docs/runbooks/kiosk-ime-diagnosis.md`: 診断 Runbook
 - `docs/plans/kiosk-ime-remark-field-execplan.md`: 実行計画
@@ -4090,6 +4094,6 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定改善の過去履歴
 - [KB-investigation-kiosk-schedule-regression-20260301](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
 
-**解決状況**: 🔄 **調査中**（診断基盤実装完了、実機診断・対策は未実施）
+**解決状況**: 🔄 **段階対策中**（robodrill先行で単一オーナー化を適用済み。実入力の最終確認待ち）
 
 ---
