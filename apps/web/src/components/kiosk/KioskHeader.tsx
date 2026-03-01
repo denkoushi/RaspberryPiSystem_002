@@ -62,6 +62,11 @@ const PowerIcon = () => (
   </svg>
 );
 
+const powerOverlayMessage: Record<PowerAction, string> = {
+  reboot: '再起動を実行しています。しばらくお待ちください。',
+  poweroff: 'シャットダウンを実行しています。まもなく画面が消えます。'
+};
+
 export function KioskHeader({
   clientKey,
   clientId,
@@ -73,6 +78,7 @@ export function KioskHeader({
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
+  const [powerOverlayAction, setPowerOverlayAction] = useState<PowerAction | null>(null);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -124,6 +130,7 @@ export function KioskHeader({
         effectiveClientKey
       ).catch(() => {});
       // #endregion
+      setPowerOverlayAction(pendingAction);
     } catch (error) {
       // #region agent log
       postClientLogs(
@@ -275,6 +282,16 @@ export function KioskHeader({
         onCancel={() => setPendingAction(null)}
         onConfirm={handlePowerConfirm}
       />
+      {powerOverlayAction && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white"
+          role="status"
+          aria-live="polite"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <p className="text-xl font-medium">{powerOverlayMessage[powerOverlayAction]}</p>
+        </div>
+      )}
     </div>
   );
 }
