@@ -74,6 +74,33 @@ ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 
 診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
 
+## Firefox切替（raspi4-robodrill01限定）検証手順
+
+本Runbookは IME 切り分けを主目的としつつ、`raspi4-robodrill01` だけ Firefox に切り替える検証手順を併記する。
+
+1. Pi5 から `kiosk` ロールを対象端末だけに適用する。
+
+```bash
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+ansible-playbook -i inventory.yml playbooks/deploy-staged.yml --limit "raspi4-robodrill01"
+```
+
+2. サービス状態と実行ブラウザを確認する。
+
+```bash
+ssh tools04@100.123.1.113 'systemctl is-active kiosk-browser.service'
+ssh tools04@100.123.1.113 'ps -ef | awk "/firefox|chromium/ {print; c++; if (c>=10) exit}"'
+```
+
+3. 実機画面で以下を確認する。
+   - 備考欄で日本語入力モードへ切替できる
+   - 候補ウィンドウが入力を妨げない
+   - 生産スケジュール表示・NFC・電源操作が維持される
+
+4. 問題発生時はロールバックする（inventory の host_vars で戻す）。
+   - `kiosk_browser_engine: chromium`
+   - `kiosk_browser_mode: app-like`
+
 ## 関連ドキュメント
 
 - [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録

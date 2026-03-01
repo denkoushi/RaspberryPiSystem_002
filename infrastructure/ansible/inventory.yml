@@ -88,6 +88,8 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
+              kiosk_browser_engine: "firefox"
+              kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化は robodrill 先行で段階導入する
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true

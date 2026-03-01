@@ -1,12 +1,13 @@
 {% set kiosk_origin = kiosk_url | regex_replace('(/.*)$', '') %}
 #!/usr/bin/env bash
+set -euo pipefail
+
 export DISPLAY={{ kiosk_display | default(':0') }}
 export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
 export GTK_USE_PORTAL=0
 export XDG_CURRENT_DESKTOP={{ kiosk_desktop | default('LXDE') }}
 export XDG_SESSION_TYPE=x11
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
-export CHROME_WRAPPER=/usr/bin/chromium-browser
 # キーリングを無効化（パスワードダイアログを表示しない）
 export GNOME_KEYRING_CONTROL=""
 export SSH_AUTH_SOCK=""
@@ -22,34 +23,42 @@ export QT_IM_MODULE=ibus
 pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true
 pkill -x wf-panel-pi || true
 
-CHROMIUM_FLAGS=(
-  # Chromium 135+ で IBus/IME が壊れるリグレッション対策（issue 408309963）
-  # X11 を明示指定して IME 経路を強制
-  --ozone-platform=x11
-  # 実機からの原因調査用（localhost のみで待ち受け）
-  --remote-debugging-address=127.0.0.1
-  --remote-debugging-port=9222
-  # ウィンドウ上端のメニュー/パネルを残すため、kioskフラグは無効化
-  --app="{{ kiosk_url }}"
-  --start-maximized
-  --noerrdialogs
-  --disable-session-crashed-bubble
-  --autoplay-policy=no-user-gesture-required
-  --disable-translate
-  --overscroll-history-navigation=0
-  --use-fake-ui-for-media-stream
-  --allow-insecure-localhost
-  --allow-running-insecure-content
-  --ignore-certificate-errors
-  --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
-  # 警告バーを非表示にする（--ignore-certificate-errorsの警告も抑制）
-  --disable-infobars
-  # テストモードとして実行（コマンドラインフラグの警告を抑制）
-  --test-type
-  # キーリングを無効化（パスワードストアをbasicに設定）
-  --password-store=basic
-  # アクセシビリティヒント（「tabキーで選択」など）を無効化
-  --disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert
+BROWSER_ENGINE="{{ kiosk_browser_engine | default('chromium') | lower }}"
+BROWSER_MODE="{{ kiosk_browser_mode | default('app-like') | lower }}"
+BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser')) }}"
+
+COMMON_FLAGS=(
+{% for flag in kiosk_browser_flags_common | default([]) %}
+  {{ flag }}
+{% endfor %}
 )
 
-exec chromium-browser "${CHROMIUM_FLAGS[@]}"
+if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
+  export CHROME_WRAPPER="${BROWSER_BIN}"
+  CHROMIUM_FLAGS=(
+{% for flag in kiosk_browser_flags_chromium | default([]) %}
+    {{ flag }}
+{% endfor %}
+    --app="{{ kiosk_url }}"
+    --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
+    "${COMMON_FLAGS[@]}"
+  )
+  exec "${BROWSER_BIN}" "${CHROMIUM_FLAGS[@]}"
+elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
+  FIREFOX_FLAGS=(
+{% if (kiosk_browser_mode | default('app-like') | lower) == 'kiosk' %}
+{% for flag in kiosk_browser_flags_firefox_kiosk | default(['--kiosk']) %}
+    {{ flag }}
+{% endfor %}
+{% else %}
+{% for flag in kiosk_browser_flags_firefox_app_like | default(['--new-window']) %}
+    {{ flag }}
+{% endfor %}
+{% endif %}
+    "${COMMON_FLAGS[@]}"
+  )
+  exec "${BROWSER_BIN}" "${FIREFOX_FLAGS[@]}" "{{ kiosk_url }}"
+else
+  echo "Unsupported kiosk browser engine: ${BROWSER_ENGINE}" >&2
+  exit 1
+fi

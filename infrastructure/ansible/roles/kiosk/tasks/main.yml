@@ -5,20 +5,33 @@
 - name: Run IME diagnostic (logs IBus state for troubleshooting)
   ansible.builtin.import_tasks: diagnose-ime.yml
 
-- name: Deploy kiosk-launch script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
-    dest: /usr/local/bin/kiosk-launch.sh
-    owner: root
-    group: root
-    mode: '0755'
+- name: Resolve kiosk browser engine
+  ansible.builtin.set_fact:
+    kiosk_browser_engine_resolved: "{{ kiosk_browser_engine | default('chromium') | lower }}"
   when: manage_kiosk_browser | default(false) | bool
-  register: kiosk_launch_script_result
+
+- name: Validate kiosk browser engine
+  ansible.builtin.fail:
+    msg: >-
+      kiosk_browser_engine={{ kiosk_browser_engine_resolved }} は未対応です。
+      'chromium' または 'firefox' を指定してください。
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved not in ['chromium', 'firefox']
+
+- name: Resolve chromium executable path
+  ansible.builtin.set_fact:
+    kiosk_browser_exec_path: "{{ kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser') }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
 
 - name: Check chromium binary path for kiosk browser
   ansible.builtin.stat:
     path: /usr/bin/chromium
-  when: manage_kiosk_browser | default(false) | bool
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
   register: chromium_binary_stat
 
 - name: Fail when chromium binary is missing on kiosk host
@@ -27,6 +40,7 @@
       /usr/bin/chromium が見つかりません。kiosk-browser.service 起動前に chromium をインストールしてください。
   when:
     - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
     - chromium_binary_stat is defined
     - not chromium_binary_stat.stat.exists
 
@@ -38,8 +52,61 @@
     force: true
   when:
     - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
     - chromium_binary_stat is defined
     - chromium_binary_stat.stat.exists
+
+- name: Check firefox-esr binary path for kiosk browser
+  ansible.builtin.stat:
+    path: "{{ kiosk_browser_firefox_binary | default('/usr/bin/firefox-esr') }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+  register: firefox_esr_binary_stat
+
+- name: Check firefox fallback binary path for kiosk browser
+  ansible.builtin.stat:
+    path: "{{ kiosk_browser_firefox_fallback_binary | default('/usr/bin/firefox') }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+    - firefox_esr_binary_stat is defined
+    - not firefox_esr_binary_stat.stat.exists
+  register: firefox_binary_stat
+
+- name: Resolve firefox executable path
+  ansible.builtin.set_fact:
+    kiosk_browser_exec_path: >-
+      {{
+        (kiosk_browser_firefox_binary | default('/usr/bin/firefox-esr'))
+        if (firefox_esr_binary_stat.stat.exists | default(false))
+        else (kiosk_browser_firefox_fallback_binary | default('/usr/bin/firefox'))
+      }}
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+
+- name: Fail when firefox binary is missing on kiosk host
+  ansible.builtin.fail:
+    msg: >-
+      firefox 実行ファイルが見つかりません。
+      {{ kiosk_browser_firefox_binary | default('/usr/bin/firefox-esr') }} または
+      {{ kiosk_browser_firefox_fallback_binary | default('/usr/bin/firefox') }} をインストールしてください。
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+    - not (firefox_esr_binary_stat.stat.exists | default(false))
+    - not (firefox_binary_stat.stat.exists | default(false))
+
+- name: Deploy kiosk-launch script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
+    dest: /usr/local/bin/kiosk-launch.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: manage_kiosk_browser | default(false) | bool
+  register: kiosk_launch_script_result
 
 - name: Deploy kiosk-browser.service
   ansible.builtin.template:

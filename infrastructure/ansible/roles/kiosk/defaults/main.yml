@@ -1,6 +1,42 @@
 ---
 repo_path: /opt/RaspberryPiSystem_002
 
+# Browser launch defaults (host override via inventory)
+kiosk_browser_engine: "chromium"
+kiosk_browser_mode: "app-like"
+kiosk_browser_chromium_binary: "/usr/bin/chromium-browser"
+kiosk_browser_firefox_binary: "/usr/bin/firefox-esr"
+kiosk_browser_firefox_fallback_binary: "/usr/bin/firefox"
+kiosk_browser_flags_common:
+  - "--start-maximized"
+kiosk_browser_flags_chromium:
+  # Chromium 135+ で IBus/IME が壊れるリグレッション対策（issue 408309963）
+  - "--ozone-platform=x11"
+  # 実機からの原因調査用（localhost のみで待ち受け）
+  - "--remote-debugging-address=127.0.0.1"
+  - "--remote-debugging-port=9222"
+  - "--noerrdialogs"
+  - "--disable-session-crashed-bubble"
+  - "--autoplay-policy=no-user-gesture-required"
+  - "--disable-translate"
+  - "--overscroll-history-navigation=0"
+  - "--use-fake-ui-for-media-stream"
+  - "--allow-insecure-localhost"
+  - "--allow-running-insecure-content"
+  - "--ignore-certificate-errors"
+  # 警告バーを非表示にする（--ignore-certificate-errorsの警告も抑制）
+  - "--disable-infobars"
+  # テストモードとして実行（コマンドラインフラグの警告を抑制）
+  - "--test-type"
+  # キーリングを無効化（パスワードストアをbasicに設定）
+  - "--password-store=basic"
+  # アクセシビリティヒント（「tabキーで選択」など）を無効化
+  - "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+kiosk_browser_flags_firefox_app_like:
+  - "--new-window"
+kiosk_browser_flags_firefox_kiosk:
+  - "--kiosk"
+
 # IBus kiosk defaults (KB-276 follow-up)
 ibus_engines_order: "['mozc-jp', 'xkb:jp::jpn']"
 ibus_hotkey_triggers: "['<Control>space', 'Zenkaku_Hankaku']"

@@ -132,6 +132,44 @@
 
 ---
 
+## Firefox移行準備の実装状況（2026-03-01）
+
+### 目的
+
+- `raspi4-robodrill01` のみ Firefox へ切り替え可能にし、他Pi4は Chromium 維持のまま運用する。
+- ブラウザ起動ロジックを host 設定で切替できる構成へ分離する。
+
+### 実装済み
+
+- `roles/kiosk/defaults/main.yml`
+  - `kiosk_browser_engine`, `kiosk_browser_mode` を追加
+  - Chromium/Firefox のフラグ定義を分離
+- `inventory.yml`
+  - `raspi4-robodrill01` のみ `kiosk_browser_engine: firefox` を設定
+- `roles/kiosk/tasks/main.yml`
+  - ブラウザ実行ファイルの存在チェックを engine 別に分岐
+  - Chromium 固有処理（互換symlink）を条件付き化
+- `templates/kiosk-launch.sh.j2`
+  - browser engine で `chromium/firefox` を分岐する構成に再設計
+
+### 検証結果（このブランチ上）
+
+| 項目 | 結果 |
+|------|------|
+| `deploy.yml` 構文チェック | ✅ pass |
+| `deploy-staged.yml` 構文チェック | ✅ pass |
+| 実機デプロイ（Mac → robodrill01） | ⚠️ 未実施（SSH認証/経路制約で適用不可） |
+| 現在の robodrill01 稼働状態（切替前） | Chromium 稼働中を確認 |
+| Firefox バイナリ存在 | `/usr/bin/firefox` の存在を確認 |
+
+### ロールバック
+
+- `inventory.yml` の `raspi4-robodrill01` で以下へ戻す:
+  - `kiosk_browser_engine: chromium`
+  - `kiosk_browser_mode: app-like`
+
+---
+
 ## 関連ファイル
 
 - `apps/web/src/lib/client-key/`: ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）
