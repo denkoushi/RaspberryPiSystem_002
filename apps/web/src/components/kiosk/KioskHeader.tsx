@@ -9,6 +9,7 @@ import { Row } from '../layout/Row';
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
 import { KioskPowerMenuModal } from './KioskPowerMenuModal';
 import { KioskSignagePreviewModal } from './KioskSignagePreviewModal';
+import { PowerDebounceOverlay } from './PowerDebounceOverlay';
 
 type ClientStatus = {
   temperature: number | null;
@@ -71,6 +72,7 @@ export function KioskHeader({
   pathname
 }: KioskHeaderProps) {
   const [pendingAction, setPendingAction] = useState<PowerAction | null>(null);
+  const [powerOverlayAction, setPowerOverlayAction] = useState<PowerAction | null>(null);
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
@@ -131,6 +133,7 @@ export function KioskHeader({
         effectiveClientKey
       ).catch(() => {});
       // #endregion
+      setPowerOverlayAction(pendingAction);
     } catch (error) {
       // #region agent log
       postClientLogs(
@@ -282,6 +285,7 @@ export function KioskHeader({
         onCancel={() => setPendingAction(null)}
         onConfirm={handlePowerConfirm}
       />
+      <PowerDebounceOverlay action={powerOverlayAction} />
     </div>
   );
 }
