@@ -2,6 +2,9 @@
 - name: Apply kiosk IBus settings
   ansible.builtin.import_tasks: ibus.yml
 
+- name: Run IME diagnostic (logs IBus state for troubleshooting)
+  ansible.builtin.import_tasks: diagnose-ime.yml
+
 - name: Deploy kiosk-launch script
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"

@@ -4060,3 +4060,36 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-03-01、実機検証完了）
 
 ---
+
+### [KB-287] キオスク備考欄の日本語入力不具合（ibus-ui ウィンドウ出現で入力不安定）
+
+**発生日**: 2026-03-01（継続調査）
+
+**事象**:
+- 生産スケジュール備考欄で日本語入力モードになるが、キー入力のたびに ibus-ui ウィンドウが出現し、スムーズに入力できない
+- 入力操作が不安定で、フォーカスが奪われる
+
+**調査状況**:
+- 診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装済み
+- デプロイ時に IBus 状態（プロセス数、起動引数、gsettings、ozone-platform）がログに記録される
+- 実機診断後の原因分析と対策は未実施
+
+**想定される要因**（KB-investigation-kiosk-schedule-regression-20260301 より）:
+1. IBus 二重起動の再発（`--replace` が効かず二重起動）
+2. gsettings の未反映（デプロイ時 no-user-bus 等）
+3. ibus-ui-gtk3 の変換候補ウィンドウ（`--panel=disable` は IBus パネルのみ抑止、mozc の候補ウィンドウは別コンポーネント）
+
+**関連ファイル**:
+- `scripts/kiosk/diagnose-ime.sh`: IME 診断スクリプト
+- `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`: 診断 Ansible タスク
+- `docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 調査・診断結果記録
+- `docs/runbooks/kiosk-ime-diagnosis.md`: 診断 Runbook
+- `docs/plans/kiosk-ime-remark-field-execplan.md`: 実行計画
+
+**関連KB**:
+- [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定改善の過去履歴
+- [KB-investigation-kiosk-schedule-regression-20260301](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
+
+**解決状況**: 🔄 **調査中**（診断基盤実装完了、実機診断・対策は未実施）
+
+---

@@ -1,0 +1,20 @@
+---
+# キオスク備考欄 IME 不具合の診断タスク
+# デプロイ時に IBus 状態を記録し、原因切り分けの根拠を残す。
+# 失敗してもデプロイは継続（failed_when: false）。
+- name: Run IME diagnostic script on kiosk host
+  ansible.builtin.script: "{{ playbook_dir }}/../../../scripts/kiosk/diagnose-ime.sh"
+  become: yes
+  become_user: "{{ ansible_user }}"
+  register: ime_diagnostic_result
+  failed_when: false
+  changed_when: false
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Display IME diagnostic output
+  ansible.builtin.debug:
+    msg: "{{ ime_diagnostic_result.stdout_lines | default([]) }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - ime_diagnostic_result is defined
+    - ime_diagnostic_result.stdout_lines is defined

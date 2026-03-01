@@ -99,6 +99,32 @@
 
 ---
 
+## IME 診断スクリプト（2026-03-01 追加）
+
+デプロイ時に自動実行される診断タスクにより、IBus 状態がログに記録される。
+
+- **スクリプト**: `scripts/kiosk/diagnose-ime.sh`
+- **Ansible タスク**: `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`
+- **実行タイミング**: kiosk ロール適用時（`manage_kiosk_browser` が真のとき）
+- **手動実行**: `docs/runbooks/kiosk-ime-diagnosis.md` を参照
+
+### 診断結果の記録（実機デプロイ後に記入）
+
+デプロイ実行後、Ansible の出力から診断結果を取得し、以下に記録する。
+
+| 項目 | 結果 | 判定 |
+|------|------|------|
+| ibus-daemon プロセス数 | （記入） | 2以上→二重起動の可能性 |
+| 起動引数に --replace --single --panel=disable | （記入） | 含まれない→設定未反映 |
+| gsettings panel show | （記入） | 1→パネル表示有効 |
+| gsettings panel show-im-name | （記入） | true→エンジン名表示有効 |
+| XDG_SESSION_TYPE | （記入） | wayland→X11強制の要確認 |
+| kiosk-launch.sh に --ozone-platform | （記入） | 含まれない→Chromium 135+ 対策未適用 |
+
+**分析メモ**: （実機診断後に記入）
+
+---
+
 ## 関連ファイル
 
 - `apps/web/src/lib/client-key/`: ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）
@@ -108,3 +134,5 @@
 - `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`: clientKey → ホスト解決ロジック
 - `infrastructure/ansible/templates/kiosk-launch.sh.j2`: --ozone-platform=x11, kiosk_url
 - `infrastructure/ansible/roles/kiosk/tasks/ibus.yml`, `defaults/main.yml`
+- `scripts/kiosk/diagnose-ime.sh`: IME 診断スクリプト
+- `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`: IME 診断 Ansible タスク
