@@ -1,0 +1,80 @@
+- name: Create ibus autostart directory
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/autostart"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Deploy ibus autostart desktop file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/ibus-autostart.desktop.j2"
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+
+- name: Deploy ibus process owner reconcile script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/ibus-process-owner.sh.j2"
+    dest: "{{ ibus_process_owner_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable IBus process owner autostart in single-owner mode
+  ansible.builtin.copy:
+    dest: "/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=IBus Process Owner
+      Comment=Reconcile ibus-daemon to single owner process
+      Exec=bash -lc {{ ibus_process_owner_script_path }}
+      Terminal=false
+      Categories=System;Utility;
+      X-GNOME-Autostart-enabled=true
+  when: ibus_single_owner_enabled | bool
+
+- name: Disable IBus process owner autostart in legacy mode
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop"
+    state: absent
+  when: not (ibus_single_owner_enabled | bool)
+
+- name: Disable competing global IME autostart entries for kiosk user
+  ansible.builtin.copy:
+    dest: "/home/{{ ansible_user }}/.config/autostart/{{ item }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Hidden=true
+  loop: "{{ ibus_competing_autostart_entries }}"
+  when:
+    - ibus_single_owner_enabled | bool
+    - ibus_disable_competing_autostart | bool
+
+- name: Reconcile IBus owner process in active user session
+  ansible.builtin.shell: |
+    set -eu
+    uid="$(id -u)"
+    bus="/run/user/${uid}/bus"
+    if [ ! -S "${bus}" ]; then
+      echo "skip:no-user-bus"
+      exit 0
+    fi
+    "{{ ibus_process_owner_script_path }}"
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: "{{ ansible_user }}"
+  register: ibus_owner_result
+  changed_when: "'changed:ibus-owner' in ibus_owner_result.stdout"
+  when:
+    - ibus_single_owner_enabled | bool
+    - ibus_reconcile_on_deploy | bool

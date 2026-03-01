@@ -8,3 +8,16 @@ ibus_panel_show_im_name: false
 ibus_panel_show: 0
 ibus_engine_retry_count: 5
 ibus_daemon_args: "-drx --replace --single --panel=disable --config=disable --emoji-extension=disable"
+ibus_desired_daemon_flag_signature: "--replace --single --panel=disable"
+ibus_competing_daemon_pattern: "--daemonize --xim"
+
+# IBus 起動戦略:
+# - legacy: 既存挙動（autostart による起動のみ）
+# - single-owner: 競合プロセスを収束する reconcile を有効化
+ibus_owner_mode: "legacy"
+ibus_single_owner_enabled: "{{ ibus_owner_mode == 'single-owner' }}"
+ibus_process_owner_script_path: "/usr/local/bin/ibus-process-owner.sh"
+ibus_reconcile_on_deploy: "{{ ibus_single_owner_enabled }}"
+ibus_disable_competing_autostart: false
+ibus_competing_autostart_entries:
+  - im-launch.desktop

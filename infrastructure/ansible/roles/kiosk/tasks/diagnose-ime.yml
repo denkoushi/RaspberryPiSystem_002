@@ -4,6 +4,9 @@
 # 失敗してもデプロイは継続（failed_when: false）。
 - name: Run IME diagnostic script on kiosk host
   ansible.builtin.script: "{{ playbook_dir }}/../../../scripts/kiosk/diagnose-ime.sh"
+  environment:
+    IBUS_DESIRED_SIGNATURE: "{{ ibus_desired_daemon_flag_signature }}"
+    IBUS_COMPETING_PATTERN: "{{ ibus_competing_daemon_pattern }}"
   become: yes
   become_user: "{{ ansible_user }}"
   register: ime_diagnostic_result

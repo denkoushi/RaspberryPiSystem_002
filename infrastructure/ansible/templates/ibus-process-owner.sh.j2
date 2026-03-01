@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# IBus 単一オーナー化: 競合プロセスを検知したら 1 プロセスへ収束させる
+set -eu
+
+uid="$(id -u)"
+runtime_dir="/run/user/${uid}"
+bus="${runtime_dir}/bus"
+export XDG_RUNTIME_DIR="${runtime_dir}"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+
+desired_signature="{{ ibus_desired_daemon_flag_signature }}"
+competing_pattern="{{ ibus_competing_daemon_pattern }}"
+
+if ! command -v ibus-daemon >/dev/null 2>&1; then
+  echo "skip:no-ibus-daemon"
+  exit 0
+fi
+
+current_lines="$(pgrep -af ibus-daemon 2>/dev/null || true)"
+desired_count="$(printf '%s\n' "${current_lines}" | grep -F -- "${desired_signature}" 2>/dev/null | wc -l | tr -d ' ')"
+competing_count="$(printf '%s\n' "${current_lines}" | grep -F -- "${competing_pattern}" 2>/dev/null | wc -l | tr -d ' ')"
+
+changed=0
+
+if [ "${desired_count}" -ne 1 ] || [ "${competing_count}" -gt 0 ]; then
+  # 競合起動が存在するときは一旦全 ibus-daemon を停止して、期待起動のみを再作成する。
+  pkill -u "${uid}" -f "ibus-daemon" >/dev/null 2>&1 || true
+  sleep 1
+  ibus-daemon {{ ibus_daemon_args }} >/dev/null 2>&1 || true
+  changed=1
+fi
+
+if [ "${changed}" -eq 1 ]; then
+  echo "changed:ibus-owner"
+else
+  echo "ok:ibus-owner"
+fi
