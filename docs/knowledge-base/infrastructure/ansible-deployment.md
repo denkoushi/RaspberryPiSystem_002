@@ -3529,6 +3529,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デプロイ標準手順の改善
+- [KB-288](../KB-288-power-actions-bind-mount-deleted-inode.md): 電源操作・連打防止不具合（power-actions バインドマウントの削除済み inode 参照）
 
 **解決状況**: ✅ **解決済み**（2026-02-08）
 
@@ -3567,6 +3568,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - [power-function-solid-refactor-execplan.md](../../plans/power-function-solid-refactor-execplan.md)
 - [KB-investigation-kiosk-schedule-regression-20260301.md](../KB-investigation-kiosk-schedule-regression-20260301.md)
 - [KB-237](./ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題)
+- [KB-288](../KB-288-power-actions-bind-mount-deleted-inode.md): 電源操作・連打防止不具合（power-actions バインドマウントの削除済み inode 参照）
 
 **解決状況**: ✅ **原因特定済み**（2026-03-01）
 

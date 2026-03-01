@@ -12,7 +12,7 @@
 
 - **🔄 キオスク備考欄 IME 診断基盤の実装**: 備考欄で「キー入力のたびに ibus-ui ウィンドウが出現しスムーズに入力できない」不具合の原因切り分けのため、診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装。デプロイ時に IBus 状態がログに記録される。実機診断後の原因分析と対策は未実施。詳細は [plans/kiosk-ime-remark-field-execplan.md](./plans/kiosk-ime-remark-field-execplan.md) / [knowledge-base/frontend.md#kb-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) を参照。
 
-- **✅ 電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定・連打防止オーバーレイ実装完了**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**実施内容**: `apps/web/src/lib/client-key/` に ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）を新設。`resolveClientKeyForPower` で電源専用の解決を実施し、未解決時はアラート表示。KioskHeader で `postKioskPower` に明示的な clientKey を渡す。**電源操作遅延**: ボタン押下から約20秒（poweroff）/約85秒（reboot）かかる事象を調査。多段構成（Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4）に起因することを特定。KB-285 に記録。**連打防止オーバーレイ**: FullScreenOverlay（createPortal で document.body にレンダリング）、PowerDebounceOverlay、KioskHeader 統合を実装。前回失敗（bae3802）の原因（backdrop-blur 親の影響）を React Portal で解決。実機検証でオーバーレイ正常表示を確認。KB-286 に記録。詳細は [plans/power-function-solid-refactor-execplan.md](./plans/power-function-solid-refactor-execplan.md) / [knowledge-base/frontend.md#kb-286](./knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) / [knowledge-base/infrastructure/ansible-deployment.md#kb-285](./knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **✅ 電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定・連打防止オーバーレイ実装完了・KB-288（power-actions バインドマウント不具合）復旧検証完了**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**電源操作遅延**: 多段構成に起因。KB-285 に記録。**連打防止オーバーレイ**: React Portal で解決。KB-286 に記録。**KB-288（2026-03-01）**: raspi4-robodrill01 を Firefox に切り替え後、電源操作・連打防止が不具合。原因は API コンテナの power-actions バインドマウントが削除済み inode を参照。即時対処（API 再起動）で復旧し、電源操作が正常に機能することを実機確認。Runbook [kiosk-power-operation-recovery.md](./runbooks/kiosk-power-operation-recovery.md) を新設。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [plans/power-function-solid-refactor-execplan.md](./plans/power-function-solid-refactor-execplan.md) / [knowledge-base/frontend.md#kb-286](./knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
 ### 🆕 最新アップデート（2026-02-28）
 
@@ -649,6 +649,7 @@
 | [runbooks/ports-unexpected-and-port-exposure.md](./runbooks/ports-unexpected-and-port-exposure.md) | **Runbook**: `ports-unexpected` / ポート露出の点検と切り分け |
 | [runbooks/kiosk-loan-status-repair.md](./runbooks/kiosk-loan-status-repair.md) | **Runbook**: キオスク貸出の取消混入と資産status修復 |
 | [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) | **Runbook**: キオスク備考欄 日本語入力不具合の診断 |
+| [runbooks/kiosk-power-operation-recovery.md](./runbooks/kiosk-power-operation-recovery.md) | **Runbook**: 電源操作・連打防止オーバーレイ不具合の復旧 |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |

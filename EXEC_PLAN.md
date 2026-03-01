@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-03-01) **電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定・連打防止オーバーレイ実装完了**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**実施内容**: `apps/web/src/lib/client-key/` に ClientKeyResolver モジュール（types, config, sources, resolver, power-validator）を新設。`resolveClientKeyForPower` で電源専用の解決を実施し、未解決時はアラート表示。KioskHeader で `postKioskPower` に明示的な clientKey を渡す。他コンポーネント（KioskSupportModal, KioskBorrowPage 等）を `getResolvedClientKey()` に統一。**電源操作遅延**: ボタン押下から約20秒（poweroff）/約85秒（reboot）かかる事象を調査。多段構成（Pi4→Pi5 API→dispatcher→Ansible SSH→Pi4）に起因することを特定。KB-285 に記録。**連打防止オーバーレイ**: FullScreenOverlay（createPortal で document.body にレンダリング）、PowerDebounceOverlay、KioskHeader 統合を実装。前回失敗（bae3802）の原因（backdrop-blur 親の影響で position: fixed がビューポート基準にならず）を React Portal で解決。実機検証でオーバーレイ正常表示を確認。KB-286 に記録。詳細は [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/frontend.md#kb-286](./docs/knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) を参照。
+- [x] (2026-03-01) **電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定・連打防止オーバーレイ実装完了・KB-288（power-actions バインドマウント不具合）復旧検証完了**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**電源操作遅延**: 多段構成に起因。KB-285 に記録。**連打防止オーバーレイ**: React Portal で解決。KB-286 に記録。**KB-288（2026-03-01）**: raspi4-robodrill01 を Firefox に切り替え後、電源操作・連打防止が不具合。原因は API コンテナの power-actions バインドマウントが削除済み inode を参照。即時対処（API 再起動）で復旧し、電源操作が正常に機能することを実機確認。KB-288、Runbook（kiosk-power-operation-recovery.md）を新設。詳細は [docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md](./docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md) / [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/frontend.md#kb-286](./docs/knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) を参照。
 
 - [x] (2026-02-28) **クライアント端末の場所設定更新・デプロイ完了**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が空欄になっていた問題を解決。**実施内容**: `inventory.yml`の`status_agent_location`を更新（raspi4_kensakuMain: 「ラズパイ4 - キオスク1」→「第2工場 - kensakuMain」、raspi3_signageMakoRoom: 「ラズパイ3 - サイネージ1」→「第2工場 - signageMakoRoom」）。DBの`ClientDevice`テーブルの`location`を直接更新（`POST /api/clients/heartbeat`でも更新可能だが、`status-agent`はlocationを送信しないため、DB直接更新が必要）。**知見**: `status_agent_location`は`register-clients.sh`で使用されるが、vaultテンプレートのためスキップされる。DBの`location`は`status-agent`のheartbeatでは更新されないため、管理コンソールから直接編集するか、DB直接更新が必要。**デプロイ結果**: Pi5でデプロイ成功（Run ID `20260228-134834-12062`, `state: success`, `exitCode: 0`, `ok=120 changed=3`）。**実機検証結果**: 管理コンソールでraspi4_kensakuMainとraspi3_signageMakoRoomの場所が正しく表示されることを確認。詳細は [EXEC_PLAN.md](./EXEC_PLAN.md) を参照。
 
@@ -606,6 +606,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-01）: `--limit` で Pi4 のみデプロイした場合、Pi5 の API コンテナは再起動されない。Ansible の `file` タスクで `power-actions` が過去に削除・再作成された場合、既に起動していた API コンテナは古い inode へのバインドマウントを保持し、`mountinfo` で `//deleted` が表示される。コンテナからはホストの現在の `power-actions` が見えず、`writeFile` が ENOENT で失敗する。
+  対応: API 再起動で即時復旧。恒久対策として server ロールで `power-actions` 作成/更新後に API 再起動を保証する handler を検討。**[KB-288]**
 - 観測: `Record<string, unknown>` の判定では配列もオブジェクトとして真になるため、境界ヘルパー `getRecord()` が配列を許容してしまうと期待外の分岐を通る。  
   対応: `getRecord()` を「非配列オブジェクトのみ許可」に修正し、ユニットテストで固定化。フェーズ2の型ガード拡張時は「配列とオブジェクトを明示分離」を標準方針とする。**[KB-258]**
 - 観測: URL検証で `new URL()` のインスタンス化を行う実装は、Lint抑制コメントに依存しやすい。  
@@ -1449,6 +1451,18 @@
 - 応答遅延中の連打を防止し、ユーザーに「処理が受け付けられた」ことを明示
 
 **参照**: [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる)
+
+### power-actions バインドマウント不具合の恒久対策（優先度: 中）
+
+**概要**: KB-288 で特定した「API コンテナの power-actions バインドマウントが削除済み inode を参照する」問題を再発防止するため、server ロールで恒久対策を実装する。
+
+**推奨実装**:
+- server ロールの `power-actions` 作成/更新タスクの後に、API コンテナ再起動の handler を発火させる
+- または `power-actions` が changed のときのみ API 再起動を実行するタスクを追加する
+
+**現状**: Runbook（kiosk-power-operation-recovery.md）による手動復旧で対応可能。`--limit` で Pi4 のみデプロイした場合、電源不具合時は Pi5 で API 再起動を実施する。
+
+**参照**: [docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md](./docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
 
 ### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
 
