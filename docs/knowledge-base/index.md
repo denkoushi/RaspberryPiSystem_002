@@ -35,7 +35,7 @@ update-frequency: high
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 19件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 19件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 21件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 22件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**含む） |
 
 ---
 
@@ -206,6 +206,7 @@ update-frequency: high
 | [KB-286](./frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) | 電源操作の連打防止オーバーレイ実装（React Portalによる表示失敗の解決） | ✅ 解決済み |
 | [KB-287](./frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) | キオスク備考欄の日本語入力不具合（ibus-ui ウィンドウ出現で入力不安定） | 🔄 調査中 |
 | [KB-288](./KB-288-power-actions-bind-mount-deleted-inode.md) | 電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照） | ✅ 恒久対策実装済み |
+| [KB-289](./infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) | Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示） | ✅ 実装完了 |
 
 ### インフラ関連
 
@@ -548,3 +549,4 @@ update-frequency: high
 - 2026-03-01: KB-286を追加（電源操作の連打防止オーバーレイ実装（React Portalによる表示失敗の解決））→ 2026-03-01に実装完了・CI成功・デプロイ成功・実機検証完了（API受理直後に黒画面オーバーレイを表示し、応答遅延中の連打を防止。FullScreenOverlay（createPortalでdocument.bodyにレンダリング）、PowerDebounceOverlay、KioskHeader統合。前回失敗（bae3802）の原因（backdrop-blur親の影響でposition: fixedがビューポート基準にならず）をReact Portalで解決。Pi5でデプロイ成功（Run ID: 20260301-133729-17849）、実機検証でオーバーレイ正常表示を確認）
 - 2026-03-01: KB-287を追加（キオスク備考欄の日本語入力不具合（ibus-ui ウィンドウ出現で入力不安定））→ 2026-03-01に診断基盤を実装（scripts/kiosk/diagnose-ime.sh、infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml）。デプロイ時にIBus状態がログに記録される。実機診断後の原因分析と対策は未実施。kiosk-ime-remark-field-execplan.md、runbooks/kiosk-ime-diagnosis.mdを新設
 - 2026-03-01: KB-288を追加（電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照））→ 2026-03-01に根本原因特定。APIコンテナの power-actions バインドマウントが削除・再作成された古い inode を参照。`mountinfo` で `//deleted` を確認。即時対処は API 再起動。KB-investigation-kiosk-ime-and-power-regression.md を更新
+- 2026-03-02: KB-289を追加（Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示））→ 2026-03-02に実装完了・デプロイ成功・実機検証OK。研削メイン（raspberrypi4）をChromiumからFirefoxに切り替え、labwc keybindでSuper+Shift+P押下時にwf-panel-piを表示。inventory.ymlにkiosk_browser_engine: "firefox"追加。show-kiosk-panel.sh.j2とlabwc rc.xmlのkeybindをAnsibleで配置。Pi5＋Pi4でデプロイ成功（Run ID: 20260302-152520-15777）。runbooks/kiosk-wifi-panel-shortcut.mdにSuperキー説明・トラブルシュート追記

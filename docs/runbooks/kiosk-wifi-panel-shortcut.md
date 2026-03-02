@@ -17,7 +17,8 @@ related:
 |------|------|
 | **Super+Shift+P** | 上辺メニューバー（wf-panel-pi）を表示 |
 
-表示後、Wi-FiアイコンをクリックしてGUIで設定変更可能。
+- **Super**: キーボードの Windows キー（四角形のロゴキー）のこと
+- 表示後、Wi-FiアイコンをクリックしてGUIで設定変更可能
 
 ## 前提条件
 
@@ -38,6 +39,12 @@ ssh tools03@<PI4_IP> "grep -A5 'W-S-p' /home/tools03/.config/labwc/rc.xml"
 1. labwc の設定は次回ログイン時に読み込まれる
 2. 即時反映が必要な場合: キオスクブラウザを再起動、または端末を再起動
 3. デプロイを再実行: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4`
+
+## トラブルシューティング
+
+- **ショートカットが効かない**: `~/.config/labwc/rc.xml` に keybind が存在するか確認。`grep -A5 'W-S-p' /home/tools03/.config/labwc/rc.xml`
+- **Super キーが分からない**: キーボード左下の四角形ロゴキー（Windows キー）を押す。Pi4 キーボードでは「Command」キー相当の位置にある場合もある
+- **labwc の keybind 表記**: `W`=Super, `S`=Shift, `A`=Alt, `C`=Ctrl
 
 ## 関連
 

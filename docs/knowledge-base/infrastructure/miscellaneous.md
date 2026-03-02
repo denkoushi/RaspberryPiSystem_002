@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - その他
 
 **カテゴリ**: インフラ関連 > その他  
-**件数**: 17件  
+**件数**: 18件  
 **索引**: [index.md](../index.md)
 
 その他のインフラ関連トラブルシューティング情報
@@ -899,6 +899,38 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 - macOSではCPU温度を直接取得できないため、`temperature`フィールドは`None`になる
 - `launchd`の設定ファイルは`~/Library/LaunchAgents/`に配置する必要がある（ユーザー固有の設定）
 - システム全体の設定は`/Library/LaunchAgents/`または`/Library/LaunchDaemons/`に配置する（管理者権限が必要）
+
+---
+
+### [KB-289] Pi4 kensakuMain の Firefox 移行と Super+Shift+P キーボードショートカット（上辺メニューバー表示）
+
+**発生日**: 2026-03-02
+
+**Context**: Pi4 キオスク（研削メイン / kensakuMain）で Chromium から Firefox へ移行し、キオスクモードで非表示の上辺メニューバー（wf-panel-pi）を一時表示するキーボードショートカットを追加した。
+
+**実施内容**:
+1. **Firefox 移行**: `inventory.yml` の `raspberrypi4`（研削メイン）に `kiosk_browser_engine: "firefox"` と `kiosk_browser_mode: "app-like"` を追加。raspi4-robodrill01 と同様の設定（同じテンプレート `kiosk-launch.sh.j2` を使用）。
+2. **Super+Shift+P ショートカット**: labwc の keybind で **Super+Shift+P**（Super = Windows キー）を押すと上辺メニューバー（wf-panel-pi）が表示され、Wi-Fi アイコンから GUI で設定変更可能に。
+
+**実装ファイル**:
+- `infrastructure/ansible/inventory.yml`（raspberrypi4 の Firefox 設定）
+- `infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2`（wf-panel-pi 起動ラッパー）
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（ラッパー配置、labwc rc.xml の keybind 追加）
+
+**labwc 設定の知見**:
+- labwc はユーザー設定 `~/.config/labwc/rc.xml` がシステム設定 `/etc/xdg/labwc/rc.xml` を上書きする
+- 初回はシステム設定をユーザー設定へコピーしてから、`blockinfile` で keybind を追加
+- keybind の labwc 表記: `W-S-p` = Super+Shift+P（W=Super, S=Shift, p=P）
+
+**デプロイ結果**: Pi5＋Pi4（raspberrypi4 研削メイン）でデプロイ成功（Run ID: `20260302-152520-15777`）。raspi4-robodrill01 はシャットダウン中で未デプロイ。
+
+**実機検証**: Firefox 移行と Super+Shift+P の動作を確認済み。
+
+**関連**:
+- [Runbook: キオスクで上辺メニューバー表示](../../runbooks/kiosk-wifi-panel-shortcut.md)
+- [KB-287](../frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定): IME は Firefox で正常動作
+
+**解決状況**: ✅ **実装完了・実機検証済み**（2026-03-02）
 
 ---
 
