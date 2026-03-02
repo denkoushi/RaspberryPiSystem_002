@@ -372,10 +372,10 @@ export function ProductionSchedulePage() {
         dueDate
       };
     });
-    // FHINCDがMHで始まるアイテム（機種名）は検索用製番ボタンにのみ表示し、一覧からは除外
+    // FHINCDがMH/SHで始まるアイテム（機種名）は検索用製番ボタンにのみ表示し、一覧からは除外
     return mapped.filter((row) => {
       const fhincd = String(row.data.FHINCD ?? '').toUpperCase();
-      return !fhincd.startsWith('MH');
+      return !fhincd.startsWith('MH') && !fhincd.startsWith('SH');
     });
   }, [scheduleQuery.data?.rows]);
 

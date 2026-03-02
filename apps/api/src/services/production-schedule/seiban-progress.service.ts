@@ -53,7 +53,10 @@ export async function fetchSeibanProgressRows(
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
       ) AS "incompleteProductNames",
       MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
-        WHERE UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+        WHERE (
+            UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+            OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+          )
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
       ) AS "machineName"

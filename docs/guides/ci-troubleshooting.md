@@ -2,7 +2,7 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2025-12-07
+last-verified: 2026-03-01
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
@@ -114,7 +114,7 @@ CIが失敗しました。ログ全体を添付します。
 
 ### 1. PostgreSQL接続エラー
 
-**症状**: `connection refused` や `database does not exist` エラー
+**症状**: `connection refused`、`Can't reach database server at localhost:5432`、`database does not exist` エラー
 
 **確認事項**:
 - PostgreSQLコンテナが起動しているか
@@ -122,8 +122,8 @@ CIが失敗しました。ログ全体を添付します。
 - 接続文字列が正しいか
 
 **対処法**:
-- CIワークフローの`Wait for PostgreSQL`ステップを確認
-- 接続確認のログを確認
+- **ローカルテスト時**: `pnpm test:postgres:start` でテスト用 PostgreSQL を起動してから `pnpm test` を実行。Prisma マイグレーションは `pnpm prisma migrate deploy` で適用
+- **CI時**: CIワークフローの`Wait for PostgreSQL`ステップを確認、接続確認のログを確認
 
 ### 2. タイムアウトエラー
 

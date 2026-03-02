@@ -56,8 +56,8 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 ## 再発防止
 
-- **`--limit` で Pi4 のみデプロイした場合**: Pi5 の API は再起動されない。そのため、過去のデプロイで `power-actions` が削除・再作成された場合、API は古いマウントを参照している可能性がある。
-- **恒久対策**: server ロールで `power-actions` 作成/更新後に API コンテナ再起動を保証する（handler またはタスク順序の見直し）を検討。現状は本 Runbook による手動復旧が有効。
+- **恒久対策（2026-03-01 実装済み）**: server ロールの `power-actions` 作成タスクに `notify: restart api` を追加。Pi5 デプロイ時に `power-actions` が変更された場合、自動で API 再起動される。
+- **`--limit` で Pi4 のみデプロイした場合**: Pi5 の server ロールは実行されず、API 再起動も行われない。過去に `power-actions` が削除・再作成されていた場合、API は古いマウントを参照している可能性がある。その場合は本 Runbook の即時対処を実施する。
 
 ## 関連 KB
 
