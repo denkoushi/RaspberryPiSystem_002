@@ -29,9 +29,9 @@ related:
 ## 設定の確認
 
 ```bash
-# Pi4 に SSH 接続して確認
-ssh tools03@<PI4_IP> "cat /usr/local/bin/show-kiosk-panel.sh"
-ssh tools03@<PI4_IP> "grep -A5 'W-S-p' /home/tools03/.config/labwc/rc.xml"
+# Pi4 に SSH 接続して確認（ユーザーは tools03 または tools04、端末により異なる）
+ssh <USER>@<PI4_IP> "cat /usr/local/bin/show-kiosk-panel.sh"
+ssh <USER>@<PI4_IP> "grep -A5 'W-S-p' ~/.config/labwc/rc.xml"
 ```
 
 ## 設定が反映されない場合
@@ -42,7 +42,8 @@ ssh tools03@<PI4_IP> "grep -A5 'W-S-p' /home/tools03/.config/labwc/rc.xml"
 
 ## トラブルシューティング
 
-- **ショートカットが効かない**: `~/.config/labwc/rc.xml` に keybind が存在するか確認。`grep -A5 'W-S-p' /home/tools03/.config/labwc/rc.xml`
+- **ショートカットが効かない**: `~/.config/labwc/rc.xml` に keybind が存在するか確認。`grep -A5 'W-S-p' ~/.config/labwc/rc.xml`（ユーザーは tools03 または tools04）
+- **デプロイ後にショートカットが効かない場合（labwc の再読み込み）**: labwc は rc.xml の変更をホットリロードしない。デプロイで rc.xml を更新したが labwc が先に起動していた場合、keybind が読み込まれていない。**即時対処**: Pi4 に SSH 接続し `sudo kill -s HUP $(pgrep -x labwc)` を実行して labwc に SIGHUP を送り、設定を再読み込みさせる。**代替**: 端末を再起動するか、再ログインする。詳細は [KB-289](../knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) を参照
 - **Super キーが分からない**: キーボード左下の四角形ロゴキー（Windows キー）を押す。Pi4 キーボードでは「Command」キー相当の位置にある場合もある
 - **labwc の keybind 表記**: `W`=Super, `S`=Shift, `A`=Alt, `C`=Ctrl
 

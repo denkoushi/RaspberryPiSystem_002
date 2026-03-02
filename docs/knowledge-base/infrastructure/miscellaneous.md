@@ -922,9 +922,16 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 - 初回はシステム設定をユーザー設定へコピーしてから、`blockinfile` で keybind を追加
 - keybind の labwc 表記: `W-S-p` = Super+Shift+P（W=Super, S=Shift, p=P）
 
-**デプロイ結果**: Pi5＋Pi4（raspberrypi4 研削メイン）でデプロイ成功（Run ID: `20260302-152520-15777`）。raspi4-robodrill01 はシャットダウン中で未デプロイ。
+**labwc の rc.xml 再読み込み（重要）**:
+- labwc は rc.xml の変更を**ホットリロードしない**。起動時に一度だけ読み込む
+- デプロイで rc.xml を更新したが、labwc がその**前に**起動していた場合は、keybind がメモリに読み込まれていない
+- **根拠**: 研削メイン（rc.xml 15:30 更新 → labwc 15:49 起動）は動作、RoboDrill01（labwc 17:54 起動 → rc.xml 18:05 更新）は動作せず
+- **即時対処**: `sudo kill -s HUP $(pgrep -x labwc)` で SIGHUP を送り、設定を再読み込みさせる
+- **代替**: 端末の再起動、または再ログイン
 
-**実機検証**: Firefox 移行と Super+Shift+P の動作を確認済み。
+**デプロイ結果**: Pi5＋Pi4（raspberrypi4 研削メイン）でデプロイ成功（Run ID: `20260302-152520-15777`）。raspi4-robodrill01 は 20260302-175720 にデプロイしたが Collect health check info で失敗（keybind は配置済み）。SIGHUP で labwc 再読み込み後、Super+Shift+P が動作することを実機確認。
+
+**実機検証**: 研削メイン・RoboDrill01 の両方で Firefox 移行と Super+Shift+P の動作を確認済み。
 
 **関連**:
 - [Runbook: キオスクで上辺メニューバー表示](../../runbooks/kiosk-wifi-panel-shortcut.md)

@@ -35,7 +35,7 @@ update-frequency: high
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 19件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 19件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 22件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 22件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**、**labwc rc.xml 再読み込み（SIGHUP）**含む） |
 
 ---
 
