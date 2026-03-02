@@ -132,6 +132,52 @@
 
 ---
 
+## 日本語入力不具合の差異分析（2026-03-02）
+
+**事象**: 研削メイン（raspberrypi4）で日本語入力がスムーズにできない。RoboDrill01（raspi4-robodrill01）ではスムーズに入力できる。
+
+**inventory.yml の差異**:
+
+| 項目 | raspberrypi4（kensakuMain） | raspi4-robodrill01 |
+|------|-----------------------------|---------------------|
+| `ibus_owner_mode` | 未設定（デフォルト `legacy`） | `single-owner` |
+| `ibus_disable_competing_autostart` | 未設定（デフォルト `false`） | `true` |
+
+**根本原因**:
+- kensakuMain は IBus 単一オーナー化が適用されていなかった。`legacy` モードでは `ibus-owner.desktop` が配置されず、`im-launch.desktop` 等の競合 autostart が抑止されない。
+- その結果、`ibus-daemon` の二重起動や競合プロセスが発生し、ibus-ui ウィンドウがキー入力ごとに出現してフォーカスを奪う。
+
+**対策（2026-03-02 実施）**:
+- `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。
+- 研削メイン復帰後のデプロイで反映。実機検証は復帰後に実施。
+
+**備考**: 研削メインはシャットダウン中のため、静的解析（inventory 比較）のみで原因を特定。RoboDrill01 で有効だった設定を kensakuMain にも適用する方針。
+
+### 実機診断による真因確定（2026-03-02）
+
+研削メイン（raspberrypi4）に接続し、`scripts/kiosk/diagnose-ime.sh` を実行。結果は以下。
+
+| 項目 | 研削メイン（診断時） | 期待値 |
+|------|----------------------|--------|
+| 競合シグネチャ `--daemonize --xim` | **1件** | 0件 |
+| 単一オーナー判定 | **FAIL** | PASS |
+| ibus-owner.desktop | **なし** | あり |
+| im-launch.desktop override | **なし** | Hidden=true |
+
+**実プロセス**:
+- `ibus-daemon -drx --replace --single --panel=disable...`（期待どおり）: 1プロセス
+- `ibus-daemon --daemonize --xim`（競合）: 1プロセス ← **im-launch 由来**
+- `ibus-ui-gtk3`: 起動中（キー入力時のフォーカス奪取の原因）
+
+**真因（確定）**:
+1. `ibus_owner_mode: legacy` のため `ibus-owner.desktop` が配置されていない
+2. `ibus_disable_competing_autostart: false` のため `im-launch.desktop` の override が無く、競合 autostart が抑止されていない
+3. `im-launch` が `ibus-daemon --daemonize --xim` で競合起動し、`ibus-ui-gtk3` がキー入力ごとに前面に出てフォーカスを奪う
+
+**対策**: `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加し、デプロイで反映。実機検証はデプロイ後に実施。
+
+---
+
 ## Firefox移行準備の実装状況（2026-03-01）
 
 ### 目的

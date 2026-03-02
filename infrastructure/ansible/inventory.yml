@@ -56,6 +56,9 @@ all:
               ansible_user: tools03
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
+              # IBus 単一オーナー化（KB-287: 日本語入力不安定の解消。robodrill01 で有効だった設定を kensakuMain にも適用）
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspberrypi4-kiosk1

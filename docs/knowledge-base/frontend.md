@@ -4113,6 +4113,19 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 生産スケジュール備考欄で日本語入力モードになるが、キー入力のたびに ibus-ui ウィンドウが出現し、スムーズに入力できない
 - 入力操作が不安定で、フォーカスが奪われる
 
+**差異分析（2026-03-02）**:
+- **kensakuMain（raspberrypi4）**: 日本語入力がスムーズにできない（事象再発）
+- **RoboDrill01（raspi4-robodrill01）**: 日本語入力がスムーズにできる
+- **inventory.yml の差異**: kensakuMain には `ibus_owner_mode` / `ibus_disable_competing_autostart` が未設定（デフォルト `legacy` / `false`）。RoboDrill01 には `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` が設定済み。
+
+**根本原因（確定・2026-03-02 実機診断）**:
+- kensakuMain は IBus 単一オーナー化が適用されていなかった。`legacy` モードでは `ibus-owner.desktop` が配置されず、`im-launch.desktop` 等の競合 autostart が抑止されない。
+- 実機診断で確認: 競合シグネチャ `--daemonize --xim` が 1件、`ibus-owner.desktop` なし、`im-launch.desktop` override なし。`im-launch` 由来の `ibus-daemon --daemonize --xim` と `ibus-ui-gtk3` がキー入力ごとにフォーカスを奪う。
+
+**対策（2026-03-02 実施）**:
+- `inventory.yml` の raspberrypi4（kensakuMain）に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。
+- 研削メイン復帰後のデプロイで反映。実機検証は復帰後に実施。
+
 **調査状況**:
 - 診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装済み
 - デプロイ時に IBus 状態（プロセス数、起動引数、gsettings、ozone-platform）がログに記録される
@@ -4138,6 +4151,6 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定改善の過去履歴
 - [KB-investigation-kiosk-schedule-regression-20260301](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
 
-**解決状況**: 🔄 **段階対策中**（robodrill先行で単一オーナー化を適用済み。実入力の最終確認待ち）
+**解決状況**: 🔄 **真因確定・対策適用済み・デプロイ待ち**（2026-03-02: 実機診断で競合起動を確認。inventory に IBus 単一オーナー化を追加済み。デプロイ後に実機検証で完了確認）
 
 ---
