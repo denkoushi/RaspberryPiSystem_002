@@ -100,6 +100,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-02-28) **MHアイテムの一覧除外・デプロイ成功・実機検証OK**: kiosk生産スケジュールのアイテム一覧から、FHINCDが"MH"で始まるアイテム（機種名を持つアイテム）を除外する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内で、FHINCDが"MH"で始まるアイテムをフィルタリングで除外。これらのアイテムは検索用製番ボタンにのみ表示され、一覧には表示されない。**デプロイ**: Pi5＋Pi4（raspi4-robodrill01）でデプロイ成功（Run ID: `20260228-184500-20184`, `state: success`, `exitCode: 0`）。Pi5: `ok=122, changed=4, failed=0`。Pi4: `ok=94, changed=8, failed=0`。**実機検証結果**: FHINCDが"MH"で始まるアイテムが一覧から除外され、検索用製番ボタンにのみ表示されることを確認。詳細は [KB-284](../knowledge-base/frontend.md#kb-284-生産スケジュールアイテム一覧からmhアイテムを除外) を参照。
 
+- [x] (2026-03-02) **SHアイテムの一覧除外と機種名表示へのSH追加・デプロイ成功・実機検証OK**: kiosk生産スケジュールのアイテム一覧から、FHINCDが"SH"で始まるアイテムも除外し、検索用製番ボタンの機種名表示にSHを追加する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内で、FHINCDが"MH"または"SH"で始まるアイテムをフィルタリングで除外。`seiban-progress.service.ts`のSQL集約で、`FHINCD LIKE 'MH%' OR FHINCD LIKE 'SH%'`の条件で機種名を取得（MHまたはSHのいずれかから取得）。**デプロイ**: Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）。Pi5: `ok=125, changed=5, failed=0`。Pi4: `ok=102, changed=16, failed=0`。**実機検証結果**: FHINCDが"MH"または"SH"で始まるアイテムが一覧から除外され、検索用製番ボタンに機種名が表示されることを確認。詳細は [KB-285](../knowledge-base/frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加) / [KB-285](../knowledge-base/api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 48件  
+**件数**: 49件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -4015,6 +4015,50 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): 登録製番ボタンの3段表示と機種名表示（検索用製番ボタンに機種名を表示）
 
 **解決状況**: ✅ **解決済み**（2026-02-28、実機検証完了）
+
+---
+
+### [KB-285] 生産スケジュールアイテム一覧からSHアイテムも除外し機種名表示にSH追加
+
+**EXEC_PLAN.md参照**: Progress (行101)
+
+**事象**: 
+- kiosk生産スケジュールのアイテム一覧に、FHINCDが"SH"で始まるアイテム（機種名を持つアイテム）も表示されていた
+- ユーザーから「SHアイテムもMHと同様に一覧から除外し、検索用製番ボタンの機種名表示にSHも追加してほしい」という要望があった
+
+**実装内容**: 
+- ✅ **フィルタリングロジックの拡張**（2026-03-02）:
+  - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`の`normalizedRows` useMemo内でフィルタリング条件を拡張
+  - FHINCDを大文字化（`toUpperCase()`）してから`startsWith('MH')`または`startsWith('SH')`で判定
+  - `MH`または`SH`で始まるアイテムを除外し、それ以外のみを返却
+
+**実装ファイル**: 
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（修正、`normalizedRows` useMemo内のフィルタリング条件を拡張）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22561525885`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）
+- Pi5: `ok=125, changed=5, failed=0`
+- Pi4: `ok=102, changed=16, failed=0`
+
+**実機検証結果**: 
+- ✅ FHINCDが"MH"または"SH"で始まるアイテムが一覧から除外されることを確認
+- ✅ 検索用製番ボタンに機種名が表示されることを確認（MHまたはSHから取得）
+- ✅ 通常のアイテム（FHINCDが"MH"または"SH"で始まらない）は一覧に正常に表示されることを確認
+
+**学んだこと**:
+- **フィルタリング条件の拡張**: 既存の`startsWith('MH')`に`startsWith('SH')`を追加することで、同様のパターンを持つアイテムを一括で除外できる
+- **条件の論理演算**: `!fhincd.startsWith('MH') && !fhincd.startsWith('SH')`で両方の条件を満たすアイテムのみを表示
+- **既存機能との整合性**: KB-284で実装したMH除外機能と整合性を保ち、SHも同様に除外することで、UIの一貫性を維持
+
+**関連KB**:
+- [KB-284](./frontend.md#kb-284-生産スケジュールアイテム一覧からmhアイテムを除外): MHアイテムの一覧除外（SH追加の前段階）
+- [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): 登録製番ボタンの3段表示と機種名表示（検索用製番ボタンに機種名を表示）
+- [KB-285](../api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加): API側の`machineName`取得にSH追加
+
+**解決状況**: ✅ **解決済み**（2026-03-02、実機検証完了）
 
 ---
 

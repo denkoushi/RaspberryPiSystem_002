@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-02）
+
+- **✅ 生産スケジュールアイテム一覧からSHアイテムも除外し機種名表示にSH追加・デプロイ完了・実機検証OK**: FHINCDが"SH"で始まるアイテムも一覧から除外し、検索用製番ボタンの機種名表示にSHを追加する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内でフィルタリング条件を拡張（MHまたはSH）。`seiban-progress.service.ts`のSQL集約で`FHINCD LIKE 'MH%' OR FHINCD LIKE 'SH%'`の条件で機種名を取得。**CI実行**: GitHub Actions成功（Run ID: `22561525885`、全ジョブ成功）。**デプロイ結果**: Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）。**実機検証結果**: FHINCDが"MH"または"SH"で始まるアイテムが一覧から除外され、検索用製番ボタンに機種名が表示されることを確認。詳細は [knowledge-base/frontend.md#kb-285](./knowledge-base/frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加) / [knowledge-base/api.md#kb-285](./knowledge-base/api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-01）
 
 - **✅ KB-288恒久対策・連打防止オーバーレイ強化・deployment.md電源記述更新・Pi5デプロイ完了・実機検証（Pi5）完了**: タスク1（power-actions に `notify: restart api` 追加）、タスク2（押下直後オーバーレイ表示）、タスク4（deployment.md 電源フロー記述更新）を実装。研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後の実機検証は後日実施。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。

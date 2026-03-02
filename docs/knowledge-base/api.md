@@ -4254,3 +4254,58 @@ MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
 - [KB-282](../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): フロントエンド側の実装
 
 ---
+
+### [KB-285] 生産スケジュールhistory-progressエンドポイントのmachineName取得にSH追加
+
+**EXEC_PLAN.md参照**: Progress (行101)
+
+**事象**: 
+- `history-progress`エンドポイントの`machineName`は`FHINCD LIKE 'MH%'`の条件のみで取得していた
+- ユーザーから「SHアイテムも機種名として扱い、MHまたはSHのいずれかから機種名を取得してほしい」という要望があった
+
+**実装内容**: 
+- ✅ **SQL集約条件の拡張**（2026-03-02）:
+  - `apps/api/src/services/production-schedule/seiban-progress.service.ts`のSQL集約で`machineName`取得条件を拡張
+  - `FHINCD LIKE 'MH%'`に加えて`FHINCD LIKE 'SH%'`も条件に追加
+  - `OR`条件で`MH`または`SH`のいずれかに該当する行から機種名を取得
+
+**SQL集約の変更**:
+```sql
+-- 変更前: MH のみ
+WHERE UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+
+-- 変更後: MH または SH
+WHERE (
+    UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+    OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+  )
+```
+
+**実装ファイル**: 
+- `apps/api/src/services/production-schedule/seiban-progress.service.ts`（修正、SQL集約条件を拡張）
+
+**CI実行**: 
+- GitHub Actions成功（Run ID: `22561525885`、全ジョブ成功）
+
+**デプロイ結果**: 
+- Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）
+- Pi5: `ok=125, changed=5, failed=0`
+- Pi4: `ok=102, changed=16, failed=0`
+
+**実機検証結果**: 
+- ✅ APIレスポンスに`machineName`が含まれることを確認
+- ✅ `FHINCD`が`MH`または`SH`で始まるアイテムの`FHINMEI`が正しく取得されることを確認
+- ✅ 機種名が存在しない場合（MH/SHアイテムがない）は`null`が返されることを確認
+
+**学んだこと**:
+- **SQL集約条件の拡張**: `FILTER`句内で`OR`条件を使用することで、複数のパターンに該当する行から集約できる
+- **既存機能との整合性**: KB-282で実装したMHのみの条件を拡張し、SHも追加することで、機種名の取得範囲を拡大
+- **フロントエンドとの連携**: フロントエンド側のフィルタリング条件（MH/SH除外）とAPI側の集約条件（MH/SHから機種名取得）を一致させることで、UIの一貫性を維持
+
+**関連KB**:
+- [KB-282](./api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): history-progressエンドポイントにmachineName追加（MHのみ、SH追加の前段階）
+- [KB-285](../frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加): フロントエンド側のSH除外と機種名表示へのSH追加
+
+**解決状況**: ✅ **解決済み**（2026-03-02、実機検証完了）
+
+---
