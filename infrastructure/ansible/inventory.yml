@@ -54,6 +54,8 @@ all:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
+              kiosk_browser_engine: "firefox"
+              kiosk_browser_mode: "app-like"
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspberrypi4-kiosk1

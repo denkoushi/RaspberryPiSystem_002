@@ -151,3 +151,54 @@
 
 - name: Apply kiosk malware protection
   ansible.builtin.import_tasks: security.yml
+
+# キオスクで上辺メニューバーを一時表示（Super+Shift+P）→ Wi-FiアイコンからGUI設定変更可能
+- name: Deploy show-kiosk-panel script
+  ansible.builtin.template:
+    src: show-kiosk-panel.sh.j2
+    dest: /usr/local/bin/show-kiosk-panel.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Ensure labwc config directory exists for kiosk user
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.config/labwc"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Check if labwc user rc.xml exists
+  ansible.builtin.stat:
+    path: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
+  when: manage_kiosk_browser | default(false) | bool
+  register: labwc_rc_stat
+
+- name: Copy system labwc rc.xml to user config (first run)
+  ansible.builtin.copy:
+    src: /etc/xdg/labwc/rc.xml
+    dest: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+    remote_src: true
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - labwc_rc_stat is defined
+    - not labwc_rc_stat.stat.exists
+
+- name: Add Super+Shift+P keybind to labwc rc.xml (show panel for Wi-Fi GUI)
+  ansible.builtin.blockinfile:
+    path: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
+    block: |
+      <keybind key="W-S-p">
+        <action name="Execute">
+          <command>/usr/local/bin/show-kiosk-panel.sh</command>
+        </action>
+      </keybind>
+    marker: "<!-- {mark} ANSIBLE MANAGED: show-kiosk-panel -->"
+    insertbefore: "</keyboard>"
+  when: manage_kiosk_browser | default(false) | bool
