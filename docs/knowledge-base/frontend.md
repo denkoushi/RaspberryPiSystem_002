@@ -4124,7 +4124,10 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 **対策（2026-03-02 実施）**:
 - `inventory.yml` の raspberrypi4（kensakuMain）に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。
-- 研削メイン復帰後のデプロイで反映。実機検証は復帰後に実施。
+- デプロイ（Run ID: `20260302-192312-6532`）で反映。デプロイ後の IME 診断で単一オーナー判定 PASS・競合シグネチャ 0件・ibus-owner.desktop あり・im-launch override Hidden=true を確認。
+
+**実機検証結果（2026-03-02）**:
+- 研削メインの備考欄で日本語入力がスムーズにできることを確認。ibus-ui ウィンドウの出現・フォーカス奪取は解消。
 
 **調査状況**:
 - 診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装済み
@@ -4151,6 +4154,6 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定改善の過去履歴
 - [KB-investigation-kiosk-schedule-regression-20260301](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
 
-**解決状況**: 🔄 **真因確定・対策適用済み・デプロイ待ち**（2026-03-02: 実機診断で競合起動を確認。inventory に IBus 単一オーナー化を追加済み。デプロイ後に実機検証で完了確認）
+**解決状況**: ✅ **解決済み**（2026-03-02: 実機診断で競合起動を確認。inventory に IBus 単一オーナー化を追加しデプロイ。研削メインで日本語入力がスムーズにできることを実機確認）
 
 ---

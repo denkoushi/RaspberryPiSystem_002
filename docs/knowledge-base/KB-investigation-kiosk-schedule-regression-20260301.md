@@ -176,6 +176,12 @@
 
 **対策**: `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加し、デプロイで反映。実機検証はデプロイ後に実施。
 
+### 実機検証完了（2026-03-02）
+
+- **デプロイ**: Run ID `20260302-192312-6532`、raspberrypi4 に適用、`state: success`、`exitCode: 0`
+- **デプロイ後 IME 診断**: プロセス数 1、競合シグネチャ 0件、単一オーナー判定 PASS、ibus-owner.desktop あり、im-launch override Hidden=true
+- **実機検証**: 研削メインの備考欄で日本語入力がスムーズにできることを確認。ibus-ui ウィンドウの出現・フォーカス奪取は解消。
+
 ---
 
 ## Firefox移行準備の実装状況（2026-03-01）

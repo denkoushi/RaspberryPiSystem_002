@@ -70,6 +70,17 @@ ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 補足:
 - Ansible の `script` 実行では `XDG_SESSION_TYPE=tty` と出ることがある。これは非対話実行のためで、単体では異常と断定しない。
 
+## 再発時の対処（KB-287 解決済み）
+
+日本語入力がスムーズにできない場合、`ibus_owner_mode` / `ibus_disable_competing_autostart` が未設定の可能性がある。`inventory.yml` の該当 Pi4 ホストに以下を追加し、デプロイで反映する。
+
+```yaml
+ibus_owner_mode: "single-owner"
+ibus_disable_competing_autostart: true
+```
+
+詳細は [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) を参照。
+
 ## 診断結果の記録
 
 診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
