@@ -3,6 +3,7 @@ import { BackupService } from './backup.service.js';
 import { BackupConfigLoader } from './backup-config.loader.js';
 import type { BackupConfig } from './backup-config.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
+import { BackupHistoryService } from './backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
 import { executeBackupAcrossProviders, resolveBackupProviders } from './backup-execution.service.js';
