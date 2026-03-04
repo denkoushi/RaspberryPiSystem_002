@@ -1,9 +1,10 @@
 import { Dropbox } from 'dropbox';
 import * as https from 'https';
 import * as tls from 'tls';
+import { createReadStream } from 'fs';
 import fetch from 'node-fetch';
 import type { RequestInit as NodeFetchRequestInit } from 'node-fetch';
-import type { FileInfo, StorageProvider } from './storage-provider.interface';
+import type { FileInfo, LargeFileUploadProvider, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { getString, isRecord, toErrorInfo } from '../../../lib/type-guards.js';
 import { verifyDropboxCertificate } from './dropbox-cert-pinning.js';
@@ -14,13 +15,14 @@ import { DropboxOAuthService } from '../dropbox-oauth.service.js';
  * セキュリティ対策として証明書ピニング、TLS検証、リトライロジックを実装。
  * リフレッシュトークンによる自動アクセストークン更新機能をサポート。
  */
-export class DropboxStorageProvider implements StorageProvider {
+export class DropboxStorageProvider implements StorageProvider, LargeFileUploadProvider {
   private dbx: Dropbox;
   private readonly basePath: string;
   private accessToken: string;
   private refreshToken?: string;
   private oauthService?: DropboxOAuthService;
   private onTokenUpdate?: (token: string) => Promise<void>;
+  private readonly uploadSessionChunkSize = 8 * 1024 * 1024; // 8MB
 
   private createPinnedFetch(httpsAgent: https.Agent) {
     return (url: string, init?: NodeFetchRequestInit) => {
@@ -168,6 +170,10 @@ export class DropboxStorageProvider implements StorageProvider {
     while (retryCount < maxRetries) {
       try {
         await this.handleAuthError(async () => {
+          if (file.length > this.uploadSessionChunkSize) {
+            await this.uploadBufferInChunks(file, fullPath);
+            return;
+          }
           await this.dbx.filesUpload({
             path: fullPath,
             contents: file,
@@ -199,6 +205,39 @@ export class DropboxStorageProvider implements StorageProvider {
     }
 
     throw new Error(`Upload failed after ${maxRetries} retries`);
+  }
+
+  async uploadFromFile(filePath: string, path: string): Promise<void> {
+    const fullPath = this.normalizePath(path);
+    const maxRetries = 5;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+      try {
+        await this.handleAuthError(async () => {
+          await this.uploadFileInChunks(filePath, fullPath);
+        });
+        logger?.info({ path: fullPath, filePath }, '[DropboxStorageProvider] File uploaded from file path');
+        return;
+      } catch (error: unknown) {
+        if (this.isRateLimitError(error) || this.isNetworkError(error)) {
+          const retryAfter = this.extractRetryAfter(error);
+          const delay = this.calculateBackoffDelay(retryCount, retryAfter);
+          logger?.warn(
+            { path: fullPath, filePath, retryCount, delay },
+            '[DropboxStorageProvider] Upload from file failed, retrying'
+          );
+          await this.sleep(delay);
+          retryCount++;
+          continue;
+        }
+
+        logger?.error({ err: error, path: fullPath, filePath }, '[DropboxStorageProvider] Upload from file failed');
+        throw error;
+      }
+    }
+
+    throw new Error(`Upload from file failed after ${maxRetries} retries`);
   }
 
   /**
@@ -456,6 +495,102 @@ export class DropboxStorageProvider implements StorageProvider {
     return `${normalizedBasePath}/${noLeadingSlash}`.replace(/\/+/g, '/');
   }
 
+  private async uploadBufferInChunks(file: Buffer, fullPath: string): Promise<void> {
+    const firstChunk = file.subarray(0, this.uploadSessionChunkSize);
+    const startResult = await this.dbx.filesUploadSessionStart({
+      close: false,
+      contents: firstChunk
+    });
+
+    let offset = firstChunk.length;
+    const sessionId = startResult.result.session_id;
+    while (offset < file.length) {
+      const nextOffset = Math.min(offset + this.uploadSessionChunkSize, file.length);
+      const chunk = file.subarray(offset, nextOffset);
+      const cursor = { session_id: sessionId, offset };
+      if (nextOffset < file.length) {
+        await this.dbx.filesUploadSessionAppendV2({
+          cursor,
+          close: false,
+          contents: chunk
+        });
+      } else {
+        await this.dbx.filesUploadSessionFinish({
+          cursor,
+          commit: {
+            path: fullPath,
+            mode: { '.tag': 'overwrite' },
+            autorename: false,
+            mute: false
+          },
+          contents: chunk
+        });
+      }
+      offset = nextOffset;
+    }
+  }
+
+  private async uploadFileInChunks(filePath: string, fullPath: string): Promise<void> {
+    const stream = createReadStream(filePath, { highWaterMark: this.uploadSessionChunkSize });
+    let pendingChunk: Buffer | null = null;
+    let sessionId: string | null = null;
+    let offset = 0;
+
+    for await (const chunk of stream) {
+      const current = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (!pendingChunk) {
+        pendingChunk = current;
+        continue;
+      }
+
+      if (!sessionId) {
+        const startResult = await this.dbx.filesUploadSessionStart({
+          close: false,
+          contents: pendingChunk
+        });
+        sessionId = startResult.result.session_id;
+        offset = pendingChunk.length;
+      } else {
+        await this.dbx.filesUploadSessionAppendV2({
+          cursor: { session_id: sessionId, offset },
+          close: false,
+          contents: pendingChunk
+        });
+        offset += pendingChunk.length;
+      }
+      pendingChunk = current;
+    }
+
+    if (!pendingChunk) {
+      await this.dbx.filesUpload({
+        path: fullPath,
+        contents: Buffer.alloc(0),
+        mode: { '.tag': 'overwrite' }
+      });
+      return;
+    }
+
+    if (!sessionId) {
+      await this.dbx.filesUpload({
+        path: fullPath,
+        contents: pendingChunk,
+        mode: { '.tag': 'overwrite' }
+      });
+      return;
+    }
+
+    await this.dbx.filesUploadSessionFinish({
+      cursor: { session_id: sessionId, offset },
+      commit: {
+        path: fullPath,
+        mode: { '.tag': 'overwrite' },
+        autorename: false,
+        mute: false
+      },
+      contents: pendingChunk
+    });
+  }
+
   private getErrorStatus(error: unknown): number | undefined {
     const errorInfo = toErrorInfo(error);
     return typeof errorInfo.status === 'number' ? errorInfo.status : undefined;
@@ -499,6 +634,16 @@ export class DropboxStorageProvider implements StorageProvider {
 
   private isPathLookupError(error: unknown): boolean {
     return this.getErrorStatus(error) === 409 || this.getDropboxTag(error) === 'path_lookup';
+  }
+
+  isInsufficientSpaceError(error: unknown): boolean {
+    const summary = this.getDropboxErrorSummary(error)?.toLowerCase() ?? '';
+    const message = this.getErrorMessage(error).toLowerCase();
+    const tag = this.getDropboxTag(error)?.toLowerCase() ?? '';
+    return summary.includes('insufficient_space')
+      || message.includes('insufficient_space')
+      || message.includes('insufficient space')
+      || tag.includes('insufficient_space');
   }
 
   private isNetworkError(error: unknown): boolean {

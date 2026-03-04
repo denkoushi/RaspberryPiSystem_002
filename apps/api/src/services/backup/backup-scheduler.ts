@@ -3,11 +3,10 @@ import { BackupService } from './backup.service.js';
 import { BackupConfigLoader } from './backup-config.loader.js';
 import type { BackupConfig } from './backup-config.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
-import { StorageProviderFactory } from './storage-provider-factory.js';
-import { BackupHistoryService } from './backup-history.service.js';
-import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
+import { executeBackupAcrossProviders, resolveBackupProviders } from './backup-execution.service.js';
+import { cleanupBackupsAfterManualExecution } from './post-backup-cleanup.service.js';
 
 /**
  * バックアップスケジューラー
@@ -159,123 +158,36 @@ export class BackupScheduler {
     // バックアップターゲットを作成（Factoryパターンを使用）
     const backupTarget = BackupTargetFactory.createFromConfig(config, target.kind, target.source, target.metadata);
 
-    // ストレージプロバイダーのリストを決定（多重バックアップ対応）
-    // Gmailはバックアップ用ではないため、local/dropboxのみをサポート
-    const providers: ('local' | 'dropbox')[] = [];
-    if (target.storage?.providers && target.storage.providers.length > 0) {
-      // providers配列が指定されている場合はそれを使用
-      providers.push(...target.storage.providers.filter((p): p is 'local' | 'dropbox' => p === 'local' || p === 'dropbox'));
-    } else if (target.storage?.provider && (target.storage.provider === 'local' || target.storage.provider === 'dropbox')) {
-      // providerが指定されている場合は単一プロバイダーとして扱う
-      providers.push(target.storage.provider);
-    } else if (config.storage.provider === 'local' || config.storage.provider === 'dropbox') {
-      // 未指定の場合は全体設定を使用
-      providers.push(config.storage.provider);
-    } else {
-      // Gmailの場合はlocalにフォールバック
-      providers.push('local');
-    }
+    const resolvedProviders = resolveBackupProviders({ config, targetConfig: target });
+    const { results } = await executeBackupAcrossProviders({
+      config,
+      targetConfig: target,
+      target: backupTarget,
+      targetKind: target.kind,
+      targetSource: target.source,
+      protocol: 'http',
+      host: 'localhost',
+      onTokenUpdate,
+      label: target.metadata?.label as string
+    });
 
-    // 各プロバイダーに順次バックアップを実行（多重バックアップ）
-    const historyService = new BackupHistoryService();
-    const results: Array<{ provider: 'local' | 'dropbox'; success: boolean; path?: string; sizeBytes?: number; error?: string }> = [];
-    for (const requestedProvider of providers) {
-      let historyId: string | null = null;
-      try {
-        // 一時的にtargetのstorage.providerを設定してストレージプロバイダーを作成
-        const targetWithProvider = {
-          ...target,
-          storage: { provider: requestedProvider }
-        };
-        const providerResult = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate, true);
-        const actualProvider = providerResult.provider; // 実際に使用されたプロバイダー（フォールバック後の値）
-        const storageProvider = providerResult.storageProvider;
-        const backupService = new BackupService(storageProvider);
-
-        // Gmailの場合はlocalにフォールバック
-        const safeProvider: 'local' | 'dropbox' = (actualProvider === 'local' || actualProvider === 'dropbox') ? actualProvider : 'local';
-
-        // バックアップ履歴を作成（実際に使用されたプロバイダーを記録）
-        // #region agent log
-        await writeDebugLog({sessionId:'debug-session',runId:'run1',hypothesisId:'D',location:'backup-scheduler.ts:executeBackup:createHistory',message:'Creating backup history for scheduled backup',data:{targetKind:target.kind,targetSource:target.source.slice(0,60),storageProvider:safeProvider},timestamp:Date.now()});
-        // #endregion
-        historyId = await historyService.createHistory({
-          operationType: BackupOperationType.BACKUP,
-          targetKind: target.kind,
-          targetSource: target.source,
-          storageProvider: safeProvider
-        });
-
-        // バックアップを実行
-        const result = await backupService.backup(backupTarget, {
-          label: target.metadata?.label as string
-        });
-
-        if (!result.success) {
-          results.push({ provider: safeProvider, success: false, error: result.error });
-          // 履歴を失敗として更新
-          if (historyId) {
-            await historyService.failHistory(historyId, result.error || 'Unknown error');
-          }
-        } else {
-          results.push({ provider: safeProvider, success: true, path: result.path, sizeBytes: result.sizeBytes });
-          // 履歴を完了として更新
-          if (historyId) {
-            await historyService.completeHistory(historyId, {
-              targetKind: target.kind,
-              targetSource: target.source,
-              sizeBytes: result.sizeBytes,
-              path: result.path
-            });
-          }
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        results.push({ provider: requestedProvider, success: false, error: errorMessage });
-        // 履歴を失敗として更新
-        if (historyId) {
-          await historyService.failHistory(historyId, errorMessage);
-        }
-        // エラーが発生しても次のプロバイダーに続行
-      }
-    }
-
-    // すべてのプロバイダーで失敗した場合はエラーをスロー
     const allFailed = results.every((r) => !r.success);
     if (allFailed) {
       const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
       throw new Error(`Backup failed on all providers: ${errorMessages}`);
     }
 
-    // 成功したプロバイダーのストレージプロバイダーを使用してクリーンアップ
-    const successfulProvider = providers.find((p, i) => results[i]?.success);
-    if (successfulProvider) {
-      // 対象ごとのretention設定を優先、未指定の場合は全体設定を使用（Phase 3）
-      const retention = target.retention || config.retention;
-      if (retention && (retention.days || retention.maxBackups)) {
-        const targetWithProvider = {
-          ...target,
-          storage: { provider: successfulProvider }
-        };
-        const storageProvider = await StorageProviderFactory.createFromTarget(config, targetWithProvider, undefined, undefined, onTokenUpdate);
-                const backupService = new BackupService(storageProvider);
-                // 対象ごとのバックアップのみをクリーンアップするため、prefix+フィルタを指定
-                // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
-                // 実際のパスは database/<timestamp>/borrow_return となるため、prefix は kind のみとし、
-                // cleanupOldBackups 内でファイル名フィルタを行う
-                let sourceForPrefix = target.source;
-                if (target.kind === 'database') {
-                  try {
-                    const url = new URL(target.source);
-                    sourceForPrefix = url.pathname.replace(/^\//, '') || 'database';
-                  } catch {
-                    // URL解析に失敗した場合はそのまま使用
-                  }
-                }
-                const prefix = `${target.kind}`; // 例: "database"
-                await this.cleanupOldBackups(backupService, retention, prefix, sourceForPrefix, target.kind, target.source);
-      }
-    }
+    await cleanupBackupsAfterManualExecution({
+      config,
+      targetConfig: target,
+      targetKind: target.kind,
+      targetSource: target.source,
+      protocol: 'http',
+      host: 'localhost',
+      resolvedProviders,
+      results,
+      onTokenUpdate,
+    });
   }
 
   /**

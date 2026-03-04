@@ -1,12 +1,14 @@
-import { execFile, spawn } from 'child_process';
-import { promisify } from 'util';
+import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
+import type { UploadSource } from '../storage/storage-provider.interface.js';
 import { ApiError } from '../../../lib/errors.js';
 import { logger } from '../../../lib/logger.js';
-
-const execFileAsync = promisify(execFile);
 
 const DEFAULT_DB_URL = 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 
@@ -51,43 +53,88 @@ export class DatabaseBackupTarget implements BackupTarget {
   }
 
   async createBackup(): Promise<Buffer> {
+    const source = await this.createUploadSource();
+    if (source.kind !== 'file') {
+      return source.data;
+    }
+    try {
+      return await fs.readFile(source.filePath);
+    } finally {
+      await source.cleanup?.().catch(() => {});
+    }
+  }
+
+  async createUploadSource(): Promise<UploadSource> {
+    const tempFilePath = await this.dumpToTempFile();
+    const stat = await fs.stat(tempFilePath);
+    return {
+      kind: 'file',
+      filePath: tempFilePath,
+      sizeBytes: stat.size,
+      cleanup: async () => {
+        await fs.rm(tempFilePath, { force: true }).catch(() => {});
+      }
+    };
+  }
+
+  private async dumpToTempFile(): Promise<string> {
+    const { dbName, user, host, port, password } = this.getConnectionInfo();
+    const env = { ...process.env };
+    if (password) {
+      env.PGPASSWORD = password;
+    }
+
+    const tempFilePath = path.join(os.tmpdir(), `db-backup-${dbName}-${Date.now()}-${randomUUID()}.sql`);
+
+    await new Promise<void>((resolve, reject) => {
+      const pgDump = spawn(
+        'pg_dump',
+        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', '-f', tempFilePath, dbName],
+        {
+          env,
+          stdio: ['ignore', 'ignore', 'pipe']
+        }
+      );
+
+      const errors: string[] = [];
+      pgDump.stderr.on('data', (chunk: Buffer) => {
+        errors.push(chunk.toString('utf-8'));
+      });
+
+      pgDump.on('error', (error) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          reject(new ApiError(500, 'pg_dumpコマンドが見つかりません。Dockerコンテナ内にpg_dumpが必要です。'));
+          return;
+        }
+        reject(error);
+      });
+
+      pgDump.on('close', (code) => {
+        if (code !== 0) {
+          reject(new ApiError(500, `データベースバックアップに失敗しました: ${errors.join('')}`));
+          return;
+        }
+        resolve();
+      });
+    });
+
+    return tempFilePath;
+  }
+
+  private getConnectionInfo(): {
+    dbName: string;
+    user: string;
+    host: string;
+    port: string;
+    password?: string;
+  } {
     const url = new URL(this.dbUrl);
     const dbName = url.pathname.replace(/^\//, '');
     const user = decodeURIComponent(url.username || 'postgres');
     const host = url.hostname || 'localhost';
     const port = url.port || '5432';
     const password = url.password ? decodeURIComponent(url.password) : undefined;
-
-    const env = { ...process.env };
-    if (password) {
-      env.PGPASSWORD = password;
-    }
-
-    try {
-      const { stdout } = await execFileAsync(
-        'pg_dump',
-        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', dbName],
-        {
-          env,
-          maxBuffer: 1024 * 1024 * 200,
-          encoding: 'buffer'
-        }
-      );
-
-      return stdout;
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        throw new ApiError(
-          500,
-          `pg_dumpコマンドが見つかりません。データベースバックアップにはpg_dumpが必要です。Dockerコンテナ内にpg_dumpがインストールされていることを確認してください。`
-        );
-      }
-      if (error instanceof Error && 'stderr' in error) {
-        const stderr = (error as { stderr?: string }).stderr || '';
-        throw new ApiError(500, `データベースバックアップに失敗しました: ${error.message}${stderr ? `\n${stderr}` : ''}`);
-      }
-      throw error;
-    }
+    return { dbName, user, host, port, password };
   }
 
   async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {

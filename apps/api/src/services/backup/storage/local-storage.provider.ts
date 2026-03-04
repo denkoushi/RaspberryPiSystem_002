@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { FileInfo, StorageProvider } from './storage-provider.interface';
+import type { FileInfo, LargeFileUploadProvider, StorageProvider } from './storage-provider.interface';
 
 const getDefaultBaseDir = (): string => {
   if (process.env.BACKUP_STORAGE_DIR) return process.env.BACKUP_STORAGE_DIR;
@@ -12,7 +12,7 @@ async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
 }
 
-export class LocalStorageProvider implements StorageProvider {
+export class LocalStorageProvider implements StorageProvider, LargeFileUploadProvider {
   private readonly baseDir: string;
 
   constructor(options?: { baseDir?: string }) {
@@ -24,6 +24,13 @@ export class LocalStorageProvider implements StorageProvider {
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.writeFile(fullPath, file);
+  }
+
+  async uploadFromFile(filePath: string, targetPath: string): Promise<void> {
+    const fullPath = path.join(this.baseDir, targetPath);
+    const dir = path.dirname(fullPath);
+    await ensureDir(dir);
+    await fs.copyFile(filePath, fullPath);
   }
 
   async download(targetPath: string): Promise<Buffer> {

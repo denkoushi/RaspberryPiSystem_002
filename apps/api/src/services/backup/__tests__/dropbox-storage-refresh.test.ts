@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { Dropbox } from 'dropbox';
 import { DropboxStorageProvider } from '../storage/dropbox-storage.provider.js';
 import { DropboxOAuthService } from '../dropbox-oauth.service.js';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Dropbox SDKをモック
 vi.mock('dropbox', () => ({
@@ -17,6 +20,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
 
   let mockDbx: {
     filesUpload: ReturnType<typeof vi.fn>;
+    filesUploadSessionStart: ReturnType<typeof vi.fn>;
+    filesUploadSessionAppendV2: ReturnType<typeof vi.fn>;
+    filesUploadSessionFinish: ReturnType<typeof vi.fn>;
     filesDownload: ReturnType<typeof vi.fn>;
     filesDeleteV2: ReturnType<typeof vi.fn>;
     filesListFolder: ReturnType<typeof vi.fn>;
@@ -29,6 +35,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
     // Dropbox SDKのモック
     mockDbx = {
       filesUpload: vi.fn(),
+      filesUploadSessionStart: vi.fn(),
+      filesUploadSessionAppendV2: vi.fn(),
+      filesUploadSessionFinish: vi.fn(),
       filesDownload: vi.fn(),
       filesDeleteV2: vi.fn(),
       filesListFolder: vi.fn()
@@ -253,6 +262,27 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       expect(result.equals(mockFileBinary)).toBe(true);
       expect(mockOAuthService.refreshAccessToken).toHaveBeenCalledWith(mockRefreshToken);
       expect(onTokenUpdate).toHaveBeenCalledWith(mockRefreshedToken);
+    });
+
+    it('should upload from file path using upload session', async () => {
+      mockDbx.filesUploadSessionStart.mockResolvedValue({ result: { session_id: 'session-1' } });
+      mockDbx.filesUploadSessionAppendV2.mockResolvedValue(undefined);
+      mockDbx.filesUploadSessionFinish.mockResolvedValue(undefined);
+
+      const largeFilePath = path.join(os.tmpdir(), `dropbox-upload-${Date.now()}.sql`);
+      const payload = Buffer.alloc(10 * 1024 * 1024, 1);
+      await fs.writeFile(largeFilePath, payload);
+
+      try {
+        await storageProvider.uploadFromFile(largeFilePath, 'database/large.sql');
+      } finally {
+        await fs.rm(largeFilePath, { force: true }).catch(() => {});
+      }
+
+      expect(mockDbx.filesUploadSessionStart).toHaveBeenCalledTimes(1);
+      expect(mockDbx.filesUploadSessionAppendV2).toHaveBeenCalledTimes(0);
+      expect(mockDbx.filesUploadSessionFinish).toHaveBeenCalledTimes(1);
+      expect(mockDbx.filesUpload).not.toHaveBeenCalled();
     });
   });
 });

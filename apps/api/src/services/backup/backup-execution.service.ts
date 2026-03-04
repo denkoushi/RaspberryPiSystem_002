@@ -6,6 +6,7 @@ import type { BackupKind } from './backup-types.js';
 import { BackupService } from './backup.service.js';
 import { BackupHistoryService } from './backup-history.service.js';
 import { StorageProviderFactory } from './storage-provider-factory.js';
+import { recoverAndRetryBackupOnInsufficientSpace } from './backup-space-recovery.service.js';
 
 export type BackupProvider = 'local' | 'dropbox';
 
@@ -112,7 +113,18 @@ export async function executeBackupAcrossProviders(
 
       try {
         const backupStart = Date.now();
-        const result = await backupService.backup(target, { label });
+        let result = await backupService.backup(target, { label });
+        if (!result.success && safeProvider === 'dropbox') {
+          const recovery = await recoverAndRetryBackupOnInsufficientSpace({
+            backupService,
+            target,
+            backupOptions: { label },
+            errorMessage: result.error
+          });
+          if (recovery.recovered && recovery.result) {
+            result = recovery.result;
+          }
+        }
         const durationMs = Date.now() - backupStart;
 
         if (result.success) {

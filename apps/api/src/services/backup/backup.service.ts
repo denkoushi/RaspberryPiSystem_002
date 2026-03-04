@@ -10,7 +10,12 @@ import type {
   RestoreOptions,
   RestoreResult
 } from './backup-types.js';
-import type { StorageProvider, FileInfo } from './storage/storage-provider.interface.js';
+import {
+  isLargeFileUploadProvider,
+  type StorageProvider,
+  type FileInfo,
+  type UploadSource
+} from './storage/storage-provider.interface.js';
 
 function stripControlChars(value: string): string {
   return Array.from(value)
@@ -25,16 +30,16 @@ export class BackupService implements BackupProvider {
   constructor(private readonly storage: StorageProvider) {}
 
   async backup(target: BackupTarget, options?: BackupOptions): Promise<BackupResult> {
-    const data = await target.createBackup();
     const key = this.buildPath(target.info, options);
 
     try {
-      await this.storage.upload(data, key);
+      const uploadSource = await this.resolveUploadSource(target);
+      const sizeBytes = await this.uploadBySource(uploadSource, key);
       return {
         target: target.info,
         success: true,
         path: key,
-        sizeBytes: data.length,
+        sizeBytes,
         timestamp: new Date()
       };
     } catch (error) {
@@ -44,6 +49,41 @@ export class BackupService implements BackupProvider {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date()
       };
+    }
+  }
+
+  private async resolveUploadSource(target: BackupTarget): Promise<UploadSource> {
+    if (typeof target.createUploadSource === 'function') {
+      return target.createUploadSource();
+    }
+
+    const data = await target.createBackup();
+    return { kind: 'buffer', data };
+  }
+
+  private async uploadBySource(source: UploadSource, key: string): Promise<number> {
+    try {
+      if (source.kind === 'buffer') {
+        await this.storage.upload(source.data, key);
+        return source.data.length;
+      }
+
+      if (isLargeFileUploadProvider(this.storage)) {
+        await this.storage.uploadFromFile(source.filePath, key);
+        if (typeof source.sizeBytes === 'number') {
+          return source.sizeBytes;
+        }
+        const stat = await fs.stat(source.filePath);
+        return stat.size;
+      }
+
+      const data = await fs.readFile(source.filePath);
+      await this.storage.upload(data, key);
+      return data.length;
+    } finally {
+      if (source.kind === 'file' && source.cleanup) {
+        await source.cleanup().catch(() => {});
+      }
     }
   }
 
