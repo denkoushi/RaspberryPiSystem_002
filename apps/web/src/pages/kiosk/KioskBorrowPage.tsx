@@ -195,10 +195,16 @@ export function KioskBorrowPage() {
     }
     if (!nfcEvent) return;
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H4',location:'KioskBorrowPage.tsx:198',message:'kiosk page received nfcEvent',data:{uid:nfcEvent.uid,timestamp:nfcEvent.timestamp,state:String(state.value)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (lastEventKeyRef.current === eventKey) {
       if (enableDebugLogs) {
         console.log('Skipping duplicate NFC event:', eventKey);
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H4',location:'KioskBorrowPage.tsx:205',message:'kiosk page dropped duplicate nfcEvent',data:{eventKey},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return;
     }
     const processNfc = async () => {
@@ -263,6 +269,9 @@ export function KioskBorrowPage() {
       if (enableDebugLogs) {
         console.log(`Sending ${eventType}:`, nfcEvent.uid);
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H5',location:'KioskBorrowPage.tsx:272',message:'kiosk page dispatched nfc event to state machine',data:{eventType,uid:nfcEvent.uid},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       send({ type: eventType, uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     };
