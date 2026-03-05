@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-05）
 
+- **✅ RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent 設定配布・起動保証（pcscd 導入含む）を追加。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) を参照。
+
 - **✅ Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./guides/backup-verification.md) を参照。
 
 - **✅ 同一ターゲット内削除限定（67c4de1）・デプロイ完了・実機検証OK**: `insufficient_space`時の削除を同一ターゲット（kind+source）内に限定する修正をデプロイ。**実装**: `listBackups({ prefix })`＋`matchesSource`でDB失敗時にCSVが消える種類偏りを防止。**デプロイ**: Run ID `20260305-093035-20970`、コミット`67c4de1`。**実機検証**: `POST /api/backup/internal`で手動CSVバックアップ成功、Dropboxアップロード成功。**知見**: Pi5ホストからのAPIは`https://localhost`（Caddy 443経由）。`/api/backup/internal`は認証不要で実機検証に有用。詳細は [backup-verification.md](./guides/backup-verification.md) を参照。

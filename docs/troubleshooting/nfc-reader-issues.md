@@ -135,11 +135,22 @@ cd /opt/RaspberryPiSystem_002/clients/nfc-agent
 poetry run python -m nfc_agent
 ```
 
-#### 原因2: PCSCサービスが停止している
+#### 原因2: PCSCサービス（pcscd）が停止している、または未導入
+
+**症状**: `curl http://localhost:7071/api/agent/status` で `readerConnected: false`
+
+**原因**: nfc-agent は pcscd 経由で NFC リーダーにアクセスする。pcscd が未導入・非稼働だとリーダーを認識できない。
 
 **解決方法**:
 ```bash
-sudo systemctl restart pcscd
+# 標準デプロイ済みの場合、nfc-agent-lifecycle が自動で pcscd を導入・起動する。
+# 手動復旧時:
+sudo apt install -y pcscd pcsc-tools
+sudo systemctl enable pcscd
+sudo systemctl start pcscd
+# pcscd 起動後、nfc-agent を再起動（起動時に pcscd ソケットを参照するため）
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
 ```
 
 #### 原因3: NFCリーダーが認識されていない
@@ -254,7 +265,21 @@ pcsc_scan
 # リーダーが認識されればOK
 ```
 
-#### 原因8: ポート7071が既に使用されている
+#### 原因8: Docker が未導入（新規 Pi4 で発生しやすい）
+
+**症状**: デプロイ時に `nfc-agent には Docker が必要です` で失敗
+
+**解決方法**:
+```bash
+# Pi4 で実行
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# ログアウト/再ログイン後、デプロイを再実行
+```
+
+**参照**: [KB-291](../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
+
+#### 原因9: ポート7071が既に使用されている
 
 **症状**:
 - `address already in use` エラー

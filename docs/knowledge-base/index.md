@@ -34,7 +34,7 @@ update-frequency: high
 | ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 1件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線） |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 19件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 19件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整 |
-| ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md) | 3件 | NFCリーダーとハードウェア |
+| ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md), [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | 4件 | NFCリーダーとハードウェア、RoboDrill01 NFC恒久対策 |
 | └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 22件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**、**labwc rc.xml 再読み込み（SIGHUP）**含む） |
 
 ---
@@ -208,6 +208,7 @@ update-frequency: high
 | [KB-288](./KB-288-power-actions-bind-mount-deleted-inode.md) | 電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照） | ✅ 恒久対策実装済み |
 | [KB-289](./infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) | Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示） | ✅ 実装完了 |
 | [KB-290](./infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) | Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行） | ✅ 解決済み |
+| [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査・恒久対策 | ✅ 解決済み（2026-03-05） |
 
 ### インフラ関連
 
@@ -553,4 +554,5 @@ update-frequency: high
 - 2026-03-02: KB-287を解決（研削メイン日本語入力スムーズ化）→ 2026-03-02に真因確定・対策実施・実機検証完了。inventory.yml の差異（kensakuMain に ibus_owner_mode/ibus_disable_competing_autostart 未設定）が原因。im-launch 由来の競合起動で ibus-ui-gtk3 がフォーカスを奪う。inventory に ibus_owner_mode: "single-owner" と ibus_disable_competing_autostart: true を追加。デプロイ（Run ID: 20260302-192312-6532）で反映。研削メインで日本語入力がスムーズにできることを実機確認
 - 2026-03-01: KB-288を追加（電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照））→ 2026-03-01に根本原因特定。APIコンテナの power-actions バインドマウントが削除・再作成された古い inode を参照。`mountinfo` で `//deleted` を確認。即時対処は API 再起動。KB-investigation-kiosk-ime-and-power-regression.md を更新
 - 2026-03-02: KB-289を追加（Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示））→ 2026-03-02に実装完了・デプロイ成功・実機検証OK。研削メイン（raspberrypi4）をChromiumからFirefoxに切り替え、labwc keybindでSuper+Shift+P押下時にwf-panel-piを表示。inventory.ymlにkiosk_browser_engine: "firefox"追加。show-kiosk-panel.sh.j2とlabwc rc.xmlのkeybindをAnsibleで配置。Pi5＋Pi4でデプロイ成功（Run ID: 20260302-152520-15777）。runbooks/kiosk-wifi-panel-shortcut.mdにSuperキー説明・トラブルシュート追記
+- 2026-03-05: KB-291を追加（ロボドリル01 NFCスキャンが反応しない調査・恒久対策）→ 2026-03-05に解決完了・デプロイ完了・実機検証OK。pcscd未導入/非稼働・Docker未導入が根因。nfc-agent-lifecycle.ymlでpcscd導入・起動・nfc-agent起動保証を実装。吊具・計測機器のNFCタグで画面遷移を実機確認。
 - 2026-03-05: KB-290を追加（Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行））→ 2026-03-05に解決完了・デプロイ完了・実機検証OK。Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一を実装。Pi5のみデプロイ（Run ID: 20260305-085419-3769）。手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録を確認。同日、同一ターゲット内削除限定（67c4de1）をデプロイ（Run ID: 20260305-093035-20970）。`listBackups({ prefix })`＋`matchesSource`でDB失敗時にCSVが消える種類偏りを防止。`POST /api/backup/internal`で実機検証成功

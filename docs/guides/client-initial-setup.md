@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2026-02-28（Pi4追加時のTailscale SSH無効化手順とkiosk-browser起動手順を追加）
+最終更新: 2026-03-05（NFCリーダー用のDocker前提条件・インストール手順を追加。標準デプロイでpcscd/nfc-agentが自動設定される旨を明記）
 
 ## 概要
 
@@ -514,13 +514,28 @@ journalctl -u kiosk-browser.service -n 20 --no-pager
 
 **重要**: キオスク端末でNFCリーダー（工具持出・計測機器持出等）を使う場合は、この手順を実行してください。
 
-**注意（2026-03-05更新）**: 標準デプロイ（`update-all-clients.sh`）実行時、client role が自動で nfc-agent の `.env` を配布し、Docker Compose で起動します。以下の手順は **Ansibleデプロイ前の初期セットアップ時** または **手動復旧時** のみ必要です。
+**注意（2026-03-05更新）**: 標準デプロイ（`update-all-clients.sh`）実行時、client role が自動で以下を実施します。
+
+- **pcscd**（PC/SC デーモン）と **pcsc-tools** の導入・起動
+- nfc-agent 用 `.env` の配布
+- Docker Compose による **nfc-agent** コンテナの起動・維持
+
+したがって、**inventory.yml に `nfc_agent_client_id` が定義された Pi4 に対して標準デプロイを実行すれば、NFCリーダーは正常動作します。** 以下の手順は **Ansibleデプロイ前の初期セットアップ時** または **手動復旧時** のみ必要です。
 
 ### 5.5.1 前提条件
 
 - `inventory.yml` に `nfc_agent_client_id` と `nfc_agent_client_secret` が定義されていること
-- Pi4 に Docker がインストールされていること
+- **Pi4 に Docker がインストールされていること**（未導入の場合、デプロイ時に fail します）
 - NFCリーダー（Sony RC-S300/S1 等）が USB 接続されていること
+
+**Docker が未導入の新規 Pi4 の場合**（2026-03-05 追記: raspi4-robodrill01 で発生した事象）:
+
+```bash
+# Pi4 で実行
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# ログアウト・再ログイン後、docker コマンドが使えることを確認
+```
 
 ### 5.5.2 手動セットアップ（デプロイ前のみ）
 

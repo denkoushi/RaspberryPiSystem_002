@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-05) **RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent.yml（設定配布）と nfc-agent-lifecycle.yml（pcscd 導入・起動・nfc-agent 起動保証）を追加、変数契約（nfc_agent_client_id/secret 必須）を fail-fast 化。**デプロイトラブル**: UTF-8 無効文字（journalctl/df）→ iconv -c、iconv 非ゼロ終了 → \|\| true、Docker 未導入 → 手動インストール。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md) を参照。
+
 - [x] (2026-03-05) **Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./docs/knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./docs/guides/backup-verification.md) を参照。
 
 - [x] (2026-03-05) **同一ターゲット内削除限定（67c4de1）・デプロイ完了・実機検証OK**: `insufficient_space`時の削除を同一ターゲット（kind+source）内に限定する修正をデプロイ。**背景**: 従来は全バックアップから最古を削除していたため、DB失敗時にCSVが消える等の種類偏りリスクがあった。**実装**: `backup-space-recovery.service.ts`で`listBackups({ prefix })`を使用し、`matchesSource`で同一sourceのバックアップのみ削除対象に。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-093035-20970`、コミット`67c4de1`、`state: success`。**実機検証**: 手動CSVバックアップ（`POST /api/backup/internal`）成功、Dropboxアップロード成功（2,996 bytes）。insufficient_space時の同一ターゲット内削除は実際の容量不足を発生させないと検証不可。**知見**: Pi5ホストからのAPIアクセスは`https://localhost`（Caddy 443経由）。`/api/backup/internal`はlocalhost/172.xからのみ許可で認証不要、実機検証に有用。詳細は [KB-290](./docs/knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./docs/guides/backup-verification.md) を参照。
@@ -616,6 +618,9 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-05）: raspi4-robodrill01 で NFC スキャンが反応しない根因は **pcscd 未導入/非稼働**。nfc-agent は pcscd 経由でリーダーにアクセスするため、pcscd が後から起動した場合、nfc-agent を再起動しないと `readerConnected` が true にならない。**対策**: `nfc-agent-lifecycle.yml` で pcscd・pcsc-tools を自動インストールし、pcscd 状態変更時に nfc-agent を再起動。**[KB-291]**
+- 観測（2026-03-05）: 新規 Pi4（raspi4-robodrill01）に Docker が未導入のケースあり。**対策**: `curl -fsSL https://get.docker.com | sh` で手動インストール。恒久対策として client-initial-setup.md の前提条件に Docker を含める。**[KB-291]**
+- 観測（2026-03-05）: journalctl/df 出力に無効 UTF-8（サロゲート等）が混入し、Ansible の Python が `Refusing to deserialize` で失敗。**対策**: `iconv -f utf-8 -t utf-8 -c` で無効文字を除去。`iconv` が非ゼロ終了する場合は `|| true` でタスク失敗を回避。**[KB-291]**
 - 観測（2026-03-05）: Dropboxバックアップが容量不足（`insufficient_space`）で失敗する場合、従来は手動で古いバックアップを削除する必要があった。**恒久対策**: Upload Session（チャンクアップロード）で大容量ファイルを分割送信し、`insufficient_space`検知時に最古優先で削除して再試行する自動リカバリを実装。手動・スケジュールの救済ポリシーを統一。DatabaseBackupTargetの一時ファイル経路を改善し、`/tmp`直下の肥大化を回避。**[KB-290]**
 - 観測（2026-03-05）: `insufficient_space`時の削除が全バックアップから行われていたため、DB失敗時にCSVが消える等の種類偏りリスクがあった。**対策（67c4de1）**: `listBackups({ prefix })`＋`matchesSource`で同一ターゲット（kind+source）内のみ削除対象に限定。**[KB-290]**
 - 観測（2026-03-05）: Pi5ホストからのAPIアクセスは`http://localhost:8080`では接続できない。Caddyが443で待ち受けており、`curl -sk https://localhost/api/...` を使用する。`POST /api/backup/internal` は localhost/172.x からのみ許可で認証不要、実機検証に有用。
@@ -1484,6 +1489,22 @@
 - ✅ Runbook（kiosk-power-operation-recovery.md）は既発不具合時の即時対処として引き続き有効
 
 **参照**: [docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md](./docs/knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
+
+### RoboDrill01 NFC恒久対策（完了 2026-03-05）
+
+**概要**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。
+
+**完了した実装**:
+- ✅ **根因特定**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在
+- ✅ **nfc-agent-lifecycle.yml**: pcscd・pcsc-tools 導入、pcscd 状態変更時の nfc-agent 再起動保証
+- ✅ **docker-compose.client.yml**: .env 参照に変更、nfc_agent_client_id/secret の fail-fast 化
+- ✅ **実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認
+
+**将来の改善候補**（優先度: 低）:
+- **client-initial-setup.md**: 新規 Pi4 追加時の前提条件に Docker インストールを明記（現状は手動 `curl -fsSL https://get.docker.com | sh`）
+- **他 Pi4 端末**: 研削メイン等、NFC リーダー接続端末があれば同様の恒久対策適用を検討
+
+**参照**: [KB-291](./docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md)
 
 ### Pi4 復帰後の電源・連打防止実機検証（後日実施）
 
