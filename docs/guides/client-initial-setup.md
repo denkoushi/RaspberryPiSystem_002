@@ -510,6 +510,43 @@ journalctl -u kiosk-browser.service -n 20 --no-pager
 
 ---
 
+## Step 5.5: NFCエージェントの設定と起動（キオスクでNFCを使う場合）
+
+**重要**: キオスク端末でNFCリーダー（工具持出・計測機器持出等）を使う場合は、この手順を実行してください。
+
+**注意（2026-03-05更新）**: 標準デプロイ（`update-all-clients.sh`）実行時、client role が自動で nfc-agent の `.env` を配布し、Docker Compose で起動します。以下の手順は **Ansibleデプロイ前の初期セットアップ時** または **手動復旧時** のみ必要です。
+
+### 5.5.1 前提条件
+
+- `inventory.yml` に `nfc_agent_client_id` と `nfc_agent_client_secret` が定義されていること
+- Pi4 に Docker がインストールされていること
+- NFCリーダー（Sony RC-S300/S1 等）が USB 接続されていること
+
+### 5.5.2 手動セットアップ（デプロイ前のみ）
+
+**クライアント端末で実行:**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+sudo scripts/client/setup-nfc-agent.sh
+```
+
+**期待される結果:**
+- `clients/nfc-agent/.env` が作成される（未存在時は `.env.example` からコピー）
+- Docker Compose で nfc-agent コンテナが起動する
+
+### 5.5.3 動作確認
+
+```bash
+curl http://localhost:7071/api/agent/status
+```
+
+期待: `readerConnected: true` が含まれる JSON が返ること。
+
+**関連**: [NFCリーダーのトラブルシューティング](../troubleshooting/nfc-reader-issues.md)、[KB-291](../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
+
+---
+
 ## Step 6: 管理コンソールでの確認
 
 ### 6.1 管理画面でクライアント状態を確認

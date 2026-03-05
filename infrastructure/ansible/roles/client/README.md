@@ -7,3 +7,8 @@
   - `status_agent_*`（ID/KEY/ロケーション等）
   - `services_to_restart`（各ホストのsystemdユニット配列）
   - `manage_kiosk_browser`, `manage_signage_lite`（下位ロールに引き渡すフラグ）
+
+NFCエージェント（Pi4キオスク）:
+  - `nfc_agent_client_id`（必須）: クライアント識別子
+  - `nfc_agent_client_secret`（必須）: API認証用シークレット
+  - `nfc_agent_api_base_url`（任意）: 未定義時は api_base_url を継承

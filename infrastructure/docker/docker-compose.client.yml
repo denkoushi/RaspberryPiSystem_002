@@ -1,5 +1,7 @@
 version: "3.9"
 
+# NFCエージェント: 運用時は Ansible が clients/nfc-agent/.env を配布する。
+# 初回/手動セットアップ時は setup-nfc-agent.sh が .env 未存在なら .env.example をコピーして作成する。
 services:
   nfc-agent:
     build:
@@ -10,7 +12,7 @@ services:
     devices:
       - "/dev/bus/usb:/dev/bus/usb"
     env_file:
-      - ../../clients/nfc-agent/.env.example
+      - ../../clients/nfc-agent/.env
     volumes:
       - nfc-agent-data:/data
       - /run/pcscd:/run/pcscd:ro

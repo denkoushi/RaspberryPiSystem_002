@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/infrastructure/docker/docker-compose.client.yml"
 ENV_FILE="$REPO_ROOT/clients/nfc-agent/.env"
 

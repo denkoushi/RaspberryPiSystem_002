@@ -65,6 +65,14 @@
     group: root
     mode: '0644'
 
+- name: Deploy NFC agent configuration (Pi4 kiosk)
+  ansible.builtin.include_tasks: nfc-agent.yml
+  when: nfc_agent_client_id is defined
+
+- name: Ensure nfc-agent is running (Pi4 kiosk)
+  ansible.builtin.include_tasks: nfc-agent-lifecycle.yml
+  when: nfc_agent_client_id is defined
+
 - name: Ensure sudoers overrides for client services
   ansible.builtin.template:
     src: "{{ role_path }}/templates/sudoers-client.j2"

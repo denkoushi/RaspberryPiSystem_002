@@ -1,0 +1,36 @@
+---
+# NFCエージェント設定の配布（責務分離: 設定生成のみ）
+# 対象: nfc_agent_client_id が定義されているホスト（Pi4キオスク等）
+# 起動保証は nfc-agent-lifecycle.yml で行う
+#
+# 変数契約（fail-fast）:
+#   nfc_agent_client_id と nfc_agent_client_secret は対で必須。
+#   nfc_agent_api_base_url は group_vars で api_base_url から継承可能。
+
+- name: Validate NFC agent variable contract (fail-fast)
+  ansible.builtin.assert:
+    that:
+      - nfc_agent_client_id is defined
+      - nfc_agent_client_id | length > 0
+      - nfc_agent_client_secret is defined
+      - nfc_agent_client_secret | length > 0
+    fail_msg: >
+      NFCエージェントには nfc_agent_client_id と nfc_agent_client_secret が必須です。
+      inventory.yml の {{ inventory_hostname }} に両方を定義してください。
+      参照: docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md
+
+- name: Ensure NFC agent .env directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/clients/nfc-agent"
+    state: directory
+    mode: '0755'
+
+- name: Deploy NFC agent environment variables
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/nfc-agent.env.j2"
+    dest: "{{ repo_path }}/clients/nfc-agent/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: nfc_agent_env_result
+  notify: restart nfc-agent

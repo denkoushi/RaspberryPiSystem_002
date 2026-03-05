@@ -1,5 +1,18 @@
 # NFCリーダーのトラブルシューティング
 
+## 標準デプロイ後の確認順序（2026-03-05追加）
+
+`update-all-clients.sh` でデプロイした場合、nfc-agent は client role により自動で設定配布・起動されます。スキャンが反応しない場合は、以下を順に確認してください。
+
+1. **NFCエージェントのステータス**: `curl http://localhost:7071/api/agent/status`
+2. **Docker コンテナ**: `docker compose -f infrastructure/docker/docker-compose.client.yml ps`
+3. **pcscd**: `sudo systemctl status pcscd`
+4. **リーダー認識**: `pcsc_scan`（root または一般ユーザーで実行）
+
+詳細は [KB-291](../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) を参照。
+
+---
+
 ## NFC WebSocket接続ポリシー（2026-02-18更新）
 
 **重要**: NFCストリームは端末分離ポリシーに基づいて動作します。
@@ -31,6 +44,11 @@ systemctl status nfc-agent
 NFCエージェントが起動していない場合、以下で手動起動してください：
 
 ```bash
+# Docker Compose で起動（推奨、標準デプロイと同じ方式）
+cd /opt/RaspberryPiSystem_002
+sudo scripts/client/setup-nfc-agent.sh
+
+# または Poetry で直接起動（開発・診断用）
 cd /opt/RaspberryPiSystem_002/clients/nfc-agent
 poetry run python -m nfc_agent
 ```

@@ -1,0 +1,50 @@
+---
+# NFCエージェント起動保証（責務分離: ライフサイクル制御）
+# 対象: nfc_agent_client_id が定義されているホスト（Pi4キオスク等）
+# docker compose で nfc-agent コンテナを起動・維持する
+
+- name: Ensure Docker is available for nfc-agent
+  ansible.builtin.command: docker --version
+  register: docker_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker is not available (nfc-agent requires Docker)
+  ansible.builtin.fail:
+    msg: "nfc-agent には Docker が必要です。{{ inventory_hostname }} に Docker をインストールしてください。"
+  when: docker_version_check.rc != 0
+
+- name: Ensure nfc-agent container is up
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d nfc-agent
+  args:
+    executable: /bin/bash
+  register: nfc_agent_up_result
+
+- name: Wait for nfc-agent to become ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:7071/api/agent/status"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: nfc_agent_status_check
+  retries: 5
+  delay: 3
+  until: nfc_agent_status_check.status == 200
+  failed_when: false
+
+- name: Capture docker compose ps for nfc-agent (diagnostics on failure)
+  ansible.builtin.shell: |
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml ps -a
+  register: nfc_agent_ps_result
+  changed_when: false
+  failed_when: false
+  when: nfc_agent_status_check.status | default(0) != 200
+
+- name: Emit nfc-agent status for diagnostics on failure
+  ansible.builtin.debug:
+    msg:
+      - "nfc-agent status API: {{ nfc_agent_status_check.json | default({}) }}"
+      - "docker compose ps: {{ nfc_agent_ps_result.stdout | default('') }}"
+  when: nfc_agent_status_check.status | default(0) != 200

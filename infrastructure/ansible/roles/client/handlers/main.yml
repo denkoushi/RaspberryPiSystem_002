@@ -1,0 +1,8 @@
+---
+# .env 変更時に nfc-agent コンテナを再作成して新設定を反映
+- name: restart nfc-agent
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d --force-recreate nfc-agent
+  args:
+    executable: /bin/bash

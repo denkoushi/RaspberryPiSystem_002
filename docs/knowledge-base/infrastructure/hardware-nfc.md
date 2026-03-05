@@ -11,10 +11,29 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - NFC/ハードウェア関連
 
 **カテゴリ**: インフラ関連 > NFC/ハードウェア関連  
-**件数**: 3件  
+**件数**: 4件  
 **索引**: [index.md](../index.md)
 
 NFCリーダーとハードウェアに関するトラブルシューティング情報
+
+---
+
+### [KB-291] ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告
+
+**日付**: 2026-03-05
+
+**事象**: パイ4ロボドリル01にNFCリーダーを接続したが、スキャンが反応しない。
+
+**調査結果**: Pi4増設時のNFC仕様・ロジックの精査により、以下を確認。
+- inventory の nfc_agent 変数は定義済み
+- NFCエージェント .env のデプロイは manage-app-configs.yml で可能だが、標準デプロイフローに含まれていない
+- NFCエージェントの起動・自動起動は Ansible に存在しない
+- client-initial-setup.md に NFC エージェント手順が欠落
+- docker-compose.client.yml が .env.example を参照し、Ansible でデプロイする .env がコンテナに渡らない
+
+**即時対応**: `scripts/client/setup-nfc-agent.sh` を手動実行。
+
+**詳細**: [KB-291-robodrill01-nfc-scan-not-responding-investigation.md](./KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
 
 ---
 
