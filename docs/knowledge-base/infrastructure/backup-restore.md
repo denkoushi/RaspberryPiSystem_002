@@ -736,6 +736,11 @@ update-frequency: medium
 - [バックアップAPI](../api/backup.md)（容量不足時の自動回復セクション）
 - [バックアップ実機検証ガイド](../guides/backup-verification.md)
 
+**実機検証時のトラブルシューティング**（2026-03-05）:
+- **APIヘルスチェック**: Pi5ホストからは`http://localhost:8080`では接続できない。Caddyが443で待ち受けており、`curl -sk https://localhost/api/system/health` を使用する。
+- **手動バックアップ（認証不要）**: `POST /api/backup/internal` は localhost または 172.x からのみ許可され認証不要。backup.sh や実機検証で利用可能。例: `curl -sk -X POST https://localhost/api/backup/internal -H 'Content-Type: application/json' -d '{"kind":"csv","source":"employees","metadata":{"label":"manual-verify"}}'`
+- **insufficient_space 時の同一ターゲット内削除**: 実際に容量不足を発生させないと動作検証不可。バックアップ実行パス（`recoverAndRetryBackupOnInsufficientSpace` 含む）はデプロイ済みで、通常バックアップは正常動作。
+
 ---
 
 ### [KB-108] Gmail OAuth認証時のTailscale DNS解決問題と`/etc/hosts`設定

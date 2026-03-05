@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ機能実機検証ガイド
 
-最終更新: 2026-03-05（KB-290 Dropbox恒久対策実機検証結果を追記）
+最終更新: 2026-03-05（KB-290・67c4de1実機検証結果、API経路・内部エンドポイント・トラブルシュート追記）
 
 ## 概要
 
@@ -34,13 +34,13 @@ ssh denkon5sd02@100.106.158.2
 cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.server.yml ps
 
-# APIヘルスチェック
-curl http://localhost:8080/api/system/health
+# APIヘルスチェック（Pi5ホストからはCaddy経由で443を使用）
+curl -sk https://localhost/api/system/health
 ```
 
 **期待結果**: 
 - すべてのコンテナが `Up` 状態
-- ヘルスチェックが `{"status":"ok"}` を返す
+- ヘルスチェックが `{"status":"ok"}` または `{"status":"degraded",...}` を返す（メモリ高負荷時は degraded）
 
 ### 2. バックアップスケジューラーの起動確認
 
@@ -71,13 +71,22 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 管理コンソール（バックアップ設定の健全性表示）またはAPIで、設定の衝突/欠落を事前に検知できます。
 
 ```bash
-curl http://localhost:8080/api/backup/config/health \
+curl -sk https://localhost/api/backup/config/health \
   -H "Authorization: Bearer <your-admin-token>"
 ```
 
 ### 4. 手動バックアップの実行
 
-管理者トークンを取得してバックアップを実行：
+**方法A: 内部エンドポイント（認証不要、Pi5ホストからのみ）**
+
+```bash
+# Pi5ホストにSSH接続した状態で実行。localhost/172.x からのみ許可。
+curl -sk -X POST https://localhost/api/backup/internal \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"csv","source":"employees","metadata":{"label":"manual-verify"}}'
+```
+
+**方法B: 管理者トークンを使用**
 
 ```bash
 # 1. 管理者でログインしてトークンを取得（管理画面から）
@@ -86,7 +95,7 @@ curl http://localhost:8080/api/backup/config/health \
 TOKEN="your-admin-token"
 
 # CSVバックアップ（従業員データ）
-curl -X POST http://localhost:8080/api/backup \
+curl -sk -X POST https://localhost/api/backup \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d '{
@@ -98,7 +107,7 @@ curl -X POST http://localhost:8080/api/backup \
   }'
 
 # バックアップ一覧の取得
-curl http://localhost:8080/api/backup \
+curl -sk https://localhost/api/backup \
   -H "Authorization: Bearer ${TOKEN}"
 ```
 
@@ -157,6 +166,14 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 - Dropboxアカウントでファイルが確認できる
 
 ## トラブルシューティング
+
+### APIヘルスチェックが失敗する（接続拒否・タイムアウト）
+
+**症状**: `curl http://localhost:8080/api/system/health` が接続失敗（exit code 7 等）
+
+**原因**: Pi5ではAPIはCaddy経由で443で待ち受けており、8080はコンテナ内のみでホストに露出していない。
+
+**対処**: `curl -sk https://localhost/api/system/health` を使用する。`-s`（サイレント）、`-k`（自己署名証明書を許可）を付与。
 
 ### バックアップスケジューラーが起動しない
 
@@ -223,4 +240,19 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 - **デプロイブランチ**: `feat/pi4-robodrill01-firefox`（Dropbox恒久対策を含む）
 - **デプロイRun ID**: `20260305-085419-3769`（Pi5のみ、`--limit server`、`state: success`）
 - **検証結果**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録
-- **関連**: [KB-290](../knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) 
+- **関連**: [KB-290](../knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行)
+
+### 2026-03-05: 同一ターゲット内削除限定（67c4de1）実機検証
+
+- **検証日時**: 2026-03-05
+- **デプロイコミット**: `67c4de1`（fix: insufficient_space時の削除を同一ターゲット内に限定）
+- **デプロイRun ID**: `20260305-093035-20970`（Pi5のみ、`--limit server`、`state: success`）
+- **検証結果**:
+  - コンテナ: api / db / web すべて Up
+  - マイグレーション: up to date（35 migrations）
+  - バックアップスケジューラー: 26タスク登録、Scheduler started
+  - backup.json: 存在（15KB）
+  - APIヘルス: `https://localhost/api/system/health` 応答（status: degraded、memory 95.5%）
+  - 手動CSVバックアップ（employees）: 成功、Dropboxアップロード成功（2,996 bytes）
+- **備考**: insufficient_space 時の同一ターゲット内削除は、実際に容量不足を発生させないと検証不可。バックアップ実行パス（recoverAndRetryBackupOnInsufficientSpace 含む）はデプロイ済み。
+- **関連**: [KB-290](../knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行)
