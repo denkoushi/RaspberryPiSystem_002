@@ -40,9 +40,6 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
 
   useEffect(() => {
     const resolvedPolicy = policy ?? resolveNfcStreamPolicy();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H1',location:'useNfcStream.ts:42',message:'nfc hook effect entered',data:{enabled,resolvedPolicy},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     if (!enabled || resolvedPolicy === 'disabled') {
       setEvent(null);
@@ -61,9 +58,6 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
       mode: String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase(),
       location: isBrowser ? { protocol: window.location.protocol, host: window.location.host } : undefined,
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H2',location:'useNfcStream.ts:61',message:'nfc ws candidates resolved',data:{wsCandidates},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     let socket: WebSocket | null = null;
     let isMounted = true;
     let candidateIdx = 0;
@@ -82,24 +76,15 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
         socket = new WebSocket(url);
         socket.onopen = () => {
           opened = true;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H2',location:'useNfcStream.ts:82',message:'nfc websocket opened',data:{url,candidateIdx},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
         };
         socket.onmessage = (message) => {
           if (!isMounted) return;
           try {
             const payload = JSON.parse(message.data) as NfcEvent;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H3',location:'useNfcStream.ts:90',message:'nfc websocket message received',data:{uid:payload.uid,timestamp:payload.timestamp,eventId:payload.eventId ?? null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
 
             // スコープ分離: enabled=trueになった時刻より前のイベントは無視
             // これにより、別ページから遷移してきた際に以前のイベントを拾わない
             if (enabledAtRef.current && payload.timestamp < enabledAtRef.current) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H3',location:'useNfcStream.ts:95',message:'nfc event dropped by enabledAt guard',data:{uid:payload.uid,payloadTs:payload.timestamp,enabledAt:enabledAtRef.current},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               return;
             }
 
@@ -113,9 +98,6 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
             // 同じイベント（uid + timestamp）を複数回発火しないようにする（eventIdが無い場合のフォールバック）
             const eventKey = `${payload.uid}:${payload.timestamp}`;
             if (eventId === null && lastEventKeyRef.current === eventKey) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H3',location:'useNfcStream.ts:109',message:'nfc event dropped by duplicate key guard',data:{eventKey},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               return;
             }
             lastEventKeyRef.current = eventKey;
@@ -124,9 +106,6 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
               persistEventId(eventId);
             }
             setEvent(payload);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00322f'},body:JSON.stringify({sessionId:'00322f',runId:'kensaku-main-nfc-pre',hypothesisId:'H4',location:'useNfcStream.ts:117',message:'nfc event accepted into hook state',data:{uid:payload.uid,eventId:payload.eventId ?? null},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
           } catch {
             // ignore malformed payload
           }
