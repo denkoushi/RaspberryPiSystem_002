@@ -703,7 +703,7 @@ update-frequency: medium
 **解決策**（2026-03-05 実装・デプロイ・実機検証完了）:
 1. **Upload Session（チャンクアップロード）**: Dropbox APIの`/files/upload_session/start`・`append`・`finish`を使用し、大容量ファイルをチャンク単位で送信
 
-2. **容量不足時の自動救済**: `insufficient_space`検知時に、既存バックアップを**最古順に削除**しながらアップロードを再試行。削除した履歴は`fileStatus=DELETED`へ更新
+2. **容量不足時の自動救済**: `insufficient_space`検知時に、既存バックアップを**最古順に削除**しながらアップロードを再試行。削除は**同一ターゲット（kind+source）内に限定**し、DB失敗時にCSVが消える等の種類偏りを防ぐ。削除した履歴は`fileStatus=DELETED`へ更新
 
 3. **DatabaseBackupTargetの一時ファイル経路**: DBダンプの一時ファイルを`/tmp`経由で確実に出力し、チャンク読み取りに適した経路に変更
 
@@ -729,7 +729,7 @@ update-frequency: medium
 
 **関連ファイル**:
 - `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（Upload Session・再試行）
-- `apps/api/src/services/backup/space-recovery.service.ts`（容量不足時救済）
+- `apps/api/src/services/backup/backup-space-recovery.service.ts`（容量不足時救済・同一ターゲット内削除）
 - `apps/api/src/services/backup/targets/database-backup.target.ts`（一時ファイル経路）
 
 **関連ドキュメント**:

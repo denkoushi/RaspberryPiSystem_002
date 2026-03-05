@@ -37,26 +37,55 @@ describe('backup-space-recovery.service', () => {
   it('deletes oldest backups and retries until backup succeeds', async () => {
     const backupService = {
       listBackups: vi.fn().mockResolvedValue([
-        { path: 'database/oldest.sql', modifiedAt: new Date('2024-01-01T00:00:00Z'), timestamp: new Date('2024-01-01T00:00:00Z') },
-        { path: 'database/newer.sql', modifiedAt: new Date('2024-02-01T00:00:00Z'), timestamp: new Date('2024-02-01T00:00:00Z') }
+        { path: 'database/2024-01-01/borrow_return.sql.gz', modifiedAt: new Date('2024-01-01T00:00:00Z'), timestamp: new Date('2024-01-01T00:00:00Z') },
+        { path: 'database/2024-02-01/borrow_return.sql.gz', modifiedAt: new Date('2024-02-01T00:00:00Z'), timestamp: new Date('2024-02-01T00:00:00Z') }
       ]),
       deleteBackup: vi.fn().mockResolvedValue(undefined),
       backup: vi.fn()
         .mockResolvedValueOnce({ success: false, error: 'insufficient_space' })
-        .mockResolvedValueOnce({ success: true, path: 'database/new.sql', sizeBytes: 123 })
+        .mockResolvedValueOnce({ success: true, path: 'database/2024-03-01/borrow_return.sql.gz', sizeBytes: 123 })
     } as any;
+
+    const target = { info: { type: 'database' as const, source: 'borrow_return' } };
 
     const result = await recoverAndRetryBackupOnInsufficientSpace({
       backupService,
-      target: {} as any,
+      target: target as any,
       backupOptions: { label: 'test' },
       errorMessage: 'insufficient_space'
     });
 
     expect(result.recovered).toBe(true);
-    expect(result.deletedPaths).toEqual(['database/oldest.sql', 'database/newer.sql']);
-    expect(backupService.deleteBackup).toHaveBeenCalledWith('database/oldest.sql');
-    expect(markHistoryAsDeletedByPathMock).toHaveBeenCalledWith('database/oldest.sql');
-    expect(result.result).toMatchObject({ success: true, path: 'database/new.sql' });
+    expect(result.deletedPaths).toEqual([
+      'database/2024-01-01/borrow_return.sql.gz',
+      'database/2024-02-01/borrow_return.sql.gz'
+    ]);
+    expect(backupService.listBackups).toHaveBeenCalledWith({ prefix: 'database' });
+    expect(backupService.deleteBackup).toHaveBeenCalledWith('database/2024-01-01/borrow_return.sql.gz');
+    expect(markHistoryAsDeletedByPathMock).toHaveBeenCalledWith('database/2024-01-01/borrow_return.sql.gz');
+    expect(result.result).toMatchObject({ success: true, path: 'database/2024-03-01/borrow_return.sql.gz' });
+  });
+
+  it('does not delete backups of different source within same kind', async () => {
+    const backupService = {
+      listBackups: vi.fn().mockResolvedValue([
+        { path: 'database/2024-01-01/other_db.sql.gz', modifiedAt: new Date('2024-01-01T00:00:00Z'), timestamp: new Date('2024-01-01T00:00:00Z') },
+        { path: 'database/2024-01-01/borrow_return.sql.gz', modifiedAt: new Date('2024-01-01T00:00:00Z'), timestamp: new Date('2024-01-01T00:00:00Z') }
+      ]),
+      deleteBackup: vi.fn().mockResolvedValue(undefined),
+      backup: vi.fn().mockResolvedValueOnce({ success: true, path: 'database/2024-03-01/borrow_return.sql.gz', sizeBytes: 456 })
+    } as any;
+
+    const target = { info: { type: 'database' as const, source: 'borrow_return' } };
+
+    const result = await recoverAndRetryBackupOnInsufficientSpace({
+      backupService,
+      target: target as any,
+      errorMessage: 'insufficient_space'
+    });
+
+    expect(result.recovered).toBe(true);
+    expect(result.deletedPaths).toEqual(['database/2024-01-01/borrow_return.sql.gz']);
+    expect(backupService.deleteBackup).not.toHaveBeenCalledWith('database/2024-01-01/other_db.sql.gz');
   });
 });

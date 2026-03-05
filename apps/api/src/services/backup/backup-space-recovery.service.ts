@@ -31,22 +31,37 @@ export async function recoverAndRetryBackupOnInsufficientSpace(params: {
     return { recovered: false, deletedPaths: [] };
   }
 
-  const backups = await backupService.listBackups();
-  const sortedOldestFirst = backups
-    .filter((entry) => !!entry.path)
+  const targetKind = target.info.type;
+  const sourceForFilter = target.info.source ?? '';
+  const prefix = targetKind;
+
+  const backups = await backupService.listBackups({ prefix });
+  const matchesSource = (p: string | null | undefined): boolean => {
+    if (!sourceForFilter) return true;
+    if (!p) return false;
+    if (targetKind === 'database') {
+      return p.endsWith(`/${sourceForFilter}.sql.gz`) || p.endsWith(`/${sourceForFilter}.sql`);
+    }
+    if (targetKind === 'csv') {
+      return p.endsWith(`/${sourceForFilter}.csv`);
+    }
+    return p.endsWith(`/${sourceForFilter}`);
+  };
+  const targetBackups = backups
+    .filter((entry) => !!entry.path && matchesSource(entry.path))
     .sort((a, b) => {
       const aTs = (a.modifiedAt ?? a.timestamp).getTime();
       const bTs = (b.modifiedAt ?? b.timestamp).getTime();
       return aTs - bTs;
     });
 
-  if (sortedOldestFirst.length === 0) {
+  if (targetBackups.length === 0) {
     return { recovered: false, deletedPaths: [] };
   }
 
   const historyService = new BackupHistoryService();
   const deletedPaths: string[] = [];
-  const toDelete = sortedOldestFirst.slice(0, Math.max(1, maxDeleteCount));
+  const toDelete = targetBackups.slice(0, Math.max(1, maxDeleteCount));
 
   for (const entry of toDelete) {
     if (!entry.path) continue;
