@@ -43,13 +43,15 @@
     - '"server" not in group_names'
     - manage_signage_lite | default(false) | bool
 
+# journalctl 出力に無効なUTF-8（サロゲート等）が含まれると Ansible の MODULE_STRICT_UTF8 で失敗する。
+# raspi4-robodrill01 で再発（KB-291, miscellaneous.md）。iconv -c で無効文字を除去する。
 - name: Collect health check info
   ansible.builtin.shell: |
     set -euo pipefail
     echo "=== systemctl status signage-lite ==="
-    systemctl status signage-lite --no-pager | head -n 20 || true
+    systemctl status signage-lite --no-pager 2>/dev/null | head -n 20 | iconv -f utf-8 -t utf-8 -c 2>/dev/null || true
     echo "=== recent kiosk-browser logs ==="
-    journalctl -u kiosk-browser.service -n 50 || true
+    journalctl -u kiosk-browser.service -n 50 2>/dev/null | iconv -f utf-8 -t utf-8 -c 2>/dev/null || true
   args:
     executable: /bin/bash
   register: health_info
