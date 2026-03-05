@@ -61,3 +61,4 @@
 ## Next Steps
 
 - **電源操作の連打防止画面**: 完了（2026-03-01）。FullScreenOverlay / PowerDebounceOverlay を実装し、実機検証で正常動作を確認。
+- **Pi4 復帰後の電源・連打防止実機検証**: 完了（2026-03-05）。研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作・連打防止オーバーレイが正常動作することを確認。

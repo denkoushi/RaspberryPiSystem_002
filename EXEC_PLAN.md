@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-05) **Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。
+
 - [x] (2026-03-05) **RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent.yml（設定配布）と nfc-agent-lifecycle.yml（pcscd 導入・起動・nfc-agent 起動保証）を追加、変数契約（nfc_agent_client_id/secret 必須）を fail-fast 化。**デプロイトラブル**: UTF-8 無効文字（journalctl/df）→ iconv -c、iconv 非ゼロ終了 → \|\| true、Docker 未導入 → 手動インストール。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md) を参照。
 
 - [x] (2026-03-05) **Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./docs/knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./docs/guides/backup-verification.md) を参照。
@@ -1475,7 +1477,7 @@
 **完了した実装**:
 - ✅ ボタン押下直後にオーバーレイ表示（`handlePowerConfirm` 冒頭で `setPowerOverlayAction` を API 呼び出し前に実行）
 - ✅ API 失敗時はオーバーレイ解除＋アラート表示
-- ✅ Pi5 デプロイ完了。Pi4 復帰後の実機検証は後日実施。
+- ✅ Pi4 実機検証完了（研削メイン・raspi4-robodrill01 とも電源操作機能正常動作を確認）
 
 **参照**: [docs/plans/power-function-solid-refactor-execplan.md](./docs/plans/power-function-solid-refactor-execplan.md) / [docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる)
 
@@ -1506,14 +1508,11 @@
 
 **参照**: [KB-291](./docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md)
 
-### Pi4 復帰後の電源・連打防止実機検証（後日実施）
+### Pi4 復帰後の電源・連打防止実機検証（完了）
 
-**概要**: 2026-03-01 デプロイ時、研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後に以下を実機確認する。
+**概要**: 2026-03-01 デプロイ時、研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後に実機検証を実施。
 
-**検証項目**:
-1. 電源ボタン→確認→**即座にオーバーレイ表示**（連打防止強化の反映）
-2. 再起動/シャットダウンが正常に実行されること
-3. API 失敗時（例: ネットワーク切断）にオーバーレイが消え、エラーが通知されること
+**検証結果**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作機能が正常動作することを確認。
 
 **参照**: [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
 

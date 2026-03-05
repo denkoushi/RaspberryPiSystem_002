@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-05）
 
+- **✅ Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 - **✅ RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent 設定配布・起動保証（pcscd 導入含む）を追加。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) を参照。
 
 - **✅ Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./guides/backup-verification.md) を参照。
@@ -26,7 +28,7 @@
 
 ### 🆕 最新アップデート（2026-03-01）
 
-- **✅ KB-288恒久対策・連打防止オーバーレイ強化・deployment.md電源記述更新・Pi5デプロイ完了・実機検証（Pi5）完了**: タスク1（power-actions に `notify: restart api` 追加）、タスク2（押下直後オーバーレイ表示）、タスク4（deployment.md 電源フロー記述更新）を実装。研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後の実機検証は後日実施。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **✅ KB-288恒久対策・連打防止オーバーレイ強化・deployment.md電源記述更新・Pi5デプロイ完了・Pi4実機検証完了**: タスク1（power-actions に `notify: restart api` 追加）、タスク2（押下直後オーバーレイ表示）、タスク4（deployment.md 電源フロー記述更新）を実装。研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後に実機検証を実施し、両端末とも電源操作・連打防止が正常動作することを確認。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
 - **🔄 キオスク備考欄 IME 診断基盤の実装**: 備考欄で「キー入力のたびに ibus-ui ウィンドウが出現しスムーズに入力できない」不具合の原因切り分けのため、診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装。デプロイ時に IBus 状態がログに記録される。実機診断後の原因分析と対策は未実施。詳細は [plans/kiosk-ime-remark-field-execplan.md](./plans/kiosk-ime-remark-field-execplan.md) / [knowledge-base/frontend.md#kb-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) を参照。
 

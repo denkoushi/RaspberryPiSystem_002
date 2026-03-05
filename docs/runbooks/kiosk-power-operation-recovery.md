@@ -2,7 +2,7 @@
 title: Runbook: 電源操作・連打防止オーバーレイ不具合の復旧
 tags: [運用, キオスク, 電源, power-actions, 復旧, runbook]
 audience: [運用者, 開発者]
-last-verified: 2026-03-01
+last-verified: 2026-03-05
 related:
   - ../knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md
   - ../knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md
@@ -53,6 +53,8 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 **実行後**:
 - 数秒待機し、API が正常起動することを確認
 - キオスクで電源ボタンを押し、電源操作が正常に機能することを実機確認
+
+**実機検証結果（2026-03-05）**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作・連打防止オーバーレイが正常動作することを確認済み。
 
 ## 再発防止
 
