@@ -10,12 +10,14 @@
       - pcsc-tools
     state: present
     update_cache: true
+  register: pcsc_runtime_install_result
 
 - name: Ensure pcscd service is enabled and running
   ansible.builtin.systemd:
     name: pcscd
     enabled: true
     state: started
+  register: pcscd_service_result
 
 - name: Ensure Docker is available for nfc-agent
   ansible.builtin.command: docker --version
@@ -35,6 +37,16 @@
   args:
     executable: /bin/bash
   register: nfc_agent_up_result
+
+- name: Restart nfc-agent when PC/SC runtime state changed
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
+  args:
+    executable: /bin/bash
+  register: nfc_agent_restart_after_pcsc_result
+  when:
+    - pcsc_runtime_install_result.changed or pcscd_service_result.changed
 
 - name: Wait for nfc-agent to become ready
   ansible.builtin.uri:
