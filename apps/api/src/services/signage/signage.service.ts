@@ -584,32 +584,8 @@ export class SignageService {
         return 0;
       });
 
-    if (loanTools.length > 0) {
-      return loanTools;
-    }
-
-    // 貸出中がない場合は、従来どおり利用可能な工具一覧を表示
-    const items = await prisma.item.findMany({
-      where: { status: 'AVAILABLE' },
-      select: {
-        id: true,
-        itemCode: true,
-        name: true,
-      },
-      orderBy: { itemCode: 'asc' },
-      take: 100,
-    });
-
-    return items.map((item) => ({
-      id: item.id,
-      itemCode: item.itemCode,
-      name: item.name,
-      thumbnailUrl: null,
-      employeeName: null,
-      borrowedAt: null,
-      isInstrument: false,
-      managementNumber: null,
-    }));
+    // 持出中（貸出中）のアイテムのみ返す。0件の場合は空配列
+    return loanTools;
   }
 
   /**
