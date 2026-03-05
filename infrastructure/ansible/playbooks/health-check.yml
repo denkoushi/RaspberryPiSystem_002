@@ -73,7 +73,8 @@
     - name: Run health command
       ansible.builtin.shell: |
         set -euo pipefail
-        {{ item.cmd }}
+        # 一部端末の journalctl/df 出力に無効UTF-8が混入するため除去して収集する
+        LANG=C.UTF-8 {{ item.cmd }} 2>&1 | iconv -f utf-8 -t utf-8 -c
       args:
         executable: /bin/bash
       register: command_output
