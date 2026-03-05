@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-05）
+
+- **✅ Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./guides/backup-verification.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-02）
 
 - **✅ KB-287解決・研削メイン日本語入力スムーズ化・デプロイ完了・実機検証OK**: 研削メイン（raspberrypi4）で備考欄の日本語入力がスムーズにできない事象を解決。**原因**: `ibus_owner_mode: legacy` のため `ibus-owner.desktop` が配置されず、`im-launch.desktop` の競合 autostart が抑止されていなかった。**対策**: `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。**デプロイ**: Run ID `20260302-192312-6532`。**実機検証**: 研削メインの備考欄で日本語入力がスムーズにできることを確認。詳細は [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [KB-investigation](./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) を参照。

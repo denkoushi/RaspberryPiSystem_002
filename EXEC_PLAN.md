@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-05) **Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./docs/knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./docs/guides/backup-verification.md) を参照。
+
 - [x] (2026-03-02) **KB-287解決・研削メイン日本語入力スムーズ化・デプロイ完了・実機検証OK**: 研削メイン（raspberrypi4）で備考欄の日本語入力がスムーズにできない事象を解決。**原因**: `ibus_owner_mode: legacy` のため `ibus-owner.desktop` が配置されず、`im-launch.desktop` の競合 autostart が抑止されていなかった。**対策**: `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。**デプロイ**: Run ID `20260302-192312-6532`、`state: success`。**実機検証**: 研削メインの備考欄で日本語入力がスムーズにできることを確認。詳細は [KB-287](./docs/knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [KB-investigation](./docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) を参照。
 
 - [x] (2026-03-02) **Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット・デプロイ完了・実機検証OK（研削メイン・RoboDrill01両方）**: 研削メイン（raspberrypi4）をChromiumからFirefoxに切り替え、キオスクモードで上辺メニューバー（wf-panel-pi）を一時表示する**Super+Shift+P**ショートカットを追加。**実装内容**: `inventory.yml`に`kiosk_browser_engine: "firefox"`と`kiosk_browser_mode: "app-like"`を追加。`show-kiosk-panel.sh.j2`とlabwc rc.xmlのkeybind（`W-S-p`）をAnsibleで配置。**知見**: labwcはユーザー設定`~/.config/labwc/rc.xml`がシステム設定を上書きするため、初回はシステム設定をコピーしてからkeybindを追加。**labwc rc.xml 再読み込み**: labwcはrc.xmlの変更をホットリロードしない。デプロイでrc.xmlを更新したがlabwcが先に起動していた場合、keybindが効かない。**即時対処**: `sudo kill -s HUP $(pgrep -x labwc)` でSIGHUPを送り設定を再読み込み。**デプロイ結果**: Pi5＋Pi4（研削メイン）でデプロイ成功（Run ID: `20260302-152520-15777`）。raspi4-robodrill01は20260302-175720にデプロイ（Collect health check infoで失敗）したがkeybindは配置済み。SIGHUPでlabwc再読み込み後、Super+Shift+Pが動作することを実機確認。**ドキュメント更新**: KB-289にlabwc再読み込み知見・トラブルシュート追記、Runbookにデプロイ後ショートカットが効かない場合の対処を追加、INDEX.md・EXEC_PLAN.mdを更新。詳細は [KB-289](./docs/knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) / [Runbook](./docs/runbooks/kiosk-wifi-panel-shortcut.md) / [INDEX.md](./docs/INDEX.md) を参照。
@@ -612,6 +614,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-05）: Dropboxバックアップが容量不足（`insufficient_space`）で失敗する場合、従来は手動で古いバックアップを削除する必要があった。**恒久対策**: Upload Session（チャンクアップロード）で大容量ファイルを分割送信し、`insufficient_space`検知時に最古優先で削除して再試行する自動リカバリを実装。手動・スケジュールの救済ポリシーを統一。DatabaseBackupTargetの一時ファイル経路を改善し、`/tmp`直下の肥大化を回避。**[KB-290]**
 - 観測（2026-03-02）: labwc は rc.xml の変更を**ホットリロードしない**。起動時に一度だけ読み込む。デプロイで rc.xml を更新したが labwc がその**前に**起動していた場合、keybind がメモリに読み込まれず効かない。**根拠**: 研削メイン（rc.xml 15:30 更新 → labwc 15:49 起動）は動作、RoboDrill01（labwc 17:54 起動 → rc.xml 18:05 更新）は動作せず。**即時対処**: `sudo kill -s HUP $(pgrep -x labwc)` で SIGHUP を送り、設定を再読み込みさせる。**[KB-289]**
 - 観測（2026-03-02）: labwc の keybind はユーザー設定 `~/.config/labwc/rc.xml` がシステム設定 `/etc/xdg/labwc/rc.xml` を上書きする。初回デプロイ時はユーザー設定が存在しないため、Ansible でシステム設定をコピーしてから `blockinfile` で keybind を追加する必要がある。labwc の keybind 表記: `W`=Super（Windows キー）、`S`=Shift、`A`=Alt、`C`=Ctrl。
 - 観測（2026-03-01）: KB-288 恒久対策・連打防止強化のデプロイ時、raspberrypi4（研削メイン）はシャットダウン中、raspi4-robodrill01 は SSH 接続タイムアウト（100.123.1.113:22）でプリフライト停止。Pi5 のみ `--limit raspberrypi5` でデプロイし、Ansible・Web 変更を反映。Pi4 は復帰後に追いデプロイが必要。**知見**: オフライン端末がある場合は `--limit` で到達可能ホストのみデプロイし、復帰後に追いデプロイする運用（KB-281 と同様）。
@@ -809,6 +812,10 @@
 
 ## Decision Log
 
+- 決定: Dropboxバックアップの容量不足（`insufficient_space`）時は、最古優先で削除して再試行する自動リカバリを採用する。  
+  理由: 手動介入を減らし、スケジュール・手動実行の両方で一貫した救済ポリシーを適用するため。Upload Session（チャンクアップロード）で大容量ファイルの送信を安定化し、一時ファイル経路を改善して`/tmp`肥大化を回避する。  
+  日付/担当: 2026-03-05 / Codex  
+  参照: [KB-290](./docs/knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行)
 - 決定: フェーズ2の型安全改善は「共通ガード拡張→高リスク箇所の小刻み置換→Lintで新規違反を防止」のRatchet順序で実施する。  
   理由: 稼働互換を壊さず、変更範囲を局所化しながら再利用性とスケーラビリティを上げるため。  
   日付/担当: 2026-02-12 / Codex  

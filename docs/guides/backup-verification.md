@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ機能実機検証ガイド
 
-最終更新: 2026-02-08（自動検証/設定履歴/リストア安全策を反映）
+最終更新: 2026-03-05（KB-290 Dropbox恒久対策実機検証結果を追記）
 
 ## 概要
 
@@ -216,3 +216,11 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 - **検証結果**: 
 - **発見した問題**: 
 - **改善提案**: 
+
+### 2026-03-05: Dropbox容量不足恒久対策（KB-290）実機検証
+
+- **検証日時**: 2026-03-05
+- **デプロイブランチ**: `feat/pi4-robodrill01-firefox`（Dropbox恒久対策を含む）
+- **デプロイRun ID**: `20260305-085419-3769`（Pi5のみ、`--limit server`、`state: success`）
+- **検証結果**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録
+- **関連**: [KB-290](../knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) 

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 30件  
+**件数**: 31件  
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -688,6 +688,53 @@ update-frequency: medium
 **関連ドキュメント**:
 - [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
+
+---
+
+## KB-290: Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行）
+
+**問題**: Dropboxストレージの容量不足によりバックアップが失敗していた。無料版Dropbox（Basicプラン）は2GB制限があり、大容量のDBダンプや画像バックアップがアップロードできない。
+
+**原因**:
+1. **一括アップロード**: 大容量ファイルをメモリに載せて一括送信していたため、メモリ負荷とタイムアウトのリスクが発生
+2. **容量不足時の即失敗**: `insufficient_space`エラー時に再試行せず即失敗していた
+3. **DBダンプ一時ファイル経路**: 一時ファイルのパスがコンテナ内で不整合を起こす可能性があった
+
+**解決策**（2026-03-05 実装・デプロイ・実機検証完了）:
+1. **Upload Session（チャンクアップロード）**: Dropbox APIの`/files/upload_session/start`・`append`・`finish`を使用し、大容量ファイルをチャンク単位で送信
+
+2. **容量不足時の自動救済**: `insufficient_space`検知時に、既存バックアップを**最古順に削除**しながらアップロードを再試行。削除した履歴は`fileStatus=DELETED`へ更新
+
+3. **DatabaseBackupTargetの一時ファイル経路**: DBダンプの一時ファイルを`/tmp`経由で確実に出力し、チャンク読み取りに適した経路に変更
+
+4. **手動・スケジュールの統一**: 手動実行と定期実行の両方で同じ救済ポリシーを適用
+
+**実装詳細**:
+- `UploadSource`インターフェースと`LargeFileUploadSource`の導入（疎結合・SOLID準拠）
+- `DropboxStorageProvider`にUpload Session・再試行制御を実装
+- `DatabaseBackupTarget`に一時ファイルベース出力経路を追加
+- `executeBackupAcrossProviders`で`insufficient_space`検知時に`SpaceRecoveryService`を呼び出し
+
+**学んだこと**:
+- 無料版Dropbox運用では、容量不足時の自動救済が必須。バックアップ成功率を優先する設計（保持優先の場合は`retention`/スケジュールを保守的に設定）
+- 大容量アップロードはUpload Sessionのチャンク送信が安定。`/files/upload`の150MB制限を回避
+
+**解決状況**: ✅ **解決済み**（2026-03-05）
+
+**実機検証結果**（2026-03-05）:
+- Pi5デプロイ成功（Run ID: `20260305-085419-3769`, `state: success`, `exitCode: 0`）
+- 手動CSVバックアップ（employees）成功、Dropboxアップロード成功（2,996 bytes）
+- バックアップ履歴に`storageProvider: dropbox`、`status: COMPLETED`で記録済み
+- バックアップスケジューラー26タスク登録・起動確認済み
+
+**関連ファイル**:
+- `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（Upload Session・再試行）
+- `apps/api/src/services/backup/space-recovery.service.ts`（容量不足時救済）
+- `apps/api/src/services/backup/targets/database-backup.target.ts`（一時ファイル経路）
+
+**関連ドキュメント**:
+- [バックアップAPI](../api/backup.md)（容量不足時の自動回復セクション）
+- [バックアップ実機検証ガイド](../guides/backup-verification.md)
 
 ---
 
