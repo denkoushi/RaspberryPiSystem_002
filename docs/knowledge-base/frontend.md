@@ -4192,3 +4192,35 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-03-06、デプロイ完了・実機検証完了）
 
 ---
+
+### [KB-295] 生産スケジュール登録製番ボタン並び替えUI
+
+**実装日時**: 2026-03-06
+
+**仕様**:
+- **UI**: 案3（カード下辺左右に矢印ボタン）。カード縦横サイズ（w-36 h-16）と×ボタン位置は変更なし
+- **移動ルール**: 1回で隣接1つ（左/右）。先頭で左・末尾で右は no-op（矢印 disabled）
+- **同期**: 並び順は既存の search-state（history 配列）で全端末同期。409 競合時は rebase して再試行
+
+**実装内容**:
+- `moveHistoryItemLeft` / `moveHistoryItemRight` 純粋関数を `historyOrder.ts` に新設
+- `SeibanHistoryButton` に `canMoveLeft` / `canMoveRight` / `onMoveLeft` / `onMoveRight` を追加
+- `ProductionSchedulePage` で `handleMoveHistoryLeft` / `handleMoveHistoryRight` を実装し、`updateSharedSearchState` に `type: 'reorder'` で接続
+- 409 時は `moveHistoryItemLeft` / `moveHistoryItemRight` でサーバー最新履歴にリベース
+
+**関連ファイル**:
+- `apps/web/src/features/kiosk/productionSchedule/historyOrder.ts`: 並び替え純粋関数
+- `apps/web/src/features/kiosk/productionSchedule/historyOrder.test.ts`: ユニットテスト
+- `apps/web/src/components/kiosk/SeibanHistoryButton.tsx`: 矢印UI
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: ハンドラ・同期
+
+**検証**:
+- lint 成功、ユニットテスト 10 件パス（境界条件含む）
+
+**関連KB**:
+- [KB-294](./frontend.md#kb-294-生産スケジュール資源cdボタン優先並び): 資源CDボタン優先並び
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期
+
+**解決状況**: ✅ **実装完了**（2026-03-06、lint・ユニットテスト成功。デプロイ・実機検証は未実施）
+
+---

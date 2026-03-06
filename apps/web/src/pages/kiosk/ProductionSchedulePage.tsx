@@ -23,6 +23,7 @@ import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton'
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
+import { moveHistoryItemLeft, moveHistoryItemRight } from '../../features/kiosk/productionSchedule/historyOrder';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
@@ -457,7 +458,9 @@ export function ProductionSchedulePage() {
     return pairs;
   }, [normalizedRows, isTwoColumn]);
 
-  type SearchStateOperation = { type: 'add' | 'remove'; value: string };
+  type SearchStateOperation =
+    | { type: 'add' | 'remove'; value: string }
+    | { type: 'reorder'; value: string; direction: 'left' | 'right' };
 
   const updateSharedSearchState = useCallback(
     async (nextHistory: string[], operation: SearchStateOperation, attempt = 0) => {
@@ -488,7 +491,11 @@ export function ProductionSchedulePage() {
           const rebasedHistory =
             operation.type === 'add'
               ? normalizeHistoryList([operation.value, ...latestHistory])
-              : latestHistory.filter((item) => item !== operation.value);
+              : operation.type === 'remove'
+                ? latestHistory.filter((item) => item !== operation.value)
+                : operation.direction === 'left'
+                  ? moveHistoryItemLeft(latestHistory, operation.value)
+                  : moveHistoryItemRight(latestHistory, operation.value);
           setHistory(rebasedHistory);
           setHiddenHistory((prev) => prev.filter((item) => item !== operation.value));
           if (details.updatedAt) {
@@ -622,6 +629,20 @@ export function ProductionSchedulePage() {
       return;
     }
     removeHistoryQuery(value);
+  };
+
+  const handleMoveHistoryLeft = (value: string) => {
+    const nextHistory = moveHistoryItemLeft(normalizedHistory, value);
+    if (nextHistory === normalizedHistory) return;
+    setHistory(nextHistory);
+    void updateSharedSearchState(nextHistory, { type: 'reorder', value, direction: 'left' });
+  };
+
+  const handleMoveHistoryRight = (value: string) => {
+    const nextHistory = moveHistoryItemRight(normalizedHistory, value);
+    if (nextHistory === normalizedHistory) return;
+    setHistory(nextHistory);
+    void updateSharedSearchState(nextHistory, { type: 'reorder', value, direction: 'right' });
   };
 
   const toggleResourceCd = (value: string) => {
@@ -811,7 +832,7 @@ export function ProductionSchedulePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {visibleHistory.map((h) => {
+        {visibleHistory.map((h, index) => {
           const isActive = normalizedActiveQueries.includes(h);
           const progress = progressBySeiban[h];
           const isComplete = progress?.status === 'complete';
@@ -822,8 +843,12 @@ export function ProductionSchedulePage() {
               machineName={progress?.machineName}
               isActive={isActive}
               isComplete={isComplete}
+              canMoveLeft={index > 0}
+              canMoveRight={index < visibleHistory.length - 1}
               onToggle={() => toggleHistoryQuery(h)}
               onRemove={() => confirmRemoveHistoryQuery(h)}
+              onMoveLeft={() => handleMoveHistoryLeft(h)}
+              onMoveRight={() => handleMoveHistoryRight(h)}
             />
           );
         })}

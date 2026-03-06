@@ -16,8 +16,12 @@ type SeibanHistoryButtonProps = {
   machineName?: string | null;
   isActive: boolean;
   isComplete: boolean;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
   onToggle: () => void;
   onRemove: () => void;
+  onMoveLeft: () => void;
+  onMoveRight: () => void;
 };
 
 export function SeibanHistoryButton({
@@ -25,8 +29,12 @@ export function SeibanHistoryButton({
   machineName,
   isActive,
   isComplete,
+  canMoveLeft,
+  canMoveRight,
   onToggle,
   onRemove,
+  onMoveLeft,
+  onMoveRight,
 }: SeibanHistoryButtonProps) {
   const normalizedMachineName = normalizeMachineName(machineName);
   return (
@@ -64,6 +72,32 @@ export function SeibanHistoryButton({
       >
         ×
       </button>
+      <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between">
+        <button
+          type="button"
+          aria-label={`${seiban} を左に移動`}
+          disabled={!canMoveLeft}
+          className="flex h-5 w-5 items-center justify-center rounded text-[10px] leading-none disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canMoveLeft) onMoveLeft();
+          }}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          aria-label={`${seiban} を右に移動`}
+          disabled={!canMoveRight}
+          className="flex h-5 w-5 items-center justify-center rounded text-[10px] leading-none disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canMoveRight) onMoveRight();
+          }}
+        >
+          →
+        </button>
+      </div>
     </div>
   );
 }
