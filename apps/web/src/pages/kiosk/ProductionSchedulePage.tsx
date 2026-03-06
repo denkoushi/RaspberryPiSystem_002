@@ -25,6 +25,7 @@ import { computeColumnWidths, type TableColumnDefinition } from '../../features/
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
+import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
@@ -406,6 +407,16 @@ export function ProductionSchedulePage() {
     });
   }, [resourcesQuery.data, showCuttingResources, showGrindingResources]);
 
+  const prioritizedVisibleResourceCds = useMemo(
+    () =>
+      prioritizeResourceCdsByPresence(
+        visibleResourceCds,
+        resourceCdsInRows,
+        normalizedActiveQueries.length > 0
+      ),
+    [visibleResourceCds, resourceCdsInRows, normalizedActiveQueries.length]
+  );
+
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
   const checkWidth = 36;
@@ -774,7 +785,7 @@ export function ProductionSchedulePage() {
       />
 
       <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
-        {visibleResourceCds.map((resourceCd) => {
+        {prioritizedVisibleResourceCds.map((resourceCd) => {
           const colorClasses = getResourceColorClasses(resourceCd);
           const isActive = normalizedResourceCds.includes(resourceCd);
           const isAssignedActive = normalizedAssignedOnlyCds.includes(resourceCd);
