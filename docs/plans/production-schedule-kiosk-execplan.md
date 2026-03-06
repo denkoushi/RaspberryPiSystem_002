@@ -102,6 +102,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-03-02) **SHアイテムの一覧除外と機種名表示へのSH追加・デプロイ成功・実機検証OK**: kiosk生産スケジュールのアイテム一覧から、FHINCDが"SH"で始まるアイテムも除外し、検索用製番ボタンの機種名表示にSHを追加する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内で、FHINCDが"MH"または"SH"で始まるアイテムをフィルタリングで除外。`seiban-progress.service.ts`のSQL集約で、`FHINCD LIKE 'MH%' OR FHINCD LIKE 'SH%'`の条件で機種名を取得（MHまたはSHのいずれかから取得）。**デプロイ**: Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）。Pi5: `ok=125, changed=5, failed=0`。Pi4: `ok=102, changed=16, failed=0`。**実機検証結果**: FHINCDが"MH"または"SH"で始まるアイテムが一覧から除外され、検索用製番ボタンに機種名が表示されることを確認。詳細は [KB-285](../knowledge-base/frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加) / [KB-285](../knowledge-base/api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加) を参照。
 
+- [x] (2026-03-06) **資源CDボタン優先並び・デプロイ成功・実機検証OK**: 登録製番で検索した際、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装内容**: `prioritizeResourceCdsByPresence` 純粋関数を `resourcePriority.ts` に新設。登録製番が1件以上アクティブなときのみ適用、出現有無のみで優先判定（1件でもヒットした資源CDを左寄せ）。工程カテゴリフィルタの後に適用し競合しない。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認（登録製番選択時、検索結果に含まれる資源CDが左寄せ表示）。詳細は [KB-294](../knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能

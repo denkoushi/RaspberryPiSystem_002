@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-06）
 
+- **✅ 資源CDボタン優先並び・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番検索時、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装**: `prioritizeResourceCdsByPresence` 純粋関数（`resourcePriority.ts`）、`ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認。詳細は [KB-294](./knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) / [production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+
 - **✅ RealVNC Pi4/Pi3 接続復旧・実機検証完了**: MacからPi4×2とPi3がRealVNCで表示できない問題を解決。**採用方式**: Pi5経由SSHトンネル（`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加、`admin -> kiosk/signage` は直接開けない）。**実施内容**: Tailscale ACL更新、MacでSSHトンネル（`-L 5904/5905/5903`）を張り、RealVNCで `localhost:5904/5905/5903` に接続。**実機検証**: 3台とも表示可能を確認。運用はVNC接続のたびにトンネルを張る。詳細は [vnc-tailscale-recovery.md](./runbooks/vnc-tailscale-recovery.md) / [KB-293](./knowledge-base/infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) を参照。
 
 - **✅ 端末別メンテナンス一括切替（deploy-status v2）・デプロイ完了・実機検証完了**: デプロイ時のメンテナンス表示を端末別に変更。**実装内容**: deploy-status v2（`kioskByClient`）で対象キオスクのみメンテ表示、プリフライト成功後にフラグON、APIは`x-client-key`から`statusClientId`を解決して`isMaintenance`を返却。**デプロイ**: Run ID `20260306-120632-24600`、約20分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、deploy-status API（両Pi4で`isMaintenance: false`）、キオスクAPI、サイネージAPI、backup.json、マイグレーション、Pi4/Pi3サービス稼働を確認。強制解除は [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。詳細は [ADR-20260306](./decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [deployment.md](./guides/deployment.md) を参照。

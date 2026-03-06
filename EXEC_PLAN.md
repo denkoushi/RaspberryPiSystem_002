@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-06) **資源CDボタン優先並び・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番検索時、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装**: `prioritizeResourceCdsByPresence` 純粋関数（`resourcePriority.ts`）、`ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認。詳細は [KB-294](./docs/knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
+
 - [x] (2026-03-06) **RealVNC Pi4/Pi3 接続復旧・実機検証完了**: MacからPi4×2とPi3がRealVNCで表示できない問題を解決。**採用方式**: Pi5経由SSHトンネル（`admin -> kiosk/signage` を直接開けず、`tag:server -> tag:kiosk/signage: tcp:5900` のみ許可）。**実施内容**: Tailscale ACLに `tag:server -> tag:kiosk: tcp:5900` と `tag:server -> tag:signage: tcp:5900` を追加。Macで `ssh -N -L 5904:<Pi4_1>:5900 -L 5905:<Pi4_2>:5900 -L 5903:<Pi3>:5900 denkon5sd02@100.106.158.2` を実行し、RealVNCで `localhost:5904/5905/5903` に接続。**実機検証**: 3台とも表示可能を確認。**運用**: VNC接続するたびにSSHトンネルを張る（永続化しない）。詳細は [vnc-tailscale-recovery.md](./docs/runbooks/vnc-tailscale-recovery.md) / [KB-293](./docs/knowledge-base/infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) を参照。
 
 - [x] (2026-03-06) **端末別メンテナンス一括切替（deploy-status v2）・デプロイ完了・実機検証完了**: deploy-status を version 2 に一括切替し、端末別メンテナンス状態を導入。**実装内容**: API は `x-client-key` から `statusClientId` を解決し `kioskByClient` で `isMaintenance` を返却。Web は `DeployStatus` を `{ isMaintenance }` に変更。スクリプトはプリフライト成功後にフラグ ON、対象端末のみ ON/OFF で deploy-status.json v2 出力。**デプロイ**: Run ID `20260306-120632-24600`、`state: success`、約20分（Pi5+Pi4×2+Pi3）。**実機検証**: API ヘルス、deploy-status API（両 Pi4 で `isMaintenance: false`）、キオスク API、サイネージ API、backup.json、マイグレーション、Pi4/Pi3 サービス稼働を確認。**知見**: 未 commit 変更がある場合は `git stash push -u` → デプロイ実行 → 成功後に `git stash pop` で復元。詳細は [ADR-20260306](./docs/decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [deployment.md](./docs/guides/deployment.md) を参照。
@@ -626,6 +628,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-06）: **デプロイ対象の事前回答と実際の運用**を区別すべき。事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×2）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×2 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 - 観測（2026-03-06）: **Pi4/Pi3のRealVNC接続**は、`tag:admin -> tag:kiosk/signage` を直接開けるより **Pi5経由SSHトンネル** の方が安全（攻撃面をPi5入口に集約）。`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加し、Macで `ssh -N -L 5904:... -L 5905:... -L 5903:...` を張って `localhost:5904/5905/5903` に接続。VNC接続するたびにトンネルを張る運用（永続化しない）。**[KB-293]**
 - 観測（2026-03-06）: **E2E smoke テスト**をローカルで実行する場合、`CI=true` に加えて **PostgreSQL のマイグレーション・シード**が必須。`CI=true` でないと Playwright の webServer が起動せず、シードなしだと `client-key-raspberrypi4-kiosk1` が DB に存在せず 401 になる。**手順**: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（apps/api）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`。
 - 観測（2026-03-06）: デプロイ実行時に未 commit/未追跡の変更があると fail-fast で停止する。**ドキュメント変更のみ**で本番コードに影響がない場合、デプロイだけ先行させたいときは **`git stash push -u -m "..."` → デプロイ実行 → 成功後に `git stash pop`** の順で対応（KB-200・KB-271 と同様）。2026-03-06 の deploy-status v2 デプロイで実施済み。

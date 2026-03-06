@@ -4157,3 +4157,38 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **解決済み**（2026-03-02: 実機診断で競合起動を確認。inventory に IBus 単一オーナー化を追加しデプロイ。研削メインで日本語入力がスムーズにできることを実機確認）
 
 ---
+
+### [KB-294] 生産スケジュール資源CDボタン優先並び
+
+**実装日時**: 2026-03-06
+
+**事象**:
+- 登録製番で検索した際、検索結果に含まれる資源CDが多数ある中で、該当する資源CDを左側に寄せて表示したい要望があった
+
+**仕様**:
+- **適用条件**: 登録製番が1件以上アクティブなときのみ適用
+- **優先判定**: 出現有無のみ（1件でもヒットした資源CDを優先）
+- **並び替え**: 検索結果に含まれる資源CDを左側へ、それ以外を右側へ。同一グループ内の相対順は維持（安定ソート相当）
+- **非適用時**: 登録製番未選択・検索結果0件のときは従来の文字列昇順を維持
+
+**実装内容**:
+- `prioritizeResourceCdsByPresence` 純粋関数を `resourcePriority.ts` に新設
+- `ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出し、資源CDボタン描画に使用
+- 工程カテゴリフィルタ（研削/切削）の後に適用し、競合しない
+
+**関連ファイル**:
+- `apps/web/src/features/kiosk/productionSchedule/resourcePriority.ts`: 優先並び純粋関数
+- `apps/web/src/features/kiosk/productionSchedule/resourcePriority.test.ts`: ユニットテスト
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`: 組み込み
+
+**デプロイ・実機検証**:
+- CI成功（Run ID: 22756753526）
+- デプロイ: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）
+- 実機検証: APIヘルス、生産スケジュールresources/list API、ブラウザで資源CDボタンの優先並びを確認（登録製番選択時、検索結果に含まれる資源CDが左寄せ表示）
+
+**関連KB**:
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 資源CDフィルタ・加工順序割当
+
+**解決状況**: ✅ **解決済み**（2026-03-06、デプロイ完了・実機検証完了）
+
+---

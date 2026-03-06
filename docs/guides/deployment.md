@@ -659,6 +659,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
 - **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
 
+**知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×2）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×2 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
+
 詳細は [KB-226](../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。
 
 ```bash
