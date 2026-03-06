@@ -247,6 +247,12 @@ pnpm test:e2e:ui
 pnpm test:e2e:headed
 ```
 
+**E2E smoke テスト（`pnpm test:e2e:smoke`）をローカルで実行する場合**:
+- `CI=true` が必要（Playwright の webServer 起動に使用。未設定だと起動しない）
+- PostgreSQL のマイグレーション・シードが必須（`client-key-raspberrypi4-kiosk1` が DB に存在しないと 401 になる）
+- 手順例: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（`apps/api` で実行）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`
+- 詳細は [KB-025](../knowledge-base/ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する) を参照
+
 ## ビルド
 
 ```bash

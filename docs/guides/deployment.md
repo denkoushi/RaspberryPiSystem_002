@@ -148,6 +148,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - `scripts/server/deploy.sh` は **`git pull origin <branch>` でリモートを取り込む**ため、ローカルで未pushの変更はデプロイされません。
   - `scripts/update-all-clients.sh` は **fail-fastチェック**により、未commit/未pushの状態でデプロイを実行しようとするとエラーで停止します。
   - デプロイ前に **変更がリモートへpush済み**であること、可能なら **GitHub Actions CIが成功していること**を確認してください（[KB-110](../knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた)、[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) 参照）。
+  - **未commit/未追跡の変更がある場合**: ドキュメント変更のみで本番コードに影響がないとき、デプロイだけ先行させたい場合は **`git stash push -u -m "..."` → デプロイ実行 → 成功後に `git stash pop`** で対応可能（[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)、[KB-271](../knowledge-base/api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない) 参照）。
 - [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
   ```bash
   # Pi5上でbackup.jsonをバックアップ

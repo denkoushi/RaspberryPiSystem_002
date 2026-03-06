@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-06) **端末別メンテナンス一括切替（deploy-status v2）・デプロイ完了・実機検証完了**: deploy-status を version 2 に一括切替し、端末別メンテナンス状態を導入。**実装内容**: API は `x-client-key` から `statusClientId` を解決し `kioskByClient` で `isMaintenance` を返却。Web は `DeployStatus` を `{ isMaintenance }` に変更。スクリプトはプリフライト成功後にフラグ ON、対象端末のみ ON/OFF で deploy-status.json v2 出力。**デプロイ**: Run ID `20260306-120632-24600`、`state: success`、約20分（Pi5+Pi4×2+Pi3）。**実機検証**: API ヘルス、deploy-status API（両 Pi4 で `isMaintenance: false`）、キオスク API、サイネージ API、backup.json、マイグレーション、Pi4/Pi3 サービス稼働を確認。**知見**: 未 commit 変更がある場合は `git stash push -u` → デプロイ実行 → 成功後に `git stash pop` で復元。詳細は [ADR-20260306](./docs/decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [deployment.md](./docs/guides/deployment.md) を参照。
+
 - [x] (2026-03-06) **KB-292解決・SPLITレイアウトloans=0件時のvisualization崩れ修正・デプロイ完了・実機検証完了**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**実装**: 止血修正（`loans.length > 0`条件除去）、SignagePaneResolver導入、Web `/signage` の visualization 対応、回帰テスト追加。**デプロイ**: Run ID `20260306-095122-27071`、`state: success`、約37分。**実機検証**: APIヘルス、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`（JPEG）、`/api/signage/visualization-image/:id`（200）、Pi3 signage-lite 稼働、`current.jpg` 更新を確認。サイネージ正常表示を確認。詳細は [KB-292](./docs/knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
 
 - [x] (2026-03-05) **Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。
@@ -622,6 +624,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-06）: **E2E smoke テスト**をローカルで実行する場合、`CI=true` に加えて **PostgreSQL のマイグレーション・シード**が必須。`CI=true` でないと Playwright の webServer が起動せず、シードなしだと `client-key-raspberrypi4-kiosk1` が DB に存在せず 401 になる。**手順**: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（apps/api）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`。
+- 観測（2026-03-06）: デプロイ実行時に未 commit/未追跡の変更があると fail-fast で停止する。**ドキュメント変更のみ**で本番コードに影響がない場合、デプロイだけ先行させたいときは **`git stash push -u -m "..."` → デプロイ実行 → 成功後に `git stash pop`** の順で対応（KB-200・KB-271 と同様）。2026-03-06 の deploy-status v2 デプロイで実施済み。
 - 観測（2026-03-05）: raspi4-robodrill01 で NFC スキャンが反応しない根因は **pcscd 未導入/非稼働**。nfc-agent は pcscd 経由でリーダーにアクセスするため、pcscd が後から起動した場合、nfc-agent を再起動しないと `readerConnected` が true にならない。**対策**: `nfc-agent-lifecycle.yml` で pcscd・pcsc-tools を自動インストールし、pcscd 状態変更時に nfc-agent を再起動。**[KB-291]**
 - 観測（2026-03-05）: 新規 Pi4（raspi4-robodrill01）に Docker が未導入のケースあり。**対策**: `curl -fsSL https://get.docker.com | sh` で手動インストール。恒久対策として client-initial-setup.md の前提条件に Docker を含める。**[KB-291]**
 - 観測（2026-03-05）: journalctl/df 出力に無効 UTF-8（サロゲート等）が混入し、Ansible の Python が `Refusing to deserialize` で失敗。**対策**: `iconv -f utf-8 -t utf-8 -c` で無効文字を除去。`iconv` が非ゼロ終了する場合は `|| true` でタスク失敗を回避。**[KB-291]**
@@ -1517,6 +1521,14 @@
 **検証結果**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作機能が正常動作することを確認。
 
 **参照**: [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
+
+### deploy-status v2 実機検証（完了 2026-03-06）
+
+**概要**: 端末別メンテナンス一括切替のデプロイ後、API・キオスク・サイネージ・Pi4/Pi3 サービスの実機検証を実施。
+
+**検証結果**: API ヘルス、deploy-status API（両 Pi4 で `isMaintenance: false`）、キオスク API、サイネージ API、backup.json、マイグレーション、Pi4/Pi3 サービス稼働を確認。deploy-status.json はデプロイ完了後に削除済み。
+
+**参照**: [docs/runbooks/deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [ADR-20260306](./docs/decisions/ADR-20260306-deploy-status-per-client-maintenance.md)
 
 ### Gmail自動運用プロトコル（フェーズ2以降の検証・改善）
 

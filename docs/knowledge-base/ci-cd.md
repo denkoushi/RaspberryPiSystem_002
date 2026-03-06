@@ -284,6 +284,11 @@ update-frequency: high
 
 **解決状況**: ✅ **解決済み（2025-12-07）**
 
+**ローカルで `pnpm test:e2e:smoke` を実行する場合（2026-03-06 追記）**:
+- `CI=true` が必要（Playwright の webServer 起動に使用。未設定だと起動しない）
+- PostgreSQL のマイグレーション・シードが必須（`client-key-raspberrypi4-kiosk1` が DB に存在しないと 401 になる）
+- 手順例: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（`apps/api` で実行）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`
+
 **関連ファイル**:  
 - `.github/workflows/ci.yml`  
 - `apps/web/vite.config.ts`  
