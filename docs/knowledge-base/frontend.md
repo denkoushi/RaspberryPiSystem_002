@@ -3750,6 +3750,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **Follow-up（観測契約追加, 2026-03-06）**:
 - ✅ **CONFIRMED**: API `/api/system/health` と `/api/system/metrics` に eventLoop 観測を追加し、p50/p90/p99 と ELU を常時追跡可能にした
 - ✅ **CONFIRMED**: `cursor_debug=30be23` は切り分け時のみ有効化する運用境界を明記（通常運用で常時有効化しない）
+- ✅ **CONFIRMED**: Pi5 1台カナリアデプロイ完了（`--limit server`）。運用手順・判定基準は [operation-manual.md](../guides/operation-manual.md) の「低レイヤー観測（Pi5カナリア）」を参照
 - 🔄 **LIKELY**: 体感遅延時に eventLoop 指標が先行上振れする相関は、Pi5カナリアで継続観測中
 - ⚪ **INCONCLUSIVE**: 端末ネットワーク瞬断由来の遅延割合は、追加データ不足で確定していない
 

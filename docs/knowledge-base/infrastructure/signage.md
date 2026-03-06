@@ -1542,6 +1542,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 **Follow-up（観測契約追加, 2026-03-06）**:
 - ✅ **CONFIRMED**: `signage-render-scheduler` の状態を metrics へ公開（`worker_pid` / `skip_total` / `last_duration` / `running`）
 - ✅ **CONFIRMED**: 自動再起動ロジックは未導入のまま維持し、運用判断のための観測のみ追加（非破壊方針）
+- ✅ **CONFIRMED**: Pi5 1台カナリアデプロイ完了（`--limit server`）。`getTelemetrySnapshot()` 経由で metrics に `signage_render_*` を出力。運用手順は [operation-manual.md](../guides/operation-manual.md) の「低レイヤー観測（Pi5カナリア）」を参照
 - 🔄 **LIKELY**: worker 側高負荷の早期検知は `skip_total` と eventLoop 指標の併読で改善する見込み
 - ⚪ **INCONCLUSIVE**: 長時間連続稼働（24h超）でのメモリ上振れ再発率は追加観測が必要
 

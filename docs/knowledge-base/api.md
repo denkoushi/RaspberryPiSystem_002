@@ -1,5 +1,36 @@
 ---
 
+### [KB-296] eventLoop health 評価で起動直後・テスト時に 503/degraded になる
+
+**日付**: 2026-03-06
+
+**Context**:
+- `/api/system/health` に eventLoop 観測（`evaluateEventLoopHealth`）を導入した直後、テスト環境で `503 degraded` が返る事象が発生
+- health テスト（`health.test.ts`）と performance テスト（`performance.test.ts`）が失敗
+
+**Symptoms**:
+- 起動直後や短命テストプロセスで `GET /api/system/health` が `503` または `status: degraded` を返す
+- `checks.eventLoop.status` が `error` になる
+
+**Investigation**:
+- **仮説**: `monitorEventLoopDelay` / `eventLoopUtilization` は起動直後や短命プロセスではサンプルが不足する
+- **検証**: サンプルウィンドウ（`activeMs + idleMs`）が 1000ms 未満、または `p99` / `elu` が `NaN` 等の非有限値になる
+- **結果**: **CONFIRMED** - テスト起動直後の health 評価で誤検知が発生
+
+**Fix**:
+- `evaluateEventLoopHealth` に warmup ウィンドウ判定を追加（`event-loop-observability.ts`）
+  - `sampleWindowMs < 1000` のとき: `{ status: 'ok', message: 'Event loop warmup window (insufficient sample)' }`
+  - `!Number.isFinite(p99/elu)` のとき: `{ status: 'ok', message: 'Event loop sample is not finite yet' }`
+- これにより起動直後・テスト環境での誤検知を防止。本番で長時間稼働後の `degraded` は実負荷によるものとして扱う
+
+**関連ファイル**:
+- `apps/api/src/services/system/event-loop-observability.ts`
+- `apps/api/src/routes/system/health.ts`
+
+**参照**: [operation-manual.md](../guides/operation-manual.md)（低レイヤー観測・トラブルシュート 7）、[EXEC_PLAN.md](../../EXEC_PLAN.md)（Surprises & Discoveries）
+
+---
+
 ### [KB-271] 生産スケジュールデータ削除ルール（重複loser即時削除・1年超過は保存しない）
 
 **日付**: 2026-02-19

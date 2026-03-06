@@ -179,6 +179,16 @@ curl -s http://localhost:8080/api/system/metrics | \
 - 判定: **HOLD（保留）**
 - 理由: カナリア観測期間が未完了で、7日分の連続データが未収集
 
+#### 7) トラブルシュート: health が 503 / degraded になる
+
+**症状**: 起動直後やテスト環境で `/api/system/health` が `503` または `status: degraded` を返す。
+
+**原因**: eventLoop 観測の `monitorEventLoopDelay` / `eventLoopUtilization` は、起動直後や短命プロセスではサンプルが不足し、`p99` や `elu` が非有限（NaN 等）になる。このとき `evaluateEventLoopHealth` が誤って `degraded` を返す可能性があった。
+
+**対策（実装済み）**: `event-loop-observability.ts` の `evaluateEventLoopHealth` に warmup ウィンドウ判定を追加。`sampleWindowMs < 1000` または `!Number.isFinite(p99/elu)` のときは `ok` を返す。これにより起動直後・テスト環境での誤検知を防止。**[KB-296]**
+
+**運用時の注意**: 本番で `degraded` が連続する場合は、上記 warmup を過ぎた後の実負荷によるもの。切り戻し条件（5）を参照。
+
 ### ログ確認
 
 #### APIログ

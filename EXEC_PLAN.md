@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-06) **低レイヤー観測強化（SOLID・非破壊）・Pi5カナリアデプロイ完了**: API `health/metrics` に eventLoop 指標（p50/p90/p99, ELU）と signage-render-scheduler の worker 状態（PID/skipCount/lastDuration/running）を追加。`event-loop-observability.ts` を新設し、`evaluateEventLoopHealth` で warmup ウィンドウ（サンプル不足・非有限値）時は `ok` を返す。`cursor_debug=30be23` は切り分け時のみ有効化する運用境界を明文化。Pi5 1台カナリアの判定基準・切り戻し条件を [operation-manual.md](./docs/guides/operation-manual.md) に追記。**デプロイ**: `--limit server` で Pi5 のみ、`state: success`。**次**: カナリア検証（7日連続合格）後に次フェーズ移行。詳細は [KB-268](./docs/knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) / [KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応) / [operation-manual.md](./docs/guides/operation-manual.md) を参照。
+
 - [x] (2026-03-06) **登録製番ボタン並び替えUI・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番ボタンをユーザー指定順に並び替えるUIを実装。**実装**: 案3（カード下辺左右に矢印ボタン）、`moveHistoryItemLeft` / `moveHistoryItemRight` 純粋関数（`historyOrder.ts`）、`SeibanHistoryButton` に矢印UI追加、`ProductionSchedulePage` で `type: 'reorder'` で search-state 同期。**デプロイ**: Run ID `20260306-200303-31051`、`state: success`、約10分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: 左右矢印による並び替え動作（右移動・左移動）、disabled状態の切り替え（先頭の左矢印・末尾の右矢印がdisabled）、カードサイズ（w-36 h-16）・×ボタン位置の維持を確認。詳細は [KB-295](./docs/knowledge-base/frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
 
 - [x] (2026-03-06) **資源CDボタン優先並び・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番検索時、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装**: `prioritizeResourceCdsByPresence` 純粋関数（`resourcePriority.ts`）、`ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認。詳細は [KB-294](./docs/knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
@@ -630,6 +632,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-06）: **eventLoop health 評価**を導入した直後、テスト環境で `/api/system/health` が `503 degraded` を返す事象が発生。**原因**: 起動直後や短命テストでは `monitorEventLoopDelay` / `eventLoopUtilization` のサンプルが不足し、`p99` や `elu` が非有限（NaN等）になる。**対策**: `evaluateEventLoopHealth` に warmup ウィンドウ判定を追加（`sampleWindowMs < 1000` または `!Number.isFinite(p99/elu)` のときは `ok` を返す）。これによりテスト・起動直後の誤検知を防止。**[KB-296]**
 - 観測（2026-03-06）: **デプロイ対象の事前回答と実際の運用**を区別すべき。事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×2）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×2 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 - 観測（2026-03-06）: **Pi4/Pi3のRealVNC接続**は、`tag:admin -> tag:kiosk/signage` を直接開けるより **Pi5経由SSHトンネル** の方が安全（攻撃面をPi5入口に集約）。`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加し、Macで `ssh -N -L 5904:... -L 5905:... -L 5903:...` を張って `localhost:5904/5905/5903` に接続。VNC接続するたびにトンネルを張る運用（永続化しない）。**[KB-293]**
 - 観測（2026-03-06）: **E2E smoke テスト**をローカルで実行する場合、`CI=true` に加えて **PostgreSQL のマイグレーション・シード**が必須。`CI=true` でないと Playwright の webServer が起動せず、シードなしだと `client-key-raspberrypi4-kiosk1` が DB に存在せず 401 になる。**手順**: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（apps/api）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`。
@@ -837,6 +840,9 @@
 
 ## Decision Log
 
+- 決定（2026-03-06）: **低レイヤー観測強化**は「観測強化のみ（メトリクス拡充・Runbook整備・しきい値定義）」の範囲で実施し、ロジック変更・worker分離等の改善は次フェーズに先送りする。**ロールアウト**は「カナリア（Pi5または1台のみ）→検証→段階展開」を採用。  
+  理由: 既存稼働を壊さず、観測データに基づいて改善施策を決定するため。APIはPi5のみで稼働するため、観測強化のデプロイはPi5（`--limit server`）のみで十分。  
+  参照: [operation-manual.md](./docs/guides/operation-manual.md)（低レイヤー観測）、[KB-268](./docs/knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察)、[KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応)
 - 決定: Dropboxバックアップの容量不足（`insufficient_space`）時は、最古優先で削除して再試行する自動リカバリを採用する。
   理由: 手動介入を減らし、スケジュール・手動実行の両方で一貫した救済ポリシーを適用するため。Upload Session（チャンクアップロード）で大容量ファイルの送信を安定化し、一時ファイル経路を改善して`/tmp`肥大化を回避する。
 - 決定（2026-03-05）: `insufficient_space`時の削除は**同一ターゲット（kind+source）内に限定**する。
@@ -1022,6 +1028,20 @@
 **学んだこと**:
 んｄ- 業務機能の完成度とCI/テストの成熟度は別の問題
 - `docker exec`でヒアドキュメントを受け取るには`-i`オプションが必要
+
+### 低レイヤー観測強化（Pi5カナリア）完了（2026-03-06）
+
+**達成事項**:
+- API `health` / `metrics` に eventLoop 指標（p50/p90/p99, ELU）と signage-render-scheduler の worker 状態を追加
+- `event-loop-observability.ts` を新設し、観測ロジックを単一ソースに集約（SOLID・非破壊）
+- Pi5 1台カナリアの判定基準・切り戻し条件・次フェーズ移行ゲートを operation-manual に整備
+- `cursor_debug=30be23` の運用境界を明文化（切り分け時のみ有効化）
+
+**学んだこと**:
+- `monitorEventLoopDelay` / `eventLoopUtilization` は起動直後・短命テストでサンプル不足となり、非有限値で誤検知する。warmup ウィンドウ判定（`sampleWindowMs < 1000` または `!Number.isFinite(p99/elu)`）で `ok` を返す対策が有効。
+- 観測強化は API が稼働する Pi5 のみデプロイすれば十分。Pi4/Pi3 は API を消費する側のため影響なし。
+
+**参照**: [operation-manual.md](./docs/guides/operation-manual.md)（低レイヤー観測）、[KB-268](./docs/knowledge-base/frontend.md#kb-268)、[KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274)
 
 ### Phase 7: デジタルサイネージ機能実装完了（2025-11-28）
 
@@ -1529,6 +1549,21 @@
 **検証結果**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作機能が正常動作することを確認。
 
 **参照**: [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
+
+### 低レイヤー観測（Pi5カナリア）検証・次フェーズ移行（進行中）
+
+**概要**: eventLoop / signage worker 観測を Pi5 にデプロイ済み。7日連続合格後に次フェーズ（低リスク改善）へ移行する。
+
+**実施すべき検証**:
+1. `docs/guides/operation-manual.md` の「低レイヤー観測（Pi5カナリア）」に従い、`/api/system/health` と `/api/system/metrics` で新指標を確認
+2. キオスク体感遅延時に eventLoop 指標の相関を採取
+3. 7日連続で「機能回帰ゼロ・status=degraded 0回・p99 < 250ms・worker 異常傾向なし」を満たしたら次フェーズ移行
+
+**次フェーズ候補**（観測データに基づき決定）:
+- eventLoop 起因の遅延が確認された場合: worker 分離・ポーリング間隔調整等の低リスク改善
+- メモリリーク傾向が確認された場合: 既存リエントランシーガードの強化・監視閾値の追加
+
+**参照**: [operation-manual.md](./docs/guides/operation-manual.md)（低レイヤー観測）、[KB-268](./docs/knowledge-base/frontend.md#kb-268)、[KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274)
 
 ### deploy-status v2 実機検証（完了 2026-03-06）
 
@@ -2152,6 +2187,7 @@
 
 ---
 
+変更履歴: 2026-03-06 — 低レイヤー観測強化（Pi5カナリア）の進捗・知見・トラブルシュートをドキュメントに反映。Progress/Surprises/Decision Log/Outcomes/Next Steps を更新。KB-268/KB-274 にデプロイ完了を追記。KB-296（eventLoop health warmup 503 対策）を api.md に追加。operation-manual にトラブルシュート（7）を追加。ADR-20260306-lowlevel-observability を新設。knowledge-base index に KB-296 を追加、INDEX.md を更新。
 変更履歴: 2026-02-13 — B実装（api-only / minor-safe）を反映。`vitest` / `@vitest/coverage-istanbul` は major 1 系で最新（`1.6.1`）を確認。coverage provider を `istanbul` に統一し、`test:coverage` 実行時に明示指定する形へ更新。`test-exclude>glob` オーバーライド削除トライは再発エラー（`ERR_INVALID_ARG_TYPE`）で失敗したため復元し維持。最終的に `test:coverage`（ローカル）と `pnpm --filter @raspi-system/api test/lint/build` が成功することを確認。
 変更履歴: 2026-02-13 — コード品質改善フェーズ4第五弾（5本実装）を反映。`alerts/tools` サービス層テスト拡張、`backup/imports` 依存境界ルール追加、性能テスト並列ケース追加、CIカバレッジartifact導入（`api-coverage`）を実施。ローカル品質ゲート（test/lint/build）成功、`test:coverage` はローカル Node18 環境で実行時に provider 互換エラーを確認し、CI Node20 実行を前提に運用する判断を追記。
 変更履歴: 2026-02-12 — コード品質改善フェーズ4第四弾（依存境界ルール強化 + importsサービス層テスト拡張）を反映。`apps/api/.eslintrc.cjs` に `routes/kiosk` と `routes/clients` の相互依存禁止を追加し、`import-history.service.test.ts` / `csv-import-config.service.test.ts` を新規追加。品質ゲート（test/lint/build）成功、CI成功（Run `21949019086`）、デプロイ完了（runId `20260212-225612-22558`）、実機検証完了（`/api/system/health`、マイグレーション整合）を追記。トラブルシューティングとして `raspberrypi.local` 名前解決不可時はTailscale IPを使用する点と、コンテナ内マイグレーション確認は `pnpm prisma migrate status` を用いる点を記録。
