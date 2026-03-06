@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-06) **KB-292解決・SPLITレイアウトloans=0件時のvisualization崩れ修正・デプロイ完了・実機検証完了**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**実装**: 止血修正（`loans.length > 0`条件除去）、SignagePaneResolver導入、Web `/signage` の visualization 対応、回帰テスト追加。**デプロイ**: Run ID `20260306-095122-27071`、`state: success`、約37分。**実機検証**: APIヘルス、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`（JPEG）、`/api/signage/visualization-image/:id`（200）、Pi3 signage-lite 稼働、`current.jpg` 更新を確認。サイネージ正常表示を確認。詳細は [KB-292](./docs/knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
+
 - [x] (2026-03-05) **Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。
 
 - [x] (2026-03-05) **RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent.yml（設定配布）と nfc-agent-lifecycle.yml（pcscd 導入・起動・nfc-agent 起動保証）を追加、変数契約（nfc_agent_client_id/secret 必須）を fail-fast 化。**デプロイトラブル**: UTF-8 無効文字（journalctl/df）→ iconv -c、iconv 非ゼロ終了 → \|\| true、Docker 未導入 → 手動インストール。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./docs/troubleshooting/nfc-reader-issues.md) を参照。
@@ -2083,6 +2085,14 @@
 **現状**: クライアント端末名の編集機能は実装済みで、実機検証も完了。システム全体が正常に動作することを確認済み。上記の改善は運用上の課題や要望を収集してから実施。
 
 **詳細**: [docs/knowledge-base/api.md#kb-206](./docs/knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題) / [docs/investigation/kiosk-client-status-investigation.md](./docs/investigation/kiosk-client-status-investigation.md) / [docs/api/overview.md](./docs/api/overview.md)
+
+### サイネージ関連の残タスク（KB-292完了後の次のタスク）
+
+**概要**: KB-292（SPLITレイアウトloans=0件時のvisualization崩れ）は解決済み。次の改善候補は [docs/knowledge-base/infrastructure/signage.md#サイネージ関連の残タスク](./docs/knowledge-base/infrastructure/signage.md#サイネージ関連の残タスク) を参照。
+
+**候補タスク**:
+1. **レイアウト設定機能の完成度向上**（優先度: 中）: 緊急表示のlayoutConfig対応、スケジュール一括編集/コピー/プレビュー
+2. **サイネージのパフォーマンス最適化**（優先度: 低）: キャッシュ改善、レンダリング最適化、エラーハンドリング改善
 
 ### キオスク画面のUI改善（推奨）
 

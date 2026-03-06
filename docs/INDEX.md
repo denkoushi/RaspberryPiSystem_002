@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-06）
 
-- **✅ SPLITレイアウトloans=0件時のvisualization崩れ修正・回帰テスト追加**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**原因**: `SignageRenderer`の`loans.length > 0`条件依存。**対策**: 条件除去、SignagePaneResolver導入、Web `/signage`のvisualization対応、回帰テスト追加。詳細は [KB-292](./knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
+- **✅ SPLITレイアウトloans=0件時のvisualization崩れ修正・デプロイ完了・実機検証完了**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**原因**: `SignageRenderer`の`loans.length > 0`条件依存。**対策**: 条件除去、SignagePaneResolver導入、Web `/signage`のvisualization対応、回帰テスト追加。**デプロイ**: Run ID `20260306-095122-27071`、`state: success`、約37分。**実機検証**: APIヘルス、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`、`/api/signage/visualization-image/:id`、Pi3 signage-lite 稼働、`current.jpg` 更新を確認。サイネージ正常表示を確認。詳細は [KB-292](./knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
 
 ### 🆕 最新アップデート（2026-03-05）
 

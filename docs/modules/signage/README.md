@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-02-11（未点検加工機の可視化データソース追加）
+最終更新: 2026-03-06（visualization-image API追加・Web /signage visualization対応）
 
 ## 概要
 
@@ -447,6 +447,23 @@ model SignageEmergency {
 **注意**: `pdfsById`フィールドは、SPLITレイアウトで複数のPDFスロットが存在する場合に、各PDFの情報を辞書形式で提供します。左右別PDF表示の場合、`pdfsById`には左右両方のPDF情報が含まれます。`pdf`フィールドは後方互換性のため、先頭PDFスロット（LEFT）のPDF情報を返します。
 
 **後方互換性**: `layoutConfig`が`null`の場合は、既存の`contentType`/`pdfId`から自動的に新形式へ変換されます。
+
+### GET /api/signage/visualization-image/:id（2026-03-06追加）
+
+可視化ダッシュボードの単一ペイン画像を取得します。Web `/signage` ページで `slot.kind === 'visualization'` のスロットを表示する際に使用します。
+
+**パラメータ**:
+- `id`: 可視化ダッシュボードID（UUID）
+
+**レスポンス**:
+- `200`: JPEG画像（`Content-Type: image/jpeg`）
+- `404`: 可視化ダッシュボードが存在しない、またはレンダリング失敗
+
+**用途**:
+- Web `/signage` ページでの SPLIT レイアウト右ペイン（または左ペイン）の可視化表示
+- 管理コンソールのサイネージプレビュー（`/api/signage/current-image` は全体画像のため、単一ペイン表示には本エンドポイントを使用）
+
+**関連**: KB-292（SPLITレイアウトloans=0件時のvisualization崩れ修正）で追加。`SignageDisplayPage.tsx` の `slot.kind === 'visualization'` 描画ブロックから呼び出される。
 
 ### GET /api/signage/emergency
 

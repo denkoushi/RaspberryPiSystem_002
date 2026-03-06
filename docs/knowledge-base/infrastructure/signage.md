@@ -45,6 +45,16 @@ update-frequency: medium
    - `/signage` で右ペインの可視化が表示される
    - 左ペインは空表示、右ペインは可視化が維持される
 
+**デプロイ・実機検証結果**（2026-03-06）:
+- **デプロイ**: Run ID `20260306-095122-27071`、`state: success`、所要時間約37分
+- **対象**: `RASPI_SERVER_HOST="denkon5sd02@100.106.158.2" ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+- **実機検証**: APIヘルス（`status: ok`）、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`（JPEG 244KB）、`/api/signage/visualization-image/:id`（200）、Pi3 signage-lite 稼働、`current.jpg` 更新を確認
+- **結論**: サイネージ正常表示を確認
+
+**トラブルシューティング（CI/デプロイ）**:
+- **getOrCreateTestClientDevice**: `signage.integration.test.ts` で `createTestClientDevice('client-key-raspberrypi3-signage1')` の P2002（apiKey 重複）対策として `getOrCreateTestClientDevice` を追加。既存レコードがあれば取得、なければ作成。
+- **raspberrypi4 unreachable=1**: デプロイ時に Pi4 がオフラインの場合、`unreachable=1` が発生するが、Pi5/Pi3 は正常デプロイ可能。`tailscale status` で到達不可端末を先に切り分け、`--limit` で到達可能ホストのみデプロイする運用（KB-281 参照）。
+
 **関連ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/api/src/services/signage/signage-pane-resolver.ts`
