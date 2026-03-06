@@ -696,16 +696,65 @@ sys.exit(0 if (selected & kiosk) else 1)
 PY
 }
 
+# Write deploy-status.json v2 (per-client maintenance) on Pi5 for in-scope kiosk hosts.
+write_deploy_status_v2_on_remote() {
+  local inventory_basename="$1"
+  local limit_arg="$2"
+  local run_id="${3:-}"
+  local status_file="$4"
+  local started_at
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local limit_opt=""
+  [[ -n "${limit_arg}" ]] && limit_opt="--limit ${limit_arg}"
+
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && \
+    inv=\$(ansible-inventory -i ${inventory_basename} --list) && \
+    selected=\$(ansible -i ${inventory_basename} 'server:clients' --list-hosts ${limit_opt} 2>/dev/null | tail -n +2 | awk '{print \$1}') && \
+    python3 - \"\$inv\" \"\$selected\" '${started_at}' '${run_id}' '${status_file}'" <<'PY'
+import json, sys
+inv_json = sys.argv[1] if len(sys.argv) > 1 else "{}"
+selected_text = sys.argv[2] if len(sys.argv) > 2 else ""
+started_at = sys.argv[3] if len(sys.argv) > 3 else ""
+run_id = sys.argv[4] if len(sys.argv) > 4 else ""
+status_file = sys.argv[5] if len(sys.argv) > 5 else "/opt/RaspberryPiSystem_002/config/deploy-status.json"
+data = json.loads(inv_json)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+selected = set(h.strip() for h in selected_text.splitlines() if h.strip())
+kiosk_hosts = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+in_scope = [h for h in kiosk_hosts if h in selected]
+kiosk_by_client = {}
+for h in in_scope:
+    sid = hostvars.get(h, {}).get("status_agent_client_id")
+    if sid:
+        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at}
+        if run_id:
+            kiosk_by_client[sid]["runId"] = run_id
+out = {"version": 2, "kioskByClient": kiosk_by_client}
+with open(status_file, "w", encoding="utf-8") as f:
+    json.dump(out, f, ensure_ascii=False)
+PY
+}
+
 set_pi4_maintenance_flag() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
   fi
 
-  if should_enable_kiosk_maintenance; then
-    echo "[INFO] Setting kiosk maintenance flag on ${REMOTE_HOST}"
-    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")\" && echo '{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}' > \"${REMOTE_DEPLOY_STATUS_FILE}\"" || true
-    KIOSK_MAINTENANCE_ENABLED=1
+  if ! should_enable_kiosk_maintenance; then
+    return 0
   fi
+
+  local inventory_basename
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+  local limit_arg=""
+  [[ -n "${LIMIT_HOSTS}" ]] && limit_arg="${LIMIT_HOSTS}"
+
+  echo "[INFO] Setting kiosk maintenance flag (per-client) on ${REMOTE_HOST}"
+  if ! write_deploy_status_v2_on_remote "${inventory_basename}" "${limit_arg}" "" "${REMOTE_DEPLOY_STATUS_FILE}"; then
+    echo "[WARN] Could not write deploy-status v2, skipping maintenance flag"
+    return 0
+  fi
+  KIOSK_MAINTENANCE_ENABLED=1
 }
 
 clear_pi4_maintenance_flag() {
@@ -992,12 +1041,43 @@ PY
 }
 
 set_kiosk_maintenance_flag() {
-  if should_enable_kiosk_maintenance; then
-    echo "[INFO] Setting kiosk maintenance flag (${REMOTE_DEPLOY_STATUS_FILE})"
-    mkdir -p "$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")" || true
-    echo "{\"kioskMaintenance\": true, \"scope\": \"kiosk\", \"startedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "${REMOTE_DEPLOY_STATUS_FILE}" || true
-    MAINTENANCE_FLAG_SET=1
+  if ! should_enable_kiosk_maintenance; then
+    return 0
   fi
+  echo "[INFO] Setting kiosk maintenance flag (per-client v2) (${REMOTE_DEPLOY_STATUS_FILE})"
+  mkdir -p "$(dirname "${REMOTE_DEPLOY_STATUS_FILE}")" || true
+  limit_opt=""
+  [ -n "${LIMIT_HOSTS}" ] && limit_opt="--limit ${LIMIT_HOSTS}"
+  inv_file=$(mktemp)
+  ansible-inventory -i "${INVENTORY_BASENAME}" --list > "${inv_file}"
+  selected=$(ansible -i "${INVENTORY_BASENAME}" 'server:clients' --list-hosts ${limit_opt} 2>/dev/null | tail -n +2 | awk '{print $1}')
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  python3 - "${REMOTE_DEPLOY_STATUS_FILE}" "${RUN_ID}" "${started_at}" "${inv_file}" "${selected}" <<'PY'
+import json, sys
+status_file = sys.argv[1] if len(sys.argv) > 1 else "/opt/RaspberryPiSystem_002/config/deploy-status.json"
+run_id = sys.argv[2] if len(sys.argv) > 2 else ""
+started_at = sys.argv[3] if len(sys.argv) > 3 else ""
+inv_path = sys.argv[4] if len(sys.argv) > 4 else ""
+selected_text = sys.argv[5] if len(sys.argv) > 5 else ""
+with open(inv_path, encoding="utf-8") as f:
+    data = json.load(f)
+hostvars = (data.get("_meta") or {}).get("hostvars") or {}
+selected = set(h.strip() for h in selected_text.splitlines() if h.strip())
+kiosk_hosts = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
+in_scope = [h for h in kiosk_hosts if h in selected]
+kiosk_by_client = {}
+for h in in_scope:
+    sid = hostvars.get(h, {}).get("status_agent_client_id")
+    if sid:
+        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at}
+        if run_id:
+            kiosk_by_client[sid]["runId"] = run_id
+out = {"version": 2, "kioskByClient": kiosk_by_client}
+with open(status_file, "w", encoding="utf-8") as f:
+    json.dump(out, f, ensure_ascii=False)
+PY
+  rm -f "${inv_file}"
+  MAINTENANCE_FLAG_SET=1
 }
 
 clear_kiosk_maintenance_flag() {
@@ -1396,9 +1476,9 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
     trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed' EXIT
   fi
+  run_preflight_remotely "${LIMIT_HOSTS}"
   set_pi4_maintenance_flag
   clear_server_deployment_flag
-  run_preflight_remotely "${LIMIT_HOSTS}"
   if [[ ${JOB_MODE} -eq 1 ]]; then
     RUN_ID="$(build_run_id)"
     start_remote_job "${RUN_ID}"

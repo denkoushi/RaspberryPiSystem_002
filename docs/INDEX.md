@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-06）
 
+- **✅ 端末別メンテナンス一括切替・プリフライト後フラグON**: デプロイ時のメンテナンス表示を端末別に変更。**実装内容**: deploy-status v2（`kioskByClient`）で対象キオスクのみメンテ表示、プリフライト成功後にフラグON、APIは`x-client-key`から`statusClientId`を解決して`isMaintenance`を返却。**効果**: カナリア時に対象外端末は通常画面のまま、到達不可端末にフラグを立てない。強制解除は [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。詳細は [ADR-20260306](./decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [deployment.md](./guides/deployment.md) を参照。
+
 - **✅ SPLITレイアウトloans=0件時のvisualization崩れ修正・デプロイ完了・実機検証完了**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**原因**: `SignageRenderer`の`loans.length > 0`条件依存。**対策**: 条件除去、SignagePaneResolver導入、Web `/signage`のvisualization対応、回帰テスト追加。**デプロイ**: Run ID `20260306-095122-27071`、`state: success`、約37分。**実機検証**: APIヘルス、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`、`/api/signage/visualization-image/:id`、Pi3 signage-lite 稼働、`current.jpg` 更新を確認。サイネージ正常表示を確認。詳細は [KB-292](./knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
 
 ### 🆕 最新アップデート（2026-03-05）
@@ -674,6 +676,8 @@
 | [runbooks/kiosk-loan-status-repair.md](./runbooks/kiosk-loan-status-repair.md) | **Runbook**: キオスク貸出の取消混入と資産status修復 |
 | [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) | **Runbook**: キオスク備考欄 日本語入力不具合の診断 |
 | [runbooks/kiosk-power-operation-recovery.md](./runbooks/kiosk-power-operation-recovery.md) | **Runbook**: 電源操作・連打防止オーバーレイ不具合の復旧 |
+| [runbooks/vnc-tailscale-recovery.md](./runbooks/vnc-tailscale-recovery.md) | **Runbook**: RealVNC接続不可時の復旧（Tailscale ACL設定） |
+| [runbooks/deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) | **Runbook**: メンテナンス画面が戻らない場合の復旧（deploy-status強制解除） |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
 | [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |

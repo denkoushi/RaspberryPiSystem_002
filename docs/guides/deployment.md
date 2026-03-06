@@ -461,12 +461,14 @@ curl http://localhost:8080/api/system/health
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 - `status-agent.conf`の`API_BASE_URL`は自動的に`https://<Pi5>/api`に設定されます（Ansibleが`group_vars/all.yml`の`api_base_url`を使用）
 
-**重要（2026-01-19更新）**: 
-- **Pi4デプロイ時のメンテナンス画面表示**: Pi4デプロイ時（`--limit raspberrypi4`使用時）に、キオスク画面にメンテナンス画面が自動的に表示されます
+**重要（2026-03-06更新）**: 
+- **Pi4デプロイ時のメンテナンス画面表示（端末別）**: デプロイ対象のキオスク端末のみメンテナンス画面が表示されます
+  - **端末別フラグ**: `--limit` で対象に入ったキオスクのみメンテ表示。対象外端末は通常画面のまま
+  - **プリフライト後フラグON**: 到達確認（プリフライト）成功後にのみフラグを立てる。到達不可端末にはフラグを立てない
   - デプロイスクリプト（`scripts/update-all-clients.sh`）が自動的にメンテナンスフラグを設定・クリアします
-  - メンテナンス画面は「メンテナンス中」メッセージとスピナーを表示し、ユーザーの操作を防ぎます
-  - デプロイ完了後、メンテナンス画面は自動的に消えます（最大5秒以内）
-  - 詳細は [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
+  - デプロイ完了後、対象端末のメンテナンス画面は自動的に消えます（最大5秒以内）
+  - **強制解除**: メンテ画面が戻らない場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照
+  - 詳細は [ADR-20260306](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
 **重要（2026-02-07更新）**:
 - **段階展開（カナリア→全台）**を推奨します（Pi4が増えた場合の安全策）

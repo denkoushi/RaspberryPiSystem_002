@@ -31,7 +31,7 @@ export function KioskLayout() {
   }, [location.pathname]);
 
   // メンテナンス中はメンテナンス画面を表示
-  if (deployStatus?.kioskMaintenance) {
+  if (deployStatus?.isMaintenance) {
     return <KioskMaintenanceScreen />;
   }
 

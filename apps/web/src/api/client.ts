@@ -1423,9 +1423,7 @@ export async function getNetworkModeStatus() {
 }
 
 export interface DeployStatus {
-  kioskMaintenance: boolean;
-  scope?: string;
-  startedAt?: string;
+  isMaintenance: boolean;
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
