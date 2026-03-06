@@ -75,9 +75,12 @@ import {
   getKioskProductionSchedule,
   getKioskProductionScheduleOrderUsage,
   getKioskProductionScheduleResources,
+  getKioskProductionScheduleDueManagementSummary,
+  getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
+  getProductionScheduleResourceCategorySettings,
   getKioskCallTargets,
   getSystemInfo,
   getTransactions,
@@ -87,6 +90,7 @@ import {
   returnLoan,
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
+  updateProductionScheduleResourceCategorySettings,
   updateClient,
   updateEmployee,
   updateItem,
@@ -94,6 +98,8 @@ import {
   updateKioskProductionScheduleNote,
   updateKioskProductionScheduleDueDate,
   updateKioskProductionScheduleProcessing,
+  updateKioskProductionScheduleDueManagementSeibanDueDate,
+  updateKioskProductionScheduleDueManagementPartPriorities,
   getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
@@ -281,6 +287,70 @@ export function useKioskProductionScheduleHistoryProgress(options?: { pauseRefet
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
     refetchInterval: options?.pauseRefetch ? false : 30000,
+  });
+}
+
+export function useKioskProductionScheduleDueManagementSummary() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-summary'],
+    queryFn: getKioskProductionScheduleDueManagementSummary,
+    refetchInterval: 30000
+  });
+}
+
+export function useKioskProductionScheduleDueManagementSeibanDetail(fseiban: string | null) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban],
+    queryFn: () => getKioskProductionScheduleDueManagementSeibanDetail(fseiban ?? ''),
+    enabled: typeof fseiban === 'string' && fseiban.trim().length > 0
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementSeibanDueDate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fseiban, dueDate }: { fseiban: string; dueDate: string }) =>
+      updateKioskProductionScheduleDueManagementSeibanDueDate(fseiban, { dueDate }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementPartPriorities() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fseiban, orderedFhincds }: { fseiban: string; orderedFhincds: string[] }) =>
+      updateKioskProductionScheduleDueManagementPartPriorities(fseiban, { orderedFhincds }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+    }
+  });
+}
+
+export function useProductionScheduleResourceCategorySettings(location: string) {
+  return useQuery({
+    queryKey: ['production-schedule-resource-category-settings', location],
+    queryFn: () => getProductionScheduleResourceCategorySettings(location),
+    enabled: location.trim().length > 0
+  });
+}
+
+export function useUpdateProductionScheduleResourceCategorySettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { location: string; cuttingExcludedResourceCds: string[] }) =>
+      updateProductionScheduleResourceCategorySettings(payload),
+    onSuccess: (settings) => {
+      queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-category-settings', settings.location] });
+    }
   });
 }
 

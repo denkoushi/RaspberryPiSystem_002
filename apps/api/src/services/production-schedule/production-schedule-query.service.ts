@@ -1,12 +1,15 @@
 import { Prisma } from '@prisma/client';
 import {
-  filterProductionScheduleResourceCdsByCategory,
-  PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS,
   type ProductionScheduleResourceCategory
 } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import {
+  filterProductionScheduleResourceCdsByCategoryWithPolicy,
+  getResourceCategoryPolicy,
+  type ResourceCategoryPolicy
+} from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProductionScheduleRow = {
@@ -67,12 +70,9 @@ const buildTextConditions = (queryText: string): Prisma.Sql[] => {
 const buildResourceConditions = (params: {
   resourceCds: string[];
   assignedOnlyCds: string[];
-  resourceCategory?: ProductionScheduleResourceCategory;
   locationKey: string;
 }): Prisma.Sql[] => {
-  const { resourceCategory, locationKey } = params;
-  const resourceCds = filterProductionScheduleResourceCdsByCategory(params.resourceCds, resourceCategory);
-  const assignedOnlyCds = filterProductionScheduleResourceCdsByCategory(params.assignedOnlyCds, resourceCategory);
+  const { locationKey, resourceCds, assignedOnlyCds } = params;
   const resourceConditions: Prisma.Sql[] = [];
 
   if (resourceCds.length > 0) {
@@ -103,17 +103,24 @@ const buildResourceConditions = (params: {
 };
 
 const buildResourceCategoryCondition = (
-  resourceCategory: ProductionScheduleResourceCategory | undefined
+  resourceCategory: ProductionScheduleResourceCategory | undefined,
+  policy: ResourceCategoryPolicy
 ): Prisma.Sql => {
   if (!resourceCategory) {
     return Prisma.empty;
   }
 
-  const grindingCds = PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS.map((cd) => Prisma.sql`${cd}`);
+  const grindingCds = policy.grindingResourceCds.map((cd) => Prisma.sql`${cd}`);
   if (resourceCategory === 'grinding') {
     return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(grindingCds, ',')})`;
   }
-  return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')})`;
+
+  const excludedCds = policy.cuttingExcludedResourceCds.map((cd) => Prisma.sql`${cd}`);
+  if (excludedCds.length === 0) {
+    return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')})`;
+  }
+
+  return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')}) AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(excludedCds, ',')})`;
 };
 
 const buildQueryWhere = (params: {
@@ -182,13 +189,23 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     locationKey
   } = params;
   const textConditions = buildTextConditions(queryText);
-  const resourceConditions = buildResourceConditions({
+  const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
+  const filteredResourceCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
     resourceCds,
+    resourceCategory,
+    resourceCategoryPolicy
+  );
+  const filteredAssignedOnlyCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
     assignedOnlyCds,
     resourceCategory,
+    resourceCategoryPolicy
+  );
+  const resourceConditions = buildResourceConditions({
+    resourceCds: filteredResourceCds,
+    assignedOnlyCds: filteredAssignedOnlyCds,
     locationKey
   });
-  const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory);
+  const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
 
   // 登録製番なし かつ 割当なし の場合は検索しない。
   // - 資源CD単独（resourceCds）
@@ -198,8 +215,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   // 割当のみは対象が少ないため単独検索を許可する。
   const hasOnlyResourceFilters =
     textConditions.length === 0 &&
-    assignedOnlyCds.length === 0 &&
-    (resourceCds.length > 0 || resourceCategory !== undefined);
+    filteredAssignedOnlyCds.length === 0 &&
+    (filteredResourceCds.length > 0 || resourceCategory !== undefined);
 
   if (hasOnlyResourceFilters) {
     return {

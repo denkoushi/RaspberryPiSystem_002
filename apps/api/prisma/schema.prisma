@@ -716,6 +716,46 @@ model KioskProductionScheduleSearchState {
   @@index([csvDashboardId])
 }
 
+model ProductionScheduleSeibanDueDate {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fseiban        String   @db.VarChar(20)
+  dueDate        DateTime @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fseiban])
+  @@index([csvDashboardId, location, dueDate])
+}
+
+model ProductionSchedulePartPriority {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fseiban        String   @db.VarChar(20)
+  fhincd         String   @db.VarChar(50)
+  priorityRank   Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fseiban, fhincd], map: "ProductionSchedulePartPriority_unique_part")
+  @@unique([csvDashboardId, location, fseiban, priorityRank], map: "ProductionSchedulePartPriority_unique_rank")
+  @@index([csvDashboardId, location, fseiban])
+}
+
+model ProductionScheduleResourceCategoryConfig {
+  id                         String   @id @default(uuid())
+  csvDashboardId             String
+  location                   String
+  cuttingExcludedResourceCds String[] @default(["10", "MSZ"])
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([csvDashboardId, location], map: "ProductionScheduleResourceCategoryConfig_unique_location")
+  @@index([csvDashboardId, location], map: "ProductionScheduleResourceCategoryConfig_idx_location")
+}
+
 model MeasuringInstrumentLoanEvent {
   id                  String   @id @default(uuid())
   managementNumber    String

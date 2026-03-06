@@ -11,6 +11,10 @@ import { registerProductionScheduleOrderRoute } from './order.js';
 import { registerProductionScheduleSearchStateRoute } from './search-state.js';
 import { registerProductionScheduleHistoryProgressRoute } from './history-progress.js';
 import { registerProductionScheduleSearchHistoryRoute } from './search-history.js';
+import { registerProductionScheduleDueManagementSummaryRoute } from './due-management-summary.js';
+import { registerProductionScheduleDueManagementSeibanRoute } from './due-management-seiban.js';
+import { registerProductionScheduleDueManagementDueDateRoute } from './due-management-due-date.js';
+import { registerProductionScheduleDueManagementPartPrioritiesRoute } from './due-management-part-priorities.js';
 import type { KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleRoutes(
@@ -28,4 +32,8 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleSearchStateRoute(app, deps);
   await registerProductionScheduleHistoryProgressRoute(app, deps);
   await registerProductionScheduleSearchHistoryRoute(app, deps);
+  await registerProductionScheduleDueManagementSummaryRoute(app, deps);
+  await registerProductionScheduleDueManagementSeibanRoute(app, deps);
+  await registerProductionScheduleDueManagementDueDateRoute(app, deps);
+  await registerProductionScheduleDueManagementPartPrioritiesRoute(app, deps);
 }

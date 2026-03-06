@@ -244,6 +244,12 @@ export function KioskHeader({
           >
             生産スケジュール
           </NavLink>
+          <NavLink
+            to="/kiosk/production-schedule/due-management"
+            className={({ isActive }) => navClass(isActive, 'bg-sky-600 text-white')}
+          >
+            納期管理
+          </NavLink>
           <NavLink to="/kiosk/call" className={({ isActive }) => navClass(isActive, 'bg-purple-600 text-white')}>
             📞 通話
           </NavLink>

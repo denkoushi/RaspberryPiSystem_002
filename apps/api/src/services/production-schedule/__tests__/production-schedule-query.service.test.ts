@@ -9,12 +9,16 @@ import { prisma } from '../../../lib/prisma.js';
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $queryRaw: vi.fn(),
+    productionScheduleResourceCategoryConfig: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
   });
 
   it('資源CD単独指定時（assignedOnlyなし）は空結果を返しDBクエリしない', async () => {

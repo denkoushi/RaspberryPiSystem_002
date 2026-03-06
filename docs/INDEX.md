@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-07）
+
+- **✅ キオスク納期管理（製番納期・部品優先・切削除外設定）を実装**: 生産スケジュールに製番単位の納期管理画面を追加し、`ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。製番納期更新時は `DueDateWritebackService` で既存行 `dueDate` へ反映し、既存画面互換を維持。管理コンソールに切削除外設定画面を追加。設計判断は [ADR-20260307](./decisions/ADR-20260307-kiosk-due-management-model.md)、運用/背景は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-06）
 
 - **✅ 低レイヤー観測強化（SOLID・非破壊）をカナリア向けに実装**: API `health/metrics` に eventLoop 指標（p50/p90/p99, ELU）を追加し、`signage-render-scheduler` の worker 状態（PID/skipCount/lastDuration/running）を可視化。`cursor_debug=30be23` は切り分け時のみ有効化する運用境界を明文化。Pi5 1台カナリアの判定基準・切り戻し条件を [operation-manual.md](./guides/operation-manual.md) に追記。起動直後の 503/degraded 誤検知は warmup ウィンドウ判定で防止（[KB-296](./knowledge-base/api.md#kb-296-eventloop-health-評価で起動直後テスト時に-503degraded-になる)）。詳細は [KB-268](./knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) / [KB-274](./knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応) / [ADR-20260306-lowlevel-observability](./decisions/ADR-20260306-lowlevel-observability.md) を参照。

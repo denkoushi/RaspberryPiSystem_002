@@ -91,6 +91,18 @@ export const productionScheduleSearchHistoryBodySchema = z.object({
   history: z.array(z.string().max(200)).max(20)
 });
 
+export const productionScheduleDueManagementSeibanParamsSchema = z.object({
+  fseiban: z.string().min(1).max(20).transform((value) => value.trim())
+});
+
+export const productionScheduleDueManagementSeibanDueDateBodySchema = z.object({
+  dueDate: z.string().max(20).transform((value) => value.trim())
+});
+
+export const productionScheduleDueManagementPartPrioritiesBodySchema = z.object({
+  orderedFhincds: z.array(z.string().min(1).max(50)).max(2000)
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

@@ -11,6 +11,8 @@ export const PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS = [
   '589'
 ] as const;
 
+export const DEFAULT_PRODUCTION_SCHEDULE_CUTTING_EXCLUDED_RESOURCE_CDS = ['10', 'MSZ'] as const;
+
 const grindingResourceCdSet = new Set<string>(PRODUCTION_SCHEDULE_GRINDING_RESOURCE_CDS);
 
 export type ProductionScheduleResourceCategory = 'grinding' | 'cutting';
@@ -21,7 +23,10 @@ export const isProductionScheduleGrindingResourceCd = (resourceCd: string) => {
 
 export const filterProductionScheduleResourceCdsByCategory = (
   resourceCds: string[],
-  category: ProductionScheduleResourceCategory | undefined
+  category: ProductionScheduleResourceCategory | undefined,
+  options?: {
+    cuttingExcludedResourceCds?: string[];
+  }
 ) => {
   if (!category) {
     return resourceCds;
@@ -31,5 +36,10 @@ export const filterProductionScheduleResourceCdsByCategory = (
     return resourceCds.filter((cd) => isProductionScheduleGrindingResourceCd(cd));
   }
 
-  return resourceCds.filter((cd) => !isProductionScheduleGrindingResourceCd(cd));
+  const excluded = new Set(
+    (options?.cuttingExcludedResourceCds ?? [...DEFAULT_PRODUCTION_SCHEDULE_CUTTING_EXCLUDED_RESOURCE_CDS])
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+  );
+  return resourceCds.filter((cd) => !isProductionScheduleGrindingResourceCd(cd) && !excluded.has(cd.trim()));
 };

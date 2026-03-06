@@ -22,6 +22,9 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -32,6 +35,9 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -538,6 +544,109 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.progressBySeiban.A).toHaveProperty('machineName');
     expect(body.progressBySeiban.B).toHaveProperty('machineName');
     expect(body.progressBySeiban.C).toHaveProperty('machineName');
+  });
+
+  it('updates seiban due date and writes back row dueDate', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-10' }
+    });
+    expect(putRes.statusCode).toBe(200);
+    const putBody = putRes.json() as { success: boolean; dueDate: string | null; affectedRows: number };
+    expect(putBody.success).toBe(true);
+    expect(putBody.dueDate).toContain('2026-03-10');
+    expect(putBody.affectedRows).toBe(2);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listBody = listRes.json() as { rows: Array<{ dueDate?: string | null }> };
+    expect(listBody.rows).toHaveLength(2);
+    expect(listBody.rows.every((row) => String(row.dueDate ?? '').includes('2026-03-10'))).toBe(true);
+  });
+
+  it('returns due-management summary and seiban detail', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-11' }
+    });
+
+    const summaryRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/summary',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(summaryRes.statusCode).toBe(200);
+    const summaryBody = summaryRes.json() as {
+      summaries: Array<{ fseiban: string; dueDate: string | null; partsCount: number; processCount: number }>;
+    };
+    const seibanA = summaryBody.summaries.find((row) => row.fseiban === 'A');
+    expect(seibanA).toBeDefined();
+    expect(seibanA?.dueDate).toContain('2026-03-11');
+    expect(seibanA?.partsCount).toBe(2);
+    expect(seibanA?.processCount).toBe(2);
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detailBody = detailRes.json() as {
+      detail: { fseiban: string; dueDate: string | null; parts: Array<{ fhincd: string }> };
+    };
+    expect(detailBody.detail.fseiban).toBe('A');
+    expect(detailBody.detail.parts.map((part) => part.fhincd).sort()).toEqual(['X', 'Z']);
+  });
+
+  it('saves part priorities and returns currentPriorityRank', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/part-priorities',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFhincds: ['Z', 'X'] }
+    });
+    expect(putRes.statusCode).toBe(200);
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detailBody = detailRes.json() as {
+      detail: { parts: Array<{ fhincd: string; currentPriorityRank: number | null }> };
+    };
+    const rankMap = new Map(detailBody.detail.parts.map((part) => [part.fhincd, part.currentPriorityRank]));
+    expect(rankMap.get('Z')).toBe(1);
+    expect(rankMap.get('X')).toBe(2);
+  });
+
+  it('excludes configured resourceCd from cutting category results', async () => {
+    await prisma.productionScheduleResourceCategoryConfig.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        location: 'Test',
+        cuttingExcludedResourceCds: ['2']
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=B&resourceCategory=cutting',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }>; total: number };
+    expect(body.rows).toHaveLength(0);
+    expect(body.total).toBe(0);
   });
 
   it('paginates results in sorted order', async () => {

@@ -14,6 +14,7 @@ import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
 import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
+import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
@@ -25,6 +26,7 @@ import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
+import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
 import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
@@ -55,6 +57,7 @@ function App() {
           <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
           <Route path="/kiosk/call" element={<KioskCallPage />} />
           <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
+          <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
         </Route>
       </Route>
       {/* 開発用: UI確認のための一時的なルート */}
@@ -99,6 +102,7 @@ function App() {
           <Route path="schedule" element={<Navigate to="/admin/import" replace />} />
         </Route>
         <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
+        <Route path="production-schedule-settings" element={<ProductionScheduleSettingsPage />} />
         <Route path="visualization-dashboards" element={<VisualizationDashboardsPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
