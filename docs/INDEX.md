@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-06）
 
+- **✅ 登録製番ボタン並び替えUI・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番ボタンをユーザー指定順に並び替えるUIを実装。**実装**: 案3（カード下辺左右に矢印ボタン）、`moveHistoryItemLeft` / `moveHistoryItemRight` 純粋関数、`SeibanHistoryButton` に矢印UI追加、`ProductionSchedulePage` で `type: 'reorder'` で search-state 同期。**デプロイ**: Run ID `20260306-200303-31051`、`state: success`、約10分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: 左右矢印による並び替え動作、disabled状態の切り替え、カードサイズ・×ボタン位置の維持を確認。詳細は [KB-295](./knowledge-base/frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui) / [production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+
 - **✅ 資源CDボタン優先並び・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番検索時、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装**: `prioritizeResourceCdsByPresence` 純粋関数（`resourcePriority.ts`）、`ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認。詳細は [KB-294](./knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) / [production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
 
 - **✅ RealVNC Pi4/Pi3 接続復旧・実機検証完了**: MacからPi4×2とPi3がRealVNCで表示できない問題を解決。**採用方式**: Pi5経由SSHトンネル（`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加、`admin -> kiosk/signage` は直接開けない）。**実施内容**: Tailscale ACL更新、MacでSSHトンネル（`-L 5904/5905/5903`）を張り、RealVNCで `localhost:5904/5905/5903` に接続。**実機検証**: 3台とも表示可能を確認。運用はVNC接続のたびにトンネルを張る。詳細は [vnc-tailscale-recovery.md](./runbooks/vnc-tailscale-recovery.md) / [KB-293](./knowledge-base/infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) を参照。
