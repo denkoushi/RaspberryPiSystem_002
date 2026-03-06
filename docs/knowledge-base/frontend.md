@@ -3747,6 +3747,12 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 最新のログ取得試行では「数秒待ち」は未発生（=良い兆候）
 - ただし間欠事象のため、一定期間の運用で再発しないことを確認する（再発時は `cursor_debug` を付けて再取得）
 
+**Follow-up（観測契約追加, 2026-03-06）**:
+- ✅ **CONFIRMED**: API `/api/system/health` と `/api/system/metrics` に eventLoop 観測を追加し、p50/p90/p99 と ELU を常時追跡可能にした
+- ✅ **CONFIRMED**: `cursor_debug=30be23` は切り分け時のみ有効化する運用境界を明記（通常運用で常時有効化しない）
+- 🔄 **LIKELY**: 体感遅延時に eventLoop 指標が先行上振れする相関は、Pi5カナリアで継続観測中
+- ⚪ **INCONCLUSIVE**: 端末ネットワーク瞬断由来の遅延割合は、追加データ不足で確定していない
+
 **関連ファイル**:
 - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`（書き込み中/直後のrefetch抑止、デバッグ計測）
 - `apps/web/src/api/hooks.ts`（`pauseRefetch`、mutationKey、cancel/invalidateの非同期化）

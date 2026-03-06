@@ -68,6 +68,9 @@ type DebugResourceTiming = {
 type DebugLongTaskSummary = { count: number; maxDuration: number; totalDuration: number };
 type DebugLongTaskEntry = { startTime: number; duration: number };
 
+// 運用境界:
+// - 追加観測は cursor_debug=30be23 の明示指定時だけ有効化する。
+// - 通常運用では常時有効にしない（不要な計測コストとログノイズを避ける）。
 const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
 
 let debugReqSeq = 0;

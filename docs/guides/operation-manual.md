@@ -105,6 +105,80 @@ curl http://localhost:8080/api/system/metrics | grep -E "loans_active_total|empl
 # items_active_total 3
 ```
 
+### 低レイヤー観測（Pi5カナリア）
+
+以下は **Pi5 1台のみ** に適用して検証する。全台展開は合格後に段階実施する。
+
+#### 1) health の健全性確認
+
+```bash
+# ラズパイ5で実行
+curl -s http://localhost:8080/api/system/health | jq '{
+  status,
+  database: .checks.database.status,
+  memory: .checks.memory,
+  eventLoop: .checks.eventLoop,
+  eventLoopP99: .eventLoop.eventLoopDelayMs.p99,
+  elu: .eventLoop.elu.utilization
+}'
+```
+
+**判定基準（eventLoop）**:
+- `ok`: p99 < 120ms かつ ELU < 0.80
+- `warning`: p99 >= 120ms または ELU >= 0.80（`status`は`ok`のまま）
+- `degraded`: p99 >= 250ms または ELU >= 0.95
+
+#### 2) metrics の観測項目確認
+
+```bash
+# ラズパイ5で実行
+curl -s http://localhost:8080/api/system/metrics | \
+  grep -E "nodejs_event_loop_delay_milliseconds|nodejs_event_loop_utilization_ratio|signage_render_"
+```
+
+**最低確認項目**:
+- `nodejs_event_loop_delay_milliseconds{quantile="p50|p90|p99"}`
+- `nodejs_event_loop_utilization_ratio`
+- `signage_render_scheduler_running`
+- `signage_render_skip_total`
+- `signage_render_worker_pid`
+
+#### 3) キオスク体感遅延と相関確認
+
+- キオスク操作中に `health` の `eventLoop` と `metrics` の `p99/ELU` を同時採取する
+- 体感遅延が出た時刻の前後30秒を重点確認する
+- `cursor_debug=30be23` は切り分け時のみ利用し、常時有効化しない
+
+#### 4) 合格条件（カナリア）
+
+- 既存主要導線で機能回帰がない
+- 新規メトリクス欠落がない（欠番・取得失敗なし）
+- 遅延時に「eventLoop起因か否か」を運用手順だけで判定できる
+
+#### 5) 切り戻し条件（非破壊）
+
+- `status=degraded` が連続3回以上（5分以内）発生する
+- `signage_render_scheduler_running=0` が継続し、運用上復旧できない
+- 主要業務導線で明確な回帰が確認された
+
+**切り戻し手順（最小）**:
+1. 追加観測は読み取り専用のため、まずAPIコンテナ再起動で状態を初期化
+2. 必要時は直前リビジョンへロールバック（通常デプロイ手順のみを使用）
+3. 原因切り分けは `cursor_debug=30be23` の一時利用で再取得する
+
+#### 6) 次フェーズ（低リスク改善）移行ゲート
+
+以下を **連続7日** 満たした場合のみ、次フェーズへ進む:
+
+- 機能回帰ゼロ（主要導線の手動確認で問題なし）
+- `status=degraded` が0回
+- eventLoop `p99` が通常運用時に 250ms 未満を維持
+- worker観測（`signage_render_scheduler_running` / `signage_render_skip_total`）で異常傾向なし
+
+**初期判定（2026-03-06）**:
+- 判定: **HOLD（保留）**
+- 理由: カナリア観測期間が未完了で、7日分の連続データが未収集
+
 ### ログ確認
 
 #### APIログ
@@ -759,4 +833,5 @@ BACKUP_FILE="/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz"
 
 - 2025-11-27: 初版作成
 - 2025-12-01: クライアント一括更新とクライアント状態監視のセクションを追加
+- 2026-03-06: 低レイヤー観測（eventLoop/worker）とPi5カナリア判定基準を追加
 

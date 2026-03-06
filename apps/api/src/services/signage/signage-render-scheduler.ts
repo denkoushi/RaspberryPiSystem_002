@@ -15,6 +15,9 @@ export class SignageRenderScheduler {
   private readonly defaultIntervalSeconds: number;
   private isRendering = false;
   private skipCount = 0;
+  private lastRenderDurationMs: number | null = null;
+  private lastRenderTrigger: 'initial' | 'scheduled' | null = null;
+  private lastRenderCompletedAtMs: number | null = null;
 
   constructor(renderer: SignageRenderer, intervalSeconds: number = 30) {
     this.renderer = renderer;
@@ -114,6 +117,29 @@ export class SignageRenderScheduler {
     return (this.worker !== null && !this.worker.killed) || this.cronJob !== null;
   }
 
+  getTelemetrySnapshot(): {
+    runner: 'in_process' | 'worker';
+    isRunning: boolean;
+    isRendering: boolean;
+    workerPid: number | null;
+    skipCount: number;
+    lastRenderDurationMs: number | null;
+    lastRenderTrigger: 'initial' | 'scheduled' | null;
+    lastRenderCompletedAt: string | null;
+  } {
+    return {
+      runner: env.SIGNAGE_RENDER_RUNNER,
+      isRunning: this.isRunning(),
+      isRendering: this.isRendering,
+      workerPid: this.worker?.pid ?? null,
+      skipCount: this.skipCount,
+      lastRenderDurationMs: this.lastRenderDurationMs,
+      lastRenderTrigger: this.lastRenderTrigger,
+      lastRenderCompletedAt:
+        this.lastRenderCompletedAtMs === null ? null : new Date(this.lastRenderCompletedAtMs).toISOString(),
+    };
+  }
+
   private async runScheduledRender(trigger: 'initial' | 'scheduled'): Promise<void> {
     if (this.isRendering) {
       this.skipCount += 1;
@@ -130,9 +156,14 @@ export class SignageRenderScheduler {
       logger.info({ trigger }, 'Running scheduled signage render');
       await this.renderer.renderCurrentContent();
       const durationMs = Date.now() - startedAt;
+      this.lastRenderDurationMs = durationMs;
+      this.lastRenderTrigger = trigger;
+      this.lastRenderCompletedAtMs = Date.now();
       logger.info({ trigger, durationMs, skipCount: this.skipCount }, 'Scheduled signage render completed');
     } catch (error) {
       const durationMs = Date.now() - startedAt;
+      this.lastRenderDurationMs = durationMs;
+      this.lastRenderTrigger = trigger;
       logger.error({ err: error, trigger, durationMs, skipCount: this.skipCount }, 'Failed to run scheduled signage render');
     } finally {
       this.isRendering = false;

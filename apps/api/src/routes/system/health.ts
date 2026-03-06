@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
+import {
+  evaluateEventLoopHealth,
+  snapshotEventLoopObservability,
+} from '../../services/system/event-loop-observability.js';
 
 /**
  * システムヘルスチェックエンドポイント
@@ -45,6 +49,11 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
       };
     }
 
+    // イベントループ遅延チェック（degraded判定は閾値超過時のみ）
+    const eventLoop = snapshotEventLoopObservability();
+    const eventLoopHealth = evaluateEventLoopHealth(eventLoop);
+    checks.eventLoop = eventLoopHealth;
+
     // 全体的なステータスを決定
     const allOk = Object.values(checks).every((check) => check.status === 'ok');
     const statusCode = allOk ? 200 : 503;
@@ -54,6 +63,7 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
       timestamp: new Date().toISOString(),
       checks,
       memory: memUsageMB,
+      eventLoop,
       uptime: process.uptime(),
     });
   });

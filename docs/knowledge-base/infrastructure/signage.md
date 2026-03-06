@@ -1539,6 +1539,12 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - timeoutログ（`Visualization stage timed out`）の `stage` と `type` を優先確認
 - 再発時は次フェーズで `Runner` 分離（実行キュー化）を検討
 
+**Follow-up（観測契約追加, 2026-03-06）**:
+- ✅ **CONFIRMED**: `signage-render-scheduler` の状態を metrics へ公開（`worker_pid` / `skip_total` / `last_duration` / `running`）
+- ✅ **CONFIRMED**: 自動再起動ロジックは未導入のまま維持し、運用判断のための観測のみ追加（非破壊方針）
+- 🔄 **LIKELY**: worker 側高負荷の早期検知は `skip_total` と eventLoop 指標の併読で改善する見込み
+- ⚪ **INCONCLUSIVE**: 長時間連続稼働（24h超）でのメモリ上振れ再発率は追加観測が必要
+
 **関連ファイル**:
 - `apps/api/src/services/signage/signage-render-scheduler.ts`
 - `apps/api/src/services/visualization/visualization.service.ts`
