@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { getSignageVisualizationImageUrl, type SignageContentResponse, type SignageSlot, type SignageSlotConfig } from '../../api/client';
 import { useSignageContent } from '../../api/hooks';
-
-import type { SignageContentResponse, SignageSlot, SignageSlotConfig } from '../../api/client';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
 type PdfSlotConfig = SignageSlotConfig & { pdfId: string };
 type CsvDashboardSlotConfig = SignageSlotConfig & { csvDashboardId: string };
+type VisualizationSlotConfig = SignageSlotConfig & { visualizationDashboardId: string };
 
 const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
 const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
@@ -400,6 +400,49 @@ export function SignageDisplayPage() {
                     データがありません
                   </div>
                 )}
+              </div>
+            </section>
+          );
+        } else if (slot.kind === 'visualization') {
+          const visualizationConfig = slot.config as VisualizationSlotConfig;
+          const dashboardId = visualizationConfig.visualizationDashboardId;
+
+          if (!dashboardId) {
+            return (
+              <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">可視化</h2>
+                </div>
+                <div className="flex flex-1 items-center justify-center">
+                  <p className="text-white/60">可視化が設定されていません</p>
+                </div>
+              </section>
+            );
+          }
+
+          const imageUrl = getSignageVisualizationImageUrl(dashboardId);
+
+          return (
+            <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
+              <div>
+                <h2 className="text-2xl font-semibold text-white">可視化</h2>
+              </div>
+              <div className="flex flex-1 items-center justify-center min-h-0">
+                <img
+                  src={imageUrl}
+                  alt="可視化ダッシュボード"
+                  className="max-h-full max-w-full object-contain"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    const fallback = parent?.querySelector('[data-visualization-fallback]');
+                    if (fallback instanceof HTMLElement) fallback.classList.remove('hidden');
+                  }}
+                />
+                <p className="hidden text-white/60" data-visualization-fallback>
+                  可視化の読み込みに失敗しました
+                </p>
               </div>
             </section>
           );

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-25
+last-verified: 2026-03-06
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,10 +11,49 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 19件  
+**件数**: 20件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
+
+---
+
+### [KB-292] SPLITレイアウトでloans=0件のときにvisualizationがPDFフォールバックへ崩れる
+
+**発生日時**: 2026-03-06
+
+**事象**:
+- 管理コンソールでSPLITレイアウト（左=loans、右=visualization）を設定しているのに、持出0件時に右ペインが「PDF表示」「PDFが設定されていません」などPDF系フォールバックへ崩れる
+- Pi3プレビュー・実機・Web `/signage` で一貫して発生
+
+**要因**:
+- `SignageRenderer` のSPLIT分岐で `loans.length > 0` 条件があり、0件時に `renderSplitWithPanes` を通らずPDF系フォールバックへ落ちていた
+- 右ペインが `visualization` であるにもかかわらず、loans側の条件で分岐が決まっていた
+
+**有効だった対策**:
+- ✅ **止血修正**: `loans.length > 0` 条件依存を除去し、0件でも `renderSplitWithPanes` を通す
+- ✅ **SignagePaneResolver導入**: SPLIT分岐を `signage-pane-resolver.ts` へ分離し、責務を整理（SRP/OCP/DIP準拠）
+- ✅ **Web /signage の visualization 対応**: `GET /api/signage/visualization-image/:id` を追加し、`SignageDisplayPage.tsx` で `slot.kind === 'visualization'` 描画ブロックを追加
+- ✅ **回帰テスト追加**: `signage-pane-resolver.test.ts`、`signage.integration.test.ts` に split+visualization+loans=0 ケースを追加
+
+**運用確認手順（実機検証）**:
+1. `docs/guides/deployment.md` の標準手順でデプロイ
+2. 管理コンソールでSPLIT（左=loans、右=visualization）スケジュールを設定
+3. 持出0件の状態で以下を確認:
+   - `/api/signage/content` が `layoutConfig` に loans+visualization を返す
+   - `/admin/signage-preview`（`/api/signage/current-image`）で右ペインが可視化表示される
+   - `/signage` で右ペインの可視化が表示される
+   - 左ペインは空表示、右ペインは可視化が維持される
+
+**関連ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/api/src/services/signage/signage-pane-resolver.ts`
+- `apps/api/src/routes/signage/visualization-image.ts`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+- `apps/api/src/services/signage/__tests__/signage-pane-resolver.test.ts`
+- `apps/api/src/routes/__tests__/signage.integration.test.ts`
+
+**解決状況**: ✅ **解決済み**（2026-03-06）
 
 ---
 

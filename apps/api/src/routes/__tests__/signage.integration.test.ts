@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { prisma } from '../../lib/prisma.js';
 import { buildServer } from '../../app.js';
-import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestUser, getOrCreateTestClientDevice } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -370,7 +371,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
-  let clientDevice: Awaited<ReturnType<typeof createTestClientDevice>>;
+  let clientDevice: Awaited<ReturnType<typeof getOrCreateTestClientDevice>>;
 
   beforeAll(async () => {
     app = await buildServer();
@@ -382,7 +383,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   beforeEach(async () => {
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
-    clientDevice = await createTestClientDevice('client-key-raspberrypi3-signage1');
+    clientDevice = await getOrCreateTestClientDevice('client-key-raspberrypi3-signage1');
   });
 
   afterAll(async () => {
@@ -575,5 +576,158 @@ describe('GET /api/signage/content with SPLIT layout (left: pdf, right: pdf)', (
     // 後方互換: pdfフィールドは先頭PDFスロット（LEFT）のPDFを返す
     expect(contentBody.pdf).toBeDefined();
     expect(contentBody.pdf.id).toBe(pdfLeftId);
+  });
+});
+
+describe('GET /api/signage/visualization-image/:id', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let dashboardId: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+
+    const dashboard = await prisma.visualizationDashboard.create({
+      data: {
+        name: 'Test Visualization for Signage',
+        dataSourceType: 'measuring_instruments',
+        rendererType: 'kpi_cards',
+        dataSourceConfig: { metric: 'return_rate', periodDays: 7 },
+        rendererConfig: {},
+        enabled: true,
+      },
+    });
+    dashboardId = dashboard.id;
+  });
+
+  afterAll(async () => {
+    await prisma.visualizationDashboard.deleteMany({ where: { id: dashboardId } });
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return image/jpeg without authentication', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/signage/visualization-image/${dashboardId}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+    expect(response.rawPayload).toBeInstanceOf(Buffer);
+    expect((response.rawPayload as Buffer).length).toBeGreaterThan(0);
+  });
+
+  it('should return 400 for invalid UUID', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/signage/visualization-image/invalid-uuid',
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('GET /api/signage/content with SPLIT layout (left: loans, right: visualization) and tools=0', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let visualizationDashboardId: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const { token } = await createTestUser('ADMIN');
+    adminToken = token;
+
+    const dashboard = await prisma.visualizationDashboard.create({
+      data: {
+        name: 'Test Uninspected',
+        dataSourceType: 'measuring_instruments',
+        rendererType: 'kpi_cards',
+        dataSourceConfig: { metric: 'return_rate', periodDays: 7 },
+        rendererConfig: {},
+        enabled: true,
+      },
+    });
+    visualizationDashboardId = dashboard.id;
+  });
+
+  beforeEach(async () => {
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules',
+    });
+    const { schedules } = listResponse.json();
+    for (const schedule of schedules) {
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/signage/schedules/${schedule.id}`,
+        headers: createAuthHeader(adminToken),
+      });
+    }
+    await prisma.loan.updateMany({ data: { returnedAt: new Date() } });
+  });
+
+  afterAll(async () => {
+    await prisma.visualizationDashboard.deleteMany({ where: { id: visualizationDashboardId } });
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return layoutConfig with loans+visualization and tools=[] when no active loans', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Split Loans Visualization Test',
+        contentType: 'SPLIT',
+        layoutConfig: {
+          layout: 'SPLIT',
+          slots: [
+            { position: 'LEFT', kind: 'loans', config: {} },
+            {
+              position: 'RIGHT',
+              kind: 'visualization',
+              config: { visualizationDashboardId },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    const contentResponse = await app.inject({
+      method: 'GET',
+      url: '/api/signage/content',
+    });
+
+    expect(contentResponse.statusCode).toBe(200);
+    const content = contentResponse.json();
+
+    expect(content.layoutConfig).toBeDefined();
+    expect(content.layoutConfig.layout).toBe('SPLIT');
+    expect(content.layoutConfig.slots).toHaveLength(2);
+    expect(content.layoutConfig.slots[0].kind).toBe('loans');
+    expect(content.layoutConfig.slots[1].kind).toBe('visualization');
+    expect(content.layoutConfig.slots[1].config.visualizationDashboardId).toBe(visualizationDashboardId);
+
+    expect(content.tools).toBeDefined();
+    expect(Array.isArray(content.tools)).toBe(true);
+    expect(content.tools).toHaveLength(0);
   });
 });

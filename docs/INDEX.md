@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-06）
+
+- **✅ SPLITレイアウトloans=0件時のvisualization崩れ修正・回帰テスト追加**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**原因**: `SignageRenderer`の`loans.length > 0`条件依存。**対策**: 条件除去、SignagePaneResolver導入、Web `/signage`のvisualization対応、回帰テスト追加。詳細は [KB-292](./knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
+
 ### 🆕 最新アップデート（2026-03-05）
 
 - **✅ Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。

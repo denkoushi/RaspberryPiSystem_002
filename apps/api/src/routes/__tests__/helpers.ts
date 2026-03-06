@@ -126,6 +126,15 @@ export async function createTestClientDevice(apiKey?: string): Promise<ClientDev
 }
 
 /**
+ * 指定apiKeyのクライアントデバイスを取得、存在しなければ作成（シード/他テストとの重複を回避）
+ */
+export async function getOrCreateTestClientDevice(apiKey: string): Promise<ClientDevice> {
+  const existing = await prisma.clientDevice.findFirst({ where: { apiKey } });
+  if (existing) return existing;
+  return createTestClientDevice(apiKey);
+}
+
+/**
  * テスト用の従業員を作成
  */
 export async function createTestEmployee(data?: {

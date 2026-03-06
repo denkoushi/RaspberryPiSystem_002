@@ -12,6 +12,8 @@ import type {
   CsvDashboardSlotConfig,
   VisualizationSlotConfig,
 } from './signage-layout.types.js';
+import type { RenderablePane } from './signage-pane-resolver.js';
+import { resolveSplitPanes } from './signage-pane-resolver.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { VisualizationService } from '../visualization/index.js';
@@ -72,6 +74,13 @@ export class SignageRenderer {
       renderedAt: new Date(),
       filename: result.filename
     };
+  }
+
+  /**
+   * 可視化ダッシュボードをJPEGバッファでレンダリング（Web /signage 表示用API）
+   */
+  async renderVisualizationToBuffer(dashboardId: string): Promise<Buffer> {
+    return await this.renderVisualizationDashboard(dashboardId);
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
@@ -177,171 +186,39 @@ export class SignageRenderer {
         return await this.renderVisualizationDashboard(visualizationConfig.visualizationDashboardId);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
-      // 左右分割表示
-      const leftSlot = layoutConfig.slots.find((s) => s.position === 'LEFT');
-      const rightSlot = layoutConfig.slots.find((s) => s.position === 'RIGHT');
+      // SignagePaneResolver でペイン解決（loans=0件も有効）
+      const resolved = resolveSplitPanes(
+        layoutConfig,
+        content,
+        (totalPages, displayMode, slideInterval, pdfId) =>
+          this.getCurrentPdfPageIndex(totalPages, displayMode, slideInterval, pdfId)
+      );
 
-      let leftTools: ToolItem[] = [];
-      let rightTools: ToolItem[] = [];
-      let leftPdfOptions: SplitPdfOptions | undefined;
-      let rightPdfOptions: SplitPdfOptions | undefined;
+      if (resolved) {
+        const leftPane = this.enrichPaneForRender(resolved.left);
+        const rightPane = this.enrichPaneForRender(resolved.right);
 
-      // 左スロットの処理
-      if (leftSlot?.kind === 'loans') {
-        leftTools = (content.tools ?? []).map((tool) => ({
-          ...tool,
-          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
-        }));
-      } else if (leftSlot?.kind === 'pdf') {
-        const pdfConfig = leftSlot.config as PdfSlotConfig;
-        // pdfsById優先、なければ後方互換のpdf
-        const pdf = content.pdfsById?.[pdfConfig.pdfId] ?? content.pdf;
-        if (pdf && pdf.pages?.length) {
-          const pdfPageIndex = this.getCurrentPdfPageIndex(
-            pdf.pages.length,
-            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
-            pdfConfig.slideInterval || null,
-            pdf.id
-          );
-          leftPdfOptions = {
-            pageUrl: pdf.pages[pdfPageIndex],
-            title: pdf.name,
-            slideInterval: pdfConfig.slideInterval ?? null,
-            displayMode: pdfConfig.displayMode,
-          };
-        }
-      }
-
-      // 右スロットの処理
-      if (rightSlot?.kind === 'loans') {
-        rightTools = (content.tools ?? []).map((tool) => ({
-          ...tool,
-          isOver12Hours: this.isOver12Hours(tool.borrowedAt),
-        }));
-      } else if (rightSlot?.kind === 'pdf') {
-        const pdfConfig = rightSlot.config as PdfSlotConfig;
-        // pdfsById優先、なければ後方互換のpdf
-        const pdf = content.pdfsById?.[pdfConfig.pdfId] ?? content.pdf;
-        if (pdf && pdf.pages?.length) {
-          const pdfPageIndex = this.getCurrentPdfPageIndex(
-            pdf.pages.length,
-            pdfConfig.displayMode === 'SLIDESHOW' ? 'SLIDESHOW' : 'SINGLE',
-            pdfConfig.slideInterval || null,
-            pdf.id
-          );
-          rightPdfOptions = {
-            pageUrl: pdf.pages[pdfPageIndex],
-            title: pdf.name,
-            slideInterval: pdfConfig.slideInterval ?? null,
-            displayMode: pdfConfig.displayMode,
-          };
-        }
-      }
-
-      // 左右ともPDFの場合
-      if (leftSlot?.kind === 'pdf' && rightSlot?.kind === 'pdf') {
-        return await this.renderSplitWithPanes(
-          { kind: 'pdf', pdfOptions: leftPdfOptions },
-          { kind: 'pdf', pdfOptions: rightPdfOptions }
-        );
-      }
-
-      // CSVダッシュボード/可視化スロットの処理
-      let leftCsvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | undefined;
-      let rightCsvDashboard: { id: string; name: string; pageNumber: number; totalPages: number; rows: Array<Record<string, unknown>> } | undefined;
-      let leftVisualizationId: string | undefined;
-      let rightVisualizationId: string | undefined;
-
-      if (leftSlot?.kind === 'csv_dashboard') {
-        const csvDashboardConfig = leftSlot.config as CsvDashboardSlotConfig;
-        leftCsvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
-      }
-      if (leftSlot?.kind === 'visualization') {
-        const visualizationConfig = leftSlot.config as VisualizationSlotConfig;
-        leftVisualizationId = visualizationConfig.visualizationDashboardId;
-      }
-      if (rightSlot?.kind === 'csv_dashboard') {
-        const csvDashboardConfig = rightSlot.config as CsvDashboardSlotConfig;
-        rightCsvDashboard = content.csvDashboardsById?.[csvDashboardConfig.csvDashboardId];
-      }
-      if (rightSlot?.kind === 'visualization') {
-        const visualizationConfig = rightSlot.config as VisualizationSlotConfig;
-        rightVisualizationId = visualizationConfig.visualizationDashboardId;
-      }
-
-      // 左右ともCSVダッシュボード/可視化の場合
-      if (
-        (leftSlot?.kind === 'csv_dashboard' || leftSlot?.kind === 'visualization') &&
-        (rightSlot?.kind === 'csv_dashboard' || rightSlot?.kind === 'visualization')
-      ) {
-        return await this.renderSplitWithPanes(
-          {
-            kind: leftSlot.kind,
-            csvDashboard: leftCsvDashboard,
-            visualizationDashboardId: leftVisualizationId,
-          },
-          {
-            kind: rightSlot.kind,
-            csvDashboard: rightCsvDashboard,
-            visualizationDashboardId: rightVisualizationId,
-          }
-        );
-      }
-
-      // CSVダッシュボード/可視化とPDF/工具管理の組み合わせ
-      if (leftSlot?.kind === 'csv_dashboard' || leftSlot?.kind === 'visualization') {
-        if (rightSlot?.kind === 'pdf' && rightPdfOptions) {
-          return await this.renderSplitWithPanes(
-            {
-              kind: leftSlot.kind,
-              csvDashboard: leftCsvDashboard,
-              visualizationDashboardId: leftVisualizationId,
-            },
-            { kind: 'pdf', pdfOptions: rightPdfOptions }
-          );
-        } else if (rightSlot?.kind === 'loans' && rightTools.length > 0) {
-          return await this.renderSplitWithPanes(
-            {
-              kind: leftSlot.kind,
-              csvDashboard: leftCsvDashboard,
-              visualizationDashboardId: leftVisualizationId,
-            },
-            { kind: 'loans', tools: rightTools }
-          );
-        }
-      }
-      if (rightSlot?.kind === 'csv_dashboard' || rightSlot?.kind === 'visualization') {
-        if (leftSlot?.kind === 'pdf' && leftPdfOptions) {
-          return await this.renderSplitWithPanes(
-            { kind: 'pdf', pdfOptions: leftPdfOptions },
-            {
-              kind: rightSlot.kind,
-              csvDashboard: rightCsvDashboard,
-              visualizationDashboardId: rightVisualizationId,
-            }
-          );
-        } else if (leftSlot?.kind === 'loans' && leftTools.length > 0) {
-          return await this.renderSplitWithPanes(
-            { kind: 'loans', tools: leftTools },
-            {
-              kind: rightSlot.kind,
-              csvDashboard: rightCsvDashboard,
-              visualizationDashboardId: rightVisualizationId,
-            }
-          );
-        }
-      }
-
-      // 左がPDF、右が工具管理の場合は順序を入れ替えて呼び出す
-      if (leftSlot?.kind === 'pdf' && rightSlot?.kind === 'loans') {
-        return await this.renderSplit(rightTools, leftPdfOptions, true);
-      } else {
-        // 左が工具管理、右がPDFの通常ケース
-        return await this.renderSplit(leftTools, rightPdfOptions, false);
+        return await this.renderSplitWithPanes(leftPane, rightPane);
       }
     }
 
     return await this.renderMessage('表示するコンテンツがありません');
+  }
+
+  /**
+   * 解決済みペインに isOver12Hours を付与（loans のみ）
+   */
+  private enrichPaneForRender(pane: RenderablePane): RenderablePane & { tools?: ToolItem[] } {
+    if (pane.kind !== 'loans' || !pane.tools) {
+      return pane;
+    }
+    return {
+      ...pane,
+      tools: pane.tools.map((t) => ({
+        ...t,
+        isOver12Hours: this.isOver12Hours(t.borrowedAt),
+      })),
+    };
   }
 
   private async renderPdfImage(pageUrl: string, options?: PdfRenderOptions): Promise<Buffer> {

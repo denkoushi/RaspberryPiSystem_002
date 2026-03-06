@@ -1636,6 +1636,13 @@ export async function getSignageContent() {
   return data;
 }
 
+/** 可視化ダッシュボードのレンダリング画像URL（Web /signage 表示用） */
+export function getSignageVisualizationImageUrl(dashboardId: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const normalized = base.replace(/\/$/, '');
+  return `${normalized}/signage/visualization-image/${dashboardId}`;
+}
+
 // CSVダッシュボード関連の型定義
 export interface CsvDashboard {
   id: string;
