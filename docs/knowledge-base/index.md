@@ -265,6 +265,7 @@ update-frequency: high
 | [KB-266](./infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) | NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止） | ✅ 解決済み（2026-02-18） |
 | [KB-277](./infrastructure/security.md#kb-277-tailscale経由でのvnc接続問題acl設定不足) | Tailscale経由でのVNC接続問題（ACL設定不足） | ✅ 解決済み（2026-02-28） |
 | [KB-278](./infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) | クライアント端末管理の重複登録（inventory未解決テンプレキー混入） | ✅ 解決済み（2026-02-28） |
+| [KB-293](./infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) | Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式） | ✅ 解決済み（2026-03-06） |
 | [KB-280](./infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) | Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出） | ✅ 解決済み（2026-02-28） |
 | [KB-281](./infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) | Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） | ✅ 解決済み（2026-02-28） |
 | [KB-080](./infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |

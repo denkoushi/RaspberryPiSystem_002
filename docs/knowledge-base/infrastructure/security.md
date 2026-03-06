@@ -781,6 +781,40 @@ update-frequency: medium
 
 ---
 
+### [KB-293] Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式）
+
+**発生日**: 2026-03-06
+
+**事象**: 
+- MacからRealVNC ViewerでPi5は接続できるが、Pi4×2とPi3は接続できない
+- Pi5のVNCはKB-277で解決済みだが、Pi4/Pi3は別途対応が必要
+
+**調査過程**:
+1. Pi5で `tailscale status` を実行し、Pi4/Pi3が `online` であることを確認
+2. Pi5から `nc -vz -w 3 <各端末IP> 5900` を実行。ACL未設定時はタイムアウト
+3. Tailscale ACLに `tag:server -> tag:kiosk: tcp:5900` と `tag:server -> tag:signage: tcp:5900` を追加後、Pi5からPi4/Pi3の5900に到達可能に
+4. MacからはPi5経由のSSHトンネル（`-L 5904:<Pi4_IP>:5900` 等）で `localhost:5904` 等に接続し、RealVNCで表示可能を確認
+
+**根本原因**: 
+- Tailscale ACLで `tag:admin -> tag:kiosk/signage` の直接許可は行わない方針のため、MacからPi4/Pi3への5900は直接到達しない
+- `tag:server -> tag:kiosk/signage: tcp:5900` も未設定だったため、Pi5からも5900が到達しなかった
+
+**有効だった対策**: 
+- ✅ Tailscale ACLの`grants`に `tag:server -> tag:kiosk: tcp:5900` と `tag:server -> tag:signage: tcp:5900` を追加
+- ✅ MacからはPi5経由のSSHトンネルで接続（`admin -> kiosk/signage` を直接開けない）
+- ✅ 運用: VNC接続するたびにSSHトンネルを張る（永続化しない）
+
+**セキュリティ影響**:
+- `tag:admin -> tag:kiosk/signage` を直接開けるより安全（攻撃面をPi5入口に集約）
+- Pi5が侵害された場合、Pi4/Pi3のVNC面への横移動が可能になる（微減）
+
+**関連ファイル**: 
+- `docs/runbooks/vnc-tailscale-recovery.md` (復旧手順)
+- `docs/guides/mac-ssh-access.md` (Pi4/Pi3接続手順)
+- `docs/security/tailscale-policy.md` (ACLポリシー)
+
+---
+
 ### [KB-278] クライアント端末管理の重複登録（inventory未解決テンプレキー混入）
 
 **発生日**: 2026-02-28

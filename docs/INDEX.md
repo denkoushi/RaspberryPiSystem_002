@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-03-06）
 
+- **✅ RealVNC Pi4/Pi3 接続復旧・実機検証完了**: MacからPi4×2とPi3がRealVNCで表示できない問題を解決。**採用方式**: Pi5経由SSHトンネル（`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加、`admin -> kiosk/signage` は直接開けない）。**実施内容**: Tailscale ACL更新、MacでSSHトンネル（`-L 5904/5905/5903`）を張り、RealVNCで `localhost:5904/5905/5903` に接続。**実機検証**: 3台とも表示可能を確認。運用はVNC接続のたびにトンネルを張る。詳細は [vnc-tailscale-recovery.md](./runbooks/vnc-tailscale-recovery.md) / [KB-293](./knowledge-base/infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) を参照。
+
 - **✅ 端末別メンテナンス一括切替（deploy-status v2）・デプロイ完了・実機検証完了**: デプロイ時のメンテナンス表示を端末別に変更。**実装内容**: deploy-status v2（`kioskByClient`）で対象キオスクのみメンテ表示、プリフライト成功後にフラグON、APIは`x-client-key`から`statusClientId`を解決して`isMaintenance`を返却。**デプロイ**: Run ID `20260306-120632-24600`、約20分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、deploy-status API（両Pi4で`isMaintenance: false`）、キオスクAPI、サイネージAPI、backup.json、マイグレーション、Pi4/Pi3サービス稼働を確認。強制解除は [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。詳細は [ADR-20260306](./decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [deployment.md](./guides/deployment.md) を参照。
 
 - **✅ SPLITレイアウトloans=0件時のvisualization崩れ修正・デプロイ完了・実機検証完了**: 管理コンソールでSPLIT（左=loans、右=visualization）設定時、持出0件で右ペインがPDFフォールバックへ崩れる不具合を修正。**原因**: `SignageRenderer`の`loans.length > 0`条件依存。**対策**: 条件除去、SignagePaneResolver導入、Web `/signage`のvisualization対応、回帰テスト追加。**デプロイ**: Run ID `20260306-095122-27071`、`state: success`、約37分。**実機検証**: APIヘルス、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`、`/api/signage/visualization-image/:id`、Pi3 signage-lite 稼働、`current.jpg` 更新を確認。サイネージ正常表示を確認。詳細は [KB-292](./knowledge-base/infrastructure/signage.md#kb-292-splitレイアウトでloans0件のときにvisualizationがpdfフォールバックへ崩れる) を参照。
