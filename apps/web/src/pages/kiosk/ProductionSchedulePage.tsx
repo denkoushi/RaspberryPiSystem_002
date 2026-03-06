@@ -488,14 +488,21 @@ export function ProductionSchedulePage() {
             etag?: string | null;
           };
           const latestHistory = normalizeHistoryList(details.state?.history ?? []);
-          const rebasedHistory =
-            operation.type === 'add'
-              ? normalizeHistoryList([operation.value, ...latestHistory])
-              : operation.type === 'remove'
-                ? latestHistory.filter((item) => item !== operation.value)
-                : operation.direction === 'left'
+          let rebasedHistory = latestHistory;
+          switch (operation.type) {
+            case 'add':
+              rebasedHistory = normalizeHistoryList([operation.value, ...latestHistory]);
+              break;
+            case 'remove':
+              rebasedHistory = latestHistory.filter((item) => item !== operation.value);
+              break;
+            case 'reorder':
+              rebasedHistory =
+                operation.direction === 'left'
                   ? moveHistoryItemLeft(latestHistory, operation.value)
                   : moveHistoryItemRight(latestHistory, operation.value);
+              break;
+          }
           setHistory(rebasedHistory);
           setHiddenHistory((prev) => prev.filter((item) => item !== operation.value));
           if (details.updatedAt) {
