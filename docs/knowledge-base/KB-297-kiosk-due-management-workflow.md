@@ -329,6 +329,29 @@ category: knowledge-base
 - `auto-generate` はガードに抵触した場合 `applied=false` で返し、既存順位を維持する
 - 候補未選択時でも summary 全件を対象に提案を返せるため、運用開始時の初期ランキング作成に使える
 
+## B第4段階デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-214452-32001`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **ブランチ**: `feat/due-mgmt-b5-auto-global-rank`
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: triage / daily-plan / global-rank いずれも 200
+  - B5 global-rank/proposal: `GET /api/kiosk/production-schedule/due-management/global-rank/proposal` 200（`generatedAt`、`orderedFseibans`、`candidateCount` 返却確認）
+  - サイネージAPI: `/api/signage/content` 200
+  - backup.json: 存在・15K
+  - マイグレーション: 41件適用済み、未適用なし
+  - Pi4サービス: Pi5経由SSHで raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+
+### トラブルシュート（B第4段階）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| 「自動生成して保存」が無効 | ガード（最小候補件数・差分率・尾部保持）に抵触 | proposal を確認し、`applied=false` の理由をログで確認。必要ならガード閾値を調整 |
+| スコア・理由が表示されない | proposal API の取得失敗 | ネットワーク・APIヘルスを確認。画面リロードで再取得 |
+| 保存後に順位が変わらない | ガードで `applied=false` | 提案内容と既存順位の差分率が閾値を超えている可能性。手動で今日の計画順を編集して保存 |
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
