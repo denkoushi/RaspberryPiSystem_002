@@ -169,6 +169,19 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 **関連ファイル**: `apps/api/src/routes/kiosk.ts`, `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
 
+### CI 初回失敗: production-schedule-command.service.test の Prisma モック不足（2026-03-07）
+
+**発見**: 納期管理・生産スケジュール連携拡張の実装後、CI の `Run API tests` で `production-schedule-command.service.test.ts` が失敗。エラーは `TypeError: Cannot read properties of undefined (reading 'findMany')`。
+
+**原因**: `isValidProcessingType` が `ProductionScheduleProcessingTypeOption.findMany` を参照するように変更されたが、テストの Prisma モックに `productionScheduleProcessingTypeOption` が含まれていなかった。
+
+**対策**: `production-schedule-command.service.test.ts` の Prisma モックに `productionScheduleProcessingTypeOption: { findMany: vi.fn().mockResolvedValue([]) }` を追加。無効な `processingType` を 400 で返すテストケースでは、`findMany` が空配列を返すことで「候補に存在しない」と判定される。
+
+**学んだこと**: サービスが新規 Prisma モデルを参照するようになった際は、該当サービスのユニットテストのモックを必ず更新する。CI で早期に検出できるよう、ローカルで `pnpm --filter @raspi-system/api test -- src/services/production-schedule` を実行して確認する習慣が有効。
+
+**関連ファイル**: `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`  
+**詳細**: [ci-troubleshooting.md](../guides/ci-troubleshooting.md) の「8.5. ユニットテストで Prisma モデル未モック」を参照。
+
 ### 管理UI導線の誤解
 
 **発見**: 「サイネージの中にCSVダッシュボードはない」という指摘を受け、管理コンソールのナビゲーション構造を確認。

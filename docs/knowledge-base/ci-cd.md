@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 8件  
+**件数**: 9件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -477,4 +477,35 @@ update-frequency: high
 
 **CI実行結果**:
 - Run ID: `22512483225` - 成功（全ジョブ成功）
+
+---
+
+### [KB-298] ユニットテストでPrismaモデル未モック（TypeError: Cannot read properties of undefined (reading 'findMany')）
+
+**発生日**: 2026-03-07
+
+**事象**:
+- GitHub Actions CIの`Run API tests`ステップで`production-schedule-command.service.test.ts`が失敗
+- エラー: `TypeError: Cannot read properties of undefined (reading 'findMany')`
+- 失敗テスト: 「無効なprocessingTypeは400を返す」
+
+**根本原因**:
+- `isValidProcessingType`が`ProductionScheduleProcessingTypeOption.findMany`を参照するように変更された
+- テストのPrismaモックに`productionScheduleProcessingTypeOption`が含まれていなかった
+
+**有効だった対策**:
+- ✅ `production-schedule-command.service.test.ts`のPrismaモックに`productionScheduleProcessingTypeOption: { findMany: vi.fn().mockResolvedValue([]) }`を追加
+- ✅ 無効な`processingType`テストでは`findMany`が空配列を返すことで「候補に存在しない」と判定される
+
+**再発防止**:
+- サービスに新規Prisma参照を追加した際は、該当サービスのユニットテストを必ず実行
+- ローカルで`pnpm --filter @raspi-system/api test -- src/services/production-schedule`を実行して確認
+
+**解決状況**: ✅ **解決済み（2026-03-07）**
+
+**関連ファイル**:
+- `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`
+- `apps/api/src/services/production-schedule/production-schedule-command.service.ts`
+
+**詳細**: [ci-troubleshooting.md](../guides/ci-troubleshooting.md) の「8.5. ユニットテストで Prisma モデル未モック」、[production-schedule-kiosk-execplan.md](../plans/production-schedule-kiosk-execplan.md) の Surprises & Discoveries を参照。
 

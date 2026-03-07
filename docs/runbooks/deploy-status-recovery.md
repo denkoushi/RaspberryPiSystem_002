@@ -46,7 +46,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | API ヘルス | `curl -sk https://100.106.158.2/api/system/health` | `status: "ok"` または `"degraded"` |
 | deploy-status API（Pi4 kiosk1） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `{"isMaintenance":false}` |
 | deploy-status API（Pi4 kiosk2） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk2"` | `{"isMaintenance":false}` |
-| キオスク API | `curl -sk "https://100.106.158.2/api/kiosk/tools/loans/active" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | 200 OK |
+| キオスク API | `curl -sk "https://100.106.158.2/api/tools/loans/active" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | 200 OK |
 | サイネージ API | `curl -sk "https://100.106.158.2/api/signage/content"` | 200 OK、`layoutConfig` 含む |
 | backup.json | `ssh denkon5sd02@100.106.158.2 "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"` | ファイル存在・サイズ 0 でない |
 | マイグレーション | `docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status` | 未適用なし |

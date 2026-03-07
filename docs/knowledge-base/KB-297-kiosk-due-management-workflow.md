@@ -69,6 +69,20 @@ category: knowledge-base
   - deploy-status: `GET /api/system/deploy-status` に `x-client-key` 付与で `isMaintenance: false`
   - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
 
+## 追加実装デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-110456-19744`、`state: success`、約12分30秒（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: degraded`（メモリ94%、既知の環境要因）
+  - Prismaマイグレーション: 37件適用済み、スキーマ最新
+  - キオスクAPI: `/api/tools/loans/active` 200、`/api/kiosk/production-schedule` 200、`/api/kiosk/production-schedule/due-management/summary` 200
+  - 新機能API: `/api/kiosk/production-schedule/processing-type-options` 200（LSLH/カニゼン/塗装/その他01/その他02）、`/api/kiosk/production-schedule/search-state` 200（history連携）
+  - due-management seiban detail: `machineName`・`parts[].processes[]`（resourceCd, isCompleted）・`completedProcessCount`/`totalProcessCount` を確認
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+  - backup.json: 存在・15K
+  - サイネージAPI: `/api/signage/content` layoutConfig 正常
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化

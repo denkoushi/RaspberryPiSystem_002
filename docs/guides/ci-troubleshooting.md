@@ -2,7 +2,7 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2026-03-01
+last-verified: 2026-03-07
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
@@ -224,6 +224,35 @@ error  `../client` import should occur before type import of `@raspi-system/shar
 - コミット前に `pnpm lint --max-warnings=0` で確認する習慣をつける
 
 **参考**: Phase 8実装時に `contracts.client.test.ts` で同様のエラーが発生し、CI run #637-#640が失敗。`pnpm lint --fix` で修正後、run #641で成功。
+
+### 8.5. ユニットテストで Prisma モデル未モック（TypeError: Cannot read properties of undefined (reading 'findMany')）
+
+**症状**: サービス層のユニットテストで、`TypeError: Cannot read properties of undefined (reading 'findMany')` が発生し CI が失敗する。
+
+**背景**: サービスが新たに Prisma モデル（例: `ProductionScheduleProcessingTypeOption`）を参照するようになったが、テストの Prisma モックにそのモデルが含まれていなかった。
+
+**エラーメッセージ例**:
+```
+TypeError: Cannot read properties of undefined (reading 'findMany')
+  at isValidProcessingType (production-schedule-command.service.ts:...)
+```
+
+**確認事項**:
+- 失敗したテストがモックしている Prisma モデル一覧
+- サービスが新規参照している Prisma モデル（`prisma.xxx.findMany` 等）
+- テストの `vi.mock` または `prismaMock` に不足モデルがないか
+
+**対処法**:
+1. エラースタックから参照されているモデル名を特定（例: `productionScheduleProcessingTypeOption`）
+2. テストの Prisma モックに該当モデルを追加（例: `productionScheduleProcessingTypeOption: { findMany: vi.fn().mockResolvedValue([]) }`）
+3. テストケースに応じて `mockResolvedValue` の戻り値を調整（空配列・期待値など）
+4. ローカルで `pnpm --filter @raspi-system/api test -- <該当テストファイル>` を実行して確認
+
+**予防策**:
+- サービスに新規 Prisma 参照を追加した際は、該当サービスのユニットテストを必ず実行
+- モック対象の Prisma モデル一覧をテストファイル冒頭で明示しておく
+
+**参考**: 2026-03-07 に `production-schedule-command.service.test.ts` で発生。`isValidProcessingType` が `ProductionScheduleProcessingTypeOption.findMany` を参照するようになったがモックが不足していた。`productionScheduleProcessingTypeOption.findMany` のモックを追加して解決。詳細は [production-schedule-kiosk-execplan.md](../plans/production-schedule-kiosk-execplan.md) の Surprises & Discoveries を参照。
 
 ### 11. `test:coverage` が `TypeError: minimatch is not a function` で失敗する（`test-exclude@6.0.0` と `minimatch@10.x` の非互換）
 
