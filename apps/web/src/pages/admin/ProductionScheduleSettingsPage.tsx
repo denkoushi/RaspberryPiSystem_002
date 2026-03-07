@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   useClients,
+  useProductionScheduleDueManagementAccessPasswordSettings,
   useProductionScheduleProcessingTypeOptions,
   useProductionScheduleResourceCategorySettings,
+  useUpdateProductionScheduleDueManagementAccessPassword,
   useUpdateProductionScheduleProcessingTypeOptions,
   useUpdateProductionScheduleResourceCategorySettings
 } from '../../api/hooks';
@@ -28,10 +30,14 @@ export function ProductionScheduleSettingsPage() {
   const [location, setLocation] = useState<string>(DEFAULT_LOCATION);
   const settingsQuery = useProductionScheduleResourceCategorySettings(location);
   const processingTypeOptionsQuery = useProductionScheduleProcessingTypeOptions(location);
+  const dueManagementAccessPasswordSettingsQuery = useProductionScheduleDueManagementAccessPasswordSettings(DEFAULT_LOCATION);
   const updateSettingsMutation = useUpdateProductionScheduleResourceCategorySettings();
+  const updateDueManagementAccessPasswordMutation = useUpdateProductionScheduleDueManagementAccessPassword();
   const updateProcessingTypeOptionsMutation = useUpdateProductionScheduleProcessingTypeOptions();
   const [cuttingExcludedInput, setCuttingExcludedInput] = useState('10, MSZ');
   const [processingTypeRows, setProcessingTypeRows] = useState<Array<{ code: string; label: string; priority: number; enabled: boolean }>>([]);
+  const [dueManagementPasswordInput, setDueManagementPasswordInput] = useState('');
+  const [dueManagementPasswordConfirmInput, setDueManagementPasswordConfirmInput] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   const locationOptions = useMemo(() => {
@@ -75,6 +81,25 @@ export function ProductionScheduleSettingsPage() {
       options: processingTypeRows
     });
     setMessage('処理候補を保存しました');
+  };
+
+  const handleSaveDueManagementPassword = async () => {
+    if (dueManagementPasswordInput.trim().length === 0) {
+      setMessage('納期管理アクセスパスワードを入力してください');
+      return;
+    }
+    if (dueManagementPasswordInput !== dueManagementPasswordConfirmInput) {
+      setMessage('確認用パスワードが一致しません');
+      return;
+    }
+    setMessage(null);
+    await updateDueManagementAccessPasswordMutation.mutateAsync({
+      location: DEFAULT_LOCATION,
+      password: dueManagementPasswordInput
+    });
+    setDueManagementPasswordInput('');
+    setDueManagementPasswordConfirmInput('');
+    setMessage('納期管理アクセスパスワードを保存しました');
   };
 
   return (
@@ -226,6 +251,47 @@ export function ProductionScheduleSettingsPage() {
               disabled={updateProcessingTypeOptionsMutation.isPending || processingTypeOptionsQuery.isLoading}
             >
               {updateProcessingTypeOptionsMutation.isPending ? '保存中...' : '候補を保存'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <Card title="納期管理アクセス設定">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-slate-700">
+            キオスクの「納期管理」ボタン押下時に要求するパスワードを設定します（shared共通）。未設定時は初期パスワード「2520」が有効です。
+          </p>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-slate-700">
+              現在状態:{' '}
+              {dueManagementAccessPasswordSettingsQuery.data?.configured ? '設定済み（カスタム）' : '未設定（初期パスワード2520）'}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">新しいパスワード</label>
+              <Input
+                type="password"
+                value={dueManagementPasswordInput}
+                onChange={(event) => setDueManagementPasswordInput(event.target.value)}
+                placeholder="納期管理アクセスパスワード"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">確認用パスワード</label>
+              <Input
+                type="password"
+                value={dueManagementPasswordConfirmInput}
+                onChange={(event) => setDueManagementPasswordConfirmInput(event.target.value)}
+                placeholder="確認用パスワード"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveDueManagementPassword}
+              disabled={updateDueManagementAccessPasswordMutation.isPending || dueManagementAccessPasswordSettingsQuery.isLoading}
+            >
+              {updateDueManagementAccessPasswordMutation.isPending ? '保存中...' : 'パスワードを保存'}
             </Button>
           </div>
         </div>

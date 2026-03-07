@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
@@ -14,12 +15,14 @@ type SeibanSummaryRaw = {
 type SeibanRowRaw = {
   id: string;
   fseiban: string;
+  productNo: string;
   fhincd: string;
   fhinmei: string;
   fsigencd: string;
   fkojun: string;
   requiredMinutes: string;
   processingType: string | null;
+  note: string | null;
   isCompleted: boolean;
 };
 
@@ -40,8 +43,10 @@ export type DueManagementPartProcessItem = {
 };
 
 export type DueManagementPartItem = {
+  productNo: string;
   fhincd: string;
   fhinmei: string;
+  note: string | null;
   processCount: number;
   totalRequiredMinutes: number;
   processingType: string | null;
@@ -127,12 +132,14 @@ export async function getDueManagementSeibanDetail(params: {
     SELECT
       "CsvDashboardRow"."id",
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
+      ("CsvDashboardRow"."rowData"->>'ProductNo') AS "productNo",
       ("CsvDashboardRow"."rowData"->>'FHINCD') AS "fhincd",
       ("CsvDashboardRow"."rowData"->>'FHINMEI') AS "fhinmei",
       ("CsvDashboardRow"."rowData"->>'FSIGENCD') AS "fsigencd",
       ("CsvDashboardRow"."rowData"->>'FKOJUN') AS "fkojun",
       ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') AS "requiredMinutes",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
+      "n"."note" AS "note",
       COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
@@ -182,12 +189,16 @@ export async function getDueManagementSeibanDetail(params: {
     }
   });
   const currentPriorityMap = new Map(priorityRows.map((row) => [row.fhincd, row.priorityRank] as const));
+  const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
+  const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
 
   const grouped = new Map<
     string,
     {
+      productNo: string;
       fhincd: string;
       fhinmei: string;
+      note: string | null;
       processCount: number;
       totalRequiredMinutes: number;
       processingType: string | null;
@@ -200,13 +211,24 @@ export async function getDueManagementSeibanDetail(params: {
   for (const row of rows) {
     const fhincd = row.fhincd?.trim() ?? '';
     if (fhincd.length === 0) continue;
+    const normalizedFhincd = fhincd.toUpperCase();
+    if (normalizedFhincd.startsWith('MH') || normalizedFhincd.startsWith('SH')) {
+      continue;
+    }
+    const resourceCd = row.fsigencd?.trim() ?? '';
+    if (excludedResourceCdSet.has(resourceCd.toUpperCase())) {
+      continue;
+    }
+    const note = row.note?.trim() ?? '';
 
     const current = grouped.get(fhincd);
     const processingPriority = getProcessingTypePriority(row.processingType);
     if (!current) {
       grouped.set(fhincd, {
+        productNo: row.productNo?.trim() ?? '',
         fhincd,
         fhinmei: row.fhinmei?.trim() ?? '',
+        note: note.length > 0 ? note : null,
         processCount: 1,
         totalRequiredMinutes: parseRequiredMinutes(row.requiredMinutes ?? ''),
         processingType: row.processingType,
@@ -225,6 +247,12 @@ export async function getDueManagementSeibanDetail(params: {
       continue;
     }
 
+    if (current.productNo.length === 0) {
+      current.productNo = row.productNo?.trim() ?? '';
+    }
+    if (!current.note && note.length > 0) {
+      current.note = note;
+    }
     current.processCount += 1;
     current.totalRequiredMinutes += parseRequiredMinutes(row.requiredMinutes ?? '');
     current.totalProcessCount += 1;

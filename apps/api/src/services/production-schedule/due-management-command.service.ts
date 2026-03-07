@@ -196,3 +196,105 @@ export async function upsertProductionScheduleDueManagementPartProcessingType(pa
     processingType: result.processingType
   };
 }
+
+export async function upsertProductionScheduleDueManagementPartNote(params: {
+  locationKey: string;
+  fseiban: string;
+  fhincd: string;
+  note: string;
+}): Promise<{ success: true; fseiban: string; fhincd: string; note: string | null; affectedRows: number }> {
+  const locationKey = params.locationKey;
+  const fseiban = params.fseiban.trim();
+  const fhincd = params.fhincd.trim();
+  if (fseiban.length === 0) {
+    throw new ApiError(400, '製番は必須です');
+  }
+  if (fhincd.length === 0) {
+    throw new ApiError(400, '部品コードは必須です');
+  }
+  const normalizedNote = params.note.replace(/\r?\n/g, '').trim().slice(0, 100);
+
+  const targetRows = await prisma.$queryRaw<Array<{ rowId: string }>>`
+    SELECT "CsvDashboardRow"."id" AS "rowId"
+    FROM "CsvDashboardRow"
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
+      AND ("CsvDashboardRow"."rowData"->>'FHINCD') = ${fhincd}
+  `;
+  const rowIds = targetRows.map((row) => row.rowId);
+  if (rowIds.length === 0) {
+    throw new ApiError(404, '指定された製番内に対象部品が見つかりません');
+  }
+
+  const existingNotes = await prisma.productionScheduleRowNote.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: locationKey,
+      csvDashboardRowId: { in: rowIds }
+    },
+    select: {
+      csvDashboardRowId: true,
+      processingType: true,
+      dueDate: true
+    }
+  });
+  const existingByRowId = new Map(existingNotes.map((row) => [row.csvDashboardRowId, row] as const));
+
+  await prisma.$transaction(async (tx) => {
+    for (const rowId of rowIds) {
+      const existing = existingByRowId.get(rowId);
+      if (normalizedNote.length === 0) {
+        const existingProcessing = existing?.processingType?.trim() ?? '';
+        const hasDueDate = Boolean(existing?.dueDate);
+        if (existingProcessing.length === 0 && !hasDueDate) {
+          await tx.productionScheduleRowNote.deleteMany({
+            where: {
+              csvDashboardRowId: rowId,
+              location: locationKey
+            }
+          });
+        } else {
+          await tx.productionScheduleRowNote.update({
+            where: {
+              csvDashboardRowId_location: {
+                csvDashboardRowId: rowId,
+                location: locationKey
+              }
+            },
+            data: { note: '' }
+          });
+        }
+        continue;
+      }
+
+      await tx.productionScheduleRowNote.upsert({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: rowId,
+            location: locationKey
+          }
+        },
+        create: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          csvDashboardRowId: rowId,
+          location: locationKey,
+          note: normalizedNote,
+          processingType: existing?.processingType ?? null,
+          dueDate: existing?.dueDate ?? null
+        },
+        update: {
+          note: normalizedNote
+        }
+      });
+    }
+  });
+
+  return {
+    success: true,
+    fseiban,
+    fhincd,
+    note: normalizedNote.length > 0 ? normalizedNote : null,
+    affectedRows: rowIds.length
+  };
+}

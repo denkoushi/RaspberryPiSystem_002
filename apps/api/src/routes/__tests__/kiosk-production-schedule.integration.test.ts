@@ -22,6 +22,8 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -35,6 +37,8 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -603,7 +607,42 @@ describe('Kiosk Production Schedule API', () => {
       detail: { fseiban: string; dueDate: string | null; parts: Array<{ fhincd: string }> };
     };
     expect(detailBody.detail.fseiban).toBe('A');
+    expect(detailBody.detail.parts[0]).toHaveProperty('productNo');
     expect(detailBody.detail.parts.map((part) => part.fhincd).sort()).toEqual(['X', 'Z']);
+  });
+
+  it('filters out MH/SH parts and excluded resourceCds in due-management detail', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-mh-item',
+          rowData: { ProductNo: '0010', FSEIBAN: 'A', FHINCD: 'MH0001', FHINMEI: 'Model Name', FSIGENCD: '1', FKOJUN: '1', progress: '' }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-excluded-resource',
+          rowData: { ProductNo: '0011', FSEIBAN: 'A', FHINCD: 'X', FHINMEI: 'Part X', FSIGENCD: 'MSZ', FKOJUN: '2', progress: '' }
+        }
+      ]
+    });
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detailBody = detailRes.json() as {
+      detail: {
+        parts: Array<{ fhincd: string; processes: Array<{ resourceCd: string }> }>;
+      };
+    };
+    expect(detailBody.detail.parts.map((part) => part.fhincd)).not.toContain('MH0001');
+    const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.processes.some((process) => process.resourceCd === 'MSZ')).toBe(false);
   });
 
   it('saves part priorities and returns currentPriorityRank', async () => {
@@ -704,6 +743,58 @@ describe('Kiosk Production Schedule API', () => {
     });
     const rowsAfter = (getAfterRes.json() as { rows: Array<{ id: string; note?: string | null }> }).rows;
     expect(rowsAfter.find((r) => r.id === rowId)?.note).toBeNull();
+  });
+
+  it('saves due-management part note and syncs all rows by fseiban+fhincd', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/note',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '部品備考同期テスト' }
+    });
+    expect(putRes.statusCode).toBe(200);
+    expect((putRes.json() as { success: boolean; note: string | null; affectedRows: number }).success).toBe(true);
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detail = (detailRes.json() as { detail: { parts: Array<{ fhincd: string; note: string | null }> } }).detail;
+    const partX = detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.note).toBe('部品備考同期テスト');
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listRows = (listRes.json() as { rows: Array<{ rowData: { FHINCD?: string }; note?: string | null }> }).rows;
+    const rowX = listRows.filter((row) => row.rowData.FHINCD === 'X');
+    expect(rowX.length).toBeGreaterThan(0);
+    expect(rowX.every((row) => row.note === '部品備考同期テスト')).toBe(true);
+  });
+
+  it('verifies due-management access password (default/shared)', async () => {
+    const okRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/due-management/verify-access-password',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { password: '2520' }
+    });
+    expect(okRes.statusCode).toBe(200);
+    expect((okRes.json() as { success: boolean }).success).toBe(true);
+
+    const ngRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/due-management/verify-access-password',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { password: '0000' }
+    });
+    expect(ngRes.statusCode).toBe(200);
+    expect((ngRes.json() as { success: boolean }).success).toBe(false);
   });
 
   it('saves and returns row processing type (PUT processing, GET includes processingType)', async () => {

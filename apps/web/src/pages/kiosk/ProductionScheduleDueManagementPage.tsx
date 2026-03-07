@@ -6,15 +6,20 @@ import {
   useKioskProductionScheduleDueManagementSummary,
   useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleSearchState,
+  useUpdateKioskProductionScheduleDueManagementPartNote,
   useUpdateKioskProductionScheduleDueManagementPartProcessingType,
   useUpdateKioskProductionScheduleDueManagementPartPriorities,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
-import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton';
+import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
+import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
+import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+
+const NOTE_MAX_LENGTH = 100;
 
 const normalizeHistoryList = (items: string[]) => {
   const unique = new Set<string>();
@@ -39,15 +44,20 @@ export function ProductionScheduleDueManagementPage() {
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const searchStateEtagRef = useRef<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardValue, setKeyboardValue] = useState('');
 
   const [selectedFseiban, setSelectedFseiban] = useState<string | null>(null);
   const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(selectedFseiban);
   const updateDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
   const updatePartPrioritiesMutation = useUpdateKioskProductionScheduleDueManagementPartPriorities();
   const updatePartProcessingMutation = useUpdateKioskProductionScheduleDueManagementPartProcessingType();
+  const updatePartNoteMutation = useUpdateKioskProductionScheduleDueManagementPartNote();
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [editingDueDate, setEditingDueDate] = useState('');
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [editingNotePart, setEditingNotePart] = useState<{ fhincd: string; note: string } | null>(null);
   const [orderedFhincds, setOrderedFhincds] = useState<string[]>([]);
   const detail = detailQuery.data;
   type DuePart = NonNullable<typeof detailQuery.data>['parts'][number];
@@ -170,6 +180,16 @@ export function ProductionScheduleDueManagementPage() {
     }
   };
 
+  const openKeyboard = () => {
+    setKeyboardValue(searchInput);
+    setIsKeyboardOpen(true);
+  };
+
+  const confirmKeyboard = () => {
+    setSearchInput(keyboardValue);
+    setIsKeyboardOpen(false);
+  };
+
   const openDatePicker = () => {
     if (!detailQuery.data?.fseiban) return;
     setEditingDueDate(normalizeDueDateInput(detailQuery.data.dueDate));
@@ -206,6 +226,32 @@ export function ProductionScheduleDueManagementPage() {
     });
   };
 
+  const openPartNoteModal = (fhincd: string, note: string | null) => {
+    setEditingNotePart({ fhincd, note: note ?? '' });
+    setIsNoteModalOpen(true);
+  };
+
+  const closePartNoteModal = () => {
+    setIsNoteModalOpen(false);
+    setEditingNotePart(null);
+  };
+
+  const commitPartNote = (value: string) => {
+    if (!selectedFseiban || !editingNotePart) return;
+    updatePartNoteMutation.mutate(
+      {
+        fseiban: selectedFseiban,
+        fhincd: editingNotePart.fhincd,
+        note: value
+      },
+      {
+        onSuccess: () => {
+          closePartNoteModal();
+        }
+      }
+    );
+  };
+
   return (
     <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
       <section className="overflow-hidden rounded-lg border border-white/20 bg-slate-900/60">
@@ -228,6 +274,14 @@ export function ProductionScheduleDueManagementPage() {
             />
             <button
               type="button"
+              onClick={openKeyboard}
+              className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-600"
+              aria-label="キーボードを開く"
+            >
+              ⌨
+            </button>
+            <button
+              type="button"
               onClick={() => void applySearch()}
               className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
             >
@@ -236,21 +290,33 @@ export function ProductionScheduleDueManagementPage() {
           </div>
           <div className="mb-3 flex flex-wrap gap-2">
             {sharedHistory.map((fseiban) => {
-              const summary = summaryBySeiban.get(fseiban);
+              const isActive = selectedFseiban === fseiban;
               return (
-                <SeibanHistoryButton
+                <button
                   key={fseiban}
-                  seiban={fseiban}
-                  machineName={summary?.machineName}
-                  isActive={selectedFseiban === fseiban}
-                  isComplete={false}
-                  canMoveLeft={false}
-                  canMoveRight={false}
-                  onToggle={() => setSelectedFseiban(fseiban)}
-                  onRemove={() => void removeFromHistory(fseiban)}
-                  onMoveLeft={() => {}}
-                  onMoveRight={() => {}}
-                />
+                  type="button"
+                  onClick={() => setSelectedFseiban(fseiban)}
+                  className={`relative flex h-8 items-center rounded-full border px-3 pr-7 text-xs font-semibold transition-colors ${
+                    isActive
+                      ? 'border-emerald-300 bg-emerald-400 text-slate-900'
+                      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  <span className="font-mono">{fseiban}</span>
+                  <button
+                    type="button"
+                    className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 ${
+                      isActive ? 'bg-slate-200' : 'bg-white'
+                    }`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void removeFromHistory(fseiban);
+                    }}
+                    aria-label={`履歴から削除: ${fseiban}`}
+                  >
+                    ×
+                  </button>
+                </button>
               );
             })}
           </div>
@@ -268,7 +334,9 @@ export function ProductionScheduleDueManagementPage() {
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm font-semibold text-white">
                   {item.fseiban}
-                  <span className="ml-2 text-xs font-normal text-white/70">{item.machineName ?? '-'}</span>
+                  <span className="ml-2 text-xs font-normal text-white/70">
+                    {normalizeMachineName(item.machineName) || '-'}
+                  </span>
                 </span>
                 <span className="text-xs text-white/70">{formatDueDate(item.dueDate)}</span>
               </div>
@@ -286,7 +354,7 @@ export function ProductionScheduleDueManagementPage() {
             <h2 className="text-sm font-semibold text-white">部品優先順位（製番単位）</h2>
             <p className="text-xs text-white/70">
               製番: <span className="font-mono">{detailQuery.data?.fseiban ?? '-'}</span>
-              <span className="ml-2">{detailQuery.data?.machineName ?? '-'}</span>
+              <span className="ml-2">{normalizeMachineName(detailQuery.data?.machineName) || '-'}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -320,11 +388,13 @@ export function ProductionScheduleDueManagementPage() {
                 <tr className="border-b border-white/20 text-white/80">
                   <th className="px-2 py-2">順位</th>
                   <th className="px-2 py-2">部品</th>
+                  <th className="px-2 py-2">製造order番号</th>
                   <th className="px-2 py-2">品名</th>
                   <th className="px-2 py-2">処理</th>
                   <th className="px-2 py-2">工程数</th>
                   <th className="px-2 py-2">工程進捗</th>
                   <th className="px-2 py-2">所要(min)</th>
+                  <th className="px-2 py-2">備考</th>
                   <th className="px-2 py-2">提案順位</th>
                   <th className="px-2 py-2">操作</th>
                 </tr>
@@ -334,6 +404,7 @@ export function ProductionScheduleDueManagementPage() {
                   <tr key={part?.fhincd ?? index} className="border-b border-white/10">
                     <td className="px-2 py-2">{index + 1}</td>
                     <td className="px-2 py-2 font-mono">{part?.fhincd}</td>
+                    <td className="px-2 py-2 font-mono">{part?.productNo || '-'}</td>
                     <td className="px-2 py-2">{part?.fhinmei || '-'}</td>
                     <td className="px-2 py-2">
                       <select
@@ -364,7 +435,7 @@ export function ProductionScheduleDueManagementPage() {
                             key={process.rowId}
                             className={`rounded border px-2 py-1 text-[10px] ${
                               process.isCompleted
-                                ? 'border-slate-500 bg-slate-600 text-slate-200'
+                                ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
                                 : 'border-blue-300 bg-blue-500/30 text-blue-100'
                             }`}
                           >
@@ -375,6 +446,17 @@ export function ProductionScheduleDueManagementPage() {
                       </div>
                     </td>
                     <td className="px-2 py-2">{Math.round(part?.totalRequiredMinutes ?? 0)}</td>
+                    <td className="px-2 py-2">
+                      <button
+                        type="button"
+                        onClick={() => openPartNoteModal(part?.fhincd ?? '', part?.note ?? null)}
+                        className="max-w-[180px] truncate rounded bg-white/10 px-2 py-1 text-left text-[11px] text-white/90 hover:bg-white/20"
+                        disabled={updatePartNoteMutation.isPending}
+                        title={part?.note ?? ''}
+                      >
+                        {part?.note?.trim() ? part.note : '編集'}
+                      </button>
+                    </td>
                     <td className="px-2 py-2">{part?.suggestedPriorityRank ?? '-'}</td>
                     <td className="px-2 py-2">
                       <div className="flex gap-1">
@@ -408,6 +490,20 @@ export function ProductionScheduleDueManagementPage() {
         value={editingDueDate}
         onCancel={() => setIsDatePickerOpen(false)}
         onCommit={commitDueDate}
+      />
+      <KioskKeyboardModal
+        isOpen={isKeyboardOpen}
+        value={keyboardValue}
+        onChange={setKeyboardValue}
+        onCancel={() => setIsKeyboardOpen(false)}
+        onConfirm={confirmKeyboard}
+      />
+      <KioskNoteModal
+        isOpen={isNoteModalOpen}
+        value={editingNotePart?.note ?? ''}
+        maxLength={NOTE_MAX_LENGTH}
+        onCancel={closePartNoteModal}
+        onCommit={commitPartNote}
       />
     </div>
   );

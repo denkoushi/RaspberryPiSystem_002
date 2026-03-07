@@ -421,6 +421,12 @@ export interface ProductionScheduleResourceCategorySettings {
   cuttingExcludedResourceCds: string[];
 }
 
+export interface ProductionScheduleDueManagementAccessPasswordSettings {
+  location: string;
+  configured: boolean;
+  defaultPasswordActive: boolean;
+}
+
 export interface ProductionScheduleProcessingTypeOption {
   code: string;
   label: string;
@@ -445,8 +451,10 @@ export interface ProductionScheduleDueManagementPartProcessItem {
 }
 
 export interface ProductionScheduleDueManagementPartItem {
+  productNo: string;
   fhincd: string;
   fhinmei: string;
+  note: string | null;
   processCount: number;
   totalRequiredMinutes: number;
   processingType: string | null;
@@ -621,6 +629,20 @@ export async function updateKioskProductionScheduleDueManagementPartProcessingTy
   return data;
 }
 
+export async function updateKioskProductionScheduleDueManagementPartNote(
+  fseiban: string,
+  fhincd: string,
+  payload: { note: string }
+) {
+  const { data } = await api.put<{ success: boolean; fseiban: string; fhincd: string; note: string | null }>(
+    `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/parts/${encodeURIComponent(
+      fhincd
+    )}/note`,
+    payload
+  );
+  return data;
+}
+
 export async function getProductionScheduleResourceCategorySettings(location: string) {
   const { data } = await api.get<{
     settings: ProductionScheduleResourceCategorySettings;
@@ -666,6 +688,33 @@ export async function updateProductionScheduleResourceCategorySettings(payload: 
     payload
   );
   return data.settings;
+}
+
+export async function getProductionScheduleDueManagementAccessPasswordSettings(location: string) {
+  const { data } = await api.get<{
+    settings: ProductionScheduleDueManagementAccessPasswordSettings;
+  }>('/production-schedule-settings/due-management-access-password', {
+    params: { location }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleDueManagementAccessPassword(payload: {
+  location: string;
+  password: string;
+}) {
+  const { data } = await api.put<{
+    settings: ProductionScheduleDueManagementAccessPasswordSettings;
+  }>('/production-schedule-settings/due-management-access-password', payload);
+  return data.settings;
+}
+
+export async function verifyKioskDueManagementAccessPassword(payload: { password: string }) {
+  const { data } = await api.post<{ success: boolean }>(
+    '/kiosk/production-schedule/due-management/verify-access-password',
+    payload
+  );
+  return data;
 }
 
 export async function getKioskProductionScheduleOrderUsage(params?: { resourceCds?: string }) {

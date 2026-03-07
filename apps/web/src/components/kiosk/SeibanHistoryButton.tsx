@@ -1,15 +1,4 @@
-const MAX_MACHINE_NAME_CHARS = 36;
-
-const toHalfWidthAscii = (value: string): string =>
-  value.replace(/[！-～]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, ' ');
-
-const normalizeMachineName = (value: string | null | undefined): string => {
-  const normalized = toHalfWidthAscii(value?.trim() ?? '').toUpperCase();
-  if (normalized.length <= MAX_MACHINE_NAME_CHARS) {
-    return normalized;
-  }
-  return `${normalized.slice(0, MAX_MACHINE_NAME_CHARS)}...`;
-};
+import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 type SeibanHistoryButtonProps = {
   seiban: string;

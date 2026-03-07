@@ -82,6 +82,7 @@ import {
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
   getProductionScheduleResourceCategorySettings,
+  getProductionScheduleDueManagementAccessPasswordSettings,
   getProductionScheduleProcessingTypeOptions,
   getKioskCallTargets,
   getSystemInfo,
@@ -93,6 +94,7 @@ import {
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
   updateProductionScheduleResourceCategorySettings,
+  updateProductionScheduleDueManagementAccessPassword,
   updateProductionScheduleProcessingTypeOptions,
   updateClient,
   updateEmployee,
@@ -104,6 +106,8 @@ import {
   updateKioskProductionScheduleDueManagementSeibanDueDate,
   updateKioskProductionScheduleDueManagementPartPriorities,
   updateKioskProductionScheduleDueManagementPartProcessingType,
+  updateKioskProductionScheduleDueManagementPartNote,
+  verifyKioskDueManagementAccessPassword,
   getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
@@ -368,10 +372,32 @@ export function useUpdateKioskProductionScheduleDueManagementPartProcessingType(
   });
 }
 
+export function useUpdateKioskProductionScheduleDueManagementPartNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fseiban, fhincd, note }: { fseiban: string; fhincd: string; note: string }) =>
+      updateKioskProductionScheduleDueManagementPartNote(fseiban, fhincd, { note }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
 export function useProductionScheduleResourceCategorySettings(location: string) {
   return useQuery({
     queryKey: ['production-schedule-resource-category-settings', location],
     queryFn: () => getProductionScheduleResourceCategorySettings(location),
+    enabled: location.trim().length > 0
+  });
+}
+
+export function useProductionScheduleDueManagementAccessPasswordSettings(location: string) {
+  return useQuery({
+    queryKey: ['production-schedule-due-management-access-password-settings', location],
+    queryFn: () => getProductionScheduleDueManagementAccessPasswordSettings(location),
     enabled: location.trim().length > 0
   });
 }
@@ -395,6 +421,18 @@ export function useUpdateProductionScheduleResourceCategorySettings() {
   });
 }
 
+export function useUpdateProductionScheduleDueManagementAccessPassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { location: string; password: string }) => updateProductionScheduleDueManagementAccessPassword(payload),
+    onSuccess: (settings) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['production-schedule-due-management-access-password-settings', settings.location]
+      });
+    }
+  });
+}
+
 export function useUpdateProductionScheduleProcessingTypeOptions() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -404,6 +442,12 @@ export function useUpdateProductionScheduleProcessingTypeOptions() {
       void queryClient.invalidateQueries({ queryKey: ['production-schedule-processing-type-options', settings.location] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-processing-type-options'] });
     }
+  });
+}
+
+export function useVerifyKioskDueManagementAccessPassword() {
+  return useMutation({
+    mutationFn: (payload: { password: string }) => verifyKioskDueManagementAccessPassword(payload)
   });
 }
 

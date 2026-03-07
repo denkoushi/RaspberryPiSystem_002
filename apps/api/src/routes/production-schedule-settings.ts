@@ -3,9 +3,12 @@ import { z } from 'zod';
 
 import { authorizeRoles } from '../lib/auth.js';
 import {
+  getDueManagementAccessPasswordSettings,
   getProductionScheduleProcessingTypeOptions,
   getProductionScheduleResourceCategorySettings,
   listProductionScheduleResourceCategorySettingsLocations,
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+  upsertDueManagementAccessPassword,
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
 } from '../services/production-schedule/production-schedule-settings.service.js';
@@ -35,6 +38,15 @@ const processingTypeOptionsBodySchema = z.object({
       })
     )
     .max(100)
+});
+
+const dueManagementAccessPasswordQuerySchema = z.object({
+  location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION)
+});
+
+const dueManagementAccessPasswordBodySchema = z.object({
+  location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION),
+  password: z.string().min(1).max(128)
 });
 
 export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): void {
@@ -78,6 +90,21 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
     const settings = await upsertProductionScheduleProcessingTypeOptions({
       location: body.location,
       options: body.options
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/due-management-access-password', { preHandler: canManage }, async (request) => {
+    const query = dueManagementAccessPasswordQuerySchema.parse(request.query);
+    const settings = await getDueManagementAccessPasswordSettings(query.location);
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/due-management-access-password', { preHandler: canManage }, async (request) => {
+    const body = dueManagementAccessPasswordBodySchema.parse(request.body);
+    const settings = await upsertDueManagementAccessPassword({
+      location: body.location,
+      password: body.password
     });
     return { settings };
   });

@@ -1,8 +1,9 @@
 import clsx from 'clsx';
 import { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 
 import { postClientLogs, postKioskPower } from '../../api/client';
+import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
 
@@ -28,6 +29,7 @@ type KioskHeaderProps = {
 
 const navBase = 'rounded-md px-3 py-2 text-sm font-semibold transition-colors';
 const navInactive = 'text-white hover:bg-white/10';
+const DUE_MANAGEMENT_AUTH_SESSION_KEY = 'kiosk-due-management-authenticated';
 
 const navClass = (isActive: boolean, activeClassName: string) =>
   clsx(navBase, isActive ? activeClassName : navInactive);
@@ -71,12 +73,15 @@ export function KioskHeader({
   clientStatus,
   pathname
 }: KioskHeaderProps) {
+  const navigate = useNavigate();
+  const verifyDueManagementAccessPasswordMutation = useVerifyKioskDueManagementAccessPassword();
   const [pendingAction, setPendingAction] = useState<PowerAction | null>(null);
   const [powerOverlayAction, setPowerOverlayAction] = useState<PowerAction | null>(null);
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
+  const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
     if (value.length <= 8) return value;
@@ -163,6 +168,31 @@ export function KioskHeader({
     }
   };
 
+  const handleDueManagementNavigate = async () => {
+    if (isDueManagementActive) {
+      navigate('/kiosk/production-schedule/due-management');
+      return;
+    }
+    const isAuthenticated = typeof window !== 'undefined' && window.sessionStorage.getItem(DUE_MANAGEMENT_AUTH_SESSION_KEY) === '1';
+    if (isAuthenticated) {
+      navigate('/kiosk/production-schedule/due-management');
+      return;
+    }
+    const password = typeof window !== 'undefined' ? window.prompt('納期管理パスワードを入力してください') : null;
+    if (!password) return;
+    try {
+      const result = await verifyDueManagementAccessPasswordMutation.mutateAsync({ password });
+      if (!result.success) {
+        window.alert('パスワードが違います');
+        return;
+      }
+      window.sessionStorage.setItem(DUE_MANAGEMENT_AUTH_SESSION_KEY, '1');
+      navigate('/kiosk/production-schedule/due-management');
+    } catch {
+      window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
       <Row className="gap-3 shrink-0">
@@ -240,16 +270,19 @@ export function KioskHeader({
           </NavLink>
           <NavLink
             to="/kiosk/production-schedule"
+            end
             className={({ isActive }) => navClass(isActive, 'bg-blue-500 text-white')}
           >
             生産スケジュール
           </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule/due-management"
-            className={({ isActive }) => navClass(isActive, 'bg-sky-600 text-white')}
+          <button
+            type="button"
+            onClick={() => void handleDueManagementNavigate()}
+            disabled={verifyDueManagementAccessPasswordMutation.isPending}
+            className={navClass(isDueManagementActive, 'bg-sky-600 text-white')}
           >
             納期管理
-          </NavLink>
+          </button>
           <NavLink to="/kiosk/call" className={({ isActive }) => navClass(isActive, 'bg-purple-600 text-white')}>
             📞 通話
           </NavLink>
