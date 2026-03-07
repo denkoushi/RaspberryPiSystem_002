@@ -12,6 +12,7 @@ import type {
 import { estimateResourceLoadSignals } from './resource-load-estimator.service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 const normalizeFseibans = (items: string[]): string[] => {
   const seen = new Set<string>();
@@ -25,12 +26,42 @@ const normalizeFseibans = (items: string[]): string[] => {
   return next.slice(0, 2000);
 };
 
-const toUtcDayStart = (value: Date): number => Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+const buildDueConfiguredSeibanSet = (
+  summaries: Array<{
+    fseiban: string;
+    dueDate: Date | null;
+  }>
+): Set<string> => {
+  const set = new Set<string>();
+  for (const summary of summaries) {
+    if (summary.dueDate) {
+      set.add(summary.fseiban);
+    }
+  }
+  return set;
+};
+
+const buildDueScopedCandidates = (params: {
+  selectedFseibans: string[];
+  existingRank: string[];
+  summaries: Array<{ fseiban: string; dueDate: Date | null }>;
+}): string[] => {
+  const dueConfiguredSet = buildDueConfiguredSeibanSet(params.summaries);
+  const baseCandidates = params.selectedFseibans.length > 0
+    ? [...params.selectedFseibans, ...params.existingRank]
+    : [...params.summaries.map((row) => row.fseiban), ...params.existingRank];
+  return normalizeFseibans(baseCandidates.filter((fseiban) => dueConfiguredSet.has(fseiban)));
+};
+
+const toJstDayStart = (value: Date): number => {
+  const jstDate = new Date(value.getTime() + JST_OFFSET_MS);
+  return Date.UTC(jstDate.getUTCFullYear(), jstDate.getUTCMonth(), jstDate.getUTCDate());
+};
 
 const computeDaysUntilDue = (dueDate: Date | null): number | null => {
   if (!dueDate) return null;
   const now = new Date();
-  return Math.floor((toUtcDayStart(dueDate) - toUtcDayStart(now)) / DAY_MS);
+  return Math.floor((toJstDayStart(dueDate) - toJstDayStart(now)) / DAY_MS);
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -99,11 +130,11 @@ export async function buildDueManagementGlobalRankProposal(params: {
   const selectedSet = new Set(selectedRows.map((row) => row.fseiban));
   const existingRank = await listDueManagementGlobalRank(params.locationKey);
   const existingOrder = new Map(existingRank.map((fseiban, index) => [fseiban, index]));
-  const candidateFseibans = normalizeFseibans(
-    selectedRows.length > 0
-      ? [...selectedRows.map((row) => row.fseiban), ...existingRank]
-      : [...summaries.map((row) => row.fseiban), ...existingRank]
-  );
+  const candidateFseibans = buildDueScopedCandidates({
+    selectedFseibans: selectedRows.map((row) => row.fseiban),
+    existingRank,
+    summaries
+  });
 
   const resourceSignals = await estimateResourceLoadSignals({
     locationKey: params.locationKey,

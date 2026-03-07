@@ -352,6 +352,22 @@ category: knowledge-base
 | スコア・理由が表示されない | proposal API の取得失敗 | ネットワーク・APIヘルスを確認。画面リロードで再取得 |
 | 保存後に順位が変わらない | ガードで `applied=false` | 提案内容と既存順位の差分率が閾値を超えている可能性。手動で今日の計画順を編集して保存 |
 
+## B第4段階補正（納期設定済み限定候補 + 即時除外、2026-03-07）
+
+- **目的**: 全体ランキング（親）を現場運用に合わせ、「納期設定済み製番のみ」を候補に統一
+- **仕様変更**:
+  - `GET /api/kiosk/production-schedule/due-management/global-rank/proposal` の候補は `dueDate != null` の製番のみ
+  - `PUT /api/kiosk/production-schedule/due-management/global-rank/auto-generate` で、既存global-rankに残る納期未設定製番を**即時除外**（方針A）
+  - `keepExistingTail=true` でも、納期未設定製番は尾部保持しない
+  - 日数計算は JST 日境界で評価
+- **実装ファイル**:
+  - `apps/api/src/services/production-schedule/due-management-scoring.service.ts`
+  - `apps/api/src/services/production-schedule/due-management-global-rank-auto.service.ts`
+- **検証（ローカル）**:
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（44件成功）
+  - `pnpm --filter @raspi-system/api lint` 成功
+  - `pnpm --filter @raspi-system/web lint` 成功
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策

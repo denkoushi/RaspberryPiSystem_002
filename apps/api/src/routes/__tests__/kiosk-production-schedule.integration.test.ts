@@ -900,6 +900,13 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   it('builds global-rank proposal and returns explanation', async () => {
+    await prisma.productionScheduleSeibanDueDate.createMany({
+      data: [
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+      ]
+    });
+
     const proposalRes = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule/due-management/global-rank/proposal',
@@ -929,6 +936,13 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   it('auto-generates and persists due-management global rank', async () => {
+    await prisma.productionScheduleSeibanDueDate.createMany({
+      data: [
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+      ]
+    });
+
     const autoRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
@@ -959,6 +973,76 @@ describe('Kiosk Production Schedule API', () => {
     expect(rankRes.statusCode).toBe(200);
     const rankBody = rankRes.json() as { orderedFseibans: string[] };
     expect(rankBody.orderedFseibans).toEqual(autoBody.orderedFseibans);
+  });
+
+  it('limits proposal to due-configured seibans and removes due-unset from existing rank on auto-generate', async () => {
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(),
+        dataHash: 'hash-c-no-due',
+        rowData: { ProductNo: '0003', FSEIBAN: 'C', FHINCD: 'C1', FSIGENCD: '3', FKOJUN: '10', progress: '' }
+      }
+    });
+
+    await prisma.productionScheduleSeibanDueDate.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        location: 'Test',
+        fseiban: 'A',
+        dueDate: new Date('2026-03-10T00:00:00.000Z')
+      }
+    });
+
+    await prisma.productionScheduleGlobalRank.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          location: 'Test',
+          fseiban: 'C',
+          priorityOrder: 1,
+          sourceType: 'manual'
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          location: 'Test',
+          fseiban: 'A',
+          priorityOrder: 2,
+          sourceType: 'manual'
+        }
+      ]
+    });
+
+    const proposalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/proposal',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(proposalRes.statusCode).toBe(200);
+    const proposalBody = proposalRes.json() as { orderedFseibans: string[] };
+    expect(proposalBody.orderedFseibans).toEqual(['A']);
+
+    const autoRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        minCandidateCount: 1,
+        maxReorderDeltaRatio: 1,
+        keepExistingTail: true
+      }
+    });
+    expect(autoRes.statusCode).toBe(200);
+    const autoBody = autoRes.json() as {
+      applied: boolean;
+      orderedFseibans: string[];
+      previousOrderedFseibans: string[];
+      proposal: { orderedFseibans: string[] };
+    };
+    expect(autoBody.applied).toBe(true);
+    expect(autoBody.proposal.orderedFseibans).toEqual(['A']);
+    expect(autoBody.previousOrderedFseibans).toEqual(['A']);
+    expect(autoBody.orderedFseibans).toEqual(['A']);
   });
 
   it('isolates due-management daily plan by location', async () => {
