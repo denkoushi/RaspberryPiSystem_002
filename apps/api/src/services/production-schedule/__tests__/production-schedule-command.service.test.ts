@@ -31,6 +31,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     productionScheduleProcessingTypeOption: {
       findMany: vi.fn(),
     },
+    dueManagementOutcomeEvent: {
+      create: vi.fn()
+    },
     $transaction: vi.fn(),
   },
 }));

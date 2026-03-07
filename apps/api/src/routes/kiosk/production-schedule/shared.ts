@@ -132,6 +132,11 @@ export const productionScheduleDueManagementGlobalRankExplanationParamsSchema = 
   fseiban: z.string().min(1).max(20).transform((value) => value.trim())
 });
 
+export const productionScheduleDueManagementLearningReportQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional()
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

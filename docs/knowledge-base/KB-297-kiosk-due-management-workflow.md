@@ -410,3 +410,24 @@ category: knowledge-base
 - `apps/web/src/api/client.ts`
 - `apps/web/src/api/hooks.ts`
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`
+
+## B第5段階（オフライン学習評価 + イベントログ、2026-03-08）
+
+- **目的**: 納期遅れ最小化を主目的として、提案順位/現場決定/完了変化を追記専用で保存し、重み更新はオフライン評価のみに限定する
+- **方針**:
+  - 本番で重みを自動更新しない（オンライン学習を無効）
+  - 提案と現場決定の一致度は副指標（Top-K/Spearman/Kendall）
+  - 主指標は遅延側（overdue件数、overdue日数）
+- **追加データモデル**:
+  - `DueManagementProposalEvent`
+  - `DueManagementOperatorDecisionEvent`
+  - `DueManagementOutcomeEvent`
+- **追加API**:
+  - `GET /api/kiosk/production-schedule/due-management/global-rank/learning-report`
+- **実装ポイント**:
+  - `auto-generate` / 手動global-rank保存時に proposal/decision イベントを記録
+  - 完了トグル・CSV進捗同期時に outcome イベントを記録
+  - `due-management-learning-evaluator.service.ts` で期間集計レポートを生成
+- **運用メモ**:
+  - イベントテーブルは分析・再学習・監査の一次データとして扱い、既存ランキングテーブルは投影（運用表示）として扱う
+  - 学習重みの本番反映は別ステップ（承認付き）で行う

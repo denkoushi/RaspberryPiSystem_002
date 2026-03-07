@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { resolveUpdatedAt } from '../csv-dashboard/diff/csv-dashboard-updated-at.js';
+import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 
 type ProgressSyncCandidate = {
   rowId: string;
@@ -11,6 +12,7 @@ type ProgressSyncCandidate = {
 
 type SyncProgressFromCsvParams = {
   candidates: ProgressSyncCandidate[];
+  locationKey?: string;
 };
 
 const normalizeProgress = (value: unknown): string => String(value ?? '').trim();
@@ -43,7 +45,7 @@ export class ProgressSyncFromCsvService {
       const csvUpdatedAt = resolveUpdatedAt(candidate.rowData, candidate.occurredAt);
       const existing = await prisma.productionScheduleProgress.findUnique({
         where: { csvDashboardRowId: candidate.rowId },
-        select: { updatedAt: true },
+        select: { updatedAt: true, isCompleted: true },
       });
 
       // 同時刻は本システム側優先（CSVは上書きしない）
@@ -64,6 +66,21 @@ export class ProgressSyncFromCsvService {
           updatedAt: csvUpdatedAt,
         },
       });
+      if (!existing || existing.isCompleted !== isCompleted) {
+        const fseibanRaw = rowData?.FSEIBAN;
+        const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+        await dueManagementLearningEventRepository.saveOutcomeEvent({
+          locationKey: params.locationKey?.trim() || '__shared__',
+          eventType: 'progress_sync',
+          csvDashboardRowId: candidate.rowId,
+          fseiban: fseiban.length > 0 ? fseiban : null,
+          isCompleted,
+          occurredAt: csvUpdatedAt,
+          metadata: {
+            from: 'csv_progress_sync',
+          },
+        });
+      }
     }
   }
 }

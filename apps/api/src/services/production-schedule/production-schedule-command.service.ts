@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
@@ -168,6 +169,19 @@ export async function completeProductionScheduleRow(params: {
     }
   });
   const txMs = performance.now() - txStart;
+  const fseibanRaw = current.FSEIBAN;
+  const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+  await dueManagementLearningEventRepository.saveOutcomeEvent({
+    locationKey,
+    eventType: 'manual_complete_toggle',
+    csvDashboardRowId: row.id,
+    fseiban: fseiban.length > 0 ? fseiban : null,
+    isCompleted: nextIsCompleted,
+    occurredAt: new Date(),
+    metadata: {
+      from: 'kiosk_complete_toggle'
+    }
+  });
 
   const totalMs = performance.now() - tTotalStart;
 

@@ -8,6 +8,9 @@ vi.mock('../../../lib/prisma.js', () => ({
       findUnique: vi.fn(),
       upsert: vi.fn(),
     },
+    dueManagementOutcomeEvent: {
+      create: vi.fn(),
+    },
   },
 }));
 
@@ -21,6 +24,7 @@ describe('ProgressSyncFromCsvService', () => {
   it('CSVが新しい場合は完了を反映する', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
       updatedAt: new Date('2026-02-24T00:00:00.000Z'),
+      isCompleted: false,
     } as never);
 
     await service.sync({
@@ -34,6 +38,7 @@ describe('ProgressSyncFromCsvService', () => {
     });
 
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { csvDashboardRowId: 'row-1' },
@@ -46,6 +51,7 @@ describe('ProgressSyncFromCsvService', () => {
   it('CSVが新しい場合は空文字を未完了として反映する', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
       updatedAt: new Date('2026-02-24T00:00:00.000Z'),
+      isCompleted: true,
     } as never);
 
     await service.sync({
@@ -59,6 +65,7 @@ describe('ProgressSyncFromCsvService', () => {
     });
 
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { csvDashboardRowId: 'row-2' },
@@ -71,6 +78,7 @@ describe('ProgressSyncFromCsvService', () => {
   it('同時刻の場合は本システム側を優先して更新しない', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
       updatedAt: new Date('2026-02-25T01:00:00.000Z'),
+      isCompleted: false,
     } as never);
 
     await service.sync({
@@ -84,11 +92,13 @@ describe('ProgressSyncFromCsvService', () => {
     });
 
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
+    expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
   });
 
   it('CSVが古い場合は更新しない', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
       updatedAt: new Date('2026-02-25T02:00:00.000Z'),
+      isCompleted: false,
     } as never);
 
     await service.sync({
@@ -102,6 +112,7 @@ describe('ProgressSyncFromCsvService', () => {
     });
 
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
+    expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
   });
 
   it('既存レコードがなければ新規作成する', async () => {
@@ -118,6 +129,7 @@ describe('ProgressSyncFromCsvService', () => {
     });
 
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { csvDashboardRowId: 'row-5' },

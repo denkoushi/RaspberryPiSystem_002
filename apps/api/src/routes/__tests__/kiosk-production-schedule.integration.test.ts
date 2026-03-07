@@ -23,6 +23,9 @@ describe('Kiosk Production Schedule API', () => {
 
   afterAll(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.dueManagementProposalEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -42,6 +45,9 @@ describe('Kiosk Production Schedule API', () => {
 
   beforeEach(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.dueManagementProposalEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -973,6 +979,65 @@ describe('Kiosk Production Schedule API', () => {
     expect(rankRes.statusCode).toBe(200);
     const rankBody = rankRes.json() as { orderedFseibans: string[] };
     expect(rankBody.orderedFseibans).toEqual(autoBody.orderedFseibans);
+  });
+
+  it('records learning events and returns learning report', async () => {
+    await prisma.productionScheduleSeibanDueDate.createMany({
+      data: [
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+      ]
+    });
+
+    const autoRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        minCandidateCount: 1,
+        maxReorderDeltaRatio: 1,
+        keepExistingTail: true
+      }
+    });
+    expect(autoRes.statusCode).toBe(200);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const rowId = (listRes.json() as { rows: Array<{ id: string }> }).rows[0]?.id ?? null;
+    expect(rowId).not.toBeNull();
+    if (!rowId) {
+      throw new Error('rowId is missing');
+    }
+
+    const completeRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/complete`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(completeRes.statusCode).toBe(200);
+
+    const reportRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/learning-report',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(reportRes.statusCode).toBe(200);
+    const reportBody = reportRes.json() as {
+      summary: {
+        proposalCount: number;
+        decisionCount: number;
+        outcomeCount: number;
+      };
+      recommendation: { primaryObjective: string };
+    };
+    expect(reportBody.summary.proposalCount).toBeGreaterThan(0);
+    expect(reportBody.summary.decisionCount).toBeGreaterThan(0);
+    expect(reportBody.summary.outcomeCount).toBeGreaterThan(0);
+    expect(reportBody.recommendation.primaryObjective).toBe('minimize_due_delay');
   });
 
   it('limits proposal to due-configured seibans and removes due-unset from existing rank on auto-generate', async () => {

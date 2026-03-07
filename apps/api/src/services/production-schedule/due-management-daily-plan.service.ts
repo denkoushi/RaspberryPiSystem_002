@@ -1,7 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildDueManagementDailyPlanSeed } from './due-management-carryover.service.js';
-import { mergeDueManagementGlobalRank } from './due-management-global-rank.service.js';
+import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
+import { listDueManagementGlobalRank, mergeDueManagementGlobalRank } from './due-management-global-rank.service.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -149,9 +150,21 @@ export async function replaceDueManagementDailyPlan(params: {
     return plan;
   });
 
-  await mergeDueManagementGlobalRank({
+  const previousGlobalRank = await listDueManagementGlobalRank(locationKey);
+  const mergedGlobalRank = await mergeDueManagementGlobalRank({
     locationKey,
     prioritizedFseibans: orderedFseibans
+  });
+  await dueManagementLearningEventRepository.saveDecisionEvent({
+    locationKey,
+    sourceType: 'manual',
+    orderedFseibans: mergedGlobalRank,
+    previousOrderedFseibans: previousGlobalRank,
+    proposalOrderedFseibans: orderedFseibans,
+    reorderDeltaRatio: null,
+    metadata: {
+      from: 'daily_plan_replace'
+    }
   });
 
   return {

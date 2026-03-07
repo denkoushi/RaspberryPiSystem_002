@@ -851,6 +851,55 @@ model ProductionScheduleGlobalRank {
   @@index([csvDashboardId, location, priorityOrder], map: "ProductionScheduleGlobalRank_idx_order")
 }
 
+model DueManagementProposalEvent {
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  location         String
+  generatedAt      DateTime
+  orderedFseibans  String[]
+  candidateCount   Int
+  selectedFseibans String[]
+  writePolicy      Json?
+  actorClientKey   String?
+  payload          Json
+  createdAt        DateTime @default(now())
+
+  @@index([csvDashboardId, location, createdAt], map: "DueManagementProposalEvent_idx_location_time")
+}
+
+model DueManagementOperatorDecisionEvent {
+  id                    String   @id @default(uuid())
+  csvDashboardId        String
+  location              String
+  sourceType            String   @db.VarChar(20)
+  orderedFseibans       String[]
+  previousOrderedFseibans String[]
+  proposalOrderedFseibans String[]
+  reorderDeltaRatio     Float?
+  payload               Json?
+  createdAt             DateTime @default(now())
+
+  @@index([csvDashboardId, location, createdAt], map: "DueManagementOperatorDecisionEvent_idx_location_time")
+  @@index([csvDashboardId, location, sourceType], map: "DueManagementOperatorDecisionEvent_idx_source")
+}
+
+model DueManagementOutcomeEvent {
+  id              String   @id @default(uuid())
+  csvDashboardId  String
+  location        String
+  eventType       String   @db.VarChar(40)
+  csvDashboardRowId String
+  fseiban         String?  @db.VarChar(20)
+  isCompleted     Boolean
+  occurredAt      DateTime
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([csvDashboardId, location, createdAt], map: "DueManagementOutcomeEvent_idx_location_time")
+  @@index([csvDashboardId, location, fseiban], map: "DueManagementOutcomeEvent_idx_fseiban")
+  @@index([csvDashboardId, location, eventType], map: "DueManagementOutcomeEvent_idx_event_type")
+}
+
 model MeasuringInstrumentLoanEvent {
   id                   String   @id @default(uuid())
   managementNumber     String
