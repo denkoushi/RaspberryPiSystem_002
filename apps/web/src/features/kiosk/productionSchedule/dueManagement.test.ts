@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { movePriorityItem, normalizeDueDateInput } from './dueManagement';
+import { deriveGlobalRankFlags, movePriorityItem, normalizeDueDateInput } from './dueManagement';
 
 describe('dueManagement utilities', () => {
   it('normalizeDueDateInput extracts YYYY-MM-DD', () => {
@@ -15,5 +15,23 @@ describe('dueManagement utilities', () => {
     expect(movePriorityItem(['A', 'B', 'C'], 1, 1)).toEqual(['A', 'C', 'B']);
     expect(movePriorityItem(['A', 'B', 'C'], 0, -1)).toEqual(['A', 'B', 'C']);
     expect(movePriorityItem(['A', 'B', 'C'], 2, 1)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('deriveGlobalRankFlags normalizes today/carryover flags', () => {
+    expect(deriveGlobalRankFlags({ isInTodayTriage: true, isCarryover: false })).toEqual({
+      isInTodayTriage: true,
+      isCarryover: false,
+      isOutOfToday: false
+    });
+    expect(deriveGlobalRankFlags({ isInTodayTriage: false, isCarryover: true })).toEqual({
+      isInTodayTriage: false,
+      isCarryover: true,
+      isOutOfToday: true
+    });
+    expect(deriveGlobalRankFlags({ isInTodayTriage: true, isCarryover: true })).toEqual({
+      isInTodayTriage: false,
+      isCarryover: true,
+      isOutOfToday: true
+    });
   });
 });

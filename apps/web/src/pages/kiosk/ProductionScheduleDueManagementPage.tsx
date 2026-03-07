@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionScheduleDueManagementDailyPlan,
+  useKioskProductionScheduleDueManagementGlobalRank,
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
   useKioskProductionScheduleDueManagementTriage,
@@ -19,7 +20,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
-import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
+import { deriveGlobalRankFlags, movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
@@ -43,6 +44,7 @@ export function ProductionScheduleDueManagementPage() {
   const summaryQuery = useKioskProductionScheduleDueManagementSummary();
   const triageQuery = useKioskProductionScheduleDueManagementTriage();
   const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan();
+  const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -152,6 +154,28 @@ export function ProductionScheduleDueManagementPage() {
         }))
         .filter((item) => Boolean(item.summary || item.triage || item.meta.isCarryover)),
     [dailyPlanItemMetaBySeiban, orderedPlanFseibans, selectedSet, summaryBySeiban, triageBySeiban]
+  );
+
+  const globalRankItems = useMemo(
+    () =>
+      (globalRankQuery.data?.orderedFseibans ?? []).map((fseiban) => {
+        const summary = summaryBySeiban.get(fseiban) ?? null;
+        const triage = triageBySeiban.get(fseiban) ?? null;
+        const dailyPlanMeta = dailyPlanItemMetaBySeiban.get(fseiban) ?? null;
+        const flags = deriveGlobalRankFlags({
+          isInTodayTriage: dailyPlanMeta?.isInTodayTriage ?? selectedSet.has(fseiban),
+          isCarryover: dailyPlanMeta?.isCarryover ?? !selectedSet.has(fseiban)
+        });
+        return {
+          fseiban,
+          summary,
+          triage,
+          isInTodayTriage: flags.isInTodayTriage,
+          isCarryover: flags.isCarryover,
+          isOutOfToday: flags.isOutOfToday
+        };
+      }),
+    [dailyPlanItemMetaBySeiban, globalRankQuery.data?.orderedFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
 
   const saveDailyPlan = async () => {
@@ -432,7 +456,59 @@ export function ProductionScheduleDueManagementPage() {
 
           <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-white">今日の計画順（選択済み製番）</h3>
+              <h3 className="text-xs font-semibold text-white">全体ランキング（親）</h3>
+            </div>
+            <p className="mb-2 text-[10px] text-white/60">
+              拠点全体の継続順位です。今日の計画順（子）はこの並びを起点に作成されます。
+            </p>
+            {globalRankQuery.isLoading ? <p className="text-[11px] text-white/70">全体ランキングを読み込み中...</p> : null}
+            {globalRankQuery.isError ? <p className="text-[11px] text-rose-300">全体ランキングの取得に失敗しました</p> : null}
+            {!globalRankQuery.isLoading && globalRankItems.length === 0 ? (
+              <p className="text-[11px] text-white/60">全体ランキングはまだ作成されていません</p>
+            ) : null}
+            <div className="space-y-2">
+              {globalRankItems.map((item, index) => (
+                <button
+                  key={`global-rank-${item.fseiban}`}
+                  type="button"
+                  className="w-full rounded border border-white/20 bg-slate-800/60 p-2 text-left text-white hover:bg-slate-700/60"
+                  onClick={() => setSelectedFseiban(item.fseiban)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold">
+                      {index + 1}. <span className="font-mono">{item.fseiban}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {item.isInTodayTriage ? (
+                        <span className="rounded bg-blue-500/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-100">
+                          今日対象
+                        </span>
+                      ) : item.isOutOfToday ? (
+                        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/70">
+                          対象外
+                        </span>
+                      ) : null}
+                      {item.isCarryover ? (
+                        <span className="rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">
+                          引継ぎ
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-white/75">
+                    {normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-'}
+                  </div>
+                  <div className="text-[10px] text-white/75">
+                    納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-white">今日の計画順（子：全体ランキングから切り出し）</h3>
               <button
                 type="button"
                 className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
@@ -442,6 +518,9 @@ export function ProductionScheduleDueManagementPage() {
                 {updateDailyPlanMutation.isPending ? '保存中...' : '順序を保存'}
               </button>
             </div>
+            <p className="mb-2 text-[10px] text-white/60">
+              今日対象として選んだ製番を、当日の事情で前後させる実行順です。
+            </p>
             {dailyPlanQuery.isLoading ? <p className="text-[11px] text-white/70">計画順を読み込み中...</p> : null}
             {!dailyPlanQuery.isLoading && orderedPlanItems.length === 0 ? (
               <p className="text-[11px] text-white/60">トリアージで製番を選択すると計画順を編集できます</p>

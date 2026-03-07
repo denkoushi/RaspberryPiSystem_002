@@ -14,3 +14,20 @@ export const movePriorityItem = (items: string[], index: number, direction: -1 |
   next.splice(nextIndex, 0, picked);
   return next;
 };
+
+export const deriveGlobalRankFlags = (meta: {
+  isInTodayTriage: boolean;
+  isCarryover: boolean;
+}): {
+  isInTodayTriage: boolean;
+  isCarryover: boolean;
+  isOutOfToday: boolean;
+} => {
+  const isCarryover = Boolean(meta.isCarryover);
+  const isInTodayTriage = isCarryover ? false : Boolean(meta.isInTodayTriage);
+  return {
+    isInTodayTriage,
+    isCarryover,
+    isOutOfToday: !isInTodayTriage
+  };
+};

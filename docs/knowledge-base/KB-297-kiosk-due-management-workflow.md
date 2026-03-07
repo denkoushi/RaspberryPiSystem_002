@@ -243,6 +243,25 @@ category: knowledge-base
 
 - **Pi4サービス確認**: Macから直接Pi4にSSHするとタイムアウトする。Pi5経由（`ssh denkon5sd02@100.106.158.2 "ssh tools03@100.74.144.79 '...'"`）で接続する（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 参照）
 
+## B第3次段（全体ランキング可視化・閲覧専用、2026-03-07）
+
+- **目的**: B3で追加済みの `global-rank` を画面で可視化し、リーダー/オペレーターが同じ優先順位を見ながら運用できる状態にする
+- **UI追加**:
+  - 左ペインに「**全体ランキング（親）**」セクションを追加（閲覧専用）
+  - 既存「今日の計画順」を「**子：全体ランキングから切り出し**」として文言整理
+  - 全体ランキングカードに「今日対象 / 対象外 / 引継ぎ」バッジを表示
+- **設計上の位置づけ**:
+  - 変更は `ProductionScheduleDueManagementPage.tsx` に局所化（API追加なし）
+  - 既存 `GET /api/kiosk/production-schedule/due-management/global-rank` を再利用
+  - 編集（`PUT /global-rank`）は次段スコープとして見送り
+- **制約（今回の仕様）**:
+  - 全体ランキングは**閲覧のみ**（並べ替え・保存は未提供）
+  - 当日実行順の編集は引き続き「今日の計画順」で実施
+- **検証**:
+  - `pnpm --filter @raspi-system/web test -- src/features/kiosk/productionSchedule/dueManagement.test.ts`（3件成功）
+  - `pnpm --filter @raspi-system/web lint` 成功
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（41件成功）
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
