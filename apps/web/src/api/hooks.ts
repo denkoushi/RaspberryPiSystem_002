@@ -78,6 +78,7 @@ import {
   getKioskProductionScheduleDueManagementSummary,
   getKioskProductionScheduleDueManagementTriage,
   getKioskProductionScheduleDueManagementDailyPlan,
+  getKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
@@ -111,6 +112,7 @@ import {
   updateKioskProductionScheduleDueManagementPartNote,
   updateKioskProductionScheduleDueManagementTriageSelection,
   updateKioskProductionScheduleDueManagementDailyPlan,
+  updateKioskProductionScheduleDueManagementGlobalRank,
   verifyKioskDueManagementAccessPassword,
   getDeployStatus,
   type CancelPayload,
@@ -415,6 +417,9 @@ export function useUpdateKioskProductionScheduleDueManagementTriageSelection() {
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-triage']
       });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+      });
     }
   });
 }
@@ -430,6 +435,30 @@ export function useUpdateKioskProductionScheduleDueManagementDailyPlan() {
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-triage']
+      });
+    }
+  });
+}
+
+export function useKioskProductionScheduleDueManagementGlobalRank() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-global-rank'],
+    queryFn: getKioskProductionScheduleDueManagementGlobalRank,
+    refetchInterval: 30000
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderedFseibans }: { orderedFseibans: string[] }) =>
+      updateKioskProductionScheduleDueManagementGlobalRank({ orderedFseibans }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
       });
     }
   });

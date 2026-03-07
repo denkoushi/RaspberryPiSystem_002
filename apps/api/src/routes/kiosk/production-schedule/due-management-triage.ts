@@ -1,11 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getDueManagementDailyPlan, replaceDueManagementDailyPlan } from '../../../services/production-schedule/due-management-daily-plan.service.js';
+import {
+  listDueManagementGlobalRank,
+  replaceDueManagementGlobalRank
+} from '../../../services/production-schedule/due-management-global-rank.service.js';
 import { getDueManagementTriageSelections, replaceDueManagementTriageSelections } from '../../../services/production-schedule/due-management-selection.service.js';
 import { listDueManagementTriage } from '../../../services/production-schedule/due-management-triage.service.js';
 import { getProductionScheduleSearchState } from '../../../services/production-schedule/production-schedule-search-state.service.js';
 import {
   productionScheduleDueManagementDailyPlanBodySchema,
+  productionScheduleDueManagementGlobalRankBodySchema,
   productionScheduleDueManagementTriageSelectionBodySchema,
   type KioskRouteDeps
 } from './shared.js';
@@ -50,16 +55,12 @@ export async function registerProductionScheduleDueManagementTriageRoute(
   app.get('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationKey = deps.resolveLocationKey(clientDevice);
-    const [dailyPlan, selectedFseibans] = await Promise.all([
-      getDueManagementDailyPlan(locationKey),
-      getDueManagementTriageSelections(locationKey)
-    ]);
-
-    return {
-      ...dailyPlan,
-      // まだ計画順未保存のとき、初回導線としてトリアージ選択順をそのまま返す
-      orderedFseibans: dailyPlan.orderedFseibans.length > 0 ? dailyPlan.orderedFseibans : selectedFseibans
-    };
+    const selectedFseibans = await getDueManagementTriageSelections(locationKey);
+    const dailyPlan = await getDueManagementDailyPlan({
+      locationKey,
+      selectedFseibans
+    });
+    return dailyPlan;
   });
 
   app.put('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
@@ -73,6 +74,29 @@ export async function registerProductionScheduleDueManagementTriageRoute(
     return {
       success: true,
       ...dailyPlan
+    };
+  });
+
+  app.get('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const locationKey = deps.resolveLocationKey(clientDevice);
+    const orderedFseibans = await listDueManagementGlobalRank(locationKey);
+    return {
+      orderedFseibans
+    };
+  });
+
+  app.put('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const locationKey = deps.resolveLocationKey(clientDevice);
+    const body = productionScheduleDueManagementGlobalRankBodySchema.parse(request.body);
+    const orderedFseibans = await replaceDueManagementGlobalRank({
+      locationKey,
+      orderedFseibans: body.orderedFseibans
+    });
+    return {
+      success: true,
+      orderedFseibans
     };
   });
 }

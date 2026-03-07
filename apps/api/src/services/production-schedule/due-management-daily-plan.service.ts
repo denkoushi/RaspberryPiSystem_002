@@ -1,5 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { buildDueManagementDailyPlanSeed } from './due-management-carryover.service.js';
+import { mergeDueManagementGlobalRank } from './due-management-global-rank.service.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -31,10 +33,19 @@ export type DueManagementDailyPlan = {
   status: string;
   confirmedAt: string | null;
   updatedAt: string | null;
+  items: Array<{
+    fseiban: string;
+    isInTodayTriage: boolean;
+    isCarryover: boolean;
+  }>;
   orderedFseibans: string[];
 };
 
-export async function getDueManagementDailyPlan(locationKey: string): Promise<DueManagementDailyPlan> {
+export async function getDueManagementDailyPlan(params: {
+  locationKey: string;
+  selectedFseibans: string[];
+}): Promise<DueManagementDailyPlan> {
+  const { locationKey } = params;
   const planDate = getTodayPlanDate();
   const plan = await prisma.productionScheduleDailyPlan.findUnique({
     where: {
@@ -52,12 +63,35 @@ export async function getDueManagementDailyPlan(locationKey: string): Promise<Du
     }
   });
 
+  const orderedFseibans = plan?.items.map((item) => item.fseiban) ?? [];
+  if (orderedFseibans.length > 0) {
+    const selectedSet = new Set(normalizeFseibans(params.selectedFseibans));
+    return {
+      planDate: toDateKey(planDate),
+      status: plan?.status ?? 'draft',
+      confirmedAt: plan?.confirmedAt?.toISOString() ?? null,
+      updatedAt: plan?.updatedAt?.toISOString() ?? null,
+      items: orderedFseibans.map((fseiban) => ({
+        fseiban,
+        isInTodayTriage: selectedSet.has(fseiban),
+        isCarryover: !selectedSet.has(fseiban)
+      })),
+      orderedFseibans
+    };
+  }
+
+  const seeded = await buildDueManagementDailyPlanSeed({
+    locationKey,
+    selectedFseibans: params.selectedFseibans
+  });
+
   return {
     planDate: toDateKey(planDate),
     status: plan?.status ?? 'draft',
     confirmedAt: plan?.confirmedAt?.toISOString() ?? null,
     updatedAt: plan?.updatedAt?.toISOString() ?? null,
-    orderedFseibans: plan?.items.map((item) => item.fseiban) ?? []
+    items: seeded.items,
+    orderedFseibans: seeded.orderedFseibans
   };
 }
 
@@ -115,11 +149,21 @@ export async function replaceDueManagementDailyPlan(params: {
     return plan;
   });
 
+  await mergeDueManagementGlobalRank({
+    locationKey,
+    prioritizedFseibans: orderedFseibans
+  });
+
   return {
     planDate: toDateKey(planDate),
     status: result.status,
     confirmedAt: result.confirmedAt?.toISOString() ?? null,
     updatedAt: result.updatedAt?.toISOString() ?? null,
+    items: orderedFseibans.map((fseiban) => ({
+      fseiban,
+      isInTodayTriage: true,
+      isCarryover: false
+    })),
     orderedFseibans
   };
 }

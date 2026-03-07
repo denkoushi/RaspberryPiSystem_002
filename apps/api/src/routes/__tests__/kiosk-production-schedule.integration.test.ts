@@ -23,6 +23,7 @@ describe('Kiosk Production Schedule API', () => {
 
   afterAll(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -41,6 +42,7 @@ describe('Kiosk Production Schedule API', () => {
 
   beforeEach(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -828,6 +830,73 @@ describe('Kiosk Production Schedule API', () => {
     const getBody = getRes.json() as { orderedFseibans: string[]; status: string };
     expect(getBody.status).toBe('draft');
     expect(getBody.orderedFseibans).toEqual(['A', 'B']);
+  });
+
+  it('marks unselected daily-plan items as carryover', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A', 'B'] }
+    });
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/triage/selection',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { selectedFseibans: ['A'] }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      orderedFseibans: string[];
+      items: Array<{ fseiban: string; isInTodayTriage: boolean; isCarryover: boolean }>;
+    };
+    expect(body.orderedFseibans).toEqual(['A', 'B']);
+    expect(body.items).toEqual([
+      { fseiban: 'A', isInTodayTriage: true, isCarryover: false },
+      { fseiban: 'B', isInTodayTriage: false, isCarryover: true }
+    ]);
+  });
+
+  it('persists due-management global rank and updates from daily-plan save', async () => {
+    const saveRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['B', 'A'] }
+    });
+    expect(saveRes.statusCode).toBe(200);
+
+    const rankFromDailyPlan = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(rankFromDailyPlan.statusCode).toBe(200);
+    expect((rankFromDailyPlan.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['B', 'A']);
+
+    const putRank = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A', 'B'] }
+    });
+    expect(putRank.statusCode).toBe(200);
+    expect((putRank.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A', 'B']);
+
+    const getRank = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(getRank.statusCode).toBe(200);
+    expect((getRank.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A', 'B']);
   });
 
   it('isolates due-management daily plan by location', async () => {

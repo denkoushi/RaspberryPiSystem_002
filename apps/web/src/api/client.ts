@@ -478,6 +478,15 @@ export interface ProductionScheduleDueManagementDailyPlanResult {
   status: string;
   confirmedAt: string | null;
   updatedAt: string | null;
+  items: Array<{
+    fseiban: string;
+    isInTodayTriage: boolean;
+    isCarryover: boolean;
+  }>;
+  orderedFseibans: string[];
+}
+
+export interface ProductionScheduleDueManagementGlobalRankResult {
   orderedFseibans: string[];
 }
 
@@ -637,6 +646,22 @@ export async function updateKioskProductionScheduleDueManagementDailyPlan(payloa
   const { data } = await api.put<
     { success: boolean } & ProductionScheduleDueManagementDailyPlanResult
   >('/kiosk/production-schedule/due-management/daily-plan', payload);
+  return data;
+}
+
+export async function getKioskProductionScheduleDueManagementGlobalRank() {
+  const { data } = await api.get<ProductionScheduleDueManagementGlobalRankResult>(
+    '/kiosk/production-schedule/due-management/global-rank'
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueManagementGlobalRank(payload: {
+  orderedFseibans: string[];
+}) {
+  const { data } = await api.put<
+    { success: boolean } & ProductionScheduleDueManagementGlobalRankResult
+  >('/kiosk/production-schedule/due-management/global-rank', payload);
   return data;
 }
 

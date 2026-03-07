@@ -111,9 +111,14 @@ export function ProductionScheduleDueManagementPage() {
     const base = isDailyPlanDirty
       ? orderedPlanFseibans
       : (dailyPlanQuery.data?.orderedFseibans ?? triageQuery.data?.selectedFseibans ?? []);
-    const filtered = base.filter((fseiban) => selectedSet.has(fseiban));
-    const missing = Array.from(selectedSet).filter((fseiban) => !filtered.includes(fseiban));
-    const next = [...filtered, ...missing];
+    const next: string[] = [];
+    const seen = new Set<string>();
+    base.forEach((fseiban) => {
+      const normalized = fseiban.trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      next.push(normalized);
+    });
     if (next.join('\u0000') !== orderedPlanFseibans.join('\u0000')) {
       setOrderedPlanFseibans(next);
     }
@@ -125,16 +130,28 @@ export function ProductionScheduleDueManagementPage() {
     triageQuery.data?.selectedFseibans
   ]);
 
+  const dailyPlanItemMetaBySeiban = useMemo(() => {
+    const map = new Map<string, { isInTodayTriage: boolean; isCarryover: boolean }>();
+    (dailyPlanQuery.data?.items ?? []).forEach((item) => {
+      map.set(item.fseiban, { isInTodayTriage: item.isInTodayTriage, isCarryover: item.isCarryover });
+    });
+    return map;
+  }, [dailyPlanQuery.data?.items]);
+
   const orderedPlanItems = useMemo(
     () =>
       orderedPlanFseibans
         .map((fseiban) => ({
           fseiban,
           summary: summaryBySeiban.get(fseiban) ?? null,
-          triage: triageBySeiban.get(fseiban) ?? null
+          triage: triageBySeiban.get(fseiban) ?? null,
+          meta: dailyPlanItemMetaBySeiban.get(fseiban) ?? {
+            isInTodayTriage: selectedSet.has(fseiban),
+            isCarryover: !selectedSet.has(fseiban)
+          }
         }))
-        .filter((item) => selectedSet.has(item.fseiban)),
-    [orderedPlanFseibans, selectedSet, summaryBySeiban, triageBySeiban]
+        .filter((item) => Boolean(item.summary || item.triage || item.meta.isCarryover)),
+    [dailyPlanItemMetaBySeiban, orderedPlanFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
 
   const saveDailyPlan = async () => {
@@ -436,6 +453,11 @@ export function ProductionScheduleDueManagementPage() {
                     <button type="button" className="text-left" onClick={() => setSelectedFseiban(item.fseiban)}>
                       <div className="text-xs font-semibold">
                         {index + 1}. <span className="font-mono">{item.fseiban}</span>
+                        {item.meta.isCarryover ? (
+                          <span className="ml-2 rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">
+                            引継ぎ
+                          </span>
+                        ) : null}
                       </div>
                       <div className="text-[10px] text-white/75">
                         {normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-'}

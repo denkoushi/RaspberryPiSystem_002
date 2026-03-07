@@ -836,6 +836,21 @@ model ProductionScheduleDailyPlanItem {
   @@index([planId, priorityOrder], map: "ProductionScheduleDailyPlanItem_idx_order")
 }
 
+model ProductionScheduleGlobalRank {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fseiban        String   @db.VarChar(20)
+  priorityOrder  Int
+  sourceType     String   @default("manual") @db.VarChar(20)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRank_unique_fseiban")
+  @@unique([csvDashboardId, location, priorityOrder], map: "ProductionScheduleGlobalRank_unique_order")
+  @@index([csvDashboardId, location, priorityOrder], map: "ProductionScheduleGlobalRank_idx_order")
+}
+
 model MeasuringInstrumentLoanEvent {
   id                   String   @id @default(uuid())
   managementNumber     String
