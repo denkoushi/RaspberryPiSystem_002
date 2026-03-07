@@ -368,6 +368,25 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/api lint` 成功
   - `pnpm --filter @raspi-system/web lint` 成功
 
+## B第4段階補正デプロイ・実機検証（2026-03-08）
+
+- **デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`（メモリ91.6%警告は既知）
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: triage / daily-plan / global-rank / global-rank/proposal / summary いずれも 200
+  - global-rank/proposal: `candidateCount: 0`（納期未設定製番のみの環境では空が想定どおり）
+  - サイネージAPI: `/api/signage/content` 200、`layoutConfig` 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 41件適用済み、スキーマ最新
+  - Pi4サービス: Pi5経由SSHで raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+
+### 知見（B第4段階補正デプロイ・実機検証時）
+
+- **proposal 空応答**: 納期設定済み製番が1件もない場合、`global-rank/proposal` は `orderedFseibans: []`、`candidateCount: 0` を返す。運用開始時や納期未登録時は正常挙動
+- **実機検証チェックリスト**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「3. 実機検証チェックリスト」を参照
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策

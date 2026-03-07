@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-08）
+
+- **✅ 納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
+
 ### 🆕 最新アップデート（2026-03-07）
 
 - **✅ 納期管理 B第4段階補正（納期設定済み限定候補 + 既存rank即時除外）実装完了**: `global-rank/proposal` の候補を `dueDate != null` に限定し、`auto-generate` 保存時は既存global-rankに残る納期未設定製番を即時除外（方針A）するよう補正。`keepExistingTail=true` でも納期未設定は保持しない。日数計算はJST日境界で評価。**検証**: API統合テスト（44件）、api lint、web lint を通過。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正納期設定済み限定候補--即時除外2026-03-07) を参照。
