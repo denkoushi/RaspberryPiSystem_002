@@ -164,6 +164,54 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/api build` / `pnpm --filter @raspi-system/web build` 成功
   - `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/web lint` 成功
 
+## B第2最小デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-171320-24942`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - Prismaマイグレーション: 40件適用済み、スキーマ最新
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: `/api/kiosk/production-schedule/due-management/triage` 200、`/api/kiosk/production-schedule/due-management/daily-plan` 200（`planDate`/`status`/`orderedFseibans` 返却確認）
+  - サイネージAPI: `/api/signage/content` 200
+  - backup.json: 存在・15K
+  - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+
+## B第2最小の操作説明
+
+納期管理画面の「今日の計画順」機能の操作手順（リーダー向け）。
+
+### 前提
+
+- 納期管理画面へ遷移済み（パスワード認証済み）
+- 「今日判断候補（トリアージ）」で製番を選択済み（選択済み製番が「今日の計画順」に表示される）
+
+### 操作手順
+
+1. **計画順の確認**: 左ペインの「今日の計画順（選択済み製番）」に、トリアージで選んだ製番が表示される
+2. **順位の変更**: 各製番カードの上下矢印（↑/↓）を押して、実行順を変更する
+3. **保存**: 順位を変更したら「保存」ボタンを押してAPIへ永続化する（未保存の変更があるとボタンが有効になる）
+4. **詳細確認**: 製番カードをクリックすると右ペインに製番詳細（部品・工程進捗など）が表示される
+
+### 補足
+
+- 計画順は拠点×日付単位で保存される（他拠点・他日付の計画には影響しない）
+- 初回（未保存時）はトリアージ選択済み製番がそのまま表示される
+- 日付が変わると新しい計画として扱われ、前日の計画順は引き継がれない
+
+### トラブルシュート（B第2最小）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| トリアージカードをクリックしても右ペインが更新されない | 選択維持ロジックの不具合（B2で修正済み） | 最新版へデプロイ済みか確認。未対応の場合は画面をリロード |
+| 保存ボタンが押せない | 変更がない、または保存済み | 上下矢印で順位を変更してから保存 |
+| 計画順が空 | トリアージで製番を未選択 | 「今日判断候補」で製番を選択してから計画順を編集 |
+
+### 知見（B第2実装時）
+
+- **daily-plan API フォールバック**: 未保存時は `ProductionScheduleTriageSelection` の選択済み製番をフォールバック返却。計画テーブルとトリアージテーブルは別管理で、日付キーは JST 基準
+- **統合テストのフォールバック順序**: GET の初回取得でトリアージ選択の順序が保証されないため、アサーションは `.sort()` で比較する設計が安全
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
@@ -173,5 +221,6 @@ category: knowledge-base
 - `apps/api/src/services/production-schedule/due-management-command.service.ts`
 - `apps/api/src/services/production-schedule/due-management-triage.service.ts`
 - `apps/api/src/services/production-schedule/due-management-selection.service.ts`
+- `apps/api/src/services/production-schedule/due-management-daily-plan.service.ts`
 - `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`
