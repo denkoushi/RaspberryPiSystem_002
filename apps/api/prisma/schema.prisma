@@ -744,6 +744,34 @@ model ProductionSchedulePartPriority {
   @@index([csvDashboardId, location, fseiban])
 }
 
+model ProductionSchedulePartProcessingType {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fhincd         String   @db.VarChar(50)
+  processingType String   @db.VarChar(20)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fhincd], map: "ProductionSchedulePartProcessingType_unique_part")
+  @@index([csvDashboardId, location], map: "ProductionSchedulePartProcessingType_idx_location")
+  @@index([csvDashboardId, location, processingType], map: "ProductionSchedulePartProcessingType_idx_processingType")
+}
+
+model ProductionScheduleProcessingTypeOption {
+  id         String   @id @default(uuid())
+  location   String
+  code       String   @db.VarChar(20)
+  label      String   @db.VarChar(40)
+  priority   Int
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([location, code], map: "ProductionScheduleProcessingTypeOption_unique_code")
+  @@index([location, enabled, priority], map: "ProductionScheduleProcessingTypeOption_idx_location")
+}
+
 model ProductionScheduleResourceCategoryConfig {
   id                         String   @id @default(uuid())
   csvDashboardId             String

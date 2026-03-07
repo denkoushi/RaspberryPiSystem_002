@@ -421,12 +421,27 @@ export interface ProductionScheduleResourceCategorySettings {
   cuttingExcludedResourceCds: string[];
 }
 
+export interface ProductionScheduleProcessingTypeOption {
+  code: string;
+  label: string;
+  priority: number;
+  enabled: boolean;
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
+  machineName: string | null;
   dueDate: string | null;
   partsCount: number;
   processCount: number;
   totalRequiredMinutes: number;
+}
+
+export interface ProductionScheduleDueManagementPartProcessItem {
+  rowId: string;
+  resourceCd: string;
+  processOrder: number | null;
+  isCompleted: boolean;
 }
 
 export interface ProductionScheduleDueManagementPartItem {
@@ -436,12 +451,16 @@ export interface ProductionScheduleDueManagementPartItem {
   totalRequiredMinutes: number;
   processingType: string | null;
   processingPriority: number;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  processes: ProductionScheduleDueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
 }
 
 export interface ProductionScheduleDueManagementSeibanDetail {
   fseiban: string;
+  machineName: string | null;
   dueDate: string | null;
   parts: ProductionScheduleDueManagementPartItem[];
 }
@@ -552,6 +571,13 @@ export async function getKioskProductionScheduleDueManagementSummary() {
   return data.summaries;
 }
 
+export async function getKioskProductionScheduleProcessingTypeOptions() {
+  const { data } = await api.get<{ options: ProductionScheduleProcessingTypeOption[] }>(
+    '/kiosk/production-schedule/processing-type-options'
+  );
+  return data.options;
+}
+
 export async function getKioskProductionScheduleDueManagementSeibanDetail(fseiban: string) {
   const { data } = await api.get<{ detail: ProductionScheduleDueManagementSeibanDetail }>(
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}`
@@ -581,6 +607,20 @@ export async function updateKioskProductionScheduleDueManagementPartPriorities(
   return data;
 }
 
+export async function updateKioskProductionScheduleDueManagementPartProcessingType(
+  fseiban: string,
+  fhincd: string,
+  payload: { processingType: string }
+) {
+  const { data } = await api.put<{ success: boolean; fhincd: string; processingType: string | null }>(
+    `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/parts/${encodeURIComponent(
+      fhincd
+    )}/processing`,
+    payload
+  );
+  return data;
+}
+
 export async function getProductionScheduleResourceCategorySettings(location: string) {
   const { data } = await api.get<{
     settings: ProductionScheduleResourceCategorySettings;
@@ -589,6 +629,32 @@ export async function getProductionScheduleResourceCategorySettings(location: st
     params: { location }
   });
   return data;
+}
+
+export async function getProductionScheduleProcessingTypeOptions(location: string) {
+  const { data } = await api.get<{
+    settings: {
+      location: string;
+      options: ProductionScheduleProcessingTypeOption[];
+    };
+    locations: string[];
+  }>('/production-schedule-settings/processing-type-options', {
+    params: { location }
+  });
+  return data;
+}
+
+export async function updateProductionScheduleProcessingTypeOptions(payload: {
+  location: string;
+  options: ProductionScheduleProcessingTypeOption[];
+}) {
+  const { data } = await api.put<{
+    settings: {
+      location: string;
+      options: ProductionScheduleProcessingTypeOption[];
+    };
+  }>('/production-schedule-settings/processing-type-options', payload);
+  return data.settings;
 }
 
 export async function updateProductionScheduleResourceCategorySettings(payload: {

@@ -8,6 +8,7 @@ import {
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
   useKioskProductionScheduleHistoryProgress,
+  useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleNote,
@@ -42,7 +43,6 @@ type ScheduleRowData = {
 };
 
 const NOTE_MAX_LENGTH = 100;
-const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
 
 type NormalizedScheduleRow = {
   id: string;
@@ -271,6 +271,7 @@ export function ProductionSchedulePage() {
 
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
+  const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions({ pauseRefetch });
   const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
   const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
@@ -969,9 +970,9 @@ export function ProductionSchedulePage() {
                             className="h-7 w-24 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                           >
                             <option value="">-</option>
-                            {PROCESSING_TYPES.map((value) => (
-                              <option key={value} value={value}>
-                                {value}
+                            {(processingTypeOptionsQuery.data ?? []).filter((option) => option.enabled).map((option) => (
+                              <option key={option.code} value={option.code}>
+                                {option.label}
                               </option>
                             ))}
                           </select>
@@ -1079,9 +1080,9 @@ export function ProductionSchedulePage() {
                                   className="h-7 w-24 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                                 >
                                   <option value="">-</option>
-                                  {PROCESSING_TYPES.map((value) => (
-                                    <option key={value} value={value}>
-                                      {value}
+                                  {(processingTypeOptionsQuery.data ?? []).filter((option) => option.enabled).map((option) => (
+                                    <option key={option.code} value={option.code}>
+                                      {option.label}
                                     </option>
                                   ))}
                                 </select>

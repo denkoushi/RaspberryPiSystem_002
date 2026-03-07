@@ -3,9 +3,64 @@ import { performance } from 'node:perf_hooks';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
-const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
+const isValidProcessingType = async (locationKey: string, processingType: string): Promise<boolean> => {
+  const settings = await getProductionScheduleProcessingTypeOptions(locationKey);
+  const enabledCodes = new Set(
+    settings.options.filter((option) => option.enabled).map((option) => option.code)
+  );
+  return enabledCodes.has(processingType);
+};
+
+export async function upsertProductionSchedulePartProcessingTypeByFhincd(params: {
+  fhincd: string;
+  processingType: string;
+  locationKey: string;
+}): Promise<{ success: true; processingType: string | null }> {
+  const { locationKey } = params;
+  const fhincd = params.fhincd.trim();
+  const incomingType = params.processingType.trim();
+  if (fhincd.length === 0) {
+    throw new ApiError(400, '部品コードは必須です');
+  }
+  if (incomingType.length > 0 && !(await isValidProcessingType(locationKey, incomingType))) {
+    throw new ApiError(400, '無効な処理種別です');
+  }
+
+  if (incomingType.length === 0) {
+    await prisma.productionSchedulePartProcessingType.deleteMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        fhincd
+      }
+    });
+    return { success: true, processingType: null };
+  }
+
+  await prisma.productionSchedulePartProcessingType.upsert({
+    where: {
+      csvDashboardId_location_fhincd: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        fhincd
+      }
+    },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: locationKey,
+      fhincd,
+      processingType: incomingType
+    },
+    update: {
+      processingType: incomingType
+    }
+  });
+
+  return { success: true, processingType: incomingType };
+}
 
 export async function completeProductionScheduleRow(params: {
   rowId: string;
@@ -147,7 +202,7 @@ export async function upsertProductionScheduleNote(params: {
   const { rowId, note, locationKey } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: { id: true }
+    select: { id: true, rowData: true }
   });
   if (!row) {
     throw new ApiError(404, '対象の行が見つかりません');
@@ -210,7 +265,7 @@ export async function upsertProductionScheduleDueDate(params: {
   const { rowId, dueDateText, locationKey } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: { id: true }
+    select: { id: true, rowData: true }
   });
   if (!row) {
     throw new ApiError(404, '対象の行が見つかりません');
@@ -283,15 +338,26 @@ export async function upsertProductionScheduleProcessingType(params: {
   const { rowId, processingType, locationKey } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: { id: true }
+    select: { id: true, rowData: true }
   });
   if (!row) {
     throw new ApiError(404, '対象の行が見つかりません');
   }
 
   const incomingType = processingType ?? '';
-  if (incomingType.length > 0 && !PROCESSING_TYPES.includes(incomingType as (typeof PROCESSING_TYPES)[number])) {
+  if (incomingType.length > 0 && !(await isValidProcessingType(locationKey, incomingType))) {
     throw new ApiError(400, '無効な処理種別です');
+  }
+
+  const rowData = row.rowData as Record<string, unknown>;
+  const fhincd = String(rowData.FHINCD ?? '').trim();
+
+  if (fhincd.length > 0) {
+    await upsertProductionSchedulePartProcessingTypeByFhincd({
+      fhincd,
+      processingType: incomingType,
+      locationKey
+    });
   }
 
   const existing = await prisma.productionScheduleRowNote.findUnique({

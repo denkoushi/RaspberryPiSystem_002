@@ -103,6 +103,11 @@ export const productionScheduleDueManagementPartPrioritiesBodySchema = z.object(
   orderedFhincds: z.array(z.string().min(1).max(50)).max(2000)
 });
 
+export const productionScheduleDueManagementPartParamsSchema = z.object({
+  fseiban: z.string().min(1).max(20).transform((value) => value.trim()),
+  fhincd: z.string().min(1).max(50).transform((value) => value.trim())
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

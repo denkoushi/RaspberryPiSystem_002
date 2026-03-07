@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   useClients,
+  useProductionScheduleProcessingTypeOptions,
   useProductionScheduleResourceCategorySettings,
+  useUpdateProductionScheduleProcessingTypeOptions,
   useUpdateProductionScheduleResourceCategorySettings
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -25,8 +27,11 @@ export function ProductionScheduleSettingsPage() {
   const clientsQuery = useClients();
   const [location, setLocation] = useState<string>(DEFAULT_LOCATION);
   const settingsQuery = useProductionScheduleResourceCategorySettings(location);
+  const processingTypeOptionsQuery = useProductionScheduleProcessingTypeOptions(location);
   const updateSettingsMutation = useUpdateProductionScheduleResourceCategorySettings();
+  const updateProcessingTypeOptionsMutation = useUpdateProductionScheduleProcessingTypeOptions();
   const [cuttingExcludedInput, setCuttingExcludedInput] = useState('10, MSZ');
+  const [processingTypeRows, setProcessingTypeRows] = useState<Array<{ code: string; label: string; priority: number; enabled: boolean }>>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const locationOptions = useMemo(() => {
@@ -48,6 +53,10 @@ export function ProductionScheduleSettingsPage() {
     setCuttingExcludedInput(settings.cuttingExcludedResourceCds.join(', '));
   }, [settingsQuery.data?.settings]);
 
+  useEffect(() => {
+    setProcessingTypeRows(processingTypeOptionsQuery.data?.settings.options ?? []);
+  }, [processingTypeOptionsQuery.data?.settings.options]);
+
   const parsedResourceCds = useMemo(() => parseResourceCds(cuttingExcludedInput), [cuttingExcludedInput]);
 
   const handleSave = async () => {
@@ -57,6 +66,15 @@ export function ProductionScheduleSettingsPage() {
       cuttingExcludedResourceCds: parsedResourceCds
     });
     setMessage('設定を保存しました');
+  };
+
+  const handleSaveProcessingOptions = async () => {
+    setMessage(null);
+    await updateProcessingTypeOptionsMutation.mutateAsync({
+      location,
+      options: processingTypeRows
+    });
+    setMessage('処理候補を保存しました');
   };
 
   return (
@@ -123,6 +141,91 @@ export function ProductionScheduleSettingsPage() {
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={updateSettingsMutation.isPending || settingsQuery.isLoading}>
               {updateSettingsMutation.isPending ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <Card title="表面処理候補設定">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-slate-700">
+            キオスクの処理ドロップダウン候補をロケーション単位で編集できます。無効にした候補は一覧に表示されません。
+          </p>
+          <div className="space-y-2">
+            {processingTypeRows.map((row, index) => (
+              <div key={`${row.code}-${index}`} className="grid grid-cols-12 gap-2">
+                <input
+                  value={row.code}
+                  onChange={(event) =>
+                    setProcessingTypeRows((prev) =>
+                      prev.map((item, idx) => (idx === index ? { ...item, code: event.target.value } : item))
+                    )
+                  }
+                  className="col-span-3 rounded-md border border-slate-300 p-2 text-xs"
+                  placeholder="コード"
+                />
+                <input
+                  value={row.label}
+                  onChange={(event) =>
+                    setProcessingTypeRows((prev) =>
+                      prev.map((item, idx) => (idx === index ? { ...item, label: event.target.value } : item))
+                    )
+                  }
+                  className="col-span-4 rounded-md border border-slate-300 p-2 text-xs"
+                  placeholder="表示名"
+                />
+                <input
+                  type="number"
+                  value={row.priority}
+                  min={1}
+                  max={999}
+                  onChange={(event) =>
+                    setProcessingTypeRows((prev) =>
+                      prev.map((item, idx) =>
+                        idx === index ? { ...item, priority: Number(event.target.value || 999) } : item
+                      )
+                    )
+                  }
+                  className="col-span-2 rounded-md border border-slate-300 p-2 text-xs"
+                />
+                <label className="col-span-2 flex items-center gap-1 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={row.enabled}
+                    onChange={(event) =>
+                      setProcessingTypeRows((prev) =>
+                        prev.map((item, idx) => (idx === index ? { ...item, enabled: event.target.checked } : item))
+                      )
+                    }
+                  />
+                  有効
+                </label>
+                <button
+                  type="button"
+                  className="col-span-1 rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white"
+                  onClick={() => setProcessingTypeRows((prev) => prev.filter((_, idx) => idx !== index))}
+                >
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() =>
+                setProcessingTypeRows((prev) => [
+                  ...prev,
+                  { code: `新規${prev.length + 1}`, label: `新規${prev.length + 1}`, priority: prev.length + 1, enabled: true }
+                ])
+              }
+              variant="secondary"
+            >
+              候補を追加
+            </Button>
+            <Button
+              onClick={handleSaveProcessingOptions}
+              disabled={updateProcessingTypeOptionsMutation.isPending || processingTypeOptionsQuery.isLoading}
+            >
+              {updateProcessingTypeOptionsMutation.isPending ? '保存中...' : '候補を保存'}
             </Button>
           </div>
         </div>

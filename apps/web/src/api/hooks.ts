@@ -77,10 +77,12 @@ import {
   getKioskProductionScheduleResources,
   getKioskProductionScheduleDueManagementSummary,
   getKioskProductionScheduleDueManagementSeibanDetail,
+  getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
   getProductionScheduleResourceCategorySettings,
+  getProductionScheduleProcessingTypeOptions,
   getKioskCallTargets,
   getSystemInfo,
   getTransactions,
@@ -91,6 +93,7 @@ import {
   setKioskProductionScheduleSearchState,
   setKioskProductionScheduleSearchHistory,
   updateProductionScheduleResourceCategorySettings,
+  updateProductionScheduleProcessingTypeOptions,
   updateClient,
   updateEmployee,
   updateItem,
@@ -100,6 +103,7 @@ import {
   updateKioskProductionScheduleProcessing,
   updateKioskProductionScheduleDueManagementSeibanDueDate,
   updateKioskProductionScheduleDueManagementPartPriorities,
+  updateKioskProductionScheduleDueManagementPartProcessingType,
   getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
@@ -258,6 +262,14 @@ export function useKioskProductionScheduleResources(options?: { pauseRefetch?: b
   });
 }
 
+export function useKioskProductionScheduleProcessingTypeOptions(options?: { pauseRefetch?: boolean }) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-processing-type-options'],
+    queryFn: getKioskProductionScheduleProcessingTypeOptions,
+    refetchInterval: options?.pauseRefetch ? false : 60000
+  });
+}
+
 export function useKioskProductionScheduleOrderUsage(resourceCds?: string, options?: { pauseRefetch?: boolean }) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-order-usage', resourceCds],
@@ -335,10 +347,39 @@ export function useUpdateKioskProductionScheduleDueManagementPartPriorities() {
   });
 }
 
+export function useUpdateKioskProductionScheduleDueManagementPartProcessingType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fseiban,
+      fhincd,
+      processingType
+    }: {
+      fseiban: string;
+      fhincd: string;
+      processingType: string;
+    }) => updateKioskProductionScheduleDueManagementPartProcessingType(fseiban, fhincd, { processingType }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
 export function useProductionScheduleResourceCategorySettings(location: string) {
   return useQuery({
     queryKey: ['production-schedule-resource-category-settings', location],
     queryFn: () => getProductionScheduleResourceCategorySettings(location),
+    enabled: location.trim().length > 0
+  });
+}
+
+export function useProductionScheduleProcessingTypeOptions(location: string) {
+  return useQuery({
+    queryKey: ['production-schedule-processing-type-options', location],
+    queryFn: () => getProductionScheduleProcessingTypeOptions(location),
     enabled: location.trim().length > 0
   });
 }
@@ -350,6 +391,18 @@ export function useUpdateProductionScheduleResourceCategorySettings() {
       updateProductionScheduleResourceCategorySettings(payload),
     onSuccess: (settings) => {
       queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-category-settings', settings.location] });
+    }
+  });
+}
+
+export function useUpdateProductionScheduleProcessingTypeOptions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { location: string; options: Array<{ code: string; label: string; priority: number; enabled: boolean }> }) =>
+      updateProductionScheduleProcessingTypeOptions(payload),
+    onSuccess: (settings) => {
+      void queryClient.invalidateQueries({ queryKey: ['production-schedule-processing-type-options', settings.location] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-processing-type-options'] });
     }
   });
 }

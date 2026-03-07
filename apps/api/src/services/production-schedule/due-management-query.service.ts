@@ -8,6 +8,7 @@ type SeibanSummaryRaw = {
   partsCount: bigint;
   processCount: bigint;
   totalRequiredMinutes: number | null;
+  machineName: string | null;
 };
 
 type SeibanRowRaw = {
@@ -19,14 +20,23 @@ type SeibanRowRaw = {
   fkojun: string;
   requiredMinutes: string;
   processingType: string | null;
+  isCompleted: boolean;
 };
 
 export type DueManagementSummaryItem = {
   fseiban: string;
+  machineName: string | null;
   dueDate: Date | null;
   partsCount: number;
   processCount: number;
   totalRequiredMinutes: number;
+};
+
+export type DueManagementPartProcessItem = {
+  rowId: string;
+  resourceCd: string;
+  processOrder: number | null;
+  isCompleted: boolean;
 };
 
 export type DueManagementPartItem = {
@@ -36,12 +46,16 @@ export type DueManagementPartItem = {
   totalRequiredMinutes: number;
   processingType: string | null;
   processingPriority: number;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  processes: DueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
 };
 
 export type DueManagementSeibanDetail = {
   fseiban: string;
+  machineName: string | null;
   dueDate: Date | null;
   parts: DueManagementPartItem[];
 };
@@ -65,7 +79,15 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::numeric
           ELSE 0
         END
-      )::double precision AS "totalRequiredMinutes"
+      )::double precision AS "totalRequiredMinutes",
+      MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
+        WHERE (
+            UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+            OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+          )
+          AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
+          AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
+      ) AS "machineName"
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
@@ -88,6 +110,7 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   return summaryRows.map((row) => ({
     fseiban: row.fseiban,
+    machineName: row.machineName,
     dueDate: dueDateMap.get(row.fseiban) ?? null,
     partsCount: Number(row.partsCount),
     processCount: Number(row.processCount),
@@ -109,12 +132,20 @@ export async function getDueManagementSeibanDetail(params: {
       ("CsvDashboardRow"."rowData"->>'FSIGENCD') AS "fsigencd",
       ("CsvDashboardRow"."rowData"->>'FKOJUN') AS "fkojun",
       ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') AS "requiredMinutes",
-      "n"."processingType" AS "processingType"
+      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
+      COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
     FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleProgress" AS "p"
+      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "pp"."location" = ${locationKey}
+      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
@@ -161,6 +192,9 @@ export async function getDueManagementSeibanDetail(params: {
       totalRequiredMinutes: number;
       processingType: string | null;
       processingPriority: number;
+        completedProcessCount: number;
+        totalProcessCount: number;
+        processes: DueManagementPartProcessItem[];
     }
   >();
   for (const row of rows) {
@@ -176,13 +210,33 @@ export async function getDueManagementSeibanDetail(params: {
         processCount: 1,
         totalRequiredMinutes: parseRequiredMinutes(row.requiredMinutes ?? ''),
         processingType: row.processingType,
-        processingPriority
+        processingPriority,
+        completedProcessCount: row.isCompleted ? 1 : 0,
+        totalProcessCount: 1,
+        processes: [
+          {
+            rowId: row.id,
+            resourceCd: row.fsigencd?.trim() ?? '',
+            processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
+            isCompleted: row.isCompleted
+          }
+        ]
       });
       continue;
     }
 
     current.processCount += 1;
     current.totalRequiredMinutes += parseRequiredMinutes(row.requiredMinutes ?? '');
+    current.totalProcessCount += 1;
+    if (row.isCompleted) {
+      current.completedProcessCount += 1;
+    }
+    current.processes.push({
+      rowId: row.id,
+      resourceCd: row.fsigencd?.trim() ?? '',
+      processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
+      isCompleted: row.isCompleted
+    });
     if (processingPriority < current.processingPriority) {
       current.processingPriority = processingPriority;
       current.processingType = row.processingType;
@@ -204,12 +258,26 @@ export async function getDueManagementSeibanDetail(params: {
     })
     .map((part, index) => ({
       ...part,
+      processes: [...part.processes].sort((a, b) => {
+        if (a.processOrder !== null && b.processOrder !== null) {
+          return a.processOrder - b.processOrder;
+        }
+        if (a.processOrder !== null) return -1;
+        if (b.processOrder !== null) return 1;
+        return a.resourceCd.localeCompare(b.resourceCd);
+      }),
       currentPriorityRank: currentPriorityMap.get(part.fhincd) ?? null,
       suggestedPriorityRank: index + 1
     }));
 
+  const machineName = rows.find((row) => {
+    const normalized = row.fhincd?.trim().toUpperCase() ?? '';
+    return (normalized.startsWith('MH') || normalized.startsWith('SH')) && row.fhinmei?.trim().length > 0;
+  })?.fhinmei?.trim() ?? null;
+
   return {
     fseiban,
+    machineName,
     dueDate: dueDate?.dueDate ?? null,
     parts
   };

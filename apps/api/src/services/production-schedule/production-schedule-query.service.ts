@@ -270,7 +270,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         LIMIT 1
       ) AS "processingOrder",
       NULLIF(TRIM("n"."note"), '') AS "note",
-      "n"."processingType" AS "processingType",
+      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
@@ -280,6 +280,10 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "pp"."location" = ${locationKey}
+      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE ${baseWhere} ${queryWhere}
     ORDER BY
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,

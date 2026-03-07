@@ -69,6 +69,15 @@ category: knowledge-base
   - deploy-status: `GET /api/system/deploy-status` に `x-client-key` 付与で `isMaintenance: false`
   - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
 
+## 追加実装（2026-03-07）
+
+- 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
+- 機種名表示: 納期管理サマリと部品優先順位ヘッダに `machineName` を追加
+- 工程進捗表示（案A）: 部品行ごとに `processes[]` を表示し、完了工程をグレーアウト
+- FHINCD単位表面処理: `ProductionSchedulePartProcessingType` を追加し、生産スケジュール画面/納期管理画面の更新を同一マスタへ集約
+- 候補値の編集可能化: `ProductionScheduleProcessingTypeOption` を追加し、管理コンソールの設定画面で候補（code/label/priority/enabled）を編集可能化
+- 検証: API統合テスト `kiosk-production-schedule.integration.test.ts` と `apps/api`,`apps/web` lint を通過
+
 ## References
 
 - `apps/api/prisma/schema.prisma`

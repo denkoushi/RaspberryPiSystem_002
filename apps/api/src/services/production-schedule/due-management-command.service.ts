@@ -2,6 +2,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { isValidDueDateText, writebackSeibanDueDateToRowNotes } from './due-date-writeback.service.js';
+import { upsertProductionSchedulePartProcessingTypeByFhincd } from './production-schedule-command.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 const normalizeOrderedFhincds = (orderedFhincds: string[]): string[] => {
@@ -150,5 +151,48 @@ export async function upsertProductionSchedulePartPriorities(params: {
       fhincd,
       priorityRank: index + 1
     }))
+  };
+}
+
+export async function upsertProductionScheduleDueManagementPartProcessingType(params: {
+  locationKey: string;
+  fseiban: string;
+  fhincd: string;
+  processingType: string;
+}): Promise<{ success: true; fhincd: string; processingType: string | null }> {
+  const { locationKey } = params;
+  const fseiban = params.fseiban.trim();
+  const fhincd = params.fhincd.trim();
+  if (fseiban.length === 0) {
+    throw new ApiError(400, '製番は必須です');
+  }
+  if (fhincd.length === 0) {
+    throw new ApiError(400, '部品コードは必須です');
+  }
+
+  const existing = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS(
+      SELECT 1
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+        AND ("rowData"->>'FSEIBAN') = ${fseiban}
+        AND ("rowData"->>'FHINCD') = ${fhincd}
+    ) AS "exists"
+  `;
+  if (!existing[0]?.exists) {
+    throw new ApiError(404, '指定された製番内に対象部品が見つかりません');
+  }
+
+  const result = await upsertProductionSchedulePartProcessingTypeByFhincd({
+    locationKey,
+    fhincd,
+    processingType: params.processingType
+  });
+
+  return {
+    success: true,
+    fhincd,
+    processingType: result.processingType
   };
 }

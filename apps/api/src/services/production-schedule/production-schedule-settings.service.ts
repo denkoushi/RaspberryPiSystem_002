@@ -5,6 +5,13 @@ import {
 } from './policies/resource-category-policy.service.js';
 
 const normalizeLocation = (location: string): string => location.trim();
+const DEFAULT_PROCESSING_TYPE_OPTIONS = [
+  { code: '塗装', label: '塗装', priority: 1, enabled: true },
+  { code: 'カニゼン', label: 'カニゼン', priority: 2, enabled: true },
+  { code: 'LSLH', label: 'LSLH', priority: 3, enabled: true },
+  { code: 'その他01', label: 'その他01', priority: 4, enabled: true },
+  { code: 'その他02', label: 'その他02', priority: 5, enabled: true }
+] as const;
 
 const normalizeResourceCdList = (values: string[]): string[] => {
   const unique = new Set<string>();
@@ -99,4 +106,87 @@ export async function listProductionScheduleResourceCategorySettingsLocations():
   }
 
   return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+type ProcessingTypeOption = {
+  code: string;
+  label: string;
+  priority: number;
+  enabled: boolean;
+};
+
+const normalizeProcessingTypeOptions = (options: ProcessingTypeOption[]): ProcessingTypeOption[] => {
+  const unique = new Set<string>();
+  const next: ProcessingTypeOption[] = [];
+  for (const option of options) {
+    const code = option.code.trim();
+    if (code.length === 0 || unique.has(code)) continue;
+    unique.add(code);
+    next.push({
+      code,
+      label: option.label.trim() || code,
+      priority: Number.isFinite(option.priority) ? option.priority : 999,
+      enabled: option.enabled
+    });
+  }
+  return next.sort((a, b) => a.priority - b.priority || a.code.localeCompare(b.code));
+};
+
+export async function getProductionScheduleProcessingTypeOptions(location: string): Promise<{
+  location: string;
+  options: ProcessingTypeOption[];
+}> {
+  const normalizedLocation = normalizeLocation(location);
+  const options = await prisma.productionScheduleProcessingTypeOption.findMany({
+    where: { location: normalizedLocation },
+    orderBy: [{ priority: 'asc' }, { code: 'asc' }],
+    select: { code: true, label: true, priority: true, enabled: true }
+  });
+  const normalizedOptions = normalizeProcessingTypeOptions(
+    (options.length > 0 ? options : [...DEFAULT_PROCESSING_TYPE_OPTIONS]).map((option) => ({
+      code: option.code,
+      label: option.label,
+      priority: option.priority,
+      enabled: option.enabled
+    }))
+  );
+  return {
+    location: normalizedLocation,
+    options: normalizedOptions
+  };
+}
+
+export async function upsertProductionScheduleProcessingTypeOptions(params: {
+  location: string;
+  options: ProcessingTypeOption[];
+}): Promise<{ location: string; options: ProcessingTypeOption[] }> {
+  const location = normalizeLocation(params.location);
+  const options = normalizeProcessingTypeOptions(params.options);
+
+  await prisma.$transaction(async (tx) => {
+    for (const option of options) {
+      await tx.productionScheduleProcessingTypeOption.upsert({
+        where: {
+          location_code: {
+            location,
+            code: option.code
+          }
+        },
+        create: {
+          location,
+          code: option.code,
+          label: option.label,
+          priority: option.priority,
+          enabled: option.enabled
+        },
+        update: {
+          label: option.label,
+          priority: option.priority,
+          enabled: option.enabled
+        }
+      });
+    }
+  });
+
+  return getProductionScheduleProcessingTypeOptions(location);
 }
