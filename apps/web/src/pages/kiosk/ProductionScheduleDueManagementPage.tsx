@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
+  useKioskProductionScheduleDueManagementTriage,
   useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleDueManagementPartNote,
   useUpdateKioskProductionScheduleDueManagementPartProcessingType,
   useUpdateKioskProductionScheduleDueManagementPartPriorities,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
+  useUpdateKioskProductionScheduleDueManagementTriageSelection,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
@@ -37,13 +39,16 @@ const normalizeHistoryList = (items: string[]) => {
 
 export function ProductionScheduleDueManagementPage() {
   const summaryQuery = useKioskProductionScheduleDueManagementSummary();
+  const triageQuery = useKioskProductionScheduleDueManagementTriage();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
+  const updateTriageSelectionMutation = useUpdateKioskProductionScheduleDueManagementTriageSelection();
 
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const searchStateEtagRef = useRef<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
 
@@ -76,6 +81,31 @@ export function ProductionScheduleDueManagementPage() {
     () => sharedHistory.map((fseiban) => summaryBySeiban.get(fseiban)).filter((item): item is SummaryItem => Boolean(item)),
     [sharedHistory, summaryBySeiban]
   );
+  const triageCandidates = useMemo(() => {
+    const triage = triageQuery.data;
+    if (!triage) return [];
+    return [...triage.zones.danger, ...triage.zones.caution, ...triage.zones.safe];
+  }, [triageQuery.data]);
+  const selectedSet = useMemo(
+    () => new Set(triageQuery.data?.selectedFseibans ?? []),
+    [triageQuery.data?.selectedFseibans]
+  );
+  const filteredTriageCandidates = useMemo(
+    () => (showSelectedOnly ? triageCandidates.filter((item) => selectedSet.has(item.fseiban)) : triageCandidates),
+    [showSelectedOnly, triageCandidates, selectedSet]
+  );
+
+  const toggleTriageSelection = async (fseiban: string) => {
+    const next = new Set(triageQuery.data?.selectedFseibans ?? []);
+    if (next.has(fseiban)) {
+      next.delete(fseiban);
+    } else {
+      next.add(fseiban);
+    }
+    await updateTriageSelectionMutation.mutateAsync({
+      selectedFseibans: Array.from(next)
+    });
+  };
 
   useEffect(() => {
     if (selectedFseiban && visibleSummaries.some((item) => item.fseiban === selectedFseiban)) {
@@ -259,6 +289,70 @@ export function ProductionScheduleDueManagementPage() {
           <h2 className="text-sm font-semibold text-white">製番一覧（納期管理）</h2>
         </header>
         <div className="h-[calc(100%-52px)] overflow-auto px-3 py-3">
+          <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-white">今日判断候補（トリアージ）</h3>
+              <button
+                type="button"
+                className="rounded bg-slate-700 px-2 py-1 text-[11px] text-white hover:bg-slate-600"
+                onClick={() => setShowSelectedOnly((prev) => !prev)}
+              >
+                {showSelectedOnly ? '全件表示' : '選択済みのみ'}
+              </button>
+            </div>
+            {triageQuery.isLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
+            {triageQuery.isError ? <p className="text-[11px] text-rose-300">候補取得に失敗しました</p> : null}
+            {!triageQuery.isLoading && filteredTriageCandidates.length === 0 ? (
+              <p className="text-[11px] text-white/60">候補はありません（検索登録製番を追加してください）</p>
+            ) : null}
+            <div className="space-y-2">
+              {filteredTriageCandidates.map((item) => {
+                const zoneStyle =
+                  item.zone === 'danger'
+                    ? 'border-rose-300/60 bg-rose-500/20 text-rose-100'
+                    : item.zone === 'caution'
+                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-100'
+                      : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-100';
+                const zoneLabel = item.zone === 'danger' ? '危険' : item.zone === 'caution' ? '注意' : '余裕';
+                return (
+                  <div key={item.fseiban} className={`rounded border p-2 ${zoneStyle}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="text-left"
+                        onClick={() => setSelectedFseiban(item.fseiban)}
+                      >
+                        <div className="text-xs font-semibold">
+                          {zoneLabel} / <span className="font-mono">{item.fseiban}</span>
+                        </div>
+                        <div className="text-[10px] opacity-90">納期: {formatDueDate(item.dueDate)}</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void toggleTriageSelection(item.fseiban)}
+                        className={`rounded px-2 py-1 text-[10px] font-semibold ${
+                          selectedSet.has(item.fseiban)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                        disabled={updateTriageSelectionMutation.isPending}
+                      >
+                        {selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
+                      </button>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {item.reasons.map((reason) => (
+                        <span key={`${item.fseiban}-${reason.code}`} className="rounded bg-black/20 px-2 py-0.5 text-[10px]">
+                          {reason.message}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mb-3 flex gap-2">
             <input
               value={searchInput}

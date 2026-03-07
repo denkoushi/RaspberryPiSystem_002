@@ -76,6 +76,7 @@ import {
   getKioskProductionScheduleOrderUsage,
   getKioskProductionScheduleResources,
   getKioskProductionScheduleDueManagementSummary,
+  getKioskProductionScheduleDueManagementTriage,
   getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
@@ -107,6 +108,7 @@ import {
   updateKioskProductionScheduleDueManagementPartPriorities,
   updateKioskProductionScheduleDueManagementPartProcessingType,
   updateKioskProductionScheduleDueManagementPartNote,
+  updateKioskProductionScheduleDueManagementTriageSelection,
   verifyKioskDueManagementAccessPassword,
   getDeployStatus,
   type CancelPayload,
@@ -314,6 +316,14 @@ export function useKioskProductionScheduleDueManagementSummary() {
   });
 }
 
+export function useKioskProductionScheduleDueManagementTriage() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-triage'],
+    queryFn: getKioskProductionScheduleDueManagementTriage,
+    refetchInterval: 30000
+  });
+}
+
 export function useKioskProductionScheduleDueManagementSeibanDetail(fseiban: string | null) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban],
@@ -382,6 +392,19 @@ export function useUpdateKioskProductionScheduleDueManagementPartNote() {
         queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementTriageSelection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ selectedFseibans }: { selectedFseibans: string[] }) =>
+      updateKioskProductionScheduleDueManagementTriageSelection({ selectedFseibans }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-triage']
+      });
     }
   });
 }

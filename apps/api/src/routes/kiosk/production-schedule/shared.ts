@@ -108,6 +108,10 @@ export const productionScheduleDueManagementPartParamsSchema = z.object({
   fhincd: z.string().min(1).max(50).transform((value) => value.trim())
 });
 
+export const productionScheduleDueManagementTriageSelectionBodySchema = z.object({
+  selectedFseibans: z.array(z.string().min(1).max(20).transform((value) => value.trim())).max(2000)
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

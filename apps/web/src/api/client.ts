@@ -443,6 +443,36 @@ export interface ProductionScheduleDueManagementSummaryItem {
   totalRequiredMinutes: number;
 }
 
+export interface ProductionScheduleDueManagementTriageReason {
+  code:
+    | 'DUE_DATE_MISSING'
+    | 'DUE_DATE_OVERDUE'
+    | 'DUE_DATE_TODAY'
+    | 'DUE_DATE_TOMORROW'
+    | 'DUE_DATE_SOON'
+    | 'LARGE_PART_COUNT'
+    | 'LARGE_PROCESS_COUNT'
+    | 'SURFACE_PRIORITY';
+  message: string;
+}
+
+export interface ProductionScheduleDueManagementTriageItem extends ProductionScheduleDueManagementSummaryItem {
+  zone: 'danger' | 'caution' | 'safe';
+  daysUntilDue: number | null;
+  reasons: ProductionScheduleDueManagementTriageReason[];
+  isSelected: boolean;
+  topProcessingType: string | null;
+}
+
+export interface ProductionScheduleDueManagementTriageResult {
+  zones: {
+    danger: ProductionScheduleDueManagementTriageItem[];
+    caution: ProductionScheduleDueManagementTriageItem[];
+    safe: ProductionScheduleDueManagementTriageItem[];
+  };
+  selectedFseibans: string[];
+}
+
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
@@ -579,6 +609,13 @@ export async function getKioskProductionScheduleDueManagementSummary() {
   return data.summaries;
 }
 
+export async function getKioskProductionScheduleDueManagementTriage() {
+  const { data } = await api.get<ProductionScheduleDueManagementTriageResult>(
+    '/kiosk/production-schedule/due-management/triage'
+  );
+  return data;
+}
+
 export async function getKioskProductionScheduleProcessingTypeOptions() {
   const { data } = await api.get<{ options: ProductionScheduleProcessingTypeOption[] }>(
     '/kiosk/production-schedule/processing-type-options'
@@ -638,6 +675,16 @@ export async function updateKioskProductionScheduleDueManagementPartNote(
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/parts/${encodeURIComponent(
       fhincd
     )}/note`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueManagementTriageSelection(payload: {
+  selectedFseibans: string[];
+}) {
+  const { data } = await api.put<{ success: boolean; selectedFseibans: string[] }>(
+    '/kiosk/production-schedule/due-management/triage/selection',
     payload
   );
   return data;

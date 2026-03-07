@@ -794,6 +794,19 @@ model ProductionScheduleAccessPasswordConfig {
   @@unique([location], map: "ProductionScheduleAccessPasswordConfig_unique_location")
 }
 
+model ProductionScheduleTriageSelection {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fseiban        String   @db.VarChar(20)
+  selectedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fseiban], map: "ProductionScheduleTriageSelection_unique_item")
+  @@index([csvDashboardId, location, selectedAt], map: "ProductionScheduleTriageSelection_idx_location")
+}
+
 model MeasuringInstrumentLoanEvent {
   id                  String   @id @default(uuid())
   managementNumber    String

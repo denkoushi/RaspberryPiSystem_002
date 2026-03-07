@@ -117,6 +117,28 @@ category: knowledge-base
   - サイネージAPI: `/api/signage/content` layoutConfig 正常
   - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
 
+## B第1段階（納期管理トリアージ、2026-03-07）
+
+- 目的: リーダーが全件を俯瞰せず「今日判断すべき製番」を選べるようにする
+- DB:
+  - `ProductionScheduleTriageSelection`（拠点共有、`csvDashboardId + location + fseiban` 一意）
+- API:
+  - `GET /api/kiosk/production-schedule/due-management/triage`
+    - 返却: `zones.danger/caution/safe`, `reasons[]`, `isSelected`, `selectedFseibans`
+  - `PUT /api/kiosk/production-schedule/due-management/triage/selection`
+    - 返却: `selectedFseibans`
+- 判定ロジック（第1段階）:
+  - 納期基準（`daysUntilDue`）で `danger/caution/safe` を分類
+  - 高件数（部品/工程）で1段階エスカレーション
+  - 理由には納期由来コード（`DUE_DATE_*`）を優先して付与
+  - 表面処理優先ルール（`LSLH > カニゼン > 塗装`）は `SURFACE_PRIORITY` として理由表示
+- UI:
+  - 納期管理左ペインに「今日判断候補（トリアージ）」を追加
+  - 候補カードの選択/解除と「選択済みのみ」表示トグルを追加
+- 検証:
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（37件成功）
+  - `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/web lint` 成功
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
@@ -124,5 +146,7 @@ category: knowledge-base
 - `apps/api/prisma/schema.prisma`
 - `apps/api/src/services/production-schedule/due-management-query.service.ts`
 - `apps/api/src/services/production-schedule/due-management-command.service.ts`
+- `apps/api/src/services/production-schedule/due-management-triage.service.ts`
+- `apps/api/src/services/production-schedule/due-management-selection.service.ts`
 - `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`
