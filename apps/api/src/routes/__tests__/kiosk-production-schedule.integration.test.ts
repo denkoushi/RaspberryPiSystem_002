@@ -899,6 +899,68 @@ describe('Kiosk Production Schedule API', () => {
     expect((getRank.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A', 'B']);
   });
 
+  it('builds global-rank proposal and returns explanation', async () => {
+    const proposalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/proposal',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(proposalRes.statusCode).toBe(200);
+    const proposalBody = proposalRes.json() as {
+      orderedFseibans: string[];
+      candidateCount: number;
+      items: Array<{ fseiban: string; score: number; breakdown: { reasons: string[] } }>;
+    };
+    expect(proposalBody.candidateCount).toBeGreaterThan(0);
+    expect(proposalBody.orderedFseibans.length).toBe(proposalBody.candidateCount);
+    expect(proposalBody.items[0]?.breakdown.reasons.length).toBeGreaterThan(0);
+
+    const explainRes = await app.inject({
+      method: 'GET',
+      url: `/api/kiosk/production-schedule/due-management/global-rank/explanation/${encodeURIComponent(
+        proposalBody.items[0]?.fseiban ?? 'A'
+      )}`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(explainRes.statusCode).toBe(200);
+    const explainBody = explainRes.json() as { found: boolean; item: { fseiban: string } | null };
+    expect(explainBody.found).toBe(true);
+    expect(explainBody.item?.fseiban).toBeTruthy();
+  });
+
+  it('auto-generates and persists due-management global rank', async () => {
+    const autoRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        minCandidateCount: 1,
+        maxReorderDeltaRatio: 1,
+        keepExistingTail: true
+      }
+    });
+    expect(autoRes.statusCode).toBe(200);
+    const autoBody = autoRes.json() as {
+      success: boolean;
+      applied: boolean;
+      orderedFseibans: string[];
+      proposal: { orderedFseibans: string[] };
+    };
+    expect(autoBody.success).toBe(true);
+    expect(autoBody.applied).toBe(true);
+    expect(autoBody.orderedFseibans.length).toBeGreaterThan(0);
+    expect(autoBody.proposal.orderedFseibans).toEqual(autoBody.orderedFseibans);
+
+    const rankRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(rankRes.statusCode).toBe(200);
+    const rankBody = rankRes.json() as { orderedFseibans: string[] };
+    expect(rankBody.orderedFseibans).toEqual(autoBody.orderedFseibans);
+  });
+
   it('isolates due-management daily plan by location', async () => {
     const saveTest = await app.inject({
       method: 'PUT',

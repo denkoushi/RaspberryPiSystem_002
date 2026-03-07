@@ -79,6 +79,8 @@ import {
   getKioskProductionScheduleDueManagementTriage,
   getKioskProductionScheduleDueManagementDailyPlan,
   getKioskProductionScheduleDueManagementGlobalRank,
+  getKioskProductionScheduleDueManagementGlobalRankProposal,
+  autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
@@ -456,6 +458,33 @@ export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-global-rank']
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+      });
+    }
+  });
+}
+
+export function useKioskProductionScheduleDueManagementGlobalRankProposal() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal'],
+    queryFn: getKioskProductionScheduleDueManagementGlobalRankProposal,
+    refetchInterval: 30000
+  });
+}
+
+export function useAutoGenerateKioskProductionScheduleDueManagementGlobalRank() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload?: { minCandidateCount?: number; maxReorderDeltaRatio?: number; keepExistingTail?: boolean }) =>
+      autoGenerateKioskProductionScheduleDueManagementGlobalRank(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal']
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-daily-plan']

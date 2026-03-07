@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleDueManagementDailyPlan,
   useKioskProductionScheduleDueManagementGlobalRank,
+  useKioskProductionScheduleDueManagementGlobalRankProposal,
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
   useKioskProductionScheduleDueManagementTriage,
@@ -13,6 +14,7 @@ import {
   useUpdateKioskProductionScheduleDueManagementPartProcessingType,
   useUpdateKioskProductionScheduleDueManagementPartPriorities,
   useUpdateKioskProductionScheduleDueManagementDailyPlan,
+  useAutoGenerateKioskProductionScheduleDueManagementGlobalRank,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
   useUpdateKioskProductionScheduleDueManagementTriageSelection,
   useUpdateKioskProductionScheduleSearchState
@@ -45,11 +47,13 @@ export function ProductionScheduleDueManagementPage() {
   const triageQuery = useKioskProductionScheduleDueManagementTriage();
   const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan();
   const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank();
+  const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
   const updateTriageSelectionMutation = useUpdateKioskProductionScheduleDueManagementTriageSelection();
   const updateDailyPlanMutation = useUpdateKioskProductionScheduleDueManagementDailyPlan();
+  const autoGenerateGlobalRankMutation = useAutoGenerateKioskProductionScheduleDueManagementGlobalRank();
 
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const searchStateEtagRef = useRef<string | null>(null);
@@ -177,6 +181,31 @@ export function ProductionScheduleDueManagementPage() {
       }),
     [dailyPlanItemMetaBySeiban, globalRankQuery.data?.orderedFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
+
+  const proposalBySeiban = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        score: number;
+        reasons: string[];
+      }
+    >();
+    (globalRankProposalQuery.data?.items ?? []).forEach((item) => {
+      map.set(item.fseiban, {
+        score: item.score,
+        reasons: item.breakdown.reasons
+      });
+    });
+    return map;
+  }, [globalRankProposalQuery.data?.items]);
+
+  const autoGenerateGlobalRank = async () => {
+    await autoGenerateGlobalRankMutation.mutateAsync({
+      minCandidateCount: 1,
+      maxReorderDeltaRatio: 0.95,
+      keepExistingTail: true
+    });
+  };
 
   const saveDailyPlan = async () => {
     await updateDailyPlanMutation.mutateAsync({
@@ -457,12 +486,36 @@ export function ProductionScheduleDueManagementPage() {
           <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold text-white">全体ランキング（親）</h3>
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+                onClick={() => void autoGenerateGlobalRank()}
+                disabled={autoGenerateGlobalRankMutation.isPending}
+              >
+                {autoGenerateGlobalRankMutation.isPending ? '自動生成中...' : '自動生成して保存'}
+              </button>
             </div>
             <p className="mb-2 text-[10px] text-white/60">
               拠点全体の継続順位です。今日の計画順（子）はこの並びを起点に作成されます。
             </p>
+            {autoGenerateGlobalRankMutation.isError ? (
+              <p className="mb-2 text-[11px] text-rose-300">自動生成に失敗しました。再実行してください。</p>
+            ) : null}
+            {autoGenerateGlobalRankMutation.data?.guard.rejected ? (
+              <p className="mb-2 text-[11px] text-amber-300">
+                自動生成は安全ガードで未適用: {autoGenerateGlobalRankMutation.data.guard.reason ?? 'unknown'}
+              </p>
+            ) : null}
+            {autoGenerateGlobalRankMutation.data?.applied ? (
+              <p className="mb-2 text-[11px] text-emerald-300">
+                自動生成を保存しました（差分率 {Math.round(autoGenerateGlobalRankMutation.data.guard.reorderDeltaRatio * 100)}%）
+              </p>
+            ) : null}
             {globalRankQuery.isLoading ? <p className="text-[11px] text-white/70">全体ランキングを読み込み中...</p> : null}
             {globalRankQuery.isError ? <p className="text-[11px] text-rose-300">全体ランキングの取得に失敗しました</p> : null}
+            {globalRankProposalQuery.isLoading ? (
+              <p className="text-[11px] text-white/60">スコア根拠を読み込み中...</p>
+            ) : null}
             {!globalRankQuery.isLoading && globalRankItems.length === 0 ? (
               <p className="text-[11px] text-white/60">全体ランキングはまだ作成されていません</p>
             ) : null}
@@ -500,6 +553,16 @@ export function ProductionScheduleDueManagementPage() {
                   </div>
                   <div className="text-[10px] text-white/75">
                     納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
+                  </div>
+                  <div className="mt-1 text-[10px] text-blue-100/90">
+                    score: {proposalBySeiban.get(item.fseiban)?.score.toFixed(3) ?? '-'}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {(proposalBySeiban.get(item.fseiban)?.reasons ?? []).map((reason) => (
+                      <span key={`${item.fseiban}-${reason}`} className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-100">
+                        {reason}
+                      </span>
+                    ))}
                   </div>
                 </button>
               ))}

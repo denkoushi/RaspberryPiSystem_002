@@ -120,6 +120,18 @@ export const productionScheduleDueManagementGlobalRankBodySchema = z.object({
   orderedFseibans: z.array(z.string().min(1).max(20).transform((value) => value.trim())).max(2000)
 });
 
+export const productionScheduleDueManagementGlobalRankAutoGenerateBodySchema = z
+  .object({
+    minCandidateCount: z.number().int().min(1).max(2000).optional(),
+    maxReorderDeltaRatio: z.number().min(0).max(1).optional(),
+    keepExistingTail: z.boolean().optional()
+  })
+  .optional();
+
+export const productionScheduleDueManagementGlobalRankExplanationParamsSchema = z.object({
+  fseiban: z.string().min(1).max(20).transform((value) => value.trim())
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

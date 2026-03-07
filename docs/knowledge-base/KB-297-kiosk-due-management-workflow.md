@@ -292,6 +292,43 @@ category: knowledge-base
 | バッジが表示されない | dailyPlanItemMeta や selectedSet の取得失敗 | トリアージ・daily-plan API の応答を確認。画面リロードで再取得 |
 | 「今日の計画順」と全体ランキングの整合が取れない | 保存タイミングのずれ | 今日の計画順で「順序を保存」を押すと global-rank へマージされる。保存後に全体ランキングを再読込 |
 
+## B第4段階（全体ランキング自動生成・根拠表示、2026-03-07）
+
+- **目的**: 製番単位トリアージと既存運用を維持しつつ、資源所要量を最上位重みとして全体ランキングを自動生成できるようにする
+- **追加API**:
+  - `GET /api/kiosk/production-schedule/due-management/global-rank/proposal`
+  - `PUT /api/kiosk/production-schedule/due-management/global-rank/auto-generate`
+  - `GET /api/kiosk/production-schedule/due-management/global-rank/explanation/:fseiban`
+- **追加サービス**:
+  - `resource-load-estimator.service.ts`（資源能力/混雑/未完了量シグナル）
+  - `completion-history-analyzer.service.ts`（完了実績由来シグナル）
+  - `due-management-scoring.service.ts`（重み付きスコア計算）
+  - `due-management-global-rank-auto.service.ts`（安全ガードつき自動保存）
+- **スコア方針（初期係数）**:
+  - 資源所要量 45%
+  - 納期切迫度 20%
+  - 実績補正 15%
+  - 引継ぎ/継続性 10%
+  - 製番内優先（上位部品カバレッジ）10%
+- **安全策（write policy）**:
+  - 最小候補件数ガード（`minCandidateCount`）
+  - 並び替え差分率ガード（`maxReorderDeltaRatio`）
+  - 既存尾部保持（`keepExistingTail`）
+- **UI**:
+  - 「全体ランキング（親）」に「自動生成して保存」ボタンを追加
+  - 各製番カードに `score` と理由バッジ（`reasons[]`）を表示
+- **検証**:
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+  - `pnpm --filter @raspi-system/api lint`
+  - `pnpm --filter @raspi-system/web lint`
+  - `pnpm --filter @raspi-system/web test`
+
+### 知見（B第4実装時）
+
+- `proposal` は保存前シミュレーションとして利用できるため、現場運用ではまず提案を確認してから `auto-generate` を実行すると安全
+- `auto-generate` はガードに抵触した場合 `applied=false` で返し、既存順位を維持する
+- 候補未選択時でも summary 全件を対象に提案を返せるため、運用開始時の初期ランキング作成に使える
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
@@ -304,6 +341,14 @@ category: knowledge-base
 - `apps/api/src/services/production-schedule/due-management-daily-plan.service.ts`
 - `apps/api/src/services/production-schedule/due-management-global-rank.service.ts`
 - `apps/api/src/services/production-schedule/due-management-carryover.service.ts`
+- `apps/api/src/services/production-schedule/due-management-scoring.types.ts`
+- `apps/api/src/services/production-schedule/resource-load-estimator.service.ts`
+- `apps/api/src/services/production-schedule/completion-history-analyzer.service.ts`
+- `apps/api/src/services/production-schedule/due-management-scoring.service.ts`
+- `apps/api/src/services/production-schedule/due-management-global-rank-auto.service.ts`
+- `apps/api/src/routes/kiosk/production-schedule/due-management-global-rank.ts`
 - `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
 - `apps/web/src/features/kiosk/productionSchedule/dueManagement.ts`（`deriveGlobalRankFlags`）
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`

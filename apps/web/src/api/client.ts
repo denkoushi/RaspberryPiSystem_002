@@ -490,6 +490,45 @@ export interface ProductionScheduleDueManagementGlobalRankResult {
   orderedFseibans: string[];
 }
 
+export interface ProductionScheduleDueManagementGlobalRankScoreBreakdown {
+  resourceDemandScore: number;
+  dueUrgencyScore: number;
+  carryoverScore: number;
+  partPriorityScore: number;
+  historyCalibrationScore: number;
+  weightedTotalScore: number;
+  reasons: string[];
+}
+
+export interface ProductionScheduleDueManagementGlobalRankProposalItem {
+  fseiban: string;
+  rank: number;
+  score: number;
+  breakdown: ProductionScheduleDueManagementGlobalRankScoreBreakdown;
+}
+
+export interface ProductionScheduleDueManagementGlobalRankProposal {
+  generatedAt: string;
+  locationKey: string;
+  candidateCount: number;
+  orderedFseibans: string[];
+  items: ProductionScheduleDueManagementGlobalRankProposalItem[];
+}
+
+export interface ProductionScheduleDueManagementGlobalRankAutoGenerateResult {
+  success: boolean;
+  applied: boolean;
+  orderedFseibans: string[];
+  previousOrderedFseibans: string[];
+  sourceType: 'auto';
+  guard: {
+    rejected: boolean;
+    reason: string | null;
+    reorderDeltaRatio: number;
+  };
+  proposal: ProductionScheduleDueManagementGlobalRankProposal;
+}
+
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
@@ -662,6 +701,34 @@ export async function updateKioskProductionScheduleDueManagementGlobalRank(paylo
   const { data } = await api.put<
     { success: boolean } & ProductionScheduleDueManagementGlobalRankResult
   >('/kiosk/production-schedule/due-management/global-rank', payload);
+  return data;
+}
+
+export async function getKioskProductionScheduleDueManagementGlobalRankProposal() {
+  const { data } = await api.get<ProductionScheduleDueManagementGlobalRankProposal>(
+    '/kiosk/production-schedule/due-management/global-rank/proposal'
+  );
+  return data;
+}
+
+export async function autoGenerateKioskProductionScheduleDueManagementGlobalRank(payload?: {
+  minCandidateCount?: number;
+  maxReorderDeltaRatio?: number;
+  keepExistingTail?: boolean;
+}) {
+  const { data } = await api.put<ProductionScheduleDueManagementGlobalRankAutoGenerateResult>(
+    '/kiosk/production-schedule/due-management/global-rank/auto-generate',
+    payload ?? {}
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleDueManagementGlobalRankExplanation(fseiban: string) {
+  const { data } = await api.get<{
+    fseiban: string;
+    found: boolean;
+    item: ProductionScheduleDueManagementGlobalRankProposalItem | null;
+  }>(`/kiosk/production-schedule/due-management/global-rank/explanation/${encodeURIComponent(fseiban)}`);
   return data;
 }
 
