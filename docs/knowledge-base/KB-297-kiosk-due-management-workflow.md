@@ -139,6 +139,31 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（37件成功）
   - `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/web lint` 成功
 
+## B第2最小（今日の計画順、2026-03-07）
+
+- 目的: トリアージで選んだ製番を、その日の実行順として並べ替え・保存・再表示できるようにする
+- DB:
+  - `ProductionScheduleDailyPlan`（拠点×日付の計画ヘッダ）
+  - `ProductionScheduleDailyPlanItem`（製番と順位）
+- API:
+  - `GET /api/kiosk/production-schedule/due-management/daily-plan`
+    - 返却: `planDate`, `status`, `orderedFseibans`
+    - 初回（未保存）時はトリアージ選択済み製番をフォールバック返却
+  - `PUT /api/kiosk/production-schedule/due-management/daily-plan`
+    - 入力: `orderedFseibans[]`
+    - 返却: `success`, `orderedFseibans`
+- UI:
+  - 納期管理左ペインに「今日の計画順（選択済み製番）」を追加
+  - カードの上下操作で順位変更、保存ボタンでAPIへ永続化
+  - カードクリックで右ペイン詳細を開ける
+- 不具合修正:
+  - トリアージカード選択が右ペインに反映されない問題を修正
+  - `selectedFseiban` の維持判定を `visibleSummaries` のみ依存から、トリアージ候補/計画順も含める方式へ変更
+- 検証:
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（39件成功）
+  - `pnpm --filter @raspi-system/api build` / `pnpm --filter @raspi-system/web build` 成功
+  - `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/web lint` 成功
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策

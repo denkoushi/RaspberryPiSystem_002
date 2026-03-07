@@ -77,6 +77,7 @@ import {
   getKioskProductionScheduleResources,
   getKioskProductionScheduleDueManagementSummary,
   getKioskProductionScheduleDueManagementTriage,
+  getKioskProductionScheduleDueManagementDailyPlan,
   getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
@@ -109,6 +110,7 @@ import {
   updateKioskProductionScheduleDueManagementPartProcessingType,
   updateKioskProductionScheduleDueManagementPartNote,
   updateKioskProductionScheduleDueManagementTriageSelection,
+  updateKioskProductionScheduleDueManagementDailyPlan,
   verifyKioskDueManagementAccessPassword,
   getDeployStatus,
   type CancelPayload,
@@ -324,6 +326,14 @@ export function useKioskProductionScheduleDueManagementTriage() {
   });
 }
 
+export function useKioskProductionScheduleDueManagementDailyPlan() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-daily-plan'],
+    queryFn: getKioskProductionScheduleDueManagementDailyPlan,
+    refetchInterval: 30000
+  });
+}
+
 export function useKioskProductionScheduleDueManagementSeibanDetail(fseiban: string | null) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban],
@@ -402,6 +412,22 @@ export function useUpdateKioskProductionScheduleDueManagementTriageSelection() {
     mutationFn: ({ selectedFseibans }: { selectedFseibans: string[] }) =>
       updateKioskProductionScheduleDueManagementTriageSelection({ selectedFseibans }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-triage']
+      });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementDailyPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderedFseibans }: { orderedFseibans: string[] }) =>
+      updateKioskProductionScheduleDueManagementDailyPlan({ orderedFseibans }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+      });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-triage']
       });

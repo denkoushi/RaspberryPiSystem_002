@@ -1,9 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 
-import { getProductionScheduleSearchState } from '../../../services/production-schedule/production-schedule-search-state.service.js';
+import { getDueManagementDailyPlan, replaceDueManagementDailyPlan } from '../../../services/production-schedule/due-management-daily-plan.service.js';
 import { getDueManagementTriageSelections, replaceDueManagementTriageSelections } from '../../../services/production-schedule/due-management-selection.service.js';
 import { listDueManagementTriage } from '../../../services/production-schedule/due-management-triage.service.js';
-import { productionScheduleDueManagementTriageSelectionBodySchema, type KioskRouteDeps } from './shared.js';
+import { getProductionScheduleSearchState } from '../../../services/production-schedule/production-schedule-search-state.service.js';
+import {
+  productionScheduleDueManagementDailyPlanBodySchema,
+  productionScheduleDueManagementTriageSelectionBodySchema,
+  type KioskRouteDeps
+} from './shared.js';
 
 export async function registerProductionScheduleDueManagementTriageRoute(
   app: FastifyInstance,
@@ -39,6 +44,35 @@ export async function registerProductionScheduleDueManagementTriageRoute(
     return {
       success: true,
       selectedFseibans
+    };
+  });
+
+  app.get('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const locationKey = deps.resolveLocationKey(clientDevice);
+    const [dailyPlan, selectedFseibans] = await Promise.all([
+      getDueManagementDailyPlan(locationKey),
+      getDueManagementTriageSelections(locationKey)
+    ]);
+
+    return {
+      ...dailyPlan,
+      // まだ計画順未保存のとき、初回導線としてトリアージ選択順をそのまま返す
+      orderedFseibans: dailyPlan.orderedFseibans.length > 0 ? dailyPlan.orderedFseibans : selectedFseibans
+    };
+  });
+
+  app.put('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const locationKey = deps.resolveLocationKey(clientDevice);
+    const body = productionScheduleDueManagementDailyPlanBodySchema.parse(request.body);
+    const dailyPlan = await replaceDueManagementDailyPlan({
+      locationKey,
+      orderedFseibans: body.orderedFseibans
+    });
+    return {
+      success: true,
+      ...dailyPlan
     };
   });
 }

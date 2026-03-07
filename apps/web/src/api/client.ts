@@ -473,6 +473,14 @@ export interface ProductionScheduleDueManagementTriageResult {
   selectedFseibans: string[];
 }
 
+export interface ProductionScheduleDueManagementDailyPlanResult {
+  planDate: string;
+  status: string;
+  confirmedAt: string | null;
+  updatedAt: string | null;
+  orderedFseibans: string[];
+}
+
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
@@ -613,6 +621,22 @@ export async function getKioskProductionScheduleDueManagementTriage() {
   const { data } = await api.get<ProductionScheduleDueManagementTriageResult>(
     '/kiosk/production-schedule/due-management/triage'
   );
+  return data;
+}
+
+export async function getKioskProductionScheduleDueManagementDailyPlan() {
+  const { data } = await api.get<ProductionScheduleDueManagementDailyPlanResult>(
+    '/kiosk/production-schedule/due-management/daily-plan'
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueManagementDailyPlan(payload: {
+  orderedFseibans: string[];
+}) {
+  const { data } = await api.put<
+    { success: boolean } & ProductionScheduleDueManagementDailyPlanResult
+  >('/kiosk/production-schedule/due-management/daily-plan', payload);
   return data;
 }
 

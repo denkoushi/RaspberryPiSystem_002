@@ -23,6 +23,8 @@ describe('Kiosk Production Schedule API', () => {
 
   afterAll(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
+    await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -39,6 +41,8 @@ describe('Kiosk Production Schedule API', () => {
 
   beforeEach(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
+    await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -778,6 +782,84 @@ describe('Kiosk Production Schedule API', () => {
     const itemB = triageItems.find((item) => item.fseiban === 'B');
     expect(itemA?.isSelected).toBe(false);
     expect(itemB?.isSelected).toBe(true);
+  });
+
+  it('saves and returns due-management daily plan order', async () => {
+    const selectionRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/triage/selection',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { selectedFseibans: ['B', 'A'] }
+    });
+    expect(selectionRes.statusCode).toBe(200);
+
+    const beforeSaveRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(beforeSaveRes.statusCode).toBe(200);
+    expect((beforeSaveRes.json() as { orderedFseibans: string[] }).orderedFseibans.sort()).toEqual(['A', 'B']);
+
+    const saveRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A', 'B'] }
+    });
+    expect(saveRes.statusCode).toBe(200);
+    const saveBody = saveRes.json() as {
+      success: boolean;
+      status: string;
+      orderedFseibans: string[];
+      planDate: string;
+    };
+    expect(saveBody.success).toBe(true);
+    expect(saveBody.status).toBe('draft');
+    expect(saveBody.orderedFseibans).toEqual(['A', 'B']);
+    expect(saveBody.planDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(getRes.statusCode).toBe(200);
+    const getBody = getRes.json() as { orderedFseibans: string[]; status: string };
+    expect(getBody.status).toBe('draft');
+    expect(getBody.orderedFseibans).toEqual(['A', 'B']);
+  });
+
+  it('isolates due-management daily plan by location', async () => {
+    const saveTest = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A'] }
+    });
+    expect(saveTest.statusCode).toBe(200);
+
+    const saveOther = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY_2 },
+      payload: { orderedFseibans: ['B'] }
+    });
+    expect(saveOther.statusCode).toBe(200);
+
+    const testPlan = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const otherPlan = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+
+    expect((testPlan.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A']);
+    expect((otherPlan.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['B']);
   });
 
   it('excludes configured resourceCd from cutting category results', async () => {

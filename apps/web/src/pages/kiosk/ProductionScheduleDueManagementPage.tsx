@@ -2,6 +2,7 @@ import { isAxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  useKioskProductionScheduleDueManagementDailyPlan,
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
   useKioskProductionScheduleDueManagementTriage,
@@ -10,6 +11,7 @@ import {
   useUpdateKioskProductionScheduleDueManagementPartNote,
   useUpdateKioskProductionScheduleDueManagementPartProcessingType,
   useUpdateKioskProductionScheduleDueManagementPartPriorities,
+  useUpdateKioskProductionScheduleDueManagementDailyPlan,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
   useUpdateKioskProductionScheduleDueManagementTriageSelection,
   useUpdateKioskProductionScheduleSearchState
@@ -40,10 +42,12 @@ const normalizeHistoryList = (items: string[]) => {
 export function ProductionScheduleDueManagementPage() {
   const summaryQuery = useKioskProductionScheduleDueManagementSummary();
   const triageQuery = useKioskProductionScheduleDueManagementTriage();
+  const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
   const updateTriageSelectionMutation = useUpdateKioskProductionScheduleDueManagementTriageSelection();
+  const updateDailyPlanMutation = useUpdateKioskProductionScheduleDueManagementDailyPlan();
 
   const searchStateUpdatedAtRef = useRef<string | null>(null);
   const searchStateEtagRef = useRef<string | null>(null);
@@ -51,6 +55,8 @@ export function ProductionScheduleDueManagementPage() {
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
+  const [orderedPlanFseibans, setOrderedPlanFseibans] = useState<string[]>([]);
+  const [isDailyPlanDirty, setIsDailyPlanDirty] = useState(false);
 
   const [selectedFseiban, setSelectedFseiban] = useState<string | null>(null);
   const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(selectedFseiban);
@@ -95,6 +101,54 @@ export function ProductionScheduleDueManagementPage() {
     [showSelectedOnly, triageCandidates, selectedSet]
   );
 
+  const triageBySeiban = useMemo(() => {
+    const map = new Map<string, (typeof triageCandidates)[number]>();
+    triageCandidates.forEach((item) => map.set(item.fseiban, item));
+    return map;
+  }, [triageCandidates]);
+
+  useEffect(() => {
+    const base = isDailyPlanDirty
+      ? orderedPlanFseibans
+      : (dailyPlanQuery.data?.orderedFseibans ?? triageQuery.data?.selectedFseibans ?? []);
+    const filtered = base.filter((fseiban) => selectedSet.has(fseiban));
+    const missing = Array.from(selectedSet).filter((fseiban) => !filtered.includes(fseiban));
+    const next = [...filtered, ...missing];
+    if (next.join('\u0000') !== orderedPlanFseibans.join('\u0000')) {
+      setOrderedPlanFseibans(next);
+    }
+  }, [
+    dailyPlanQuery.data?.orderedFseibans,
+    isDailyPlanDirty,
+    orderedPlanFseibans,
+    selectedSet,
+    triageQuery.data?.selectedFseibans
+  ]);
+
+  const orderedPlanItems = useMemo(
+    () =>
+      orderedPlanFseibans
+        .map((fseiban) => ({
+          fseiban,
+          summary: summaryBySeiban.get(fseiban) ?? null,
+          triage: triageBySeiban.get(fseiban) ?? null
+        }))
+        .filter((item) => selectedSet.has(item.fseiban)),
+    [orderedPlanFseibans, selectedSet, summaryBySeiban, triageBySeiban]
+  );
+
+  const saveDailyPlan = async () => {
+    await updateDailyPlanMutation.mutateAsync({
+      orderedFseibans: orderedPlanFseibans
+    });
+    setIsDailyPlanDirty(false);
+  };
+
+  const moveDailyPlanItem = (index: number, direction: -1 | 1) => {
+    setOrderedPlanFseibans((prev) => movePriorityItem(prev, index, direction));
+    setIsDailyPlanDirty(true);
+  };
+
   const toggleTriageSelection = async (fseiban: string) => {
     const next = new Set(triageQuery.data?.selectedFseibans ?? []);
     if (next.has(fseiban)) {
@@ -108,12 +162,18 @@ export function ProductionScheduleDueManagementPage() {
   };
 
   useEffect(() => {
-    if (selectedFseiban && visibleSummaries.some((item) => item.fseiban === selectedFseiban)) {
+    const selectableSet = new Set<string>([
+      ...orderedPlanFseibans,
+      ...triageCandidates.map((item) => item.fseiban),
+      ...visibleSummaries.map((item) => item.fseiban)
+    ]);
+    if (selectedFseiban && selectableSet.has(selectedFseiban)) {
       return;
     }
-    const firstFseiban = visibleSummaries[0]?.fseiban;
-    setSelectedFseiban(firstFseiban ?? null);
-  }, [selectedFseiban, visibleSummaries]);
+    const firstFseiban =
+      orderedPlanFseibans[0] ?? triageCandidates[0]?.fseiban ?? visibleSummaries[0]?.fseiban ?? null;
+    setSelectedFseiban(firstFseiban);
+  }, [orderedPlanFseibans, selectedFseiban, triageCandidates, visibleSummaries]);
 
   useEffect(() => {
     if (!detail) return;
@@ -350,6 +410,61 @@ export function ProductionScheduleDueManagementPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-white">今日の計画順（選択済み製番）</h3>
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+                onClick={() => void saveDailyPlan()}
+                disabled={updateDailyPlanMutation.isPending || orderedPlanItems.length === 0 || !isDailyPlanDirty}
+              >
+                {updateDailyPlanMutation.isPending ? '保存中...' : '順序を保存'}
+              </button>
+            </div>
+            {dailyPlanQuery.isLoading ? <p className="text-[11px] text-white/70">計画順を読み込み中...</p> : null}
+            {!dailyPlanQuery.isLoading && orderedPlanItems.length === 0 ? (
+              <p className="text-[11px] text-white/60">トリアージで製番を選択すると計画順を編集できます</p>
+            ) : null}
+            <div className="space-y-2">
+              {orderedPlanItems.map((item, index) => (
+                <div key={item.fseiban} className="rounded border border-white/20 bg-slate-800/70 p-2 text-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <button type="button" className="text-left" onClick={() => setSelectedFseiban(item.fseiban)}>
+                      <div className="text-xs font-semibold">
+                        {index + 1}. <span className="font-mono">{item.fseiban}</span>
+                      </div>
+                      <div className="text-[10px] text-white/75">
+                        {normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-'}
+                      </div>
+                      <div className="text-[10px] text-white/75">
+                        納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
+                      </div>
+                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded bg-slate-700 px-2 py-1 text-[10px] hover:bg-slate-600 disabled:opacity-50"
+                        onClick={() => moveDailyPlanItem(index, -1)}
+                        disabled={index === 0}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded bg-slate-700 px-2 py-1 text-[10px] hover:bg-slate-600 disabled:opacity-50"
+                        onClick={() => moveDailyPlanItem(index, 1)}
+                        disabled={index === orderedPlanItems.length - 1}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

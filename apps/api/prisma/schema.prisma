@@ -412,13 +412,13 @@ model CsvImportHistory {
 // Gmail API 429（rate limit）をスケジュール横断で調停するための状態
 model GmailRateLimitState {
   // 現状は userId="me" 前提のため固定キーで運用（例: "gmail:me"）
-  id               String   @id
+  id               String    @id
   cooldownUntil    DateTime?
   last429At        DateTime?
   lastRetryAfterMs Int?
-  version          Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  version          Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([cooldownUntil])
 }
@@ -589,30 +589,30 @@ enum AlertDeliveryStatus {
 }
 
 model CsvDashboard {
-  id                String                   @id @default(uuid())
-  name              String // ダッシュボード名
-  description       String? // 説明
-  configType        CsvDashboardConfigType   @default(DASHBOARD) // 設定種別（ダッシュボード/マスター設定）
-  importType        String                   @default("csvDashboards") // インポートタイプ（employees/items/.../csvDashboards）
-  allowedManualImport Boolean                @default(true) // 手動取り込みを許可
-  allowedScheduledImport Boolean             @default(true) // 自動取り込みを許可
-  importStrategy    CsvImportStrategy        @default(UPSERT) // 取り込み戦略（主にマスターデータ用）
-  columnDefinitions Json // 列定義（列名マッピング、順序、型、表示名など）
-  dateColumnName    String? // 日付列の内部名（表示期間フィルタ用）
-  displayPeriodDays Int                      @default(1) // 表示期間（日数、デフォルトは当日のみ）
-  emptyMessage      String? // 0件時のメッセージ
-  ingestMode        CsvDashboardIngestMode   @default(APPEND) // 取り込み方式
-  dedupKeyColumns   String[]                 @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
-  gmailScheduleId   String? // Gmail取得スケジュールID（オプション、将来の拡張用）
-  gmailSubjectPattern String? // Gmail件名パターン（CSV取得用）
-  templateType      CsvDashboardTemplateType @default(TABLE) // 可視化テンプレート種別
-  templateConfig    Json // テンプレート設定（行数、フォントサイズ、表示列など）
-  csvFilePath       String? // 最新のCSVファイルパス（原本保存先）
-  enabled           Boolean                  @default(true)
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  ingestRuns        CsvDashboardIngestRun[]
-  rows              CsvDashboardRow[]
+  id                     String                   @id @default(uuid())
+  name                   String // ダッシュボード名
+  description            String? // 説明
+  configType             CsvDashboardConfigType   @default(DASHBOARD) // 設定種別（ダッシュボード/マスター設定）
+  importType             String                   @default("csvDashboards") // インポートタイプ（employees/items/.../csvDashboards）
+  allowedManualImport    Boolean                  @default(true) // 手動取り込みを許可
+  allowedScheduledImport Boolean                  @default(true) // 自動取り込みを許可
+  importStrategy         CsvImportStrategy        @default(UPSERT) // 取り込み戦略（主にマスターデータ用）
+  columnDefinitions      Json // 列定義（列名マッピング、順序、型、表示名など）
+  dateColumnName         String? // 日付列の内部名（表示期間フィルタ用）
+  displayPeriodDays      Int                      @default(1) // 表示期間（日数、デフォルトは当日のみ）
+  emptyMessage           String? // 0件時のメッセージ
+  ingestMode             CsvDashboardIngestMode   @default(APPEND) // 取り込み方式
+  dedupKeyColumns        String[]                 @default([]) // 重複除去キー列（内部名の配列、dedup時のみ使用）
+  gmailScheduleId        String? // Gmail取得スケジュールID（オプション、将来の拡張用）
+  gmailSubjectPattern    String? // Gmail件名パターン（CSV取得用）
+  templateType           CsvDashboardTemplateType @default(TABLE) // 可視化テンプレート種別
+  templateConfig         Json // テンプレート設定（行数、フォントサイズ、表示列など）
+  csvFilePath            String? // 最新のCSVファイルパス（原本保存先）
+  enabled                Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  ingestRuns             CsvDashboardIngestRun[]
+  rows                   CsvDashboardRow[]
 
   @@index([enabled])
   @@index([gmailScheduleId])
@@ -641,15 +641,15 @@ model CsvDashboardIngestRun {
 }
 
 model CsvDashboardRow {
-  id             String       @id @default(uuid())
-  csvDashboardId String
-  csvDashboard   CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
-  occurredAt     DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
-  dataHash       String? // データのハッシュ（重複除去用、dedup時のみ使用）
-  rowData        Json // 正規化された行データ（列マッピング適用後）
-  createdAt      DateTime     @default(now())
-  orderAssignments ProductionScheduleOrderAssignment[]
-  rowNotes       ProductionScheduleRowNote[]
+  id                         String                              @id @default(uuid())
+  csvDashboardId             String
+  csvDashboard               CsvDashboard                        @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  occurredAt                 DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
+  dataHash                   String? // データのハッシュ（重複除去用、dedup時のみ使用）
+  rowData                    Json // 正規化された行データ（列マッピング適用後）
+  createdAt                  DateTime                            @default(now())
+  orderAssignments           ProductionScheduleOrderAssignment[]
+  rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
 
   @@index([csvDashboardId])
@@ -658,59 +658,59 @@ model CsvDashboardRow {
 }
 
 model ProductionScheduleRowNote {
-  id               String         @id @default(uuid())
-  csvDashboardId   String
+  id                String    @id @default(uuid())
+  csvDashboardId    String
   csvDashboardRowId String
-  location         String
-  note             String         @db.VarChar(100) // 現場リーダー備考、100文字以内・改行不可
-  processingType   String?        @db.VarChar(20) // 処理種別（未選択可）
-  dueDate          DateTime?      @db.Date // 納期日（年なし表示、日付のみ）
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  location          String
+  note              String    @db.VarChar(100) // 現場リーダー備考、100文字以内・改行不可
+  processingType    String?   @db.VarChar(20) // 処理種別（未選択可）
+  dueDate           DateTime? @db.Date // 納期日（年なし表示、日付のみ）
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  csvDashboardRow   CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
   @@unique([csvDashboardRowId, location])
   @@index([csvDashboardId, location])
 }
 
 model ProductionScheduleOrderAssignment {
-  id               String          @id @default(uuid())
-  csvDashboardId   String
+  id                String   @id @default(uuid())
+  csvDashboardId    String
   csvDashboardRowId String
-  location         String
-  resourceCd       String
-  orderNumber      Int
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  location          String
+  resourceCd        String
+  orderNumber       Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
-  @@index([csvDashboardId, location, resourceCd])
   @@unique([csvDashboardId, location, resourceCd, orderNumber])
   @@unique([csvDashboardRowId, location])
+  @@index([csvDashboardId, location, resourceCd])
 }
 
 model ProductionScheduleProgress {
   // 1:1で固定（csvDashboardRowIdを主キーにすることで、DB側で別ID生成が不要）
-  csvDashboardRowId String         @id
+  csvDashboardRowId String   @id
   csvDashboardId    String
-  isCompleted       Boolean        @default(false)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  isCompleted       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  csvDashboardRow   CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
   @@index([csvDashboardId, isCompleted])
 }
 
 model KioskProductionScheduleSearchState {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   csvDashboardId String
   location       String
   state          Json
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([csvDashboardId, location])
   @@index([csvDashboardId])
@@ -759,14 +759,14 @@ model ProductionSchedulePartProcessingType {
 }
 
 model ProductionScheduleProcessingTypeOption {
-  id         String   @id @default(uuid())
-  location   String
-  code       String   @db.VarChar(20)
-  label      String   @db.VarChar(40)
-  priority   Int
-  enabled    Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(uuid())
+  location  String
+  code      String   @db.VarChar(20)
+  label     String   @db.VarChar(40)
+  priority  Int
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([location, code], map: "ProductionScheduleProcessingTypeOption_unique_code")
   @@index([location, enabled, priority], map: "ProductionScheduleProcessingTypeOption_idx_location")
@@ -785,11 +785,11 @@ model ProductionScheduleResourceCategoryConfig {
 }
 
 model ProductionScheduleAccessPasswordConfig {
-  id                    String   @id @default(uuid())
-  location              String
-  dueManagementPasswordHash String @db.VarChar(255)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                        String   @id @default(uuid())
+  location                  String
+  dueManagementPasswordHash String   @db.VarChar(255)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   @@unique([location], map: "ProductionScheduleAccessPasswordConfig_unique_location")
 }
@@ -807,16 +807,45 @@ model ProductionScheduleTriageSelection {
   @@index([csvDashboardId, location, selectedAt], map: "ProductionScheduleTriageSelection_idx_location")
 }
 
+model ProductionScheduleDailyPlan {
+  id             String                            @id @default(uuid())
+  csvDashboardId String
+  location       String
+  planDate       DateTime                          @db.Date
+  status         String                            @default("draft") @db.VarChar(20)
+  confirmedAt    DateTime?
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
+  items          ProductionScheduleDailyPlanItem[]
+
+  @@unique([csvDashboardId, location, planDate], map: "ProductionScheduleDailyPlan_unique_date")
+  @@index([csvDashboardId, location, status], map: "ProductionScheduleDailyPlan_idx_location")
+}
+
+model ProductionScheduleDailyPlanItem {
+  id            String                      @id @default(uuid())
+  planId        String
+  fseiban       String                      @db.VarChar(20)
+  priorityOrder Int
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  plan          ProductionScheduleDailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, fseiban], map: "ProductionScheduleDailyPlanItem_unique_fseiban")
+  @@unique([planId, priorityOrder], map: "ProductionScheduleDailyPlanItem_unique_order")
+  @@index([planId, priorityOrder], map: "ProductionScheduleDailyPlanItem_idx_order")
+}
+
 model MeasuringInstrumentLoanEvent {
-  id                  String   @id @default(uuid())
-  managementNumber    String
-  eventAt             DateTime // CSVのday列（UTC）のイベント時刻
-  action              String // 持ち出し / 返却
-  raw                 Json // CSV行の原本
-  sourceMessageId     String? // GmailメッセージID
+  id                   String   @id @default(uuid())
+  managementNumber     String
+  eventAt              DateTime // CSVのday列（UTC）のイベント時刻
+  action               String // 持ち出し / 返却
+  raw                  Json // CSV行の原本
+  sourceMessageId      String? // GmailメッセージID
   sourceMessageSubject String? // Gmail件名
   sourceCsvDashboardId String? // CSVダッシュボードID
-  createdAt           DateTime @default(now())
+  createdAt            DateTime @default(now())
 
   @@unique([managementNumber, eventAt, action])
   @@index([eventAt])
@@ -827,9 +856,9 @@ model MeasuringInstrumentLoanEvent {
 // CSVインポート件名パターン（マスターデータ用）
 model CsvImportSubjectPattern {
   id          String   @id @default(uuid())
-  importType  String   // インポートタイプ（employees, items, measuringInstruments, riggingGears, csvDashboards）
-  dashboardId String?  // CSVダッシュボードID（csvDashboards用、任意）
-  pattern     String   // Gmail件名パターン
+  importType  String // インポートタイプ（employees, items, measuringInstruments, riggingGears, csvDashboards）
+  dashboardId String? // CSVダッシュボードID（csvDashboards用、任意）
+  pattern     String // Gmail件名パターン
   priority    Int      @default(0) // 優先順位（数値が小さいほど優先）
   enabled     Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -843,20 +872,20 @@ model CsvImportSubjectPattern {
 }
 
 model Alert {
-  id            String            @id // ファイルのidをそのまま使用（例: "20260118-103750"）
-  type          String? // アラートタイプ（例: "ansible-update-failed"）
-  severity      AlertSeverity? // 重要度
-  message       String? // メッセージ
-  details       Json? // 詳細情報（JSON形式推奨）
-  source        Json? // 発生源情報（service/host/location等）
-  context       Json? // コンテキスト情報（branch/inventory/requestId/hosts等）
-  fingerprint   String? // dedupe用（type+message+host等から計算）
-  timestamp     DateTime // 発生時刻
-  acknowledged  Boolean           @default(false) // 確認済みフラグ（既存仕様互換）
+  id             String          @id // ファイルのidをそのまま使用（例: "20260118-103750"）
+  type           String? // アラートタイプ（例: "ansible-update-failed"）
+  severity       AlertSeverity? // 重要度
+  message        String? // メッセージ
+  details        Json? // 詳細情報（JSON形式推奨）
+  source         Json? // 発生源情報（service/host/location等）
+  context        Json? // コンテキスト情報（branch/inventory/requestId/hosts等）
+  fingerprint    String? // dedupe用（type+message+host等から計算）
+  timestamp      DateTime // 発生時刻
+  acknowledged   Boolean         @default(false) // 確認済みフラグ（既存仕様互換）
   acknowledgedAt DateTime? // 確認済み日時
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  deliveries    AlertDelivery[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deliveries     AlertDelivery[]
 
   @@index([timestamp])
   @@index([acknowledged])
@@ -866,11 +895,11 @@ model Alert {
 model AlertDelivery {
   id            String              @id @default(uuid())
   alertId       String // Alert.id（ファイルのid）
-  alert         Alert                @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  channel       AlertChannel         @default(SLACK) // 配送チャンネル（slack/email/http等）
+  alert         Alert               @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  channel       AlertChannel        @default(SLACK) // 配送チャンネル（slack/email/http等）
   routeKey      String // ルートキー（deploy/ops/support/security等）
-  status        AlertDeliveryStatus  @default(PENDING) // 配送状態
-  attemptCount  Int                  @default(0) // 試行回数
+  status        AlertDeliveryStatus @default(PENDING) // 配送状態
+  attemptCount  Int                 @default(0) // 試行回数
   nextAttemptAt DateTime? // 次回試行時刻（バックオフ）
   lastAttemptAt DateTime? // 最終試行時刻
   sentAt        DateTime? // 送信成功時刻
