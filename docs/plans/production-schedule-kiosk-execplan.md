@@ -104,6 +104,8 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-03-06) **資源CDボタン優先並び・デプロイ成功・実機検証OK**: 登録製番で検索した際、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装内容**: `prioritizeResourceCdsByPresence` 純粋関数を `resourcePriority.ts` に新設。登録製番が1件以上アクティブなときのみ適用、出現有無のみで優先判定（1件でもヒットした資源CDを左寄せ）。工程カテゴリフィルタの後に適用し競合しない。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認（登録製番選択時、検索結果に含まれる資源CDが左寄せ表示）。詳細は [KB-294](../knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) を参照。
 
+- [x] (2026-03-07) **キオスク納期管理（製番納期・部品優先・切削除外）・デプロイ成功・実機検証OK**: 製番単位の納期管理画面・部品優先順位・切削除外設定を実装。**実装内容**: `ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。`DueDateWritebackService` で製番納期更新時に既存行 `dueDate` へ反映。管理コンソールに切削除外設定画面を追加。**デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、マイグレーション、キオスクAPI（loans/active・production-schedule・due-management/summary）、deploy-status、Pi4サービス稼働を確認。詳細は [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md) / [ADR-20260307](../decisions/ADR-20260307-kiosk-due-management-model.md) を参照。
+
 ## Surprises & Discoveries
 
 ### CSVインポートスケジュール作成時のID自動生成機能

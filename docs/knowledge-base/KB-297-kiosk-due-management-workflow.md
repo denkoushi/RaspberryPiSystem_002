@@ -59,6 +59,16 @@ category: knowledge-base
 - 切削除外リストはロケーション別設定で変更可能にし、コード修正なしで運用調整可能
 - 回帰防止として、ポリシーユニットテストとキオスク統合テスト（due-management系）を追加
 
+## デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - Prismaマイグレーション: 36件適用済み、スキーマ最新
+  - キオスクAPI: `/api/tools/loans/active`（両Pi4）200、`/api/kiosk/production-schedule` 200、`/api/kiosk/production-schedule/due-management/summary` 200
+  - deploy-status: `GET /api/system/deploy-status` に `x-client-key` 付与で `isMaintenance: false`
+  - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+
 ## References
 
 - `apps/api/prisma/schema.prisma`

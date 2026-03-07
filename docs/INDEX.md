@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-07）
 
-- **✅ キオスク納期管理（製番納期・部品優先・切削除外設定）を実装**: 生産スケジュールに製番単位の納期管理画面を追加し、`ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。製番納期更新時は `DueDateWritebackService` で既存行 `dueDate` へ反映し、既存画面互換を維持。管理コンソールに切削除外設定画面を追加。設計判断は [ADR-20260307](./decisions/ADR-20260307-kiosk-due-management-model.md)、運用/背景は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md) を参照。
+- **✅ キオスク納期管理（製番納期・部品優先・切削除外設定）・デプロイ完了・実機検証完了**: 生産スケジュールに製番単位の納期管理画面を追加し、`ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。製番納期更新時は `DueDateWritebackService` で既存行 `dueDate` へ反映し、既存画面互換を維持。管理コンソールに切削除外設定画面を追加。**デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、マイグレーション、キオスクAPI（loans/active・production-schedule・due-management/summary）、deploy-status、Pi4サービス稼働を確認。設計判断は [ADR-20260307](./decisions/ADR-20260307-kiosk-due-management-model.md)、運用/背景は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-06）
 

@@ -209,8 +209,9 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 - [ ] **APIヘルスチェック**: APIが正常に起動しているか確認
   ```bash
   # APIヘルスチェック
-  curl -k https://raspberrypi.local/api/health
+  curl -k https://raspberrypi.local/api/system/health
   ```
+- [ ] **deploy-status API（キオスクデプロイ時）**: 端末別メンテ状態を確認する場合は `GET /api/system/deploy-status` に `x-client-key` を付与する（`/api/deploy-status` ではない）。詳細は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の実機検証チェックリストを参照。
 - [ ] **管理コンソールの確認**: 管理コンソールで設定（Gmail、Dropbox）が正しく表示されているか確認
   - バックアップタブでGmail設定とDropbox設定が表示されているか
   - バックアップ履歴が継続して記録されているか

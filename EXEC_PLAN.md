@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-07) **キオスク納期管理（製番納期・部品優先・切削除外）・デプロイ完了・実機検証完了**: 生産スケジュールに製番単位の納期管理画面を追加し、`ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。製番納期更新時は `DueDateWritebackService` で既存行 `dueDate` へ反映し、既存画面互換を維持。管理コンソールに切削除外設定画面を追加。**デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、マイグレーション（36件適用済み）、キオスクAPI（loans/active・production-schedule・due-management/summary）、deploy-status（`isMaintenance: false`）、Pi4サービス（kiosk-browser・status-agent.timer ともに active）を確認。**知見**: 実機検証時は `GET /api/system/deploy-status` に `x-client-key` を付与して端末別メンテ状態を確認する。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md) / [ADR-20260307](./docs/decisions/ADR-20260307-kiosk-due-management-model.md) を参照。
+
 - [x] (2026-03-06) **低レイヤー観測強化（SOLID・非破壊）・Pi5カナリアデプロイ完了**: API `health/metrics` に eventLoop 指標（p50/p90/p99, ELU）と signage-render-scheduler の worker 状態（PID/skipCount/lastDuration/running）を追加。`event-loop-observability.ts` を新設し、`evaluateEventLoopHealth` で warmup ウィンドウ（サンプル不足・非有限値）時は `ok` を返す。`cursor_debug=30be23` は切り分け時のみ有効化する運用境界を明文化。Pi5 1台カナリアの判定基準・切り戻し条件を [operation-manual.md](./docs/guides/operation-manual.md) に追記。**デプロイ**: `--limit server` で Pi5 のみ、`state: success`。**次**: カナリア検証（7日連続合格）後に次フェーズ移行。詳細は [KB-268](./docs/knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) / [KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応) / [operation-manual.md](./docs/guides/operation-manual.md) を参照。
 
 - [x] (2026-03-06) **登録製番ボタン並び替えUI・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番ボタンをユーザー指定順に並び替えるUIを実装。**実装**: 案3（カード下辺左右に矢印ボタン）、`moveHistoryItemLeft` / `moveHistoryItemRight` 純粋関数（`historyOrder.ts`）、`SeibanHistoryButton` に矢印UI追加、`ProductionSchedulePage` で `type: 'reorder'` で search-state 同期。**デプロイ**: Run ID `20260306-200303-31051`、`state: success`、約10分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: 左右矢印による並び替え動作（右移動・左移動）、disabled状態の切り替え（先頭の左矢印・末尾の右矢印がdisabled）、カードサイズ（w-36 h-16）・×ボタン位置の維持を確認。詳細は [KB-295](./docs/knowledge-base/frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md) を参照。
@@ -632,6 +634,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-07）: **実機検証時の deploy-status API パス**は `GET /api/system/deploy-status`（`/api/deploy-status` ではない）。`x-client-key` を付与して端末別メンテ状態（`isMaintenance`）を確認する。既存の [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) に正しいパスが記載済み。
+- 観測（2026-03-07）: **APIメモリ使用率**が約90%と高めの状態で稼働。負荷増加時は監視継続を推奨。既存の signage-render-worker メモリ対策（KB-274）とは別軸。
 - 観測（2026-03-06）: **eventLoop health 評価**を導入した直後、テスト環境で `/api/system/health` が `503 degraded` を返す事象が発生。**原因**: 起動直後や短命テストでは `monitorEventLoopDelay` / `eventLoopUtilization` のサンプルが不足し、`p99` や `elu` が非有限（NaN等）になる。**対策**: `evaluateEventLoopHealth` に warmup ウィンドウ判定を追加（`sampleWindowMs < 1000` または `!Number.isFinite(p99/elu)` のときは `ok` を返す）。これによりテスト・起動直後の誤検知を防止。**[KB-296]**
 - 観測（2026-03-06）: **デプロイ対象の事前回答と実際の運用**を区別すべき。事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×2）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×2 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 - 観測（2026-03-06）: **Pi4/Pi3のRealVNC接続**は、`tag:admin -> tag:kiosk/signage` を直接開けるより **Pi5経由SSHトンネル** の方が安全（攻撃面をPi5入口に集約）。`tag:server -> tag:kiosk/signage: tcp:5900` をACLに追加し、Macで `ssh -N -L 5904:... -L 5905:... -L 5903:...` を張って `localhost:5904/5905/5903` に接続。VNC接続するたびにトンネルを張る運用（永続化しない）。**[KB-293]**
