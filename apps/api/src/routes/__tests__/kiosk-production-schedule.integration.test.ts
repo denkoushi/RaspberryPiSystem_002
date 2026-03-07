@@ -23,6 +23,7 @@ describe('Kiosk Production Schedule API', () => {
 
   afterAll(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -38,6 +39,7 @@ describe('Kiosk Production Schedule API', () => {
 
   beforeEach(async () => {
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -666,6 +668,116 @@ describe('Kiosk Production Schedule API', () => {
     const rankMap = new Map(detailBody.detail.parts.map((part) => [part.fhincd, part.currentPriorityRank]));
     expect(rankMap.get('Z')).toBe(1);
     expect(rankMap.get('X')).toBe(2);
+  });
+
+  it('returns due-management triage zones from shared history', async () => {
+    const currentDate = new Date();
+    const today = currentDate.toISOString().slice(0, 10);
+    const after7days = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const stateGetRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(stateGetRes.statusCode).toBe(200);
+    const etag = stateGetRes.headers.etag;
+    expect(typeof etag).toBe('string');
+
+    const statePutRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': String(etag) },
+      payload: { state: { history: ['A', 'B'] } }
+    });
+    expect(statePutRes.statusCode).toBe(200);
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: today }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/B/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: after7days }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { processingType: 'LSLH' }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/triage',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      zones: {
+        danger: Array<{ fseiban: string; reasons: Array<{ code: string }> }>;
+        caution: Array<{ fseiban: string; reasons: Array<{ code: string }> }>;
+        safe: Array<{ fseiban: string; reasons: Array<{ code: string }> }>;
+      };
+      selectedFseibans: string[];
+    };
+    expect(body.selectedFseibans).toEqual([]);
+    expect(body.zones.danger.map((item) => item.fseiban)).toContain('A');
+    expect(body.zones.safe.map((item) => item.fseiban)).toContain('B');
+    const itemA = body.zones.danger.find((item) => item.fseiban === 'A');
+    expect(itemA?.reasons.some((reason) => reason.code === 'DUE_DATE_TODAY')).toBe(true);
+    expect(itemA?.reasons.some((reason) => reason.code === 'SURFACE_PRIORITY')).toBe(true);
+  });
+
+  it('updates due-management triage selection and returns selected state', async () => {
+    const stateGetRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const etag = stateGetRes.headers.etag;
+    expect(typeof etag).toBe('string');
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': String(etag) },
+      payload: { state: { history: ['A', 'B'] } }
+    });
+
+    const updateRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/triage/selection',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { selectedFseibans: ['B'] }
+    });
+    expect(updateRes.statusCode).toBe(200);
+    expect((updateRes.json() as { selectedFseibans: string[] }).selectedFseibans).toEqual(['B']);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/triage',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listBody = listRes.json() as {
+      zones: {
+        danger: Array<{ fseiban: string; isSelected: boolean }>;
+        caution: Array<{ fseiban: string; isSelected: boolean }>;
+        safe: Array<{ fseiban: string; isSelected: boolean }>;
+      };
+      selectedFseibans: string[];
+    };
+    expect(listBody.selectedFseibans).toEqual(['B']);
+    const triageItems = [...listBody.zones.danger, ...listBody.zones.caution, ...listBody.zones.safe];
+    const itemA = triageItems.find((item) => item.fseiban === 'A');
+    const itemB = triageItems.find((item) => item.fseiban === 'B');
+    expect(itemA?.isSelected).toBe(false);
+    expect(itemB?.isSelected).toBe(true);
   });
 
   it('excludes configured resourceCd from cutting category results', async () => {

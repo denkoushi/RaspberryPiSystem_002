@@ -106,6 +106,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 - [x] (2026-03-07) **キオスク納期管理（製番納期・部品優先・切削除外）・デプロイ成功・実機検証OK**: 製番単位の納期管理画面・部品優先順位・切削除外設定を実装。**実装内容**: `ProductionScheduleSeibanDueDate` / `ProductionSchedulePartPriority` / `ProductionScheduleResourceCategoryConfig` を導入。`DueDateWritebackService` で製番納期更新時に既存行 `dueDate` へ反映。管理コンソールに切削除外設定画面を追加。**デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、マイグレーション、キオスクAPI（loans/active・production-schedule・due-management/summary）、deploy-status、Pi4サービス稼働を確認。詳細は [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md) / [ADR-20260307](../decisions/ADR-20260307-kiosk-due-management-model.md) を参照。
 - [x] (2026-03-07) **納期管理・生産スケジュール連携拡張（仕様反映）**: 登録製番（`search-state.history`）を納期管理左ペインへ同期し、検索追加後に保持・×削除時に両画面同期。納期管理サマリ/詳細に`machineName`を追加し、部品ごとの工程進捗（完了数/総数/工程ボタン）を可視化。`ProductionSchedulePartProcessingType` / `ProductionScheduleProcessingTypeOption` を導入し、処理更新をFHINCD単位に集約。管理コンソールで処理候補を編集可能化し、キオスク両画面のドロップダウンをDB候補参照へ切替。API統合テストと lint を実行して回帰なしを確認。
+- [x] (2026-03-07) **納期管理トリアージ（B第1段階）実装**: リーダーが「選ぶだけ」で計画対象を絞れるよう、納期管理画面にトリアージ導線を追加。**実装内容**: `ProductionScheduleTriageSelection` テーブルを追加し、拠点共有の選択済み製番を永続化。`GET /api/kiosk/production-schedule/due-management/triage` で `danger/caution/safe` と理由（`DUE_DATE_*`, `LARGE_*`, `SURFACE_PRIORITY`）を返却、`PUT /api/kiosk/production-schedule/due-management/triage/selection` で選択更新。UIに「今日判断候補（トリアージ）」パネルと「選択済みのみ」トグルを追加。**検証**: API統合テスト（37件成功）と `apps/api` / `apps/web` lint 成功。
 
 ## Surprises & Discoveries
 

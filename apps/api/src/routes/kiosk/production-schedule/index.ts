@@ -18,6 +18,7 @@ import { registerProductionScheduleDueManagementPartPrioritiesRoute } from './du
 import { registerProductionScheduleDueManagementProcessingRoute } from './due-management-processing.js';
 import { registerProductionScheduleDueManagementNoteRoute } from './due-management-note.js';
 import { registerProductionScheduleDueManagementAuthRoute } from './due-management-auth.js';
+import { registerProductionScheduleDueManagementTriageRoute } from './due-management-triage.js';
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import type { KioskRouteDeps } from './shared.js';
 
@@ -43,5 +44,6 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueManagementProcessingRoute(app, deps);
   await registerProductionScheduleDueManagementNoteRoute(app, deps);
   await registerProductionScheduleDueManagementAuthRoute(app, deps);
+  await registerProductionScheduleDueManagementTriageRoute(app, deps);
   await registerProductionScheduleProcessingTypeOptionsRoute(app, deps);
 }
