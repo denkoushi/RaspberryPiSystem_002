@@ -44,18 +44,27 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | 項目 | コマンド/手順 | 期待値 |
 |------|---------------|--------|
 | API ヘルス | `curl -sk https://100.106.158.2/api/system/health` | `status: "ok"` または `"degraded"` |
-| deploy-status API（Pi4 kiosk1） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `{"isMaintenance":false}` |
-| deploy-status API（Pi4 kiosk2） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk2"` | `{"isMaintenance":false}` |
+| deploy-status API（raspberrypi4） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `{"isMaintenance":false}` |
+| deploy-status API（raspi4-robodrill01） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspi4-robodrill01-kiosk1"` | `{"isMaintenance":false}` |
 | キオスク API | `curl -sk "https://100.106.158.2/api/tools/loans/active" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | 200 OK |
+| 納期管理 API | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/triage" -H "x-client-key: client-key-raspberrypi4-kiosk1"` ほか daily-plan / global-rank | 200 OK |
 | サイネージ API | `curl -sk "https://100.106.158.2/api/signage/content"` | 200 OK、`layoutConfig` 含む |
 | backup.json | `ssh denkon5sd02@100.106.158.2 "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"` | ファイル存在・サイズ 0 でない |
-| マイグレーション | `docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status` | 未適用なし |
-| Pi4 サービス | `ssh denkon5sd02@<Pi4_IP> "systemctl is-active kiosk-browser.service"` | `active` |
-| Pi3 signage-lite | `ssh denkon5sd02@<Pi3_IP> "systemctl is-active signage-lite.service"` | `active` |
+| マイグレーション | `ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status"` | 未適用なし |
+| Pi4 サービス | **Pi5経由で** `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 'systemctl is-active kiosk-browser.service status-agent.timer'"`（raspberrypi4） | 両方 `active` |
+| Pi4 サービス（robodrill01） | `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"` | 両方 `active` |
+| Pi3 signage-lite | Pi5経由で `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"` | `active` |
 
 ---
 
-## 4. 関連ドキュメント
+## 4. Pi4/Pi3 サービス確認の接続経路
+
+**重要**: MacからPi4/Pi3へ直接SSHするとタイムアウトする。本構成では**Pi5経由**で接続する（[ansible-ssh-architecture.md](../guides/ansible-ssh-architecture.md) 参照）。
+
+- Mac → Pi5（denkon5sd02@100.106.158.2）にSSH
+- Pi5 → Pi4/Pi3（tools03/tools04/signageras3@各IP）にSSH
+
+## 5. 関連ドキュメント
 
 - [ADR-20260306: 端末別メンテナンス状態](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md)
 - [deployment.md](../guides/deployment.md): デプロイ標準手順

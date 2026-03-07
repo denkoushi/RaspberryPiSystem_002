@@ -13,7 +13,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 42件  
+**件数**: 43件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -2304,6 +2304,39 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 - ✅ ブラウザのキャッシュクリアが必要な場合があることを確認（2026-01-19）
 - ✅ `--limit raspberrypi4`以外でもメンテナンス画面が表示されることを確認（2026-01-31）
 - ✅ デプロイ中に`/api/system/deploy-status`が`kioskMaintenance:true`へ遷移し、終了後`false`に戻ることを確認（2026-01-31）
+
+---
+
+### [KB-299] Pi4/Pi3実機検証時のPi5経由SSH接続
+
+**発生日**: 2026-03-07  
+**Status**: ✅ 解決済み（2026-03-07）
+
+**事象**:
+- デプロイ後の実機検証で、Pi4のサービス状態（`kiosk-browser.service` / `status-agent.timer`）を確認しようとした
+- Macから直接Pi4にSSHすると接続タイムアウトする
+
+**要因**:
+- 本構成では**MacからPi4/Pi3へ直接SSH接続する設計ではない**（[ansible-ssh-architecture.md](../../guides/ansible-ssh-architecture.md) 参照）
+- 接続経路は**Mac → Pi5 → Pi4/Pi3**。AnsibleもPi5上で実行され、Pi5からPi4/Pi3へSSHする
+
+**有効だった対策**:
+- ✅ **Pi5経由でSSH**: MacからPi5に接続し、Pi5上でPi4/Pi3へSSHする
+  ```bash
+  # raspberrypi4 (tools03@100.74.144.79)
+  ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 'systemctl is-active kiosk-browser.service status-agent.timer'"
+
+  # raspi4-robodrill01 (tools04@100.123.1.113)
+  ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"
+  ```
+
+**学んだこと**:
+- 実機検証チェックリスト（[deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md)）のPi4/Pi3サービス確認は、必ずPi5経由で実行する
+- 期待値: 両方とも `active` が返ること
+
+**関連ファイル**:
+- `docs/runbooks/deploy-status-recovery.md`: 実機検証チェックリスト（Pi5経由コマンドに修正済み）
+- `docs/guides/ansible-ssh-architecture.md`: 接続構成の説明
 
 ---
 

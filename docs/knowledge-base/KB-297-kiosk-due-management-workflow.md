@@ -212,6 +212,37 @@ category: knowledge-base
 - **daily-plan API フォールバック**: 未保存時は `ProductionScheduleTriageSelection` の選択済み製番をフォールバック返却。計画テーブルとトリアージテーブルは別管理で、日付キーは JST 基準
 - **統合テストのフォールバック順序**: GET の初回取得でトリアージ選択の順序が保証されないため、アサーションは `.sort()` で比較する設計が安全
 
+## B第3段階（全体ランキング・引継ぎ、2026-03-07）
+
+- **目的**: 日次計画の順序を拠点全体で共有し、前日未完了製番を「引継ぎ」として後段に配置できるようにする
+- **DB**:
+  - `ProductionScheduleGlobalRank`（拠点×製番の優先順位、`csvDashboardId + location + fseiban` 一意、`priorityOrder` でソート）
+- **API**:
+  - `GET /api/kiosk/production-schedule/due-management/global-rank`
+  - `PUT /api/kiosk/production-schedule/due-management/global-rank`
+- **ロジック**:
+  - 日次計画未保存時: 前日計画＋全体ランキング＋当日トリアージで初期順を生成。トリアージ外は「引継ぎ」として後段に配置
+  - 日次計画保存時に global rank へマージ
+- **UI**:
+  - 「今日の計画順」で引継ぎ製番に「引継ぎ」バッジを表示
+
+### B第3段階デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-182958-1095`、`state: success`、約11分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: degraded`（メモリ95.5%、既知の環境要因）
+  - Prismaマイグレーション: 41件適用済み、スキーマ最新
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: triage / daily-plan / global-rank いずれも 200
+  - サイネージAPI: `/api/signage/content` 200、`layoutConfig` 含む
+  - backup.json: 存在・15K
+  - Pi4サービス: Pi5経由SSHで raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+
+### 知見（B第3実装・実機検証時）
+
+- **Pi4サービス確認**: Macから直接Pi4にSSHするとタイムアウトする。Pi5経由（`ssh denkon5sd02@100.106.158.2 "ssh tools03@100.74.144.79 '...'"`）で接続する（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 参照）
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
@@ -222,5 +253,7 @@ category: knowledge-base
 - `apps/api/src/services/production-schedule/due-management-triage.service.ts`
 - `apps/api/src/services/production-schedule/due-management-selection.service.ts`
 - `apps/api/src/services/production-schedule/due-management-daily-plan.service.ts`
+- `apps/api/src/services/production-schedule/due-management-global-rank.service.ts`
+- `apps/api/src/services/production-schedule/due-management-carryover.service.ts`
 - `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`
