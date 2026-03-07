@@ -262,6 +262,36 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/web lint` 成功
   - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（41件成功）
 
+### B第3次段デプロイ・実機検証（2026-03-07）
+
+- **デプロイ**: Run ID `20260307-193451-27230`、`state: success`、約10〜15分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **ブランチ**: `feat/due-mgmt-b4-global-rank-visibility`
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: triage / daily-plan / global-rank いずれも 200
+  - global-rank: データ未登録時は `{"orderedFseibans":[]}` を返却（UIは「全体ランキングはまだ作成されていません」と表示）
+  - サイネージAPI: `/api/signage/content` 200、`layoutConfig` 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 41件適用済み、未適用なし
+  - Pi4サービス: Pi5経由SSHで raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+  - Pi3 signage-lite: active
+
+### 知見（B第3次段実装・デプロイ時）
+
+- **deriveGlobalRankFlags**: `isCarryover` が true のとき `isInTodayTriage` は常に false になる（引継ぎは今日対象外）。`isOutOfToday` は `!isInTodayTriage` で導出
+- **global-rank 空データ**: 製番が1件も登録されていない場合、API は `orderedFseibans: []` を返す。UI は「全体ランキングはまだ作成されていません」と表示
+- **デプロイ対象**: Web/キオスク変更は Pi5 + Pi4（`--limit "server:kiosk"`）で十分。Pi3（サイネージ）はサーバー側レンダリングのため Pi5 のみで影響完結
+
+### トラブルシュート（B第3次段）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| 全体ランキングが空 | 製番が未登録、または global-rank に1件もない | トリアージで製番を選択し、今日の計画順を保存すると global-rank へマージされる。初回は空のままでも正常 |
+| バッジが表示されない | dailyPlanItemMeta や selectedSet の取得失敗 | トリアージ・daily-plan API の応答を確認。画面リロードで再取得 |
+| 「今日の計画順」と全体ランキングの整合が取れない | 保存タイミングのずれ | 今日の計画順で「順序を保存」を押すと global-rank へマージされる。保存後に全体ランキングを再読込 |
+
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
@@ -275,4 +305,5 @@ category: knowledge-base
 - `apps/api/src/services/production-schedule/due-management-global-rank.service.ts`
 - `apps/api/src/services/production-schedule/due-management-carryover.service.ts`
 - `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
+- `apps/web/src/features/kiosk/productionSchedule/dueManagement.ts`（`deriveGlobalRankFlags`）
 - `apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx`
