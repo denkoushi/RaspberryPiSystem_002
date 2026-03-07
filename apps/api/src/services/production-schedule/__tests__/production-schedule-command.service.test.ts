@@ -28,6 +28,9 @@ vi.mock('../../../lib/prisma.js', () => ({
       update: vi.fn(),
       upsert: vi.fn(),
     },
+    productionScheduleProcessingTypeOption: {
+      findMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -35,6 +38,14 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('production-schedule-command.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.productionScheduleProcessingTypeOption.findMany).mockResolvedValue([
+      {
+        code: '塗装',
+        label: '塗装',
+        enabled: true,
+        priority: 10,
+      },
+    ] as never);
   });
 
   it('complete対象が存在しない場合は404を返す', async () => {
