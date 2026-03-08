@@ -509,3 +509,37 @@ update-frequency: high
 
 **詳細**: [ci-troubleshooting.md](../guides/ci-troubleshooting.md) の「8.5. ユニットテストで Prisma モデル未モック」、[production-schedule-kiosk-execplan.md](../plans/production-schedule-kiosk-execplan.md) の Surprises & Discoveries を参照。
 
+---
+
+### [KB-299] Prisma JSONカラムへの Record<string, unknown> や null の代入でCIビルド失敗
+
+**発生日**: 2026-03-08
+
+**事象**:
+- GitHub Actions CIの`Build API`ステップで `tsc -p tsconfig.build.json` が失敗
+- エラー: `due-management-learning-event.repository.ts` で `Type 'Record<string, unknown> | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'`、`Type 'null' is not assignable`
+
+**根本原因**:
+- Prisma の JSON カラム（`Json` 型）では、`null` を明示的に格納するには `Prisma.JsonNull` を指定する必要がある。TypeScript の `null` は `NullableJsonNullValueInput` に直接代入できない
+- `Record<string, unknown>` や `{ items: [...] }` のようなオブジェクトは、`Prisma.InputJsonValue` へのキャストが必要（インデックスシグネチャの互換性）
+
+**有効だった対策**:
+- ✅ `writePolicy === null` のとき `Prisma.JsonNull` を指定
+- ✅ `payload` オブジェクトは `as Prisma.InputJsonValue` でキャスト
+- ✅ `input.metadata === null || input.metadata === undefined` のとき `Prisma.JsonNull` を指定
+- ✅ `import { Prisma } from '@prisma/client'` を追加
+
+**参照パターン**:
+- `apps/api/src/services/signage/signage.service.ts` の `toPrismaLayoutConfig` メソッド（`null` → `Prisma.JsonNull`、オブジェクト → `as unknown as Prisma.InputJsonValue`）
+- `apps/api/src/services/csv-dashboard/diff/csv-dashboard-diff.ts`（`rowData: incoming.data as Prisma.InputJsonValue`）
+
+**再発防止**:
+- 新規 JSON カラムへの書き込み時は、`Prisma.JsonNull` と `Prisma.InputJsonValue` の型契約を確認する
+- ローカルで `pnpm --filter @raspi-system/api build` を実行して CI と同等のビルドを検証する
+
+**解決状況**: ✅ **解決済み（2026-03-08）**
+
+**関連ファイル**:
+- `apps/api/src/services/production-schedule/due-management-learning-event.repository.ts`
+- [KB-297](./KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08)
+

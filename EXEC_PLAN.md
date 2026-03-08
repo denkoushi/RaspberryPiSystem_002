@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-08) **納期管理 B第5段階（オフライン学習評価 + イベントログ）・デプロイ完了・実機検証完了**: 納期遅れ最小化を主目的とするオフライン学習イベントログを導入。`DueManagementProposalEvent` / `DueManagementOperatorDecisionEvent` / `DueManagementOutcomeEvent` を追記専用で保存し、`GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価（overdue件数/日数 + 順位一致指標）を提供。**デプロイ**: Run ID `20260308-092421-13920`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・**global-rank/learning-report**・summary）、サイネージAPI、backup.json、マイグレーション（42件）、Pi4サービス稼働を確認。**トラブルシューティング**: CI初回でPrisma JSON型エラー（`Record<string,unknown>|null` → `Prisma.JsonNull` / `InputJsonValue` キャストで解決、[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) / [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md) を参照。
 - [x] (2026-03-08) **納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
 - [x] (2026-03-07) **納期管理 B第4段階補正（納期設定済み限定候補 + 既存rank即時除外）実装完了**: `global-rank/proposal` の候補を `dueDate != null` に限定し、`auto-generate` 保存時は既存global-rankに残る納期未設定製番を即時除外（方針A）するよう補正。`keepExistingTail=true` でも納期未設定は保持しない。日数計算はJST日境界で評価。**検証**: API統合テスト（44件）、api lint、web lint 通過。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正納期設定済み限定候補--即時除外2026-03-07) を参照。
 - [x] (2026-03-07) **納期管理 B第4段階（全体ランキング自動生成・根拠表示）実装完了・デプロイ完了・実機検証完了**: `global-rank` の次段として、資源所要量（最上位重み）・納期切迫度・完了実績補正・引継ぎ・製番内優先を統合した自動生成エンジンを追加。`GET /api/kiosk/production-schedule/due-management/global-rank/proposal`、`PUT /api/kiosk/production-schedule/due-management/global-rank/auto-generate`、`GET /api/kiosk/production-schedule/due-management/global-rank/explanation/:fseiban` を追加し、UIに「自動生成して保存」導線と score/reasons 表示を実装。保存時は最小候補件数・並び替え差分率・既存尾部保持のガードを適用。**デプロイ**: Run ID `20260307-214452-32001`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階全体ランキング自動生成根拠表示2026-03-07) を参照。
@@ -645,6 +646,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-08）: **Prisma JSONカラムへの `Record<string, unknown> | null` 代入**でCIビルドが失敗。Prisma の JSON 型では `null` を格納するには `Prisma.JsonNull` を指定し、オブジェクトは `as Prisma.InputJsonValue` でキャストする必要がある。既存の `signage.service.ts` の `toPrismaLayoutConfig` パターンを参照して解決（[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。
 - 観測（2026-03-07）: **実機検証時の deploy-status API パス**は `GET /api/system/deploy-status`（`/api/deploy-status` ではない）。`x-client-key` を付与して端末別メンテ状態（`isMaintenance`）を確認する。既存の [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) に正しいパスが記載済み。
 - 観測（2026-03-07）: **APIメモリ使用率**が約90%と高めの状態で稼働。負荷増加時は監視継続を推奨。既存の signage-render-worker メモリ対策（KB-274）とは別軸。
 - 観測（2026-03-06）: **eventLoop health 評価**を導入した直後、テスト環境で `/api/system/health` が `503 degraded` を返す事象が発生。**原因**: 起動直後や短命テストでは `monitorEventLoopDelay` / `eventLoopUtilization` のサンプルが不足し、`p99` や `elu` が非有限（NaN等）になる。**対策**: `evaluateEventLoopHealth` に warmup ウィンドウ判定を追加（`sampleWindowMs < 1000` または `!Number.isFinite(p99/elu)` のときは `ok` を返す）。これによりテスト・起動直後の誤検知を防止。**[KB-296]**
@@ -855,6 +857,7 @@
 
 ## Decision Log
 
+- 決定（2026-03-08）: **納期管理ランキングの学習方式**はオフライン評価のみとし、本番保存時に重みを自動更新しない。追記専用イベントテーブル（Proposal/Decision/Outcome）で一次データを保持し、`learning-report` API で期間評価を提供。主指標は遅延側（overdue件数/日数）、副指標は順位一致度（Top-K/Spearman/Kendall）。詳細は [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)。
 - 決定（2026-03-06）: **低レイヤー観測強化**は「観測強化のみ（メトリクス拡充・Runbook整備・しきい値定義）」の範囲で実施し、ロジック変更・worker分離等の改善は次フェーズに先送りする。**ロールアウト**は「カナリア（Pi5または1台のみ）→検証→段階展開」を採用。  
   理由: 既存稼働を壊さず、観測データに基づいて改善施策を決定するため。APIはPi5のみで稼働するため、観測強化のデプロイはPi5（`--limit server`）のみで十分。  
   参照: [operation-manual.md](./docs/guides/operation-manual.md)（低レイヤー観測）、[KB-268](./docs/knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察)、[KB-274](./docs/knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応)
@@ -1565,6 +1568,18 @@
 
 **参照**: [docs/runbooks/kiosk-power-operation-recovery.md](./docs/runbooks/kiosk-power-operation-recovery.md)
 
+### 納期管理オフライン学習評価の次のステップ（B第5段階完了後）
+
+**概要**: B第5段階（オフライン学習イベントログ + learning-report API）のデプロイ・実機検証が完了。イベント蓄積後に以下を検討する。
+
+**将来のタスク候補**（優先度順）:
+1. **learning-report の管理コンソールUI**: 期間指定でレポートを表示し、遅延指標・順位一致指標を可視化
+2. **重み候補のオフライン評価**: イベントデータを用いて複数重み候補を比較し、主指標（overdue件数/日数）が最小となる候補を特定
+3. **重みの本番反映フロー**: 承認付きで重みを本番に反映する手順・UIの整備
+4. **イベントテーブルの保持期間・アーカイブ**: 長期運用時のDBサイズ管理ポリシー
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) / [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)
+
 ### 低レイヤー観測（Pi5カナリア）検証・次フェーズ移行（進行中）
 
 **概要**: eventLoop / signage worker 観測を Pi5 にデプロイ済み。7日連続合格後に次フェーズ（低リスク改善）へ移行する。
@@ -2215,6 +2230,7 @@
 ---
 
 変更履歴: 2026-03-07 — 納期管理トリアージ（B第1段階）実装を反映。`ProductionScheduleTriageSelection` 追加、`due-management/triage` / `due-management/triage/selection` API追加、納期管理画面トリアージパネル追加、API統合テスト（37件）と api/web lint 成功を記録。KB-297 / production-schedule-kiosk-execplan.md / INDEX.md を更新。
+変更履歴: 2026-03-08 — 納期管理 B第5段階（オフライン学習評価 + イベントログ）のデプロイ・実機検証完了を反映。Progress に B第5段階完了を追加。Surprises & Discoveries に Prisma JSON 型 CI 失敗（KB-299）を追加。Decision Log にオフライン学習方式の決定を追加。Next Steps に learning-report 管理コンソール UI・重み候補評価・本番反映フロー等の候補を追加。KB-297 に実装前議論・デプロイ・実機検証・トラブルシュートを追記。KB-299（Prisma JSON 型）を ci-cd.md に追加。deploy-status-recovery.md の検証チェックリストに learning-report を追加。ADR-20260308 に実装前議論コンテキストを追記。knowledge-base index に KB-299 を追加。
 変更履歴: 2026-03-07 — 納期管理画面 A修正のデプロイ・実機検証完了を反映。KB-297 に A修正デプロイ・実機検証結果と ci-troubleshooting/KB-298 参照を追加。production-schedule-kiosk-execplan.md に「納期管理・生産スケジュール連携拡張（A修正）完了後の次のタスク候補」を追加。EXEC_PLAN.md Next Steps に同タスクを追加。
 変更履歴: 2026-03-06 — 低レイヤー観測強化（Pi5カナリア）の進捗・知見・トラブルシュートをドキュメントに反映。Progress/Surprises/Decision Log/Outcomes/Next Steps を更新。KB-268/KB-274 にデプロイ完了を追記。KB-296（eventLoop health warmup 503 対策）を api.md に追加。operation-manual にトラブルシュート（7）を追加。ADR-20260306-lowlevel-observability を新設。knowledge-base index に KB-296 を追加、INDEX.md を更新。
 変更履歴: 2026-02-13 — B実装（api-only / minor-safe）を反映。`vitest` / `@vitest/coverage-istanbul` は major 1 系で最新（`1.6.1`）を確認。coverage provider を `istanbul` に統一し、`test:coverage` 実行時に明示指定する形へ更新。`test-exclude>glob` オーバーライド削除トライは再発エラー（`ERR_INVALID_ARG_TYPE`）で失敗したため復元し維持。最終的に `test:coverage`（ローカル）と `pnpm --filter @raspi-system/api test/lint/build` が成功することを確認。

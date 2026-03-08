@@ -254,6 +254,21 @@ TypeError: Cannot read properties of undefined (reading 'findMany')
 
 **参考**: 2026-03-07 に `production-schedule-command.service.test.ts` で発生。`isValidProcessingType` が `ProductionScheduleProcessingTypeOption.findMany` を参照するようになったがモックが不足していた。`productionScheduleProcessingTypeOption.findMany` のモックを追加して解決。詳細は [production-schedule-kiosk-execplan.md](../plans/production-schedule-kiosk-execplan.md) の Surprises & Discoveries を参照。
 
+### 8.6. Prisma JSONカラムへの Record<string, unknown> や null の代入でビルド失敗
+
+**症状**: CIの`Build API`ステップで `tsc -p tsconfig.build.json` が失敗し、`Type 'Record<string, unknown> | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'` などの型エラーが発生する。
+
+**背景**: Prisma の JSON カラム（`Json` 型）では、`null` を明示的に格納するには `Prisma.JsonNull` を指定する必要がある。TypeScript の `null` は直接代入できない。また `Record<string, unknown>` や配列を含むオブジェクトは `Prisma.InputJsonValue` へのキャストが必要。
+
+**対処法**:
+1. `null` を格納する場合: `params.value === null ? Prisma.JsonNull : (params.value as Prisma.InputJsonValue)` のように分岐
+2. オブジェクトを格納する場合: `payload as Prisma.InputJsonValue` でキャスト
+3. `import { Prisma } from '@prisma/client'` を追加
+
+**参照パターン**: `apps/api/src/services/signage/signage.service.ts` の `toPrismaLayoutConfig` メソッド
+
+**詳細**: [KB-299](../knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)
+
 ### 11. `test:coverage` が `TypeError: minimatch is not a function` で失敗する（`test-exclude@6.0.0` と `minimatch@10.x` の非互換）
 
 **症状**: CIの`Run API tests`ステップで、すべてのテストファイル（90件）が失敗し、以下のエラーが表示される:

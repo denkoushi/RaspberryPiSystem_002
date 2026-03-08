@@ -413,17 +413,23 @@ category: knowledge-base
 
 ## B第5段階（オフライン学習評価 + イベントログ、2026-03-08）
 
+### 実装前議論（設計方針・コンテキスト共有）
+
 - **目的**: 納期遅れ最小化を主目的として、提案順位/現場決定/完了変化を追記専用で保存し、重み更新はオフライン評価のみに限定する
 - **方針**:
   - 本番で重みを自動更新しない（オンライン学習を無効）
   - 提案と現場決定の一致度は副指標（Top-K/Spearman/Kendall）
   - 主指標は遅延側（overdue件数、overdue日数）
+- **設計方針の背景**:
+  - **オフライン評価のみ**: 本番での即時自己学習は、データ品質やサンプル不足時に挙動が不安定化するリスクがある。既存データはCSV再取込や保持期間削除の影響を受けるため、学習/監査向けの履歴としては欠損しうる
+  - **代替案検討**: オンライン学習（本番で重みを逐次更新）は却下。データ品質/件数が安定する前に導入すると過学習・挙動不安定化を招く。既存テーブルのみで学習を行う案も、履歴欠損時に再現性・監査性を担保しにくいため却下
+  - **イベントモデル**: 追記専用の3テーブル（Proposal/Decision/Outcome）で一次データを保持し、既存 `ProductionScheduleGlobalRank` は運用表示向け投影として維持
 - **追加データモデル**:
   - `DueManagementProposalEvent`
   - `DueManagementOperatorDecisionEvent`
   - `DueManagementOutcomeEvent`
 - **追加API**:
-  - `GET /api/kiosk/production-schedule/due-management/global-rank/learning-report`
+  - `GET /api/kiosk/production-schedule/due-management/global-rank/learning-report`（クエリ: `from` / `to` オプション、ISO 8601）
 - **実装ポイント**:
   - `auto-generate` / 手動global-rank保存時に proposal/decision イベントを記録
   - 完了トグル・CSV進捗同期時に outcome イベントを記録
@@ -431,3 +437,29 @@ category: knowledge-base
 - **運用メモ**:
   - イベントテーブルは分析・再学習・監査の一次データとして扱い、既存ランキングテーブルは投影（運用表示）として扱う
   - 学習重みの本番反映は別ステップ（承認付き）で行う
+
+### デプロイ・実機検証（2026-03-08）
+
+- **デプロイ**: Run ID `20260308-092421-13920`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）
+- **実機検証チェック**:
+  - APIヘルス: `status: ok`
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200
+  - 納期管理API: triage・daily-plan・global-rank・global-rank/proposal・**global-rank/learning-report**・summary すべて 200
+  - サイネージAPI: 200
+  - backup.json: 存在・15K
+  - マイグレーション: 42件適用済み、未適用なし
+  - Pi4サービス: Pi5経由SSHで raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
+- **learning-report 応答例**: `locationKey`、`range`（from/to）、`summary`（proposalCount、decisionCount、outcomeCount、overdueSeibanCount、overdueTotalDays、avgTopKPrecision、avgSpearmanRho、avgKendallTau）、`recommendation` を返却
+
+### トラブルシューティング（Prisma JSON型CI失敗）
+
+- **事象**: 初回プッシュ後、CIの`Build API`で `tsc -p tsconfig.build.json` が失敗
+- **エラー**: `due-management-learning-event.repository.ts` で `Record<string, unknown> | null` が Prisma の `InputJsonValue` / `NullableJsonNullValueInput` に代入できない
+- **原因**: Prisma の JSON カラムでは、`null` を明示するには `Prisma.JsonNull` を指定する必要がある。`Record<string, unknown>` は `Prisma.InputJsonValue` へのキャストが必要
+- **対策**: [KB-299](./ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗) を参照
+- **再発防止**: 新規 JSON カラムへの書き込みには、既存 `signage.service.ts` の `toPrismaLayoutConfig` パターン（`null` → `Prisma.JsonNull`、オブジェクト → `as Prisma.InputJsonValue`）を参照する
+
+### 知見（B第5段階）
+
+- **実機検証チェックリスト**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「3. 実機検証チェックリスト」を参照。`learning-report` は納期管理APIの一環として追加済み
