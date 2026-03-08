@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import type {
@@ -110,11 +111,12 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
         orderedFseibans: normalizeFseibans(params.proposal.orderedFseibans),
         candidateCount: params.proposal.candidateCount,
         selectedFseibans: normalizeFseibans(params.selectedFseibans),
-        writePolicy: params.writePolicy,
+        writePolicy:
+          params.writePolicy === null
+            ? Prisma.JsonNull
+            : (params.writePolicy as Prisma.InputJsonValue),
         actorClientKey: params.actorClientKey,
-        payload: {
-          items: params.proposal.items
-        }
+        payload: { items: params.proposal.items } as Prisma.InputJsonValue
       }
     });
   }
@@ -154,7 +156,10 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
         fseiban: input.fseiban,
         isCompleted: input.isCompleted,
         occurredAt: input.occurredAt,
-        payload: input.metadata ?? null
+        payload:
+          input.metadata === null || input.metadata === undefined
+            ? Prisma.JsonNull
+            : (input.metadata as Prisma.InputJsonValue)
       }
     });
   }
