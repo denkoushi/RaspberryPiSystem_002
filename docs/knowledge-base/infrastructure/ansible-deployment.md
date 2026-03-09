@@ -3908,6 +3908,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - 両端末とも `failed=0`、`unreachable=0`、exit 0 で完了
 
 **Prevention**:
+- **直列化適用済み（2026-03-09）**: `deploy-staged.yml` の kiosk play に `serial: "{{ deploy_serial.kiosk | default(1) }}"` を適用。`group_vars/all.yml` の `deploy_serial.kiosk: 1` により Pi4 は常時 1 台ずつ直列実行となり、並列実行由来のハングを防止
 - `server:kiosk` でハングした場合の復旧手順を Runbook に追加（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）
 - ハングが続く場合は、Pi4 を単体で `--limit raspberrypi4` / `--limit raspi4-robodrill01` により再デプロイする運用を推奨
 - 将来の検討: Ansible の `ansible_command_timeout` や SSH 接続の並列化設定の見直し

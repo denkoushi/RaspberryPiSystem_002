@@ -66,7 +66,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 ## 5. Pi4デプロイハング時の復旧手順（2026-03-09 追加）
 
-`--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。
+**注記**: 通常は Pi4 を 1 台ずつ直列実行する運用（`deploy_serial.kiosk: 1`）のため、本手順が必要になる事象は稀。過去に `--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。直列化適用後も、ネットワーク障害等で同様のハングが発生した場合に本手順を参照する。
 
 ### 5.1 ハングの判定
 
