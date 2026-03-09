@@ -651,6 +651,7 @@ model CsvDashboardRow {
   orderAssignments           ProductionScheduleOrderAssignment[]
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
+  globalRowRanks             ProductionScheduleGlobalRowRank[]
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
@@ -849,6 +850,25 @@ model ProductionScheduleGlobalRank {
   @@unique([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRank_unique_fseiban")
   @@unique([csvDashboardId, location, priorityOrder], map: "ProductionScheduleGlobalRank_unique_order")
   @@index([csvDashboardId, location, priorityOrder], map: "ProductionScheduleGlobalRank_idx_order")
+}
+
+model ProductionScheduleGlobalRowRank {
+  id                String   @id @default(uuid())
+  csvDashboardId    String
+  location          String
+  csvDashboardRowId String
+  fseiban           String   @db.VarChar(20)
+  globalRank        Int
+  sourceType        String   @default("manual") @db.VarChar(20)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, location, csvDashboardRowId], map: "ProductionScheduleGlobalRowRank_unique_row")
+  @@unique([csvDashboardId, location, globalRank], map: "ProductionScheduleGlobalRowRank_unique_rank")
+  @@index([csvDashboardId, location, globalRank], map: "ProductionScheduleGlobalRowRank_idx_rank")
+  @@index([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRowRank_idx_fseiban")
 }
 
 model DueManagementProposalEvent {

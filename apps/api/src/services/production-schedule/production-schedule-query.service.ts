@@ -17,6 +17,7 @@ type ProductionScheduleRow = {
   occurredAt: Date;
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
+  globalRank: number | null;
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
@@ -269,6 +270,14 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
           AND "location" = ${locationKey}
         LIMIT 1
       ) AS "processingOrder",
+      (
+        SELECT "globalRank"
+        FROM "ProductionScheduleGlobalRowRank"
+        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          AND "location" = ${locationKey}
+        LIMIT 1
+      ) AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate"

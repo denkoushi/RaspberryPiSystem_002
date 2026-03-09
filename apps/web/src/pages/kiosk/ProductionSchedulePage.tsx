@@ -50,6 +50,7 @@ type NormalizedScheduleRow = {
   data: ScheduleRowData;
   values: Record<string, string>;
   processingOrder: number | null;
+  globalRank: number | null;
   processingType: string | null;
   note: string | null;
   dueDate: string | null;
@@ -323,7 +324,8 @@ export function ProductionSchedulePage() {
       { key: 'ProductNo', label: '製造order番号' },
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
-      { key: 'processingOrder', label: '順番', dataType: 'number' },
+      { key: 'globalRank', label: '全体順位', dataType: 'number' },
+      { key: 'processingOrder', label: '資源順番', dataType: 'number' },
       { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
       { key: 'FKOJUN', label: '工順', dataType: 'number' },
@@ -350,6 +352,7 @@ export function ProductionSchedulePage() {
     const mapped = sourceRows.map((r) => {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
+      const globalRank = typeof r.globalRank === 'number' ? r.globalRank : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
@@ -358,6 +361,7 @@ export function ProductionSchedulePage() {
         ProductNo: String(d.ProductNo ?? ''),
         FHINMEI: String(d.FHINMEI ?? ''),
         FSIGENCD: String(d.FSIGENCD ?? ''),
+        globalRank: globalRank ? String(globalRank) : '',
         processingOrder: processingOrder ? String(processingOrder) : '',
         processingType: processingType ?? '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
@@ -370,6 +374,7 @@ export function ProductionSchedulePage() {
         data: d,
         values,
         processingOrder,
+        globalRank,
         processingType,
         note,
         dueDate

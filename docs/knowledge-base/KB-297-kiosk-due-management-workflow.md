@@ -463,3 +463,27 @@ category: knowledge-base
 ### 知見（B第5段階）
 
 - **実機検証チェックリスト**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「3. 実機検証チェックリスト」を参照。`learning-report` は納期管理APIの一環として追加済み
+
+## B第6段階（行単位全体順位スナップショット導入・Phase 1、2026-03-09）
+
+- **目的**: 全体ランキングを「製番単位の親順位」から「行単位の通し順位」へ投影し、生産スケジュールキオスクと納期管理キオスクが同じ順位基準を参照できるようにする
+- **方針**:
+  - 既存 `processingOrder`（資源CD別の実行順）は維持
+  - 新設 `globalRank`（行単位全体順位）は読み取り専用で表示
+  - フィルタ（製番/資源CD）は**順位計算後の表示絞り込み**とし、再ランキングしない
+- **追加データモデル**:
+  - `ProductionScheduleGlobalRowRank`（`csvDashboardRowId` ごとの `globalRank` スナップショット）
+- **実装ポイント**:
+  - `row-global-rank-generator.service.ts` で行単位順位を生成（製番順位 -> 部品優先 -> 工順 -> ProductNo）
+  - `due-management-global-rank.service.ts` の保存処理後に再生成を実行（manual/auto双方）
+  - `GET /api/kiosk/production-schedule` に `globalRank` を追加
+  - 生産スケジュール画面に `全体順位` 列を追加し、既存 `順番` は `資源順番` に改称
+- **検証**:
+  - APIユニットテスト（query / generator）
+  - API統合テスト（kiosk-production-schedule）
+  - `apps/api` lint/build、`apps/web` lint
+
+### 知見（B第6段階）
+
+- **意味分離が重要**: `全体順位`（全体最適の参照）と `資源順番`（現場実行順）は目的が異なるため、同一列へ統合しない方が運用上安全
+- **保存型が有効**: 行単位順位をスナップショット保存することで、将来の「直近数日の妥当性評価」に再現性を持たせやすい

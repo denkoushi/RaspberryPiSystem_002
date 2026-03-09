@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { regenerateProductionScheduleGlobalRowRank } from './row-global-rank-generator.service.js';
 
 const MAX_ITEMS = 2000;
 
@@ -22,6 +23,7 @@ async function replaceGlobalRankInternal(params: {
   sourceType?: 'auto' | 'manual';
 }): Promise<string[]> {
   const orderedFseibans = normalizeFseibans(params.orderedFseibans);
+  const sourceType = params.sourceType ?? 'manual';
   await prisma.$transaction(async (tx) => {
     await tx.productionScheduleGlobalRank.deleteMany({
       where: {
@@ -36,10 +38,14 @@ async function replaceGlobalRankInternal(params: {
           location: params.locationKey,
           fseiban,
           priorityOrder: index + 1,
-          sourceType: params.sourceType ?? 'manual'
+          sourceType
         }))
       });
     }
+  });
+  await regenerateProductionScheduleGlobalRowRank({
+    locationKey: params.locationKey,
+    sourceType
   });
   return orderedFseibans;
 }

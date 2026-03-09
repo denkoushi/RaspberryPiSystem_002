@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-09) **納期管理 B第6段階（行単位全体順位スナップショット）Phase 1 実装完了**: `ProductionScheduleGlobalRowRank` テーブルを追加し、`global-rank`/`daily-plan` 保存後に行単位全体順位を再生成する `row-global-rank-generator.service.ts` を導入。`GET /api/kiosk/production-schedule` に `globalRank` を追加し、Webで `全体順位` 列を新設、既存 `順番` を `資源順番` として維持。**検証**: APIユニットテスト（query/generator）、kiosk統合テスト、`apps/api` lint/build、`apps/web` lint 通過。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09) を参照。
 - [x] (2026-03-08) **納期管理 B第5段階（オフライン学習評価 + イベントログ）・デプロイ完了・実機検証完了**: 納期遅れ最小化を主目的とするオフライン学習イベントログを導入。`DueManagementProposalEvent` / `DueManagementOperatorDecisionEvent` / `DueManagementOutcomeEvent` を追記専用で保存し、`GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価（overdue件数/日数 + 順位一致指標）を提供。**デプロイ**: Run ID `20260308-092421-13920`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・**global-rank/learning-report**・summary）、サイネージAPI、backup.json、マイグレーション（42件）、Pi4サービス稼働を確認。**トラブルシューティング**: CI初回でPrisma JSON型エラー（`Record<string,unknown>|null` → `Prisma.JsonNull` / `InputJsonValue` キャストで解決、[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) / [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md) を参照。
 - [x] (2026-03-08) **納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
 - [x] (2026-03-07) **納期管理 B第4段階補正（納期設定済み限定候補 + 既存rank即時除外）実装完了**: `global-rank/proposal` の候補を `dueDate != null` に限定し、`auto-generate` 保存時は既存global-rankに残る納期未設定製番を即時除外（方針A）するよう補正。`keepExistingTail=true` でも納期未設定は保持しない。日数計算はJST日境界で評価。**検証**: API統合テスト（44件）、api lint、web lint 通過。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正納期設定済み限定候補--即時除外2026-03-07) を参照。
@@ -857,6 +858,9 @@
 
 ## Decision Log
 
+- 決定（2026-03-09）: **全体順位は行単位スナップショットとして別管理**し、`processingOrder`（資源CD別順番）とは統合しない。  
+  理由: 目的が異なる2種類の順位を同一列/同一制約で扱うと運用衝突が起きるため。`globalRank` は全体最適の参照値、`processingOrder` は現場実行順として責務分離する。  
+  参照: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09), [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)
 - 決定（2026-03-08）: **納期管理ランキングの学習方式**はオフライン評価のみとし、本番保存時に重みを自動更新しない。追記専用イベントテーブル（Proposal/Decision/Outcome）で一次データを保持し、`learning-report` API で期間評価を提供。主指標は遅延側（overdue件数/日数）、副指標は順位一致度（Top-K/Spearman/Kendall）。詳細は [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)。
 - 決定（2026-03-06）: **低レイヤー観測強化**は「観測強化のみ（メトリクス拡充・Runbook整備・しきい値定義）」の範囲で実施し、ロジック変更・worker分離等の改善は次フェーズに先送りする。**ロールアウト**は「カナリア（Pi5または1台のみ）→検証→段階展開」を採用。  
   理由: 既存稼働を壊さず、観測データに基づいて改善施策を決定するため。APIはPi5のみで稼働するため、観測強化のデプロイはPi5（`--limit server`）のみで十分。  
@@ -1505,6 +1509,15 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 行単位全体順位 Phase 2（候補）
+
+**概要**: Phase 1 で導入した `globalRank` の表示運用を前提に、評価・運用補助を拡張する。
+
+**候補タスク**:
+1. **納期管理画面での行単位順位参照拡張**: 製番詳細に `globalRank` を表示し、同一基準での判断を強化
+2. **再生成ジョブ化**: 夜間バッチで `ProductionScheduleGlobalRowRank` を再計算し、手動更新漏れを補完
+3. **運用監視**: 再生成件数・未採番件数・再生成時間をメトリクス化し、異常を早期検知
 
 ### Pi4追加時のkiosk-browser.service起動エラー対策の永続化（完了）
 

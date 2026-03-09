@@ -26,6 +26,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementProposalEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleGlobalRowRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -48,6 +49,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementProposalEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleGlobalRowRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleGlobalRank.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleDailyPlanItem.deleteMany({ where: { plan: { csvDashboardId: DASHBOARD_ID } } });
     await prisma.productionScheduleDailyPlan.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -142,15 +144,50 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   it('lists all rows including completed ones (for graying out)', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { id: 'asc' },
+      select: { id: true, rowData: true }
+    });
+    const row0000 = rows.find((row) => (row.rowData as any).ProductNo === '0000');
+    const row0001 = rows.find((row) => (row.rowData as any).ProductNo === '0001');
+    if (row0000 && row0001) {
+      await prisma.productionScheduleGlobalRowRank.createMany({
+        data: [
+          {
+            csvDashboardId: DASHBOARD_ID,
+            location: 'Test',
+            csvDashboardRowId: row0000.id,
+            fseiban: 'A',
+            globalRank: 1,
+            sourceType: 'manual'
+          },
+          {
+            csvDashboardId: DASHBOARD_ID,
+            location: 'Test',
+            csvDashboardRowId: row0001.id,
+            fseiban: 'A',
+            globalRank: 2,
+            sourceType: 'manual'
+          }
+        ]
+      });
+    }
+
     const res = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule',
       headers: { 'x-client-key': CLIENT_KEY }
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; progress?: string } }> };
+    const body = res.json() as {
+      rows: Array<{ rowData: { ProductNo?: string; progress?: string }; globalRank?: number | null }>
+    };
     // 完了状態のものも含めて全て返す（グレーアウト表示のため）
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001', '0002']);
+    expect(body.rows.find((r) => r.rowData.ProductNo === '0000')?.globalRank).toBe(1);
+    expect(body.rows.find((r) => r.rowData.ProductNo === '0001')?.globalRank).toBe(2);
+    expect(body.rows.find((r) => r.rowData.ProductNo === '0002')?.globalRank ?? null).toBeNull();
     // 完了状態のものはprogressが'完了'
     const completedRow = body.rows.find((r) => r.rowData.ProductNo === '0002');
     expect(completedRow?.rowData.progress).toBe('完了');
