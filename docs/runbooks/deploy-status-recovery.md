@@ -64,8 +64,45 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 - Mac → Pi5（denkon5sd02@100.106.158.2）にSSH
 - Pi5 → Pi4/Pi3（tools03/tools04/signageras3@各IP）にSSH
 
-## 5. 関連ドキュメント
+## 5. Pi4デプロイハング時の復旧手順（2026-03-09 追加）
+
+`--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。
+
+### 5.1 ハングの判定
+
+- リモートログが 10 分以上更新されない
+- `state: running` のまま `exit` ファイルが生成されない
+- ログ末尾が `TASK [common : Ensure repository parent directory exists]` 等で止まっている
+
+### 5.2 復旧手順
+
+1. **ハングしたプロセスの停止**（Pi5 上で実行中の ansible-playbook 等を kill）
+   ```bash
+   # リモートの PID を確認（status.json の runId から .pid ファイルを参照）
+   ssh denkon5sd02@100.106.158.2 "ps aux | grep ansible-update"
+   # 親プロセス（bash /tmp/ansible-update-*.sh）と ansible-playbook を kill
+   ssh denkon5sd02@100.106.158.2 "kill -TERM <親PID> <ansible-playbook-PID> 2>/dev/null || true"
+   ```
+
+2. **ロックファイルの確認・削除**（cleanup が実行されない場合）
+   ```bash
+   ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
+   ```
+
+3. **Pi4 を単体で再デプロイ**
+   ```bash
+   export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+   ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow
+   ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01" --detach --follow
+   ```
+
+4. **実機検証チェックリスト**（セクション 3）に従って確認
+
+---
+
+## 6. 関連ドキュメント
 
 - [ADR-20260306: 端末別メンテナンス状態](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md)
 - [deployment.md](../guides/deployment.md): デプロイ標準手順
 - [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装)
+- [KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時): Pi4 デプロイハングの詳細
