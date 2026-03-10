@@ -39,7 +39,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 ## 3. 実機検証チェックリスト（deploy-status v2 デプロイ後）
 
-デプロイ完了後に以下を確認する（2026-03-06 実機検証で実施済み）:
+デプロイ完了後に以下を確認する（2026-03-06 実機検証で実施済み。2026-03-10 全端末共有優先順位デプロイ後も同チェックリストで検証済み）:
 
 | 項目 | コマンド/手順 | 期待値 |
 |------|---------------|--------|
@@ -48,6 +48,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | deploy-status API（raspi4-robodrill01） | `curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspi4-robodrill01-kiosk1"` | `{"isMaintenance":false}` |
 | キオスク API | `curl -sk "https://100.106.158.2/api/tools/loans/active" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | 200 OK |
 | 納期管理 API | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/triage" -H "x-client-key: client-key-raspberrypi4-kiosk1"` ほか daily-plan / global-rank / global-rank/proposal / global-rank/learning-report / **actual-hours/stats** | 200 OK |
+| global-rank targetLocation/rankingScope（2026-03-10追加） | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/global-rank" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `targetLocation`, `actorLocation`, `rankingScope` が返る。Mac向け: `?targetLocation=第2工場&rankingScope=globalShared` で対象拠点指定可能 |
 | actual-hours/stats 返却整合 | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/actual-hours/stats" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `totalRawRows`, `totalCanonicalRows`, `totalFeatureKeys`, `topFeatures` が返る |
 | サイネージ API | `curl -sk "https://100.106.158.2/api/signage/content"` | 200 OK、`layoutConfig` 含む |
 | backup.json | `ssh denkon5sd02@100.106.158.2 "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"` | ファイル存在・サイズ 0 でない |
