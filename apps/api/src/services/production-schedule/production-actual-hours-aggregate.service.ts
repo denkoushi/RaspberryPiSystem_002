@@ -33,6 +33,7 @@ function percentileFromSorted(values: number[], percentile: number): number {
 
 export type ProductionActualHoursAggregateResult = {
   totalRows: number;
+  totalRawRows: number;
   excludedRecentRows: number;
   excludedOutlierRows: number;
   excludedPreFlaggedRows: number;
@@ -41,6 +42,7 @@ export type ProductionActualHoursAggregateResult = {
 
 export type ProductionActualHoursStats = {
   totalRawRows: number;
+  totalCanonicalRows: number;
   totalFeatureKeys: number;
   topFeatures: Array<{
     fhincd: string;
@@ -67,16 +69,21 @@ export class ProductionActualHoursAggregateService {
     const recentCutoff = new Date();
     recentCutoff.setUTCDate(recentCutoff.getUTCDate() - recentDaysExcluded);
 
-    const rows = await prisma.productionScheduleActualHoursRaw.findMany({
-      where: { csvDashboardId },
-      select: {
-        fhincd: true,
-        resourceCd: true,
-        perPieceMinutes: true,
-        isExcluded: true,
-        workDate: true,
-      },
-    });
+    const [rows, totalRawRows] = await Promise.all([
+      prisma.productionScheduleActualHoursCanonical.findMany({
+        where: { csvDashboardId, location: params.locationKey },
+        select: {
+          fhincd: true,
+          resourceCd: true,
+          perPieceMinutes: true,
+          isExcluded: true,
+          workDate: true,
+        },
+      }),
+      prisma.productionScheduleActualHoursRaw.count({
+        where: { csvDashboardId },
+      }),
+    ]);
 
     let excludedRecentRows = 0;
     let excludedOutlierRows = 0;
@@ -142,6 +149,7 @@ export class ProductionActualHoursAggregateService {
 
     return {
       totalRows: rows.length,
+      totalRawRows,
       excludedRecentRows,
       excludedOutlierRows,
       excludedPreFlaggedRows,
@@ -156,9 +164,12 @@ export class ProductionActualHoursAggregateService {
   }): Promise<ProductionActualHoursStats> {
     const csvDashboardId = params.csvDashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
     const limit = Math.max(1, Math.min(params.limit ?? 50, 200));
-    const [totalRawRows, totalFeatureKeys, topFeatures] = await Promise.all([
+    const [totalRawRows, totalCanonicalRows, totalFeatureKeys, topFeatures] = await Promise.all([
       prisma.productionScheduleActualHoursRaw.count({
         where: { csvDashboardId },
+      }),
+      prisma.productionScheduleActualHoursCanonical.count({
+        where: { csvDashboardId, location: params.locationKey },
       }),
       prisma.productionScheduleActualHoursFeature.count({
         where: { csvDashboardId, location: params.locationKey },
@@ -179,6 +190,7 @@ export class ProductionActualHoursAggregateService {
     ]);
     return {
       totalRawRows,
+      totalCanonicalRows,
       totalFeatureKeys,
       topFeatures: topFeatures.map((row) => ({
         fhincd: row.fhincd,

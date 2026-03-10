@@ -37,4 +37,32 @@ describe('production-actual-hours-import.service', () => {
     expect(result.rowsIgnored).toBe(1);
     expect(prisma.productionScheduleActualHoursRaw.createMany).toHaveBeenCalledTimes(1);
   });
+
+  it('sourceFileKeyが異なっても同じ行は同一fingerprintになる', async () => {
+    const csv = [
+      'FSEIBAN,FHINCD,FSEZONO,FSEZOSIJISU,FSIGENCD,FSAGYOHOUR,FKOJUN,FSAGYOYMD',
+      'SEI001,PART001,LOT1,10,R01,120,10,2024年12月01日',
+    ].join('\n');
+    const buffer = iconv.encode(csv, 'cp932');
+    const service = new ProductionActualHoursImportService();
+
+    await service.importFromCsv({
+      buffer,
+      sourceFileKey: 'source-a',
+    });
+    await service.importFromCsv({
+      buffer,
+      sourceFileKey: 'source-b',
+    });
+
+    const firstCall = vi.mocked(prisma.productionScheduleActualHoursRaw.createMany).mock.calls[0]?.[0] as
+      | { data: Array<{ rowFingerprint: string }> }
+      | undefined;
+    const secondCall = vi.mocked(prisma.productionScheduleActualHoursRaw.createMany).mock.calls[1]?.[0] as
+      | { data: Array<{ rowFingerprint: string }> }
+      | undefined;
+
+    expect(firstCall?.data[0]?.rowFingerprint).toBeTruthy();
+    expect(firstCall?.data[0]?.rowFingerprint).toBe(secondCall?.data[0]?.rowFingerprint);
+  });
 });

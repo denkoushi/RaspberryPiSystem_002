@@ -898,6 +898,40 @@ model ProductionScheduleActualHoursRaw {
   @@index([sourceFileKey], map: "ProductionScheduleActualHoursRaw_idx_source")
 }
 
+model ProductionScheduleActualHoursCanonical {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  logicalKeyHash String
+  rawId          String
+  sourceFileKey  String
+  sourceMessageId String?
+  sourceScheduleId String?
+  winnerRule     String   @db.VarChar(40)
+  winnerAt       DateTime
+  rawCreatedAt   DateTime
+  rawUpdatedAt   DateTime
+  workDate       DateTime
+  fseiban        String?  @db.VarChar(20)
+  fhincd         String   @db.VarChar(40)
+  lotNo          String?  @db.VarChar(20)
+  lotQty         Float
+  resourceCd     String   @db.VarChar(20)
+  processOrder   Int?
+  actualMinutes  Float
+  perPieceMinutes Float
+  isExcluded     Boolean  @default(false)
+  excludeReason  String?  @db.VarChar(100)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, logicalKeyHash], map: "ProductionScheduleActualHoursCanonical_unique_key")
+  @@unique([csvDashboardId, location, rawId], map: "ProductionScheduleActualHoursCanonical_unique_raw")
+  @@index([csvDashboardId, location], map: "ProductionScheduleActualHoursCanonical_idx_location")
+  @@index([csvDashboardId, location, fhincd, resourceCd], map: "ProductionScheduleActualHoursCanonical_idx_feature_key")
+  @@index([csvDashboardId, location, workDate], map: "ProductionScheduleActualHoursCanonical_idx_workdate")
+}
+
 model ProductionScheduleActualHoursFeature {
   id                    String   @id @default(uuid())
   csvDashboardId        String

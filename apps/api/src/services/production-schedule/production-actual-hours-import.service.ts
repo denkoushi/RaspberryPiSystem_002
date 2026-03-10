@@ -1,9 +1,9 @@
-import { createHash } from 'crypto';
 import { parse } from 'csv-parse/sync';
 import iconv from 'iconv-lite';
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
+import { buildActualHoursRawFingerprint } from './actual-hours/actual-hours-logical-key.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 
 type ActualHoursCsvRow = {
@@ -75,10 +75,6 @@ function decodeCsvBuffer(buffer: Buffer): string {
   return iconv.decode(buffer, 'cp932');
 }
 
-function toFingerprint(parts: string[]): string {
-  return createHash('sha256').update(parts.join('|')).digest('hex');
-}
-
 export class ProductionActualHoursImportService {
   async importFromCsv(params: {
     buffer: Buffer;
@@ -137,17 +133,16 @@ export class ProductionActualHoursImportService {
       const processOrder = parseIntNumber(row.FKOJUN);
       const fseiban = row.FSEIBAN?.trim() || null;
       const lotNo = row.FSEZONO?.trim() || null;
-      const rowFingerprint = toFingerprint([
-        params.sourceFileKey,
+      const rowFingerprint = buildActualHoursRawFingerprint({
         fhincd,
         resourceCd,
-        workDate.toISOString(),
-        String(lotQty),
-        String(actualMinutes),
-        String(processOrder ?? ''),
-        String(fseiban ?? ''),
-        String(lotNo ?? ''),
-      ]);
+        workDate,
+        lotQty,
+        actualMinutes,
+        processOrder: processOrder ?? null,
+        fseiban,
+        lotNo,
+      });
 
       createRows.push({
         csvDashboardId,

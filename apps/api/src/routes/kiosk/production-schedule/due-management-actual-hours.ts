@@ -1,8 +1,8 @@
 import { createHash } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 
+import { ActualHoursImportOrchestratorService } from '../../../services/production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
 import { ProductionActualHoursAggregateService } from '../../../services/production-schedule/production-actual-hours-aggregate.service.js';
-import { ProductionActualHoursImportService } from '../../../services/production-schedule/production-actual-hours-import.service.js';
 import {
   productionScheduleDueManagementActualHoursImportBodySchema,
   productionScheduleDueManagementActualHoursStatsQuerySchema,
@@ -13,7 +13,7 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  const importService = new ProductionActualHoursImportService();
+  const importOrchestrator = new ActualHoursImportOrchestratorService();
   const aggregateService = new ProductionActualHoursAggregateService();
 
   app.post(
@@ -25,16 +25,15 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
       const body = productionScheduleDueManagementActualHoursImportBodySchema.parse(request.body ?? {});
       const buffer = Buffer.from(body.csvContent, 'utf8');
       const sourceFileKey = `manual:${locationKey}:${createHash('sha256').update(buffer).digest('hex')}`;
-      const importResult = await importService.importFromCsv({
+      const importResult = await importOrchestrator.importAndRebuild({
         buffer,
         sourceFileKey,
+        locationKey,
       });
-      const aggregateResult = await aggregateService.rebuild({ locationKey });
       return {
         success: true,
         sourceFileKey,
         ...importResult,
-        ...aggregateResult,
       };
     }
   );

@@ -10,8 +10,7 @@ import { CsvDashboardImportService } from '../csv-dashboard/csv-dashboard-import
 import { CsvImportSourceService } from './csv-import-source.service.js';
 import { CsvImportConfigService } from './csv-import-config.service.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
-import { ProductionActualHoursImportService } from '../production-schedule/production-actual-hours-import.service.js';
-import { ProductionActualHoursAggregateService } from '../production-schedule/production-actual-hours-aggregate.service.js';
+import { ActualHoursImportOrchestratorService } from '../production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -24,7 +23,13 @@ export type CsvImportExecutionSummary = {
     rowsProcessed: number;
     rowsInserted: number;
     rowsIgnored: number;
+    sourceRows: number;
+    candidateKeys: number;
+    canonicalCreated: number;
+    canonicalUpdated: number;
+    canonicalSkipped: number;
     totalRows: number;
+    totalRawRows: number;
     excludedRecentRows: number;
     excludedOutlierRows: number;
     excludedPreFlaggedRows: number;
@@ -290,12 +295,16 @@ export class CsvImportExecutionService {
     }
 
     if (productionActualHoursTargets.length > 0) {
-      const importService = new ProductionActualHoursImportService();
-      const aggregateService = new ProductionActualHoursAggregateService();
+      const orchestrator = new ActualHoursImportOrchestratorService();
       const locationKey = resolveLocationKey(importSchedule.metadata);
       let rowsProcessed = 0;
       let rowsInserted = 0;
       let rowsIgnored = 0;
+      let sourceRows = 0;
+      let candidateKeys = 0;
+      let canonicalCreated = 0;
+      let canonicalUpdated = 0;
+      let canonicalSkipped = 0;
 
       for (const target of productionActualHoursTargets) {
         const { buffer, resolvedSource } = await csvImportSourceService.downloadMasterCsv({
@@ -307,14 +316,20 @@ export class CsvImportExecutionService {
         });
         const fileDigest = createHash('sha256').update(buffer).digest('hex');
         const sourceFileKey = `${importSchedule.id}:${resolvedSource}:${fileDigest}`;
-        const result = await importService.importFromCsv({
+        const result = await orchestrator.importFromCsv({
           buffer,
           sourceFileKey,
+          locationKey,
           sourceScheduleId: importSchedule.id,
         });
         rowsProcessed += result.rowsProcessed;
         rowsInserted += result.rowsInserted;
         rowsIgnored += result.rowsIgnored;
+        sourceRows += result.sourceRows;
+        candidateKeys += result.candidateKeys;
+        canonicalCreated += result.canonicalCreated;
+        canonicalUpdated += result.canonicalUpdated;
+        canonicalSkipped += result.canonicalSkipped;
 
         this.deps.logger?.info?.(
           { type: target.type, source: resolvedSource, size: buffer.length, provider, sourceFileKey, ...result },
@@ -322,11 +337,16 @@ export class CsvImportExecutionService {
         );
       }
 
-      const aggregateResult = await aggregateService.rebuild({ locationKey });
+      const aggregateResult = await orchestrator.rebuildFeatures({ locationKey });
       productionActualHoursResult = {
         rowsProcessed,
         rowsInserted,
         rowsIgnored,
+        sourceRows,
+        candidateKeys,
+        canonicalCreated,
+        canonicalUpdated,
+        canonicalSkipped,
         ...aggregateResult,
       };
     }
