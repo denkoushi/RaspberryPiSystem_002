@@ -442,10 +442,15 @@ export function useUpdateKioskProductionScheduleDueManagementDailyPlan() {
   });
 }
 
-export function useKioskProductionScheduleDueManagementGlobalRank() {
+type DueManagementTargetContext = {
+  targetLocation?: string;
+  rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
+};
+
+export function useKioskProductionScheduleDueManagementGlobalRank(context?: DueManagementTargetContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-global-rank'],
-    queryFn: getKioskProductionScheduleDueManagementGlobalRank,
+    queryKey: ['kiosk-production-schedule-due-management-global-rank', context],
+    queryFn: () => getKioskProductionScheduleDueManagementGlobalRank(context),
     refetchInterval: 30000
   });
 }
@@ -453,11 +458,14 @@ export function useKioskProductionScheduleDueManagementGlobalRank() {
 export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ orderedFseibans }: { orderedFseibans: string[] }) =>
-      updateKioskProductionScheduleDueManagementGlobalRank({ orderedFseibans }),
-    onSuccess: () => {
+    mutationFn: (payload: { orderedFseibans: string[]; targetLocation?: string; rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary' }) =>
+      updateKioskProductionScheduleDueManagementGlobalRank(payload),
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+        queryKey: ['kiosk-production-schedule-due-management-global-rank', {
+          targetLocation: variables.targetLocation,
+          rankingScope: variables.rankingScope
+        }]
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-daily-plan']
@@ -466,10 +474,10 @@ export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
   });
 }
 
-export function useKioskProductionScheduleDueManagementGlobalRankProposal() {
+export function useKioskProductionScheduleDueManagementGlobalRankProposal(context?: DueManagementTargetContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal'],
-    queryFn: getKioskProductionScheduleDueManagementGlobalRankProposal,
+    queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal', context],
+    queryFn: () => getKioskProductionScheduleDueManagementGlobalRankProposal(context),
     refetchInterval: 30000
   });
 }
@@ -477,14 +485,20 @@ export function useKioskProductionScheduleDueManagementGlobalRankProposal() {
 export function useAutoGenerateKioskProductionScheduleDueManagementGlobalRank() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload?: { minCandidateCount?: number; maxReorderDeltaRatio?: number; keepExistingTail?: boolean }) =>
+    mutationFn: (payload?: { minCandidateCount?: number; maxReorderDeltaRatio?: number; keepExistingTail?: boolean; targetLocation?: string; rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary' }) =>
       autoGenerateKioskProductionScheduleDueManagementGlobalRank(payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+        queryKey: ['kiosk-production-schedule-due-management-global-rank', {
+          targetLocation: variables?.targetLocation,
+          rankingScope: variables?.rankingScope
+        }]
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal']
+        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal', {
+          targetLocation: variables?.targetLocation,
+          rankingScope: variables?.rankingScope
+        }]
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-daily-plan']

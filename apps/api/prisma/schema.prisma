@@ -871,6 +871,101 @@ model ProductionScheduleGlobalRowRank {
   @@index([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRowRank_idx_fseiban")
 }
 
+model ProductionScheduleGlobalRankTemporaryOverride {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  targetLocation String
+  orderedFseibans String[]
+  actorClientKey String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, targetLocation], map: "ProductionScheduleGlobalRankTempOverride_unique_target")
+  @@index([csvDashboardId, expiresAt], map: "ProductionScheduleGlobalRankTempOverride_idx_expiry")
+}
+
+model ProductionScheduleActualHoursRaw {
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  sourceFileKey    String
+  sourceMessageId  String?
+  sourceScheduleId String?
+  rowFingerprint   String   @unique
+  workDate         DateTime
+  fseiban          String?  @db.VarChar(20)
+  fhincd           String   @db.VarChar(40)
+  lotNo            String?  @db.VarChar(20)
+  lotQty           Float
+  resourceCd       String   @db.VarChar(20)
+  processOrder     Int?
+  actualMinutes    Float
+  perPieceMinutes  Float
+  isExcluded       Boolean  @default(false)
+  excludeReason    String?  @db.VarChar(100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([csvDashboardId, workDate], map: "ProductionScheduleActualHoursRaw_idx_workdate")
+  @@index([csvDashboardId, fhincd, resourceCd, workDate], map: "ProductionScheduleActualHoursRaw_idx_key")
+  @@index([csvDashboardId, isExcluded, workDate], map: "ProductionScheduleActualHoursRaw_idx_excluded")
+  @@index([sourceFileKey], map: "ProductionScheduleActualHoursRaw_idx_source")
+}
+
+model ProductionScheduleActualHoursCanonical {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  logicalKeyHash String
+  rawId          String
+  sourceFileKey  String
+  sourceMessageId String?
+  sourceScheduleId String?
+  winnerRule     String   @db.VarChar(40)
+  winnerAt       DateTime
+  rawCreatedAt   DateTime
+  rawUpdatedAt   DateTime
+  workDate       DateTime
+  fseiban        String?  @db.VarChar(20)
+  fhincd         String   @db.VarChar(40)
+  lotNo          String?  @db.VarChar(20)
+  lotQty         Float
+  resourceCd     String   @db.VarChar(20)
+  processOrder   Int?
+  actualMinutes  Float
+  perPieceMinutes Float
+  isExcluded     Boolean  @default(false)
+  excludeReason  String?  @db.VarChar(100)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, logicalKeyHash], map: "ProductionScheduleActualHoursCanonical_unique_key")
+  @@unique([csvDashboardId, location, rawId], map: "ProductionScheduleActualHoursCanonical_unique_raw")
+  @@index([csvDashboardId, location], map: "ProductionScheduleActualHoursCanonical_idx_location")
+  @@index([csvDashboardId, location, fhincd, resourceCd], map: "ProductionScheduleActualHoursCanonical_idx_feature_key")
+  @@index([csvDashboardId, location, workDate], map: "ProductionScheduleActualHoursCanonical_idx_workdate")
+}
+
+model ProductionScheduleActualHoursFeature {
+  id                    String   @id @default(uuid())
+  csvDashboardId        String
+  location              String
+  fhincd                String   @db.VarChar(40)
+  resourceCd            String   @db.VarChar(20)
+  sampleCount           Int
+  medianPerPieceMinutes Float
+  p75PerPieceMinutes    Float?
+  windowFrom            DateTime
+  windowTo              DateTime
+  recentDaysExcluded    Int      @default(30)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fhincd, resourceCd], map: "ProductionScheduleActualHoursFeature_unique_key")
+  @@index([csvDashboardId, location], map: "ProductionScheduleActualHoursFeature_idx_location")
+  @@index([csvDashboardId, location, sampleCount], map: "ProductionScheduleActualHoursFeature_idx_sample")
+}
+
 model DueManagementProposalEvent {
   id               String   @id @default(uuid())
   csvDashboardId   String

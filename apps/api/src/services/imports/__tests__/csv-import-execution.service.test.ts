@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CsvImportExecutionService } from '../csv-import-execution.service.js';
+import { ActualHoursImportOrchestratorService } from '../../production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
 import type { StorageProvider } from '../../backup/storage/storage-provider.interface.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 
@@ -128,6 +129,103 @@ describe('CsvImportExecutionService', () => {
     await capturedOnTokenUpdate?.('new-token');
     expect(load).toHaveBeenCalled();
     expect(save).toHaveBeenCalled();
+  });
+
+  it('should execute productionActualHours target and include canonical summary', async () => {
+    const storageProvider: StorageProvider = {
+      upload: vi.fn(),
+      download: vi.fn(),
+      delete: vi.fn(),
+      list: vi.fn(),
+    };
+    const createFromConfig = vi.fn().mockResolvedValue(storageProvider);
+    const importFromCsvSpy = vi
+      .spyOn(ActualHoursImportOrchestratorService.prototype, 'importFromCsv')
+      .mockResolvedValue({
+        rowsProcessed: 3,
+        rowsInserted: 2,
+        rowsIgnored: 1,
+        sourceRows: 2,
+        candidateKeys: 2,
+        canonicalCreated: 1,
+        canonicalUpdated: 1,
+        canonicalSkipped: 0,
+      });
+    const rebuildFeaturesSpy = vi
+      .spyOn(ActualHoursImportOrchestratorService.prototype, 'rebuildFeatures')
+      .mockResolvedValue({
+        totalRows: 2,
+        totalRawRows: 2,
+        excludedRecentRows: 0,
+        excludedOutlierRows: 0,
+        excludedPreFlaggedRows: 0,
+        featureKeyCount: 2,
+      });
+
+    const downloadMasterCsv = vi.fn().mockResolvedValue({
+      buffer: Buffer.from('csv'),
+      resolvedSource: 'subject-pattern',
+    });
+
+    const svc = new CsvImportExecutionService({
+      storageProviderFactory: { createFromConfig },
+      configStore: { load: vi.fn(), save: vi.fn() },
+      createCsvImportSourceService: () => ({ downloadMasterCsv } as any),
+      createCsvDashboardImportService: () => ({ ingestTargets: vi.fn() } as any),
+      createCsvImportConfigService: () => ({ getEffectiveConfig: vi.fn().mockResolvedValue(null) } as any),
+      processCsvImportFromTargets: vi.fn() as any,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const config = {
+      storage: { provider: 'gmail', options: { gmail: { refreshToken: 'x' } } },
+      csvImports: [],
+    } as unknown as BackupConfig;
+
+    const summary = await svc.execute({
+      config,
+      importSchedule: {
+        id: 'sched-actual-hours',
+        name: 'actual-hours',
+        enabled: true,
+        schedule: '0 0 * * *',
+        provider: 'gmail',
+        metadata: { locationKey: 'TestLocation' },
+        targets: [{ type: 'productionActualHours', source: '実績工数CSV' }],
+      } as any,
+      skipRetry: true,
+    });
+
+    expect(downloadMasterCsv).toHaveBeenCalledTimes(1);
+    expect(importFromCsvSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceScheduleId: 'sched-actual-hours',
+        locationKey: 'TestLocation',
+      })
+    );
+    expect(rebuildFeaturesSpy).toHaveBeenCalledWith({ locationKey: 'TestLocation' });
+    expect(summary).toEqual({
+      csvDashboards: {},
+      productionActualHours: {
+        rowsProcessed: 3,
+        rowsInserted: 2,
+        rowsIgnored: 1,
+        sourceRows: 2,
+        candidateKeys: 2,
+        canonicalCreated: 1,
+        canonicalUpdated: 1,
+        canonicalSkipped: 0,
+        totalRows: 2,
+        totalRawRows: 2,
+        excludedRecentRows: 0,
+        excludedOutlierRows: 0,
+        excludedPreFlaggedRows: 0,
+        featureKeyCount: 2,
+      },
+    });
+
+    importFromCsvSpy.mockRestore();
+    rebuildFeaturesSpy.mockRestore();
   });
 });
 

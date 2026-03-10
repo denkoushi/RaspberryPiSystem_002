@@ -5,6 +5,7 @@ import {
 
 import { prisma } from '../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
@@ -275,7 +276,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         FROM "ProductionScheduleGlobalRowRank"
         WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
           AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" = ${locationKey}
+          AND "location" IN (${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
+        ORDER BY CASE WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 0 ELSE 1 END ASC
         LIMIT 1
       ) AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",

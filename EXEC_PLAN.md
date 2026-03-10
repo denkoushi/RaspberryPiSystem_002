@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-03-10) **全端末共有優先順位（Mac対象ロケーション指定）デプロイ完了・実機検証完了**: `global-rank` API に `targetLocation` / `rankingScope` を拡張し、`ProductionScheduleGlobalRankTemporaryOverride` テーブルを追加。Mac から対象拠点を明示指定可能に。**1回目デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-193632-10428` / `20260310-194407-20877` / `20260310-195055-32546`）。**2回目デプロイ（feature flag 本番制御経路）**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 `true`）。Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`。**実機検証**: APIヘルス、deploy-status、global-rank の targetLocation/rankingScope 返却、localTemporary スコープ動作、マイグレーション（46件）、Pi4サービス稼働を確認。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
+- [x] (2026-03-10) **納期管理 B第7段階（実績工数CSV連携 + 全体ランキング連携）実装完了・デプロイ完了・実機検証完了・CSV取り込み完了**: `ProductionScheduleActualHoursRaw` / `ProductionScheduleActualHoursCanonical` / `ProductionScheduleActualHoursFeature` を導入し、Raw append-only + Canonical winner選定 + Feature再集約へ責務分離。`productionActualHours` ターゲットで Gmail CSV 取込をスケジューラに統合。手動・スケジューラを `ActualHoursImportOrchestratorService` で統合。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-172710-11536` / `20260310-173208-7506` / `20260310-174125-9387`）。**本番DBバックフィル**: 初回は Raw 0 件のため Canonical/Feature も 0 件。**手動CSV取り込み**: `data_20210101_20221231.csv`（6.4MB）、`data_20230101_20241231.csv`（5.5MB）を分割投入（48チャンク、約25万文字/チャンク）で実施。**結果**: `totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436`。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage〜actual-hours/stats）、サイネージAPI、backup.json、マイグレーション（45件）、Pi4サービス稼働を確認。Pi3 offline のため signage 確認はスキップ。**知見**: 413 Payload Too Large は分割投入で回避（[KB-301](./docs/knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)）。CP932 は `iconv -f CP932 -t UTF-8` で変換。バックフィルは [actual-hours-canonical-backfill.md](./docs/runbooks/actual-hours-canonical-backfill.md) を参照。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-09) **納期管理 B第6段階（行単位全体順位スナップショット）Phase 1 実装完了・デプロイ完了・実機検証完了**: `ProductionScheduleGlobalRowRank` テーブルを追加し、`global-rank`/`daily-plan` 保存後に行単位全体順位を再生成する `row-global-rank-generator.service.ts` を導入。`GET /api/kiosk/production-schedule` に `globalRank` を追加し、Webで `全体順位` 列を新設、既存 `順番` を `資源順番` として維持。**デプロイ**: 初回 `--limit "server:kiosk"` で Pi5 フェーズ完了後に Pi4 キオスクフェーズでハング（[KB-300](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。ハングプロセス停止・ロック解除後、Pi4 を単体で再デプロイし成功。**2回目デプロイ（1台ずつ順番）**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で実行し、3台とも成功（Run ID `20260309-180244-10720` / `20260309-180529-15837` / `20260309-181644-11063`）。推奨運用は [deployment.md](./docs/guides/deployment.md) の「1台ずつ順番デプロイ」を参照。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report）、サイネージAPI、backup.json、マイグレーション（43件）、Pi4/Pi3サービス稼働を確認。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-08) **納期管理 B第5段階（オフライン学習評価 + イベントログ）・デプロイ完了・実機検証完了**: 納期遅れ最小化を主目的とするオフライン学習イベントログを導入。`DueManagementProposalEvent` / `DueManagementOperatorDecisionEvent` / `DueManagementOutcomeEvent` を追記専用で保存し、`GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価（overdue件数/日数 + 順位一致指標）を提供。**デプロイ**: Run ID `20260308-092421-13920`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・**global-rank/learning-report**・summary）、サイネージAPI、backup.json、マイグレーション（42件）、Pi4サービス稼働を確認。**トラブルシューティング**: CI初回でPrisma JSON型エラー（`Record<string,unknown>|null` → `Prisma.JsonNull` / `InputJsonValue` キャストで解決、[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) / [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md) を参照。
 - [x] (2026-03-08) **納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
@@ -647,6 +649,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-10）: **実績工数CSV手動投入で 413 Payload Too Large** になる。約 6MB 超の一括送信で Caddy/リバースプロキシの body size 制限に抵触。**対策**: 約 25 万文字ごとに分割して順次投入で回避（[KB-301](./docs/knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)）。CP932 の CSV は `iconv -f CP932 -t UTF-8` で変換してから投入。
+- 観測（2026-03-10）: **Pi3 offline** 時、`tailscale status` で offline の場合 SSH がタイムアウトする。実機検証時は Pi3（signage）のサービス確認をスキップ可能。
 - 観測（2026-03-09）: **`--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハング**する事象が発生。`TASK [common : Ensure repository parent directory exists]` で応答停止。対処: ハングプロセス kill → ロック削除 → Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイで成功。詳細は [KB-300](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - 観測（2026-03-08）: **Prisma JSONカラムへの `Record<string, unknown> | null` 代入**でCIビルドが失敗。Prisma の JSON 型では `null` を格納するには `Prisma.JsonNull` を指定し、オブジェクトは `as Prisma.InputJsonValue` でキャストする必要がある。既存の `signage.service.ts` の `toPrismaLayoutConfig` パターンを参照して解決（[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。
 - 観測（2026-03-07）: **実機検証時の deploy-status API パス**は `GET /api/system/deploy-status`（`/api/deploy-status` ではない）。`x-client-key` を付与して端末別メンテ状態（`isMaintenance`）を確認する。既存の [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) に正しいパスが記載済み。
@@ -1511,6 +1515,29 @@
 
 ## Next Steps（将来のタスク）
 
+### 全端末共有優先順位（Mac対象ロケーション指定）完了後の候補
+
+**概要**: targetLocation/rankingScope 基盤のデプロイ・実機検証完了済み。次のステップ候補。
+
+**候補タスク**:
+1. **Mac向け対象ロケーション選択UIの feature flag 有効化**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を本番で有効化し、Mac から第2工場/トークプラザ/第1工場を選択可能に
+2. **location=Mac データ移行**: 既存 `location='Mac'` データを実運用ロケーションへ移行。手順は [mac-target-location-migration.md](./docs/runbooks/mac-target-location-migration.md) を参照
+3. **localTemporary 一時上書きの UI 導線**: 必要に応じて、一時的な順位変更の UI を追加
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10)、[mac-target-location-migration.md](./docs/runbooks/mac-target-location-migration.md)
+
+### 納期管理 B第7段階（実績工数CSV連携）完了後の候補
+
+**概要**: Canonical差分化・デプロイ・実機検証・CSV取り込み完了済み。次のステップ候補。
+
+**候補タスク**:
+1. **actualHoursScore の重み調整**: 全体ランキングの `actualHoursScore` を上位重みの一要素として反映済み。実運用で評価し、必要に応じて重み調整
+2. **Gmail 月次自動取込の検証**: `productionActualHours` ターゲットで Gmail CSV 取込がスケジューラ経由で正常動作することを実機検証
+3. **納期管理画面での actualHours 表示**: 製番詳細や提案に `actualHoursScore` の根拠を表示する UI 拡張（任意）
+4. **Pi3 signage 復帰後の検証**: `tailscale status` で offline だった Pi3 が復帰した場合、signage-lite サービスの稼働確認を実施
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10)、[actual-hours-canonical-backfill.md](./docs/runbooks/actual-hours-canonical-backfill.md)
+
 ### 行単位全体順位 Phase 2（候補）
 
 **概要**: Phase 1 で導入した `globalRank` の表示運用を前提に、評価・運用補助を拡張する。
@@ -2244,6 +2271,10 @@
 ---
 
 変更履歴: 2026-03-07 — 納期管理トリアージ（B第1段階）実装を反映。`ProductionScheduleTriageSelection` 追加、`due-management/triage` / `due-management/triage/selection` API追加、納期管理画面トリアージパネル追加、API統合テスト（37件）と api/web lint 成功を記録。KB-297 / production-schedule-kiosk-execplan.md / INDEX.md を更新。
+変更履歴: 2026-03-10 — 実績工数CSV連携（B第7段階）を反映。Prismaモデル（Raw/Feature）追加、Gmail CSV取込ターゲット `productionActualHours` を追加、中央値+件数+p75 集約、全体ランキング `actualHoursScore` 連携、手動導線API（actual-hours/import, actual-hours/stats）追加、KB-297 / ADR-20260308 / INDEX / EXEC_PLAN を更新。
+変更履歴: 2026-03-10（2回目） — B第7段階 Canonical差分化・デプロイ・実機検証・CSV取り込み完了を反映。Progress にデプロイ・バックフィル・手動CSV取り込み（分割投入）・実機検証結果を追記。Surprises & Discoveries に 413 Payload Too Large（KB-301）と Pi3 offline を追加。Next Steps に B第7段階完了後の候補を追加。KB-297 に CSV取り込み結果・知見（413・locationKey・Pi3 offline）を追記。KB-301 を api.md に追加。actual-hours-canonical-backfill.md に大容量CSV分割投入手順を追記。deploy-status-recovery.md に Pi3 offline 時の検証スキップを追記。knowledge-base index に KB-301 を追加。
+変更履歴: 2026-03-10（3回目） — 全端末共有優先順位（Mac対象ロケーション指定）基盤のデプロイ・実機検証完了を反映。Progress に全端末共有優先順位 デプロイ・実機検証を追加。Next Steps に全端末共有優先順位完了後の候補（Mac向けUI feature flag有効化、location=Macデータ移行など）を追加。KB-297 に全端末共有優先順位 デプロイ・実機検証セクションを追加。deploy-status-recovery.md に global-rank targetLocation/rankingScope 検証項目を追加。INDEX.md にデプロイ・実機検証詳細を追記。
+変更履歴: 2026-03-10（4回目） — feature flag 本番制御経路の追加・2回目デプロイを反映。`VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 true）。Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`。KB-297 に 2回目デプロイ（feature flag 本番制御経路）を追記。EXEC_PLAN Progress と INDEX.md に 1回目/2回目デプロイの区別を追記。
 変更履歴: 2026-03-09 — 納期管理 B第6段階 Phase 1（行単位全体順位スナップショット）のデプロイ・実機検証完了を反映。Progress にデプロイ・Pi4ハング復旧・実機検証を追記。Surprises & Discoveries に Pi4 デプロイハング（KB-300）を追加。deployment.md に Pi4 単体再デプロイの運用知見を追記。KB-297 に B第6段階 Phase 1 のデプロイ・実機検証・トラブルシュートを追記。KB-300 を ansible-deployment.md に追加。deploy-status-recovery.md に Pi4 ハング復旧手順を追加。knowledge-base index と INDEX.md に KB-300 を追加。**2回目更新**: 1台ずつ順番デプロイ（Pi5→raspberrypi4→raspi4-robodrill01）の成功を KB-297・INDEX・EXEC_PLAN・deployment.md に反映。deployment.md に「1台ずつ順番デプロイ」推奨運用を追記。
 変更履歴: 2026-03-08 — 納期管理 B第5段階（オフライン学習評価 + イベントログ）のデプロイ・実機検証完了を反映。Progress に B第5段階完了を追加。Surprises & Discoveries に Prisma JSON 型 CI 失敗（KB-299）を追加。Decision Log にオフライン学習方式の決定を追加。Next Steps に learning-report 管理コンソール UI・重み候補評価・本番反映フロー等の候補を追加。KB-297 に実装前議論・デプロイ・実機検証・トラブルシュートを追記。KB-299（Prisma JSON 型）を ci-cd.md に追加。deploy-status-recovery.md の検証チェックリストに learning-report を追加。ADR-20260308 に実装前議論コンテキストを追記。knowledge-base index に KB-299 を追加。
 変更履歴: 2026-03-07 — 納期管理画面 A修正のデプロイ・実機検証完了を反映。KB-297 に A修正デプロイ・実機検証結果と ci-troubleshooting/KB-298 参照を追加。production-schedule-kiosk-execplan.md に「納期管理・生産スケジュール連携拡張（A修正）完了後の次のタスク候補」を追加。EXEC_PLAN.md Next Steps に同タスクを追加。

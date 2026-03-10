@@ -942,6 +942,69 @@ describe('Kiosk Production Schedule API', () => {
     expect((getRank.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A', 'B']);
   });
 
+  it('shares global rank across clients when targetLocation is specified', async () => {
+    const putRank = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        orderedFseibans: ['B', 'A'],
+        targetLocation: '第2工場',
+        rankingScope: 'globalShared'
+      }
+    });
+    expect(putRank.statusCode).toBe(200);
+
+    const getRankFromOther = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=globalShared',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+    expect(getRankFromOther.statusCode).toBe(200);
+    expect((getRankFromOther.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['B', 'A']);
+  });
+
+  it('applies localTemporary override with explicit scope', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        orderedFseibans: ['A', 'B'],
+        targetLocation: '第2工場',
+        rankingScope: 'globalShared'
+      }
+    });
+
+    const tempPut = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        orderedFseibans: ['B', 'A'],
+        targetLocation: '第2工場',
+        rankingScope: 'localTemporary'
+      }
+    });
+    expect(tempPut.statusCode).toBe(200);
+
+    const tempGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=localTemporary',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(tempGet.statusCode).toBe(200);
+    expect((tempGet.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['B', 'A']);
+
+    const sharedGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=globalShared',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(sharedGet.statusCode).toBe(200);
+    expect((sharedGet.json() as { orderedFseibans: string[] }).orderedFseibans).toEqual(['A', 'B']);
+  });
+
   it('builds global-rank proposal and returns explanation', async () => {
     await prisma.productionScheduleSeibanDueDate.createMany({
       data: [
@@ -1100,14 +1163,14 @@ describe('Kiosk Production Schedule API', () => {
       data: [
         {
           csvDashboardId: DASHBOARD_ID,
-          location: 'Test',
+          location: 'shared-global-rank',
           fseiban: 'C',
           priorityOrder: 1,
           sourceType: 'manual'
         },
         {
           csvDashboardId: DASHBOARD_ID,
-          location: 'Test',
+          location: 'shared-global-rank',
           fseiban: 'A',
           priorityOrder: 2,
           sourceType: 'manual'

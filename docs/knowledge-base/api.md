@@ -1,5 +1,34 @@
 ---
 
+### [KB-301] 実績工数CSV手動投入で 413 Payload Too Large になる
+
+**日付**: 2026-03-10
+
+**Context**:
+- `POST /api/kiosk/production-schedule/due-management/actual-hours/import` で実績工数CSVを手動投入する際、約 6MB 超の一括送信で `413 Payload Too Large` が返る
+
+**Symptoms**:
+- 大容量CSV（例: `data_20210101_20221231.csv` 6.4MB、`data_20230101_20241231.csv` 5.5MB）を一括送信すると 413 エラーになる
+- Caddy/リバースプロキシの body size 制限に抵触する可能性が高い
+
+**Investigation**:
+- **仮説**: リクエストボディのサイズ制限（Caddy の default は 10MB など環境依存）
+- **検証**: 約 25 万文字ごとに分割して順次投入すると成功
+- **結果**: **CONFIRMED** - 分割投入で回避可能
+
+**Fix**:
+- 約 25 万文字（約 250KB）ごとにチャンク分割して順次 `POST /actual-hours/import` を実行する
+- CP932 の CSV は `iconv -f CP932 -t UTF-8` で変換してから投入する
+- 実績: 2ファイル（約 12MB 合計）を 48 チャンクで投入し、`totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436` を達成
+
+**Prevention**:
+- 大容量CSV（5MB 超）の手動投入時は事前に分割を検討する
+- 手順は [actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md) の「7. 大容量CSVの手動投入（分割投入）」を参照
+
+**参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10)、[actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md)
+
+---
+
 ### [KB-296] eventLoop health 評価で起動直後・テスト時に 503/degraded になる
 
 **日付**: 2026-03-06

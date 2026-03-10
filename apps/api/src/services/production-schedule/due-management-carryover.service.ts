@@ -58,7 +58,11 @@ export async function buildDueManagementDailyPlanSeed(params: {
   });
 
   const previousOrdered = yesterdayPlan?.items.map((item) => item.fseiban) ?? [];
-  const globalOrdered = await listDueManagementGlobalRank(params.locationKey);
+  const globalOrdered = await listDueManagementGlobalRank({
+    locationKey: params.locationKey,
+    targetLocation: params.locationKey,
+    scope: 'globalShared'
+  });
   const base = normalizeFseibans([
     ...previousOrdered,
     ...globalOrdered,

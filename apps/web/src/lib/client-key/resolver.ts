@@ -37,12 +37,6 @@ const applyCrossDeviceCorrection = (resolvedKey: string, userAgent: string, path
   const env = detectEnvironment(userAgent);
   const isPi4Key = resolvedKey === CLIENT_KEY_CONFIG.pi4Key;
 
-  if (env === 'mac' && isPi4Key) {
-    const nextKey = CLIENT_KEY_CONFIG.defaultsByEnvironment.mac;
-    setClientKeyToStorage(nextKey);
-    return nextKey;
-  }
-
   if (env === 'other' && !isKioskPath(pathname) && isPi4Key) {
     const nextKey = CLIENT_KEY_CONFIG.defaultsByEnvironment.demo;
     setClientKeyToStorage(nextKey);
@@ -51,6 +45,8 @@ const applyCrossDeviceCorrection = (resolvedKey: string, userAgent: string, path
 
   return resolvedKey;
 };
+
+export const isMacEnvironment = (userAgent: string): boolean => detectEnvironment(userAgent) === 'mac';
 
 export function resolveClientKey(options?: ResolveOptions): ResolveResult {
   const providedKey = normalizeProvidedKey(options?.providedKey);

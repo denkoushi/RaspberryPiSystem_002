@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { getKioskRateLimitService } from '../../services/security/kiosk-rate-limit.service.js';
 
 const DEFAULT_LOCATION = 'default';
+const MAC_LOCATION_ALIAS = 'Mac';
 
 export const normalizeClientKey = (rawKey: unknown): string | undefined => {
   if (typeof rawKey === 'string') {
@@ -86,4 +87,23 @@ export const resolveLocationKey = (clientDevice: { location?: string | null; nam
     return clientDevice.name.trim();
   }
   return DEFAULT_LOCATION;
+};
+
+export const resolveTargetLocation = (params: {
+  requestedTargetLocation?: string;
+  actorLocation: string;
+}): string => {
+  const requested = params.requestedTargetLocation?.trim();
+  if (requested) {
+    return requested;
+  }
+  return params.actorLocation;
+};
+
+export const shouldRequireTargetLocationForActor = (actorLocation: string): boolean => {
+  const requireForMac = process.env.KIOSK_DUE_MANAGEMENT_REQUIRE_TARGET_LOCATION_FOR_MAC === 'true';
+  if (!requireForMac) {
+    return false;
+  }
+  return actorLocation === MAC_LOCATION_ALIAS;
 };

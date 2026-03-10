@@ -117,16 +117,25 @@ export const productionScheduleDueManagementDailyPlanBodySchema = z.object({
 });
 
 export const productionScheduleDueManagementGlobalRankBodySchema = z.object({
-  orderedFseibans: z.array(z.string().min(1).max(20).transform((value) => value.trim())).max(2000)
+  orderedFseibans: z.array(z.string().min(1).max(20).transform((value) => value.trim())).max(2000),
+  targetLocation: z.string().min(1).max(100).optional(),
+  rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
 });
 
 export const productionScheduleDueManagementGlobalRankAutoGenerateBodySchema = z
   .object({
     minCandidateCount: z.number().int().min(1).max(2000).optional(),
     maxReorderDeltaRatio: z.number().min(0).max(1).optional(),
-    keepExistingTail: z.boolean().optional()
+    keepExistingTail: z.boolean().optional(),
+    targetLocation: z.string().min(1).max(100).optional(),
+    rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
   })
   .optional();
+
+export const productionScheduleDueManagementGlobalRankQuerySchema = z.object({
+  targetLocation: z.string().min(1).max(100).optional(),
+  rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
+});
 
 export const productionScheduleDueManagementGlobalRankExplanationParamsSchema = z.object({
   fseiban: z.string().min(1).max(20).transform((value) => value.trim())
@@ -134,7 +143,17 @@ export const productionScheduleDueManagementGlobalRankExplanationParamsSchema = 
 
 export const productionScheduleDueManagementLearningReportQuerySchema = z.object({
   from: z.string().datetime().optional(),
-  to: z.string().datetime().optional()
+  to: z.string().datetime().optional(),
+  targetLocation: z.string().min(1).max(100).optional(),
+  rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
+});
+
+export const productionScheduleDueManagementActualHoursImportBodySchema = z.object({
+  csvContent: z.string().min(1),
+});
+
+export const productionScheduleDueManagementActualHoursStatsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 type ClientDeviceForLocation = { location?: string | null; name: string };
@@ -145,4 +164,5 @@ export type KioskRouteDeps = {
     clientDevice: ClientDeviceForLocation;
   }>;
   resolveLocationKey: (clientDevice: ClientDeviceForLocation) => string;
+  resolveTargetLocation: (params: { requestedTargetLocation?: string; actorLocation: string }) => string;
 };

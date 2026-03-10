@@ -530,6 +530,11 @@ export interface ProductionScheduleDueManagementGlobalRankAutoGenerateResult {
   proposal: ProductionScheduleDueManagementGlobalRankProposal;
 }
 
+export interface DueManagementTargetContext {
+  targetLocation?: string;
+  rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
+}
+
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
@@ -689,15 +694,18 @@ export async function updateKioskProductionScheduleDueManagementDailyPlan(payloa
   return data;
 }
 
-export async function getKioskProductionScheduleDueManagementGlobalRank() {
+export async function getKioskProductionScheduleDueManagementGlobalRank(context?: DueManagementTargetContext) {
   const { data } = await api.get<ProductionScheduleDueManagementGlobalRankResult>(
-    '/kiosk/production-schedule/due-management/global-rank'
+    '/kiosk/production-schedule/due-management/global-rank',
+    { params: context }
   );
   return data;
 }
 
 export async function updateKioskProductionScheduleDueManagementGlobalRank(payload: {
   orderedFseibans: string[];
+  targetLocation?: string;
+  rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
 }) {
   const { data } = await api.put<
     { success: boolean } & ProductionScheduleDueManagementGlobalRankResult
@@ -705,9 +713,10 @@ export async function updateKioskProductionScheduleDueManagementGlobalRank(paylo
   return data;
 }
 
-export async function getKioskProductionScheduleDueManagementGlobalRankProposal() {
+export async function getKioskProductionScheduleDueManagementGlobalRankProposal(context?: DueManagementTargetContext) {
   const { data } = await api.get<ProductionScheduleDueManagementGlobalRankProposal>(
-    '/kiosk/production-schedule/due-management/global-rank/proposal'
+    '/kiosk/production-schedule/due-management/global-rank/proposal',
+    { params: context }
   );
   return data;
 }
@@ -716,6 +725,8 @@ export async function autoGenerateKioskProductionScheduleDueManagementGlobalRank
   minCandidateCount?: number;
   maxReorderDeltaRatio?: number;
   keepExistingTail?: boolean;
+  targetLocation?: string;
+  rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
 }) {
   const { data } = await api.put<ProductionScheduleDueManagementGlobalRankAutoGenerateResult>(
     '/kiosk/production-schedule/due-management/global-rank/auto-generate',

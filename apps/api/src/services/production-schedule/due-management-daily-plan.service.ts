@@ -3,6 +3,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildDueManagementDailyPlanSeed } from './due-management-carryover.service.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { listDueManagementGlobalRank, mergeDueManagementGlobalRank } from './due-management-global-rank.service.js';
+import { resolveRankingScopePolicy } from './due-management-ranking-scope-policy.service.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -150,20 +151,34 @@ export async function replaceDueManagementDailyPlan(params: {
     return plan;
   });
 
-  const previousGlobalRank = await listDueManagementGlobalRank(locationKey);
+  const scopePolicy = resolveRankingScopePolicy({
+    actorLocation: locationKey,
+    targetLocation: locationKey,
+    requestedScope: 'globalShared'
+  });
+  const previousOrderedFseibans = await listDueManagementGlobalRank({
+    locationKey,
+    targetLocation: locationKey,
+    scope: scopePolicy.scope
+  });
   const mergedGlobalRank = await mergeDueManagementGlobalRank({
     locationKey,
+    targetLocation: locationKey,
+    scope: scopePolicy.scope,
     prioritizedFseibans: orderedFseibans
   });
   await dueManagementLearningEventRepository.saveDecisionEvent({
-    locationKey,
+    locationKey: scopePolicy.targetLocation,
     sourceType: 'manual',
     orderedFseibans: mergedGlobalRank,
-    previousOrderedFseibans: previousGlobalRank,
+    previousOrderedFseibans,
     proposalOrderedFseibans: orderedFseibans,
     reorderDeltaRatio: null,
     metadata: {
-      from: 'daily_plan_replace'
+      from: 'daily_plan_replace',
+      actorLocation: locationKey,
+      targetLocation: locationKey,
+      scope: scopePolicy.scope
     }
   });
 

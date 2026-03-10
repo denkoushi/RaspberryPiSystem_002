@@ -25,8 +25,12 @@ import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { deriveGlobalRankFlags, movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 const NOTE_MAX_LENGTH = 100;
+const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
+const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
+const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
 
 const normalizeHistoryList = (items: string[]) => {
   const unique = new Set<string>();
@@ -43,11 +47,27 @@ const normalizeHistoryList = (items: string[]) => {
 };
 
 export function ProductionScheduleDueManagementPage() {
+  const isMac =
+    typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
+  const canSelectTargetLocation = isMac && TARGET_LOCATION_SELECTOR_ENABLED;
+  const [targetLocation, setTargetLocation] = useState<string>(() => {
+    if (typeof window === 'undefined') return DEFAULT_TARGET_LOCATIONS[0];
+    const stored = window.localStorage.getItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY)?.trim();
+    return stored && stored.length > 0 ? stored : DEFAULT_TARGET_LOCATIONS[0];
+  });
+  const rankingContext = useMemo(
+    () => ({
+      targetLocation: canSelectTargetLocation ? targetLocation : undefined,
+      rankingScope: 'globalShared' as const
+    }),
+    [canSelectTargetLocation, targetLocation]
+  );
+
   const summaryQuery = useKioskProductionScheduleDueManagementSummary();
   const triageQuery = useKioskProductionScheduleDueManagementTriage();
   const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan();
-  const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank();
-  const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal();
+  const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank(rankingContext);
+  const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal(rankingContext);
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -203,9 +223,15 @@ export function ProductionScheduleDueManagementPage() {
     await autoGenerateGlobalRankMutation.mutateAsync({
       minCandidateCount: 1,
       maxReorderDeltaRatio: 0.95,
-      keepExistingTail: true
+      keepExistingTail: true,
+      ...rankingContext
     });
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY, targetLocation);
+  }, [targetLocation]);
 
   const saveDailyPlan = async () => {
     await updateDailyPlanMutation.mutateAsync({
@@ -486,6 +512,19 @@ export function ProductionScheduleDueManagementPage() {
           <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-xs font-semibold text-white">全体ランキング（親）</h3>
+              {canSelectTargetLocation ? (
+                <select
+                  value={targetLocation}
+                  onChange={(event) => setTargetLocation(event.target.value)}
+                  className="h-7 rounded border border-white/30 bg-slate-800 px-2 text-[11px] text-white"
+                >
+                  {DEFAULT_TARGET_LOCATIONS.map((location) => (
+                    <option key={location} value={location}>
+                      対象: {location}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               <button
                 type="button"
                 className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-60"

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { StorageProviderFactory } from '../backup/storage-provider-factory.js';
@@ -9,6 +10,7 @@ import { CsvDashboardImportService } from '../csv-dashboard/csv-dashboard-import
 import { CsvImportSourceService } from './csv-import-source.service.js';
 import { CsvImportConfigService } from './csv-import-config.service.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
+import { ActualHoursImportOrchestratorService } from '../production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
 
 export type CsvImportExecutionSummary = {
   employees?: { processed: number; created: number; updated: number };
@@ -17,6 +19,22 @@ export type CsvImportExecutionSummary = {
   riggingGears?: { processed: number; created: number; updated: number };
   machines?: { processed: number; created: number; updated: number };
   csvDashboards?: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }>;
+  productionActualHours?: {
+    rowsProcessed: number;
+    rowsInserted: number;
+    rowsIgnored: number;
+    sourceRows: number;
+    candidateKeys: number;
+    canonicalCreated: number;
+    canonicalUpdated: number;
+    canonicalSkipped: number;
+    totalRows: number;
+    totalRawRows: number;
+    excludedRecentRows: number;
+    excludedOutlierRows: number;
+    excludedPreFlaggedRows: number;
+    featureKeyCount: number;
+  };
 };
 
 type LoggerLike = {
@@ -41,6 +59,17 @@ export interface StorageProviderFactoryLike {
 }
 
 type ProcessCsvImportFromTargetsFn = typeof processCsvImportFromTargets;
+
+function resolveLocationKey(metadata: unknown): string {
+  if (!metadata || typeof metadata !== 'object') {
+    return 'default';
+  }
+  const locationKey = (metadata as { locationKey?: unknown }).locationKey;
+  if (typeof locationKey === 'string' && locationKey.trim().length > 0) {
+    return locationKey.trim();
+  }
+  return 'default';
+}
 
 type CsvImportExecutionDeps = {
   configStore: BackupConfigStore;
@@ -243,11 +272,13 @@ export class CsvImportExecutionService {
 
     // CSVダッシュボード用のターゲットと通常のインポート用のターゲットを分離
     const csvDashboardTargets = targets.filter((t) => t.type === 'csvDashboards');
-    const importTargets = targets.filter((t) => t.type !== 'csvDashboards');
+    const productionActualHoursTargets = targets.filter((t) => t.type === 'productionActualHours');
+    const importTargets = targets.filter((t) => t.type !== 'csvDashboards' && t.type !== 'productionActualHours');
 
     // CSVファイルをダウンロード
     const fileMap = new Map<string, Buffer>();
     let csvDashboardResults: Record<string, { rowsProcessed: number; rowsAdded: number; rowsSkipped: number }> = {};
+    let productionActualHoursResult: CsvImportExecutionSummary['productionActualHours'] | undefined;
     const csvImportSourceService = this.deps.createCsvImportSourceService();
     // 1回の実行中だけ件名パターン取得をキャッシュ（挙動は不変、DB往復を削減）
     const subjectPatternCache = new Map<string, string[]>();
@@ -261,6 +292,63 @@ export class CsvImportExecutionService {
         storageProvider,
         dashboardIds,
       });
+    }
+
+    if (productionActualHoursTargets.length > 0) {
+      const orchestrator = new ActualHoursImportOrchestratorService();
+      const locationKey = resolveLocationKey(importSchedule.metadata);
+      let rowsProcessed = 0;
+      let rowsInserted = 0;
+      let rowsIgnored = 0;
+      let sourceRows = 0;
+      let candidateKeys = 0;
+      let canonicalCreated = 0;
+      let canonicalUpdated = 0;
+      let canonicalSkipped = 0;
+
+      for (const target of productionActualHoursTargets) {
+        const { buffer, resolvedSource } = await csvImportSourceService.downloadMasterCsv({
+          target,
+          provider,
+          storageProvider,
+          patternCache: subjectPatternCache,
+          logger: this.deps.logger,
+        });
+        const fileDigest = createHash('sha256').update(buffer).digest('hex');
+        const sourceFileKey = `${importSchedule.id}:${resolvedSource}:${fileDigest}`;
+        const result = await orchestrator.importFromCsv({
+          buffer,
+          sourceFileKey,
+          locationKey,
+          sourceScheduleId: importSchedule.id,
+        });
+        rowsProcessed += result.rowsProcessed;
+        rowsInserted += result.rowsInserted;
+        rowsIgnored += result.rowsIgnored;
+        sourceRows += result.sourceRows;
+        candidateKeys += result.candidateKeys;
+        canonicalCreated += result.canonicalCreated;
+        canonicalUpdated += result.canonicalUpdated;
+        canonicalSkipped += result.canonicalSkipped;
+
+        this.deps.logger?.info?.(
+          { type: target.type, source: resolvedSource, size: buffer.length, provider, sourceFileKey, ...result },
+          '[CsvImportScheduler] production actual hours CSV imported'
+        );
+      }
+
+      const aggregateResult = await orchestrator.rebuildFeatures({ locationKey });
+      productionActualHoursResult = {
+        rowsProcessed,
+        rowsInserted,
+        rowsIgnored,
+        sourceRows,
+        candidateKeys,
+        canonicalCreated,
+        canonicalUpdated,
+        canonicalSkipped,
+        ...aggregateResult,
+      };
     }
 
     // 通常のCSVインポート処理
@@ -301,11 +389,11 @@ export class CsvImportExecutionService {
       this.deps.logger?.info?.({ taskId: importSchedule.id, summary }, '[CsvImportScheduler] CSV import completed');
 
       // CSVダッシュボードの結果も含めて返す
-      return { ...summary, csvDashboards: csvDashboardResults };
+      return { ...summary, csvDashboards: csvDashboardResults, productionActualHours: productionActualHoursResult };
     }
 
     // CSVダッシュボードのみの場合
-    return { csvDashboards: csvDashboardResults };
+    return { csvDashboards: csvDashboardResults, productionActualHours: productionActualHoursResult };
   }
 }
 
