@@ -52,6 +52,8 @@ type NormalizedScheduleRow = {
   values: Record<string, string>;
   processingOrder: number | null;
   globalRank: number | null;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number | null;
   processingType: string | null;
   note: string | null;
   dueDate: string | null;
@@ -326,6 +328,8 @@ export function ProductionSchedulePage() {
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
       { key: 'globalRank', label: '全体順位', dataType: 'number' },
+      { key: 'actualPerPieceMinutes', label: '実績基準時間(分/個)', dataType: 'number' },
+      { key: 'actualEstimatedMinutes', label: '実績推定工数(分)', dataType: 'number' },
       { key: 'processingOrder', label: '資源順番', dataType: 'number' },
       { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
@@ -354,6 +358,8 @@ export function ProductionSchedulePage() {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const globalRank = typeof r.globalRank === 'number' ? r.globalRank : null;
+      const actualPerPieceMinutes = typeof r.actualPerPieceMinutes === 'number' ? r.actualPerPieceMinutes : null;
+      const actualEstimatedMinutes = typeof r.actualEstimatedMinutes === 'number' ? r.actualEstimatedMinutes : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
@@ -363,6 +369,8 @@ export function ProductionSchedulePage() {
         FHINMEI: String(d.FHINMEI ?? ''),
         FSIGENCD: String(d.FSIGENCD ?? ''),
         globalRank: globalRank ? String(globalRank) : '',
+        actualPerPieceMinutes: actualPerPieceMinutes !== null ? actualPerPieceMinutes.toFixed(2) : '',
+        actualEstimatedMinutes: actualEstimatedMinutes !== null ? Math.round(actualEstimatedMinutes).toString() : '',
         processingOrder: processingOrder ? String(processingOrder) : '',
         processingType: processingType ?? '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
@@ -376,6 +384,8 @@ export function ProductionSchedulePage() {
         values,
         processingOrder,
         globalRank,
+        actualPerPieceMinutes,
+        actualEstimatedMinutes,
         processingType,
         note,
         dueDate
@@ -388,11 +398,14 @@ export function ProductionSchedulePage() {
     });
   }, [scheduleQuery.data?.rows]);
 
-  const isResourceRankFilterActive =
-    normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
+  const isResourceRankFilterActive = normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
+  const isSeibanScopedRankActive =
+    normalizedActiveQueries.length > 0 &&
+    (selectedResourceCategory !== undefined || (showGrindingResources && showCuttingResources));
+  const isDisplayRankContext = isResourceRankFilterActive || isSeibanScopedRankActive;
 
   const displayRows = useMemo<NormalizedScheduleRow[]>(() => {
-    if (!isResourceRankFilterActive) {
+    if (!isDisplayRankContext) {
       return normalizedRows;
     }
 
@@ -424,7 +437,7 @@ export function ProductionSchedulePage() {
     return rowsWithDisplayRank
       .sort((a, b) => a.sortKey - b.sortKey)
       .map(({ row }) => row);
-  }, [isResourceRankFilterActive, normalizedRows]);
+  }, [isDisplayRankContext, normalizedRows]);
 
   const { completedCount, incompleteCount } = useMemo(() => {
     const completed = normalizedRows.filter((row) => row.isCompleted).length;
@@ -906,9 +919,9 @@ export function ProductionSchedulePage() {
         })}
       </div>
 
-      {isResourceRankFilterActive ? (
+      {isDisplayRankContext ? (
         <p className="text-xs font-semibold text-white/70">
-          全体順位は、資源CDフィルタ中の表示対象に対して 1 から再採番しています。
+          全体順位は表示対象内の表示順位として 1 から再採番しています（保存値は変更しません）。
         </p>
       ) : null}
 

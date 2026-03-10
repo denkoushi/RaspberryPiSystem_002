@@ -321,7 +321,13 @@ export async function buildDueManagementGlobalRankProposal(params: {
   }
   const summaryMap = new Map(summaries.map((item) => [item.fseiban, item] as const));
 
-  const scored: Array<{ fseiban: string; score: number; breakdown: GlobalRankScoreBreakdown }> = [];
+  const scored: Array<{
+    fseiban: string;
+    score: number;
+    breakdown: GlobalRankScoreBreakdown;
+    estimatedActualMinutes: number;
+    coverageRatio: number;
+  }> = [];
   for (const fseiban of candidateFseibans) {
     const summary = summaryMap.get(fseiban);
     const daysUntilDue = computeDaysUntilDue(summary?.dueDate ?? null);
@@ -389,7 +395,9 @@ export async function buildDueManagementGlobalRankProposal(params: {
     scored.push({
       fseiban,
       score: weightedTotalScore,
-      breakdown
+      breakdown,
+      estimatedActualMinutes: actualHoursSignal.estimatedActualMinutes,
+      coverageRatio: actualHoursSignal.coverageRatio
     });
   }
 
@@ -412,6 +420,8 @@ export async function buildDueManagementGlobalRankProposal(params: {
     fseiban: item.fseiban,
     rank: index + 1,
     score: Number(item.score.toFixed(6)),
+    estimatedActualMinutes: Number(item.estimatedActualMinutes.toFixed(2)),
+    coverageRatio: Number(item.coverageRatio.toFixed(4)),
     breakdown: item.breakdown
   }));
 

@@ -405,6 +405,8 @@ export interface ProductionScheduleRow {
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
   globalRank?: number | null;
+  actualPerPieceMinutes?: number | null;
+  actualEstimatedMinutes?: number | null;
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
@@ -442,6 +444,8 @@ export interface ProductionScheduleDueManagementSummaryItem {
   partsCount: number;
   processCount: number;
   totalRequiredMinutes: number;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
 }
 
 export interface ProductionScheduleDueManagementTriageReason {
@@ -497,6 +501,7 @@ export interface ProductionScheduleDueManagementGlobalRankScoreBreakdown {
   carryoverScore: number;
   partPriorityScore: number;
   historyCalibrationScore: number;
+  actualHoursScore: number;
   weightedTotalScore: number;
   reasons: string[];
 }
@@ -505,6 +510,8 @@ export interface ProductionScheduleDueManagementGlobalRankProposalItem {
   fseiban: string;
   rank: number;
   score: number;
+  estimatedActualMinutes: number;
+  coverageRatio: number;
   breakdown: ProductionScheduleDueManagementGlobalRankScoreBreakdown;
 }
 
@@ -553,6 +560,9 @@ export interface ProductionScheduleDueManagementPartItem {
   processingPriority: number;
   completedProcessCount: number;
   totalProcessCount: number;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
   processes: ProductionScheduleDueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
