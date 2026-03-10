@@ -536,3 +536,18 @@ category: knowledge-base
 
 - 製番や資源CDでフィルタしても、**全体順位は変わらない**（先に全体で計算してから表示を絞る）
 - 納期管理で「今日の計画順」や「全体ランキング」を保存した直後に、生産スケジュールの「全体順位」列が更新される
+
+### B第7段階（実績工数CSV連携 + 全体ランキング連携、2026-03-10）
+
+- **実装概要**:
+  - `ProductionScheduleActualHoursRaw` / `ProductionScheduleActualHoursFeature` を追加し、実績工数CSVの生データと集約特徴量を分離して保持
+  - Gmail CSV取込フローに `productionActualHours` ターゲットを追加し、既存スケジューラ経由で月次自動取込できるように拡張
+  - 取込後に `FHINCD × FSIGENCD` 単位で `中央値 + 件数 + p75` を再集約（除外条件: 直近30日、0工数、明確な外れ値）
+  - 全体ランキングスコアへ `actualHoursScore` を追加し、上位重みの一要素として反映（単独決定因子にはしない）
+- **追加API**:
+  - `POST /api/kiosk/production-schedule/due-management/actual-hours/import`（手動CSV投入 + 再集約）
+  - `GET /api/kiosk/production-schedule/due-management/actual-hours/stats`（集約キー件数・上位特徴量の確認）
+- **運用メモ**:
+  - Gmailの月次自動取込は `csvImports.targets[].type = productionActualHours` で設定し、`metadata.locationKey` でロケーションを明示できる
+  - CP932 CSVを自動判別し、UTF-8と混在しても取り込み可能
+  - 特徴量が不足する製番は既存ロジックへフォールバックするため、既存運用を破壊しない

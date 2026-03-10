@@ -18,6 +18,9 @@
 - 既存の `ProductionScheduleGlobalRank` は運用表示向け投影として維持する
 - （2026-03-09 追記）`ProductionScheduleGlobalRank` を親順位として、行単位の投影 `ProductionScheduleGlobalRowRank` を別テーブルで保持する
   - `processingOrder`（資源CD別順番）は既存運用のまま維持し、意味を分離する
+- （2026-03-10 追記）実績工数CSVを Gmail 月次取り込みし、`FHINCD × FSIGENCD` の統計特徴量（中央値・件数・p75）を全体ランキングの高重み要素として使用する
+  - 除外ルールは「直近30日」「0工数」「明確な外れ値」
+  - 実績工数特徴量は単独決定因子にせず、既存スコアと合成する
 - 新規API `GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価を提供する
 
 ## Alternatives
@@ -37,6 +40,7 @@
 - 悪い影響
   - イベント保存によりDBサイズと集計コストが増える
   - レポート運用（期間指定・解釈）が追加で必要になる
+  - 実績工数CSVの取込・集約ジョブ監視が新たに必要になる
 
 ## 実装前議論（コンテキスト共有）
 
@@ -53,3 +57,5 @@
 - `apps/api/src/services/production-schedule/due-management-learning-event.repository.ts`
 - `apps/api/src/services/production-schedule/due-management-learning-evaluator.service.ts`
 - `apps/api/src/routes/kiosk/production-schedule/due-management-global-rank.ts`
+- `apps/api/src/services/production-schedule/production-actual-hours-import.service.ts`
+- `apps/api/src/services/production-schedule/production-actual-hours-aggregate.service.ts`

@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-10）
+
+- **✅ 納期管理 B第7段階（実績工数CSV連携 + 全体ランキング連携）実装完了**: 実績工数CSV向けに `ProductionScheduleActualHoursRaw` / `ProductionScheduleActualHoursFeature` を追加。Gmail CSV取込ターゲット `productionActualHours` を新設し、取込後に `FHINCD × FSIGENCD` の `中央値・件数・p75` を再集約。除外条件（直近30日・0工数・外れ値）を適用し、全体ランキングに `actualHoursScore` を上位重みの一要素として連携。手動導線として `POST /api/kiosk/production-schedule/due-management/actual-hours/import` と `GET /api/kiosk/production-schedule/due-management/actual-hours/stats` を追加。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10) / [ADR-20260308](./decisions/ADR-20260308-due-management-offline-learning-events.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-09）
 
 - **✅ Pi4デプロイ直列化（KB-300 再発防止）**: Pi4 キオスクフェーズのハングを防ぐため、`deploy-staged.yml` の kiosk play に `serial: "{{ deploy_serial.kiosk | default(1) }}"` を適用。`group_vars/all.yml` の `deploy_serial.kiosk: 1` により Pi4 は常時 1 台ずつ直列実行。詳細は [deployment.md](./guides/deployment.md) / [KB-300](./knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) を参照。

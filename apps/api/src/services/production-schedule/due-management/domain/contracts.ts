@@ -47,6 +47,7 @@ export type GlobalRankScoreBreakdown = {
   carryoverScore: number;
   partPriorityScore: number;
   historyCalibrationScore: number;
+  actualHoursScore: number;
   tieBreaker: GlobalRankTieBreaker;
   weightedTotalScore: number;
   reasons: string[];

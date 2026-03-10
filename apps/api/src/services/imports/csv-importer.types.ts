@@ -1,7 +1,14 @@
 /**
  * CSVインポートタイプ
  */
-export type CsvImportType = 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards';
+export type CsvImportType =
+  | 'employees'
+  | 'items'
+  | 'measuringInstruments'
+  | 'riggingGears'
+  | 'machines'
+  | 'csvDashboards'
+  | 'productionActualHours';
 
 /**
  * CSVインポートターゲット（スケジュール内の1つの対象）

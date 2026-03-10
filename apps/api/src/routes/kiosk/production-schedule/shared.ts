@@ -137,6 +137,14 @@ export const productionScheduleDueManagementLearningReportQuerySchema = z.object
   to: z.string().datetime().optional()
 });
 
+export const productionScheduleDueManagementActualHoursImportBodySchema = z.object({
+  csvContent: z.string().min(1),
+});
+
+export const productionScheduleDueManagementActualHoursStatsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 type ClientDeviceForLocation = { location?: string | null; name: string };
 
 export type KioskRouteDeps = {

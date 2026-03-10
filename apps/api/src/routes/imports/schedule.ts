@@ -11,7 +11,10 @@ import { writeDebugLog } from '../../lib/debug-log.js';
 const MIN_CSV_IMPORT_INTERVAL_MINUTES = 5;
 
 function hasCsvDashboardTarget(schedule: {
-  targets?: Array<{ type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards'; source: string }>;
+  targets?: Array<{
+    type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours';
+    source: string;
+  }>;
 }): boolean {
   return Array.isArray(schedule.targets) && schedule.targets.some((target) => target.type === 'csvDashboards');
 }
@@ -21,7 +24,12 @@ function isGmailCsvDashboardSchedule(
   fallbackProvider: 'local' | 'dropbox' | 'gmail'
 ): boolean {
   const provider = schedule.provider ?? fallbackProvider;
-  return provider === 'gmail' && hasCsvDashboardTarget(schedule as { targets?: Array<{ type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards'; source: string }> });
+  return provider === 'gmail' && hasCsvDashboardTarget(schedule as {
+    targets?: Array<{
+      type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours';
+      source: string;
+    }>;
+  });
 }
 
 function extractMinuteField(schedule: string): string | null {
@@ -67,7 +75,7 @@ function extractIntervalMinutes(schedule: string): number | null {
 }
 
 const csvImportTargetSchema = z.object({
-  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards']),
+  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours']),
   source: z.string().min(1, 'sourceは必須です'),
 });
 

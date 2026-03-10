@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
@@ -104,6 +105,156 @@ const historyCalibrationScore = (input: GlobalRankScoreInput): number => {
   return delay * 0.5 + gap * 0.3 + throughput * 0.2;
 };
 
+type ActualHoursSignal = {
+  actualHoursScore: number;
+  estimatedActualMinutes: number;
+  coverageRatio: number;
+};
+
+const ACTUAL_HOURS_DEFAULT_SCORE = 0.35;
+
+const parsePositiveNumber = (value: string | null): number | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.replace(/,/g, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+};
+
+const loadActualHoursSignals = async (params: {
+  locationKey: string;
+  candidateFseibans: string[];
+}): Promise<Map<string, ActualHoursSignal>> => {
+  const result = new Map<string, ActualHoursSignal>();
+  if (params.candidateFseibans.length === 0) {
+    return result;
+  }
+
+  const featureDelegate = (prisma as unknown as {
+    productionScheduleActualHoursFeature?: {
+      findMany: (args: unknown) => Promise<Array<{
+        fhincd: string;
+        resourceCd: string;
+        sampleCount: number;
+        medianPerPieceMinutes: number;
+        p75PerPieceMinutes: number | null;
+      }>>;
+    };
+  }).productionScheduleActualHoursFeature;
+  if (!featureDelegate) {
+    return result;
+  }
+
+  const featureRows = await featureDelegate.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: params.locationKey,
+    },
+    select: {
+      fhincd: true,
+      resourceCd: true,
+      sampleCount: true,
+      medianPerPieceMinutes: true,
+      p75PerPieceMinutes: true,
+    },
+  });
+  const featureMap = new Map(
+    featureRows.map((row) => [
+      `${row.fhincd}__${row.resourceCd}`,
+      {
+        sampleCount: row.sampleCount,
+        perPieceMinutes: row.p75PerPieceMinutes ?? row.medianPerPieceMinutes,
+      },
+    ] as const)
+  );
+
+  if (featureMap.size === 0) {
+    return result;
+  }
+
+  const candidateList = Prisma.join(params.candidateFseibans.map((fseiban) => Prisma.sql`${fseiban}`));
+  const rowSignals = await prisma.$queryRaw<Array<{
+    fseiban: string;
+    fhincd: string | null;
+    resourceCd: string | null;
+    lotQty: string | null;
+  }>>(Prisma.sql`
+    SELECT
+      "rowData"->>'FSEIBAN' AS "fseiban",
+      "rowData"->>'FHINCD' AS "fhincd",
+      "rowData"->>'FSIGENCD' AS "resourceCd",
+      "rowData"->>'FSEZOSIJISU' AS "lotQty"
+    FROM "CsvDashboardRow"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "rowData"->>'FSEIBAN' IN (${candidateList})
+      AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
+  `);
+
+  const aggregateMap = new Map<string, { totalRows: number; matchedRows: number; estimatedMinutes: number; sampleCountSum: number }>();
+  for (const row of rowSignals) {
+    const fseiban = row.fseiban?.trim();
+    if (!fseiban) {
+      continue;
+    }
+    const current = aggregateMap.get(fseiban) ?? {
+      totalRows: 0,
+      matchedRows: 0,
+      estimatedMinutes: 0,
+      sampleCountSum: 0,
+    };
+    current.totalRows += 1;
+
+    const fhincd = row.fhincd?.trim() ?? '';
+    const resourceCd = row.resourceCd?.trim() ?? '';
+    const lotQty = parsePositiveNumber(row.lotQty);
+    if (fhincd && resourceCd && lotQty !== null) {
+      const feature = featureMap.get(`${fhincd}__${resourceCd}`);
+      if (feature) {
+        current.matchedRows += 1;
+        current.estimatedMinutes += feature.perPieceMinutes * lotQty;
+        current.sampleCountSum += feature.sampleCount;
+      }
+    }
+    aggregateMap.set(fseiban, current);
+  }
+
+  let maxEstimatedMinutes = 0;
+  for (const data of aggregateMap.values()) {
+    if (data.estimatedMinutes > maxEstimatedMinutes) {
+      maxEstimatedMinutes = data.estimatedMinutes;
+    }
+  }
+
+  for (const fseiban of params.candidateFseibans) {
+    const aggregated = aggregateMap.get(fseiban);
+    if (!aggregated || aggregated.totalRows <= 0 || aggregated.matchedRows <= 0) {
+      result.set(fseiban, {
+        actualHoursScore: ACTUAL_HOURS_DEFAULT_SCORE,
+        estimatedActualMinutes: 0,
+        coverageRatio: 0,
+      });
+      continue;
+    }
+    const loadRatio = maxEstimatedMinutes > 0 ? clamp(aggregated.estimatedMinutes / maxEstimatedMinutes, 0, 1) : 0;
+    const coverageRatio = clamp(aggregated.matchedRows / aggregated.totalRows, 0, 1);
+    const sampleConfidence = clamp((aggregated.sampleCountSum / aggregated.matchedRows) / 20, 0, 1);
+    result.set(fseiban, {
+      actualHoursScore: loadRatio * 0.55 + coverageRatio * 0.25 + sampleConfidence * 0.2,
+      estimatedActualMinutes: aggregated.estimatedMinutes,
+      coverageRatio,
+    });
+  }
+
+  return result;
+};
+
 const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): string[] => {
   const reasons: string[] = [];
   if (breakdown.resourceDemandScore >= 0.7) reasons.push('資源所要量と混雑影響が高いため上位評価');
@@ -111,6 +262,7 @@ const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): str
   if (breakdown.carryoverScore >= 0.9) reasons.push('前日からの引継ぎ案件');
   if (breakdown.partPriorityScore >= 0.6) reasons.push('製番内の上位部品が重い');
   if (breakdown.historyCalibrationScore >= 0.6) reasons.push('完了実績から遅延リスクが高い');
+  if (breakdown.actualHoursScore >= 0.65) reasons.push('実績工数特徴量から負荷が高い');
   if (reasons.length === 0) reasons.push('総合スコアのバランス評価');
   return reasons;
 };
@@ -141,6 +293,10 @@ export async function buildDueManagementGlobalRankProposal(params: {
     candidateFseibans
   });
   const historySignals = await analyzeCompletionHistorySignals({ candidateFseibans });
+  const actualHoursSignals = await loadActualHoursSignals({
+    locationKey: params.locationKey,
+    candidateFseibans,
+  });
   const partPriorityRows = await prisma.productionSchedulePartPriority.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -193,6 +349,11 @@ export async function buildDueManagementGlobalRankProposal(params: {
         topPriorityRequiredMinutes: totalRequiredMinutes * ((summary?.partsCount ?? 0) > 0 ? topPriorityCount / (summary?.partsCount ?? 1) : 0)
       }
     };
+    const actualHoursSignal = actualHoursSignals.get(fseiban) ?? {
+      actualHoursScore: ACTUAL_HOURS_DEFAULT_SCORE,
+      estimatedActualMinutes: 0,
+      coverageRatio: 0,
+    };
 
     const breakdownBase = {
       resourceDemandScore: resourceDemandScore(scoreInput),
@@ -200,6 +361,7 @@ export async function buildDueManagementGlobalRankProposal(params: {
       carryoverScore: carryoverScore(scoreInput),
       partPriorityScore: partPriorityScore(scoreInput),
       historyCalibrationScore: historyCalibrationScore(scoreInput),
+      actualHoursScore: actualHoursSignal.actualHoursScore,
       tieBreaker: {
         isCarryover: scoreInput.isCarryover,
         dueDateRankKey: scoreInput.daysUntilDue ?? Number.MAX_SAFE_INTEGER,
@@ -208,11 +370,12 @@ export async function buildDueManagementGlobalRankProposal(params: {
       weightedTotalScore: 0
     };
     const weightedTotalScore =
-      breakdownBase.resourceDemandScore * 0.45 +
-      breakdownBase.dueUrgencyScore * 0.2 +
-      breakdownBase.historyCalibrationScore * 0.15 +
-      breakdownBase.carryoverScore * 0.1 +
-      breakdownBase.partPriorityScore * 0.1;
+      breakdownBase.resourceDemandScore * 0.35 +
+      breakdownBase.dueUrgencyScore * 0.18 +
+      breakdownBase.historyCalibrationScore * 0.12 +
+      breakdownBase.carryoverScore * 0.08 +
+      breakdownBase.partPriorityScore * 0.07 +
+      breakdownBase.actualHoursScore * 0.2;
     const breakdown: GlobalRankScoreBreakdown = {
       ...breakdownBase,
       weightedTotalScore,
