@@ -664,6 +664,18 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **知見（2026-03-09）**: `--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。**再発防止（2026-03-09 適用済み）**: Pi4 は常時 1 台ずつ直列実行（`deploy_serial.kiosk: 1`）に変更済み。ハング発生時は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「Pi4デプロイハング時の復旧手順」に従い、ハングプロセスを停止・ロック解除後、Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイする。
 
+**1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×2 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 の順で、前のデプロイが成功してから次を実行する。
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+# 1台目: Pi5
+./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow
+# 2台目: Pi4 研削メイン（1台目成功後）
+./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow
+# 3台目: Pi4 RoboDrill01（2台目成功後）
+./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01" --detach --follow
+```
+
 詳細は [KB-226](../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。
 
 ```bash
