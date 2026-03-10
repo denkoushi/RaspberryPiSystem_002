@@ -23,6 +23,7 @@ import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionSche
 import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton';
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
+import { buildResourceLocalRankMap } from '../../features/kiosk/productionSchedule/displayRank';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { moveHistoryItemLeft, moveHistoryItemRight } from '../../features/kiosk/productionSchedule/historyOrder';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
@@ -387,6 +388,37 @@ export function ProductionSchedulePage() {
     });
   }, [scheduleQuery.data?.rows]);
 
+  const isResourceRankFilterActive =
+    normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
+
+  const displayRows = useMemo<NormalizedScheduleRow[]>(() => {
+    if (!isResourceRankFilterActive) {
+      return normalizedRows;
+    }
+
+    const resourceLocalRankMap = buildResourceLocalRankMap(
+      normalizedRows.map((row) => ({
+        id: row.id,
+        globalRank: row.globalRank,
+        fseiban: String(row.data.FSEIBAN ?? ''),
+        productNo: String(row.data.ProductNo ?? ''),
+        fkojun: String(row.data.FKOJUN ?? '')
+      }))
+    );
+
+    return normalizedRows.map((row) => {
+      const resourceLocalRank = resourceLocalRankMap.get(row.id);
+      if (resourceLocalRank === undefined) return row;
+      return {
+        ...row,
+        values: {
+          ...row.values,
+          globalRank: String(resourceLocalRank)
+        }
+      };
+    });
+  }, [isResourceRankFilterActive, normalizedRows]);
+
   const { completedCount, incompleteCount } = useMemo(() => {
     const completed = normalizedRows.filter((row) => row.isCompleted).length;
     return {
@@ -431,8 +463,8 @@ export function ProductionSchedulePage() {
     ? Math.floor((containerWidth - itemSeparatorWidth) / 2)
     : Math.floor(containerWidth);
   const widthSampleRows = useMemo(
-    () => normalizedRows.slice(0, 80).map((row) => row.values),
-    [normalizedRows]
+    () => displayRows.slice(0, 80).map((row) => row.values),
+    [displayRows]
   );
   const itemColumnWidths = useMemo(() => {
     return computeColumnWidths({
@@ -455,14 +487,14 @@ export function ProductionSchedulePage() {
 
   const rowPairs = useMemo(() => {
     if (!isTwoColumn) {
-      return normalizedRows.map((row) => [row, undefined] as const);
+      return displayRows.map((row) => [row, undefined] as const);
     }
     const pairs: Array<[NormalizedScheduleRow, NormalizedScheduleRow | undefined]> = [];
-    for (let i = 0; i < normalizedRows.length; i += 2) {
-      pairs.push([normalizedRows[i], normalizedRows[i + 1]]);
+    for (let i = 0; i < displayRows.length; i += 2) {
+      pairs.push([displayRows[i], displayRows[i + 1]]);
     }
     return pairs;
-  }, [normalizedRows, isTwoColumn]);
+  }, [displayRows, isTwoColumn]);
 
   type SearchStateOperation =
     | { type: 'add' | 'remove'; value: string }
@@ -867,13 +899,19 @@ export function ProductionSchedulePage() {
         })}
       </div>
 
+      {isResourceRankFilterActive ? (
+        <p className="text-xs font-semibold text-white/70">
+          全体順位は、資源CDフィルタ中の表示対象に対して 1 から再採番しています。
+        </p>
+      ) : null}
+
       {!hasQuery ? (
         <p className="text-sm font-semibold text-white/80">検索してください。</p>
       ) : scheduleQuery.isLoading ? (
         <p className="text-sm font-semibold text-white/80">読み込み中...</p>
       ) : scheduleQuery.isError ? (
         <p className="text-sm font-semibold text-rose-300">取得に失敗しました。</p>
-      ) : normalizedRows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <p className="text-sm font-semibold text-white/80">該当するデータはありません。</p>
       ) : (
         <div className="flex-1 overflow-auto">
