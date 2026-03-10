@@ -56,6 +56,8 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | Pi4 サービス（robodrill01） | `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"` | 両方 `active` |
 | Pi3 signage-lite | Pi5経由で `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"` | `active` |
 
+**注記（Pi3 offline 時）**: `tailscale status` で Pi3（signageras3@100.105.224.86）が offline の場合、SSH がタイムアウトする。実機検証時は Pi3 の signage サービス確認をスキップ可能。Pi4 と API の検証が完了していれば、Pi3 は復帰後に追い確認する運用で可。
+
 ---
 
 ## 4. Pi4/Pi3 サービス確認の接続経路

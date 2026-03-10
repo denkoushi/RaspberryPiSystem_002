@@ -85,8 +85,37 @@ curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/act
 
 ---
 
-## 6. 関連ドキュメント
+## 6. 大容量CSVの手動投入（分割投入）
+
+**想定事象**: 約 6MB 超の一括送信で `413 Payload Too Large` になる（[KB-301](../knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)）
+
+### 6.1 分割投入の手順
+
+1. **CP932 の CSV を UTF-8 に変換**（必要に応じて）
+   ```bash
+   iconv -f CP932 -t UTF-8 data_20210101_20221231.csv > data_20210101_20221231_utf8.csv
+   ```
+
+2. **約 25 万文字ごとにチャンク分割**して、順次 `POST /api/kiosk/production-schedule/due-management/actual-hours/import` を実行する
+   - 例: 6.4MB のファイルを約 250KB（約 25 万文字）ごとに分割 → 約 25 チャンク
+   - 各チャンクは CSV ヘッダー行を含む完全な形式（または API が許容する形式）で送信する
+
+3. **全チャンク投入後**、`GET /actual-hours/stats` で件数整合を確認する
+   - `totalRawRows`: Raw 件数
+   - `totalCanonicalRows`: Canonical 件数
+   - `totalFeatureKeys`: Feature キー数
+
+### 6.2 実績例（2026-03-10）
+
+- 対象: `data_20210101_20221231.csv`（6.4MB）、`data_20230101_20241231.csv`（5.5MB）
+- 方法: 約 25 万文字ごとに分割し、48 チャンクで順次投入
+- 結果: `totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436`
+
+---
+
+## 7. 関連ドキュメント
 
 - [KB-297 B第7段階（実績工数CSV連携）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10)
+- [KB-301 413 Payload Too Large](../knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)
 - [deploy-status-recovery.md](./deploy-status-recovery.md)（実機検証チェックリスト）
 - [deployment.md](../guides/deployment.md)（デプロイ標準手順）
