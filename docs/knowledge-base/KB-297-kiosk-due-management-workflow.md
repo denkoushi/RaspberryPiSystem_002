@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-07
+last-verified: 2026-03-10
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -551,3 +551,20 @@ category: knowledge-base
   - Gmailの月次自動取込は `csvImports.targets[].type = productionActualHours` で設定し、`metadata.locationKey` でロケーションを明示できる
   - CP932 CSVを自動判別し、UTF-8と混在しても取り込み可能
   - 特徴量が不足する製番は既存ロジックへフォールバックするため、既存運用を破壊しない
+
+### B第7段階デプロイ・実機検証（2026-03-10）
+
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつ実行（Run ID `20260310-154937-13894` / `20260310-155444-12790` / `20260310-155947-3485`）。推奨運用は [deployment.md](../guides/deployment.md) の「1台ずつ順番デプロイ」を参照。
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`（メモリ87.6%警告は既知）
+  - deploy-status: 両Pi4（raspberrypi4・raspi4-robodrill01）で `isMaintenance: false`
+  - キオスクAPI: `/api/tools/loans/active` 200（両Pi4）
+  - 納期管理API: triage / daily-plan / global-rank / global-rank/proposal / global-rank/learning-report / summary すべて 200
+  - 実績工数API: `GET /api/kiosk/production-schedule/due-management/actual-hours/stats` 200（`totalRawRows`, `totalFeatureKeys`, `topFeatures` 返却）
+  - サイネージAPI: `/api/signage/content` 200、`layoutConfig` 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 44件適用済み、スキーマ最新
+  - Pi4/Pi3サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+- **知見**:
+  - `actual-hours/stats` はCSV未取込時 `totalRawRows: 0`, `totalFeatureKeys: 0`, `topFeatures: []` を返す（想定どおり）。Gmail月次取込または `POST /actual-hours/import` で手動投入後に再集約され、特徴量が反映される
+  - 実機検証チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「3. 実機検証チェックリスト」を参照
