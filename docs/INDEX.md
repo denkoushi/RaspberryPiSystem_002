@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-11）
+
+- **✅ 全体順位 ソート補正・デプロイ・実機検証完了**: 資源CDフィルタ時に表示順位は1..Nに再採番されていたが**行の並び順がその順位に従っていなかった**問題を修正。`displayRows` を表示順位（1..N）で昇順ソートするよう変更。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-082311` / `20260311-082345` / `20260311-083018`）。**実機検証**: 資源CD押下後、1から順位付けされ、ソートもその順位基準になっていることを確認。**知見**: 表示順位の再採番と行ソートは別実装であり、両方を揃える必要がある。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位-ソート補正2026-03-11) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-10）
 
 - **✅ 全端末共有優先順位（Mac対象ロケーション指定）基盤を追加・デプロイ完了・実機検証完了**: 納期管理 `global-rank` API に `targetLocation` / `rankingScope`（`globalShared` / `locationScoped` / `localTemporary`）を拡張し、Mac から対象拠点を明示指定できるように変更。`ProductionScheduleGlobalRankTemporaryOverride` テーブルを追加。基準順位は `shared-global-rank` に統合し、必要時は TTL 付き一時上書き（localTemporary）を適用可能。**1回目デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-193632-10428` / `20260310-194407-20877` / `20260310-195055-32546`）。**2回目デプロイ（feature flag 本番制御経路）**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 `true`）。Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、global-rank の `targetLocation`/`actorLocation`/`rankingScope` 返却、rankingScope=localTemporary 動作、マイグレーション（46件）、Pi4サービス稼働を確認。移行手順は [mac-target-location-migration.md](./runbooks/mac-target-location-migration.md) を参照。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
