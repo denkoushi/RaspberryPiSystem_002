@@ -871,6 +871,20 @@ model ProductionScheduleGlobalRowRank {
   @@index([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRowRank_idx_fseiban")
 }
 
+model ProductionScheduleGlobalRankTemporaryOverride {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  targetLocation String
+  orderedFseibans String[]
+  actorClientKey String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, targetLocation], map: "ProductionScheduleGlobalRankTempOverride_unique_target")
+  @@index([csvDashboardId, expiresAt], map: "ProductionScheduleGlobalRankTempOverride_idx_expiry")
+}
+
 model ProductionScheduleActualHoursRaw {
   id               String   @id @default(uuid())
   csvDashboardId   String

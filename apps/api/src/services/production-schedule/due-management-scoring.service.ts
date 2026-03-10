@@ -269,6 +269,7 @@ const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): str
 
 export async function buildDueManagementGlobalRankProposal(params: {
   locationKey: string;
+  existingRankLocationKey?: string;
 }): Promise<GlobalRankProposal> {
   const summaries = await listDueManagementSummaries(params.locationKey);
   const selectedRows = await prisma.productionScheduleTriageSelection.findMany({
@@ -280,7 +281,11 @@ export async function buildDueManagementGlobalRankProposal(params: {
     select: { fseiban: true }
   });
   const selectedSet = new Set(selectedRows.map((row) => row.fseiban));
-  const existingRank = await listDueManagementGlobalRank(params.locationKey);
+  const existingRank = await listDueManagementGlobalRank({
+    locationKey: params.existingRankLocationKey ?? params.locationKey,
+    targetLocation: params.locationKey,
+    scope: params.existingRankLocationKey ? 'globalShared' : 'locationScoped'
+  });
   const existingOrder = new Map(existingRank.map((fseiban, index) => [fseiban, index]));
   const candidateFseibans = buildDueScopedCandidates({
     selectedFseibans: selectedRows.map((row) => row.fseiban),

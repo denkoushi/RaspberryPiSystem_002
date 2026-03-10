@@ -11,7 +11,8 @@ import {
   getWebRTCCallExcludeClientIds,
   normalizeClientKey,
   requireClientDevice,
-  resolveLocationKey
+  resolveLocationKey,
+  resolveTargetLocation
 } from './kiosk/shared.js';
 
 const POWER_ACTIONS_DIR = process.env.POWER_ACTIONS_DIR ?? '/app/power-actions';
@@ -23,7 +24,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   await registerProductionScheduleRoutes(app, {
     requireClientDevice,
-    resolveLocationKey
+    resolveLocationKey,
+    resolveTargetLocation
   });
 
   await registerKioskConfigRoute(app, {
