@@ -406,17 +406,24 @@ export function ProductionSchedulePage() {
       }))
     );
 
-    return normalizedRows.map((row) => {
+    const rowsWithDisplayRank = normalizedRows.map((row) => {
       const resourceLocalRank = resourceLocalRankMap.get(row.id);
-      if (resourceLocalRank === undefined) return row;
+      if (resourceLocalRank === undefined) return { row, sortKey: Number.MAX_SAFE_INTEGER };
       return {
-        ...row,
-        values: {
-          ...row.values,
-          globalRank: String(resourceLocalRank)
-        }
+        row: {
+          ...row,
+          values: {
+            ...row.values,
+            globalRank: String(resourceLocalRank)
+          }
+        },
+        sortKey: resourceLocalRank
       };
     });
+
+    return rowsWithDisplayRank
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map(({ row }) => row);
   }, [isResourceRankFilterActive, normalizedRows]);
 
   const { completedCount, incompleteCount } = useMemo(() => {
