@@ -22,6 +22,12 @@
 2. 移行時間帯に Mac 端末からの納期管理更新を停止する。
 3. DBバックアップを取得する（必須）。
 
+## feature flag 設定場所（本番）
+
+- Mac向け対象ロケーション選択UIは `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` で制御する。
+- Ansible管理の `infrastructure/ansible/templates/web.env.j2` で既定値 `true` を配布する。
+- 必要に応じて inventory / host_vars で `web_kiosk_target_location_selector_enabled` を `false` にして一時的に無効化できる。
+
 ## 手順（SQL）
 
 以下は `target_location = '第2工場'` の例。
