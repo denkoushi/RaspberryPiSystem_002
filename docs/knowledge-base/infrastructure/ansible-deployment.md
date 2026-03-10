@@ -13,7 +13,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 43件  
+**件数**: 44件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
@@ -3862,6 +3862,68 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **解決状況**: ✅ **解決済み**（2026-02-14）
 - メンテナンスフラグファイルを手動で削除し、メンテナンス画面が消えることを確認
+
+---
+
+### [KB-300] Pi4デプロイ時のキオスクフェーズハング（server:kiosk 並列実行時）
+
+**発生日**: 2026-03-09  
+**Status**: ✅ 解決済み（手動停止・単体再デプロイで復旧）
+
+**Context**:
+- `feat/global-row-rank-phase1` ブランチで `--limit "server:kiosk"` により Pi5 + Pi4×2 へのデプロイを実行
+- Pi5 フェーズは完了したが、Pi4 キオスクフェーズで `TASK [common : Ensure repository parent directory exists]` で停止し、20分以上進捗なし
+
+**Symptoms**:
+- リモートログが `PLAY [Deploy latest ... to Raspberry Pi 4 kiosks (parallel)]` 直後のタスクで止まる
+- `state: running` のまま、`exit` ファイルが生成されない
+- Ansible プロセス（ansible-playbook、tail -f）は生存中
+- ローカル `--follow` セッションで `Connection reset by peer` が発生
+- Pi5 経由の `ansible kiosk -m ping` は正常に応答（両 Pi4 とも reachable）
+
+**Investigation**:
+- **CONFIRMED**: Pi5 フェーズは完了し、Docker 再ビルド・Prisma migrate・API ヘルス OK
+- **CONFIRMED**: キオスクフェーズ開始直後のタスクでハング
+- **CONFIRMED**: 個別 `ansible kiosk -m ping` は成功（ネットワーク・SSH は到達可能）
+- **INCONCLUSIVE**: 並列実行時の SSH ControlMaster/ControlPath 競合や、長時間待機によるタイムアウトの可能性は未検証
+
+**Root cause**:
+- 並列実行（`server:kiosk`）で Pi4 複数台へ同時接続する際、何らかの原因で Ansible がキオスク側の応答待ちでブロックした
+- 具体的な根因（SSH 接続プール、タイムアウト設定、ネットワーク遅延）は特定できず
+
+**Fix**:
+- ✅ **即時対応**: ハングしたリモートプロセスを停止
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "kill -TERM 623983 624077 632478 624423 2>/dev/null || true"
+  ```
+- ✅ **ロック解除**: `trap cleanup EXIT` でプロセス終了時にロック解除されるが、kill で強制終了した場合は cleanup が実行されない可能性あり。ロックファイルが残存する場合は手動削除
+  ```bash
+  ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
+  ```
+- ✅ **単体再デプロイ**: Pi4 を 1 台ずつ `--limit` で再実行
+  ```bash
+  ./scripts/update-all-clients.sh feat/global-row-rank-phase1 infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow
+  ./scripts/update-all-clients.sh feat/global-row-rank-phase1 infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01" --detach --follow
+  ```
+- 両端末とも `failed=0`、`unreachable=0`、exit 0 で完了
+
+**Prevention**:
+- **直列化適用済み（2026-03-09）**: `deploy-staged.yml` の kiosk play に `serial: "{{ deploy_serial.kiosk | default(1) }}"` を適用。`group_vars/all.yml` の `deploy_serial.kiosk: 1` により Pi4 は常時 1 台ずつ直列実行となり、並列実行由来のハングを防止
+- `server:kiosk` でハングした場合の復旧手順を Runbook に追加（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）
+- ハングが続く場合は、Pi4 を単体で `--limit raspberrypi4` / `--limit raspi4-robodrill01` により再デプロイする運用を推奨
+- 将来の検討: Ansible の `ansible_command_timeout` や SSH 接続の並列化設定の見直し
+
+**学んだこと**:
+- Pi5 フェーズ完了後、キオスクフェーズでハングしても Pi5 上の API/DB は既に更新済みである
+- 単体で Pi4 を再デプロイすれば、コードは同じブランチのため整合性は維持される
+- ロックファイルが残存する場合は手動削除が必要（cleanup が実行されない場合）
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`（デタッチ実行・ロック・cleanup）
+- `docs/runbooks/deploy-status-recovery.md`（Pi4 ハング復旧手順）
+- `docs/guides/deployment.md`（デプロイ標準手順）
+
+**解決状況**: ✅ **解決済み**（2026-03-09）
 
 ---
 

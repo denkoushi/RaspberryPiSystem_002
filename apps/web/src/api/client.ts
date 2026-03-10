@@ -404,6 +404,7 @@ export interface ProductionScheduleRow {
   occurredAt: string;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
+  globalRank?: number | null;
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;

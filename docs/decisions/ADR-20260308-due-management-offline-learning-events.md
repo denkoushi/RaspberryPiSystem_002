@@ -16,6 +16,8 @@
   - `DueManagementOperatorDecisionEvent`
   - `DueManagementOutcomeEvent`
 - 既存の `ProductionScheduleGlobalRank` は運用表示向け投影として維持する
+- （2026-03-09 追記）`ProductionScheduleGlobalRank` を親順位として、行単位の投影 `ProductionScheduleGlobalRowRank` を別テーブルで保持する
+  - `processingOrder`（資源CD別順番）は既存運用のまま維持し、意味を分離する
 - 新規API `GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価を提供する
 
 ## Alternatives
@@ -31,6 +33,7 @@
   - 学習・監査・再現実験のための履歴が保持される
   - 本番挙動を安定させたまま改善サイクルを回せる
   - 目的関数（遅れ最小化）と一致度指標を分離して評価できる
+  - 全体順位（globalRank）と資源順番（processingOrder）の責務が分離され、UI/運用の混同を避けられる
 - 悪い影響
   - イベント保存によりDBサイズと集計コストが増える
   - レポート運用（期間指定・解釈）が追加で必要になる

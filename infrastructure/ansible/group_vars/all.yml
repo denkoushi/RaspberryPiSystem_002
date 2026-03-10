@@ -108,6 +108,14 @@ ssh_log_level: "INFO"
 # - update_cache: trueは維持し、判定不能時は安全側で更新
 apt_cache_valid_time_seconds: 3600
 
+# デプロイ実行戦略（deploy-staged.yml の各 play の serial 制御）
+# - 1: 1台ずつ直列実行（ハング回避のため推奨）
+# - KB-300: Pi4並列実行時のハングを防ぐため、kiosk は常時 1 に固定
+deploy_serial:
+  server: 1
+  kiosk: 1
+  signage: 1
+
 # 不要サービス停止（ポート閉塞）
 # VNCは残す運用だが、不要な常駐サービスは止めて攻撃面を減らす
 server_disable_unused_services: true

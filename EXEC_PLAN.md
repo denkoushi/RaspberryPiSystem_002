@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-09) **納期管理 B第6段階（行単位全体順位スナップショット）Phase 1 実装完了・デプロイ完了・実機検証完了**: `ProductionScheduleGlobalRowRank` テーブルを追加し、`global-rank`/`daily-plan` 保存後に行単位全体順位を再生成する `row-global-rank-generator.service.ts` を導入。`GET /api/kiosk/production-schedule` に `globalRank` を追加し、Webで `全体順位` 列を新設、既存 `順番` を `資源順番` として維持。**デプロイ**: 初回 `--limit "server:kiosk"` で Pi5 フェーズ完了後に Pi4 キオスクフェーズでハング（[KB-300](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。ハングプロセス停止・ロック解除後、Pi4 を単体で再デプロイし成功。**2回目デプロイ（1台ずつ順番）**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で実行し、3台とも成功（Run ID `20260309-180244-10720` / `20260309-180529-15837` / `20260309-181644-11063`）。推奨運用は [deployment.md](./docs/guides/deployment.md) の「1台ずつ順番デプロイ」を参照。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report）、サイネージAPI、backup.json、マイグレーション（43件）、Pi4/Pi3サービス稼働を確認。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-08) **納期管理 B第5段階（オフライン学習評価 + イベントログ）・デプロイ完了・実機検証完了**: 納期遅れ最小化を主目的とするオフライン学習イベントログを導入。`DueManagementProposalEvent` / `DueManagementOperatorDecisionEvent` / `DueManagementOutcomeEvent` を追記専用で保存し、`GET /api/kiosk/production-schedule/due-management/global-rank/learning-report` で期間評価（overdue件数/日数 + 順位一致指標）を提供。**デプロイ**: Run ID `20260308-092421-13920`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・**global-rank/learning-report**・summary）、サイネージAPI、backup.json、マイグレーション（42件）、Pi4サービス稼働を確認。**トラブルシューティング**: CI初回でPrisma JSON型エラー（`Record<string,unknown>|null` → `Prisma.JsonNull` / `InputJsonValue` キャストで解決、[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) / [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md) を参照。
 - [x] (2026-03-08) **納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
 - [x] (2026-03-07) **納期管理 B第4段階補正（納期設定済み限定候補 + 既存rank即時除外）実装完了**: `global-rank/proposal` の候補を `dueDate != null` に限定し、`auto-generate` 保存時は既存global-rankに残る納期未設定製番を即時除外（方針A）するよう補正。`keepExistingTail=true` でも納期未設定は保持しない。日数計算はJST日境界で評価。**検証**: API統合テスト（44件）、api lint、web lint 通過。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正納期設定済み限定候補--即時除外2026-03-07) を参照。
@@ -646,6 +647,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-09）: **`--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハング**する事象が発生。`TASK [common : Ensure repository parent directory exists]` で応答停止。対処: ハングプロセス kill → ロック削除 → Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイで成功。詳細は [KB-300](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - 観測（2026-03-08）: **Prisma JSONカラムへの `Record<string, unknown> | null` 代入**でCIビルドが失敗。Prisma の JSON 型では `null` を格納するには `Prisma.JsonNull` を指定し、オブジェクトは `as Prisma.InputJsonValue` でキャストする必要がある。既存の `signage.service.ts` の `toPrismaLayoutConfig` パターンを参照して解決（[KB-299](./docs/knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)）。
 - 観測（2026-03-07）: **実機検証時の deploy-status API パス**は `GET /api/system/deploy-status`（`/api/deploy-status` ではない）。`x-client-key` を付与して端末別メンテ状態（`isMaintenance`）を確認する。既存の [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) に正しいパスが記載済み。
 - 観測（2026-03-07）: **APIメモリ使用率**が約90%と高めの状態で稼働。負荷増加時は監視継続を推奨。既存の signage-render-worker メモリ対策（KB-274）とは別軸。
@@ -857,6 +859,9 @@
 
 ## Decision Log
 
+- 決定（2026-03-09）: **全体順位は行単位スナップショットとして別管理**し、`processingOrder`（資源CD別順番）とは統合しない。  
+  理由: 目的が異なる2種類の順位を同一列/同一制約で扱うと運用衝突が起きるため。`globalRank` は全体最適の参照値、`processingOrder` は現場実行順として責務分離する。  
+  参照: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09), [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)
 - 決定（2026-03-08）: **納期管理ランキングの学習方式**はオフライン評価のみとし、本番保存時に重みを自動更新しない。追記専用イベントテーブル（Proposal/Decision/Outcome）で一次データを保持し、`learning-report` API で期間評価を提供。主指標は遅延側（overdue件数/日数）、副指標は順位一致度（Top-K/Spearman/Kendall）。詳細は [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)。
 - 決定（2026-03-06）: **低レイヤー観測強化**は「観測強化のみ（メトリクス拡充・Runbook整備・しきい値定義）」の範囲で実施し、ロジック変更・worker分離等の改善は次フェーズに先送りする。**ロールアウト**は「カナリア（Pi5または1台のみ）→検証→段階展開」を採用。  
   理由: 既存稼働を壊さず、観測データに基づいて改善施策を決定するため。APIはPi5のみで稼働するため、観測強化のデプロイはPi5（`--limit server`）のみで十分。  
@@ -1505,6 +1510,15 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 行単位全体順位 Phase 2（候補）
+
+**概要**: Phase 1 で導入した `globalRank` の表示運用を前提に、評価・運用補助を拡張する。
+
+**候補タスク**:
+1. **納期管理画面での行単位順位参照拡張**: 製番詳細に `globalRank` を表示し、同一基準での判断を強化
+2. **再生成ジョブ化**: 夜間バッチで `ProductionScheduleGlobalRowRank` を再計算し、手動更新漏れを補完
+3. **運用監視**: 再生成件数・未採番件数・再生成時間をメトリクス化し、異常を早期検知
 
 ### Pi4追加時のkiosk-browser.service起動エラー対策の永続化（完了）
 
@@ -2230,6 +2244,7 @@
 ---
 
 変更履歴: 2026-03-07 — 納期管理トリアージ（B第1段階）実装を反映。`ProductionScheduleTriageSelection` 追加、`due-management/triage` / `due-management/triage/selection` API追加、納期管理画面トリアージパネル追加、API統合テスト（37件）と api/web lint 成功を記録。KB-297 / production-schedule-kiosk-execplan.md / INDEX.md を更新。
+変更履歴: 2026-03-09 — 納期管理 B第6段階 Phase 1（行単位全体順位スナップショット）のデプロイ・実機検証完了を反映。Progress にデプロイ・Pi4ハング復旧・実機検証を追記。Surprises & Discoveries に Pi4 デプロイハング（KB-300）を追加。deployment.md に Pi4 単体再デプロイの運用知見を追記。KB-297 に B第6段階 Phase 1 のデプロイ・実機検証・トラブルシュートを追記。KB-300 を ansible-deployment.md に追加。deploy-status-recovery.md に Pi4 ハング復旧手順を追加。knowledge-base index と INDEX.md に KB-300 を追加。**2回目更新**: 1台ずつ順番デプロイ（Pi5→raspberrypi4→raspi4-robodrill01）の成功を KB-297・INDEX・EXEC_PLAN・deployment.md に反映。deployment.md に「1台ずつ順番デプロイ」推奨運用を追記。
 変更履歴: 2026-03-08 — 納期管理 B第5段階（オフライン学習評価 + イベントログ）のデプロイ・実機検証完了を反映。Progress に B第5段階完了を追加。Surprises & Discoveries に Prisma JSON 型 CI 失敗（KB-299）を追加。Decision Log にオフライン学習方式の決定を追加。Next Steps に learning-report 管理コンソール UI・重み候補評価・本番反映フロー等の候補を追加。KB-297 に実装前議論・デプロイ・実機検証・トラブルシュートを追記。KB-299（Prisma JSON 型）を ci-cd.md に追加。deploy-status-recovery.md の検証チェックリストに learning-report を追加。ADR-20260308 に実装前議論コンテキストを追記。knowledge-base index に KB-299 を追加。
 変更履歴: 2026-03-07 — 納期管理画面 A修正のデプロイ・実機検証完了を反映。KB-297 に A修正デプロイ・実機検証結果と ci-troubleshooting/KB-298 参照を追加。production-schedule-kiosk-execplan.md に「納期管理・生産スケジュール連携拡張（A修正）完了後の次のタスク候補」を追加。EXEC_PLAN.md Next Steps に同タスクを追加。
 変更履歴: 2026-03-06 — 低レイヤー観測強化（Pi5カナリア）の進捗・知見・トラブルシュートをドキュメントに反映。Progress/Surprises/Decision Log/Outcomes/Next Steps を更新。KB-268/KB-274 にデプロイ完了を追記。KB-296（eventLoop health warmup 503 対策）を api.md に追加。operation-manual にトラブルシュート（7）を追加。ADR-20260306-lowlevel-observability を新設。knowledge-base index に KB-296 を追加、INDEX.md を更新。

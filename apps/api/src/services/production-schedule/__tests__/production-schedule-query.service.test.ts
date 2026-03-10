@@ -69,5 +69,44 @@ describe('production-schedule-query.service', () => {
       R02: [2],
     });
   });
+
+  it('一覧取得でglobalRankを含む行を返す', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.globalRank).toBe(5);
+  });
 });
 
