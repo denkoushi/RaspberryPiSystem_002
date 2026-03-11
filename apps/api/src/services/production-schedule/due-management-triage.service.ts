@@ -44,7 +44,7 @@ const compareDueDateAsc = (a: Date | null, b: Date | null): number => {
 };
 
 const extractTopProcessingTypeBySeiban = async (
-  locationKey: string,
+  _locationKey: string,
   targetFseibans: string[]
 ): Promise<Map<string, string | null>> => {
   if (targetFseibans.length === 0) return new Map<string, string | null>();
@@ -70,10 +70,8 @@ const extractTopProcessingTypeBySeiban = async (
       LEFT JOIN "ProductionScheduleRowNote" AS "n"
         ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "n"."location" = ${locationKey}
       LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
         ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "pp"."location" = ${locationKey}
         AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
       WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}

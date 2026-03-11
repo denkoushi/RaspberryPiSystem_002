@@ -13,7 +13,7 @@ export async function writebackSeibanDueDateToRowNotes(params: {
   fseiban: string;
   dueDateText: string;
 }): Promise<{ affectedRows: number; dueDate: Date | null }> {
-  const { locationKey, fseiban } = params;
+  const { fseiban } = params;
   const dueDate = parseDueDateText(params.dueDateText);
 
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
@@ -30,14 +30,7 @@ export async function writebackSeibanDueDateToRowNotes(params: {
 
   await prisma.$transaction(async (tx) => {
     for (const row of rows) {
-      const existing = await tx.productionScheduleRowNote.findUnique({
-        where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
-        }
-      });
+      const existing = await tx.productionScheduleRowNote.findUnique({ where: { csvDashboardRowId: row.id } });
 
       if (!dueDate) {
         const hasNote = Boolean(existing?.note?.trim());
@@ -45,8 +38,7 @@ export async function writebackSeibanDueDateToRowNotes(params: {
         if (!hasNote && !hasProcessing) {
           await tx.productionScheduleRowNote.deleteMany({
             where: {
-              csvDashboardRowId: row.id,
-              location: locationKey
+              csvDashboardRowId: row.id
             }
           });
           continue;
@@ -55,15 +47,11 @@ export async function writebackSeibanDueDateToRowNotes(params: {
 
       await tx.productionScheduleRowNote.upsert({
         where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
+          csvDashboardRowId: row.id
         },
         create: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           csvDashboardRowId: row.id,
-          location: locationKey,
           note: existing?.note?.trim() ?? '',
           processingType: existing?.processingType ?? null,
           dueDate

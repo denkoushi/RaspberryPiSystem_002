@@ -120,8 +120,7 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   const dueDateRows = await prisma.productionScheduleSeibanDueDate.findMany({
     where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
     },
     select: {
       fseiban: true,
@@ -236,11 +235,9 @@ export async function getDueManagementSeibanDetail(params: {
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."location" = ${locationKey}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
@@ -255,9 +252,8 @@ export async function getDueManagementSeibanDetail(params: {
 
   const dueDate = await prisma.productionScheduleSeibanDueDate.findUnique({
     where: {
-      csvDashboardId_location_fseiban: {
+      csvDashboardId_fseiban: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
         fseiban
       }
     },

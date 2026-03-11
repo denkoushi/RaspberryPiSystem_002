@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { isValidDueDateText, writebackSeibanDueDateToRowNotes } from './due-date-writeback.service.js';
 import { upsertProductionSchedulePartProcessingTypeByFhincd } from './production-schedule-command.service.js';
+import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 const normalizeOrderedFhincds = (orderedFhincds: string[]): string[] => {
@@ -33,13 +34,7 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
 
   const trimmedDueDate = dueDateText.trim();
   if (trimmedDueDate.length === 0) {
-    await prisma.productionScheduleSeibanDueDate.deleteMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        fseiban: trimmedFseiban
-      }
-    });
+    await sharedScheduleFieldsRepository.deleteSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban);
     const writebackResult = await writebackSeibanDueDateToRowNotes({
       locationKey,
       fseiban: trimmedFseiban,
@@ -53,23 +48,10 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
   }
 
   const dueDate = new Date(`${trimmedDueDate}T00:00:00.000Z`);
-  await prisma.productionScheduleSeibanDueDate.upsert({
-    where: {
-      csvDashboardId_location_fseiban: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        fseiban: trimmedFseiban
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      fseiban: trimmedFseiban,
-      dueDate
-    },
-    update: {
-      dueDate
-    }
+  await sharedScheduleFieldsRepository.upsertSeibanDueDate({
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    fseiban: trimmedFseiban,
+    dueDate
   });
 
   const writebackResult = await writebackSeibanDueDateToRowNotes({
@@ -203,7 +185,6 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
   fhincd: string;
   note: string;
 }): Promise<{ success: true; fseiban: string; fhincd: string; note: string | null; affectedRows: number }> {
-  const locationKey = params.locationKey;
   const fseiban = params.fseiban.trim();
   const fhincd = params.fhincd.trim();
   if (fseiban.length === 0) {
@@ -227,18 +208,10 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
     throw new ApiError(404, '指定された製番内に対象部品が見つかりません');
   }
 
-  const existingNotes = await prisma.productionScheduleRowNote.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      csvDashboardRowId: { in: rowIds }
-    },
-    select: {
-      csvDashboardRowId: true,
-      processingType: true,
-      dueDate: true
-    }
-  });
+  const existingNotes = await sharedScheduleFieldsRepository.findRowNotesByRowIds(
+    PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    rowIds
+  );
   const existingByRowId = new Map(existingNotes.map((row) => [row.csvDashboardRowId, row] as const));
 
   await prisma.$transaction(async (tx) => {
@@ -250,17 +223,13 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
         if (existingProcessing.length === 0 && !hasDueDate) {
           await tx.productionScheduleRowNote.deleteMany({
             where: {
-              csvDashboardRowId: rowId,
-              location: locationKey
+              csvDashboardRowId: rowId
             }
           });
         } else {
           await tx.productionScheduleRowNote.update({
             where: {
-              csvDashboardRowId_location: {
-                csvDashboardRowId: rowId,
-                location: locationKey
-              }
+              csvDashboardRowId: rowId
             },
             data: { note: '' }
           });
@@ -270,15 +239,11 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
 
       await tx.productionScheduleRowNote.upsert({
         where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: rowId,
-            location: locationKey
-          }
+          csvDashboardRowId: rowId
         },
         create: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           csvDashboardRowId: rowId,
-          location: locationKey,
           note: normalizedNote,
           processingType: existing?.processingType ?? null,
           dueDate: existing?.dueDate ?? null

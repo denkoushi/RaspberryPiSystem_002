@@ -142,10 +142,8 @@ const buildQueryWhere = (params: {
   resourceCategoryCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
-  locationKey: string;
 }): Prisma.Sql => {
-  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly, locationKey } =
-    params;
+  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly } = params;
 
   const textWhere =
     textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
@@ -169,7 +167,6 @@ const buildQueryWhere = (params: {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "location" = ${locationKey}
         AND TRIM("note") <> ''
     )`;
   }
@@ -177,7 +174,6 @@ const buildQueryWhere = (params: {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "location" = ${locationKey}
         AND "dueDate" IS NOT NULL
     )`;
   }
@@ -249,8 +245,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceConditions,
     resourceCategoryCondition,
     hasNoteOnly,
-    hasDueDateOnly,
-    locationKey
+    hasDueDateOnly
   });
 
   const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
@@ -301,11 +296,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."location" = ${locationKey}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE ${baseWhere} ${queryWhere}
     ORDER BY

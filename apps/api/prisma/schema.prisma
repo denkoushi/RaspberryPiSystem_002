@@ -662,7 +662,6 @@ model ProductionScheduleRowNote {
   id                String    @id @default(uuid())
   csvDashboardId    String
   csvDashboardRowId String
-  location          String
   note              String    @db.VarChar(100) // 現場リーダー備考、100文字以内・改行不可
   processingType    String?   @db.VarChar(20) // 処理種別（未選択可）
   dueDate           DateTime? @db.Date // 納期日（年なし表示、日付のみ）
@@ -671,8 +670,8 @@ model ProductionScheduleRowNote {
 
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
-  @@unique([csvDashboardRowId, location])
-  @@index([csvDashboardId, location])
+  @@unique([csvDashboardRowId])
+  @@index([csvDashboardId])
 }
 
 model ProductionScheduleOrderAssignment {
@@ -720,14 +719,13 @@ model KioskProductionScheduleSearchState {
 model ProductionScheduleSeibanDueDate {
   id             String   @id @default(uuid())
   csvDashboardId String
-  location       String
   fseiban        String   @db.VarChar(20)
   dueDate        DateTime @db.Date
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@unique([csvDashboardId, location, fseiban])
-  @@index([csvDashboardId, location, dueDate])
+  @@unique([csvDashboardId, fseiban])
+  @@index([csvDashboardId, dueDate])
 }
 
 model ProductionSchedulePartPriority {
@@ -748,15 +746,14 @@ model ProductionSchedulePartPriority {
 model ProductionSchedulePartProcessingType {
   id             String   @id @default(uuid())
   csvDashboardId String
-  location       String
   fhincd         String   @db.VarChar(50)
   processingType String   @db.VarChar(20)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@unique([csvDashboardId, location, fhincd], map: "ProductionSchedulePartProcessingType_unique_part")
-  @@index([csvDashboardId, location], map: "ProductionSchedulePartProcessingType_idx_location")
-  @@index([csvDashboardId, location, processingType], map: "ProductionSchedulePartProcessingType_idx_processingType")
+  @@unique([csvDashboardId, fhincd], map: "ProductionSchedulePartProcessingType_unique_part")
+  @@index([csvDashboardId], map: "ProductionSchedulePartProcessingType_idx_dashboard")
+  @@index([csvDashboardId, processingType], map: "ProductionSchedulePartProcessingType_idx_processingType")
 }
 
 model ProductionScheduleProcessingTypeOption {
