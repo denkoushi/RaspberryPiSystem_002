@@ -688,3 +688,6 @@ category: knowledge-base
   - API統合テスト `kiosk-production-schedule.integration.test.ts` にロケーション間共有回帰を追加（`row note/processing/dueDate`、`due-management dueDate/note/processing`）。
   - 実行結果: `49 passed`。
   - lint: `apps/api` / `apps/web` ともに成功。
+- **デプロイ・実機検証（2026-03-11）**:
+  - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-124752-19099` / `20260311-125302-686` / `20260311-125806-26510`）、約13分。
+  - **実機検証結果**: APIヘルス（`status: degraded`、メモリ96.1%は既知の環境要因）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、生産スケジュールAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）、global-rank の `targetLocation`/`actorLocation`/`rankingScope` 返却、actual-hours/stats の `totalRawRows`/`totalCanonicalRows`/`totalFeatureKeys`/`topFeatures` 返却、サイネージAPI（layoutConfig 含む）、backup.json（15K）、マイグレーション（47件、up to date）、Pi4/Pi3サービス（kiosk-browser.service / status-agent.timer / signage-lite すべて active）を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
