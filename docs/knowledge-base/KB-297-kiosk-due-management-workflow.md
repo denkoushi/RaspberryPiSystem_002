@@ -570,6 +570,22 @@ category: knowledge-base
   - 資源CD不一致は自動推定しない（必ず管理コンソールで明示マッピング）
   - 誤マッピング防止のため、`fromResourceCd -> toResourceCd` は優先順付きで管理する
 
+### 実績工数列の整合化 デプロイ・実機検証（2026-03-11）
+
+- **デプロイ**: ブランチ `feat/global-rank-resource-local-display`。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつ実行（Run ID `20260311-142346-26409` / `20260311-142902-25781` / `20260311-143429-2874`）。合計約13分。
+- **実機検証結果**（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト準拠）:
+  - APIヘルス: 200 OK / `status: ok`（メモリ89.6%警告は既知の環境要因）
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI・生産スケジュールAPI・納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）: すべて 200
+  - 生産スケジュールAPI: `actualPerPieceMinutes`（実績基準時間）返却確認、`actualEstimatedMinutes` は廃止済み
+  - actual-hours/stats: `totalRawRows`, `totalCanonicalRows`, `totalFeatureKeys`, `topFeatures` 返却確認
+  - resource-code-mappings: `GET /api/production-schedule-settings/resource-code-mappings` は管理画面用のため認証必須。未認証で 401 が返るのは想定どおり（エンドポイント存在確認として有効）
+  - サイネージAPI: 200、layoutConfig 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 48件、up to date
+  - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+- **知見**: 実機検証チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。管理API（resource-code-mappings）は JWT 認証必須のため、キオスク検証では 401 応答でエンドポイント存在を確認する運用で可。
+
 ### 全体順位 ソート補正（2026-03-11）
 
 - **事象**: 資源CDフィルタ時に表示順位は1..Nに再採番されていたが、**行の並び順がその順位に従っていなかった**（実機検証で判明）
