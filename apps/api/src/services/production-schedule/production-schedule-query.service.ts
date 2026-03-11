@@ -4,6 +4,7 @@ import {
 } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
+import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
@@ -20,7 +21,6 @@ type ProductionScheduleRow = {
   processingOrder: number | null;
   globalRank: number | null;
   actualPerPieceMinutes: number | null;
-  actualEstimatedMinutes: number | null;
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
@@ -41,15 +41,6 @@ export type ProductionScheduleListParams = {
 export type ProductionScheduleOrderUsageParams = {
   locationKey: string;
   resourceCds: string[];
-};
-
-const parsePositiveNumber = (raw: string | null | undefined): number | null => {
-  if (typeof raw !== 'string') return null;
-  const normalized = raw.trim();
-  if (normalized.length === 0) return null;
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return parsed;
 };
 
 const buildTextConditions = (queryText: string): Prisma.Sql[] => {
@@ -267,7 +258,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
         'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
         'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
-        'FSEZOSIJISU', "CsvDashboardRow"."rowData"->>'FSEZOSIJISU',
         'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
         'progress', (CASE WHEN COALESCE("p"."isCompleted", FALSE) THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
@@ -312,41 +302,47 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LIMIT ${pageSize} OFFSET ${offset}
   `;
 
-  const featureRows = await prisma.productionScheduleActualHoursFeature.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey
-    },
-    select: {
-      fhincd: true,
-      resourceCd: true,
-      medianPerPieceMinutes: true,
-      p75PerPieceMinutes: true
-    }
+  const [featureRows, resourceCodeMappings] = await Promise.all([
+    prisma.productionScheduleActualHoursFeature.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey
+      },
+      select: {
+        fhincd: true,
+        resourceCd: true,
+        medianPerPieceMinutes: true,
+        p75PerPieceMinutes: true
+      }
+    }),
+    prisma.productionScheduleResourceCodeMapping.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        enabled: true
+      },
+      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
+      select: {
+        fromResourceCd: true,
+        toResourceCd: true,
+        priority: true,
+        enabled: true
+      }
+    })
+  ]);
+  const featureResolver = createActualHoursFeatureResolver({
+    features: featureRows,
+    resourceCodeMappings
   });
-  const featureMap = new Map(
-    featureRows.map((row) => [
-      `${row.fhincd}__${row.resourceCd}`,
-      row.p75PerPieceMinutes ?? row.medianPerPieceMinutes
-    ] as const)
-  );
 
   const rowsWithActualHours = rows.map((row) => {
     const rowData = (row.rowData ?? {}) as Record<string, unknown>;
     const fhincd = typeof rowData.FHINCD === 'string' ? rowData.FHINCD.trim() : '';
     const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
-    const lotQty = parsePositiveNumber(
-      typeof rowData.FSEZOSIJISU === 'string' || typeof rowData.FSEZOSIJISU === 'number'
-        ? String(rowData.FSEZOSIJISU)
-        : null
-    );
-    const perPieceMinutes = featureMap.get(`${fhincd}__${resourceCd}`) ?? null;
-    const estimatedMinutes =
-      perPieceMinutes !== null && lotQty !== null ? perPieceMinutes * lotQty : null;
+    const perPieceMinutes = featureResolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
     return {
       ...row,
-      actualPerPieceMinutes: perPieceMinutes,
-      actualEstimatedMinutes: estimatedMinutes
+      actualPerPieceMinutes: perPieceMinutes
     };
   });
 

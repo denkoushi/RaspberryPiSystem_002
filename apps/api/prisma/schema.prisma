@@ -782,6 +782,21 @@ model ProductionScheduleResourceCategoryConfig {
   @@index([csvDashboardId, location], map: "ProductionScheduleResourceCategoryConfig_idx_location")
 }
 
+model ProductionScheduleResourceCodeMapping {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  location       String
+  fromResourceCd String   @db.VarChar(20)
+  toResourceCd   String   @db.VarChar(20)
+  priority       Int      @default(1)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, location, fromResourceCd, toResourceCd], map: "ProductionScheduleResourceCodeMapping_unique_pair")
+  @@index([csvDashboardId, location, fromResourceCd, enabled, priority], map: "ProductionScheduleResourceCodeMapping_idx_lookup")
+}
+
 model ProductionScheduleAccessPasswordConfig {
   id                        String   @id @default(uuid())
   location                  String

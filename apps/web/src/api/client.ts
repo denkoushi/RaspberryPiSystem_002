@@ -406,7 +406,6 @@ export interface ProductionScheduleRow {
   processingOrder?: number | null;
   globalRank?: number | null;
   actualPerPieceMinutes?: number | null;
-  actualEstimatedMinutes?: number | null;
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
@@ -433,6 +432,13 @@ export interface ProductionScheduleDueManagementAccessPasswordSettings {
 export interface ProductionScheduleProcessingTypeOption {
   code: string;
   label: string;
+  priority: number;
+  enabled: boolean;
+}
+
+export interface ProductionScheduleResourceCodeMapping {
+  fromResourceCd: string;
+  toResourceCd: string;
   priority: number;
   enabled: boolean;
 }
@@ -849,6 +855,32 @@ export async function getProductionScheduleProcessingTypeOptions(location: strin
     params: { location }
   });
   return data;
+}
+
+export async function getProductionScheduleResourceCodeMappings(location: string) {
+  const { data } = await api.get<{
+    settings: {
+      location: string;
+      mappings: ProductionScheduleResourceCodeMapping[];
+    };
+    locations: string[];
+  }>('/production-schedule-settings/resource-code-mappings', {
+    params: { location }
+  });
+  return data;
+}
+
+export async function updateProductionScheduleResourceCodeMappings(payload: {
+  location: string;
+  mappings: ProductionScheduleResourceCodeMapping[];
+}) {
+  const { data } = await api.put<{
+    settings: {
+      location: string;
+      mappings: ProductionScheduleResourceCodeMapping[];
+    };
+  }>('/production-schedule-settings/resource-code-mappings', payload);
+  return data.settings;
 }
 
 export async function updateProductionScheduleProcessingTypeOptions(payload: {

@@ -53,7 +53,6 @@ type NormalizedScheduleRow = {
   processingOrder: number | null;
   globalRank: number | null;
   actualPerPieceMinutes: number | null;
-  actualEstimatedMinutes: number | null;
   processingType: string | null;
   note: string | null;
   dueDate: string | null;
@@ -329,7 +328,6 @@ export function ProductionSchedulePage() {
       { key: 'FSIGENCD', label: '資源CD' },
       { key: 'globalRank', label: '全体順位', dataType: 'number' },
       { key: 'actualPerPieceMinutes', label: '実績基準時間(分/個)', dataType: 'number' },
-      { key: 'actualEstimatedMinutes', label: '実績推定工数(分)', dataType: 'number' },
       { key: 'processingOrder', label: '資源順番', dataType: 'number' },
       { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
@@ -359,7 +357,6 @@ export function ProductionSchedulePage() {
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const globalRank = typeof r.globalRank === 'number' ? r.globalRank : null;
       const actualPerPieceMinutes = typeof r.actualPerPieceMinutes === 'number' ? r.actualPerPieceMinutes : null;
-      const actualEstimatedMinutes = typeof r.actualEstimatedMinutes === 'number' ? r.actualEstimatedMinutes : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
@@ -370,7 +367,6 @@ export function ProductionSchedulePage() {
         FSIGENCD: String(d.FSIGENCD ?? ''),
         globalRank: globalRank ? String(globalRank) : '',
         actualPerPieceMinutes: actualPerPieceMinutes !== null ? actualPerPieceMinutes.toFixed(2) : '',
-        actualEstimatedMinutes: actualEstimatedMinutes !== null ? Math.round(actualEstimatedMinutes).toString() : '',
         processingOrder: processingOrder ? String(processingOrder) : '',
         processingType: processingType ?? '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
@@ -385,7 +381,6 @@ export function ProductionSchedulePage() {
         processingOrder,
         globalRank,
         actualPerPieceMinutes,
-        actualEstimatedMinutes,
         processingType,
         note,
         dueDate

@@ -35,6 +35,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -58,6 +59,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });

@@ -601,8 +601,7 @@ export function ProductionScheduleDueManagementPage() {
                     score: {proposalBySeiban.get(item.fseiban)?.score.toFixed(3) ?? '-'}
                   </div>
                   <div className="text-[10px] text-blue-100/90">
-                    実績推定工数: {Math.round(proposalBySeiban.get(item.fseiban)?.estimatedActualMinutes ?? 0)} 分
-                    / カバー率: {Math.round((proposalBySeiban.get(item.fseiban)?.coverageRatio ?? 0) * 100)}%
+                    実績カバー率: {Math.round((proposalBySeiban.get(item.fseiban)?.coverageRatio ?? 0) * 100)}%
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(proposalBySeiban.get(item.fseiban)?.reasons ?? []).map((reason) => (
@@ -764,7 +763,7 @@ export function ProductionScheduleDueManagementPage() {
                 部品 {item.partsCount}件 / 工程 {item.processCount}件 / 所要 {Math.round(item.totalRequiredMinutes)} min
               </div>
               <div className="mt-1 text-[11px] text-sky-200/90">
-                実績推定工数 {Math.round(item.actualEstimatedMinutes)} 分 / 実績カバー率 {Math.round(item.actualCoverageRatio * 100)}%
+                実績カバー率 {Math.round(item.actualCoverageRatio * 100)}%
               </div>
             </button>
           ))}
@@ -818,7 +817,6 @@ export function ProductionScheduleDueManagementPage() {
                   <th className="px-2 py-2">工程進捗</th>
                   <th className="px-2 py-2">所要(min)</th>
                   <th className="px-2 py-2">実績基準時間(分/個)</th>
-                  <th className="px-2 py-2">実績推定工数(分)</th>
                   <th className="px-2 py-2">備考</th>
                   <th className="px-2 py-2">提案順位</th>
                   <th className="px-2 py-2">操作</th>
@@ -874,7 +872,6 @@ export function ProductionScheduleDueManagementPage() {
                     <td className="px-2 py-2">
                       {typeof part?.actualPerPieceMinutes === 'number' ? part.actualPerPieceMinutes.toFixed(2) : '-'}
                     </td>
-                    <td className="px-2 py-2">{Math.round(part?.actualEstimatedMinutes ?? 0)}</td>
                     <td className="px-2 py-2">
                       <button
                         type="button"
