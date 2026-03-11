@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-11）
 
+- **✅ 生産日程 `progress_sync` スコープ分離（進捗管理用CSV限定）実装完了**: 生産日程取り込みで `progress_sync` を一律実行していた実装を見直し、`progress` 列が存在するCSVのみ同期対象に制限。日程更新用CSV（`progress` 列なし）では `ProductionScheduleProgress` を更新しない。`ProgressSyncEligibilityPolicy` を新設して判定責務を分離し、`ProgressSyncFromCsvService` 側にも `hasProgressColumn` ガードを追加して二重防御化。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗同期スコープ分離2026-03-11) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 - **✅ 全体順位表示拡張と実績工数列追加・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番＋研削/切削フィルタ時も表示順位を1..Nに再採番するよう拡張。実績工数列を追加（生産スケジュール: 実績基準時間(分/個)・実績推定工数(分)、納期管理: 実績推定工数(分)・実績カバー率(%)）。**デプロイ**: ブランチ `feat/global-rank-resource-local-display`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-090951-8646` / `20260311-091447-18995` / `20260311-092307-13455`）、約13分。**実機検証**: 全チェックリスト項目合格。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位表示拡張と実績工数列追加デプロイ実機検証2026-03-11) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
 - **✅ 全体順位 ソート補正・デプロイ・実機検証完了**: 資源CDフィルタ時に表示順位は1..Nに再採番されていたが**行の並び順がその順位に従っていなかった**問題を修正。`displayRows` を表示順位（1..N）で昇順ソートするよう変更。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-082311` / `20260311-082345` / `20260311-083018`）。**実機検証**: 資源CD押下後、1から順位付けされ、ソートもその順位基準になっていることを確認。**知見**: 表示順位の再採番と行ソートは別実装であり、両方を揃える必要がある。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位-ソート補正2026-03-11) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 

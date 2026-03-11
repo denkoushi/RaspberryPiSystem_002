@@ -637,3 +637,20 @@ category: knowledge-base
   - backup.json: 存在・15K
   - マイグレーション: 46件、up to date
   - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+
+### 進捗同期スコープ分離（2026-03-11）
+
+- **背景**:
+  - 日程更新用CSVと進捗管理用CSVのメール件名が同一で、従来実装では生産日程CSV取り込み時に `progress_sync` が一律で走り得た
+  - `progress` 列が無いCSVでも `undefined -> '' -> isCompleted=false` と解釈され、手動完了の意図しない上書きリスクがあった
+- **実装方針**:
+  - `ProgressSyncEligibilityPolicy` を追加し、`progress` 列がマッピングされるCSVだけ `progress_sync` 対象に限定
+  - `CsvDashboardIngestor` で同期前に判定し、対象外は取り込み成功のまま同期だけスキップ（理由をログ出力）
+  - `ProgressSyncFromCsvService` に `hasProgressColumn` ガードを追加し、防御的に二重ガード
+- **影響範囲**:
+  - 日程更新用CSV（`progress` 列なし）: `ProductionScheduleProgress` を更新しない
+  - 進捗管理用CSV（`progress` 列あり）: 従来どおり `updatedAt` 比較で新しいもののみ反映
+  - ProductNo繰り上がり判定および DEDUP 挙動には影響しない
+- **検証**:
+  - `progress-sync-from-csv.service.test.ts`: `hasProgressColumn=false` で同期しないことを追加確認
+  - `progress-sync-eligibility.policy.test.ts`: 生産日程＋`progress` 列有無の判定を追加確認

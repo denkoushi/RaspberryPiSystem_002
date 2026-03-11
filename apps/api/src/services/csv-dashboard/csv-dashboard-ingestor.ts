@@ -13,6 +13,7 @@ import {
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
+import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
@@ -25,6 +26,7 @@ export class CsvDashboardIngestor {
   private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
+  private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -70,6 +72,10 @@ export class CsvDashboardIngestor {
 
       // 列マッピングを作成（CSVヘッダー → 内部名）
       const columnMapping = this.createColumnMapping(rows[0] || [], columnDefinitions);
+      const progressSyncEligibility = this.progressSyncEligibilityPolicy.evaluate({
+        dashboardId,
+        mappedInternalNames: columnMapping.map((m) => m.internalName),
+      });
 
       // 日付列のインデックスを取得
       const dateColumnIndex = dashboard.dateColumnName
@@ -223,9 +229,21 @@ export class CsvDashboardIngestor {
           }
         }
 
+        if (isProductionScheduleDashboard && !progressSyncEligibility.eligible) {
+          logger?.info(
+            {
+              dashboardId,
+              reason: progressSyncEligibility.reason,
+              messageId,
+            },
+            '[CsvDashboardIngestor] Skip progress sync by eligibility policy'
+          );
+        }
+
         if (isProductionScheduleDashboard && progressSyncCandidates.length > 0) {
           await this.progressSyncFromCsvService.sync({
             candidates: progressSyncCandidates,
+            hasProgressColumn: progressSyncEligibility.eligible,
           });
         }
       }
