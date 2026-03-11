@@ -83,6 +83,22 @@ category: knowledge-base
   - backup.json: 存在・15K
   - サイネージAPI: `/api/signage/content` layoutConfig 正常
 
+## FSIGENマスタ導入・実機検証（2026-03-11）
+
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順で1台ずつ成功
+- **FSIGENマスタ投入**: 本番DBは既存Employee等でシード競合のため、dataSIGEN.csvをSQLで直接投入（125件）
+- **API検証**:
+  - `GET /api/system/health`: 200 OK / `status: ok`
+  - `GET /api/kiosk/production-schedule/resources`: 200、`resourceNameMap` に資源CD→日本語名のマッピング確認（例: `"501":["東芝MPE-2130"]`, `"500":["5軸加工機","5軸加工機（Vertex)"]`）
+- **手動確認項目**（Tailscale接続可能な端末から）:
+  - 生産スケジュール画面: 資源CDボタンにホバーで日本語名（title/aria-label）が表示されること
+  - 納期管理画面: 工程カードの資源CDにホバーで日本語名が表示されること
+- **実機検証結果**: OK（両画面で `title` 属性による標準ツールチップでホバー表示を確認済み）
+- **トラブルシューティング**:
+  - **本番DBで `pnpm prisma db seed` 失敗**: 既存EmployeeのNFC UID等他シードと競合し、seed全体が失敗。FSIGENマスタ（`ProductionScheduleResourceMaster`）は `dataSIGEN.csv` をSQLで直接投入して対応（125件）。類似事例は [KB-203](../infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) 参照。
+  - **ローカル統合テスト**: DB未起動時は `docker run` でPostgreSQL（例: postgres-test-local）を起動してから `kiosk-production-schedule.integration.test.ts` を実行。
+- **知見**: 同一 `seed.ts` 内で複数テーブルを投入する場合、既存データとの競合に注意。本番DBは既存データありのため、新規マスタ追加はSQL直接投入で柔軟に対応可能。ホバー表示は `title` 属性で標準ツールチップが動作し、追加ライブラリ不要。
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
