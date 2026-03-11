@@ -654,3 +654,18 @@ category: knowledge-base
 - **検証**:
   - `progress-sync-from-csv.service.test.ts`: `hasProgressColumn=false` で同期しないことを追加確認
   - `progress-sync-eligibility.policy.test.ts`: 生産日程＋`progress` 列有無の判定を追加確認
+
+### 進捗同期スコープ分離・デプロイ・実機検証（2026-03-11）
+
+- **デプロイ**: ブランチ `feat/global-rank-resource-local-display`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-115254-25003` / `20260311-115759-20603` / `20260311-120301-28447`）、約13分。
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI: loans/active・production-schedule 200
+  - 納期管理API: triage・daily-plan・global-rank・actual-hours/stats 200
+  - サイネージAPI: 200、layoutConfig 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 46件、up to date
+  - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+- **知見**: 今回の変更はAPIのみ（DBスキーマ変更なし）のため、デプロイ対象は Pi5 のみでも十分。運用標準に従い Pi5 + Pi4×2 を1台ずつ順番デプロイした。
+- **運用注意**: 日程更新用CSV（`progress` 列なし）を取り込んでも `ProductionScheduleProgress` は更新されない。進捗管理用CSV（`progress` 列あり）のみ同期対象。
