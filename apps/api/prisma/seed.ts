@@ -7,8 +7,47 @@ import {
   MeasuringInstrumentStatus
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const prisma = new PrismaClient();
+const seedDir = dirname(fileURLToPath(import.meta.url));
+const productionScheduleResourceMasterCsvPath = resolve(seedDir, 'seeds', 'dataSIGEN.csv');
+
+type ProductionScheduleResourceMasterSeedRow = {
+  resourceCd: string;
+  resourceClassCd: string;
+  resourceGroupCd: string;
+  resourceName: string;
+};
+
+function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionScheduleResourceMasterSeedRow[] {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length <= 1) return [];
+
+  const rows: ProductionScheduleResourceMasterSeedRow[] = [];
+  for (const line of lines.slice(1)) {
+    const [resourceCdRaw = '', resourceClassCdRaw = '', resourceGroupCdRaw = '', ...resourceNameChunks] = line.split(',');
+    const resourceCd = resourceCdRaw.trim();
+    const resourceClassCd = resourceClassCdRaw.trim();
+    const resourceGroupCd = resourceGroupCdRaw.trim();
+    const resourceName = resourceNameChunks.join(',').trim();
+    if (!resourceCd || !resourceClassCd || !resourceGroupCd || !resourceName) {
+      continue;
+    }
+    rows.push({
+      resourceCd,
+      resourceClassCd,
+      resourceGroupCd,
+      resourceName
+    });
+  }
+  return rows;
+}
 
 async function main() {
   // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
@@ -104,6 +143,31 @@ async function main() {
       where: { apiKey: client.apiKey },
       update: { name: client.name, location: client.location, defaultMode: client.defaultMode },
       create: client
+    });
+  }
+
+  const productionScheduleResourceMasterCsv = await readFile(productionScheduleResourceMasterCsvPath, 'utf8');
+  const productionScheduleResourceMasterRows = parseProductionScheduleResourceMasterCsv(
+    productionScheduleResourceMasterCsv
+  );
+  for (const row of productionScheduleResourceMasterRows) {
+    await prisma.productionScheduleResourceMaster.upsert({
+      where: {
+        resourceCd_resourceName: {
+          resourceCd: row.resourceCd,
+          resourceName: row.resourceName
+        }
+      },
+      update: {
+        resourceClassCd: row.resourceClassCd,
+        resourceGroupCd: row.resourceGroupCd
+      },
+      create: {
+        resourceCd: row.resourceCd,
+        resourceName: row.resourceName,
+        resourceClassCd: row.resourceClassCd,
+        resourceGroupCd: row.resourceGroupCd
+      }
     });
   }
 

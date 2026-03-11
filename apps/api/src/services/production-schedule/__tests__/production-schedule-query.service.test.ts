@@ -18,6 +18,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     productionScheduleResourceCodeMapping: {
       findMany: vi.fn(),
     },
+    productionScheduleResourceMaster: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -27,6 +30,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceCodeMapping.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
   });
 
   it('資源CD単独指定時（assignedOnlyなし）は空結果を返しDBクエリしない', async () => {
@@ -55,10 +59,21 @@ describe('production-schedule-query.service', () => {
       { resourceCd: 'R01' },
       { resourceCd: 'R02' },
     ] as never);
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([
+      { resourceCd: 'R01', resourceName: '設備A' },
+      { resourceCd: 'R01', resourceName: '設備A-予備' },
+      { resourceCd: 'R02', resourceName: '設備B' },
+    ] as never);
 
     const result = await listProductionScheduleResources();
 
-    expect(result).toEqual(['R01', 'R02']);
+    expect(result).toEqual({
+      resources: ['R01', 'R02'],
+      resourceNameMap: {
+        R01: ['設備A', '設備A-予備'],
+        R02: ['設備B'],
+      },
+    });
   });
 
   it('工程順利用状況をresourceCdごとのMap形式へ整形する', async () => {

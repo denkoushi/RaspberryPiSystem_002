@@ -853,19 +853,29 @@ export function ProductionScheduleDueManagementPage() {
                         {part?.completedProcessCount ?? 0}/{part?.totalProcessCount ?? 0}
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {(part?.processes ?? []).map((process) => (
-                          <span
-                            key={process.rowId}
-                            className={`rounded border px-2 py-1 text-[10px] ${
-                              process.isCompleted
-                                ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
-                                : 'border-blue-300 bg-blue-500/30 text-blue-100'
-                            }`}
-                          >
-                            {process.resourceCd}
-                            {process.processOrder !== null ? `-${process.processOrder}` : ''}
-                          </span>
-                        ))}
+                        {(part?.processes ?? []).map((process) => {
+                          const resourceNames = process.resourceNames ?? [];
+                          const tooltip = resourceNames.length > 0 ? resourceNames.join('\n') : undefined;
+                          const ariaLabel =
+                            resourceNames.length > 0
+                              ? `${process.resourceCd}: ${resourceNames.join(' / ')}`
+                              : process.resourceCd;
+                          return (
+                            <span
+                              key={process.rowId}
+                              className={`rounded border px-2 py-1 text-[10px] ${
+                                process.isCompleted
+                                  ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
+                                  : 'border-blue-300 bg-blue-500/30 text-blue-100'
+                              }`}
+                              title={tooltip}
+                              aria-label={ariaLabel}
+                            >
+                              {process.resourceCd}
+                              {process.processOrder !== null ? `-${process.processOrder}` : ''}
+                            </span>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-2 py-2">{Math.round(part?.totalRequiredMinutes ?? 0)}</td>

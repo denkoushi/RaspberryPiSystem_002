@@ -5,6 +5,7 @@ import { createActualHoursFeatureResolver } from './actual-hours-feature-resolve
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
+import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type SeibanSummaryRaw = {
@@ -43,6 +44,7 @@ export type DueManagementSummaryItem = {
 export type DueManagementPartProcessItem = {
   rowId: string;
   resourceCd: string;
+  resourceNames: string[];
   processOrder: number | null;
   isCompleted: boolean;
 };
@@ -305,6 +307,7 @@ export async function getDueManagementSeibanDetail(params: {
     features: detailFeatureRows,
     resourceCodeMappings: detailResourceCodeMappings
   });
+  const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd ?? ''));
 
   const grouped = new Map<
     string,
@@ -360,7 +363,8 @@ export async function getDueManagementSeibanDetail(params: {
         processes: [
           {
             rowId: row.id,
-            resourceCd: row.fsigencd?.trim() ?? '',
+            resourceCd: resourceCd,
+            resourceNames: resourceNameMap[resourceCd] ?? [],
             processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
             isCompleted: row.isCompleted
           }
@@ -388,7 +392,8 @@ export async function getDueManagementSeibanDetail(params: {
     }
     current.processes.push({
       rowId: row.id,
-      resourceCd: row.fsigencd?.trim() ?? '',
+      resourceCd: resourceCd,
+      resourceNames: resourceNameMap[resourceCd] ?? [],
       processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
       isCompleted: row.isCompleted
     });

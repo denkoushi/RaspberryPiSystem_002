@@ -42,6 +42,9 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceMaster.deleteMany({
+      where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
+    });
     if (closeServer) await closeServer();
   });
 
@@ -66,6 +69,9 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceMaster.deleteMany({
+      where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
+    });
 
     // client-demo-key は seed.ts で作られるが、テスト単体でも通るように保険で作成
     await prisma.clientDevice.upsert({
@@ -117,6 +123,35 @@ describe('Kiosk Production Schedule API', () => {
           rowData: { ProductNo: '0002', FSEIBAN: 'B', FHINCD: 'Y', FSIGENCD: '2', FKOJUN: '220', progress: '完了' }
         }
       ]
+    });
+    await prisma.productionScheduleResourceMaster.createMany({
+      data: [
+        {
+          resourceCd: '1',
+          resourceName: '1号機',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: '1',
+          resourceName: '1号機-予備',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: '2',
+          resourceName: '2号機',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: 'MSZ',
+          resourceName: '切削除外設備',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G2'
+        }
+      ],
+      skipDuplicates: true
     });
 
     // progressは別テーブルが真実なので、完了状態もseedする。
@@ -359,8 +394,10 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const body = res.json() as { resources: string[] };
+    const body = res.json() as { resources: string[]; resourceNameMap: Record<string, string[]> };
     expect(body.resources).toEqual(['1', '2']);
+    expect(body.resourceNameMap['1']).toEqual(['1号機', '1号機-予備']);
+    expect(body.resourceNameMap['2']).toEqual(['2号機']);
   });
 
   it('returns order usage grouped by resourceCd and supports resource filter', async () => {
@@ -657,11 +694,17 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(detailRes.statusCode).toBe(200);
     const detailBody = detailRes.json() as {
-      detail: { fseiban: string; dueDate: string | null; parts: Array<{ fhincd: string }> };
+      detail: {
+        fseiban: string;
+        dueDate: string | null;
+        parts: Array<{ fhincd: string; processes: Array<{ resourceCd: string; resourceNames: string[] }> }>;
+      };
     };
     expect(detailBody.detail.fseiban).toBe('A');
     expect(detailBody.detail.parts[0]).toHaveProperty('productNo');
     expect(detailBody.detail.parts.map((part) => part.fhincd).sort()).toEqual(['X', 'Z']);
+    const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.processes[0]?.resourceNames).toEqual(['1号機', '1号機-予備']);
   });
 
   it('filters out MH/SH parts and excluded resourceCds in due-management detail', async () => {

@@ -551,6 +551,7 @@ export interface DueManagementTargetContext {
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
+  resourceNames?: string[];
   processOrder: number | null;
   isCompleted: boolean;
 }
@@ -676,8 +677,13 @@ export async function completeKioskProductionScheduleRow(rowId: string) {
 }
 
 export async function getKioskProductionScheduleResources() {
-  const { data } = await api.get<{ resources: string[] }>('/kiosk/production-schedule/resources');
-  return data.resources;
+  const { data } = await api.get<{ resources: string[]; resourceNameMap?: Record<string, string[]> }>(
+    '/kiosk/production-schedule/resources'
+  );
+  return {
+    resources: data.resources,
+    resourceNameMap: data.resourceNameMap ?? {}
+  };
 }
 
 export async function getKioskProductionScheduleDueManagementSummary() {

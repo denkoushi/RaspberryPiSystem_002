@@ -12,6 +12,7 @@ import {
   getResourceCategoryPolicy,
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
+import { getResourceNameMapByResourceCds, type ProductionScheduleResourceNameMap } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProductionScheduleRow = {
@@ -354,7 +355,12 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   };
 }
 
-export async function listProductionScheduleResources(): Promise<string[]> {
+export type ProductionScheduleResourceListResult = {
+  resources: string[];
+  resourceNameMap: ProductionScheduleResourceNameMap;
+};
+
+export async function listProductionScheduleResources(): Promise<ProductionScheduleResourceListResult> {
   const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
     SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
     FROM "CsvDashboardRow"
@@ -364,7 +370,12 @@ export async function listProductionScheduleResources(): Promise<string[]> {
       AND ("rowData"->>'FSIGENCD') <> ''
     ORDER BY ("rowData"->>'FSIGENCD') ASC
   `;
-  return resources.map((row) => row.resourceCd);
+  const resourceCds = resources.map((row) => row.resourceCd);
+  const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
+  return {
+    resources: resourceCds,
+    resourceNameMap
+  };
 }
 
 export async function getProductionScheduleOrderUsage(

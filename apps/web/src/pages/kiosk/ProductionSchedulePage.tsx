@@ -454,12 +454,31 @@ export function ProductionSchedulePage() {
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
     { pauseRefetch }
   );
+  const resourceNameMap = useMemo(
+    () => resourcesQuery.data?.resourceNameMap ?? {},
+    [resourcesQuery.data?.resourceNameMap]
+  );
+  const getResourceTooltip = useCallback(
+    (resourceCd: string) => {
+      const names = resourceNameMap[resourceCd] ?? [];
+      return names.length > 0 ? names.join('\n') : undefined;
+    },
+    [resourceNameMap]
+  );
+  const getResourceAriaLabel = useCallback(
+    (resourceCd: string, suffix?: string) => {
+      const names = resourceNameMap[resourceCd] ?? [];
+      const base = names.length > 0 ? `${resourceCd}: ${names.join(' / ')}` : resourceCd;
+      return suffix ? `${base} ${suffix}` : base;
+    },
+    [resourceNameMap]
+  );
   const visibleResourceCds = useMemo(() => {
-    return filterResourceCdsByCategory(resourcesQuery.data ?? [], {
+    return filterResourceCdsByCategory(resourcesQuery.data?.resources ?? [], {
       showGrinding: showGrindingResources,
       showCutting: showCuttingResources
     });
-  }, [resourcesQuery.data, showCuttingResources, showGrindingResources]);
+  }, [resourcesQuery.data?.resources, showCuttingResources, showGrindingResources]);
 
   const prioritizedVisibleResourceCds = useMemo(
     () =>
@@ -875,6 +894,8 @@ export function ProductionSchedulePage() {
               <PillButton
                 onClick={() => toggleResourceCd(resourceCd)}
                 className={`${colorClasses.border} ${isActive ? colorClasses.bgStrong : colorClasses.bgSoft} ${colorClasses.text}`}
+                title={getResourceTooltip(resourceCd)}
+                aria-label={getResourceAriaLabel(resourceCd)}
               >
                 {resourceCd}
               </PillButton>
@@ -883,6 +904,8 @@ export function ProductionSchedulePage() {
                 className={`${colorClasses.border} ${
                   isAssignedActive ? colorClasses.bgStrong : colorClasses.bgSoft
                 } ${colorClasses.text}`}
+                title={getResourceTooltip(resourceCd)}
+                aria-label={getResourceAriaLabel(resourceCd, '割当')}
               >
                 {resourceCd} 割当
               </PillButton>

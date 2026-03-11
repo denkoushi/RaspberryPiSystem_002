@@ -77,7 +77,7 @@ category: knowledge-base
   - Prismaマイグレーション: 37件適用済み、スキーマ最新
   - キオスクAPI: `/api/tools/loans/active` 200、`/api/kiosk/production-schedule` 200、`/api/kiosk/production-schedule/due-management/summary` 200
   - 新機能API: `/api/kiosk/production-schedule/processing-type-options` 200（LSLH/カニゼン/塗装/その他01/その他02）、`/api/kiosk/production-schedule/search-state` 200（history連携）
-  - due-management seiban detail: `machineName`・`parts[].processes[]`（resourceCd, isCompleted）・`completedProcessCount`/`totalProcessCount` を確認
+  - due-management seiban detail: `machineName`・`parts[].processes[]`（resourceCd, resourceNames, isCompleted）・`completedProcessCount`/`totalProcessCount` を確認
   - deploy-status: 両Pi4で `isMaintenance: false`
   - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
   - backup.json: 存在・15K
@@ -103,6 +103,31 @@ category: knowledge-base
 - 遷移認証: 納期管理ボタン押下時にパスワード確認を追加。管理コンソール（生産スケジュール設定）からshared単位で変更可能。未設定時は初期値 `2520` を許可（後方互換）
 - ヘッダ発色: 納期管理遷移時に生産スケジュールボタンのactive色が残る不具合を修正（`/kiosk/production-schedule` に `end` を付与）
 - 検証: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（35件成功）、`apps/api` / `apps/web` lint 成功
+
+## 資源CD名称マスタ導入とホバー表示（2026-03-11）
+
+- 目的: 資源CDのみでは現場オペレーターが設備を識別しづらいため、`FSIGENCD` に紐づく `FSIGENMEI` をDBで一元管理し、既存UIのホバー導線で表示できるようにする
+- DB:
+  - `ProductionScheduleResourceMaster` を追加（`resourceCd`, `resourceName`, `resourceClassCd`, `resourceGroupCd`）
+  - 制約: `resourceCd + resourceName` ユニーク（同一CDに複数名称を保持）
+  - 参照性能: `resourceCd` インデックスを追加
+- 初回投入:
+  - `apps/api/prisma/seeds/dataSIGEN.csv` を追加し、`prisma/seed.ts` で upsert 取り込み
+  - 取り込み時は `resourceCd + resourceName` をキーに重複を吸収し、`resourceClassCd` / `resourceGroupCd` を更新可能にした
+- API:
+  - `GET /api/kiosk/production-schedule/resources` を後方互換拡張
+  - 既存 `resources: string[]` は維持し、追加で `resourceNameMap: Record<string, string[]>` を返却
+  - 納期管理詳細の `parts[].processes[]` に `resourceNames: string[]` を追加
+- UI:
+  - 生産スケジュールの資源CDボタンに `title` / `aria-label` を追加（備考ホバーパターン流用）
+  - 納期管理の工程進捗バッジに `title` / `aria-label` を追加
+  - 同一資源CDに複数名称がある場合は連結表示（`title` は改行、`aria-label` は ` / ` 区切り）
+- 検証:
+  - APIユニットテスト更新（`production-schedule-query.service.test.ts`）
+  - 統合テスト更新（`kiosk-production-schedule.integration.test.ts`）
+  - `pnpm --filter @raspi-system/api prisma:generate`
+  - `pnpm --filter @raspi-system/api build`
+  - `pnpm --filter @raspi-system/web build`
 
 ## A修正デプロイ・実機検証（2026-03-07）
 
