@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-12）
+
+- **✅ Phase1 DebugSink境界導入・デプロイ完了・実機検証完了**: 直書き `127.0.0.1:7242` 呼び出しを `emitDebugEvent()` 境界に置換（9ファイル）。既定 no-op で挙動不変。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Pi3除外）。**実機検証**: 全チェックリスト項目合格。**知見**: ローカル E2E smoke 実行時は `prisma db seed` を事前実行すること（ClientDevice が必要）。詳細は [phase2-safe-refactor-backlog.md](./plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-11）
 
 - **✅ 非破壊段階リファクタ Phase2 バックログを定義**: Phase1（DebugSink導入・直書きデバッグ送信の隔離・コメント整合）を受け、次段の実装順と安全ゲートを明文化。対象は API ルート薄化（imports/auth）、Web の `ProductionSchedulePage` 分割、境界違反の流入防止。各PRで `api/web lint/test/build` と主要導線スモークを必須化。詳細は [phase2-safe-refactor-backlog.md](./plans/phase2-safe-refactor-backlog.md) を参照。
