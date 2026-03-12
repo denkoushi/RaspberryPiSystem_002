@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { GmailRequestGateService, GmailRateLimitedDeferredError } from './gmail-request-gate.service.js';
 
 /**
@@ -336,7 +337,7 @@ export class GmailApiClient {
     try {
       const safeMessageId = messageId ? messageId.slice(-6) : null;
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:markAsRead',message:'markAsRead called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'B', location: 'gmail-api-client.ts:markAsRead', message: 'markAsRead called', data: { messageIdSuffix: safeMessageId } });
       // #endregion
       await this.gateExecute('gmail.users.messages.modify(markAsRead)', async () =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -375,7 +376,7 @@ export class GmailApiClient {
       const processedLabelName = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
       const processedLabelId = await this.ensureLabel(processedLabelName);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'B',location:'gmail-api-client.ts:trashMessage',message:'trashMessage called',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'B', location: 'gmail-api-client.ts:trashMessage', message: 'trashMessage called', data: { messageIdSuffix: safeMessageId } });
       // #endregion
 
       await this.gateExecute('gmail.users.messages.modify(addProcessedLabel)', async () =>

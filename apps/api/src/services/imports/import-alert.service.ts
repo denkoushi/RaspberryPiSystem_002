@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join } from 'path';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,7 +50,7 @@ export class ImportAlertService {
       );
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'import-alert.service.ts:generateFailureAlert',message:'execFile alert payload',data:{scheduleId:params.scheduleId,messageHasParen:message.includes('('),detailsHasNewline:details.includes('\n'),messageLength:message.length,detailsLength:details.length},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H4', location: 'import-alert.service.ts:generateFailureAlert', message: 'execFile alert payload', data: { scheduleId: params.scheduleId, messageHasParen: message.includes('('), detailsHasNewline: details.includes('\n'), messageLength: message.length, detailsLength: details.length } });
       // #endregion
 
       // NOTE: exec(string) + シェルエスケープは、改行や括弧などを含む文字列で壊れやすい。
@@ -65,7 +66,7 @@ export class ImportAlertService {
       );
     } catch (error) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H5',location:'import-alert.service.ts:generateFailureAlert',message:'execFile alert error',data:{scheduleId:params.scheduleId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H5', location: 'import-alert.service.ts:generateFailureAlert', message: 'execFile alert error', data: { scheduleId: params.scheduleId, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) } });
       // #endregion
       // アラート生成の失敗はログに記録するが、例外は投げない（インポート処理を中断しない）
       logger?.error(

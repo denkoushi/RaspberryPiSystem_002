@@ -4,6 +4,7 @@ import type {
   CardGridTemplateConfig,
 } from './csv-dashboard.types.js';
 import { env } from '../../config/env.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { createMd3Tokens } from '../visualization/renderers/_design-system/index.js';
 
 /**
@@ -364,31 +365,26 @@ export class CsvDashboardTemplateRenderer {
         };
       });
 
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'A',
-          location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-          message: 'column width inputs (raw vs formatted, sample vs all)',
-          data: {
-            canvasWidth,
-            scale,
-            fontSizePx,
-            headerFontSizePx: Math.round(config.fontSize + 4),
-            rowsLen: rows.length,
-            rowsPerPage,
-            sampleLen: sampleRows.length,
-            basePadding,
-            safetyPadding,
-            minWidth,
-            perColumn,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      void emitDebugEvent({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+        message: 'column width inputs (raw vs formatted, sample vs all)',
+        data: {
+          canvasWidth,
+          scale,
+          fontSizePx,
+          headerFontSizePx: Math.round(config.fontSize + 4),
+          rowsLen: rows.length,
+          rowsPerPage,
+          sampleLen: sampleRows.length,
+          basePadding,
+          safetyPadding,
+          minWidth,
+          perColumn,
+        },
+      });
     } catch {
       // ignore
     }
@@ -418,19 +414,14 @@ export class CsvDashboardTemplateRenderer {
     if (total <= canvasWidth) {
       // 過剰な余白を作らない。右側に余白が残っても良い。
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'pre-fix',
-          hypothesisId: 'D',
-          location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-          message: 'column widths chosen (no shrink)',
-          data: { canvasWidth, total, widths, requiredWidths },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      void emitDebugEvent({
+        sessionId: 'debug-session',
+        runId: 'pre-fix',
+        hypothesisId: 'D',
+        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+        message: 'column widths chosen (no shrink)',
+        data: { canvasWidth, total, widths, requiredWidths },
+      });
       // #endregion
       return widths;
     }
@@ -441,19 +432,14 @@ export class CsvDashboardTemplateRenderer {
     const scaled = widths.map((w, i) => Math.max(minWidths[i], Math.floor(w * scaleDown)));
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'B',
-        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-        message: 'column widths chosen (pre shrink)',
-        data: { canvasWidth, total, scaleDown, widths, minWidths, scaled },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    void emitDebugEvent({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'B',
+      location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
+      message: 'column widths chosen (pre shrink)',
+      data: { canvasWidth, total, scaleDown, widths, minWidths, scaled },
+    });
     // #endregion
 
     return this.shrinkToFit(scaled, minWidths, canvasWidth);
@@ -492,25 +478,20 @@ export class CsvDashboardTemplateRenderer {
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'B',
-        location: 'csv-dashboard-template-renderer.ts:shrinkToFit',
-        message: 'column widths chosen (post shrink)',
-        data: {
-          canvasWidth,
-          totalBefore: total,
-          totalAfter: widths.reduce((sum, w) => sum + w, 0),
-          widths,
-          minWidths,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    void emitDebugEvent({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId: 'B',
+      location: 'csv-dashboard-template-renderer.ts:shrinkToFit',
+      message: 'column widths chosen (post shrink)',
+      data: {
+        canvasWidth,
+        totalBefore: total,
+        totalAfter: widths.reduce((sum, w) => sum + w, 0),
+        widths,
+        minWidths,
+      },
+    });
     // #endregion
 
     return widths;

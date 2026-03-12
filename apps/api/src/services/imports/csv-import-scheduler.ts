@@ -3,6 +3,7 @@ import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
@@ -205,7 +206,7 @@ export class CsvImportScheduler {
       }
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'csv-import-scheduler.ts:executeSingleRun',message:'executeSingleRun error',data:{taskId,errorName:error instanceof Error ? error.name : 'unknown',errorMessage},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H3', location: 'csv-import-scheduler.ts:executeSingleRun', message: 'executeSingleRun error', data: { taskId, errorName: error instanceof Error ? error.name : 'unknown', errorMessage } });
       // #endregion
 
       // scheduledのみ: Gmail 429クールダウン中は「延期」として扱い、アラート/連続失敗を抑制する
@@ -818,7 +819,7 @@ export class CsvImportScheduler {
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'csv-import-scheduler.ts:runImport',message:'runImport schedule loaded',data:{importId,enabled:importSchedule.enabled,provider:importSchedule.provider || 'default',targetTypes:(importSchedule.targets || []).map(target => target.type),targetSources:(importSchedule.targets || []).map(target => target.source)},timestamp:Date.now()})}).catch(()=>{});
+    void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H1', location: 'csv-import-scheduler.ts:runImport', message: 'runImport schedule loaded', data: { importId, enabled: importSchedule.enabled, provider: importSchedule.provider || 'default', targetTypes: (importSchedule.targets || []).map(target => target.type), targetSources: (importSchedule.targets || []).map(target => target.source) } });
     // #endregion
 
     if (!importSchedule.enabled) {
@@ -848,7 +849,7 @@ export class CsvImportScheduler {
     skipRetry = false
   ) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'csv-import-scheduler.ts:executeImport',message:'executeImport start',data:{scheduleId:importSchedule.id,skipRetry,provider:importSchedule.provider || 'default',hasTargets:Array.isArray(importSchedule.targets) && importSchedule.targets.length > 0},timestamp:Date.now()})}).catch(()=>{});
+    void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H2', location: 'csv-import-scheduler.ts:executeImport', message: 'executeImport start', data: { scheduleId: importSchedule.id, skipRetry, provider: importSchedule.provider || 'default', hasTargets: Array.isArray(importSchedule.targets) && importSchedule.targets.length > 0 } });
     // #endregion
     const executionService = this.createExecutionService();
     return await executionService.execute({ config, importSchedule, skipRetry });

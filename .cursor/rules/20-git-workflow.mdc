@@ -9,6 +9,8 @@ alwaysApply: false
 
 - 変更は目的ごとに分割し、混在を避ける（1コミット=1意図）
 - push/merge/release/deploy は**明示依頼がある時のみ**行う
+- 既定フローは **main最新同期 → featureブランチ作成 → PR → mainマージ** とする
+- `main` への直作業（直接コミット）は禁止し、必ず feature ブランチで作業する
 
 ## コミットメッセージ
 
@@ -23,3 +25,10 @@ alwaysApply: false
 
 - `git status` / `git diff` で範囲確認
 - 秘密情報（`.env`等）が含まれないことを確認
+
+## 実行手順（固定）
+
+1. `git checkout main && git pull --ff-only origin main`
+2. `git checkout -b feat/<scope>`
+3. 変更を実装し、`lint/test/build` を通す
+4. PR を作成してレビュー後に main へマージ

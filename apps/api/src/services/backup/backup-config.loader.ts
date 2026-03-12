@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { BackupConfigSchema, type BackupConfig, defaultBackupConfig, type CsvImportTarget } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
 
 /**
@@ -278,7 +279,7 @@ export class BackupConfigLoader {
       );
       // #endregion
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'backup-config.loader.ts:load:fallback',message:'backup config fallback (parse/validate)',data:{configPath,reason:'PARSE_OR_VALIDATE_ERROR',message:error instanceof Error ? error.message : String(error),summary:this.summarizeConfig(fallback)},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre', hypothesisId: 'A', location: 'backup-config.loader.ts:load:fallback', message: 'backup config fallback (parse/validate)', data: { configPath, reason: 'PARSE_OR_VALIDATE_ERROR', message: error instanceof Error ? error.message : String(error), summary: this.summarizeConfig(fallback) } });
       // #endregion
       return fallback;
     }

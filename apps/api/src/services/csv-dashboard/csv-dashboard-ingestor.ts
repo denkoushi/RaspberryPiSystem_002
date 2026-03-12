@@ -3,6 +3,7 @@ import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
@@ -377,7 +378,7 @@ export class CsvDashboardIngestor {
       return trimmed.replace(/^"+|"+$/g, '').toLowerCase();
     };
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:entry',message:'createColumnMapping headers preview',data:{headerCount:csvHeaders.length,headersPreview:csvHeaders.slice(0,10).map((header)=>({raw:header,normalized:header.replace(/^\\uFEFF/,'').trim()}))},timestamp:Date.now()})}).catch(()=>{});
+    void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:entry', message: 'createColumnMapping headers preview', data: { headerCount: csvHeaders.length, headersPreview: csvHeaders.slice(0, 10).map((header) => ({ raw: header, normalized: header.replace(/^\uFEFF/, '').trim() })) } });
     // #endregion
 
     for (const colDef of columnDefinitions) {
@@ -392,7 +393,7 @@ export class CsvDashboardIngestor {
         // 必須列が見つからない場合はエラー
         if (colDef.required !== false) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:missing',message:'required column missing',data:{internalName:colDef.internalName,displayName:colDef.displayName,candidates:colDef.csvHeaderCandidates,headersPreview:csvHeaders.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+          void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:missing', message: 'required column missing', data: { internalName: colDef.internalName, displayName: colDef.displayName, candidates: colDef.csvHeaderCandidates, headersPreview: csvHeaders.slice(0, 10) } });
           // #endregion
           const userMessage = [
             'CSVファイルの列構成が設定と一致しません。',
