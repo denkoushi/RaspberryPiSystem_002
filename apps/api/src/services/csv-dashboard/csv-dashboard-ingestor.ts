@@ -3,6 +3,7 @@ import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
@@ -13,6 +14,7 @@ import {
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
+import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
@@ -25,6 +27,7 @@ export class CsvDashboardIngestor {
   private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
+  private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -70,6 +73,10 @@ export class CsvDashboardIngestor {
 
       // 列マッピングを作成（CSVヘッダー → 内部名）
       const columnMapping = this.createColumnMapping(rows[0] || [], columnDefinitions);
+      const progressSyncEligibility = this.progressSyncEligibilityPolicy.evaluate({
+        dashboardId,
+        mappedInternalNames: columnMapping.map((m) => m.internalName),
+      });
 
       // 日付列のインデックスを取得
       const dateColumnIndex = dashboard.dateColumnName
@@ -223,9 +230,21 @@ export class CsvDashboardIngestor {
           }
         }
 
+        if (isProductionScheduleDashboard && !progressSyncEligibility.eligible) {
+          logger?.info(
+            {
+              dashboardId,
+              reason: progressSyncEligibility.reason,
+              messageId,
+            },
+            '[CsvDashboardIngestor] Skip progress sync by eligibility policy'
+          );
+        }
+
         if (isProductionScheduleDashboard && progressSyncCandidates.length > 0) {
           await this.progressSyncFromCsvService.sync({
             candidates: progressSyncCandidates,
+            hasProgressColumn: progressSyncEligibility.eligible,
           });
         }
       }
@@ -359,7 +378,7 @@ export class CsvDashboardIngestor {
       return trimmed.replace(/^"+|"+$/g, '').toLowerCase();
     };
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:entry',message:'createColumnMapping headers preview',data:{headerCount:csvHeaders.length,headersPreview:csvHeaders.slice(0,10).map((header)=>({raw:header,normalized:header.replace(/^\\uFEFF/,'').trim()}))},timestamp:Date.now()})}).catch(()=>{});
+    void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:entry', message: 'createColumnMapping headers preview', data: { headerCount: csvHeaders.length, headersPreview: csvHeaders.slice(0, 10).map((header) => ({ raw: header, normalized: header.replace(/^\uFEFF/, '').trim() })) } });
     // #endregion
 
     for (const colDef of columnDefinitions) {
@@ -374,7 +393,7 @@ export class CsvDashboardIngestor {
         // 必須列が見つからない場合はエラー
         if (colDef.required !== false) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'csv-dashboard-ingestor.ts:createColumnMapping:missing',message:'required column missing',data:{internalName:colDef.internalName,displayName:colDef.displayName,candidates:colDef.csvHeaderCandidates,headersPreview:csvHeaders.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+          void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:missing', message: 'required column missing', data: { internalName: colDef.internalName, displayName: colDef.displayName, candidates: colDef.csvHeaderCandidates, headersPreview: csvHeaders.slice(0, 10) } });
           // #endregion
           const userMessage = [
             'CSVファイルの列構成が設定と一致しません。',

@@ -4,9 +4,11 @@ import {
   useClients,
   useProductionScheduleDueManagementAccessPasswordSettings,
   useProductionScheduleProcessingTypeOptions,
+  useProductionScheduleResourceCodeMappings,
   useProductionScheduleResourceCategorySettings,
   useUpdateProductionScheduleDueManagementAccessPassword,
   useUpdateProductionScheduleProcessingTypeOptions,
+  useUpdateProductionScheduleResourceCodeMappings,
   useUpdateProductionScheduleResourceCategorySettings
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -30,12 +32,17 @@ export function ProductionScheduleSettingsPage() {
   const [location, setLocation] = useState<string>(DEFAULT_LOCATION);
   const settingsQuery = useProductionScheduleResourceCategorySettings(location);
   const processingTypeOptionsQuery = useProductionScheduleProcessingTypeOptions(location);
+  const resourceCodeMappingsQuery = useProductionScheduleResourceCodeMappings(location);
   const dueManagementAccessPasswordSettingsQuery = useProductionScheduleDueManagementAccessPasswordSettings(DEFAULT_LOCATION);
   const updateSettingsMutation = useUpdateProductionScheduleResourceCategorySettings();
   const updateDueManagementAccessPasswordMutation = useUpdateProductionScheduleDueManagementAccessPassword();
   const updateProcessingTypeOptionsMutation = useUpdateProductionScheduleProcessingTypeOptions();
+  const updateResourceCodeMappingsMutation = useUpdateProductionScheduleResourceCodeMappings();
   const [cuttingExcludedInput, setCuttingExcludedInput] = useState('10, MSZ');
   const [processingTypeRows, setProcessingTypeRows] = useState<Array<{ code: string; label: string; priority: number; enabled: boolean }>>([]);
+  const [resourceCodeMappingsRows, setResourceCodeMappingsRows] = useState<
+    Array<{ fromResourceCd: string; toResourceCd: string; priority: number; enabled: boolean }>
+  >([]);
   const [dueManagementPasswordInput, setDueManagementPasswordInput] = useState('');
   const [dueManagementPasswordConfirmInput, setDueManagementPasswordConfirmInput] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -46,12 +53,16 @@ export function ProductionScheduleSettingsPage() {
       const normalized = item.trim();
       if (normalized.length > 0) unique.add(normalized);
     });
+    (resourceCodeMappingsQuery.data?.locations ?? []).forEach((item) => {
+      const normalized = item.trim();
+      if (normalized.length > 0) unique.add(normalized);
+    });
     (clientsQuery.data ?? []).forEach((client) => {
       const normalized = String(client.location ?? '').trim();
       if (normalized.length > 0) unique.add(normalized);
     });
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [clientsQuery.data, settingsQuery.data?.locations]);
+  }, [clientsQuery.data, resourceCodeMappingsQuery.data?.locations, settingsQuery.data?.locations]);
 
   useEffect(() => {
     const settings = settingsQuery.data?.settings;
@@ -62,6 +73,10 @@ export function ProductionScheduleSettingsPage() {
   useEffect(() => {
     setProcessingTypeRows(processingTypeOptionsQuery.data?.settings.options ?? []);
   }, [processingTypeOptionsQuery.data?.settings.options]);
+
+  useEffect(() => {
+    setResourceCodeMappingsRows(resourceCodeMappingsQuery.data?.settings.mappings ?? []);
+  }, [resourceCodeMappingsQuery.data?.settings.mappings]);
 
   const parsedResourceCds = useMemo(() => parseResourceCds(cuttingExcludedInput), [cuttingExcludedInput]);
 
@@ -81,6 +96,15 @@ export function ProductionScheduleSettingsPage() {
       options: processingTypeRows
     });
     setMessage('処理候補を保存しました');
+  };
+
+  const handleSaveResourceCodeMappings = async () => {
+    setMessage(null);
+    await updateResourceCodeMappingsMutation.mutateAsync({
+      location,
+      mappings: resourceCodeMappingsRows
+    });
+    setMessage('資源CDマッピングを保存しました');
   };
 
   const handleSaveDueManagementPassword = async () => {
@@ -251,6 +275,95 @@ export function ProductionScheduleSettingsPage() {
               disabled={updateProcessingTypeOptionsMutation.isPending || processingTypeOptionsQuery.isLoading}
             >
               {updateProcessingTypeOptionsMutation.isPending ? '保存中...' : '候補を保存'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <Card title="実績工数 資源CDマッピング設定">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-slate-700">
+            実績基準時間の探索時に、資源CDが一致しない場合のフォールバックを定義します（例: 26M → 25M）。
+          </p>
+          <div className="space-y-2">
+            {resourceCodeMappingsRows.map((row, index) => (
+              <div key={`${row.fromResourceCd}-${row.toResourceCd}-${index}`} className="grid grid-cols-12 gap-2">
+                <input
+                  value={row.fromResourceCd}
+                  onChange={(event) =>
+                    setResourceCodeMappingsRows((prev) =>
+                      prev.map((item, idx) =>
+                        idx === index ? { ...item, fromResourceCd: event.target.value } : item
+                      )
+                    )
+                  }
+                  className="col-span-3 rounded-md border border-slate-300 p-2 text-xs"
+                  placeholder="元資源CD"
+                />
+                <input
+                  value={row.toResourceCd}
+                  onChange={(event) =>
+                    setResourceCodeMappingsRows((prev) =>
+                      prev.map((item, idx) =>
+                        idx === index ? { ...item, toResourceCd: event.target.value } : item
+                      )
+                    )
+                  }
+                  className="col-span-3 rounded-md border border-slate-300 p-2 text-xs"
+                  placeholder="先資源CD"
+                />
+                <input
+                  type="number"
+                  value={row.priority}
+                  min={1}
+                  max={999}
+                  onChange={(event) =>
+                    setResourceCodeMappingsRows((prev) =>
+                      prev.map((item, idx) =>
+                        idx === index ? { ...item, priority: Number(event.target.value || 999) } : item
+                      )
+                    )
+                  }
+                  className="col-span-2 rounded-md border border-slate-300 p-2 text-xs"
+                />
+                <label className="col-span-2 flex items-center gap-1 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={row.enabled}
+                    onChange={(event) =>
+                      setResourceCodeMappingsRows((prev) =>
+                        prev.map((item, idx) => (idx === index ? { ...item, enabled: event.target.checked } : item))
+                      )
+                    }
+                  />
+                  有効
+                </label>
+                <button
+                  type="button"
+                  className="col-span-2 rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white"
+                  onClick={() => setResourceCodeMappingsRows((prev) => prev.filter((_, idx) => idx !== index))}
+                >
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() =>
+                setResourceCodeMappingsRows((prev) => [
+                  ...prev,
+                  { fromResourceCd: '', toResourceCd: '', priority: prev.length + 1, enabled: true }
+                ])
+              }
+              variant="secondary"
+            >
+              マッピングを追加
+            </Button>
+            <Button
+              onClick={handleSaveResourceCodeMappings}
+              disabled={updateResourceCodeMappingsMutation.isPending || resourceCodeMappingsQuery.isLoading}
+            >
+              {updateResourceCodeMappingsMutation.isPending ? '保存中...' : 'マッピングを保存'}
             </Button>
           </div>
         </div>

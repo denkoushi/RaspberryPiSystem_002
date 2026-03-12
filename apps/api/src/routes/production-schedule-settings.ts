@@ -5,10 +5,12 @@ import { authorizeRoles } from '../lib/auth.js';
 import {
   getDueManagementAccessPasswordSettings,
   getProductionScheduleProcessingTypeOptions,
+  getProductionScheduleResourceCodeMappings,
   getProductionScheduleResourceCategorySettings,
   listProductionScheduleResourceCategorySettingsLocations,
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   upsertDueManagementAccessPassword,
+  upsertProductionScheduleResourceCodeMappings,
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
 } from '../services/production-schedule/production-schedule-settings.service.js';
@@ -38,6 +40,24 @@ const processingTypeOptionsBodySchema = z.object({
       })
     )
     .max(100)
+});
+
+const resourceCodeMappingsQuerySchema = z.object({
+  location: z.string().min(1).max(100).default('shared')
+});
+
+const resourceCodeMappingsBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  mappings: z
+    .array(
+      z.object({
+        fromResourceCd: z.string().min(1).max(20),
+        toResourceCd: z.string().min(1).max(20),
+        priority: z.coerce.number().int().min(1).max(999),
+        enabled: z.boolean()
+      })
+    )
+    .max(500)
 });
 
 const dueManagementAccessPasswordQuerySchema = z.object({
@@ -90,6 +110,27 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
     const settings = await upsertProductionScheduleProcessingTypeOptions({
       location: body.location,
       options: body.options
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/resource-code-mappings', { preHandler: canManage }, async (request) => {
+    const query = resourceCodeMappingsQuerySchema.parse(request.query);
+    const [settings, locations] = await Promise.all([
+      getProductionScheduleResourceCodeMappings(query.location),
+      listProductionScheduleResourceCategorySettingsLocations()
+    ]);
+    return {
+      settings,
+      locations
+    };
+  });
+
+  app.put('/production-schedule-settings/resource-code-mappings', { preHandler: canManage }, async (request) => {
+    const body = resourceCodeMappingsBodySchema.parse(request.body);
+    const settings = await upsertProductionScheduleResourceCodeMappings({
+      location: body.location,
+      mappings: body.mappings
     });
     return { settings };
   });

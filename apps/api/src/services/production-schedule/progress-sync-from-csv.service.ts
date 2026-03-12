@@ -13,6 +13,7 @@ type ProgressSyncCandidate = {
 type SyncProgressFromCsvParams = {
   candidates: ProgressSyncCandidate[];
   locationKey?: string;
+  hasProgressColumn?: boolean;
 };
 
 const normalizeProgress = (value: unknown): string => String(value ?? '').trim();
@@ -29,7 +30,10 @@ const toIsCompleted = (progress: string): boolean | null => {
 
 export class ProgressSyncFromCsvService {
   async sync(params: SyncProgressFromCsvParams): Promise<void> {
-    const { candidates } = params;
+    const { candidates, hasProgressColumn = true } = params;
+    if (!hasProgressColumn) {
+      return;
+    }
     if (candidates.length === 0) {
       return;
     }

@@ -208,12 +208,16 @@ export function ProductionScheduleDueManagementPage() {
       {
         score: number;
         reasons: string[];
+        estimatedActualMinutes: number;
+        coverageRatio: number;
       }
     >();
     (globalRankProposalQuery.data?.items ?? []).forEach((item) => {
       map.set(item.fseiban, {
         score: item.score,
-        reasons: item.breakdown.reasons
+        reasons: item.breakdown.reasons,
+        estimatedActualMinutes: item.estimatedActualMinutes,
+        coverageRatio: item.coverageRatio
       });
     });
     return map;
@@ -596,6 +600,9 @@ export function ProductionScheduleDueManagementPage() {
                   <div className="mt-1 text-[10px] text-blue-100/90">
                     score: {proposalBySeiban.get(item.fseiban)?.score.toFixed(3) ?? '-'}
                   </div>
+                  <div className="text-[10px] text-blue-100/90">
+                    実績カバー率: {Math.round((proposalBySeiban.get(item.fseiban)?.coverageRatio ?? 0) * 100)}%
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(proposalBySeiban.get(item.fseiban)?.reasons ?? []).map((reason) => (
                       <span key={`${item.fseiban}-${reason}`} className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-100">
@@ -755,6 +762,9 @@ export function ProductionScheduleDueManagementPage() {
               <div className="mt-1 text-xs text-white/70">
                 部品 {item.partsCount}件 / 工程 {item.processCount}件 / 所要 {Math.round(item.totalRequiredMinutes)} min
               </div>
+              <div className="mt-1 text-[11px] text-sky-200/90">
+                実績カバー率 {Math.round(item.actualCoverageRatio * 100)}%
+              </div>
             </button>
           ))}
         </div>
@@ -806,6 +816,7 @@ export function ProductionScheduleDueManagementPage() {
                   <th className="px-2 py-2">工程数</th>
                   <th className="px-2 py-2">工程進捗</th>
                   <th className="px-2 py-2">所要(min)</th>
+                  <th className="px-2 py-2">実績基準時間(分/個)</th>
                   <th className="px-2 py-2">備考</th>
                   <th className="px-2 py-2">提案順位</th>
                   <th className="px-2 py-2">操作</th>
@@ -842,22 +853,35 @@ export function ProductionScheduleDueManagementPage() {
                         {part?.completedProcessCount ?? 0}/{part?.totalProcessCount ?? 0}
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {(part?.processes ?? []).map((process) => (
-                          <span
-                            key={process.rowId}
-                            className={`rounded border px-2 py-1 text-[10px] ${
-                              process.isCompleted
-                                ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
-                                : 'border-blue-300 bg-blue-500/30 text-blue-100'
-                            }`}
-                          >
-                            {process.resourceCd}
-                            {process.processOrder !== null ? `-${process.processOrder}` : ''}
-                          </span>
-                        ))}
+                        {(part?.processes ?? []).map((process) => {
+                          const resourceNames = process.resourceNames ?? [];
+                          const tooltip = resourceNames.length > 0 ? resourceNames.join('\n') : undefined;
+                          const ariaLabel =
+                            resourceNames.length > 0
+                              ? `${process.resourceCd}: ${resourceNames.join(' / ')}`
+                              : process.resourceCd;
+                          return (
+                            <span
+                              key={process.rowId}
+                              className={`rounded border px-2 py-1 text-[10px] ${
+                                process.isCompleted
+                                  ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
+                                  : 'border-blue-300 bg-blue-500/30 text-blue-100'
+                              }`}
+                              title={tooltip}
+                              aria-label={ariaLabel}
+                            >
+                              {process.resourceCd}
+                              {process.processOrder !== null ? `-${process.processOrder}` : ''}
+                            </span>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-2 py-2">{Math.round(part?.totalRequiredMinutes ?? 0)}</td>
+                    <td className="px-2 py-2">
+                      {typeof part?.actualPerPieceMinutes === 'number' ? part.actualPerPieceMinutes.toFixed(2) : '-'}
+                    </td>
                     <td className="px-2 py-2">
                       <button
                         type="button"

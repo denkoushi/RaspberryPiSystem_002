@@ -1,7 +1,11 @@
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../../lib/prisma.js';
+import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
+import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type SeibanSummaryRaw = {
@@ -33,11 +37,14 @@ export type DueManagementSummaryItem = {
   partsCount: number;
   processCount: number;
   totalRequiredMinutes: number;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
 };
 
 export type DueManagementPartProcessItem = {
   rowId: string;
   resourceCd: string;
+  resourceNames: string[];
   processOrder: number | null;
   isCompleted: boolean;
 };
@@ -53,6 +60,9 @@ export type DueManagementPartItem = {
   processingPriority: number;
   completedProcessCount: number;
   totalProcessCount: number;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
   processes: DueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
@@ -103,8 +113,7 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   const dueDateRows = await prisma.productionScheduleSeibanDueDate.findMany({
     where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
     },
     select: {
       fseiban: true,
@@ -113,13 +122,91 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
   });
   const dueDateMap = new Map(dueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
 
+  const [featureRows, resourceCodeMappings] = await Promise.all([
+    prisma.productionScheduleActualHoursFeature.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey
+      },
+      select: {
+        fhincd: true,
+        resourceCd: true,
+        sampleCount: true,
+        medianPerPieceMinutes: true,
+        p75PerPieceMinutes: true
+      }
+    }),
+    prisma.productionScheduleResourceCodeMapping.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        enabled: true
+      },
+      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
+      select: {
+        fromResourceCd: true,
+        toResourceCd: true,
+        priority: true,
+        enabled: true
+      }
+    })
+  ]);
+  const featureResolver = createActualHoursFeatureResolver({
+    features: featureRows,
+    resourceCodeMappings
+  });
+  const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
+  if (featureRows.length > 0 && summaryRows.length > 0) {
+    const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
+    const rows = await prisma.$queryRaw<
+      Array<{ fseiban: string; fhincd: string | null; resourceCd: string | null }>
+    >(Prisma.sql`
+      SELECT
+        "rowData"->>'FSEIBAN' AS "fseiban",
+        "rowData"->>'FHINCD' AS "fhincd",
+        "rowData"->>'FSIGENCD' AS "resourceCd"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+        AND "rowData"->>'FSEIBAN' IN (${fseibanList})
+        AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
+    `);
+    const aggregateMap = new Map<string, { totalRows: number; matchedRows: number }>();
+    for (const row of rows) {
+      const fseiban = row.fseiban?.trim();
+      if (!fseiban) continue;
+      const current = aggregateMap.get(fseiban) ?? {
+        totalRows: 0,
+        matchedRows: 0
+      };
+      current.totalRows += 1;
+      const fhincd = row.fhincd?.trim() ?? '';
+      const resourceCd = row.resourceCd?.trim() ?? '';
+      if (fhincd && resourceCd) {
+        const resolved = featureResolver.resolve({ fhincd, resourceCd });
+        if (resolved.perPieceMinutes !== null) {
+          current.matchedRows += 1;
+        }
+      }
+      aggregateMap.set(fseiban, current);
+    }
+    aggregateMap.forEach((aggregated, fseiban) => {
+      actualSignalMap.set(fseiban, {
+        estimatedMinutes: 0,
+        coverageRatio: aggregated.totalRows > 0 ? aggregated.matchedRows / aggregated.totalRows : 0
+      });
+    });
+  }
+
   return summaryRows.map((row) => ({
     fseiban: row.fseiban,
     machineName: row.machineName,
     dueDate: dueDateMap.get(row.fseiban) ?? null,
     partsCount: Number(row.partsCount),
     processCount: Number(row.processCount),
-    totalRequiredMinutes: Number(row.totalRequiredMinutes ?? 0)
+    totalRequiredMinutes: Number(row.totalRequiredMinutes ?? 0),
+    actualEstimatedMinutes: actualSignalMap.get(row.fseiban)?.estimatedMinutes ?? 0,
+    actualCoverageRatio: actualSignalMap.get(row.fseiban)?.coverageRatio ?? 0
   }));
 }
 
@@ -147,11 +234,9 @@ export async function getDueManagementSeibanDetail(params: {
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."location" = ${locationKey}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
@@ -166,9 +251,8 @@ export async function getDueManagementSeibanDetail(params: {
 
   const dueDate = await prisma.productionScheduleSeibanDueDate.findUnique({
     where: {
-      csvDashboardId_location_fseiban: {
+      csvDashboardId_fseiban: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
         fseiban
       }
     },
@@ -191,6 +275,39 @@ export async function getDueManagementSeibanDetail(params: {
   const currentPriorityMap = new Map(priorityRows.map((row) => [row.fhincd, row.priorityRank] as const));
   const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
   const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
+  const [detailFeatureRows, detailResourceCodeMappings] = await Promise.all([
+    prisma.productionScheduleActualHoursFeature.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey
+      },
+      select: {
+        fhincd: true,
+        resourceCd: true,
+        medianPerPieceMinutes: true,
+        p75PerPieceMinutes: true
+      }
+    }),
+    prisma.productionScheduleResourceCodeMapping.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        enabled: true
+      },
+      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
+      select: {
+        fromResourceCd: true,
+        toResourceCd: true,
+        priority: true,
+        enabled: true
+      }
+    })
+  ]);
+  const detailFeatureResolver = createActualHoursFeatureResolver({
+    features: detailFeatureRows,
+    resourceCodeMappings: detailResourceCodeMappings
+  });
+  const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd ?? ''));
 
   const grouped = new Map<
     string,
@@ -203,9 +320,12 @@ export async function getDueManagementSeibanDetail(params: {
       totalRequiredMinutes: number;
       processingType: string | null;
       processingPriority: number;
-        completedProcessCount: number;
-        totalProcessCount: number;
-        processes: DueManagementPartProcessItem[];
+      completedProcessCount: number;
+      totalProcessCount: number;
+      actualMatchedProcessCount: number;
+      actualPerPieceMinutesSum: number;
+      actualPerPieceSampleCount: number;
+      processes: DueManagementPartProcessItem[];
     }
   >();
   for (const row of rows) {
@@ -223,6 +343,8 @@ export async function getDueManagementSeibanDetail(params: {
 
     const current = grouped.get(fhincd);
     const processingPriority = getProcessingTypePriority(row.processingType);
+    const perPieceMinutes = detailFeatureResolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
+    const isActualMatched = perPieceMinutes !== null;
     if (!current) {
       grouped.set(fhincd, {
         productNo: row.productNo?.trim() ?? '',
@@ -235,10 +357,14 @@ export async function getDueManagementSeibanDetail(params: {
         processingPriority,
         completedProcessCount: row.isCompleted ? 1 : 0,
         totalProcessCount: 1,
+        actualMatchedProcessCount: isActualMatched ? 1 : 0,
+        actualPerPieceMinutesSum: perPieceMinutes ?? 0,
+        actualPerPieceSampleCount: isActualMatched ? 1 : 0,
         processes: [
           {
             rowId: row.id,
-            resourceCd: row.fsigencd?.trim() ?? '',
+            resourceCd: resourceCd,
+            resourceNames: resourceNameMap[resourceCd] ?? [],
             processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
             isCompleted: row.isCompleted
           }
@@ -256,12 +382,18 @@ export async function getDueManagementSeibanDetail(params: {
     current.processCount += 1;
     current.totalRequiredMinutes += parseRequiredMinutes(row.requiredMinutes ?? '');
     current.totalProcessCount += 1;
+    if (isActualMatched) {
+      current.actualMatchedProcessCount += 1;
+      current.actualPerPieceMinutesSum += perPieceMinutes ?? 0;
+      current.actualPerPieceSampleCount += 1;
+    }
     if (row.isCompleted) {
       current.completedProcessCount += 1;
     }
     current.processes.push({
       rowId: row.id,
-      resourceCd: row.fsigencd?.trim() ?? '',
+      resourceCd: resourceCd,
+      resourceNames: resourceNameMap[resourceCd] ?? [],
       processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
       isCompleted: row.isCompleted
     });
@@ -294,6 +426,10 @@ export async function getDueManagementSeibanDetail(params: {
         if (b.processOrder !== null) return 1;
         return a.resourceCd.localeCompare(b.resourceCd);
       }),
+      actualPerPieceMinutes:
+        part.actualPerPieceSampleCount > 0 ? part.actualPerPieceMinutesSum / part.actualPerPieceSampleCount : null,
+      actualEstimatedMinutes: 0,
+      actualCoverageRatio: part.totalProcessCount > 0 ? part.actualMatchedProcessCount / part.totalProcessCount : 0,
       currentPriorityRank: currentPriorityMap.get(part.fhincd) ?? null,
       suggestedPriorityRank: index + 1
     }));

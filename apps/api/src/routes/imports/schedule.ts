@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
@@ -340,7 +341,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1248', message: 'manual run request received', data: { scheduleId: id, reqId: request.id ?? null }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' }) }).catch(() => {});
+    void emitDebugEvent({ location: 'imports.ts:1248', message: 'manual run request received', data: { scheduleId: id, reqId: request.id ?? null }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
     // #endregion
     // #region agent log
     await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1', location: 'imports.ts:1249', message: 'manual run request received (file log)', data: { scheduleId: id, reqId: request.id ?? null }, timestamp: Date.now() });
@@ -350,7 +351,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     const config = await BackupConfigLoader.load();
     const schedule = config.csvImports?.find((s) => s.id === id);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1252', message: 'loaded csv import schedules', data: { scheduleId: id, hasCsvImports: Array.isArray(config.csvImports), csvImportCount: config.csvImports?.length ?? 0, scheduleIds: (config.csvImports ?? []).map((s) => s.id) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' }) }).catch(() => {});
+    void emitDebugEvent({ location: 'imports.ts:1252', message: 'loaded csv import schedules', data: { scheduleId: id, hasCsvImports: Array.isArray(config.csvImports), csvImportCount: config.csvImports?.length ?? 0, scheduleIds: (config.csvImports ?? []).map((s) => s.id) }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
     // #endregion
     // #region agent log
     await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2', location: 'imports.ts:1253', message: 'loaded csv import schedules (file log)', data: { scheduleId: id, hasCsvImports: Array.isArray(config.csvImports), csvImportCount: config.csvImports?.length ?? 0, scheduleIds: (config.csvImports ?? []).map((s) => s.id), backupConfigPath: process.env.BACKUP_CONFIG_PATH ?? null }, timestamp: Date.now() });
@@ -358,7 +359,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
 
     if (!schedule) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1255', message: 'schedule not found', data: { scheduleId: id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' }) }).catch(() => {});
+      void emitDebugEvent({ location: 'imports.ts:1255', message: 'schedule not found', data: { scheduleId: id }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
       // #endregion
       // #region agent log
       await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1', location: 'imports.ts:1256', message: 'schedule not found (file log)', data: { scheduleId: id }, timestamp: Date.now() });
@@ -369,7 +370,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     const { getCsvImportScheduler } = await import('../../services/imports/csv-import-scheduler.js');
     const scheduler = getCsvImportScheduler();
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1260', message: 'about to run scheduler import', data: { scheduleId: id, hasScheduler: !!scheduler }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' }) }).catch(() => {});
+    void emitDebugEvent({ location: 'imports.ts:1260', message: 'about to run scheduler import', data: { scheduleId: id, hasScheduler: !!scheduler }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
     // #endregion
     // #region agent log
     await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1261', message: 'about to run scheduler import (file log)', data: { scheduleId: id, hasScheduler: !!scheduler }, timestamp: Date.now() });
@@ -378,7 +379,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
     try {
       const summary = await scheduler.runImport(id);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1262', message: 'scheduler.runImport succeeded', data: { scheduleId: id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' }) }).catch(() => {});
+      void emitDebugEvent({ location: 'imports.ts:1262', message: 'scheduler.runImport succeeded', data: { scheduleId: id }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
       // #endregion
       // #region agent log
       await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1263', message: 'scheduler.runImport succeeded (file log)', data: { scheduleId: id }, timestamp: Date.now() });
@@ -387,7 +388,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
       return { message: 'インポートを実行しました', summary };
     } catch (error) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'imports.ts:1266', message: 'scheduler.runImport failed', data: { scheduleId: id, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' }) }).catch(() => {});
+      void emitDebugEvent({ location: 'imports.ts:1266', message: 'scheduler.runImport failed', data: { scheduleId: id, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
       // #endregion
       // #region agent log
       await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1267', message: 'scheduler.runImport failed (file log)', data: { scheduleId: id, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) }, timestamp: Date.now() });

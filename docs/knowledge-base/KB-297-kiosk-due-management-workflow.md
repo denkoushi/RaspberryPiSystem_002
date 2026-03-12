@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-10
+last-verified: 2026-03-11
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -77,11 +77,27 @@ category: knowledge-base
   - Prismaマイグレーション: 37件適用済み、スキーマ最新
   - キオスクAPI: `/api/tools/loans/active` 200、`/api/kiosk/production-schedule` 200、`/api/kiosk/production-schedule/due-management/summary` 200
   - 新機能API: `/api/kiosk/production-schedule/processing-type-options` 200（LSLH/カニゼン/塗装/その他01/その他02）、`/api/kiosk/production-schedule/search-state` 200（history連携）
-  - due-management seiban detail: `machineName`・`parts[].processes[]`（resourceCd, isCompleted）・`completedProcessCount`/`totalProcessCount` を確認
+  - due-management seiban detail: `machineName`・`parts[].processes[]`（resourceCd, resourceNames, isCompleted）・`completedProcessCount`/`totalProcessCount` を確認
   - deploy-status: 両Pi4で `isMaintenance: false`
   - Pi4サービス: raspberrypi4・raspi4-robodrill01 ともに kiosk-browser.service / status-agent.timer が active
   - backup.json: 存在・15K
   - サイネージAPI: `/api/signage/content` layoutConfig 正常
+
+## FSIGENマスタ導入・実機検証（2026-03-11）
+
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順で1台ずつ成功
+- **FSIGENマスタ投入**: 本番DBは既存Employee等でシード競合のため、dataSIGEN.csvをSQLで直接投入（125件）
+- **API検証**:
+  - `GET /api/system/health`: 200 OK / `status: ok`
+  - `GET /api/kiosk/production-schedule/resources`: 200、`resourceNameMap` に資源CD→日本語名のマッピング確認（例: `"501":["東芝MPE-2130"]`, `"500":["5軸加工機","5軸加工機（Vertex)"]`）
+- **手動確認項目**（Tailscale接続可能な端末から）:
+  - 生産スケジュール画面: 資源CDボタンにホバーで日本語名（title/aria-label）が表示されること
+  - 納期管理画面: 工程カードの資源CDにホバーで日本語名が表示されること
+- **実機検証結果**: OK（両画面で `title` 属性による標準ツールチップでホバー表示を確認済み）
+- **トラブルシューティング**:
+  - **本番DBで `pnpm prisma db seed` 失敗**: 既存EmployeeのNFC UID等他シードと競合し、seed全体が失敗。FSIGENマスタ（`ProductionScheduleResourceMaster`）は `dataSIGEN.csv` をSQLで直接投入して対応（125件）。類似事例は [KB-203](../infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) 参照。
+  - **ローカル統合テスト**: DB未起動時は `docker run` でPostgreSQL（例: postgres-test-local）を起動してから `kiosk-production-schedule.integration.test.ts` を実行。
+- **知見**: 同一 `seed.ts` 内で複数テーブルを投入する場合、既存データとの競合に注意。本番DBは既存データありのため、新規マスタ追加はSQL直接投入で柔軟に対応可能。ホバー表示は `title` 属性で標準ツールチップが動作し、追加ライブラリ不要。
 
 ## 追加実装（2026-03-07）
 
@@ -103,6 +119,31 @@ category: knowledge-base
 - 遷移認証: 納期管理ボタン押下時にパスワード確認を追加。管理コンソール（生産スケジュール設定）からshared単位で変更可能。未設定時は初期値 `2520` を許可（後方互換）
 - ヘッダ発色: 納期管理遷移時に生産スケジュールボタンのactive色が残る不具合を修正（`/kiosk/production-schedule` に `end` を付与）
 - 検証: `pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule.integration.test.ts`（35件成功）、`apps/api` / `apps/web` lint 成功
+
+## 資源CD名称マスタ導入とホバー表示（2026-03-11）
+
+- 目的: 資源CDのみでは現場オペレーターが設備を識別しづらいため、`FSIGENCD` に紐づく `FSIGENMEI` をDBで一元管理し、既存UIのホバー導線で表示できるようにする
+- DB:
+  - `ProductionScheduleResourceMaster` を追加（`resourceCd`, `resourceName`, `resourceClassCd`, `resourceGroupCd`）
+  - 制約: `resourceCd + resourceName` ユニーク（同一CDに複数名称を保持）
+  - 参照性能: `resourceCd` インデックスを追加
+- 初回投入:
+  - `apps/api/prisma/seeds/dataSIGEN.csv` を追加し、`prisma/seed.ts` で upsert 取り込み
+  - 取り込み時は `resourceCd + resourceName` をキーに重複を吸収し、`resourceClassCd` / `resourceGroupCd` を更新可能にした
+- API:
+  - `GET /api/kiosk/production-schedule/resources` を後方互換拡張
+  - 既存 `resources: string[]` は維持し、追加で `resourceNameMap: Record<string, string[]>` を返却
+  - 納期管理詳細の `parts[].processes[]` に `resourceNames: string[]` を追加
+- UI:
+  - 生産スケジュールの資源CDボタンに `title` / `aria-label` を追加（備考ホバーパターン流用）
+  - 納期管理の工程進捗バッジに `title` / `aria-label` を追加
+  - 同一資源CDに複数名称がある場合は連結表示（`title` は改行、`aria-label` は ` / ` 区切り）
+- 検証:
+  - APIユニットテスト更新（`production-schedule-query.service.test.ts`）
+  - 統合テスト更新（`kiosk-production-schedule.integration.test.ts`）
+  - `pnpm --filter @raspi-system/api prisma:generate`
+  - `pnpm --filter @raspi-system/api build`
+  - `pnpm --filter @raspi-system/web build`
 
 ## A修正デプロイ・実機検証（2026-03-07）
 
@@ -503,9 +544,9 @@ category: knowledge-base
 
 #### 全体順位とは
 
-- **全体順位**は、拠点内の全工程行を「納期・製番・部品・工順」で並べたときの**通し順位**（1, 2, 3, …）です
+- **全体順位（保存値）**は、拠点内の全工程行を「納期・製番・部品・工順」で並べたときの**通し順位**（1, 2, 3, …）です
 - リーダーが納期管理で決めた「今日の計画順」や「全体ランキング」を、**行単位**に展開したものです
-- 生産スケジュール画面と納期管理画面で**同じ順位**を参照できます
+- **生産スケジュール画面の表示**は、資源CDフィルタ中のみ「表示対象内での連番（1..N）」を表示します（保存値は保持）
 
 #### リーダーのワークフローとの関係
 
@@ -534,8 +575,65 @@ category: knowledge-base
 
 #### 運用上の注意
 
-- 製番や資源CDでフィルタしても、**全体順位は変わらない**（先に全体で計算してから表示を絞る）
+- 資源CDフィルタ中は、オペレーターが作業順として使いやすいように、**全体順位表示を表示対象内で1..Nに再採番**する（保存値は変更しない）
+- 資源CDフィルタ中は、**行の並び順も表示順位（1..N）で昇順ソート**し、1, 2, 3… の順で表示する（2026-03-11 補正）
+- 登録製番（検索条件）を起点に研削/切削で表示範囲を絞っている場合も、**表示対象内の表示順位として1..Nに再採番**してソートする（保存値は変更しない）
+- 資源CDフィルタを外すと、保存されている全体通し順位の表示に戻る
 - 納期管理で「今日の計画順」や「全体ランキング」を保存した直後に、生産スケジュールの「全体順位」列が更新される
+
+### 実績工数列の表示拡張（2026-03-11）
+
+- **方針**: 単純平均は採用せず、実績工数CSV特徴量（`中央値` / `p75` / 件数）から導く値のみをUIへ表示
+- **生産スケジュール**:
+  - `実績基準時間(分/個)`: `p75PerPieceMinutes`（未定義時は中央値）
+  - `実績推定工数(分)`: `実績基準時間(分/個) × ロット数`
+- **納期管理（製番一覧・全体ランキング・部品表）**:
+  - `実績推定工数(分)` と `実績カバー率(%)` を追加
+  - 部品表に `実績基準時間(分/個)` と `実績推定工数(分)` を追加
+- **命名ルール**:
+  - 単価指標は `分/個` を列名に明示
+  - 製番・部品合算値は `分` を列名に明示
+
+### 実績工数列の整合化（2026-03-11 追補）
+
+- **背景**:
+  - 生産日程CSV（Gmail取得）には `FSEZOSIJISU` が存在せず、`実績推定工数(分)` は定義不能だった
+  - `実績基準時間(分/個)` は `FHINCD + FSIGENCD` の厳密一致のみだと欠損が多かった（例: `26M` vs `25M/27M`）
+- **仕様修正**:
+  - 生産スケジュール画面から `実績推定工数(分)` 列を廃止
+  - 納期管理画面も `実績推定工数(分)` 表示を廃止し、`実績カバー率(%)` と `実績基準時間(分/個)` を維持
+  - `actualHoursScore` は数量依存推定を使わず、カバー率とサンプル信頼度で評価
+- **実装**:
+  - `ActualHoursFeatureResolver` を新設し、`strict一致 -> 手動マッピング一致` の順で探索
+  - `ProductionScheduleResourceCodeMapping` を追加し、管理コンソールから `resource-code-mappings` を設定可能化
+  - 生産スケジュール/納期管理の両APIを resolver 経由に統一
+- **運用ルール**:
+  - 資源CD不一致は自動推定しない（必ず管理コンソールで明示マッピング）
+  - 誤マッピング防止のため、`fromResourceCd -> toResourceCd` は優先順付きで管理する
+
+### 実績工数列の整合化 デプロイ・実機検証（2026-03-11）
+
+- **デプロイ**: ブランチ `feat/global-rank-resource-local-display`。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつ実行（Run ID `20260311-142346-26409` / `20260311-142902-25781` / `20260311-143429-2874`）。合計約13分。
+- **実機検証結果**（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト準拠）:
+  - APIヘルス: 200 OK / `status: ok`（メモリ89.6%警告は既知の環境要因）
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI・生産スケジュールAPI・納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）: すべて 200
+  - 生産スケジュールAPI: `actualPerPieceMinutes`（実績基準時間）返却確認、`actualEstimatedMinutes` は廃止済み
+  - actual-hours/stats: `totalRawRows`, `totalCanonicalRows`, `totalFeatureKeys`, `topFeatures` 返却確認
+  - resource-code-mappings: `GET /api/production-schedule-settings/resource-code-mappings` は管理画面用のため認証必須。未認証で 401 が返るのは想定どおり（エンドポイント存在確認として有効）
+  - サイネージAPI: 200、layoutConfig 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 48件、up to date
+  - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+- **知見**: 実機検証チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。管理API（resource-code-mappings）は JWT 認証必須のため、キオスク検証では 401 応答でエンドポイント存在を確認する運用で可。
+
+### 全体順位 ソート補正（2026-03-11）
+
+- **事象**: 資源CDフィルタ時に表示順位は1..Nに再採番されていたが、**行の並び順がその順位に従っていなかった**（実機検証で判明）
+- **修正**: `displayRows` を表示順位（1..N）で昇順ソートするように変更（`displayRank.ts` / `ProductionSchedulePage.tsx`）
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID: `20260311-082311` / `20260311-082345` / `20260311-083018`）
+- **実機検証**: 資源CD押下後、1から順位付けされ、ソートもその順位基準になっていることを確認済み
+- **知見**: 表示順位の再採番と行ソートは別実装であり、両方を揃える必要がある
 
 ### B第7段階（実績工数CSV連携 + 全体ランキング連携、2026-03-10）
 
@@ -596,3 +694,74 @@ category: knowledge-base
   - Pi4サービス: 両端末で kiosk-browser.service / status-agent.timer が active
   - Pi3 signage: offline のためスキップ（deploy-status-recovery.md に準拠）
 - **2回目デプロイ（feature flag 本番制御経路）**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 `true`）。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`）。実機検証: APIヘルス、deploy-status、納期管理API、global-rank targetLocation/rankingScope、Pi4サービス稼働を確認。feature flag の無効化は inventory / host_vars で `web_kiosk_target_location_selector_enabled: false` を指定可能（[mac-target-location-migration.md](../runbooks/mac-target-location-migration.md) 参照）。
+
+### 全体順位表示拡張と実績工数列追加・デプロイ・実機検証（2026-03-11）
+
+- **実装概要**:
+  - **全体順位表示拡張**: 資源CDだけでなく、登録製番＋研削/切削フィルタ時も表示順位を 1..N に再採番するよう拡張。`isDisplayRankContext` を導入し、`isResourceRankFilterActive` を拡張（`ProductionSchedulePage.tsx`）
+  - **実績工数列追加**: 生産スケジュールに `実績基準時間(分/個)`・`実績推定工数(分)` を追加。納期管理の全体ランキング・製番一覧・部品表に `実績推定工数(分)`・`実績カバー率(%)` を追加
+- **デプロイ**: ブランチ `feat/global-rank-resource-local-display`。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつ実行（Run ID `20260311-090951-8646` / `20260311-091447-18995` / `20260311-092307-13455`）。合計約13分
+- **実機検証結果**（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト準拠）:
+  - APIヘルス: 200 OK / `status: ok`
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI・生産スケジュールAPI・納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）: すべて 200
+  - global-rank: `targetLocation`, `actorLocation`, `rankingScope` 返却確認
+  - actual-hours/stats: `totalRawRows`, `totalCanonicalRows`, `totalFeatureKeys`, `topFeatures` 返却確認
+  - サイネージAPI: 200、layoutConfig 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 46件、up to date
+  - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+
+### 進捗同期スコープ分離（2026-03-11）
+
+- **背景**:
+  - 日程更新用CSVと進捗管理用CSVのメール件名が同一で、従来実装では生産日程CSV取り込み時に `progress_sync` が一律で走り得た
+  - `progress` 列が無いCSVでも `undefined -> '' -> isCompleted=false` と解釈され、手動完了の意図しない上書きリスクがあった
+- **実装方針**:
+  - `ProgressSyncEligibilityPolicy` を追加し、`progress` 列がマッピングされるCSVだけ `progress_sync` 対象に限定
+  - `CsvDashboardIngestor` で同期前に判定し、対象外は取り込み成功のまま同期だけスキップ（理由をログ出力）
+  - `ProgressSyncFromCsvService` に `hasProgressColumn` ガードを追加し、防御的に二重ガード
+- **影響範囲**:
+  - 日程更新用CSV（`progress` 列なし）: `ProductionScheduleProgress` を更新しない
+  - 進捗管理用CSV（`progress` 列あり）: 従来どおり `updatedAt` 比較で新しいもののみ反映
+  - ProductNo繰り上がり判定および DEDUP 挙動には影響しない
+- **検証**:
+  - `progress-sync-from-csv.service.test.ts`: `hasProgressColumn=false` で同期しないことを追加確認
+  - `progress-sync-eligibility.policy.test.ts`: 生産日程＋`progress` 列有無の判定を追加確認
+
+### 進捗同期スコープ分離・デプロイ・実機検証（2026-03-11）
+
+- **デプロイ**: ブランチ `feat/global-rank-resource-local-display`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-115254-25003` / `20260311-115759-20603` / `20260311-120301-28447`）、約13分。
+- **実機検証結果**:
+  - APIヘルス: 200 OK / `status: ok`
+  - deploy-status: 両Pi4で `isMaintenance: false`
+  - キオスクAPI: loans/active・production-schedule 200
+  - 納期管理API: triage・daily-plan・global-rank・actual-hours/stats 200
+  - サイネージAPI: 200、layoutConfig 含む
+  - backup.json: 存在・15K
+  - マイグレーション: 46件、up to date
+  - Pi4/Pi3サービス: 両Pi4で kiosk-browser.service / status-agent.timer が active、Pi3 signage-lite が active
+- **知見**: 今回の変更はAPIのみ（DBスキーマ変更なし）のため、デプロイ対象は Pi5 のみでも十分。運用標準に従い Pi5 + Pi4×2 を1台ずつ順番デプロイした。
+- **運用注意**: 日程更新用CSV（`progress` 列なし）を取り込んでも `ProductionScheduleProgress` は更新されない。進捗管理用CSV（`progress` 列あり）のみ同期対象。
+
+### ロケーション間同期共有化（納期・備考・表面処理、2026-03-11）
+
+- **背景**:
+  - `完了status`（`ProductionScheduleProgress`）は location 非依存で同期される一方、`納期` / `備考` / `表面処理` は location 依存モデルで保持していたため、Mac と第2工場で値が分岐していた。
+  - 現場要件として、上記3項目は端末・拠点を跨いで同一値を参照できる必要があった。
+- **実装方針**:
+  - 同期ジョブ追加ではなく、`ProductionScheduleRowNote` / `ProductionScheduleSeibanDueDate` / `ProductionSchedulePartProcessingType` を **shared（location 非依存）** に移行。
+  - 競合解決は **Last-Write-Wins（`updatedAt` 優先）** を採用し、migration で重複データを畳み込み。
+  - route 契約（APIパス・入力）は維持し、内部永続化のみ shared repository 経由へ差し替え。
+- **実装詳細**:
+  - Prisma migration `20260311133000_make_schedule_fields_shared` を追加。
+  - `shared-schedule-fields.repository.ts` を新設し、write/read の共通永続化責務を集約。
+  - `production-schedule-query` / `due-management-query` / `due-management-triage` で note/dueDate/processingType の location 絞り込みを除去。
+  - `due-management-global-rank-auto` の「納期設定済み製番」判定も shared dueDate を参照するよう更新。
+- **検証**:
+  - API統合テスト `kiosk-production-schedule.integration.test.ts` にロケーション間共有回帰を追加（`row note/processing/dueDate`、`due-management dueDate/note/processing`）。
+  - 実行結果: `49 passed`。
+  - lint: `apps/api` / `apps/web` ともに成功。
+- **デプロイ・実機検証（2026-03-11）**:
+  - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-124752-19099` / `20260311-125302-686` / `20260311-125806-26510`）、約13分。
+  - **実機検証結果**: APIヘルス（`status: degraded`、メモリ96.1%は既知の環境要因）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、生産スケジュールAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）、global-rank の `targetLocation`/`actorLocation`/`rankingScope` 返却、actual-hours/stats の `totalRawRows`/`totalCanonicalRows`/`totalFeatureKeys`/`topFeatures` 返却、サイネージAPI（layoutConfig 含む）、backup.json（15K）、マイグレーション（47件、up to date）、Pi4/Pi3サービス（kiosk-browser.service / status-agent.timer / signage-lite すべて active）を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。

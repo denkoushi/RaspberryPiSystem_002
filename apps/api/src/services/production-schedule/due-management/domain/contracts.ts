@@ -57,6 +57,8 @@ export type RankingProposalItem = {
   fseiban: string;
   rank: number;
   score: number;
+  estimatedActualMinutes: number;
+  coverageRatio: number;
   breakdown: GlobalRankScoreBreakdown;
 };
 

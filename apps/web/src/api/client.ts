@@ -405,6 +405,7 @@ export interface ProductionScheduleRow {
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
   globalRank?: number | null;
+  actualPerPieceMinutes?: number | null;
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
@@ -435,6 +436,13 @@ export interface ProductionScheduleProcessingTypeOption {
   enabled: boolean;
 }
 
+export interface ProductionScheduleResourceCodeMapping {
+  fromResourceCd: string;
+  toResourceCd: string;
+  priority: number;
+  enabled: boolean;
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
   machineName: string | null;
@@ -442,6 +450,8 @@ export interface ProductionScheduleDueManagementSummaryItem {
   partsCount: number;
   processCount: number;
   totalRequiredMinutes: number;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
 }
 
 export interface ProductionScheduleDueManagementTriageReason {
@@ -497,6 +507,7 @@ export interface ProductionScheduleDueManagementGlobalRankScoreBreakdown {
   carryoverScore: number;
   partPriorityScore: number;
   historyCalibrationScore: number;
+  actualHoursScore: number;
   weightedTotalScore: number;
   reasons: string[];
 }
@@ -505,6 +516,8 @@ export interface ProductionScheduleDueManagementGlobalRankProposalItem {
   fseiban: string;
   rank: number;
   score: number;
+  estimatedActualMinutes: number;
+  coverageRatio: number;
   breakdown: ProductionScheduleDueManagementGlobalRankScoreBreakdown;
 }
 
@@ -538,6 +551,7 @@ export interface DueManagementTargetContext {
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
+  resourceNames?: string[];
   processOrder: number | null;
   isCompleted: boolean;
 }
@@ -553,6 +567,9 @@ export interface ProductionScheduleDueManagementPartItem {
   processingPriority: number;
   completedProcessCount: number;
   totalProcessCount: number;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
   processes: ProductionScheduleDueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
@@ -660,8 +677,13 @@ export async function completeKioskProductionScheduleRow(rowId: string) {
 }
 
 export async function getKioskProductionScheduleResources() {
-  const { data } = await api.get<{ resources: string[] }>('/kiosk/production-schedule/resources');
-  return data.resources;
+  const { data } = await api.get<{ resources: string[]; resourceNameMap?: Record<string, string[]> }>(
+    '/kiosk/production-schedule/resources'
+  );
+  return {
+    resources: data.resources,
+    resourceNameMap: data.resourceNameMap ?? {}
+  };
 }
 
 export async function getKioskProductionScheduleDueManagementSummary() {
@@ -839,6 +861,32 @@ export async function getProductionScheduleProcessingTypeOptions(location: strin
     params: { location }
   });
   return data;
+}
+
+export async function getProductionScheduleResourceCodeMappings(location: string) {
+  const { data } = await api.get<{
+    settings: {
+      location: string;
+      mappings: ProductionScheduleResourceCodeMapping[];
+    };
+    locations: string[];
+  }>('/production-schedule-settings/resource-code-mappings', {
+    params: { location }
+  });
+  return data;
+}
+
+export async function updateProductionScheduleResourceCodeMappings(payload: {
+  location: string;
+  mappings: ProductionScheduleResourceCodeMapping[];
+}) {
+  const { data } = await api.put<{
+    settings: {
+      location: string;
+      mappings: ProductionScheduleResourceCodeMapping[];
+    };
+  }>('/production-schedule-settings/resource-code-mappings', payload);
+  return data.settings;
 }
 
 export async function updateProductionScheduleProcessingTypeOptions(payload: {

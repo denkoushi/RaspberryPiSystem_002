@@ -4,6 +4,7 @@ import {
 } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
+import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
@@ -11,6 +12,7 @@ import {
   getResourceCategoryPolicy,
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
+import { getResourceNameMapByResourceCds, type ProductionScheduleResourceNameMap } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProductionScheduleRow = {
@@ -19,6 +21,7 @@ type ProductionScheduleRow = {
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
   globalRank: number | null;
+  actualPerPieceMinutes: number | null;
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
@@ -131,10 +134,8 @@ const buildQueryWhere = (params: {
   resourceCategoryCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
-  locationKey: string;
 }): Prisma.Sql => {
-  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly, locationKey } =
-    params;
+  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly } = params;
 
   const textWhere =
     textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
@@ -158,7 +159,6 @@ const buildQueryWhere = (params: {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "location" = ${locationKey}
         AND TRIM("note") <> ''
     )`;
   }
@@ -166,7 +166,6 @@ const buildQueryWhere = (params: {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "location" = ${locationKey}
         AND "dueDate" IS NOT NULL
     )`;
   }
@@ -238,8 +237,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceConditions,
     resourceCategoryCondition,
     hasNoteOnly,
-    hasDueDateOnly,
-    locationKey
+    hasDueDateOnly
   });
 
   const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
@@ -289,11 +287,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."location" = ${locationKey}
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."location" = ${locationKey}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     WHERE ${baseWhere} ${queryWhere}
     ORDER BY
@@ -307,15 +303,64 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LIMIT ${pageSize} OFFSET ${offset}
   `;
 
+  const [featureRows, resourceCodeMappings] = await Promise.all([
+    prisma.productionScheduleActualHoursFeature.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey
+      },
+      select: {
+        fhincd: true,
+        resourceCd: true,
+        medianPerPieceMinutes: true,
+        p75PerPieceMinutes: true
+      }
+    }),
+    prisma.productionScheduleResourceCodeMapping.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: locationKey,
+        enabled: true
+      },
+      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
+      select: {
+        fromResourceCd: true,
+        toResourceCd: true,
+        priority: true,
+        enabled: true
+      }
+    })
+  ]);
+  const featureResolver = createActualHoursFeatureResolver({
+    features: featureRows,
+    resourceCodeMappings
+  });
+
+  const rowsWithActualHours = rows.map((row) => {
+    const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+    const fhincd = typeof rowData.FHINCD === 'string' ? rowData.FHINCD.trim() : '';
+    const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
+    const perPieceMinutes = featureResolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
+    return {
+      ...row,
+      actualPerPieceMinutes: perPieceMinutes
+    };
+  });
+
   return {
     page,
     pageSize,
     total,
-    rows
+    rows: rowsWithActualHours
   };
 }
 
-export async function listProductionScheduleResources(): Promise<string[]> {
+export type ProductionScheduleResourceListResult = {
+  resources: string[];
+  resourceNameMap: ProductionScheduleResourceNameMap;
+};
+
+export async function listProductionScheduleResources(): Promise<ProductionScheduleResourceListResult> {
   const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
     SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
     FROM "CsvDashboardRow"
@@ -325,7 +370,12 @@ export async function listProductionScheduleResources(): Promise<string[]> {
       AND ("rowData"->>'FSIGENCD') <> ''
     ORDER BY ("rowData"->>'FSIGENCD') ASC
   `;
-  return resources.map((row) => row.resourceCd);
+  const resourceCds = resources.map((row) => row.resourceCd);
+  const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
+  return {
+    resources: resourceCds,
+    resourceNameMap
+  };
 }
 
 export async function getProductionScheduleOrderUsage(

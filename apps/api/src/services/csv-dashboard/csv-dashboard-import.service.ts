@@ -1,6 +1,7 @@
 import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { CsvDashboardIngestor } from './csv-dashboard-ingestor.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
@@ -170,7 +171,7 @@ export class CsvDashboardImportService {
 
     for (const dashboardId of dashboardIds) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'csv-dashboard-import.service.ts:dashboard-loop',message:'Start dashboard ingest loop',data:{dashboardId,provider},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:dashboard-loop', message: 'Start dashboard ingest loop', data: { dashboardId, provider } });
       // #endregion
       const dashboard = await prisma.csvDashboard.findUnique({ where: { id: dashboardId } });
 
@@ -235,7 +236,7 @@ export class CsvDashboardImportService {
       }
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'csv-dashboard-import.service.ts:after-downloadCsv',message:'downloadCsv returned results',data:{dashboardId,provider,resultsCount:bufferResults.length,canPostProcessGmail:(provider==='gmail'&&CsvDashboardImportService.canPostProcessGmail(storageProvider))},timestamp:Date.now()})}).catch(()=>{});
+      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:after-downloadCsv', message: 'downloadCsv returned results', data: { dashboardId, provider, resultsCount: bufferResults.length, canPostProcessGmail: (provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider)) } });
       // #endregion
 
       let totalProcessed = 0;
@@ -267,7 +268,7 @@ export class CsvDashboardImportService {
         const safeMessageId = messageId ? messageId.slice(-6) : null;
         if (safeMessageId) downloadedMessageIdSuffixes.push(safeMessageId);
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'D',location:'csv-dashboard-import.service.ts:per-message',message:'Start processing message',data:{dashboardId,provider,messageIdSuffix:safeMessageId,hasMessageId:!!messageId,hasMessageSubject:!!messageSubject},timestamp:Date.now()})}).catch(()=>{});
+        void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'D', location: 'csv-dashboard-import.service.ts:per-message', message: 'Start processing message', data: { dashboardId, provider, messageIdSuffix: safeMessageId, hasMessageId: !!messageId, hasMessageSubject: !!messageSubject } });
         // #endregion
         const csvContent = buffer.toString('utf-8');
 
@@ -320,7 +321,7 @@ export class CsvDashboardImportService {
           // #endregion
           const shouldPostProcess = provider === 'gmail' && !!messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider);
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'A',location:'csv-dashboard-import.service.ts:postProcess-decision',message:'Decide whether to post-process Gmail message',data:{provider,shouldPostProcess,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+          void emitDebugEvent({ sessionId: 'debug-session', runId: 'gmail-inbox-not-clearing', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:postProcess-decision', message: 'Decide whether to post-process Gmail message', data: { provider, shouldPostProcess, messageIdSuffix: safeMessageId } });
           // #endregion
           if (shouldPostProcess && messageId) {
             // #region agent debug
@@ -361,7 +362,7 @@ export class CsvDashboardImportService {
               stepLogs.push(`${safeMessageId}:after-trashMessage:success`);
               // #endregion
               // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'B',location:'csv-dashboard-import.service.ts:after-trashMessage',message:'Gmail post-process completed',data:{messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+              void emitDebugEvent({ sessionId: 'debug-session', runId: 'gmail-inbox-not-clearing', hypothesisId: 'B', location: 'csv-dashboard-import.service.ts:after-trashMessage', message: 'Gmail post-process completed', data: { messageIdSuffix: safeMessageId } });
               // #endregion
             } catch (postProcessError) {
               // #region agent debug

@@ -35,12 +35,16 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceMaster.deleteMany({
+      where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
+    });
     if (closeServer) await closeServer();
   });
 
@@ -58,12 +62,16 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
+    await prisma.productionScheduleResourceMaster.deleteMany({
+      where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
+    });
 
     // client-demo-key は seed.ts で作られるが、テスト単体でも通るように保険で作成
     await prisma.clientDevice.upsert({
@@ -115,6 +123,35 @@ describe('Kiosk Production Schedule API', () => {
           rowData: { ProductNo: '0002', FSEIBAN: 'B', FHINCD: 'Y', FSIGENCD: '2', FKOJUN: '220', progress: '完了' }
         }
       ]
+    });
+    await prisma.productionScheduleResourceMaster.createMany({
+      data: [
+        {
+          resourceCd: '1',
+          resourceName: '1号機',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: '1',
+          resourceName: '1号機-予備',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: '2',
+          resourceName: '2号機',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        },
+        {
+          resourceCd: 'MSZ',
+          resourceName: '切削除外設備',
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G2'
+        }
+      ],
+      skipDuplicates: true
     });
 
     // progressは別テーブルが真実なので、完了状態もseedする。
@@ -357,8 +394,10 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const body = res.json() as { resources: string[] };
+    const body = res.json() as { resources: string[]; resourceNameMap: Record<string, string[]> };
     expect(body.resources).toEqual(['1', '2']);
+    expect(body.resourceNameMap['1']).toEqual(['1号機', '1号機-予備']);
+    expect(body.resourceNameMap['2']).toEqual(['2号機']);
   });
 
   it('returns order usage grouped by resourceCd and supports resource filter', async () => {
@@ -655,11 +694,17 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(detailRes.statusCode).toBe(200);
     const detailBody = detailRes.json() as {
-      detail: { fseiban: string; dueDate: string | null; parts: Array<{ fhincd: string }> };
+      detail: {
+        fseiban: string;
+        dueDate: string | null;
+        parts: Array<{ fhincd: string; processes: Array<{ resourceCd: string; resourceNames: string[] }> }>;
+      };
     };
     expect(detailBody.detail.fseiban).toBe('A');
     expect(detailBody.detail.parts[0]).toHaveProperty('productNo');
     expect(detailBody.detail.parts.map((part) => part.fhincd).sort()).toEqual(['X', 'Z']);
+    const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.processes[0]?.resourceNames).toEqual(['1号機', '1号機-予備']);
   });
 
   it('filters out MH/SH parts and excluded resourceCds in due-management detail', async () => {
@@ -1008,8 +1053,8 @@ describe('Kiosk Production Schedule API', () => {
   it('builds global-rank proposal and returns explanation', async () => {
     await prisma.productionScheduleSeibanDueDate.createMany({
       data: [
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
       ]
     });
 
@@ -1044,8 +1089,8 @@ describe('Kiosk Production Schedule API', () => {
   it('auto-generates and persists due-management global rank', async () => {
     await prisma.productionScheduleSeibanDueDate.createMany({
       data: [
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
       ]
     });
 
@@ -1084,8 +1129,8 @@ describe('Kiosk Production Schedule API', () => {
   it('records learning events and returns learning report', async () => {
     await prisma.productionScheduleSeibanDueDate.createMany({
       data: [
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
-        { csvDashboardId: DASHBOARD_ID, location: 'Test', fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'A', dueDate: new Date('2026-03-10T00:00:00.000Z') },
+        { csvDashboardId: DASHBOARD_ID, fseiban: 'B', dueDate: new Date('2026-03-11T00:00:00.000Z') }
       ]
     });
 
@@ -1153,7 +1198,6 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleSeibanDueDate.create({
       data: {
         csvDashboardId: DASHBOARD_ID,
-        location: 'Test',
         fseiban: 'A',
         dueDate: new Date('2026-03-10T00:00:00.000Z')
       }
@@ -1319,6 +1363,57 @@ describe('Kiosk Production Schedule API', () => {
     expect(rowsAfter.find((r) => r.id === rowId)?.note).toBeNull();
   });
 
+  it('shares row note/processing/dueDate across locations', async () => {
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const rowId = (listRes.json() as { rows: Array<{ id: string }> }).rows[0].id;
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/note`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { note: '共有備考' }
+    });
+
+    const otherListAfterNote = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+    const noteRow = (otherListAfterNote.json() as { rows: Array<{ id: string; note?: string | null }> }).rows.find(
+      (row) => row.id === rowId
+    );
+    expect(noteRow?.note).toBe('共有備考');
+
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/processing`,
+      headers: { 'x-client-key': CLIENT_KEY_2 },
+      payload: { processingType: '塗装' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${rowId}/due-date`,
+      headers: { 'x-client-key': CLIENT_KEY_2 },
+      payload: { dueDate: '2026-02-15' }
+    });
+
+    const ownerView = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const sharedRow = (
+      ownerView.json() as { rows: Array<{ id: string; processingType?: string | null; dueDate?: string | null }> }
+    ).rows.find((row) => row.id === rowId);
+    expect(sharedRow?.processingType).toBe('塗装');
+    expect(sharedRow?.dueDate).toContain('2026-02-15');
+  });
+
   it('saves due-management part note and syncs all rows by fseiban+fhincd', async () => {
     const putRes = await app.inject({
       method: 'PUT',
@@ -1349,6 +1444,55 @@ describe('Kiosk Production Schedule API', () => {
     const rowX = listRows.filter((row) => row.rowData.FHINCD === 'X');
     expect(rowX.length).toBeGreaterThan(0);
     expect(rowX.every((row) => row.note === '部品備考同期テスト')).toBe(true);
+  });
+
+  it('shares due-management dueDate/note/processing across locations', async () => {
+    const dueDateRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-20' }
+    });
+    expect(dueDateRes.statusCode).toBe(200);
+
+    const partNoteRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/note',
+      headers: { 'x-client-key': CLIENT_KEY_2 },
+      payload: { note: '共有部品備考' }
+    });
+    expect(partNoteRes.statusCode).toBe(200);
+
+    const partProcessingRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
+      headers: { 'x-client-key': CLIENT_KEY_2 },
+      payload: { processingType: 'LSLH' }
+    });
+    expect(partProcessingRes.statusCode).toBe(200);
+
+    const summaryRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/summary',
+      headers: { 'x-client-key': CLIENT_KEY_2 }
+    });
+    expect(summaryRes.statusCode).toBe(200);
+    const summaryItem = (
+      summaryRes.json() as { summaries: Array<{ fseiban: string; dueDate?: string | null }> }
+    ).summaries.find((item) => item.fseiban === 'A');
+    expect(summaryItem?.dueDate).toContain('2026-03-20');
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const part = (
+      detailRes.json() as { detail: { parts: Array<{ fhincd: string; note: string | null; processingType: string | null }> } }
+    ).detail.parts.find((item) => item.fhincd === 'X');
+    expect(part?.note).toBe('共有部品備考');
+    expect(part?.processingType).toBe('LSLH');
   });
 
   it('verifies due-management access password (default/shared)', async () => {

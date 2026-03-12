@@ -39,6 +39,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
   }
 
+  // レート制限はここで全体に登録し、必要なルートのみ個別に除外する。
   await registerRateLimit(app);
   await registerSecurityHeaders(app);
   await app.register(websocket);
@@ -93,7 +94,5 @@ export async function buildServer(): Promise<FastifyInstance> {
   
   // ルートを登録
   await registerRoutes(app);
-  // 注意: レート制限プラグインは`routes/index.ts`と`routes/tools/index.ts`でサブルーター内に登録されているため、
-  // ここでは登録しない（重複登録を避けるため）
   return app;
 }

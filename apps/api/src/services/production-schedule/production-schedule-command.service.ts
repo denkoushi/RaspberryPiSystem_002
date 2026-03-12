@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
+import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
 const isValidProcessingType = async (locationKey: string, processingType: string): Promise<boolean> => {
@@ -31,33 +32,14 @@ export async function upsertProductionSchedulePartProcessingTypeByFhincd(params:
   }
 
   if (incomingType.length === 0) {
-    await prisma.productionSchedulePartProcessingType.deleteMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        fhincd
-      }
-    });
+    await sharedScheduleFieldsRepository.deletePartProcessingType(PRODUCTION_SCHEDULE_DASHBOARD_ID, fhincd);
     return { success: true, processingType: null };
   }
 
-  await prisma.productionSchedulePartProcessingType.upsert({
-    where: {
-      csvDashboardId_location_fhincd: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        fhincd
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      fhincd,
-      processingType: incomingType
-    },
-    update: {
-      processingType: incomingType
-    }
+  await sharedScheduleFieldsRepository.upsertPartProcessingType({
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    fhincd,
+    processingType: incomingType
   });
 
   return { success: true, processingType: incomingType };
@@ -213,7 +195,7 @@ export async function upsertProductionScheduleNote(params: {
   note: string;
   locationKey: string;
 }): Promise<{ success: true; note: string | null }> {
-  const { rowId, note, locationKey } = params;
+  const { rowId, note } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
@@ -223,49 +205,27 @@ export async function upsertProductionScheduleNote(params: {
   }
 
   const trimmedNote = note.slice(0, 100).trim();
-  const existing = await prisma.productionScheduleRowNote.findUnique({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    }
-  });
+  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
   if (trimmedNote.length === 0) {
     if (existing?.dueDate || (existing?.processingType && existing.processingType.trim().length > 0)) {
-      await prisma.productionScheduleRowNote.update({
-        where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
-        },
-        data: { note: '' }
+      await sharedScheduleFieldsRepository.upsertRowNote({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        note: '',
+        dueDate: existing?.dueDate ?? null,
+        processingType: existing?.processingType ?? null
       });
     } else {
-      await prisma.productionScheduleRowNote.deleteMany({
-        where: {
-          csvDashboardRowId: row.id,
-          location: locationKey
-        }
-      });
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
     }
     return { success: true, note: null };
   }
-  await prisma.productionScheduleRowNote.upsert({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      csvDashboardRowId: row.id,
-      location: locationKey,
-      note: trimmedNote
-    },
-    update: { note: trimmedNote }
+  await sharedScheduleFieldsRepository.upsertRowNote({
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    csvDashboardRowId: row.id,
+    note: trimmedNote,
+    dueDate: existing?.dueDate ?? null,
+    processingType: existing?.processingType ?? null
   });
 
   return { success: true, note: trimmedNote };
@@ -276,7 +236,7 @@ export async function upsertProductionScheduleDueDate(params: {
   dueDateText: string;
   locationKey: string;
 }): Promise<{ success: true; dueDate: Date | null }> {
-  const { rowId, dueDateText, locationKey } = params;
+  const { rowId, dueDateText } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
@@ -286,34 +246,20 @@ export async function upsertProductionScheduleDueDate(params: {
   }
 
   const dueDateValue = dueDateText.trim();
-  const existing = await prisma.productionScheduleRowNote.findUnique({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    }
-  });
+  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
 
   if (dueDateValue.length === 0) {
     const existingNote = existing?.note?.trim() ?? '';
     const existingProcessing = existing?.processingType?.trim() ?? '';
     if (existingNote.length === 0 && existingProcessing.length === 0) {
-      await prisma.productionScheduleRowNote.deleteMany({
-        where: {
-          csvDashboardRowId: row.id,
-          location: locationKey
-        }
-      });
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
     } else {
-      await prisma.productionScheduleRowNote.update({
-        where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
-        },
-        data: { dueDate: null }
+      await sharedScheduleFieldsRepository.upsertRowNote({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        note: existingNote,
+        dueDate: null,
+        processingType: existing?.processingType ?? null
       });
     }
     return { success: true, dueDate: null };
@@ -324,21 +270,12 @@ export async function upsertProductionScheduleDueDate(params: {
   }
 
   const dueDate = new Date(`${dueDateValue}T00:00:00.000Z`);
-  await prisma.productionScheduleRowNote.upsert({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      csvDashboardRowId: row.id,
-      location: locationKey,
-      note: existing?.note?.trim() ?? '',
-      dueDate
-    },
-    update: { dueDate }
+  await sharedScheduleFieldsRepository.upsertRowNote({
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    csvDashboardRowId: row.id,
+    note: existing?.note?.trim() ?? '',
+    dueDate,
+    processingType: existing?.processingType ?? null
   });
 
   return { success: true, dueDate };
@@ -374,55 +311,31 @@ export async function upsertProductionScheduleProcessingType(params: {
     });
   }
 
-  const existing = await prisma.productionScheduleRowNote.findUnique({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    }
-  });
+  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
 
   if (incomingType.length === 0) {
     const existingNote = existing?.note?.trim() ?? '';
     const existingDueDate = existing?.dueDate ?? null;
     if (existingNote.length === 0 && !existingDueDate) {
-      await prisma.productionScheduleRowNote.deleteMany({
-        where: {
-          csvDashboardRowId: row.id,
-          location: locationKey
-        }
-      });
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
     } else {
-      await prisma.productionScheduleRowNote.update({
-        where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
-        },
-        data: { processingType: null }
+      await sharedScheduleFieldsRepository.upsertRowNote({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        note: existingNote,
+        dueDate: existingDueDate,
+        processingType: null
       });
     }
     return { success: true, processingType: null };
   }
 
-  await prisma.productionScheduleRowNote.upsert({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      csvDashboardRowId: row.id,
-      location: locationKey,
-      note: existing?.note?.trim() ?? '',
-      dueDate: existing?.dueDate ?? null,
-      processingType: incomingType
-    },
-    update: { processingType: incomingType }
+  await sharedScheduleFieldsRepository.upsertRowNote({
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    csvDashboardRowId: row.id,
+    note: existing?.note?.trim() ?? '',
+    dueDate: existing?.dueDate ?? null,
+    processingType: incomingType
   });
 
   return { success: true, processingType: incomingType };

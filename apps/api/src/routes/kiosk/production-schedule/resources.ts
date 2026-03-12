@@ -9,7 +9,10 @@ export async function registerProductionScheduleResourcesRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule/resources', { config: { rateLimit: false } }, async (request) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
-    const resources = await listProductionScheduleResources();
-    return { resources };
+    const result = await listProductionScheduleResources();
+    return {
+      resources: result.resources,
+      resourceNameMap: result.resourceNameMap
+    };
   });
 }

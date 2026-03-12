@@ -136,4 +136,21 @@ describe('ProgressSyncFromCsvService', () => {
       })
     );
   });
+
+  it('progress列が無いCSVは同期しない', async () => {
+    await service.sync({
+      candidates: [
+        {
+          rowId: 'row-6',
+          rowData: { updatedAt: '2026/02/25 10:00' },
+          occurredAt: new Date('2026-02-25T00:00:00.000Z'),
+        },
+      ],
+      hasProgressColumn: false,
+    });
+
+    expect(prisma.productionScheduleProgress.findUnique).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
+    expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
+  });
 });

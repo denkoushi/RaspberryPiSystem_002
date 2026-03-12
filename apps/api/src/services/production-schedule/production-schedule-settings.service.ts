@@ -89,11 +89,15 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
 }
 
 export async function listProductionScheduleResourceCategorySettingsLocations(): Promise<string[]> {
-  const [locations, configLocations] = await Promise.all([
+  const [locations, configLocations, mappingLocations] = await Promise.all([
     prisma.clientDevice.findMany({
       select: { location: true }
     }),
     prisma.productionScheduleResourceCategoryConfig.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { location: true }
+    }),
+    prisma.productionScheduleResourceCodeMapping.findMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
       select: { location: true }
     })
@@ -108,6 +112,10 @@ export async function listProductionScheduleResourceCategorySettingsLocations():
     const value = normalizeLocation(row.location);
     if (value.length > 0) values.add(value);
   }
+  for (const row of mappingLocations) {
+    const value = normalizeLocation(row.location);
+    if (value.length > 0) values.add(value);
+  }
 
   return Array.from(values).sort((a, b) => a.localeCompare(b));
 }
@@ -115,6 +123,13 @@ export async function listProductionScheduleResourceCategorySettingsLocations():
 type ProcessingTypeOption = {
   code: string;
   label: string;
+  priority: number;
+  enabled: boolean;
+};
+
+export type ProductionScheduleResourceCodeMappingItem = {
+  fromResourceCd: string;
+  toResourceCd: string;
   priority: number;
   enabled: boolean;
 };
@@ -134,6 +149,33 @@ const normalizeProcessingTypeOptions = (options: ProcessingTypeOption[]): Proces
     });
   }
   return next.sort((a, b) => a.priority - b.priority || a.code.localeCompare(b.code));
+};
+
+const normalizeResourceCodeMappings = (
+  mappings: ProductionScheduleResourceCodeMappingItem[]
+): ProductionScheduleResourceCodeMappingItem[] => {
+  const unique = new Set<string>();
+  const next: ProductionScheduleResourceCodeMappingItem[] = [];
+  for (const mapping of mappings) {
+    const fromResourceCd = mapping.fromResourceCd.trim().toUpperCase();
+    const toResourceCd = mapping.toResourceCd.trim().toUpperCase();
+    if (!fromResourceCd || !toResourceCd) continue;
+    const key = `${fromResourceCd}__${toResourceCd}`;
+    if (unique.has(key)) continue;
+    unique.add(key);
+    next.push({
+      fromResourceCd,
+      toResourceCd,
+      priority: Number.isFinite(mapping.priority) ? mapping.priority : 999,
+      enabled: mapping.enabled
+    });
+  }
+  return next.sort(
+    (a, b) =>
+      a.fromResourceCd.localeCompare(b.fromResourceCd) ||
+      a.priority - b.priority ||
+      a.toResourceCd.localeCompare(b.toResourceCd)
+  );
 };
 
 export async function getProductionScheduleProcessingTypeOptions(location: string): Promise<{
@@ -193,6 +235,59 @@ export async function upsertProductionScheduleProcessingTypeOptions(params: {
   });
 
   return getProductionScheduleProcessingTypeOptions(location);
+}
+
+export async function getProductionScheduleResourceCodeMappings(location: string): Promise<{
+  location: string;
+  mappings: ProductionScheduleResourceCodeMappingItem[];
+}> {
+  const normalizedLocation = normalizeLocation(location);
+  const mappings = await prisma.productionScheduleResourceCodeMapping.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      location: normalizedLocation
+    },
+    orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
+    select: {
+      fromResourceCd: true,
+      toResourceCd: true,
+      priority: true,
+      enabled: true
+    }
+  });
+  return {
+    location: normalizedLocation,
+    mappings: normalizeResourceCodeMappings(mappings)
+  };
+}
+
+export async function upsertProductionScheduleResourceCodeMappings(params: {
+  location: string;
+  mappings: ProductionScheduleResourceCodeMappingItem[];
+}): Promise<{ location: string; mappings: ProductionScheduleResourceCodeMappingItem[] }> {
+  const location = normalizeLocation(params.location);
+  const mappings = normalizeResourceCodeMappings(params.mappings);
+  await prisma.$transaction(async (tx) => {
+    await tx.productionScheduleResourceCodeMapping.deleteMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location
+      }
+    });
+    if (mappings.length > 0) {
+      await tx.productionScheduleResourceCodeMapping.createMany({
+        data: mappings.map((mapping) => ({
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location,
+          fromResourceCd: mapping.fromResourceCd,
+          toResourceCd: mapping.toResourceCd,
+          priority: mapping.priority,
+          enabled: mapping.enabled
+        }))
+      });
+    }
+  });
+  return getProductionScheduleResourceCodeMappings(location);
 }
 
 export async function getDueManagementAccessPasswordSettings(location: string): Promise<{

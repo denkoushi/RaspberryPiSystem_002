@@ -23,6 +23,7 @@ import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionSche
 import { SeibanHistoryButton } from '../../components/kiosk/SeibanHistoryButton';
 import { PillButton } from '../../components/layout/PillButton';
 import { computeColumnWidths, type TableColumnDefinition } from '../../features/kiosk/columnWidth';
+import { buildResourceLocalRankMap } from '../../features/kiosk/productionSchedule/displayRank';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { moveHistoryItemLeft, moveHistoryItemRight } from '../../features/kiosk/productionSchedule/historyOrder';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
@@ -51,6 +52,7 @@ type NormalizedScheduleRow = {
   values: Record<string, string>;
   processingOrder: number | null;
   globalRank: number | null;
+  actualPerPieceMinutes: number | null;
   processingType: string | null;
   note: string | null;
   dueDate: string | null;
@@ -325,6 +327,7 @@ export function ProductionSchedulePage() {
       { key: 'FHINMEI', label: '品名' },
       { key: 'FSIGENCD', label: '資源CD' },
       { key: 'globalRank', label: '全体順位', dataType: 'number' },
+      { key: 'actualPerPieceMinutes', label: '実績基準時間(分/個)', dataType: 'number' },
       { key: 'processingOrder', label: '資源順番', dataType: 'number' },
       { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
@@ -353,6 +356,7 @@ export function ProductionSchedulePage() {
       const d = (r.rowData ?? {}) as ScheduleRowData;
       const processingOrder = typeof r.processingOrder === 'number' ? r.processingOrder : null;
       const globalRank = typeof r.globalRank === 'number' ? r.globalRank : null;
+      const actualPerPieceMinutes = typeof r.actualPerPieceMinutes === 'number' ? r.actualPerPieceMinutes : null;
       const processingType = typeof r.processingType === 'string' && r.processingType.trim().length > 0 ? r.processingType : null;
       const note = typeof r.note === 'string' && r.note.trim().length > 0 ? r.note.trim() : null;
       const dueDate = typeof r.dueDate === 'string' && r.dueDate.trim().length > 0 ? r.dueDate.trim() : null;
@@ -362,6 +366,7 @@ export function ProductionSchedulePage() {
         FHINMEI: String(d.FHINMEI ?? ''),
         FSIGENCD: String(d.FSIGENCD ?? ''),
         globalRank: globalRank ? String(globalRank) : '',
+        actualPerPieceMinutes: actualPerPieceMinutes !== null ? actualPerPieceMinutes.toFixed(2) : '',
         processingOrder: processingOrder ? String(processingOrder) : '',
         processingType: processingType ?? '',
         FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
@@ -375,6 +380,7 @@ export function ProductionSchedulePage() {
         values,
         processingOrder,
         globalRank,
+        actualPerPieceMinutes,
         processingType,
         note,
         dueDate
@@ -386,6 +392,47 @@ export function ProductionSchedulePage() {
       return !fhincd.startsWith('MH') && !fhincd.startsWith('SH');
     });
   }, [scheduleQuery.data?.rows]);
+
+  const isResourceRankFilterActive = normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
+  const isSeibanScopedRankActive =
+    normalizedActiveQueries.length > 0 &&
+    (selectedResourceCategory !== undefined || (showGrindingResources && showCuttingResources));
+  const isDisplayRankContext = isResourceRankFilterActive || isSeibanScopedRankActive;
+
+  const displayRows = useMemo<NormalizedScheduleRow[]>(() => {
+    if (!isDisplayRankContext) {
+      return normalizedRows;
+    }
+
+    const resourceLocalRankMap = buildResourceLocalRankMap(
+      normalizedRows.map((row) => ({
+        id: row.id,
+        globalRank: row.globalRank,
+        fseiban: String(row.data.FSEIBAN ?? ''),
+        productNo: String(row.data.ProductNo ?? ''),
+        fkojun: String(row.data.FKOJUN ?? '')
+      }))
+    );
+
+    const rowsWithDisplayRank = normalizedRows.map((row) => {
+      const resourceLocalRank = resourceLocalRankMap.get(row.id);
+      if (resourceLocalRank === undefined) return { row, sortKey: Number.MAX_SAFE_INTEGER };
+      return {
+        row: {
+          ...row,
+          values: {
+            ...row.values,
+            globalRank: String(resourceLocalRank)
+          }
+        },
+        sortKey: resourceLocalRank
+      };
+    });
+
+    return rowsWithDisplayRank
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map(({ row }) => row);
+  }, [isDisplayRankContext, normalizedRows]);
 
   const { completedCount, incompleteCount } = useMemo(() => {
     const completed = normalizedRows.filter((row) => row.isCompleted).length;
@@ -407,12 +454,31 @@ export function ProductionSchedulePage() {
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
     { pauseRefetch }
   );
+  const resourceNameMap = useMemo(
+    () => resourcesQuery.data?.resourceNameMap ?? {},
+    [resourcesQuery.data?.resourceNameMap]
+  );
+  const getResourceTooltip = useCallback(
+    (resourceCd: string) => {
+      const names = resourceNameMap[resourceCd] ?? [];
+      return names.length > 0 ? names.join('\n') : undefined;
+    },
+    [resourceNameMap]
+  );
+  const getResourceAriaLabel = useCallback(
+    (resourceCd: string, suffix?: string) => {
+      const names = resourceNameMap[resourceCd] ?? [];
+      const base = names.length > 0 ? `${resourceCd}: ${names.join(' / ')}` : resourceCd;
+      return suffix ? `${base} ${suffix}` : base;
+    },
+    [resourceNameMap]
+  );
   const visibleResourceCds = useMemo(() => {
-    return filterResourceCdsByCategory(resourcesQuery.data ?? [], {
+    return filterResourceCdsByCategory(resourcesQuery.data?.resources ?? [], {
       showGrinding: showGrindingResources,
       showCutting: showCuttingResources
     });
-  }, [resourcesQuery.data, showCuttingResources, showGrindingResources]);
+  }, [resourcesQuery.data?.resources, showCuttingResources, showGrindingResources]);
 
   const prioritizedVisibleResourceCds = useMemo(
     () =>
@@ -431,8 +497,8 @@ export function ProductionSchedulePage() {
     ? Math.floor((containerWidth - itemSeparatorWidth) / 2)
     : Math.floor(containerWidth);
   const widthSampleRows = useMemo(
-    () => normalizedRows.slice(0, 80).map((row) => row.values),
-    [normalizedRows]
+    () => displayRows.slice(0, 80).map((row) => row.values),
+    [displayRows]
   );
   const itemColumnWidths = useMemo(() => {
     return computeColumnWidths({
@@ -455,14 +521,14 @@ export function ProductionSchedulePage() {
 
   const rowPairs = useMemo(() => {
     if (!isTwoColumn) {
-      return normalizedRows.map((row) => [row, undefined] as const);
+      return displayRows.map((row) => [row, undefined] as const);
     }
     const pairs: Array<[NormalizedScheduleRow, NormalizedScheduleRow | undefined]> = [];
-    for (let i = 0; i < normalizedRows.length; i += 2) {
-      pairs.push([normalizedRows[i], normalizedRows[i + 1]]);
+    for (let i = 0; i < displayRows.length; i += 2) {
+      pairs.push([displayRows[i], displayRows[i + 1]]);
     }
     return pairs;
-  }, [normalizedRows, isTwoColumn]);
+  }, [displayRows, isTwoColumn]);
 
   type SearchStateOperation =
     | { type: 'add' | 'remove'; value: string }
@@ -828,6 +894,8 @@ export function ProductionSchedulePage() {
               <PillButton
                 onClick={() => toggleResourceCd(resourceCd)}
                 className={`${colorClasses.border} ${isActive ? colorClasses.bgStrong : colorClasses.bgSoft} ${colorClasses.text}`}
+                title={getResourceTooltip(resourceCd)}
+                aria-label={getResourceAriaLabel(resourceCd)}
               >
                 {resourceCd}
               </PillButton>
@@ -836,6 +904,8 @@ export function ProductionSchedulePage() {
                 className={`${colorClasses.border} ${
                   isAssignedActive ? colorClasses.bgStrong : colorClasses.bgSoft
                 } ${colorClasses.text}`}
+                title={getResourceTooltip(resourceCd)}
+                aria-label={getResourceAriaLabel(resourceCd, '割当')}
               >
                 {resourceCd} 割当
               </PillButton>
@@ -867,13 +937,19 @@ export function ProductionSchedulePage() {
         })}
       </div>
 
+      {isDisplayRankContext ? (
+        <p className="text-xs font-semibold text-white/70">
+          全体順位は表示対象内の表示順位として 1 から再採番しています（保存値は変更しません）。
+        </p>
+      ) : null}
+
       {!hasQuery ? (
         <p className="text-sm font-semibold text-white/80">検索してください。</p>
       ) : scheduleQuery.isLoading ? (
         <p className="text-sm font-semibold text-white/80">読み込み中...</p>
       ) : scheduleQuery.isError ? (
         <p className="text-sm font-semibold text-rose-300">取得に失敗しました。</p>
-      ) : normalizedRows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <p className="text-sm font-semibold text-white/80">該当するデータはありません。</p>
       ) : (
         <div className="flex-1 overflow-auto">

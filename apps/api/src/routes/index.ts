@@ -21,15 +21,13 @@ import { registerProductionScheduleSettingsRoutes } from './production-schedule-
 
 /**
  * すべてのルートを登録
- * 
- * 注意: レート制限プラグインは完全に削除しました。
- * 429エラーが発生し続けていたため、レート制限プラグインが原因かどうかを確認するために削除しました。
+ *
+ * 注記: レート制限プラグインの登録は `app.ts` 側で一元実施する。
+ * ルート単位で無効化が必要な場合のみ、各ハンドラで `config.rateLimit = false` を使う。
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(
     async (subApp) => {
-      // レート制限プラグインは削除済み（429エラー対策）
-      
       await registerSystemRoutes(subApp);
       await registerAuthRoutes(subApp);
       
