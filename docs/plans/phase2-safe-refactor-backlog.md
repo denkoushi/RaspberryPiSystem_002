@@ -11,6 +11,10 @@ last-verified: 2026-03-12
 
 Phase1（DebugSink境界導入・直書きデバッグ送信の隔離・コメント整合）はデプロイ完了・実機検証完了。Run ID: Pi5 `20260312-185557-20154`、raspberrypi4 `20260312-191202-22145`、raspi4-robodrill01 `20260312-192115-25675`。Pi3 は除外。全チェックリスト項目合格。
 
+## P2-1 完了（2026-03-12）
+
+P2-1（imports/schedule Route Thin化）はデプロイ完了・実機検証完了。`ImportScheduleAdminService` / `import-schedule-policy` / `import-schedule-error-mapper` を新設。Run ID: Pi5 `20260312-202321-18350`、raspberrypi4 `20260312-203452-25781`、raspi4-robodrill01 `20260312-204436-15585`。Pi3 は除外。全チェックリスト項目合格。
+
 ## 目的
 
 Phase1 で導入した `DebugSink` 境界とコメント整合を前提に、次段の根治対象を安全ゲート付きで段階実行する。

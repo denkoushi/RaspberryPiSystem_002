@@ -3,77 +3,11 @@ import { validate as validateCron } from 'node-cron';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
-import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
-import { GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
-import { writeDebugLog } from '../../lib/debug-log.js';
-
-const MIN_CSV_IMPORT_INTERVAL_MINUTES = 5;
-
-function hasCsvDashboardTarget(schedule: {
-  targets?: Array<{
-    type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours';
-    source: string;
-  }>;
-}): boolean {
-  return Array.isArray(schedule.targets) && schedule.targets.some((target) => target.type === 'csvDashboards');
-}
-
-function isGmailCsvDashboardSchedule(
-  schedule: { provider?: 'dropbox' | 'gmail'; targets?: Array<{ type: string }> },
-  fallbackProvider: 'local' | 'dropbox' | 'gmail'
-): boolean {
-  const provider = schedule.provider ?? fallbackProvider;
-  return provider === 'gmail' && hasCsvDashboardTarget(schedule as {
-    targets?: Array<{
-      type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours';
-      source: string;
-    }>;
-  });
-}
-
-function extractMinuteField(schedule: string): string | null {
-  const parts = schedule.trim().split(/\s+/);
-  if (parts.length !== 5) return null;
-  return parts[0] ?? null;
-}
-
-function detectGmailScheduleMinuteCollisions(config: Awaited<ReturnType<typeof BackupConfigLoader.load>>): string[] {
-  const collisions = new Map<string, string[]>();
-  for (const schedule of config.csvImports ?? []) {
-    if (!schedule.enabled || !isGmailCsvDashboardSchedule(schedule, config.storage.provider)) {
-      continue;
-    }
-    const minute = extractMinuteField(schedule.schedule);
-    if (!minute) continue;
-    const ids = collisions.get(minute) ?? [];
-    ids.push(schedule.id);
-    collisions.set(minute, ids);
-  }
-  return Array.from(collisions.entries())
-    .filter(([, ids]) => ids.length >= 2)
-    .map(([minute, ids]) => `Gmail csvDashboards schedules overlap at minute pattern "${minute}": ${ids.join(', ')}`);
-}
-
-function extractIntervalMinutes(schedule: string): number | null {
-  const parts = schedule.trim().split(/\s+/);
-  if (parts.length !== 5) {
-    return null;
-  }
-  const [minute, hour, dayOfMonth, month] = parts;
-  if (hour !== '*' || dayOfMonth !== '*' || month !== '*') {
-    return null;
-  }
-  if (minute === '*') {
-    return 1;
-  }
-  if (minute.startsWith('*/')) {
-    const interval = parseInt(minute.slice(2), 10);
-    return Number.isInteger(interval) ? interval : null;
-  }
-  return null;
-}
+import { ImportScheduleAdminService } from '../../services/imports/import-schedule-admin.service.js';
+import {
+  extractIntervalMinutes,
+  MIN_CSV_IMPORT_INTERVAL_MINUTES,
+} from '../../services/imports/import-schedule-policy.js';
 
 const csvImportTargetSchema = z.object({
   type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours']),
@@ -229,109 +163,39 @@ const csvImportScheduleUpdateSchema = z.object({
 
 export async function registerImportScheduleRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
+  const scheduleAdminService = new ImportScheduleAdminService();
 
   // === CSVインポートスケジュール管理API ===
   // スケジュール一覧取得
   app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
-    const config = await BackupConfigLoader.load();
     return {
-      schedules: config.csvImports || [],
+      schedules: await scheduleAdminService.listSchedules(),
     };
   });
 
   // スケジュール追加
   app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
     const body = csvImportScheduleSchema.parse(request.body ?? {});
-
-    const config = await BackupConfigLoader.load();
-
-    // IDの重複チェック
-    if (config.csvImports?.some((s) => s.id === body.id)) {
-      throw new ApiError(409, `スケジュールIDが既に存在します: ${body.id}`);
-    }
-
-    // スケジュールを追加
-    const newSchedule = {
-      id: body.id,
-      name: body.name,
-      provider: body.provider,
-      targets: body.targets, // 新形式
-      employeesPath: body.employeesPath, // 旧形式（後方互換）
-      itemsPath: body.itemsPath, // 旧形式（後方互換）
-      schedule: body.schedule,
-      enabled: body.enabled ?? true,
-      replaceExisting: body.replaceExisting ?? false,
-      autoBackupAfterImport: body.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
-      retryConfig: body.retryConfig,
-    };
-
-    config.csvImports = [...(config.csvImports || []), newSchedule];
-    const warnings = detectGmailScheduleMinuteCollisions(config);
-    await BackupConfigLoader.save(config);
-
-    // スケジューラーを再読み込み
-    const { getCsvImportScheduler } = await import('../../services/imports/csv-import-scheduler.js');
-    const scheduler = getCsvImportScheduler();
-    await scheduler.reload();
+    const { schedule, warnings } = await scheduleAdminService.createSchedule(body);
 
     request.log.info({ scheduleId: body.id }, '[CSV Import Schedule] Schedule added');
-    return { schedule: newSchedule, warnings };
+    return { schedule, warnings };
   });
 
   // スケジュール更新
   app.put('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
     const body = csvImportScheduleUpdateSchema.parse(request.body ?? {});
-
-    const config = await BackupConfigLoader.load();
-    const scheduleIndex = config.csvImports?.findIndex((s) => s.id === id);
-
-    if (scheduleIndex === undefined || scheduleIndex === -1) {
-      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
-    }
-
-    // スケジュールを更新
-    const existingSchedule = config.csvImports![scheduleIndex];
-    const updatedSchedule = {
-      ...existingSchedule,
-      ...body,
-      id, // IDは変更不可
-      // autoBackupAfterImportが指定されていない場合は既存の値を保持
-      autoBackupAfterImport: body.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
-    };
-
-    config.csvImports![scheduleIndex] = updatedSchedule;
-    const warnings = detectGmailScheduleMinuteCollisions(config);
-    await BackupConfigLoader.save(config);
-
-    // スケジューラーを再読み込み
-    const { getCsvImportScheduler } = await import('../../services/imports/csv-import-scheduler.js');
-    const scheduler = getCsvImportScheduler();
-    await scheduler.reload();
+    const { schedule, warnings } = await scheduleAdminService.updateSchedule(id, body);
 
     request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule updated');
-    return { schedule: updatedSchedule, warnings };
+    return { schedule, warnings };
   });
 
   // スケジュール削除
   app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
-
-    const config = await BackupConfigLoader.load();
-    const scheduleIndex = config.csvImports?.findIndex((s) => s.id === id);
-
-    if (scheduleIndex === undefined || scheduleIndex === -1) {
-      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
-    }
-
-    // スケジュールを削除
-    config.csvImports = config.csvImports!.filter((s) => s.id !== id);
-    await BackupConfigLoader.save(config);
-
-    // スケジューラーを再読み込み
-    const { getCsvImportScheduler } = await import('../../services/imports/csv-import-scheduler.js');
-    const scheduler = getCsvImportScheduler();
-    await scheduler.reload();
+    await scheduleAdminService.deleteSchedule(id);
 
     request.log.info({ scheduleId: id }, '[CSV Import Schedule] Schedule deleted');
     return { message: 'スケジュールを削除しました' };
@@ -340,89 +204,15 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   // 手動実行
   app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
     const { id } = request.params as { id: string };
-    // #region agent log
-    void emitDebugEvent({ location: 'imports.ts:1248', message: 'manual run request received', data: { scheduleId: id, reqId: request.id ?? null }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
-    // #endregion
-    // #region agent log
-    await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1', location: 'imports.ts:1249', message: 'manual run request received (file log)', data: { scheduleId: id, reqId: request.id ?? null }, timestamp: Date.now() });
-    // #endregion
-
-    // スケジュールが存在するか確認
-    const config = await BackupConfigLoader.load();
-    const schedule = config.csvImports?.find((s) => s.id === id);
-    // #region agent log
-    void emitDebugEvent({ location: 'imports.ts:1252', message: 'loaded csv import schedules', data: { scheduleId: id, hasCsvImports: Array.isArray(config.csvImports), csvImportCount: config.csvImports?.length ?? 0, scheduleIds: (config.csvImports ?? []).map((s) => s.id) }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' });
-    // #endregion
-    // #region agent log
-    await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H2', location: 'imports.ts:1253', message: 'loaded csv import schedules (file log)', data: { scheduleId: id, hasCsvImports: Array.isArray(config.csvImports), csvImportCount: config.csvImports?.length ?? 0, scheduleIds: (config.csvImports ?? []).map((s) => s.id), backupConfigPath: process.env.BACKUP_CONFIG_PATH ?? null }, timestamp: Date.now() });
-    // #endregion
-
-    if (!schedule) {
-      // #region agent log
-      void emitDebugEvent({ location: 'imports.ts:1255', message: 'schedule not found', data: { scheduleId: id }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H1' });
-      // #endregion
-      // #region agent log
-      await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H1', location: 'imports.ts:1256', message: 'schedule not found (file log)', data: { scheduleId: id }, timestamp: Date.now() });
-      // #endregion
-      throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
-    }
-
-    const { getCsvImportScheduler } = await import('../../services/imports/csv-import-scheduler.js');
-    const scheduler = getCsvImportScheduler();
-    // #region agent log
-    void emitDebugEvent({ location: 'imports.ts:1260', message: 'about to run scheduler import', data: { scheduleId: id, hasScheduler: !!scheduler }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
-    // #endregion
-    // #region agent log
-    await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1261', message: 'about to run scheduler import (file log)', data: { scheduleId: id, hasScheduler: !!scheduler }, timestamp: Date.now() });
-    // #endregion
-
     try {
-      const summary = await scheduler.runImport(id);
-      // #region agent log
-      void emitDebugEvent({ location: 'imports.ts:1262', message: 'scheduler.runImport succeeded', data: { scheduleId: id }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
-      // #endregion
-      // #region agent log
-      await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1263', message: 'scheduler.runImport succeeded (file log)', data: { scheduleId: id }, timestamp: Date.now() });
-      // #endregion
+      const summary = await scheduleAdminService.runSchedule(id, {
+        requestId: request.id ?? null,
+      });
       request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
       return { message: 'インポートを実行しました', summary };
     } catch (error) {
-      // #region agent log
-      void emitDebugEvent({ location: 'imports.ts:1266', message: 'scheduler.runImport failed', data: { scheduleId: id, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) }, sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H4' });
-      // #endregion
-      // #region agent log
-      await writeDebugLog({ sessionId: 'debug-session', runId: 'run2', hypothesisId: 'H4', location: 'imports.ts:1267', message: 'scheduler.runImport failed (file log)', data: { scheduleId: id, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) }, timestamp: Date.now() });
-      // #endregion
       request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
-
-      if (error instanceof GmailReauthRequiredError || isInvalidGrantMessage(error instanceof Error ? error.message : undefined)) {
-        throw new ApiError(401, 'Gmailの再認可が必要です。管理コンソールの「OAuth認証」を実行してください。');
-      }
-
-      // ApiErrorの場合はstatusCodeを尊重して再スロー
-      if (error instanceof ApiError) {
-        throw error;
-      }
-
-      if (error instanceof Error) {
-        // 既に実行中の場合は409で返す
-        if (
-          error.message.includes('CSV import is already running') ||
-          error.message.includes('already running')
-        ) {
-          throw new ApiError(409, `インポートは既に実行中です: ${id}`);
-        }
-        // スケジュールが見つからないエラーの場合のみ404
-        // NOTE: 取り込み側（CSVダッシュボード列不足など）も「見つかりません」を含むため、誤判定しない
-        if (
-          error.message.includes('スケジュールが見つかりません') ||
-          error.message.toLowerCase().includes('schedule not found')
-        ) {
-          throw new ApiError(404, `スケジュールが見つかりません: ${id}`);
-        }
-        throw new ApiError(500, `インポート実行に失敗しました: ${error.message}`);
-      }
-      throw new ApiError(500, 'インポート実行に失敗しました');
+      throw error;
     }
   });
 }
