@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-12）
 
+- **✅ P2-1 imports/schedule Route Thin化・デプロイ完了・実機検証完了**: `ImportScheduleAdminService` / `import-schedule-policy` / `import-schedule-error-mapper` を新設し、ルート層を認可・検証・HTTP応答に限定。API契約不変。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260312-202321-18350` / `20260312-203452-25781` / `20260312-204436-15585`）、Pi3除外。**実機検証**: 全チェックリスト項目合格。詳細は [phase2-safe-refactor-backlog.md](./plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 - **✅ Phase1 DebugSink境界導入・デプロイ完了・実機検証完了**: 直書き `127.0.0.1:7242` 呼び出しを `emitDebugEvent()` 境界に置換（9ファイル）。既定 no-op で挙動不変。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Pi3除外）。**実機検証**: 全チェックリスト項目合格。**知見**: ローカル E2E smoke 実行時は `prisma db seed` を事前実行すること（ClientDevice が必要）。詳細は [phase2-safe-refactor-backlog.md](./plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-11）
