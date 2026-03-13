@@ -204,6 +204,22 @@ category: knowledge-base
   - **旧UIへ戻す**: `inventory.yml` の `web_kiosk_due_mgmt_layout_v2_enabled` を `"false"` に変更し、Pi5 へ再デプロイ（web 再ビルドが走る）。
 - **知見**: VITE_ 系環境変数はビルド時に埋め込まれるため、変更時は web コンテナの再ビルドが必須。`VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` と同様の経路（docker.env.j2 → docker-compose build args → Dockerfile.web）で追加した。
 
+## 納期管理UI Phase1（左ペイン開閉式・詳細パネル重複削除）デプロイ・実機検証（2026-03-13）
+
+- **目的**: 納期管理V2レイアウトの左ペインを開閉式にし、詳細パネルから製番・機種の重複表示を削除して視認性を向上させる。
+- **仕様**:
+  - 左ペイン3セクション（今日判断候補・今日の計画順・全体ランキング）を `CollapsibleSection` / `CollapsibleCard` で開閉可能に
+  - `ProductionScheduleDueManagementPage` で開閉状態を管理（`expandedSections`）
+  - `DueManagementDetailPanel` から製番・機種を削除（左ペインのカードで既に表示されているため重複を排除）
+- **実装ファイル**:
+  - 新規: `CollapsibleSection.tsx`, `CollapsibleCard.tsx`
+  - 変更: `DueManagementLeftRail.tsx`, `DueManagementDetailPanel.tsx`, `ProductionScheduleDueManagementPage.tsx`
+- **デプロイ**:
+  - ブランチ `feat/due-management-ui-phase1-collapsible`
+  - Pi5 → raspberrypi4（kensakuMain）→ raspi4-robodrill01 の順に1台ずつ実行、約20分
+- **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・actual-hours/stats）、サイネージAPI、backup.json（15K）、マイグレーション（50件 up to date）、Pi4×2/Pi3サービス稼働を確認。実機で左ペイン開閉・詳細パネル表示・主要操作が正常に動作することを確認。動作確認OK。
+- **知見**: 開閉状態はページコンテナで一元管理し、子コンポーネントへコールバックで伝播する構成にすると状態の一貫性を保ちやすい。共通の `CollapsibleSection` / `CollapsibleCard` を切り出しておくと他セクションへの適用が容易。
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化

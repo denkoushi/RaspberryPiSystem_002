@@ -1,6 +1,9 @@
 import { formatDueDate } from '../../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../../features/kiosk/productionSchedule/machineName';
 
+import { CollapsibleCard } from './CollapsibleCard';
+import { CollapsibleSection } from './CollapsibleSection';
+
 import type {
   ProductionScheduleDueManagementSummaryItem,
   ProductionScheduleDueManagementTriageItem,
@@ -46,6 +49,18 @@ type DueManagementLeftRailProps = {
   sharedHistory: string[];
   onRemoveFromHistory: (fseiban: string) => void;
   onSelectFseiban: (fseiban: string) => void;
+  sectionOpen: {
+    triage: boolean;
+    globalRank: boolean;
+    dailyPlan: boolean;
+  };
+  onToggleSection: (section: 'triage' | 'globalRank' | 'dailyPlan') => void;
+  triageCardOpenBySeiban: Record<string, boolean>;
+  onToggleTriageCard: (fseiban: string) => void;
+  globalRankCardOpenBySeiban: Record<string, boolean>;
+  onToggleGlobalRankCard: (fseiban: string) => void;
+  dailyPlanCardOpenBySeiban: Record<string, boolean>;
+  onToggleDailyPlanCard: (fseiban: string) => void;
 };
 
 export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
@@ -55,9 +70,11 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
         <h2 className="text-sm font-semibold text-white">製番一覧（納期管理）</h2>
       </header>
       <div className="h-[calc(100%-52px)] overflow-auto px-3 py-3">
-        <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-white">今日判断候補（トリアージ）</h3>
+        <CollapsibleSection
+          title="今日判断候補（トリアージ）"
+          isOpen={props.sectionOpen.triage}
+          onToggle={() => props.onToggleSection('triage')}
+          actions={
             <button
               type="button"
               className="rounded bg-slate-700 px-2 py-1 text-[11px] text-white hover:bg-slate-600"
@@ -65,7 +82,8 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             >
               {props.showSelectedOnly ? '全件表示' : '選択済みのみ'}
             </button>
-          </div>
+          }
+        >
           {props.triageLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
           {props.triageError ? <p className="text-[11px] text-rose-300">候補取得に失敗しました</p> : null}
           {!props.triageLoading && props.filteredTriageCandidates.length === 0 ? (
@@ -80,16 +98,28 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                     ? 'border-amber-300/60 bg-amber-500/20 text-amber-100'
                     : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-100';
               const zoneLabel = item.zone === 'danger' ? '危険' : item.zone === 'caution' ? '注意' : '余裕';
-              const isActive = props.selectedFseiban === item.fseiban;
+              const isOpen = props.triageCardOpenBySeiban[item.fseiban] ?? props.selectedFseiban === item.fseiban;
+              const machineName = normalizeMachineName(item.machineName) || '-';
               return (
-                <div key={item.fseiban} className={`rounded border p-2 ${zoneStyle} ${isActive ? 'ring-1 ring-white/70' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <button type="button" className="text-left" onClick={() => props.onSelectFseiban(item.fseiban)}>
+                <CollapsibleCard
+                  key={item.fseiban}
+                  isOpen={isOpen}
+                  onToggle={() => {
+                    props.onSelectFseiban(item.fseiban);
+                    props.onToggleTriageCard(item.fseiban);
+                  }}
+                  className={`${zoneStyle} ${props.selectedFseiban === item.fseiban ? 'ring-1 ring-white/70' : ''}`}
+                  header={
+                    <>
                       <div className="text-xs font-semibold">
                         {zoneLabel} / <span className="font-mono">{item.fseiban}</span>
                       </div>
-                      <div className="text-[10px] opacity-90">納期: {formatDueDate(item.dueDate)}</div>
-                    </button>
+                      <div className="mt-0.5 text-[10px] opacity-90">
+                        {machineName} / 納期: {formatDueDate(item.dueDate)}
+                      </div>
+                    </>
+                  }
+                  headerActions={
                     <button
                       type="button"
                       onClick={() => props.onToggleTriageSelection(item.fseiban)}
@@ -102,7 +132,8 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                     >
                       {props.selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
                     </button>
-                  </div>
+                  }
+                >
                   <div className="mt-1 flex flex-wrap gap-1">
                     {item.reasons.map((reason) => (
                       <span key={`${item.fseiban}-${reason.code}`} className="rounded bg-black/20 px-2 py-0.5 text-[10px]">
@@ -110,15 +141,18 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                       </span>
                     ))}
                   </div>
-                </div>
+                </CollapsibleCard>
               );
             })}
           </div>
-        </div>
+        </CollapsibleSection>
 
-        <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-white">全体ランキング（親）</h3>
+        <CollapsibleSection
+          title="全体ランキング（親）"
+          isOpen={props.sectionOpen.globalRank}
+          onToggle={() => props.onToggleSection('globalRank')}
+          actions={
+            <>
             {props.canSelectTargetLocation ? (
               <select
                 value={props.targetLocation}
@@ -140,7 +174,9 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             >
               {props.autoGeneratePending ? '自動生成中...' : '自動生成して保存'}
             </button>
-          </div>
+            </>
+          }
+        >
           <p className="mb-2 text-[10px] text-white/60">
             拠点全体の継続順位です。今日の計画順（子）はこの並びを起点に作成されます。
           </p>
@@ -160,20 +196,30 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           ) : null}
           <div className="space-y-2">
             {props.globalRankItems.map((item, index) => {
-              const isActive = props.selectedFseiban === item.fseiban;
+              const isOpen = props.globalRankCardOpenBySeiban[item.fseiban] ?? props.selectedFseiban === item.fseiban;
+              const machineName = normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-';
               return (
-                <button
+                <CollapsibleCard
                   key={`global-rank-${item.fseiban}`}
-                  type="button"
-                  className={`w-full rounded border p-2 text-left text-white hover:bg-slate-700/60 ${
-                    isActive ? 'border-cyan-300 bg-cyan-500/10' : 'border-white/20 bg-slate-800/60'
+                  isOpen={isOpen}
+                  onToggle={() => {
+                    props.onSelectFseiban(item.fseiban);
+                    props.onToggleGlobalRankCard(item.fseiban);
+                  }}
+                  className={`text-white hover:bg-slate-700/60 ${
+                    props.selectedFseiban === item.fseiban ? 'border-cyan-300 bg-cyan-500/10' : 'border-white/20 bg-slate-800/60'
                   }`}
-                  onClick={() => props.onSelectFseiban(item.fseiban)}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold">
-                      {index + 1}. <span className="font-mono">{item.fseiban}</span>
-                    </div>
+                  header={
+                    <>
+                      <div className="text-xs font-semibold">
+                        {index + 1}. <span className="font-mono">{item.fseiban}</span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-white/75">
+                        {machineName} / 納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
+                      </div>
+                    </>
+                  }
+                  headerActions={
                     <div className="flex gap-1">
                       {item.isInTodayTriage ? (
                         <span className="rounded bg-blue-500/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-100">今日対象</span>
@@ -184,24 +230,25 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                         <span className="rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">引継ぎ</span>
                       ) : null}
                     </div>
-                  </div>
-                  <div className="text-[10px] text-white/75">{normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-'}</div>
-                  <div className="text-[10px] text-white/75">納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}</div>
+                  }
+                >
                   <div className="mt-1 text-[10px] text-blue-100/90">
                     score: {props.proposalBySeiban.get(item.fseiban)?.score.toFixed(3) ?? '-'}
                   </div>
                   <div className="text-[10px] text-blue-100/90">
                     実績カバー率: {Math.round((props.proposalBySeiban.get(item.fseiban)?.coverageRatio ?? 0) * 100)}%
                   </div>
-                </button>
+                </CollapsibleCard>
               );
             })}
           </div>
-        </div>
+        </CollapsibleSection>
 
-        <div className="mb-3 rounded border border-white/20 bg-white/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-white">今日の計画順（子：全体ランキングから切り出し）</h3>
+        <CollapsibleSection
+          title="今日の計画順（子：全体ランキングから切り出し）"
+          isOpen={props.sectionOpen.dailyPlan}
+          onToggle={() => props.onToggleSection('dailyPlan')}
+          actions={
             <button
               type="button"
               className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
@@ -210,31 +257,43 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             >
               {props.dailyPlanPending ? '保存中...' : '順序を保存'}
             </button>
-          </div>
+          }
+        >
           <p className="mb-2 text-[10px] text-white/60">今日対象として選んだ製番を、当日の事情で前後させる実行順です。</p>
           {props.dailyPlanLoading ? <p className="text-[11px] text-white/70">計画順を読み込み中...</p> : null}
           {!props.dailyPlanLoading && props.orderedPlanItems.length === 0 ? (
             <p className="text-[11px] text-white/60">トリアージで製番を選択すると計画順を編集できます</p>
           ) : null}
           <div className="space-y-2">
-            {props.orderedPlanItems.map((item, index) => (
-              <div key={item.fseiban} className="rounded border border-white/20 bg-slate-800/70 p-2 text-white">
-                <div className="flex items-center justify-between gap-2">
-                  <button type="button" className="text-left" onClick={() => props.onSelectFseiban(item.fseiban)}>
-                    <div className="text-xs font-semibold">
-                      {index + 1}. <span className="font-mono">{item.fseiban}</span>
-                      {item.meta.isCarryover ? (
-                        <span className="ml-2 rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">引継ぎ</span>
-                      ) : null}
-                    </div>
-                    <div className="text-[10px] text-white/75">
-                      {normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-'}
-                    </div>
-                    <div className="text-[10px] text-white/75">
-                      納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
-                    </div>
-                  </button>
-                  <div className="flex gap-1">
+            {props.orderedPlanItems.map((item, index) => {
+              const isOpen = props.dailyPlanCardOpenBySeiban[item.fseiban] ?? props.selectedFseiban === item.fseiban;
+              const machineName = normalizeMachineName(item.summary?.machineName ?? item.triage?.machineName ?? null) || '-';
+              return (
+                <CollapsibleCard
+                  key={item.fseiban}
+                  isOpen={isOpen}
+                  onToggle={() => {
+                    props.onSelectFseiban(item.fseiban);
+                    props.onToggleDailyPlanCard(item.fseiban);
+                  }}
+                  className="border-white/20 bg-slate-800/70 text-white"
+                  header={
+                    <>
+                      <div className="text-xs font-semibold">
+                        {index + 1}. <span className="font-mono">{item.fseiban}</span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-white/75">
+                        {machineName} / 納期: {formatDueDate(item.summary?.dueDate ?? item.triage?.dueDate ?? null)}
+                      </div>
+                    </>
+                  }
+                  headerActions={
+                    item.meta.isCarryover ? (
+                      <span className="rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">引継ぎ</span>
+                    ) : null
+                  }
+                >
+                  <div className="flex justify-end gap-1">
                     <button
                       type="button"
                       className="rounded bg-slate-700 px-2 py-1 text-[10px] hover:bg-slate-600 disabled:opacity-50"
@@ -252,11 +311,11 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                       ↓
                     </button>
                   </div>
-                </div>
-              </div>
-            ))}
+                </CollapsibleCard>
+              );
+            })}
           </div>
-        </div>
+        </CollapsibleSection>
 
         <div className="mb-3 flex gap-2">
           <input
