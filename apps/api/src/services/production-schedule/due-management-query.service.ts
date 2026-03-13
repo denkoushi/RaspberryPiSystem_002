@@ -170,6 +170,14 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
     medianPerPieceMinutes: row.medianPerPieceMinutes,
     p75PerPieceMinutes: row.p75PerPieceMinutes
   }));
+  const summaryFetchedFeatureCountsByLocation = featureRowsWithLocation.reduce<Record<string, number>>((acc, row) => {
+    const key = row.location.trim() || '__empty__';
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  // #region agent log
+  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H3',location:'due-management-query.service.ts:listDueManagementSummaries:184',message:'actual-hours feature rows fetched for due summary',data:{locationKey,actualHoursLocationCandidates,summaryRows:summaryRows.length,featureRowsFetched:featureRowsWithLocation.length,featureRowsSelected:featureRows.length,resourceCodeMappings:resourceCodeMappings.length,summaryFetchedFeatureCountsByLocation},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
   if (featureRows.length > 0 && summaryRows.length > 0) {
     const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
@@ -339,6 +347,14 @@ export async function getDueManagementSeibanDetail(params: {
     medianPerPieceMinutes: row.medianPerPieceMinutes,
     p75PerPieceMinutes: row.p75PerPieceMinutes
   }));
+  const detailFetchedFeatureCountsByLocation = detailFeatureRowsWithLocation.reduce<Record<string, number>>((acc, row) => {
+    const key = row.location.trim() || '__empty__';
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  // #region agent log
+  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:355',message:'actual-hours feature rows fetched for seiban detail',data:{locationKey,fseiban,actualHoursLocationCandidates,detailRows:rows.length,featureRowsFetched:detailFeatureRowsWithLocation.length,featureRowsSelected:detailFeatureRows.length,resourceCodeMappings:detailResourceCodeMappings.length,detailFetchedFeatureCountsByLocation},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const detailFeatureResolver = createActualHoursFeatureResolver({
     features: detailFeatureRows,
     resourceCodeMappings: detailResourceCodeMappings,
@@ -470,6 +486,10 @@ export async function getDueManagementSeibanDetail(params: {
       currentPriorityRank: currentPriorityMap.get(part.fhincd) ?? null,
       suggestedPriorityRank: index + 1
     }));
+  const detailMatchedParts = parts.filter((part) => part.actualPerPieceMinutes !== null).length;
+  // #region agent log
+  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:491',message:'actual-hours resolved result for seiban detail',data:{locationKey,fseiban,totalParts:parts.length,matchedParts:detailMatchedParts,unmatchedParts:parts.length-detailMatchedParts},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const machineName = rows.find((row) => {
     const normalized = row.fhincd?.trim().toUpperCase() ?? '';

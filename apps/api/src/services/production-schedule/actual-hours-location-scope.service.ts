@@ -14,15 +14,26 @@ export const isActualHoursSharedFallbackEnabled = (): boolean =>
 
 export const resolveActualHoursLocationCandidates = (actorLocation: string): string[] => {
   const normalizedActorLocation = actorLocation.trim();
+  const sharedFallbackEnabled = isActualHoursSharedFallbackEnabled();
   if (!normalizedActorLocation) {
+    // #region agent log
+    void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H1',location:'actual-hours-location-scope.service.ts:resolveActualHoursLocationCandidates:18',message:'location candidates resolved (empty actor location)',data:{actorLocation,normalizedActorLocation,sharedFallbackEnabled,candidates:[GLOBAL_SHARED_LOCATION_KEY]},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return [GLOBAL_SHARED_LOCATION_KEY];
   }
 
-  if (!isActualHoursSharedFallbackEnabled() || normalizedActorLocation === GLOBAL_SHARED_LOCATION_KEY) {
+  if (!sharedFallbackEnabled || normalizedActorLocation === GLOBAL_SHARED_LOCATION_KEY) {
+    // #region agent log
+    void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H1',location:'actual-hours-location-scope.service.ts:resolveActualHoursLocationCandidates:24',message:'location candidates resolved (actor only)',data:{actorLocation,normalizedActorLocation,sharedFallbackEnabled,candidates:[normalizedActorLocation]},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return [normalizedActorLocation];
   }
 
-  return [normalizedActorLocation, GLOBAL_SHARED_LOCATION_KEY];
+  const candidates = [normalizedActorLocation, GLOBAL_SHARED_LOCATION_KEY];
+  // #region agent log
+  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H1',location:'actual-hours-location-scope.service.ts:resolveActualHoursLocationCandidates:31',message:'location candidates resolved (actor + shared)',data:{actorLocation,normalizedActorLocation,sharedFallbackEnabled,candidates},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return candidates;
 };
 
 export function pickActualHoursRowsByLocationPriority<T extends FeatureLikeRow>(
