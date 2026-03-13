@@ -2,6 +2,10 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
+import {
+  pickActualHoursRowsByLocationPriority,
+  resolveActualHoursLocationCandidates
+} from './actual-hours-location-scope.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
@@ -125,13 +129,15 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
   });
   const dueDateMap = new Map(dueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
 
-  const [featureRows, resourceCodeMappings] = await Promise.all([
+  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
+  const [featureRowsWithLocation, resourceCodeMappings] = await Promise.all([
     prisma.productionScheduleActualHoursFeature.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey
+        location: { in: actualHoursLocationCandidates }
       },
       select: {
+        location: true,
         fhincd: true,
         resourceCd: true,
         sampleCount: true,
@@ -154,6 +160,16 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
       }
     })
   ]);
+  const featureRows = pickActualHoursRowsByLocationPriority(
+    featureRowsWithLocation,
+    actualHoursLocationCandidates
+  ).map((row) => ({
+    fhincd: row.fhincd,
+    resourceCd: row.resourceCd,
+    sampleCount: row.sampleCount,
+    medianPerPieceMinutes: row.medianPerPieceMinutes,
+    p75PerPieceMinutes: row.p75PerPieceMinutes
+  }));
   const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
   if (featureRows.length > 0 && summaryRows.length > 0) {
     const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
@@ -282,13 +298,16 @@ export async function getDueManagementSeibanDetail(params: {
   const currentPriorityMap = new Map(priorityRows.map((row) => [row.fhincd, row.priorityRank] as const));
   const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
   const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
-  const [detailFeatureRows, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] = await Promise.all([
+  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
+  const [detailFeatureRowsWithLocation, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] =
+    await Promise.all([
     prisma.productionScheduleActualHoursFeature.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey
+        location: { in: actualHoursLocationCandidates }
       },
       select: {
+        location: true,
         fhincd: true,
         resourceCd: true,
         medianPerPieceMinutes: true,
@@ -311,6 +330,15 @@ export async function getDueManagementSeibanDetail(params: {
     }),
     getResourceGroupCandidatesByResourceCds(rows.map((row) => row.fsigencd ?? ''))
   ]);
+  const detailFeatureRows = pickActualHoursRowsByLocationPriority(
+    detailFeatureRowsWithLocation,
+    actualHoursLocationCandidates
+  ).map((row) => ({
+    fhincd: row.fhincd,
+    resourceCd: row.resourceCd,
+    medianPerPieceMinutes: row.medianPerPieceMinutes,
+    p75PerPieceMinutes: row.p75PerPieceMinutes
+  }));
   const detailFeatureResolver = createActualHoursFeatureResolver({
     features: detailFeatureRows,
     resourceCodeMappings: detailResourceCodeMappings,

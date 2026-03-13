@@ -115,7 +115,11 @@ const envSchema = z.object({
   KIOSK_SUPPORT_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(3),
   KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60 * 1000),
   KIOSK_POWER_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(1),
-  KIOSK_POWER_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60 * 1000)
+  KIOSK_POWER_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60 * 1000),
+  ACTUAL_HOURS_SHARED_FALLBACK_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  )
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
     return;

@@ -5,6 +5,10 @@ import {
 
 import { prisma } from '../../lib/prisma.js';
 import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
+import {
+  pickActualHoursRowsByLocationPriority,
+  resolveActualHoursLocationCandidates
+} from './actual-hours-location-scope.service.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
@@ -313,13 +317,15 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       return typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
     })
     .filter((resourceCd) => resourceCd.length > 0);
-  const [featureRows, resourceCodeMappings, resourceGroupCandidatesByResourceCd] = await Promise.all([
+  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
+  const [featureRowsWithLocation, resourceCodeMappings, resourceGroupCandidatesByResourceCd] = await Promise.all([
     prisma.productionScheduleActualHoursFeature.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey
+        location: { in: actualHoursLocationCandidates }
       },
       select: {
+        location: true,
         fhincd: true,
         resourceCd: true,
         medianPerPieceMinutes: true,
@@ -342,6 +348,15 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     }),
     getResourceGroupCandidatesByResourceCds(rowResourceCds)
   ]);
+  const featureRows = pickActualHoursRowsByLocationPriority(
+    featureRowsWithLocation,
+    actualHoursLocationCandidates
+  ).map((row) => ({
+    fhincd: row.fhincd,
+    resourceCd: row.resourceCd,
+    medianPerPieceMinutes: row.medianPerPieceMinutes,
+    p75PerPieceMinutes: row.p75PerPieceMinutes
+  }));
   const featureResolver = createActualHoursFeatureResolver({
     features: featureRows,
     resourceCodeMappings,

@@ -4,6 +4,7 @@ import {
   listProductionScheduleResources,
   listProductionScheduleRows,
 } from '../production-schedule-query.service.js';
+import { resolveActualHoursLocationCandidates } from '../actual-hours-location-scope.service.js';
 import { prisma } from '../../../lib/prisma.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
@@ -24,9 +25,21 @@ vi.mock('../../../lib/prisma.js', () => ({
   },
 }));
 
+vi.mock('../actual-hours-location-scope.service.js', async () => {
+  const actual =
+    await vi.importActual<typeof import('../actual-hours-location-scope.service.js')>(
+      '../actual-hours-location-scope.service.js'
+    );
+  return {
+    ...actual,
+    resolveActualHoursLocationCandidates: vi.fn((locationKey: string) => [locationKey]),
+  };
+});
+
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveActualHoursLocationCandidates).mockImplementation((locationKey: string) => [locationKey]);
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceCodeMapping.findMany).mockResolvedValue([]);
@@ -135,6 +148,7 @@ describe('production-schedule-query.service', () => {
   it('一覧取得で実績基準時間を資源CDマッピング経由で解決できる', async () => {
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
       {
+        location: 'kiosk-1',
         fhincd: 'X',
         resourceCd: 'R02',
         medianPerPieceMinutes: 4.2,
@@ -189,6 +203,7 @@ describe('production-schedule-query.service', () => {
   it('一覧取得で実績基準時間をGroupCD経由で解決できる', async () => {
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
       {
+        location: 'kiosk-1',
         fhincd: 'X',
         resourceCd: 'R03',
         medianPerPieceMinutes: 5.1,
@@ -236,6 +251,114 @@ describe('production-schedule-query.service', () => {
     });
 
     expect(result.rows[0]?.actualPerPieceMinutes).toBe(5.1);
+  });
+
+  it('一覧取得でactor locationに特徴量が無い場合はshared fallbackを使う', async () => {
+    vi.mocked(resolveActualHoursLocationCandidates).mockReturnValue(['kiosk-1', 'shared-global-rank']);
+    vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
+      {
+        location: 'shared-global-rank',
+        fhincd: 'X',
+        resourceCd: 'R01',
+        medianPerPieceMinutes: 6.6,
+        p75PerPieceMinutes: null,
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+    });
+
+    expect(result.rows[0]?.actualPerPieceMinutes).toBe(6.6);
+    expect(prisma.productionScheduleActualHoursFeature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          location: { in: ['kiosk-1', 'shared-global-rank'] },
+        }),
+      })
+    );
+  });
+
+  it('一覧取得でactor/shared双方に特徴量がある場合はactorを優先する', async () => {
+    vi.mocked(resolveActualHoursLocationCandidates).mockReturnValue(['kiosk-1', 'shared-global-rank']);
+    vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
+      {
+        location: 'shared-global-rank',
+        fhincd: 'X',
+        resourceCd: 'R01',
+        medianPerPieceMinutes: 9.9,
+        p75PerPieceMinutes: null,
+      },
+      {
+        location: 'kiosk-1',
+        fhincd: 'X',
+        resourceCd: 'R01',
+        medianPerPieceMinutes: 4.4,
+        p75PerPieceMinutes: null,
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+    });
+
+    expect(result.rows[0]?.actualPerPieceMinutes).toBe(4.4);
   });
 });
 

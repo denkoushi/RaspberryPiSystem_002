@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-11
+last-verified: 2026-03-13
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -122,6 +122,27 @@ category: knowledge-base
   - `production-schedule-query.service.test.ts` に GroupCD経由解決ケースを追加。
   - `pnpm --filter @raspi-system/api build`
   - `pnpm --filter @raspi-system/web build`
+
+## 実績基準時間のlocation優先+sharedフォールバック導入（2026-03-13）
+
+- **背景**:
+  - `actualPerPieceMinutes` は `x-client-key -> clientDevice.location` で解決先が分かれるため、`kensakuMain` にのみ特徴量がある状態では `RoboDrill01` / `Pi5` / `Mac` で `null` になっていた。
+  - 同一製番でも端末ごとに表示有無が変わり、現場確認で混乱が発生した。
+- **設計**:
+  - 共通ポリシー `actual-hours-location-scope.service` を追加し、候補locationを `actor location -> shared-global-rank` の順で返す。
+  - Feature Flag `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED`（既定 `false`）で段階導入を可能化。
+  - 同一 `(fhincd, resourceCd)` が複数locationに存在する場合は actor側を優先採用。
+- **適用範囲**:
+  - `GET /api/kiosk/production-schedule`
+  - `GET /api/kiosk/production-schedule/due-management/summary`
+  - `GET /api/kiosk/production-schedule/due-management/seiban/:fseiban`
+- **運用**:
+  - 段階導入時は `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED=true` を対象環境で有効化。
+  - 影響があれば `false` に戻すだけで従来挙動（actor locationのみ参照）に即時切替可能。
+- **回帰テスト**:
+  - actorのみ参照（fallback無効）
+  - actor欠損時のshared参照（fallback有効）
+  - actor/shared重複時のactor優先
 
 ## P2-3 Web Split デプロイ・実機検証（2026-03-13）
 
