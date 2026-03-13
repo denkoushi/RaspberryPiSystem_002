@@ -3,17 +3,12 @@ import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  useCompleteKioskProductionScheduleRow,
   useKioskProductionSchedule,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleSearchState,
-  useUpdateKioskProductionScheduleOrder,
-  useUpdateKioskProductionScheduleNote,
-  useUpdateKioskProductionScheduleDueDate,
-  useUpdateKioskProductionScheduleProcessing,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
@@ -29,7 +24,9 @@ import { moveHistoryItemLeft, moveHistoryItemRight } from '../../features/kiosk/
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
+import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleDerivedRows } from '../../features/kiosk/productionSchedule/useProductionScheduleDerivedRows';
+import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import {
   normalizeHistoryList,
   useProductionScheduleQueryParams
@@ -105,12 +102,6 @@ export function ProductionSchedulePage() {
   } = searchConditions;
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
-  const [editingNoteRowId, setEditingNoteRowId] = useState<string | null>(null);
-  const [editingNoteValue, setEditingNoteValue] = useState('');
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [editingDueDateRowId, setEditingDueDateRowId] = useState<string | null>(null);
-  const [editingDueDateValue, setEditingDueDateValue] = useState('');
-  const [isDueDatePickerOpen, setIsDueDatePickerOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -134,54 +125,25 @@ export function ProductionSchedulePage() {
     showCuttingResources,
     history
   });
-  const completeMutation = useCompleteKioskProductionScheduleRow();
-  const orderMutation = useUpdateKioskProductionScheduleOrder();
-  const processingMutation = useUpdateKioskProductionScheduleProcessing();
-  const noteMutation = useUpdateKioskProductionScheduleNote();
-  const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
-  const isWriting =
-    completeMutation.isPending ||
-    orderMutation.isPending ||
-    processingMutation.isPending ||
-    noteMutation.isPending ||
-    dueDateMutation.isPending ||
-    searchStateMutation.isPending;
-
-  // NOTE: 人間の連続操作中に「書き込み完了→即ポーリング復帰→次のクリック」と衝突しやすいため、
-  //       書き込み完了後に短いクールダウンを入れて衝突確率を下げる。
-  const WRITE_REFETCH_COOLDOWN_MS = 2500;
-  const [isWriteCooldown, setIsWriteCooldown] = useState(false);
-  const prevIsWritingRef = useRef(false);
-  const cooldownTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    const prevIsWriting = prevIsWritingRef.current;
-    prevIsWritingRef.current = isWriting;
-
-    if (isWriting) {
-      // 書き込み中は常に pause。クールダウンタイマーが残っていたら止める。
-      if (cooldownTimerRef.current) {
-        window.clearTimeout(cooldownTimerRef.current);
-        cooldownTimerRef.current = null;
-      }
-      setIsWriteCooldown(false);
-      return;
-    }
-
-    // 書き込みが「終わった瞬間」にだけクールダウン開始
-    if (prevIsWriting && !isWriting) {
-      setIsWriteCooldown(true);
-      if (cooldownTimerRef.current) {
-        window.clearTimeout(cooldownTimerRef.current);
-      }
-      cooldownTimerRef.current = window.setTimeout(() => {
-        cooldownTimerRef.current = null;
-        setIsWriteCooldown(false);
-      }, WRITE_REFETCH_COOLDOWN_MS);
-    }
-  }, [isWriting]);
-
-  const pauseRefetch = isWriting || isWriteCooldown;
+  const {
+    completePending,
+    orderPending,
+    processingPending,
+    notePending,
+    dueDatePending,
+    isWriting,
+    isWriteCooldown,
+    pauseRefetch,
+    updateOrder,
+    updateProcessing,
+    saveNote,
+    commitDueDate: commitDueDateMutation,
+    completeRow
+  } = useProductionScheduleMutations({
+    isSearchStateWriting: searchStateMutation.isPending,
+    noteMaxLength: NOTE_MAX_LENGTH
+  });
 
   const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
@@ -340,6 +302,25 @@ export function ProductionSchedulePage() {
     searchStateQuery,
     searchStateMutation
   });
+  const {
+    editingNoteValue,
+    isNoteModalOpen,
+    editingDueDateValue,
+    isDueDatePickerOpen,
+    startNoteEdit,
+    commitNote,
+    closeNoteModal,
+    openDueDatePicker,
+    commitDueDate,
+    closeDueDatePicker
+  } = useMutationFeedback({
+    onCommitNote: ({ rowId, note, onSettled }) => {
+      saveNote({ rowId, note, onSettled });
+    },
+    onCommitDueDate: ({ rowId, dueDate, onSettled }) => {
+      commitDueDateMutation({ rowId, dueDate, onSettled });
+    }
+  });
 
   const applySearch = (value: string) => {
     const trimmed = value.trim();
@@ -359,70 +340,6 @@ export function ProductionSchedulePage() {
     resetSearchConditions();
   };
 
-  const startNoteEdit = (rowId: string, currentNote: string | null) => {
-    setEditingNoteRowId(rowId);
-    setEditingNoteValue(currentNote ?? '');
-    setIsNoteModalOpen(true);
-  };
-
-  const normalizeDueDateInput = (value: string | null) => {
-    if (!value) return '';
-    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
-    return match ? match[1] : '';
-  };
-
-  const openDueDatePicker = (rowId: string, currentDueDate: string | null) => {
-    setEditingDueDateRowId(rowId);
-    setEditingDueDateValue(normalizeDueDateInput(currentDueDate));
-    setIsDueDatePickerOpen(true);
-  };
-
-  const closeDueDatePicker = () => {
-    setIsDueDatePickerOpen(false);
-    setEditingDueDateRowId(null);
-    setEditingDueDateValue('');
-  };
-
-  const commitDueDate = (nextValue: string) => {
-    if (!editingDueDateRowId || dueDateMutation.isPending) return;
-    setEditingDueDateValue(nextValue);
-    dueDateMutation.mutate(
-      { rowId: editingDueDateRowId, dueDate: nextValue },
-      {
-        onSettled: () => {
-          closeDueDatePicker();
-        }
-      }
-    );
-  };
-
-  const saveNote = (rowId: string, nextValue?: string) => {
-    const valueSource = typeof nextValue === 'string' ? nextValue : editingNoteValue;
-    const value = valueSource.replace(/\r?\n/g, '').trim().slice(0, NOTE_MAX_LENGTH);
-    if (noteMutation.isPending) return;
-    noteMutation.mutate(
-      { rowId, note: value },
-      {
-        onSettled: () => {
-          setEditingNoteRowId(null);
-          setEditingNoteValue('');
-          setIsNoteModalOpen(false);
-        }
-      }
-    );
-  };
-
-  const cancelNoteEdit = () => {
-    setEditingNoteRowId(null);
-    setEditingNoteValue('');
-    setIsNoteModalOpen(false);
-  };
-
-  const commitNote = (nextValue: string) => {
-    if (!editingNoteRowId) return;
-    setEditingNoteValue(nextValue);
-    saveNote(editingNoteRowId, nextValue);
-  };
 
   const toggleHistoryQuery = (value: string) => {
     setSearchConditions((prev) => {
@@ -521,12 +438,11 @@ export function ProductionSchedulePage() {
   };
 
   const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
-    const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-    orderMutation.mutate({ rowId, payload: { resourceCd, orderNumber } });
+    updateOrder({ rowId, resourceCd, nextValue });
   };
 
   const handleProcessingChange = (rowId: string, nextValue: string) => {
-    processingMutation.mutate({ rowId, processingType: nextValue });
+    updateProcessing(rowId, nextValue);
   };
 
   const openKeyboard = () => {
@@ -546,13 +462,13 @@ export function ProductionSchedulePage() {
     const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: ['kiosk-production-schedule-order-usage'] });
     if (cursorDebugEnabled) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H3',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:start',message:'complete click',data:{rowId,pauseRefetch,isWriting,isWriteCooldown,isFetchingSchedule,fetchingCountSchedule,fetchingCountOrderUsage,completePending:completeMutation.isPending},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H3',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:start',message:'complete click',data:{rowId,pauseRefetch,isWriting,isWriteCooldown,isFetchingSchedule,fetchingCountSchedule,fetchingCountOrderUsage,completePending},timestamp:Date.now()})}).catch(()=>{});
       // #endregion agent log
     }
 
     // Optimistic Updateにより、UIは即座に更新される
     try {
-      await completeMutation.mutateAsync(rowId);
+      await completeRow(rowId);
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
         // #region agent log
@@ -593,7 +509,7 @@ export function ProductionSchedulePage() {
         onToggleGrindingResources={toggleGrindingResources}
         showCuttingResources={showCuttingResources}
         onToggleCuttingResources={toggleCuttingResources}
-        disabled={scheduleQuery.isFetching || completeMutation.isPending}
+        disabled={scheduleQuery.isFetching || completePending}
         isFetching={scheduleQuery.isFetching}
         showFetching={hasQuery}
       />
@@ -643,11 +559,11 @@ export function ProductionSchedulePage() {
           itemColumnWidths={itemColumnWidths}
           dueDateColumnWidth={DUE_DATE_COLUMN_WIDTH}
           noteColumnWidth={NOTE_COLUMN_WIDTH}
-          completePending={completeMutation.isPending}
-          orderPending={orderMutation.isPending}
-          processingPending={processingMutation.isPending}
-          notePending={noteMutation.isPending}
-          dueDatePending={dueDateMutation.isPending}
+          completePending={completePending}
+          orderPending={orderPending}
+          processingPending={processingPending}
+          notePending={notePending}
+          dueDatePending={dueDatePending}
           processingTypeOptions={processingTypeOptionsQuery.data ?? []}
           getAvailableOrders={getAvailableOrders}
           handleComplete={handleComplete}
@@ -670,7 +586,7 @@ export function ProductionSchedulePage() {
         isOpen={isNoteModalOpen}
         value={editingNoteValue}
         maxLength={NOTE_MAX_LENGTH}
-        onCancel={cancelNoteEdit}
+        onCancel={closeNoteModal}
         onCommit={commitNote}
       />
       <KioskKeyboardModal

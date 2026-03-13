@@ -106,6 +106,24 @@ category: knowledge-base
 - **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。生産スケジュール画面の資源CDフィルタ・登録製番・検索履歴・テーブル表示が従来どおり動作することを実機で確認
 - **知見**: 表示派生ロジックを純粋関数（`displayRowDerivation`）に抽出するとテスト容易性と責務分離が向上。Container責務を縮小し、query/mutationオーケストレーション中心に寄せる構成は保守性向上に寄与
 
+## P2-4 Web Split Part 2（mutation・副作用分離、2026-03-13）
+
+- **対象**: `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx` の mutation・副作用
+- **実装**:
+  - `useProductionScheduleMutations.ts` を追加し、`complete/order/processing/note/dueDate` の mutation 実行と pending 集約、書き込みクールダウン制御を分離
+  - `useMutationFeedback.ts` を追加し、備考/納期モーダルの開閉・入力値管理・onSettled 後のクリーンアップを分離
+  - `ProductionSchedulePage.tsx` は query とイベント委譲中心へ縮退
+  - テスト追加: `useProductionScheduleMutations.test.ts` / `useMutationFeedback.test.ts`
+- **ローカル検証**:
+  - `pnpm --filter @raspi-system/web lint` ✅
+  - `pnpm --filter @raspi-system/web test` ✅
+  - `pnpm --filter @raspi-system/web build` ✅
+- **トラブルシューティング**:
+  - `pnpm test:e2e:smoke` は失敗（`/api/tools/loans/active` ほかが 500）
+  - 根因は実装不整合ではなく、ローカル PostgreSQL 未起動で `localhost:5432` に到達できない実行環境要因（`PrismaClientInitializationError`）
+  - 対処: DB 起動後に E2E スモークを再実行
+- **知見**: UI 層は「状態表示とイベント委譲」に限定し、mutation 実行と副作用管理を hook 境界に分離すると、差分確認と回帰テストが局所化される
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
