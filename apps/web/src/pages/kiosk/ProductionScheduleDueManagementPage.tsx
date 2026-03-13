@@ -19,10 +19,28 @@ import {
   useUpdateKioskProductionScheduleDueManagementTriageSelection,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
+import { DueManagementActiveContextBar } from '../../components/kiosk/dueManagement/DueManagementActiveContextBar';
+import { DueManagementDetailPanel } from '../../components/kiosk/dueManagement/DueManagementDetailPanel';
+import { DueManagementLayoutShell } from '../../components/kiosk/dueManagement/DueManagementLayoutShell';
+import { DueManagementLeftRail } from '../../components/kiosk/dueManagement/DueManagementLeftRail';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
-import { deriveGlobalRankFlags, movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
+import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
+import {
+  buildDailyPlanMetaBySeiban,
+  buildGlobalRankItems,
+  buildOrderedFhincds,
+  buildOrderedParts,
+  buildOrderedPlanItems,
+  buildPartsByFhincd,
+  buildProposalBySeiban,
+  buildSummaryBySeiban,
+  buildTriageBySeiban,
+  buildTriageCandidates,
+  buildVisibleSummaries,
+  resolveNextSelectedFseiban
+} from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -31,6 +49,7 @@ const NOTE_MAX_LENGTH = 100;
 const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
 const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
 const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
+const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED === 'true';
 
 const normalizeHistoryList = (items: string[]) => {
   const unique = new Set<string>();
@@ -97,27 +116,14 @@ export function ProductionScheduleDueManagementPage() {
   const [editingNotePart, setEditingNotePart] = useState<{ fhincd: string; note: string } | null>(null);
   const [orderedFhincds, setOrderedFhincds] = useState<string[]>([]);
   const detail = detailQuery.data;
-  type DuePart = NonNullable<typeof detailQuery.data>['parts'][number];
-  type SummaryItem = NonNullable<typeof summaryQuery.data>[number];
   const sharedHistory = useMemo(
     () => normalizeHistoryList(searchStateQuery.data?.state?.history ?? []),
     [searchStateQuery.data?.state?.history]
   );
 
-  const summaryBySeiban = useMemo(() => {
-    const map = new Map<string, SummaryItem>();
-    (summaryQuery.data ?? []).forEach((item) => map.set(item.fseiban, item));
-    return map;
-  }, [summaryQuery.data]);
-  const visibleSummaries = useMemo(
-    () => sharedHistory.map((fseiban) => summaryBySeiban.get(fseiban)).filter((item): item is SummaryItem => Boolean(item)),
-    [sharedHistory, summaryBySeiban]
-  );
-  const triageCandidates = useMemo(() => {
-    const triage = triageQuery.data;
-    if (!triage) return [];
-    return [...triage.zones.danger, ...triage.zones.caution, ...triage.zones.safe];
-  }, [triageQuery.data]);
+  const summaryBySeiban = useMemo(() => buildSummaryBySeiban(summaryQuery.data), [summaryQuery.data]);
+  const visibleSummaries = useMemo(() => buildVisibleSummaries(sharedHistory, summaryBySeiban), [sharedHistory, summaryBySeiban]);
+  const triageCandidates = useMemo(() => buildTriageCandidates(triageQuery.data), [triageQuery.data]);
   const selectedSet = useMemo(
     () => new Set(triageQuery.data?.selectedFseibans ?? []),
     [triageQuery.data?.selectedFseibans]
@@ -127,11 +133,7 @@ export function ProductionScheduleDueManagementPage() {
     [showSelectedOnly, triageCandidates, selectedSet]
   );
 
-  const triageBySeiban = useMemo(() => {
-    const map = new Map<string, (typeof triageCandidates)[number]>();
-    triageCandidates.forEach((item) => map.set(item.fseiban, item));
-    return map;
-  }, [triageCandidates]);
+  const triageBySeiban = useMemo(() => buildTriageBySeiban(triageCandidates), [triageCandidates]);
 
   useEffect(() => {
     const base = isDailyPlanDirty
@@ -156,72 +158,36 @@ export function ProductionScheduleDueManagementPage() {
     triageQuery.data?.selectedFseibans
   ]);
 
-  const dailyPlanItemMetaBySeiban = useMemo(() => {
-    const map = new Map<string, { isInTodayTriage: boolean; isCarryover: boolean }>();
-    (dailyPlanQuery.data?.items ?? []).forEach((item) => {
-      map.set(item.fseiban, { isInTodayTriage: item.isInTodayTriage, isCarryover: item.isCarryover });
-    });
-    return map;
-  }, [dailyPlanQuery.data?.items]);
+  const dailyPlanItemMetaBySeiban = useMemo(() => buildDailyPlanMetaBySeiban(dailyPlanQuery.data), [dailyPlanQuery.data]);
 
   const orderedPlanItems = useMemo(
     () =>
-      orderedPlanFseibans
-        .map((fseiban) => ({
-          fseiban,
-          summary: summaryBySeiban.get(fseiban) ?? null,
-          triage: triageBySeiban.get(fseiban) ?? null,
-          meta: dailyPlanItemMetaBySeiban.get(fseiban) ?? {
-            isInTodayTriage: selectedSet.has(fseiban),
-            isCarryover: !selectedSet.has(fseiban)
-          }
-        }))
-        .filter((item) => Boolean(item.summary || item.triage || item.meta.isCarryover)),
+      buildOrderedPlanItems({
+        orderedPlanFseibans,
+        selectedSet,
+        summaryBySeiban,
+        triageBySeiban,
+        dailyPlanMetaBySeiban: dailyPlanItemMetaBySeiban
+      }),
     [dailyPlanItemMetaBySeiban, orderedPlanFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
 
   const globalRankItems = useMemo(
     () =>
-      (globalRankQuery.data?.orderedFseibans ?? []).map((fseiban) => {
-        const summary = summaryBySeiban.get(fseiban) ?? null;
-        const triage = triageBySeiban.get(fseiban) ?? null;
-        const dailyPlanMeta = dailyPlanItemMetaBySeiban.get(fseiban) ?? null;
-        const flags = deriveGlobalRankFlags({
-          isInTodayTriage: dailyPlanMeta?.isInTodayTriage ?? selectedSet.has(fseiban),
-          isCarryover: dailyPlanMeta?.isCarryover ?? !selectedSet.has(fseiban)
-        });
-        return {
-          fseiban,
-          summary,
-          triage,
-          isInTodayTriage: flags.isInTodayTriage,
-          isCarryover: flags.isCarryover,
-          isOutOfToday: flags.isOutOfToday
-        };
+      buildGlobalRankItems({
+        orderedFseibans: globalRankQuery.data?.orderedFseibans,
+        selectedSet,
+        summaryBySeiban,
+        triageBySeiban,
+        dailyPlanMetaBySeiban: dailyPlanItemMetaBySeiban
       }),
     [dailyPlanItemMetaBySeiban, globalRankQuery.data?.orderedFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
 
-  const proposalBySeiban = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        score: number;
-        reasons: string[];
-        estimatedActualMinutes: number;
-        coverageRatio: number;
-      }
-    >();
-    (globalRankProposalQuery.data?.items ?? []).forEach((item) => {
-      map.set(item.fseiban, {
-        score: item.score,
-        reasons: item.breakdown.reasons,
-        estimatedActualMinutes: item.estimatedActualMinutes,
-        coverageRatio: item.coverageRatio
-      });
-    });
-    return map;
-  }, [globalRankProposalQuery.data?.items]);
+  const proposalBySeiban = useMemo(
+    () => buildProposalBySeiban(globalRankProposalQuery.data),
+    [globalRankProposalQuery.data]
+  );
 
   const autoGenerateGlobalRank = async () => {
     await autoGenerateGlobalRankMutation.mutateAsync({
@@ -262,44 +228,25 @@ export function ProductionScheduleDueManagementPage() {
   };
 
   useEffect(() => {
-    const selectableSet = new Set<string>([
-      ...orderedPlanFseibans,
-      ...triageCandidates.map((item) => item.fseiban),
-      ...visibleSummaries.map((item) => item.fseiban)
-    ]);
-    if (selectedFseiban && selectableSet.has(selectedFseiban)) {
-      return;
+    const nextSelected = resolveNextSelectedFseiban({
+      selectedFseiban,
+      orderedPlanFseibans,
+      triageCandidates,
+      visibleSummaries
+    });
+    if (nextSelected !== selectedFseiban) {
+      setSelectedFseiban(nextSelected);
     }
-    const firstFseiban =
-      orderedPlanFseibans[0] ?? triageCandidates[0]?.fseiban ?? visibleSummaries[0]?.fseiban ?? null;
-    setSelectedFseiban(firstFseiban);
   }, [orderedPlanFseibans, selectedFseiban, triageCandidates, visibleSummaries]);
 
   useEffect(() => {
     if (!detail) return;
-    const prioritized = [...detail.parts]
-      .sort((a, b) => {
-        if (a.currentPriorityRank !== null && b.currentPriorityRank !== null) {
-          return a.currentPriorityRank - b.currentPriorityRank;
-        }
-        if (a.currentPriorityRank !== null) return -1;
-        if (b.currentPriorityRank !== null) return 1;
-        return a.suggestedPriorityRank - b.suggestedPriorityRank;
-      })
-      .map((part) => part.fhincd);
-    setOrderedFhincds(prioritized);
+    setOrderedFhincds(buildOrderedFhincds(detail));
   }, [detail]);
 
-  const partsByFhincd = useMemo(() => {
-    const map = new Map<string, DuePart>();
-    (detail?.parts ?? []).forEach((part) => map.set(part.fhincd, part));
-    return map;
-  }, [detail]);
+  const partsByFhincd = useMemo(() => buildPartsByFhincd(detail), [detail]);
 
-  const orderedParts = useMemo(
-    () => orderedFhincds.map((fhincd) => partsByFhincd.get(fhincd)).filter((part) => Boolean(part)),
-    [orderedFhincds, partsByFhincd]
-  );
+  const orderedParts = useMemo(() => buildOrderedParts(orderedFhincds, partsByFhincd), [orderedFhincds, partsByFhincd]);
 
   useEffect(() => {
     const incomingEtag = searchStateQuery.data?.etag ?? null;
@@ -441,6 +388,126 @@ export function ProductionScheduleDueManagementPage() {
       }
     );
   };
+
+  if (DUE_MANAGEMENT_LAYOUT_V2_ENABLED) {
+    const selectedTriage = selectedFseiban ? triageBySeiban.get(selectedFseiban) ?? null : null;
+    const triageZoneLabel = selectedTriage
+      ? selectedTriage.zone === 'danger'
+        ? '危険'
+        : selectedTriage.zone === 'caution'
+          ? '注意'
+          : '余裕'
+      : null;
+
+    return (
+      <div className="h-full">
+        <DueManagementLayoutShell
+          activeContext={
+            <DueManagementActiveContextBar
+              selectedFseiban={selectedFseiban}
+              machineName={detailQuery.data?.machineName ?? null}
+              dueDateLabel={formatDueDate(detailQuery.data?.dueDate ?? null)}
+              triageZoneLabel={triageZoneLabel}
+              isDailyPlanDirty={isDailyPlanDirty}
+              isSavingDailyPlan={updateDailyPlanMutation.isPending}
+              isSavingPartPriorities={updatePartPrioritiesMutation.isPending}
+              isUpdatingDueDate={updateDueDateMutation.isPending}
+            />
+          }
+          leftRail={
+            <DueManagementLeftRail
+              selectedFseiban={selectedFseiban}
+              summaryLoading={summaryQuery.isLoading}
+              summaryError={summaryQuery.isError}
+              visibleSummaries={visibleSummaries}
+              triageLoading={triageQuery.isLoading}
+              triageError={triageQuery.isError}
+              filteredTriageCandidates={filteredTriageCandidates}
+              selectedSet={selectedSet}
+              showSelectedOnly={showSelectedOnly}
+              onToggleShowSelectedOnly={() => setShowSelectedOnly((prev) => !prev)}
+              onToggleTriageSelection={(fseiban) => void toggleTriageSelection(fseiban)}
+              triagePending={updateTriageSelectionMutation.isPending}
+              canSelectTargetLocation={canSelectTargetLocation}
+              targetLocation={targetLocation}
+              targetLocations={DEFAULT_TARGET_LOCATIONS}
+              onTargetLocationChange={setTargetLocation}
+              autoGeneratePending={autoGenerateGlobalRankMutation.isPending}
+              autoGenerateError={autoGenerateGlobalRankMutation.isError}
+              autoGenerateGuardRejectedReason={
+                autoGenerateGlobalRankMutation.data?.guard.rejected
+                  ? autoGenerateGlobalRankMutation.data.guard.reason ?? 'unknown'
+                  : null
+              }
+              autoGenerateAppliedRatioPercent={
+                autoGenerateGlobalRankMutation.data?.applied
+                  ? Math.round(autoGenerateGlobalRankMutation.data.guard.reorderDeltaRatio * 100)
+                  : null
+              }
+              onAutoGenerate={() => void autoGenerateGlobalRank()}
+              globalRankLoading={globalRankQuery.isLoading}
+              globalRankError={globalRankQuery.isError}
+              globalRankItems={globalRankItems}
+              proposalBySeiban={proposalBySeiban}
+              dailyPlanLoading={dailyPlanQuery.isLoading}
+              orderedPlanItems={orderedPlanItems}
+              isDailyPlanDirty={isDailyPlanDirty}
+              dailyPlanPending={updateDailyPlanMutation.isPending}
+              onSaveDailyPlan={() => void saveDailyPlan()}
+              onMoveDailyPlanItem={moveDailyPlanItem}
+              searchInput={searchInput}
+              onSearchInputChange={setSearchInput}
+              onOpenKeyboard={openKeyboard}
+              onApplySearch={() => void applySearch()}
+              sharedHistory={sharedHistory}
+              onRemoveFromHistory={(fseiban) => void removeFromHistory(fseiban)}
+              onSelectFseiban={setSelectedFseiban}
+            />
+          }
+          detailPanel={
+            <DueManagementDetailPanel
+              detailLoading={detailQuery.isLoading}
+              detailError={detailQuery.isError}
+              selectedFseiban={selectedFseiban}
+              fseiban={detailQuery.data?.fseiban ?? null}
+              machineName={detailQuery.data?.machineName ?? null}
+              dueDate={detailQuery.data?.dueDate ?? null}
+              orderedParts={orderedParts}
+              processingTypeOptions={processingTypeOptionsQuery.data ?? []}
+              updatePartProcessingPending={updatePartProcessingMutation.isPending}
+              updatePartPrioritiesPending={updatePartPrioritiesMutation.isPending}
+              updatePartNotePending={updatePartNoteMutation.isPending}
+              onOpenDatePicker={openDatePicker}
+              onSavePartPriorities={savePartPriorities}
+              onSaveProcessingType={saveProcessingType}
+              onOpenPartNoteModal={openPartNoteModal}
+              onMovePart={(index, direction) => setOrderedFhincds((prev) => movePriorityItem(prev, index, direction))}
+            />
+          }
+        />
+        <KioskDatePickerModal
+          isOpen={isDatePickerOpen}
+          value={editingDueDate}
+          onCancel={() => setIsDatePickerOpen(false)}
+          onCommit={commitDueDate}
+        />
+        <KioskKeyboardModal
+          isOpen={isKeyboardOpen}
+          value={keyboardValue}
+          onChange={setKeyboardValue}
+          onCancel={() => setIsKeyboardOpen(false)}
+          onConfirm={confirmKeyboard}
+        />
+        <KioskNoteModal
+          isOpen={isNoteModalOpen}
+          value={editingNotePart?.note ?? ''}
+          maxLength={NOTE_MAX_LENGTH}
+          onCancel={closePartNoteModal}
+          onCommit={commitPartNote}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
