@@ -100,7 +100,8 @@ export const useProductionScheduleDerivedRows = ({
       fontSizePx: 12,
       scale: 0.5,
       fixedWidths: {
-        FSEIBAN: 90
+        FSEIBAN: 90,
+        actualPerPieceMinutes: 95
       },
       formatCellValue: (_column, value) => String(value ?? '')
     });
