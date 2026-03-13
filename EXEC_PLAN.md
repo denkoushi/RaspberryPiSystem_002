@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-03-13) **P2-5 Boundary Guard 実装完了（境界ルール段階強化）**: `main` 最新から `feat/p2-5-boundary-guard` を作成し、`import/no-restricted-paths` を段階強化。**API**: `routes/system <-> routes/kiosk` の横断依存を禁止。**Web**: `features/components/hooks/lib/api/layouts/utils -> pages` の逆依存を禁止。あわせて `normalizeClientKey` の重複実装を `apps/api/src/lib/client-key.ts` へ集約し、`routes/clients/shared.ts` / `routes/kiosk/shared.ts` / `routes/system/deploy-status.ts` / `routes/webrtc/signaling.ts` / `plugins/rate-limit.ts` で共通利用に統一。**検証**: `apps/api` / `apps/web` の lint・test・build を通過。**知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即lint確認する運用が有効。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) を参照。
+- [x] (2026-03-13) **P2-5 Boundary Guard デプロイ完了・実機検証完了**: `import/no-restricted-paths` を段階強化。**API**: `routes/system <-> routes/kiosk` の横断依存を禁止。**Web**: `features/components/hooks/lib/api/layouts/utils -> pages` の逆依存を禁止。`normalizeClientKey` を `apps/api/src/lib/client-key.ts` へ集約。**デプロイ**: ブランチ `feat/p2-5-boundary-guard`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（約20分）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、生産スケジュールAPI、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働）。**知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即lint確認する運用が有効。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-5-boundary-guard-デプロイ実機検証2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-13) **P2-4 Web Split (ProductionSchedulePage Part 2) デプロイ完了・実機検証完了**: `ProductionSchedulePage` の mutation 実行責務を `useProductionScheduleMutations.ts` に抽出し、書き込みクールダウン・pending 集約・note/dueDate/order/processing/complete の API 呼び出しを hook 化。副作用（モーダル状態遷移）は `useMutationFeedback.ts` に分離。`ProductionSchedulePage` は query + UIイベント委譲中心へ縮退。**ブランチ**: `feat/p2-4-sideeffects`。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（約18分）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2/Pi3サービス稼働）。**知見**: mutation と副作用を hook 境界に分離すると差分確認と回帰テストが局所化される。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-4-web-split-part-2mutation副作用分離2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-13) **P2-3 Web Split (ProductionSchedulePage Part 1) デプロイ完了・実機検証完了**: `ProductionSchedulePage` の責務を分離し、派生計算を `displayRowDerivation.ts`、派生状態集約を `useProductionScheduleDerivedRows.ts`、検索パラメータ整形を `useProductionScheduleQueryParams.ts`、共有検索履歴同期を `useSharedSearchHistory.ts` に抽出。表示は `ProductionScheduleResourceFilters` / `ProductionScheduleHistoryStrip` / `ProductionScheduleTable` へ分割し、ページ本体は query/mutation オーケストレーション中心へ縮小。API契約・画面挙動は不変。**デプロイ**: ブランチ `feat/p2-3-web-split-production-schedule-part1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260313-083304-7855` / `20260313-084019-6793` / `20260313-085016-4776`）、Pi3除外、約18分。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2/Pi3サービス稼働、生産スケジュールAPI）。**知見**: 表示派生ロジックを純粋関数（`displayRowDerivation`）に抽出するとテスト容易性と責務分離が向上。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-12) **P2-2 auth Route Thin化・デプロイ完了・実機検証完了**: `AuthRoleAdminService` / `role-change-policy` / `role-change-alert.service` を新設し、`POST /auth/users/:id/role` から通知理由判定・通知副作用（ファイル書き込み/Webhook送信）をサービス層へ移譲。ルート層は認可・入力検証・HTTP整形に限定。API契約/認可仕様は不変。**デプロイ**: ブランチ `feat/p2-2-auth-route-thinning`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260312-215048-2072` / `20260312-215858-31380` / `20260312-220844-16241`）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働）。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -1533,16 +1533,16 @@
 
 ## Next Steps（将来のタスク）
 
-### P2-5 Boundary Guard 完了後の次のタスク（2026-03-13）
+### P2-5 Boundary Guard デプロイ・実機検証完了後の次のタスク（2026-03-13）
 
-**概要**: P2-5 は実装完了（lint/test/build 通過）。次のステップ候補。
+**概要**: P2-5 はデプロイ・実機検証完了。次のステップ候補。
 
 **候補タスク**:
-1. **P2-5 実機検証・デプロイ**（優先度: 高）: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつデプロイし、チェックリストを実施
-2. **P2-5 E2Eスモーク再実行**（優先度: 中）: PostgreSQL 起動状態で `pnpm test:e2e:smoke` を再実行し、既存導線退行なしを確認
-3. **Boundary Guard 追加候補の段階導入**（優先度: 低）: 影響の大きい機能境界（例: tools と signage）を小PRで拡張
+1. **P2-5 E2Eスモーク再実行**（優先度: 中）: PostgreSQL 起動状態で `pnpm test:e2e:smoke` を再実行し、既存導線退行なしを確認
+2. **Boundary Guard 追加候補の段階導入**（優先度: 低）: 影響の大きい機能境界（例: tools と signage）を小PRで拡張
+3. **Phase2 次のリファクタ候補**（優先度: 低）: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
 
-**参照**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+**参照**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)、[KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-5-boundary-guard-デプロイ実機検証2026-03-13)
 
 ### 全端末共有優先順位（Mac対象ロケーション指定）完了後の候補
 
@@ -2309,6 +2309,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-13（2回目） — P2-5 Boundary Guard デプロイ・実機検証完了を反映。Progress にデプロイ（Pi5→raspberrypi4→raspi4-robodrill01、約20分）・実機検証（全チェックリスト合格）を追記。Next Steps を P2-5 デプロイ・実機検証完了後の候補に更新。phase2-safe-refactor-backlog.md / KB-297 / docs/INDEX.md にデプロイ・実機検証結果を追記。
 変更履歴: 2026-03-13 — P2-5 Boundary Guard 実装完了を反映。Progress に P2-5 完了（API/Web 境界ルール強化、`normalizeClientKey` 共通化、lint/test/build 通過）を追加。Surprises に `target/from` 誤設定時の誤検知と export 契約欠落の再発防止知見を追記。Next Steps を P2-5 完了後の候補に更新。phase2-safe-refactor-backlog.md / docs/INDEX.md を同期更新。
 変更履歴: 2026-03-13 — P2-4 Web Split（ProductionSchedulePage Part 2）デプロイ・実機検証完了を反映。Progress に P2-4 完了を追加。Next Steps を P2-4 完了後の候補（P2-5 Boundary Guard 優先）に更新。phase2-safe-refactor-backlog.md / KB-297 / INDEX.md にデプロイ・実機検証結果を追記。
 変更履歴: 2026-03-11 — FSIGENマスタ導入（資源CD→資源名）とホバー表示の実機検証完了を反映。Progress に実機検証完了・本番DB seed競合（SQL直接投入）を追記。Surprises & Discoveries に FSIGENマスタ本番投入時の seed 競合と SQL 直接投入の知見を追加。KB-297 に実機検証結果・トラブルシューティング（本番DB seed 失敗、ローカル統合テスト DB 未起動）・知見を追記。INDEX.md に実機検証完了と KB リンクを更新。
