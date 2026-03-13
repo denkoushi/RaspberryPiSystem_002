@@ -357,14 +357,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     medianPerPieceMinutes: row.medianPerPieceMinutes,
     p75PerPieceMinutes: row.p75PerPieceMinutes
   }));
-  const fetchedFeatureCountsByLocation = featureRowsWithLocation.reduce<Record<string, number>>((acc, row) => {
-    const key = row.location.trim() || '__empty__';
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H2',location:'production-schedule-query.service.ts:listProductionScheduleRows:363',message:'actual-hours feature rows fetched for list endpoint',data:{locationKey,actualHoursLocationCandidates,rowCount:rows.length,featureRowsFetched:featureRowsWithLocation.length,featureRowsSelected:featureRows.length,resourceCodeMappings:resourceCodeMappings.length,fetchedFeatureCountsByLocation},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const featureResolver = createActualHoursFeatureResolver({
     features: featureRows,
     resourceCodeMappings,
@@ -381,10 +373,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       actualPerPieceMinutes: perPieceMinutes
     };
   });
-  const actualHoursMatchedRowCount = rowsWithActualHours.filter((row) => row.actualPerPieceMinutes !== null).length;
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H4',location:'production-schedule-query.service.ts:listProductionScheduleRows:388',message:'actual-hours resolved result for list endpoint',data:{locationKey,totalRows:rowsWithActualHours.length,matchedRows:actualHoursMatchedRowCount,unmatchedRows:rowsWithActualHours.length-actualHoursMatchedRowCount},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   return {
     page,
