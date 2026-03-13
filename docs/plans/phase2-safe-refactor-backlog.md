@@ -2,7 +2,7 @@
 title: Phase2 安全リファクタバックログ（API薄化 / Web分割 / 境界ルール）
 tags: [refactor, api, web, solid, architecture]
 status: active
-last-verified: 2026-03-12
+last-verified: 2026-03-13
 ---
 
 # Phase2 安全リファクタバックログ
@@ -22,6 +22,10 @@ P2-2（auth Route Thin化）はデプロイ完了・実機検証完了。`AuthRo
 ## P2-3 完了（2026-03-13）
 
 P2-3（Web Split ProductionSchedulePage Part 1）はデプロイ完了・実機検証完了。`displayRowDerivation` / `useProductionScheduleDerivedRows` / `useProductionScheduleQueryParams` / `useSharedSearchHistory` を追加し、`ProductionScheduleResourceFilters` / `ProductionScheduleHistoryStrip` / `ProductionScheduleTable` へ表示責務を分割。`ProductionSchedulePage` は query/mutation オーケストレーション中心へ縮小。**デプロイ**: ブランチ `feat/p2-3-web-split-production-schedule-part1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260313-083304-7855` / `20260313-084019-6793` / `20260313-085016-4776`）、Pi3除外、約18分。**実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。**知見**: 表示派生ロジックを純粋関数に抽出するとテスト容易性と責務分離が向上。
+
+## P2-4 完了（2026-03-13）
+
+P2-4（Web Split ProductionSchedulePage Part 2）はデプロイ完了・実機検証完了。`ProductionSchedulePage` から mutation と副作用（モーダル状態遷移）を分離し、`useProductionScheduleMutations` / `useMutationFeedback` を追加。`ProductionSchedulePage` は query とイベント委譲中心に縮退。**デプロイ**: ブランチ `feat/p2-4-sideeffects`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、Pi3除外、約18分。**実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。**知見**: mutation と副作用を hook 境界に分離すると差分確認と回帰テストが局所化される。
 
 ## 目的
 
