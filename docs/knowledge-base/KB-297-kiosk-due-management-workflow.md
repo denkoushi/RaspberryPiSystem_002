@@ -239,6 +239,12 @@ category: knowledge-base
 - **検証**:
   - `pnpm --filter @raspi-system/web lint` を実行し成功
   - `visibleSummaries` / `buildVisibleSummaries` 参照が `apps/web/src` から除去されていることを確認
+- **デプロイ**:
+  - ブランチ `feat/due-management-ui-phase2-improvements`
+  - Pi5 → raspberrypi4（kensakuMain）→ raspi4-robodrill01 の順に1台ずつ実行、約20分
+- **実機検証（2026-03-13）**:
+  - **リモート自動チェック**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス（`status: ok`）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）、サイネージAPI、backup.json（15K）、マイグレーション（50件 up to date）、Pi4×2/Pi3サービス稼働を確認。
+  - **実機UI確認（手動）**: 開閉ボタンがアイコン化されていること、初回表示で全セクションが閉じていること、開閉操作後にリロードしても状態が復元されること、最下段カードが表示されず製番登録・削除がチップで動作すること、製番一覧・選択・詳細・編集が正常に動作することを確認。
 - **知見**:
   - 開閉状態の永続化はページコンテナから `useCollapsibleSectionPersistence` へ切り出すと、UIコンポーネントは表示責務に集中できる
   - 選択中製番の解決ロジックは、表示用カード配列ではなく `sharedHistory` を基準にすることで、表示構造変更に影響されない
