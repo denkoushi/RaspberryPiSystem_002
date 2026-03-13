@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 
 export const heartbeatSchema = z.object({
@@ -61,24 +62,6 @@ export const updateClientSchema = z.object({
   name: clientDisplayNameSchema.optional(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable()
 });
-
-export const normalizeClientKey = (rawKey: unknown): string | undefined => {
-  if (typeof rawKey === 'string') {
-    try {
-      const parsed = JSON.parse(rawKey);
-      if (typeof parsed === 'string') {
-        return parsed;
-      }
-    } catch {
-      // noop
-    }
-    return rawKey;
-  }
-  if (Array.isArray(rawKey) && rawKey.length > 0 && typeof rawKey[0] === 'string') {
-    return rawKey[0];
-  }
-  return undefined;
-};
 
 export const requireClientKey = (headerValue: unknown): string => {
   const clientKey = normalizeClientKey(headerValue);

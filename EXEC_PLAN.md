@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-13) **P2-5 Boundary Guard 実装完了（境界ルール段階強化）**: `main` 最新から `feat/p2-5-boundary-guard` を作成し、`import/no-restricted-paths` を段階強化。**API**: `routes/system <-> routes/kiosk` の横断依存を禁止。**Web**: `features/components/hooks/lib/api/layouts/utils -> pages` の逆依存を禁止。あわせて `normalizeClientKey` の重複実装を `apps/api/src/lib/client-key.ts` へ集約し、`routes/clients/shared.ts` / `routes/kiosk/shared.ts` / `routes/system/deploy-status.ts` / `routes/webrtc/signaling.ts` / `plugins/rate-limit.ts` で共通利用に統一。**検証**: `apps/api` / `apps/web` の lint・test・build を通過。**知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即lint確認する運用が有効。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) を参照。
 - [x] (2026-03-13) **P2-4 Web Split (ProductionSchedulePage Part 2) デプロイ完了・実機検証完了**: `ProductionSchedulePage` の mutation 実行責務を `useProductionScheduleMutations.ts` に抽出し、書き込みクールダウン・pending 集約・note/dueDate/order/processing/complete の API 呼び出しを hook 化。副作用（モーダル状態遷移）は `useMutationFeedback.ts` に分離。`ProductionSchedulePage` は query + UIイベント委譲中心へ縮退。**ブランチ**: `feat/p2-4-sideeffects`。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（約18分）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2/Pi3サービス稼働）。**知見**: mutation と副作用を hook 境界に分離すると差分確認と回帰テストが局所化される。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-4-web-split-part-2mutation副作用分離2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-13) **P2-3 Web Split (ProductionSchedulePage Part 1) デプロイ完了・実機検証完了**: `ProductionSchedulePage` の責務を分離し、派生計算を `displayRowDerivation.ts`、派生状態集約を `useProductionScheduleDerivedRows.ts`、検索パラメータ整形を `useProductionScheduleQueryParams.ts`、共有検索履歴同期を `useSharedSearchHistory.ts` に抽出。表示は `ProductionScheduleResourceFilters` / `ProductionScheduleHistoryStrip` / `ProductionScheduleTable` へ分割し、ページ本体は query/mutation オーケストレーション中心へ縮小。API契約・画面挙動は不変。**デプロイ**: ブランチ `feat/p2-3-web-split-production-schedule-part1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260313-083304-7855` / `20260313-084019-6793` / `20260313-085016-4776`）、Pi3除外、約18分。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2/Pi3サービス稼働、生産スケジュールAPI）。**知見**: 表示派生ロジックを純粋関数（`displayRowDerivation`）に抽出するとテスト容易性と責務分離が向上。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-12) **P2-2 auth Route Thin化・デプロイ完了・実機検証完了**: `AuthRoleAdminService` / `role-change-policy` / `role-change-alert.service` を新設し、`POST /auth/users/:id/role` から通知理由判定・通知副作用（ファイル書き込み/Webhook送信）をサービス層へ移譲。ルート層は認可・入力検証・HTTP整形に限定。API契約/認可仕様は不変。**デプロイ**: ブランチ `feat/p2-2-auth-route-thinning`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260312-215048-2072` / `20260312-215858-31380` / `20260312-220844-16241`）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働）。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -661,6 +662,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-13）: **`import/no-restricted-paths` の `target/from` を逆に設定すると大量誤検知（199件）** が発生。pages が components/api/features を参照する正規依存まで遮断された。対策として「逆依存を禁止したい層」を `target` に置く形へ修正し、段階導入を維持した。
+- 観測（2026-03-13）: `normalizeClientKey` の重複除去時に `routes/kiosk/shared.ts` で export が欠落し、`kiosk.integration.test.ts` で 500 が連鎖。`export { normalizeClientKey }` を明示して復旧。共通化の際は「参照側の export 契約」を先に固定する必要がある。
 - 観測（2026-03-11）: **FSIGENマスタ本番投入で `pnpm prisma db seed` 失敗**。既存EmployeeのNFC UID等他シードと競合し、seed全体が失敗。FSIGENマスタ（`ProductionScheduleResourceMaster`）は `dataSIGEN.csv` をSQLで直接投入して対応（125件）。類似事例は [KB-203](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新)。ホバー表示は `title` 属性で標準ツールチップが動作し、追加ライブラリ不要。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#fsigenマスタ導入実機検証2026-03-11)。
 - 観測（2026-03-11）: **`完了status` は同期されるのに `納期/備考/表面処理` は同期されない**事象の根因は、バグではなく「データモデル差分」。`ProductionScheduleProgress` は location 非依存だが、3項目は location 依存テーブルだった。同期ジョブ追加ではなく shared モデル移行で解決し、競合は `updatedAt` 優先（LWW）に統一した。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#ロケーション間同期共有化納期備考表面処理2026-03-11)。
 - 観測（2026-03-11）: **進捗同期スコープ分離**はAPIのみの変更（DBスキーマ変更なし）のため、デプロイ対象は Pi5 のみで十分。運用標準に従い Pi5 + Pi4×2 を1台ずつ順番デプロイした。日程更新用CSV（`progress` 列なし）では `ProductionScheduleProgress` を更新しない。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗同期スコープ分離2026-03-11)。
@@ -1530,14 +1533,14 @@
 
 ## Next Steps（将来のタスク）
 
-### P2-4 Web Split（ProductionSchedulePage Part 2）完了後の次のタスク（2026-03-13）
+### P2-5 Boundary Guard 完了後の次のタスク（2026-03-13）
 
-**概要**: P2-4 はデプロイ・実機検証完了。次のステップ候補。
+**概要**: P2-5 は実装完了（lint/test/build 通過）。次のステップ候補。
 
 **候補タスク**:
-1. **P2-5 Boundary Guard**（優先度: 中）: 境界違反の新規混入が lint で検知可能に。`import/no-restricted-paths` を段階導入
-2. **P2-4 E2Eスモーク再実行**（優先度: 低）: PostgreSQL 起動状態で `pnpm test:e2e:smoke` を再実行し、既存導線退行なしを確認（実機検証済みのため優先度低下）
-3. **ProductionSchedulePage のさらなる責務分離**（優先度: 低）: 必要に応じて query オーケストレーションの境界を明確化
+1. **P2-5 実機検証・デプロイ**（優先度: 高）: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつデプロイし、チェックリストを実施
+2. **P2-5 E2Eスモーク再実行**（優先度: 中）: PostgreSQL 起動状態で `pnpm test:e2e:smoke` を再実行し、既存導線退行なしを確認
+3. **Boundary Guard 追加候補の段階導入**（優先度: 低）: 影響の大きい機能境界（例: tools と signage）を小PRで拡張
 
 **参照**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
 
@@ -2306,7 +2309,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
-
+変更履歴: 2026-03-13 — P2-5 Boundary Guard 実装完了を反映。Progress に P2-5 完了（API/Web 境界ルール強化、`normalizeClientKey` 共通化、lint/test/build 通過）を追加。Surprises に `target/from` 誤設定時の誤検知と export 契約欠落の再発防止知見を追記。Next Steps を P2-5 完了後の候補に更新。phase2-safe-refactor-backlog.md / docs/INDEX.md を同期更新。
 変更履歴: 2026-03-13 — P2-4 Web Split（ProductionSchedulePage Part 2）デプロイ・実機検証完了を反映。Progress に P2-4 完了を追加。Next Steps を P2-4 完了後の候補（P2-5 Boundary Guard 優先）に更新。phase2-safe-refactor-backlog.md / KB-297 / INDEX.md にデプロイ・実機検証結果を追記。
 変更履歴: 2026-03-11 — FSIGENマスタ導入（資源CD→資源名）とホバー表示の実機検証完了を反映。Progress に実機検証完了・本番DB seed競合（SQL直接投入）を追記。Surprises & Discoveries に FSIGENマスタ本番投入時の seed 競合と SQL 直接投入の知見を追加。KB-297 に実機検証結果・トラブルシューティング（本番DB seed 失敗、ローカル統合テスト DB 未起動）・知見を追記。INDEX.md に実機検証完了と KB リンクを更新。
 変更履歴: 2026-03-07 — 納期管理トリアージ（B第1段階）実装を反映。`ProductionScheduleTriageSelection` 追加、`due-management/triage` / `due-management/triage/selection` API追加、納期管理画面トリアージパネル追加、API統合テスト（37件）と api/web lint 成功を記録。KB-297 / production-schedule-kiosk-execplan.md / INDEX.md を更新。

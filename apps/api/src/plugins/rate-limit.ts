@@ -1,6 +1,7 @@
 import rateLimit from '@fastify/rate-limit';
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { normalizeClientKey } from '../lib/client-key.js';
 
 /**
  * レート制限プラグイン
@@ -30,16 +31,6 @@ const skipPrefixes = [
 // パスがスキップ対象かどうかを判定
 const shouldSkip = (path: string): boolean => {
   return skipPrefixes.some((prefix) => path.startsWith(prefix));
-};
-
-const normalizeClientKey = (raw: unknown): string | undefined => {
-  if (typeof raw === 'string') {
-    return raw;
-  }
-  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') {
-    return raw[0];
-  }
-  return undefined;
 };
 
 export const registerRateLimit = fp(async (app: FastifyInstance) => {
