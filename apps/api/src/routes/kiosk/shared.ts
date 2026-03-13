@@ -1,28 +1,13 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { env } from '../../config/env.js';
 import { getKioskRateLimitService } from '../../services/security/kiosk-rate-limit.service.js';
 
 const DEFAULT_LOCATION = 'default';
 const MAC_LOCATION_ALIAS = 'Mac';
 
-export const normalizeClientKey = (rawKey: unknown): string | undefined => {
-  if (typeof rawKey === 'string') {
-    try {
-      const parsed = JSON.parse(rawKey);
-      if (typeof parsed === 'string') {
-        return parsed;
-      }
-    } catch {
-      // noop
-    }
-    return rawKey;
-  }
-  if (Array.isArray(rawKey) && rawKey.length > 0 && typeof rawKey[0] === 'string') {
-    return rawKey[0];
-  }
-  return undefined;
-};
+export { normalizeClientKey };
 
 export const parseCsvList = (value: string | undefined): string[] => {
   if (!value) return [];

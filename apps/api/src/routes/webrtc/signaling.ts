@@ -7,28 +7,11 @@ import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { callStore } from './call-store.js';
 import type { SignalingMessage, WebSocketLike } from './types.js';
 
 const WS_OPEN = 1;
-
-const normalizeClientKey = (rawKey: unknown): string | undefined => {
-  if (typeof rawKey === 'string') {
-    try {
-      const parsed = JSON.parse(rawKey);
-      if (typeof parsed === 'string') {
-        return parsed;
-      }
-    } catch {
-      // noop
-    }
-    return rawKey;
-  }
-  if (Array.isArray(rawKey) && rawKey.length > 0 && typeof rawKey[0] === 'string') {
-    return rawKey[0];
-  }
-  return undefined;
-};
 
 /**
  * クライアントデバイスの存在確認とclientId取得

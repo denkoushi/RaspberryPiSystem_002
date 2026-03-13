@@ -41,6 +41,48 @@ module.exports = {
         alphabetize: { order: 'asc', caseInsensitive: true }
       }
     ],
-    'import/no-cycle': 'error'
+    'import/no-cycle': 'error',
+    'import/no-restricted-paths': [
+      'error',
+      {
+        zones: [
+          {
+            target: './src/features',
+            from: './src/pages',
+            message: 'features層からpages層への依存は禁止です（依存方向: pages -> features）。'
+          },
+          {
+            target: './src/components',
+            from: './src/pages',
+            message: 'components層からpages層への依存は禁止です（依存方向: pages -> components）。'
+          },
+          {
+            target: './src/hooks',
+            from: './src/pages',
+            message: 'hooks層からpages層への依存は禁止です（依存方向: pages -> hooks）。'
+          },
+          {
+            target: './src/lib',
+            from: './src/pages',
+            message: 'lib層からpages層への依存は禁止です（依存方向: pages -> lib）。'
+          },
+          {
+            target: './src/api',
+            from: './src/pages',
+            message: 'api層からpages層への依存は禁止です（依存方向: pages -> api）。'
+          },
+          {
+            target: './src/layouts',
+            from: './src/pages',
+            message: 'layouts層からpages層への依存は禁止です（依存方向: pages -> layouts）。'
+          },
+          {
+            target: './src/utils',
+            from: './src/pages',
+            message: 'utils層からpages層への依存は禁止です（依存方向: pages -> utils）。'
+          }
+        ]
+      }
+    ]
   }
 };

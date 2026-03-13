@@ -120,6 +120,13 @@ category: knowledge-base
   - `pnpm test:e2e:smoke` はローカル DB 未起動時に失敗（`/api/tools/loans/active` ほかが 500）。根因は実装不整合ではなく、`localhost:5432` に到達できない実行環境要因（`PrismaClientInitializationError`）。対処: `./scripts/test/start-postgres.sh` で DB 起動後、`prisma migrate deploy` と `prisma db seed` を実行してから再実行
 - **知見**: UI 層は「状態表示とイベント委譲」に限定し、mutation 実行と副作用管理を hook 境界に分離すると、差分確認と回帰テストが局所化される
 
+## P2-5 Boundary Guard デプロイ・実機検証（2026-03-13）
+
+- **対象**: `import/no-restricted-paths` の段階強化（API: `routes/system <-> routes/kiosk` 横断依存禁止、Web: `features/components/hooks/lib/api/layouts/utils -> pages` 逆依存禁止）、`normalizeClientKey` の `apps/api/src/lib/client-key.ts` への集約
+- **デプロイ**: ブランチ `feat/p2-5-boundary-guard`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、Pi3除外、約20分
+- **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API、global-rank、actual-hours/stats、生産スケジュールAPI、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働を確認。Pi3 signage は接続タイムアウトのためスキップ
+- **知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即 lint 確認する運用が有効
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化

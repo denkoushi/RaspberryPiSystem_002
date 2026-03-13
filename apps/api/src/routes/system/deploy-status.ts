@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { prisma } from '../../lib/prisma.js';
-import { normalizeClientKey } from '../kiosk/shared.js';
 
 const DEPLOY_STATUS_FILE =
   process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
