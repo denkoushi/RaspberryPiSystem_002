@@ -88,6 +88,7 @@ import {
   getKioskProductionScheduleHistoryProgress,
   getProductionScheduleResourceCategorySettings,
   getProductionScheduleResourceCodeMappings,
+  importProductionScheduleResourceCodeMappingsFromCsv,
   getProductionScheduleDueManagementAccessPasswordSettings,
   getProductionScheduleProcessingTypeOptions,
   getKioskCallTargets,
@@ -585,6 +586,20 @@ export function useUpdateProductionScheduleResourceCodeMappings() {
     }) => updateProductionScheduleResourceCodeMappings(payload),
     onSuccess: (settings) => {
       void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-code-mappings', settings.location] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-seiban-detail'] });
+    }
+  });
+}
+
+export function useImportProductionScheduleResourceCodeMappingsFromCsv() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { location: string; csvText: string; dryRun: boolean }) =>
+      importProductionScheduleResourceCodeMappingsFromCsv(payload),
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-code-mappings', variables.location] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-seiban-detail'] });

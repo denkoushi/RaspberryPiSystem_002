@@ -5,7 +5,10 @@ import { createActualHoursFeatureResolver } from './actual-hours-feature-resolve
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
-import { getResourceNameMapByResourceCds } from './resource-master.service.js';
+import {
+  getResourceGroupCandidatesByResourceCds,
+  getResourceNameMapByResourceCds
+} from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type SeibanSummaryRaw = {
@@ -151,10 +154,6 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
       }
     })
   ]);
-  const featureResolver = createActualHoursFeatureResolver({
-    features: featureRows,
-    resourceCodeMappings
-  });
   const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
   if (featureRows.length > 0 && summaryRows.length > 0) {
     const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
@@ -171,6 +170,14 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
         AND "rowData"->>'FSEIBAN' IN (${fseibanList})
         AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
     `);
+    const resourceGroupCandidatesByResourceCd = await getResourceGroupCandidatesByResourceCds(
+      rows.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0)
+    );
+    const featureResolverWithGroup = createActualHoursFeatureResolver({
+      features: featureRows,
+      resourceCodeMappings,
+      resourceGroupCandidatesByResourceCd
+    });
     const aggregateMap = new Map<string, { totalRows: number; matchedRows: number }>();
     for (const row of rows) {
       const fseiban = row.fseiban?.trim();
@@ -183,7 +190,7 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
       const fhincd = row.fhincd?.trim() ?? '';
       const resourceCd = row.resourceCd?.trim() ?? '';
       if (fhincd && resourceCd) {
-        const resolved = featureResolver.resolve({ fhincd, resourceCd });
+        const resolved = featureResolverWithGroup.resolve({ fhincd, resourceCd });
         if (resolved.perPieceMinutes !== null) {
           current.matchedRows += 1;
         }
@@ -275,7 +282,7 @@ export async function getDueManagementSeibanDetail(params: {
   const currentPriorityMap = new Map(priorityRows.map((row) => [row.fhincd, row.priorityRank] as const));
   const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
   const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
-  const [detailFeatureRows, detailResourceCodeMappings] = await Promise.all([
+  const [detailFeatureRows, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] = await Promise.all([
     prisma.productionScheduleActualHoursFeature.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -301,11 +308,13 @@ export async function getDueManagementSeibanDetail(params: {
         priority: true,
         enabled: true
       }
-    })
+    }),
+    getResourceGroupCandidatesByResourceCds(rows.map((row) => row.fsigencd ?? ''))
   ]);
   const detailFeatureResolver = createActualHoursFeatureResolver({
     features: detailFeatureRows,
-    resourceCodeMappings: detailResourceCodeMappings
+    resourceCodeMappings: detailResourceCodeMappings,
+    resourceGroupCandidatesByResourceCd: detailResourceGroupCandidatesByResourceCd
   });
   const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd ?? ''));
 

@@ -13,6 +13,7 @@
     "design:preview": "tsx scripts/design-preview.ts",
     "backfill:actual-hours": "tsx src/scripts/backfill-actual-hours-canonical.ts",
     "backfill:actual-hours:prod": "node dist/scripts/backfill-actual-hours-canonical.js",
+    "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",

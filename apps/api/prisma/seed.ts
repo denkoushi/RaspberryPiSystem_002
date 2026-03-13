@@ -20,6 +20,7 @@ type ProductionScheduleResourceMasterSeedRow = {
   resourceClassCd: string;
   resourceGroupCd: string;
   resourceName: string;
+  groupCd: string | null;
 };
 
 function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionScheduleResourceMasterSeedRow[] {
@@ -31,11 +32,14 @@ function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionSc
 
   const rows: ProductionScheduleResourceMasterSeedRow[] = [];
   for (const line of lines.slice(1)) {
-    const [resourceCdRaw = '', resourceClassCdRaw = '', resourceGroupCdRaw = '', ...resourceNameChunks] = line.split(',');
+    const [resourceCdRaw = '', resourceClassCdRaw = '', resourceGroupCdRaw = '', ...restChunks] = line.split(',');
     const resourceCd = resourceCdRaw.trim();
     const resourceClassCd = resourceClassCdRaw.trim();
     const resourceGroupCd = resourceGroupCdRaw.trim();
-    const resourceName = resourceNameChunks.join(',').trim();
+    if (restChunks.length === 0) continue;
+    const maybeGroupCd = restChunks.length >= 2 ? restChunks[restChunks.length - 1].trim() : '';
+    const resourceName = (restChunks.length >= 2 ? restChunks.slice(0, -1) : restChunks).join(',').trim();
+    const groupCd = maybeGroupCd.length > 0 ? maybeGroupCd.toUpperCase() : null;
     if (!resourceCd || !resourceClassCd || !resourceGroupCd || !resourceName) {
       continue;
     }
@@ -43,7 +47,8 @@ function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionSc
       resourceCd,
       resourceClassCd,
       resourceGroupCd,
-      resourceName
+      resourceName,
+      groupCd
     });
   }
   return rows;
@@ -160,13 +165,15 @@ async function main() {
       },
       update: {
         resourceClassCd: row.resourceClassCd,
-        resourceGroupCd: row.resourceGroupCd
+        resourceGroupCd: row.resourceGroupCd,
+        groupCd: row.groupCd
       },
       create: {
         resourceCd: row.resourceCd,
         resourceName: row.resourceName,
         resourceClassCd: row.resourceClassCd,
-        resourceGroupCd: row.resourceGroupCd
+        resourceGroupCd: row.resourceGroupCd,
+        groupCd: row.groupCd
       }
     });
   }

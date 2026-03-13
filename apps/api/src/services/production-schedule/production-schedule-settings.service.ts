@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { parse } from 'csv-parse/sync';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -26,6 +27,10 @@ const normalizeResourceCdList = (values: string[]): string[] => {
   }
   return Array.from(unique).sort((a, b) => a.localeCompare(b));
 };
+
+const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
+const normalizeGroupCd = (value: string): string => value.trim().toUpperCase();
+const normalizeCsvHeader = (value: string): string => value.replace(/^\uFEFF/, '').trim().toUpperCase();
 
 export async function getProductionScheduleResourceCategorySettings(location: string): Promise<{
   location: string;
@@ -132,6 +137,21 @@ export type ProductionScheduleResourceCodeMappingItem = {
   toResourceCd: string;
   priority: number;
   enabled: boolean;
+};
+
+export type ResourceCodeMappingsCsvImportResult = {
+  location: string;
+  dryRun: boolean;
+  totalRows: number;
+  rowsWithGroupCd: number;
+  generatedMappings: number;
+  skippedEmptyRows: number;
+  skippedDuplicateRows: number;
+  skippedUnknownResourceCds: string[];
+  settings?: {
+    location: string;
+    mappings: ProductionScheduleResourceCodeMappingItem[];
+  };
 };
 
 const normalizeProcessingTypeOptions = (options: ProcessingTypeOption[]): ProcessingTypeOption[] => {
@@ -288,6 +308,123 @@ export async function upsertProductionScheduleResourceCodeMappings(params: {
     }
   });
   return getProductionScheduleResourceCodeMappings(location);
+}
+
+export async function importProductionScheduleResourceCodeMappingsFromCsv(params: {
+  location: string;
+  csvText: string;
+  dryRun: boolean;
+}): Promise<ResourceCodeMappingsCsvImportResult> {
+  const location = normalizeLocation(params.location);
+  const dryRun = params.dryRun;
+  const parsedRows = parse(params.csvText, {
+    columns: (headers: string[]) => headers.map((header) => normalizeCsvHeader(header)),
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+    relax_column_count: true
+  }) as Array<Record<string, string | undefined>>;
+
+  let skippedEmptyRows = 0;
+  let skippedDuplicateRows = 0;
+  const unknownResourceCdSet = new Set<string>();
+  const groupToResourceSetMap = new Map<string, Set<string>>();
+  const csvPairs = new Set<string>();
+  const resourceCdSet = new Set<string>();
+
+  for (const row of parsedRows) {
+    const resourceCd = normalizeResourceCd(row.FSIGENCD ?? '');
+    const groupCd = normalizeGroupCd(row.GROUPCD ?? '');
+    if (!resourceCd || !groupCd) {
+      skippedEmptyRows += 1;
+      continue;
+    }
+    const pairKey = `${resourceCd}__${groupCd}`;
+    if (csvPairs.has(pairKey)) {
+      skippedDuplicateRows += 1;
+      continue;
+    }
+    csvPairs.add(pairKey);
+    resourceCdSet.add(resourceCd);
+    const currentSet = groupToResourceSetMap.get(groupCd) ?? new Set<string>();
+    currentSet.add(resourceCd);
+    groupToResourceSetMap.set(groupCd, currentSet);
+  }
+
+  const resourceCds = Array.from(resourceCdSet);
+  const existingRows = await prisma.productionScheduleResourceMaster.findMany({
+    where: {
+      resourceCd: {
+        in: resourceCds
+      }
+    },
+    select: {
+      resourceCd: true
+    }
+  });
+  const existingResourceCdSet = new Set(existingRows.map((row) => normalizeResourceCd(row.resourceCd)));
+  const validGroupToResourceMap = new Map<string, string[]>();
+  groupToResourceSetMap.forEach((resourceSet, groupCd) => {
+    const validResourceCds = Array.from(resourceSet)
+      .filter((resourceCd) => {
+        const isValid = existingResourceCdSet.has(resourceCd);
+        if (!isValid) {
+          unknownResourceCdSet.add(resourceCd);
+        }
+        return isValid;
+      })
+      .sort((a, b) => a.localeCompare(b));
+    if (validResourceCds.length >= 2) {
+      validGroupToResourceMap.set(groupCd, validResourceCds);
+    }
+  });
+
+  const mappings: ProductionScheduleResourceCodeMappingItem[] = [];
+  for (const resourceCdsInGroup of validGroupToResourceMap.values()) {
+    for (const fromResourceCd of resourceCdsInGroup) {
+      let priority = 1;
+      for (const toResourceCd of resourceCdsInGroup) {
+        if (fromResourceCd === toResourceCd) continue;
+        mappings.push({
+          fromResourceCd,
+          toResourceCd,
+          priority,
+          enabled: true
+        });
+        priority += 1;
+      }
+    }
+  }
+
+  const normalizedMappings = normalizeResourceCodeMappings(mappings);
+  if (dryRun) {
+    return {
+      location,
+      dryRun: true,
+      totalRows: parsedRows.length,
+      rowsWithGroupCd: csvPairs.size,
+      generatedMappings: normalizedMappings.length,
+      skippedEmptyRows,
+      skippedDuplicateRows,
+      skippedUnknownResourceCds: Array.from(unknownResourceCdSet).sort((a, b) => a.localeCompare(b))
+    };
+  }
+
+  const settings = await upsertProductionScheduleResourceCodeMappings({
+    location,
+    mappings: normalizedMappings
+  });
+  return {
+    location,
+    dryRun: false,
+    totalRows: parsedRows.length,
+    rowsWithGroupCd: csvPairs.size,
+    generatedMappings: normalizedMappings.length,
+    skippedEmptyRows,
+    skippedDuplicateRows,
+    skippedUnknownResourceCds: Array.from(unknownResourceCdSet).sort((a, b) => a.localeCompare(b)),
+    settings
+  };
 }
 
 export async function getDueManagementAccessPasswordSettings(location: string): Promise<{

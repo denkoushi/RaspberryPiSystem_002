@@ -788,6 +788,7 @@ model ProductionScheduleResourceMaster {
   resourceName    String   @db.VarChar(120)
   resourceClassCd String   @db.VarChar(20)
   resourceGroupCd String   @db.VarChar(40)
+  groupCd         String?  @db.VarChar(40)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -12,7 +12,11 @@ import {
   getResourceCategoryPolicy,
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
-import { getResourceNameMapByResourceCds, type ProductionScheduleResourceNameMap } from './resource-master.service.js';
+import {
+  getResourceGroupCandidatesByResourceCds,
+  getResourceNameMapByResourceCds,
+  type ProductionScheduleResourceNameMap
+} from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProductionScheduleRow = {
@@ -303,7 +307,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LIMIT ${pageSize} OFFSET ${offset}
   `;
 
-  const [featureRows, resourceCodeMappings] = await Promise.all([
+  const rowResourceCds = rows
+    .map((row) => {
+      const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+      return typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
+    })
+    .filter((resourceCd) => resourceCd.length > 0);
+  const [featureRows, resourceCodeMappings, resourceGroupCandidatesByResourceCd] = await Promise.all([
     prisma.productionScheduleActualHoursFeature.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -329,11 +339,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         priority: true,
         enabled: true
       }
-    })
+    }),
+    getResourceGroupCandidatesByResourceCds(rowResourceCds)
   ]);
   const featureResolver = createActualHoursFeatureResolver({
     features: featureRows,
-    resourceCodeMappings
+    resourceCodeMappings,
+    resourceGroupCandidatesByResourceCd
   });
 
   const rowsWithActualHours = rows.map((row) => {

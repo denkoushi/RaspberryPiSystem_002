@@ -443,6 +443,21 @@ export interface ProductionScheduleResourceCodeMapping {
   enabled: boolean;
 }
 
+export interface ProductionScheduleResourceCodeMappingsImportResult {
+  location: string;
+  dryRun: boolean;
+  totalRows: number;
+  rowsWithGroupCd: number;
+  generatedMappings: number;
+  skippedEmptyRows: number;
+  skippedDuplicateRows: number;
+  skippedUnknownResourceCds: string[];
+  settings?: {
+    location: string;
+    mappings: ProductionScheduleResourceCodeMapping[];
+  };
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
   machineName: string | null;
@@ -887,6 +902,17 @@ export async function updateProductionScheduleResourceCodeMappings(payload: {
     };
   }>('/production-schedule-settings/resource-code-mappings', payload);
   return data.settings;
+}
+
+export async function importProductionScheduleResourceCodeMappingsFromCsv(payload: {
+  location: string;
+  csvText: string;
+  dryRun: boolean;
+}) {
+  const { data } = await api.post<{
+    result: ProductionScheduleResourceCodeMappingsImportResult;
+  }>('/production-schedule-settings/resource-code-mappings/import-csv', payload);
+  return data.result;
 }
 
 export async function updateProductionScheduleProcessingTypeOptions(payload: {

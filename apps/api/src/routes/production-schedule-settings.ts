@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authorizeRoles } from '../lib/auth.js';
 import {
   getDueManagementAccessPasswordSettings,
+  importProductionScheduleResourceCodeMappingsFromCsv,
   getProductionScheduleProcessingTypeOptions,
   getProductionScheduleResourceCodeMappings,
   getProductionScheduleResourceCategorySettings,
@@ -58,6 +59,12 @@ const resourceCodeMappingsBodySchema = z.object({
       })
     )
     .max(500)
+});
+
+const resourceCodeMappingsImportCsvBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  csvText: z.string().min(1).max(2_000_000),
+  dryRun: z.boolean().default(true)
 });
 
 const dueManagementAccessPasswordQuerySchema = z.object({
@@ -133,6 +140,16 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
       mappings: body.mappings
     });
     return { settings };
+  });
+
+  app.post('/production-schedule-settings/resource-code-mappings/import-csv', { preHandler: canManage }, async (request) => {
+    const body = resourceCodeMappingsImportCsvBodySchema.parse(request.body);
+    const result = await importProductionScheduleResourceCodeMappingsFromCsv({
+      location: body.location,
+      csvText: body.csvText,
+      dryRun: body.dryRun
+    });
+    return { result };
   });
 
   app.get('/production-schedule-settings/due-management-access-password', { preHandler: canManage }, async (request) => {

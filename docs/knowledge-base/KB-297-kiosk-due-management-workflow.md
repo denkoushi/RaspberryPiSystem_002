@@ -99,6 +99,30 @@ category: knowledge-base
   - **ローカル統合テスト**: DB未起動時は `docker run` でPostgreSQL（例: postgres-test-local）を起動してから `kiosk-production-schedule.integration.test.ts` を実行。
 - **知見**: 同一 `seed.ts` 内で複数テーブルを投入する場合、既存データとの競合に注意。本番DBは既存データありのため、新規マスタ追加はSQL直接投入で柔軟に対応可能。ホバー表示は `title` 属性で標準ツールチップが動作し、追加ライブラリ不要。
 
+## GroupCDマスタ統合とCSV一括登録（2026-03-07）
+
+- **目的**: 実績基準時間（`actualPerPieceMinutes`）のヒット率向上のため、資源CDを `GroupCD` で束ねて `strict -> mapped -> grouped` の順で探索できるようにする。
+- **DB拡張**:
+  - `ProductionScheduleResourceMaster.groupCd`（nullable）を追加。
+  - マイグレーション: `20260312103000_add_resource_master_group_cd`
+  - `prisma/seed.ts` を拡張し、`dataSIGEN.csv` の `GroupCD` 列を取り込み可能化。
+- **ワンショット投入**:
+  - `pnpm --filter @raspi-system/api import:resource-groupcd -- <csv-path>` を追加。
+  - `FSIGENCD` / `GroupCD` を読み、該当 `resourceCd` の `groupCd` を更新（CP932自動判定あり）。
+- **管理コンソールCSV一括登録**:
+  - `POST /api/production-schedule-settings/resource-code-mappings/import-csv`
+  - 入力: `location`, `csvText`, `dryRun`
+  - 出力: `totalRows`, `rowsWithGroupCd`, `generatedMappings`, `skipped*`, `skippedUnknownResourceCds`
+  - 動作: `FSIGENCD + GroupCD` から同一Group内マッピングを自動生成し、`dryRun=false` で既存設定を一括置換。
+- **Resolver拡張**:
+  - `ActualHoursFeatureResolver` を `strict -> mapped -> grouped` へ拡張。
+  - `grouped` は `resourceMaster.groupCd` 由来の候補資源CDを使って解決（DBアクセスはQuery層で完結、resolverは純粋ロジック維持）。
+- **検証**:
+  - `actual-hours-feature-resolver.service.test.ts` に grouped 経路を追加。
+  - `production-schedule-query.service.test.ts` に GroupCD経由解決ケースを追加。
+  - `pnpm --filter @raspi-system/api build`
+  - `pnpm --filter @raspi-system/web build`
+
 ## P2-3 Web Split デプロイ・実機検証（2026-03-13）
 
 - **対象**: `ProductionSchedulePage` の責務分離（displayRowDerivation / useProductionScheduleDerivedRows / useProductionScheduleQueryParams / useSharedSearchHistory / ProductionScheduleResourceFilters / ProductionScheduleHistoryStrip / ProductionScheduleTable）

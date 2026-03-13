@@ -32,4 +32,21 @@ describe('actual-hours-feature-resolver.service', () => {
       matchedResourceCd: '25M',
     });
   });
+
+  it('strict/mapped不一致時にGroupCD候補から解決する', () => {
+    const resolver = createActualHoursFeatureResolver({
+      features: [{ fhincd: 'MD0001', resourceCd: '27M', medianPerPieceMinutes: 6.8, p75PerPieceMinutes: null }],
+      resourceCodeMappings: [{ fromResourceCd: '26M', toResourceCd: '25M', priority: 1, enabled: true }],
+      resourceGroupCandidatesByResourceCd: {
+        '26M': ['26M', '27M']
+      }
+    });
+
+    const result = resolver.resolve({ fhincd: 'MD0001', resourceCd: '26M' });
+    expect(result).toEqual({
+      perPieceMinutes: 6.8,
+      matchedBy: 'grouped',
+      matchedResourceCd: '27M'
+    });
+  });
 });

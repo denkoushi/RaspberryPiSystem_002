@@ -14,7 +14,7 @@ type ResourceCodeMappingRow = {
 
 export type ActualHoursFeatureResolveResult = {
   perPieceMinutes: number | null;
-  matchedBy: 'strict' | 'mapped' | null;
+  matchedBy: 'strict' | 'mapped' | 'grouped' | null;
   matchedResourceCd: string | null;
 };
 
@@ -27,6 +27,7 @@ const normalizeKeyPart = (value: string): string => value.trim().toUpperCase();
 export function createActualHoursFeatureResolver(params: {
   features: FeatureRow[];
   resourceCodeMappings?: ResourceCodeMappingRow[];
+  resourceGroupCandidatesByResourceCd?: Record<string, string[]>;
 }): ActualHoursFeatureResolver {
   const featureMap = new Map<string, number>();
   for (const row of params.features) {
@@ -45,6 +46,17 @@ export function createActualHoursFeatureResolver(params: {
     const current = mappingMap.get(fromResourceCd) ?? [];
     current.push(toResourceCd);
     mappingMap.set(fromResourceCd, current);
+  }
+
+  const groupMap = new Map<string, string[]>();
+  for (const [resourceCd, candidates] of Object.entries(params.resourceGroupCandidatesByResourceCd ?? {})) {
+    const normalizedResourceCd = normalizeKeyPart(resourceCd);
+    if (!normalizedResourceCd) continue;
+    const normalizedCandidates = Array.from(
+      new Set(candidates.map((candidate) => normalizeKeyPart(candidate)).filter((candidate) => candidate.length > 0))
+    );
+    if (normalizedCandidates.length === 0) continue;
+    groupMap.set(normalizedResourceCd, normalizedCandidates);
   }
 
   return {
@@ -71,6 +83,19 @@ export function createActualHoursFeatureResolver(params: {
           return {
             perPieceMinutes: mappedValue,
             matchedBy: 'mapped',
+            matchedResourceCd: candidate
+          };
+        }
+      }
+
+      const groupedCandidates = groupMap.get(normalizedResourceCd) ?? [];
+      for (const candidate of groupedCandidates) {
+        if (candidate === normalizedResourceCd) continue;
+        const groupedValue = featureMap.get(`${normalizedFhincd}__${candidate}`);
+        if (groupedValue !== undefined) {
+          return {
+            perPieceMinutes: groupedValue,
+            matchedBy: 'grouped',
             matchedResourceCd: candidate
           };
         }
