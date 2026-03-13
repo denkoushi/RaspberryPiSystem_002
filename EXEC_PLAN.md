@@ -1540,6 +1540,17 @@
 
 ## Next Steps（将来のタスク）
 
+### 表面処理別納期 デプロイ・実機検証完了後の次のタスク（2026-03-14）
+
+**概要**: 表面処理別納期（製番×処理別納期・最早有効納期一元化）は main へマージ済み。次のステップ候補。
+
+**候補タスク**:
+1. **DELETE エンドポイントの追加（任意）**: 現状は `PUT` に `dueDate: ""` で解除。RESTful に `DELETE /seiban/:fseiban/processing/:processingType/due-date` を追加するか検討
+2. **納期管理画面の継続改善**: アクセシビリティ強化、キーボード操作対応、レスポンシブ調整など
+3. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表面処理別納期ボタン追加2026-03-13)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+
 ### 納期管理新レイアウト（V2）有効化・デプロイ・実機検証完了後の次のタスク（2026-03-13）
 
 **概要**: 納期管理キオスク新レイアウト（V2）はデプロイ・実機検証完了。main へのマージ後、次のステップ候補。
