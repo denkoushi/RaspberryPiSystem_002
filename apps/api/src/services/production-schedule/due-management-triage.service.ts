@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { listEarliestEffectiveDueDateBySeiban } from './due-date-resolution.service.js';
 import { listDueManagementSummaries, type DueManagementSummaryItem } from './due-management-query.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
 import { buildTriageReasons, type TriageReason } from './policies/triage-reason-policy.js';
@@ -98,7 +99,13 @@ export async function listDueManagementTriage(params: {
       .filter((value) => value.length > 0)
   );
   const summaryRows = await listDueManagementSummaries(params.locationKey);
-  const filteredRows = summaryRows.filter((row) => targetSet.has(row.fseiban));
+  const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(summaryRows.map((row) => row.fseiban));
+  const filteredRows = summaryRows
+    .filter((row) => targetSet.has(row.fseiban))
+    .map((row) => ({
+      ...row,
+      dueDate: effectiveDueDateMap.get(row.fseiban) ?? null
+    }));
   const topProcessingTypeMap = await extractTopProcessingTypeBySeiban(
     params.locationKey,
     filteredRows.map((row) => row.fseiban)

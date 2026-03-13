@@ -16,6 +16,7 @@ import {
   useUpdateKioskProductionScheduleDueManagementDailyPlan,
   useAutoGenerateKioskProductionScheduleDueManagementGlobalRank,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
+  useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate,
   useUpdateKioskProductionScheduleDueManagementTriageSelection,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
@@ -118,12 +119,16 @@ export function ProductionScheduleDueManagementPage() {
   const [selectedFseiban, setSelectedFseiban] = useState<string | null>(null);
   const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(selectedFseiban);
   const updateDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
+  const updateProcessingDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
   const updatePartPrioritiesMutation = useUpdateKioskProductionScheduleDueManagementPartPriorities();
   const updatePartProcessingMutation = useUpdateKioskProductionScheduleDueManagementPartProcessingType();
   const updatePartNoteMutation = useUpdateKioskProductionScheduleDueManagementPartNote();
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [editingDueDate, setEditingDueDate] = useState('');
+  const [editingDueDateTarget, setEditingDueDateTarget] = useState<
+    { scope: 'seiban' } | { scope: 'processing'; processingType: string }
+  >({ scope: 'seiban' });
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingNotePart, setEditingNotePart] = useState<{ fhincd: string; note: string } | null>(null);
   const [orderedFhincds, setOrderedFhincds] = useState<string[]>([]);
@@ -356,13 +361,36 @@ export function ProductionScheduleDueManagementPage() {
 
   const openDatePicker = () => {
     if (!detailQuery.data?.fseiban) return;
+    setEditingDueDateTarget({ scope: 'seiban' });
     setEditingDueDate(normalizeDueDateInput(detailQuery.data.dueDate));
+    setIsDatePickerOpen(true);
+  };
+
+  const openProcessingDueDatePicker = (processingType: string, dueDate: string | null) => {
+    if (!detailQuery.data?.fseiban) return;
+    setEditingDueDateTarget({ scope: 'processing', processingType });
+    setEditingDueDate(normalizeDueDateInput(dueDate));
     setIsDatePickerOpen(true);
   };
 
   const commitDueDate = (value: string) => {
     if (!selectedFseiban) return;
     setEditingDueDate(value);
+    if (editingDueDateTarget.scope === 'processing') {
+      updateProcessingDueDateMutation.mutate(
+        {
+          fseiban: selectedFseiban,
+          processingType: editingDueDateTarget.processingType,
+          dueDate: value
+        },
+        {
+          onSuccess: () => {
+            setIsDatePickerOpen(false);
+          }
+        }
+      );
+      return;
+    }
     updateDueDateMutation.mutate(
       { fseiban: selectedFseiban, dueDate: value },
       {
@@ -438,7 +466,7 @@ export function ProductionScheduleDueManagementPage() {
               isDailyPlanDirty={isDailyPlanDirty}
               isSavingDailyPlan={updateDailyPlanMutation.isPending}
               isSavingPartPriorities={updatePartPrioritiesMutation.isPending}
-              isUpdatingDueDate={updateDueDateMutation.isPending}
+              isUpdatingDueDate={updateDueDateMutation.isPending || updateProcessingDueDateMutation.isPending}
             />
           }
           leftRail={
@@ -503,12 +531,15 @@ export function ProductionScheduleDueManagementPage() {
               selectedFseiban={selectedFseiban}
               fseiban={detailQuery.data?.fseiban ?? null}
               dueDate={detailQuery.data?.dueDate ?? null}
+              processingTypeDueDates={detailQuery.data?.processingTypeDueDates ?? []}
               orderedParts={orderedParts}
               processingTypeOptions={processingTypeOptionsQuery.data ?? []}
               updatePartProcessingPending={updatePartProcessingMutation.isPending}
               updatePartPrioritiesPending={updatePartPrioritiesMutation.isPending}
               updatePartNotePending={updatePartNoteMutation.isPending}
+              updateProcessingDueDatePending={updateProcessingDueDateMutation.isPending}
               onOpenDatePicker={openDatePicker}
+              onOpenProcessingDueDatePicker={openProcessingDueDatePicker}
               onSavePartPriorities={savePartPriorities}
               onSaveProcessingType={saveProcessingType}
               onOpenPartNoteModal={openPartNoteModal}
@@ -858,6 +889,17 @@ export function ProductionScheduleDueManagementPage() {
             >
               納期日: {formatDueDate(detailQuery.data?.dueDate ?? null)}
             </button>
+            {(detailQuery.data?.processingTypeDueDates ?? []).map((item) => (
+              <button
+                key={item.processingType}
+                type="button"
+                onClick={() => openProcessingDueDatePicker(item.processingType, item.dueDate)}
+                className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-60"
+                disabled={!detailQuery.data || updateProcessingDueDateMutation.isPending}
+              >
+                {item.processingType}: {formatDueDate(item.dueDate)}
+              </button>
+            ))}
             <button
               type="button"
               onClick={savePartPriorities}

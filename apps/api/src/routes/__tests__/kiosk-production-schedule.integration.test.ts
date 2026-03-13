@@ -33,6 +33,10 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.$executeRaw`
+      DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
+      WHERE "csvDashboardId" = ${DASHBOARD_ID}
+    `;
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -60,6 +64,10 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleTriageSelection.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartProcessingType.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionSchedulePartPriority.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.$executeRaw`
+      DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
+      WHERE "csvDashboardId" = ${DASHBOARD_ID}
+    `;
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -662,6 +670,108 @@ describe('Kiosk Production Schedule API', () => {
     const listBody = listRes.json() as { rows: Array<{ dueDate?: string | null }> };
     expect(listBody.rows).toHaveLength(2);
     expect(listBody.rows.every((row) => String(row.dueDate ?? '').includes('2026-03-10'))).toBe(true);
+  });
+
+  it('applies and clears processing-type due-date override with seiban fallback', async () => {
+    const processingRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { processingType: 'LSLH' }
+    });
+    expect(processingRes.statusCode).toBe(200);
+
+    const seibanDueDateRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-30' }
+    });
+    expect(seibanDueDateRes.statusCode).toBe(200);
+
+    const overrideRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/processing/LSLH/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-10' }
+    });
+    expect(overrideRes.statusCode).toBe(200);
+
+    const summaryRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/summary',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(summaryRes.statusCode).toBe(200);
+    const summaryA = (summaryRes.json() as { summaries: Array<{ fseiban: string; dueDate: string | null }> }).summaries.find(
+      (item) => item.fseiban === 'A'
+    );
+    expect(summaryA?.dueDate).toContain('2026-03-10');
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detailBody = detailRes.json() as {
+      detail: {
+        processingTypeDueDates: Array<{ processingType: string; dueDate: string | null }>;
+        parts: Array<{ fhincd: string; effectiveDueDate: string | null }>;
+      };
+    };
+    expect(detailBody.detail.processingTypeDueDates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          processingType: 'LSLH',
+          dueDate: expect.stringContaining('2026-03-10')
+        })
+      ])
+    );
+    const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.effectiveDueDate).toContain('2026-03-10');
+
+    const seibanUpdateRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '2026-03-20' }
+    });
+    expect(seibanUpdateRes.statusCode).toBe(200);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const rows = (listRes.json() as {
+      rows: Array<{ rowData: { FHINCD?: string }; dueDate?: string | null }>;
+    }).rows;
+    const rowX = rows.find((row) => row.rowData.FHINCD === 'X');
+    const rowZ = rows.find((row) => row.rowData.FHINCD === 'Z');
+    expect(rowX?.dueDate).toContain('2026-03-10');
+    expect(rowZ?.dueDate).toContain('2026-03-20');
+
+    const clearRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A/processing/LSLH/due-date',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { dueDate: '' }
+    });
+    expect(clearRes.statusCode).toBe(200);
+
+    const listAfterClearRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listAfterClearRes.statusCode).toBe(200);
+    const rowsAfterClear = (listAfterClearRes.json() as {
+      rows: Array<{ rowData: { FHINCD?: string }; dueDate?: string | null }>;
+    }).rows;
+    const rowXAfterClear = rowsAfterClear.find((row) => row.rowData.FHINCD === 'X');
+    expect(rowXAfterClear?.dueDate).toContain('2026-03-20');
   });
 
   it('returns due-management summary and seiban detail', async () => {

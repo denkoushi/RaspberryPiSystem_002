@@ -95,6 +95,11 @@ export const productionScheduleDueManagementSeibanParamsSchema = z.object({
   fseiban: z.string().min(1).max(20).transform((value) => value.trim())
 });
 
+export const productionScheduleDueManagementSeibanProcessingParamsSchema = z.object({
+  fseiban: z.string().min(1).max(20).transform((value) => value.trim()),
+  processingType: z.string().min(1).max(20).transform((value) => value.trim())
+});
+
 export const productionScheduleDueManagementSeibanDueDateBodySchema = z.object({
   dueDate: z.string().max(20).transform((value) => value.trim())
 });

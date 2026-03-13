@@ -14,6 +14,7 @@ import { registerProductionScheduleSearchHistoryRoute } from './search-history.j
 import { registerProductionScheduleDueManagementSummaryRoute } from './due-management-summary.js';
 import { registerProductionScheduleDueManagementSeibanRoute } from './due-management-seiban.js';
 import { registerProductionScheduleDueManagementDueDateRoute } from './due-management-due-date.js';
+import { registerProductionScheduleDueManagementProcessingDueDateRoute } from './due-management-processing-due-date.js';
 import { registerProductionScheduleDueManagementPartPrioritiesRoute } from './due-management-part-priorities.js';
 import { registerProductionScheduleDueManagementProcessingRoute } from './due-management-processing.js';
 import { registerProductionScheduleDueManagementNoteRoute } from './due-management-note.js';
@@ -42,6 +43,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueManagementSummaryRoute(app, deps);
   await registerProductionScheduleDueManagementSeibanRoute(app, deps);
   await registerProductionScheduleDueManagementDueDateRoute(app, deps);
+  await registerProductionScheduleDueManagementProcessingDueDateRoute(app, deps);
   await registerProductionScheduleDueManagementPartPrioritiesRoute(app, deps);
   await registerProductionScheduleDueManagementProcessingRoute(app, deps);
   await registerProductionScheduleDueManagementNoteRoute(app, deps);

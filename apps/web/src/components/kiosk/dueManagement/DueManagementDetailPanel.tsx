@@ -8,12 +8,15 @@ type DueManagementDetailPanelProps = {
   selectedFseiban: string | null;
   fseiban: string | null;
   dueDate: string | null;
+  processingTypeDueDates: Array<{ processingType: string; dueDate: string | null }>;
   orderedParts: ProductionScheduleDueManagementPartItem[];
   processingTypeOptions: Array<{ code: string; label: string; enabled: boolean }>;
   updatePartProcessingPending: boolean;
   updatePartPrioritiesPending: boolean;
   updatePartNotePending: boolean;
+  updateProcessingDueDatePending: boolean;
   onOpenDatePicker: () => void;
+  onOpenProcessingDueDatePicker: (processingType: string, dueDate: string | null) => void;
   onSavePartPriorities: () => void;
   onSaveProcessingType: (fhincd: string, processingType: string) => void;
   onOpenPartNoteModal: (fhincd: string, note: string | null) => void;
@@ -36,6 +39,17 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
           >
             納期日: {formatDueDate(props.dueDate)}
           </button>
+          {props.processingTypeDueDates.map((item) => (
+            <button
+              key={item.processingType}
+              type="button"
+              onClick={() => props.onOpenProcessingDueDatePicker(item.processingType, item.dueDate)}
+              className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-60"
+              disabled={!props.fseiban || props.updateProcessingDueDatePending}
+            >
+              {item.processingType}: {formatDueDate(item.dueDate)}
+            </button>
+          ))}
           <button
             type="button"
             onClick={props.onSavePartPriorities}
@@ -65,6 +79,7 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
                 <th className="px-2 py-2">工程進捗</th>
                 <th className="px-2 py-2">所要(min)</th>
                 <th className="px-2 py-2">実績基準時間(分/個)</th>
+                <th className="px-2 py-2">納期</th>
                 <th className="px-2 py-2">備考</th>
                 <th className="px-2 py-2">提案順位</th>
                 <th className="px-2 py-2">操作</th>
@@ -129,6 +144,7 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
                   <td className="px-2 py-2">
                     {typeof part.actualPerPieceMinutes === 'number' ? part.actualPerPieceMinutes.toFixed(2) : '-'}
                   </td>
+                  <td className="px-2 py-2">{formatDueDate(part.effectiveDueDate ?? null)}</td>
                   <td className="px-2 py-2">
                     <button
                       type="button"

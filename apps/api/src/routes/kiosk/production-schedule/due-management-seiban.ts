@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 
+import { listSeibanProcessingDueDates } from '../../../services/production-schedule/due-date-resolution.service.js';
 import { getDueManagementSeibanDetail } from '../../../services/production-schedule/due-management-query.service.js';
+import { getProcessingTypePriority } from '../../../services/production-schedule/policies/processing-priority-policy.js';
 import { productionScheduleDueManagementSeibanParamsSchema, type KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleDueManagementSeibanRoute(
@@ -15,6 +17,37 @@ export async function registerProductionScheduleDueManagementSeibanRoute(
       locationKey,
       fseiban: params.fseiban
     });
-    return { detail };
+    const processingDueDateMap = await listSeibanProcessingDueDates(params.fseiban);
+    const processingTypeDueDates = Array.from(
+      new Set(
+        detail.parts
+          .map((part) => part.processingType?.trim() ?? '')
+          .filter((processingType) => processingType.length > 0)
+      )
+    )
+      .sort((a, b) => {
+        const aPriority = getProcessingTypePriority(a);
+        const bPriority = getProcessingTypePriority(b);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return a.localeCompare(b);
+      })
+      .map((processingType) => ({
+        processingType,
+        dueDate: processingDueDateMap.get(processingType) ?? null
+      }));
+
+    return {
+      detail: {
+        ...detail,
+        processingTypeDueDates,
+        parts: detail.parts.map((part) => ({
+          ...part,
+          effectiveDueDate:
+            part.processingType && processingDueDateMap.get(part.processingType)
+              ? processingDueDateMap.get(part.processingType)
+              : detail.dueDate
+        }))
+      }
+    };
   });
 }

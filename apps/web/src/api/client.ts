@@ -588,12 +588,19 @@ export interface ProductionScheduleDueManagementPartItem {
   processes: ProductionScheduleDueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
+  effectiveDueDate?: string | null;
+}
+
+export interface ProductionScheduleDueManagementProcessingTypeDueDateItem {
+  processingType: string;
+  dueDate: string | null;
 }
 
 export interface ProductionScheduleDueManagementSeibanDetail {
   fseiban: string;
   machineName: string | null;
   dueDate: string | null;
+  processingTypeDueDates?: ProductionScheduleDueManagementProcessingTypeDueDateItem[];
   parts: ProductionScheduleDueManagementPartItem[];
 }
 
@@ -801,6 +808,20 @@ export async function updateKioskProductionScheduleDueManagementSeibanDueDate(
 ) {
   const { data } = await api.put<{ success: boolean; dueDate: string | null; affectedRows: number }>(
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleDueManagementSeibanProcessingDueDate(
+  fseiban: string,
+  processingType: string,
+  payload: { dueDate: string }
+) {
+  const { data } = await api.put<{ success: boolean; processingType: string; dueDate: string | null; affectedRows: number }>(
+    `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(
+      fseiban
+    )}/processing/${encodeURIComponent(processingType)}/due-date`,
     payload
   );
   return data;

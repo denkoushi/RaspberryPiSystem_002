@@ -112,6 +112,7 @@ import {
   updateKioskProductionScheduleDueDate,
   updateKioskProductionScheduleProcessing,
   updateKioskProductionScheduleDueManagementSeibanDueDate,
+  updateKioskProductionScheduleDueManagementSeibanProcessingDueDate,
   updateKioskProductionScheduleDueManagementPartPriorities,
   updateKioskProductionScheduleDueManagementPartProcessingType,
   updateKioskProductionScheduleDueManagementPartNote,
@@ -354,6 +355,28 @@ export function useUpdateKioskProductionScheduleDueManagementSeibanDueDate() {
   return useMutation({
     mutationFn: ({ fseiban, dueDate }: { fseiban: string; dueDate: string }) =>
       updateKioskProductionScheduleDueManagementSeibanDueDate(fseiban, { dueDate }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fseiban,
+      processingType,
+      dueDate
+    }: {
+      fseiban: string;
+      processingType: string;
+      dueDate: string;
+    }) => updateKioskProductionScheduleDueManagementSeibanProcessingDueDate(fseiban, processingType, { dueDate }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
       void queryClient.invalidateQueries({

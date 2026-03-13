@@ -249,6 +249,29 @@ category: knowledge-base
   - 開閉状態の永続化はページコンテナから `useCollapsibleSectionPersistence` へ切り出すと、UIコンポーネントは表示責務に集中できる
   - 選択中製番の解決ロジックは、表示用カード配列ではなく `sharedHistory` を基準にすることで、表示構造変更に影響されない
 
+## 表面処理別納期ボタン追加（2026-03-13）
+
+- **目的**: 製番納期をデフォルトとして維持しつつ、製番内の表面処理（例: LSLH / カニゼン / 塗装）ごとに納期を個別上書きできるようにする。
+- **仕様**:
+  - 右ペインヘッダーに `製番納期` ボタンを維持したまま、`製番内で実際に使われている表面処理のみ` 納期ボタンを追加
+  - 優先規則: `processingType別納期 > 製番納期`
+  - 製番納期の更新時は `processingType別上書きが存在しない行` のみ writeback 対象とする（上書き保持）
+  - processingType別納期の解除時はレコード削除で表現し、製番納期へフォールバック
+  - 左ペイン summary / triage は最早有効納期（min effective due date）で表示・判定する
+- **データモデル**:
+  - `ProductionScheduleSeibanProcessingDueDate`（`csvDashboardId + fseiban + processingType` 一意）を追加
+  - migration: `20260313190000_add_seiban_processing_due_date`
+- **API**:
+  - 追加: `PUT /api/kiosk/production-schedule/due-management/seiban/:fseiban/processing/:processingType/due-date`
+  - 既存: `PUT /api/kiosk/production-schedule/due-management/seiban/:fseiban/due-date` は `excludeProcessingTypes` 対応へ拡張
+- **トラブルシューティング**:
+  - **症状**: 製番納期を更新すると processingType別納期が消える  
+    **確認**: `ProductionScheduleSeibanProcessingDueDate` に対象 `fseiban + processingType` の行が存在するか  
+    **対処**: processingType別納期APIで再設定し、summary/triage/detail の最早納期反映を確認
+  - **症状**: processingType別納期解除後に納期が空になる  
+    **確認**: 製番納期（`ProductionScheduleSeibanDueDate`）が未設定ではないか  
+    **対処**: 製番納期を先に設定してから processingType別納期を解除
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化

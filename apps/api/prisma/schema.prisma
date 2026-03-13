@@ -728,6 +728,19 @@ model ProductionScheduleSeibanDueDate {
   @@index([csvDashboardId, dueDate])
 }
 
+model ProductionScheduleSeibanProcessingDueDate {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  fseiban        String   @db.VarChar(20)
+  processingType String   @db.VarChar(20)
+  dueDate        DateTime @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, fseiban, processingType], map: "ProductionScheduleSeibanProcessingDueDate_unique_scope")
+  @@index([csvDashboardId, fseiban], map: "ProductionScheduleSeibanProcessingDueDate_idx_seiban")
+}
+
 model ProductionSchedulePartPriority {
   id             String   @id @default(uuid())
   csvDashboardId String

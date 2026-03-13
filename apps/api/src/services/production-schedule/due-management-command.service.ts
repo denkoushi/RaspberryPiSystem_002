@@ -1,7 +1,13 @@
+import { randomUUID } from 'node:crypto';
+
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { isValidDueDateText, writebackSeibanDueDateToRowNotes } from './due-date-writeback.service.js';
+import {
+  isValidDueDateText,
+  writebackSeibanDueDateToRowNotes,
+  writebackSeibanProcessingDueDateToRowNotes
+} from './due-date-writeback.service.js';
 import { upsertProductionSchedulePartProcessingTypeByFhincd } from './production-schedule-command.service.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
@@ -16,6 +22,66 @@ const normalizeOrderedFhincds = (orderedFhincds: string[]): string[] => {
     next.push(normalized);
   }
   return next;
+};
+
+const normalizeProcessingType = (processingType: string): string => processingType.trim();
+
+const listOverriddenProcessingTypes = async (fseiban: string): Promise<string[]> => {
+  const rows = await prisma.$queryRaw<Array<{ processingType: string }>>`
+    SELECT "processingType"
+    FROM "ProductionScheduleSeibanProcessingDueDate"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "fseiban" = ${fseiban}
+  `;
+  return rows.map((row) => row.processingType).filter((value) => value.trim().length > 0);
+};
+
+const upsertSeibanProcessingDueDateRecord = async (params: {
+  fseiban: string;
+  processingType: string;
+  dueDate: Date;
+}): Promise<void> => {
+  await prisma.$executeRaw`
+    INSERT INTO "ProductionScheduleSeibanProcessingDueDate" (
+      "id",
+      "csvDashboardId",
+      "fseiban",
+      "processingType",
+      "dueDate",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${randomUUID()},
+      ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
+      ${params.fseiban},
+      ${params.processingType},
+      ${params.dueDate},
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("csvDashboardId", "fseiban", "processingType")
+    DO UPDATE SET
+      "dueDate" = EXCLUDED."dueDate",
+      "updatedAt" = NOW()
+  `;
+};
+
+const deleteSeibanProcessingDueDateRecord = async (params: { fseiban: string; processingType: string }): Promise<void> => {
+  await prisma.$executeRaw`
+    DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "fseiban" = ${params.fseiban}
+      AND "processingType" = ${params.processingType}
+  `;
+};
+
+const deleteSeibanProcessingDueDateRecordsBySeiban = async (fseiban: string): Promise<void> => {
+  await prisma.$executeRaw`
+    DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "fseiban" = ${fseiban}
+  `;
 };
 
 export async function upsertProductionScheduleSeibanDueDate(params: {
@@ -35,6 +101,7 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
   const trimmedDueDate = dueDateText.trim();
   if (trimmedDueDate.length === 0) {
     await sharedScheduleFieldsRepository.deleteSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban);
+    await deleteSeibanProcessingDueDateRecordsBySeiban(trimmedFseiban);
     const writebackResult = await writebackSeibanDueDateToRowNotes({
       locationKey,
       fseiban: trimmedFseiban,
@@ -53,14 +120,97 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
     fseiban: trimmedFseiban,
     dueDate
   });
+  const overriddenProcessingTypes = await listOverriddenProcessingTypes(trimmedFseiban);
 
   const writebackResult = await writebackSeibanDueDateToRowNotes({
     locationKey,
     fseiban: trimmedFseiban,
+    dueDateText: trimmedDueDate,
+    excludeProcessingTypes: overriddenProcessingTypes
+  });
+  return {
+    success: true,
+    dueDate,
+    affectedRows: writebackResult.affectedRows
+  };
+}
+
+export async function upsertProductionScheduleSeibanProcessingDueDate(params: {
+  locationKey: string;
+  fseiban: string;
+  processingType: string;
+  dueDateText: string;
+}): Promise<{ success: true; processingType: string; dueDate: Date | null; affectedRows: number }> {
+  const { locationKey, dueDateText } = params;
+  const fseiban = params.fseiban.trim();
+  const processingType = normalizeProcessingType(params.processingType);
+  if (fseiban.length === 0) {
+    throw new ApiError(400, '製番は必須です');
+  }
+  if (processingType.length === 0) {
+    throw new ApiError(400, '表面処理は必須です');
+  }
+  if (!isValidDueDateText(dueDateText)) {
+    throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
+  }
+
+  const processingTypeExists = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS(
+      SELECT 1
+      FROM "CsvDashboardRow"
+      LEFT JOIN "ProductionScheduleRowNote" AS "n"
+        ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+        ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+        AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
+        AND COALESCE("pp"."processingType", "n"."processingType") = ${processingType}
+    ) AS "exists"
+  `;
+  if (!processingTypeExists[0]?.exists) {
+    throw new ApiError(404, '指定された製番内に対象の表面処理が見つかりません');
+  }
+
+  const trimmedDueDate = dueDateText.trim();
+  if (trimmedDueDate.length === 0) {
+    await deleteSeibanProcessingDueDateRecord({ fseiban, processingType });
+    const seibanDueDate = await sharedScheduleFieldsRepository.findSeibanDueDate(
+      PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      fseiban
+    );
+    const fallbackDueDateText = seibanDueDate?.dueDate ? seibanDueDate.dueDate.toISOString().slice(0, 10) : '';
+    const writebackResult = await writebackSeibanProcessingDueDateToRowNotes({
+      locationKey,
+      fseiban,
+      processingType,
+      dueDateText: fallbackDueDateText
+    });
+    return {
+      success: true,
+      processingType,
+      dueDate: seibanDueDate?.dueDate ?? null,
+      affectedRows: writebackResult.affectedRows
+    };
+  }
+
+  const dueDate = new Date(`${trimmedDueDate}T00:00:00.000Z`);
+  await upsertSeibanProcessingDueDateRecord({
+    fseiban,
+    processingType,
+    dueDate
+  });
+  const writebackResult = await writebackSeibanProcessingDueDateToRowNotes({
+    locationKey,
+    fseiban,
+    processingType,
     dueDateText: trimmedDueDate
   });
   return {
     success: true,
+    processingType,
     dueDate,
     affectedRows: writebackResult.affectedRows
   };
