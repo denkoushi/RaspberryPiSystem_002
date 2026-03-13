@@ -5,16 +5,12 @@ import { CollapsibleCard } from './CollapsibleCard';
 import { CollapsibleSection } from './CollapsibleSection';
 
 import type {
-  ProductionScheduleDueManagementSummaryItem,
   ProductionScheduleDueManagementTriageItem,
 } from '../../../api/client';
 import type { GlobalRankItem, OrderedPlanItem, ProposalItemMeta } from '../../../features/kiosk/productionSchedule/dueManagementViewModel';
 
 type DueManagementLeftRailProps = {
   selectedFseiban: string | null;
-  summaryLoading: boolean;
-  summaryError: boolean;
-  visibleSummaries: ProductionScheduleDueManagementSummaryItem[];
   triageLoading: boolean;
   triageError: boolean;
   filteredTriageCandidates: ProductionScheduleDueManagementTriageItem[];
@@ -378,32 +374,6 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             );
           })}
         </div>
-        {props.summaryLoading ? <p className="px-4 py-3 text-sm text-white/80">読み込み中...</p> : null}
-        {props.summaryError ? <p className="px-4 py-3 text-sm text-rose-300">取得に失敗しました。</p> : null}
-        {props.visibleSummaries.map((item) => (
-          <button
-            key={item.fseiban}
-            type="button"
-            onClick={() => props.onSelectFseiban(item.fseiban)}
-            className={`w-full border-b border-white/10 px-4 py-3 text-left hover:bg-white/10 ${
-              props.selectedFseiban === item.fseiban ? 'bg-blue-600/30' : ''
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-sm font-semibold text-white">
-                {item.fseiban}
-                <span className="ml-2 text-xs font-normal text-white/70">
-                  {normalizeMachineName(item.machineName) || '-'}
-                </span>
-              </span>
-              <span className="text-xs text-white/70">{formatDueDate(item.dueDate)}</span>
-            </div>
-            <div className="mt-1 text-xs text-white/70">
-              部品 {item.partsCount}件 / 工程 {item.processCount}件 / 所要 {Math.round(item.totalRequiredMinutes)} min
-            </div>
-            <div className="mt-1 text-[11px] text-sky-200/90">実績カバー率 {Math.round(item.actualCoverageRatio * 100)}%</div>
-          </button>
-        ))}
       </div>
     </>
   );
