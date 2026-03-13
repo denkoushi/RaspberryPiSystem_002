@@ -19,7 +19,6 @@ export async function registerProductionScheduleListRoute(
       location: 'routes/kiosk/production-schedule/list.ts:14',
       message: 'kiosk production-schedule request context',
       data: {
-        clientId: clientDevice.id,
         clientName: clientDevice.name,
         clientLocation: clientDevice.location,
         resolvedLocationKey: locationKey
