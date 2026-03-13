@@ -525,7 +525,7 @@
       missing+=("SLACK_KIOSK_SUPPORT_WEBHOOK_URL")
     fi
 
-    missing_count="$(printf '%s\n' "${missing[@]}" | wc -l | tr -d ' ')"
+    missing_count="${#missing[@]}"
     if [ "${missing_count}" -gt 0 ]; then
       printf "Missing required environment variables: %s\n" "$(IFS=,; echo "${missing[*]}")" >&2
       exit 1

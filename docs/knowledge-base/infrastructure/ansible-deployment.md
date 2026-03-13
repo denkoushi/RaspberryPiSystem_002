@@ -3927,4 +3927,43 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-302] デプロイ後の環境変数検証が空配列でも失敗する（偽陽性）
+
+**発生日**: 2026-03-13  
+**Status**: ✅ 解決済み（検証スクリプト修正）
+
+**Context**:
+- `scripts/update-all-clients.sh ... --limit "raspberrypi5"` で Pi5 単体デプロイを実行
+- API ヘルスチェックまでは通過するが、最終の環境変数検証でデプロイ失敗
+
+**Symptoms**:
+- `TASK [Verify API container environment variables after .env update]` が失敗
+- エラーメッセージが `Missing required environment variables:` のみで、変数名が空
+
+**Investigation**:
+- **CONFIRMED**: Pi5 の `/opt/RaspberryPiSystem_002/infrastructure/docker/.env` には `SLACK_KIOSK_SUPPORT_WEBHOOK_URL` が設定済み
+- **CONFIRMED**: API コンテナの `printenv` にも同変数が設定済み
+- **CONFIRMED**: `infrastructure/ansible/roles/server/tasks/main.yml` の `missing_count` 算出が `printf '%s\n' "${missing[@]}" | wc -l` になっており、空配列でも `1` を返す
+
+**Root cause**:
+- Bash 配列 `missing=()` のときに `printf '%s\n' "${missing[@]}"` が 1 行扱いとなり、`missing_count=1` になって偽陽性で fail-fast していた
+
+**Fix**:
+- ✅ `missing_count` を配列長で判定するよう修正
+  - 変更前: `missing_count="$(printf '%s\n' "${missing[@]}" | wc -l | tr -d ' ')"`
+  - 変更後: `missing_count="${#missing[@]}"`
+- 対象: `infrastructure/ansible/roles/server/tasks/main.yml`
+
+**Prevention**:
+- Bash 配列の件数判定には `printf | wc -l` ではなく `\${#array[@]}` を使用する
+- fail-fast スクリプトは「空配列時の挙動」を必ずローカルで再現確認する
+
+**関連ファイル**:
+- `infrastructure/ansible/roles/server/tasks/main.yml`
+- `scripts/update-all-clients.sh`
+
+**解決状況**: ✅ **解決済み**（2026-03-13）
+
+---
+
 {% endraw %}
