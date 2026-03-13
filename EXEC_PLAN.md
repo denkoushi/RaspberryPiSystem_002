@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-13) **納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除）デプロイ・実機検証完了**: 左ペインのトグルを文字からアイコン化、デフォルト閉じ、`useCollapsibleSectionPersistence` で localStorage 永続化、最下段カード削除（製番登録・削除はチップで継続）。**デプロイ**: ブランチ `feat/due-management-ui-phase2-improvements`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（開閉アイコン・デフォルト閉じ・状態記憶・チップ操作）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase2開閉アイコン化デフォルト閉じ状態記憶最下段カード削除2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-13) **納期管理UI Phase1（左ペイン開閉式・詳細パネル重複削除）デプロイ・実機検証完了**: 左ペイン3セクションを `CollapsibleSection` / `CollapsibleCard` で開閉可能にし、詳細パネルから製番・機種の重複表示を削除。**デプロイ**: ブランチ `feat/due-management-ui-phase1-collapsible`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分。**実機検証**: 全チェックリスト項目合格、動作確認OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase1左ペイン開閉式詳細パネル重複削除デプロイ実機検証2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-13) **納期管理キオスク新レイアウト（V2）有効化・デプロイ・実機検証完了**: Feature Flag `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` で新旧UIを切替可能に。左レール・アクティブコンテキストバー・詳細パネル構成で操作中視認性を向上。`inventory.yml` の `web_kiosk_due_mgmt_layout_v2_enabled` で制御。docker .env 変更時に web コンテナを再ビルドするタスクを server role に追加。**デプロイ**: ブランチ `feat/due-mgmt-layout-hybrid-flag`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（旧UI検証後、新UI切替・再デプロイ）。**実機検証**: 動作確認OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理新レイアウトv2有効化デプロイ実機検証2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-07) **GroupCDマスタ統合 + 資源CDマッピングCSV一括登録を実装**: `ProductionScheduleResourceMaster` に `groupCd` を追加し、seed取り込みを `GroupCD` 対応へ拡張。ワンショット投入スクリプト `import:resource-groupcd` を追加。管理APIに `POST /api/production-schedule-settings/resource-code-mappings/import-csv`（dryRun/結果サマリ）を追加し、管理コンソールへCSV一括取込UIを実装。`ActualHoursFeatureResolver` は `strict -> mapped -> grouped` に拡張し、`resource-master` 由来のGroup候補を Query 層から注入する構成で疎結合を維持。**検証**: resolver/queryの単体テスト追加（GroupCD経路）、`apps/api` test/build 成功、`apps/web` build 成功。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#groupcdマスタ統合とcsv一括登録2026-03-07) を参照。
@@ -1549,6 +1550,17 @@
 
 **参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理新レイアウトv2有効化デプロイ実機検証2026-03-13)
 
+### 納期管理UI Phase2 デプロイ・実機検証完了後の次のタスク（2026-03-13）
+
+**概要**: 納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除）はデプロイ・実機検証完了。main へのマージ後、次のステップ候補。
+
+**候補タスク**:
+1. **main へのマージ**: ブランチ `feat/due-management-ui-phase2-improvements` を main へマージし、本番安定版に統合
+2. **納期管理画面の継続改善**: アクセシビリティ強化、キーボード操作対応、レスポンシブ調整など
+3. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase2開閉アイコン化デフォルト閉じ状態記憶最下段カード削除2026-03-13)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+
 ### P2-5 Boundary Guard デプロイ・実機検証完了後の次のタスク（2026-03-13）
 
 **概要**: P2-5 はデプロイ・実機検証完了。次のステップ候補。
@@ -2325,6 +2337,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-13（3回目） — 納期管理UI Phase2 デプロイ・実機検証完了を反映。Progress に Phase2 完了（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除、リモート自動チェック＋実機UI確認）を追加。Next Steps に Phase2 完了後の候補（main マージ、納期管理継続改善、P2-6 以降）を追加。KB-297 にデプロイ・実機検証結果を追記。deploy-status-recovery.md に Phase2 チェックリスト項目を追加。
 変更履歴: 2026-03-07 — GroupCDマスタ統合 + 資源CDマッピングCSV一括登録を反映。`ProductionScheduleResourceMaster.groupCd` 追加、seed/ワンショット取込スクリプト追加、`resource-code-mappings/import-csv` API（dryRunサマリ付き）と管理コンソールCSV取込UIを追加。`ActualHoursFeatureResolver` を `strict->mapped->grouped` へ拡張し、Query層からGroup候補注入。resolver/queryテスト追加、api/web build通過をProgressへ追記。KB-297 / INDEX を同期更新。
 変更履歴: 2026-03-13（2回目） — P2-5 Boundary Guard デプロイ・実機検証完了を反映。Progress にデプロイ（Pi5→raspberrypi4→raspi4-robodrill01、約20分）・実機検証（全チェックリスト合格）を追記。Next Steps を P2-5 デプロイ・実機検証完了後の候補に更新。phase2-safe-refactor-backlog.md / KB-297 / docs/INDEX.md にデプロイ・実機検証結果を追記。
 変更履歴: 2026-03-13 — P2-5 Boundary Guard 実装完了を反映。Progress に P2-5 完了（API/Web 境界ルール強化、`normalizeClientKey` 共通化、lint/test/build 通過）を追加。Surprises に `target/from` 誤設定時の誤検知と export 契約欠落の再発防止知見を追記。Next Steps を P2-5 完了後の候補に更新。phase2-safe-refactor-backlog.md / docs/INDEX.md を同期更新。

@@ -38,15 +38,16 @@ import {
   buildSummaryBySeiban,
   buildTriageBySeiban,
   buildTriageCandidates,
-  buildVisibleSummaries,
   resolveNextSelectedFseiban
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 const NOTE_MAX_LENGTH = 100;
 const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
+const DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY = 'due-management-section-open';
 const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
 const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
 const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED === 'true';
@@ -100,11 +101,14 @@ export function ProductionScheduleDueManagementPage() {
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
-  const [sectionOpen, setSectionOpen] = useState({
-    triage: true,
-    globalRank: true,
-    dailyPlan: false
-  });
+  const [sectionOpen, setSectionOpen] = useCollapsibleSectionPersistence(
+    DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY,
+    {
+      triage: false,
+      globalRank: false,
+      dailyPlan: false
+    }
+  );
   const [triageCardOpenBySeiban, setTriageCardOpenBySeiban] = useState<Record<string, boolean>>({});
   const [globalRankCardOpenBySeiban, setGlobalRankCardOpenBySeiban] = useState<Record<string, boolean>>({});
   const [dailyPlanCardOpenBySeiban, setDailyPlanCardOpenBySeiban] = useState<Record<string, boolean>>({});
@@ -130,7 +134,6 @@ export function ProductionScheduleDueManagementPage() {
   );
 
   const summaryBySeiban = useMemo(() => buildSummaryBySeiban(summaryQuery.data), [summaryQuery.data]);
-  const visibleSummaries = useMemo(() => buildVisibleSummaries(sharedHistory, summaryBySeiban), [sharedHistory, summaryBySeiban]);
   const triageCandidates = useMemo(() => buildTriageCandidates(triageQuery.data), [triageQuery.data]);
   const selectedSet = useMemo(
     () => new Set(triageQuery.data?.selectedFseibans ?? []),
@@ -256,12 +259,12 @@ export function ProductionScheduleDueManagementPage() {
       selectedFseiban,
       orderedPlanFseibans,
       triageCandidates,
-      visibleSummaries
+      sharedHistory
     });
     if (nextSelected !== selectedFseiban) {
       setSelectedFseiban(nextSelected);
     }
-  }, [orderedPlanFseibans, selectedFseiban, triageCandidates, visibleSummaries]);
+  }, [orderedPlanFseibans, selectedFseiban, sharedHistory, triageCandidates]);
 
   useEffect(() => {
     if (!detail) return;
@@ -441,9 +444,6 @@ export function ProductionScheduleDueManagementPage() {
           leftRail={
             <DueManagementLeftRail
               selectedFseiban={selectedFseiban}
-              summaryLoading={summaryQuery.isLoading}
-              summaryError={summaryQuery.isError}
-              visibleSummaries={visibleSummaries}
               triageLoading={triageQuery.isLoading}
               triageError={triageQuery.isError}
               filteredTriageCandidates={filteredTriageCandidates}
@@ -837,34 +837,6 @@ export function ProductionScheduleDueManagementPage() {
               );
             })}
           </div>
-          {summaryQuery.isLoading ? <p className="px-4 py-3 text-sm text-white/80">読み込み中...</p> : null}
-          {summaryQuery.isError ? <p className="px-4 py-3 text-sm text-rose-300">取得に失敗しました。</p> : null}
-          {visibleSummaries.map((item) => (
-            <button
-              key={item.fseiban}
-              type="button"
-              onClick={() => setSelectedFseiban(item.fseiban)}
-              className={`w-full border-b border-white/10 px-4 py-3 text-left hover:bg-white/10 ${
-                selectedFseiban === item.fseiban ? 'bg-blue-600/30' : ''
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-semibold text-white">
-                  {item.fseiban}
-                  <span className="ml-2 text-xs font-normal text-white/70">
-                    {normalizeMachineName(item.machineName) || '-'}
-                  </span>
-                </span>
-                <span className="text-xs text-white/70">{formatDueDate(item.dueDate)}</span>
-              </div>
-              <div className="mt-1 text-xs text-white/70">
-                部品 {item.partsCount}件 / 工程 {item.processCount}件 / 所要 {Math.round(item.totalRequiredMinutes)} min
-              </div>
-              <div className="mt-1 text-[11px] text-sky-200/90">
-                実績カバー率 {Math.round(item.actualCoverageRatio * 100)}%
-              </div>
-            </button>
-          ))}
         </div>
       </section>
 

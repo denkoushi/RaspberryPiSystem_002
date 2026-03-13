@@ -43,14 +43,6 @@ export const buildSummaryBySeiban = (
   return map;
 };
 
-export const buildVisibleSummaries = (
-  sharedHistory: string[],
-  summaryBySeiban: Map<string, ProductionScheduleDueManagementSummaryItem>
-): ProductionScheduleDueManagementSummaryItem[] =>
-  sharedHistory
-    .map((fseiban) => summaryBySeiban.get(fseiban))
-    .filter((item): item is ProductionScheduleDueManagementSummaryItem => Boolean(item));
-
 export const buildTriageCandidates = (
   triage: ProductionScheduleDueManagementTriageResult | undefined
 ): ProductionScheduleDueManagementTriageItem[] => {
@@ -171,12 +163,12 @@ export const resolveNextSelectedFseiban = (params: {
   selectedFseiban: string | null;
   orderedPlanFseibans: string[];
   triageCandidates: ProductionScheduleDueManagementTriageItem[];
-  visibleSummaries: ProductionScheduleDueManagementSummaryItem[];
+  sharedHistory: string[];
 }): string | null => {
   const selectableSet = new Set<string>([
     ...params.orderedPlanFseibans,
     ...params.triageCandidates.map((item) => item.fseiban),
-    ...params.visibleSummaries.map((item) => item.fseiban),
+    ...params.sharedHistory,
   ]);
   if (params.selectedFseiban && selectableSet.has(params.selectedFseiban)) {
     return params.selectedFseiban;
@@ -184,7 +176,7 @@ export const resolveNextSelectedFseiban = (params: {
   return (
     params.orderedPlanFseibans[0] ??
     params.triageCandidates[0]?.fseiban ??
-    params.visibleSummaries[0]?.fseiban ??
+    params.sharedHistory[0] ??
     null
   );
 };

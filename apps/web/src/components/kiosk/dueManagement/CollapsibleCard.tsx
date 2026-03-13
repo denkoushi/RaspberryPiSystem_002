@@ -1,3 +1,5 @@
+import { CollapsibleToggleIcon } from './CollapsibleToggleIcon';
+
 import type { ReactNode } from 'react';
 
 type CollapsibleCardProps = {
@@ -25,11 +27,14 @@ export function CollapsibleCard(props: CollapsibleCardProps) {
           {props.headerActions}
           <button
             type="button"
-            className="rounded bg-black/20 px-2 py-1 text-[10px] font-semibold"
+            className="rounded bg-black/20 px-2 py-1 text-[10px] font-semibold min-w-8"
             onClick={props.onToggle}
             aria-label={props.isOpen ? 'カードを折りたたむ' : 'カードを展開する'}
           >
-            {props.isOpen ? '閉じる' : '開く'}
+            <CollapsibleToggleIcon
+              isOpen={props.isOpen}
+              ariaLabel={props.isOpen ? 'カードを折りたたむ' : 'カードを展開する'}
+            />
           </button>
         </div>
       </div>

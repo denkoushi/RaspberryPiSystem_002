@@ -220,6 +220,35 @@ category: knowledge-base
 - **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・actual-hours/stats）、サイネージAPI、backup.json（15K）、マイグレーション（50件 up to date）、Pi4×2/Pi3サービス稼働を確認。実機で左ペイン開閉・詳細パネル表示・主要操作が正常に動作することを確認。動作確認OK。
 - **知見**: 開閉状態はページコンテナで一元管理し、子コンポーネントへコールバックで伝播する構成にすると状態の一貫性を保ちやすい。共通の `CollapsibleSection` / `CollapsibleCard` を切り出しておくと他セクションへの適用が容易。
 
+## 納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除）（2026-03-13）
+
+- **目的**: 左ペインの情報密度を最適化し、操作に不要な重複表示を削減する。あわせて、開閉状態を再訪時も保持し、現場の操作コンテキストを維持する。
+- **仕様**:
+  - `CollapsibleSection` / `CollapsibleCard` のトグルを文字（開く/閉じる）からアイコンに変更
+  - 左ペイン3セクション（トリアージ/全体ランキング/今日の計画順）をデフォルト閉じに変更
+  - セクション開閉状態を `localStorage`（`due-management-section-open`）で永続化
+  - 左ペイン最下段の `visibleSummaries` カードを削除（製番登録・削除は検索チップで継続）
+- **実装ファイル**:
+  - 新規: `apps/web/src/components/kiosk/dueManagement/CollapsibleToggleIcon.tsx`
+  - 新規: `apps/web/src/hooks/useCollapsibleSectionPersistence.ts`
+  - 変更: `apps/web/src/components/kiosk/dueManagement/CollapsibleSection.tsx`
+  - 変更: `apps/web/src/components/kiosk/dueManagement/CollapsibleCard.tsx`
+  - 変更: `apps/web/src/components/kiosk/dueManagement/DueManagementLeftRail.tsx`
+  - 変更: `apps/web/src/features/kiosk/productionSchedule/dueManagementViewModel.ts`
+  - 変更: `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
+- **検証**:
+  - `pnpm --filter @raspi-system/web lint` を実行し成功
+  - `visibleSummaries` / `buildVisibleSummaries` 参照が `apps/web/src` から除去されていることを確認
+- **デプロイ**:
+  - ブランチ `feat/due-management-ui-phase2-improvements`
+  - Pi5 → raspberrypi4（kensakuMain）→ raspi4-robodrill01 の順に1台ずつ実行、約20分
+- **実機検証（2026-03-13）**:
+  - **リモート自動チェック**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス（`status: ok`）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）、サイネージAPI、backup.json（15K）、マイグレーション（50件 up to date）、Pi4×2/Pi3サービス稼働を確認。
+  - **実機UI確認（手動）**: 開閉ボタンがアイコン化されていること、初回表示で全セクションが閉じていること、開閉操作後にリロードしても状態が復元されること、最下段カードが表示されず製番登録・削除がチップで動作すること、製番一覧・選択・詳細・編集が正常に動作することを確認。
+- **知見**:
+  - 開閉状態の永続化はページコンテナから `useCollapsibleSectionPersistence` へ切り出すと、UIコンポーネントは表示責務に集中できる
+  - 選択中製番の解決ロジックは、表示用カード配列ではなく `sharedHistory` を基準にすることで、表示構造変更に影響されない
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
