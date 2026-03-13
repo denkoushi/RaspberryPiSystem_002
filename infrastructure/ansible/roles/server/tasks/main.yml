@@ -313,6 +313,22 @@
   when: docker_env_stat.stat.exists | default(false)
   no_log: true
 
+- name: Extract existing VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_vite_kiosk_due_mgmt_layout_v2_enabled: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
 - name: Deploy Docker Compose environment variables
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/docker.env.j2"
@@ -437,6 +453,16 @@
     set -euo pipefail
     cd {{ repo_path }}
     docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
+  args:
+    executable: /bin/bash
+  when:
+    - docker_env_result.changed | default(false)
+
+- name: Rebuild and recreate web when Docker .env changed (VITE_* build args)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ repo_path }}
+    docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build --force-recreate web
   args:
     executable: /bin/bash
   when:
