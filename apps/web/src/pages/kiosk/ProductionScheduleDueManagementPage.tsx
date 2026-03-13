@@ -100,6 +100,14 @@ export function ProductionScheduleDueManagementPage() {
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
+  const [sectionOpen, setSectionOpen] = useState({
+    triage: true,
+    globalRank: true,
+    dailyPlan: false
+  });
+  const [triageCardOpenBySeiban, setTriageCardOpenBySeiban] = useState<Record<string, boolean>>({});
+  const [globalRankCardOpenBySeiban, setGlobalRankCardOpenBySeiban] = useState<Record<string, boolean>>({});
+  const [dailyPlanCardOpenBySeiban, setDailyPlanCardOpenBySeiban] = useState<Record<string, boolean>>({});
   const [orderedPlanFseibans, setOrderedPlanFseibans] = useState<string[]>([]);
   const [isDailyPlanDirty, setIsDailyPlanDirty] = useState(false);
 
@@ -225,6 +233,22 @@ export function ProductionScheduleDueManagementPage() {
     await updateTriageSelectionMutation.mutateAsync({
       selectedFseibans: Array.from(next)
     });
+  };
+
+  const toggleSection = (section: 'triage' | 'globalRank' | 'dailyPlan') => {
+    setSectionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const toggleTriageCard = (fseiban: string) => {
+    setTriageCardOpenBySeiban((prev) => ({ ...prev, [fseiban]: !prev[fseiban] }));
+  };
+
+  const toggleGlobalRankCard = (fseiban: string) => {
+    setGlobalRankCardOpenBySeiban((prev) => ({ ...prev, [fseiban]: !prev[fseiban] }));
+  };
+
+  const toggleDailyPlanCard = (fseiban: string) => {
+    setDailyPlanCardOpenBySeiban((prev) => ({ ...prev, [fseiban]: !prev[fseiban] }));
   };
 
   useEffect(() => {
@@ -462,6 +486,14 @@ export function ProductionScheduleDueManagementPage() {
               sharedHistory={sharedHistory}
               onRemoveFromHistory={(fseiban) => void removeFromHistory(fseiban)}
               onSelectFseiban={setSelectedFseiban}
+              sectionOpen={sectionOpen}
+              onToggleSection={toggleSection}
+              triageCardOpenBySeiban={triageCardOpenBySeiban}
+              onToggleTriageCard={toggleTriageCard}
+              globalRankCardOpenBySeiban={globalRankCardOpenBySeiban}
+              onToggleGlobalRankCard={toggleGlobalRankCard}
+              dailyPlanCardOpenBySeiban={dailyPlanCardOpenBySeiban}
+              onToggleDailyPlanCard={toggleDailyPlanCard}
             />
           }
           detailPanel={
@@ -470,7 +502,6 @@ export function ProductionScheduleDueManagementPage() {
               detailError={detailQuery.isError}
               selectedFseiban={selectedFseiban}
               fseiban={detailQuery.data?.fseiban ?? null}
-              machineName={detailQuery.data?.machineName ?? null}
               dueDate={detailQuery.data?.dueDate ?? null}
               orderedParts={orderedParts}
               processingTypeOptions={processingTypeOptionsQuery.data ?? []}

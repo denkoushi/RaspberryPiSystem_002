@@ -1,5 +1,4 @@
 import { formatDueDate } from '../../../features/kiosk/productionSchedule/formatDueDate';
-import { normalizeMachineName } from '../../../features/kiosk/productionSchedule/machineName';
 
 import type { ProductionScheduleDueManagementPartItem } from '../../../api/client';
 
@@ -8,7 +7,6 @@ type DueManagementDetailPanelProps = {
   detailError: boolean;
   selectedFseiban: string | null;
   fseiban: string | null;
-  machineName: string | null;
   dueDate: string | null;
   orderedParts: ProductionScheduleDueManagementPartItem[];
   processingTypeOptions: Array<{ code: string; label: string; enabled: boolean }>;
@@ -28,10 +26,6 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
       <header className="flex items-center justify-between border-b border-white/20 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-white">部品優先順位（製番単位）</h2>
-          <p className="text-xs text-white/70">
-            製番: <span className="font-mono">{props.fseiban ?? '-'}</span>
-            <span className="ml-2">{normalizeMachineName(props.machineName) || '-'}</span>
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
