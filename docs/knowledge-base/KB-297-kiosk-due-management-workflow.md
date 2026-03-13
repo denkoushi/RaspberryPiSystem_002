@@ -272,6 +272,15 @@ category: knowledge-base
     **確認**: 製番納期（`ProductionScheduleSeibanDueDate`）が未設定ではないか  
     **対処**: 製番納期を先に設定してから processingType別納期を解除
 
+### 表面処理別納期 デプロイ・実機検証（2026-03-14）
+
+- **デプロイ**: ブランチ `feat/seiban-processing-type-due-date`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-080702-3787` / `20260314-081421-8883` / `20260314-081939-26141`）、約25分。
+- **実機検証結果**:
+  - リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション51件、Pi4×2サービス稼働）
+  - **表面処理別納期 API**: `PUT /seiban/:fseiban/processing/:processingType/due-date` で設定（200 OK）、`dueDate: ""` で解除→製番納期へフォールバック確認。detail の `processingTypeDueDates` 返却確認
+  - **実機UI確認**: 右ペインヘッダーに「製番納期」と「製番内で使用中の表面処理別納期」ボタンが併存、設定・解除・フォールバック動作OK
+- **知見**: processingType別納期の解除は DELETE ではなく `PUT` に `dueDate: ""` を送る。製番内に存在しない processingType を指定すると 404「指定された製番内に対象の表面処理が見つかりません」を返す（想定どおり）
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
