@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-13) **納期管理キオスク新レイアウト（V2）有効化・デプロイ・実機検証完了**: Feature Flag `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` で新旧UIを切替可能に。左レール・アクティブコンテキストバー・詳細パネル構成で操作中視認性を向上。`inventory.yml` の `web_kiosk_due_mgmt_layout_v2_enabled` で制御。docker .env 変更時に web コンテナを再ビルドするタスクを server role に追加。**デプロイ**: ブランチ `feat/due-mgmt-layout-hybrid-flag`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（旧UI検証後、新UI切替・再デプロイ）。**実機検証**: 動作確認OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理新レイアウトv2有効化デプロイ実機検証2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-07) **GroupCDマスタ統合 + 資源CDマッピングCSV一括登録を実装**: `ProductionScheduleResourceMaster` に `groupCd` を追加し、seed取り込みを `GroupCD` 対応へ拡張。ワンショット投入スクリプト `import:resource-groupcd` を追加。管理APIに `POST /api/production-schedule-settings/resource-code-mappings/import-csv`（dryRun/結果サマリ）を追加し、管理コンソールへCSV一括取込UIを実装。`ActualHoursFeatureResolver` は `strict -> mapped -> grouped` に拡張し、`resource-master` 由来のGroup候補を Query 層から注入する構成で疎結合を維持。**検証**: resolver/queryの単体テスト追加（GroupCD経路）、`apps/api` test/build 成功、`apps/web` build 成功。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#groupcdマスタ統合とcsv一括登録2026-03-07) を参照。
 - [x] (2026-03) **RoboDrill01 Pi4 で実績基準時間が非表示だった事象を解消**: `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED` が `false` のまま、かつ `shared-global-rank` に特徴量が存在しなかったため、RoboDrill01（actor location: `第2工場 - RoboDrill01`）で `actualPerPieceMinutes` が `null` だった。**対処**: `inventory.yml` に `actual_hours_shared_fallback_enabled: "true"` を追加、kensakuMain の特徴量を `shared-global-rank` へ SQL でバックフィル。**ドキュメント**: KB-297 にトラブルシュート・再発防止を追記、[actual-hours-canonical-backfill.md](./docs/runbooks/actual-hours-canonical-backfill.md#shared-global-rank-へのバックフィル) に shared-global-rank バックフィル手順を追加。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#robodrill01-pi4-で実績基準時間が非表示だった事象2026-03) を参照。
 - [x] (2026-03-13) **P2-5 Boundary Guard デプロイ完了・実機検証完了**: `import/no-restricted-paths` を段階強化。**API**: `routes/system <-> routes/kiosk` の横断依存を禁止。**Web**: `features/components/hooks/lib/api/layouts/utils -> pages` の逆依存を禁止。`normalizeClientKey` を `apps/api/src/lib/client-key.ts` へ集約。**デプロイ**: ブランチ `feat/p2-5-boundary-guard`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（約20分）、Pi3除外。**実機検証**: 全チェックリスト項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、生産スケジュールAPI、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働）。**知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即lint確認する運用が有効。詳細は [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-5-boundary-guard-デプロイ実機検証2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -1535,6 +1536,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 納期管理新レイアウト（V2）有効化・デプロイ・実機検証完了後の次のタスク（2026-03-13）
+
+**概要**: 納期管理キオスク新レイアウト（V2）はデプロイ・実機検証完了。main へのマージ後、次のステップ候補。
+
+**候補タスク**:
+1. **main へのマージ**: ブランチ `feat/due-mgmt-layout-hybrid-flag` を main へマージし、本番安定版に統合
+2. **旧UIコードの削除（任意）**: 実運用で新UIが安定した後、Flag OFF 経路と旧コンポーネントを削除してコードベースを簡素化
+3. **納期管理画面の継続改善**: アクセシビリティ強化、キーボード操作対応、レスポンシブ調整など
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理新レイアウトv2有効化デプロイ実機検証2026-03-13)
 
 ### P2-5 Boundary Guard デプロイ・実機検証完了後の次のタスク（2026-03-13）
 

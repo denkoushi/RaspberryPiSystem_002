@@ -186,6 +186,24 @@ category: knowledge-base
 - **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格。APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API、global-rank、actual-hours/stats、生産スケジュールAPI、サイネージAPI、backup.json、マイグレーション49件、Pi4×2サービス稼働を確認。Pi3 signage は接続タイムアウトのためスキップ
 - **知見**: 境界ルールは `target/from` の向きを誤ると大量誤検知を誘発するため、小さく追加して即 lint 確認する運用が有効
 
+## 納期管理新レイアウト（V2）有効化・デプロイ・実機検証（2026-03-13）
+
+- **目的**: 納期管理画面のレイアウトを左レール・アクティブコンテキストバー・詳細パネル構成へ最適化し、操作中視認性を向上させる。段階導入のため Feature Flag で新旧切替可能にした。
+- **仕様**:
+  - Feature Flag: `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED`（既定 `false`）
+  - 新UI: `DueManagementLayoutShell` / `DueManagementLeftRail` / `DueManagementActiveContextBar` / `DueManagementDetailPanel` に責務分割
+  - ViewModel: `dueManagementViewModel.ts` で API hook 依存をページコンテナに閉じ込め
+  - 設定経路: `inventory.yml` の `web_kiosk_due_mgmt_layout_v2_enabled` → `docker.env.j2` → `infrastructure/docker/.env` → Docker ビルド引数
+- **デプロイ**:
+  - ブランチ `feat/due-mgmt-layout-hybrid-flag`
+  - 1回目（旧UI検証）: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ、約20分
+  - 2回目（新UI切替）: inventory で `web_kiosk_due_mgmt_layout_v2_enabled: "true"` に設定後、Pi5（web 再ビルド）→ raspberrypi4 → raspi4-robodrill01 の順にデプロイ
+- **実機検証**: 新レイアウト（左レール・アクティブコンテキストバー・詳細パネル）、操作中視認、主要操作（製番一覧・選択・詳細表示・編集）が正常に動作することを確認。動作確認OK。
+- **トラブルシューティング**:
+  - **VITE_ 変更時に web が再ビルドされない**: `docker.env.j2` 変更時は `docker_env_result.changed` で web を `--build --force-recreate` するタスクを server role に追加済み。従来は api のみ再起動していたため、web のビルド引数変更が反映されなかった。
+  - **旧UIへ戻す**: `inventory.yml` の `web_kiosk_due_mgmt_layout_v2_enabled` を `"false"` に変更し、Pi5 へ再デプロイ（web 再ビルドが走る）。
+- **知見**: VITE_ 系環境変数はビルド時に埋め込まれるため、変更時は web コンテナの再ビルドが必須。`VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` と同様の経路（docker.env.j2 → docker-compose build args → Dockerfile.web）で追加した。
+
 ## 追加実装（2026-03-07）
 
 - 登録製番同期: 納期管理の左ペインを `search-state.history` 同期に変更し、検索追加・保持・×削除を生産スケジュール画面と共通化
