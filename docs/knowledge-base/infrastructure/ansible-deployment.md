@@ -3944,6 +3944,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - **CONFIRMED**: Pi5 の `/opt/RaspberryPiSystem_002/infrastructure/docker/.env` には `SLACK_KIOSK_SUPPORT_WEBHOOK_URL` が設定済み
 - **CONFIRMED**: API コンテナの `printenv` にも同変数が設定済み
 - **CONFIRMED**: `infrastructure/ansible/roles/server/tasks/main.yml` の `missing_count` 算出が `printf '%s\n' "${missing[@]}" | wc -l` になっており、空配列でも `1` を返す
+- **CONFIRMED**: `missing_count="${#missing[@]}"` は shell としては正しいが、Ansible/Jinja では `{#` がコメント開始と解釈され playbook 解析エラーになる
 
 **Root cause**:
 - Bash 配列 `missing=()` のときに `printf '%s\n' "${missing[@]}"` が 1 行扱いとなり、`missing_count=1` になって偽陽性で fail-fast していた
@@ -3951,7 +3952,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **Fix**:
 - ✅ `missing_count` を配列長で判定するよう修正
   - 変更前: `missing_count="$(printf '%s\n' "${missing[@]}" | wc -l | tr -d ' ')"`
-  - 変更後: `missing_count="${#missing[@]}"`
+  - 変更後: `for _ in "${missing[@]}"; do missing_count=$((missing_count + 1)); done`
 - 対象: `infrastructure/ansible/roles/server/tasks/main.yml`
 
 **Prevention**:
