@@ -144,6 +144,20 @@ category: knowledge-base
   - actor欠損時のshared参照（fallback有効）
   - actor/shared重複時のactor優先
 
+### RoboDrill01 Pi4 で実績基準時間が非表示だった事象（2026-03）
+
+- **事象**: 研削メイン（kensakuMain）Pi4 では実績基準時間が表示されるが、RoboDrill01 Pi4 では表示されない。
+- **症状**: 同一製番・同一資源CDでも端末ごとに `actualPerPieceMinutes` の有無が異なり、現場確認で混乱が発生。
+- **調査**:
+  - H1: `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED` が `false` のまま → CONFIRMED（inventory で未設定だった）
+  - H2: `ProductionScheduleActualHoursFeature` の特徴量が `第2工場 - kensakuMain` のみで `shared-global-rank` が空 → CONFIRMED
+  - H3: RoboDrill01 の actor location は `第2工場 - RoboDrill01` のため、actor のみ参照だとヒットしない → CONFIRMED
+- **根因**: フォールバックフラグが無効のまま、かつ `shared-global-rank` に特徴量が存在しなかった。
+- **対処**:
+  1. `infrastructure/ansible/inventory.yml` に `actual_hours_shared_fallback_enabled: "true"` を追加（server グループ）
+  2. `shared-global-rank` へ kensakuMain の特徴量を SQL でバックフィル（[actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md#shared-global-rank-へのバックフィル) 参照）
+- **再発防止**: 新規 location 追加時は `shared-global-rank` へのバックフィル手順を実行する。fallback 有効化後は `false` に戻すだけで従来挙動へ即時切替可能。
+
 ## P2-3 Web Split デプロイ・実機検証（2026-03-13）
 
 - **対象**: `ProductionSchedulePage` の責務分離（displayRowDerivation / useProductionScheduleDerivedRows / useProductionScheduleQueryParams / useSharedSearchHistory / ProductionScheduleResourceFilters / ProductionScheduleHistoryStrip / ProductionScheduleTable）

@@ -113,8 +113,63 @@ curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/act
 
 ---
 
-## 7. 関連ドキュメント
+## 7. shared-global-rank へのバックフィル
 
+**対象**: `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED=true` で actor location に特徴量が無い端末（例: RoboDrill01）が `shared-global-rank` を参照できるようにするため、既存 location（例: `第2工場 - kensakuMain`）の特徴量を `shared-global-rank` へコピーする場合。
+
+**想定事象**: 研削メインでは実績基準時間が表示されるが、RoboDrill01 では表示されない。`ProductionScheduleActualHoursFeature` に `shared-global-rank` のレコードが存在しない。
+
+### 7.1 実行手順
+
+1. **Pi5サーバー上でDBに接続**（psql または DBeaver 等）
+2. **以下の SQL を実行**（`第2工場 - kensakuMain` をソースとする例）:
+
+```sql
+INSERT INTO "ProductionScheduleActualHoursFeature" (
+  "id", "csvDashboardId", "location", "fhincd", "resourceCd",
+  "sampleCount", "medianPerPieceMinutes", "p75PerPieceMinutes",
+  "windowFrom", "windowTo", "recentDaysExcluded", "createdAt", "updatedAt"
+)
+SELECT
+  gen_random_uuid(),
+  "csvDashboardId",
+  'shared-global-rank',
+  "fhincd",
+  "resourceCd",
+  "sampleCount",
+  "medianPerPieceMinutes",
+  "p75PerPieceMinutes",
+  "windowFrom",
+  "windowTo",
+  "recentDaysExcluded",
+  NOW(),
+  NOW()
+FROM "ProductionScheduleActualHoursFeature"
+WHERE "location" = '第2工場 - kensakuMain'
+ON CONFLICT ("csvDashboardId", "location", "fhincd", "resourceCd")
+DO UPDATE SET
+  "sampleCount" = EXCLUDED."sampleCount",
+  "medianPerPieceMinutes" = EXCLUDED."medianPerPieceMinutes",
+  "p75PerPieceMinutes" = EXCLUDED."p75PerPieceMinutes",
+  "windowFrom" = EXCLUDED."windowFrom",
+  "windowTo" = EXCLUDED."windowTo",
+  "recentDaysExcluded" = EXCLUDED."recentDaysExcluded",
+  "updatedAt" = NOW();
+```
+
+3. **検証**: RoboDrill01 の client-key で `GET /api/kiosk/production-schedule` を呼び、`actualPerPieceMinutes` が返却されることを確認。
+
+### 7.2 注意事項
+
+- ソース location は環境に応じて変更する（`第2工場 - kensakuMain` は研削メインの `status_agent_location`）
+- 定期的な再同期が必要な場合は、Canonical/Feature の再構築後に本 SQL を再実行する
+- `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED` が `true` である必要がある（`inventory.yml` の `actual_hours_shared_fallback_enabled`）
+
+---
+
+## 8. 関連ドキュメント
+
+- [KB-297 実績基準時間のlocation優先+sharedフォールバック](../knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間のlocation優先sharedフォールバック導入2026-03-13)（RoboDrill01 非表示事象・shared-global-rank バックフィル）
 - [KB-297 B第7段階（実績工数CSV連携）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10)
 - [KB-301 413 Payload Too Large](../knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)
 - [deploy-status-recovery.md](./deploy-status-recovery.md)（実機検証チェックリスト）
