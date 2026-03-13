@@ -114,14 +114,10 @@ category: knowledge-base
   - `useMutationFeedback.ts` を追加し、備考/納期モーダルの開閉・入力値管理・onSettled 後のクリーンアップを分離
   - `ProductionSchedulePage.tsx` は query とイベント委譲中心へ縮退
   - テスト追加: `useProductionScheduleMutations.test.ts` / `useMutationFeedback.test.ts`
-- **ローカル検証**:
-  - `pnpm --filter @raspi-system/web lint` ✅
-  - `pnpm --filter @raspi-system/web test` ✅
-  - `pnpm --filter @raspi-system/web build` ✅
+- **デプロイ**: ブランチ `feat/p2-4-sideeffects`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、Pi3除外、約18分
+- **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank、actual-hours/stats、サイネージAPI、backup.json、マイグレーション49件、Pi4×2/Pi3サービス稼働）
 - **トラブルシューティング**:
-  - `pnpm test:e2e:smoke` は失敗（`/api/tools/loans/active` ほかが 500）
-  - 根因は実装不整合ではなく、ローカル PostgreSQL 未起動で `localhost:5432` に到達できない実行環境要因（`PrismaClientInitializationError`）
-  - 対処: DB 起動後に E2E スモークを再実行
+  - `pnpm test:e2e:smoke` はローカル DB 未起動時に失敗（`/api/tools/loans/active` ほかが 500）。根因は実装不整合ではなく、`localhost:5432` に到達できない実行環境要因（`PrismaClientInitializationError`）。対処: `./scripts/test/start-postgres.sh` で DB 起動後、`prisma migrate deploy` と `prisma db seed` を実行してから再実行
 - **知見**: UI 層は「状態表示とイベント委譲」に限定し、mutation 実行と副作用管理を hook 境界に分離すると、差分確認と回帰テストが局所化される
 
 ## 追加実装（2026-03-07）
