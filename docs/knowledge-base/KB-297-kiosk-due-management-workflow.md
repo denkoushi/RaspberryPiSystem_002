@@ -273,6 +273,34 @@ category: knowledge-base
   - 主導線を「全体ランキング中心」に寄せつつ、保存経路を維持すれば納期管理/生産スケジュールの反映互換性を崩さずにUI再編できる
   - セクション永続化キーは旧データを吸収する後方互換を入れておくと、初回表示崩れを回避しやすい
 
+### 納期管理UI 左ペイン中規模改善（選択/対象化導線の統合、2026-03-14）
+
+- **目的**:
+  - 左ペイン内で分散していた「選択/対象化」操作を統合し、誤操作リスクと理解コストを下げる。
+  - API契約を変更せずに、UI責務を分離して保守性・再利用性を高める。
+- **実装概要**:
+  - `useDueManagementSelectionActions` を追加し、選択状態判定・選択切替・更新中状態を一元化。
+  - 左ペインの選択UIを部品化:
+    - `DueManagementSelectionToggleButton`
+    - `DueManagementGlobalRankCardActions`
+    - `DueManagementDailyTriageCandidateList`
+  - `DueManagementLeftRail` は表示責務中心に縮小し、選択処理はコールバック経由に統一。
+- **UI統一**:
+  - 選択トグルの文言を `対象化 / 対象中` に統一。
+  - フィルタ文言を `対象中のみ` に統一。
+  - disabled 条件を更新中状態に統一。
+- **実装ファイル**:
+  - 追加: `apps/web/src/features/kiosk/productionSchedule/useDueManagementSelectionActions.ts`
+  - 追加: `apps/web/src/components/kiosk/dueManagement/DueManagementSelectionToggleButton.tsx`
+  - 追加: `apps/web/src/components/kiosk/dueManagement/DueManagementGlobalRankCardActions.tsx`
+  - 追加: `apps/web/src/components/kiosk/dueManagement/DueManagementDailyTriageCandidateList.tsx`
+  - 変更: `apps/web/src/components/kiosk/dueManagement/DueManagementLeftRail.tsx`
+  - 変更: `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
+- **ローカル検証**:
+  - `pnpm --filter @raspi-system/web lint` 成功
+  - `pnpm --filter @raspi-system/web test` 成功（66 tests passed）
+  - `pnpm --filter @raspi-system/web build` 成功
+
 ### 納期管理UI Phase3 デプロイ・実機検証（2026-03-14）
 
 - **デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。

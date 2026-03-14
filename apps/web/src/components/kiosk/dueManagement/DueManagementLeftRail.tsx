@@ -3,6 +3,8 @@ import { normalizeMachineName } from '../../../features/kiosk/productionSchedule
 
 import { CollapsibleCard } from './CollapsibleCard';
 import { CollapsibleSection } from './CollapsibleSection';
+import { DueManagementDailyTriageCandidateList } from './DueManagementDailyTriageCandidateList';
+import { DueManagementGlobalRankCardActions } from './DueManagementGlobalRankCardActions';
 
 import type {
   ProductionScheduleDueManagementTriageItem,
@@ -21,7 +23,7 @@ type DueManagementLeftRailProps = {
   triageError: boolean;
   triageZoneCounts: TriageZoneCounts;
   filteredTriageCandidates: ProductionScheduleDueManagementTriageItem[];
-  selectedSet: Set<string>;
+  isSelected: (fseiban: string) => boolean;
   showSelectedOnly: boolean;
   onToggleShowSelectedOnly: () => void;
   onToggleTriageSelection: (fseiban: string) => void;
@@ -143,7 +145,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           <div className="rounded border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-white/80">
             <div className="flex flex-wrap gap-2">
               <span>対象候補: {props.triageZoneCounts.total}</span>
-              <span>選択済み: {props.triageZoneCounts.selected}</span>
+              <span>対象中: {props.triageZoneCounts.selected}</span>
               <span>危険: {props.triageZoneCounts.danger}</span>
               <span>注意: {props.triageZoneCounts.caution}</span>
               <span>余裕: {props.triageZoneCounts.safe}</span>
@@ -266,18 +268,14 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                       {item.isCarryover ? (
                         <span className="rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">引継ぎ</span>
                       ) : null}
-                      <button
-                        type="button"
-                        onClick={() => props.onToggleTriageSelection(item.fseiban)}
-                        className={`rounded px-2 py-1 text-[10px] font-semibold ${
-                          props.selectedSet.has(item.fseiban)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
-                        disabled={props.triagePending}
-                      >
-                        {props.selectedSet.has(item.fseiban) ? '対象中' : '対象化'}
-                      </button>
+                      <DueManagementGlobalRankCardActions
+                        isInTodayTriage={item.isInTodayTriage}
+                        isOutOfToday={item.isOutOfToday}
+                        isCarryover={item.isCarryover}
+                        isSelected={props.isSelected(item.fseiban)}
+                        onToggleSelection={() => props.onToggleTriageSelection(item.fseiban)}
+                        selectionPending={props.triagePending}
+                      />
                     </div>
                   }
                 >
@@ -316,52 +314,17 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           }
         >
           <p className="mb-2 text-[10px] text-white/60">全体ランキングから当日対象を切り出し、現場事情で順番を微調整して保存します。</p>
-          <div className="mb-3 rounded border border-white/15 bg-white/5 p-2">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-white">今日対象候補（トリアージ属性）</p>
-              <button
-                type="button"
-                className="rounded bg-slate-700 px-2 py-1 text-[10px] text-white hover:bg-slate-600"
-                onClick={props.onToggleShowSelectedOnly}
-              >
-                {props.showSelectedOnly ? '全件表示' : '選択済みのみ'}
-              </button>
-            </div>
-            {props.triageLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
-            {props.triageError ? <p className="text-[11px] text-rose-300">候補取得に失敗しました</p> : null}
-            {!props.triageLoading && props.filteredTriageCandidates.length === 0 ? (
-              <p className="text-[11px] text-white/60">候補はありません（製番登録後にCSV反映を確認してください）</p>
-            ) : null}
-            <div className="space-y-1">
-              {props.filteredTriageCandidates.map((item) => {
-                const zoneLabel = item.zone === 'danger' ? '危険' : item.zone === 'caution' ? '注意' : '余裕';
-                return (
-                  <div key={`daily-candidate-${item.fseiban}`} className="flex items-center justify-between rounded border border-white/10 bg-white/5 px-2 py-1.5">
-                    <button
-                      type="button"
-                      className="text-left"
-                      onClick={() => props.onSelectFseiban(item.fseiban)}
-                    >
-                      <span className="text-[11px] font-semibold text-white">{zoneLabel} / {item.fseiban}</span>
-                      <span className="ml-2 text-[10px] text-white/70">納期: {formatDueDate(item.dueDate)}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => props.onToggleTriageSelection(item.fseiban)}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold ${
-                        props.selectedSet.has(item.fseiban)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
-                      disabled={props.triagePending}
-                    >
-                      {props.selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <DueManagementDailyTriageCandidateList
+            loading={props.triageLoading}
+            error={props.triageError}
+            candidates={props.filteredTriageCandidates}
+            showSelectedOnly={props.showSelectedOnly}
+            onToggleShowSelectedOnly={props.onToggleShowSelectedOnly}
+            onSelectFseiban={props.onSelectFseiban}
+            onToggleSelection={props.onToggleTriageSelection}
+            isSelected={props.isSelected}
+            selectionPending={props.triagePending}
+          />
           {props.dailyPlanLoading ? <p className="text-[11px] text-white/70">計画順を読み込み中...</p> : null}
           {!props.dailyPlanLoading && props.orderedPlanItems.length === 0 ? (
             <p className="text-[11px] text-white/60">トリアージで製番を選択すると計画順を編集できます</p>

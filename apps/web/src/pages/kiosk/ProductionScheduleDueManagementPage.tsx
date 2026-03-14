@@ -47,6 +47,7 @@ import {
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
@@ -144,10 +145,15 @@ export function ProductionScheduleDueManagementPage() {
 
   const summaryBySeiban = useMemo(() => buildSummaryBySeiban(summaryQuery.data), [summaryQuery.data]);
   const triageCandidates = useMemo(() => buildTriageCandidates(triageQuery.data), [triageQuery.data]);
-  const selectedSet = useMemo(
-    () => new Set(triageQuery.data?.selectedFseibans ?? []),
-    [triageQuery.data?.selectedFseibans]
-  );
+  const selectionActions = useDueManagementSelectionActions({
+    selectedFseibans: triageQuery.data?.selectedFseibans ?? [],
+    onSaveSelection: async (nextSelectedFseibans) =>
+      updateTriageSelectionMutation.mutateAsync({
+        selectedFseibans: nextSelectedFseibans
+      }),
+    isPending: updateTriageSelectionMutation.isPending
+  });
+  const selectedSet = selectionActions.selectedSet;
   const triageZoneCounts = useMemo(
     () => buildTriageZoneCounts({ triageCandidates, selectedSet }),
     [triageCandidates, selectedSet]
@@ -241,18 +247,6 @@ export function ProductionScheduleDueManagementPage() {
   const moveDailyPlanItem = (index: number, direction: -1 | 1) => {
     setOrderedPlanFseibans((prev) => movePriorityItem(prev, index, direction));
     setIsDailyPlanDirty(true);
-  };
-
-  const toggleTriageSelection = async (fseiban: string) => {
-    const next = new Set(triageQuery.data?.selectedFseibans ?? []);
-    if (next.has(fseiban)) {
-      next.delete(fseiban);
-    } else {
-      next.add(fseiban);
-    }
-    await updateTriageSelectionMutation.mutateAsync({
-      selectedFseibans: Array.from(next)
-    });
   };
 
   const toggleSection = (section: 'registration' | 'globalRank' | 'dailyPlan') => {
@@ -484,11 +478,11 @@ export function ProductionScheduleDueManagementPage() {
               triageError={triageQuery.isError}
               triageZoneCounts={triageZoneCounts}
               filteredTriageCandidates={filteredTriageCandidates}
-              selectedSet={selectedSet}
+              isSelected={selectionActions.isSelected}
               showSelectedOnly={showSelectedOnly}
               onToggleShowSelectedOnly={() => setShowSelectedOnly((prev) => !prev)}
-              onToggleTriageSelection={(fseiban) => void toggleTriageSelection(fseiban)}
-              triagePending={updateTriageSelectionMutation.isPending}
+              onToggleTriageSelection={(fseiban) => void selectionActions.toggleSelection(fseiban)}
+              triagePending={selectionActions.isPending}
               canSelectTargetLocation={canSelectTargetLocation}
               targetLocation={targetLocation}
               targetLocations={DEFAULT_TARGET_LOCATIONS}
@@ -596,7 +590,7 @@ export function ProductionScheduleDueManagementPage() {
                 className="rounded bg-slate-700 px-2 py-1 text-[11px] text-white hover:bg-slate-600"
                 onClick={() => setShowSelectedOnly((prev) => !prev)}
               >
-                {showSelectedOnly ? '全件表示' : '選択済みのみ'}
+                {showSelectedOnly ? '全件表示' : '対象中のみ'}
               </button>
             </div>
             {triageQuery.isLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
@@ -628,15 +622,15 @@ export function ProductionScheduleDueManagementPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => void toggleTriageSelection(item.fseiban)}
+                        onClick={() => void selectionActions.toggleSelection(item.fseiban)}
                         className={`rounded px-2 py-1 text-[10px] font-semibold ${
-                          selectedSet.has(item.fseiban)
+                          selectionActions.isSelected(item.fseiban)
                             ? 'bg-blue-600 text-white'
                             : 'bg-white/10 text-white hover:bg-white/20'
                         }`}
-                        disabled={updateTriageSelectionMutation.isPending}
+                        disabled={selectionActions.isPending}
                       >
-                        {selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
+                        {selectionActions.isSelected(item.fseiban) ? '対象中' : '対象化'}
                       </button>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
