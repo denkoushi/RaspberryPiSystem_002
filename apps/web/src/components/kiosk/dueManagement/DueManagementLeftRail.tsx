@@ -80,6 +80,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           title="製番登録・納期前提"
           isOpen={props.sectionOpen.registration}
           onToggle={() => props.onToggleSection('registration')}
+          accent="emerald"
         >
           <div className="mb-3 flex gap-2">
             <input
@@ -160,6 +161,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           title="全体ランキング（主作業）"
           isOpen={props.sectionOpen.globalRank}
           onToggle={() => props.onToggleSection('globalRank')}
+          accent="blue"
           actions={
             <>
             {props.canSelectTargetLocation ? (
@@ -302,6 +304,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           title="当日計画への反映（補助）"
           isOpen={props.sectionOpen.dailyPlan}
           onToggle={() => props.onToggleSection('dailyPlan')}
+          accent="amber"
           actions={
             <button
               type="button"

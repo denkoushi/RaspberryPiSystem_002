@@ -309,6 +309,24 @@ category: knowledge-base
   - **実機UI確認（raspberrypi4）**: 左ペイン3セクション（製番登録・納期前提、全体ランキング（主作業）、当日計画への反映（補助））、ランキングカード・今日対象候補の「対象化/対象中」トグル、フィルタ「対象中のみ」⇔「全件表示」、サマリ（対象候補/対象中/危険/注意/余裕）、バッジ（今日対象/対象外/引継ぎ）、製番選択→右ペイン表示、セクション開閉状態のlocalStorage永続化を確認
 - **知見**: 自動生成で保存した製番はすべて「対象中」になる。個別に「対象中」をクリックすると「対象化」に戻り、今日の計画から外れる。
 
+### 納期管理UI 左ペイン3セクション色分け（2026-03-14）
+
+- **目的**: 左ペイン3セクションを同一色で視認しづらい問題を解消し、導線（製番登録→全体ランキング→当日反映）を色で区別できるようにする。
+- **仕様**:
+  - `CollapsibleSection` に `accent` prop を追加（`emerald` / `blue` / `amber`）
+  - 製番登録・納期前提: emerald（緑）
+  - 全体ランキング: blue（青）
+  - 当日計画への反映: amber（黄）
+  - 当日計画セクションは `contentOpen: ''` でコンテンツ背景なし（赤「危険」の視認性のため）
+- **実装**:
+  - 変更: `apps/web/src/components/kiosk/dueManagement/CollapsibleSection.tsx`（`accent` prop、`ACCENT_CLASSES`）
+  - 変更: `apps/web/src/components/kiosk/dueManagement/DueManagementLeftRail.tsx`（各セクションに accent 指定）
+- **デプロイ**: ブランチ `feat/due-mgmt-leftrail-section-accent`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。
+- **実機検証結果**:
+  - リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、サイネージAPI、backup.json、マイグレーション、Pi4×2サービス稼働）
+  - 実機UI確認: 左ペイン3セクションの色分け（emerald/blue/amber）、当日計画セクションのコンテンツ背景なし、開閉・製番選択・既存機能の動作確認
+- **知見**: 当日計画セクションは「危険」ラベルが赤で表示されるため、コンテンツ背景を付けない方が視認性が高い。`ACCENT_CLASSES` で accent ごとに `contentOpen` を個別指定可能。
+
 ### 納期管理UI Phase3 デプロイ・実機検証（2026-03-14）
 
 - **デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。
