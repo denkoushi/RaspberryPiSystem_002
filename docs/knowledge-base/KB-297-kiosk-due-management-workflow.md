@@ -1003,3 +1003,6 @@ category: knowledge-base
 - **互換性**:
   - API契約は維持（`/global-rank`, `/global-rank/auto-generate`）。
   - 手動並べ替えUIは維持。理由コードは任意入力（未指定でも従来動作）。
+- **デプロイ・実機検証（2026-03-14）**:
+  - **デプロイ**: ブランチ `feat/global-rank-auto-tuning-v1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。
+  - **実機検証結果**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank/proposal、PUT auto-generate、actual-hours/stats、サイネージAPI、backup.json、マイグレーション、Pi4×2・Pi3サービス）。Pi5 APIコンテナログで `Due management auto-tuning scheduler started` を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
