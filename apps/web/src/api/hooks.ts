@@ -82,6 +82,7 @@ import {
   getKioskProductionScheduleDueManagementGlobalRankProposal,
   autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
+  getKioskProductionScheduleProgressOverview,
   getKioskProductionScheduleProcessingTypeOptions,
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
@@ -347,6 +348,14 @@ export function useKioskProductionScheduleDueManagementSeibanDetail(fseiban: str
     queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban],
     queryFn: () => getKioskProductionScheduleDueManagementSeibanDetail(fseiban ?? ''),
     enabled: typeof fseiban === 'string' && fseiban.trim().length > 0
+  });
+}
+
+export function useKioskProductionScheduleProgressOverview() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-progress-overview'],
+    queryFn: getKioskProductionScheduleProgressOverview,
+    refetchInterval: 300000
   });
 }
 

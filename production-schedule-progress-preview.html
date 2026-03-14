@@ -3,370 +3,223 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>生産進捗</title>
+  <title>進捗一覧プレビュー</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
+    * { box-sizing: border-box; }
     body {
-      background: #020617;
+      margin: 0;
+      background: #0f172a;
       color: #f8fafc;
-      font-family: 'Helvetica Neue', Arial, sans-serif;
-      padding: 24px;
-      overflow-x: hidden;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      padding: 12px;
     }
-    
-    .header {
-      margin-bottom: 32px;
+    .page {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.78);
+      padding: 8px;
+    }
+    .head {
       display: flex;
       justify-content: space-between;
       align-items: center;
-    }
-    
-    .title {
-      font-size: 48px;
-      font-weight: 700;
-    }
-    
-    .subtitle {
-      display: none; /* 削除 */
-    }
-    
-    .stats {
-      display: flex;
       gap: 12px;
-      flex-wrap: nowrap;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      padding-bottom: 4px;
+      margin-bottom: 6px;
     }
-    
-    .stat-card {
-      background: rgba(255, 255, 255, 0.05);
-      border: 2px solid #334155;
-      border-radius: 10px;
-      padding: 6px 12px;
+    .head-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .head h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
       white-space: nowrap;
     }
-    
-    .stat-label {
-      display: none; /* インライン表示のため非表示 */
+    .meta {
+      margin: 0;
+      color: rgba(248, 250, 252, 0.72);
+      font-size: 11px;
+      white-space: nowrap;
     }
-    
-    .stat-value {
-      font-size: 14px;
+    .refresh {
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 11px;
       font-weight: 700;
-      display: inline;
+      padding: 6px 10px;
     }
-    
-    .stat-separator {
-      color: #94a3b8;
-      margin: 0 4px;
+    .section {
+      margin-bottom: 8px;
     }
-    
-    .stat-value.completed {
-      color: #10b981;
-    }
-    
-    .stat-value.incomplete {
-      color: #ef4444;
-    }
-    
-    .stat-value.total {
-      color: #38bdf8;
-    }
-    
-    .progress-list {
+    .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-      gap: 24px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
     }
-    
-    .progress-card {
-      background: rgba(255, 255, 255, 0.06);
-      border: 2px solid #334155;
-      border-radius: 12px;
-      padding: 12px 16px; /* 左右パディングを16pxに統一 */
-      transition: transform 0.2s;
+    .card {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.56);
+      padding: 7px;
+      margin-bottom: 6px;
     }
-    
-    .progress-card.completed {
-      border-color: #10b981;
-      opacity: 0.7;
-    }
-    
-    .progress-card.incomplete {
-      border-color: #ef4444;
-    }
-    
     .card-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      padding-bottom: 5px;
+      margin-bottom: 5px;
     }
-    
-    .seiban {
-      font-size: 32px;
+    .fseiban {
+      font-family: "Courier New", monospace;
+      font-size: 14px;
       font-weight: 700;
-      font-family: 'Courier New', monospace;
-      color: #f8fafc;
+      color: #fff;
     }
-    
-    .status-badge {
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 18px;
-      font-weight: 600;
+    .machine {
+      font-size: 11px;
+      color: rgba(248, 250, 252, 0.72);
     }
-    
-    .status-badge.completed {
-      background: #10b981;
-      color: #020617;
-    }
-    
-    .status-badge.incomplete {
-      background: #ef4444;
-      color: #f8fafc;
-    }
-    
-    .product-info {
-      margin-bottom: 16px;
-    }
-    
-    .product-name {
-      font-size: 24px;
-      color: #e2e8f0;
-      margin-bottom: 4px;
-    }
-    
-    .product-code {
-      font-size: 18px;
-      color: #94a3b8;
-      font-family: 'Courier New', monospace;
-    }
-    
-    .progress-bar-container {
-      margin-top: 16px;
-    }
-    
-    .progress-label {
-      font-size: 20px;
-      color: #94a3b8;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .progress-percentage {
-      font-size: 24px;
-      font-weight: 700;
-    }
-    
-    .progress-bar {
+    table {
       width: 100%;
-      height: 32px;
-      background: #1e293b;
-      border-radius: 16px;
-      overflow: hidden;
-      position: relative;
+      border-collapse: collapse;
+      font-size: 12px;
     }
-    
-    .progress-fill {
-      height: 100%;
-      border-radius: 16px;
-      transition: width 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
+    th, td {
+      text-align: left;
+      padding: 5px 5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      vertical-align: top;
+    }
+    th {
+      color: rgba(248, 250, 252, 0.82);
       font-weight: 700;
-      color: #020617;
+      font-size: 11px;
     }
-    
-    .progress-fill.completed {
-      background: #10b981;
+    th:nth-child(2), td:nth-child(2) {
+      width: 84px;
+      white-space: nowrap;
+      padding-right: 2px;
     }
-    
-    .progress-fill.incomplete {
-      background: #ef4444;
+    th:nth-child(3), td:nth-child(3) {
+      padding-left: 2px;
     }
-    
-    .empty-state {
-      text-align: center;
-      padding: 80px 20px;
-      color: #94a3b8;
-      font-size: 32px;
+    .progress-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
     }
-    
-    @media (max-width: 1200px) {
-      .progress-list {
+    .chip {
+      border: 1px solid rgba(147, 197, 253, 0.85);
+      background: rgba(59, 130, 246, 0.32);
+      color: #dbeafe;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 6px;
+    }
+    .chip.done {
+      border-color: rgba(148, 163, 184, 0.7);
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(248, 250, 252, 0.7);
+      opacity: 0.55;
+    }
+    @media (max-width: 1280px) {
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 900px) {
+      .head {
+        flex-wrap: wrap;
+      }
+      .head-main {
+        width: 100%;
+      }
+      .meta {
+        white-space: normal;
+      }
+      .cards {
         grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1 class="title">生産進捗</h1>
-    <div class="stats">
-      <div class="stat-card">
-        <span class="stat-value total">製番 <span id="total-count">0</span></span>
-        <span class="stat-separator">/</span>
-        <span class="stat-value completed">完了 <span id="completed-count">0</span></span>
-        <span class="stat-separator">/</span>
-        <span class="stat-value total">率 <span id="progress-rate">0%</span></span>
+  <div class="page">
+    <div class="head">
+      <div class="head-main">
+        <h1>進捗一覧</h1>
+        <p class="meta">最終更新: 2026/03/14 19:32:10</p>
+      </div>
+      <button class="refresh" type="button">手動更新</button>
+    </div>
+
+    <div class="section">
+      <div class="cards">
+        <article class="card">
+          <div class="card-header">
+            <span class="fseiban">SE-202603-001</span>
+            <span class="machine">マシニングA-400</span>
+          </div>
+          <table>
+            <tbody>
+              <tr>
+                <td>主軸ケース</td>
+                <td>2026/03/20</td>
+                <td>
+                  <div class="progress-wrap">
+                    <span class="chip done">503</span>
+                    <span class="chip">584</span>
+                    <span class="chip">587</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>固定プレート</td>
+                <td>2026/03/20</td>
+                <td>
+                  <div class="progress-wrap">
+                    <span class="chip done">503</span>
+                    <span class="chip">587</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <span class="fseiban">SE-202603-010</span>
+            <span class="machine">旋盤ラインB-210</span>
+          </div>
+          <table>
+            <tbody>
+              <tr>
+                <td>カバーリング</td>
+                <td>2026/03/22</td>
+                <td>
+                  <div class="progress-wrap">
+                    <span class="chip done">412</span>
+                    <span class="chip done">418</span>
+                    <span class="chip">505</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
       </div>
     </div>
   </div>
-  
-  <div class="progress-list" id="progress-list">
-    <!-- ダミーデータ -->
-    <div class="progress-card completed">
-      <div class="card-header">
-        <div class="seiban">ABC12345</div>
-        <div class="status-badge completed">完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品A</div>
-        <div class="product-code">ProductNo: 2024001</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">100%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill completed" style="width: 100%">100%</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="progress-card incomplete">
-      <div class="card-header">
-        <div class="seiban">DEF67890</div>
-        <div class="status-badge incomplete">未完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品B</div>
-        <div class="product-code">ProductNo: 2024002</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">60%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill incomplete" style="width: 60%">60%</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="progress-card incomplete">
-      <div class="card-header">
-        <div class="seiban">GHI11111</div>
-        <div class="status-badge incomplete">未完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品C</div>
-        <div class="product-code">ProductNo: 2024003</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">30%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill incomplete" style="width: 30%">30%</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="progress-card incomplete">
-      <div class="card-header">
-        <div class="seiban">JKL22222</div>
-        <div class="status-badge incomplete">未完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品D</div>
-        <div class="product-code">ProductNo: 2024004</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">0%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill incomplete" style="width: 0%">0%</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="progress-card completed">
-      <div class="card-header">
-        <div class="seiban">MNO33333</div>
-        <div class="status-badge completed">完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品E</div>
-        <div class="product-code">ProductNo: 2024005</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">100%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill completed" style="width: 100%">100%</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="progress-card incomplete">
-      <div class="card-header">
-        <div class="seiban">PQR44444</div>
-        <div class="status-badge incomplete">未完了</div>
-      </div>
-      <div class="product-info">
-        <div class="product-name">製品F</div>
-        <div class="product-code">ProductNo: 2024006</div>
-      </div>
-      <div class="progress-bar-container">
-        <div class="progress-label">
-          <span>進捗</span>
-          <span class="progress-percentage">80%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill incomplete" style="width: 80%">80%</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <script>
-    // 統計情報を更新（SVGレンダラーと同様の形式）
-    function updateStats() {
-      const cards = document.querySelectorAll('.progress-card');
-      const totalSeiban = cards.length;
-      // デモデータ: 実際の実装ではAPIから取得
-      const totalParts = 59; // 総部品数
-      const completedParts = 41; // 完了部品数
-      const progressRate = totalParts > 0 ? Math.round((completedParts / totalParts) * 100) : 0;
-      
-      document.getElementById('total-count').textContent = totalSeiban;
-      document.getElementById('completed-count').textContent = completedParts;
-      document.getElementById('progress-rate').textContent = progressRate + '%';
-    }
-    
-    // 初期化
-    updateStats();
-    
-    // 10分ごとに更新（実際の実装ではAPIからデータを取得）
-    setInterval(() => {
-      console.log('更新時刻:', new Date().toLocaleString('ja-JP'));
-      // 実際の実装ではここでAPIからデータを取得して更新
-      // updateStats();
-    }, 10 * 60 * 1000);
-  </script>
 </body>
 </html>

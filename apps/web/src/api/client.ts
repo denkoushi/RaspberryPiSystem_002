@@ -604,6 +604,35 @@ export interface ProductionScheduleDueManagementSeibanDetail {
   parts: ProductionScheduleDueManagementPartItem[];
 }
 
+export interface ProductionScheduleProgressOverviewProcessItem {
+  rowId: string;
+  resourceCd: string;
+  processOrder: number | null;
+  isCompleted: boolean;
+}
+
+export interface ProductionScheduleProgressOverviewPartItem {
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  dueDate: string | null;
+  processes: ProductionScheduleProgressOverviewProcessItem[];
+}
+
+export interface ProductionScheduleProgressOverviewSeibanItem {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string | null;
+  parts: ProductionScheduleProgressOverviewPartItem[];
+}
+
+export interface ProductionScheduleProgressOverviewResult {
+  updatedAt: string | null;
+  registeredFseibans: string[];
+  scheduled: ProductionScheduleProgressOverviewSeibanItem[];
+  unscheduled: ProductionScheduleProgressOverviewSeibanItem[];
+}
+
 export async function getKioskProductionSchedule(params?: {
   productNo?: string;
   q?: string;
@@ -800,6 +829,13 @@ export async function getKioskProductionScheduleDueManagementSeibanDetail(fseiba
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}`
   );
   return data.detail;
+}
+
+export async function getKioskProductionScheduleProgressOverview() {
+  const { data } = await api.get<{ overview: ProductionScheduleProgressOverviewResult }>(
+    '/kiosk/production-schedule/progress-overview'
+  );
+  return data.overview;
 }
 
 export async function updateKioskProductionScheduleDueManagementSeibanDueDate(

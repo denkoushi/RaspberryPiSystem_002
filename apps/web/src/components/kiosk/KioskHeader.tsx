@@ -81,6 +81,7 @@ export function KioskHeader({
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
+  const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -274,6 +275,12 @@ export function KioskHeader({
             className={({ isActive }) => navClass(isActive, 'bg-blue-500 text-white')}
           >
             生産スケジュール
+          </NavLink>
+          <NavLink
+            to="/kiosk/production-schedule/progress-overview"
+            className={() => navClass(isProgressOverviewActive, 'bg-cyan-600 text-white')}
+          >
+            進捗一覧
           </NavLink>
           <button
             type="button"
