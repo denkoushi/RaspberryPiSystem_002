@@ -24,7 +24,7 @@ const ACCENT_CLASSES: Record<
     border: 'border-l-4 border-l-amber-400',
     headerOpen: 'bg-amber-500/25 border-amber-400/50',
     headerClosed: 'bg-amber-500/8 border-amber-400/25',
-    contentOpen: 'bg-amber-500/20',
+    contentOpen: '', // コンテンツ背景なし（赤「危険」等の文字視認性のため）
   },
 };
 
