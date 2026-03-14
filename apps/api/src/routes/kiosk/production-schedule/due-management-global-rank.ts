@@ -115,12 +115,14 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     await dueManagementLearningEventRepository.saveDecisionEvent({
       locationKey: scopePolicy.targetLocation,
       sourceType: 'manual',
+      reasonCode: body.reasonCode ?? null,
       orderedFseibans,
       previousOrderedFseibans,
       proposalOrderedFseibans: proposal.orderedFseibans,
       reorderDeltaRatio: null,
       metadata: {
         from: 'global_rank_manual_put',
+        reasonCode: body.reasonCode ?? null,
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: scopePolicy.targetLocation,

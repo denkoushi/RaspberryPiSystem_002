@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-14）
 
+- **✅ 全体ランキング自動調整（安全ガード付き）実装完了**: 全体ランキングのスコア算出に「重み + 閾値」の調整パラメータを導入し、日次オーケストレータ（1日1回・特殊日除外）で候補生成→評価→ガード判定→反映/ロールバックを自動実行できるようにした。安定版・履歴・失敗履歴をDBへ保存し、手動並べ替え時の理由コード（5項目）も保存可能化。既存API契約（`/global-rank`, `/global-rank/auto-generate`）は維持。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体ランキング自動調整安全ガード付き2026-03-14) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
 - **✅ 納期管理UI Phase3（左ペイン導線再構成: 入力→全体ランキング→当日反映）デプロイ・実機検証完了**: 左ペインを現場リーダーの運用導線へ再構成。上段を「製番登録・納期前提」、中段を「全体ランキング（主作業）」、下段を「当日計画への反映（補助）」に再編。トリアージは独立主セクションから降格し、ランキングカード属性と当日候補選択UIへ統合。`global-rank`/`daily-plan` 保存経路は維持し、生産スケジュールの `globalRank` 反映互換を保持。**デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション導線・トリアージ統合・開閉・操作）OK。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase3左ペイン導線再構成-入力全体ランキング当日反映2026-03-14) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-13）

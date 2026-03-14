@@ -1026,6 +1026,7 @@ model DueManagementOperatorDecisionEvent {
   csvDashboardId        String
   location              String
   sourceType            String   @db.VarChar(20)
+  reasonCode            String?  @db.VarChar(40)
   orderedFseibans       String[]
   previousOrderedFseibans String[]
   proposalOrderedFseibans String[]
@@ -1052,6 +1053,59 @@ model DueManagementOutcomeEvent {
   @@index([csvDashboardId, location, createdAt], map: "DueManagementOutcomeEvent_idx_location_time")
   @@index([csvDashboardId, location, fseiban], map: "DueManagementOutcomeEvent_idx_fseiban")
   @@index([csvDashboardId, location, eventType], map: "DueManagementOutcomeEvent_idx_event_type")
+}
+
+enum DueManagementTuningHistoryStatus {
+  CANDIDATE
+  APPLIED
+  REJECTED
+  ROLLED_BACK
+}
+
+model ProductionScheduleDueManagementTuningStableSnapshot {
+  id              String   @id @default(uuid())
+  csvDashboardId  String
+  location        String
+  params          Json
+  previousParams  Json?
+  version         Int      @default(1)
+  previousVersion Int?
+  activatedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([csvDashboardId, location])
+  @@index([csvDashboardId, location, activatedAt], map: "PSDMTuningStable_idx_loc")
+}
+
+model ProductionScheduleDueManagementTuningHistory {
+  id             String                         @id @default(uuid())
+  csvDashboardId String
+  location       String
+  status         DueManagementTuningHistoryStatus
+  label          String                         @db.VarChar(60)
+  candidateParams Json
+  baseParams     Json
+  evaluation     Json?
+  guardReason    String?                        @db.VarChar(120)
+  createdAt      DateTime                       @default(now())
+
+  @@index([csvDashboardId, location, createdAt], map: "ProductionScheduleDueManagementTuningHistory_idx_location_time")
+  @@index([csvDashboardId, location, status], map: "ProductionScheduleDueManagementTuningHistory_idx_status")
+}
+
+model ProductionScheduleDueManagementTuningFailureHistory {
+  id                 String   @id @default(uuid())
+  csvDashboardId     String
+  location           String
+  reason             String   @db.VarChar(200)
+  candidateParams    Json?
+  previousStableParams Json?
+  metrics            Json?
+  failedAt           DateTime
+  createdAt          DateTime @default(now())
+
+  @@index([csvDashboardId, location, failedAt], map: "PSDMTuningFailure_idx_time")
 }
 
 model MeasuringInstrumentLoanEvent {

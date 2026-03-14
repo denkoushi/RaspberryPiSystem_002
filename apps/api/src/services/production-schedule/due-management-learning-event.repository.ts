@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { isDueManagementTuningReasonCode } from './auto-tuning/tuning-reason-code.js';
 import type {
   DecisionEventRepository,
   OperatorDecisionInput,
@@ -129,11 +130,14 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
       proposalOrderedFseibans,
       finalOrderedFseibans: orderedFseibans
     });
+    const rawReasonCode = input.reasonCode ?? input.metadata?.['reasonCode'];
+    const reasonCode = isDueManagementTuningReasonCode(rawReasonCode) ? rawReasonCode : null;
     await prisma.dueManagementOperatorDecisionEvent.create({
       data: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         location: input.locationKey,
         sourceType: input.sourceType,
+        reasonCode,
         orderedFseibans,
         previousOrderedFseibans,
         proposalOrderedFseibans,

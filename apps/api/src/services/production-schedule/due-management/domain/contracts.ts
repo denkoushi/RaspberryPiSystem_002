@@ -73,6 +73,7 @@ export type RankingProposal = {
 export type OperatorDecisionInput = {
   locationKey: string;
   sourceType: 'auto' | 'manual';
+  reasonCode?: string | null;
   orderedFseibans: string[];
   previousOrderedFseibans: string[];
   proposalOrderedFseibans: string[];
