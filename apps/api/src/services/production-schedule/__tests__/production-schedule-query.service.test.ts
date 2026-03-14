@@ -78,7 +78,7 @@ describe('production-schedule-query.service', () => {
       { resourceCd: 'R02', resourceName: '設備B' },
     ] as never);
 
-    const result = await listProductionScheduleResources();
+    const result = await listProductionScheduleResources('kiosk-1');
 
     expect(result).toEqual({
       resources: ['R01', 'R02'],
@@ -87,6 +87,25 @@ describe('production-schedule-query.service', () => {
         R02: ['設備B'],
       },
     });
+  });
+
+  it('資源CD一覧から切削除外リストに指定された資源CDを除外する', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { resourceCd: '10' },
+      { resourceCd: 'R01' },
+      { resourceCd: 'MSZ' },
+    ] as never);
+    vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue({
+      cuttingExcludedResourceCds: ['10', 'MSZ'],
+    } as never);
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([
+      { resourceCd: 'R01', resourceName: '設備A' },
+    ] as never);
+
+    const result = await listProductionScheduleResources('kiosk-1');
+
+    expect(result.resources).toEqual(['R01']);
+    expect(result.resourceNameMap).toEqual({ R01: ['設備A'] });
   });
 
   it('工程順利用状況をresourceCdごとのMap形式へ整形する', async () => {

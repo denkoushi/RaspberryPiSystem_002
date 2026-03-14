@@ -387,7 +387,9 @@ export type ProductionScheduleResourceListResult = {
   resourceNameMap: ProductionScheduleResourceNameMap;
 };
 
-export async function listProductionScheduleResources(): Promise<ProductionScheduleResourceListResult> {
+export async function listProductionScheduleResources(
+  locationKey: string
+): Promise<ProductionScheduleResourceListResult> {
   const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
     SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
     FROM "CsvDashboardRow"
@@ -397,7 +399,12 @@ export async function listProductionScheduleResources(): Promise<ProductionSched
       AND ("rowData"->>'FSIGENCD') <> ''
     ORDER BY ("rowData"->>'FSIGENCD') ASC
   `;
-  const resourceCds = resources.map((row) => row.resourceCd);
+  const allResourceCds = resources.map((row) => row.resourceCd);
+  const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
+  const excludedSet = new Set(
+    resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase())
+  );
+  const resourceCds = allResourceCds.filter((cd) => !excludedSet.has(cd.trim().toUpperCase()));
   const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
   return {
     resources: resourceCds,

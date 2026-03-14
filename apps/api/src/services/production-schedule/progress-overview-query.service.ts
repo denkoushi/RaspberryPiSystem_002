@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProductionScheduleSearchState } from './production-schedule-search-state.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
@@ -132,7 +133,7 @@ export async function getProductionScheduleProgressOverview(
     };
   }
 
-  const [rows, seibanDueDateRows, seibanProcessingDueDateRows] = await Promise.all([
+  const [rows, seibanDueDateRows, seibanProcessingDueDateRows, resourceCategoryPolicy] = await Promise.all([
     prisma.$queryRaw<ProgressOverviewRowRaw[]>(Prisma.sql`
       SELECT
         "CsvDashboardRow"."id" AS "rowId",
@@ -176,8 +177,13 @@ export async function getProductionScheduleProgressOverview(
       FROM "ProductionScheduleSeibanProcessingDueDate"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "fseiban" IN (${Prisma.join(registeredFseibans)})
-    `)
+    `),
+    getResourceCategoryPolicy(locationKey)
   ]);
+
+  const excludedResourceCdSet = new Set(
+    resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase())
+  );
 
   const seibanDueDateMap = new Map(seibanDueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
   const processingDueDateMapBySeiban = new Map<string, Map<string, Date>>();
@@ -250,9 +256,13 @@ export async function getProductionScheduleProgressOverview(
     if (!part.processingType && row.processingType?.trim()) {
       part.processingType = row.processingType.trim();
     }
+    const resourceCd = row.fsigencd.trim();
+    if (excludedResourceCdSet.has(resourceCd.toUpperCase())) {
+      return;
+    }
     part.processes.push({
       rowId: row.rowId,
-      resourceCd: row.fsigencd.trim(),
+      resourceCd,
       processOrder: parseProcessOrder(row.fkojun),
       isCompleted: row.isCompleted
     });
