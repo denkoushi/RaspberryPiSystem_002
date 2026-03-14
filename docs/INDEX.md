@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-14）
+
+- **✅ 納期管理UI Phase3（左ペイン導線再構成: 入力→全体ランキング→当日反映）デプロイ・実機検証完了**: 左ペインを現場リーダーの運用導線へ再構成。上段を「製番登録・納期前提」、中段を「全体ランキング（主作業）」、下段を「当日計画への反映（補助）」に再編。トリアージは独立主セクションから降格し、ランキングカード属性と当日候補選択UIへ統合。`global-rank`/`daily-plan` 保存経路は維持し、生産スケジュールの `globalRank` 反映互換を保持。**デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション導線・トリアージ統合・開閉・操作）OK。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase3左ペイン導線再構成-入力全体ランキング当日反映2026-03-14) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-13）
 
 - **✅ 表面処理別納期ボタン（製番デフォルト + 処理別上書き）・デプロイ・実機検証完了**: 納期管理右ペインに「製番納期」ボタンを維持したまま、製番内で使用中の表面処理だけを対象にした納期ボタンを追加。`processingType別納期 > 製番納期` の優先規則を導入し、製番納期更新時は上書き済み処理を維持、処理別納期解除時は製番納期へフォールバック。左ペイン summary/triage は最早有効納期で統一。**デプロイ**: ブランチ `feat/seiban-processing-type-due-date`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約25分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（ボタン表示・上書き保持・解除フォールバック）OK。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#表面処理別納期ボタン追加2026-03-13) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。

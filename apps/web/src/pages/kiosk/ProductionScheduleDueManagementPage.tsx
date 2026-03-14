@@ -30,6 +30,7 @@ import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import {
   buildDailyPlanMetaBySeiban,
+  buildFilteredTriageCandidates,
   buildGlobalRankItems,
   buildOrderedFhincds,
   buildOrderedParts,
@@ -39,6 +40,9 @@ import {
   buildSummaryBySeiban,
   buildTriageBySeiban,
   buildTriageCandidates,
+  buildTriageZoneCounts,
+  filterGlobalRankItems,
+  type GlobalRankFilter,
   resolveNextSelectedFseiban
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
@@ -105,14 +109,14 @@ export function ProductionScheduleDueManagementPage() {
   const [sectionOpen, setSectionOpen] = useCollapsibleSectionPersistence(
     DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY,
     {
-      triage: false,
+      registration: true,
       globalRank: false,
       dailyPlan: false
     }
   );
-  const [triageCardOpenBySeiban, setTriageCardOpenBySeiban] = useState<Record<string, boolean>>({});
   const [globalRankCardOpenBySeiban, setGlobalRankCardOpenBySeiban] = useState<Record<string, boolean>>({});
   const [dailyPlanCardOpenBySeiban, setDailyPlanCardOpenBySeiban] = useState<Record<string, boolean>>({});
+  const [globalRankFilter, setGlobalRankFilter] = useState<GlobalRankFilter>('all');
   const [orderedPlanFseibans, setOrderedPlanFseibans] = useState<string[]>([]);
   const [isDailyPlanDirty, setIsDailyPlanDirty] = useState(false);
 
@@ -144,8 +148,12 @@ export function ProductionScheduleDueManagementPage() {
     () => new Set(triageQuery.data?.selectedFseibans ?? []),
     [triageQuery.data?.selectedFseibans]
   );
+  const triageZoneCounts = useMemo(
+    () => buildTriageZoneCounts({ triageCandidates, selectedSet }),
+    [triageCandidates, selectedSet]
+  );
   const filteredTriageCandidates = useMemo(
-    () => (showSelectedOnly ? triageCandidates.filter((item) => selectedSet.has(item.fseiban)) : triageCandidates),
+    () => buildFilteredTriageCandidates({ triageCandidates, selectedSet, showSelectedOnly }),
     [showSelectedOnly, triageCandidates, selectedSet]
   );
 
@@ -199,6 +207,10 @@ export function ProductionScheduleDueManagementPage() {
       }),
     [dailyPlanItemMetaBySeiban, globalRankQuery.data?.orderedFseibans, selectedSet, summaryBySeiban, triageBySeiban]
   );
+  const filteredGlobalRankItems = useMemo(
+    () => filterGlobalRankItems({ globalRankItems, filter: globalRankFilter }),
+    [globalRankItems, globalRankFilter]
+  );
 
   const proposalBySeiban = useMemo(
     () => buildProposalBySeiban(globalRankProposalQuery.data),
@@ -243,12 +255,8 @@ export function ProductionScheduleDueManagementPage() {
     });
   };
 
-  const toggleSection = (section: 'triage' | 'globalRank' | 'dailyPlan') => {
+  const toggleSection = (section: 'registration' | 'globalRank' | 'dailyPlan') => {
     setSectionOpen((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  const toggleTriageCard = (fseiban: string) => {
-    setTriageCardOpenBySeiban((prev) => ({ ...prev, [fseiban]: !prev[fseiban] }));
   };
 
   const toggleGlobalRankCard = (fseiban: string) => {
@@ -474,6 +482,7 @@ export function ProductionScheduleDueManagementPage() {
               selectedFseiban={selectedFseiban}
               triageLoading={triageQuery.isLoading}
               triageError={triageQuery.isError}
+              triageZoneCounts={triageZoneCounts}
               filteredTriageCandidates={filteredTriageCandidates}
               selectedSet={selectedSet}
               showSelectedOnly={showSelectedOnly}
@@ -499,7 +508,10 @@ export function ProductionScheduleDueManagementPage() {
               onAutoGenerate={() => void autoGenerateGlobalRank()}
               globalRankLoading={globalRankQuery.isLoading}
               globalRankError={globalRankQuery.isError}
-              globalRankItems={globalRankItems}
+              globalRankProposalLoading={globalRankProposalQuery.isLoading}
+              globalRankFilter={globalRankFilter}
+              onGlobalRankFilterChange={setGlobalRankFilter}
+              globalRankItems={filteredGlobalRankItems}
               proposalBySeiban={proposalBySeiban}
               dailyPlanLoading={dailyPlanQuery.isLoading}
               orderedPlanItems={orderedPlanItems}
@@ -516,8 +528,6 @@ export function ProductionScheduleDueManagementPage() {
               onSelectFseiban={setSelectedFseiban}
               sectionOpen={sectionOpen}
               onToggleSection={toggleSection}
-              triageCardOpenBySeiban={triageCardOpenBySeiban}
-              onToggleTriageCard={toggleTriageCard}
               globalRankCardOpenBySeiban={globalRankCardOpenBySeiban}
               onToggleGlobalRankCard={toggleGlobalRankCard}
               dailyPlanCardOpenBySeiban={dailyPlanCardOpenBySeiban}

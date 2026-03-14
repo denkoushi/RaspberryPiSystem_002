@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-13
+last-verified: 2026-03-14
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -248,6 +248,38 @@ category: knowledge-base
 - **知見**:
   - 開閉状態の永続化はページコンテナから `useCollapsibleSectionPersistence` へ切り出すと、UIコンポーネントは表示責務に集中できる
   - 選択中製番の解決ロジックは、表示用カード配列ではなく `sharedHistory` を基準にすることで、表示構造変更に影響されない
+
+## 納期管理UI Phase3（左ペイン導線再構成: 入力→全体ランキング→当日反映）（2026-03-14）
+
+- **目的**: 現場リーダーの実運用（製番登録/納期設定 → 全体ランキング生成・微調整 → 当日反映）に合わせ、左ペインを3セクション導線に再構成する。
+- **仕様**:
+  - 左ペイン上段を `製番登録・納期前提` とし、検索入力・登録済みチップ・候補件数サマリ（危険/注意/余裕）を集約
+  - 中段を `全体ランキング（主作業）` とし、生成/再生成保存、フィルタ（全件/今日対象/危険・注意）、カード上で今日対象化を実行可能化
+  - 下段を `当日計画への反映（補助）` とし、今日対象候補の選択と計画順保存を統合
+  - トリアージは独立主セクションから降格し、ランキングカード属性・候補選択UIとして利用
+- **設計互換性**:
+  - `global-rank` 保存API経路は変更しない
+  - `daily-plan` 保存API経路は変更しない
+  - 生産スケジュール側の `globalRank` は既存の `ProductionScheduleGlobalRowRank` 経路を維持
+- **実装ファイル**:
+  - 変更: `apps/web/src/components/kiosk/dueManagement/DueManagementLeftRail.tsx`
+  - 変更: `apps/web/src/pages/kiosk/ProductionScheduleDueManagementPage.tsx`
+  - 変更: `apps/web/src/features/kiosk/productionSchedule/dueManagementViewModel.ts`
+  - 変更: `apps/web/src/hooks/useCollapsibleSectionPersistence.ts`（`triage` 旧キーを `registration` へ後方互換マップ）
+- **ローカル検証**:
+  - `pnpm --filter @raspi-system/web lint` 成功
+  - `pnpm --filter @raspi-system/web test -- src/features/kiosk/productionSchedule/dueManagement.test.ts` 成功
+- **知見**:
+  - 主導線を「全体ランキング中心」に寄せつつ、保存経路を維持すれば納期管理/生産スケジュールの反映互換性を崩さずにUI再編できる
+  - セクション永続化キーは旧データを吸収する後方互換を入れておくと、初回表示崩れを回避しやすい
+
+### 納期管理UI Phase3 デプロイ・実機検証（2026-03-14）
+
+- **デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。
+- **実機検証結果**:
+  - リモート自動チェック全項目合格（APIヘルス degraded・メモリ95.9%は既知環境要因、deploy-status両Pi4 `isMaintenance: false`、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・actual-hours/stats）、サイネージAPI、backup.json 15K、マイグレーション51件 up to date、Pi4×2サービス稼働）
+  - **実機UI確認**: 左ペイン3セクション（上段: 製番登録・納期前提、中段: 全体ランキング、下段: 当日計画への反映）、トリアージのランキングカード属性・フィルタ・当日候補選択UIへの統合、開閉・状態記憶・主要操作が正常に動作することを確認
+- **知見**: デプロイは1台ずつ順番実行（`--limit`）で安定。リモート検証は deploy-status-recovery.md のチェックリストに従う。
 
 ## 表面処理別納期ボタン追加（2026-03-13）
 

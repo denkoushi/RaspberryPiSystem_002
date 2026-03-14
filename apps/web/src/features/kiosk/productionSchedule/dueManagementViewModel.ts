@@ -35,6 +35,16 @@ export type ProposalItemMeta = {
   coverageRatio: number;
 };
 
+export type TriageZoneCounts = {
+  danger: number;
+  caution: number;
+  safe: number;
+  total: number;
+  selected: number;
+};
+
+export type GlobalRankFilter = 'all' | 'todayOnly' | 'urgentOnly';
+
 export const buildSummaryBySeiban = (
   summaryItems: ProductionScheduleDueManagementSummaryItem[] | undefined
 ): Map<string, ProductionScheduleDueManagementSummaryItem> => {
@@ -48,6 +58,35 @@ export const buildTriageCandidates = (
 ): ProductionScheduleDueManagementTriageItem[] => {
   if (!triage) return [];
   return [...triage.zones.danger, ...triage.zones.caution, ...triage.zones.safe];
+};
+
+export const buildFilteredTriageCandidates = (params: {
+  triageCandidates: ProductionScheduleDueManagementTriageItem[];
+  selectedSet: Set<string>;
+  showSelectedOnly: boolean;
+}): ProductionScheduleDueManagementTriageItem[] =>
+  params.showSelectedOnly
+    ? params.triageCandidates.filter((item) => params.selectedSet.has(item.fseiban))
+    : params.triageCandidates;
+
+export const buildTriageZoneCounts = (params: {
+  triageCandidates: ProductionScheduleDueManagementTriageItem[];
+  selectedSet: Set<string>;
+}): TriageZoneCounts => {
+  const counts = {
+    danger: 0,
+    caution: 0,
+    safe: 0,
+    total: params.triageCandidates.length,
+    selected: 0
+  };
+  params.triageCandidates.forEach((item) => {
+    counts[item.zone] += 1;
+    if (params.selectedSet.has(item.fseiban)) {
+      counts.selected += 1;
+    }
+  });
+  return counts;
 };
 
 export const buildTriageBySeiban = (
@@ -111,6 +150,19 @@ export const buildGlobalRankItems = (params: {
       isOutOfToday: flags.isOutOfToday,
     };
   });
+
+export const filterGlobalRankItems = (params: {
+  globalRankItems: GlobalRankItem[];
+  filter: GlobalRankFilter;
+}): GlobalRankItem[] => {
+  if (params.filter === 'todayOnly') {
+    return params.globalRankItems.filter((item) => item.isInTodayTriage);
+  }
+  if (params.filter === 'urgentOnly') {
+    return params.globalRankItems.filter((item) => item.triage?.zone === 'danger' || item.triage?.zone === 'caution');
+  }
+  return params.globalRankItems;
+};
 
 export const buildProposalBySeiban = (
   proposal: ProductionScheduleDueManagementGlobalRankProposal | undefined

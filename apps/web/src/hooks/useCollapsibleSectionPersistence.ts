@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 export type DueManagementSectionOpenState = {
-  triage: boolean;
+  registration: boolean;
   globalRank: boolean;
   dailyPlan: boolean;
 };
@@ -15,15 +15,19 @@ const parseStoredState = (
   if (!raw) return defaultState;
   try {
     const parsed = JSON.parse(raw) as Partial<DueManagementSectionOpenState>;
+    const registrationOpen =
+      typeof parsed.registration === 'boolean'
+        ? parsed.registration
+        : (parsed as { triage?: boolean }).triage;
     if (
-      typeof parsed.triage !== 'boolean' ||
+      typeof registrationOpen !== 'boolean' ||
       typeof parsed.globalRank !== 'boolean' ||
       typeof parsed.dailyPlan !== 'boolean'
     ) {
       return defaultState;
     }
     return {
-      triage: parsed.triage,
+      registration: registrationOpen,
       globalRank: parsed.globalRank,
       dailyPlan: parsed.dailyPlan
     };
