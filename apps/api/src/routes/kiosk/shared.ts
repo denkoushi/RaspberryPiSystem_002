@@ -1,10 +1,21 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
+import {
+  resolveCredentialIdentity as resolveCredentialIdentityFromDevice,
+  resolveDeviceName as resolveDeviceNameFromDevice,
+  resolveDeviceScopeKey as resolveDeviceScopeKeyFromDevice,
+  resolveInfraHost as resolveInfraHostFromDevice,
+  resolveLegacyLocationKey,
+  resolveLocationScopeContext as resolveLocationScopeContextFromDevice,
+  resolveSiteKey as resolveSiteKeyFromDevice,
+  type ClientDeviceForScopeResolution,
+  type CredentialIdentity,
+  type LocationScopeContext
+} from '../../lib/location-scope-resolver.js';
 import { env } from '../../config/env.js';
 import { getKioskRateLimitService } from '../../services/security/kiosk-rate-limit.service.js';
 
-const DEFAULT_LOCATION = 'default';
 const MAC_LOCATION_ALIAS = 'Mac';
 
 export { normalizeClientKey };
@@ -48,7 +59,7 @@ export async function checkPowerRateLimit(clientKey: string, ip: string): Promis
 
 export async function requireClientDevice(rawClientKey: unknown): Promise<{
   clientKey: string;
-  clientDevice: { id: string; apiKey: string; name: string; location: string | null };
+  clientDevice: { id: string; apiKey: string; name: string; location: string | null; statusClientId: string | null };
 }> {
   const clientKey = normalizeClientKey(rawClientKey);
   if (!clientKey) {
@@ -65,14 +76,30 @@ export async function requireClientDevice(rawClientKey: unknown): Promise<{
 }
 
 export const resolveLocationKey = (clientDevice: { location?: string | null; name: string }): string => {
-  if (clientDevice.location && clientDevice.location.trim().length > 0) {
-    return clientDevice.location.trim();
-  }
-  if (clientDevice.name && clientDevice.name.trim().length > 0) {
-    return clientDevice.name.trim();
-  }
-  return DEFAULT_LOCATION;
+  return resolveLegacyLocationKey(clientDevice);
 };
+
+export type { ClientDeviceForScopeResolution, CredentialIdentity, LocationScopeContext };
+
+export const resolveDeviceScopeKey = (
+  clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>
+): string => resolveDeviceScopeKeyFromDevice(clientDevice);
+
+export const resolveSiteKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
+  resolveSiteKeyFromDevice(clientDevice);
+
+export const resolveDeviceName = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
+  resolveDeviceNameFromDevice(clientDevice);
+
+export const resolveInfraHost = (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>): string =>
+  resolveInfraHostFromDevice(clientDevice);
+
+export const resolveCredentialIdentity = (
+  clientDevice: Pick<ClientDeviceForScopeResolution, 'id' | 'apiKey' | 'statusClientId'>
+): CredentialIdentity => resolveCredentialIdentityFromDevice(clientDevice);
+
+export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeResolution): LocationScopeContext =>
+  resolveLocationScopeContextFromDevice(clientDevice);
 
 export const resolveTargetLocation = (params: {
   requestedTargetLocation?: string;

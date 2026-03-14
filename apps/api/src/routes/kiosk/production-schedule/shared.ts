@@ -164,12 +164,40 @@ export const productionScheduleDueManagementActualHoursStatsQuerySchema = z.obje
 });
 
 type ClientDeviceForLocation = { location?: string | null; name: string };
+type ClientDeviceForScopeResolution = {
+  id?: string;
+  apiKey?: string;
+  statusClientId?: string | null;
+  location?: string | null;
+  name: string;
+};
+type CredentialIdentity = {
+  clientDeviceId: string;
+  apiKey: string;
+  statusClientId: string | null;
+};
+type LocationScopeContext = {
+  legacyLocationKey: string;
+  deviceScopeKey: string;
+  siteKey: string;
+  deviceName: string;
+  infraHost: string;
+  credentialIdentity: CredentialIdentity;
+};
 
 export type KioskRouteDeps = {
   requireClientDevice: (rawClientKey: unknown) => Promise<{
     clientKey: string;
-    clientDevice: ClientDeviceForLocation;
+    clientDevice: ClientDeviceForScopeResolution;
   }>;
   resolveLocationKey: (clientDevice: ClientDeviceForLocation) => string;
+  resolveDeviceScopeKey: (clientDevice: ClientDeviceForLocation) => string;
+  resolveSiteKey: (clientDevice: ClientDeviceForLocation) => string;
+  resolveDeviceName: (clientDevice: ClientDeviceForLocation) => string;
+  resolveInfraHost: (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>) => string;
+  resolveCredentialIdentity: (
+    clientDevice: Pick<ClientDeviceForScopeResolution, 'id' | 'apiKey' | 'statusClientId'>
+  ) => CredentialIdentity;
+  resolveLocationScopeContext: (clientDevice: ClientDeviceForScopeResolution) => LocationScopeContext;
   resolveTargetLocation: (params: { requestedTargetLocation?: string; actorLocation: string }) => string;
 };

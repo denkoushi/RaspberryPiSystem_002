@@ -59,6 +59,28 @@ category: knowledge-base
 - 切削除外リストはロケーション別設定で変更可能にし、コード修正なしで運用調整可能
 - 回帰防止として、ポリシーユニットテストとキオスク統合テスト（due-management系）を追加
 
+## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
+
+- **背景**:
+  - `location` が「業務ロケーション」「端末別設定キー」「shared参照キー」で混在し、機能追加時に誤適用リスクが高かった。
+  - 既存挙動を壊さずに段階移行するため、先に境界のみ導入する必要があった。
+- **実装**:
+  - `apps/api/src/lib/location-scope-resolver.ts` を追加し、用途別 resolver を実装。
+    - `resolveDeviceScopeKey`
+    - `resolveSiteKey`
+    - `resolveDeviceName`
+    - `resolveInfraHost`
+    - `resolveCredentialIdentity`
+    - `resolveLocationScopeContext`
+  - `apps/api/src/routes/kiosk/shared.ts` の `resolveLocationKey` は互換ラッパーとして維持（挙動不変）。
+  - `apps/api/src/routes/kiosk/production-schedule/shared.ts` に用途別 resolver 依存を追加し、次フェーズで差し替え可能な境界を明示。
+- **検証**:
+  - resolver 単体テストを追加（`apps/api/src/lib/__tests__/location-scope-resolver.test.ts`）。
+  - 既存 API 契約・既存データ互換を維持（DBスキーマ変更なし）。
+- **成果**:
+  - `location` の意味をコード上で分離できる足場を構築。
+  - Phase2 以降で `device/site/shared` の個別移行が可能になった。
+
 ## デプロイ・実機検証（2026-03-07）
 
 - **デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）
