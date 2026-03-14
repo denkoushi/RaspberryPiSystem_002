@@ -580,7 +580,11 @@ export function useUpdateProductionScheduleResourceCategorySettings() {
     mutationFn: (payload: { location: string; cuttingExcludedResourceCds: string[] }) =>
       updateProductionScheduleResourceCategorySettings(payload),
     onSuccess: (settings) => {
-      queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-category-settings', settings.location] });
+      void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-category-settings', settings.location] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-resources'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-progress-overview'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
     }
   });
 }

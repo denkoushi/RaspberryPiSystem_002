@@ -607,6 +607,7 @@ export interface ProductionScheduleDueManagementSeibanDetail {
 export interface ProductionScheduleProgressOverviewProcessItem {
   rowId: string;
   resourceCd: string;
+  resourceNames?: string[];
   processOrder: number | null;
   isCompleted: boolean;
 }

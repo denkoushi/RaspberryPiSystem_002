@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { getProductionScheduleSearchState } from './production-schedule-search-state.service.js';
+import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ProgressOverviewRowRaw = {
@@ -32,6 +33,7 @@ type SeibanProcessingDueDateRow = {
 export type ProductionScheduleProgressOverviewProcessItem = {
   rowId: string;
   resourceCd: string;
+  resourceNames?: string[];
   processOrder: number | null;
   isCompleted: boolean;
 };
@@ -100,6 +102,29 @@ const compareByRegistrationOrder = (
   b: ProductionScheduleProgressOverviewSeibanItem,
   registrationOrder: Map<string, number>
 ): number => (registrationOrder.get(a.fseiban) ?? Number.MAX_SAFE_INTEGER) - (registrationOrder.get(b.fseiban) ?? Number.MAX_SAFE_INTEGER);
+
+const comparePartDueDateAsc = (
+  a: ProductionScheduleProgressOverviewPartItem,
+  b: ProductionScheduleProgressOverviewPartItem
+): number => {
+  const aTime = a.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  const bTime = b.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime - bTime;
+  if (a.productNo !== b.productNo) return a.productNo.localeCompare(b.productNo);
+  return a.fhincd.localeCompare(b.fhincd);
+};
+
+export const normalizeProgressOverviewParts = (
+  parts: ProductionScheduleProgressOverviewPartItem[]
+): ProductionScheduleProgressOverviewPartItem[] => parts.filter((part) => part.processes.length > 0).sort(comparePartDueDateAsc);
+
+export const resolveProgressOverviewResourceNames = (
+  resourceCd: string,
+  resourceNameMap: Record<string, string[]>
+): string[] | undefined => {
+  const names = resourceNameMap[resourceCd];
+  return names && names.length > 0 ? [...names] : undefined;
+};
 
 export const splitProgressOverviewItems = (
   items: ProductionScheduleProgressOverviewSeibanItem[],
@@ -184,6 +209,7 @@ export async function getProductionScheduleProgressOverview(
   const excludedResourceCdSet = new Set(
     resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase())
   );
+  const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd));
 
   const seibanDueDateMap = new Map(seibanDueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
   const processingDueDateMapBySeiban = new Map<string, Map<string, Date>>();
@@ -257,12 +283,16 @@ export async function getProductionScheduleProgressOverview(
       part.processingType = row.processingType.trim();
     }
     const resourceCd = row.fsigencd.trim();
+    if (!resourceCd) {
+      return;
+    }
     if (excludedResourceCdSet.has(resourceCd.toUpperCase())) {
       return;
     }
     part.processes.push({
       rowId: row.rowId,
       resourceCd,
+      resourceNames: resolveProgressOverviewResourceNames(resourceCd, resourceNameMap),
       processOrder: parseProcessOrder(row.fkojun),
       isCompleted: row.isCompleted
     });
@@ -270,7 +300,7 @@ export async function getProductionScheduleProgressOverview(
 
   const overviewItems: ProductionScheduleProgressOverviewSeibanItem[] = Array.from(seibanMap.values()).map((seibanItem) => {
     const processingDueDateMap = processingDueDateMapBySeiban.get(seibanItem.fseiban) ?? new Map<string, Date>();
-    const parts = Array.from(seibanItem.parts.values()).map((part) => {
+    const parts = normalizeProgressOverviewParts(Array.from(seibanItem.parts.values()).map((part) => {
       const partDueDate = part.processingType ? processingDueDateMap.get(part.processingType) ?? null : null;
       const dueDate = partDueDate ?? seibanItem.dueDate;
       const sortedProcesses = [...part.processes].sort((a, b) => {
@@ -286,7 +316,7 @@ export async function getProductionScheduleProgressOverview(
         dueDate,
         processes: sortedProcesses
       };
-    });
+    }));
     return {
       fseiban: seibanItem.fseiban,
       machineName: seibanItem.machineName,
