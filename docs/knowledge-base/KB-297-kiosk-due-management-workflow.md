@@ -301,6 +301,14 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/web test` 成功（66 tests passed）
   - `pnpm --filter @raspi-system/web build` 成功
 
+### 納期管理UI 左ペイン中規模改善 デプロイ・実機検証（2026-03-14）
+
+- **デプロイ**: ブランチ `feat/due-mgmt-leftrail-selection-unify`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。
+- **実機検証結果**:
+  - リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、サイネージAPI、backup.json、マイグレーション、Pi4×2サービス稼働）
+  - **実機UI確認（raspberrypi4）**: 左ペイン3セクション（製番登録・納期前提、全体ランキング（主作業）、当日計画への反映（補助））、ランキングカード・今日対象候補の「対象化/対象中」トグル、フィルタ「対象中のみ」⇔「全件表示」、サマリ（対象候補/対象中/危険/注意/余裕）、バッジ（今日対象/対象外/引継ぎ）、製番選択→右ペイン表示、セクション開閉状態のlocalStorage永続化を確認
+- **知見**: 自動生成で保存した製番はすべて「対象中」になる。個別に「対象中」をクリックすると「対象化」に戻り、今日の計画から外れる。
+
 ### 納期管理UI Phase3 デプロイ・実機検証（2026-03-14）
 
 - **デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。

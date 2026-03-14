@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-14) **納期管理UI 左ペイン中規模改善（選択/対象化導線の統合）デプロイ・実機検証完了**: 左ペインの選択操作を `useDueManagementSelectionActions` へ統合し、`DueManagementSelectionToggleButton` / `DueManagementGlobalRankCardActions` / `DueManagementDailyTriageCandidateList` で表示責務を分離。文言を `対象化/対象中` に統一。**デプロイ**: ブランチ `feat/due-mgmt-leftrail-selection-unify`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション・対象化/対象中トグル・フィルタ・サマリ・バッジ・開閉永続化）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン中規模改善選択対象化導線の統合2026-03-14) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-14) **全体ランキング自動調整（安全ガード付き）デプロイ・実機検証完了**: 日次オーケストレータ（1日1回・特殊日除外）で候補生成→評価→ガード判定→反映/ロールバックを自動実行。安定版・履歴・失敗履歴をDBへ保存、手動並べ替え時の理由コード（5項目）を保存可能化。**デプロイ**: ブランチ `feat/global-rank-auto-tuning-v1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、APIログ「Due management auto-tuning scheduler started」確認済み。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#全体ランキング自動調整安全ガード付き2026-03-14) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-14) **納期管理UI Phase3（左ペイン導線再構成: 入力→全体ランキング→当日反映）デプロイ・実機検証完了**: 左ペインを現場リーダーの運用導線へ再構成。上段を「製番登録・納期前提」、中段を「全体ランキング（主作業）」、下段を「当日計画への反映（補助）」に再編。トリアージは独立主セクションから降格し、ランキングカード属性と当日候補選択UIへ統合。`global-rank`/`daily-plan` 保存経路は維持。**デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション導線・トリアージ統合・開閉・操作）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase3左ペイン導線再構成-入力全体ランキング当日反映2026-03-14) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-14) **表面処理別納期（製番×処理別納期・最早有効納期一元化）デプロイ・実機検証完了**: `ProductionScheduleSeibanProcessingDueDate` を追加し、`PUT /seiban/:fseiban/processing/:processingType/due-date` で処理別納期を設定・解除（`dueDate: ""`で解除→製番納期へフォールバック）。`DueDateResolutionService` で最早有効納期を一元解決。**デプロイ**: ブランチ `feat/seiban-processing-type-due-date`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-080702-3787` / `20260314-081421-8883` / `20260314-081939-26141`）、約25分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（ボタン表示・上書き保持・解除フォールバック）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表面処理別納期ボタン追加2026-03-13) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -1552,6 +1553,18 @@
 3. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
 
 **参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表面処理別納期ボタン追加2026-03-13)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+
+### 納期管理UI 左ペイン中規模改善 デプロイ・実機検証完了後の次のタスク（2026-03-14）
+
+**概要**: 左ペイン選択/対象化導線の統合は main へマージ済み。次のステップ候補。
+
+**候補タスク**:
+1. **納期管理画面の継続改善**: アクセシビリティ強化、キーボード操作対応、レスポンシブ調整など
+2. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
+
+**知見**: 自動生成で保存した製番は全件「対象中」になる。個別に「対象中」をクリックすると「対象化」に戻り、今日の計画から外れる。
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン中規模改善選択対象化導線の統合2026-03-14)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
 
 ### 納期管理新レイアウト（V2）有効化・デプロイ・実機検証完了後の次のタスク（2026-03-13）
 
