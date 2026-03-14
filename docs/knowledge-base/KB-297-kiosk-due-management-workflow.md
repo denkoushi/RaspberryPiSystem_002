@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-13
+last-verified: 2026-03-14
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -272,6 +272,14 @@ category: knowledge-base
 - **知見**:
   - 主導線を「全体ランキング中心」に寄せつつ、保存経路を維持すれば納期管理/生産スケジュールの反映互換性を崩さずにUI再編できる
   - セクション永続化キーは旧データを吸収する後方互換を入れておくと、初回表示崩れを回避しやすい
+
+### 納期管理UI Phase3 デプロイ・実機検証（2026-03-14）
+
+- **デプロイ**: ブランチ `feat/due-mgmt-leftpane-workflow-refactor`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260314-104634-11479` / `20260314-105037-20151` / `20260314-105548-29471`）、約12分。
+- **実機検証結果**:
+  - リモート自動チェック全項目合格（APIヘルス degraded・メモリ95.9%は既知環境要因、deploy-status両Pi4 `isMaintenance: false`、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・actual-hours/stats）、サイネージAPI、backup.json 15K、マイグレーション51件 up to date、Pi4×2サービス稼働）
+  - **実機UI確認**: 左ペイン3セクション（上段: 製番登録・納期前提、中段: 全体ランキング、下段: 当日計画への反映）、トリアージのランキングカード属性・フィルタ・当日候補選択UIへの統合、開閉・状態記憶・主要操作が正常に動作することを確認
+- **知見**: デプロイは1台ずつ順番実行（`--limit`）で安定。リモート検証は deploy-status-recovery.md のチェックリストに従う。
 
 ## 表面処理別納期ボタン追加（2026-03-13）
 
