@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
 
 export const ORDER_NUMBER_MIN = 1;
 export const ORDER_NUMBER_MAX = 10;
@@ -123,6 +124,7 @@ export const productionScheduleDueManagementDailyPlanBodySchema = z.object({
 
 export const productionScheduleDueManagementGlobalRankBodySchema = z.object({
   orderedFseibans: z.array(z.string().min(1).max(20).transform((value) => value.trim())).max(2000),
+  reasonCode: z.enum(DUE_MANAGEMENT_TUNING_REASON_CODES).optional(),
   targetLocation: z.string().min(1).max(100).optional(),
   rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
 });

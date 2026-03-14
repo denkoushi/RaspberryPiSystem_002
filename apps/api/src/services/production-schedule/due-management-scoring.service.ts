@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { TuningParamsRepository } from './repositories/tuning-params.repository.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
 import { listDueManagementGlobalRank } from './due-management-global-rank.service.js';
 import { listDueManagementSummaries } from './due-management-query.service.js';
@@ -9,7 +10,8 @@ import type {
   GlobalRankProposal,
   GlobalRankProposalItem,
   GlobalRankScoreBreakdown,
-  GlobalRankScoreInput
+  GlobalRankScoreInput,
+  DueManagementScoringParameters
 } from './due-management-scoring.types.js';
 import { estimateResourceLoadSignals } from './resource-load-estimator.service.js';
 
@@ -77,12 +79,15 @@ const resourceDemandScore = (input: GlobalRankScoreInput): number => {
   return processScore * 0.35 + diversityScore * 0.1 + concentrationScore * 0.2 + bottleneckScore * 0.2 + crowdedScore * 0.15;
 };
 
-const dueUrgencyScore = (daysUntilDue: number | null): number => {
+const dueUrgencyScore = (
+  daysUntilDue: number | null,
+  scoringParameters: DueManagementScoringParameters
+): number => {
   if (daysUntilDue === null) return 0.35;
-  if (daysUntilDue <= 0) return 1;
-  if (daysUntilDue <= 1) return 0.9;
-  if (daysUntilDue <= 3) return 0.75;
-  if (daysUntilDue <= 7) return 0.5;
+  if (daysUntilDue <= scoringParameters.thresholds.dueUrgencyOverdueDays) return 1;
+  if (daysUntilDue <= scoringParameters.thresholds.dueUrgencyUrgentDays) return 0.9;
+  if (daysUntilDue <= scoringParameters.thresholds.dueUrgencyNearDays) return 0.75;
+  if (daysUntilDue <= scoringParameters.thresholds.dueUrgencySoonDays) return 0.5;
   return 0.2;
 };
 
@@ -258,7 +263,10 @@ const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): str
 export async function buildDueManagementGlobalRankProposal(params: {
   locationKey: string;
   existingRankLocationKey?: string;
+  scoringParameters?: DueManagementScoringParameters;
 }): Promise<GlobalRankProposal> {
+  const tuningParamsRepository = new TuningParamsRepository();
+  const scoringParameters = params.scoringParameters ?? (await tuningParamsRepository.getCurrentParams(params.locationKey));
   const summaries = await listDueManagementSummaries(params.locationKey);
   const selectedRows = await prisma.productionScheduleTriageSelection.findMany({
     where: {
@@ -356,7 +364,7 @@ export async function buildDueManagementGlobalRankProposal(params: {
 
     const breakdownBase = {
       resourceDemandScore: resourceDemandScore(scoreInput),
-      dueUrgencyScore: dueUrgencyScore(scoreInput.daysUntilDue),
+      dueUrgencyScore: dueUrgencyScore(scoreInput.daysUntilDue, scoringParameters),
       carryoverScore: carryoverScore(scoreInput),
       partPriorityScore: partPriorityScore(scoreInput),
       historyCalibrationScore: historyCalibrationScore(scoreInput),
@@ -369,12 +377,12 @@ export async function buildDueManagementGlobalRankProposal(params: {
       weightedTotalScore: 0
     };
     const weightedTotalScore =
-      breakdownBase.resourceDemandScore * 0.35 +
-      breakdownBase.dueUrgencyScore * 0.18 +
-      breakdownBase.historyCalibrationScore * 0.12 +
-      breakdownBase.carryoverScore * 0.08 +
-      breakdownBase.partPriorityScore * 0.07 +
-      breakdownBase.actualHoursScore * 0.2;
+      breakdownBase.resourceDemandScore * scoringParameters.weights.resourceDemand +
+      breakdownBase.dueUrgencyScore * scoringParameters.weights.dueUrgency +
+      breakdownBase.historyCalibrationScore * scoringParameters.weights.historyCalibration +
+      breakdownBase.carryoverScore * scoringParameters.weights.carryover +
+      breakdownBase.partPriorityScore * scoringParameters.weights.partPriority +
+      breakdownBase.actualHoursScore * scoringParameters.weights.actualHours;
     const breakdown: GlobalRankScoreBreakdown = {
       ...breakdownBase,
       weightedTotalScore,

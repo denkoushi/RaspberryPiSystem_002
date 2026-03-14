@@ -979,3 +979,30 @@ category: knowledge-base
 - **デプロイ・実機検証（2026-03-11）**:
   - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-124752-19099` / `20260311-125302-686` / `20260311-125806-26510`）、約13分。
   - **実機検証結果**: APIヘルス（`status: degraded`、メモリ96.1%は既知の環境要因）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、生産スケジュールAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report・actual-hours/stats）、global-rank の `targetLocation`/`actorLocation`/`rankingScope` 返却、actual-hours/stats の `totalRawRows`/`totalCanonicalRows`/`totalFeatureKeys`/`topFeatures` 返却、サイネージAPI（layoutConfig 含む）、backup.json（15K）、マイグレーション（47件、up to date）、Pi4/Pi3サービス（kiosk-browser.service / status-agent.timer / signage-lite すべて active）を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+
+### 全体ランキング自動調整（安全ガード付き、2026-03-14）
+
+- **目的**:
+  - 全体ランキング（工程/行の実行順）を、日次で自動改善する。
+  - 人手は最小化しつつ、悪化時は自動ロールバックする。
+- **実装概要**:
+  - `auto-tuning` モジュールを追加（候補生成 / 評価 / ガード / ロールバック / 日次オーケストレーション）。
+  - スコア計算は既存 `due-management-scoring.service` を維持し、調整値（重み + 閾値）だけ外部化。
+  - 安定版パラメータ・履歴・失敗履歴をDBへ保存:
+    - `ProductionScheduleDueManagementTuningStableSnapshot`
+    - `ProductionScheduleDueManagementTuningHistory`
+    - `ProductionScheduleDueManagementTuningFailureHistory`
+  - 既存決定イベントに `reasonCode`（選択式5項目）を追加し、手動微調整理由を記録可能化。
+- **運用仕様（初期値）**:
+  - 実行頻度: 1日1回（`DUE_MGMT_TUNING_CRON`, 既定 `15 2 * * *`）
+  - 対象ロケーション: `DUE_MGMT_TUNING_LOCATIONS`（CSV指定）
+  - 採用条件: 連続改善回数が閾値以上（`DUE_MGMT_TUNING_IMPROVEMENT_STREAK_REQUIRED`）
+  - 特殊日除外: 明示日付（`DUE_MGMT_TUNING_EXCLUDED_DATES`）と週末除外（`DUE_MGMT_TUNING_EXCLUDE_WEEKENDS`）
+  - 安全ガード: 重み変動量上限（`DUE_MGMT_TUNING_MAX_WEIGHT_DELTA`）
+  - 失敗時: 直前安定版へ自動ロールバックし、失敗履歴に記録
+- **互換性**:
+  - API契約は維持（`/global-rank`, `/global-rank/auto-generate`）。
+  - 手動並べ替えUIは維持。理由コードは任意入力（未指定でも従来動作）。
+- **デプロイ・実機検証（2026-03-14）**:
+  - **デプロイ**: ブランチ `feat/global-rank-auto-tuning-v1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。
+  - **実機検証結果**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank/proposal、PUT auto-generate、actual-hours/stats、サイネージAPI、backup.json、マイグレーション、Pi4×2・Pi3サービス）。Pi5 APIコンテナログで `Due management auto-tuning scheduler started` を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
