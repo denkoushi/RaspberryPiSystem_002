@@ -7,12 +7,19 @@ import { CollapsibleSection } from './CollapsibleSection';
 import type {
   ProductionScheduleDueManagementTriageItem,
 } from '../../../api/client';
-import type { GlobalRankItem, OrderedPlanItem, ProposalItemMeta } from '../../../features/kiosk/productionSchedule/dueManagementViewModel';
+import type {
+  GlobalRankFilter,
+  GlobalRankItem,
+  OrderedPlanItem,
+  ProposalItemMeta,
+  TriageZoneCounts
+} from '../../../features/kiosk/productionSchedule/dueManagementViewModel';
 
 type DueManagementLeftRailProps = {
   selectedFseiban: string | null;
   triageLoading: boolean;
   triageError: boolean;
+  triageZoneCounts: TriageZoneCounts;
   filteredTriageCandidates: ProductionScheduleDueManagementTriageItem[];
   selectedSet: Set<string>;
   showSelectedOnly: boolean;
@@ -30,6 +37,9 @@ type DueManagementLeftRailProps = {
   onAutoGenerate: () => void;
   globalRankLoading: boolean;
   globalRankError: boolean;
+  globalRankProposalLoading: boolean;
+  globalRankFilter: GlobalRankFilter;
+  onGlobalRankFilterChange: (filter: GlobalRankFilter) => void;
   globalRankItems: GlobalRankItem[];
   proposalBySeiban: Map<string, ProposalItemMeta>;
   dailyPlanLoading: boolean;
@@ -46,13 +56,11 @@ type DueManagementLeftRailProps = {
   onRemoveFromHistory: (fseiban: string) => void;
   onSelectFseiban: (fseiban: string) => void;
   sectionOpen: {
-    triage: boolean;
+    registration: boolean;
     globalRank: boolean;
     dailyPlan: boolean;
   };
-  onToggleSection: (section: 'triage' | 'globalRank' | 'dailyPlan') => void;
-  triageCardOpenBySeiban: Record<string, boolean>;
-  onToggleTriageCard: (fseiban: string) => void;
+  onToggleSection: (section: 'registration' | 'globalRank' | 'dailyPlan') => void;
   globalRankCardOpenBySeiban: Record<string, boolean>;
   onToggleGlobalRankCard: (fseiban: string) => void;
   dailyPlanCardOpenBySeiban: Record<string, boolean>;
@@ -67,84 +75,87 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
       </header>
       <div className="h-[calc(100%-52px)] overflow-auto px-3 py-3">
         <CollapsibleSection
-          title="今日判断候補（トリアージ）"
-          isOpen={props.sectionOpen.triage}
-          onToggle={() => props.onToggleSection('triage')}
-          actions={
+          title="製番登録・納期前提"
+          isOpen={props.sectionOpen.registration}
+          onToggle={() => props.onToggleSection('registration')}
+        >
+          <div className="mb-3 flex gap-2">
+            <input
+              value={props.searchInput}
+              onChange={(event) => props.onSearchInputChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  props.onApplySearch();
+                }
+              }}
+              placeholder="製番を検索"
+              className="h-9 flex-1 rounded border border-white/20 bg-white px-2 text-xs text-slate-900"
+            />
             <button
               type="button"
-              className="rounded bg-slate-700 px-2 py-1 text-[11px] text-white hover:bg-slate-600"
-              onClick={props.onToggleShowSelectedOnly}
+              onClick={props.onOpenKeyboard}
+              className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-600"
+              aria-label="キーボードを開く"
             >
-              {props.showSelectedOnly ? '全件表示' : '選択済みのみ'}
+              ⌨
             </button>
-          }
-        >
-          {props.triageLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
-          {props.triageError ? <p className="text-[11px] text-rose-300">候補取得に失敗しました</p> : null}
-          {!props.triageLoading && props.filteredTriageCandidates.length === 0 ? (
-            <p className="text-[11px] text-white/60">候補はありません（検索登録製番を追加してください）</p>
-          ) : null}
-          <div className="space-y-2">
-            {props.filteredTriageCandidates.map((item) => {
-              const zoneStyle =
-                item.zone === 'danger'
-                  ? 'border-rose-300/60 bg-rose-500/20 text-rose-100'
-                  : item.zone === 'caution'
-                    ? 'border-amber-300/60 bg-amber-500/20 text-amber-100'
-                    : 'border-emerald-300/60 bg-emerald-500/20 text-emerald-100';
-              const zoneLabel = item.zone === 'danger' ? '危険' : item.zone === 'caution' ? '注意' : '余裕';
-              const isOpen = props.triageCardOpenBySeiban[item.fseiban] ?? props.selectedFseiban === item.fseiban;
-              const machineName = normalizeMachineName(item.machineName) || '-';
+            <button
+              type="button"
+              onClick={props.onApplySearch}
+              className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+            >
+              登録
+            </button>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {props.sharedHistory.map((fseiban) => {
+              const isActive = props.selectedFseiban === fseiban;
               return (
-                <CollapsibleCard
-                  key={item.fseiban}
-                  isOpen={isOpen}
-                  onToggle={() => {
-                    props.onSelectFseiban(item.fseiban);
-                    props.onToggleTriageCard(item.fseiban);
-                  }}
-                  className={`${zoneStyle} ${props.selectedFseiban === item.fseiban ? 'ring-1 ring-white/70' : ''}`}
-                  header={
-                    <>
-                      <div className="text-xs font-semibold">
-                        {zoneLabel} / <span className="font-mono">{item.fseiban}</span>
-                      </div>
-                      <div className="mt-0.5 text-[10px] opacity-90">
-                        {machineName} / 納期: {formatDueDate(item.dueDate)}
-                      </div>
-                    </>
-                  }
-                  headerActions={
-                    <button
-                      type="button"
-                      onClick={() => props.onToggleTriageSelection(item.fseiban)}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold ${
-                        props.selectedSet.has(item.fseiban)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
-                      disabled={props.triagePending}
-                    >
-                      {props.selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
-                    </button>
-                  }
+                <button
+                  key={fseiban}
+                  type="button"
+                  onClick={() => props.onSelectFseiban(fseiban)}
+                  className={`relative flex h-8 items-center rounded-full border px-3 pr-7 text-xs font-semibold transition-colors ${
+                    isActive
+                      ? 'border-emerald-300 bg-emerald-400 text-slate-900'
+                      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                  }`}
                 >
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {item.reasons.map((reason) => (
-                      <span key={`${item.fseiban}-${reason.code}`} className="rounded bg-black/20 px-2 py-0.5 text-[10px]">
-                        {reason.message}
-                      </span>
-                    ))}
-                  </div>
-                </CollapsibleCard>
+                  <span className="font-mono">{fseiban}</span>
+                  <button
+                    type="button"
+                    className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 ${
+                      isActive ? 'bg-slate-200' : 'bg-white'
+                    }`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      props.onRemoveFromHistory(fseiban);
+                    }}
+                    aria-label={`履歴から削除: ${fseiban}`}
+                  >
+                    ×
+                  </button>
+                </button>
               );
             })}
+          </div>
+          <div className="rounded border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-white/80">
+            <div className="flex flex-wrap gap-2">
+              <span>対象候補: {props.triageZoneCounts.total}</span>
+              <span>選択済み: {props.triageZoneCounts.selected}</span>
+              <span>危険: {props.triageZoneCounts.danger}</span>
+              <span>注意: {props.triageZoneCounts.caution}</span>
+              <span>余裕: {props.triageZoneCounts.safe}</span>
+            </div>
+            <p className="mt-1 text-[10px] text-white/60">
+              登録製番にCSV実績が揃うと候補に現れ、全体ランキング生成に取り込まれます。
+            </p>
           </div>
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="全体ランキング（親）"
+          title="全体ランキング（主作業）"
           isOpen={props.sectionOpen.globalRank}
           onToggle={() => props.onToggleSection('globalRank')}
           actions={
@@ -168,14 +179,43 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
               onClick={props.onAutoGenerate}
               disabled={props.autoGeneratePending}
             >
-              {props.autoGeneratePending ? '自動生成中...' : '自動生成して保存'}
+              {props.autoGeneratePending ? '再生成中...' : '生成/再生成して保存'}
             </button>
             </>
           }
         >
           <p className="mb-2 text-[10px] text-white/60">
-            拠点全体の継続順位です。今日の計画順（子）はこの並びを起点に作成されます。
+            納期設定後に全体順位を生成し、必要箇所を微調整します。今日の計画順はこの順位を起点に反映します。
           </p>
+          <div className="mb-2 flex flex-wrap gap-1">
+            <button
+              type="button"
+              className={`rounded px-2 py-1 text-[10px] ${
+                props.globalRankFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              onClick={() => props.onGlobalRankFilterChange('all')}
+            >
+              全件
+            </button>
+            <button
+              type="button"
+              className={`rounded px-2 py-1 text-[10px] ${
+                props.globalRankFilter === 'todayOnly' ? 'bg-blue-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              onClick={() => props.onGlobalRankFilterChange('todayOnly')}
+            >
+              今日対象
+            </button>
+            <button
+              type="button"
+              className={`rounded px-2 py-1 text-[10px] ${
+                props.globalRankFilter === 'urgentOnly' ? 'bg-blue-600 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              onClick={() => props.onGlobalRankFilterChange('urgentOnly')}
+            >
+              危険/注意
+            </button>
+          </div>
           {props.autoGenerateError ? (
             <p className="mb-2 text-[11px] text-rose-300">自動生成に失敗しました。再実行してください。</p>
           ) : null}
@@ -187,6 +227,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
           ) : null}
           {props.globalRankLoading ? <p className="text-[11px] text-white/70">全体ランキングを読み込み中...</p> : null}
           {props.globalRankError ? <p className="text-[11px] text-rose-300">全体ランキングの取得に失敗しました</p> : null}
+          {props.globalRankProposalLoading ? <p className="text-[11px] text-white/60">スコア根拠を読み込み中...</p> : null}
           {!props.globalRankLoading && props.globalRankItems.length === 0 ? (
             <p className="text-[11px] text-white/60">全体ランキングはまだ作成されていません</p>
           ) : null}
@@ -216,7 +257,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                     </>
                   }
                   headerActions={
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
                       {item.isInTodayTriage ? (
                         <span className="rounded bg-blue-500/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-100">今日対象</span>
                       ) : item.isOutOfToday ? (
@@ -225,6 +266,18 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                       {item.isCarryover ? (
                         <span className="rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">引継ぎ</span>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => props.onToggleTriageSelection(item.fseiban)}
+                        className={`rounded px-2 py-1 text-[10px] font-semibold ${
+                          props.selectedSet.has(item.fseiban)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                        disabled={props.triagePending}
+                      >
+                        {props.selectedSet.has(item.fseiban) ? '対象中' : '対象化'}
+                      </button>
                     </div>
                   }
                 >
@@ -234,6 +287,13 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
                   <div className="text-[10px] text-blue-100/90">
                     実績カバー率: {Math.round((props.proposalBySeiban.get(item.fseiban)?.coverageRatio ?? 0) * 100)}%
                   </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {(props.proposalBySeiban.get(item.fseiban)?.reasons ?? []).map((reason) => (
+                      <span key={`${item.fseiban}-${reason}`} className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-100">
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
                 </CollapsibleCard>
               );
             })}
@@ -241,7 +301,7 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="今日の計画順（子：全体ランキングから切り出し）"
+          title="当日計画への反映（補助）"
           isOpen={props.sectionOpen.dailyPlan}
           onToggle={() => props.onToggleSection('dailyPlan')}
           actions={
@@ -255,7 +315,53 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             </button>
           }
         >
-          <p className="mb-2 text-[10px] text-white/60">今日対象として選んだ製番を、当日の事情で前後させる実行順です。</p>
+          <p className="mb-2 text-[10px] text-white/60">全体ランキングから当日対象を切り出し、現場事情で順番を微調整して保存します。</p>
+          <div className="mb-3 rounded border border-white/15 bg-white/5 p-2">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-white">今日対象候補（トリアージ属性）</p>
+              <button
+                type="button"
+                className="rounded bg-slate-700 px-2 py-1 text-[10px] text-white hover:bg-slate-600"
+                onClick={props.onToggleShowSelectedOnly}
+              >
+                {props.showSelectedOnly ? '全件表示' : '選択済みのみ'}
+              </button>
+            </div>
+            {props.triageLoading ? <p className="text-[11px] text-white/70">候補を読み込み中...</p> : null}
+            {props.triageError ? <p className="text-[11px] text-rose-300">候補取得に失敗しました</p> : null}
+            {!props.triageLoading && props.filteredTriageCandidates.length === 0 ? (
+              <p className="text-[11px] text-white/60">候補はありません（製番登録後にCSV反映を確認してください）</p>
+            ) : null}
+            <div className="space-y-1">
+              {props.filteredTriageCandidates.map((item) => {
+                const zoneLabel = item.zone === 'danger' ? '危険' : item.zone === 'caution' ? '注意' : '余裕';
+                return (
+                  <div key={`daily-candidate-${item.fseiban}`} className="flex items-center justify-between rounded border border-white/10 bg-white/5 px-2 py-1.5">
+                    <button
+                      type="button"
+                      className="text-left"
+                      onClick={() => props.onSelectFseiban(item.fseiban)}
+                    >
+                      <span className="text-[11px] font-semibold text-white">{zoneLabel} / {item.fseiban}</span>
+                      <span className="ml-2 text-[10px] text-white/70">納期: {formatDueDate(item.dueDate)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => props.onToggleTriageSelection(item.fseiban)}
+                      className={`rounded px-2 py-1 text-[10px] font-semibold ${
+                        props.selectedSet.has(item.fseiban)
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                      disabled={props.triagePending}
+                    >
+                      {props.selectedSet.has(item.fseiban) ? '選択済み' : '選択'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           {props.dailyPlanLoading ? <p className="text-[11px] text-white/70">計画順を読み込み中...</p> : null}
           {!props.dailyPlanLoading && props.orderedPlanItems.length === 0 ? (
             <p className="text-[11px] text-white/60">トリアージで製番を選択すると計画順を編集できます</p>
@@ -312,68 +418,6 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             })}
           </div>
         </CollapsibleSection>
-
-        <div className="mb-3 flex gap-2">
-          <input
-            value={props.searchInput}
-            onChange={(event) => props.onSearchInputChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                props.onApplySearch();
-              }
-            }}
-            placeholder="製番を検索"
-            className="h-9 flex-1 rounded border border-white/20 bg-white px-2 text-xs text-slate-900"
-          />
-          <button
-            type="button"
-            onClick={props.onOpenKeyboard}
-            className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-600"
-            aria-label="キーボードを開く"
-          >
-            ⌨
-          </button>
-          <button
-            type="button"
-            onClick={props.onApplySearch}
-            className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
-          >
-            検索
-          </button>
-        </div>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {props.sharedHistory.map((fseiban) => {
-            const isActive = props.selectedFseiban === fseiban;
-            return (
-              <button
-                key={fseiban}
-                type="button"
-                onClick={() => props.onSelectFseiban(fseiban)}
-                className={`relative flex h-8 items-center rounded-full border px-3 pr-7 text-xs font-semibold transition-colors ${
-                  isActive
-                    ? 'border-emerald-300 bg-emerald-400 text-slate-900'
-                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                <span className="font-mono">{fseiban}</span>
-                <button
-                  type="button"
-                  className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-slate-900 ${
-                    isActive ? 'bg-slate-200' : 'bg-white'
-                  }`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    props.onRemoveFromHistory(fseiban);
-                  }}
-                  aria-label={`履歴から削除: ${fseiban}`}
-                >
-                  ×
-                </button>
-              </button>
-            );
-          })}
-        </div>
       </div>
     </>
   );
