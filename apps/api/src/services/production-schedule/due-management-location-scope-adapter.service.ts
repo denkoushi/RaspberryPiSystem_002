@@ -1,4 +1,3 @@
-import { env } from '../../config/env.js';
 import { DEFAULT_LOCATION_SCOPE_KEY, resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
 import {
   getDueManagementSeibanDetail,
@@ -12,13 +11,11 @@ export type DueManagementLocationScopeInput =
   | {
       deviceScopeKey?: string;
       siteKey?: string;
-      legacyLocationKey?: string;
     };
 
 export type ResolvedDueManagementLocationScope = {
   deviceScopeKey: string;
   siteKey: string;
-  legacyLocationKey: string;
 };
 
 export type DueManagementScope = ResolvedDueManagementLocationScope;
@@ -26,7 +23,6 @@ export type DueManagementScope = ResolvedDueManagementLocationScope;
 export type DueManagementScopeContextInput = {
   deviceScopeKey?: string;
   siteKey?: string;
-  legacyLocationKey?: string;
 };
 
 const normalizeScopeToken = (value: string | null | undefined): string => value?.trim() ?? '';
@@ -38,18 +34,15 @@ export const resolveDueManagementLocationScope = (
     const normalized = normalizeScopeToken(scope) || DEFAULT_LOCATION_SCOPE_KEY;
     return {
       deviceScopeKey: normalized,
-      siteKey: resolveSiteKeyFromScopeKey(normalized),
-      legacyLocationKey: normalized
+      siteKey: resolveSiteKeyFromScopeKey(normalized)
     };
   }
   const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
-  const legacyLocationKey = normalizeScopeToken(scope.legacyLocationKey);
-  const fallbackScopeKey = deviceScopeKey || legacyLocationKey || DEFAULT_LOCATION_SCOPE_KEY;
+  const fallbackScopeKey = deviceScopeKey || DEFAULT_LOCATION_SCOPE_KEY;
   const siteKey = normalizeScopeToken(scope.siteKey) || resolveSiteKeyFromScopeKey(fallbackScopeKey);
   return {
     deviceScopeKey: deviceScopeKey || fallbackScopeKey,
-    siteKey,
-    legacyLocationKey: legacyLocationKey || fallbackScopeKey
+    siteKey
   };
 };
 
@@ -59,14 +52,10 @@ export const toDueManagementScope = (scope: DueManagementLocationScopeInput): Du
 export const toDueManagementScopeFromContext = (context: DueManagementScopeContextInput): DueManagementScope =>
   resolveDueManagementLocationScope({
     deviceScopeKey: context.deviceScopeKey,
-    siteKey: context.siteKey,
-    legacyLocationKey: context.legacyLocationKey
+    siteKey: context.siteKey
   });
 
-export const isLocationScopePhase3Enabled = (): boolean => env.LOCATION_SCOPE_PHASE3_ENABLED === 'true';
-
-export const resolveDueManagementStorageLocationKey = (scope: DueManagementScope): string =>
-  isLocationScopePhase3Enabled() ? scope.deviceScopeKey : scope.legacyLocationKey;
+export const resolveDueManagementStorageLocationKey = (scope: DueManagementScope): string => scope.deviceScopeKey;
 
 export async function listDueManagementSummariesWithScope(
   locationScope: DueManagementLocationScopeInput
