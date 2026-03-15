@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
-  isProductionScheduleCuttingResourceCd
+  isProductionScheduleCuttingResourceCd,
+  resolveResourceCategorySiteKey
 } from '../policies/resource-category-policy.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -24,6 +26,32 @@ describe('resource-category-policy.service', () => {
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
     const policy = await getResourceCategoryPolicy('Test');
     expect(policy.cuttingExcludedResourceCds).toEqual(['10', 'MSZ']);
+  });
+
+  it('resolves resource category site key from device scope and explicit scope', () => {
+    expect(resolveResourceCategorySiteKey('第2工場 - kensakuMain')).toBe('第2工場');
+    expect(resolveResourceCategorySiteKey({ deviceScopeKey: '第2工場 - RoboDrill01' })).toBe('第2工場');
+    expect(resolveResourceCategorySiteKey({ siteKey: 'shared' })).toBe('shared');
+  });
+
+  it('queries config using normalized site key', async () => {
+    vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue({
+      cuttingExcludedResourceCds: ['X01']
+    } as unknown as Awaited<ReturnType<typeof prisma.productionScheduleResourceCategoryConfig.findUnique>>);
+
+    await getResourceCategoryPolicy({ deviceScopeKey: '第2工場 - kensakuMain' });
+
+    expect(prisma.productionScheduleResourceCategoryConfig.findUnique).toHaveBeenCalledWith({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: '第2工場'
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
+      }
+    });
   });
 
   it('applies cutting category filtering with exclusions', () => {

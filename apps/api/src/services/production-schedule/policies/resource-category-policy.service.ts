@@ -1,5 +1,6 @@
 import type { ProductionScheduleResourceCategory } from '@raspi-system/shared-types';
 
+import { DEFAULT_LOCATION_SCOPE_KEY, resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
@@ -23,12 +24,38 @@ export type ResourceCategoryPolicy = {
   cuttingExcludedResourceCds: string[];
 };
 
-export async function getResourceCategoryPolicy(locationKey: string): Promise<ResourceCategoryPolicy> {
+export type ResourceCategoryPolicyScope = {
+  siteKey?: string;
+  deviceScopeKey?: string;
+  legacyLocationKey?: string;
+};
+
+const normalizeScopeToken = (value: string | null | undefined): string => value?.trim() ?? '';
+
+export const resolveResourceCategorySiteKey = (
+  scope: string | ResourceCategoryPolicyScope
+): string => {
+  if (typeof scope === 'string') {
+    const normalized = normalizeScopeToken(scope);
+    if (!normalized) return DEFAULT_LOCATION_SCOPE_KEY;
+    return resolveSiteKeyFromScopeKey(normalized);
+  }
+  const explicitSiteKey = normalizeScopeToken(scope.siteKey);
+  if (explicitSiteKey) return explicitSiteKey;
+  const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
+  if (deviceScopeKey) return resolveSiteKeyFromScopeKey(deviceScopeKey);
+  const legacyLocationKey = normalizeScopeToken(scope.legacyLocationKey);
+  if (legacyLocationKey) return resolveSiteKeyFromScopeKey(legacyLocationKey);
+  return DEFAULT_LOCATION_SCOPE_KEY;
+};
+
+export async function getResourceCategoryPolicy(scope: string | ResourceCategoryPolicyScope): Promise<ResourceCategoryPolicy> {
+  const siteKey = resolveResourceCategorySiteKey(scope);
   const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({
     where: {
       csvDashboardId_location: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey
+        location: siteKey
       }
     },
     select: {

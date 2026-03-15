@@ -9,8 +9,8 @@ export async function registerProductionScheduleProgressOverviewRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule/progress-overview', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
-    const overview = await getProductionScheduleProgressOverview(locationKey);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const overview = await getProductionScheduleProgressOverview(locationScopeContext.deviceScopeKey);
     return {
       overview
     };

@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-15) **Location Scope Phase2（siteスコープ正規化の段階移行）実装・デプロイ・実機検証完了**: `feat/location-scope-phase2-migration` ブランチで、ResourceCategory設定を site スコープ正規へ移行。`resource-category-policy.service` は `siteKey` 優先の解決に対応し、`legacyLocationKey` / `deviceScopeKey` 入力は内部で site へ正規化する互換レイヤーを導入。`production-schedule-settings.service` の ResourceCategory設定 read/write は site 正規化へ変更。ルート側は `resolveLocationScopeContext()` 経由で `deviceScopeKey` を明示利用する経路へ段階移行（list/progress-overview/due-management-seiban）。管理画面文言を「拠点共通設定(site)」と「端末別設定(device)」で明示化。**検証**: `@raspi-system/api` 対象テスト（location-scope resolver / resource-category policy）・api/web lint・api/web build を通過。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（約20分）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、resource-categories、サイネージAPI、backup.json、マイグレーション52件、Pi4/Pi3サービス稼働）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase2siteスコープ正規化の段階移行2026-03-15) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-15) **Location Scope Phase1 + 進捗一覧復活・デプロイ・実機検証完了**: `refactor/location-scope-boundary-phase1` ブランチで Phase1（用途別 resolver 境界導入・挙動不変）と進捗一覧復活（`feat/kiosk-progress-overview` の最新版 b5f5a57c から最小差分で復元）を実施。**進捗一覧**: `GET /api/kiosk/production-schedule/progress-overview`、`ProgressOverviewQueryService`、`ProductionScheduleProgressOverviewPage`（4列化・除外CD反映・ホバー・納期色分け）。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-101803-4865` / `20260315-102542-16017` / `20260315-103331-6156`）、約20分。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクヘッダーから進捗一覧画面への遷移・表示を確認。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗一覧復活2026-03-15) / [location-scope-phase1-audit.md](./docs/plans/location-scope-phase1-audit.md) を参照。
 - [x] (2026-03-14) **納期管理UI 左ペイン3セクション色分けデプロイ・実機検証完了**: `CollapsibleSection` に `accent` prop（emerald/blue/amber）を追加し、製番登録・全体ランキング・当日計画を色分け。当日計画セクションはコンテンツ背景なし（赤「危険」の視認性のため）。**デプロイ**: ブランチ `feat/due-mgmt-leftrail-section-accent`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（色分け・視認性・開閉・製番選択）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン3セクション色分け2026-03-14) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-14) **納期管理UI 左ペイン中規模改善（選択/対象化導線の統合）デプロイ・実機検証完了**: 左ペインの選択操作を `useDueManagementSelectionActions` へ統合し、`DueManagementSelectionToggleButton` / `DueManagementGlobalRankCardActions` / `DueManagementDailyTriageCandidateList` で表示責務を分離。文言を `対象化/対象中` に統一。**デプロイ**: ブランチ `feat/due-mgmt-leftrail-selection-unify`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション・対象化/対象中トグル・フィルタ・サマリ・バッジ・開閉永続化）OK。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン中規模改善選択対象化導線の統合2026-03-14) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -1546,15 +1547,26 @@
 
 ## Next Steps（将来のタスク）
 
+### Location Scope Phase2 デプロイ・実機検証完了後の次のタスク（2026-03-15）
+
+**概要**: `feat/location-scope-phase2-migration` ブランチで Phase2（siteスコープ正規化の段階移行）を実施済み。デプロイ・実機検証完了。main へのマージ後、次のステップ候補。
+
+**候補タスク**:
+1. **main へのマージ**: ブランチ `feat/location-scope-phase2-migration` を main へマージし、本番安定版に統合
+2. **Location Scope Phase3（任意）**: `due-management-query.service.ts` への `deviceScopeKey` 明示引数化、legacy 経路の段階廃止
+3. **進捗一覧の継続改善**: 管理コンソール除外設定更新時の invalidate 連携の確認、アクセシビリティ強化など
+4. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase2siteスコープ正規化の段階移行2026-03-15)、[location-scope-phase1-audit.md](./docs/plans/location-scope-phase1-audit.md)、[ADR-20260315](./docs/decisions/ADR-20260315-location-scope-phase2-resource-category-site-scope.md)、[deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+
 ### Location Scope Phase1 + 進捗一覧復活 デプロイ・実機検証完了後の次のタスク（2026-03-15）
 
-**概要**: `refactor/location-scope-boundary-phase1` ブランチで Phase1（用途別 resolver 境界導入）と進捗一覧復活を実施済み。main へのマージ後、次のステップ候補。
+**概要**: `refactor/location-scope-boundary-phase1` ブランチで Phase1（用途別 resolver 境界導入）と進捗一覧復活を実施済み。Phase2 は別ブランチで完了済み。main へのマージ後、次のステップ候補。
 
 **候補タスク**:
 1. **main へのマージ**: ブランチ `refactor/location-scope-boundary-phase1` を main へマージし、本番安定版に統合
-2. **Location Scope Phase2**: `deviceScopeKey` / `siteKey` / `deviceName` の個別移行、`ProductionScheduleResourceCategoryConfig` の scope 仕様決定
-3. **進捗一覧の継続改善**: 管理コンソール除外設定更新時の invalidate 連携の確認、アクセシビリティ強化など
-4. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
+2. **進捗一覧の継続改善**: 管理コンソール除外設定更新時の invalidate 連携の確認、アクセシビリティ強化など
+3. **Phase2 リファクタ候補**: [phase2-safe-refactor-backlog.md](./docs/plans/phase2-safe-refactor-backlog.md) の P2-6 以降を検討
 
 **参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗一覧復活2026-03-15)、[location-scope-phase1-audit.md](./docs/plans/location-scope-phase1-audit.md)、[ADR-20260314](./docs/decisions/ADR-20260314-location-scope-boundary-phase1.md)
 
@@ -2391,6 +2403,8 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-15（3回目） — Location Scope Phase2 デプロイ・実機検証完了を反映。Progress にデプロイ（Pi5→raspberrypi4→raspi4-robodrill01、約20分）・実機検証（リモート自動チェック全項目合格）を追記。Next Steps に Phase2 完了後の候補（main マージ、Phase3、進捗一覧継続改善、P2-6 以降）を追加。KB-297 / INDEX / location-scope-phase1-audit.md にデプロイ・実機検証結果を追記。
+変更履歴: 2026-03-15（2回目） — Location Scope Phase2（siteスコープ正規化の段階移行）を反映。ResourceCategory設定を site 正規へ移行するADR（ADR-20260315）を追加し、phase2-safe-refactor-backlog.md と location-scope-phase1-audit.md に仕様決定を追記。`location-scope-resolver` に scopeKey 直接解決ヘルパーを追加。`resource-category-policy.service` を site優先解決へ拡張（legacy/device入力は内部正規化で互換維持）。`production-schedule-settings.service` の ResourceCategory read/write を site正規化へ更新。`ProductionScheduleSettingsPage` の文言を「拠点共通(site)」/「端末別(device)」で明示化。resolver/policy の回帰テスト追加、api/web lint・build と対象テスト通過を確認。
 変更履歴: 2026-03-15 — Location Scope Phase1 + 進捗一覧復活・デプロイ・実機検証完了を反映。Progress に Phase1（用途別 resolver 境界導入・挙動不変）と進捗一覧復活（b5f5a57c から最小差分で復元）・デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、約20分）・実機検証を追加。Surprises に Cursor サンドボックス経由の `pnpm test:api` 実行時の Docker ソケット EOF と postgres-test-local 競合の知見を追加。Next Steps に Phase1+進捗一覧完了後の候補（main マージ、Phase2、進捗一覧継続改善、P2-6 以降）を追加。KB-297 に進捗一覧復活の仕様・トラブルシュートを追記。location-scope-phase1-audit.md にデプロイ・実機検証を追記。INDEX.md に最新アップデート（2026-03-15）を追加。
 変更履歴: 2026-03-13（3回目） — 納期管理UI Phase2 デプロイ・実機検証完了を反映。Progress に Phase2 完了（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除、リモート自動チェック＋実機UI確認）を追加。Next Steps に Phase2 完了後の候補（main マージ、納期管理継続改善、P2-6 以降）を追加。KB-297 にデプロイ・実機検証結果を追記。deploy-status-recovery.md に Phase2 チェックリスト項目を追加。
 変更履歴: 2026-03-07 — GroupCDマスタ統合 + 資源CDマッピングCSV一括登録を反映。`ProductionScheduleResourceMaster.groupCd` 追加、seed/ワンショット取込スクリプト追加、`resource-code-mappings/import-csv` API（dryRunサマリ付き）と管理コンソールCSV取込UIを追加。`ActualHoursFeatureResolver` を `strict->mapped->grouped` へ拡張し、Query層からGroup候補注入。resolver/queryテスト追加、api/web build通過をProgressへ追記。KB-297 / INDEX を同期更新。

@@ -9,7 +9,7 @@ export async function registerProductionScheduleListRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 
     const query = productionScheduleQuerySchema.parse(request.query);
     const page = query.page ?? 1;
@@ -30,7 +30,8 @@ export async function registerProductionScheduleListRoute(
       resourceCategory,
       hasNoteOnly,
       hasDueDateOnly,
-      locationKey
+      locationKey: locationScopeContext.deviceScopeKey,
+      siteKey: locationScopeContext.siteKey
     });
   });
 }

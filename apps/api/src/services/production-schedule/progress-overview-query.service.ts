@@ -203,7 +203,9 @@ export async function getProductionScheduleProgressOverview(
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "fseiban" IN (${Prisma.join(registeredFseibans)})
     `),
-    getResourceCategoryPolicy(locationKey)
+    getResourceCategoryPolicy({
+      deviceScopeKey: locationKey
+    })
   ]);
 
   const excludedResourceCdSet = new Set(

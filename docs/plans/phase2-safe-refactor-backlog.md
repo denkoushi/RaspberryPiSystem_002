@@ -39,6 +39,13 @@ Phase1 で導入した `DebugSink` 境界とコメント整合を前提に、次
 - Web: 巨大コンポーネントを ViewModel / mutation / rendering へ分離
 - 境界ルール: 新規流入を lint と規約で抑止
 
+### Phase2 Scope Decision（2026-03-15）
+
+- `ProductionScheduleResourceCategoryConfig` は **siteスコープ正規** とする。
+- `legacyLocationKey` / `deviceScopeKey` が渡された場合も内部で `siteKey` に正規化して解決する。
+- API契約は維持し、段階移行で切替える。
+- 参照: [ADR-20260315-location-scope-phase2-resource-category-site-scope.md](../decisions/ADR-20260315-location-scope-phase2-resource-category-site-scope.md)
+
 ## 優先順（固定）
 
 1. **API薄化（imports/auth）**

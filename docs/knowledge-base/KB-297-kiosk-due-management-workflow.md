@@ -81,6 +81,32 @@ category: knowledge-base
   - `location` の意味をコード上で分離できる足場を構築。
   - Phase2 以降で `device/site/shared` の個別移行が可能になった。
 
+## Location Scope Phase2（siteスコープ正規化の段階移行、2026-03-15）
+
+- **仕様決定**:
+  - `ProductionScheduleResourceCategoryConfig` は site スコープを正規とする（ADR-20260315）。
+  - `legacyLocationKey` / `deviceScopeKey` が入力された場合も内部で site に正規化して参照する。
+- **実装**:
+  - `resource-category-policy.service.ts`
+    - `resolveResourceCategorySiteKey()` を追加し、`siteKey` 優先で解決。
+    - `getResourceCategoryPolicy()` は `string | { siteKey, deviceScopeKey, legacyLocationKey }` を受け取り、互換維持で段階移行可能にした。
+  - `production-schedule-settings.service.ts`
+    - ResourceCategory 設定の read/write は `resolveSiteKeyFromScopeKey()` で site 正規化して保存・参照。
+  - ルート層（段階移行）
+    - `list.ts` / `progress-overview.ts` / `due-management-seiban.ts` で `resolveLocationScopeContext()` を利用し、`deviceScopeKey` を明示利用。
+  - 管理画面文言
+    - `ProductionScheduleSettingsPage` で「拠点共通設定(site)」と「端末別設定(device)」を明示し、誤設定を抑止。
+- **検証**:
+  - resolver/policy テスト追加:
+    - `location-scope-resolver.test.ts`
+    - `resource-category-policy.service.test.ts`
+  - `@raspi-system/api` 対象テスト、api/web lint、api/web build を通過。
+- **実機検証（2026-03-15）**:
+  - デプロイ: `feat/location-scope-phase2-migration`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。
+  - リモート自動チェック: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage/summary/global-rank/actual-hours/stats/progress-overview/proposal）、resource-categories（401認証必須）、サイネージAPI、backup.json、マイグレーション52件適用済み、Pi4/Pi3サービス稼働を確認。全項目合格。
+- **トラブルシューティング**:
+  - `due-management-query.service.ts` への追加置換は、編集ツールの一時エラー（`SQLITE_CORRUPT`）を回避するため、今回は互換レイヤー（policy側の内部正規化）で挙動を担保した。次回差分で同ファイルの明示引数化を継続する。
+
 ## 進捗一覧復活（2026-03-15）
 
 - **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。

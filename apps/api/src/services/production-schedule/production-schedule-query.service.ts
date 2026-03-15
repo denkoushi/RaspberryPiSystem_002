@@ -45,6 +45,7 @@ export type ProductionScheduleListParams = {
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
   locationKey: string;
+  siteKey?: string;
 };
 
 export type ProductionScheduleOrderUsageParams = {
@@ -195,10 +196,14 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceCategory,
     hasNoteOnly,
     hasDueDateOnly,
-    locationKey
+    locationKey,
+    siteKey
   } = params;
   const textConditions = buildTextConditions(queryText);
-  const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
+  const resourceCategoryPolicy = await getResourceCategoryPolicy({
+    siteKey,
+    deviceScopeKey: locationKey
+  });
   const filteredResourceCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
     resourceCds,
     resourceCategory,
