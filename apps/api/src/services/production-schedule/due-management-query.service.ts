@@ -304,7 +304,9 @@ export async function getDueManagementSeibanDetail(params: {
     }
   });
   const currentPriorityMap = new Map(priorityRows.map((row) => [row.fhincd, row.priorityRank] as const));
-  const resourceCategoryPolicy = await getResourceCategoryPolicy(locationKey);
+  const resourceCategoryPolicy = await getResourceCategoryPolicy({
+    deviceScopeKey: locationKey
+  });
   const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
   const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
   const [detailFeatureRowsWithLocation, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] =

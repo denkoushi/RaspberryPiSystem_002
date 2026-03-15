@@ -163,7 +163,6 @@ export const productionScheduleDueManagementActualHoursStatsQuerySchema = z.obje
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
-type ClientDeviceForLocation = { location?: string | null; name: string };
 type ClientDeviceForScopeResolution = {
   id?: string;
   apiKey?: string;
@@ -171,17 +170,16 @@ type ClientDeviceForScopeResolution = {
   location?: string | null;
   name: string;
 };
-type CredentialIdentity = {
-  clientDeviceId: string;
-  apiKey: string;
-  statusClientId: string | null;
-};
 type LocationScopeContext = {
   deviceScopeKey: string;
   siteKey: string;
   deviceName: string;
   infraHost: string;
-  credentialIdentity: CredentialIdentity;
+  credentialIdentity: {
+    clientDeviceId: string;
+    apiKey: string;
+    statusClientId: string | null;
+  };
 };
 
 export type KioskRouteDeps = {
@@ -189,13 +187,6 @@ export type KioskRouteDeps = {
     clientKey: string;
     clientDevice: ClientDeviceForScopeResolution;
   }>;
-  resolveDeviceScopeKey: (clientDevice: ClientDeviceForLocation) => string;
-  resolveSiteKey: (clientDevice: ClientDeviceForLocation) => string;
-  resolveDeviceName: (clientDevice: ClientDeviceForLocation) => string;
-  resolveInfraHost: (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>) => string;
-  resolveCredentialIdentity: (
-    clientDevice: Pick<ClientDeviceForScopeResolution, 'id' | 'apiKey' | 'statusClientId'>
-  ) => CredentialIdentity;
   resolveLocationScopeContext: (clientDevice: ClientDeviceForScopeResolution) => LocationScopeContext;
   resolveTargetLocation: (params: { requestedTargetLocation?: string; actorLocation: string }) => string;
 };

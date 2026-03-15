@@ -11,12 +11,7 @@ import {
   getWebRTCCallExcludeClientIds,
   normalizeClientKey,
   requireClientDevice,
-  resolveCredentialIdentity,
-  resolveDeviceName,
-  resolveDeviceScopeKey,
-  resolveInfraHost,
   resolveLocationScopeContext,
-  resolveSiteKey,
   resolveTargetLocation
 } from './kiosk/shared.js';
 
@@ -29,12 +24,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   await registerProductionScheduleRoutes(app, {
     requireClientDevice,
-    resolveCredentialIdentity,
-    resolveDeviceName,
-    resolveDeviceScopeKey,
-    resolveInfraHost,
     resolveLocationScopeContext,
-    resolveSiteKey,
     resolveTargetLocation
   });
 

@@ -236,6 +236,22 @@ category: knowledge-base
   - `kiosk/shared.ts` から互換再公開を行わない方針を継続することで、呼び出し側依存を標準契約へ収束できる。
   - デプロイ対象が複数台の場合は1台ずつ順番に実行する運用が安定（deployment.md の「1台ずつ順番デプロイ」を参照）。
 
+## Location Scope 安全実装フォローアップ（Phase0-4、2026-03-15）
+
+- **目的**:
+  - Phase10 完了後の追加リファクタを「破壊なし」で進めるため、用語固定・境界単一化・移行監視を先行で整備する。
+- **実装**:
+  - `kiosk/production-schedule` 依存注入は `resolveLocationScopeContext` を単一入口として扱い、未使用の resolver 依存を削減。
+  - `due-management-query.service.ts` の `getResourceCategoryPolicy()` 呼び出しを文字列直渡しから scope 形式（`{ deviceScopeKey }`）へ変更。
+  - `resource-category-policy.service.ts` に `resolveResourceCategorySiteResolution()` を追加し、`siteKey` 解決経路（`siteKey` / `deviceScopeKey` / `legacyString` / `default`）を返却可能化。
+  - fallback 解決時は `Resource category policy resolved via fallback path` を debug ログ出力し、段階移行の監視を可能化。
+- **運用**:
+  - `deploy-status-recovery.md` のチェックリストに fallback 監視コマンドを追加し、`legacyString/default` の増加を検知できるようにした。
+- **意思決定（Phase4）**:
+  - `ClientDevice.location` の即時廃止は見送り（No-Go）。
+  - 既存互換を維持しつつ、resolver境界 + 監視で段階移行を継続する方針を採用。
+  - 詳細は `ADR-20260315-location-scope-phase4-db-go-no-go.md` を参照。
+
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
 - **背景**:

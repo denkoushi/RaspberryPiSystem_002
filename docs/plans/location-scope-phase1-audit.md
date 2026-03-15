@@ -22,6 +22,22 @@
 - `deviceScopeKey`: 端末別設定キー
 - `credentialIdentity`: `apiKey` / `statusClientId` / `clientDeviceId`
 
+## Scope Ownership Matrix（Phase0固定、2026-03-15）
+
+| 対象機能 | 正規スコープ | 補足 |
+| --- | --- | --- |
+| deploy-status / kiosk端末認証 | `credentialIdentity` + `deviceScopeKey` | 端末単位で解決 |
+| resource-category（切削除外） | `siteKey` | 現場共有設定のため拠点単位 |
+| due-management の保存キー | `deviceScopeKey` | 既存互換を維持したまま段階移行 |
+| search-state / search-history | `shared` または `deviceScopeKey` | 共有要件がある項目は `shared` を採用 |
+| 運用表示（ホスト識別） | `infraHost` | Ansible/運用トラブルシュート用 |
+
+### 受け入れ条件（Phase0）
+
+1. 新規実装で `location` 生値を直接解釈しない（resolver境界経由）。
+2. ルート層からサービス層へ渡す値は `deviceScopeKey/siteKey` の意味付き値に限定。
+3. `legacyLocationKey` は公開契約に復活させない（互換用途は内部限定）。
+
 ## Boundary Introduction (No Behavior Change)
 
 - 新規 resolver 実装: [apps/api/src/lib/location-scope-resolver.ts](../../apps/api/src/lib/location-scope-resolver.ts)

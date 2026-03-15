@@ -4,6 +4,7 @@ import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
   isProductionScheduleCuttingResourceCd,
+  resolveResourceCategorySiteResolution,
   resolveResourceCategorySiteKey
 } from '../policies/resource-category-policy.service.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -32,6 +33,21 @@ describe('resource-category-policy.service', () => {
     expect(resolveResourceCategorySiteKey('第2工場 - kensakuMain')).toBe('第2工場');
     expect(resolveResourceCategorySiteKey({ deviceScopeKey: '第2工場 - RoboDrill01' })).toBe('第2工場');
     expect(resolveResourceCategorySiteKey({ siteKey: 'shared' })).toBe('shared');
+  });
+
+  it('returns resolution source for migration monitoring', () => {
+    expect(resolveResourceCategorySiteResolution({ siteKey: 'shared' })).toEqual({
+      siteKey: 'shared',
+      source: 'siteKey'
+    });
+    expect(resolveResourceCategorySiteResolution({ deviceScopeKey: '第2工場 - kensakuMain' })).toEqual({
+      siteKey: '第2工場',
+      source: 'deviceScopeKey'
+    });
+    expect(resolveResourceCategorySiteResolution('legacy-kiosk')).toEqual({
+      siteKey: 'legacy-kiosk',
+      source: 'legacyString'
+    });
   });
 
   it('queries config using normalized site key', async () => {
