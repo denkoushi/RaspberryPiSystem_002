@@ -204,6 +204,32 @@ category: knowledge-base
   - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
 
+## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
+
+- **背景**:
+  - Phase8 で標準契約と互換契約の分離は完了したが、`kiosk/shared.ts` には未使用の互換公開面（`resolveLocationKey` / `resolveCompatLocationScopeContext`）が残っていた。
+  - `csv-import-execution.service.ts` には別責務の同名関数 `resolveLocationKey` があり、保守時に誤読しやすい状態だった。
+- **実装**:
+  - `apps/api/src/routes/kiosk/shared.ts`
+    - 未使用の互換公開 `resolveLocationKey` / `resolveCompatLocationScopeContext` を削除。
+    - `CompatLocationScopeContext` の再エクスポートを削除し、標準契約中心の公開面へ整理。
+  - `apps/api/src/services/imports/csv-import-execution.service.ts`
+    - ローカル関数 `resolveLocationKey` を `resolveImportMetadataLocationKey` へ改名（機能変更なし）。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/lib/__tests__/location-scope-resolver.test.ts src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **受け入れ確認（Runbookチェック）**:
+  - APIヘルス（`status: degraded`、memory 95.4% の既知警告）
+  - deploy-status（raspberrypi4 / raspi4-robodrill01 ともに `isMaintenance:false`）
+  - 納期管理API（triage / daily-plan / global-rank / proposal / learning-report / actual-hours/stats 200）
+  - Mac向けシナリオ確認: `global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=globalShared` で応答整合
+  - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
+  - backup.json（15KB）存在、マイグレーション（52件、up to date）
+  - Pi3/Pi4サービス確認（`verify-services-real.sh` + 個別systemctl で active）
+
 ## Location Scope Phase8（resolver互換境界の明示化、2026-03-15）
 
 - **背景**:

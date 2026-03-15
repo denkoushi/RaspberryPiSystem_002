@@ -60,7 +60,7 @@ export interface StorageProviderFactoryLike {
 
 type ProcessCsvImportFromTargetsFn = typeof processCsvImportFromTargets;
 
-function resolveLocationKey(metadata: unknown): string {
+function resolveImportMetadataLocationKey(metadata: unknown): string {
   if (!metadata || typeof metadata !== 'object') {
     return 'default';
   }
@@ -296,7 +296,7 @@ export class CsvImportExecutionService {
 
     if (productionActualHoursTargets.length > 0) {
       const orchestrator = new ActualHoursImportOrchestratorService();
-      const locationKey = resolveLocationKey(importSchedule.metadata);
+      const locationKey = resolveImportMetadataLocationKey(importSchedule.metadata);
       let rowsProcessed = 0;
       let rowsInserted = 0;
       let rowsIgnored = 0;

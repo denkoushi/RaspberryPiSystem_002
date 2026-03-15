@@ -6,11 +6,8 @@ import {
   resolveDeviceName as resolveDeviceNameFromDevice,
   resolveDeviceScopeKey as resolveDeviceScopeKeyFromDevice,
   resolveInfraHost as resolveInfraHostFromDevice,
-  resolveCompatLocationScopeContext as resolveCompatLocationScopeContextFromDevice,
-  resolveLegacyLocationKey,
   resolveLocationScopeContext as resolveLocationScopeContextFromDevice,
   resolveSiteKey as resolveSiteKeyFromDevice,
-  type CompatLocationScopeContext,
   type ClientDeviceForScopeResolution,
   type CredentialIdentity,
   type LocationScopeContext
@@ -77,11 +74,7 @@ export async function requireClientDevice(rawClientKey: unknown): Promise<{
   return { clientKey, clientDevice };
 }
 
-export const resolveLocationKey = (clientDevice: { location?: string | null; name: string }): string => {
-  return resolveLegacyLocationKey(clientDevice);
-};
-
-export type { ClientDeviceForScopeResolution, CompatLocationScopeContext, CredentialIdentity, LocationScopeContext };
+export type { ClientDeviceForScopeResolution, CredentialIdentity, LocationScopeContext };
 
 export const resolveDeviceScopeKey = (
   clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>
@@ -102,10 +95,6 @@ export const resolveCredentialIdentity = (
 
 export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeResolution): LocationScopeContext =>
   resolveLocationScopeContextFromDevice(clientDevice);
-
-export const resolveCompatLocationScopeContext = (
-  clientDevice: ClientDeviceForScopeResolution
-): CompatLocationScopeContext => resolveCompatLocationScopeContextFromDevice(clientDevice);
 
 export const resolveTargetLocation = (params: {
   requestedTargetLocation?: string;
