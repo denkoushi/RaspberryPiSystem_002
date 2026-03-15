@@ -14,14 +14,14 @@ export async function registerProductionScheduleNoteRoute(
   app.put('/kiosk/production-schedule/:rowId/note', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleNoteParamsSchema.parse(request.params);
     const body = productionScheduleNoteBodySchema.parse(request.body);
 
     return upsertProductionScheduleNote({
       rowId: params.rowId,
       note: body.note,
-      locationKey
+      locationKey: deviceScopeKey
     });
   });
 }

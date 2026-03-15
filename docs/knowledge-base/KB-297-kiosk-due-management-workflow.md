@@ -296,6 +296,30 @@ category: knowledge-base
   - Due management auto-tuning scheduler ログ（`Due management auto-tuning scheduler started`）は API 起動後ローテーションでコンテナログから見つからない場合がある。PUT auto-generate が 200 を返せば機能は正常と判断可能。
 - **参照**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
 
+## Location Scope Phase12（完全体化、2026-03-16）
+
+- **背景**:
+  - Phase11 で契約収束は完了したが、運用面（再現検証、命名規約、横展開監査、UI最終確認記録）が分散していた。
+- **実装**:
+  - `scripts/deploy/verify-phase12-real.sh` を追加し、実機検証の主要API・fallback監視・`PUT /global-rank/auto-generate`・Pi3/Pi4サービス確認を1コマンド化。
+  - `docs/guides/location-scope-naming.md` を新設し、`siteKey` / `deviceScopeKey` / `infraHost` の命名規約を固定。
+  - `docs/plans/location-scope-phase12-cross-module-audit.md` を追加し、`production-schedule` ルート境界の命名監査結果を記録。
+  - `apps/api/src/routes/kiosk/production-schedule/*.ts` のローカル変数命名を `locationKey` から `deviceScopeKey` 明示へ統一（サービス契約は不変）。
+- **検証**:
+  - `./scripts/deploy/verify-phase12-real.sh`: PASS 23 / WARN 1 / FAIL 0
+  - WARN内容: `Due management auto-tuning scheduler started` ログは0件（ログローテーション想定）。`PUT /global-rank/auto-generate` 200 を代替正常判定として記録。
+- **UI最終確認（手動項目）**:
+  - 本作業ではリモート自動検証のみ実施。以下のUI手動項目は **現地実機での最終確認待ち** として記録:
+    - 納期管理新UI（V2）
+    - 納期管理UI Phase1/Phase2/Phase3
+    - 左ペイン中規模改善（対象化/対象中導線）
+    - 左ペイン3セクション色分け
+    - 表面処理別納期の最終オペレーション確認
+  - 手順は `deploy-status-recovery.md` セクション3に統一。
+- **知見**:
+  - 手動UI検証を除く運用検証は `verify-phase12-real.sh` で再現可能になった。
+  - 境界変数名は `deviceScopeKey` / `siteKey` を使い、`locationKey` は既存サービス契約への橋渡し時のみ使用する方針が有効。
+
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
 - **背景**:

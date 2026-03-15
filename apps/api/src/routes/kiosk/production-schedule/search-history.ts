@@ -13,17 +13,17 @@ export async function registerProductionScheduleSearchHistoryRoute(
   app.get('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
-    return getProductionScheduleSearchHistory(locationKey);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
+    return getProductionScheduleSearchHistory(deviceScopeKey);
   });
 
   app.put('/kiosk/production-schedule/search-history', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const body = productionScheduleSearchHistoryBodySchema.parse(request.body);
     return updateProductionScheduleSearchHistory({
-      locationKey,
+      locationKey: deviceScopeKey,
       history: body.history
     });
   });

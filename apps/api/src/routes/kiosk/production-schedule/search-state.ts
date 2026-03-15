@@ -13,8 +13,8 @@ export async function registerProductionScheduleSearchStateRoute(
   app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
-    const result = await getProductionScheduleSearchState(locationKey);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
+    const result = await getProductionScheduleSearchState(deviceScopeKey);
     reply.header('ETag', result.etag);
     return { state: result.state, updatedAt: result.updatedAt };
   });
@@ -22,10 +22,10 @@ export async function registerProductionScheduleSearchStateRoute(
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
     const result = await updateProductionScheduleSearchState({
-      locationKey,
+      locationKey: deviceScopeKey,
       ifMatchHeader: request.headers['if-match'],
       incomingHistory: body.state.history ?? []
     });

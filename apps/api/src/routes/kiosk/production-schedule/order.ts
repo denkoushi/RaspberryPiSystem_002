@@ -14,7 +14,7 @@ export async function registerProductionScheduleOrderRoute(
   app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleOrderParamsSchema.parse(request.params);
     const body = productionScheduleOrderBodySchema.parse(request.body);
 
@@ -22,7 +22,7 @@ export async function registerProductionScheduleOrderRoute(
       rowId: params.rowId,
       resourceCd: body.resourceCd,
       orderNumber: body.orderNumber,
-      locationKey
+      locationKey: deviceScopeKey
     });
   });
 }

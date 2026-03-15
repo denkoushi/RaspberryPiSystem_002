@@ -14,14 +14,14 @@ export async function registerProductionScheduleProcessingRoute(
   app.put('/kiosk/production-schedule/:rowId/processing', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleProcessingParamsSchema.parse(request.params);
     const body = productionScheduleProcessingBodySchema.parse(request.body);
 
     return upsertProductionScheduleProcessingType({
       rowId: params.rowId,
       processingType: body.processingType ?? '',
-      locationKey
+      locationKey: deviceScopeKey
     });
   });
 }

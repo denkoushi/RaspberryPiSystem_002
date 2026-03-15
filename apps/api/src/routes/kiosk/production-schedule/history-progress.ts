@@ -10,7 +10,7 @@ export async function registerProductionScheduleHistoryProgressRoute(
   app.get('/kiosk/production-schedule/history-progress', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
-    return getProductionScheduleHistoryProgress(locationKey);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
+    return getProductionScheduleHistoryProgress(deviceScopeKey);
   });
 }

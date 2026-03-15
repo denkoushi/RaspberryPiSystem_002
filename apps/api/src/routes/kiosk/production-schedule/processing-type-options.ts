@@ -10,8 +10,8 @@ export async function registerProductionScheduleProcessingTypeOptionsRoute(
   app.get('/kiosk/production-schedule/processing-type-options', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
-    const settings = await getProductionScheduleProcessingTypeOptions(locationKey);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
+    const settings = await getProductionScheduleProcessingTypeOptions(deviceScopeKey);
     return {
       options: settings.options
     };

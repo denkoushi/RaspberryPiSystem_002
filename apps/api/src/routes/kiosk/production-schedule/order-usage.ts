@@ -10,12 +10,12 @@ export async function registerProductionScheduleOrderUsageRoute(
   app.get('/kiosk/production-schedule/order-usage', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const query = productionScheduleQuerySchema.parse(request.query);
     const resourceCds = parseCsvList(query.resourceCds);
 
     const usage = await getProductionScheduleOrderUsage({
-      locationKey,
+      locationKey: deviceScopeKey,
       resourceCds
     });
 

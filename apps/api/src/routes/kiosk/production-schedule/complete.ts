@@ -10,14 +10,14 @@ export async function registerProductionScheduleCompleteRoute(
   app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const locationKey = locationScopeContext.deviceScopeKey;
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleCompleteParamsSchema.parse(request.params);
     const debugSessionHeader = request.headers['x-cursor-debug-session'];
     const debugSessionId = typeof debugSessionHeader === 'string' ? debugSessionHeader : undefined;
 
     return completeProductionScheduleRow({
       rowId: params.rowId,
-      locationKey,
+      locationKey: deviceScopeKey,
       debugSessionId
     });
   });

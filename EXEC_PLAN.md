@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-16) **Location Scope Phase12（完全体化）実装完了**: `feat/location-scope-phase12-complete-hardening` ブランチで、運用収束の残課題（Runbook自動化・命名規約固定・横展開監査・UI最終確認記録）を実施。**自動化**: `scripts/deploy/verify-phase12-real.sh` を追加し、API/サービス/fallback監視/auto-generate判定を1コマンド化（実行結果: PASS 23 / WARN 1 / FAIL 0）。**命名規約**: `docs/guides/location-scope-naming.md` を新設し、`siteKey` / `deviceScopeKey` / `infraHost` を固定。**横展開監査**: `docs/plans/location-scope-phase12-cross-module-audit.md` を追加し、`production-schedule` ルートの境界変数を `deviceScopeKey` 明示に統一（サービス契約は不変）。**UI最終確認記録**: KB-297に手動項目の確認待ちを明記。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase12完全体化2026-03-16) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [location-scope-naming.md](./docs/guides/location-scope-naming.md) を参照。
 - [x] (2026-03-15) **Location Scope Phase11（完全収束）実装・デプロイ・実機検証完了**: `feat/location-scope-phase11-complete-convergence` ブランチで、Location Scope の公開入力契約を標準型へ縮退。`resource-category-policy` は `ResourceCategoryPolicyScope` 固定にし、`default` のみ warning 監視対象へ変更。`due-management-location-scope-adapter` はオブジェクト契約（`deviceScopeKey/siteKey`）に固定。`location-scope-resolver` は compat 経由を外して標準解決へ単純化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` は `toDueManagementScopeFromContext()` 優先に統一。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格、PUT auto-generate 200）。**知見**: Due management auto-tuning scheduler ログは API 起動後ローテーションで見つからない場合あり。PUT auto-generate が 200 なら機能は正常。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase11完全収束2026-03-15) を参照。
 - [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）デプロイ・実機検証完了**: `refactor/location-scope-safe-rollout-phase0-4` ブランチで Phase0-4（scope ownership matrix・resolver境界統一・監視ログ追加・DB物理分離No-Go）を実施済み。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格）。**知見**: Pi5に`rg`は未導入のため fallback 監視は`grep`を使用（deploy-status-recovery.md に追記済み）。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）実施**: 段階移行の安全性を高めるため、`location-scope-phase1-audit.md` に scope ownership matrix（device/site/shared）と受け入れ条件を追加。`kiosk/production-schedule` の依存注入を `resolveLocationScopeContext` 単一入口へ整理し、未使用 resolver 依存を削減。`due-management-query.service.ts` の `getResourceCategoryPolicy()` 呼び出しを scope 形式（`{ deviceScopeKey }`）へ変更し、`resource-category-policy.service.ts` に site 解決経路（`siteKey` / `deviceScopeKey` / `default`）の監視ログを追加。`deploy-status-recovery.md` に fallback 監視コマンドを追記。**意思決定**: `ADR-20260315-location-scope-phase4-db-go-no-go.md` で DB 物理分離は No-Go（即時移行見送り）を確定し、resolver境界 + 監視による段階移行継続を採用。**検証**: api lint・対象テスト（resource-category-policy）・build を通過。
@@ -685,6 +686,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-16）: `production-schedule` ルート境界で `deviceScopeKey` を `locationKey` というローカル変数名で扱う箇所が残存していた。サービス契約は維持したまま、ルート変数名を `deviceScopeKey` に統一し、呼び出し時のみ `locationKey: deviceScopeKey` と明示する形へ是正した。
 - 観測（2026-03-15）: **Due management auto-tuning scheduler ログ**（`Due management auto-tuning scheduler started`）は API 起動後ローテーションでコンテナログから見つからない場合がある。PUT auto-generate が 200 を返せば機能は正常と判断可能。deploy-status-recovery.md の検証チェックリストでは「ログが出ること」を期待しているが、ログが見つからない場合は PUT auto-generate の動作確認で代替とする。
 - 観測（2026-03-15）: **Pi5 に `rg`（ripgrep）は未導入**。`deploy-status-recovery.md` の location scope fallback 監視コマンドは `rg` を指定していたが、Pi5 では `grep` を使用する必要がある。Runbook を `grep` に修正済み。
 - 観測（2026-03-15）: **Cursor サンドボックス経由で `pnpm test:api` 実行時に Docker ソケット EOF** が発生することがある。Mac 上で Docker を再起動後、ターミナルから直接実行すれば正常に動作する。`postgres-test-local` コンテナが既存の場合は `docker rm -f postgres-test-local` で削除してから再実行。
@@ -1560,16 +1562,16 @@
 
 ## Next Steps（将来のタスク）
 
-### Location Scope Phase11（完全収束）デプロイ・実機検証完了後の次のタスク（2026-03-15）
+### Location Scope Phase12（完全体化）実装完了後の次のタスク（2026-03-16）
 
-**概要**: `feat/location-scope-phase11-complete-convergence` で入力契約の縮退、resolver責務の純化、kioskルート境界の型統一を実装。段階デプロイ（Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）と実機検証（Runbook全項目合格）を完了。
+**概要**: `feat/location-scope-phase12-complete-hardening` で運用収束（Runbook自動化・命名規約固定・横展開監査・UI最終確認記録）を実施し、Phase11後の残課題を完了。
 
 **候補タスク**:
-1. **main へのマージ**: ブランチ `feat/location-scope-phase11-complete-convergence` を main へ統合
-2. **命名統一方針の確定（任意）**: site/device/infraHost の表示ルール（kensakuMain / RoboDrill01）を運用文書へ反映
-3. **Location Scope 後続改善（任意）**: 進捗一覧の継続改善、runbook自動化の強化、他機能への scope 境界横展開
+1. **現地UI最終確認の完了**: `deploy-status-recovery.md` の手動UI項目（V2/Phase1-3/色分け/表面処理別納期）を現地端末で最終チェックし、結果をKBへ反映
+2. **監査の定期運用化（任意）**: `location-scope-phase12-cross-module-audit.md` を月次棚卸しのテンプレとして再利用
+3. **進捗一覧の継続改善（任意）**: 管理コンソール除外設定更新時の invalidate 連携確認、アクセシビリティ強化
 
-**参照**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase11完全収束2026-03-15)
+**参照**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [location-scope-naming.md](./docs/guides/location-scope-naming.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase12完全体化2026-03-16)
 
 ### Location Scope Phase10（compat内部限定化）実装・検証完了後の次のタスク（2026-03-15）
 
@@ -2522,6 +2524,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-16（16回目） — Location Scope Phase12（完全体化）を反映。Progress に Runbook自動化（`verify-phase12-real.sh`）、命名規約ガイド（`location-scope-naming.md`）、横展開監査（`location-scope-phase12-cross-module-audit.md`）、UI手動確認記録（未完理由付き）を追記。`production-schedule` ルート境界のローカル変数名を `deviceScopeKey` 明示へ統一（サービス契約は不変）。Surprises に境界命名混在の是正知見を追加。Next Steps を Phase12 完了後基準へ更新。KB-297 / deploy-status-recovery / docs/INDEX を同期更新。
 変更履歴: 2026-03-15（15回目） — Location Scope Phase11（完全収束）デプロイ・実機検証完了を反映。Progress に段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）と実機検証（Runbook全項目合格、PUT auto-generate 200）を追記。Surprises に Due management auto-tuning scheduler ログがローテーションで見つからない場合の代替判断（PUT auto-generate 200）を追加。deploy-status-recovery.md に Phase11 検証日を追記。KB-297 に Phase11 デプロイ・実機検証・知見を追記。Next Steps を Phase11 完了後（main マージ）へ更新。
 変更履歴: 2026-03-15（14回目） — Location Scope Phase11（完全収束）を反映。`resource-category-policy` と `due-management-location-scope-adapter` の公開入力を標準型へ縮退し、`location-scope-resolver` の compat 依存を内部化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` を `toDueManagementScopeFromContext` 優先へ統一。api/web lint・対象テスト・build と Runbook確認（health/deploy-status/納期管理API/Pi3-Pi4サービス）を Progress に追記。deploy-status-recovery.md の fallback 監視を `default fallback` 警告ベースへ更新し、KB-297 / Next Steps を同期更新。
 変更履歴: 2026-03-15（13回目） — Location Scope Phase0-4（安全実装フォローアップ）デプロイ・実機検証完了を反映。Progress に段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）と実機検証（Runbook全項目合格）を追記。Surprises に Pi5 に `rg` 未導入の知見を追加。deploy-status-recovery.md に `rg`→`grep` 代替と Phase0-4 検証日付を追記。Next Steps に Phase0-4 完了後の候補（main マージ）を追加。

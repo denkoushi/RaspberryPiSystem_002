@@ -59,6 +59,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | Pi4 サービス（robodrill01） | `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"` | 両方 `active` |
 | Pi3 signage-lite | Pi5経由で `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"` | `active` |
 | Pi3/Pi4サービス簡易一括確認（Phase7確認） | `./scripts/deploy/verify-services-real.sh` | Pi3 signage-lite/timer、Pi4 kiosk-browser が `active` |
+| Phase12 一括自動検証（2026-03-16追加） | `./scripts/deploy/verify-phase12-real.sh` | API/サービス/fallback監視/auto-generate が PASS（WARN は内容確認） |
 | 納期管理新UI（V2有効時） | 実機で納期管理画面を開き、左レール・アクティブコンテキストバー・詳細パネル構成、製番選択時の視認表現、主要操作（一覧・選択・詳細・編集）を確認 | 新レイアウト表示・操作正常 |
 | 納期管理UI Phase1（開閉式・重複削除、2026-03-13追加） | 左ペイン3セクションが開閉できること、詳細パネルに製番・機種の重複表示がないこと、製番一覧・選択・詳細・編集が正常に動作すること | 開閉・表示・操作正常 |
 | 納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除、2026-03-13追加） | 開閉ボタンがアイコン化されていること、初回表示で全セクションが閉じていること、開閉操作後にリロードしても状態が復元されること、最下段カードが表示されず製番登録・削除がチップで動作すること | アイコン・デフォルト閉じ・状態記憶・チップ操作正常 |
@@ -66,7 +67,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | 納期管理UI Phase3（左ペイン導線再構成、2026-03-14実機検証完了） | 左ペインが3セクション（上段: 製番登録・納期前提、中段: 全体ランキング、下段: 当日計画への反映）になっていること。トリアージが独立セクションではなくランキングカードの属性・フィルタ・当日候補選択UIに統合されていること。開閉・状態記憶・主要操作が正常であること | 3セクション導線・トリアージ統合・開閉・操作正常 |
 | 納期管理UI 左ペイン中規模改善（選択/対象化導線の統合、2026-03-14追加） | ランキングカード・今日対象候補のトグルが「対象化」（未選択）⇔「対象中」（選択）と表示されること。今日対象候補のフィルタが「対象中のみ」⇔「全件表示」と表示されること。サマリ（対象候補/対象中/危険/注意/余裕）、バッジ（今日対象/対象外/引継ぎ）、製番選択→右ペイン表示、セクション開閉のlocalStorage永続化が正常であること | 対象化/対象中・フィルタ・サマリ・バッジ・開閉永続化正常 |
 | 納期管理UI 左ペイン3セクション色分け（2026-03-14追加） | 左ペイン3セクションが emerald（製番登録・納期前提）/ blue（全体ランキング）/ amber（当日計画への反映）で色分けされていること。当日計画セクションのコンテンツ背景がなし（赤「危険」の視認性のため）。開閉・製番選択・既存機能の動作確認 | 色分け・視認性・操作正常 |
-| 全体ランキング自動調整（2026-03-14追加） | `GET /api/kiosk/production-schedule/due-management/global-rank/proposal` が200、`PUT /api/kiosk/production-schedule/due-management/global-rank/auto-generate` が200で従来互換の応答を返すこと。Pi5 APIコンテナログで `Due management auto-tuning scheduler started` が出ること。手動`PUT /global-rank`で `reasonCode`（5項目）を指定した場合、`DueManagementOperatorDecisionEvent.reasonCode` に保存されること。 | 互換維持・スケジューラ起動・理由コード保存正常 |
+| 全体ランキング自動調整（2026-03-14追加 / 2026-03-16更新） | `GET /api/kiosk/production-schedule/due-management/global-rank/proposal` が200、`PUT /api/kiosk/production-schedule/due-management/global-rank/auto-generate` が200で従来互換の応答を返すこと。Pi5 APIコンテナログで `Due management auto-tuning scheduler started` が確認できれば望ましい（確認できない場合はログローテーションを考慮し、`PUT /global-rank/auto-generate` の200を代替判定とする）。手動`PUT /global-rank`で `reasonCode`（5項目）を指定した場合、`DueManagementOperatorDecisionEvent.reasonCode` に保存されること。 | 互換維持・スケジューラ起動（または代替判定）・理由コード保存正常 |
 
 **注記（Pi3 offline 時）**: `tailscale status` で Pi3（signageras3@100.105.224.86）が offline の場合、SSH がタイムアウトする。実機検証時は Pi3 の signage サービス確認をスキップ可能。Pi4 と API の検証が完了していれば、Pi3 は復帰後に追い確認する運用で可。
 
