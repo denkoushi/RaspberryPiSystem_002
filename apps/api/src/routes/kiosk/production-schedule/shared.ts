@@ -190,7 +190,6 @@ export type KioskRouteDeps = {
     clientKey: string;
     clientDevice: ClientDeviceForScopeResolution;
   }>;
-  resolveLocationKey: (clientDevice: ClientDeviceForLocation) => string;
   resolveDeviceScopeKey: (clientDevice: ClientDeviceForLocation) => string;
   resolveSiteKey: (clientDevice: ClientDeviceForLocation) => string;
   resolveDeviceName: (clientDevice: ClientDeviceForLocation) => string;
