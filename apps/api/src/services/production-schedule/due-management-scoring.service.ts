@@ -7,6 +7,9 @@ import { analyzeCompletionHistorySignals } from './completion-history-analyzer.s
 import { listDueManagementGlobalRank } from './due-management-global-rank.service.js';
 import {
   listDueManagementSummariesWithScope,
+  resolveDueManagementStorageLocationKey,
+  toDueManagementScope,
+  type DueManagementScope,
   type DueManagementLocationScopeInput
 } from './due-management-location-scope-adapter.service.js';
 import type {
@@ -123,9 +126,10 @@ type ActualHoursSignal = {
 const ACTUAL_HOURS_DEFAULT_SCORE = 0.35;
 
 const loadActualHoursSignals = async (params: {
-  locationKey: string;
+  locationScope: DueManagementScope;
   candidateFseibans: string[];
 }): Promise<Map<string, ActualHoursSignal>> => {
+  const locationKey = resolveDueManagementStorageLocationKey(params.locationScope);
   const result = new Map<string, ActualHoursSignal>();
   if (params.candidateFseibans.length === 0) {
     return result;
@@ -149,7 +153,7 @@ const loadActualHoursSignals = async (params: {
   const featureRows = await featureDelegate.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: params.locationKey,
+      location: locationKey,
     },
     select: {
       fhincd: true,
@@ -170,7 +174,7 @@ const loadActualHoursSignals = async (params: {
   const mappingRows = await prisma.productionScheduleResourceCodeMapping.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: params.locationKey,
+      location: locationKey,
       enabled: true,
     },
     orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
@@ -264,27 +268,32 @@ const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): str
 };
 
 export async function buildDueManagementGlobalRankProposal(params: {
-  locationKey: string;
-  locationScope?: DueManagementLocationScopeInput;
-  existingRankLocationKey?: string;
+  locationScope: DueManagementLocationScopeInput;
+  existingRankLocationScope?: DueManagementLocationScopeInput;
   scoringParameters?: DueManagementScoringParameters;
 }): Promise<GlobalRankProposal> {
+  const locationScope = toDueManagementScope(params.locationScope);
+  const locationKey = resolveDueManagementStorageLocationKey(locationScope);
+  const existingRankLocationScope = params.existingRankLocationScope
+    ? toDueManagementScope(params.existingRankLocationScope)
+    : locationScope;
+  const existingRankLocationKey = resolveDueManagementStorageLocationKey(existingRankLocationScope);
   const tuningParamsRepository = new TuningParamsRepository();
-  const scoringParameters = params.scoringParameters ?? (await tuningParamsRepository.getCurrentParams(params.locationKey));
-  const summaries = await listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey);
+  const scoringParameters = params.scoringParameters ?? (await tuningParamsRepository.getCurrentParams(locationKey));
+  const summaries = await listDueManagementSummariesWithScope(locationScope);
   const selectedRows = await prisma.productionScheduleTriageSelection.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: params.locationKey
+      location: locationKey
     },
     orderBy: [{ createdAt: 'asc' }, { fseiban: 'asc' }],
     select: { fseiban: true }
   });
   const selectedSet = new Set(selectedRows.map((row) => row.fseiban));
   const existingRank = await listDueManagementGlobalRank({
-    locationKey: params.existingRankLocationKey ?? params.locationKey,
-    targetLocation: params.locationKey,
-    scope: params.existingRankLocationKey ? 'globalShared' : 'locationScoped'
+    locationKey: existingRankLocationKey,
+    targetLocation: locationKey,
+    scope: params.existingRankLocationScope ? 'globalShared' : 'locationScoped'
   });
   const existingOrder = new Map(existingRank.map((fseiban, index) => [fseiban, index]));
   const candidateFseibans = buildDueScopedCandidates({
@@ -294,18 +303,18 @@ export async function buildDueManagementGlobalRankProposal(params: {
   });
 
   const resourceSignals = await estimateResourceLoadSignals({
-    locationKey: params.locationKey,
+    locationKey,
     candidateFseibans
   });
   const historySignals = await analyzeCompletionHistorySignals({ candidateFseibans });
   const actualHoursSignals = await loadActualHoursSignals({
-    locationKey: params.locationKey,
+    locationScope,
     candidateFseibans,
   });
   const partPriorityRows = await prisma.productionSchedulePartPriority.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: params.locationKey,
+      location: locationKey,
       fseiban: { in: candidateFseibans }
     },
     select: {
@@ -427,7 +436,7 @@ export async function buildDueManagementGlobalRankProposal(params: {
 
   return {
     generatedAt: new Date().toISOString(),
-    locationKey: params.locationKey,
+    locationKey,
     candidateCount: items.length,
     orderedFseibans,
     items

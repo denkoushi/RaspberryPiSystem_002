@@ -139,6 +139,40 @@ category: knowledge-base
   - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-134146-15083` / `20260315-134456-14921` / `20260315-135231-9809`）
   - **実機検証**: APIヘルス（`status: ok`）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI（`/api/tools/loans/active` 200）、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary すべて200）、global-rank の `targetLocation` / `actorLocation` / `rankingScope`、actual-hours/stats の `totalRawRows` / `totalCanonicalRows` / `totalFeatureKeys` / `topFeatures`、サイネージAPI（`layoutConfig` あり）、backup.json（14522 bytes）、マイグレーション52件 up to date、`LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）、両Pi4サービス（`kiosk-browser.service` / `status-agent.timer`）active を確認。
 
+## Location Scope Phase4（due-management限定: scope契約明示 + legacy依存縮小、2026-03-15）
+
+- **背景**:
+  - Phase3有効化後、due-management 内では `locationKey` 直渡しと `locationScope` 入力が混在していた。
+  - 破壊的変更を避けるため、DB契約は維持したまま「ルート境界でscope化 → サービス層でstorage解決」に統一した。
+- **実装**:
+  - `due-management-location-scope-adapter.service.ts` に `DueManagementScope` と `toDueManagementScope` / `toDueManagementScopeFromContext` を追加。
+  - `due-management-global-rank` ルートで scope 変換を明示し、`auto-generate` / `proposal` / `learning-report` / `explanation` の呼び出しを scope入力へ統一。
+  - `due-management-triage.service.ts` / `due-management-scoring.service.ts` / `due-management-learning-evaluator.service.ts` / `due-management-global-rank-auto.service.ts` を scope契約優先に更新。
+  - `due-management-summary.ts` / `due-management-seiban.ts` / `due-management-triage.ts` のルート境界で `toDueManagementScopeFromContext` を適用。
+  - auto-tuning オーケストレータと学習レポートテストを新契約に追随。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **デプロイ**:
+  - ブランチ: `feat/location-scope-phase4-due-mgmt-legacy-retire`
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-142550-21730` / `20260315-143257-13000` / `20260315-144526-7518`）
+- **実機検証**:
+  - APIヘルス（`status: ok`）
+  - deploy-status（両Pi4で `isMaintenance: false`）
+  - キオスクAPI（`/api/tools/loans/active` 200）
+  - 納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary/seiban すべて200）
+  - global-rank の `targetLocation` / `actorLocation` / `rankingScope` 返却
+  - actual-hours/stats の `totalRawRows` / `totalCanonicalRows` / `totalFeatureKeys` / `topFeatures` 返却
+  - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
+  - backup.json（14522 bytes）
+  - マイグレーション（52件、up to date）
+  - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
+  - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
+
+
 ## 進捗一覧復活（2026-03-15）
 
 - **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。
