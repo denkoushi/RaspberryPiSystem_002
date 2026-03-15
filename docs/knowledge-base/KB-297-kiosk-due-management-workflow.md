@@ -229,6 +229,16 @@ category: knowledge-base
   - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
   - backup.json（15KB）存在、マイグレーション（52件、up to date）
   - Pi3/Pi4サービス確認（`verify-services-real.sh` + 個別systemctl で active）
+- **デプロイ（2026-03-15）**:
+  - 対象: Pi5 + Pi4×2（raspberrypi4 / raspi4-robodrill01）。Pi3は影響なしのため対象外。
+  - 手順: `scripts/update-all-clients.sh` で1台ずつ順番に実行（`--limit`）。
+  - Run ID: `20260315-184658-22375`（Pi5）/ `20260315-185604-21505`（raspberrypi4）/ `20260315-190338-11172`（raspi4-robodrill01）
+  - 所要時間: Pi5 約7分、raspberrypi4 約6分、raspi4-robodrill01 約5分
+- **実機検証（2026-03-15）**:
+  - チェックリスト全14項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API群、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、サイネージAPI、backup.json、マイグレーション、Pi3 signage-lite、Pi4×2 kiosk-browser/status-agent active）
+- **知見**:
+  - デプロイ対象が複数台の場合は1台ずつ順番に実行する運用が安定（deployment.md の「1台ずつ順番デプロイ」を参照）
+  - 実機検証は `docs/runbooks/deploy-status-recovery.md` のチェックリストに従い、API・サービス・マイグレーションを網羅的に確認する
 
 ## Location Scope Phase8（resolver互換境界の明示化、2026-03-15）
 
