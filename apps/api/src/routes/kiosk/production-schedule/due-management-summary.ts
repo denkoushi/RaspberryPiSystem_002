@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 
 import { listEarliestEffectiveDueDateBySeiban } from '../../../services/production-schedule/due-date-resolution.service.js';
-import { listDueManagementSummariesWithScope } from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
+import {
+  listDueManagementSummariesWithScope,
+  toDueManagementScopeFromContext
+} from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
 import type { KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleDueManagementSummaryRoute(
@@ -11,7 +14,8 @@ export async function registerProductionScheduleDueManagementSummaryRoute(
   app.get('/kiosk/production-schedule/due-management/summary', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const summaries = await listDueManagementSummariesWithScope(locationScopeContext);
+    const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
+    const summaries = await listDueManagementSummariesWithScope(dueManagementScope);
     const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(summaries.map((item) => item.fseiban));
     return {
       summaries: summaries.map((item) => ({

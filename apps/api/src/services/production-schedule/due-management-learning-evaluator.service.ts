@@ -3,6 +3,8 @@ import { fetchSeibanProgressRows } from './seiban-progress.service.js';
 import type { DueManagementLearningReport } from './due-management/domain/contracts.js';
 import {
   listDueManagementSummariesWithScope,
+  resolveDueManagementStorageLocationKey,
+  toDueManagementScope,
   type DueManagementLocationScopeInput
 } from './due-management-location-scope-adapter.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -40,17 +42,18 @@ const parseDateRange = (params: { from?: string; to?: string }): { from: Date; t
 };
 
 export async function evaluateDueManagementLearningReport(params: {
-  locationKey: string;
-  locationScope?: DueManagementLocationScopeInput;
+  locationScope: DueManagementLocationScopeInput;
   from?: string;
   to?: string;
 }): Promise<DueManagementLearningReport> {
+  const locationScope = toDueManagementScope(params.locationScope);
+  const locationKey = resolveDueManagementStorageLocationKey(locationScope);
   const { from, to } = parseDateRange({ from: params.from, to: params.to });
   const [proposalEvents, decisionEvents, outcomeEvents, summaries] = await Promise.all([
     prisma.dueManagementProposalEvent.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: params.locationKey,
+        location: locationKey,
         createdAt: { gte: from, lte: to }
       },
       orderBy: [{ createdAt: 'asc' }],
@@ -59,7 +62,7 @@ export async function evaluateDueManagementLearningReport(params: {
     prisma.dueManagementOperatorDecisionEvent.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: params.locationKey,
+        location: locationKey,
         createdAt: { gte: from, lte: to }
       },
       orderBy: [{ createdAt: 'asc' }],
@@ -68,13 +71,13 @@ export async function evaluateDueManagementLearningReport(params: {
     prisma.dueManagementOutcomeEvent.findMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: params.locationKey,
+        location: locationKey,
         createdAt: { gte: from, lte: to }
       },
       orderBy: [{ createdAt: 'asc' }],
       select: { id: true }
     }),
-    listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey)
+    listDueManagementSummariesWithScope(locationScope)
   ]);
 
   const progressRows = await fetchSeibanProgressRows(summaries.map((summary) => summary.fseiban));
@@ -105,7 +108,7 @@ export async function evaluateDueManagementLearningReport(params: {
   }
 
   return {
-    locationKey: params.locationKey,
+    locationKey,
     range: {
       from: from.toISOString(),
       to: to.toISOString()

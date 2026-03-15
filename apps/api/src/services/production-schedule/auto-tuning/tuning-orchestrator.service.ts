@@ -97,12 +97,12 @@ export class DueManagementTuningOrchestrator {
       const prevTo = new Date(now.getTime() - 7 * DAY_MS).toISOString();
       const [currentReport, previousReport] = await Promise.all([
         evaluateDueManagementLearningReport({
-          locationKey,
+          locationScope: { deviceScopeKey: locationKey },
           from: currentFrom,
           to: now.toISOString(),
         }),
         evaluateDueManagementLearningReport({
-          locationKey,
+          locationScope: { deviceScopeKey: locationKey },
           from: prevFrom,
           to: prevTo,
         }),

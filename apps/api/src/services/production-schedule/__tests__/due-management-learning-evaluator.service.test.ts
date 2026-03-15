@@ -14,8 +14,10 @@ vi.mock('../../../lib/prisma.js', () => ({
   }
 }));
 
-vi.mock('../due-management-query.service.js', () => ({
-  listDueManagementSummaries: vi.fn()
+vi.mock('../due-management-location-scope-adapter.service.js', () => ({
+  listDueManagementSummariesWithScope: vi.fn(),
+  toDueManagementScope: vi.fn((scope) => scope),
+  resolveDueManagementStorageLocationKey: vi.fn((scope) => scope?.deviceScopeKey ?? 'default')
 }));
 
 vi.mock('../seiban-progress.service.js', () => ({
@@ -24,7 +26,7 @@ vi.mock('../seiban-progress.service.js', () => ({
 
 import { prisma } from '../../../lib/prisma.js';
 import { evaluateDueManagementLearningReport } from '../due-management-learning-evaluator.service.js';
-import { listDueManagementSummaries } from '../due-management-query.service.js';
+import { listDueManagementSummariesWithScope } from '../due-management-location-scope-adapter.service.js';
 import { fetchSeibanProgressRows } from '../seiban-progress.service.js';
 
 describe('due-management-learning-evaluator.service', () => {
@@ -55,7 +57,7 @@ describe('due-management-learning-evaluator.service', () => {
       }
     ] as never);
     vi.mocked(prisma.dueManagementOutcomeEvent.findMany).mockResolvedValue([{ id: 'o1' }, { id: 'o2' }] as never);
-    vi.mocked(listDueManagementSummaries).mockResolvedValue([
+    vi.mocked(listDueManagementSummariesWithScope).mockResolvedValue([
       {
         fseiban: 'A',
         machineName: null,
@@ -79,7 +81,7 @@ describe('due-management-learning-evaluator.service', () => {
     ]);
 
     const report = await evaluateDueManagementLearningReport({
-      locationKey: 'Test'
+      locationScope: { deviceScopeKey: 'Test' }
     });
 
     expect(report.locationKey).toBe('Test');

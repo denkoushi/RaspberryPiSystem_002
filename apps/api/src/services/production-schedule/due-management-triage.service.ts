@@ -5,6 +5,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { listEarliestEffectiveDueDateBySeiban } from './due-date-resolution.service.js';
 import {
   listDueManagementSummariesWithScope,
+  toDueManagementScope,
   type DueManagementLocationScopeInput
 } from './due-management-location-scope-adapter.service.js';
 import type { DueManagementSummaryItem } from './due-management-query.service.js';
@@ -48,10 +49,7 @@ const compareDueDateAsc = (a: Date | null, b: Date | null): number => {
   return 0;
 };
 
-const extractTopProcessingTypeBySeiban = async (
-  _locationKey: string,
-  targetFseibans: string[]
-): Promise<Map<string, string | null>> => {
+const extractTopProcessingTypeBySeiban = async (targetFseibans: string[]): Promise<Map<string, string | null>> => {
   if (targetFseibans.length === 0) return new Map<string, string | null>();
   const rows = await prisma.$queryRaw<TopProcessingTypeRow[]>`
     SELECT
@@ -88,11 +86,11 @@ const extractTopProcessingTypeBySeiban = async (
 };
 
 export async function listDueManagementTriage(params: {
-  locationKey: string;
-  locationScope?: DueManagementLocationScopeInput;
+  locationScope: DueManagementLocationScopeInput;
   targetFseibans: string[];
   selectedFseibans: string[];
 }): Promise<DueManagementTriageResult> {
+  const locationScope = toDueManagementScope(params.locationScope);
   const targetSet = new Set(
     params.targetFseibans
       .map((value) => value.trim())
@@ -103,7 +101,7 @@ export async function listDueManagementTriage(params: {
       .map((value) => value.trim())
       .filter((value) => value.length > 0)
   );
-  const summaryRows = await listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey);
+  const summaryRows = await listDueManagementSummariesWithScope(locationScope);
   const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(summaryRows.map((row) => row.fseiban));
   const filteredRows = summaryRows
     .filter((row) => targetSet.has(row.fseiban))
@@ -111,10 +109,7 @@ export async function listDueManagementTriage(params: {
       ...row,
       dueDate: effectiveDueDateMap.get(row.fseiban) ?? null
     }));
-  const topProcessingTypeMap = await extractTopProcessingTypeBySeiban(
-    params.locationKey,
-    filteredRows.map((row) => row.fseiban)
-  );
+  const topProcessingTypeMap = await extractTopProcessingTypeBySeiban(filteredRows.map((row) => row.fseiban));
   const now = new Date();
 
   const items: DueManagementTriageItem[] = filteredRows.map((row) => {

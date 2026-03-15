@@ -21,6 +21,14 @@ export type ResolvedDueManagementLocationScope = {
   legacyLocationKey: string;
 };
 
+export type DueManagementScope = ResolvedDueManagementLocationScope;
+
+export type DueManagementScopeContextInput = {
+  deviceScopeKey?: string;
+  siteKey?: string;
+  legacyLocationKey?: string;
+};
+
 const normalizeScopeToken = (value: string | null | undefined): string => value?.trim() ?? '';
 
 export const resolveDueManagementLocationScope = (
@@ -45,9 +53,19 @@ export const resolveDueManagementLocationScope = (
   };
 };
 
+export const toDueManagementScope = (scope: DueManagementLocationScopeInput): DueManagementScope =>
+  resolveDueManagementLocationScope(scope);
+
+export const toDueManagementScopeFromContext = (context: DueManagementScopeContextInput): DueManagementScope =>
+  resolveDueManagementLocationScope({
+    deviceScopeKey: context.deviceScopeKey,
+    siteKey: context.siteKey,
+    legacyLocationKey: context.legacyLocationKey
+  });
+
 export const isLocationScopePhase3Enabled = (): boolean => env.LOCATION_SCOPE_PHASE3_ENABLED === 'true';
 
-export const resolveDueManagementStorageLocationKey = (scope: ResolvedDueManagementLocationScope): string =>
+export const resolveDueManagementStorageLocationKey = (scope: DueManagementScope): string =>
   isLocationScopePhase3Enabled() ? scope.deviceScopeKey : scope.legacyLocationKey;
 
 export async function listDueManagementSummariesWithScope(
