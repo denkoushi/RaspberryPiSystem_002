@@ -177,7 +177,6 @@ type CredentialIdentity = {
   statusClientId: string | null;
 };
 type LocationScopeContext = {
-  legacyLocationKey: string;
   deviceScopeKey: string;
   siteKey: string;
   deviceName: string;

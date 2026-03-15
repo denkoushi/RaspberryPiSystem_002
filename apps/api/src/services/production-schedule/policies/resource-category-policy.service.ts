@@ -27,7 +27,6 @@ export type ResourceCategoryPolicy = {
 export type ResourceCategoryPolicyScope = {
   siteKey?: string;
   deviceScopeKey?: string;
-  legacyLocationKey?: string;
 };
 
 const normalizeScopeToken = (value: string | null | undefined): string => value?.trim() ?? '';
@@ -44,8 +43,6 @@ export const resolveResourceCategorySiteKey = (
   if (explicitSiteKey) return explicitSiteKey;
   const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
   if (deviceScopeKey) return resolveSiteKeyFromScopeKey(deviceScopeKey);
-  const legacyLocationKey = normalizeScopeToken(scope.legacyLocationKey);
-  if (legacyLocationKey) return resolveSiteKeyFromScopeKey(legacyLocationKey);
   return DEFAULT_LOCATION_SCOPE_KEY;
 };
 

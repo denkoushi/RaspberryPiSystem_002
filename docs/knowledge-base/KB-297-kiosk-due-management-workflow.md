@@ -204,6 +204,39 @@ category: knowledge-base
   - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
 
+## Location Scope Phase7（production-schedule境界のscope契約整理、2026-03-15）
+
+- **背景**:
+  - Phase6 で due-management adapter の legacy補助経路は整理できたが、`production-schedule` 境界には `legacyLocationKey` を含む型互換が一部残っていた。
+  - 次段として、API境界の契約を `deviceScopeKey` / `siteKey` 中心へ寄せ、Mac/Pi3 を含む受け入れ条件で回帰確認する。
+- **実装**:
+  - `apps/api/src/routes/kiosk/production-schedule/shared.ts`
+    - `LocationScopeContext` から `legacyLocationKey` を除外し、`production-schedule` ルート契約を `deviceScopeKey/siteKey` 中心へ整理。
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+    - `ResourceCategoryPolicyScope` から `legacyLocationKey` を削除。
+    - `resolveResourceCategorySiteKey()` の legacy fallback 分岐を削除し、`siteKey -> deviceScopeKey -> default` の順へ明確化。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **デプロイ**:
+  - ブランチ: `feat/location-scope-phase7-api-scope-harmonize`
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-172516-21463` / `20260315-173234-4410` / `20260315-173936-23557`）
+- **実機検証**:
+  - APIヘルス（`status: ok`、memory warning 92.8%）
+  - deploy-status（raspberrypi4 / raspi4-robodrill01 ともに `isMaintenance:false`）
+  - 納期管理API（summary/triage/global-rank 200）
+  - Mac向けシナリオ確認: `global-rank?targetLocation=第2工場&rankingScope=globalShared` で `targetLocation` / `actorLocation` / `rankingScope` 返却
+  - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
+  - `verify-services-real.sh` で Pi3 signage-lite/service timer と Pi4 kiosk-browser を確認（active）
+  - マイグレーション（52件、up to date）
+  - APIコンテナ環境変数: `LOCATION_SCOPE_PHASE3_ENABLED=UNSET`
+- **トラブルシューティング**:
+  - Pi5ホスト上で `apps/api` 直下から `pnpm prisma migrate status` を実行すると `db:5432` 到達不可（`P1001`）になる。  
+    実機検証では `docker compose ... exec -T api pnpm prisma migrate status` を使う。
+
 ## Location Scope Phase6（adapter内legacy補助経路廃止、2026-03-15）
 
 - **背景**:
