@@ -7,6 +7,7 @@ import {
   resolveDeviceName,
   resolveDeviceScopeKey,
   resolveLegacyLocationKey,
+  resolveCompatLocationScopeContext,
   resolveLocationScopeContext,
   resolveSiteKeyFromScopeKey,
   resolveSiteKey
@@ -42,7 +43,7 @@ describe('location-scope-resolver', () => {
     expect(resolveDeviceNameFromScopeKey('')).toBe(DEFAULT_LOCATION_SCOPE_KEY);
   });
 
-  it('resolves credential identity and full scope context', () => {
+  it('resolves credential identity and standard scope context', () => {
     const context = resolveLocationScopeContext({
       id: 'client-uuid',
       apiKey: 'client-key-raspberrypi4-kiosk1',
@@ -51,7 +52,6 @@ describe('location-scope-resolver', () => {
       name: 'raspberrypi4'
     });
 
-    expect(context.legacyLocationKey).toBe('第2工場 - kensakuMain');
     expect(context.deviceScopeKey).toBe('第2工場 - kensakuMain');
     expect(context.siteKey).toBe('第2工場');
     expect(context.deviceName).toBe('kensakuMain');
@@ -72,5 +72,18 @@ describe('location-scope-resolver', () => {
       apiKey: 'client-key',
       statusClientId: null
     });
+  });
+
+  it('resolves compatibility scope context with legacy location key', () => {
+    const compat = resolveCompatLocationScopeContext({
+      id: 'client-uuid',
+      apiKey: 'client-key-raspberrypi4-kiosk1',
+      statusClientId: 'raspberrypi4-kiosk1',
+      location: '第2工場 - kensakuMain',
+      name: 'raspberrypi4'
+    });
+    expect(compat.legacyLocationKey).toBe('第2工場 - kensakuMain');
+    expect(compat.deviceScopeKey).toBe('第2工場 - kensakuMain');
+    expect(compat.siteKey).toBe('第2工場');
   });
 });
