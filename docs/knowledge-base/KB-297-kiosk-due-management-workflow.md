@@ -224,9 +224,17 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/api build`: pass
   - `pnpm --filter @raspi-system/web lint`: pass
   - `pnpm --filter @raspi-system/web build`: pass
+- **デプロイ（2026-03-15）**:
+  - 対象: Pi5 + Pi4×2（raspberrypi4 / raspi4-robodrill01）。Pi3は影響なしのため対象外。
+  - 手順: `scripts/update-all-clients.sh` で1台ずつ順番に実行（`--limit`）。
+  - Run ID: `20260315-202628-23734`（Pi5）/ `20260315-203512-15802`（raspberrypi4）/ `20260315-204257-10897`（raspi4-robodrill01）
+  - 所要時間: Pi5 約6分、raspberrypi4 約5分、raspi4-robodrill01 約5分
+- **実機検証（2026-03-15）**:
+  - リモート自動チェック全項目合格（APIヘルス degraded/memory 96%、deploy-status両Pi4、キオスクAPI、納期管理API群、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、サイネージAPI、backup.json 15KB、マイグレーション52件、Pi3 signage-lite、Pi4×2 kiosk-browser/status-agent active）
 - **知見**:
   - 互換ロジックを削除せず内部化する場合、公開関数を標準契約へ固定しつつ内部ヘルパーへ委譲する構成にすると、互換性を維持しながら責務分離（SRP）を進めやすい。
   - `kiosk/shared.ts` から互換再公開を行わない方針を継続することで、呼び出し側依存を標準契約へ収束できる。
+  - デプロイ対象が複数台の場合は1台ずつ順番に実行する運用が安定（deployment.md の「1台ずつ順番デプロイ」を参照）。
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
