@@ -73,3 +73,11 @@
 - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分、Pi3除外
 - **実機検証**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、resource-categories、サイネージAPI、backup.json、マイグレーション52件、Pi4/Pi3サービス稼働）
 - **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase2siteスコープ正規化の段階移行2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
+
+## Phase 3 デプロイ・実機検証（2026-03-15）
+
+- **ブランチ**: `feat/location-scope-phase3-completion`
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-123857-22423` / `20260315-124840-2507` / `20260315-125820-7779`）、約45分、Pi3除外
+- **実機検証**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary）、サイネージAPI、backup.json、マイグレーション52件、Pi4×2サービス稼働）
+- **Feature Flag**: `location_scope_phase3_enabled` は初期 `false`。Phase3新経路有効化時は inventory で `true` に変更して再デプロイ
+- **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase3scope契約統一--flag段階切替2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)

@@ -127,6 +127,12 @@ category: knowledge-base
 - **既知事項**:
   - フル `pnpm --filter @raspi-system/api test` はローカルDB (`localhost:5432`) 非起動により backup系テストで失敗するため、実機検証前にDB起動状態で再実施が必要。
 
+- **実機検証（2026-03-15）**:
+  - **デプロイ**: `feat/location-scope-phase3-completion`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-123857-22423` / `20260315-124840-2507` / `20260315-125820-7779`）、約45分、Pi3除外。
+  - **リモート自動チェック**: APIヘルス（status: ok）、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI（loans/active 200）、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary すべて200）、サイネージAPI（layoutConfig 含む）、backup.json（15KB）、マイグレーション52件適用済み、Pi4×2サービス（kiosk-browser/status-agent.timer ともに active）を確認。全項目合格。
+  - **Feature Flag**: `location_scope_phase3_enabled` は inventory で初期 `false`。Phase3新経路を有効化する場合は `true` に変更して再デプロイ。
+  - **参照**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の実機検証チェックリスト
+
 ## 進捗一覧復活（2026-03-15）
 
 - **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。
