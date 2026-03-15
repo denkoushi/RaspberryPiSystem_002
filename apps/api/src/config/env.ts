@@ -135,10 +135,6 @@ const envSchema = z.object({
   ACTUAL_HOURS_SHARED_FALLBACK_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('false')
-  ),
-  LOCATION_SCOPE_PHASE3_ENABLED: z.preprocess(
-    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
-    z.enum(['true', 'false']).default('false')
   )
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
