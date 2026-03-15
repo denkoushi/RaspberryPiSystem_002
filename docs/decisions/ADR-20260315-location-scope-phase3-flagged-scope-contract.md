@@ -1,7 +1,9 @@
 # ADR-20260315: Location Scope Phase3 Flagged Scope Contract
 
-- Status: accepted
+- Status: superseded
 - Date: 2026-03-15
+
+Superseded by Location Scope Phase6 (2026-03-15): due-management adapter 内の `LOCATION_SCOPE_PHASE3_ENABLED` 分岐を廃止し、storage参照キーは `deviceScopeKey` に一本化した。
 
 ## Context
 

@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-14
+last-verified: 2026-03-15
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -203,6 +203,41 @@ category: knowledge-base
   - マイグレーション（52件、up to date）
   - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
+
+## Location Scope Phase6（adapter内legacy補助経路廃止、2026-03-15）
+
+- **背景**:
+  - Phase5 時点で due-management のルート境界統一は完了したが、adapter 内には `legacyLocationKey` 補助経路と `LOCATION_SCOPE_PHASE3_ENABLED` 分岐が残っていた。
+  - Phase3/4/5 の実機運用で `deviceScopeKey` 経路が安定したため、互換のためだけに残していた分岐を段階廃止した。
+- **実装**:
+  - `due-management-location-scope-adapter.service.ts`
+    - `DueManagementLocationScopeInput` / `DueManagementScopeContextInput` / `ResolvedDueManagementLocationScope` から `legacyLocationKey` を削除。
+    - `resolveDueManagementStorageLocationKey()` を `deviceScopeKey` 固定返却へ変更。
+    - `isLocationScopePhase3Enabled()` を削除し、フラグ依存を除去。
+  - `due-management-location-scope-adapter.service.test.ts`
+    - 期待値を新契約（device/siteのみ）へ更新。
+    - Phase3フラグON/OFF分岐テストを削除し、「常にdeviceScopeKeyを使う」テストへ集約。
+  - 設定配線整理:
+    - `env.ts` / `.env.example` / `docker.env.j2` / `inventory.yml` から `LOCATION_SCOPE_PHASE3_ENABLED`（`location_scope_phase3_enabled`）を削除。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+  - 補足: フル `pnpm --filter @raspi-system/api test` はローカルDB未起動時に backup系テストで失敗（既知）
+- **デプロイ**:
+  - ブランチ: `feat/location-scope-phase6-adapter-legacy-retire`
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-164754-9966` / `20260315-165800-14681` / `20260315-170453-7369`）
+- **実機検証**:
+  - APIヘルス（`status: ok`、memory warning 87.7%）
+  - deploy-status（`isMaintenance: false`）
+  - 納期管理API（summary/triage 200）
+  - サイネージAPI（`/api/signage/content` 200）
+  - backup.json（14522 bytes）
+  - マイグレーション（52件、up to date）
+  - Pi4サービス（`kiosk-browser.service` / `status-agent.timer` active）
+  - APIコンテナ環境変数: `ACTUAL_HOURS_SHARED_FALLBACK_ENABLED=true` / `LOCATION_SCOPE_PHASE3_ENABLED=UNSET`
 
 
 ## 進捗一覧復活（2026-03-15）
