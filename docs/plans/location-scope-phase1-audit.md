@@ -89,3 +89,11 @@
 - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-134146-15083` / `20260315-134456-14921` / `20260315-135231-9809`）
 - **実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI（`/api/tools/loans/active` 200）、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary 200）、サイネージAPI（`layoutConfig` あり）、backup.json（14522 bytes）、マイグレーション（52件 up to date）、`LOCATION_SCOPE_PHASE3_ENABLED=true`、両Pi4サービス（`kiosk-browser.service`/`status-agent.timer`）active を確認
 - **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase3scope契約統一--flag段階切替2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
+
+## Phase 4 デプロイ・実機検証（2026-03-15）
+
+- **ブランチ**: `feat/location-scope-phase4-due-mgmt-legacy-retire`
+- **変更**: due-management 専用の `DueManagementScope` 契約を導入し、`global-rank`/`triage`/`scoring`/`learning`/`summary`/`seiban` の主要経路を `locationKey` 直渡しから scope 明示入力へ移行。`toDueManagementScope` / `toDueManagementScopeFromContext` を追加。storage キー解決は Phase3 フラグに従い互換維持。
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-142550-21730` / `20260315-143257-13000` / `20260315-144526-7518`）
+- **実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary/seiban すべて 200）、サイネージAPI、backup.json（14522 bytes）、マイグレーション（52件 up to date）、`LOCATION_SCOPE_PHASE3_ENABLED=true`、Pi3/Pi4サービス稼働を確認
+- **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase4due-management限定-scope契約明示--legacy依存縮小2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
