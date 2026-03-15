@@ -204,6 +204,30 @@ category: knowledge-base
   - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
 
+## Location Scope Phase10（compat内部限定化、2026-03-15）
+
+- **背景**:
+  - Phase9 で `kiosk/shared.ts` 側の互換公開整理は完了したが、`location-scope-resolver.ts` には互換コンテキストを返す公開シンボルが残っていた。
+  - 公開境界を標準契約（`StandardLocationScopeContext`）へ固定し、互換情報を内部実装へ閉じ込める必要があった。
+- **実装**:
+  - `apps/api/src/lib/location-scope-resolver.ts`
+    - `CompatLocationScopeContext` を非公開型へ変更（module内部限定）。
+    - `resolveCompatLocationScopeContext()` を非公開関数へ変更し、互換解決を内部ヘルパー化。
+    - `resolveStandardLocationScopeContext()` を追加し、標準契約の解決責務を分離。
+    - 公開API `resolveLocationScopeContext()` は標準契約のみ返却し、`legacyLocationKey` を外部へ露出しない設計を維持。
+  - `apps/api/src/lib/__tests__/location-scope-resolver.test.ts`
+    - 互換公開関数の直接テストを削除。
+    - 標準コンテキストに `legacyLocationKey` が含まれないことを検証する回帰テストへ更新。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/lib/__tests__/location-scope-resolver.test.ts src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **知見**:
+  - 互換ロジックを削除せず内部化する場合、公開関数を標準契約へ固定しつつ内部ヘルパーへ委譲する構成にすると、互換性を維持しながら責務分離（SRP）を進めやすい。
+  - `kiosk/shared.ts` から互換再公開を行わない方針を継続することで、呼び出し側依存を標準契約へ収束できる。
+
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
 - **背景**:
