@@ -23,7 +23,7 @@ export type StandardLocationScopeContext = {
   credentialIdentity: CredentialIdentity;
 };
 
-export type CompatLocationScopeContext = StandardLocationScopeContext & {
+type CompatLocationScopeContext = StandardLocationScopeContext & {
   legacyLocationKey: string;
 };
 
@@ -93,7 +93,9 @@ export const resolveCredentialIdentity = (
   statusClientId: clientDevice.statusClientId ?? null
 });
 
-export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeResolution): StandardLocationScopeContext => {
+const resolveStandardLocationScopeContext = (
+  clientDevice: ClientDeviceForScopeResolution
+): StandardLocationScopeContext => {
   const deviceScopeKey = resolveDeviceScopeKey(clientDevice);
   return {
     deviceScopeKey,
@@ -104,9 +106,20 @@ export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeRe
   };
 };
 
-export const resolveCompatLocationScopeContext = (
+export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeResolution): StandardLocationScopeContext => {
+  const compatContext = resolveCompatLocationScopeContext(clientDevice);
+  return {
+    deviceScopeKey: compatContext.deviceScopeKey,
+    siteKey: compatContext.siteKey,
+    deviceName: compatContext.deviceName,
+    infraHost: compatContext.infraHost,
+    credentialIdentity: compatContext.credentialIdentity
+  };
+};
+
+const resolveCompatLocationScopeContext = (
   clientDevice: ClientDeviceForScopeResolution
 ): CompatLocationScopeContext => ({
-  ...resolveLocationScopeContext(clientDevice),
+  ...resolveStandardLocationScopeContext(clientDevice),
   legacyLocationKey: resolveLegacyLocationKey(clientDevice)
 });

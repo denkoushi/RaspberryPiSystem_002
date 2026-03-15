@@ -7,7 +7,6 @@ import {
   resolveDeviceName,
   resolveDeviceScopeKey,
   resolveLegacyLocationKey,
-  resolveCompatLocationScopeContext,
   resolveLocationScopeContext,
   resolveSiteKeyFromScopeKey,
   resolveSiteKey
@@ -74,16 +73,16 @@ describe('location-scope-resolver', () => {
     });
   });
 
-  it('resolves compatibility scope context with legacy location key', () => {
-    const compat = resolveCompatLocationScopeContext({
+  it('does not expose legacy location key in standard scope context', () => {
+    const context = resolveLocationScopeContext({
       id: 'client-uuid',
       apiKey: 'client-key-raspberrypi4-kiosk1',
       statusClientId: 'raspberrypi4-kiosk1',
       location: '第2工場 - kensakuMain',
       name: 'raspberrypi4'
     });
-    expect(compat.legacyLocationKey).toBe('第2工場 - kensakuMain');
-    expect(compat.deviceScopeKey).toBe('第2工場 - kensakuMain');
-    expect(compat.siteKey).toBe('第2工場');
+    expect(context.deviceScopeKey).toBe('第2工場 - kensakuMain');
+    expect(context.siteKey).toBe('第2工場');
+    expect(context).not.toHaveProperty('legacyLocationKey');
   });
 });
