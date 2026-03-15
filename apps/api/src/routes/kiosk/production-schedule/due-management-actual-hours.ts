@@ -2,6 +2,10 @@ import { createHash } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 
 import { ActualHoursImportOrchestratorService } from '../../../services/production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
+import {
+  resolveDueManagementStorageLocationKey,
+  toDueManagementScopeFromContext
+} from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
 import { ProductionActualHoursAggregateService } from '../../../services/production-schedule/production-actual-hours-aggregate.service.js';
 import {
   productionScheduleDueManagementActualHoursImportBodySchema,
@@ -22,7 +26,8 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const locationKey = locationScopeContext.deviceScopeKey;
+      const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
+      const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);
       const body = productionScheduleDueManagementActualHoursImportBodySchema.parse(request.body ?? {});
       const buffer = Buffer.from(body.csvContent, 'utf8');
       const sourceFileKey = `manual:${locationKey}:${createHash('sha256').update(buffer).digest('hex')}`;
@@ -45,7 +50,8 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const locationKey = locationScopeContext.deviceScopeKey;
+      const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
+      const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);
       const query = productionScheduleDueManagementActualHoursStatsQuerySchema.parse(request.query ?? {});
       const stats = await aggregateService.getStats({
         locationKey,

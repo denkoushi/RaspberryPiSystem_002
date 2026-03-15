@@ -173,6 +173,38 @@ category: knowledge-base
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
 
 
+## Location Scope Phase5（due-management内の残存legacy配線整理、2026-03-15）
+
+- **背景**:
+  - Phase4 で scope 契約は導入済みだが、due-management の一部ルートに `deviceScopeKey` 直取りと未使用 legacy 注入配線が残っていた。
+  - 破壊的変更を避けるため、互換解決は adapter に集約したまま、ルート境界の解決方式を統一した。
+- **実装**:
+  - `due-management-due-date.ts` / `due-management-note.ts` / `due-management-part-priorities.ts` / `due-management-processing.ts` / `due-management-processing-due-date.ts` / `due-management-actual-hours.ts` / `due-management-triage.ts` で `toDueManagementScopeFromContext()` + `resolveDueManagementStorageLocationKey()` を適用。
+  - `KioskRouteDeps`（production-schedule shared）から未使用の `resolveLocationKey` 契約を削除。
+  - `kiosk.ts` の production-schedule deps 注入から未使用 `resolveLocationKey` を削除。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **デプロイ**:
+  - ブランチ: `feat/location-scope-phase5-due-mgmt-legacy-wire-cleanup`
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-150720-6176` / `20260315-151510-9116` / `20260315-152306-24125`）
+- **実機検証**:
+  - APIヘルス（`status: degraded`、memory 使用率 95.7% の既知警告）
+  - deploy-status（両Pi4で `isMaintenance: false`）
+  - キオスクAPI（`/api/tools/loans/active` 200）
+  - 納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary/seiban すべて200）
+  - global-rank の `targetLocation` / `actorLocation` / `rankingScope` 返却
+  - actual-hours/stats の `totalRawRows` / `totalCanonicalRows` / `totalFeatureKeys` / `topFeatures` 返却
+  - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
+  - backup.json（14522 bytes）
+  - マイグレーション（52件、up to date）
+  - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
+  - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
+
+
 ## 進捗一覧復活（2026-03-15）
 
 - **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。

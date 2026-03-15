@@ -16,7 +16,6 @@ import {
   resolveDeviceScopeKey,
   resolveInfraHost,
   resolveLocationScopeContext,
-  resolveLocationKey,
   resolveSiteKey,
   resolveTargetLocation
 } from './kiosk/shared.js';
@@ -35,7 +34,6 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     resolveDeviceScopeKey,
     resolveInfraHost,
     resolveLocationScopeContext,
-    resolveLocationKey,
     resolveSiteKey,
     resolveTargetLocation
   });

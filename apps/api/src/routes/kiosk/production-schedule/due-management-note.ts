@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 
 import { upsertProductionScheduleDueManagementPartNote } from '../../../services/production-schedule/due-management-command.service.js';
 import {
+  resolveDueManagementStorageLocationKey,
+  toDueManagementScopeFromContext
+} from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
+import {
   productionScheduleDueManagementPartParamsSchema,
   productionScheduleNoteBodySchema,
   type KioskRouteDeps
@@ -17,7 +21,8 @@ export async function registerProductionScheduleDueManagementNoteRoute(
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-      const locationKey = locationScopeContext.deviceScopeKey;
+      const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
+      const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);
       const params = productionScheduleDueManagementPartParamsSchema.parse(request.params);
       const body = productionScheduleNoteBodySchema.parse(request.body);
       return upsertProductionScheduleDueManagementPartNote({
