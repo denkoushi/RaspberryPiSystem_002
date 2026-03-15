@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { parse } from 'csv-parse/sync';
 
+import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
@@ -8,6 +9,7 @@ import {
 } from './policies/resource-category-policy.service.js';
 
 const normalizeLocation = (location: string): string => location.trim();
+const normalizeSiteLocation = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
 const LEGACY_DUE_MANAGEMENT_PASSWORD = '2520';
 export const SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION = 'shared';
 const DEFAULT_PROCESSING_TYPE_OPTIONS = [
@@ -36,7 +38,7 @@ export async function getProductionScheduleResourceCategorySettings(location: st
   location: string;
   cuttingExcludedResourceCds: string[];
 }> {
-  const normalizedLocation = normalizeLocation(location);
+  const normalizedLocation = normalizeSiteLocation(location);
   const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({
     where: {
       csvDashboardId_location: {
@@ -63,7 +65,7 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
   location: string;
   cuttingExcludedResourceCds: string[];
 }): Promise<{ location: string; cuttingExcludedResourceCds: string[] }> {
-  const location = normalizeLocation(params.location);
+  const location = normalizeSiteLocation(params.location);
   const cuttingExcludedResourceCds = normalizeResourceCdList(params.cuttingExcludedResourceCds);
 
   const updated = await prisma.productionScheduleResourceCategoryConfig.upsert({

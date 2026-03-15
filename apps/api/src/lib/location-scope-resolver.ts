@@ -49,6 +49,10 @@ const parseLocationSegments = (locationKey: string): { siteKey: string; deviceNa
   };
 };
 
+export const resolveSiteKeyFromScopeKey = (scopeKey: string): string => parseLocationSegments(scopeKey).siteKey;
+
+export const resolveDeviceNameFromScopeKey = (scopeKey: string): string => parseLocationSegments(scopeKey).deviceName;
+
 export const resolveLegacyLocationKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string => {
   const location = normalizeToken(clientDevice.location);
   if (location) {
@@ -65,10 +69,10 @@ export const resolveDeviceScopeKey = (clientDevice: Pick<ClientDeviceForScopeRes
   resolveLegacyLocationKey(clientDevice);
 
 export const resolveSiteKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
-  parseLocationSegments(resolveDeviceScopeKey(clientDevice)).siteKey;
+  resolveSiteKeyFromScopeKey(resolveDeviceScopeKey(clientDevice));
 
 export const resolveDeviceName = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
-  parseLocationSegments(resolveDeviceScopeKey(clientDevice)).deviceName;
+  resolveDeviceNameFromScopeKey(resolveDeviceScopeKey(clientDevice));
 
 export const resolveInfraHost = (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>): string => {
   const host = normalizeToken(clientDevice.name);
@@ -89,8 +93,8 @@ export const resolveLocationScopeContext = (clientDevice: ClientDeviceForScopeRe
   return {
     legacyLocationKey: resolveLegacyLocationKey(clientDevice),
     deviceScopeKey,
-    siteKey: parseLocationSegments(deviceScopeKey).siteKey,
-    deviceName: parseLocationSegments(deviceScopeKey).deviceName,
+    siteKey: resolveSiteKeyFromScopeKey(deviceScopeKey),
+    deviceName: resolveDeviceNameFromScopeKey(deviceScopeKey),
     infraHost: resolveInfraHost(clientDevice),
     credentialIdentity: resolveCredentialIdentity(clientDevice)
   };

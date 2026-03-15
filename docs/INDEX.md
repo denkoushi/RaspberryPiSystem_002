@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-15）
 
+- **✅ Location Scope Phase2（siteスコープ正規化の段階移行）実装完了**: `feat/location-scope-phase2-migration` ブランチで、ResourceCategory設定をsite正規へ移行。`resource-category-policy` は `siteKey` 優先解決 + legacy/device入力の内部正規化に対応し、`production-schedule-settings` の ResourceCategory read/write も site 正規化へ統一。管理画面文言を「拠点共通(site)」と「端末別(device)」で明示化。`location-scope-resolver` / `resource-category-policy` の回帰テストを追加し、api/web lint・build通過を確認。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase2siteスコープ正規化の段階移行2026-03-15) / [ADR-20260315](./decisions/ADR-20260315-location-scope-phase2-resource-category-site-scope.md) を参照。
 - **✅ Location Scope Phase1 + 進捗一覧復活・デプロイ・実機検証完了**: `refactor/location-scope-boundary-phase1` ブランチで Phase1（用途別 resolver 境界導入・挙動不変）と進捗一覧復活を実施。**進捗一覧**: `GET /api/kiosk/production-schedule/progress-overview`、4列化・除外CD反映・ホバー・納期色分けを含む最新版（b5f5a57c）を最小差分で復元。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分。**実機検証**: キオスクヘッダーから進捗一覧画面への遷移・表示を確認。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗一覧復活2026-03-15) / [location-scope-phase1-audit.md](./plans/location-scope-phase1-audit.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-14）

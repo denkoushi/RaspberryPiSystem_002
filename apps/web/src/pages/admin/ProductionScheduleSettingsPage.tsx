@@ -17,6 +17,7 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
 const DEFAULT_LOCATION = 'shared';
+const LOCATION_SEGMENT_DELIMITER = ' - ';
 
 const parseResourceCds = (value: string): string[] => {
   const unique = new Set<string>();
@@ -26,6 +27,15 @@ const parseResourceCds = (value: string): string[] => {
     .filter((item) => item.length > 0)
     .forEach((item) => unique.add(item));
   return Array.from(unique).sort((a, b) => a.localeCompare(b));
+};
+
+const toSiteScopeLabel = (rawLocation: string): string => {
+  const normalized = rawLocation.trim();
+  if (!normalized) return DEFAULT_LOCATION;
+  const delimiterIndex = normalized.indexOf(LOCATION_SEGMENT_DELIMITER);
+  if (delimiterIndex < 0) return normalized;
+  const site = normalized.slice(0, delimiterIndex).trim();
+  return site.length > 0 ? site : normalized;
 };
 
 export function ProductionScheduleSettingsPage() {
@@ -93,6 +103,7 @@ export function ProductionScheduleSettingsPage() {
   }, [resourceCodeMappingsQuery.data?.settings.mappings]);
 
   const parsedResourceCds = useMemo(() => parseResourceCds(cuttingExcludedInput), [cuttingExcludedInput]);
+  const selectedSiteScope = useMemo(() => toSiteScopeLabel(location), [location]);
 
   const handleSave = async () => {
     setMessage(null);
@@ -166,11 +177,12 @@ export function ProductionScheduleSettingsPage() {
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
             切削工程フィルタから除外したい資源CDを設定します。研削は固定リスト、切削は「研削以外」からここで指定した資源CDを除外します。
+            この設定は拠点共通（siteスコープ）です。
           </p>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700">対象ロケーション</label>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">対象ロケーション（拠点共通設定）</label>
               <select
                 className="w-full rounded-md border-2 border-slate-500 bg-white p-2 text-xs font-semibold text-slate-900"
                 value={location}
@@ -191,6 +203,13 @@ export function ProductionScheduleSettingsPage() {
                 placeholder="例: 10, MSZ"
               />
             </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs text-slate-600">
+              保存先スコープ: <span className="font-semibold text-slate-800">{selectedSiteScope}</span>
+              （選択中ロケーションから拠点キーへ正規化）
+            </p>
           </div>
 
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -231,7 +250,7 @@ export function ProductionScheduleSettingsPage() {
       <Card title="表面処理候補設定">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
-            キオスクの処理ドロップダウン候補をロケーション単位で編集できます。無効にした候補は一覧に表示されません。
+            キオスクの処理ドロップダウン候補をロケーション単位（端末別設定）で編集できます。無効にした候補は一覧に表示されません。
           </p>
           <div className="space-y-2">
             {processingTypeRows.map((row, index) => (
@@ -317,6 +336,7 @@ export function ProductionScheduleSettingsPage() {
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
             実績基準時間の探索時に、資源CDが一致しない場合のフォールバックを定義します（例: 26M → 25M）。
+            この設定はロケーション単位（端末別設定）です。
           </p>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold text-slate-700">CSV一括取込（FSIGENCD / GroupCD）</p>

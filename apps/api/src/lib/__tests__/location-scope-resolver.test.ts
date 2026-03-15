@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LOCATION_SCOPE_KEY,
   resolveCredentialIdentity,
+  resolveDeviceNameFromScopeKey,
   resolveDeviceName,
   resolveDeviceScopeKey,
   resolveLegacyLocationKey,
   resolveLocationScopeContext,
+  resolveSiteKeyFromScopeKey,
   resolveSiteKey
 } from '../location-scope-resolver.js';
 
@@ -29,6 +31,15 @@ describe('location-scope-resolver', () => {
     expect(resolveDeviceScopeKey(input)).toBe('raspberrypi4');
     expect(resolveSiteKey(input)).toBe('raspberrypi4');
     expect(resolveDeviceName(input)).toBe('raspberrypi4');
+  });
+
+  it('resolves site/device directly from scope key strings', () => {
+    expect(resolveSiteKeyFromScopeKey('第2工場 - RoboDrill01')).toBe('第2工場');
+    expect(resolveDeviceNameFromScopeKey('第2工場 - RoboDrill01')).toBe('RoboDrill01');
+    expect(resolveSiteKeyFromScopeKey('shared')).toBe('shared');
+    expect(resolveDeviceNameFromScopeKey('shared')).toBe('shared');
+    expect(resolveSiteKeyFromScopeKey('')).toBe(DEFAULT_LOCATION_SCOPE_KEY);
+    expect(resolveDeviceNameFromScopeKey('')).toBe(DEFAULT_LOCATION_SCOPE_KEY);
   });
 
   it('resolves credential identity and full scope context', () => {

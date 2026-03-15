@@ -48,7 +48,9 @@ export async function estimateResourceLoadSignals(params: {
   const result = new Map<string, ResourceLoadSignal>();
   if (candidates.length === 0) return result;
 
-  const resourceCategory = await getResourceCategoryPolicy(params.locationKey);
+  const resourceCategory = await getResourceCategoryPolicy({
+    deviceScopeKey: params.locationKey
+  });
   const excludedSet = new Set(resourceCategory.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
 
   const rows = await prisma.$queryRaw<ResourceLoadRow[]>`

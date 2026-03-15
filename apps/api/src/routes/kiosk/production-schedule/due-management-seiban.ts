@@ -11,10 +11,10 @@ export async function registerProductionScheduleDueManagementSeibanRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule/due-management/seiban/:fseiban', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const params = productionScheduleDueManagementSeibanParamsSchema.parse(request.params);
     const detail = await getDueManagementSeibanDetail({
-      locationKey,
+      locationKey: locationScopeContext.deviceScopeKey,
       fseiban: params.fseiban
     });
     const processingDueDateMap = await listSeibanProcessingDueDates(params.fseiban);

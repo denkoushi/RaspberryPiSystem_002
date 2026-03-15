@@ -63,6 +63,6 @@
 
 ## Carry-over to Phase 2
 
-- `ProductionScheduleResourceCategoryConfig` の scope を `device` / `site` のどちらへ寄せるか仕様決定
+- `ProductionScheduleResourceCategoryConfig` の scope は **site** を正規とする（ADR-20260315）
 - 管理画面文言の改善（端末別設定であることの明示）
 - DB スキーマ再編の要否判断
