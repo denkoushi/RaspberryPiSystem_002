@@ -79,5 +79,13 @@
 - **ブランチ**: `feat/location-scope-phase3-completion`
 - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-123857-22423` / `20260315-124840-2507` / `20260315-125820-7779`）、約45分、Pi3除外
 - **実機検証**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary）、サイネージAPI、backup.json、マイグレーション52件、Pi4×2サービス稼働）
-- **Feature Flag**: `location_scope_phase3_enabled` は初期 `false`。Phase3新経路有効化時は inventory で `true` に変更して再デプロイ
+- **Feature Flag**: `location_scope_phase3_enabled` は 2026-03-15 に `true` へ切替済み（`feat/location-scope-phase3-enable`）。
+- **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase3scope契約統一--flag段階切替2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
+
+## Phase 3 有効化デプロイ・実機検証（2026-03-15）
+
+- **ブランチ**: `feat/location-scope-phase3-enable`
+- **変更**: `infrastructure/ansible/inventory.yml` の `location_scope_phase3_enabled` を `"true"` に変更
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-134146-15083` / `20260315-134456-14921` / `20260315-135231-9809`）
+- **実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI（`/api/tools/loans/active` 200）、納期管理API（triage/daily-plan/global-rank/proposal/learning-report/actual-hours/stats/summary 200）、サイネージAPI（`layoutConfig` あり）、backup.json（14522 bytes）、マイグレーション（52件 up to date）、`LOCATION_SCOPE_PHASE3_ENABLED=true`、両Pi4サービス（`kiosk-browser.service`/`status-agent.timer`）active を確認
 - **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase3scope契約統一--flag段階切替2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
