@@ -204,6 +204,41 @@ category: knowledge-base
   - `LOCATION_SCOPE_PHASE3_ENABLED=true`（APIコンテナ）
   - Pi3/Pi4サービス（signage-lite / kiosk-browser / status-agent.timer）active
 
+## Location Scope Phase8（resolver互換境界の明示化、2026-03-15）
+
+- **背景**:
+  - Phase7 で `production-schedule` 境界の契約整理は完了したが、基盤側 resolver には `legacyLocationKey` を含む公開型が残っていた。
+  - ルート/サービスを標準契約へ依存させつつ、互換情報は専用レイヤーへ閉じ込める必要があった。
+- **実装**:
+  - `apps/api/src/lib/location-scope-resolver.ts`
+    - `StandardLocationScopeContext`（標準契約）と `CompatLocationScopeContext`（互換契約）を追加。
+    - `resolveLocationScopeContext()` は標準契約（`deviceScopeKey/siteKey/deviceName/infraHost/credentialIdentity`）のみ返却するよう変更。
+    - `resolveCompatLocationScopeContext()` を新設し、`legacyLocationKey` は互換契約側でのみ返却。
+  - `apps/api/src/routes/kiosk/shared.ts`
+    - 標準契約の既定公開を維持しつつ、互換関数 `resolveCompatLocationScopeContext()` を明示公開。
+  - `apps/api/src/lib/__tests__/location-scope-resolver.test.ts`
+    - 標準契約テストへ更新し、互換契約テストを追加。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/lib/__tests__/location-scope-resolver.test.ts src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **デプロイ**:
+  - ブランチ: `feat/location-scope-phase8-resolver-compat-boundary`
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-175908-9572` / `20260315-180808-10083` / `20260315-181456-29949`）
+- **実機検証**:
+  - APIヘルス（`status: ok`、memory warning 94.7%）
+  - deploy-status（raspberrypi4 / raspi4-robodrill01 ともに `isMaintenance:false`）
+  - 納期管理API（triage / daily-plan / global-rank / proposal / learning-report / actual-hours/stats 200）
+  - Mac向けシナリオ確認: `global-rank?targetLocation=第2工場&rankingScope=globalShared` は **URLエンコード付き** クエリで `targetLocation` / `actorLocation` / `rankingScope` 応答を確認
+  - サイネージAPI（`/api/signage/content` 200、`layoutConfig` あり）
+  - Pi3/Pi4サービス確認（`verify-services-real.sh` + 個別systemctl で active）
+  - マイグレーション（52件、up to date）
+- **トラブルシューティング**:
+  - ターミナルで日本語クエリ文字列を未エンコードのまま `curl` すると 400 になるケースがある。  
+    `targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4` のようにURLエンコードして実行する。
+
 ## Location Scope Phase7（production-schedule境界のscope契約整理、2026-03-15）
 
 - **背景**:
