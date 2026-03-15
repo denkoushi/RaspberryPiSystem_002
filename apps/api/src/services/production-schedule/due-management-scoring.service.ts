@@ -5,7 +5,10 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { TuningParamsRepository } from './repositories/tuning-params.repository.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
 import { listDueManagementGlobalRank } from './due-management-global-rank.service.js';
-import { listDueManagementSummaries } from './due-management-query.service.js';
+import {
+  listDueManagementSummariesWithScope,
+  type DueManagementLocationScopeInput
+} from './due-management-location-scope-adapter.service.js';
 import type {
   GlobalRankProposal,
   GlobalRankProposalItem,
@@ -262,12 +265,13 @@ const buildReasons = (breakdown: Omit<GlobalRankScoreBreakdown, 'reasons'>): str
 
 export async function buildDueManagementGlobalRankProposal(params: {
   locationKey: string;
+  locationScope?: DueManagementLocationScopeInput;
   existingRankLocationKey?: string;
   scoringParameters?: DueManagementScoringParameters;
 }): Promise<GlobalRankProposal> {
   const tuningParamsRepository = new TuningParamsRepository();
   const scoringParameters = params.scoringParameters ?? (await tuningParamsRepository.getCurrentParams(params.locationKey));
-  const summaries = await listDueManagementSummaries(params.locationKey);
+  const summaries = await listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey);
   const selectedRows = await prisma.productionScheduleTriageSelection.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,

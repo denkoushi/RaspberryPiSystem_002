@@ -16,7 +16,8 @@ export async function registerProductionScheduleDueManagementProcessingDueDateRo
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const locationKey = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const locationKey = locationScopeContext.deviceScopeKey;
       const params = productionScheduleDueManagementSeibanProcessingParamsSchema.parse(request.params);
       const body = productionScheduleDueManagementSeibanDueDateBodySchema.parse(request.body);
 

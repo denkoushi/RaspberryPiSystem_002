@@ -38,6 +38,8 @@ all:
           web_agent_ws_url: "{{ websocket_agent_url }}"
           # 実績基準時間: actor locationに特徴量が無い場合はshared-global-rankへフォールバック
           actual_hours_shared_fallback_enabled: "true"
+          # Location Scope Phase3段階移行フラグ（初期はOFF）
+          location_scope_phase3_enabled: "false"
           # kiosk増台に備え、kiosk端末では localhost のNFC Agentを優先（失敗時は従来経路へフォールバック）
           web_agent_ws_mode: "local"
           # 納期管理キオスク新レイアウト（V2）有効化（実機検証後 true に切り替え）

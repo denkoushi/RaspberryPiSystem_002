@@ -13,7 +13,8 @@ export async function registerProductionScheduleDueDateRoute(
 ): Promise<void> {
   app.put('/kiosk/production-schedule/:rowId/due-date', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleDueDateParamsSchema.parse(request.params);
     const body = productionScheduleDueDateBodySchema.parse(request.body);
 

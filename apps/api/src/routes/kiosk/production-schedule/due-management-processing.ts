@@ -16,7 +16,8 @@ export async function registerProductionScheduleDueManagementProcessingRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const locationKey = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const locationKey = locationScopeContext.deviceScopeKey;
       const params = productionScheduleDueManagementPartParamsSchema.parse(request.params);
       const body = productionScheduleProcessingBodySchema.parse(request.body);
 

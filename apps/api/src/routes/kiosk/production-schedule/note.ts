@@ -13,7 +13,8 @@ export async function registerProductionScheduleNoteRoute(
 ): Promise<void> {
   app.put('/kiosk/production-schedule/:rowId/note', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleNoteParamsSchema.parse(request.params);
     const body = productionScheduleNoteBodySchema.parse(request.body);
 

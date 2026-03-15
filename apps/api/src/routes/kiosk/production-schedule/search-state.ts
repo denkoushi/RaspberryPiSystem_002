@@ -12,7 +12,8 @@ export async function registerProductionScheduleSearchStateRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const result = await getProductionScheduleSearchState(locationKey);
     reply.header('ETag', result.etag);
     return { state: result.state, updatedAt: result.updatedAt };
@@ -20,7 +21,8 @@ export async function registerProductionScheduleSearchStateRoute(
 
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const body = productionScheduleSearchStateBodySchema.parse(request.body);
     const result = await updateProductionScheduleSearchState({
       locationKey,

@@ -21,7 +21,8 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const locationKey = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const locationKey = locationScopeContext.deviceScopeKey;
       const body = productionScheduleDueManagementActualHoursImportBodySchema.parse(request.body ?? {});
       const buffer = Buffer.from(body.csvContent, 'utf8');
       const sourceFileKey = `manual:${locationKey}:${createHash('sha256').update(buffer).digest('hex')}`;
@@ -43,7 +44,8 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const locationKey = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const locationKey = locationScopeContext.deviceScopeKey;
       const query = productionScheduleDueManagementActualHoursStatsQuerySchema.parse(request.query ?? {});
       const stats = await aggregateService.getStats({
         locationKey,

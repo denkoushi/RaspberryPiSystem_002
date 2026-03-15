@@ -9,7 +9,8 @@ export async function registerProductionScheduleCompleteRoute(
 ): Promise<void> {
   app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleCompleteParamsSchema.parse(request.params);
     const debugSessionHeader = request.headers['x-cursor-debug-session'];
     const debugSessionId = typeof debugSessionHeader === 'string' ? debugSessionHeader : undefined;

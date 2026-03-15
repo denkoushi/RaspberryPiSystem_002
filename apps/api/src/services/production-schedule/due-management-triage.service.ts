@@ -3,7 +3,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { listEarliestEffectiveDueDateBySeiban } from './due-date-resolution.service.js';
-import { listDueManagementSummaries, type DueManagementSummaryItem } from './due-management-query.service.js';
+import {
+  listDueManagementSummariesWithScope,
+  type DueManagementLocationScopeInput
+} from './due-management-location-scope-adapter.service.js';
+import type { DueManagementSummaryItem } from './due-management-query.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
 import { buildTriageReasons, type TriageReason } from './policies/triage-reason-policy.js';
 import { classifyTriageZone, type TriageZone } from './policies/triage-zone-policy.js';
@@ -85,6 +89,7 @@ const extractTopProcessingTypeBySeiban = async (
 
 export async function listDueManagementTriage(params: {
   locationKey: string;
+  locationScope?: DueManagementLocationScopeInput;
   targetFseibans: string[];
   selectedFseibans: string[];
 }): Promise<DueManagementTriageResult> {
@@ -98,7 +103,7 @@ export async function listDueManagementTriage(params: {
       .map((value) => value.trim())
       .filter((value) => value.length > 0)
   );
-  const summaryRows = await listDueManagementSummaries(params.locationKey);
+  const summaryRows = await listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey);
   const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(summaryRows.map((row) => row.fseiban));
   const filteredRows = summaryRows
     .filter((row) => targetSet.has(row.fseiban))

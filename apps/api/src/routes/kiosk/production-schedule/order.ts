@@ -13,7 +13,8 @@ export async function registerProductionScheduleOrderRoute(
 ): Promise<void> {
   app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const locationKey = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const locationKey = locationScopeContext.deviceScopeKey;
     const params = productionScheduleOrderParamsSchema.parse(request.params);
     const body = productionScheduleOrderBodySchema.parse(request.body);
 

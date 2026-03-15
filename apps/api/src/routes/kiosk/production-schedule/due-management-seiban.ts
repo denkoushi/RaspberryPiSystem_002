@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { listSeibanProcessingDueDates } from '../../../services/production-schedule/due-date-resolution.service.js';
-import { getDueManagementSeibanDetail } from '../../../services/production-schedule/due-management-query.service.js';
+import { getDueManagementSeibanDetailWithScope } from '../../../services/production-schedule/due-management-location-scope-adapter.service.js';
 import { getProcessingTypePriority } from '../../../services/production-schedule/policies/processing-priority-policy.js';
 import { productionScheduleDueManagementSeibanParamsSchema, type KioskRouteDeps } from './shared.js';
 
@@ -13,8 +13,8 @@ export async function registerProductionScheduleDueManagementSeibanRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const params = productionScheduleDueManagementSeibanParamsSchema.parse(request.params);
-    const detail = await getDueManagementSeibanDetail({
-      locationKey: locationScopeContext.deviceScopeKey,
+    const detail = await getDueManagementSeibanDetailWithScope({
+      locationScope: locationScopeContext,
       fseiban: params.fseiban
     });
     const processingDueDateMap = await listSeibanProcessingDueDates(params.fseiban);

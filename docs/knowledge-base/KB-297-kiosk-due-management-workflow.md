@@ -107,6 +107,26 @@ category: knowledge-base
 - **トラブルシューティング**:
   - `due-management-query.service.ts` への追加置換は、編集ツールの一時エラー（`SQLITE_CORRUPT`）を回避するため、今回は互換レイヤー（policy側の内部正規化）で挙動を担保した。次回差分で同ファイルの明示引数化を継続する。
 
+## Location Scope Phase3（scope契約統一 + Flag段階切替、2026-03-15）
+
+- **仕様決定**:
+  - `production-schedule` 系ルートは `resolveLocationScopeContext()` 経由を必須化し、サービス層へ `deviceScopeKey` を明示入力する。
+  - `LOCATION_SCOPE_PHASE3_ENABLED` により、`legacyLocationKey` 優先経路と `deviceScopeKey` 優先経路を切替可能にする。
+- **実装**:
+  - `due-management-location-scope-adapter.service.ts` を追加し、`string` 入力と `scopeContext` 入力の互換アダプタを導入。
+  - `due-management-summary` / `due-management-seiban` / `due-management-triage` / `due-management-global-rank` など主要ルートを scopeContext 経由へ統一。
+  - `due-management-triage.service.ts` / `due-management-scoring.service.ts` / `due-management-learning-evaluator.service.ts` に `locationScope` 互換入力を追加。
+  - 設定系: `env.ts` / `.env.example` / `docker.env.j2` / `inventory.yml` に `LOCATION_SCOPE_PHASE3_ENABLED`（`location_scope_phase3_enabled`）を追加。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+  - `./scripts/deploy/verify-services-real.sh`: pass（Pi3 `signage-lite.service`/`signage-lite-update.timer` active、Pi4 `kiosk-browser.service` active）
+- **既知事項**:
+  - フル `pnpm --filter @raspi-system/api test` はローカルDB (`localhost:5432`) 非起動により backup系テストで失敗するため、実機検証前にDB起動状態で再実施が必要。
+
 ## 進捗一覧復活（2026-03-15）
 
 - **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。

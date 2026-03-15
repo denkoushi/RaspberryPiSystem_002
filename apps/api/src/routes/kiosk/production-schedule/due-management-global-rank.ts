@@ -46,7 +46,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 ): Promise<void> {
   app.get('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const actorLocation = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const actorLocation = locationScopeContext.deviceScopeKey;
     const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
     requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
     const targetLocation = deps.resolveTargetLocation({
@@ -73,7 +74,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.put('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const actorLocation = deps.resolveLocationKey(clientDevice);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const actorLocation = locationScopeContext.deviceScopeKey;
     const body = productionScheduleDueManagementGlobalRankBodySchema.parse(request.body);
     requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: body.targetLocation });
     const targetLocation = deps.resolveTargetLocation({
@@ -93,6 +95,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     const [proposal, selectedFseibans] = await Promise.all([
       buildDueManagementGlobalRankProposal({
         locationKey: scopePolicy.targetLocation,
+        locationScope: { deviceScopeKey: scopePolicy.targetLocation },
         existingRankLocationKey: scopePolicy.rankLocationKey
       }),
       getDueManagementTriageSelections(scopePolicy.targetLocation)
@@ -143,7 +146,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const actorLocation = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorLocation = locationScopeContext.deviceScopeKey;
       const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
       requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
@@ -157,6 +161,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       });
       const proposal = await buildDueManagementGlobalRankProposal({
         locationKey: scopePolicy.targetLocation,
+        locationScope: { deviceScopeKey: scopePolicy.targetLocation },
         existingRankLocationKey: scopePolicy.rankLocationKey
       });
       return proposal;
@@ -168,7 +173,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const actorLocation = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorLocation = locationScopeContext.deviceScopeKey;
       const writePolicy = productionScheduleDueManagementGlobalRankAutoGenerateBodySchema.parse(request.body);
       requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: writePolicy?.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
@@ -191,7 +197,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const actorLocation = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorLocation = locationScopeContext.deviceScopeKey;
       const query = productionScheduleDueManagementLearningReportQuerySchema.parse(request.query);
       requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
@@ -205,6 +212,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       });
       const report = await evaluateDueManagementLearningReport({
         locationKey: scopePolicy.targetLocation,
+        locationScope: { deviceScopeKey: scopePolicy.targetLocation },
         from: query.from,
         to: query.to
       });
@@ -217,7 +225,8 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      const actorLocation = deps.resolveLocationKey(clientDevice);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorLocation = locationScopeContext.deviceScopeKey;
       const query = productionScheduleDueManagementGlobalRankQuerySchema.parse(request.query);
       requireTargetLocationIfNeeded({ actorLocation, requestedTargetLocation: query.targetLocation });
       const targetLocation = deps.resolveTargetLocation({
@@ -232,6 +241,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       const params = productionScheduleDueManagementGlobalRankExplanationParamsSchema.parse(request.params);
       const proposal = await buildDueManagementGlobalRankProposal({
         locationKey: scopePolicy.targetLocation,
+        locationScope: { deviceScopeKey: scopePolicy.targetLocation },
         existingRankLocationKey: scopePolicy.rankLocationKey
       });
       const item = explainGlobalRankProposalItem(proposal, params.fseiban);

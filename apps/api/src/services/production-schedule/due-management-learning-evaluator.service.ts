@@ -1,7 +1,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { fetchSeibanProgressRows } from './seiban-progress.service.js';
 import type { DueManagementLearningReport } from './due-management/domain/contracts.js';
-import { listDueManagementSummaries } from './due-management-query.service.js';
+import {
+  listDueManagementSummariesWithScope,
+  type DueManagementLocationScopeInput
+} from './due-management-location-scope-adapter.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,6 +41,7 @@ const parseDateRange = (params: { from?: string; to?: string }): { from: Date; t
 
 export async function evaluateDueManagementLearningReport(params: {
   locationKey: string;
+  locationScope?: DueManagementLocationScopeInput;
   from?: string;
   to?: string;
 }): Promise<DueManagementLearningReport> {
@@ -70,7 +74,7 @@ export async function evaluateDueManagementLearningReport(params: {
       orderBy: [{ createdAt: 'asc' }],
       select: { id: true }
     }),
-    listDueManagementSummaries(params.locationKey)
+    listDueManagementSummariesWithScope(params.locationScope ?? params.locationKey)
   ]);
 
   const progressRows = await fetchSeibanProgressRows(summaries.map((summary) => summary.fseiban));
