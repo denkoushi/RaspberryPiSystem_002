@@ -101,6 +101,9 @@ category: knowledge-base
     - `location-scope-resolver.test.ts`
     - `resource-category-policy.service.test.ts`
   - `@raspi-system/api` 対象テスト、api/web lint、api/web build を通過。
+- **実機検証（2026-03-15）**:
+  - デプロイ: `feat/location-scope-phase2-migration`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。
+  - リモート自動チェック: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage/summary/global-rank/actual-hours/stats/progress-overview/proposal）、resource-categories（401認証必須）、サイネージAPI、backup.json、マイグレーション52件適用済み、Pi4/Pi3サービス稼働を確認。全項目合格。
 - **トラブルシューティング**:
   - `due-management-query.service.ts` への追加置換は、編集ツールの一時エラー（`SQLITE_CORRUPT`）を回避するため、今回は互換レイヤー（policy側の内部正規化）で挙動を担保した。次回差分で同ファイルの明示引数化を継続する。
 

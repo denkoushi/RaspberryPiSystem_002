@@ -66,3 +66,10 @@
 - `ProductionScheduleResourceCategoryConfig` の scope は **site** を正規とする（ADR-20260315）
 - 管理画面文言の改善（端末別設定であることの明示）
 - DB スキーマ再編の要否判断
+
+## Phase 2 デプロイ・実機検証（2026-03-15）
+
+- **ブランチ**: `feat/location-scope-phase2-migration`
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分、Pi3除外
+- **実機検証**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、resource-categories、サイネージAPI、backup.json、マイグレーション52件、Pi4/Pi3サービス稼働）
+- **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase2siteスコープ正規化の段階移行2026-03-15) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
