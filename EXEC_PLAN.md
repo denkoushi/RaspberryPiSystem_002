@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）デプロイ・実機検証完了**: `refactor/location-scope-safe-rollout-phase0-4` ブランチで Phase0-4（scope ownership matrix・resolver境界統一・監視ログ追加・DB物理分離No-Go）を実施済み。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格）。**知見**: Pi5に`rg`は未導入のため fallback 監視は`grep`を使用（deploy-status-recovery.md に追記済み）。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）実施**: 段階移行の安全性を高めるため、`location-scope-phase1-audit.md` に scope ownership matrix（device/site/shared）と受け入れ条件を追加。`kiosk/production-schedule` の依存注入を `resolveLocationScopeContext` 単一入口へ整理し、未使用 resolver 依存を削減。`due-management-query.service.ts` の `getResourceCategoryPolicy()` 呼び出しを scope 形式（`{ deviceScopeKey }`）へ変更し、`resource-category-policy.service.ts` に site 解決経路（`siteKey` / `deviceScopeKey` / `legacyString` / `default`）の監視ログを追加。`deploy-status-recovery.md` に fallback 監視コマンドを追記。**意思決定**: `ADR-20260315-location-scope-phase4-db-go-no-go.md` で DB 物理分離は No-Go（即時移行見送り）を確定し、resolver境界 + 監視による段階移行継続を採用。**検証**: api lint・対象テスト（resource-category-policy）・build を通過。
 - [x] (2026-03-15) **Location Scope Phase10（compat内部限定化）実装・デプロイ・実機検証完了**: `feat/location-scope-phase10-compat-internalize` ブランチで `location-scope-resolver.ts` の互換公開シンボル（`CompatLocationScopeContext` / `resolveCompatLocationScopeContext`）を module内部限定へ変更。`resolveStandardLocationScopeContext()` を導入して標準契約解決責務を分離し、公開API `resolveLocationScopeContext()` は `StandardLocationScopeContext` のみ返却する構成へ整理。`location-scope-resolver.test.ts` は公開契約ベースへ更新し、`legacyLocationKey` 非露出の回帰を追加。API/DB契約は不変。**検証**: `@raspi-system/api` lint・対象テスト（resolver / resource-category-policy / adapter / triage / scoring / learning）・build、`@raspi-system/web` lint・build を通過。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-202628-23734` / `20260315-203512-15802` / `20260315-204257-10897`）。**実機検証**: リモート自動チェック全項目合格（APIヘルス degraded、deploy-status両Pi4、キオスクAPI、納期管理API群、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、サイネージAPI、backup.json、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase10compat内部限定化2026-03-15) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-15) **Location Scope Phase9（compat呼び出し棚卸し・公開面縮小）実装・デプロイ・実機検証完了**: `feat/location-scope-phase9-compat-callsite-audit` ブランチで `kiosk/shared.ts` の互換公開面を整理し、未使用の `resolveLocationKey` / `resolveCompatLocationScopeContext`（および `CompatLocationScopeContext` 再エクスポート）を削除して標準契約中心へ集約。`csv-import-execution.service.ts` のローカル関数 `resolveLocationKey` は `resolveImportMetadataLocationKey` に改名し、責務名を明確化。API/DB契約は不変。**検証**: `@raspi-system/api` lint・対象テスト（resolver / resource-category-policy / adapter / triage / scoring / learning）・build、`@raspi-system/web` lint・build を通過。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-184658-22375` / `20260315-185604-21505` / `20260315-190338-11172`）。**実機検証**: チェックリスト全14項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API群、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、サイネージAPI、backup.json、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase9compat呼び出し棚卸し公開面縮小2026-03-15) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -683,6 +684,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-15）: **Pi5 に `rg`（ripgrep）は未導入**。`deploy-status-recovery.md` の location scope fallback 監視コマンドは `rg` を指定していたが、Pi5 では `grep` を使用する必要がある。Runbook を `grep` に修正済み。
 - 観測（2026-03-15）: **Cursor サンドボックス経由で `pnpm test:api` 実行時に Docker ソケット EOF** が発生することがある。Mac 上で Docker を再起動後、ターミナルから直接実行すれば正常に動作する。`postgres-test-local` コンテナが既存の場合は `docker rm -f postgres-test-local` で削除してから再実行。
 - 観測（2026-03-07）: **GroupCDは「マスタ保持」だけでは表示率は上がらない**。実績基準時間の探索ロジック側に `grouped` フォールバックを追加し、Query層で Group 候補注入まで実装して初めて効果が出る。加えて、管理コンソールのCSV取込は dryRun を先に実行できる設計にしておくと、空Group/重複/未登録資源CDの事前検知が可能。
 - 観測（2026-03-13）: **`import/no-restricted-paths` の `target/from` を逆に設定すると大量誤検知（199件）** が発生。pages が components/api/features を参照する正規依存まで遮断された。対策として「逆依存を禁止したい層」を `target` に置く形へ修正し、段階導入を維持した。
@@ -1555,6 +1557,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Location Scope Phase0-4（安全実装フォローアップ）デプロイ・実機検証完了後の次のタスク（2026-03-15）
+
+**概要**: `refactor/location-scope-safe-rollout-phase0-4` で Phase0-4（scope ownership matrix・resolver境界統一・監視ログ・DB物理分離No-Go）を実施。段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）と実機検証（Runbook全項目合格）を完了。
+
+**候補タスク**:
+1. **main へのマージ**: ブランチ `refactor/location-scope-safe-rollout-phase0-4` を main へ統合
+2. **Phase10 以降の継続（任意）**: `feat/location-scope-phase10-compat-internalize` 等の compat 内部限定化を main マージ後に実施
+3. **命名統一方針の確定（任意）**: site/device/infraHost の表示ルール（kensakuMain / RoboDrill01）を運用文書へ反映
+
+**参照**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
 
 ### Location Scope Phase10（compat内部限定化）実装・検証完了後の次のタスク（2026-03-15）
 
@@ -2507,6 +2520,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-15（13回目） — Location Scope Phase0-4（安全実装フォローアップ）デプロイ・実機検証完了を反映。Progress に段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）と実機検証（Runbook全項目合格）を追記。Surprises に Pi5 に `rg` 未導入の知見を追加。deploy-status-recovery.md に `rg`→`grep` 代替と Phase0-4 検証日付を追記。Next Steps に Phase0-4 完了後の候補（main マージ）を追加。
 変更履歴: 2026-03-15（12回目） — Location Scope Phase10（compat内部限定化）を反映。`location-scope-resolver.ts` の互換公開シンボルを module内部限定へ変更し、標準契約解決ヘルパー（`resolveStandardLocationScopeContext`）を導入。`location-scope-resolver.test.ts` を公開契約ベースへ更新し、`legacyLocationKey` 非露出を回帰確認。api/web の lint・対象テスト・build 通過を Progress に追記。Next Steps を Phase10 基準へ更新し、KB-297 / INDEX を同期更新。
 変更履歴: 2026-03-15（11回目） — Location Scope Phase8（resolver互換境界の明示化）を反映。`location-scope-resolver.ts` の公開契約を標準/互換に分離し、`legacyLocationKey` を互換関数へ閉じ込め。段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-175908-9572` / `20260315-180808-10083` / `20260315-181456-29949`）と実機検証（health ok、deploy-status false、納期管理API群 200、Mac向け `targetLocation` + `rankingScope=globalShared`、Pi3 signage active、migration 52件）を追記。Next Steps を Phase8 基準へ更新し、KB-297 / INDEX / deploy-status-recovery を同期更新。
 変更履歴: 2026-03-15（10回目） — Location Scope Phase7（production-schedule境界のscope契約整理）を反映。`shared.ts` の `LocationScopeContext` と `resource-category-policy` の入力契約を `deviceScopeKey/siteKey` 中心へ整理し、legacy fallback を縮小。段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-172516-21463` / `20260315-173234-4410` / `20260315-173936-23557`）と実機検証（health ok、deploy-status false、global-rank targetLocation/rankingScope、Pi3 signage active、migration 52件、`LOCATION_SCOPE_PHASE3_ENABLED=UNSET`）を追記。Next Steps を Phase7 基準へ更新し、KB-297 / INDEX / deploy-status-recovery を同期更新。

@@ -251,6 +251,15 @@ category: knowledge-base
   - `ClientDevice.location` の即時廃止は見送り（No-Go）。
   - 既存互換を維持しつつ、resolver境界 + 監視で段階移行を継続する方針を採用。
   - 詳細は `ADR-20260315-location-scope-phase4-db-go-no-go.md` を参照。
+- **デプロイ（2026-03-15）**:
+  - ブランチ: `refactor/location-scope-safe-rollout-phase0-4`
+  - 対象: Pi5 + Pi4×2（raspberrypi4 / raspi4-robodrill01）。Pi3は影響なしのため対象外。
+  - 手順: `scripts/update-all-clients.sh` で1台ずつ順番に実行（`--limit`）。
+  - Run ID: `20260315-212002-22974`（Pi5）/ `20260315-212725-14571`（raspberrypi4）/ `20260315-213409-8036`（raspi4-robodrill01）
+- **実機検証（2026-03-15）**:
+  - リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格）
+- **知見**:
+  - Pi5に`rg`（ripgrep）は未導入のため、fallback 監視コマンドは`grep`を使用する（deploy-status-recovery.md に追記済み）
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
