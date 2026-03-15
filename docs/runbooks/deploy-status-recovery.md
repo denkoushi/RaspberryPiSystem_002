@@ -39,7 +39,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 ## 3. 実機検証チェックリスト（deploy-status v2 デプロイ後）
 
-デプロイ完了後に以下を確認する（2026-03-06 実機検証で実施済み。2026-03-10 全端末共有優先順位デプロイ後、2026-03-11 ロケーション間共有化デプロイ後も同チェックリストで検証済み）:
+デプロイ完了後に以下を確認する（2026-03-06 実機検証で実施済み。2026-03-10 全端末共有優先順位デプロイ後、2026-03-11 ロケーション間共有化デプロイ後、2026-03-15 Location Scope Phase7 でも同チェックリストで検証済み）:
 
 | 項目 | コマンド/手順 | 期待値 |
 |------|---------------|--------|
@@ -49,6 +49,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | キオスク API | `curl -sk "https://100.106.158.2/api/tools/loans/active" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | 200 OK |
 | 納期管理 API | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/triage" -H "x-client-key: client-key-raspberrypi4-kiosk1"` ほか daily-plan / global-rank / global-rank/proposal / global-rank/learning-report / **actual-hours/stats** | 200 OK |
 | global-rank targetLocation/rankingScope（2026-03-10追加） | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/global-rank" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `targetLocation`, `actorLocation`, `rankingScope` が返る。Mac向け: `?targetLocation=第2工場&rankingScope=globalShared` で対象拠点指定可能 |
+| Mac向け targetLocation 指定（Phase7確認） | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/global-rank?targetLocation=第2工場&rankingScope=globalShared" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `targetLocation` が `第2工場` で返る（`actorLocation`/`rankingScope` も整合） |
 | actual-hours/stats 返却整合 | `curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/actual-hours/stats" -H "x-client-key: client-key-raspberrypi4-kiosk1"` | `totalRawRows`, `totalCanonicalRows`, `totalFeatureKeys`, `topFeatures` が返る |
 | サイネージ API | `curl -sk "https://100.106.158.2/api/signage/content"` | 200 OK、`layoutConfig` 含む |
 | backup.json | `ssh denkon5sd02@100.106.158.2 "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"` | ファイル存在・サイズ 0 でない |
@@ -56,6 +57,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | Pi4 サービス | **Pi5経由で** `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 'systemctl is-active kiosk-browser.service status-agent.timer'"`（raspberrypi4） | 両方 `active` |
 | Pi4 サービス（robodrill01） | `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"` | 両方 `active` |
 | Pi3 signage-lite | Pi5経由で `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"` | `active` |
+| Pi3/Pi4サービス簡易一括確認（Phase7確認） | `./scripts/deploy/verify-services-real.sh` | Pi3 signage-lite/timer、Pi4 kiosk-browser が `active` |
 | 納期管理新UI（V2有効時） | 実機で納期管理画面を開き、左レール・アクティブコンテキストバー・詳細パネル構成、製番選択時の視認表現、主要操作（一覧・選択・詳細・編集）を確認 | 新レイアウト表示・操作正常 |
 | 納期管理UI Phase1（開閉式・重複削除、2026-03-13追加） | 左ペイン3セクションが開閉できること、詳細パネルに製番・機種の重複表示がないこと、製番一覧・選択・詳細・編集が正常に動作すること | 開閉・表示・操作正常 |
 | 納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除、2026-03-13追加） | 開閉ボタンがアイコン化されていること、初回表示で全セクションが閉じていること、開閉操作後にリロードしても状態が復元されること、最下段カードが表示されず製番登録・削除がチップで動作すること | アイコン・デフォルト閉じ・状態記憶・チップ操作正常 |
