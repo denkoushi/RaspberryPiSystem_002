@@ -81,6 +81,20 @@ category: knowledge-base
   - `location` の意味をコード上で分離できる足場を構築。
   - Phase2 以降で `device/site/shared` の個別移行が可能になった。
 
+## 進捗一覧復活（2026-03-15）
+
+- **背景**: Location Scope Phase1 と同一ブランチ（`refactor/location-scope-boundary-phase1`）で、`feat/kiosk-progress-overview` の進捗一覧を最小差分で復元した。
+- **復元元**: `feat/kiosk-progress-overview` の最新コミット `b5f5a57c`（4列化・除外CD反映・ホバー・納期色分けを含む）。
+- **実装**:
+  - API: `GET /api/kiosk/production-schedule/progress-overview`、`ProgressOverviewQueryService`（切削除外適用後、有効資源CDを持たない部品を非表示、製番カード内を納期昇順ソート）
+  - Web: `ProductionScheduleProgressOverviewPage`（4列レイアウト xl以上、資源CDホバー resourceNames、納期超過時は日付赤字・ラベル黄色）
+  - キオスクヘッダーに「進捗一覧」リンクを追加
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-101803-4865` / `20260315-102542-16017` / `20260315-103331-6156`）、約20分。
+- **実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクヘッダーから進捗一覧画面への遷移・表示を確認。
+- **トラブルシューティング**:
+  - **Docker 再起動後**: Cursor サンドボックス経由で `pnpm test:api` 実行時に Docker ソケット EOF が発生することがある。Mac 上で Docker を再起動後、ターミナルから直接実行すれば正常に動作する。
+  - **postgres-test-local 競合**: 既存コンテナが残っている場合は `docker rm -f postgres-test-local` で削除してから再実行。
+
 ## デプロイ・実機検証（2026-03-07）
 
 - **デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）

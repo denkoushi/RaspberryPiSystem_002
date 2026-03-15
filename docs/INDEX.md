@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-15）
+
+- **✅ Location Scope Phase1 + 進捗一覧復活・デプロイ・実機検証完了**: `refactor/location-scope-boundary-phase1` ブランチで Phase1（用途別 resolver 境界導入・挙動不変）と進捗一覧復活を実施。**進捗一覧**: `GET /api/kiosk/production-schedule/progress-overview`、4列化・除外CD反映・ホバー・納期色分けを含む最新版（b5f5a57c）を最小差分で復元。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約20分。**実機検証**: キオスクヘッダーから進捗一覧画面への遷移・表示を確認。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗一覧復活2026-03-15) / [location-scope-phase1-audit.md](./plans/location-scope-phase1-audit.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-14）
 
 - **✅ Location Scope Phase1（挙動不変の境界導入）実装完了**: `location` 混在を解消する第一段として、用途別 resolver（`deviceScopeKey` / `siteKey` / `deviceName` / `infraHost` / `credentialIdentity`）を追加し、既存 `resolveLocationKey` は互換ラッパーとして維持。DBスキーマ変更なしで段階移行可能な境界を整備。監査結果は [location-scope-phase1-audit.md](./plans/location-scope-phase1-audit.md)、設計判断は [ADR-20260314](./decisions/ADR-20260314-location-scope-boundary-phase1.md) を参照。

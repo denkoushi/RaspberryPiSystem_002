@@ -54,6 +54,13 @@
 - ADR 記録
 - この監査ドキュメント
 
+## デプロイ・実機検証（2026-03-15）
+
+- **ブランチ**: `refactor/location-scope-boundary-phase1`（Phase1 + 進捗一覧復活を含む）
+- **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-101803-4865` / `20260315-102542-16017` / `20260315-103331-6156`）、約20分
+- **実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクヘッダーから進捗一覧画面への遷移・表示を確認
+- **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗一覧復活2026-03-15)
+
 ## Carry-over to Phase 2
 
 - `ProductionScheduleResourceCategoryConfig` の scope を `device` / `site` のどちらへ寄せるか仕様決定
