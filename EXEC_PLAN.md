@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-03-15) **Location Scope Phase11（完全収束）実装・検証完了（ローカル）**: `feat/location-scope-phase11-complete-convergence` ブランチで、Location Scope の公開入力契約を標準型へ縮退。`resource-category-policy` は `ResourceCategoryPolicyScope` 固定にし、`default` のみ warning 監視対象へ変更。`due-management-location-scope-adapter` はオブジェクト契約（`deviceScopeKey/siteKey`）に固定。`location-scope-resolver` は compat 経由を外して標準解決へ単純化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` は `toDueManagementScopeFromContext()` 優先に統一。**検証**: api/web lint・対象テスト・build 通過、Runbook確認（health/deploy-status/納期管理API/Pi3-Pi4サービス）合格。**注記**: 本項目はブランチ上の実装検証であり、段階デプロイは次タスク。
+- [x] (2026-03-15) **Location Scope Phase11（完全収束）実装・デプロイ・実機検証完了**: `feat/location-scope-phase11-complete-convergence` ブランチで、Location Scope の公開入力契約を標準型へ縮退。`resource-category-policy` は `ResourceCategoryPolicyScope` 固定にし、`default` のみ warning 監視対象へ変更。`due-management-location-scope-adapter` はオブジェクト契約（`deviceScopeKey/siteKey`）に固定。`location-scope-resolver` は compat 経由を外して標準解決へ単純化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` は `toDueManagementScopeFromContext()` 優先に統一。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格、PUT auto-generate 200）。**知見**: Due management auto-tuning scheduler ログは API 起動後ローテーションで見つからない場合あり。PUT auto-generate が 200 なら機能は正常。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase11完全収束2026-03-15) を参照。
 - [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）デプロイ・実機検証完了**: `refactor/location-scope-safe-rollout-phase0-4` ブランチで Phase0-4（scope ownership matrix・resolver境界統一・監視ログ追加・DB物理分離No-Go）を実施済み。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格）。**知見**: Pi5に`rg`は未導入のため fallback 監視は`grep`を使用（deploy-status-recovery.md に追記済み）。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-15) **Location Scope 安全実装フォローアップ（Phase0-4）実施**: 段階移行の安全性を高めるため、`location-scope-phase1-audit.md` に scope ownership matrix（device/site/shared）と受け入れ条件を追加。`kiosk/production-schedule` の依存注入を `resolveLocationScopeContext` 単一入口へ整理し、未使用 resolver 依存を削減。`due-management-query.service.ts` の `getResourceCategoryPolicy()` 呼び出しを scope 形式（`{ deviceScopeKey }`）へ変更し、`resource-category-policy.service.ts` に site 解決経路（`siteKey` / `deviceScopeKey` / `default`）の監視ログを追加。`deploy-status-recovery.md` に fallback 監視コマンドを追記。**意思決定**: `ADR-20260315-location-scope-phase4-db-go-no-go.md` で DB 物理分離は No-Go（即時移行見送り）を確定し、resolver境界 + 監視による段階移行継続を採用。**検証**: api lint・対象テスト（resource-category-policy）・build を通過。
 - [x] (2026-03-15) **Location Scope Phase10（compat内部限定化）実装・デプロイ・実機検証完了**: `feat/location-scope-phase10-compat-internalize` ブランチで `location-scope-resolver.ts` の互換公開シンボル（`CompatLocationScopeContext` / `resolveCompatLocationScopeContext`）を module内部限定へ変更。`resolveStandardLocationScopeContext()` を導入して標準契約解決責務を分離し、公開API `resolveLocationScopeContext()` は `StandardLocationScopeContext` のみ返却する構成へ整理。`location-scope-resolver.test.ts` は公開契約ベースへ更新し、`legacyLocationKey` 非露出の回帰を追加。API/DB契約は不変。**検証**: `@raspi-system/api` lint・対象テスト（resolver / resource-category-policy / adapter / triage / scoring / learning）・build、`@raspi-system/web` lint・build を通過。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-202628-23734` / `20260315-203512-15802` / `20260315-204257-10897`）。**実機検証**: リモート自動チェック全項目合格（APIヘルス degraded、deploy-status両Pi4、キオスクAPI、納期管理API群、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、サイネージAPI、backup.json、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active）。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase10compat内部限定化2026-03-15) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
@@ -685,6 +685,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-15）: **Due management auto-tuning scheduler ログ**（`Due management auto-tuning scheduler started`）は API 起動後ローテーションでコンテナログから見つからない場合がある。PUT auto-generate が 200 を返せば機能は正常と判断可能。deploy-status-recovery.md の検証チェックリストでは「ログが出ること」を期待しているが、ログが見つからない場合は PUT auto-generate の動作確認で代替とする。
 - 観測（2026-03-15）: **Pi5 に `rg`（ripgrep）は未導入**。`deploy-status-recovery.md` の location scope fallback 監視コマンドは `rg` を指定していたが、Pi5 では `grep` を使用する必要がある。Runbook を `grep` に修正済み。
 - 観測（2026-03-15）: **Cursor サンドボックス経由で `pnpm test:api` 実行時に Docker ソケット EOF** が発生することがある。Mac 上で Docker を再起動後、ターミナルから直接実行すれば正常に動作する。`postgres-test-local` コンテナが既存の場合は `docker rm -f postgres-test-local` で削除してから再実行。
 - 観測（2026-03-07）: **GroupCDは「マスタ保持」だけでは表示率は上がらない**。実績基準時間の探索ロジック側に `grouped` フォールバックを追加し、Query層で Group 候補注入まで実装して初めて効果が出る。加えて、管理コンソールのCSV取込は dryRun を先に実行できる設計にしておくと、空Group/重複/未登録資源CDの事前検知が可能。
@@ -1559,17 +1560,16 @@
 
 ## Next Steps（将来のタスク）
 
-### Location Scope Phase11（完全収束）実装・検証完了後の次のタスク（2026-03-15）
+### Location Scope Phase11（完全収束）デプロイ・実機検証完了後の次のタスク（2026-03-15）
 
-**概要**: `feat/location-scope-phase11-complete-convergence` で入力契約の縮退（`string` 互換の公開面排除）、resolver責務の純化、kioskルート境界の型統一を実装。api/web lint・対象テスト・build と Runbook確認を完了。
+**概要**: `feat/location-scope-phase11-complete-convergence` で入力契約の縮退、resolver責務の純化、kioskルート境界の型統一を実装。段階デプロイ（Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）と実機検証（Runbook全項目合格）を完了。
 
 **候補タスク**:
-1. **段階デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順で1台ずつ反映（前段成功確認後に次へ）
-2. **実機検証（Runbook）**: `deploy-status-recovery.md` のチェックリストで API / deploy-status / services / migration / fallback warning を確認
-3. **main へのマージ**: ブランチ `feat/location-scope-phase11-complete-convergence` を main へ統合
-4. **命名統一方針の確定（任意）**: site/device/infraHost の表示ルール（kensakuMain / RoboDrill01）を運用文書へ反映
+1. **main へのマージ**: ブランチ `feat/location-scope-phase11-complete-convergence` を main へ統合
+2. **命名統一方針の確定（任意）**: site/device/infraHost の表示ルール（kensakuMain / RoboDrill01）を運用文書へ反映
+3. **Location Scope 後続改善（任意）**: 進捗一覧の継続改善、runbook自動化の強化、他機能への scope 境界横展開
 
-**参照**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
+**参照**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase11完全収束2026-03-15)
 
 ### Location Scope Phase10（compat内部限定化）実装・検証完了後の次のタスク（2026-03-15）
 
@@ -2522,6 +2522,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-15（15回目） — Location Scope Phase11（完全収束）デプロイ・実機検証完了を反映。Progress に段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）と実機検証（Runbook全項目合格、PUT auto-generate 200）を追記。Surprises に Due management auto-tuning scheduler ログがローテーションで見つからない場合の代替判断（PUT auto-generate 200）を追加。deploy-status-recovery.md に Phase11 検証日を追記。KB-297 に Phase11 デプロイ・実機検証・知見を追記。Next Steps を Phase11 完了後（main マージ）へ更新。
 変更履歴: 2026-03-15（14回目） — Location Scope Phase11（完全収束）を反映。`resource-category-policy` と `due-management-location-scope-adapter` の公開入力を標準型へ縮退し、`location-scope-resolver` の compat 依存を内部化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` を `toDueManagementScopeFromContext` 優先へ統一。api/web lint・対象テスト・build と Runbook確認（health/deploy-status/納期管理API/Pi3-Pi4サービス）を Progress に追記。deploy-status-recovery.md の fallback 監視を `default fallback` 警告ベースへ更新し、KB-297 / Next Steps を同期更新。
 変更履歴: 2026-03-15（13回目） — Location Scope Phase0-4（安全実装フォローアップ）デプロイ・実機検証完了を反映。Progress に段階デプロイ（Pi5→raspberrypi4→raspi4-robodrill01、Run ID `20260315-212002-22974` / `20260315-212725-14571` / `20260315-213409-8036`）と実機検証（Runbook全項目合格）を追記。Surprises に Pi5 に `rg` 未導入の知見を追加。deploy-status-recovery.md に `rg`→`grep` 代替と Phase0-4 検証日付を追記。Next Steps に Phase0-4 完了後の候補（main マージ）を追加。
 変更履歴: 2026-03-15（12回目） — Location Scope Phase10（compat内部限定化）を反映。`location-scope-resolver.ts` の互換公開シンボルを module内部限定へ変更し、標準契約解決ヘルパー（`resolveStandardLocationScopeContext`）を導入。`location-scope-resolver.test.ts` を公開契約ベースへ更新し、`legacyLocationKey` 非露出を回帰確認。api/web の lint・対象テスト・build 通過を Progress に追記。Next Steps を Phase10 基準へ更新し、KB-297 / INDEX を同期更新。

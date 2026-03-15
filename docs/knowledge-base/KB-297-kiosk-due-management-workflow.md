@@ -284,11 +284,17 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/api build`: pass
   - `pnpm --filter @raspi-system/web lint`: pass
   - `pnpm --filter @raspi-system/web build`: pass
-- **実機検証（Runbook確認）**:
-  - APIヘルス `ok`、deploy-status（両Pi4 `isMaintenance:false`）、納期管理API群 200、`verify-services-real.sh` で Pi3/Pi4 サービス active を確認。
-  - 監視コマンドは `default fallback` 警告ログを対象に更新。
+- **デプロイ（2026-03-15）**:
+  - 対象: Pi5 + Pi4×2（raspberrypi4 / raspi4-robodrill01）。Pi3は影響なしのため対象外。
+  - 手順: `scripts/update-all-clients.sh` で1台ずつ順番に実行（`--limit`）。
+  - Run ID: `20260315-223311-18659`（Pi5）/ `20260315-224040-6371`（raspberrypi4）/ `20260315-224829-13694`（raspi4-robodrill01）
+- **実機検証（2026-03-15）**:
+  - リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格、PUT auto-generate 200）。
+  - 監視コマンドは `default fallback` 警告ログを対象に更新（Pi5に`rg`は未導入のため`grep`を使用）。
 - **知見**:
   - 互換入力を段階縮退する場合、**公開関数の入力契約を先に固定**し、互換は private ヘルパーへ閉じ込めると回帰範囲を限定しやすい。
+  - Due management auto-tuning scheduler ログ（`Due management auto-tuning scheduler started`）は API 起動後ローテーションでコンテナログから見つからない場合がある。PUT auto-generate が 200 を返せば機能は正常と判断可能。
+- **参照**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
