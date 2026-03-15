@@ -25,12 +25,12 @@ describe('resource-category-policy.service', () => {
 
   it('uses default cutting exclusions when no config exists', async () => {
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
-    const policy = await getResourceCategoryPolicy('Test');
+    const policy = await getResourceCategoryPolicy({ deviceScopeKey: 'Test' });
     expect(policy.cuttingExcludedResourceCds).toEqual(['10', 'MSZ']);
   });
 
   it('resolves resource category site key from device scope and explicit scope', () => {
-    expect(resolveResourceCategorySiteKey('第2工場 - kensakuMain')).toBe('第2工場');
+    expect(resolveResourceCategorySiteKey({ deviceScopeKey: '第2工場 - kensakuMain' })).toBe('第2工場');
     expect(resolveResourceCategorySiteKey({ deviceScopeKey: '第2工場 - RoboDrill01' })).toBe('第2工場');
     expect(resolveResourceCategorySiteKey({ siteKey: 'shared' })).toBe('shared');
   });
@@ -44,9 +44,9 @@ describe('resource-category-policy.service', () => {
       siteKey: '第2工場',
       source: 'deviceScopeKey'
     });
-    expect(resolveResourceCategorySiteResolution('legacy-kiosk')).toEqual({
-      siteKey: 'legacy-kiosk',
-      source: 'legacyString'
+    expect(resolveResourceCategorySiteResolution({})).toEqual({
+      siteKey: 'default',
+      source: 'default'
     });
   });
 

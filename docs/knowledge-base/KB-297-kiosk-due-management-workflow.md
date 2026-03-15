@@ -243,10 +243,10 @@ category: knowledge-base
 - **実装**:
   - `kiosk/production-schedule` 依存注入は `resolveLocationScopeContext` を単一入口として扱い、未使用の resolver 依存を削減。
   - `due-management-query.service.ts` の `getResourceCategoryPolicy()` 呼び出しを文字列直渡しから scope 形式（`{ deviceScopeKey }`）へ変更。
-  - `resource-category-policy.service.ts` に `resolveResourceCategorySiteResolution()` を追加し、`siteKey` 解決経路（`siteKey` / `deviceScopeKey` / `legacyString` / `default`）を返却可能化。
-  - fallback 解決時は `Resource category policy resolved via fallback path` を debug ログ出力し、段階移行の監視を可能化。
+  - `resource-category-policy.service.ts` に `resolveResourceCategorySiteResolution()` を追加し、`siteKey` 解決経路（`siteKey` / `deviceScopeKey` / `default`）を返却可能化。
+  - `siteKey` も `deviceScopeKey` も解決できない場合のみ `Resource category policy resolved via default fallback` を warning ログ出力し、例外検知として監視可能化。
 - **運用**:
-  - `deploy-status-recovery.md` のチェックリストに fallback 監視コマンドを追加し、`legacyString/default` の増加を検知できるようにした。
+  - `deploy-status-recovery.md` のチェックリストに fallback 監視コマンドを追加し、`default fallback` 警告の増加を検知できるようにした。
 - **意思決定（Phase4）**:
   - `ClientDevice.location` の即時廃止は見送り（No-Go）。
   - 既存互換を維持しつつ、resolver境界 + 監視で段階移行を継続する方針を採用。
@@ -260,6 +260,35 @@ category: knowledge-base
   - リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格）
 - **知見**:
   - Pi5に`rg`（ripgrep）は未導入のため、fallback 監視コマンドは`grep`を使用する（deploy-status-recovery.md に追記済み）
+
+## Location Scope Phase11（完全収束、2026-03-15）
+
+- **背景**:
+  - Phase0-4 で境界整理と監視導入は完了したが、`resource-category-policy` と `due-management` の入力契約に `string` 互換が残り、境界契約が広い状態だった。
+  - resolver も標準契約を返しつつ内部で compat コンテキスト経由になっており、責務が不必要に分散していた。
+- **実装**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+    - `getResourceCategoryPolicy()` / `resolveResourceCategorySiteResolution()` の入力を `ResourceCategoryPolicyScope` に固定（`string` 互換を排除）。
+    - fallback ログを `default` のみで出力する仕様へ変更（warning）。
+  - `apps/api/src/services/production-schedule/due-management-location-scope-adapter.service.ts`
+    - `DueManagementLocationScopeInput` をオブジェクト契約（`deviceScopeKey` / `siteKey`）へ固定。
+  - `apps/api/src/lib/location-scope-resolver.ts`
+    - `resolveLocationScopeContext()` を compat 非依存の標準解決へ単純化。
+  - `apps/api/src/routes/kiosk/production-schedule/shared.ts`
+    - ルート依存の `ClientDeviceForScopeResolution` / `LocationScopeContext` を重複定義せず、`kiosk/shared` の型を利用する構成へ統一。
+  - `apps/api/src/routes/kiosk/production-schedule/due-management-global-rank.ts`
+    - `toDueManagementScopeFromContext()` 優先の呼び出しへ統一。
+- **検証**:
+  - `pnpm --filter @raspi-system/api lint`: pass
+  - `pnpm --filter @raspi-system/api test -- src/lib/__tests__/location-scope-resolver.test.ts src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/due-management-location-scope-adapter.service.test.ts src/services/production-schedule/__tests__/due-management-triage.service.test.ts src/services/production-schedule/__tests__/due-management-scoring.service.test.ts src/services/production-schedule/__tests__/due-management-learning-evaluator.service.test.ts`: pass
+  - `pnpm --filter @raspi-system/api build`: pass
+  - `pnpm --filter @raspi-system/web lint`: pass
+  - `pnpm --filter @raspi-system/web build`: pass
+- **実機検証（Runbook確認）**:
+  - APIヘルス `ok`、deploy-status（両Pi4 `isMaintenance:false`）、納期管理API群 200、`verify-services-real.sh` で Pi3/Pi4 サービス active を確認。
+  - 監視コマンドは `default fallback` 警告ログを対象に更新。
+- **知見**:
+  - 互換入力を段階縮退する場合、**公開関数の入力契約を先に固定**し、互換は private ヘルパーへ閉じ込めると回帰範囲を限定しやすい。
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 

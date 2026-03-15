@@ -32,33 +32,20 @@ export type ResourceCategoryPolicyScope = {
 
 export type ResourceCategorySiteResolution = {
   siteKey: string;
-  source: 'siteKey' | 'deviceScopeKey' | 'legacyString' | 'default';
+  source: 'siteKey' | 'deviceScopeKey' | 'default';
 };
 
 const normalizeScopeToken = (value: string | null | undefined): string => value?.trim() ?? '';
 
 export const resolveResourceCategorySiteKey = (
-  scope: string | ResourceCategoryPolicyScope
+  scope: ResourceCategoryPolicyScope
 ): string => {
   return resolveResourceCategorySiteResolution(scope).siteKey;
 };
 
 export const resolveResourceCategorySiteResolution = (
-  scope: string | ResourceCategoryPolicyScope
+  scope: ResourceCategoryPolicyScope
 ): ResourceCategorySiteResolution => {
-  if (typeof scope === 'string') {
-    const normalized = normalizeScopeToken(scope);
-    if (!normalized) {
-      return {
-        siteKey: DEFAULT_LOCATION_SCOPE_KEY,
-        source: 'default'
-      };
-    }
-    return {
-      siteKey: resolveSiteKeyFromScopeKey(normalized),
-      source: 'legacyString'
-    };
-  }
   const explicitSiteKey = normalizeScopeToken(scope.siteKey);
   if (explicitSiteKey) {
     return {
@@ -79,16 +66,16 @@ export const resolveResourceCategorySiteResolution = (
   };
 };
 
-export async function getResourceCategoryPolicy(scope: string | ResourceCategoryPolicyScope): Promise<ResourceCategoryPolicy> {
+export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicyScope): Promise<ResourceCategoryPolicy> {
   const siteResolution = resolveResourceCategorySiteResolution(scope);
   const siteKey = siteResolution.siteKey;
-  if (siteResolution.source !== 'siteKey') {
-    logger.debug(
+  if (siteResolution.source === 'default') {
+    logger.warn(
       {
         siteKey,
         source: siteResolution.source
       },
-      'Resource category policy resolved via fallback path'
+      'Resource category policy resolved via default fallback'
     );
   }
   const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({

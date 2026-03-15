@@ -6,9 +6,13 @@ const loadService = async () => {
 };
 
 describe('due-management-location-scope-adapter.service', () => {
-  it('文字列入力はdevice/siteキーを解決する', async () => {
+  it('deviceScopeKey入力はdevice/siteキーを解決する', async () => {
     const service = await loadService();
-    expect(service.resolveDueManagementLocationScope('第2工場 - kensakuMain')).toEqual({
+    expect(
+      service.resolveDueManagementLocationScope({
+        deviceScopeKey: '第2工場 - kensakuMain'
+      })
+    ).toEqual({
       deviceScopeKey: '第2工場 - kensakuMain',
       siteKey: '第2工場'
     });

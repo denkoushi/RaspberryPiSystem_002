@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
+import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
 
 export const ORDER_NUMBER_MIN = 1;
 export const ORDER_NUMBER_MAX = 10;
@@ -162,25 +163,6 @@ export const productionScheduleDueManagementActualHoursImportBodySchema = z.obje
 export const productionScheduleDueManagementActualHoursStatsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
-
-type ClientDeviceForScopeResolution = {
-  id?: string;
-  apiKey?: string;
-  statusClientId?: string | null;
-  location?: string | null;
-  name: string;
-};
-type LocationScopeContext = {
-  deviceScopeKey: string;
-  siteKey: string;
-  deviceName: string;
-  infraHost: string;
-  credentialIdentity: {
-    clientDeviceId: string;
-    apiKey: string;
-    statusClientId: string | null;
-  };
-};
 
 export type KioskRouteDeps = {
   requireClientDevice: (rawClientKey: unknown) => Promise<{

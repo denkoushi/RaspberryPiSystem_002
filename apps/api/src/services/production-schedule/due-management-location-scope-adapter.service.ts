@@ -6,12 +6,10 @@ import {
   type DueManagementSummaryItem
 } from './due-management-query.service.js';
 
-export type DueManagementLocationScopeInput =
-  | string
-  | {
-      deviceScopeKey?: string;
-      siteKey?: string;
-    };
+export type DueManagementLocationScopeInput = {
+  deviceScopeKey?: string;
+  siteKey?: string;
+};
 
 export type ResolvedDueManagementLocationScope = {
   deviceScopeKey: string;
@@ -30,13 +28,6 @@ const normalizeScopeToken = (value: string | null | undefined): string => value?
 export const resolveDueManagementLocationScope = (
   scope: DueManagementLocationScopeInput
 ): ResolvedDueManagementLocationScope => {
-  if (typeof scope === 'string') {
-    const normalized = normalizeScopeToken(scope) || DEFAULT_LOCATION_SCOPE_KEY;
-    return {
-      deviceScopeKey: normalized,
-      siteKey: resolveSiteKeyFromScopeKey(normalized)
-    };
-  }
   const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
   const fallbackScopeKey = deviceScopeKey || DEFAULT_LOCATION_SCOPE_KEY;
   const siteKey = normalizeScopeToken(scope.siteKey) || resolveSiteKeyFromScopeKey(fallbackScopeKey);
