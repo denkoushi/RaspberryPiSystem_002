@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 
 import { listProductionScheduleRows } from '../../../services/production-schedule/production-schedule-query.service.js';
-import { productionScheduleQuerySchema, parseCsvList, type KioskRouteDeps } from './shared.js';
+import {
+  productionScheduleQuerySchema,
+  parseCsvList,
+  toLegacyLocationKeyFromDeviceScope,
+  type KioskRouteDeps
+} from './shared.js';
 
 export async function registerProductionScheduleListRoute(
   app: FastifyInstance,
@@ -10,6 +15,7 @@ export async function registerProductionScheduleListRoute(
   app.get('/kiosk/production-schedule', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const query = productionScheduleQuerySchema.parse(request.query);
     const page = query.page ?? 1;
@@ -30,7 +36,7 @@ export async function registerProductionScheduleListRoute(
       resourceCategory,
       hasNoteOnly,
       hasDueDateOnly,
-      locationKey: locationScopeContext.deviceScopeKey,
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       siteKey: locationScopeContext.siteKey
     });
   });

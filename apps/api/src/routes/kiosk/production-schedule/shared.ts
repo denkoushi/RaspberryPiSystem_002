@@ -36,6 +36,15 @@ export const parseCsvList = (value: string | undefined): string[] => {
   );
 };
 
+export type LegacyLocationKey = string;
+
+// Bridge helper: legacy service contracts still consume `locationKey` string.
+// Callers must pass `deviceScopeKey` explicitly at route boundaries.
+export const toLegacyLocationKeyFromDeviceScope = (
+  deviceScopeKey: LocationScopeContext['deviceScopeKey']
+): LegacyLocationKey =>
+  deviceScopeKey;
+
 export const productionScheduleCompleteParamsSchema = z.object({
   rowId: z.string().uuid()
 });

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getProductionScheduleHistoryProgress } from '../../../services/production-schedule/production-schedule-search-state.service.js';
-import type { KioskRouteDeps } from './shared.js';
+import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleHistoryProgressRoute(
   app: FastifyInstance,
@@ -11,6 +11,6 @@ export async function registerProductionScheduleHistoryProgressRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
-    return getProductionScheduleHistoryProgress(deviceScopeKey);
+    return getProductionScheduleHistoryProgress(toLegacyLocationKeyFromDeviceScope(deviceScopeKey));
   });
 }

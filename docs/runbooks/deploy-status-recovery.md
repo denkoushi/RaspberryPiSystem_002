@@ -120,5 +120,6 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 - [ADR-20260306: 端末別メンテナンス状態](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md)
 - [deployment.md](../guides/deployment.md): デプロイ標準手順
+- [location-scope-naming.md](../guides/location-scope-naming.md): `deviceScopeKey/siteKey` 命名規約と互換橋渡し（Phase13）
 - [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装)
 - [KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時): Pi4 デプロイハングの詳細

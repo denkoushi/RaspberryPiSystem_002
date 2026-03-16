@@ -5,8 +5,11 @@ export type RankingScope = 'globalShared' | 'locationScoped' | 'localTemporary';
 
 export type RankingScopePolicy = {
   scope: RankingScope;
+  // Storage key (legacy contract). `shared-global-rank` or location-scoped key.
   rankLocationKey: string;
+  // Display/target scope for due-management operations.
   targetLocation: string;
+  // Actor terminal scope that issued the operation.
   actorLocation: string;
 };
 

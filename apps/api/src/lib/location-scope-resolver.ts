@@ -1,6 +1,12 @@
 export const DEFAULT_LOCATION_SCOPE_KEY = 'default';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
 
+type ScopeKey<TScope extends string> = string & { readonly __scope: TScope };
+export type SiteKey = ScopeKey<'SiteKey'>;
+export type DeviceScopeKey = ScopeKey<'DeviceScopeKey'>;
+export type DeviceName = ScopeKey<'DeviceName'>;
+export type InfraHost = ScopeKey<'InfraHost'>;
+
 export type ClientDeviceForScopeResolution = {
   id?: string;
   apiKey?: string;
@@ -16,10 +22,10 @@ export type CredentialIdentity = {
 };
 
 export type StandardLocationScopeContext = {
-  deviceScopeKey: string;
-  siteKey: string;
-  deviceName: string;
-  infraHost: string;
+  deviceScopeKey: DeviceScopeKey;
+  siteKey: SiteKey;
+  deviceName: DeviceName;
+  infraHost: InfraHost;
   credentialIdentity: CredentialIdentity;
 };
 
@@ -54,6 +60,14 @@ export const resolveSiteKeyFromScopeKey = (scopeKey: string): string => parseLoc
 
 export const resolveDeviceNameFromScopeKey = (scopeKey: string): string => parseLocationSegments(scopeKey).deviceName;
 
+export const asSiteKey = (value: string): SiteKey => value as SiteKey;
+
+export const asDeviceScopeKey = (value: string): DeviceScopeKey => value as DeviceScopeKey;
+
+export const asDeviceName = (value: string): DeviceName => value as DeviceName;
+
+export const asInfraHost = (value: string): InfraHost => value as InfraHost;
+
 export const resolveLegacyLocationKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string => {
   const location = normalizeToken(clientDevice.location);
   if (location) {
@@ -66,19 +80,20 @@ export const resolveLegacyLocationKey = (clientDevice: Pick<ClientDeviceForScope
   return DEFAULT_LOCATION_SCOPE_KEY;
 };
 
-export const resolveDeviceScopeKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
-  resolveLegacyLocationKey(clientDevice);
+export const resolveDeviceScopeKey = (
+  clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>
+): DeviceScopeKey => asDeviceScopeKey(resolveLegacyLocationKey(clientDevice));
 
-export const resolveSiteKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
-  resolveSiteKeyFromScopeKey(resolveDeviceScopeKey(clientDevice));
+export const resolveSiteKey = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): SiteKey =>
+  asSiteKey(resolveSiteKeyFromScopeKey(resolveDeviceScopeKey(clientDevice)));
 
-export const resolveDeviceName = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): string =>
-  resolveDeviceNameFromScopeKey(resolveDeviceScopeKey(clientDevice));
+export const resolveDeviceName = (clientDevice: Pick<ClientDeviceForScopeResolution, 'location' | 'name'>): DeviceName =>
+  asDeviceName(resolveDeviceNameFromScopeKey(resolveDeviceScopeKey(clientDevice)));
 
-export const resolveInfraHost = (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>): string => {
+export const resolveInfraHost = (clientDevice: Pick<ClientDeviceForScopeResolution, 'name'>): InfraHost => {
   const host = normalizeToken(clientDevice.name);
-  if (host) return host;
-  return DEFAULT_LOCATION_SCOPE_KEY;
+  if (host) return asInfraHost(host);
+  return asInfraHost(DEFAULT_LOCATION_SCOPE_KEY);
 };
 
 export const resolveCredentialIdentity = (

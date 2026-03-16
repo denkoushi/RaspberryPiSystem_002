@@ -55,3 +55,4 @@ owners: [api]
 
 - 新規コードでは、境界変数に `locationKey` を使わない（`deviceScopeKey` または `siteKey` を使用）
 - 命名規約は `docs/guides/location-scope-naming.md` を唯一の参照として運用する
+- Phase13 では、互換橋渡しを `toLegacyLocationKeyFromDeviceScope()` に集約し、`locationKey` 文字列再解釈の再発を防止する

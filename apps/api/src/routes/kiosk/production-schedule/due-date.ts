@@ -4,6 +4,7 @@ import { upsertProductionScheduleDueDate } from '../../../services/production-sc
 import {
   productionScheduleDueDateBodySchema,
   productionScheduleDueDateParamsSchema,
+  toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
 
@@ -21,7 +22,7 @@ export async function registerProductionScheduleDueDateRoute(
     return upsertProductionScheduleDueDate({
       rowId: params.rowId,
       dueDateText: body.dueDate,
-      locationKey: deviceScopeKey
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey)
     });
   });
 }

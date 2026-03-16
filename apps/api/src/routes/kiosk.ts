@@ -39,7 +39,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   await registerKioskSupportRoute(app, {
     normalizeClientKey,
-    checkRateLimit
+    checkRateLimit,
+    resolveLocationScopeContext
   });
 
   await registerKioskPowerRoute(app, {
