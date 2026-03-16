@@ -110,8 +110,8 @@ const resolveStandardLocationScopeContext = (
   const deviceScopeKey = resolveDeviceScopeKey(clientDevice);
   return {
     deviceScopeKey,
-    siteKey: resolveSiteKeyFromScopeKey(deviceScopeKey),
-    deviceName: resolveDeviceNameFromScopeKey(deviceScopeKey),
+    siteKey: asSiteKey(resolveSiteKeyFromScopeKey(deviceScopeKey)),
+    deviceName: asDeviceName(resolveDeviceNameFromScopeKey(deviceScopeKey)),
     infraHost: resolveInfraHost(clientDevice),
     credentialIdentity: resolveCredentialIdentity(clientDevice)
   };
