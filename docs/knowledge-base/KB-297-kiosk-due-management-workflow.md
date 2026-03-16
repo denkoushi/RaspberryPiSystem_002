@@ -137,11 +137,22 @@ category: knowledge-base
 - **Prevention**:
   - ResourceCategory の参照は policy 経由に限定し、呼び出し側で location 解決を重複実装しない。
   - `siteKey` 行未作成の既存環境でも `shared` 互換で動作を維持し、段階的に site 正規へ移行する。
+- **デプロイ結果（2026-03-16）**:
+  - Pi5: Run ID 20260316-174822-31959、state success。
+  - raspi4-robodrill01: Run ID 20260316-175659-32118、state success。
+  - raspberrypi4（研削メイン・100.74.144.79）: プリフライトで SSH 接続タイムアウト（UNREACHABLE）のため未デプロイ。**明日デプロイ予定**。
+- **実機検証**: OK。Pi5・raspi4-robodrill01 にて KUMITATE2 が除外され進捗一覧に表示されないこと、`GET /api/kiosk/production-schedule/resources` の `resourceItems[].excluded` が期待どおりであることを確認。
+- **トラブルシュート（Pi4 研削メインがデプロイ時に接続不可の場合）**:
+  - 症状: `ssh: connect to host 100.74.144.79 port 22: Connection timed out`、プリフライトで raspberrypi4 が UNREACHABLE。
+  - 確認: Pi5 上で `tailscale status` で raspberrypi4 の online/offline と IP を確認。電源・ネットワーク（Tailscale）の状態を確認。必要なら `group_vars/all.yml` の `tailscale_network.kiosk_ip`（または該当 Pi4 の `ansible_host`）が現状の Tailscale IP と一致しているか確認。
+  - 復旧後: `./scripts/update-all-clients.sh feat/resource-exclusion-policy-sync infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow` で再デプロイ。
 - **References**:
   - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
   - `apps/api/src/services/production-schedule/production-schedule-settings.service.ts`
   - `apps/api/src/services/production-schedule/__tests__/production-schedule-settings.service.test.ts`
   - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+  - [deployment.md](../guides/deployment.md)（1台ずつ順番デプロイ）
+  - [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)（実機検証チェックリスト）
 
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 
