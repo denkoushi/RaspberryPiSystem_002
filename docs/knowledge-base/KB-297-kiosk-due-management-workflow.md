@@ -140,7 +140,7 @@ category: knowledge-base
 - **デプロイ結果（2026-03-16）**:
   - Pi5: Run ID 20260316-174822-31959、state success。
   - raspi4-robodrill01: Run ID 20260316-175659-32118、state success。
-  - raspberrypi4（研削メイン・100.74.144.79）: プリフライトで SSH 接続タイムアウト（UNREACHABLE）のため未デプロイ。**明日デプロイ予定**。
+  - raspberrypi4（研削メイン）: 初回はプリフライトで SSH 接続タイムアウト（UNREACHABLE）のため未デプロイ。接続復旧後に `--limit "raspberrypi4"` で再デプロイし**デプロイ済み**（3台完了）。
 - **実機検証**: OK。Pi5・raspi4-robodrill01 にて KUMITATE2 が除外され進捗一覧に表示されないこと、`GET /api/kiosk/production-schedule/resources` の `resourceItems[].excluded` が期待どおりであることを確認。
 - **トラブルシュート（Pi4 研削メインがデプロイ時に接続不可の場合）**:
   - 症状: `ssh: connect to host 100.74.144.79 port 22: Connection timed out`、プリフライトで raspberrypi4 が UNREACHABLE。
