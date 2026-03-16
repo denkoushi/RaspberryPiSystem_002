@@ -1445,6 +1445,27 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.resourceItems.find((item) => item.resourceCd === '2')?.excluded).toBe(true);
   });
 
+  it('uses shared exclusions when site config is missing in resources API', async () => {
+    await prisma.productionScheduleResourceCategoryConfig.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        location: 'shared',
+        cuttingExcludedResourceCds: ['2']
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/resources',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      resourceItems: Array<{ resourceCd: string; excluded: boolean }>;
+    };
+    expect(body.resourceItems.find((item) => item.resourceCd === '2')?.excluded).toBe(true);
+  });
+
   it('paginates results in sorted order', async () => {
     const res = await app.inject({
       method: 'GET',

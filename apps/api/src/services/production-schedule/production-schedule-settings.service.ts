@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS,
+  SHARED_RESOURCE_CATEGORY_LOCATION,
   normalizeProductionScheduleResourceCdList
 } from './policies/resource-category-policy.service.js';
 
@@ -30,17 +31,22 @@ export async function getProductionScheduleResourceCategorySettings(location: st
   cuttingExcludedResourceCds: string[];
 }> {
   const normalizedLocation = normalizeSiteLocation(location);
-  const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({
-    where: {
-      csvDashboardId_location: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: normalizedLocation
+  const readConfigByLocation = (targetLocation: string) =>
+    prisma.productionScheduleResourceCategoryConfig.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: targetLocation
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
       }
-    },
-    select: {
-      cuttingExcludedResourceCds: true
-    }
-  });
+    });
+  let config = await readConfigByLocation(normalizedLocation);
+  if (!config && normalizedLocation !== SHARED_RESOURCE_CATEGORY_LOCATION) {
+    config = await readConfigByLocation(SHARED_RESOURCE_CATEGORY_LOCATION);
+  }
 
   return {
     location: normalizedLocation,
@@ -59,25 +65,34 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
   const location = normalizeSiteLocation(params.location);
   const cuttingExcludedResourceCds = normalizeProductionScheduleResourceCdList(params.cuttingExcludedResourceCds);
 
-  const updated = await prisma.productionScheduleResourceCategoryConfig.upsert({
-    where: {
-      csvDashboardId_location: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location,
-      cuttingExcludedResourceCds
-    },
-    update: {
-      cuttingExcludedResourceCds
-    },
-    select: {
-      location: true,
-      cuttingExcludedResourceCds: true
+  const updated = await prisma.$transaction(async (tx) => {
+    const upsertByLocation = (targetLocation: string) =>
+      tx.productionScheduleResourceCategoryConfig.upsert({
+        where: {
+          csvDashboardId_location: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: targetLocation
+          }
+        },
+        create: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: targetLocation,
+          cuttingExcludedResourceCds
+        },
+        update: {
+          cuttingExcludedResourceCds
+        },
+        select: {
+          location: true,
+          cuttingExcludedResourceCds: true
+        }
+      });
+
+    const siteUpdated = await upsertByLocation(location);
+    if (location !== SHARED_RESOURCE_CATEGORY_LOCATION) {
+      await upsertByLocation(SHARED_RESOURCE_CATEGORY_LOCATION);
     }
+    return siteUpdated;
   });
 
   return {

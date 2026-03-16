@@ -118,6 +118,31 @@ category: knowledge-base
   - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
   - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
 
+## 除外資源CD Location整合化（site優先 + shared互換、2026-03-16 実装）
+
+- **Context**:
+  - 実機で `KUMITATE2` が除外されず、`resources` API でも `excluded=false` が返る事象を再確認。
+  - DB設定は `location=shared` に存在する一方、キオスク参照は `deviceScopeKey -> siteKey(第2工場)` に解決され、site側設定行が無いとデフォルト除外（`10`,`MSZ`）へフォールバックしていた。
+- **Fix**:
+  - `resource-category-policy` を `siteKey` 優先参照 + `shared` フォールバックに拡張。
+  - `production-schedule-settings` の ResourceCategory 保存を `siteKey` + `shared` 二重保存（Tx）へ変更し、移行期間の整合性を担保。
+  - ResourceCategory 取得も `siteKey` 優先 + `shared` フォールバックに統一。
+- **Verification**:
+  - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api exec prisma migrate deploy` 成功
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/production-schedule-settings.service.test.ts src/routes/__tests__/kiosk-production-schedule.integration.test.ts` 成功（61 tests）
+  - `pnpm --filter @raspi-system/api build` 成功
+  - `pnpm --filter @raspi-system/api lint` 成功
+  - テスト用コンテナは `pnpm test:postgres:stop` で削除済み
+  - 実機はデプロイ後に [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト（`resources` の `resourceItems.excluded` / `progress-overview` での非表示）で最終確認
+- **Prevention**:
+  - ResourceCategory の参照は policy 経由に限定し、呼び出し側で location 解決を重複実装しない。
+  - `siteKey` 行未作成の既存環境でも `shared` 互換で動作を維持し、段階的に site 正規へ移行する。
+- **References**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+  - `apps/api/src/services/production-schedule/production-schedule-settings.service.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-settings.service.test.ts`
+  - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 
 - **背景**:

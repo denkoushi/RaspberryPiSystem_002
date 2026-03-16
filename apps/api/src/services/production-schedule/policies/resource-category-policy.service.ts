@@ -12,6 +12,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 export const DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS = ['10', 'MSZ'] as const;
 export const STATIC_GRINDING_RESOURCE_CDS = ['305', '581', '582', '583', '584', '585', '586', '587', '588', '589'] as const;
+export const SHARED_RESOURCE_CATEGORY_LOCATION = 'shared';
 
 export const normalizeProductionScheduleResourceCd = (value: string): string => value.trim().toUpperCase();
 
@@ -85,17 +86,32 @@ export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicySco
       'Resource category policy resolved via default fallback'
     );
   }
-  const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({
-    where: {
-      csvDashboardId_location: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: siteKey
+  const readConfig = (location: string) =>
+    prisma.productionScheduleResourceCategoryConfig.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
       }
-    },
-    select: {
-      cuttingExcludedResourceCds: true
+    });
+
+  let config = await readConfig(siteKey);
+  if (!config && siteKey !== SHARED_RESOURCE_CATEGORY_LOCATION) {
+    config = await readConfig(SHARED_RESOURCE_CATEGORY_LOCATION);
+    if (config) {
+      logger.warn(
+        {
+          siteKey,
+          fallbackLocation: SHARED_RESOURCE_CATEGORY_LOCATION
+        },
+        'Resource category policy fell back to shared location config'
+      );
     }
-  });
+  }
 
   return {
     grindingResourceCds: [...STATIC_GRINDING_RESOURCE_CDS],
