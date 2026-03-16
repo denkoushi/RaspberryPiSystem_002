@@ -93,6 +93,67 @@ category: knowledge-base
   - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
   - `apps/web/src/features/kiosk/productionSchedule/resourceCategory.ts`
 
+## 切削除外リスト追随修正（policy統一 + resources拡張、2026-03-16 実装）
+
+- **Context**:
+  - 管理コンソールで除外資源CDを追加/削除しても、画面経路によって追随しない状態が残っていた。
+  - 運用上は「設定変更に自動追随」が必須。
+- **Fix**:
+  - API policy層に `resourceCd` 正規化（`trim + uppercase`）と除外判定を集約。
+  - `production-schedule` / `progress-overview` / `due-management` / `resource-load-estimator` を共通判定へ統一。
+  - `GET /api/kiosk/production-schedule/resources` を後方互換で拡張し、`resourceItems[{resourceCd, excluded}]` を追加。
+  - Web の資源CDボタンを `resourceItems.excluded` 追随へ変更（静的既定値依存を回避）。
+- **Verification**:
+  - `pnpm -r lint --max-warnings=0` 成功
+  - `pnpm --filter @raspi-system/api build` 成功
+  - `pnpm --filter @raspi-system/web build` 成功
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts` 成功（13 tests）
+  - 補足: `pnpm --filter @raspi-system/api test` 全件はローカルDB未起動（`localhost:5432`）で統合テスト失敗。DB起動後に再実行が必要。
+- **Prevention**:
+  - 除外判定の新規実装は policy ヘルパー経由のみとし、呼び出し側の重複判定を禁止。
+  - resources API は後方互換のまま拡張を継続し、段階移行を可能にする。
+- **References**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+  - `apps/api/src/services/production-schedule/production-schedule-query.service.ts`
+  - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
+  - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
+## 除外資源CD Location整合化（site優先 + shared互換、2026-03-16 実装）
+
+- **Context**:
+  - 実機で `KUMITATE2` が除外されず、`resources` API でも `excluded=false` が返る事象を再確認。
+  - DB設定は `location=shared` に存在する一方、キオスク参照は `deviceScopeKey -> siteKey(第2工場)` に解決され、site側設定行が無いとデフォルト除外（`10`,`MSZ`）へフォールバックしていた。
+- **Fix**:
+  - `resource-category-policy` を `siteKey` 優先参照 + `shared` フォールバックに拡張。
+  - `production-schedule-settings` の ResourceCategory 保存を `siteKey` + `shared` 二重保存（Tx）へ変更し、移行期間の整合性を担保。
+  - ResourceCategory 取得も `siteKey` 優先 + `shared` フォールバックに統一。
+- **Verification**:
+  - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api exec prisma migrate deploy` 成功
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/production-schedule-settings.service.test.ts src/routes/__tests__/kiosk-production-schedule.integration.test.ts` 成功（61 tests）
+  - `pnpm --filter @raspi-system/api build` 成功
+  - `pnpm --filter @raspi-system/api lint` 成功
+  - テスト用コンテナは `pnpm test:postgres:stop` で削除済み
+  - 実機はデプロイ後に [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) のチェックリスト（`resources` の `resourceItems.excluded` / `progress-overview` での非表示）で最終確認
+- **Prevention**:
+  - ResourceCategory の参照は policy 経由に限定し、呼び出し側で location 解決を重複実装しない。
+  - `siteKey` 行未作成の既存環境でも `shared` 互換で動作を維持し、段階的に site 正規へ移行する。
+- **デプロイ結果（2026-03-16）**:
+  - Pi5: Run ID 20260316-174822-31959、state success。
+  - raspi4-robodrill01: Run ID 20260316-175659-32118、state success。
+  - raspberrypi4（研削メイン・100.74.144.79）: プリフライトで SSH 接続タイムアウト（UNREACHABLE）のため未デプロイ。**明日デプロイ予定**。
+- **実機検証**: OK。Pi5・raspi4-robodrill01 にて KUMITATE2 が除外され進捗一覧に表示されないこと、`GET /api/kiosk/production-schedule/resources` の `resourceItems[].excluded` が期待どおりであることを確認。
+- **トラブルシュート（Pi4 研削メインがデプロイ時に接続不可の場合）**:
+  - 症状: `ssh: connect to host 100.74.144.79 port 22: Connection timed out`、プリフライトで raspberrypi4 が UNREACHABLE。
+  - 確認: Pi5 上で `tailscale status` で raspberrypi4 の online/offline と IP を確認。電源・ネットワーク（Tailscale）の状態を確認。必要なら `group_vars/all.yml` の `tailscale_network.kiosk_ip`（または該当 Pi4 の `ansible_host`）が現状の Tailscale IP と一致しているか確認。
+  - 復旧後: `./scripts/update-all-clients.sh feat/resource-exclusion-policy-sync infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow` で再デプロイ。
+- **References**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+  - `apps/api/src/services/production-schedule/production-schedule-settings.service.ts`
+  - `apps/api/src/services/production-schedule/__tests__/production-schedule-settings.service.test.ts`
+  - `apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts`
+  - [deployment.md](../guides/deployment.md)（1台ずつ順番デプロイ）
+  - [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)（実機検証チェックリスト）
+
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 
 - **背景**:

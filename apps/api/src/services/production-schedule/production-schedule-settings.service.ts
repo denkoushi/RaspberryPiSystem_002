@@ -5,7 +5,9 @@ import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
-  DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS
+  DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS,
+  SHARED_RESOURCE_CATEGORY_LOCATION,
+  normalizeProductionScheduleResourceCdList
 } from './policies/resource-category-policy.service.js';
 
 const normalizeLocation = (location: string): string => location.trim();
@@ -20,16 +22,6 @@ const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: 'その他02', label: 'その他02', priority: 5, enabled: true }
 ] as const;
 
-const normalizeResourceCdList = (values: string[]): string[] => {
-  const unique = new Set<string>();
-  for (const raw of values) {
-    const normalized = raw.trim();
-    if (normalized.length === 0) continue;
-    unique.add(normalized);
-  }
-  return Array.from(unique).sort((a, b) => a.localeCompare(b));
-};
-
 const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 const normalizeGroupCd = (value: string): string => value.trim().toUpperCase();
 const normalizeCsvHeader = (value: string): string => value.replace(/^\uFEFF/, '').trim().toUpperCase();
@@ -39,21 +31,26 @@ export async function getProductionScheduleResourceCategorySettings(location: st
   cuttingExcludedResourceCds: string[];
 }> {
   const normalizedLocation = normalizeSiteLocation(location);
-  const config = await prisma.productionScheduleResourceCategoryConfig.findUnique({
-    where: {
-      csvDashboardId_location: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: normalizedLocation
+  const readConfigByLocation = (targetLocation: string) =>
+    prisma.productionScheduleResourceCategoryConfig.findUnique({
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: targetLocation
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
       }
-    },
-    select: {
-      cuttingExcludedResourceCds: true
-    }
-  });
+    });
+  let config = await readConfigByLocation(normalizedLocation);
+  if (!config && normalizedLocation !== SHARED_RESOURCE_CATEGORY_LOCATION) {
+    config = await readConfigByLocation(SHARED_RESOURCE_CATEGORY_LOCATION);
+  }
 
   return {
     location: normalizedLocation,
-    cuttingExcludedResourceCds: normalizeResourceCdList(
+    cuttingExcludedResourceCds: normalizeProductionScheduleResourceCdList(
       config?.cuttingExcludedResourceCds?.length
         ? config.cuttingExcludedResourceCds
         : [...DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS]
@@ -66,32 +63,41 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
   cuttingExcludedResourceCds: string[];
 }): Promise<{ location: string; cuttingExcludedResourceCds: string[] }> {
   const location = normalizeSiteLocation(params.location);
-  const cuttingExcludedResourceCds = normalizeResourceCdList(params.cuttingExcludedResourceCds);
+  const cuttingExcludedResourceCds = normalizeProductionScheduleResourceCdList(params.cuttingExcludedResourceCds);
 
-  const updated = await prisma.productionScheduleResourceCategoryConfig.upsert({
-    where: {
-      csvDashboardId_location: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location
-      }
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location,
-      cuttingExcludedResourceCds
-    },
-    update: {
-      cuttingExcludedResourceCds
-    },
-    select: {
-      location: true,
-      cuttingExcludedResourceCds: true
+  const updated = await prisma.$transaction(async (tx) => {
+    const upsertByLocation = (targetLocation: string) =>
+      tx.productionScheduleResourceCategoryConfig.upsert({
+        where: {
+          csvDashboardId_location: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: targetLocation
+          }
+        },
+        create: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: targetLocation,
+          cuttingExcludedResourceCds
+        },
+        update: {
+          cuttingExcludedResourceCds
+        },
+        select: {
+          location: true,
+          cuttingExcludedResourceCds: true
+        }
+      });
+
+    const siteUpdated = await upsertByLocation(location);
+    if (location !== SHARED_RESOURCE_CATEGORY_LOCATION) {
+      await upsertByLocation(SHARED_RESOURCE_CATEGORY_LOCATION);
     }
+    return siteUpdated;
   });
 
   return {
     location: updated.location,
-    cuttingExcludedResourceCds: normalizeResourceCdList(updated.cuttingExcludedResourceCds)
+    cuttingExcludedResourceCds: normalizeProductionScheduleResourceCdList(updated.cuttingExcludedResourceCds)
   };
 }
 

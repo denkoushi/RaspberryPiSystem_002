@@ -4,6 +4,7 @@ import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
   isProductionScheduleCuttingResourceCd,
+  isProductionScheduleExcludedCuttingResourceCd,
   resolveResourceCategorySiteResolution,
   resolveResourceCategorySiteKey
 } from '../policies/resource-category-policy.service.js';
@@ -70,6 +71,41 @@ describe('resource-category-policy.service', () => {
     });
   });
 
+  it('falls back to shared config when site config is missing', async () => {
+    vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        cuttingExcludedResourceCds: ['KUMITATE2']
+      } as unknown as Awaited<ReturnType<typeof prisma.productionScheduleResourceCategoryConfig.findUnique>>);
+
+    const policy = await getResourceCategoryPolicy({ deviceScopeKey: '第2工場 - kensakuMain' });
+
+    expect(prisma.productionScheduleResourceCategoryConfig.findUnique).toHaveBeenCalledTimes(2);
+    expect(prisma.productionScheduleResourceCategoryConfig.findUnique).toHaveBeenNthCalledWith(1, {
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: '第2工場'
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
+      }
+    });
+    expect(prisma.productionScheduleResourceCategoryConfig.findUnique).toHaveBeenNthCalledWith(2, {
+      where: {
+        csvDashboardId_location: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          location: 'shared'
+        }
+      },
+      select: {
+        cuttingExcludedResourceCds: true
+      }
+    });
+    expect(policy.cuttingExcludedResourceCds).toEqual(['KUMITATE2']);
+  });
+
   it('applies cutting category filtering with exclusions', () => {
     const policy = {
       grindingResourceCds: ['305'],
@@ -77,7 +113,9 @@ describe('resource-category-policy.service', () => {
     };
     expect(isProductionScheduleCuttingResourceCd('100', policy)).toBe(true);
     expect(isProductionScheduleCuttingResourceCd('10', policy)).toBe(false);
+    expect(isProductionScheduleCuttingResourceCd('msz', policy)).toBe(false);
     expect(isProductionScheduleCuttingResourceCd('305', policy)).toBe(false);
+    expect(isProductionScheduleExcludedCuttingResourceCd('  msz ', policy)).toBe(true);
     const filtered = filterProductionScheduleResourceCdsByCategoryWithPolicy(
       ['305', '100', '10', 'MSZ'],
       'cutting',

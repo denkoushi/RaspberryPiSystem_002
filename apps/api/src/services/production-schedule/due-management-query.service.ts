@@ -7,7 +7,10 @@ import {
   resolveActualHoursLocationCandidates
 } from './actual-hours-location-scope.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
+import {
+  getResourceCategoryPolicy,
+  isProductionScheduleExcludedCuttingResourceCd
+} from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
 import {
   getResourceGroupCandidatesByResourceCds,
@@ -307,7 +310,6 @@ export async function getDueManagementSeibanDetail(params: {
   const resourceCategoryPolicy = await getResourceCategoryPolicy({
     deviceScopeKey: locationKey
   });
-  const excludedResourceCdSet = new Set(resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
   const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
   const [detailFeatureRowsWithLocation, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] =
     await Promise.all([
@@ -391,7 +393,7 @@ export async function getDueManagementSeibanDetail(params: {
       continue;
     }
     const resourceCd = row.fsigencd?.trim() ?? '';
-    if (excludedResourceCdSet.has(resourceCd.toUpperCase())) {
+    if (isProductionScheduleExcludedCuttingResourceCd(resourceCd, resourceCategoryPolicy)) {
       continue;
     }
     const note = row.note?.trim() ?? '';

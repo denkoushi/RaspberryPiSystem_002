@@ -78,10 +78,14 @@ describe('production-schedule-query.service', () => {
       { resourceCd: 'R02', resourceName: '設備B' },
     ] as never);
 
-    const result = await listProductionScheduleResources();
+    const result = await listProductionScheduleResources({ deviceScopeKey: 'Test - kiosk1' });
 
     expect(result).toEqual({
       resources: ['R01', 'R02'],
+      resourceItems: [
+        { resourceCd: 'R01', excluded: false },
+        { resourceCd: 'R02', excluded: false },
+      ],
       resourceNameMap: {
         R01: ['設備A', '設備A-予備'],
         R02: ['設備B'],

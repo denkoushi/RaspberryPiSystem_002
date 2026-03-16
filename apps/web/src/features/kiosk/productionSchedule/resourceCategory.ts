@@ -14,7 +14,10 @@ export const isGrindingResourceCd = (resourceCd: string) => {
 
 export const filterResourceCdsByCategory = (
   resourceCds: string[],
-  filter: ResourceCategoryFilter
+  filter: ResourceCategoryFilter,
+  options?: {
+    cuttingExcludedResourceCds?: string[];
+  }
 ) => {
   const { showGrinding, showCutting } = filter;
 
@@ -26,5 +29,7 @@ export const filterResourceCdsByCategory = (
     return filterProductionScheduleResourceCdsByCategory(resourceCds, 'grinding');
   }
 
-  return filterProductionScheduleResourceCdsByCategory(resourceCds, 'cutting');
+  return filterProductionScheduleResourceCdsByCategory(resourceCds, 'cutting', {
+    cuttingExcludedResourceCds: options?.cuttingExcludedResourceCds
+  });
 };
