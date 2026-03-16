@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-15
+last-verified: 2026-03-16
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../guides/csv-import-export.md
@@ -58,6 +58,40 @@ category: knowledge-base
 - ポリシー層を分離して、工程カテゴリ判定・表面処理優先を呼び出し側から隔離
 - 切削除外リストはロケーション別設定で変更可能にし、コード修正なしで運用調整可能
 - 回帰防止として、ポリシーユニットテストとキオスク統合テスト（due-management系）を追加
+
+## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
+
+- **Context**:
+  - キオスク進捗一覧と生産スケジュール設定（切削除外リスト）で、除外指定した資源CDが「一部のみ」反映される報告が継続。
+  - Location Scope リファクタ後の運用しやすさは向上したが、切削除外の一貫性は未収束。
+- **Symptoms**:
+  - 管理画面で除外設定した資源CDが、画面によって除外されたり残ったりする。
+  - 資源CDボタン一覧と実際の行データで、除外結果が一致しないケースがある。
+- **Investigation**:
+  - H1: DB保存値が壊れている  
+    - Result: REJECTED（設定値は保存・取得できている）
+  - H2: 判定ロジックが経路ごとに分岐し、比較規則が揃っていない  
+    - Result: CONFIRMED
+  - H3: 資源一覧APIが除外ポリシーを適用していない  
+    - Result: CONFIRMED
+- **Root cause**:
+  - 除外判定の責務が分散し、データソース（静的デフォルト/DB設定）と正規化規則（trimのみ、uppercaseあり/なし）が統一されていない。
+  - `GET /api/kiosk/production-schedule/resources` が除外前データを返却し、UI表示との整合が崩れる。
+- **Fix plan（最小変更）**:
+  - `resource-category-policy` を除外判定の単一入口にする。
+  - `resourceCd` 比較を `trim + uppercase` に統一（保存時/読取時/比較時）。
+  - `resources` API でも同ポリシーを適用し、ボタン表示と一覧結果の不整合を解消。
+  - Web側の固定デフォルト依存を段階的に削減し、API設定値を正に寄せる。
+- **Prevention**:
+  - 大文字小文字・空白混在・複数除外CDの回帰テストを API/Web 双方に追加する。
+  - 「切削除外は policy 経由のみ」の実装規約を維持し、呼び出し側で個別判定を増やさない。
+- **References**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+  - `apps/api/src/services/production-schedule/production-schedule-query.service.ts`
+  - `apps/api/src/services/production-schedule/progress-overview-query.service.ts`
+  - `apps/api/src/services/production-schedule/due-management-query.service.ts`
+  - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
+  - `apps/web/src/features/kiosk/productionSchedule/resourceCategory.ts`
 
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 

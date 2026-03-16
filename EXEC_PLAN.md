@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-16) **切削除外リスト「一部資源CDのみ除外」事象の現状調査と実装計画を確定**: キオスク進捗一覧/生産スケジュール/納期管理で「除外指定した資源CDが全て除外されない」事象を再調査し、最小変更の修正方針を確定。**原因整理**: (1) 除外元データがWeb静的値とAPI動的設定で分散、(2) 比較時の正規化（trim/uppercase）が経路ごとに不一致、(3) `GET /api/kiosk/production-schedule/resources` が除外ポリシー非適用。**計画**: `resource-category-policy` を単一判定入口にし、API/Webで同じ正規化ルールを適用、資源一覧APIも除外済みデータを返す。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#切削除外リストで一部資源cdのみ除外される事象2026-03-16-調査) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md#切削除外リスト全件除外の収束計画2026-03-16) を参照。
 - [x] (2026-03-16) **Location Scope Phase13（安全リファクタ）実装・デプロイ・実機検証完了**: `feat/location-scope-phase13-safe` ブランチで、境界型（SiteKey/DeviceScopeKey/DeviceName/InfraHost）の明示化、`clientDevice.location` 直参照の削除、`toLegacyLocationKeyFromDeviceScope()` による橋渡し集約、resource-category/due-management/ranking-scope のスコープコメント追加を実施。**CI**: 初回は `location-scope-resolver.ts` の `resolveStandardLocationScopeContext` で `string` を `SiteKey`/`DeviceName` に代入して型エラー。`asSiteKey`/`asDeviceName` でキャストして修正、CI success。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260316-113951-26071` / `20260316-114704-25137` / `20260316-115552-26872`）。**実機検証**: runbook項目を手動実行（`verify-phase12-real.sh` は先頭の `ping` 判定で Pi5 未到達と判定して停止。ICMP がブロックされる環境では HTTPS/SSH 経路で代替検証）。APIヘルス ok、deploy-status 両Pi4 false、キオスクAPI・納期管理API群 200、global-rank/actual-hours/stats、fallback 0件、PUT auto-generate 200、Pi3/Pi4 サービス active。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase13安全リファクタ2026-03-16) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [ci-cd.md](./docs/knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) を参照。
 - [x] (2026-03-16) **Location Scope Phase12（完全体化）実装完了**: `feat/location-scope-phase12-complete-hardening` ブランチで、運用収束の残課題（Runbook自動化・命名規約固定・横展開監査・UI最終確認記録）を実施。**自動化**: `scripts/deploy/verify-phase12-real.sh` を追加し、API/サービス/fallback監視/auto-generate判定を1コマンド化（実行結果: PASS 23 / WARN 1 / FAIL 0）。**命名規約**: `docs/guides/location-scope-naming.md` を新設し、`siteKey` / `deviceScopeKey` / `infraHost` を固定。**横展開監査**: `docs/plans/location-scope-phase12-cross-module-audit.md` を追加し、`production-schedule` ルートの境界変数を `deviceScopeKey` 明示に統一（サービス契約は不変）。**UI最終確認記録**: KB-297に手動項目の確認待ちを明記。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase12完全体化2026-03-16) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [location-scope-naming.md](./docs/guides/location-scope-naming.md) を参照。
 - [x] (2026-03-15) **Location Scope Phase11（完全収束）実装・デプロイ・実機検証完了**: `feat/location-scope-phase11-complete-convergence` ブランチで、Location Scope の公開入力契約を標準型へ縮退。`resource-category-policy` は `ResourceCategoryPolicyScope` 固定にし、`default` のみ warning 監視対象へ変更。`due-management-location-scope-adapter` はオブジェクト契約（`deviceScopeKey/siteKey`）に固定。`location-scope-resolver` は compat 経由を外して標準解決へ単純化。`kiosk/production-schedule/shared.ts` の型重複を解消し、`due-management-global-rank.ts` は `toDueManagementScopeFromContext()` 優先に統一。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260315-223311-18659` / `20260315-224040-6371` / `20260315-224829-13694`）、Pi3除外。**実機検証**: リモート自動チェック全項目合格（APIヘルス ok、deploy-status両Pi4 false、キオスクAPI・納期管理API群 200、global-rank targetLocation/rankingScope、Mac向け targetLocation 指定、actual-hours/stats、location scope fallback該当ログなし、サイネージAPI、backup.json 15K、マイグレーション52件、Pi3 signage + Pi4×2 kiosk/status-agent active、`verify-services-real.sh` 合格、PUT auto-generate 200）。**知見**: Due management auto-tuning scheduler ログは API 起動後ローテーションで見つからない場合あり。PUT auto-generate が 200 なら機能は正常。詳細は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase11完全収束2026-03-15) を参照。
@@ -687,6 +688,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-16）: **切削除外リストの除外漏れは単一バグではなく「契約分散 + 正規化不一致 + API返却差分」の複合要因**。`production-schedule-query` はSQL比較で大文字小文字/空白差異を吸収しない一方、`progress-overview` / `due-management` は `toUpperCase()` を使っており、経路ごとに結果が変わる。さらに `resources` API が除外前の全資源を返すため、画面上の資源ボタンと一覧結果で不整合が見える。**方針**: 判定入口を policy に集約し、正規化を統一、一覧APIにも同ポリシーを適用する。
 - 観測（2026-03-16）: **`verify-phase12-real.sh` は先頭で `ping` による Pi5 到達判定を行う**。ICMP がブロックされる環境（例: 一部ネットワーク）では「Pi5に到達できません」で即終了する。HTTPS/SSH 経路は正常でも ping が通らない場合がある。**代替**: runbook の実機検証チェックリスト項目を curl/ssh で手動実行すれば同等検証が可能。詳細は [KB-302](./docs/knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)。
 - 観測（2026-03-16）: **`location-scope-resolver.ts` の `resolveStandardLocationScopeContext`** で `resolveSiteKeyFromScopeKey`/`resolveDeviceNameFromScopeKey` の戻り値（`string`）を `StandardLocationScopeContext` の `siteKey`/`deviceName`（ブランド型）に直接代入すると CI の `tsc -p tsconfig.build.json` で型エラーになる。`asSiteKey`/`asDeviceName` で明示キャストすれば解消。ローカル `pnpm test` はビルドを実行しないため検出されない。**対策**: デプロイ前に `pnpm --filter @raspi-system/api build` を実行して型チェックを通す。
 - 観測（2026-03-16）: `production-schedule` ルート境界で `deviceScopeKey` を `locationKey` というローカル変数名で扱う箇所が残存していた。サービス契約は維持したまま、ルート変数名を `deviceScopeKey` に統一し、呼び出し時のみ `locationKey: deviceScopeKey` と明示する形へ是正した。
@@ -1564,6 +1566,19 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 切削除外リスト全件除外の収束（2026-03-16 計画確定）
+
+**概要**: 「除外指定した資源CDが一部しか除外されない」事象を、最小変更で収束させる。目的は **設定した全ての資源CDが、一覧・進捗・納期管理・資源ボタンで一貫して除外されること**。
+
+**候補タスク**:
+1. **ポリシー正規化の一本化**: `resource-category-policy.service.ts` / `production-schedule-settings.service.ts` で `normalizeResourceCd` を共通化し、`trim + uppercase` を保存時/比較時に統一
+2. **API除外判定の統一**: `production-schedule-query.service.ts` / `progress-overview-query.service.ts` / `due-management-query.service.ts` の判定を同一ヘルパー経由へ寄せる
+3. **資源一覧APIの整合化**: `GET /api/kiosk/production-schedule/resources` に除外ポリシー適用を追加し、Web側ボタン表示との不整合を解消
+4. **Web固定値依存の削減**: `packages/shared-types` / `apps/web` の切削除外デフォルト依存を段階的に縮小し、API設定値を正として利用
+5. **回帰テスト追加**: 大文字小文字・空白混在・複数除外CDでの統合テストを追加
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#切削除外リストで一部資源cdのみ除外される事象2026-03-16-調査) / [production-schedule-kiosk-execplan.md](./docs/plans/production-schedule-kiosk-execplan.md#切削除外リスト全件除外の収束計画2026-03-16)
 
 ### Location Scope Phase13（安全リファクタ）実装・デプロイ・実機検証完了後の次のタスク（2026-03-16）
 
