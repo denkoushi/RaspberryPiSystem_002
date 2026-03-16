@@ -71,6 +71,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 ## Progress
 
+- [x] (2026-03-16) **切削除外リスト全件除外の収束計画を確定**: 「除外指定した資源CDが一部しか除外されない」事象について、API/Web/設定保存を横断して現状調査を実施。原因を「除外元データ分散」「正規化不一致」「resources APIのポリシー未適用」に整理し、最小変更での収束手順（policy入口統一・正規化統一・一覧API整合化・回帰テスト追加）を定義。詳細は [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#切削除外リストで一部資源cdのみ除外される事象2026-03-16-調査) を参照。
 - [x] (2026-01-XX) **実装順序1: 生産スケジュールの実機検証完了**: CSVファイル（`標準工数_機械工数 (4).csv`）をDBに取り込み、キオスク画面（`/kiosk/production-schedule`）で表示確認。完了ボタンの動作、グレーアウト表示、トグル機能が正常に動作することを確認。実機検証で発見された問題（seed.tsの`enabled: true`不足、prisma db seed失敗、CIテスト失敗）をすべて解決。詳細は [KB-184](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能) を参照。
 
 - [x] (2026-01-XX) **実装順序2: UI改善完了**: CSVダッシュボードの`gmailSubjectPattern`設定UIを管理コンソール（`/admin/csv-dashboards`）に追加。`CsvDashboardsPage.tsx`に「Gmail件名パターン」入力フィールドを追加し、APIスキーマと型定義を更新。実機検証で設定が正しく保存・使用されることを確認。詳細は [KB-185](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善) を参照。
@@ -495,6 +496,27 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 **詳細**: [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側)
 
 ## Next Steps
+
+### 切削除外リスト全件除外の収束計画（2026-03-16）
+
+**目的**: 管理画面で指定した切削除外資源CDが、キオスク生産スケジュール/進捗一覧/納期管理/資源ボタンで常に同じ結果になる状態へ収束する。
+
+**実装ステップ（最小変更）**:
+1. **正規化規約の統一（API）**
+   - `resource-category-policy.service.ts` と `production-schedule-settings.service.ts` で `resourceCd` 正規化を `trim + uppercase` に統一
+2. **判定経路の統一（API）**
+   - `production-schedule-query.service.ts` / `progress-overview-query.service.ts` / `due-management-query.service.ts` を同一除外判定ヘルパーへ寄せる
+3. **資源一覧APIの整合化（API）**
+   - `routes/kiosk/production-schedule/resources.ts` で除外ポリシー適用後の資源一覧を返却
+4. **固定値依存の縮小（Web）**
+   - `resourceCategory.ts` と shared-types の固定デフォルト依存を段階的に縮小し、API設定値を主系へ
+5. **回帰防止（テスト）**
+   - 複数除外CD + 大文字小文字混在 + 前後空白混在のケースを追加
+
+**受け入れ条件**:
+- 管理画面で登録した全除外CDが、4経路（一覧/進捗/納期管理/資源ボタン）で一致して除外される
+- 除外CD入力の表記ゆれ（空白/小文字）があっても結果が変わらない
+- 既存API契約を破壊しない（後方互換維持）
 
 ### 納期管理・生産スケジュール連携拡張（A修正）完了後の次のタスク候補
 
